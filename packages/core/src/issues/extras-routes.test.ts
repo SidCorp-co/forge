@@ -10,7 +10,7 @@ vi.mock('../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectOrderByLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectOrderByLimit }));
-const selectInnerJoinWhere = vi.fn(() => ({ orderBy: selectOrderBy }));
+const selectInnerJoinWhere = vi.fn(() => ({ orderBy: selectOrderBy, limit: selectLimit }));
 const selectInnerJoin = vi.fn(() => ({ where: selectInnerJoinWhere }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, innerJoin: selectInnerJoin }));
@@ -60,6 +60,7 @@ vi.mock('../ws/server.js', () => ({
 // loads `queue/boss.ts` (pg-boss init). Mock the leaf so the module graph
 // initialises without a DATABASE_URL.
 const dispatchTick = vi.fn();
+let resolverScope: 'global' | 'project' = 'global';
 vi.mock('../jobs/dispatch-tick.js', () => ({
   dispatchTickForProject: (...args: unknown[]) => dispatchTick(...args),
 }));
@@ -78,7 +79,12 @@ vi.mock('../pipeline/skill-mapping.js', async () => {
       resolve: async (status: string) => {
         const m = actual.STATUS_TO_JOB_TYPE[status as keyof typeof actual.STATUS_TO_JOB_TYPE];
         if (!m) return null;
-        return { type: m.type, toggle: m.toggle, skillName: `forge-${m.type}` };
+        return {
+          type: m.type,
+          toggle: m.toggle,
+          skillName: `forge-${m.type}`,
+          scope: resolverScope,
+        };
       },
     }),
   };
@@ -138,6 +144,7 @@ beforeEach(() => {
   txInsertValues.mockClear();
   transactionMock.mockClear();
   dispatchTick.mockClear();
+  resolverScope = 'global';
 });
 
 function authVerified() {
@@ -209,7 +216,7 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
   //   2. issue { id, projectId, status }
   //   3. loadPipelineConfig — projects { agentConfig, ownerId }
   //   4. findActiveJob — jobs { id } or empty for no-conflict
-  function setupHappyPath(opts: { status?: string } = {}) {
+  function setupHappyPath(opts: { status?: string; agentConfig?: unknown } = {}) {
     authVerified();
     selectLimit.mockResolvedValueOnce([
       { id: ISSUE_ID, projectId: PROJECT_ID, status: opts.status ?? 'confirmed' },
@@ -220,7 +227,9 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
       role: 'member',
       orgRole: null,
     });
-    selectLimit.mockResolvedValueOnce([{ agentConfig: null, ownerId: USER_ID }]);
+    selectLimit.mockResolvedValueOnce([
+      { agentConfig: opts.agentConfig ?? null, ownerId: USER_ID },
+    ]);
     selectLimit.mockResolvedValueOnce([]); // findActiveJob → no conflict
     insertReturning.mockResolvedValueOnce([{ id: JOB_ID }]);
     enqueueJobMock.mockResolvedValueOnce(undefined);
@@ -268,6 +277,29 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     expect(res.status).toBe(202);
     const body = (await res.json()) as { stage: string };
     expect(body.stage).toBe('review');
+  });
+
+  it('keeps generic merge instructions for a manual stage override at a different merge state', async () => {
+    resolverScope = 'project';
+    setupHappyPath({
+      status: 'testing',
+      agentConfig: {
+        pipelineConfig: { mergeStates: { baseBranch: 'testing', productionBranch: 'released' } },
+      },
+    });
+
+    const res = await buildApp().request(`/api/issues/${ISSUE_ID}/run-pipeline-step`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${await token()}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ stage: 'code' }),
+    });
+
+    expect(res.status).toBe(202);
+    const payload = (
+      insertValues.mock.calls as unknown as Array<[{ payload: { promptString: string } }]>
+    ).at(-1)?.[0].payload.promptString;
+    expect(payload).toContain('No resolved git ref is configured');
+    expect(payload).not.toContain('registered project skill owns the git merge procedure');
   });
 
   it('409 when an active job already exists for the same (issueId, type)', async () => {

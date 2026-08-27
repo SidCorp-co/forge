@@ -12,6 +12,7 @@ use tokio::sync::mpsc;
 use crate::error::Result;
 
 pub mod claude_code;
+pub mod inflight;
 pub mod process;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,6 +54,9 @@ pub struct JobSpec {
     pub timeout_seconds: Option<u64>,
     pub mcp_servers_override: Option<serde_json::Value>,
     pub worktree_branch: Option<String>,
+    /// Commit-ish a NEW `worktree_branch` is cut from — `origin/<base>` when the
+    /// daemon resolved one. `None` falls back to the main worktree's HEAD.
+    pub worktree_start_point: Option<String>,
     /// `claudeSessionId` from core — the single source of truth for resume.
     pub resume_id: Option<String>,
     pub agent_session_id: Option<String>,

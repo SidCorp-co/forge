@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { GOLDEN_UX_CONTRACT } from './ux-contract-compiler.fixtures.js';
 import { compileUxContract } from './ux-contract-compiler.js';
 import {
+  compilePresetToRules,
   PRESET_DEFAULT_TOGGLES,
+  scaffoldOf,
   type UxToggleSettings,
   WEB_V2_PROFILE,
-  compilePresetToRules,
-  scaffoldOf,
 } from './ux-contract-presets.js';
 
 const ids = (toggles?: UxToggleSettings) =>

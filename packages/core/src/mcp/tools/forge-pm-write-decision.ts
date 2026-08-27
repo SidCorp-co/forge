@@ -25,9 +25,9 @@ import { indexMemory } from '../../memory/indexer.js';
 import { emitNotification } from '../../notifications/emit.js';
 import { deprecationFor } from '../deprecation.js';
 import {
+  assertPmActor,
   type ContextScopedMcpToolFactory,
   type McpContext,
-  assertPmActor,
   zodToMcpSchema,
 } from './lib.js';
 

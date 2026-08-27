@@ -15,7 +15,7 @@
  * closes (≥ 1 release after v0.1.x consolidates).
  */
 
-import { type SQL, and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
 import { db } from '../../db/client.js';
@@ -28,11 +28,12 @@ import {
 } from '../../pipeline/runs-control.js';
 import { deprecationFor } from '../deprecation.js';
 import {
-  type ContextScopedMcpToolFactory,
-  type McpContext,
   assertDeviceOwnerIsMember,
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
+  type ContextScopedMcpToolFactory,
+  type McpContext,
+  principalUserId,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -46,6 +47,10 @@ export const pipelineRunsListInputSchema = z
   .strict();
 
 export const pipelineRunsRunIdInputSchema = z.object({ runId: z.uuid() }).strict();
+
+export const pipelineRunsCancelInputSchema = z
+  .object({ runId: z.uuid(), parkIssue: z.boolean().optional() })
+  .strict();
 
 async function loadRunForPrincipal(principal: McpPrincipal, runId: string) {
   const [row] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1);
@@ -134,11 +139,14 @@ export async function pipelineRunsResumeHandler(
 
 export async function pipelineRunsCancelHandler(
   principal: McpPrincipal,
-  input: z.infer<typeof pipelineRunsRunIdInputSchema>,
+  input: z.infer<typeof pipelineRunsCancelInputSchema>,
 ) {
   const loaded = await loadRunForPrincipal(principal, input.runId);
   await assertPrincipalIsWriter(principal, loaded.projectId);
-  return cancelPipelineRun(input.runId);
+  return cancelPipelineRun(input.runId, {
+    actorUserId: principalUserId(principal),
+    ...(input.parkIssue !== undefined ? { parkIssue: input.parkIssue } : {}),
+  });
 }
 
 function recordDeprecation(ctx: McpContext | { deprecations?: Set<string> }, toolName: string) {
@@ -197,10 +205,10 @@ export const forgePipelineRunsCancelTool: ContextScopedMcpToolFactory = (ctx) =>
   name: 'forge_pipeline_runs.cancel',
   description:
     '[DEPRECATED — use forge_project_pipeline_runs (action=cancel)] Cancel a pipeline run. Marks the run cancelled, cancels queued+dispatched jobs of the run, transitions linked agent_sessions to failed with reason=pipeline_cancelled, and broadcasts agent:abort to each affected device. Idempotent on already-cancelled runs. Throws CONFLICT on completed/failed. PAT principals must have the run’s project in their allowlist.',
-  inputSchema: zodToMcpSchema(pipelineRunsRunIdInputSchema),
+  inputSchema: zodToMcpSchema(pipelineRunsCancelInputSchema),
   handler: async (args) => {
     recordDeprecation(ctx, 'forge_pipeline_runs.cancel');
-    const input = pipelineRunsRunIdInputSchema.parse(args);
+    const input = pipelineRunsCancelInputSchema.parse(args);
     return pipelineRunsCancelHandler(ctx.principal, input);
   },
 });

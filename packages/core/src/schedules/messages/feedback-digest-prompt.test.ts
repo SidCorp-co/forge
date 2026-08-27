@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildFeedbackDigestPrompt,
   FEEDBACK_LIST_LIMIT,
   MAX_CLUSTERS_PER_DIGEST,
   MAX_DIGEST_ISSUES_PER_RUN,
-  buildFeedbackDigestPrompt,
 } from './feedback-digest-prompt.js';
 
 const PROJECT_ID = 'da368b0a-8e21-4763-9d90-8f7b9d0c7115';

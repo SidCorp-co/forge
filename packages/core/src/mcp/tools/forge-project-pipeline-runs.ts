@@ -32,6 +32,7 @@ const inputSchema = z
     limit: z.number().int().min(1).max(200).optional(),
     // get/pause/resume/cancel args
     runId: z.uuid().optional(),
+    parkIssue: z.boolean().optional(),
   })
   .strict();
 
@@ -45,6 +46,7 @@ export const forgeProjectPipelineRunsTool: ContextScopedMcpToolFactory = ({
     'Every list row carries `liveJobs` — how many of its jobs are still queued/dispatched/running. READ IT before treating `status` as liveness: a run stays `running` after its last job ends, so `status:"running"` with `liveJobs: 0` means nothing is working on it and only a human can move it. Filtering on status alone cannot tell those apart. ' +
     'list: requires projectId; optional issueId/status/limit filters; newest-first by started_at. ' +
     'get/pause/resume/cancel: require runId. ' +
+    'cancel parks the linked issue at `on_hold` by default, because every other status it could be left at is actionable and the orchestrator would open a replacement run within seconds. Pass `parkIssue: false` for the other intent — "kill this run so a clean one starts" — and that re-dispatch becomes the point. Cancelling returns `issueParked` so you can tell which happened. ' +
     'Authorization: list scopes to the device owner being a project member; get/pause/resume/cancel resolve the run first then enforce project membership (PAT principals additionally pass the projectIds allowlist).',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
@@ -75,7 +77,10 @@ export const forgeProjectPipelineRunsTool: ContextScopedMcpToolFactory = ({
       }
       case 'cancel': {
         if (!input.runId) throw new Error('BAD_REQUEST: runId is required for cancel');
-        return pipelineRunsCancelHandler(principal, { runId: input.runId });
+        return pipelineRunsCancelHandler(principal, {
+          runId: input.runId,
+          ...(input.parkIssue !== undefined ? { parkIssue: input.parkIssue } : {}),
+        });
       }
     }
   },

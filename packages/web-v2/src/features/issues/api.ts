@@ -16,6 +16,7 @@ import type {
   IssueSearchOpts,
   IssueStatus,
   ProjectMember,
+  WaitingCause,
 } from "./types";
 
 export const ISSUES_PAGE_SIZE = 25;
@@ -95,16 +96,19 @@ export const issuesApi = {
     }),
 
   /** `POST /api/issues/:id/transition` — state-machine guarded status change.
-   *  Invalid transitions return 409 (ILLEGAL_TRANSITION). `override` bypasses
-   *  the reopen cap — the server rejects it with 403 unless the caller is a
-   *  project admin (ISS-828 reopen-cap unblock). */
-  transition: (id: string, toStatus: IssueStatus, opts?: { reason?: string; override?: boolean }) =>
+   *  Invalid transitions return 409 (ILLEGAL_TRANSITION). */
+  // cm:guard `reason` is REQUIRED entering reopen / waiting / needs_info, and `waitingKind` additionally for waiting (RFC 0002 INV-8) — the server answers 422 without them, so a caller that cannot collect one must not offer the action
+  transition: (
+    id: string,
+    toStatus: IssueStatus,
+    opts?: { reason?: string; waitingKind?: WaitingCause },
+  ) =>
     apiClient<IssueRow>(`/issues/${id}/transition`, {
       method: "POST",
       body: JSON.stringify({
         toStatus,
         ...(opts?.reason ? { reason: opts.reason } : {}),
-        ...(opts?.override ? { override: true } : {}),
+        ...(opts?.waitingKind ? { waitingKind: opts.waitingKind } : {}),
       }),
     }),
 
@@ -138,7 +142,32 @@ export interface CreateReleaseBatchResult {
   gateStatus: string;
 }
 
+/** One issue waiting at the release gate. Mirrors core `ReleaseRosterEntry`. */
+export interface ReleaseRosterEntry {
+  id: string;
+  displayId: string;
+  title: string;
+  mergedAt: string | null;
+  waitingDays: number | null;
+  claimedByRunId: string | null;
+}
+
+/** What the project's release surface reads. `gateStatus: null` = no gate. */
+// cm:edge contract -> packages/core/src/release-batch/queries.ts — serialized straight onto this shape; a field renamed there and not here arrives as `undefined` and renders as a blank cell rather than an error
+export interface ReleaseRoster {
+  gateStatus: string | null;
+  channel: string | null;
+  releaseRunnerLabel: string | null;
+  baseBranch: string | null;
+  nextCutAt: string | null;
+  issues: ReleaseRosterEntry[];
+}
+
 export const releaseBatchApi = {
+  /** `GET /api/projects/:projectId/release-batches/roster` — waiting, oldest first. */
+  roster: (projectId: string) =>
+    apiClient<ReleaseRoster>(`/projects/${projectId}/release-batches/roster`),
+
   /** `POST /api/projects/:projectId/release-batches` — create + claim a batch. */
   create: (projectId: string, issueIds: string[]) =>
     apiClient<CreateReleaseBatchResult>(

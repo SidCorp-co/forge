@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  ROTATION_WINDOW_MS,
   isPreviousCredentialValid,
   isRotatingProvider,
   mergeRotatedSecrets,
+  ROTATION_WINDOW_MS,
 } from './rotation.js';
 
 const FIXED_NOW = Date.parse('2026-01-01T00:00:00.000Z');

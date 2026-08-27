@@ -1,8 +1,8 @@
 import type { NotificationSeverity } from '@forge/contracts';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, notifications } from '../db/schema.js';
 import type { IssueStatus } from '../db/schema.js';
+import { issues, notifications } from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 import { strandedResolutionKey } from '../pipeline/stranded-issues.js';

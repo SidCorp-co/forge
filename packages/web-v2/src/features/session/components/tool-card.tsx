@@ -22,8 +22,8 @@ function resultPreview(result: unknown): string {
   return s.length > 240 ? `${s.slice(0, 240)}…` : s;
 }
 
-/** Inline unified diff for an edit-type tool. Collapsed by default. */
-function DiffBody({ diff }: { diff: FileDiff }) {
+/** Inline unified diff for one file's collected hunks. */
+export function InlineDiff({ diff }: { diff: FileDiff }) {
   return (
     <div className="border-t border-line-subtle">
       {diff.hunks.map((hunk, i) => {
@@ -75,7 +75,7 @@ function EditCard({ tool, diff }: { tool: ToolCallData; diff: FileDiff }) {
         {diff.added > 0 && <span className="flex-none font-mono" style={{ fontSize: 11, color: "var(--green-600)" }}>+{diff.added}</span>}
         {diff.removed > 0 && <span className="flex-none font-mono" style={{ fontSize: 11, color: "var(--red-600)" }}>-{diff.removed}</span>}
       </button>
-      {open && <DiffBody diff={diff} />}
+      {open && <InlineDiff diff={diff} />}
     </div>
   );
 }

@@ -1,10 +1,10 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
-  type TestDatabase,
   createTestProject,
   createTestUser,
   setupTestDatabase,
+  type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
 

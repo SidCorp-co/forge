@@ -55,7 +55,14 @@ function namesOf(names: string[]): string {
   return names.map((raw) => humanizeToolName(raw).label).join(", ");
 }
 
-export function StagePermissionsSection({ config }: { config: PipelineConfig }) {
+export function StagePermissionsSection({
+  config,
+  deviceNames,
+}: {
+  config: PipelineConfig;
+  /** deviceId → runner name, so a pinned pool reads as boxes, not UUIDs. Optional: the component stays query-free. */
+  deviceNames?: Record<string, string>;
+}) {
   const rows = summarizeStageConfig(config);
   const diffs = denylistBaseline(rows);
   const diffByStatus = new Map(diffs.map((d) => [d.status, d]));
@@ -81,6 +88,7 @@ export function StagePermissionsSection({ config }: { config: PipelineConfig }) 
             const allowed = row.config.allowedTools ?? [];
             const mcpNames = Object.keys(row.config.mcpServers ?? {});
             const skips = row.config.skipComplexities ?? [];
+            const pool = row.config.deviceIds ?? [];
             const diff = diffByStatus.get(row.status);
 
             return (
@@ -94,6 +102,9 @@ export function StagePermissionsSection({ config }: { config: PipelineConfig }) 
                     {allowed.length > 0 && <Badge>{allowed.length} allowed</Badge>}
                     {mcpNames.length > 0 && <Badge>{mcpNames.length} MCP</Badge>}
                     {row.config.sessionGroup && <Badge>group: {row.config.sessionGroup}</Badge>}
+                    {pool.length > 0 && (
+                      <Badge>{pool.length === 1 ? "1 pinned runner" : `${pool.length} runner pool`}</Badge>
+                    )}
                     {skips.length > 0 && <Badge>skips {skips.join(", ")}</Badge>}
                     {diff?.isOutlier && <Badge tone="amber">Differs from the other stages</Badge>}
                   </div>
@@ -158,6 +169,20 @@ export function StagePermissionsSection({ config }: { config: PipelineConfig }) 
                       Session group: <MonoTag>{row.config.sessionGroup}</MonoTag> — edited in
                       Session groups below.
                     </p>
+                  )}
+
+                  {pool.length > 0 && (
+                    <div>
+                      <p className="fg-caption mb-1 text-muted">
+                        Runner pool — this stage only runs on these devices. When all of them are
+                        busy or limited, its jobs wait instead of moving to another runner.
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {pool.map((d) => (
+                          <MonoTag key={d}>{deviceNames?.[d] ?? d}</MonoTag>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
               </Collapsible>

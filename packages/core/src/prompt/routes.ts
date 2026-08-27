@@ -13,8 +13,8 @@ import {
   userPromptPolicySchema,
 } from '../pipeline/pipeline-config-schema.js';
 import { loadIssueSnapshot } from './issue-snapshot.js';
-import { type SystemPromptOverride, buildPipelinePreambleStructured } from './system.js';
-import { type UserPromptPolicyOverride, buildJobPromptString } from './user.js';
+import { buildPipelinePreambleStructured, type SystemPromptOverride } from './system.js';
+import { buildJobPromptString, type UserPromptPolicyOverride } from './user.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });

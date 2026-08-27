@@ -50,7 +50,6 @@ export function usePersistedState<T>(
   useEffect(() => {
     const stored = read(key, initial);
     setValue(stored);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   // Cross-tab sync: adopt writes made to the same key in other tabs.
@@ -71,7 +70,6 @@ export function usePersistedState<T>(
     }
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, syncTabs]);
 
   const set = useCallback(
@@ -134,7 +132,6 @@ export function usePerTabState<T>(
   // Hydrate after mount (storage is unavailable during SSR).
   useEffect(() => {
     setValue(readPerTab(key, initial));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   const set = useCallback(

@@ -5,8 +5,14 @@ const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 
+const selectWhere = vi.fn();
+const selectFrom = vi.fn(() => ({ where: selectWhere }));
+
 vi.mock('../db/client.js', () => ({
-  db: { update: vi.fn(() => ({ set: updateSet })) },
+  db: {
+    update: vi.fn(() => ({ set: updateSet })),
+    select: vi.fn(() => ({ from: selectFrom })),
+  },
 }));
 
 const { resolveNotifications } = await import('./auto-resolve.js');
@@ -15,15 +21,18 @@ const hooksModule = await import('../pipeline/hooks.js');
 beforeEach(() => {
   vi.clearAllMocks();
   updateReturning.mockReset();
+  selectWhere.mockReset();
+  selectWhere.mockResolvedValue([]);
   hooksModule.hooks.reset();
 });
 
 describe('resolveNotifications', () => {
-  it('marks matching unread rows read and emits notificationRead per row', async () => {
-    updateReturning.mockResolvedValueOnce([
+  it('marks matching unresolved rows read and emits notificationRead per row', async () => {
+    selectWhere.mockResolvedValueOnce([
       { id: 'n1', userId: 'u1' },
       { id: 'n2', userId: 'u2' },
     ]);
+    updateReturning.mockResolvedValueOnce([{ id: 'n1' }, { id: 'n2' }]);
     const seen: Array<{ id: string; user: string }> = [];
     hooksModule.hooks.on('notificationRead', (p) => {
       seen.push({ id: p.notificationId, user: p.userId });
@@ -42,7 +51,20 @@ describe('resolveNotifications', () => {
     ]);
   });
 
-  it('is idempotent — no unread rows clears nothing and emits nothing', async () => {
+  // cm:guard this pair is the reason the filter moved off `read` — a row the operator had already opened still needs its `resolvedAt` stamp, because emitPipelineWedge's dedupe reads that column and would otherwise suppress the next wedge for the same entity forever
+  it('stamps an ALREADY-READ row and does not re-emit notificationRead for it', async () => {
+    selectWhere.mockResolvedValueOnce([]);
+    updateReturning.mockResolvedValueOnce([{ id: 'n1' }]);
+    const seen: string[] = [];
+    hooksModule.hooks.on('notificationRead', (p) => {
+      seen.push(p.notificationId);
+    });
+
+    expect(await resolveNotifications('issue:abc:status')).toBe(1);
+    expect(seen).toEqual([]);
+  });
+
+  it('is idempotent — no unresolved rows clears nothing and emits nothing', async () => {
     updateReturning.mockResolvedValueOnce([]);
     const seen: string[] = [];
     hooksModule.hooks.on('notificationRead', (p) => {

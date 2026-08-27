@@ -26,33 +26,23 @@
 // `prompt/facts/registry.ts` — the route, the MCP tool, and the tests all
 // import this module without a live DB.
 
-// cm:why the header's no-DB/env rule is kept: park-states.ts contributes nothing at runtime (its only import is `import type`, erased at compile), and importing the rule is what stops this guide's copy drifting from the orchestrator guard that enforces it
-import { PARK_EXIT_RULE } from '../pipeline/park-states.js';
+import { CONFORMANCE_GUIDE } from './conformance-guide.js';
+import type { ForgeGuide } from './types.js';
 
-// cm:edge contract -> packages/core/src/guides/integration-guides.ts — that tier owns the `integration-<provider>` slug prefix; a code guide claiming it would be unreachable for any org that authored its own
-export interface ForgeGuide {
-  /** Stable, URL-safe id: kebab-case, `/^[a-z0-9][a-z0-9-]*$/`. */
-  slug: string;
-  title: string;
-  /** ONE line — this is all the always-on index shows. */
-  summary: string;
-  version: number;
-  /** Markdown body, NT1 altitude. */
-  body: string;
-}
+export type { ForgeGuide };
 
 export const FORGE_GUIDES: readonly ForgeGuide[] = [
   {
     slug: 'project-settings-and-test-credentials',
     title: 'Project settings & test credentials',
     summary:
-      'Where to fetch repo paths, branches, preview URLs, and test credentials — and why forge_config never returns them.',
-    version: 1,
+      'Where to fetch repo paths, branches, workspace setup, preview URLs, and test credentials — and why forge_config never returns them.',
+    version: 2,
     body: `## Project settings & test credentials
 
 Two tools, two different jobs — mixing them up is the single most common Forge discoverability miss.
 
-- **\`forge_projects.get\`** — deployment-shaped facts: repo path, base/production branch, and \`previewDeploy\` (staging/beta URLs + \`testCredentials\` for logging into a preview environment as a test user). This is the ONLY place test credentials live.
+- **\`forge_projects.get\`** — deployment-shaped facts: repo path, base/production branch, \`workspaceSetup\` (how to bring this repo's workspace to a buildable state), and \`previewDeploy\` (staging/beta URLs + \`testCredentials\` for logging into a preview environment as a test user). This is the ONLY place test credentials live.
 - **\`forge_config\`** — process-shaped facts: \`pipelineConfig\` (stage gates, status ladder overrides), \`stateContext\`, \`projectFacts\` (+ \`projectFactsConfig\` for the always-inject tier), categories. It deliberately does **not** return credentials or preview URLs — don't go looking for them there, and don't add them there either.
 
 ### Rules
@@ -60,9 +50,12 @@ Two tools, two different jobs — mixing them up is the single most common Forge
 2. Never echo a fetched credential past the immediate authentication step (into a commit message, a PR description, or tool output) — treat it as a secret even though it's a test account.
 3. When you need to change \`forge_config\` (e.g. \`pipelineConfig.states\`, \`projectFacts\`), **GET the current config first, then send a complete entry.** These are nested maps — a blind partial write clobbers sibling keys you never read.
 4. If a project has no \`previewDeploy\` configured, there is no staging environment to test against; don't invent one.
+5. \`workspaceSetup\` is the project's own setup procedure — install commands, hook setup, toolchain quirks — and it is prose, not a script anything executes. It is what a stage follows instead of guessing when it lands in a broken checkout. **If it is empty and you worked the procedure out, write it back** with \`forge_projects.update\` (\`workspaceSetup\`), recording only steps you ran and saw succeed. Set it while onboarding a project, next to the repo URL — Settings → Runners → Git access in the UI.
 
 ### Common mistake this guide exists to prevent
-An agent hits a login wall on a preview deploy, can't find credentials in \`forge_config\`, and either asks a human or gives up. The credentials were one tool call away, on \`forge_projects.get\`.`,
+An agent hits a login wall on a preview deploy, can't find credentials in \`forge_config\`, and either asks a human or gives up. The credentials were one tool call away, on \`forge_projects.get\`.
+
+The same shape costs tokens rather than a stall: a stage lands in a checkout whose hooks are missing, works out the install procedure from the lockfile, fixes it, and says nothing. The next job on that project pays for the same derivation, and the one after that. \`workspaceSetup\` exists so that happens once.`,
   },
   {
     slug: 'issue-dependencies-and-decompose',
@@ -183,17 +176,19 @@ Gate 4 is the one that gets skipped. \`draft\` means *not yet time to work on th
 | An audit or scan finding | an observation | memory, until it becomes work with a deliverable |
 | A fix you already made by hand | a record | move the status, capture the learning in memory |
 
-### Residuals — the opposite mistake is just as real
+### Residuals — fix them, don't file them
 
 Under-filing ships bugs. Measured case: four separate stages flagged an unauthenticated data leak, each asked for a follow-up to be filed, none was, and the leak shipped.
 
-So anything a stage or review wants to hand onward becomes exactly one of three things:
+Filing was the wrong correction. Measured 2026-08-18 on forge-dev: 30 open \`draft\`s, the oldest untouched for 54 days, most of them fixable defects a stage deferred rather than fixed — two of them (ISS-791, ISS-845) describing drafts being filed and forgotten while themselves sitting filed and forgotten.
 
-1. **Work with a deliverable** → an issue.
-2. **A \`blocks\` edge** onto the issue that would otherwise ship without it.
-3. **A line in a decision doc** (\`docs/proposals/\`).
+So anything a stage wants to hand onward routes as:
 
-There is no fourth option. An unowned \`draft\` is not a hand-off, it is a place things go to be forgotten. If it fits none of the three, say it in a comment on the issue you are already working on.
+1. **You can fix it here** → **fix it**, and declare it under \`Extra fixes:\` in your comment. This is the default and covers most residuals. A declared extra fix is authorized work, not scope-creep — review judges it on merit.
+2. **It must not ship without other work** → a \`blocks\` edge onto the issue that would otherwise ship without it.
+3. **It needs a human decision** → \`waiting\` + \`waitingKind\` + \`reason\` when it blocks this issue; a standing policy question → a line in \`docs/proposals/\`.
+
+Filing a NEW issue is not on that list. If it fits none of the three, say it in a comment on the issue you are already working on — silence is the only thing that is never acceptable.
 
 ### When you find one that is not work — act on it, don't leave it
 
@@ -211,11 +206,69 @@ Statuses, the three exits from \`draft\`, and the description contract: guide \`
 Public copy of this page, no auth required: \`GET /api/guides/what-is-an-issue.md\`.`,
   },
   {
+    slug: 'writing-an-issue',
+    title: 'Writing an issue',
+    summary:
+      'The three shapes an issue body takes and how to tell which one you are writing, why technical detail is placed rather than deleted, and how to use a mermaid diagram or an attached HTML artifact instead of prose.',
+    version: 2,
+    // cm:guard the HTML-artifact paragraph must keep saying "attach, never paste": `prompt/user.ts` truncates `description` at DEFAULT_FIELD_CAPS.description before an agent sees it, so an inlined page evicts the requirements instead of merely bloating them
+    body: `## Writing an issue
+
+A reader must get the problem in about fifteen seconds. How you get them there depends on which of three things you are writing, so pick the shape FIRST — most of the unreadable issue bodies in this tracker are the wrong shape, not bad writing.
+
+| You are writing | Shape | Required |
+|---|---|---|
+| **One symptom** with one cause — a missing focus ring, a rule to add, a slice already scoped elsewhere | Opening line, then **Evidence** | 2 blocks |
+| **A problem** whose cost, spread or mechanism a reader will not guess | The six blocks below | 4 blocks + Evidence |
+| **An epic or a design record** — locked decisions, tiers, children | The six blocks below, then a **Decisions** block kept intact | 4 blocks + Decisions + Evidence |
+
+Do not inflate the first shape into the second. A diagram of *"tab to the toggle → no ring appears"* has two nodes and tells the reader nothing the title did not; a *Who it hurts* table with one row is a sentence in a costume. Both make the issue longer and no clearer, which is the one thing this format exists to prevent.
+
+Do not compress the third shape into the second either. In an epic the locked decisions ARE the deliverable, and an agent that re-derives a rejected option has done the work twice. Summarise the problem in the four blocks, then keep every decision, its rejected alternatives and its sequencing under **Decisions**. The four blocks are for the reader deciding whether to care; **Decisions** is for whoever builds it.
+
+The six blocks, in this order. The last two appear only when they earn it.
+
+| Block | Rule |
+|---|---|
+| **Opening line** | One or two sentences in a blockquote: what is wrong, and what it costs. Plain language — no function, table or file names. |
+| **Who it hurts** | A table, at most four rows: *who · what they hit · how often or how wide*. If no row can be filled, this is probably not an issue — check the four gates in \`what-is-an-issue\`. |
+| **Now → wanted** | Exactly one diagram, at most eight nodes. It replaces a paragraph; it never accompanies one. |
+| **What to do** | At most six bullets, each an outcome someone can observe. Not function names — and not acceptance criteria, which are decided when the issue RUNS, not when it is filed. |
+| **Waiting on a decision** | Only when genuinely blocked. State the question and what each answer costs. |
+| **Evidence** | Always last. Every row carries *date · what was measured · source*. If it cannot be measured it is an opinion — cut it. |
+
+### Technical detail is placed, not deleted
+
+\`file:line\`, column names, SQL, commit hashes, schema fields: these belong in **Evidence**, or in a comment. Never in the first four blocks.
+
+This is a placement rule, not a ban. A verified constraint — *"this table has no \`started_at\` column"* — cost real work to establish, and whoever builds the thing still needs it. Its problem is standing in the reader's way, not existing.
+
+### Diagrams
+
+A fenced \`mermaid\` block renders as a diagram in issue descriptions, plans and comments. Prefer it over prose and over ASCII art: it is a few hundred characters, and an agent reading the issue through MCP still understands it as text.
+
+\`\`\`mermaid
+flowchart LR
+  A["Rebase finishes"] --> B{"Can the warning<br/>be cleared?"}
+  B -->|no path exists| C["Still flagged stale"]
+\`\`\`
+
+### When mermaid is not enough
+
+Attach a self-contained \`.html\` file. It renders inline as a sandboxed artifact, in issues and in comments alike.
+
+Do NOT paste that HTML into the description. The description is truncated before it reaches an agent's prompt (8,000 characters by default), and a styled page is large enough on its own to push the real content past that limit — the agent then receives markup and loses the requirements. An attachment sits outside the prompt path, so it costs nothing.
+
+### Comments
+
+Same discipline, shorter. Lead with the outcome, put the trace underneath. A comment is the right home for detail the description should not carry — which is what makes the placement rule above affordable.`,
+  },
+  {
     slug: 'pipeline-and-issue-lifecycle',
     title: 'Pipeline & issue lifecycle',
     summary:
-      'What belongs in a description, the three exits from draft (including the direct-ship route), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park needs a human or an operator sentinel, the four things `waiting` means, and who owns which derived fields.',
-    version: 4,
+      'What belongs in a description, the three exits from draft (including the direct-ship route), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park is as free as entering it, the two authored kinds of `waiting`, and who owns which derived fields.',
+    version: 6,
     body: `## Pipeline & issue lifecycle
 
 ### An issue is a unit of WORK — draft vs open
@@ -239,9 +292,9 @@ The \`developed\` route is the one people miss. It is the direct-ship path: you 
 **Closing is not free.** \`closed\` auto-stamps \`merged_at\`, and \`merged_at\` is exactly what releases every \`blocks\` dependent waiting on this issue. Closing something you ABANDONED rather than finished silently unblocks work that should still be blocked — call \`forge_issues\` \`unmark\` to clear the stamp in that case.
 
 ### What is actually enforced, and what is only advice
-The runtime gate is permissive: **any status may move to any status, except that nothing may move INTO \`draft\`**, and \`draft\` itself may only leave to \`open\`, \`closed\` or \`developed\`. That is the whole rule.
+The runtime gate is permissive: **any status may move to any status, except that nothing may move INTO \`draft\`**, and \`draft\` itself may only leave to \`open\`, \`developed\`, \`closed\` or \`dropped\`. That is the whole rule. \`dropped\` is legal, and it is a dead end by **convention, not by the gate**: the \`transitions\` map offers it no exit because reopening a dropped issue would carry \`merged_at\` NULL into an issue that then ships, so re-filing is the correct move. The recommended discard for non-work is still \`closed\` + \`unmark\`, per **Closing is not free** above.
 
-The status ladder you see in prompts, in the UI's next-state suggestions, and in the \`transitions\` map in the source is the **recommended happy path**, not a constraint. Do not infer that a hop is illegal because it is not listed there, and do not build multi-hop detours to reach a status you could have set directly. If a transition is genuinely refused you will get a typed error naming the reason (a reopen cap, a content guard) — reason from that error, never from the shape of the ladder.
+The status ladder you see in prompts, in the UI's next-state suggestions, and in the \`transitions\` map in the source is the **recommended happy path**, not a constraint. Do not infer that a hop is illegal because it is not listed there, and do not build multi-hop detours to reach a status you could have set directly. If a transition is genuinely refused you will get a typed error naming the reason (\`TRANSITION_REASON_REQUIRED\` on a park with no rationale, \`WAITING_KIND_REQUIRED\` on a \`waiting\` that does not say which kind, \`ILLEGAL_TRANSITION\` on either half of the rule above — \`draft\` as a target, or a \`draft\` leaving to anything else) — reason from that error, never from the shape of the ladder.
 
 ### The description is a requirements contract, not an implementation script
 A description is the one context channel every downstream step trusts without re-verifying, so what you put in it decides whether plan and code explore the repo or just obey a stale snapshot.
@@ -260,27 +313,33 @@ Within a pipeline step: do your real work, post your findings/decision comment, 
 ### Bounce states, reachable from anywhere
 \`needs_info\` (requirements missing/unclear), \`waiting\` (blocked on a human decision), \`reopen\` (regression or failed check), \`on_hold\` (deliberate pause) are not restricted to the happy-path ladder — set one the moment the condition is true rather than forcing a step that can't succeed. \`on_hold\` specifically means "active work, paused on purpose" — don't use it to park work that never started (leave that at \`draft\`) and don't use it to survive a mechanical crash (the system already reverts and retries those automatically).
 
-### Leaving a park is not symmetric with entering one
-${PARK_EXIT_RULE}
+### Leaving a park is symmetric with entering one
+Entering \`waiting\`/\`on_hold\` is free from anywhere, and so is leaving. Set the next status through the UI, REST or MCP and the next step dispatches — no actor check, no \`unblock\` flag, no admin. If you set a forward status and no job appears, that is a real fault (a stuck runner, a held job, a blocking dependency), not a rule — read \`pipelineHealth.waitingOn\`.
 
-Entering is free from anywhere; the exit is reserved. If you set a forward status from \`waiting\`/\`on_hold\` and no job appears, that is this rule — not a stuck runner. The issue then reads as sitting at a live stage with nothing working on it, which is the most expensive way to be wrong about pipeline state, so the skip now posts a comment saying so.
+An earlier version of this pipeline refused every non-human exit from a park. It cost four refused resume attempts on one issue (ISS-163) and produced no work; RFC 0002 removed it.
 
-**To resume:** a human moves it from the issue page, or an operator/pipeline agent passes \`data.unblock: true\` to \`forge_issues.update\` (which threads the \`operator_unblock\` sentinel — the chat bot is refused). A bare status write does not re-engage dispatch.
+### \`waiting\` means one thing, in two flavours
+**A human is needed.** Only an agent or a human ever writes it — no failure path, no gate, nothing in core. Two authored kinds:
 
-\`needs_info\` is a bounce but NOT a park — its exit dispatches normally. What gates it instead is the replay guard: only a HUMAN comment posted since the bounce releases it.
-
-### \`waiting\` means five different things
-The status alone does not say which. The cause is **derived, never stored** — \`classifyWaitingCause\` computes it from the issue's \`merged_at\`, its decompose-child count and its latest run, and it rides on \`pipelineHealth.waitingCause\` for the UI. In precedence order:
-
-| Cause | What it means | What actually unblocks it |
+| Kind | What it means | What unblocks it |
 |---|---|---|
-| \`reopen_cap\` | the run is paused with a \`reopen_cap:\` reason — the cap redirected a \`reopen\` | an admin cap override, or splitting the issue — **and** the paused run must be resumed too |
-| \`decompose_parent\` | the issue has decompose children | a human approving the parent, which cascades the children |
-| \`merged_parked\` | \`merged_at\` is stamped: the code landed and the issue parked afterwards | a human deciding the remaining gate (downstream dependents are already unblocked) |
-| \`retry_exhausted\` | the latest run is terminal — the finalizer stopped retrying | fixing the mechanical cause, then resuming |
-| \`plan_approval\` | the default when none of the above hold | a human approving the plan |
+| \`needs_decision\` | a person must decide something the agent cannot (a tradeoff, a scope call, an approval) | the decision, then any status write |
+| \`needs_resource\` | a person must supply something the agent cannot create (a test account, credentials, third-party data) | the resource, then any status write |
 
-Re-approving a \`retry_exhausted\` park without changing anything just reproduces the cycle that parked it. The issue's newest park comment names the specific failure.
+The kind is REQUIRED and core never guesses it. A plan awaiting approval and a decompose parent awaiting review are both \`needs_decision\`.
+
+**A step that cannot RUN is not \`waiting\`.** No runner, provider quota, project budget, retries spent — the JOB is \`held\` and the issue stays at its stage. \`pipelineHealth.waitingOn.reason = 'job_held'\` names the condition, and nothing is being asked of you: a capacity hold resumes itself when capacity returns.
+
+### Stopping the pipeline costs you a written reason
+\`reopen\`, \`waiting\` and \`needs_info\` are the three statuses that stop the pipeline, and all three are **rejected without a \`reason\`** (422). Pass it on the \`forge_issues\` call (\`note\` also counts); it is posted as a comment before the status flips, so it cannot go missing afterwards. \`waiting\` additionally requires \`waitingKind\`.
+
+Entering a park costs a sentence; leaving one costs nothing. That asymmetry is deliberate and it is the opposite of the old rule, which let anyone stop the pipeline silently and then argued about who was allowed to restart it.
+
+Write the reason for the person who will read it, not for the audit trail. "blocked" is not a reason. "Need a Stripe test account with 3DS enabled — I cannot create one, and the checkout AC cannot be walked without it" is: it says what is needed, why the agent cannot get it, and what it unblocks.
+
+This replaced a check on WHO answered a \`needs_info\` question. That check existed because the question itself was invisible, so the only thing left to police was the answer's author. A question on the record needs no such policing.
+
+There is no cap on how many times an issue may be reopened — the stop signal is judgement, not arithmetic: ~5 rounds with no movement means a human is needed, while 5 rounds each making progress is normal work.
 
 ### Leaving a state can stamp \`merged_at\` behind you
 Transitioning OUT of the project's \`mergeStates.baseBranch\` state stamps \`merged_at\` — including a hop you made for an unrelated reason, and including one where nothing was merged. That stamp is what releases every \`blocks\` dependent, so a diagnostic transition near the merge state can unblock work that should still be blocked. After any hand transition out of that state, check the field and clear it with \`forge_issues\` \`unmark\` if no merge landed.
@@ -451,6 +510,7 @@ tell both agents to prefer \`human\` when uncertain.
 A failure at any stage keeps the last-good body running. The skill is never left empty and never
 silently changed, and the run records why it stopped.`,
   },
+  CONFORMANCE_GUIDE,
 ] as const;
 
 const GUIDE_BY_SLUG = new Map<string, ForgeGuide>(FORGE_GUIDES.map((g) => [g.slug, g]));

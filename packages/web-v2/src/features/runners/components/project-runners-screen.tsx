@@ -27,6 +27,7 @@ import {
 	PageContainer,
 	Select,
 	Skeleton,
+	Textarea,
 	useNow,
 } from "@/design";
 import { useUpdateProject } from "@/features/project-settings/hooks";
@@ -98,11 +99,13 @@ function GitConfigCard({
 	projectId,
 	orgId,
 	repoUrl,
+	workspaceSetup,
 	canEdit,
 }: {
 	projectId: string;
 	orgId: string | null;
 	repoUrl: string | null;
+	workspaceSetup: string | null;
 	canEdit: boolean;
 }) {
 	const update = useUpdateProject(projectId);
@@ -112,10 +115,13 @@ function GitConfigCard({
 	const testCred = useTestGitCredential(projectId);
 	const pool = useOrgSshKeys(orgId);
 	const [url, setUrl] = useState(repoUrl ?? "");
+	const [setup, setSetup] = useState(workspaceSetup ?? "");
 	const [createOpen, setCreateOpen] = useState(false);
 	const [detachConfirmOpen, setDetachConfirmOpen] = useState(false);
 
 	const urlDirty = url.trim() !== (repoUrl ?? "");
+	// cm:edge contract -> packages/core/src/db/schema.ts — the Workspace setup field below writes `projects.workspace_setup`, which the runner's setup agent follows verbatim; blank is not a neutral default, it is the agent deriving the procedure at a paid model's rates on every job that lands in a broken workspace
+	const setupDirty = setup.trim() !== (workspaceSetup ?? "");
 	const credData = cred.data;
 	const poolKeys = pool.data ?? [];
 
@@ -134,6 +140,7 @@ function GitConfigCard({
 						"Set the SSH clone URL (git@host:org/repo.git)",
 						"Pick a key from the org pool, or create a new one",
 						"Manage the pool from Resources → Private Keys",
+						"Write the workspace setup steps so agents do not have to guess them",
 					]}
 				/>
 			</CardHeader>
@@ -164,6 +171,34 @@ function GitConfigCard({
 						>
 							Save
 						</Button>
+					</div>
+
+					<div className="border-t border-line-subtle pt-4">
+						<Field
+							label="Workspace setup"
+							hint="How to bring a fresh or broken checkout of this repo to a state that can build, test and commit — install commands, hook setup, toolchain quirks. Leave blank and an agent works it out each time, then records what it found here."
+						>
+							<Textarea
+								value={setup}
+								onChange={(e) => setSetup(e.target.value)}
+								placeholder={"pnpm install --frozen-lockfile\npnpm prepare   # writes .husky, without it every commit refuses"}
+								disabled={!canEdit}
+								spellCheck={false}
+								maxLength={8000}
+								rows={5}
+							/>
+						</Field>
+						<div className="mt-2 flex justify-end">
+							<Button
+								variant="secondary"
+								icon="check"
+								loading={update.isPending}
+								disabled={!canEdit || !setupDirty}
+								onClick={() => update.mutate({ workspaceSetup: setup.trim() || null })}
+							>
+								Save
+							</Button>
+						</div>
 					</div>
 
 					<div className="border-t border-line-subtle pt-4">
@@ -888,6 +923,7 @@ export function ProjectRunnersScreen({
 				projectId={projectId}
 				orgId={project.data?.orgId ?? null}
 				repoUrl={project.data?.repoUrl ?? null}
+				workspaceSetup={project.data?.workspaceSetup ?? null}
 				canEdit={!!canEdit}
 			/>
 

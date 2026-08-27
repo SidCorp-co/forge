@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { memorySources } from '../db/schema.js';
-import { type IndexResult, MAX_EMBED_CHARS, indexMemory } from './indexer.js';
+import { type IndexResult, indexMemory, MAX_EMBED_CHARS } from './indexer.js';
 
 /**
  * Shared service for writing a memory row. Used by REST `POST /api/memory`

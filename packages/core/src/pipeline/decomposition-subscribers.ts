@@ -26,13 +26,13 @@
  */
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, comments, issues, projects } from '../db/schema.js';
-import { type DeviceLite, applyStatusTransition } from '../issues/apply-transition.js';
+import { comments, type IssueStatus, projects } from '../db/schema.js';
+import { applyStatusTransition, type DeviceLite } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import {
-  DECOMP_CHILD_READY_STATUSES,
   allChildrenReady,
+  DECOMP_CHILD_READY_STATUSES,
   findDecompositionChildren,
   findDecompositionParent,
 } from './decomposition.js';

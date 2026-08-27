@@ -3,6 +3,7 @@
  * This is an ISSUE-LESS job on a `kind='system'` run — never call
  * `forge_step_start` (there is no issue). Entry tool is `forge_release_batch get`.
  */
+// cm:guard PROTOCOL ONLY. Branches, versioning, changelog shape and deploy belong to the project (release-batch/channel.ts injects them into the task prompt) — this block used to hardcode one project's Coolify ritual as if it were the contract, which is why epodsystem could not release without a code change.
 export const releaseBatchStatePrompt = `## This State — Batch Release (release_batch job)
 
 You are running a headless batch release. There is NO issue attached to this job.
@@ -10,27 +11,28 @@ Do NOT call \`forge_step_start\`. Call \`forge_release_batch get { runId }\` FIR
 
 ### Ordering contract (load-bearing — follow exactly)
 1. \`forge_release_batch get { runId }\` → roster, releaseNotes per issue, branches, deployPlanned.
-2. If productionBranch ≠ baseBranch: merge baseBranch → productionBranch and push.
-   Conflict → call \`forge_release_batch abort { runId, reason }\`, then FAIL the turn.
-3. If deployPlanned: \`forge_coolify_deploy { action:'deploy', pipelineRunId: runId }\`.
-   Poll \`forge_coolify_deploy { action:'status' }\` in the FOREGROUND until every
-   target is 'ok' or 'failed' — never end the turn while polling.
-   pendingHumanConfirm:true → abort + FAIL. Any 'failed' → abort + FAIL.
-4. Deploy OK (or skipped): append ONE line under \`## [Unreleased]\` in CHANGELOG.md
-   on the prod branch — one sentence for the whole batch, synthesised from issues'
-   \`releaseNotes.userFacing\` (issues with section='Skip' contribute nothing).
-   Idempotency: check \`git log --grep="batch release <runId first 8>" --oneline -1\`
-   first; non-empty → skip the append and proceed to step 5.
-   Commit message: \`docs(changelog): batch release <runId first 8> (<n> issues)\`.
-5. \`forge_release_batch finish { runId }\` → all issues tested→closed, claims cleared.
-   Report closed/failed counts.
+2. Carry out the release procedure printed in your task prompt. That text is the authority
+   on branches, versioning, changelog and deploy — this block is not, and you must not
+   substitute a step it does not name.
+3. \`forge_release_batch finish { runId, commit }\` → every claimed issue closes. Report
+   closed/failed. \`commit\` is the SHA you pushed to the production branch.
 
-On ANY failure (merge conflict, deploy fail, pendingHumanConfirm):
+### What finish means
+\`finish\` is the ONLY thing in Forge that writes \`closed\`, and writing it is a claim that
+this release happened. Call it after the procedure completed AND you read its result. Never
+call it because the steps ran without throwing, and never to tidy up a partial release.
+
+When the project declares verification probes, the SERVER reads them on \`finish\` and refuses
+with RELEASE_NOT_VERIFIED unless the live build both changed and matches your \`commit\`. You
+cannot assert your way past it, and you must not: a refusal means the deploy did not land.
+
+On ANY failure — a conflict, a failed deploy, a step you could not complete, a procedure that
+does not fit what you actually found:
 → \`forge_release_batch abort { runId, reason }\` — claims released, NOTHING closed.
 → Then fail the turn honestly so the job records 'failed'.
 
 ### Policy
-- ONE changelog line for the whole batch — not a bullet per issue.
-- At most ONE Coolify deploy (prod only when productionBranch ≠ baseBranch).
+- Every issue in the batch closes together or none does. There is no partial finish.
 - English-only: all output, comments, changelog.
-- finish is idempotent: re-running finds no claimed issues and returns closed:[].`;
+- finish is idempotent: re-running finds no claimed issues and returns closed:[].
+- An aborted batch leaves every issue exactly where it was, ready for a later batch.`;

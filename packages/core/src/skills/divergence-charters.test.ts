@@ -71,14 +71,14 @@ describe('upsertCharter', () => {
     const returningFn = vi.fn(async () => [returnedRow]);
     const onConflictFn = vi.fn(() => ({ returning: returningFn }));
     const valuesFn = vi.fn(() => ({ onConflictDoUpdate: onConflictFn }));
-    const insertFn = vi.fn(() => ({ values: valuesFn }));
+    const _insertFn = vi.fn(() => ({ values: valuesFn }));
 
     const selectWhereFn = vi.fn(() => ({ limit: vi.fn(async () => []) }));
     const selectFromFn = vi.fn(() => ({ where: selectWhereFn }));
     const selectFn = vi.fn(() => ({ from: selectFromFn }));
 
     const activityInsertValues = vi.fn(async () => {});
-    const activityInsertFn = vi.fn(() => ({ values: activityInsertValues }));
+    const _activityInsertFn = vi.fn(() => ({ values: activityInsertValues }));
 
     const tx = {
       insert: vi.fn((table) => {

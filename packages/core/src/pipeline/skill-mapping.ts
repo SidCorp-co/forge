@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import type { IssueStatus, JobType } from '../db/schema.js';
+import type { IssueStatus, JobType, SkillScope } from '../db/schema.js';
 import { type JobTypeMapping, STATUS_TO_JOB_TYPE } from './registry.js';
 
 export type { JobTypeMapping } from './registry.js';
@@ -7,6 +7,7 @@ export { STATUS_TO_JOB_TYPE } from './registry.js';
 
 export interface ResolvedSkill extends JobTypeMapping {
   skillName: string;
+  scope: SkillScope;
 }
 
 export function resolveJobTypeForStatus(status: IssueStatus): JobTypeMapping | null {
@@ -45,9 +46,9 @@ export interface ProjectSkillResolver {
  * eventually wants that.
  */
 export function createProjectSkillResolver(projectId: string): ProjectSkillResolver {
-  let loaded: Promise<Map<string, string>> | null = null;
+  let loaded: Promise<Map<string, { skillName: string; scope: SkillScope }>> | null = null;
 
-  const load = (): Promise<Map<string, string>> => {
+  const load = (): Promise<Map<string, { skillName: string; scope: SkillScope }>> => {
     if (!loaded) {
       // Lazy-imported so consumers that only need the synchronous helpers
       // (resolveJobTypeForStatus, inverseJobTypeToStatus) don't pay the cost
@@ -56,11 +57,13 @@ export function createProjectSkillResolver(projectId: string): ProjectSkillResol
         const { db } = await import('../db/client.js');
         const { skillRegistrations, skills } = await import('../db/schema.js');
         const rows = await db
-          .select({ stage: skillRegistrations.stage, name: skills.name })
+          .select({ stage: skillRegistrations.stage, name: skills.name, scope: skills.scope })
           .from(skillRegistrations)
           .innerJoin(skills, eq(skills.id, skillRegistrations.skillId))
           .where(eq(skillRegistrations.projectId, projectId));
-        return new Map(rows.map((r) => [r.stage, r.name]));
+        return new Map(
+          rows.map((r) => [r.stage, { skillName: r.name, scope: r.scope as SkillScope }]),
+        );
       })();
     }
     return loaded;
@@ -71,9 +74,9 @@ export function createProjectSkillResolver(projectId: string): ProjectSkillResol
       const jobMap = STATUS_TO_JOB_TYPE[status];
       if (!jobMap) return null;
       const stageMap = await load();
-      const skillName = stageMap.get(status);
-      if (!skillName) return null;
-      return { type: jobMap.type, toggle: jobMap.toggle, skillName };
+      const skill = stageMap.get(status);
+      if (!skill) return null;
+      return { type: jobMap.type, toggle: jobMap.toggle, ...skill };
     },
     async stages(): Promise<ReadonlySet<IssueStatus>> {
       const stageMap = await load();

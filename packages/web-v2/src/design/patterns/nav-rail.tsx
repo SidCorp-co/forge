@@ -271,7 +271,6 @@ export function NavRail({
       <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-2 px-1.5")}>
         {/* Real Forge brand mark. Plain <img> needs assetPath() so the src is
             prefixed with the /v2 basePath (Next does NOT auto-prefix raw img). */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={assetPath("/forge-mark-32.png")}
           width={28}

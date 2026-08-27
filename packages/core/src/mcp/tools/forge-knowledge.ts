@@ -9,9 +9,9 @@ import {
 } from '../../knowledge/service.js';
 import { runUnifiedSearch } from '../../knowledge/unified-search.js';
 import {
-  type ContextScopedMcpToolFactory,
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
+  type ContextScopedMcpToolFactory,
   zodToMcpSchema,
 } from './lib.js';
 

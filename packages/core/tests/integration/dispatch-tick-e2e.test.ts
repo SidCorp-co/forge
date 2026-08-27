@@ -17,10 +17,10 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  type TestDatabase,
   createTestProject,
   createTestUser,
   setupTestDatabase,
+  type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
 
@@ -75,7 +75,7 @@ describe('ISS-40 dispatch-tick E2E', () => {
     return { owner, project };
   }
 
-  async function insertSession(
+  async function _insertSession(
     projectId: string,
     args: { issueId?: string | null; status?: string } = {},
   ): Promise<string> {

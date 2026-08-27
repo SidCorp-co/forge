@@ -1,4 +1,4 @@
-import { type SQL, relations, sql } from 'drizzle-orm';
+import { relations, type SQL, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   bigint,
@@ -62,8 +62,7 @@ export const oauthAccounts = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    // 'github' | 'google' | 'oidc' — kept as text rather than an enum so a
-    // future provider doesn't require a migration to add a value.
+    // cm:why text rather than a pg enum so adding a provider ('github' | 'google' | 'oidc' today) is not a migration
     provider: text('provider').notNull(),
     providerAccountId: text('provider_account_id').notNull(),
     email: text('email'),
@@ -78,40 +77,7 @@ export const oauthAccounts = pgTable(
   }),
 );
 
-// Desktop sign-in pairing codes (ADR 0019; supersedes ADR 0017). Short code
-// minted on the desktop, approved in a signed-in browser, polled by the
-// desktop to receive a JWT. Distinct from `pairingCodes` (further down)
-// which couples a device to a project at first run.
-export const desktopPairingCodes = pgTable(
-  'desktop_pairing_codes',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    codeHash: text('code_hash').notNull().unique(),
-    deviceLabel: text('device_label').notNull(),
-    devicePlatform: text('device_platform').notNull(),
-    deviceHostname: text('device_hostname'),
-    createdIp: text('created_ip'),
-    createdUserAgent: text('created_user_agent'),
-    approvedUserId: uuid('approved_user_id').references(() => users.id, {
-      onDelete: 'cascade',
-    }),
-    approvedAt: timestamp('approved_at', { withTimezone: true }),
-    consumedAt: timestamp('consumed_at', { withTimezone: true }),
-    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    expiresIdx: index('desktop_pairing_codes_expires_idx').on(t.expiresAt),
-    consumedIdx: index('desktop_pairing_codes_consumed_idx').on(t.consumedAt),
-  }),
-);
-
-// ISS-305 — Runner browser-approve device-login (OAuth device-authorization
-// flow, cf. `claude login`). Kept distinct from `desktopPairingCodes`: that
-// flow mints a *user JWT* for the desktop app, whereas this one mints a
-// *device token* for the headless `forge-runner` CLI and (optionally)
-// provisions a git push credential. Same code-gen + hash + TTL shape so the
-// two stay auditable side-by-side.
+// cm:guard this is the device-token mint (browser-approved, one per runner install); `pairingCodes` further down is the separate project binding. Folding the two tables together drops the distinction between "this machine may talk to Forge" and "this machine works on that project".
 export const deviceLoginCodes = pgTable(
   'device_login_codes',
   {
@@ -199,8 +165,6 @@ export const refreshTokens = pgTable(
   }),
 );
 
-// === Organizations (org-level permission tier) ===
-//
 // Every project belongs to exactly ONE org (`projects.org_id` NOT NULL). Each
 // user gets a personal org at signup (and via the 0106 backfill); team orgs are
 // created explicitly. Org owner/admin derive an implicit project `admin` role
@@ -329,6 +293,9 @@ export const projects = pgTable(
     // Optional: when set with a project git credential, a freshly-assigned
     // device auto-clones here during provision; absent => manual folder setup.
     repoUrl: text('repo_url'),
+    // cm:guard prose ON PURPOSE, and never executed as a command list: any project admin can write this, and the runner would be running it unreviewed on every box. NULL is not an error — it means the setup agent derives the procedure from the repo itself, at a paid model's rates, on every job that needs it.
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/setup_agent.rs — this column plus the live findings ARE that agent's whole prompt
+    workspaceSetup: text('workspace_setup'),
     defaultDeviceId: uuid('default_device_id').references((): AnyPgColumn => devices.id, {
       onDelete: 'set null',
     }),
@@ -563,10 +530,13 @@ export const pairingCodes = pgTable(
   }),
 );
 
+// cm:guard `held` is NON-TERMINAL and slotless — a job blocked on a mechanical condition (no runner, provider quota, project budget) waits HERE, never on issues.status (RFC 0002); being absent from runner_load/running_ids is exactly what makes it slotless, but it MUST appear in both `jobs_active_unique` partial indexes below and in L1 issueBusyJob or a duplicate job is enqueued for the same issue
+// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — `issueBusyJob` must list `held`; `runner_load` and `running_ids` must NOT
 export const jobStatuses = [
   'queued',
   'dispatched',
   'running',
+  'held',
   'done',
   'failed',
   'cancelled',
@@ -597,6 +567,7 @@ export const jobTypes = [
   'release_batch',
   'reconcile',
   'verify_skill',
+  'drive',
 ] as const;
 export type JobType = (typeof jobTypes)[number];
 
@@ -758,12 +729,12 @@ export const jobs = pgTable(
       .where(sql`kill_requested_at IS NOT NULL`),
     activeUniqueIdx: uniqueIndex('jobs_active_unique')
       .on(t.issueId, t.type)
-      .where(sql`status IN ('queued','dispatched','running') AND issue_id IS NOT NULL`),
+      .where(sql`status IN ('queued','dispatched','running','held') AND issue_id IS NOT NULL`),
     // PM jobs may have a NULL issue_id (project-scoped coordinator), so the
     // existing per-issue index does not cover them. ISS-17.
     pmActiveUniqueIdx: uniqueIndex('jobs_pm_per_project_unique_idx')
       .on(t.projectId)
-      .where(sql`type = 'pm' AND status IN ('queued','dispatched','running')`),
+      .where(sql`type = 'pm' AND status IN ('queued','dispatched','running','held')`),
     pipelineRunIdx: index('jobs_pipeline_run_idx').on(t.pipelineRunId),
     finishedArchiveIdx: index('jobs_finished_archive_idx')
       .on(t.finishedAt)
@@ -994,6 +965,11 @@ export const runnersRelations = relations(runners, ({ one, many }) => ({
   jobs: many(jobs),
 }));
 
+// cm:guard the two kinds are AUTHORED, never derived (RFC 0002 INV-5) — an agent or a human writes one alongside `status='waiting'`, and core has no writer of either. Adding a third kind means teaching the prompt, the guide and the UI copy in the same change, or agents author a value nothing renders.
+export const waitingKinds = ['needs_decision', 'needs_resource'] as const;
+export type WaitingKind = (typeof waitingKinds)[number];
+
+// cm:edge lockstep -> packages/web-v2/src/features/issues/derive.ts — STATUS_LABELS and STATUS_TO_STAGE are exhaustive `Record<IssueStatus, …>`, so a value added here without them fails the web-v2 build, which `pnpm verify` does not run (only CI's `web` job does): `dropped` reached a deploy through the same hole in the desktop map on 2026-08-20, before that client was deleted
 export const issueStatuses = [
   'open',
   'confirmed',
@@ -1010,6 +986,7 @@ export const issueStatuses = [
   'on_hold',
   'needs_info',
   'draft',
+  'dropped',
 ] as const;
 // `pass`, `staging`, and `deploying` were retired (unify gate model): the single
 // production approval gate is `tested` ("Awaiting release") and review exits
@@ -1078,6 +1055,8 @@ export const issues = pgTable(
     // ISS-42 C2 — t-shirt sizing (xs/s/m/l/xl) for scoping. NULL = unsized.
     complexity: text('complexity', { enum: issueComplexities }),
     reopenCount: integer('reopen_count').notNull().default(0),
+    // cm:edge lockstep -> packages/core/src/issues/apply-transition.ts — set on entry to `waiting` and CLEARED on every exit; a stale kind on a non-waiting issue is a lie the UI renders as a live banner
+    waitingKind: text('waiting_kind', { enum: waitingKinds }),
     source: text('source', { enum: issueSources }).notNull().default('manual'),
     externalId: text('external_id'),
     // ISS-293: extension fields used by the autonomous /forge-* skill pipeline
@@ -1848,9 +1827,8 @@ export type ScheduleStatus = (typeof scheduleStatuses)[number];
 export const scheduleModes = ['propose', 'auto'] as const;
 export type ScheduleMode = (typeof scheduleModes)[number];
 
-// ISS-618 — a schedule can fire a standalone sandboxed script instead of
-// dispatching a Claude agent session. 'prompt' is the pre-existing behavior.
-export const scheduleKinds = ['prompt', 'script'] as const;
+// cm:why `kind` is a plain text column with a TS-only enum, so adding a kind costs no migration — only every reader that switches on it. `prompt` dispatches a Claude agent session; `script` (ISS-618) and `release_batch` run in core with no session, no device and no runner.
+export const scheduleKinds = ['prompt', 'script', 'release_batch'] as const;
 export type ScheduleKind = (typeof scheduleKinds)[number];
 
 export const schedules = pgTable(
@@ -2460,7 +2438,6 @@ export const retrievalAnalyticsRelations = relations(retrievalAnalytics, ({ one 
   project: one(projects, { fields: [retrievalAnalytics.projectId], references: [projects.id] }),
 }));
 
-// ===== PM Agent (ISS-17) =====================================================
 // Stateless coordinator agent supplementing the per-issue pipeline. See parent
 // epic ISS-16 and `.forge/pm-agent-requirements.md` for the design. Tables:
 //   - issue_dependencies: cross-issue edges (blocks/relates/duplicates/parent)
@@ -2974,11 +2951,8 @@ export const uploadTickets = pgTable(
 export const issueStepContextKinds = ['handoff'] as const;
 export type IssueStepContextKind = (typeof issueStepContextKinds)[number];
 
-// ISS-381 (2.1) — unified structured verdict promoted out of the handoff
-// payload. Maps the review handoff `verdict` (pass/needs_fix/no_change) and the
-// test handoff `result` (pass/fail) onto one queryable enum; `abstain` is
-// reserved for a review that could not run.
-export const stepVerdicts = ['pass', 'fail', 'needs_fix', 'no_change', 'abstain'] as const;
+export const testResults = ['pass', 'fail', 'blocked_fixture', 'verified_by_test'] as const;
+export const stepVerdicts = [...testResults, 'needs_fix', 'no_change', 'abstain'] as const;
 export type StepVerdict = (typeof stepVerdicts)[number];
 
 export const issueStepContexts = pgTable(
@@ -3204,7 +3178,6 @@ export const improvementMessageDrafts = pgTable(
   }),
 );
 
-// ─── UX Contract ────────────────────────────────────────────────────────────
 // ISS-574 — Foundation for the UX Completeness Contract epic.
 // `ux_contract_rules` is the source-of-truth rule set; the compiler turns
 // active rules → projectFacts['ux-contract'] prose on every mutation.
@@ -3255,6 +3228,10 @@ export const uxContractRules = pgTable(
     source: text('source', { enum: uxRuleSources }).notNull().default('manual'),
     status: text('status', { enum: uxRuleStatuses }).notNull().default('active'),
     evidenceIssueIds: jsonb('evidence_issue_ids').notNull().default([]),
+    // cm:guard ISS-579 — a `proposed` row pointing here REPLACES its target on approval; the PATCH route retires the target in the same request. compileUxContract renders only `text`, so without this link an approved should→must strengthen would leave BOTH rules active and the prose would carry the rule twice.
+    supersedesRuleId: uuid('supersedes_rule_id').references((): AnyPgColumn => uxContractRules.id, {
+      onDelete: 'set null',
+    }),
     orderIndex: integer('order_index').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

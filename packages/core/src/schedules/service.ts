@@ -2,10 +2,10 @@ import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import {
-  type ScheduleKind,
   agentSessions,
   pipelineRuns,
   projects,
+  type ScheduleKind,
   scheduleRuns,
   schedules,
 } from '../db/schema.js';

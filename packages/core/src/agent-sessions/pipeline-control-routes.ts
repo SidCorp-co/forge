@@ -8,12 +8,12 @@ import type { AuthVars } from '../middleware/auth.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { broadcastSession } from './broadcast.js';
 import {
-  DEFAULT_PIPELINE_HEALTH,
-  type PipelineControl,
-  type PipelineHealth,
   buildPipelineControl,
   buildPipelineHealth,
+  DEFAULT_PIPELINE_HEALTH,
   normalisePipelineControl,
+  type PipelineControl,
+  type PipelineHealth,
   pipelineControlInputSchema,
   pipelineHealthInputSchema,
 } from './pipeline-control-types.js';

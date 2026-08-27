@@ -29,8 +29,10 @@ vi.mock('../db/client.js', () => ({
 }));
 
 const pauseRunMock = vi.fn(async () => ({ id: 'run-1' }) as unknown);
+// cm:edge contract -> packages/core/src/pipeline/run-pause.ts — a partial mock of that module must stub EVERY export this file's subject reaches; `pauseReasonFor` returning undefined silently produced `{stalled:false}` on four tests that assert a pause
 vi.mock('./run-pause.js', () => ({
   pauseRun: (...a: unknown[]) => pauseRunMock(...(a as [])),
+  pauseReasonFor: (kind: string, detail: string) => `${kind}:${detail}`,
 }));
 
 vi.mock('../logger.js', () => ({

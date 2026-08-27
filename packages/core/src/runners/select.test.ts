@@ -1,4 +1,13 @@
+import type { SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+type Rendered = { sql: string; params: unknown[] };
+const captureInto = (into: Rendered[]) =>
+  execute.mockImplementation(async (q: unknown) => {
+    into.push(new PgDialect().sqlToQuery(q as SQL));
+    return [];
+  });
 
 const execute = vi.fn();
 const limit = vi.fn();
@@ -84,16 +93,13 @@ describe('selectRunnerForJob', () => {
   // whose device the owner disabled (`devices.disabled_at` set), so a disabled
   // device is ignored across all projects without touching runner status.
   it('gates every selection query on the disabled-device guard', async () => {
-    const captured: string[] = [];
-    execute.mockImplementation(async (q: unknown) => {
-      captured.push(JSON.stringify(q));
-      return [];
-    });
+    const captured: Rendered[] = [];
+    captureInto(captured);
     // primary path (first dispatch) → findHealthyByDevice (pin/primary) + findStandby
     await selectRunnerForJob({ projectId: PROJECT_A, pinDeviceId: DEVICE_X });
     expect(captured.length).toBeGreaterThan(0);
-    for (const sql of captured) {
-      expect(sql).toContain('disabled_at');
+    for (const q of captured) {
+      expect(q.sql).toContain('disabled_at');
     }
   });
 
@@ -103,17 +109,14 @@ describe('selectRunnerForJob', () => {
   // findHealthyByDevice (pin/primary), findStandby, and the cap>1 load-aware
   // pickLeastLoadedFreeRunner.
   it('gates every selection query (incl. cap>1 pool pick) on the quarantine hard-exclusion', async () => {
-    const captured: string[] = [];
-    execute.mockImplementation(async (q: unknown) => {
-      captured.push(JSON.stringify(q));
-      return [];
-    });
+    const captured: Rendered[] = [];
+    captureInto(captured);
     await selectRunnerForJob({ projectId: PROJECT_A, pinDeviceId: DEVICE_X });
     limit.mockResolvedValueOnce([{ defaultDeviceId: null }]);
     await selectRunnerForJob({ projectId: PROJECT_A, projectCap: 2 });
     expect(captured.length).toBeGreaterThan(0);
-    for (const sql of captured) {
-      expect(sql).toContain('quarantined_until');
+    for (const q of captured) {
+      expect(q.sql).toContain('quarantined_until');
     }
   });
 
@@ -502,5 +505,75 @@ describe('onlineCapableDeviceIds (retry round-robin candidate set)', () => {
     const ids = await onlineCapableDeviceIds(PROJECT_A);
     expect(ids).toEqual(['dev-healthy']);
     expect(ids).not.toContain('dev-quarantined');
+  });
+
+  it('scopes the candidate set to the stage runner pool when one is given', async () => {
+    execute.mockResolvedValueOnce([]);
+    await onlineCapableDeviceIds(PROJECT_A, undefined, { allowDeviceIds: ['dev-pool'] });
+    const q = new PgDialect().sqlToQuery(execute.mock.calls.at(-1)?.[0] as SQL);
+    expect(q.sql).toContain('device_id IN (');
+    // cm:guard the pool must render as placeholders, never as a `::uuid[]` cast over an interpolated array — drizzle expands that as a ROW CONSTRUCTOR and Postgres refuses it, which dead-lettered every dispatch on forge-dev for 11 days
+    expect(q.sql).not.toContain('::uuid[]');
+    expect(q.params).toContain('dev-pool');
+  });
+});
+
+describe('selectRunnerForJob — per-state runner pool', () => {
+  const PROJECT_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const DEVICE_X = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const POOL = ['dddddddd-dddd-4ddd-8ddd-dddddddddddd'];
+
+  it('applies the pool inside every candidate query shape (pin, primary, standby, cap>1)', async () => {
+    const captured: Rendered[] = [];
+    captureInto(captured);
+    limit.mockResolvedValue([{ defaultDeviceId: DEVICE_X }]);
+    await selectRunnerForJob({
+      projectId: PROJECT_A,
+      pinDeviceId: DEVICE_X,
+      allowDeviceIds: POOL,
+    });
+    await selectRunnerForJob({ projectId: PROJECT_A, projectCap: 2, allowDeviceIds: POOL });
+    expect(captured.length).toBeGreaterThan(0);
+    for (const q of captured) {
+      expect(q.sql).toContain('device_id IN (');
+      expect(q.params).toContain(POOL[0]);
+    }
+  });
+
+  // cm:why the load-bearing case: both wrap-arounds re-run with the exclude set EMPTIED, so a pool expressed as an exclusion would evaporate exactly when every pool member is tripped and place the job on a box the operator excluded from the stage
+  it('keeps the pool through both wrap-arounds (exclude set is cleared, pool is not)', async () => {
+    const captured: Rendered[] = [];
+    captureInto(captured);
+    limit.mockResolvedValue([{ defaultDeviceId: DEVICE_X }]);
+
+    const first = await selectRunnerForJob({
+      projectId: PROJECT_A,
+      excludeDeviceIds: [DEVICE_X],
+      allowDeviceIds: POOL,
+    });
+    expect(first).toBeNull();
+    const firstDispatchQueries = captured.length;
+    expect(firstDispatchQueries).toBeGreaterThan(2);
+
+    const retry = await selectRunnerForJob({
+      projectId: PROJECT_A,
+      excludeDeviceIds: [DEVICE_X],
+      skipPrimary: true,
+      allowDeviceIds: POOL,
+    });
+    expect(retry).toBeNull();
+    expect(captured.length).toBeGreaterThan(firstDispatchQueries);
+
+    for (const q of captured) expect(q.params).toContain(POOL[0]);
+  });
+
+  it('adds no filter when the pool is unset or empty (fleet-wide behaviour unchanged)', async () => {
+    const captured: Rendered[] = [];
+    captureInto(captured);
+    limit.mockResolvedValue([{ defaultDeviceId: null }]);
+    await selectRunnerForJob({ projectId: PROJECT_A, allowDeviceIds: [] });
+    await selectRunnerForJob({ projectId: PROJECT_A, allowDeviceIds: null });
+    expect(captured.length).toBeGreaterThan(0);
+    for (const q of captured) expect(q.sql).not.toContain('device_id IN (');
   });
 });

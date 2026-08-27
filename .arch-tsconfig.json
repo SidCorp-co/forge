@@ -1,0 +1,18 @@
+{
+  "$comment": "Resolution map for `arch check` ONLY — nothing compiles against this. It exists so dependency-cruiser can follow web-v2's `@/*` alias; without it 841 of the repo's import edges are unresolvable, and an unresolvable edge is DROPPED, so every contract over that package passes on an empty graph. Declared by `.arch.json` -> tsConfig. It sits at the repo root because tsc resolves `include` against the tsconfig's own directory, so a copy under .forge/ finds no inputs. Keep `paths` in sync with packages/web-v2/tsconfig.json.",
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["packages/web-v2/src/*"]
+    }
+  },
+  "include": [
+    "packages/*/src/**/*.ts",
+    "packages/*/src/**/*.tsx",
+    "packages/*/tests/**/*.ts"
+  ]
+}

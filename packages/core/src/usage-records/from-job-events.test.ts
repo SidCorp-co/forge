@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type UsageEventRow, extractUsageFromEvents } from './from-job-events.js';
+import { extractUsageFromEvents, type UsageEventRow } from './from-job-events.js';
 import { estimateCost } from './pricing.js';
 
 const TS = new Date('2026-06-10T12:00:00Z');

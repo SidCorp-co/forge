@@ -217,6 +217,17 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+const humanPat = (userId: string, tokenId: string, projectIds: string[] | null) =>
+  ({
+    kind: 'pat',
+    agency: 'human',
+    userId,
+    tokenId,
+    scopes: ['read', 'write'],
+    projectIds,
+    boundProjectId: null,
+  }) as const;
+
 describe('forge_issues tool', () => {
   it('rejects unknown action', async () => {
     const tool = forgeIssuesTool({
@@ -828,9 +839,9 @@ describe('forge_issues tool', () => {
         callOrder.push('setDep');
         return { id: 'dep-id-1', created: true };
       });
-      vi.mocked(hooks.emit).mockImplementationOnce(async (..._args) => {
+      vi.mocked(hooks.emit).mockImplementationOnce(async (topic) => {
         callOrder.push('issueCreated');
-        return undefined;
+        return { topic, delivered: 1, failures: [] };
       });
 
       await tool.handler({
@@ -1175,36 +1186,82 @@ describe('forge_issues tool', () => {
     ).rejects.toThrow(/ILLEGAL_TRANSITION/);
   });
 
-  // ISS-596: data.unblock:true threads reason:'operator_unblock' through the
-  // outbox so the orchestrator's ISS-411 hard-stop allows the transition.
-  it('ISS-596: update with unblock:true on on_hold issue threads operator_unblock reason', async () => {
+  // cm:guard `unblock` is GONE from the schema (RFC 0002 INV-6) — the three tests deleted from this spot asserted that a park exit needs a sentinel to dispatch. `.strict()` is what makes this fail loudly instead of ignoring the field, which is how the same flag was silently dropped by the `transition` action for two days (ISS-671/813/825/831, one stranded 48h).
+  it('rejects the removed data.unblock flag instead of ignoring it', async () => {
     const tool = forgeIssuesTool({
       principal: { kind: 'device', device: fakeDevice },
       device: fakeDevice,
       projectSlug: PROJECT_SLUG,
     });
-    const onHoldRow = { ...baseIssueRow, status: 'on_hold' as const };
-    // loadIssue (on_hold)
-    selectLimit.mockResolvedValueOnce([onHoldRow]);
-    // membership check
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    // conditional UPDATE returning the new row (inside transaction)
-    updateReturning.mockResolvedValueOnce([
-      { id: ISSUE_ID, reopenCount: 0, updatedAt: new Date() },
-    ]);
-    // re-load fresh
-    selectLimit.mockResolvedValueOnce([{ ...onHoldRow, status: 'open' }]);
+    await expect(
+      tool.handler({
+        action: 'transition',
+        documentId: ISSUE_ID,
+        data: { status: 'tested', unblock: true },
+      }),
+    ).rejects.toThrow();
+  });
 
-    await tool.handler({
-      action: 'update',
-      documentId: ISSUE_ID,
-      data: { status: 'open', unblock: true },
+  // cm:guard a reopen through MCP must be REJECTED without a reason (INV-8) — this is the only enforcement point an agent meets, and the three dispatch-side guards that used to detect a reasonless reopen afterwards are all deleted
+  // cm:guard the agent surface is held to the same bar as REST — an MCP path that accepts a reasonless park is the whole requirement defeated, because agents are what produce nearly all of them
+  it.each([
+    ['reopen', 'tested'],
+    ['waiting', 'in_progress'],
+    ['needs_info', 'open'],
+  ])('rejects a %s with no reason and no note', async (to, from) => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
     });
+    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, status: from }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
-    // withActorContext calls tx.execute with SET LOCAL pipeline.reason = '...'
-    // Verify the executed SQL contains 'operator_unblock' as a bound param.
-    const executeArgs = txExecute.mock.calls.map((c: unknown[]) => JSON.stringify(c[0]));
-    expect(executeArgs.some((s: string) => s.includes('operator_unblock'))).toBe(true);
+    await expect(
+      tool.handler({ action: 'transition', documentId: ISSUE_ID, data: { status: to } }),
+    ).rejects.toThrow(/TRANSITION_REASON_REQUIRED/);
+  });
+
+  it('rejects a `waiting` park that states a reason but no kind', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, status: 'in_progress' as const }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+
+    await expect(
+      tool.handler({
+        action: 'transition',
+        documentId: ISSUE_ID,
+        data: { status: 'waiting', reason: 'need the staging DB password' },
+      }),
+    ).rejects.toThrow(/WAITING_KIND_REQUIRED/);
+  });
+
+  it('accepts a reopen whose rationale arrives as `note`', async () => {
+    const tool = forgeIssuesTool({
+      principal: { kind: 'device', device: fakeDevice },
+      device: fakeDevice,
+      projectSlug: PROJECT_SLUG,
+    });
+    const testedRow = { ...baseIssueRow, status: 'tested' as const };
+    selectLimit.mockResolvedValueOnce([testedRow]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    // cm:why the third read is the project's pipeline mode: a `reopen` on an autonomous project is rewritten to `open` before the write (issues/autonomous-reopen.ts), and an empty agentConfig is the staged answer that leaves this transition alone
+    selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]);
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, reopenCount: 1, updatedAt: new Date() },
+    ]);
+    selectLimit.mockResolvedValueOnce([{ ...testedRow, status: 'reopen' }]);
+
+    const out = (await tool.handler({
+      action: 'transition',
+      documentId: ISSUE_ID,
+      data: { status: 'reopen', note: 'live checkout 500s on the payment step' },
+    })) as Record<string, unknown>;
+    expect(out.status).toBe('reopen');
   });
 
   it('transition open→confirmed updates status and emits hook', async () => {
@@ -1433,14 +1490,7 @@ describe('forge_issues tool', () => {
 
     function makePatTool(projectIds: string[] | null) {
       return forgeIssuesTool({
-        principal: {
-          kind: 'pat',
-          userId: PAT_USER,
-          tokenId: PAT_TOKEN,
-          scopes: ['read', 'write'],
-          projectIds,
-          boundProjectId: null,
-        },
+        principal: humanPat(PAT_USER, PAT_TOKEN, projectIds),
         device: fakeDevice,
         projectSlug: null,
       });
@@ -1737,14 +1787,7 @@ describe('forge_issues tool', () => {
 
     it('mark_merged does NOT evidence-gate a PAT (human) principal', async () => {
       const tool = forgeIssuesTool({
-        principal: {
-          kind: 'pat',
-          userId: OWNER_ID,
-          tokenId: '55555555-5555-4555-8555-555555555555',
-          scopes: ['read', 'write'],
-          projectIds: null,
-          boundProjectId: null,
-        },
+        principal: humanPat(OWNER_ID, '55555555-5555-4555-8555-555555555555', null),
         device: fakeDevice,
         projectSlug: PROJECT_SLUG,
       });
@@ -1766,14 +1809,9 @@ describe('forge_issues tool', () => {
 
     it("unmark rejects with NOT_FOUND when the issue's project is outside the PAT allowlist", async () => {
       const tool = forgeIssuesTool({
-        principal: {
-          kind: 'pat',
-          userId: OWNER_ID,
-          tokenId: '55555555-5555-4555-8555-555555555555',
-          scopes: ['read', 'write'],
-          projectIds: ['66666666-6666-4666-8666-666666666666'],
-          boundProjectId: null,
-        },
+        principal: humanPat(OWNER_ID, '55555555-5555-4555-8555-555555555555', [
+          '66666666-6666-4666-8666-666666666666',
+        ]),
         device: fakeDevice,
         projectSlug: null,
       });

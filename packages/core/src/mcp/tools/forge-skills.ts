@@ -4,12 +4,9 @@ import {
   loadProjectSkillSyncStatus,
   resolveEffectiveSkillsForProject,
 } from '../../skills/effective.js';
+import { SkillLockedError } from '../../skills/lock.js';
 import { MetaSkillReservedError } from '../../skills/meta-skills.js';
 import {
-  SkillAlreadyShadowedError,
-  SkillDeleteBlockedError,
-  SkillNotProjectScopedError,
-  type SkillRow,
   applyGlobalSkillDefault,
   createProjectSkill,
   deleteProjectSkill,
@@ -18,9 +15,14 @@ import {
   listSkillRegistrations,
   registerSkillForProject,
   requestSkillSync,
+  SkillAlreadyShadowedError,
+  SkillDeleteBlockedError,
+  SkillNotProjectScopedError,
+  type SkillRow,
   setSkillPinned,
   updateProjectSkill,
 } from '../../skills/service.js';
+import type { ContextScopedMcpToolFactory, DeviceScopedMcpToolFactory } from './lib.js';
 import {
   assertDeviceOwnerIsAdmin,
   assertDeviceOwnerIsMember,
@@ -29,7 +31,6 @@ import {
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
-import type { ContextScopedMcpToolFactory, DeviceScopedMcpToolFactory } from './lib.js';
 
 const listInputSchema = z.object({ projectId: z.uuid() });
 const getInputSchema = z.object({ projectId: z.uuid(), skillId: z.uuid() });
@@ -272,6 +273,9 @@ export const forgeSkillsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
       if (err instanceof MetaSkillReservedError) {
         throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
       }
+      if (err instanceof SkillLockedError) {
+        throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
+      }
       throw err;
     }
   },
@@ -297,6 +301,9 @@ export const forgeSkillsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
       return { skill };
     } catch (err) {
       if (err instanceof MetaSkillReservedError) {
+        throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
+      }
+      if (err instanceof SkillLockedError) {
         throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
       }
       throw err;
@@ -367,6 +374,9 @@ export const forgeSkillsAdoptTool: ContextScopedMcpToolFactory = (ctx) => ({
         throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
       }
       if (err instanceof MetaSkillReservedError) {
+        throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
+      }
+      if (err instanceof SkillLockedError) {
         throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
       }
       throw err;

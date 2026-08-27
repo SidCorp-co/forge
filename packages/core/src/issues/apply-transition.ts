@@ -1,27 +1,33 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, comments, issues } from '../db/schema.js';
-import { postReopenCapEscalationComment } from '../jobs/park-comment.js';
+import { comments, type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { recordReopenCapEscalated } from '../observability/hold-metrics.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
-import { pauseOpenRunForIssue, resumeOpenRunForIssue } from '../pipeline/run-pause.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
-import { REOPEN_CAP, canTransitionFree, isReopenEntry } from '../pipeline/state-machine.js';
+import { canTransitionFree, isReopenEntry } from '../pipeline/state-machine.js';
 import { collectWorkEvidence, hasCodeEvidence } from '../pipeline/work-evidence.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { resolveAutonomousReopenTarget } from './autonomous-reopen.js';
+import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
+import { resolveAgentCloseTarget } from './release-gate-hold.js';
 import { checkTransitionEvidence } from './transition-evidence.js';
+import { postTransitionReasonComment, requiresAuthoredReason } from './transition-reason.js';
 
 /**
- * Issue statuses that satisfy a `kind='blocks'` dependency edge (Layer 2) and
- * fire the terminal dispatch fan-out. Does NOT imply the run closes here —
- * see `RUN_CLOSING_STATUSES`.
+ * Issue statuses that free a `kind='blocks'` dependent (Layer 2) and fire the
+ * terminal dispatch fan-out. Does NOT imply the run closes here — see
+ * `RUN_CLOSING_STATUSES`.
+ *
+ * `released` and `closed` free a dependent by SATISFYING the edge — they stamp
+ * `merged_at`, which is what the gate reads. `dropped` frees it the other way:
+ * the edge is expired (`drop-cascade.ts`), so the gate finds no edge at all.
+ * The two mechanisms are not interchangeable, and the difference is the whole
+ * reason `dropped` exists — see `RUN_CLOSING_STATUSES` below.
  */
-export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(['released', 'closed']);
+export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(['released', 'closed', 'dropped']);
 
 /**
  * Statuses that close the issue's open `pipeline_run`. Only `closed`:
@@ -31,7 +37,8 @@ export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(['released', 'closed']
  * Leaving the run open on `released` lets the release step run inside it;
  * the run closes when release finishes and sets `closed`.
  */
-export const RUN_CLOSING_STATUSES = new Set<IssueStatus>(['closed']);
+// cm:guard `dropped` closes the run like `closed` but must NEVER reach markMergedOnClose. Since 2026-08-25 dropping DOES release the dependents (owner's call), so this split is no longer what stops that — `drop-cascade.ts` expires the edges and records why on each dependent. What the split still stops is the shipped claim: `merged_at` means the code reached the base branch, a dropped issue's never did, and stamping it would make every downstream reader (release notes, the L2 gate's satisfied arm, pipeline-health) count work that does not exist.
+export const RUN_CLOSING_STATUSES = new Set<IssueStatus>(['closed', 'dropped']);
 
 export type DeviceLite = { id: string; ownerId: string };
 
@@ -45,7 +52,8 @@ export type TransitionActor = { type: 'user'; id: string } | ({ type: 'device' }
 export type TransitionErrorCode =
   | 'NO_OP'
   | 'ILLEGAL_TRANSITION'
-  | 'REOPEN_CAP_EXCEEDED'
+  | 'TRANSITION_REASON_REQUIRED'
+  | 'WAITING_KIND_REQUIRED'
   | 'STALE_TRANSITION'
   | 'PLAN_REQUIRED'
   | 'NO_WORK_EVIDENCE';
@@ -81,9 +89,9 @@ export interface ApplyStatusTransitionOptions {
    * cascade needs to promote children straight to `approved`. The soft-skip
    * resolver (ISS-110) also passes it while walking `STAGE_FORWARD`.
    *
-   * It is NOT a general safety override: NO_OP, the reopen cap, stale-
-   * transition detection and every content guard still run. Callers are the
-   * orchestrator and the decomposition subscriber.
+   * It is NOT a general safety override: NO_OP, stale-transition detection and
+   * every content guard still run. Callers are the orchestrator and the
+   * decomposition subscriber.
    */
   skip?: boolean;
   /**
@@ -95,10 +103,23 @@ export interface ApplyStatusTransitionOptions {
    */
   reason?: string | undefined;
   /**
-   * Bypass the reopen cap. Authorization is the CALLER's job — the REST
-   * route gates this on project-admin role before passing it through.
+   * Why the pipeline is being stopped, in the actor's own words. REQUIRED
+   * entering `reopen`, `waiting` or `needs_info`; posted as a comment before
+   * the status write.
    */
-  overrideReopenCap?: boolean | undefined;
+  // cm:guard required, not advisory (RFC 0002 INV-8) — every guard deleted with the reopen cap was an attempt to detect a missing rationale AFTER the fact, and each detected it by stranding the issue; rejecting the write is the only version that cannot strand anything
+  transitionReason?: string | undefined;
+  /**
+   * Which flavour of "a human is needed" this park is. REQUIRED entering
+   * `waiting`.
+   */
+  // cm:guard REQUIRED but never DEFAULTED (RFC 0002 INV-5) — refusing the write is not the same as picking a value: an unstated kind must never be guessed, because the five-way derivation this replaced guessed wrong on ISS-163 and rendered the wrong button
+  waitingKind?: WaitingKind | undefined;
+  /**
+   * This close is the release itself, so it may write `closed` past the gate.
+   */
+  // cm:guard `release_batch finish` is the ONLY caller entitled to set this, and it must never be plumbed through a route parameter or an MCP argument — the flag IS the gate, and anything that can ask for it can close an unshipped issue
+  viaReleasePath?: boolean;
 }
 
 export interface StatusTransitionResult {
@@ -115,15 +136,12 @@ export interface StatusTransitionResult {
    */
   terminal: boolean;
   /**
-   * A device-actor reopen at the cap was redirected to `waiting` instead of
-   * throwing `REOPEN_CAP_EXCEEDED` — `status` above is `waiting`, not the
-   * `reopen` the caller asked for. Callers surfacing this to an agent (MCP
-   * `forge_issues` update/transition) MUST say so explicitly — the agent
-   * otherwise believes it set `reopen` and may retry the same call forever.
+   * Dependents whose `blocks` edge this transition expired, collected before
+   * the expiry ran. Non-empty only on a `dropped` transition. The caller hands
+   * this to `triggerTerminalDispatch` — it cannot be re-derived, because every
+   * dependent query filters expired edges out.
    */
-  capEscalated: boolean;
-  /** What the actor actually requested when `capEscalated` is true (always `reopen` today). */
-  requestedStatus: IssueStatus | undefined;
+  unblockedDependents: UnblockedDependent[];
 }
 
 /**
@@ -158,18 +176,18 @@ export function publishIssueStatusChange(
  * broadcast, pipeline-health refresh and run close cannot drift apart.
  *
  * Throws `TransitionError` (NO_OP / ILLEGAL_TRANSITION /
- * REOPEN_CAP_EXCEEDED / STALE_TRANSITION / PLAN_REQUIRED); callers map it
+ * REOPEN_REASON_REQUIRED / STALE_TRANSITION / PLAN_REQUIRED); callers map it
  * onto their own error surface.
  */
 export async function transitionIssueStatus(
   issue: TransitionIssueRow,
-  toStatus: IssueStatus,
+  requestedStatus: IssueStatus,
   actor: TransitionActor,
   options: ApplyStatusTransitionOptions = {},
 ): Promise<StatusTransitionResult> {
   const fromStatus = issue.status;
-  if (fromStatus === toStatus) {
-    throw new TransitionError('NO_OP', `issue already in status ${toStatus}`, {
+  if (fromStatus === requestedStatus) {
+    throw new TransitionError('NO_OP', `issue already in status ${requestedStatus}`, {
       status: fromStatus,
     });
   }
@@ -177,58 +195,47 @@ export async function transitionIssueStatus(
   // Transitions are intentionally permissive (the system prompt guides the
   // happy path); only `draft` is a forbidden target. `skip` still bypasses
   // even that for the orchestrator's curated soft-skip chain.
-  if (!options.skip && !canTransitionFree(fromStatus, toStatus)) {
+  if (!options.skip && !canTransitionFree(fromStatus, requestedStatus)) {
     throw new TransitionError(
       'ILLEGAL_TRANSITION',
-      `'${toStatus}' is not a valid runtime status target`,
-      { from: fromStatus, to: toStatus },
+      `'${requestedStatus}' is not a valid runtime status target`,
+      { from: fromStatus, to: requestedStatus },
     );
   }
 
-  const wantsReopen = isReopenEntry(fromStatus, toStatus);
-  let effectiveToStatus = toStatus;
-  let capEscalated = false;
-  let requestedStatus: IssueStatus | undefined;
-
-  if (wantsReopen && issue.reopenCount >= REOPEN_CAP && !options.overrideReopenCap) {
-    if (actor.type === 'user') {
-      throw new TransitionError('REOPEN_CAP_EXCEEDED', `reopen cap reached (${REOPEN_CAP})`, {
-        reopenCount: issue.reopenCount,
-        max: REOPEN_CAP,
-      });
+  // cm:guard the reason is posted BEFORE the status write, and a failed post must reject the whole transition — a park that commits without its reason is the unexplained park every guard deleted with the reopen cap tried to detect afterwards
+  // cm:guard `skip: true` is exempt ON PURPOSE — that is the orchestrator's curated soft-skip/guard chain, and every one of those paths posts its own operator comment first (plan-gate-guard.ts); requiring a second one would double-comment, and refusing the write would freeze the chain
+  if (requiresAuthoredReason(fromStatus, requestedStatus) && options.skip !== true) {
+    const reason = options.transitionReason?.trim();
+    if (!reason) {
+      throw new TransitionError(
+        'TRANSITION_REASON_REQUIRED',
+        `a transition to \`${requestedStatus}\` must carry a reason saying what is needed or what is wrong`,
+        { from: fromStatus, to: requestedStatus },
+      );
     }
-    // cm:why ISS-766 — device actors (every pipeline agent) used to hit the same throw here, leaving the issue at `fromStatus` (an auto-dispatch trigger) so the reconciler re-enqueued full-tier jobs every ~60s until the stage-stall guard mispublished the cause as a missing skill. Redirecting to `waiting` is a real, honestly-reported stop instead — see docs/architecture/reopen-loop-guard.md.
-    requestedStatus = toStatus;
-    effectiveToStatus = 'waiting';
-    capEscalated = true;
-    // cm:edge ordering -> packages/core/src/jobs/park-comment.ts — post BEFORE the transition below, same contract as the finalize-failure park-to-waiting precedent
-    await postReopenCapEscalationComment({
+    if (requestedStatus === 'waiting' && !options.waitingKind) {
+      throw new TransitionError(
+        'WAITING_KIND_REQUIRED',
+        'a `waiting` park must say which kind it is: `needs_decision` or `needs_resource`',
+        { from: fromStatus, to: requestedStatus },
+      );
+    }
+    await postTransitionReasonComment({
       issueId: issue.id,
-      projectId: issue.projectId,
+      authorId: actor.type === 'user' ? actor.id : actor.ownerId,
       fromStatus,
-      reopenCount: issue.reopenCount,
-      requestedStatus,
+      toStatus: requestedStatus,
+      reason,
+      waitingKind: options.waitingKind ?? null,
+      isAi: actor.type !== 'user',
     });
-    recordReopenCapEscalated();
-    if (isSentryEnabled()) {
-      Sentry.addBreadcrumb({
-        category: 'pipeline.reopen_cap_escalated',
-        level: 'warning',
-        data: {
-          issueId: issue.id,
-          projectId: issue.projectId,
-          reopenCount: issue.reopenCount,
-          fromStatus,
-          requestedStatus,
-        },
-      });
-    }
   }
 
   // cm:why skip exempts auto-skip/failover (both pass {skip:true} into `approved`) — only an unskipped device write is the fabrication class this guards against
   const violation = await checkTransitionEvidence({
     issue: { id: issue.id, projectId: issue.projectId },
-    toStatus: effectiveToStatus,
+    toStatus: requestedStatus,
     actorType: actor.type,
     skip: options.skip === true,
   });
@@ -236,23 +243,37 @@ export async function transitionIssueStatus(
     throw new TransitionError(violation.code, violation.detail, violation.details);
   }
 
-  const reopening = isReopenEntry(fromStatus, effectiveToStatus);
+  const reopening = isReopenEntry(fromStatus, requestedStatus);
 
-  // Conditional UPDATE gates on current status so concurrent transitions
-  // can't both win. activity_log write is owned by F5; do not insert here.
-  //
-  // ISS-196 — the AFTER UPDATE trigger on issues.status writes a row into
-  // pipeline_outbox inside this transaction, so the outbox worker re-emits
-  // the `transition` hook out-of-band. We wrap the UPDATE in
-  // `withActorContext` so the trigger captures actor metadata via SET LOCAL
-  // session settings.
+  // cm:guard everything ABOVE this line reads `requestedStatus` (what the caller asked for) and everything BELOW writes `toStatus` (what the kernel will store); mixing the two either drops the reopen reason and counter or drops the rewrite, and each failure is silent
+  const reopenTarget = await resolveAutonomousReopenTarget(issue.projectId, requestedStatus);
+  const { status: toStatus, held } = await resolveAgentCloseTarget({
+    projectId: issue.projectId,
+    requested: reopenTarget,
+    actorType: actor.type,
+    viaReleasePath: options.viaReleasePath === true,
+  });
+  if (fromStatus === toStatus) {
+    throw new TransitionError('NO_OP', `issue already in status ${toStatus}`, {
+      status: fromStatus,
+      requested: requestedStatus,
+    });
+  }
+
+  // cm:flow dispatch/transition — the status UPDATE commits and an AFTER UPDATE trigger enqueues the outbox row in this same transaction
+  // cm:guard the UPDATE below must stay conditional on the CURRENT status, or two concurrent transitions both win and the loser's status is silently overwritten
+  // cm:guard never insert into activity_log here — F5 owns that write, and a second one double-counts every transition
+  // cm:edge sideeffect -> packages/core/drizzle/migrations/0070_pipeline_outbox.sql — trg_issues_status_outbox fires on this UPDATE and writes pipeline_outbox; no call site references it, so a reader of this file cannot see the row being produced
+  // cm:why withActorContext wraps the UPDATE because the trigger reads actor metadata off SET LOCAL session settings — outside the wrapper the outbox row is written with no actor at all
   const txResult = await db.transaction((tx) =>
     withActorContext(tx, { type: actor.type, id: actor.id }, options.reason ?? null, async (t) => {
       const [row] = await t
         .update(issues)
         .set({
-          status: effectiveToStatus,
+          status: toStatus,
           reopenCount: reopening ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
+          // cm:guard the CLEAR arm is the load-bearing half — a kind left behind on an issue that has moved on renders a live "a human is needed" banner on work already in flight, and nothing else in the system would ever clear it
+          waitingKind: toStatus === 'waiting' ? (options.waitingKind ?? null) : null,
           updatedAt: sql`now()`,
         })
         .where(and(eq(issues.id, issue.id), eq(issues.status, fromStatus)))
@@ -263,6 +284,7 @@ export async function transitionIssueStatus(
           updatedAt: issues.updatedAt,
         });
       let stampedOnClose = false;
+      let unblockedDependents: UnblockedDependent[] = [];
       if (row) {
         // ISS-232 — stamp `merged_at` inside the same tx so a rollback
         // drops the column write alongside the status flip.
@@ -270,31 +292,33 @@ export async function transitionIssueStatus(
           issueId: issue.id,
           projectId: issue.projectId,
           fromStatus,
-          toStatus: effectiveToStatus,
+          toStatus: toStatus,
         });
-        // closed = done: a close from ANY surface satisfies the L2 blocks
-        // gate. No-op when merged_at is already stamped (pipeline path).
+        // cm:guard pass the REQUESTED status, not the written one: a close held at the release gate has merged into the base branch, and that is exactly what `merged_at` means — dropping the stamp would keep every `blocks` dependent waiting for a release rather than for the merge
         const closeStamp = await markMergedOnClose(t, {
           issueId: issue.id,
-          toStatus: effectiveToStatus,
+          toStatus: requestedStatus,
         });
         stampedOnClose = closeStamp.stamped;
+        if (toStatus === 'dropped') {
+          unblockedDependents = await expireBlocksEdgesOnDrop(t, issue.id);
+        }
       }
-      return row ? { row, stampedOnClose } : undefined;
+      return row ? { row, stampedOnClose, unblockedDependents } : undefined;
     }),
   );
   const updated = txResult?.row;
   if (!updated) {
     throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
       from: fromStatus,
-      to: effectiveToStatus,
+      to: toStatus,
     });
   }
 
   publishIssueStatusChange(issue.projectId, {
     issueId: updated.id,
     from: fromStatus,
-    to: effectiveToStatus,
+    to: toStatus,
     reopenCount: updated.reopenCount,
     actorId: actor.type === 'user' ? actor.id : actor.ownerId,
     reason: options.reason ?? null,
@@ -306,7 +330,25 @@ export async function transitionIssueStatus(
   // path stamped earlier on leaving the base merge state, so it stays quiet).
   // Best-effort: the transition already committed; losing the comment must
   // not fail the caller.
-  if (txResult?.stampedOnClose) {
+  if (held) {
+    try {
+      // cm:guard ISS-820 — automated system comment; isAi:true, same dishonest-authorship class as the MCP audit comments
+      await db.insert(comments).values({
+        issueId: issue.id,
+        authorId: actor.type === 'user' ? actor.id : actor.ownerId,
+        body: `Held at the release gate — merged, not shipped. \`merged_at\` is stamped, so every \`blocks\`-dependent can dispatch now; the issue closes when a release ships it.`,
+        parentId: null,
+        isAi: true,
+      });
+    } catch (err) {
+      logger.warn(
+        { err, issueId: issue.id },
+        'transition: release-gate hold comment failed (transition already committed)',
+      );
+    }
+  }
+
+  if (txResult?.stampedOnClose && !held) {
     try {
       // ISS-786 child B, requirement 5 — name whether any code evidence
       // exists so a false unblock (ISS-75/76/77/78 shape) becomes visible
@@ -335,45 +377,22 @@ export async function transitionIssueStatus(
     }
   }
 
+  if (txResult && txResult.unblockedDependents.length > 0) {
+    await recordDropUnblock(issue, txResult.unblockedDependents, actor);
+  }
+
   // ISS-164 — refresh derived pipelineHealth (stage mirrors issues.status).
   await publishPipelineHealthChanged(issue.projectId, [updated.id]);
 
   // ISS-101 — keep run timeline in sync with issue status, then close it on
   // RUN_CLOSING_STATUSES entries. No-ops when no open run exists (e.g. an
   // issue that transitions before any job is queued).
-  await setCurrentStepForOpenIssueRun(issue.id, effectiveToStatus);
-  const terminal = TERMINAL_FOR_DISPATCH.has(effectiveToStatus);
-  if (RUN_CLOSING_STATUSES.has(effectiveToStatus)) {
+  await setCurrentStepForOpenIssueRun(issue.id, toStatus);
+  // cm:guard a held close is terminal FOR DISPATCH even though the status is not: `merged_at` is stamped, so the L2 blocks gate is satisfied and the dependents are ready now — leaving this false makes them wait for the 60s reconciler backstop instead of the fan-out
+  const terminal = TERMINAL_FOR_DISPATCH.has(toStatus) || held;
+  // cm:guard the run must close on a hold too. The driver's session is over; a run left `running` while the issue waits days for a release is the state-never-lies breach the gate exists to fix, and the loop monitor would eventually reap it as a stall.
+  if (RUN_CLOSING_STATUSES.has(toStatus) || held) {
     await closeOpenRunForIssue(issue.id, 'completed');
-  }
-
-  if (capEscalated) {
-    try {
-      await pauseOpenRunForIssue({ issueId: issue.id, pauseReason: `reopen_cap:${fromStatus}` });
-    } catch (err) {
-      logger.warn(
-        { err, issueId: issue.id },
-        'transition: reopen-cap pauseRun failed (park + comment already committed)',
-      );
-    }
-  }
-
-  // ISS-828 — an admin's override-reopen out of a reopen-cap park must leave
-  // the run and issue mutually consistent in ONE call (never `reopen` under a
-  // still-paused run — the dispatch gate requires `status='running'`, so a
-  // reopen alone would silently never dispatch). `overrideReopenCap` is
-  // authorized admin-only by the REST route (`issues/transition.ts`) and has
-  // no caller other than this exact unblock, so it's safe to always resume
-  // the issue's paused run on this combination.
-  if (options.overrideReopenCap && reopening) {
-    try {
-      await resumeOpenRunForIssue({ issueId: issue.id });
-    } catch (err) {
-      logger.warn(
-        { err, issueId: issue.id },
-        'transition: override-reopen resumeRun failed (reopen already committed)',
-      );
-    }
   }
 
   return {
@@ -382,9 +401,47 @@ export async function transitionIssueStatus(
     reopenCount: updated.reopenCount,
     updatedAt: updated.updatedAt,
     terminal,
-    capEscalated,
-    requestedStatus,
+    unblockedDependents: txResult?.unblockedDependents ?? [],
   };
+}
+
+/**
+ * Durable record of a drop-unblock, one comment per released dependent.
+ *
+ * The WS cascade is transient and `pipeline-health.ts` filters expired edges
+ * out, so without this the dependent simply starts moving one day with nothing
+ * anywhere saying why.
+ */
+// cm:guard write this on each DEPENDENT, never only on the dropped issue. The question it answers — "why did this start?" — is asked on the issue that moved, and once the edge is expired no surface in this repo can still show the pair.
+async function recordDropUnblock(
+  issue: TransitionIssueRow,
+  dependents: UnblockedDependent[],
+  actor: TransitionActor,
+): Promise<void> {
+  try {
+    const [blocker] = await db
+      .select({ issSeq: issues.issSeq })
+      .from(issues)
+      .where(eq(issues.id, issue.id))
+      .limit(1);
+    const label = blocker ? `ISS-${blocker.issSeq}` : issue.id;
+    const authorId = actor.type === 'user' ? actor.id : actor.ownerId;
+    // cm:guard ISS-820 — automated system comment; isAi:true, same dishonest-authorship class as the MCP audit comments
+    await db.insert(comments).values(
+      dependents.map((d) => ({
+        issueId: d.issueId,
+        authorId,
+        body: `Unblocked — ${label} was dropped, so its \`blocks\` edge on this issue expired and this issue can dispatch. \`merged_at\` was NOT stamped on ${label}: dropped means the work will not happen, not that it shipped. If this issue genuinely needs that work, re-point the dependency rather than letting it proceed.`,
+        parentId: null,
+        isAi: true,
+      })),
+    );
+  } catch (err) {
+    logger.warn(
+      { err, issueId: issue.id, dependents: dependents.length },
+      'transition: drop-unblock audit comments failed (transition already committed)',
+    );
+  }
 }
 
 /**

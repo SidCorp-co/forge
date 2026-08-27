@@ -1,0 +1,27 @@
+#!/bin/sh
+# Vendored archmap. Resolves its own real location so the repo's copy wins over any
+# archmap on PATH — the same precedence the CI job and the editor hook both rely on.
+d=$(dirname "$(readlink -f "$0")")
+exec node --input-type=module -e 'import { statSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+const p = process.argv[1];
+const dead = (why, head) => {
+  const flat = String(why)
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, (c) => "\\x" + c.codePointAt(0).toString(16).padStart(2, "0"))
+    .slice(0, 200);
+  process.stderr.write("archmap: this vendored copy " + (head || "could not load") + ": " + flat + "\n");
+  process.stderr.write("archmap: it is incomplete or corrupt, so the gate did NOT run.\n");
+  process.stderr.write("archmap: it cannot repair itself. From an archmap SOURCE checkout, run in\n");
+  process.stderr.write("archmap: this repo:  node <archmap-checkout>/bin/archmap install --force\n");
+  process.exit(2);
+};
+let st = null;
+try { st = statSync(p); } catch (e) { dead(e.message); }
+if (st === null || !st.isFile()) dead(p + " is not a regular file");
+try {
+  await import(pathToFileURL(p).href);
+} catch (e) {
+  if (globalThis.__archmapEntry !== true) dead(e && e.message);
+  throw e;
+}
+if (globalThis.__archmapRan !== true) dead(p, "loaded but never ran the gate");' "$d/entry.mjs" "$@"

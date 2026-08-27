@@ -291,6 +291,19 @@ describe('GET /api/devices/me/runners (ISS-271)', () => {
     // Scoped to the authed device + claude-code runners.
     expect(selectInnerJoin).toHaveBeenCalled();
   });
+
+  // cm:guard assert the PROJECTION, not the response body — the db is mocked here, so a body assertion only proves the mock echoed what the test handed it. The projection is the route's own code, and it is the thing that breaks: the runner reads `kind` to decide whether a job runs the git preflight at all, and a dropped column deserializes to `None` on that side, which silently sends every storefront job back to failing on `origin_remote`.
+  it('projects the project kind, which the runner needs to skip the git preflight', async () => {
+    selectWhere.mockReturnValueOnce(Promise.resolve([]));
+
+    const app = buildApp();
+    await app.fetch(req('/api/devices/me/runners', { token: 'good' }));
+
+    const lastCall = dbSelect.mock.calls.at(-1) as unknown[] | undefined;
+    const projection = lastCall?.[0] as Record<string, unknown> | undefined;
+    expect(projection).toBeDefined();
+    expect(Object.keys(projection ?? {})).toContain('kind');
+  });
 });
 
 describe('GET /api/devices/:id/runners (ISS-273)', () => {

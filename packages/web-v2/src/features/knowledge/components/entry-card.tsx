@@ -1,11 +1,11 @@
 "use client";
 
 // Shared entry card: renders a knowledge entry (title + confidence badge + body via
-// KnowledgeMarkdown). Inferred entries get a Confirm button (PUT confidence:verified).
+// Markdown). Inferred entries get a Confirm button (PUT confidence:verified).
 // Manages its own open state so the full body is fetched lazily on expand.
+
 import { useState } from "react";
-import { Badge, Button, Icon, Skeleton } from "@/design";
-import { KnowledgeMarkdown } from "@/design";
+import { Badge, Button, Icon, Markdown, Skeleton } from "@/design";
 import { useKnowledgeEntry, useUpsertEntry } from "../hooks";
 import type { KnowledgeListRow } from "../types";
 
@@ -82,7 +82,7 @@ export function EntryCard({ projectId, row, canManage, defaultOpen = false }: En
           )}
           {entryQ.data && (
             <>
-              <KnowledgeMarkdown>{entryQ.data.body}</KnowledgeMarkdown>
+              <Markdown>{entryQ.data.body}</Markdown>
               {canManage && row.confidence === "inferred" && (
                 <div className="mt-3">
                   <Button

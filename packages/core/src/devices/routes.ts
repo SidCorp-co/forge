@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -468,6 +468,10 @@ deviceAuthRoutes.get('/me/runners', requireDevice(), async (c) => {
       repoPath: runners.repoPath,
       branch: runners.branch,
       status: runners.status,
+      // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/runners.rs — `MeRunner.kind` deserializes this field, and `requires_preflight` decides from it whether a job runs the git preflight at all. Dropping it here does not fail any type check: the runner defaults a missing field to None and then REQUIRES preflight, so a storefront project silently goes back to failing every job on `origin_remote`.
+      kind: projects.kind,
+      // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/setup_agent.rs — the setup agent's procedure comes from here and nowhere else. Same silent-failure shape as `kind` above: the runner defaults it to None and falls back to deriving the procedure per job, so dropping this field costs tokens on every repair instead of failing anything.
+      workspaceSetup: projects.workspaceSetup,
     })
     .from(runners)
     .innerJoin(projects, eq(projects.id, runners.projectId))

@@ -2,9 +2,9 @@ import { and, eq, isNotNull, ne, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type IssueStatus,
-  type SkillTarget,
   projects,
   runners,
+  type SkillTarget,
   skillRegistrations,
   skills,
 } from '../db/schema.js';
@@ -15,7 +15,8 @@ import { SkillContentBlockedError } from '../security/findings.js';
 import { scanSkillContent } from '../security/skill-content-scanner.js';
 import { recordSkillActivityEvent } from './activity.js';
 import { hashSkillBody } from './hash.js';
-import { MetaSkillReservedError, isMetaSkillName } from './meta-skills.js';
+import { assertSkillNameWritable } from './lock-context.js';
+import { isMetaSkillName, MetaSkillReservedError } from './meta-skills.js';
 
 export interface SkillFileInput {
   path: string;
@@ -371,9 +372,7 @@ export interface CreateProjectSkillInput {
 }
 
 export async function createProjectSkill(input: CreateProjectSkillInput): Promise<SkillRow> {
-  if (!input.allowReservedMetaName && isMetaSkillName(input.name)) {
-    throw new MetaSkillReservedError(input.name);
-  }
+  if (!input.allowReservedMetaName) await assertSkillNameWritable(input.name, input.projectId);
 
   const scanFindings = scanSkillContent({
     name: input.name,

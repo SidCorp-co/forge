@@ -4,11 +4,7 @@ import { type IssueBranchOverride, resolveIssueBranches } from '../../branches/r
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { issues, projects } from '../../db/schema.js';
-import {
-  deleteKnowledgeEntry,
-  listKnowledgeEntries,
-  upsertKnowledgeEntry,
-} from '../../knowledge/service.js';
+import { deleteKnowledgeEntry, upsertKnowledgeEntry } from '../../knowledge/service.js';
 import { logger } from '../../logger.js';
 import { pipelineConfigPatchSchema } from '../../pipeline/pipeline-config-schema.js';
 import {
@@ -21,17 +17,17 @@ import {
   readPluginDesignations,
 } from '../../plugins/designation.js';
 import {
-  RESERVED_PROJECT_FACT_KEYS,
   mergeProjectFacts,
   mergeProjectFactsConfig,
   projectFactsConfigPatchSchema,
   projectFactsPatchSchema,
+  RESERVED_PROJECT_FACT_KEYS,
 } from '../../projects/project-facts.js';
 import { mergeStateContext, stateContextSchema } from '../../projects/state-context.js';
 import {
-  type ContextScopedMcpToolFactory,
   assertPrincipalIsAdmin,
   assertPrincipalIsMember,
+  type ContextScopedMcpToolFactory,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';

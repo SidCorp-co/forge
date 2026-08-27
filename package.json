@@ -11,11 +11,12 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
+    "verify": "node scripts/verify.mjs",
     "clean": "turbo run clean && rm -rf node_modules",
     "postinstall": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "devDependencies": {
-    "turbo": "^2.10.4"
+    "turbo": "^2.10.11"
   },
   "pnpm": {
     "overrides": {

@@ -1,9 +1,0 @@
-export { AgentChat } from "./agent-chat";
-export { ProjectOverview } from "./ProjectOverview";
-export { NewIssuePage } from "./NewIssuePage";
-export { ProjectBoard } from "./ProjectBoard";
-export { ProjectIssues } from "./ProjectIssues";
-export { ProjectSettings } from "./project-settings";
-export { KnowledgePage } from "./knowledge";
-export { McpPage } from "./mcp";
-export { ProjectPipeline } from "./ProjectPipeline";

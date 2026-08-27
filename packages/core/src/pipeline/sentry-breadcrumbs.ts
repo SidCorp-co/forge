@@ -9,7 +9,7 @@
  * PII surfaces here.
  */
 
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import type { HooksBus } from './hooks.js';
 
 export function registerPipelineSentryBreadcrumbs(bus: HooksBus): void {

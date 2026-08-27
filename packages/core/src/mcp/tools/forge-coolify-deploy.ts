@@ -40,10 +40,10 @@ import {
 } from '../../pipeline/release-coolify.js';
 import { isOpenReleaseBatchRun } from '../../release-batch/service.js';
 import {
-  type ContextScopedMcpToolFactory,
-  type McpContext,
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
+  type ContextScopedMcpToolFactory,
+  type McpContext,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
@@ -138,7 +138,7 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Requires integrationId when multiple active Coolify integrations exist. ' +
     'Secrets (Authorization/Cookie/X-Api-Key headers, token/apiKey/password/jwt fields, tokenized ' +
     "URLs, and the integration's own apiToken) are redacted line-by-line; build-stage stderr is " +
-    'preserved. Returns { integrationId, deploymentUuid, status, logs, truncated }; on a Coolify API ' +
+    'preserved. Returns { integrationId, deploymentUuid, status, commit, logs, truncated }. `commit` is the git SHA this deployment built, read from the deployment record — the log line `SOURCE_COMMIT=` is redacted with the rest of the env dump, so compare THIS field against your merge SHA to prove the change is live. On a Coolify API ' +
     'error returns { error, httpStatus } with no raw body. Tailed to last ~100 lines / ~16KB ' +
     '(truncated:true when cut). ' +
     'runtime-logs: tail the LIVE application container log (NOT the build log) via Coolify ' +

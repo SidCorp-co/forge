@@ -14,8 +14,8 @@ import {
   runMemoryWrite,
   writeMemoryInputSchema,
 } from '../../memory/write-service.js';
-import { assertDeviceOwnerIsMember, assertDeviceOwnerIsWriter, zodToMcpSchema } from './lib.js';
 import type { DeviceScopedMcpToolFactory } from './lib.js';
+import { assertDeviceOwnerIsMember, assertDeviceOwnerIsWriter, zodToMcpSchema } from './lib.js';
 
 const deleteInputSchema = z.object({
   projectId: z.uuid(),

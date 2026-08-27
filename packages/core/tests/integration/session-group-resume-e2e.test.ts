@@ -21,20 +21,18 @@ import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  type TestDatabase,
   createTestDevice,
   createTestProject,
   createTestUser,
   setupTestDatabase,
+  type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
 
-// Mock the WS server so we can assert on the `job.assigned` envelope without
-// standing up a real socket layer. The claude-code adapter (runner path)
-// publishes through this module.
 vi.mock('../../src/ws/server.js', () => ({
   roomManager: {
-    publish: vi.fn(() => 0),
+    // cm:guard 1, never 0 — since ISS-862 the claude-code adapter reads this return as the number of OPEN sockets and reports `failed` for 0, so a stub answering 0 makes every dispatch in this file fail for a reason the file is not about. The stub exists so the `job.assigned` envelope can be asserted without a real socket layer; it must still answer like one that has a reader.
+    publish: vi.fn(() => 1),
   },
 }));
 
@@ -199,6 +197,7 @@ describe('ISS-195 session-group resume end-to-end', () => {
     await closeOpenIssueRun(args.issueId);
     const runId = randomUUID();
     await harness.db.execute(sql`
+      WITH advanced_issue AS (UPDATE issues SET status = ${args.stageStatus} WHERE id = ${args.issueId})
       INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status)
       VALUES (${runId}, ${args.projectId}, ${args.issueId}, 'issue', 'running')
     `);
@@ -207,9 +206,6 @@ describe('ISS-195 session-group resume end-to-end', () => {
       promptString: 'noop',
       stageStatus: args.stageStatus,
     };
-    // Real-life: orchestrator stamps sessionGroup on payload at enqueue time
-    // from pipelineConfig.states[stage].sessionGroup. Stamp it directly here
-    // so the test stays focused on the resolve → resume → dispatch contract.
     if (args.sessionGroup) payload.sessionGroup = args.sessionGroup;
     await harness.db.execute(sql`
       INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, payload, created_by)

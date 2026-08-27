@@ -97,16 +97,21 @@ describe('inverseJobTypeToStatus', () => {
 describe('createProjectSkillResolver', () => {
   it('returns the registered skill name for a status', async () => {
     queue.push([
-      { stage: 'approved', name: 'custom-coder' },
-      { stage: 'open', name: 'forge-triage' },
+      { stage: 'approved', name: 'custom-coder', scope: 'project' },
+      { stage: 'open', name: 'forge-triage', scope: 'global' },
     ]);
     const resolver = createProjectSkillResolver(PROJECT_ID);
     const out = await resolver.resolve('approved');
-    expect(out).toEqual({ type: 'code', toggle: 'autoCode', skillName: 'custom-coder' });
+    expect(out).toEqual({
+      type: 'code',
+      toggle: 'autoCode',
+      skillName: 'custom-coder',
+      scope: 'project',
+    });
   });
 
   it('returns null when no registration exists for the stage', async () => {
-    queue.push([{ stage: 'open', name: 'forge-triage' }]);
+    queue.push([{ stage: 'open', name: 'forge-triage', scope: 'global' }]);
     const resolver = createProjectSkillResolver(PROJECT_ID);
     expect(await resolver.resolve('approved')).toBeNull();
   });
@@ -119,23 +124,28 @@ describe('createProjectSkillResolver', () => {
 
   it('memoizes the DB query across repeated resolve() calls', async () => {
     queue.push([
-      { stage: 'open', name: 'forge-triage' },
-      { stage: 'approved', name: 'forge-code' },
+      { stage: 'open', name: 'forge-triage', scope: 'global' },
+      { stage: 'approved', name: 'forge-code', scope: 'project' },
     ]);
     const resolver = createProjectSkillResolver(PROJECT_ID);
     const first = await resolver.resolve('open');
     const second = await resolver.resolve('approved');
-    expect(first?.skillName).toBe('forge-triage');
-    expect(second?.skillName).toBe('forge-code');
+    expect(first).toMatchObject({ skillName: 'forge-triage', scope: 'global' });
+    expect(second).toMatchObject({ skillName: 'forge-code', scope: 'project' });
     expect(selectSpy).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('resolveSkillForStatus (single-shot wrapper)', () => {
   it('reads from the registration table for the given project', async () => {
-    queue.push([{ stage: 'clarified', name: 'planner-skill' }]);
+    queue.push([{ stage: 'clarified', name: 'planner-skill', scope: 'project' }]);
     const out = await resolveSkillForStatus('clarified', PROJECT_ID);
-    expect(out).toEqual({ type: 'plan', toggle: 'autoPlan', skillName: 'planner-skill' });
+    expect(out).toEqual({
+      type: 'plan',
+      toggle: 'autoPlan',
+      skillName: 'planner-skill',
+      scope: 'project',
+    });
   });
 
   it('returns null when no registration', async () => {

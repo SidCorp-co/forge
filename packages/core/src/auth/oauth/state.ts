@@ -22,7 +22,7 @@
 
 import type { Context } from 'hono';
 import { deleteCookie, setCookie } from 'hono/cookie';
-import { SignJWT, jwtVerify } from 'jose';
+import { jwtVerify, SignJWT } from 'jose';
 import { env } from '../../config/env.js';
 import type { ProviderId } from './providers.js';
 

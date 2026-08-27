@@ -21,20 +21,18 @@ export type Project = typeof schema.projects.$inferSelect;
 // `packages/core/src/issues/pipeline-health.ts` for the loader.
 export type PipelineWaitingReason =
   | 'issue_busy'
+  | 'job_held'
+  | 'run_not_running'
+  | 'retry_cooldown'
+  | 'stale_trigger'
   | 'waiting_on_dep'
   | 'waiting_on_decomp_children'
   | 'project_full'
+  | 'runner_stale'
   | 'runner_full';
 
-// ISS-828 — why an issue at `status='waiting'` actually got there. Mirrors
-// core `WaitingCause` (`issues/pipeline-health.ts`); see that doc comment for
-// why `missing_skill:`/`stage_stalled:` pause reasons are NOT modeled here.
-export type WaitingCause =
-  | 'plan_approval'
-  | 'decompose_parent'
-  | 'reopen_cap'
-  | 'retry_exhausted'
-  | 'merged_parked';
+// cm:edge contract -> packages/core/src/db/schema.ts — mirrors `waitingKinds`; a value here that core cannot store renders a banner nothing can produce, and the reverse leaves an authored kind falling through to generic copy
+export type WaitingCause = 'needs_decision' | 'needs_resource';
 
 export interface PipelineHealth {
   stage: schema.IssueStatus;

@@ -532,4 +532,13 @@ describe('runLoopMonitor — one tick, hops in dependency order', () => {
       resultMisses: { reaped: 0, killRequested: 0, awaitingKill: 0 },
     });
   });
+
+  // cm:guard no hop may ever widen to `held` (RFC 0002) — a held job has no agent process, no session and no heartbeat by construction, so every age- or silence-based reaper here would confirm it dead on the first pass and turn "waiting on a mechanical condition" into a failed job with a retry burnt; the whole point of the status is that it is allowed to sit still for hours
+  it('no hop in a full tick reads or writes `held`', async () => {
+    await runLoopMonitor(new Date('2026-06-12T00:00:00Z'));
+    const texts = dbExecute.mock.calls.map((c) => sqlText(c[0]));
+    expect(texts.length).toBeGreaterThanOrEqual(3);
+    for (const text of texts) expect(text).not.toContain("'held'");
+    for (const patch of sweepSetArgs) expect(patch.status).not.toBe('held');
+  });
 });

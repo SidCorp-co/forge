@@ -42,21 +42,30 @@ Nobody browses the issue list for documentation. An issue is the wrong shape for
 all five: it has no assignee that makes sense, no acceptance criteria, and no
 way to be "done".
 
-### Residuals — the opposite mistake
+### Residuals — fix them, don't file them
 
-Under-filing is also a failure. A real example: four separate pipeline stages
-flagged an unauthenticated data leak, each asked for a follow-up to be filed,
-none was, and the leak shipped.
+Under-filing is a failure: four separate pipeline stages once flagged an
+unauthenticated data leak, each asked for a follow-up to be filed, none was, and
+the leak shipped.
 
-So when a stage or a review wants to hand something onward, it must become one
-of exactly three things:
+Filing was the wrong correction. Measured 2026-08-18 on forge-dev: 30 open
+`draft`s, the oldest untouched for 54 days, most of them fixable defects a stage
+deferred rather than fixed — two of them (ISS-791, ISS-845) describing drafts
+being filed and forgotten while themselves sitting filed and forgotten.
 
-1. **Work with a deliverable** → an issue.
+So when a stage or a review wants to hand something onward, it routes as one of
+exactly three things:
+
+1. **You can fix it here** → **fix it**, and declare it under `Extra fixes:` in
+   your comment. This is the default and covers most residuals. A declared extra
+   fix is authorized work, not scope-creep.
 2. **A `blocks` edge** onto the issue that would otherwise ship without it.
-3. **A line in a decision doc** (`docs/proposals/`).
+3. **A human decision** → `waiting` + `waitingKind` + `reason` when it blocks
+   this issue; a standing policy question → a line in `docs/proposals/`.
 
-Never a fourth option — an unowned `draft`. If it fits none of the three, say it
-in a comment on the issue you are already working on.
+Filing a NEW issue is not on that list. If it fits none of the three, say it in
+a comment on the issue you are already working on — silence is the only thing
+that is never acceptable.
 
 ## When you find one that is not work
 

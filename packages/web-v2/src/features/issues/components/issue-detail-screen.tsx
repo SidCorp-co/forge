@@ -9,7 +9,6 @@ import {
   CardTitle,
   Checkbox,
   Collapsible,
-  ConfirmDialog,
   EmptyState,
   ErrorState,
   HelpButton,
@@ -62,12 +61,13 @@ import {
   useIssueDeps,
   usePatchIssue,
   useProjectMembers,
-  useTransitionIssue,
 } from "../hooks";
 import type { IssueAgentSession, IssueStatus, TaskRow } from "../types";
 import { ActivityFeed } from "./activity-feed";
 import { AttachmentList } from "./attachment-list";
+import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 import { BlockerBanner } from "./blocker-banner";
+import { useGuardedTransition } from "./use-guarded-transition";
 import { CommentThread } from "./comment-thread";
 import { LiveAgentPanel } from "./live-agent-panel";
 import { PropertiesRail } from "./properties-rail";
@@ -122,11 +122,6 @@ export function IssueDetailScreen({
   const projectsQ = useProjects();
   const projectRole = projectsQ.data?.find((p) => p.id === projectId)?.role;
   const canWrite = projectRole !== "viewer";
-  // ISS-828 AC#6 — the reopen-cap override is admin-only (the server 403s a
-  // non-admin regardless; this only decides whether the control renders
-  // disabled-with-explanation vs. working).
-  const canOverride = projectRole === "admin";
-  const [overrideConfirmOpen, setOverrideConfirmOpen] = useState(false);
 
   const issueQ = useIssue(id);
   const commentsQ = useComments(id);
@@ -140,31 +135,38 @@ export function IssueDetailScreen({
   const durationsQ = useStepDurations(projectId, id);
 
   const patch = usePatchIssue();
-  const transition = useTransitionIssue();
-  const pending = patch.isPending || transition.isPending;
+  const { requestTransition, dialog: reasonDialog, isPending: transitionPending } =
+    useGuardedTransition();
+  const pending = patch.isPending || transitionPending;
 
   const issue = issueQ.data;
   const checklist = useMemo(() => {
-    if (issue?.aiAcceptanceCriteria && issue.aiAcceptanceCriteria.length > 0) {
-      return issue.aiAcceptanceCriteria.map((text) => ({
-        text,
-        checked: false,
-      }));
-    }
-    return parseChecklist(issue?.acceptanceCriteria);
+    const criteria =
+      issue?.aiAcceptanceCriteria && issue.aiAcceptanceCriteria.length > 0
+        ? issue.aiAcceptanceCriteria.map((text) => ({ text, checked: false }))
+        : parseChecklist(issue?.acceptanceCriteria);
+    const counts = new Map<string, number>();
+
+    return criteria.map((item) => {
+      const count = counts.get(item.text) ?? 0;
+      counts.set(item.text, count + 1);
+      return { ...item, key: `${item.text}-${count}` };
+    });
   }, [issue?.aiAcceptanceCriteria, issue?.acceptanceCriteria]);
+  const issueDisplayId = issue?.displayId;
+  const issueTitle = issue?.title;
 
   // Track this issue as recently-viewed (surfaces in the ⌘K Recent group).
   useEffect(() => {
-    if (!issue) return;
+    if (!issueDisplayId || !issueTitle) return;
     pushRecent({
       kind: "issue",
       id,
-      label: `${issue.displayId} · ${issue.title}`,
+      label: `${issueDisplayId} · ${issueTitle}`,
       href: `/projects/${slug}/issues/${id}`,
       icon: "list",
     });
-  }, [issue?.displayId, issue?.title, id, slug, pushRecent]);
+  }, [issueDisplayId, issueTitle, id, slug, pushRecent]);
 
   function copyLink() {
     const url = buildShareLink(`/projects/${slug}/issues/${id}`);
@@ -194,38 +196,14 @@ export function IssueDetailScreen({
   }
 
   const stage = statusToStage(issue.status);
-  const onTransition = (toStatus: IssueStatus) =>
-    transition.mutate({ id, toStatus });
+  const onTransition = (toStatus: IssueStatus) => requestTransition(id, toStatus);
   const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) =>
     patch.mutate({ id, body });
 
-  // ISS-828 AC#10 — every blocker-banner mutation toasts success (errors are
-  // already toasted by `useTransitionIssue`'s shared `onError`).
-  const runBlockerAction = (
-    toStatus: IssueStatus,
-    successMessage: string,
-    opts: { override?: boolean } = {},
-  ) =>
-    transition.mutate(
-      { id, toStatus, ...(opts.override ? { override: true } : {}) },
-      { onSuccess: () => toast({ title: successMessage, tone: "success" }) },
-    );
-  const onApprove = () => runBlockerAction("approved", "Issue approved");
-  const onBannerResume = () => runBlockerAction("reopen", "Issue resumed");
-  // AC#11 — the reopen-cap override forces past a safety cap; confirm first.
-  const onOverrideResume = () => setOverrideConfirmOpen(true);
-  const onConfirmOverride = () => {
-    transition.mutate(
-      { id, toStatus: "reopen", override: true },
-      {
-        onSuccess: () => {
-          setOverrideConfirmOpen(false);
-          toast({ title: "Reopen limit overridden — run resumed", tone: "success" });
-        },
-      },
-    );
-  };
-  const onReopen = () => runBlockerAction("reopen", "Issue reopened");
+  const onApprove = () => requestTransition(id, "approved", { successMessage: "Issue approved" });
+  const onBannerResume = () =>
+    requestTransition(id, "reopen", { successMessage: "Issue resumed" });
+  const onReopen = () => onTransition("reopen");
 
   // ISS-377 — these are pure derivations (not hooks), so they sit safely after
   // the loading/error early-returns. `deriveBlockerState` is the SINGLE join of
@@ -245,7 +223,7 @@ export function IssueDetailScreen({
     runStatus,
     handoffsQ.data,
     durationsQ.data,
-    null,
+    runStatus === "failed" ? stage : null,
   );
   const liveSession = pickActiveSession(issue.agentSessions);
   const liveStep = issue.pipelineHealth?.activeSession?.skill ?? stage;
@@ -445,22 +423,17 @@ export function IssueDetailScreen({
               onApprove={onApprove}
               onResume={onBannerResume}
               onProvideInfo={focusComments}
-              onOverrideResume={onOverrideResume}
               onReopen={onReopen}
-              canOverride={canOverride}
             />
           )}
 
-          <ConfirmDialog
-            open={overrideConfirmOpen}
-            title="Override the reopen limit?"
-            message="This issue hit the reopen limit and was parked to stop repeated expensive re-runs. Overriding forces it back to reopen and resumes the paused run immediately."
-            confirmLabel="Override & resume"
-            tone="danger"
-            loading={transition.isPending}
-            onConfirm={onConfirmOverride}
-            onClose={() => setOverrideConfirmOpen(false)}
+          <AwaitingReleaseBanner
+            projectId={issue.projectId}
+            issueId={issue.id}
+            canWrite={canWrite}
           />
+
+          {reasonDialog}
 
           <Card>
             <CardContent>
@@ -552,8 +525,8 @@ export function IssueDetailScreen({
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {checklist.map((item, i) => (
-                    <li key={i}>
+                  {checklist.map((item) => (
+                    <li key={item.key}>
                       <Checkbox
                         checked={item.checked}
                         disabled

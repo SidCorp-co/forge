@@ -1,29 +1,21 @@
 /**
  * ISS-812 [Epic] — composed walk of the failure-taxonomy/action-policy family
- * against real Postgres. Each mechanism below already has its own unit/
- * integration coverage from the child issue that built it (ISS-823/824/825/
- * 826); this file does not re-derive those suites. It exists for the same
- * reason state-integrity-guards-e2e.test.ts exists for VISION №10: to prove
- * the ORIGINAL five incident shapes are actually closed on the real DB
- * schema + real query shapes, and that two children's mechanisms compose
- * correctly through the ONE shared seam (`onlineCapableDeviceIds` /
+ * against real Postgres. The children (ISS-823/824/825/826) each carry their own
+ * suite; this file does not re-derive them. It proves the ORIGINAL five incident
+ * shapes are closed on the real schema + query shapes, and that two children
+ * compose through the ONE shared seam (`onlineCapableDeviceIds` /
  * `selectRunnerForJob`) rather than merely passing in isolation.
  *
- * The five faces, one test each:
- *   - ISS-757 — org spend-cap storm (classification + immediate park, not 60
- *     dispatches).
- *   - ISS-806 — box-scoped deterministic failure quarantines its runner
- *     instead of rotating the fault across the fleet.
- *   - ISS-760 — schedule terminal path records an honest reason + status,
- *     never a silent NULL/success.
- *   - ISS-811 — a rescued (eventually-succeeded) retry chain is countable,
- *     attributed to its original failure reason.
- *   - ISS-630/804 — the per-pipeline-state budget gate produces a real
- *     terminal outcome (park + close), not a stranded job/run.
- * A sixth test proves the composition: quarantine (ISS-825) and per-account
- * exhaustion (ISS-823) both ride `onlineCapableDeviceIds`'s health gate, and
- * a fleet exhausted by a MIX of the two reasons is still told apart from a
- * fleet that is merely offline.
+ * One test per face:
+ *   - ISS-757 org spend-cap storm → per-account exhaustion, rotates immediately,
+ *     the DEFERRAL CEILING ends it (NOT an immediate park — reversed 2026-08-12;
+ *     and not the round budget, which an empty pool never spends).
+ *   - ISS-806 box-scoped deterministic failure → quarantine, no fleet rotation.
+ *   - ISS-760 schedule terminal path → honest reason + status, never NULL/success.
+ *   - ISS-811 rescued retry chain → countable, attributed to its first reason.
+ *   - ISS-630/804 per-state budget gate → real terminal outcome (park + close).
+ * A sixth proves the composition: a fleet exhausted by a MIX of quarantine and
+ * per-account exhaustion is still told apart from one merely offline.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -40,11 +32,11 @@ import type * as RunnersQuarantine from '../../src/runners/quarantine.js';
 import type * as RunnersSelect from '../../src/runners/select.js';
 import type * as SchedulesService from '../../src/schedules/service.js';
 import {
-  type TestDatabase,
   createTestDevice,
   createTestProject,
   createTestUser,
   setupTestDatabase,
+  type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
 
@@ -52,8 +44,13 @@ type Mods = {
   classifyFailure: typeof PipelineFailureClassifier.classifyFailure;
   CLASSIFIER_VERSION: typeof PipelineFailureClassifier.CLASSIFIER_VERSION;
   scheduleAutoRetryWithVerify: typeof JobsRetry.scheduleAutoRetryWithVerify;
+  AUTO_RETRY_PAYLOAD_KEY: typeof JobsRetry.AUTO_RETRY_PAYLOAD_KEY;
+  RETRY_MAX_ROUNDS: typeof JobsRetry.RETRY_MAX_ROUNDS;
+  RETRY_TRIES_PER_DEVICE: typeof JobsRetry.RETRY_TRIES_PER_DEVICE;
+  CAPACITY_DEFER_CEILING_MS: typeof JobsRetry.CAPACITY_DEFER_CEILING_MS;
   maybeQuarantineRunner: typeof RunnersQuarantine.maybeQuarantineRunner;
   RUNNER_QUARANTINE_STREAK: typeof RunnersQuarantine.RUNNER_QUARANTINE_STREAK;
+  RUNNER_QUARANTINE_TTL_MS: typeof RunnersQuarantine.RUNNER_QUARANTINE_TTL_MS;
   selectRunnerForJob: typeof RunnersSelect.selectRunnerForJob;
   onlineCapableDeviceIds: typeof RunnersSelect.onlineCapableDeviceIds;
   finalizeScheduleSessionFailure: typeof AgentSessionsSessionFailure.finalizeScheduleSessionFailure;
@@ -82,35 +79,29 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
 
-    const [
-      classifierMod,
-      retryMod,
-      quarantineMod,
-      selectMod,
-      sessionFailureMod,
-      scheduleServiceMod,
-      dispatcherMod,
-      hooksMod,
-      dbMod,
-      schemaMod,
-    ] = await Promise.all([
-      import('../../src/pipeline/failure-classifier.js'),
-      import('../../src/jobs/retry.js'),
-      import('../../src/runners/quarantine.js'),
-      import('../../src/runners/select.js'),
-      import('../../src/agent-sessions/session-failure.js'),
-      import('../../src/schedules/service.js'),
-      import('../../src/jobs/dispatcher.js'),
-      import('../../src/pipeline/hooks.js'),
-      import('../../src/db/client.js'),
-      import('../../src/db/schema.js'),
-    ]);
+    // cm:guard import these SEQUENTIALLY, never with Promise.all. Resolving these ten graphs concurrently deadlocks the module runner — measured 2026-08-13: the hook never returned at 120s OR at 600s, so all 6 tests reported `skipped` and this suite had never once executed anywhere since it was written. Awaiting them one at a time runs the whole file in ~10s. The graphs overlap heavily (db/client, config/env, logger, schema) and a cycle between two concurrent evaluations is what wedges.
+    // cm:edge protocol -> packages/core/vitest.integration.config.ts — `pool: 'forks'` is what makes this reachable; a hook that hangs here is invisible as a FAILURE (vitest reports the tests as skipped and the suite as timed out), so a green-looking `core-integration` is not evidence this file ran
+    const classifierMod = await import('../../src/pipeline/failure-classifier.js');
+    const retryMod = await import('../../src/jobs/retry.js');
+    const quarantineMod = await import('../../src/runners/quarantine.js');
+    const selectMod = await import('../../src/runners/select.js');
+    const sessionFailureMod = await import('../../src/agent-sessions/session-failure.js');
+    const scheduleServiceMod = await import('../../src/schedules/service.js');
+    const dispatcherMod = await import('../../src/jobs/dispatcher.js');
+    const hooksMod = await import('../../src/pipeline/hooks.js');
+    const dbMod = await import('../../src/db/client.js');
+    const schemaMod = await import('../../src/db/schema.js');
     mods = {
       classifyFailure: classifierMod.classifyFailure,
       CLASSIFIER_VERSION: classifierMod.CLASSIFIER_VERSION,
       scheduleAutoRetryWithVerify: retryMod.scheduleAutoRetryWithVerify,
+      AUTO_RETRY_PAYLOAD_KEY: retryMod.AUTO_RETRY_PAYLOAD_KEY,
+      RETRY_MAX_ROUNDS: retryMod.RETRY_MAX_ROUNDS,
+      RETRY_TRIES_PER_DEVICE: retryMod.RETRY_TRIES_PER_DEVICE,
+      CAPACITY_DEFER_CEILING_MS: retryMod.CAPACITY_DEFER_CEILING_MS,
       maybeQuarantineRunner: quarantineMod.maybeQuarantineRunner,
       RUNNER_QUARANTINE_STREAK: quarantineMod.RUNNER_QUARANTINE_STREAK,
+      RUNNER_QUARANTINE_TTL_MS: quarantineMod.RUNNER_QUARANTINE_TTL_MS,
       selectRunnerForJob: selectMod.selectRunnerForJob,
       onlineCapableDeviceIds: selectMod.onlineCapableDeviceIds,
       finalizeScheduleSessionFailure: sessionFailureMod.finalizeScheduleSessionFailure,
@@ -120,7 +111,8 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
       db: dbMod.db,
       jobs: schemaMod.jobs,
     };
-  }, 60_000);
+    // cm:why 120s covers a cold testcontainer pull on a CI runner, matching the 17 sibling suites. It was previously blamed for the hang and raised from 60s to 120s as the fix — it was never the cause (600s hung identically); the concurrent imports above were.
+  }, 120_000);
 
   afterAll(async () => {
     if (harness) await harness.cleanup();
@@ -172,13 +164,13 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     return runId;
   }
 
-  async function insertIssue(projectId: string): Promise<string> {
+  async function insertIssue(projectId: string, status = 'approved'): Promise<string> {
     const id = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
       VALUES (
         ${id}, ${projectId}, ${Math.floor(Math.random() * 1_000_000)},
-        'Issue', 'approved', 'medium',
+        'Issue', ${status}, 'medium',
         (SELECT created_by FROM projects WHERE id = ${projectId})
       )
     `);
@@ -247,10 +239,7 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     expect(classified.action).toBe('failover');
 
     const { owner, project } = await seedProject();
-    // A single-runner fleet whose only device already carries the spend-cap
-    // stamp (as `finalize-failure.ts` would have written it before the retry
-    // decision runs — ISS-823 review round 1's ordering fix). With no other
-    // device to fail over to, the storm must stop at the first attempt.
+    // cm:why the fleet's only device is seeded ALREADY rate-limited because finalize-failure.ts stamps the spend cap BEFORE the retry decision reads it (ISS-823 review round 1's ordering fix); seeding it clean would test a fleet state that cannot occur at this point in the real sequence
     const { deviceId, runnerId } = await seedRunner(project.id, owner.id, {
       rateLimitedUntil: new Date(Date.now() + 60 * 60_000),
     });
@@ -263,9 +252,44 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     });
     const job = await getJobRow(jobId);
 
-    const outcome = await mods.scheduleAutoRetryWithVerify(job, spendCapText);
-    expect(outcome.scheduled).toBe(false);
-    expect(outcome.reason).toBe('all_devices_exhausted');
+    // cm:why this assertion was inverted on 2026-08-13, and the inversion is the POINT: it used to demand `{scheduled:false, reason:'all_devices_exhausted'}` on the FIRST attempt, which is the policy the owner reversed on 2026-08-12 — an all-limited fleet DEFERS rather than parking, because parking a seconds-long provider throttle turns it into a human intervention. The test was authored the same day and never executed, so nothing caught that it contradicted the guard.
+    // cm:edge lockstep -> packages/core/src/jobs/retry.ts — the deferral is `nextRotation`'s empty-pool branch; if an entry-park is ever restored, this first-attempt expectation flips back
+    const firstAttempt = await mods.scheduleAutoRetryWithVerify(job, spendCapText);
+    expect(firstAttempt.scheduled).toBe(true);
+
+    // cm:guard what closes the 60-dispatch face is no longer the ROUND BUDGET, and asserting the budget here would re-assert the defect: an empty pool spends no round (a round is one sweep over the devices that can take the work), so a job at RETRY_MAX_ROUNDS still defers. The storm is bounded harder than before — the deferred clone goes back to `queued` and the dispatch gate holds it there, instead of spending 10 sweeps x 3 tries to reach a permanent hold.
+    const exhausted = {
+      ...job,
+      payload: {
+        [mods.AUTO_RETRY_PAYLOAD_KEY]: {
+          round: mods.RETRY_MAX_ROUNDS,
+          target: deviceId,
+          tries: mods.RETRY_TRIES_PER_DEVICE,
+          done: [deviceId],
+        },
+      },
+    };
+    const atBudgetEnd = await mods.scheduleAutoRetryWithVerify(exhausted, spendCapText);
+    expect(atBudgetEnd.scheduled).toBe(true);
+
+    // cm:why the park is proven from the DEFERRAL CEILING instead, which is the only thing that now ends a capacity outage — and it reports `all_devices_exhausted`, the hold reason jobs/hold.ts re-queues by itself, so the storm ends without a human
+    const deferredTooLong = {
+      ...job,
+      payload: {
+        [mods.AUTO_RETRY_PAYLOAD_KEY]: {
+          round: 1,
+          target: deviceId,
+          tries: mods.RETRY_TRIES_PER_DEVICE,
+          done: [deviceId],
+          deferredSince: new Date(
+            Date.now() - mods.CAPACITY_DEFER_CEILING_MS - 5_000,
+          ).toISOString(),
+        },
+      },
+    };
+    const lastAttempt = await mods.scheduleAutoRetryWithVerify(deferredTooLong, spendCapText);
+    expect(lastAttempt.scheduled).toBe(false);
+    expect(lastAttempt.reason).toBe('all_devices_exhausted');
   });
 
   // ---------- ISS-806 — box-scoped deterministic failure quarantines -----
@@ -435,13 +459,11 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
 
   // ---------- ISS-630/804 — the fifth face: per-state budget gate ---------
 
-  it('ISS-630/804: a budget-exhausted stage parks the issue and closes the run instead of stranding both (the 3x-vs-0x asymmetry)', async () => {
+  // cm:guard the issue/run assertions at the end are the RFC 0002 half of this test (INV-1/INV-4) — ISS-630's own finding was that the capped stage died SILENTLY; the fix is that it now dies honestly on the JOB axis, and re-parking the issue here would restore the lie while every failure_action assertion above still passed
+  it('ISS-630/804: a budget-exhausted stage holds the job, leaving the issue and run untouched (the 3x-vs-0x asymmetry)', async () => {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
-    // Cap set on `confirmed` specifically (a stage a `triage` job runs
-    // under) — the asymmetry was that ONE capped stage died with zero
-    // retries while an uncapped stage retried normally; the fix is that the
-    // capped stage now dies HONESTLY (parked + closed) instead of silently.
+    // cm:why the cap sits on `open`, triage's trigger status, so the direct-dispatch fixture follows the same status contract as an orchestrator-enqueued job while preserving the per-stage asymmetry this case covers
     await harness.db.execute(sql`
       UPDATE projects
       SET agent_config = COALESCE(agent_config, '{}'::jsonb)
@@ -449,7 +471,7 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
                             'pipelineConfig',
                             jsonb_build_object(
                               'states', jsonb_build_object(
-                                'confirmed', jsonb_build_object(
+                                'open', jsonb_build_object(
                                   'budget', jsonb_build_object('perMonthUsd', 1, 'action', 'pause')
                                 )
                               )
@@ -459,7 +481,7 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     const { deviceId } = await seedRunner(project.id, owner.id);
     void deviceId;
 
-    const issueId = await insertIssue(project.id);
+    const issueId = await insertIssue(project.id, 'open');
     // Historical spend already over the cap for this (project, jobType).
     const sessionId = randomUUID();
     const runId = randomUUID();
@@ -501,7 +523,7 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
       )
       VALUES (
         ${jobId}, ${project.id}, ${issueId}, 'triage', 'queued',
-        ${JSON.stringify({ stageStatus: 'confirmed' })}::jsonb,
+        ${JSON.stringify({ stageStatus: 'open' })}::jsonb,
         ${owner.id}, ${openRunId}, now()
       )
     `);
@@ -520,15 +542,26 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     // terminal park on record.
     expect(jobRows[0]?.classifier_version).toBe(mods.CLASSIFIER_VERSION);
 
+    const heldRows = await harness.db.execute<{
+      retry_of: string | null;
+      failure_reason: string | null;
+    }>(sql`
+      SELECT retry_of, failure_reason FROM jobs
+      WHERE issue_id = ${issueId} AND status = 'held'
+    `);
+    expect(heldRows).toHaveLength(1);
+    expect(heldRows[0]?.retry_of).toBe(jobId);
+    expect(heldRows[0]?.failure_reason).toBe('monthly_budget_exhausted');
+
     const issueRows = await harness.db.execute<{ status: string }>(
       sql`SELECT status FROM issues WHERE id = ${issueId}`,
     );
-    expect(issueRows[0]?.status).toBe('waiting');
+    expect(issueRows[0]?.status).not.toBe('waiting');
 
     const runRows = await harness.db.execute<{ status: string }>(
       sql`SELECT status FROM pipeline_runs WHERE id = ${openRunId}`,
     );
-    expect(runRows[0]?.status).not.toBe('running');
+    expect(runRows[0]?.status).toBe('running');
   });
 
   // ---------- Composition: quarantine + per-account exhaustion share the same gate ----

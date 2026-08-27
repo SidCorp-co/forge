@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type RunnerType, projects } from '../db/schema.js';
+import { projects, type RunnerType } from '../db/schema.js';
 import { RUNNER_CAP_PER_RUNNER } from '../jobs/dispatch-gates.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import type { RequiredCapabilities, Runner } from './types.js';
@@ -18,9 +18,35 @@ export const NOT_DISABLED_DEVICE = sql`AND NOT EXISTS (
   SELECT 1 FROM devices d WHERE d.id = device_id AND d.disabled_at IS NOT NULL
 )`;
 
+// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — every candidate predicate in this file must also sit in `fresh_capable_runners`; a clause here and not there makes the picker offer a job this selector then refuses, and the job spins `queued` forever with no gate reason
 // cm:why placed alongside rate_limited_until (not a bare column ref) so it
 // resolves correctly whether the enclosing query aliases `runners` as `r.` or not
 export const NOT_QUARANTINED = sql`AND (quarantined_until IS NULL OR quarantined_until <= now())`;
+
+// cm:guard `auth` MUST be excluded by NAME, never left to `rate_limited_until` — that column is NULL for an auth limit BY DESIGN (no parseable reset), so the time-based filter passes it and an auth-dead box reads as perfectly healthy. lib/device-pool.ts has carried this exact clause for the chat path all along; the job path did not, and device dev1-ai013 took 421 jobs on an expired OAuth session in 5.5h (forge-beta 2026-08-14).
+const NOT_AUTH_LIMITED = sql`AND limit_reason IS DISTINCT FROM 'auth'`;
+
+// cm:guard NULL means "legacy row, never provisioned" and MUST stay eligible — 4 runners are NULL today and blocking them would starve their projects for a column they predate. Only an EXPLICIT non-ready value blocks.
+// cm:guard a workspace that is not `ready` cannot run a job, and this gate is the only thing that says so — `provision_status` was write-only telemetry (web drew a stepper, no dispatch path read it), so runner ubuntu1/Anhome sat at `needs_manual_setup` while the picker fed it one job an hour for 8 hours, every one dying on `preflight_failed: work_tree` (measured 2026-08-14).
+const WORKSPACE_READY = sql`AND (provision_status IS NULL OR provision_status = 'ready')`;
+
+/**
+ * Per-state runner pool (`pipelineConfig.states[x].deviceIds`) as a candidate
+ * filter. `null`/empty pool → no fragment, so the fleet stays fully eligible.
+ * Remote/server runners (NULL `device_id`) drop out of a non-empty pool by
+ * construction — a pool names devices, and `NULL IN (...)` is never true.
+ *
+ * `column` lets a caller that aliases `runners` pass `sql`r.device_id``.
+ */
+// cm:guard this belongs in the same WHERE as rate_limited_until, NOT in excludeDeviceIds — selectRunnerForJob's two wrap-arounds re-run with the exclude set EMPTIED, so a pool expressed as an exclusion evaporates exactly when every pool member is tripped
+// cm:guard build a parenthesised parameter list and use `IN (...)`. Drizzle expands an interpolated JS array as a ROW CONSTRUCTOR ($4,$5,$6,$7), so `= ANY(tuple::uuid[])` dies with `cannot cast type record to uuid[]` — the handler throws, pg-boss dead-letters after 2 retries, and the job row stays `queued` with `gateReason: null` forever. That killed EVERY dispatch on forge-dev for 11 days (2026-08-14 to 2026-08-25), because a pool is configured on every one of its states. Same idiom as lib/device-pool.ts.
+function poolClause(deviceIds: string[] | null | undefined, column = sql`device_id`) {
+  if (!deviceIds || deviceIds.length === 0) return sql``;
+  return sql`AND ${column} IN (${sql.join(
+    deviceIds.map((id) => sql`${id}`),
+    sql`, `,
+  )})`;
+}
 
 /**
  * Decide the initial `capabilities` jsonb for a freshly-created runner row.
@@ -148,6 +174,13 @@ interface SelectInput {
    * regardless of cap. Defaults to 1 when omitted.
    */
   projectCap?: number;
+  /**
+   * Per-state runner pool — the ONLY devices this job may land on
+   * (`pipelineConfig.states[<stage>].deviceIds`, resolved by the dispatcher).
+   * Null/empty = whole fleet. Every rule below (pin, primary, standby,
+   * load-aware, wrap-around) operates strictly inside the pool.
+   */
+  allowDeviceIds?: string[] | null;
 }
 
 type RunnerRow = {
@@ -225,12 +258,14 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
   const excludeDeviceIds = input.excludeDeviceIds ?? [];
   const skipPrimary = input.skipPrimary ?? false;
   const projectCap = input.projectCap ?? 1;
+  const allowDeviceIds = input.allowDeviceIds ?? null;
 
   const picked = await pickRunner(projectId, required, livenessSeconds, {
     pinDeviceId: pinDeviceId ?? null,
     excludeDeviceIds,
     skipPrimary,
     projectCap,
+    allowDeviceIds,
   });
   if (picked) return picked;
 
@@ -243,6 +278,8 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
       excludeDeviceIds: [],
       skipPrimary,
       projectCap,
+      // cm:guard the wrap-around clears the EXCLUDE set only — `allowDeviceIds` must be forwarded intact, or an all-tripped pool silently probes a box the operator excluded from the stage
+      allowDeviceIds,
     });
   }
   // Retry-specific last-resort wrap-around (ISS-596): when a retry rotation's
@@ -257,6 +294,7 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
       excludeDeviceIds: [],
       skipPrimary,
       projectCap,
+      allowDeviceIds,
     });
   }
   return null;
@@ -271,6 +309,7 @@ async function pickRunner(
     excludeDeviceIds: string[];
     skipPrimary: boolean;
     projectCap: number;
+    allowDeviceIds: string[] | null;
   },
 ): Promise<Runner | null> {
   // Step 1 — pin. For a session-group resume this is the prior device; for a
@@ -283,6 +322,7 @@ async function pickRunner(
       opts.pinDeviceId,
       required,
       livenessSeconds,
+      opts.allowDeviceIds,
     );
     if (pinned) return pinned;
     // Pin stale → fall through (retry rotation: to standby; first dispatch:
@@ -308,6 +348,7 @@ async function pickRunner(
     return pickLeastLoadedFreeRunner(projectId, required, livenessSeconds, {
       excludeDeviceIds: opts.excludeDeviceIds,
       preferDeviceId: defaultDeviceId,
+      allowDeviceIds: opts.allowDeviceIds,
     });
   }
 
@@ -317,6 +358,7 @@ async function pickRunner(
       defaultDeviceId,
       required,
       livenessSeconds,
+      opts.allowDeviceIds,
     );
     if (primary) return primary;
     // Primary offline / stale / lacks capability → fallthrough to standby.
@@ -334,7 +376,7 @@ async function pickRunner(
     opts.skipPrimary ? null : defaultDeviceId,
     required,
     livenessSeconds,
-    { excludeDeviceIds: opts.excludeDeviceIds },
+    { excludeDeviceIds: opts.excludeDeviceIds, allowDeviceIds: opts.allowDeviceIds },
   );
   return standby;
 }
@@ -351,6 +393,7 @@ async function findHealthyByDevice(
   deviceId: string,
   required: string,
   livenessSeconds: number,
+  allowDeviceIds: string[] | null = null,
 ): Promise<Runner | null> {
   const rows = await db.execute<RunnerRow>(
     sql`
@@ -367,7 +410,10 @@ async function findHealthyByDevice(
         AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
         AND (rate_limited_until IS NULL OR rate_limited_until <= now())
         ${NOT_QUARANTINED}
+        ${NOT_AUTH_LIMITED}
+        ${WORKSPACE_READY}
         ${NOT_DISABLED_DEVICE}
+        ${poolClause(allowDeviceIds)}
       ORDER BY last_seen_at DESC, id ASC
       LIMIT 1
     `,
@@ -389,7 +435,9 @@ async function findStandby(
   excludeDeviceId: string | null,
   required: string,
   livenessSeconds: number,
-  extra: { excludeDeviceIds: string[] } = { excludeDeviceIds: [] },
+  extra: { excludeDeviceIds: string[]; allowDeviceIds?: string[] | null } = {
+    excludeDeviceIds: [],
+  },
 ): Promise<Runner | null> {
   // Exclusion uses `IS DISTINCT FROM` so NULL device_ids (remote/server
   // runners) participate correctly: `NULL <> 'd1'` is NULL, which fails
@@ -426,7 +474,10 @@ async function findStandby(
         AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
         AND (rate_limited_until IS NULL OR rate_limited_until <= now())
         ${NOT_QUARANTINED}
+        ${NOT_AUTH_LIMITED}
+        ${WORKSPACE_READY}
         ${NOT_DISABLED_DEVICE}
+        ${poolClause(extra.allowDeviceIds)}
         ${exclusionClause}
         ${retryExclusionClause}
       ORDER BY last_seen_at DESC, id ASC
@@ -452,7 +503,11 @@ async function pickLeastLoadedFreeRunner(
   projectId: string,
   required: string,
   livenessSeconds: number,
-  opts: { excludeDeviceIds: string[]; preferDeviceId: string | null },
+  opts: {
+    excludeDeviceIds: string[];
+    preferDeviceId: string | null;
+    allowDeviceIds?: string[] | null;
+  },
 ): Promise<Runner | null> {
   const retryExclusionClause =
     opts.excludeDeviceIds.length > 0
@@ -485,8 +540,11 @@ async function pickLeastLoadedFreeRunner(
         AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
         AND (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
         ${NOT_QUARANTINED}
+        ${NOT_AUTH_LIMITED}
+        ${WORKSPACE_READY}
         AND COALESCE(rl.in_flight, 0) < ${RUNNER_CAP_PER_RUNNER}
         ${NOT_DISABLED_DEVICE}
+        ${poolClause(opts.allowDeviceIds, sql`r.device_id`)}
         ${retryExclusionClause}
       ORDER BY
         CASE WHEN r.device_id IS NOT DISTINCT FROM ${opts.preferDeviceId} THEN 0 ELSE 1 END,
@@ -519,13 +577,13 @@ async function pickLeastLoadedFreeRunner(
 export async function onlineCapableDeviceIds(
   projectId: string,
   requiredCapabilities?: RequiredCapabilities,
-  opts?: { includeLimited?: boolean },
+  opts?: { includeLimited?: boolean; allowDeviceIds?: string[] | null },
 ): Promise<string[]> {
   const required = JSON.stringify(requiredCapabilities ?? {});
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const limitClause = opts?.includeLimited
     ? sql``
-    : sql`AND (rate_limited_until IS NULL OR rate_limited_until <= now()) ${NOT_QUARANTINED}`;
+    : sql`AND (rate_limited_until IS NULL OR rate_limited_until <= now()) ${NOT_QUARANTINED} ${NOT_AUTH_LIMITED}`;
   const rows = await db.execute<{ device_id: string }>(
     sql`
       SELECT DISTINCT device_id
@@ -537,7 +595,9 @@ export async function onlineCapableDeviceIds(
         AND last_seen_at IS NOT NULL
         AND last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
         ${limitClause}
+        ${WORKSPACE_READY}
         ${NOT_DISABLED_DEVICE}
+        ${poolClause(opts?.allowDeviceIds)}
       ORDER BY device_id ASC
     `,
   );

@@ -2,8 +2,8 @@ import { and, asc, desc, eq, exists, gte, ilike, inArray, lt, ne, or, sql } from
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import {
-  type IssueStatus,
   comments,
+  type IssueStatus,
   issueComplexities,
   issueLabels,
   issuePriorities,
@@ -12,11 +12,9 @@ import {
   labels,
   taskStatuses,
   tasks,
+  waitingKinds,
 } from '../../db/schema.js';
-import {
-  type StatusTransitionResult,
-  applyStatusTransition,
-} from '../../issues/apply-transition.js';
+import { transitionIssueStatus } from '../../issues/apply-transition.js';
 import {
   AttachmentError,
   type DecodedAttachment,
@@ -28,23 +26,24 @@ import { claimDetectorKey, isValidDetectorKey } from '../../issues/detector-key.
 import { applyIntakeGate, finalizeIntake } from '../../issues/intake-gate.js';
 import { listIssueLabels } from '../../issues/label-service.js';
 import {
+  collectIssueFieldUpdates,
   MCP_ONLY_ISSUE_PATCH_FIELDS,
   SHARED_ISSUE_PATCH_FIELDS,
-  collectIssueFieldUpdates,
 } from '../../issues/patch-fields.js';
 import { type ReleaseNotes, ReleaseNotesSchema } from '../../issues/release-notes.js';
 import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
 import { recordActivityTx } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
-import { isParkedStatus } from '../../pipeline/park-states.js';
 import { findMissingWorkEvidence } from '../../pipeline/work-evidence.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
 import { pmSetDependencyHandler } from './forge-pm-set-dependency.js';
 import {
-  type ContextScopedMcpToolFactory,
-  type McpContext,
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
+  type ContextScopedMcpToolFactory,
+  type McpContext,
+  principalActor,
+  principalHookActor,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
@@ -268,8 +267,10 @@ const dataSchema = z
       )
       .max(20)
       .optional(),
-    // cm:why ISS-596 — explicit operator-unblock intent: set on an update that leaves a park (see PARKED_STATUSES) for a non-park status, it threads `reason:'operator_unblock'` so the orchestrator's hard stop lets the transition re-engage the pipeline. A stray aborted-agent advance never carries the flag, which is what keeps the stop honest.
-    unblock: z.boolean().optional(),
+    // cm:guard REQUIRED on any status write that enters `reopen` (RFC 0002 INV-8) — it is posted as a comment before the flip and is what the fix step scopes its patch against; `note` is accepted as a fallback so a caller that already explains itself there is not rejected
+    reason: z.string().trim().min(1).max(10_000).optional(),
+    // cm:guard say WHICH kind whenever you write `waiting` (RFC 0002 INV-5) — core never derives it, so an omitted kind leaves the board rendering "a human is needed" with no hint of what is being asked; it is cleared automatically on any exit
+    waitingKind: z.enum(waitingKinds).optional(),
     // ISS-633 — plain label attach/detach. Accepts label NAMES or UUIDs,
     // resolved server-side (strict: unknown -> BAD_REQUEST, no auto-create).
     // REPLACE-SET semantics mirroring REST: this is the full desired label
@@ -464,17 +465,6 @@ type IssueListProjection = Pick<
  * token cap. Heavy fields stay reachable per-issue via `action=get`. Do NOT
  * widen this back to `serialize()`.
  */
-// cm:why ISS-766 — without this the tool result says `status: 'updated'`/echoes the fresh issue with nothing marking the redirect, so an agent that asked for `reopen` believes it got `reopen` and may retry the identical call forever
-function applyReopenCapEscalationNote(
-  output: Record<string, unknown>,
-  result: StatusTransitionResult,
-): void {
-  output.capEscalated = true;
-  output.requestedStatus = result.requestedStatus;
-  output.note =
-    `Reopen cap reached (reopenCount=${result.reopenCount}) — the issue was parked at \`waiting\` ` +
-    `instead of \`${result.requestedStatus}\`. Do not retry the reopen; report this outcome and stop.`;
-}
 
 function serializeListRow(row: IssueListProjection): Record<string, unknown> {
   return {
@@ -760,7 +750,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'description a requirements contract (outcome, business rules, invariants, ' +
     'out-of-scope) — not an implementation script naming files, endpoints or ' +
     '"follow the pattern at <path>"; those claims go stale and outrank live ' +
-    'exploration in practice. See guide pipeline-and-issue-lifecycle. ' +
+    'exploration in practice. See guides pipeline-and-issue-lifecycle and writing-an-issue (body shape; mermaid fences render; ATTACH .html, never paste it into description). ' +
     'mark_merged (data.issueId + data.target<feature|base|prod> + optional ' +
     'data.mergedAt ISO + data.note) idempotently stamps issues.merged_at via ' +
     'COALESCE (a repeat call keeps the first timestamp), writes an audit ' +
@@ -1125,7 +1115,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         // cm:edge ordering -> packages/core/src/issues/transition-evidence.ts — field writes MUST commit before the status transition below, which re-reads issues.plan for PLAN_REQUIRED; reversed order throws PLAN_REQUIRED on a legal { plan, status:'approved' } call and discards the submitted plan
         if (Object.keys(updates).length > 0 || labelIds !== undefined) {
-          // cm:why sql`now()`, matching applyStatusTransition below — a combined status+fields update needs one canonical timestamp source, not a mix of JS Date and DB now()
+          // cm:why sql`now()`, matching transitionIssueStatus below — a combined status+fields update needs one canonical timestamp source, not a mix of JS Date and DB now()
           updates.updatedAt = sql`now()`;
           const actor = { type: 'device' as const, id: device.id };
           await db.transaction(async (tx) => {
@@ -1172,19 +1162,11 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           });
         }
 
-        // cm:guard leaving one park for another (waiting → on_hold) must NOT consume the hatch — it is not a resume, and threading the sentinel there would let a later stray advance out of the second park re-engage the pipeline
-        let transitionResult: StatusTransitionResult | undefined;
         if (input.data.status && input.data.status !== issue.status) {
-          const useOperatorUnblock =
-            input.data.unblock === true &&
-            isParkedStatus(issue.status) &&
-            !isParkedStatus(input.data.status);
-          transitionResult = await applyStatusTransition(
-            issue,
-            input.data.status,
-            device,
-            useOperatorUnblock ? { reason: 'operator_unblock' } : {},
-          );
+          await transitionIssueStatus(issue, input.data.status, principalActor(principal, device), {
+            transitionReason: input.data.reason ?? input.data.note,
+            waitingKind: input.data.waitingKind,
+          });
         }
 
         const fresh = await loadIssue(issue.id);
@@ -1192,9 +1174,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           ...(await serializeWithAttachments(fresh)),
           status: 'updated',
         };
-        if (transitionResult?.capEscalated) {
-          applyReopenCapEscalationNote(updateResult, transitionResult);
-        }
         return updateResult;
       }
 
@@ -1206,12 +1185,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!target) throw new Error('BAD_REQUEST: data.status is required for transition');
         const issue = await loadIssue(input.documentId);
         await assertPrincipalIsWriter(principal, issue.projectId);
-        const transitionResult = await applyStatusTransition(issue, target, device);
+        await transitionIssueStatus(issue, target, principalActor(principal, device), {
+          transitionReason: input.data?.reason ?? input.data?.note,
+          waitingKind: input.data?.waitingKind,
+        });
         const fresh = await loadIssue(issue.id);
         const transitionOutput: Record<string, unknown> = await serializeWithAttachments(fresh);
-        if (transitionResult.capEscalated) {
-          applyReopenCapEscalationNote(transitionOutput, transitionResult);
-        }
         return transitionOutput;
       }
 
@@ -1260,8 +1239,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           .set({ mergedAt: sql`COALESCE(${issues.mergedAt}, ${stampExpr})`, updatedAt: sql`now()` })
           .where(eq(issues.id, issueId));
 
-        const note = input.data?.note;
-        const body = `mark_merged target=${target}${note ? ` — ${note}` : ''}`;
+        const body = `mark_merged target=${target}${input.data?.note ? ` — ${input.data.note}` : ''}`;
         // cm:guard ISS-820 — this is an automated MCP-surface audit comment; isAi:true or it reads as a human answer and can release a needs_info bounce
         const [auditComment] = await db
           .insert(comments)
@@ -1271,7 +1249,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           await hooks.emit('commentCreated', {
             issueId,
             projectId: issue.projectId,
-            actor: { type: 'device', id: device.id },
+            actor: principalHookActor(principal, device),
             commentId: auditComment.id,
             body: auditComment.body,
             parentId: auditComment.parentId,
@@ -1282,7 +1260,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         await hooks.emit('issueUpdated', {
           issueId,
           projectId: issue.projectId,
-          actor: { type: 'device', id: device.id },
+          actor: principalHookActor(principal, device),
           fields: ['mergedAt'],
           before: { mergedAt: issue.mergedAt },
           after: { mergedAt: fresh.mergedAt },
@@ -1311,8 +1289,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           .set({ mergedAt: null, updatedAt: sql`now()` })
           .where(eq(issues.id, issueId));
 
-        const note = input.data?.note;
-        const body = `unmark${note ? ` — ${note}` : ''}`;
+        const body = `unmark${input.data?.note ? ` — ${input.data.note}` : ''}`;
         // cm:guard ISS-820 — automated MCP-surface audit comment; isAi:true so it can't release a needs_info bounce
         const [auditComment] = await db
           .insert(comments)
@@ -1322,7 +1299,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           await hooks.emit('commentCreated', {
             issueId,
             projectId: issue.projectId,
-            actor: { type: 'device', id: device.id },
+            actor: principalHookActor(principal, device),
             commentId: auditComment.id,
             body: auditComment.body,
             parentId: auditComment.parentId,
@@ -1333,7 +1310,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         await hooks.emit('issueUpdated', {
           issueId,
           projectId: issue.projectId,
-          actor: { type: 'device', id: device.id },
+          actor: principalHookActor(principal, device),
           fields: ['mergedAt'],
           before: { mergedAt: issue.mergedAt },
           after: { mergedAt: null },

@@ -36,7 +36,6 @@ export function ColdBoot({ label = "booting control plane…" }: { label?: strin
             animation: "fm-glow 2.6s var(--ease-in-out) infinite",
           }}
         />
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="fm-breathe" src={assetPath("/forge-mark-180.png")} width={72} height={72} alt="Forge" />
       </div>
       <div className="fg-h2" style={{ fontWeight: 800 }}>Forge</div>
@@ -57,7 +56,6 @@ export function AgentWorking({ label, elapsed }: { label: ReactNode; elapsed?: s
           className="fm-ringpulse"
           style={{ position: "absolute", inset: -4, borderRadius: 999, border: "2px solid var(--flame-300)" }}
         />
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={assetPath("/forge-mark-32.png")} width={30} height={30} alt="" />
       </span>
       <span className="fg-body-sm text-fg">{label}</span>
@@ -73,7 +71,6 @@ export function ReconnectingBanner({ label = "Runner offline — reconnecting…
       className="inline-flex items-center gap-2.5 rounded-md px-3.5 py-2.5 font-semibold"
       style={{ background: "var(--amberw-50)", border: "1px solid #F6D9A0", color: "var(--amberw-600)", fontSize: 13.5 }}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img className="forge-pulse" src={assetPath("/forge-mark-32.png")} width={22} height={22} alt="" />
       {label}
     </div>

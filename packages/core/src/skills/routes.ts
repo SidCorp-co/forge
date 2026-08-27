@@ -11,10 +11,10 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { hooks } from '../pipeline/hooks.js';
 import { isMetaSkillName } from './meta-skills.js';
 import {
-  SkillDeleteBlockedError,
-  SkillNotProjectScopedError,
   getSkillForProject,
   registerSkillForProject,
+  SkillDeleteBlockedError,
+  SkillNotProjectScopedError,
 } from './service.js';
 import { computeSkillDiff } from './sync.js';
 

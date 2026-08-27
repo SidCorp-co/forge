@@ -5,7 +5,7 @@
 // pipelineHealth.waitingOn / blocks edges) as a prominent banner. Shown ONLY
 // when blocked; the screen renders nothing when the verdict is null (AC#1/#2).
 // The banner says WHY + WHO + the next action.
-import { Banner, Button, Tooltip } from "@/design";
+import { Banner, Button } from "@/design";
 import type { BlockerState } from "../derive";
 import { IssueRefBadge } from "./issue-ref-badge";
 
@@ -16,11 +16,7 @@ interface BlockerBannerProps {
   onApprove: () => void;
   onResume: () => void;
   onProvideInfo: () => void;
-  onOverrideResume: () => void;
   onReopen: () => void;
-  /** Project-admin gate for the reopen-cap override (AC#6) — a non-admin
-   *  still SEES the control, disabled, with the reason why. */
-  canOverride: boolean;
 }
 
 export function BlockerBanner({
@@ -30,9 +26,7 @@ export function BlockerBanner({
   onApprove,
   onResume,
   onProvideInfo,
-  onOverrideResume,
   onReopen,
-  canOverride,
 }: BlockerBannerProps) {
   const { cta } = blocker;
 
@@ -54,24 +48,6 @@ export function BlockerBanner({
       <Button variant="primary" size="sm" icon="mail" onClick={onProvideInfo}>
         {cta.label}
       </Button>
-    );
-  } else if (cta.kind === "override-resume") {
-    const button = (
-      <Button
-        variant="danger"
-        size="sm"
-        icon="shield"
-        loading={pending}
-        disabled={!canOverride}
-        onClick={onOverrideResume}
-      >
-        {cta.label}
-      </Button>
-    );
-    action = canOverride ? (
-      button
-    ) : (
-      <Tooltip label="Only a project admin can override the reopen limit.">{button}</Tooltip>
     );
   } else if (cta.kind === "reopen") {
     action = (

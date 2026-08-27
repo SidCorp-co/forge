@@ -46,6 +46,15 @@ pub struct JobAssigned {
     pub runner_type: Option<String>,
     #[serde(default)]
     pub agent_session_id: Option<String>,
+    /// `ISS-<seq>` for the issue this job serves. The runner matches it against
+    /// the agent's worktree branches to find the checkout worth salvaging.
+    #[serde(default)]
+    pub issue_key: Option<String>,
+    /// `jobs.attempts` — which try this is. `None` from a core that predates
+    /// the field; the salvage commit then simply omits its `forge-attempt`
+    /// trailer rather than guessing a number.
+    #[serde(default)]
+    pub attempts: Option<u32>,
 }
 
 /// Extract a `jobId` from a `job.cancel` / `job.cancelRequested` frame.

@@ -1,9 +1,9 @@
 import type { UxContractRuleInput } from './ux-contract-compiler.js';
 import {
-  PRESET_DEFAULT_TOGGLES,
-  WEB_V2_PROFILE,
   compilePresetToRules,
+  PRESET_DEFAULT_TOGGLES,
   scaffoldOf,
+  WEB_V2_PROFILE,
 } from './ux-contract-presets.js';
 
 // The web-v2 scaffold + seed rules are DERIVED from the canonical WEB_V2_PROFILE

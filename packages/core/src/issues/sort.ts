@@ -1,4 +1,4 @@
-import { type SQL, asc, desc, sql } from 'drizzle-orm';
+import { asc, desc, type SQL, sql } from 'drizzle-orm';
 import { issues } from '../db/schema.js';
 
 export const issueSortValues = [

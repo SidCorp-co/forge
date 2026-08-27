@@ -21,8 +21,8 @@
 
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, issues, type jobs, projects } from '../db/schema.js';
 import type { JobType } from '../db/schema.js';
+import { comments, issues, type jobs, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { extractStageStatus, resolveStageOverrides } from './stage-overrides.js';
 

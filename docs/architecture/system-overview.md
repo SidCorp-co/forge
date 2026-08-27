@@ -5,14 +5,14 @@ Canonical map of how Forge is laid out: control plane vs runtime, the device-run
 ## Two planes
 
 - **Control plane** — `packages/core` (Hono + Drizzle): REST, WebSocket, MCP. Holds project/issue state, queues jobs (pg-boss), embeddings (pgvector), streams events. **Never holds Claude credentials.**
-- **Runtime plane** — device agents on users' machines. Shared Rust `forge-runner-core` crate; two form factors: `dev` (Tauri GUI), `forge-runner` (CLI daemon). Pair into the account, receive jobs over WS, spawn `claude` CLI in a git worktree, stream JobEvents back.
+- **Runtime plane** — device agents on users' machines: `forge-runner` (Rust CLI daemon). Pairs into the account, receives jobs over WS, spawns `claude` CLI in a git worktree, streams JobEvents back.
 
 Two principals, one shared policy layer: **user** (JWT) and **device** (long-lived revocable token).
 
 ## Component map
 
 ```
-browser: web-v2 (Next.js) · dev (Tauri)
+browser: web-v2 (Next.js)
    │ REST + WS (user JWT) · MCP (user/device token)
    ▼
 control plane — packages/core (Hono)
@@ -23,7 +23,7 @@ control plane — packages/core (Hono)
    │ WS (device token)
    ▼
 runtime plane — your machine(s)
-   dev (Tauri GUI) OR forge-runner (CLI)
+   forge-runner (CLI daemon)
    └─ forge-runner-core (Rust): pair / ws / keychain / git / job_runner
    └─ spawns `claude` CLI in git worktree  (Claude creds in OS keychain, here)
 ```

@@ -39,6 +39,17 @@ const fakeDevice: Device = {
   createdAt: new Date(),
 };
 
+const humanPat = (tokenId: string) =>
+  ({
+    kind: 'pat',
+    agency: 'human',
+    userId: fakeDevice.ownerId,
+    tokenId,
+    scopes: ['read', 'write'],
+    projectIds: null,
+    boundProjectId: null,
+  }) as const;
+
 describe('forgeVersionTool', () => {
   it('returns version and uptime', async () => {
     const result = (await forgeVersionTool.handler({})) as {
@@ -201,14 +212,7 @@ describe('@forge/core MCP server', () => {
   it('blocks PAT principal on every forge_project_pm action with PM_REQUIRES_DEVICE', async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createMcpServer({
-      principal: {
-        kind: 'pat',
-        userId: fakeDevice.ownerId,
-        tokenId: '00000000-0000-4000-8000-0000000000ab',
-        scopes: ['read', 'write'],
-        projectIds: null,
-        boundProjectId: null,
-      },
+      principal: humanPat('00000000-0000-4000-8000-0000000000ab'),
       device: fakeDevice,
       projectSlug: null,
     });
@@ -245,14 +249,7 @@ describe('@forge/core MCP server', () => {
   it('rejects PAT principal on forge_pm.* tools with PM_REQUIRES_DEVICE', async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createMcpServer({
-      principal: {
-        kind: 'pat',
-        userId: fakeDevice.ownerId,
-        tokenId: '00000000-0000-4000-8000-0000000000aa',
-        scopes: ['read', 'write'],
-        projectIds: null,
-        boundProjectId: null,
-      },
+      principal: humanPat('00000000-0000-4000-8000-0000000000aa'),
       device: fakeDevice,
       projectSlug: null,
     });

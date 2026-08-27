@@ -7,7 +7,7 @@ import { oauthAccounts } from '../../db/schema.js';
 import { isEnabled } from '../../lib/feature-flags.js';
 import { type AuthVars, requireAuth } from '../../middleware/auth.js';
 import { handleCallback, handleStart } from './handler.js';
-import { type ProviderId, getEnabledProviders, toPublic } from './providers.js';
+import { getEnabledProviders, type ProviderId, toPublic } from './providers.js';
 
 export const oauthRoutes = new Hono<{ Variables: AuthVars }>();
 

@@ -188,6 +188,7 @@ describe('forge_agent_sessions.get', () => {
       return forgeAgentSessionsGetTool({
         principal: {
           kind: 'pat',
+          agency: 'human' as const,
           userId: OWNER_ID,
           tokenId: '88888888-8888-4888-8888-888888888888',
           scopes: ['read', 'write'],

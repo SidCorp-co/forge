@@ -8,14 +8,14 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
-  type TestDatabase,
   createTestDevice,
   createTestProject,
   createTestUser,
   setupTestDatabase,
+  type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
 
@@ -26,6 +26,7 @@ type Mods = {
   pickNextDispatchableJobForProject: typeof import('../../src/jobs/dispatch-gates.js').pickNextDispatchableJobForProject;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   DEFAULT_MAX_CONCURRENT_ISSUES: typeof import('../../src/jobs/dispatch-gates.js').DEFAULT_MAX_CONCURRENT_ISSUES;
+  assertDispatchable: typeof import('../../src/jobs/dispatch-gates.js').assertDispatchable;
 };
 
 describe('ISS-162 stateless-gates picker E2E', () => {
@@ -463,6 +464,56 @@ describe('ISS-162 stateless-gates picker E2E', () => {
       await insertJob(project.id, { type: 'pm', issueId });
       const result = await mods.pickNextDispatchableJobForProject(project.id);
       expect(result).toBeNull();
+    });
+  });
+
+  // cm:guard each case here pairs a column in `fresh_capable_runners` with the same column in runners/select.ts — a clause present in only one of the two makes the picker offer a job the selector then refuses, and the job spins `queued` for days with no gate reason any UI can show (measured 2026-08-14: 11 jobs, 5 projects, 6-22 days). Deleting a case re-opens that deadlock for its column.
+  describe('Layer 5 — runner health mirrors runners/select.ts', () => {
+    const UNHEALTHY: { label: string; patch: (id: string) => SQL }[] = [
+      {
+        label: 'auth-limited (rate_limited_until stays NULL — no reset to wait for)',
+        patch: (id) => sql`UPDATE runners SET limit_reason = 'auth' WHERE id = ${id}`,
+      },
+      {
+        label: 'quarantined by the failure breaker',
+        patch: (id) =>
+          sql`UPDATE runners SET quarantined_until = now() + interval '1 hour' WHERE id = ${id}`,
+      },
+      {
+        label: 'workspace never finished provisioning',
+        patch: (id) =>
+          sql`UPDATE runners SET provision_status = 'needs_manual_setup' WHERE id = ${id}`,
+      },
+    ];
+
+    for (const { label, patch } of UNHEALTHY) {
+      it(`starves the pick when the only runner is ${label}`, async () => {
+        const { owner, project } = await seedProject();
+        const runnerId = await seedFreshRunner(project.id, owner.id);
+        const issueId = await insertIssue(project.id);
+        const jobId = await insertJob(project.id, { issueId });
+
+        expect((await mods.pickNextDispatchableJobForProject(project.id))?.id).toBe(jobId);
+
+        await harness.db.execute(patch(runnerId));
+
+        expect(await mods.pickNextDispatchableJobForProject(project.id)).toBeNull();
+        const barrier = await mods.assertDispatchable(jobId);
+        expect(barrier).toMatchObject({ ok: false, reason: 'runner_stale' });
+      });
+    }
+
+    it('keeps a legacy runner with provision_status NULL eligible', async () => {
+      const { owner, project } = await seedProject();
+      await seedFreshRunner(project.id, owner.id);
+      const issueId = await insertIssue(project.id);
+      const jobId = await insertJob(project.id, { issueId });
+
+      const rows = (await harness.db.execute(
+        sql`SELECT count(*)::int AS n FROM runners WHERE project_id = ${project.id} AND provision_status IS NULL`,
+      )) as unknown as { n: number }[];
+      expect(rows[0]?.n).toBe(1);
+      expect((await mods.pickNextDispatchableJobForProject(project.id))?.id).toBe(jobId);
     });
   });
 });

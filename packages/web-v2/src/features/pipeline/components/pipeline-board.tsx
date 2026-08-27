@@ -20,7 +20,7 @@ import {
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { formatApiError } from "@/lib/api/error";
-import { statusLabel as issueStatusLabel } from "@/features/issues/derive";
+import { useStatusLabeller } from "@/features/issues/vocabulary";
 import type { IssueStatus } from "@/features/issues/types";
 import {
   formatUsd,
@@ -54,6 +54,7 @@ interface Selection {
 export function PipelineBoard({ scope, embedded = false, canWrite = true }: PipelineBoardProps) {
   const { projectId, slug } = scope;
   const [selected, setSelected] = useState<Selection | null>(null);
+  const labelStatus = useStatusLabeller();
 
   // Live updates: this project's room invalidates the board's queries.
   useRoom(projectRoom(projectId));
@@ -127,7 +128,7 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
                   : issueStatusToStatusKey(issue.status);
                 const statusLabel = run
                   ? undefined
-                  : issueStatusLabel(issue.status as IssueStatus);
+                  : labelStatus(issue.status as IssueStatus);
                 return (
                   <KanbanCard
                     key={issue.id}

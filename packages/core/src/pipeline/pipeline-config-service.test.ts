@@ -256,3 +256,98 @@ describe('isBaseBranchStampable', () => {
     ).toBe(true);
   });
 });
+
+describe('updatePipelineConfig — STAGE_POOL_UNKNOWN_RUNNER (per-state runner pool)', () => {
+  const PROJECT = '00000000-0000-0000-0000-000000000001';
+  const DEVICE_OK = '11111111-1111-4111-8111-111111111111';
+  const DEVICE_MISSING = '22222222-2222-4222-8222-222222222222';
+
+  // cm:why a pool naming a device with no runner on the project produces a job nothing can place — queued forever while the fleet reads healthy — so the write is the only moment an operator can be told about the typo
+  it('rejects a pool naming a device with no runner on this project', async () => {
+    pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
+    pushSelect([{ deviceId: DEVICE_OK }]);
+
+    await expect(
+      updatePipelineConfig({
+        projectId: PROJECT,
+        patch: { states: { developed: { deviceIds: [DEVICE_OK, DEVICE_MISSING] } } } as never,
+      }),
+    ).rejects.toMatchObject({
+      name: 'PipelineConfigError',
+      code: 'STAGE_POOL_UNKNOWN_RUNNER',
+      details: {
+        stagesWithUnknownDevices: [{ stage: 'developed', deviceIds: [DEVICE_MISSING] }],
+      },
+    });
+  });
+
+  it('accepts a pool whose every device has a runner on this project', async () => {
+    pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
+    pushSelect([{ deviceId: DEVICE_OK }]);
+    pushSelect([
+      { agentConfig: { pipelineConfig: { states: { developed: { deviceIds: [DEVICE_OK] } } } } },
+    ]);
+
+    const result = await updatePipelineConfig({
+      projectId: PROJECT,
+      patch: { states: { developed: { deviceIds: [DEVICE_OK] } } } as never,
+    });
+    expect(result.pipelineConfig.states?.developed?.deviceIds).toEqual([DEVICE_OK]);
+  });
+});
+
+describe('updatePipelineConfig — AUTONOMOUS_FACTS_MISSING', () => {
+  const PROJECT = '00000000-0000-0000-0000-000000000001';
+
+  it('refuses the switch to autonomous while a required project fact is unanswered', async () => {
+    pushSelect([{ agentConfig: { projectFacts: { 'build-commands': 'pnpm build' } } }]);
+
+    await expect(
+      updatePipelineConfig({ projectId: PROJECT, patch: { mode: 'autonomous' } }),
+    ).rejects.toMatchObject({
+      name: 'PipelineConfigError',
+      code: 'AUTONOMOUS_FACTS_MISSING',
+      details: { missing: ['test-commands'] },
+    });
+    expect(dbExecute).not.toHaveBeenCalled();
+  });
+
+  it('allows the switch once the contract is answered', async () => {
+    const facts = { 'build-commands': 'pnpm build', 'test-commands': 'pnpm test' };
+    pushSelect([{ agentConfig: { projectFacts: facts } }]);
+    pushSelect([{ agentConfig: { pipelineConfig: { mode: 'autonomous' }, projectFacts: facts } }]);
+
+    const result = await updatePipelineConfig({
+      projectId: PROJECT,
+      patch: { mode: 'autonomous' },
+    });
+
+    expect(result.pipelineConfig.mode).toBe('autonomous');
+  });
+
+  // cm:guard the gate must not fire on patches that leave the mode alone, or a project already running autonomous can never change any other setting again
+  it('leaves an unrelated patch alone on a project with no facts at all', async () => {
+    pushSelect([{ agentConfig: { pipelineConfig: { mode: 'autonomous' } } }]);
+    pushSelect([{ agentConfig: { pipelineConfig: { mode: 'autonomous', autoProdDeploy: true } } }]);
+
+    const result = await updatePipelineConfig({
+      projectId: PROJECT,
+      patch: { autoProdDeploy: true },
+    });
+
+    expect(result.pipelineConfig.autoProdDeploy).toBe(true);
+  });
+
+  // cm:edge contract -> packages/core/src/skills/lock.ts — this schema strips unknown keys, so a lock that round-trips here is the only proof the Phase 1a lock is reachable through the typed surface at all
+  it('round-trips lockedSkills instead of stripping it', async () => {
+    pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
+    pushSelect([{ agentConfig: { pipelineConfig: { lockedSkills: ['forge-drive'] } } }]);
+
+    const result = await updatePipelineConfig({
+      projectId: PROJECT,
+      patch: { lockedSkills: ['forge-drive'] },
+    });
+
+    expect(result.pipelineConfig.lockedSkills).toEqual(['forge-drive']);
+  });
+});

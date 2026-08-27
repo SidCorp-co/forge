@@ -12,7 +12,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { integrationEnvironments } from '../db/schema.js';
-import { type RotatingProvider, isRotatingProvider, mergeRotatedSecrets } from './rotation.js';
+import { isRotatingProvider, mergeRotatedSecrets, type RotatingProvider } from './rotation.js';
 import { assertVaultConfigured, badRequest } from './route-helpers.js';
 
 export const environmentSchema = z.enum(integrationEnvironments);
@@ -153,6 +153,26 @@ const rocketchatSecretsSchema = z.object({
   userId: z.string().min(1).max(200),
 });
 
+// cm:why the release channel `agent` is declared here rather than left as free-text: the REST create path validates through the discriminated union below, so a provider absent from it cannot be created at all — `provider` being a `text` column only means no MIGRATION is needed. It carries no credential and has no adapter because nothing is integrated: the deploy is the project's own script, run by the release session on a box that already holds the key.
+const agentReleaseVerifyProbeSchema = z.object({
+  url: z.string().url().max(500),
+  commitPath: z.string().min(1).max(200).optional(),
+});
+
+const agentReleaseConfigSchema = z.object({
+  /** Matched against `runners.labels`; only those boxes may run the release. */
+  releaseRunnerLabel: z.string().min(1).max(60).optional(),
+  verify: z
+    .object({
+      probes: z.array(agentReleaseVerifyProbeSchema).min(1).max(10),
+      timeoutSeconds: z.number().int().min(10).max(3600).optional(),
+      stableReads: z.number().int().min(1).max(10).optional(),
+    })
+    .optional(),
+  /** What to do when a deploy replaces a working build with a dead one. */
+  rollback: z.string().max(4000).optional(),
+});
+
 // Discriminated on `provider` so each provider validates its own config +
 // secrets shape. `environment` defaults to 'prod' for postman (it has no
 // staging/prod split, but the binding column + unique index require a value).
@@ -200,6 +220,14 @@ export const createSchema = z.discriminatedUnion('provider', [
     environment: environmentSchema.default('prod'),
     config: rocketchatConfigBase,
     secrets: rocketchatSecretsSchema,
+    orgId: z.uuid().optional(),
+  }),
+  z.object({
+    provider: z.literal('agent'),
+    environment: environmentSchema.default('prod'),
+    config: agentReleaseConfigSchema,
+    // cm:guard NO secrets, ever. The whole point of this channel is that the production credential stays on the runner box: a deploy key in Forge would put every project's production behind one decryption path, which is the blast radius `docs/modules/issues-pipeline/release-gate.md` refuses under "Not doing".
+    secrets: z.object({}).strict().default({}),
     orgId: z.uuid().optional(),
   }),
 ]);

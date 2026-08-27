@@ -40,12 +40,14 @@ import { AttachmentList } from "./attachment-list";
 // staged client-side. Office/data types (docx, csv, xls, xlsx) are allowed.
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_FILES = 10;
+// cm:edge lockstep -> packages/core/src/comments/attachment-service.ts — this set exists only to reject before an upload round-trip, so a mime core accepts and this omits is invisible: the picker silently filters the file and the person is told the type is unsupported, while an agent posting the same file through forge_uploads succeeds. `image/svg+xml` is knowingly still missing here — see the note on the issue-side twin.
 const ALLOWED_MIMES = new Set([
   "image/png",
   "image/jpeg",
   "image/gif",
   "image/webp",
   "application/pdf",
+  "text/html",
   "text/plain",
   "text/markdown",
   "text/csv",
@@ -54,7 +56,7 @@ const ALLOWED_MIMES = new Set([
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
 const ACCEPT_ATTR =
-  "image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.md,.csv,.docx,.xls,.xlsx";
+  "image/png,image/jpeg,image/gif,image/webp,application/pdf,text/html,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.png,.jpg,.jpeg,.gif,.webp,.pdf,.html,.txt,.md,.csv,.docx,.xls,.xlsx";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

@@ -1,13 +1,14 @@
-// handoff-test ISS marker
+// The composition root: mount every domain's routes, run the start sequence, serve, wind down.
+
+// cm:guard splitting this by responsibility (app / boot / shutdown) is NOT free and was measured on 2026-08-25: it costs +26 on `.arch.baseline.json`'s frozen total, which `improves: down` refuses, so the build blocks and the only ways past it are widening the gate or reverting. The extracted halves reach strict SUBSETS of what the remaining half reaches — boot 18 and shutdown 9 are both inside app's 47 — so the split adds no coupling at all and the whole rise is per-file counting of the same edges two and three times. The cheapest shape (shutdown alone) still costs +8; there is no free one. Exit condition and the evidence: SidCorp-co/archmap#1 (`scope: "module"` on the fan-out evaluator).
+// cm:guard FIRST import in this file, and it must stay first. ESM evaluates every imported module before any statement in this one, so an `initSentry()` call placed among the imports runs after all of them — which is what this file did until 2026-08-25, leaving import-time crashes unreported by the very thing meant to report them. Module evaluation follows import order, so only position buys the guarantee.
+// cm:edge ordering -> packages/core/src/observability/sentry-init.ts — that module's whole job is to be imported before the rest; moving this line down, or letting a formatter sort it down, silently restores the bug
+import './observability/sentry-init.js';
 import type { Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-// Sentry init runs before any other module that might throw at import time —
-// see observability/sentry.ts for the opt-in / scrubbing contract.
-import { initSentry } from './observability/sentry.js';
-initSentry();
 import { adminAggregateRoutes } from './admin/aggregate-routes.js';
 import { adminAlertRoutes } from './admin/alert-routes.js';
 import { pipelineHealthAdminRoutes } from './admin/pipeline-health-routes.js';
@@ -17,7 +18,6 @@ import { agentSessionRoutes } from './agent-sessions/routes.js';
 import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cron.js';
 import { agentRoutes } from './agents/routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
-import { pairingRoutes } from './auth/desktop/pairing-routes.js';
 import { devForceVerifyRoutes } from './auth/dev-force-verify.js';
 import { loginRoutes } from './auth/login.js';
 import { logoutRoutes } from './auth/logout.js';
@@ -28,10 +28,10 @@ import { reauthRoutes } from './auth/reauth.js';
 import { refreshRoutes } from './auth/refresh.js';
 import { authRoutes } from './auth/register.js';
 import { verifyRoutes } from './auth/verify.js';
-import { chatLogRoutes } from './chat-logs/routes.js';
 import { bootstrapChatProviders } from './chat/providers/bootstrap.js';
 import { chatRoutes } from './chat/routes.js';
 import { chatSessionRoutes } from './chat/sessions-routes.js';
+import { chatLogRoutes } from './chat-logs/routes.js';
 import { commentRoutes } from './comments/routes.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
@@ -48,7 +48,7 @@ import { deviceSkillRoutes, deviceSkillStatusRoutes } from './devices/skills-rou
 import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
-import { registerFeedbackNormalizer } from './feedback/normalizer.js';
+import { registerEagerSubscribers } from './eager-subscribers.js';
 import { feedbackReportRoutes } from './feedback/routes.js';
 import { guideRoutes } from './guides/routes.js';
 import { improvementMessageRoutes } from './improvement-messages/routes.js';
@@ -74,7 +74,7 @@ import { issueExtrasRoutes } from './issues/extras-routes.js';
 import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
 import { searchRoutes } from './issues/search.js';
 import { transitionRoutes } from './issues/transition.js';
-import { registerDesktopPairingCleanup } from './jobs/desktop-pairing-cleanup.js';
+import { registerDispatchSubscribers } from './jobs/dispatch-subscribers.js';
 import {
   registerDispatcher,
   registerPmDispatcher,
@@ -89,9 +89,9 @@ import { registerPgBossHealthProbe } from './jobs/pgboss-health.js';
 import { registerRetentionSweeper } from './jobs/retention-sweeper.js';
 import { jobProjectRoutes, jobRoutes } from './jobs/routes.js';
 import { registerStaleDetector } from './jobs/stale-detector.js';
-import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
 import { knowledgeIngestRoutes } from './knowledge/ingest-routes.js';
 import { knowledgeRoutes } from './knowledge/routes.js';
+import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
 import { isEnabled } from './lib/feature-flags.js';
 import { logger } from './logger.js';
@@ -99,20 +99,14 @@ import { mcpHandler } from './mcp/handler.js';
 import { meAttentionRoutes } from './me/attention-routes.js';
 import { meRecentChangesRoutes } from './me/recent-changes-routes.js';
 import { registerCandidatesDecay } from './memory/candidates-decay.js';
-import {
-  registerCandidatesObserver,
-  registerCandidatesWorker,
-} from './memory/candidates-observer.js';
+import { registerCandidatesWorker } from './memory/candidates-observer.js';
 import { memoryCandidatesRoutes } from './memory/candidates-routes.js';
 import {
   registerMemoryConsolidation,
-  registerMemoryReconcileTrigger,
   registerMemoryReconcileWorker,
 } from './memory/consolidation.js';
 import { registerMemoryDecay } from './memory/decay.js';
 import { registerEmbeddingBackfill } from './memory/embedding-backfill.js';
-import { registerMemoryExtraction } from './memory/extraction.js';
-import { registerMemoryIndexer } from './memory/indexer.js';
 import { memoryListRoutes } from './memory/list-routes.js';
 import { memorySearchRoutes } from './memory/search-routes.js';
 import { memoryWriteRoutes } from './memory/write-routes.js';
@@ -120,10 +114,7 @@ import { projectMetricsRoutes } from './metrics/routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
-import { requireDevice } from './middleware/require-device.js';
 import { requirePatOrDevice } from './middleware/require-pat-or-device.js';
-import { registerNotifyMentionsSubscriber } from './notifications/notify-mentions.js';
-import { registerTransitionNotifications } from './notifications/notify-transitions.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { orgInvitationRoutes } from './orgs/invitations-routes.js';
 import { orgRoutes } from './orgs/routes.js';
@@ -133,22 +124,23 @@ import {
   pipelineAnalyticsRoutes,
   projectCostAnalyticsRoutes,
 } from './pipeline/analytics-routes.js';
-import { registerCiFixPatternLearner } from './pipeline/ci-fix-pattern-learn.js';
+import { registerAnswerResume } from './pipeline/answer-resume.js';
 import { registerDecompositionSubscribers } from './pipeline/decomposition-subscribers.js';
 import { hooks } from './pipeline/hooks.js';
-import { backfillMissingSkillPauses } from './pipeline/missing-skill-backfill.js';
+import { runMissingSkillPauseBackfillIfRequested } from './pipeline/missing-skill-backfill.js';
 import { registerMissingSkillResume } from './pipeline/missing-skill-resume.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
 import { registerOutboxWorker, stopOutboxWorker } from './pipeline/outbox-worker.js';
+import { registerPhaseJournalBackfill } from './pipeline/phase-journal-backfill.js';
+import { registerPhaseJournalClose } from './pipeline/phase-journal-close.js';
 import { registerReconciler } from './pipeline/reconciler.js';
 import { pipelineRegistryRoutes } from './pipeline/registry-routes.js';
 import { registerReleaseCompletedSubscriber } from './pipeline/release-coolify.js';
 import { pipelineRunProjectRoutes, pipelineRunReadRoutes } from './pipeline/runs-read-routes.js';
 import { pipelineRunRoutes } from './pipeline/runs-routes.js';
-import { registerPipelineSentryBreadcrumbs } from './pipeline/sentry-breadcrumbs.js';
 import { stepHandoffRoutes } from './pipeline/step-handoff-routes.js';
-import { registerActivitySubscribers } from './pipeline/subscribers.js';
 import { registerPipelineSweeper } from './pipeline/sweeper.js';
+import { verdictRoutes } from './pipeline/verdict-routes.js';
 import { registerPmCadenceTicker, unregisterPmCadenceTicker } from './pm/cadence.js';
 import {
   registerPmEscalationSweeper,
@@ -156,7 +148,6 @@ import {
 } from './pm/escalation-sweeper.js';
 import { registerPmQueuePressureSweeper } from './pm/queue-pressure.js';
 import { pmRoutes } from './pm/routes.js';
-import { registerPmSubscribers } from './pm/subscribers.js';
 import { gitCredentialRoutes } from './projects/git-credential-routes.js';
 import { projectHealthRoutes } from './projects/health-routes.js';
 import { invitationRoutes } from './projects/invitations-routes.js';
@@ -165,7 +156,6 @@ import { projectRoutes } from './projects/routes.js';
 import { uxContractProjectRoutes, uxContractRuleRoutes } from './projects/ux-contract-routes.js';
 import { promptRoutes } from './prompt/routes.js';
 import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
-import { registerReleaseBatchClaimSubscriber } from './release-batch/claim-subscriber.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
 import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
 import { runnerCallbackRoutes, runnerRoutes } from './runners/routes.js';
@@ -188,7 +178,6 @@ import { usageRecordRoutes } from './usage-records/routes.js';
 import { webhookInboundRoutes } from './webhooks/inbound-routes.js';
 import { registerOutboundDeliveryWorker } from './webhooks/outbound.js';
 import { registerWebhookSubscribers } from './webhooks/subscribers.js';
-import { registerWsBroadcastSubscribers } from './ws/broadcast-subscribers.js';
 import { attachWs, closeWs, isWsListening } from './ws/server.js';
 
 export const app = new Hono<{ Variables: RequestIdVars }>();
@@ -199,19 +188,9 @@ app.use('*', requestLogger());
 // Cookie-based auth from browsers requires Access-Control-Allow-Credentials
 // with an explicit origin (never `*`). `CORS_ORIGINS` is a comma-separated
 // allow-list; requests from unlisted origins receive no CORS headers.
-//
-// Tauri desktop client origins are added unconditionally — they're part of
-// the product, not external embeds. Tauri 2 webview uses tauri://localhost
-// on macOS/Linux and https://tauri.localhost on Windows. Without this,
-// every fetch from the Tauri webview to /api/* fails CORS even though the
-// app is "us" — operators would have to learn an undocumented env var.
-const CORS_ORIGINS = [
-  ...env.CORS_ORIGINS.split(',')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0),
-  'tauri://localhost',
-  'https://tauri.localhost',
-];
+const CORS_ORIGINS = env.CORS_ORIGINS.split(',')
+  .map((s) => s.trim())
+  .filter((s) => s.length > 0);
 // ISS-161 — /mcp is reachable from the browser (settings/mcp Test Connection
 // panel) so the same CORS allow-list must cover it. `X-Forge-Project-Slug`
 // is added to allowHeaders so the preflight passes for the per-project
@@ -297,27 +276,8 @@ export async function runShutdown(
   return 0;
 }
 
-registerActivitySubscribers(hooks);
-registerPipelineSentryBreadcrumbs(hooks);
-registerWsBroadcastSubscribers(hooks);
-registerMemoryIndexer(hooks);
-registerMemoryReconcileTrigger(hooks);
-registerCiFixPatternLearner(hooks);
-registerMemoryExtraction(hooks);
-registerNotifyMentionsSubscriber(hooks);
-registerTransitionNotifications(hooks);
-registerPmSubscribers(hooks);
-registerCandidatesObserver(hooks);
-registerFeedbackNormalizer(hooks);
-registerReleaseBatchClaimSubscriber(hooks);
+registerEagerSubscribers(hooks);
 
-// MCP endpoint authentication (ISS-202 + ISS-150).
-// Accepts either a device token (legacy desktop path) or a Personal Access
-// Token (`forge_pat_*`) so non-device MCP clients (Cursor, Cline, Zed,
-// web-only users) can authenticate with per-tenant scoping. The dispatcher
-// middleware sets `c.get('principal')` to the resolved union type for the
-// handler. Desktop continues to send `Authorization: Bearer <deviceToken>`
-// with no client-side change.
 app.use('/mcp', requirePatOrDevice());
 app.post('/mcp', mcpHandler);
 app.get('/mcp', mcpHandler);
@@ -367,9 +327,6 @@ app.route('/api', patRoutes);
 // ISS-314 — OAuth/OIDC (GitHub + Google + generic OIDC). Internally gated
 // by `socialAuth` feature flag; safe to mount unconditionally.
 app.route('/api/auth', oauthRoutes);
-// ADR 0019 — Desktop sign-in via pairing code (Tauri client). Internally
-// gated by `desktopPairing` feature flag; safe to mount unconditionally.
-app.route('/api/auth', pairingRoutes);
 // projectHealthRoutes mounts /health (static) and must register before
 // projectRoutes which has GET /:id with a z.uuid() validator that would
 // 400-reject the literal "health" segment.
@@ -429,6 +386,7 @@ app.route('/api/jobs', jobRoutes);
 app.route('/api/jobs', jobEventsRoutes);
 app.route('/api/jobs', jobEventsListRoutes);
 app.route('/api/jobs', jobLifecycleDeviceRoutes);
+app.route('/api/jobs', verdictRoutes);
 app.route('/api/jobs', jobLifecycleUserRoutes);
 app.route('/api/webhooks', webhookInboundRoutes);
 app.route('/api/memory', memorySearchRoutes);
@@ -546,8 +504,8 @@ if (isMain) {
   await registerDevicePrune();
   await registerRunnerStaleDetector();
   await registerRetentionSweeper();
-  await registerDesktopPairingCleanup();
   await registerPipelineSweeper();
+  await registerPhaseJournalBackfill();
   await registerPgBossHealthProbe();
   await registerOutboundDeliveryWorker();
   await registerScheduleTicker();
@@ -557,23 +515,16 @@ if (isMain) {
   await registerPmEscalationSweeper();
   registerWebhookSubscribers(hooks);
   registerPipelineOrchestrator(hooks);
+  registerDispatchSubscribers(hooks);
   registerDecompositionSubscribers(hooks);
+  registerAnswerResume(hooks);
+  registerPhaseJournalClose(hooks);
   // ISS-238 — resume paused runs whose missing skill was just registered.
   // Subscriber must register AFTER registerPipelineOrchestrator so the
   // re-enqueue path it triggers walks through the orchestrator's hooks.
   registerMissingSkillResume(hooks);
 
-  // ISS-238 — opt-in backfill for projects that already have stuck runs
-  // looping the reconciler rescue path. Runs once at boot; safe to re-run
-  // (the underlying pause helper is idempotent via WHERE status='running').
-  if (process.env.FORGE_BACKFILL_MISSING_SKILL_PAUSES === '1') {
-    try {
-      const result = await backfillMissingSkillPauses();
-      logger.info(result, '@forge/core: missing-skill backfill complete');
-    } catch (err) {
-      logger.error({ err }, '@forge/core: missing-skill backfill failed');
-    }
-  }
+  await runMissingSkillPauseBackfillIfRequested();
 
   // ISS-196 — must run AFTER subscribers are wired so the worker's first
   // drain hits a populated bus. Outbox worker polls the transactional

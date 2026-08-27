@@ -31,11 +31,11 @@ import type { SQL } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import {
   type AgentSessionStatus,
-  type JobStatus,
-  type PipelineRunStatus,
   agentSessions,
+  type JobStatus,
   jobs,
   kernelTransitions,
+  type PipelineRunStatus,
   pipelineRuns,
 } from '../db/schema.js';
 import { logger } from '../logger.js';

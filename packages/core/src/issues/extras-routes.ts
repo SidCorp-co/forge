@@ -1,13 +1,12 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
-import { sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import {
-  type IssueStatus,
   activityLog,
+  type IssueStatus,
   issuePriorities,
   issueStatuses,
   issues,
@@ -83,7 +82,8 @@ type BatchSkipReason =
   | 'not_found'
   | 'illegal_transition'
   | 'no_op'
-  | 'reopen_cap_exceeded'
+  | 'transition_reason_required'
+  | 'waiting_kind_required'
   | 'stale'
   | 'plan_required'
   | 'no_work_evidence';
@@ -91,7 +91,8 @@ type BatchSkipReason =
 const BATCH_SKIP_BY_CODE: Record<TransitionErrorCode, BatchSkipReason> = {
   NO_OP: 'no_op',
   ILLEGAL_TRANSITION: 'illegal_transition',
-  REOPEN_CAP_EXCEEDED: 'reopen_cap_exceeded',
+  TRANSITION_REASON_REQUIRED: 'transition_reason_required',
+  WAITING_KIND_REQUIRED: 'waiting_kind_required',
   STALE_TRANSITION: 'stale',
   PLAN_REQUIRED: 'plan_required',
   NO_WORK_EVIDENCE: 'no_work_evidence',
@@ -173,16 +174,9 @@ issueExtrasRoutes.patch(
       accessMap.set(projectId, state);
     }
 
-    // Track terminal transitions across the batch so we can fan out the
-    // Layer-2 dispatch tick once at the end (parent project + cross-project
-    // children via outgoing `kind='blocks'` edges). A single inArray query
-    // for the children read keeps the cost flat regardless of N.
-    const terminalTransitions: Array<{
-      issueId: string;
-      projectId: string;
-      issSeq: number;
-      at: Date;
-    }> = [];
+    // cm:why collected across the whole batch and fanned out ONCE at the end — the children read is a single inArray, so the cost stays flat in N rather than one query per transitioned issue
+    // cm:guard derive this from the fan-out's own parameter type, never restate it — a local copy is how the batch path silently stops carrying a field the single-issue path added
+    const terminalTransitions: Parameters<typeof triggerTerminalDispatch>[0] = [];
 
     for (const row of rows) {
       const access = accessMap.get(row.projectId);
@@ -227,6 +221,7 @@ issueExtrasRoutes.patch(
                 projectId: row.projectId,
                 issSeq: row.issSeq,
                 at: transitioned.updatedAt,
+                ...(toStatus === 'dropped' ? { dependents: transitioned.unblockedDependents } : {}),
               });
             }
           } catch (err) {
@@ -470,9 +465,9 @@ issueExtrasRoutes.get(
 
     let cursor = 0;
     while (cursor < rows.length) {
-      const issueId = rows[cursor]!.issueId;
+      const issueId = rows[cursor]?.issueId;
       const group: Row[] = [];
-      while (cursor < rows.length && rows[cursor]!.issueId === issueId) {
+      while (cursor < rows.length && rows[cursor]?.issueId === issueId) {
         group.push(rows[cursor]!);
         cursor++;
       }

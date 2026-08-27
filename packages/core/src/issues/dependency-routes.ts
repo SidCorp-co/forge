@@ -6,13 +6,14 @@
  */
 
 import { zValidator } from '@hono/zod-validator';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { issueDependencies, issueDependencyKinds, issues, projectMembers } from '../db/schema.js';
+import { issueDependencies, issueDependencyKinds, issues } from '../db/schema.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -97,12 +98,9 @@ issueDependencyRoutes.get(
       .limit(1);
     if (!issue) throw notFound('issue not found');
 
-    const [member] = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(and(eq(projectMembers.projectId, issue.projectId), eq(projectMembers.userId, userId)))
-      .limit(1);
-    if (!member) throw forbidden('not a project member');
+    // cm:guard resolve the role through `loadProjectAccess`, never by reading `project_members` directly: an org admin/owner holds project `admin` on every project their org owns WITHOUT a membership row (`orgDerivedProjectRole`), so a raw row lookup 403s them. Measured on forge-beta 2026-08-23: 25 of 25 issues on the Issues page, 50 failed requests per load, for the org's own admin.
+    const access = await loadProjectAccess(issue.projectId, userId);
+    if (!access.role) throw forbidden('not a project member');
 
     // Join both endpoints of each edge so the UI can render a friendly,
     // clickable `ISS-<seq>` badge (with title/status) for the OTHER side
@@ -196,12 +194,8 @@ issueDependencyRoutes.post(
       );
     }
 
-    const [member] = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(and(eq(projectMembers.projectId, a.projectId), eq(projectMembers.userId, userId)))
-      .limit(1);
-    if (!member) throw forbidden('not a project member');
+    const access = await loadProjectAccess(a.projectId, userId);
+    assertProjectRole(access, 'member', 'not a project member');
 
     if (kind === 'blocks') {
       const cycle = await detectCycle(toIssueId, fromIssueId);
@@ -313,12 +307,8 @@ issueDependencyRoutes.delete(
     // Membership check BEFORE the EDGE_MISMATCH check — otherwise a non-member
     // who pairs an arbitrary `:edgeId` with their own `:id` learns whether the
     // edge exists (404 vs 400 vs 403 leaks state).
-    const [member] = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(and(eq(projectMembers.projectId, edge.projectId), eq(projectMembers.userId, userId)))
-      .limit(1);
-    if (!member) throw forbidden('not a project member');
+    const access = await loadProjectAccess(edge.projectId, userId);
+    assertProjectRole(access, 'member', 'not a project member');
 
     if (edge.fromIssueId !== issueId && edge.toIssueId !== issueId) {
       throw badRequest({ message: 'edge does not involve this issue' }, 'EDGE_MISMATCH');

@@ -1,5 +1,5 @@
 import { env } from '../config/env.js';
-import { EmbeddingUnavailableError, EmbeddingsClient } from './client.js';
+import { EmbeddingsClient, EmbeddingUnavailableError } from './client.js';
 
 let singleton: EmbeddingsClient | null = null;
 
@@ -35,4 +35,4 @@ export function resetEmbeddingsClient(client?: EmbeddingsClient): void {
   singleton = client ?? null;
 }
 
-export { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError, EmbeddingsClient } from './client.js';
+export { EMBEDDING_UNAVAILABLE, EmbeddingsClient, EmbeddingUnavailableError } from './client.js';

@@ -1,14 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../config/env.js', () => ({
-  env: { NODE_ENV: 'test' },
-}));
+vi.mock('../config/env.js', () => ({ env: { NODE_ENV: 'test' } }));
 
 const dispatchTick = vi.fn(async (_projectId: string) => {});
 
-vi.mock('../jobs/dispatch-tick.js', () => ({
-  dispatchTickForProject: (projectId: string) => dispatchTick(projectId),
-}));
+vi.mock('../jobs/dispatch-tick.js', () => ({ dispatchTickForProject: dispatchTick }));
 
 const zeroAxis = { reaped: 0, killRequested: 0, awaitingKill: 0 };
 
@@ -30,6 +26,18 @@ const emitWedgeMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('./wedge.js', () => ({
   emitPipelineWedge: (...args: unknown[]) => emitWedgeMock(...(args as [])),
 }));
+
+const alarmAgedHoldsMock = vi.fn(async (_now?: Date) => ({ alerted: 0 }));
+const alarmChurningIssuesMock = vi.fn(async () => ({ alerted: 0 }));
+const alarmStalledQueuedJobsMock = vi.fn(async (_now?: Date) => ({ alerted: 0 }));
+vi.mock('./inv7-alarms.js', () => ({
+  alarmAgedHolds: (now?: Date) => alarmAgedHoldsMock(now),
+  alarmChurningIssues: () => alarmChurningIssuesMock(),
+  alarmStalledQueuedJobs: (now?: Date) => alarmStalledQueuedJobsMock(now),
+}));
+
+const resumeOrphanedPausesMock = vi.fn(async () => ({ detected: 0, resumed: 0 }));
+vi.mock('./run-pause.js', () => ({ resumeOrphanedPauses: () => resumeOrphanedPausesMock() }));
 
 const detectRetryRescueThresholdsMock = vi.fn(async (_now?: Date) => ({
   detected: 0,
@@ -84,10 +92,7 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-// ISS-639 — parkClosedUnmergedBlockedDependents resolves baseStampable via
-// resolveGateSettings (shared with the dispatch-gates picker/asserter).
-// Mocked here rather than exercising the real select chain (which the rest
-// of this file's `db.select` mock doesn't model with `.limit()`).
+// cm:why mocked rather than exercised: resolveGateSettings ends in `.limit()`, which this file's `db.select` double does not model
 const resolveGateSettingsMock = vi.fn(async (_projectId: string) => ({
   cap: 1,
   baseStampable: true,
@@ -148,8 +153,10 @@ const {
   alarmNeverClaimedDispatches,
   reapOrphanedOneShotRuns,
   reapOrphanedIssueRuns,
+  closeIdleChatSessions,
+  CHAT_IDLE_CLOSE_MS,
   detectStalledDependencies,
-  parkClosedUnmergedBlockedDependents,
+  alarmClosedUnmergedBlockedDependents,
 } = await import('./sweeper.js');
 
 /** Flatten a drizzle `sql` template into its raw text for fragment assertions. */
@@ -217,6 +224,34 @@ describe('runPipelineSweep — retry rescue thresholds', () => {
 
     expect(detectRetryRescueThresholdsMock).toHaveBeenCalledTimes(1);
     expect(result.retryRescueThresholds).toEqual({ detected: 1, notified: 1 });
+  });
+});
+
+describe('runPipelineSweep — watch-only alarm passes', () => {
+  // cm:guard every pass here must stay in the sweep AND in SweepResult — a pass wired into the driver but dropped from the result is invisible to every caller, which is how a defence stops being noticed before it stops working
+  it('runs each alarm pass and exposes its count', async () => {
+    alarmAgedHoldsMock.mockResolvedValueOnce({ alerted: 2 });
+    alarmChurningIssuesMock.mockResolvedValueOnce({ alerted: 1 });
+    alarmStalledQueuedJobsMock.mockResolvedValueOnce({ alerted: 3 });
+
+    const result = await runPipelineSweep();
+
+    expect(alarmAgedHoldsMock).toHaveBeenCalledTimes(1);
+    expect(alarmChurningIssuesMock).toHaveBeenCalledTimes(1);
+    expect(alarmStalledQueuedJobsMock).toHaveBeenCalledTimes(1);
+    expect(result.agedHolds).toEqual({ alerted: 2 });
+    expect(result.churningIssues).toEqual({ alerted: 1 });
+    expect(result.stalledQueuedJobs).toEqual({ alerted: 3 });
+  });
+
+  // cm:guard this pass must stay in the sweep AND in SweepResult — it is the only thing that frees a run paused by a mechanism a later build deleted, and the reopen_cap residue it exists for produced no alarm anywhere for 3 days
+  it('runs the orphaned-pause reaper and exposes its counts', async () => {
+    resumeOrphanedPausesMock.mockResolvedValueOnce({ detected: 2, resumed: 2 });
+
+    const result = await runPipelineSweep();
+
+    expect(resumeOrphanedPausesMock).toHaveBeenCalledTimes(1);
+    expect(result.orphanedPauses).toEqual({ detected: 2, resumed: 2 });
   });
 });
 
@@ -478,6 +513,48 @@ describe('reapOrphanedOneShotRuns (ISS-445 — still an ACTIVE reaper)', () => {
   });
 });
 
+describe('closeIdleChatSessions — quiet chat sessions are closed, not left live', () => {
+  it('is a 2h threshold', () => {
+    expect(CHAT_IDLE_CLOSE_MS).toBe(2 * 60 * 60_000);
+  });
+
+  it('excludes job-linked and schedule.run sessions, and rows that never started', async () => {
+    dbExecute.mockResolvedValueOnce([]);
+    const result = await closeIdleChatSessions(new Date('2026-08-13T00:00:00Z'));
+
+    expect(result.closed).toBe(0);
+    const text = sqlText(dbExecute.mock.calls[0]?.[0]);
+    expect(text).toMatch(/s\.status\s+IN\s*\(\s*'queued'\s*,\s*'running'\s*,\s*'idle'\s*\)/);
+    expect(text).toMatch(/s\.started_at\s+IS\s+NOT\s+NULL/);
+    expect(text).toMatch(/NOT\s+EXISTS[\s\S]*FROM\s+jobs\s+j/);
+    expect(text).toMatch(/schedule\.run/);
+    expect(sessionsWhere).not.toHaveBeenCalled();
+  });
+
+  it('settles a quiet session completed with no failure reason and broadcasts it', async () => {
+    dbExecute.mockResolvedValueOnce([{ id: 'sess-idle' }]);
+    sessionsWhere.mockResolvedValueOnce([
+      { id: 'sess-idle', projectId: 'p1', deviceId: 'd1', status: 'completed' },
+    ]);
+
+    const result = await closeIdleChatSessions(new Date('2026-08-13T00:00:00Z'));
+
+    expect(result.closed).toBe(1);
+    expect(broadcastSessionEventMock).toHaveBeenCalledWith(
+      'sess-idle',
+      'p1',
+      'd1',
+      'agent-session.status',
+      expect.objectContaining({ status: 'completed' }),
+    );
+  });
+
+  it('runs as part of runPipelineSweep and reports the count', async () => {
+    const result = await runPipelineSweep();
+    expect(result.idleChatSessions).toEqual({ closed: 0 });
+  });
+});
+
 describe('reapOrphanedIssueRuns (ISS-461 — issue runs leaked past a terminal issue)', () => {
   it('candidate SELECT scopes to issue runs whose backing issue is terminal, past the age cutoff', async () => {
     dbExecute.mockResolvedValueOnce([]); // no candidates
@@ -647,7 +724,7 @@ describe('detectStalledDependencies — never-clearing gate (ISS-442)', () => {
   });
 });
 
-describe('parkClosedUnmergedBlockedDependents — active unwedge (ISS-639)', () => {
+describe('alarmClosedUnmergedBlockedDependents — alarm only (ISS-639, demoted by RFC 0002)', () => {
   const closedUnmergedRow = {
     job_id: '61111111-1111-4111-8111-111111111111',
     project_id: '62222222-2222-4222-8222-222222222222',
@@ -659,41 +736,31 @@ describe('parkClosedUnmergedBlockedDependents — active unwedge (ISS-639)', () 
     created_by: '64444444-4444-4444-8444-444444444444',
   };
 
-  it('parks the dependent at waiting, comments naming the blocker, and reaps its run', async () => {
+  // cm:guard this pass writes NOTHING but an alarm (RFC 0002 INV-5) — it used to park the dependent at `waiting`, comment, and close the run, and its comment then told the reader to move the issue back to its stage by hand. Assert the absences: `waitingOn` already reports `waiting_on_dep`, so re-adding the park buys no information and costs an intervention per occurrence.
+  it('emits a wedge naming the blocker and touches neither the issue nor the run', async () => {
     resolveGateSettingsMock.mockResolvedValueOnce({ cap: 1, baseStampable: true });
     dbExecute.mockResolvedValueOnce([closedUnmergedRow]);
 
-    const res = await parkClosedUnmergedBlockedDependents(new Date());
+    const res = await alarmClosedUnmergedBlockedDependents(new Date());
 
-    expect(res.parked).toBe(1);
-    expect(applyStatusTransitionMock).toHaveBeenCalledWith(
-      expect.objectContaining({ id: closedUnmergedRow.issue_id, status: 'approved' }),
-      'waiting',
-      { id: closedUnmergedRow.created_by, ownerId: closedUnmergedRow.created_by },
-      { skip: true },
-    );
-    const commentCall = dbInsertValues.mock.calls.find((c) =>
-      (c[0] as { body?: string })?.body?.includes('ISS-41'),
-    );
-    expect(commentCall).toBeDefined();
-    expect(commentCall?.[0]).toMatchObject({
-      issueId: closedUnmergedRow.issue_id,
-      authorId: closedUnmergedRow.created_by,
-      isAi: true,
-    });
-    expect((commentCall?.[0] as { body: string }).body).toContain('Host runtime executor');
-    expect(closeOpenRunForIssueMock).toHaveBeenCalledWith(closedUnmergedRow.issue_id, 'failed');
+    expect(res.alerted).toBe(1);
+    expect(applyStatusTransitionMock).not.toHaveBeenCalled();
+    expect(closeOpenRunForIssueMock).not.toHaveBeenCalled();
+    const wedge = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
+    expect(wedge.issueId).toBe(closedUnmergedRow.issue_id);
+    expect(wedge.summary).toContain('ISS-41');
+    expect(wedge.summary).toContain('Host runtime executor');
+    expect(wedge.nextStep).toContain('dispatches by itself');
   });
 
   it('skips a project whose base branch is structurally unstampable (2026-06-19 fix preserved)', async () => {
     resolveGateSettingsMock.mockResolvedValueOnce({ cap: 1, baseStampable: false });
     dbExecute.mockResolvedValueOnce([closedUnmergedRow]);
 
-    const res = await parkClosedUnmergedBlockedDependents(new Date());
+    const res = await alarmClosedUnmergedBlockedDependents(new Date());
 
-    expect(res.parked).toBe(0);
-    expect(applyStatusTransitionMock).not.toHaveBeenCalled();
-    expect(closeOpenRunForIssueMock).not.toHaveBeenCalled();
+    expect(res.alerted).toBe(0);
+    expect(emitWedgeMock).not.toHaveBeenCalled();
   });
 
   it('caches baseStampable per project across multiple rows (one resolveGateSettings call)', async () => {
@@ -703,17 +770,17 @@ describe('parkClosedUnmergedBlockedDependents — active unwedge (ISS-639)', () 
       { ...closedUnmergedRow, issue_id: '65555555-5555-4555-8555-555555555555' },
     ]);
 
-    const res = await parkClosedUnmergedBlockedDependents(new Date());
+    const res = await alarmClosedUnmergedBlockedDependents(new Date());
 
-    expect(res.parked).toBe(2);
+    expect(res.alerted).toBe(2);
     expect(resolveGateSettingsMock).toHaveBeenCalledTimes(1);
   });
 
-  it('no rows → parked 0, nothing touched', async () => {
+  it('no rows → alerted 0, nothing touched', async () => {
     dbExecute.mockResolvedValueOnce([]);
-    const res = await parkClosedUnmergedBlockedDependents(new Date());
-    expect(res.parked).toBe(0);
-    expect(applyStatusTransitionMock).not.toHaveBeenCalled();
+    const res = await alarmClosedUnmergedBlockedDependents(new Date());
+    expect(res.alerted).toBe(0);
+    expect(emitWedgeMock).not.toHaveBeenCalled();
     expect(resolveGateSettingsMock).not.toHaveBeenCalled();
   });
 
@@ -723,38 +790,33 @@ describe('parkClosedUnmergedBlockedDependents — active unwedge (ISS-639)', () 
       closedUnmergedRow,
       { ...closedUnmergedRow, issue_id: '65555555-5555-4555-8555-555555555555' },
     ]);
-    applyStatusTransitionMock
-      .mockRejectedValueOnce(new Error('boom'))
-      .mockResolvedValueOnce(undefined);
+    emitWedgeMock.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(undefined);
 
-    const res = await parkClosedUnmergedBlockedDependents(new Date());
+    const res = await alarmClosedUnmergedBlockedDependents(new Date());
 
-    expect(res.parked).toBe(1);
-    expect(closeOpenRunForIssueMock).toHaveBeenCalledTimes(1);
+    expect(res.alerted).toBe(1);
   });
 
   it('swallows a query error (best-effort, returns 0)', async () => {
     dbExecute.mockRejectedValueOnce(new Error('boom'));
-    const res = await parkClosedUnmergedBlockedDependents(new Date());
-    expect(res.parked).toBe(0);
+    const res = await alarmClosedUnmergedBlockedDependents(new Date());
+    expect(res.alerted).toBe(0);
   });
 
   it('SQL scopes to the closed-but-unmerged blocker condition, queued past the grace cutoff', async () => {
     dbExecute.mockResolvedValueOnce([]);
-    await parkClosedUnmergedBlockedDependents(new Date());
+    await alarmClosedUnmergedBlockedDependents(new Date());
     const text = sqlText(dbExecute.mock.calls[0]?.[0]);
     expect(text).toMatch(/p\.status\s*=\s*'closed'/);
     expect(text).toMatch(/p\.merged_at\s+IS\s+NULL/);
     expect(text).toMatch(/j\.status\s*=\s*'queued'/);
     expect(text).toMatch(/j\.queued_at\s*<\s*/);
     expect(text).toMatch(/r\.status\s*=\s*'running'/);
-    // Never re-parks an issue already at waiting.
-    expect(text).toMatch(/wi\.status\s*<>\s*'waiting'/);
   });
 
   it('runs as part of runPipelineSweep and reports the count', async () => {
     const result = await runPipelineSweep();
-    expect(result).toHaveProperty('parkedClosedUnmerged');
-    expect(result.parkedClosedUnmerged.parked).toBe(0); // default mock: no candidates
+    expect(result).toHaveProperty('closedUnmergedAlarms');
+    expect(result.closedUnmergedAlarms.alerted).toBe(0); // default mock: no candidates
   });
 });

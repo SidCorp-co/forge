@@ -12,14 +12,14 @@
  */
 
 import argon2 from 'argon2';
-import { type InferSelectModel, and, eq, gt, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, gt, type InferSelectModel, isNull, or, sql } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens } from '../db/schema.js';
 import {
-  PAT_PREFIX_LEN,
   generatePatPlaintext,
   isPatValid,
+  PAT_PREFIX_LEN,
   patEnvForNodeEnv,
   patPrefixOf,
 } from './pat-format.js';

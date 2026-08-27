@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  PIPELINE_CONFIG_DEFAULTS,
-  STEP_TOGGLE_KEYS,
   defaultStatesConfig,
   mergePipelineConfig,
+  PIPELINE_CONFIG_DEFAULTS,
   pipelineConfigPatchSchema,
   pipelineConfigSchema,
+  STEP_TOGGLE_KEYS,
   stepToggleSchema,
 } from './pipeline-config-schema.js';
 

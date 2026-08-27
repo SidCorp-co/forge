@@ -7,8 +7,8 @@ name: CI
 #      steps — the composite is the single source of truth.
 #   2. Run commands from the repo root using `pnpm --filter <pkg>`. Do NOT
 #      set `defaults.working-directory` — that pattern blocks workspace
-#      filters and was the root cause of the npm/pnpm drift in the old
-#      `dev` job.
+#      filters and was the root cause of the npm/pnpm drift in the retired
+#      desktop job.
 #   3. There is NO per-package package-lock.json. The only lockfile is the
 #      root `pnpm-lock.yaml`.
 #   4. The `install-check` job runs on every PR with no `if` gate — it
@@ -64,6 +64,62 @@ jobs:
       # declaration-restating or mock-only assertions than its frozen baseline
       # (.forge/test-signal-baseline.json). Same contract as the codemap baseline.
       - run: node scripts/check-test-signal.mjs --all
+      # CI-parity: proves every step in this file is either run by `pnpm verify`
+      # or declared as covered by another root script. Without it the local
+      # command and this workflow drift, and a green `pnpm verify` stops meaning
+      # anything. Lives here because lang-check is always-on and needs no install.
+      - run: node scripts/verify.mjs --ci-parity
+
+  # The two checks that need node_modules. They are NOT in lang-check because
+  # that job deliberately installs nothing, so it keeps gating language and
+  # test-signal even on a PR that breaks the install. Putting these there made
+  # check-size-budget exit 2 with "biome output was not JSON" — the checker
+  # behaving correctly (a checker that cannot run must never report clean) in a
+  # job that could not give it biome. Always-on: a PR touching only
+  # .forge/conformance.json must still be measured, so no paths filter.
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 is load-bearing — conformance-status compares each baseline
+      # against the same file at the base revision, and a depth-1 checkout has no
+      # HEAD~1 and no origin/main to compare against. It exits 2 rather than passing
+      # on nothing, so this is what lets the ratchet run at all.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-workspace
+      # The checkers in scripts/ are what every other gate runs, and until
+      # 2026-08-25 nothing linted or typechecked them: `turbo run lint` only
+      # fans out to workspace packages and this directory is in none. Zero
+      # violations at rest and no baseline — the 21 found on the day it got a
+      # config were fixed, not frozen. Lives in this job rather than lang-check
+      # because `pnpm exec biome` needs node_modules and that job installs
+      # nothing on purpose.
+      # Every tracked test file must be collected by some runner. `packages/tests`
+      # held 64 that none did — no package.json, so pnpm never saw the directory
+      # — while they tested two packages deleted on 2026-08-23. A file no runner
+      # collects emits nothing, so it reads exactly like a suite that passed.
+      # Spawns `vitest list` per project, hence this job rather than lang-check.
+      - run: node scripts/check-test-reachability.mjs
+      - run: pnpm exec biome check scripts
+      # Size budget: biome OWNS the two length rules; what it lacks is a
+      # baseline, so both sit at `warn` and `biome check` exits 0 with 143
+      # violations. This freezes today's 103 offenders (.forge/size-baseline.json)
+      # and fails only when a file gets longer or a new one lands over budget.
+      - run: node scripts/check-size-budget.mjs --all
+      # Conformance levels: runs each axis's checker and fails when what it
+      # actually does disagrees with the level .forge/conformance.json claims
+      # for it. Every gate this repo lost was lost by staying documented while
+      # it stopped blocking; this is the check that notices.
+      - run: node scripts/conformance-status.mjs
+      # Conformance audit: the only check whose SUBJECT is the setup itself.
+      # `status` asks whether each axis does what it claims; this asks whether
+      # the setup around them still has the shape the manifest's `profile`
+      # claims — an entrypoint, scan proof on every check, a baseline with a
+      # direction, every needs-job asserted, both meta-checks, no level that
+      # blocks where nothing blocks. Without it a repo can gate nothing and
+      # still be perfectly conformant, which is the hole it exists to close.
+      - run: node scripts/conformance-audit.mjs
 
   # codemap/1 declared-edge layer (.forge/codemap.json + .forge/codemap-baseline.json).
   # The checker is VENDORED at .forge/codemap/ (cm install) — the repo owns its own
@@ -88,16 +144,32 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
-      - run: .forge/codemap/cm verify --since $(git merge-base origin/main HEAD)
+      - run: .forge/codemap/cm verify
       - run: .forge/codemap/cm verify --tier referential
       - run: .forge/codemap/cm verify --tier structural
+
+  archmap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-workspace
+      # All eight contracts are locked. Seven are green at zero debt (four core
+      # purity, three web boundary); `no-coordinator-blob` carries 13 violations
+      # frozen in .arch.baseline.json by `archmap lock`, so it blocks the 14th
+      # while the debt stays visible. exit 1 = a NEW violation · exit 2 = the
+      # gate could not run (unreadable manifest, a scope matching no files) — never read 2 as a pass.
+      # The three web contracts only mean anything because `.arch.json` declares a tsConfig: without
+      # it dependency-cruiser resolves nothing through web-v2's `@/*` alias, and an unresolvable edge
+      # is dropped rather than reported, so they would pass on an empty graph. conformance-audit R7
+      # holds that ceiling.
+      # The vendored copy in .forge/archmap is the authority: a contributor without a global
+      # install and this job are held to the same reviewed version.
+      - run: ./.forge/archmap/archmap check
 
   changes:
     runs-on: ubuntu-latest
     outputs:
       web: ${{ steps.filter.outputs.web }}
-      dev: ${{ steps.filter.outputs.dev }}
-      dev-tauri: ${{ steps.filter.outputs.dev-tauri }}
       core: ${{ steps.filter.outputs.core }}
       runner: ${{ steps.filter.outputs.runner }}
       docs: ${{ steps.filter.outputs.docs }}
@@ -116,11 +188,6 @@ jobs:
             web:
               - 'packages/web-v2/**'
               - 'packages/contracts/**'
-            dev:
-              - 'packages/dev/**'
-            dev-tauri:
-              - 'packages/dev/src-tauri/**'
-              - '.github/workflows/release.yml'
             core:
               - 'packages/core/**'
               - 'pnpm-workspace.yaml'
@@ -141,82 +208,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-workspace
-      # web-v2 lint is a no-op placeholder (WIP); kept non-blocking.
       - run: pnpm --filter web-v2 lint
-        continue-on-error: true
       - run: pnpm --filter web-v2 exec vitest run --passWithNoTests
       - run: pnpm --filter web-v2 build
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8080/api
-
-  dev:
-    needs: changes
-    if: needs.changes.outputs.dev == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-workspace
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: packages/dev/src-tauri
-      - name: Install Linux deps for Tauri
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-      - run: pnpm --filter forge-beta exec vitest run --passWithNoTests
-      # Format/clippy debt — pre-existing drift (cargo fmt + 14 clippy
-      # warnings). Tracked for cleanup as a separate ISS. Don't block CI.
-      - name: Rust check
-        continue-on-error: true
-        working-directory: packages/dev/src-tauri
-        run: |
-          cargo fmt --all -- --check
-          cargo clippy --all-targets -- -D warnings
-
-  # Smoke-build a Tauri bundle on Linux (deb only) when src-tauri config or
-  # the release workflow changes. Catches regressions in tauri.conf.json
-  # (e.g. bundle.active flipped to false, broken icon paths, invalid target
-  # list) BEFORE they reach a release tag. Without this guard, every release
-  # v0.1.9..v0.1.16 silently produced binary-only builds with zero installer
-  # artifacts attached.
-  dev-bundle-smoke:
-    needs: changes
-    if: needs.changes.outputs.dev-tauri == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Validate bundle.active=true
-        run: |
-          jq -e '.bundle.active == true' packages/dev/src-tauri/tauri.conf.json \
-            || { echo "::error file=packages/dev/src-tauri/tauri.conf.json::bundle.active must be true (release builds skip bundling otherwise)"; exit 1; }
-      - uses: ./.github/actions/setup-workspace
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: packages/dev/src-tauri
-      - name: Install Linux deps for Tauri
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-      - name: Generate throwaway updater signing key
-        # tauri-cli aborts with "public key found, but no private key" when
-        # tauri.conf.json declares an updater pubkey. Generate a smoke-only
-        # keypair so the build step can sign artifacts; the throwaway key
-        # never leaves CI and is unrelated to release-signing secrets.
-        run: |
-          pnpm --filter forge-beta exec tauri signer generate -p "" -w /tmp/smoke.key
-          echo "TAURI_SIGNING_PRIVATE_KEY=$(cat /tmp/smoke.key)" >> "$GITHUB_ENV"
-          echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" >> "$GITHUB_ENV"
-      - name: Build (deb only)
-        working-directory: packages/dev
-        run: pnpm tauri build --bundles deb
-      - name: Verify .deb produced
-        run: |
-          if ! ls "packages/dev/src-tauri/target/release/bundle/deb/"*.deb >/dev/null 2>&1; then
-            echo "::error::Tauri bundler did not produce a .deb under target/release/bundle/deb/"
-            exit 1
-          fi
 
   core:
     needs: changes
@@ -227,9 +223,11 @@ jobs:
       - uses: ./.github/actions/setup-workspace
       # BLOCKING since 2026-08-11. Ran non-blocking for months and drifted to 366
       # errors, 192 of them pure formatting. Now 0 errors — biome exits non-zero
-      # only on errors, and `noNonNullAssertion` / `noExplicitAny` are configured
-      # "warn" in packages/core/biome.json on purpose, so the ~189 warnings do not
-      # fail the job. A failure here is a real new violation.
+      # only on errors, and `noNonNullAssertion` / `noExplicitAny` /
+      # `noExcessiveLinesPerFile` / `noExcessiveLinesPerFunction` are configured
+      # "warn" in packages/core/biome.json on purpose, so the ~460 warnings (size
+      # and typing debt, tracked not gated) do not fail the job. A failure here is
+      # a real new violation.
       - run: pnpm --filter @forge/core lint
       - run: pnpm --filter @forge/core test
       # BLOCKING since 2026-08-10. `typecheck` uses the base tsconfig, which
@@ -259,7 +257,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-workspace
-      - run: pnpm --filter @forge/core test:integration:ci
+      # The coverage variant of test:integration:ci — same suite, same container
+      # mode, plus the v8 report that check-flow-coverage reads. Coverage costs a
+      # couple of seconds on an 85s run, and it is the ONLY place the e2e report
+      # is produced, so the flow gate below has evidence to work from.
+      - run: TEST_DB_MODE=container pnpm --filter @forge/core test:integration:coverage
+      # --require-sources turns "no coverage report" from a local skip into a
+      # failure. `pnpm verify` skips this check when the report is absent; that
+      # skip is only honest because this step exists and ci-parity proves it does.
+      - run: node scripts/check-flow-coverage.mjs --all --require-sources
 
   # Merge gate for the Rust runner. Mirrors the runner-ci gates on ubuntu only
   # (runner-ci keeps the 3-OS matrix for platform visibility, but as a separate
@@ -324,13 +330,13 @@ jobs:
         lang-check,
         changes,
         web,
-        dev,
-        dev-bundle-smoke,
         core,
         core-integration,
         runner,
         docs,
         codemap,
+        archmap,
+        conformance,
       ]
     runs-on: ubuntu-latest
     steps:
@@ -341,13 +347,13 @@ jobs:
             "lang-check:${{ needs.lang-check.result }}" \
             "changes:${{ needs.changes.result }}" \
             "web:${{ needs.web.result }}" \
-            "dev:${{ needs.dev.result }}" \
-            "dev-bundle-smoke:${{ needs.dev-bundle-smoke.result }}" \
             "core:${{ needs.core.result }}" \
             "core-integration:${{ needs.core-integration.result }}" \
             "runner:${{ needs.runner.result }}" \
             "docs:${{ needs.docs.result }}" \
-            "codemap:${{ needs.codemap.result }}"; do
+            "codemap:${{ needs.codemap.result }}" \
+            "archmap:${{ needs.archmap.result }}" \
+            "conformance:${{ needs.conformance.result }}"; do
             echo "$r"
             result="${r##*:}"
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then

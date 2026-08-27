@@ -4,11 +4,11 @@ import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RequestIdVars } from '../../src/middleware/request-id.js';
 import {
-  type TestDatabase,
   createTestProject,
   createTestProjectMember,
   createTestUser,
   setupTestDatabase,
+  type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
 
@@ -91,9 +91,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
   });
 
   async function seedProjectWithHandoffsEnabled(
-    opts: {
-      missingMarkerPolicy?: 'fail' | 'warn' | 'silent';
-    } = {},
+    opts: { missingMarkerPolicy?: 'fail' | 'warn' | 'silent' } = {},
   ) {
     const user = await createTestUser(harness.db);
     await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);

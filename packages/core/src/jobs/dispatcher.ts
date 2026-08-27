@@ -1,24 +1,23 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issueLabels, issues, jobs, labels, projects, runners } from '../db/schema.js';
 import type { JobType, RunnerType } from '../db/schema.js';
+import { issueLabels, jobs, labels, projects, runners } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import {
   recordDispatchBarrierSkip,
-  recordResumeBoundFresh,
   recordRunnerDeathDetection,
 } from '../observability/hold-metrics.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
 import { hooks } from '../pipeline/hooks.js';
 import { resolveRunnerChainForJob } from '../pipeline/resolve-step-runner.js';
-import { injectTurnLevelRules } from '../prompt/user.js';
+import { injectAfterInvocation, injectTurnLevelRules } from '../prompt/user.js';
 import { boss } from '../queue/boss.js';
 import { getRunnerAdapter } from '../runners/registry.js';
-import { getTrippedDeviceIds, selectRunnerForJob } from '../runners/select.js';
+import { selectRunnerForJob } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
 import { checkMonthlyBudget, postBudgetExhaustedComment, shouldEmitWarn } from './budget-check.js';
@@ -29,21 +28,16 @@ import {
   runnerSupportsJobType,
 } from './dispatch-gates.js';
 import { finalizeFailedJob } from './finalize-failure.js';
+import { loadPriorAttempts, renderPriorAttemptsBlock } from './prior-attempts.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME, RECONCILE_QUEUE_NAME } from './queue-name.js';
 import { resolveJobMcpServers } from './resolve-job-mcp-servers.js';
-import { readAutoRetryPayload } from './retry.js';
+import { resolveResumePolicy } from './resume-policy.js';
 import {
-  estimateGroupContextTokens,
-  findPriorSessionInGroup,
-  loadResumeBounds,
-} from './session-resume.js';
-import {
+  applySkillMaintenanceCarveout,
+  resolveStageOverrides,
   SKILL_MAINTENANCE_LABEL,
   type StageOverrides,
-  applySkillMaintenanceCarveout,
-  escalateModel,
-  resolveStageOverrides,
 } from './stage-overrides.js';
 
 interface DispatchMessage {
@@ -72,6 +66,7 @@ function buildOverridesPayload(o: StageOverrides): Record<string, unknown> {
   return out;
 }
 
+// cm:flow dispatch/handoff after:gate — last step: builds the prompt, claims the job, and hands it to a runner over WS. Everything before this is reversible; this is not
 export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched' | 'skipped'> {
   const { jobId } = msg;
 
@@ -226,8 +221,6 @@ export async function handlePmDispatch(msg: DispatchMessage): Promise<'dispatche
     return 'skipped';
   }
   if (job.type !== 'pm') {
-    // Defensive: a non-PM job should never land on this queue. Skip rather
-    // than dispatch via the PM-only path.
     logger.warn({ jobId, type: job.type }, 'pm-dispatcher: non-pm job on pm queue, skipping');
     return 'skipped';
   }
@@ -301,129 +294,15 @@ async function dispatchViaRunner(
     fallbackChain = resolveRunnerChainForJob(job.type, cachedAgentConfig);
   }
 
-  // PR-5 — if this job belongs to a sessionGroup AND a prior session of the
-  // same (issue, group) exists, pin selection to that device so the runner
-  // can resume the same CLI session file. Source `sessionGroup` from the
-  // per-state config resolver (same SoT as the legacy dispatchViaDevice
-  // path) so the two paths can never disagree on the group name.
   const preDispatchOverrides = await resolveStageOverrides(job.projectId, job.payload);
-  let priorClaudeSessionId: string | null = null;
-  let pinDeviceId: string | null = null;
-  if (preDispatchOverrides.sessionGroup && job.issueId) {
-    const prior = await findPriorSessionInGroup({
-      issueId: job.issueId,
-      sessionGroup: preDispatchOverrides.sessionGroup,
-    });
-    if (prior) {
-      priorClaudeSessionId = prior.claudeSessionId;
-      pinDeviceId = prior.deviceId;
-    }
-  }
-
-  // Compute isRetry here so the bound check below can skip the 3-query block
-  // (+ metric/Sentry side effects) on retry dispatches — the retry path nulls
-  // priorClaudeSessionId at its own site unconditionally.
-  const isRetry = job.retryOf != null;
-
-  // ISS-580 — bound check: if the accumulated context of the sessionGroup
-  // exceeds the configured token limit, or the issue has been reopened more
-  // than the cycle limit, drop the resume and dispatch fresh. Continuity is
-  // preserved via the existing handoff/sessionContext mechanism (ISS-537).
-  // Skip on retries — the retry block unconditionally nulls priorClaudeSessionId
-  // anyway, so running this block on a retry is pure wasted work + spurious
-  // resume_bound_fresh_total increments.
-  if (!isRetry && priorClaudeSessionId && preDispatchOverrides.sessionGroup && job.issueId) {
-    const bounds = await loadResumeBounds(job.projectId, cachedAgentConfig);
-    const estTokens = await estimateGroupContextTokens({
-      issueId: job.issueId,
-      sessionGroup: preDispatchOverrides.sessionGroup,
-    });
-    let reopenCount = 0;
-    try {
-      const [issueRow] = await db
-        .select({ reopenCount: issues.reopenCount })
-        .from(issues)
-        .where(eq(issues.id, job.issueId))
-        .limit(1);
-      reopenCount = issueRow?.reopenCount ?? 0;
-    } catch (err) {
-      logger.warn(
-        { err, jobId: job.id, issueId: job.issueId },
-        'dispatcher: failed to read reopenCount, treating as 0',
-      );
-    }
-    const overTokens = bounds.maxResumeTokens > 0 && estTokens > bounds.maxResumeTokens;
-    const overCycles =
-      bounds.maxResumeReopenCycles > 0 && reopenCount > bounds.maxResumeReopenCycles;
-    if (overTokens || overCycles) {
-      const reason = overTokens ? ('tokens' as const) : ('reopen_cycles' as const);
-      logger.info(
-        {
-          jobId: job.id,
-          issueId: job.issueId,
-          sessionGroup: preDispatchOverrides.sessionGroup,
-          estTokens,
-          reopenCount,
-          maxResumeTokens: bounds.maxResumeTokens,
-          maxResumeReopenCycles: bounds.maxResumeReopenCycles,
-          reason,
-        },
-        'dispatcher: sessionGroup resume bound exceeded — dispatching fresh session',
-      );
-      recordResumeBoundFresh(reason);
-      if (isSentryEnabled()) {
-        Sentry.addBreadcrumb({
-          category: 'pipeline.resume_bound',
-          data: { reason, estTokens, reopenCount },
-        });
-      }
-      priorClaudeSessionId = null;
-      pinDeviceId = null;
-    }
-  }
-
-  // Device selection splits cleanly into two cases (jobs/retry.ts owns the
-  // retry side):
-  //
-  //   - FIRST dispatch (`job.retryOf == null`): keep the primary-pinned
-  //     behaviour, plus the circuit breaker — skip devices whose runner is
-  //     failing repeatedly so the first dispatch doesn't land on a known-bad
-  //     device. The selector's wrap-around still probes a tripped device when
-  //     EVERY device is tripped, so a single-device project never wedges.
-  //
-  //   - RETRY (`job.retryOf != null`): the uniform round-robin drives it. Pin
-  //     the rotation `target`, exclude the devices already `done` this round,
-  //     and set `skipPrimary` so no device gets preferential treatment. The
-  //     circuit breaker is intentionally NOT applied here — the round-robin
-  //     already cycles devices fairly, and layering the breaker on top would
-  //     fight it (a device tripped after its 3 tries would be skipped for the
-  //     rest of the chain instead of getting its turn next round).
-  const autoRetry = readAutoRetryPayload(job.payload);
-  // isRetry was hoisted above to gate the ISS-580 bound check block.
-
-  let excludeDeviceIds: string[];
-  let skipPrimary: boolean;
-  if (isRetry) {
-    skipPrimary = true;
-    excludeDeviceIds = autoRetry.done;
-    // Rotation moves devices on purpose → never resume a prior session.
-    pinDeviceId = autoRetry.target;
-    priorClaudeSessionId = null;
-  } else {
-    skipPrimary = false;
-    const trippedDeviceIds = await getTrippedDeviceIds(job.projectId);
-    excludeDeviceIds = trippedDeviceIds;
-    if (trippedDeviceIds.length > 0) {
-      logger.warn(
-        { jobId: job.id, projectId: job.projectId, trippedDeviceIds },
-        'dispatcher: device circuit breaker tripped — rotating away from failing device(s)',
-      );
-    }
-    if (pinDeviceId && excludeDeviceIds.includes(pinDeviceId)) {
-      pinDeviceId = null;
-      priorClaudeSessionId = null;
-    }
-  }
+  const resume = await resolveResumePolicy({
+    job,
+    overrides: preDispatchOverrides,
+    agentConfig: cachedAgentConfig,
+  });
+  const priorClaudeSessionId = resume.priorClaudeSessionId;
+  const { pinDeviceId, excludeDeviceIds, skipPrimary } = resume;
+  const stagePool = preDispatchOverrides.deviceIds;
 
   // ISS-232 Phase 2 — `selectRunnerForJob` no longer takes `fallbackChain`.
   // Runner-type filtering is enforced post-select via `runnerSupportsJobType`
@@ -439,6 +318,7 @@ async function dispatchViaRunner(
     excludeDeviceIds,
     skipPrimary,
     projectCap,
+    allowDeviceIds: stagePool,
   });
   if (!runner) {
     // ISS-198 — selectRunnerForJob filters runners with stale heartbeats
@@ -448,9 +328,12 @@ async function dispatchViaRunner(
     // simply has no runners at all there's nothing to observe; that's a
     // configuration condition rather than a worker death.
     await maybeRecordL5Skip(job.projectId, job.id, fallbackChain);
+    // cm:why the pool is named in the log because the two conditions are operationally different: an empty fleet is an outage, a busy/limited POOL is the configured price of pinning a stage — VISION No.10 forbids the second one reading as the first
     logger.warn(
-      { jobId: job.id, projectId: job.projectId, fallbackChain },
-      'dispatcher: no runner online, leaving queued',
+      { jobId: job.id, projectId: job.projectId, fallbackChain, stagePool },
+      stagePool
+        ? 'dispatcher: no runner available inside the stage runner pool, leaving queued'
+        : 'dispatcher: no runner online, leaving queued',
     );
     return 'skipped';
   }
@@ -549,30 +432,10 @@ async function dispatchViaRunner(
   // onto that singleton process-wide, leaking it into the next EMPTY-path
   // dispatch for any other project (cross-tenant) and breaking the
   // active=false/deleted → drop-entry guarantee. (ISS-336 review blocker.)
+
+  // cm:edge contract -> packages/core/src/jobs/stage-overrides.ts — `.model` arrives fixed per stage status and must reach the runner unmodified; the ISS-535 reopenCount escalation that used to mutate it here was deleted with escalateModel
   const runnerStageOverrides = { ...preDispatchOverrides };
-  // ISS-535 — reopen-driven escalation. When an issue was reopened from
-  // review/test (`reopenCount >= 1`), bump the `fix`/`review` job up the model
-  // tier ladder so the retry runs on a stronger model (ECC upgrade-on-failure).
-  // Mutate ONLY the shallow copy (never preDispatchOverrides / EMPTY), and keep
-  // it best-effort: a DB hiccup must not crash dispatch (mirror loadStageMap).
-  if (job.issueId && (job.type === 'fix' || job.type === 'review')) {
-    try {
-      const [issueRow] = await db
-        .select({ reopenCount: issues.reopenCount })
-        .from(issues)
-        .where(eq(issues.id, job.issueId))
-        .limit(1);
-      const reopenCount = issueRow?.reopenCount ?? 0;
-      if (reopenCount > 0) {
-        runnerStageOverrides.model = escalateModel(runnerStageOverrides.model, reopenCount);
-      }
-    } catch (err) {
-      logger.warn(
-        { err, jobId: job.id, issueId: job.issueId, type: job.type },
-        'dispatcher: reopenCount escalation lookup failed, dispatching without model bump',
-      );
-    }
-  }
+
   // ISS-637 — skill-maintenance carve-out. Skill bodies are DB-canonical but
   // `.claude/skills/*` is a git-ignored sync mirror, so the standard git-based
   // ladder gives a skill-maintenance issue no way to persist its edit — every
@@ -639,14 +502,20 @@ async function dispatchViaRunner(
       mcpDiagnostics: { resolved: resolvedMcp.resolvedNames, dropped: resolvedMcp.droppedNames },
     });
 
-  // PR-5 fallback — when resuming a prior CLI session via --resume, the CLI
-  // may ignore --append-system-prompt (undocumented). Embed the state's
-  // system prompt redundantly at the head of the user prompt so the agent
-  // sees the right rules either way. No-op for fresh dispatches.
-  const runnerPromptString =
+  // cm:why on --resume the Claude CLI may ignore --append-system-prompt (undocumented), so the state's system prompt is embedded redundantly at the head of the user prompt; a fresh dispatch gets it through the flag and needs no copy
+  const resumedPromptString =
     priorClaudeSessionId && runnerBasePromptString
       ? injectTurnLevelRules(runnerBasePromptString, runnerSystemPrompt)
       : runnerBasePromptString;
+
+  // cm:edge contract -> packages/core/src/jobs/prior-attempts.ts — spliced HERE, at dispatch, not by `buildJobPromptString` at enqueue: `retry.ts` copies the parent's `payload.promptString` verbatim, so a block added at enqueue time would describe the parent's own attempt rather than the one that just failed
+  const runnerPromptString =
+    resume.isRetry && resumedPromptString
+      ? injectAfterInvocation(
+          resumedPromptString,
+          renderPriorAttemptsBlock(await loadPriorAttempts(job), job.attempts),
+        )
+      : resumedPromptString;
 
   await persistPromptSnapshot({
     jobId: job.id,
@@ -672,6 +541,7 @@ async function dispatchViaRunner(
       promptString: runnerPromptString,
       systemPrompt: runnerSystemPrompt,
       dispatchedAt,
+      attempts: job.attempts,
       agentSessionId,
     },
     runner,
@@ -791,33 +661,56 @@ async function maybeRecordL5Skip(
   }
 }
 
+// cm:guard 0.5 is pg-boss's own floor (`MIN_POLLING_INTERVAL_MS`), and only these three DISPATCH queues get it — the five maintenance queues (stale-detector, retention, memory-decay, memory-candidates, device-prune) keep the 2000ms default, where a cron waking a second late costs nothing and four times the queue queries buys nothing.
+// cm:why measured 2026-08-25 on the device-runner E2E: at the 2000ms default, enqueue to `job.assigned` took 1418/1554/1667/1716ms — a mean ~1s of pure poll wait before dispatch work begins. At 0.5 it is 191/217/802ms. That hop is nearly all of the `request -> running-pipeline-issue` metric, which is one dispatch rather than a whole pipeline.
+const WORKER_OPTS = { batchSize: 1, pollingIntervalSeconds: 0.5 } as const;
+
+/**
+ * Create the queue and start one worker on it, returning pg-boss's worker id.
+ *
+ * `label` appears in the handler-threw log line and is the only thing that
+ * differed between the three registrations besides the queue and the handler.
+ */
+// cm:guard rethrow after logging. pg-boss decides retry/dead-letter from whether the handler threw, so swallowing here turns a failed dispatch into a job pg-boss believes it delivered — silently dropped rather than retried.
+async function startDispatchWorker(
+  queue: string,
+  label: string,
+  handler: (message: DispatchMessage) => Promise<unknown>,
+  extraOpts: Record<string, unknown> = {},
+): Promise<string> {
+  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions; the runtime contract (createQueue before work, handler receives an array) is stable.
+  const b = boss as any;
+  await b.createQueue(queue);
+  const id = await b.work(
+    queue,
+    { ...WORKER_OPTS, ...extraOpts },
+    // biome-ignore lint/suspicious/noExplicitAny: pg-boss handler arg type varies across versions
+    async (arg: any) => {
+      for (const entry of Array.isArray(arg) ? arg : [arg]) {
+        const data = entry?.data as DispatchMessage | undefined;
+        if (!data || typeof data.jobId !== 'string') continue;
+        try {
+          await handler(data);
+        } catch (err) {
+          logger.error({ err, jobId: data.jobId }, `${label}: handler threw`);
+          throw err;
+        }
+      }
+    },
+  );
+  return id as string;
+}
+
 export async function registerDispatcher(): Promise<void> {
   if (workerId) return;
-  // pg-boss v10 requires explicit createQueue before work().
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(JOB_QUEUE_NAME);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions; the runtime contract (handler receives an array) is stable.
-  const id = (await (boss as any).work(JOB_QUEUE_NAME, { batchSize: 1 }, async (arg: any) => {
-    const entries = Array.isArray(arg) ? arg : [arg];
-    for (const entry of entries) {
-      const data = entry?.data as DispatchMessage | undefined;
-      if (!data || typeof data.jobId !== 'string') continue;
-      try {
-        await handleDispatch(data);
-      } catch (err) {
-        logger.error({ err, jobId: data.jobId }, 'dispatcher: handler threw');
-        throw err;
-      }
-    }
-  })) as string;
-  workerId = id;
+  workerId = await startDispatchWorker(JOB_QUEUE_NAME, 'dispatcher', handleDispatch);
 }
 
 export async function unregisterDispatcher(): Promise<void> {
   if (!workerId) return;
   const id = workerId;
   workerId = null;
-  // biome-ignore lint/suspicious/noExplicitAny: see registerDispatcher above.
+  // biome-ignore lint/suspicious/noExplicitAny: see startDispatchWorker above.
   await (boss as any).offWork(id);
 }
 
@@ -827,38 +720,18 @@ export function isDispatcherRegistered(): boolean {
 
 export async function registerPmDispatcher(): Promise<void> {
   if (pmWorkerId) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(PM_QUEUE_NAME);
-  // teamSize/teamConcurrency=1 caps in-flight PM work per process at one,
-  // matching the per-project DB-level cap from `jobs_pm_per_project_unique_idx`.
-  // The DB index is the source of truth; this is defence-in-depth.
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  const id = (await (boss as any).work(
-    PM_QUEUE_NAME,
-    { batchSize: 1, teamSize: 1, teamConcurrency: 1 },
-    // biome-ignore lint/suspicious/noExplicitAny: pg-boss handler arg type varies across versions
-    async (arg: any) => {
-      const entries = Array.isArray(arg) ? arg : [arg];
-      for (const entry of entries) {
-        const data = entry?.data as DispatchMessage | undefined;
-        if (!data || typeof data.jobId !== 'string') continue;
-        try {
-          await handlePmDispatch(data);
-        } catch (err) {
-          logger.error({ err, jobId: data.jobId }, 'pm-dispatcher: handler threw');
-          throw err;
-        }
-      }
-    },
-  )) as string;
-  pmWorkerId = id;
+  // cm:why teamSize/teamConcurrency=1 caps in-flight PM work per process at one, mirroring the per-project DB cap from `jobs_pm_per_project_unique_idx`; the index is the source of truth and this is defence in depth
+  pmWorkerId = await startDispatchWorker(PM_QUEUE_NAME, 'pm-dispatcher', handlePmDispatch, {
+    teamSize: 1,
+    teamConcurrency: 1,
+  });
 }
 
 export async function unregisterPmDispatcher(): Promise<void> {
   if (!pmWorkerId) return;
   const id = pmWorkerId;
   pmWorkerId = null;
-  // biome-ignore lint/suspicious/noExplicitAny: see registerPmDispatcher above.
+  // biome-ignore lint/suspicious/noExplicitAny: see startDispatchWorker above.
   await (boss as any).offWork(id);
 }
 
@@ -869,23 +742,11 @@ export function isPmDispatcherRegistered(): boolean {
 // cm:edge contract -> packages/core/src/jobs/enqueue.ts#enqueueReconcileJob — separate queue so a reconcile backlog never stalls coder dispatch (ISS-801, BLOCKER E).
 export async function registerReconcileDispatcher(): Promise<void> {
   if (reconcileWorkerId) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(RECONCILE_QUEUE_NAME);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions; the runtime contract (handler receives an array) is stable.
-  const id = (await (boss as any).work(RECONCILE_QUEUE_NAME, { batchSize: 1 }, async (arg: any) => {
-    const entries = Array.isArray(arg) ? arg : [arg];
-    for (const entry of entries) {
-      const data = entry?.data as DispatchMessage | undefined;
-      if (!data || typeof data.jobId !== 'string') continue;
-      try {
-        await handleDispatch(data);
-      } catch (err) {
-        logger.error({ err, jobId: data.jobId }, 'reconcile-dispatcher: handler threw');
-        throw err;
-      }
-    }
-  })) as string;
-  reconcileWorkerId = id;
+  reconcileWorkerId = await startDispatchWorker(
+    RECONCILE_QUEUE_NAME,
+    'reconcile-dispatcher',
+    handleDispatch,
+  );
 }
 
 export async function unregisterReconcileDispatcher(): Promise<void> {

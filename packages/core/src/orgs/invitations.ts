@@ -1,7 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type OrgMemberRole, orgInvitations, organizationMembers } from '../db/schema.js';
-import { INVITATION_TTL_MS, generateToken } from '../projects/invitation-token.js';
+import { type OrgMemberRole, organizationMembers, orgInvitations } from '../db/schema.js';
+import { generateToken, INVITATION_TTL_MS } from '../projects/invitation-token.js';
 
 /**
  * Org-tier email-token invitations — the exact mirror of the project

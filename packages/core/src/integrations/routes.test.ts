@@ -157,7 +157,6 @@ const TEST_KEY_B64 = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
 const ORIGINAL_KEY = process.env.INTEGRATION_MASTER_KEY;
 
 afterEach(() => {
-  // biome-ignore lint/performance/noDelete: assigning undefined to process.env coerces to the string "undefined"
   if (ORIGINAL_KEY === undefined) delete process.env.INTEGRATION_MASTER_KEY;
   else process.env.INTEGRATION_MASTER_KEY = ORIGINAL_KEY;
 });
@@ -172,7 +171,6 @@ beforeEach(() => {
 
 describe('POST /api/projects/:projectId/integrations — vault guard', () => {
   it('503 VAULT_NOT_CONFIGURED when INTEGRATION_MASTER_KEY is unset', async () => {
-    // biome-ignore lint/performance/noDelete: assigning undefined to process.env coerces to the string "undefined"
     delete process.env.INTEGRATION_MASTER_KEY;
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
@@ -1344,7 +1342,7 @@ describe('POST /api/projects/:projectId/integrations — epodsystem multi-bindin
 });
 
 describe('GET /api/projects/:projectId/integrations/mcp-preview — epodsystem multi-entry (ISS-558)', () => {
-  const TOKEN_MOCK = { headers: { authorization: '' } };
+  const _TOKEN_MOCK = { headers: { authorization: '' } };
 
   async function previewEpod(pairs: unknown[]) {
     const token = await signUserToken(USER_ID);

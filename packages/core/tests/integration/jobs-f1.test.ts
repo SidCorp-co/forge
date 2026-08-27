@@ -2,12 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
-  type TestDatabase,
   createTestDevice,
   createTestProject,
   createTestProjectMember,
   createTestUser,
+  openDeviceSocket,
   setupTestDatabase,
+  type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
 
@@ -53,8 +54,11 @@ describe('F1 jobs integration', () => {
     if (harness) await harness.cleanup();
   });
 
+  const sockets: Array<{ close(): void }> = [];
+
   beforeEach(async () => {
     await truncateAll(harness.db);
+    while (sockets.length) sockets.pop()?.close();
   });
 
   async function seed() {
@@ -104,9 +108,16 @@ describe('F1 jobs integration', () => {
     return { deviceId: device.id };
   }
 
+  // cm:guard the `runners` row is what the SQL gates read, but `job.assigned` is what CARRIES the job — since ISS-862 the adapter reports `failed` when the frame reaches no open socket, so a test asserting `dispatched` must open one. Seeding only the row is a device that is online in Postgres and unreachable in memory, which is a real production state and deliberately no longer dispatchable.
+  function withOpenSocket(deviceId: string): void {
+    const socket = openDeviceSocket(deviceId);
+    sockets.push(socket);
+  }
+
   it('dispatches a queued job when the project has an online runner', async () => {
     const { owner, project } = await seed();
     const { deviceId } = await seedRunner(project.id, owner.id);
+    withOpenSocket(deviceId);
 
     const jobId = await createJob(project.id, owner.id);
 

@@ -27,7 +27,7 @@ jobs:
       - run: |
           git -C /tmp/codemap checkout -q "${{ steps.latest.outputs.tag }}"
           node /tmp/codemap/plugins/forge-codemap/scripts/cm.mjs install --upgrade
-      - uses: peter-evans/create-pull-request@v6
+      - uses: peter-evans/create-pull-request@v7
         with:
           branch: codemap-upgrade
           title: "chore: upgrade the committed codemap checker to ${{ steps.latest.outputs.tag }}"

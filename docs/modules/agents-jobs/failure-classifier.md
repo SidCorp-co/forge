@@ -115,3 +115,15 @@ the classifier on archived rows. Bump the version on any pattern change.
   no-retry park now also emits the existing `pipeline_wedge` notification
   (`emitPipelineWedge`, deduped per job) so a terminal failure reaches the
   project owner instead of halting silently.
+
+- **v8** — the three structural preflight sub-variants stop lying about their
+  cause. `origin_remote:` / `work_tree:` / `repo_path:` were labelled `code`
+  purely to reach `terminal`, because v7's `action` was still derived from
+  `kind` for every rule. They are now `kind: 'infra'` with an explicit
+  `action: 'terminal'` — the diagnosis names the runner's workspace, the policy
+  still refuses to retry. Measured 2026-08-14: ubuntu1's `/home/forge/projects/anhome`
+  was not a git repo and 8 jobs died on `work_tree`, each one filed against the
+  repository. `classifyKind` may now return an `action`, and `classifyFailure`
+  prefers it over `deriveActionFromKind`; the fallback is untouched, so
+  historical rows (`failure_action IS NULL`) keep the verdict they were written
+  with. Nothing else changes bucket.

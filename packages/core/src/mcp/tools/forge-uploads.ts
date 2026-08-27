@@ -15,14 +15,13 @@ import { markUntrusted } from '../../prompt/sanitize.js';
 import { getStorage } from '../../storage/index.js';
 import { createDownloadTicket } from '../../uploads/download-ticket-service.js';
 import {
+  createUploadTicket,
   UPLOAD_TICKET_TTL_MS,
   UploadTicketError,
-  createUploadTicket,
 } from '../../uploads/ticket-service.js';
 import {
-  type ContextScopedMcpToolFactory,
-  assertPrincipalIsMember,
   assertPrincipalIsWriter,
+  type ContextScopedMcpToolFactory,
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';

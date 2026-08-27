@@ -35,9 +35,10 @@ vi.mock('../../lib/authz.js', () => ({
 
 import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
 import {
-  type McpContext,
   assertPrincipalIsMember,
+  type McpContext,
   patEffectiveProjectIds,
+  principalActor,
   resolveEffectiveProjectId,
 } from './lib.js';
 
@@ -48,6 +49,7 @@ const SLUG_ID = '33333333-3333-4333-8333-333333333333';
 function patPrincipal(over: Partial<Extract<McpPrincipal, { kind: 'pat' }>> = {}): McpPrincipal {
   return {
     kind: 'pat',
+    agency: 'human' as const,
     userId: 'user-1',
     tokenId: 'tok-1',
     scopes: ['read', 'write'],
@@ -135,5 +137,44 @@ describe('cross-project conflict → NOT_FOUND', () => {
       assertPrincipalIsMember(patPrincipal({ boundProjectId: BOUND }), BOUND),
     ).resolves.toBeUndefined();
     expect(effectiveProjectRole).toHaveBeenCalledWith('user-1', BOUND);
+  });
+});
+
+describe('principalActor — who a write is recorded as', () => {
+  const device = { id: 'dev-1', ownerId: 'owner-1' };
+  const pat = {
+    kind: 'pat' as const,
+    userId: 'user-9',
+    tokenId: 'tok-1',
+    scopes: [] as string[],
+    projectIds: null,
+    boundProjectId: null,
+  };
+
+  it('records the person whose token it is, not the synthetic device it rides on', () => {
+    expect(principalActor({ ...pat, agency: 'human' }, device)).toEqual({
+      type: 'user',
+      id: 'user-9',
+    });
+  });
+
+  it('records an agent-driven chat write as a device, though it carries a pat principal', () => {
+    expect(principalActor({ ...pat, agency: 'agent' }, device)).toEqual({
+      type: 'device',
+      id: 'dev-1',
+      ownerId: 'owner-1',
+    });
+  });
+
+  it('records a runner as a device', () => {
+    const principal = {
+      kind: 'device' as const,
+      device: { id: 'dev-1', ownerId: 'owner-1' } as never,
+    };
+    expect(principalActor(principal, device)).toEqual({
+      type: 'device',
+      id: 'dev-1',
+      ownerId: 'owner-1',
+    });
   });
 });

@@ -2,11 +2,11 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { SkillActivityExecutor } from '../../src/skills/activity.js';
 import {
-  type TestDatabase,
   createTestDevice,
   createTestProject,
   createTestUser,
   setupTestDatabase,
+  type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
 

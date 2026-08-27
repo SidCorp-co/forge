@@ -1,7 +1,7 @@
 import { type IssueStatus, issueStatuses } from '../db/schema.js';
 
-export { issueStatuses };
 export type { IssueStatus };
+export { issueStatuses };
 
 // cm:edge naming -> docs/modules/issues-pipeline/status-pipeline.md — the ladder documented there and this map are the same happy path; change one, change the other
 // cm:guard ADVISORY, NOT A GATE. Nothing enforces this map. `canTransitionFree` below is the only runtime check and it permits ANY non-draft from → ANY non-draft to; reading a missing pair here as "illegal" has produced wrong conclusions and pointless multi-hop workarounds. Consumers are system-prompt generation, UI next-state suggestions and the soft-skip resolver.
@@ -33,7 +33,9 @@ export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   needs_info: ['open', 'confirmed', 'on_hold'],
   // ISS-236 — drafts are AI-generated proposals; user either promotes them
   // into the normal pipeline or discards them. No other status maps INTO draft.
-  draft: ['open', 'closed'],
+  draft: ['open', 'closed', 'dropped'],
+  // cm:guard terminal with NO exit, unlike `closed → reopen`: reopening a dropped issue would leave `merged_at` NULL on an issue that then ships, so re-filing is the correct move and this map must not offer a shortcut past it
+  dropped: [],
 };
 
 export function getAllowedTransitions(from: IssueStatus): readonly IssueStatus[] {
@@ -85,13 +87,14 @@ export const NON_TARGETABLE_STATUSES: ReadonlySet<IssueStatus> = new Set(['draft
  */
 export function canTransitionFree(from: IssueStatus, to: IssueStatus): boolean {
   if (NON_TARGETABLE_STATUSES.has(to)) return false;
-  if (from === 'draft') return to === 'open' || to === 'closed' || to === 'developed';
+  // cm:guard `dropped` is the RIGHT discard for a draft and `closed` is the wrong one: closing stamps merged_at, so discarding a draft today unblocks every dependent of an issue whose work never existed. Keep `closed` only because callers predate the status.
+  if (from === 'draft') {
+    return to === 'open' || to === 'closed' || to === 'dropped' || to === 'developed';
+  }
   return true;
 }
 
-export const REOPEN_CAP = 5;
-
-// cm:why ISS-781 — ANY entry into `reopen` is a reopen, not just `closed → reopen`. The pipeline's own rejection paths (developed → reopen on a review REQUEST CHANGES, testing → reopen on a failed live E2E) are precisely the churn this counter exists to measure, and gating on `closed` left reopenCount at 0 for all of them — which silently disabled the REOPEN_CAP gate and ISS-535 model escalation (escalateModel returns early at reopenCount <= 0).
+// cm:why ISS-781 — ANY entry into `reopen` is a reopen, not just `closed → reopen`. The pipeline's own rejection paths (developed → reopen on a review REQUEST CHANGES, testing → reopen on a failed live E2E) are precisely the churn this counter exists to measure, and gating on `closed` left reopenCount at 0 for all of them — which silently disabled the reopen cap (deleted 2026-08-25 — RFC 0002 INV-8 replaced it with the advisory `noProgressRounds`, see pipeline/reopen-policy.ts) and ISS-535 model escalation (escalateModel returns early at reopenCount <= 0).
 // cm:why ISS-766 — excludes `in_progress → reopen`: that hop is the SYSTEM's own mechanical recovery, not an agent-requested rejection — finalize-failure's retry revert (jobs/finalize-failure.ts) and the reconciler's in-flight wedge reset (pipeline/reconciler.ts) both land here for infra flakes/usage-limit cuts, and counting them burned reopen-cap budget and bumped fix sonnet→opus (escalateModel) for churn that was never a real review/test rejection.
 export function isReopenEntry(from: IssueStatus, to: IssueStatus): boolean {
   return to === 'reopen' && from !== 'reopen' && from !== 'in_progress';

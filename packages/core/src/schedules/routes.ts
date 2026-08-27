@@ -46,7 +46,7 @@ const scheduleMode = z.enum(['propose', 'auto']);
 
 // ISS-618 — a schedule is either 'prompt' (existing agent-session behavior) or
 // 'script' (a standalone sandboxed Node.js script, no LLM/agent involved).
-const apiScheduleKind = z.enum(['prompt', 'script']);
+const apiScheduleKind = z.enum(['prompt', 'script', 'release_batch']);
 
 const createSchema = z
   .object({
@@ -88,6 +88,17 @@ const createSchema = z
           path: ['templateKey'],
           message: 'templateKey must be omitted when kind is "script"',
         });
+      }
+    } else if (kind === 'release_batch') {
+      // cm:guard a release_batch schedule carries NO authored text at all — what it cuts is whatever is sitting at the gate, and a prompt or script here would be a second, silent definition of that
+      for (const field of ['prompt', 'script', 'templateKey'] as const) {
+        if (data[field] !== undefined && data[field] !== null) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [field],
+            message: `${field} must be omitted when kind is "release_batch" — it cuts whatever is waiting at the gate`,
+          });
+        }
       }
     } else if (!data.prompt) {
       ctx.addIssue({

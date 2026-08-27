@@ -1,20 +1,17 @@
-import { sql } from 'drizzle-orm';
 import WebSocket from 'ws';
 import type { TestServer } from './app-server.js';
-import type { TestDb } from './db.js';
 
 /**
- * In-process stand-in for `packages/dev` — opens a real ws connection, fetches
- * against the real REST surface, and streams JobEvents the same way the Rust
- * agent will. Used by the Phase 2.7-F2 device-runner E2E (ISS-218).
+ * In-process stand-in for the Rust runner — opens a real ws connection, fetches
+ * against the real REST surface, and streams JobEvents the way the agent does.
+ * Used by the device-runner E2E (ISS-218).
  *
- * Auth flow:
- * - **Preferred (once ISS-214 lands):** `POST /api/devices/pairing-codes` →
- *   `POST /api/devices/pair`. Gated behind `FORGE_E2E_REAL_PAIR=1`.
- * - **Fallback (today):** call `issueDeviceToken` directly — same seam used by
- *   `createTestDevice`, but producing a real argon2 hash so the token actually
- *   verifies through `requireDevice()`.
+ * Pairs for real: a project member mints a code at
+ * `POST /api/projects/:id/devices/pairing-codes`, the device redeems it at the
+ * public `POST /api/devices/pair`.
  */
+// cm:guard no fallback path, and no env flag to pick one. This helper had both, and the fallback minted a token through `issueDeviceToken` so the file compiled while the real branch was never executed — three bugs accumulated in it unseen (unscoped URL, no auth header, reading `token` where the route returns `deviceToken`) and the E2E advertised itself as ready to flip for months. A seam that is only exercised behind a flag nobody sets is not tested.
+// cm:edge contract -> packages/core/src/devices/routes.ts — mints at deviceUserRoutes `/:id/devices/pairing-codes` (mounted under /api/projects, requires a verified project member) and redeems at devicePublicRoutes `/pair`, which answers `{ deviceId, deviceToken, projectId }`. Nothing type-checks these two shapes across the fetch boundary.
 
 export interface MockDeviceEvent {
   event: string;
@@ -41,63 +38,42 @@ export interface MockDevice {
 
 export interface PairMockDeviceOpts {
   server: TestServer;
-  db: TestDb;
-  ownerId: string;
+  projectId: string;
+  userJwt: string;
   name?: string;
   platform?: 'macos' | 'linux' | 'windows';
 }
 
 export async function pairMockDevice(opts: PairMockDeviceOpts): Promise<MockDevice> {
-  const { server, ownerId } = opts;
+  const { server, projectId, userJwt } = opts;
 
-  // AuthN: preferred path (real pair endpoint) is gated on ISS-214 shipping.
-  // Until then, fall back to the internal token factory. The test harness
-  // flips mode via `FORGE_E2E_REAL_PAIR=1`.
-  const useRealPair = process.env.FORGE_E2E_REAL_PAIR === '1';
+  const codeRes = await fetch(`${server.baseUrl}/api/projects/${projectId}/devices/pairing-codes`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${userJwt}`, 'content-type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (!codeRes.ok) {
+    throw new Error(
+      `pairMockDevice: POST /api/projects/${projectId}/devices/pairing-codes responded ${codeRes.status}`,
+    );
+  }
+  const { code } = (await codeRes.json()) as { code: string };
 
-  let deviceId: string;
-  let token: string;
-
-  if (useRealPair) {
-    // This path intentionally has no fallback — if the endpoints are absent
-    // the test fails loudly rather than silently falling back to the stub.
-    const codeRes = await fetch(`${server.baseUrl}/api/devices/pairing-codes`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-    if (!codeRes.ok) {
-      throw new Error(
-        `pairMockDevice(real): /api/devices/pairing-codes responded ${codeRes.status}`,
-      );
-    }
-    const { code } = (await codeRes.json()) as { code: string };
-
-    const pairRes = await fetch(`${server.baseUrl}/api/devices/pair`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        code,
-        name: opts.name ?? 'mock-device',
-        platform: opts.platform ?? 'linux',
-      }),
-    });
-    if (!pairRes.ok) {
-      throw new Error(`pairMockDevice(real): /api/devices/pair responded ${pairRes.status}`);
-    }
-    const paired = (await pairRes.json()) as { deviceId: string; token: string };
-    deviceId = paired.deviceId;
-    token = paired.token;
-  } else {
-    const { issueDeviceToken } = await import('../../src/auth/deviceToken.js');
-    const issued = await issueDeviceToken({
-      ownerId,
+  const pairRes = await fetch(`${server.baseUrl}/api/devices/pair`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      code,
       name: opts.name ?? 'mock-device',
       platform: opts.platform ?? 'linux',
-    });
-    deviceId = issued.device.id;
-    token = issued.plaintext;
+    }),
+  });
+  if (!pairRes.ok) {
+    throw new Error(`pairMockDevice: POST /api/devices/pair responded ${pairRes.status}`);
   }
+  const paired = (await pairRes.json()) as { deviceId: string; deviceToken: string };
+  const deviceId = paired.deviceId;
+  const token = paired.deviceToken;
 
   const inbound: MockDeviceEvent[] = [];
   let ws: WebSocket | null = null;
@@ -198,12 +174,6 @@ export async function pairMockDevice(opts: PairMockDeviceOpts): Promise<MockDevi
     }
     ws = null;
   }
-
-  // Touch opts.db so it's clearly part of the helper contract even though the
-  // current fallback does not need a direct db handle. Once the real pair
-  // endpoint lands, seeding/cleanup inspections can piggy-back here.
-  void opts.db;
-  void sql;
 
   return {
     id: deviceId,

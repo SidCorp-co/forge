@@ -7,6 +7,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 **Style.** This is the end-user release note — keep it flat and terse, like the Claude Code CLI changelog. **One plain-language line per change**, leading with the user-visible outcome; no bold, no `*Technical:*` sub-line, no file paths / `ISS-NNN` / merge SHAs. Technical detail lives in the commit body + PR, not here. Each version starts with a one-line headline. Full guide: [`docs/guides/release.md` → Writing changelog entries](docs/guides/release.md#writing-changelog-entries--style-guide).
 
 ## [Unreleased]
+- The UX contract now learns from what reviews keep finding: a gap flagged across three or more issues becomes a proposed rule, complete with links to the issues that taught it, waiting in project settings for you to approve or reject.
+- Pipeline runs now show their real live job count, and outdated stage jobs are stopped before they can run.
+- Pipeline merge prompts now use the configured Git branches, and test verification preserves fixture blocks instead of reporting them as failures.
+- Scheduled audits that make no tool calls now fail as blind instead of reporting a clean result.
+- A runner that accepts jobs and never starts them is now set aside after three in a row, with the reason recorded, instead of silently keeping its share of the work.
+- A job handed to a machine whose connection had dropped is no longer reported as dispatched — it fails immediately and retries, instead of dying four minutes later as if the machine were at fault.
+- A runner whose login has expired now raises a notification, and a later successful job clears it, so it can no longer sit unusable for hours with nothing saying why.
+- Cancelling a job now reaches the agent even if the runner has restarted since the job began, instead of reporting that nothing was there to stop.
+- A retry now starts from what the failed attempt did instead of from nothing — it is told which attempt failed and why, and where to read that attempt's transcript.
+- When a retry stays on the same machine after a recoverable failure, it resumes the same Claude session rather than opening a fresh one.
+- Work a job left uncommitted when it failed is now committed and pushed on the job's own branch, so the next attempt can carry on from it instead of redoing it.
+- Diagrams now render in issue descriptions, plans and comments — write a `mermaid` code block and it draws instead of showing its own source.
+- An HTML file attached to an issue or comment now displays inline as a live page instead of only offering a download.
+- The file picker on issues and comments now accepts HTML files, which the server already allowed — attaching one no longer reports the type as unsupported.
+- Cancelling a job that had already failed no longer discards the reason it failed — the failure is recorded and readable like any other.
+- An issue paused for a person now names what it actually needs — a decision, or something only you can supply — instead of always saying its plan is awaiting approval.
+- Fixed scheduled runs sometimes showing as succeeded even after the run actually failed.
+- Every failed scheduled run now records why, instead of sometimes leaving the reason blank.
+- A late report from a retried scheduled run can no longer overwrite a newer run's status.
 - Pipeline rescue metrics now visible per project with configurable threshold alerts.
 - Stopped duplicate status-change notifications and activity entries from appearing when a status update had to be retried.
 - Fixed a bug where the release step could wrongly reopen an issue that had already passed testing, based on an outdated status snapshot.
@@ -34,7 +53,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Agents now flag memory notes a newer release has made outdated, instead of repeating stale guidance.
 - Desktop: multi-pane split-view for side-by-side conversations in a project.
 - forge_issues MCP tool now supports attaching/detaching labels directly, enabling pipeline skills to set filterable categories on issues.
-- Fixed documentation of reopen cap behavior — now accurately describes that rejected reopens stay at `reopen` for human review and may be routed to `needs_info` if they lack a prior code/fix job.
 - Skill rebases can now mark the project copy as reconciled with its global template, so the template-drift sweep stops re-drafting rebase reminders for skills that were already brought up to date.
 - forge-runner login now retries through transient gateway errors (502/520/timeouts) during pairing instead of aborting the whole session on the first blip.
 - Workspace Overview now correctly identifies issues awaiting your reply and displays per-project workload and recent changes.
@@ -69,7 +87,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Projects can now subscribe to improvement messages that automatically propose or apply per-project skill refinements on a schedule.
 - Forge now blocks skills with hardcoded secrets or prompt-injection patterns from being saved, and warns when pipeline stage configurations grant over-broad permissions.
 - Pipeline agents now address open questions from prior stages before advancing, reducing context loss across steps.
-- Pipeline stages now run on a deliberate model tier (cheaper models for mechanical steps, stronger models for planning and review), and harder issues automatically escalate to a higher tier after a reopen.
+- Pipeline stages now run on a deliberate model tier — cheaper models for mechanical steps, stronger models for planning and review.
 - Pipeline jobs that hit a transient failure now retry and recover correctly instead of getting stuck in a loop where every retry immediately fails
 - Auto-retry now rotates fairly across all healthy runners instead of pinning to the primary device after one sweep, so a flaky stage no longer burns the whole retry budget on one runner.
 - The workspace Integrations page (your shared connections directory) is now on the left navigation rail instead of being reachable only through the command palette.
@@ -190,6 +208,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Chat replies no longer show the "couldn't find a confident answer" fallback just because the first server tried was overloaded or logged out — the system now skips unhealthy runners and retries on a healthy one before giving up.
 - Status transitions to developed or testing now require code evidence — the pipeline validates that code has been merged before these transitions are allowed.
 - Project Settings now has a UX Contract tab where you can pick a preset, confirm your detected tech stack, adjust rule severities, and approve or reject proposed changes — all by choosing, never by writing free text.
+- A runner box that fails the same preflight check repeatedly is now quarantined (taken out of dispatch rotation) instead of being retried forever across the fleet; quarantine self-heals on expiry, clears on the next success, is operator-clearable, and shows up with its reason in the runners list.
+- Fixed a pipeline reliability gap where a failed automatic step dispatch could silently leave an issue stuck instead of being retried or reported.
+- The support chat bot now reports project progress using the same authoritative numbers as the dashboard, and stays within its intended product-support role.
+- Project Settings now shows every pipeline permission and override that used to be visible only through the API — which tools each pipeline stage is blocked from using, per-stage MCP servers, complexity skips, session groups, and installed plugins.
 
 ## [0.3.0] - 2026-06-11
 

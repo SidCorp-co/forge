@@ -9,7 +9,7 @@ Every pipeline job (`triage`, `clarify`, `plan`, `code`, `review`, `test`, `fix`
 - **System prompt** — process rules + tool catalogue + project config + per-state policy block, optionally extended/replaced by the operator. Built once at dispatch from one module; identical-prefix-friendly so the Anthropic prompt cache hits across jobs.
 - **User prompt** — per-issue body (description / plan / acceptance criteria / sessionContext), built at enqueue time by the orchestrator.
 
-All dispatch parameters (system prompt, model, allowed tools, permission mode, timeout, MCP servers, session group) default to the previous hardcoded values, individually overridable per state via project settings — no migration, no Tauri release.
+All dispatch parameters (system prompt, model, allowed tools, permission mode, timeout, MCP servers, session group) default to the previous hardcoded values, individually overridable per state via project settings — no migration.
 
 ## System Prompt Builder (SSOT)
 
@@ -67,22 +67,22 @@ Session groups declared under `pipelineConfig.sessionGroups: { [name]: state[] }
 
 When `states[<status>].model` is **null**, `resolveStageOverrides` applies a hardcoded default tier from `DEFAULT_STAGE_MODELS` (`stage-overrides.ts`), keyed by issue status. This is the single source of truth for per-stage model routing — it applies to **every** project automatically, even projects with no per-state config, and is overridable per-project simply by setting `states[<status>].model` (an explicit value always wins).
 
-| status | step | default tier | rationale |
-|--------|------|--------------|-----------|
-| `open` | triage | `haiku` | cheap classification |
-| `confirmed` | clarify | `sonnet` | reproduce / validate |
-| `clarified` | plan | `opus` | architecture — high leverage |
-| `approved` | code | `sonnet` | balanced |
-| `developed` | review | `opus` | bug-catching — high leverage |
-| `testing` | test | `sonnet` | merge + E2E, mechanical |
-| `reopen` | fix | `sonnet` | base tier; escalates (below) |
-| `released` | release | `haiku` | changelog + close |
+| status | step | default tier |
+|--------|------|--------------|
+| `open` | triage | `sonnet` |
+| `confirmed` | clarify | `opus` |
+| `clarified` | plan | `opus` |
+| `approved` | code | `opus` |
+| `developed` | review | `opus` |
+| `testing` | test | `opus` |
+| `reopen` | fix | `opus` |
+| `released` | release | `sonnet` |
 
 Statuses absent from the table (`staging`/`custom`/`pm`/`smoke`) fall through to the dispatcher's `job.modelTier ?? 'default'`.
 
 Values are **tier aliases** (`haiku`/`sonnet`/`opus`), passed verbatim to `claude --model` (the runner forwards the string unchanged in `build_args`). Aliases resolve to the current model in each family, so the policy stays stable across model bumps — unlike dated full IDs (`claude-opus-4-8`, …). Full IDs remain valid as a per-project override.
 
-**Escalation on reopen.** `escalateModel(model, reopenCount)` bumps a tier-alias model up the ladder (`haiku → sonnet → opus`) by `reopenCount` steps, clamped to `opus`. The dispatcher applies it to `fix` and `review` jobs only, reading `issues.reopenCount` (best-effort; a DB hiccup logs at warn and dispatches without the bump). So a reopened issue retries `fix`/`review` on a stronger model. Non-alias (custom full-ID) models pass through unchanged — they can't be laddered.
+**A stage's tier is fixed.** Nothing varies it at dispatch time. The ISS-535 reopen-driven escalation (`escalateModel`, which laddered `fix`/`review` up a tier per reopen) was **deleted** by owner decision: with every repo-touching stage already at `opus` the ladder had no rung left to climb, and ISS-766 measured that opus-on-rework loop at $698 of a $1,207 week. `reopen` now runs the same tier as `approved`. Re-introducing a runtime bump re-opens that cost path — a `cm:guard` on `DEFAULT_STAGE_MODELS` and a `cm:edge` in `dispatcher.ts` both say so.
 
 **Apply process (per-project override).** To override the default for a project, PATCH `pipelineConfig.states.<status>` with the **full state object** — the per-state patch is a wholesale replace AND the whole config is re-validated, so omitting `enabled`/`mcpServers`/`allowedTools`/`systemPrompt` drops them, and any enabled stage missing a registered skill 409s `MISSING_SKILL_FOR_ENABLED_STAGE`. Patch on a config that already passes validation.
 

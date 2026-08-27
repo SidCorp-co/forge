@@ -5,7 +5,6 @@
 #
 # Default behavior:
 #   - branch-name check (ADR 0014)  → WARN only, never blocks
-#   - tauri bundle.active guard     → hard FAIL (silently kills release artifacts)
 #   - package builds/tests          → SKIPPED
 #
 # Controls:
@@ -38,18 +37,6 @@ if [ -x "$repo_root/scripts/check-branch-name.sh" ]; then
         ;;
     esac
   done <<< "$stdin_input"
-fi
-
-# Guard: tauri.conf.json bundle.active must stay true. Without it `tauri build`
-# emits only the raw binary — release.yml's tauri-action then fails with
-# "No artifacts were found." (every release v0.1.9..v0.1.16 hit this silently.)
-tauri_conf="$repo_root/packages/dev/src-tauri/tauri.conf.json"
-if [ -f "$tauri_conf" ] && command -v jq >/dev/null 2>&1; then
-  if ! jq -e '.bundle.active == true' "$tauri_conf" >/dev/null; then
-    echo "[pre-push] FAIL: packages/dev/src-tauri/tauri.conf.json must have bundle.active=true."
-    echo "[pre-push] Without it, release builds skip bundling and produce zero installer artifacts."
-    exit 1
-  fi
 fi
 
 if [ "$PREPUSH_BUILD" != "1" ] && [ "$PREPUSH_FULL" != "1" ]; then
@@ -93,7 +80,6 @@ fi
 packages=""
 echo "$changed" | grep -q '^packages/core/' && packages="$packages core"
 echo "$changed" | grep -q '^packages/web-v2/' && packages="$packages web-v2"
-echo "$changed" | grep -q '^packages/dev/' && packages="$packages dev"
 echo "$changed" | grep -q '^packages/contracts/' && packages="$packages contracts"
 
 if [ -z "$packages" ]; then

@@ -18,13 +18,13 @@ import { setAuthCookie } from '../cookie.js';
 import { signUserToken } from '../jwt.js';
 import { githubProvider } from './github.js';
 import { googleProvider, oidcProvider } from './oidc-provider.js';
-import { type ProviderConfig, type ProviderId, getCallbackUrl, getProvider } from './providers.js';
+import { getCallbackUrl, getProvider, type ProviderConfig, type ProviderId } from './providers.js';
 import {
-  STATE_COOKIE_NAME,
   clearStateCookie,
   generateNonce,
   generatePkceVerifier,
   pkceChallenge,
+  STATE_COOKIE_NAME,
   setStateCookie,
   signState,
   verifyState,

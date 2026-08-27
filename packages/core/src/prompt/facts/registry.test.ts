@@ -5,12 +5,11 @@ import {
   SKILL_FACT_TIERS,
 } from '@forge/contracts';
 import { describe, expect, it } from 'vitest';
-import { PARK_EXIT_RULE } from '../../pipeline/park-states.js';
 import {
   FORGE_FACTS,
-  OPERATING_AFFORDANCES_TEXT,
   getFact,
   listFacts,
+  OPERATING_AFFORDANCES_TEXT,
   renderFact,
 } from './registry.js';
 
@@ -53,9 +52,18 @@ describe('forge facts registry', () => {
     expect(text).toContain('QUOTE that human');
     expect(text).toContain('NEW `needs_info`');
     const fact = getFact('pipeline-rules');
-    expect(fact?.version).toBe(6);
-    // cm:why pinned byte-for-byte against the constant the orchestrator guard reads — the guide's copy is pinned the same way in guides/registry.test.ts, so editing one and forgetting the other is a red test rather than silent drift
-    expect(text).toContain(PARK_EXIT_RULE);
+    expect(fact?.version).toBe(7);
+  });
+
+  // cm:guard the prompt and the lifecycle guide must agree about `waiting`, and guides/registry.test.ts asserts the same three things — an agent reads the prompt, a human reads the guide, and the two disagreeing about who may write a status is how ISS-163 became six interventions
+  it('pipeline-rules teaches the RFC 0002 park model and nothing of the deleted one', () => {
+    const text = renderFact('pipeline-rules') ?? '';
+    expect(text).toContain('a human is needed');
+    expect(text).toContain('needs_decision');
+    expect(text).toContain('needs_resource');
+    expect(text).toContain('held');
+    expect(text).not.toContain('operator_unblock');
+    expect(text).not.toContain('Reopens are capped');
   });
 
   // AC5 token evidence (measured via renderFact + estimateTokens, no new
@@ -200,6 +208,55 @@ describe('worktree-protocol fact — the invariant that must outrank a stale ski
   it('explicitly outranks a contradicting step in the adopted skill', () => {
     expect(body).toMatch(/this block wins/);
     expect(body).toMatch(/do not receive template fixes/);
+  });
+});
+
+/**
+ * The worktree lifecycle only closes if some stage is actually told to remove
+ * one. `worktree-protocol` carried the sentence "clean up only at release"
+ * while its own `appliesTo` was `[code, fix]` — so the single instruction to
+ * delete anything was addressed to two stages that must NOT delete (fix and
+ * review re-enter the same worktree) and invisible to the one that should.
+ *
+ * Measured 2026-08-14: ~200 abandoned worktrees across six runner boxes, one
+ * project holding 17G / 1.69M files under `.claude/worktrees`, ubuntu6 down to
+ * 951MB free on a 78G disk with every project on it failing.
+ */
+describe('worktree-cleanup fact — the half of the lifecycle that deletes', () => {
+  const body = renderFact('worktree-cleanup') ?? '';
+
+  // cm:guard `release` and ONLY release — adding `code`/`fix`/`review` here tells a stage to delete the worktree its successor re-enters, and dropping `release` restores the leak this fact exists to close
+  it('reaches release, and none of the stages that re-enter the worktree', () => {
+    const fact = getFact('worktree-cleanup');
+    expect(fact?.appliesTo).toEqual(['release']);
+    for (const stage of ['code', 'fix', 'review', 'test']) {
+      expect(fact?.appliesTo, `must not apply to ${stage}`).not.toContain(stage);
+    }
+  });
+
+  // cm:guard the dirty check must come BEFORE the removal, and the removal must carry --force — `--force` is mandatory (node_modules is untracked) and is precisely what makes an unchecked removal destroy uncommitted work
+  it('orders the dirty check ahead of the forced removal', () => {
+    const check = body.indexOf('status --porcelain');
+    const remove = body.indexOf('git worktree remove');
+    expect(check).toBeGreaterThan(-1);
+    expect(remove).toBeGreaterThan(check);
+    expect(body).toContain('--force');
+    expect(body).toMatch(/STOP/);
+  });
+
+  it('prunes the admin entry, not just the directory', () => {
+    expect(body).toContain('git worktree prune');
+  });
+
+  // cm:guard a blanket sweep is the one thing this fact must never license — the reason it is a release-stage step and not a reaper is that only the releasing agent knows its own worktree is finished
+  it("forbids sweeping other issues' worktrees", () => {
+    expect(body).toMatch(/Never sweep other issues/);
+    expect(body).toMatch(/work in progress right now/);
+  });
+
+  it('states the cost, so the step does not read as tidiness', () => {
+    expect(body).toMatch(/GB each|node_modules/);
+    expect(body).toMatch(/Nothing else ever removes it/);
   });
 });
 

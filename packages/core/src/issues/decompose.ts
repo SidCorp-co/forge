@@ -37,9 +37,9 @@ import {
   projects,
 } from '../db/schema.js';
 import {
-  IntegrationBranchError,
   createIntegrationBranch,
   gitRemoteHasBranch,
+  IntegrationBranchError,
 } from '../git/branches.js';
 import { logger } from '../logger.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
@@ -481,6 +481,11 @@ export async function decomposeParent(
           },
           'waiting',
           { id: project.createdBy, ownerId: project.createdBy },
+          // cm:guard the ONLY `waiting` write left in core, and it MUST carry BOTH a kind and a reason (RFC 0002 INV-5/INV-8) — core is held to the same bar as an agent here, and dropping either argument makes this transition throw, which the catch below would swallow into a warn log and leave the parent un-parked with its children already created
+          {
+            waitingKind: 'needs_decision',
+            transitionReason: `Decomposed into ${result.createdEdges} child issue${result.createdEdges === 1 ? '' : 's'}. Review the split, then approve this parent to promote every child from \`draft\` to \`approved\`. The parent's own integration work runs LAST, after every child's code has merged.`,
+          },
         );
       }
     } catch (err) {

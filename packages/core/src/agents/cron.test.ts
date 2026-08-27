@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const selectMock = vi.fn();
-let lastWhereArg: unknown = undefined;
+let lastWhereArg: unknown;
 vi.mock('../db/client.js', () => ({
   db: {
     select: (...args: unknown[]) => selectMock(...args),

@@ -1,23 +1,23 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   AttachmentError,
-  type PersistedCommentAttachment,
   listCommentAttachmentsForIssue,
+  type PersistedCommentAttachment,
   persistCommentAttachment,
 } from '../../comments/attachment-service.js';
 import { pgConstraintName, pgErrorCode } from '../../comments/error-mapping.js';
 import type { CommentAttachmentLite } from '../../comments/tree.js';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
-import { comments, issues, projectMembers, projects } from '../../db/schema.js';
+import { comments, issues } from '../../db/schema.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
 import {
-  type ContextScopedMcpToolFactory,
-  assertPrincipalIsMember,
   assertPrincipalIsWriter,
+  type ContextScopedMcpToolFactory,
+  principalHookActor,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -141,7 +141,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
   description:
     'List, create, or delete issue comments. List requires filters.issue (issue UUID). ' +
     'Create requires data.issue + data.body. Delete requires documentId. All actions ' +
-    'enforce project membership via the device principal. ' +
+    'enforce project membership via the device principal. Body shape — see guide writing-an-issue: outcome first, trace underneath; mermaid fences render, and an attached .html renders inline. ' +
     'Attachments: for anything bigger than a tiny snippet use the forge_uploads tool ' +
     '(presigned-URL pattern) instead of base64 — base64 in data.attachments[] is slow ' +
     'and burns context tokens. Workflow: (1) create the comment to get its id; (2) call ' +
@@ -281,7 +281,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
         await hooks.emit('commentCreated', {
           issueId,
           projectId,
-          actor: { type: 'device', id: device.id },
+          actor: principalHookActor(principal, device),
           commentId: inserted.id,
           body: inserted.body,
           parentId: inserted.parentId,
@@ -354,7 +354,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
         await hooks.emit('commentDeleted', {
           issueId: comment.issueId,
           projectId: comment.projectId,
-          actor: { type: 'device', id: device.id },
+          actor: principalHookActor(principal, device),
           commentId: comment.id,
         });
 

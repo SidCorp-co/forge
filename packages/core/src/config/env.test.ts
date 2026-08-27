@@ -45,7 +45,6 @@ describe('config/env', () => {
   });
 
   it('throws at import time when a required var is missing', async () => {
-    // biome-ignore lint/performance/noDelete: assigning undefined coerces to the string "undefined"
     delete process.env.JWT_SECRET;
 
     await expect(import('./env.js')).rejects.toThrow(/JWT_SECRET/);

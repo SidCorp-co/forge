@@ -1,0 +1,157 @@
+{
+  "$comment": "Per-checker configuration for this repo. Each checker falls back to its own defaults when its key is absent, so deleting a block degrades to the built-in behaviour rather than to an empty scope. What lives here is what changes between repos: layout, thresholds, and the regexes that name one stack's idioms. What stays in code is the rule itself.",
+  "profile": "hardened",
+  "$profile": "The shape this repo claims to hold, not the tools it uses: baseline = one axis measures \u00b7 standard = two axes block, both meta-checks present \u00b7 hardened = every declared axis blocks and every gate job is asserted. A profile is a claim someone else can fail you on, which is the only kind worth writing down.",
+  "$baselines": "Level 2 means `baseline the old, block the new`, so an axis at 2 must name WHERE its debt is frozen and WHICH direction counts as improvement \u2014 otherwise the frozen number is a photograph nobody can compare against. `improves`: down = a per-key number may only decrease \u00b7 shrink = a set may only lose members \u00b7 tighten = a status may only move to the stricter value. The direction lives here rather than inside the baseline file because `--update-baseline` rewrites those files, and a rule that a re-freeze can silently drop is not a rule.",
+  "axes": {
+    "form": {
+      "level": 2,
+      "gate": "check-size-budget + check-lint-budget + biome",
+      "owns": "file & function length; whitespace, import order, recommended rules",
+      "baseline": {
+        "path": ".forge/size-baseline.json",
+        "keyBy": "path",
+        "improves": "down"
+      },
+      "alsoBaseline": {
+        "path": ".forge/lint-baseline.json",
+        "keyBy": "path",
+        "improves": "down"
+      }
+    },
+    "knowledge": {
+      "level": 2,
+      "gate": "cm verify",
+      "owns": "cm: couplings, prose discipline, module headers",
+      "baseline": {
+        "path": ".forge/codemap-baseline.json",
+        "keyBy": "content",
+        "improves": "shrink"
+      }
+    },
+    "relations": {
+      "level": 2,
+      "gate": "archmap check",
+      "owns": "which module may depend on which",
+      "baseline": {
+        "path": ".arch.json",
+        "keyBy": "contract",
+        "improves": "tighten"
+      },
+      "alsoBaseline": {
+        "$why": "archmap lock writes this, and without a direction that command is an amnesty button: run it and today's violations stop blocking. `down` means the frozen TOTAL may not rise and no per-key count may rise, so freezing a new file in fails and letting a blob grow inside its own entry fails, while fixing one and re-freezing is free.",
+        "path": ".arch.baseline.json",
+        "keyBy": "contract|subject",
+        "improves": "down"
+      }
+    },
+    "behaviour": {
+      "level": 2,
+      "gate": "check-test-signal + check-flow-coverage + check-test-reachability",
+      "owns": "whether a test asserts behaviour or restates a declaration; whether every declared flow step is executed end-to-end; whether every tracked test file is collected by a runner at all",
+      "baseline": {
+        "path": ".forge/test-signal-baseline.json",
+        "keyBy": "path",
+        "improves": "down"
+      },
+      "alsoBaseline": {
+        "path": ".forge/flow-coverage-baseline.json",
+        "keyBy": "step",
+        "improves": "shrink"
+      }
+    },
+    "language": {
+      "level": 3,
+      "gate": "check-source-language",
+      "owns": "English-only source policy",
+      "baseline": null
+    }
+  },
+  "checkers": {
+    "archmap": {
+      "maxUnresolvableEdges": 200,
+      "$comment": "Ceiling on edges `arch check` cannot resolve. Measured 2026-08-23: 171, all of them node_modules subpath exports (hono/http-exception and friends), which belong to no module and so cannot violate a contract. It was 997 until `.arch.json` declared a tsConfig \u2014 841 of those were web-v2's `@/*` alias, and an unresolvable edge is DROPPED, so three locked contracts over that package were being checked against an empty graph. Audit rule R7 fails if it climbs back."
+    },
+    "lint-budget": {
+      "scopes": [
+        {
+          "cwd": "packages/web-v2",
+          "args": [
+            "check",
+            "src"
+          ]
+        }
+      ]
+    },
+    "size-budget": {
+      "scopes": [
+        {
+          "cwd": "packages/core",
+          "args": [
+            "check",
+            "src",
+            "tests"
+          ]
+        }
+      ]
+    },
+    "source-language": {
+      "scanRoots": [
+        "packages/web-v2/src",
+        "packages/core/src"
+      ],
+      "scanExts": [
+        ".ts",
+        ".tsx",
+        ".md"
+      ],
+      "brandTokens": [
+        "Pok\u00e9mon",
+        "caf\u00e9",
+        "na\u00efve",
+        "r\u00e9sum\u00e9",
+        "clich\u00e9",
+        "fa\u00e7ade",
+        "jalape\u00f1o"
+      ]
+    },
+    "test-signal": {
+      "scanRoots": [
+        "packages/core/src",
+        "packages/core/tests",
+        "packages/web-v2/src",
+        "packages/web-v2/tests",
+        "packages/contracts/src",
+        "packages/contracts/tests"
+      ],
+      "testFileSuffixes": [
+        ".test.ts",
+        ".test.tsx"
+      ],
+      "minAssertions": 20,
+      "declarationRatio": 0.5,
+      "mockRatio": 0.7,
+      "declarationPattern": "\\.(columnType|notNull|hasDefault|primary|isUnique|dataType|foreignKeys|indexes)\\b|withTimezone\\(|names\\.sort\\(\\)",
+      "mockPattern": "toHaveBeenCalled[A-Za-z]*\\(",
+      "assertPattern": "expect\\("
+    },
+    "flow-coverage": {
+      "cm": ".forge/codemap/cm",
+      "codemapConfig": ".forge/codemap.json",
+      "sources": [
+        {
+          "label": "e2e",
+          "path": "packages/core/coverage/integration/coverage-final.json",
+          "authoritative": true,
+          "produce": "pnpm --filter @forge/core test:integration:coverage"
+        },
+        {
+          "label": "unit",
+          "path": "packages/core/coverage/unit/coverage-final.json",
+          "authoritative": false,
+          "produce": "pnpm --filter @forge/core test:coverage"
+        }
+      ]
+    }
+  }
+}

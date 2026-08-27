@@ -26,12 +26,15 @@ describe('extractVerdict (ISS-381 2.1)', () => {
     }
   });
 
-  it('maps a test handoff `result` onto the verdict column', () => {
-    for (const r of ['pass', 'fail'] as const) {
+  it('maps every test handoff result onto the verdict column', () => {
+    for (const r of ['pass', 'fail', 'blocked_fixture', 'verified_by_test'] as const) {
       const payload = {
         step: 'test',
         schema_version: 1,
         result: r,
+        ...(r === 'blocked_fixture' || r === 'verified_by_test'
+          ? { resultReason: 'A documented reason.' }
+          : {}),
         failures: [],
         flakyTests: [],
       } as StepHandoffPayload;

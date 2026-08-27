@@ -18,8 +18,8 @@
 import type { MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { type Device, verifyDeviceToken } from '../auth/deviceToken.js';
-import { isPatLike } from '../auth/pat-format.js';
 import { forceRevokePat, touchPatUsage, verifyPat } from '../auth/pat.js';
+import { isPatLike } from '../auth/pat-format.js';
 import { RULES } from '../config/rate-limits.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -27,6 +27,14 @@ import { getClientIp } from './rate-limit.js';
 
 export type PatPrincipal = {
   kind: 'pat';
+  /**
+   * Who is at the keyboard, which `kind` cannot answer. A real PAT is a
+   * person; the chat surface builds a `pat` principal too but an agent drives
+   * it. Attribution follows `userId` either way — this decides whether the
+   * write is treated as a human's or a machine's.
+   */
+  // cm:guard NEVER derive this from `kind`. `chat/tools/principal.ts` builds `kind:'pat'` for an agent-driven surface, so `kind === 'pat' ? human : agent` exempts every agent chat write from the ISS-812 fabrication guard — the guard that exists because agents were fabricating evidence. That mapping is live at mcp/tools/forge-release-batch.ts and is why this field exists.
+  agency: 'human' | 'agent';
   userId: string;
   tokenId: string;
   scopes: readonly string[];
@@ -213,6 +221,7 @@ export const requirePatOrDevice = (): MiddlewareHandler<{ Variables: PrincipalVa
       c.set('patTokenId', row.id);
       c.set('principal', {
         kind: 'pat',
+        agency: 'human',
         userId: row.userId,
         tokenId: row.id,
         scopes: row.scopes,

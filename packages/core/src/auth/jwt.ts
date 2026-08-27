@@ -1,4 +1,4 @@
-import { type JWTPayload, SignJWT, jwtVerify } from 'jose';
+import { type JWTPayload, jwtVerify, SignJWT } from 'jose';
 import { env } from '../config/env.js';
 
 export const USER_JWT_TYPE = 'user' as const;

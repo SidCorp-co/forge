@@ -1,8 +1,8 @@
 import { logger } from '../logger.js';
 import {
+  classifyFailure,
   type FailureAction,
   type FailureKind,
-  classifyFailure,
 } from '../pipeline/failure-classifier.js';
 import { parseUsageLimitReset } from '../runners/limit-detect.js';
 import { extractPromptString } from './turns-helpers.js';
@@ -137,7 +137,9 @@ export async function finalizeScheduleSessionFailure(opts: {
   /** Post-write schedule failover; no-op unless the classifier said `failover`. */
   recoverAfterWrite: (metadata: unknown) => Promise<void>;
 }> {
-  const text = extractSessionFailureText(opts.messages, opts.note);
+  // cm:guard classify runner-authored text ONLY. A schedule session's transcript opens with the schedule's own prompt as a `user` message, so an unfiltered blob is fed to the classifier AS IF it were the error: every pattern runs against the prompt, and a prompt that merely says "usage limit" or "rate limit" is classified `failover` and triggers a real cross-account schedule failover. Measured live on forge-beta 2026-08-13: `improve:optimize-skills` and `improve:product-map-refresh` both stored 198 chars of their own prompt as `agent_sessions.failure_reason`.
+  // cm:edge lockstep -> packages/core/src/agent-sessions/routes.ts — the runner-limit path in that file carries the same guard for the same reason; a fix to one that skips the other leaves half the terminal-report surface classifying user text
+  const text = extractSessionFailureText(opts.messages, opts.note, { excludeRoles: ['user'] });
   const classified = classifyFailure({ error: text });
 
   opts.set.failureReason = classified.reason;

@@ -79,4 +79,4 @@ Before any code, the implementer MUST re-audit the live resolution/dispatch path
 
 - Delta syntax: HTML-comment operators (above) vs. front-matter-declared patch list vs. unified-diff. Needs a spike on LLM-editability (agents will author deltas).
 - Should `extendsVersionRange` hard-pin (`@6`) be allowed, opting out of auto-flow?
-- Does the desktop Studio UI edit the delta or the materialized preview?
+- Does the Skill Studio UI edit the delta or the materialized preview?

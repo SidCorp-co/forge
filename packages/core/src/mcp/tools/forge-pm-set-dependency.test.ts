@@ -20,6 +20,7 @@ chain.limit = () => chain;
 chain.values = () => chain;
 chain.returning = () => chain;
 chain.onConflictDoNothing = () => chain;
+chain.set = () => chain;
 // biome-ignore lint/suspicious/noExplicitAny: thenable bridge
 chain.then = (resolve: any, reject: any) => Promise.resolve(queue.shift()).then(resolve, reject);
 
@@ -27,6 +28,7 @@ vi.mock('../../db/client.js', () => ({
   db: {
     select: vi.fn(() => chain),
     insert: vi.fn(() => chain),
+    update: vi.fn(() => chain),
   },
 }));
 
@@ -302,5 +304,42 @@ describe('forge_pm.set_dependency', () => {
         kind: 'blocks',
       }),
     ).rejects.toThrow(/FORBIDDEN/);
+  });
+});
+
+describe('forge_pm.set_dependency — retracting an existing edge', () => {
+  // cm:guard expiring an edge is the ONLY agent-reachable retraction (DELETE is JWT-only REST), so the conflict path must APPLY `validUntil` rather than discard it — a dropped blocker never stamps `merged_at`, and the discard wedged getcontent ISS-455/457 for 53h behind dropped ISS-463
+  it('applies validUntil on conflict and emits dependencyChanged so the gated side can dispatch', async () => {
+    const tool = forgePmSetDependencyTool(ctx);
+    pushMemberOk();
+    queue.push([
+      { id: FROM_ID, projectId: PROJECT_ID },
+      { id: TO_ID, projectId: PROJECT_ID },
+    ]);
+    queue.push([]);
+    queue.push([{ id: EDGE_ID }]);
+    queue.push([]);
+
+    hooks.reset();
+    const depSpy = vi.fn();
+    hooks.on('dependencyChanged', (p) => depSpy(p));
+
+    const result = (await tool.handler({
+      projectId: PROJECT_ID,
+      fromIssueId: FROM_ID,
+      toIssueId: TO_ID,
+      kind: 'blocks',
+      validUntil: '2020-01-01T00:00:00Z',
+    })) as { id: string; created: boolean; updated: boolean };
+
+    expect(result.created).toBe(false);
+    expect(result.updated).toBe(true);
+    expect(depSpy).toHaveBeenCalledWith({
+      projectId: PROJECT_ID,
+      edgeId: EDGE_ID,
+      fromIssueId: FROM_ID,
+      toIssueId: TO_ID,
+      kind: 'blocks',
+    });
   });
 });

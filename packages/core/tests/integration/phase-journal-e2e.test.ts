@@ -1,0 +1,189 @@
+/**
+ * The phase journal's CHECK constraint, against real Postgres.
+ *
+ * `phase_journal_verdict_is_runner_written` is the only thing standing between
+ * a driver and its own review record. Under the agent-driven pipeline there is
+ * no job boundary left between coding and review, so nothing downstream would
+ * contradict a session that wrote itself an approval — the database has to
+ * refuse it.
+ *
+ * A constraint that has never been observed rejecting anything is a claim, not
+ * a mechanism, and a mocked db cannot observe it. Hence this file.
+ */
+
+import { randomUUID } from 'node:crypto';
+import { sql } from 'drizzle-orm';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  createTestProject,
+  createTestUser,
+  setupTestDatabase,
+  type TestDatabase,
+  truncateAll,
+} from '../helpers/index.js';
+
+describe('phase_journal constraints E2E', () => {
+  let harness: TestDatabase;
+  let projectId: string;
+  let runId: string;
+
+  beforeAll(async () => {
+    harness = await setupTestDatabase();
+    process.env.DATABASE_URL = harness.url;
+    process.env.NODE_ENV ??= 'test';
+    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+  }, 60_000);
+
+  afterAll(async () => {
+    if (harness) await harness.cleanup();
+  });
+
+  beforeEach(async () => {
+    await truncateAll(harness.db);
+    const owner = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, owner.id);
+    projectId = project.id;
+    runId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
+      VALUES (${runId}, ${projectId}, NULL, 'system', 'running', now())
+    `);
+  });
+
+  async function insertPhase(
+    phase: string,
+    source: string,
+    artifact: unknown,
+    attempt = 1,
+  ): Promise<void> {
+    await harness.db.execute(sql`
+      INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source, artifact)
+      VALUES (${randomUUID()}, ${projectId}, ${runId}, ${phase}, ${attempt}, ${source},
+              ${artifact === null ? null : JSON.stringify(artifact)}::jsonb)
+    `);
+  }
+
+  /**
+   * drizzle wraps the driver error, so the constraint name is on the cause, not
+   * the message. Asserting the name rather than regex-matching prose is what
+   * makes this test fail if a DIFFERENT constraint starts rejecting the row.
+   */
+  async function violatedConstraint(p: Promise<unknown>): Promise<string | undefined> {
+    try {
+      await p;
+      return undefined;
+    } catch (e) {
+      const cause = (e as { cause?: { constraint_name?: string } }).cause;
+      return cause?.constraint_name;
+    }
+  }
+
+  it('refuses a verdict the agent wrote for itself', async () => {
+    expect(
+      await violatedConstraint(
+        insertPhase('review', 'agent', { kind: 'verdict', decision: 'approve' }),
+      ),
+    ).toBe('phase_journal_verdict_is_runner_written');
+  });
+
+  it('refuses an agent-written rejection too, so the rule is about authorship not outcome', async () => {
+    expect(
+      await violatedConstraint(
+        insertPhase('review', 'agent', { kind: 'verdict', decision: 'request_changes' }),
+      ),
+    ).toBe('phase_journal_verdict_is_runner_written');
+  });
+
+  it('accepts the same verdict from the runner', async () => {
+    await insertPhase('review', 'runner', { kind: 'verdict', decision: 'approve' });
+
+    const rows = await harness.db.execute(sql`
+      SELECT source, artifact->>'decision' AS decision FROM phase_journal WHERE phase = 'review'
+    `);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ source: 'runner', decision: 'approve' });
+  });
+
+  // cm:guard a verdict that updates zero rows returned 200 and left no record — indistinguishable from a review that never ran, on the one check the driver cannot perform on itself
+  it('refuses a verdict for a phase attempt that was never opened', async () => {
+    const { recordVerdict } = await import('../../src/pipeline/phase-journal.js');
+
+    await expect(
+      recordVerdict({
+        runId,
+        phase: 'review',
+        attempt: 7,
+        outcome: 'ok',
+        verdict: { decision: 'approve' },
+      }),
+    ).rejects.toThrow(/no row for review attempt 7/);
+  });
+
+  // cm:guard the driver must not erase the one row it cannot author — an accepted overwrite keeps `source: 'runner'`, so its own prose then reads as the reviewer's verdict (getcontent 2026-08-21: 9 of 10 closed issues lost a real verdict this way)
+  it('refuses to let an agent note overwrite a recorded verdict', async () => {
+    const { endPhase } = await import('../../src/pipeline/phase-journal.js');
+    await insertPhase('review', 'runner', {
+      kind: 'verdict',
+      decision: 'request_changes',
+      findings: [{ why: 'AC2 unmet' }],
+    });
+
+    await endPhase({
+      runId,
+      phase: 'review',
+      attempt: 1,
+      outcome: 'ok',
+      artifact: { kind: 'note', text: 'Reviewer decision: approve.' },
+    });
+
+    const rows = await harness.db.execute(sql`
+      SELECT source, artifact->>'kind' AS kind, artifact->>'decision' AS decision, ended_at
+      FROM phase_journal WHERE phase = 'review'
+    `);
+    expect(rows[0]).toMatchObject({
+      source: 'runner',
+      kind: 'verdict',
+      decision: 'request_changes',
+    });
+    expect(rows[0]?.['ended_at']).toBeNull();
+  });
+
+  it('still closes a phase whose artifact is not a verdict', async () => {
+    const { endPhase } = await import('../../src/pipeline/phase-journal.js');
+    await insertPhase('code', 'agent', { kind: 'note', text: 'first' });
+
+    await endPhase({
+      runId,
+      phase: 'code',
+      attempt: 1,
+      outcome: 'ok',
+      artifact: { kind: 'note', text: 'second' },
+    });
+
+    const rows = await harness.db.execute(sql`
+      SELECT artifact->>'text' AS text, ended_at FROM phase_journal WHERE phase = 'code'
+    `);
+    expect(rows[0]?.['text']).toBe('second');
+    expect(rows[0]?.['ended_at']).not.toBeNull();
+  });
+
+  it('lets the agent write every non-verdict phase it owns', async () => {
+    await insertPhase('code', 'agent', { kind: 'commit', sha: 'abc123' });
+    await insertPhase('plan', 'agent', null);
+
+    const rows = await harness.db.execute(
+      sql`SELECT phase FROM phase_journal WHERE source = 'agent' ORDER BY phase`,
+    );
+    expect(rows.map((r) => r['phase'])).toEqual(['code', 'plan']);
+  });
+
+  it('refuses a second row for the same phase and attempt, so a resume point is never ambiguous', async () => {
+    await insertPhase('code', 'agent', null, 1);
+
+    expect(await violatedConstraint(insertPhase('code', 'agent', null, 1))).toBe(
+      'phase_journal_run_phase_attempt_idx',
+    );
+    await insertPhase('code', 'agent', null, 2);
+  });
+});

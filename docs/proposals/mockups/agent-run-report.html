@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='13' font-size='13'%3E%F0%9F%94%A5%3C/text%3E%3C/svg%3E">
+<title>Agent run report — mockup (02 + 03)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   Forge tokens — copied from packages/web-v2/src/styles/tokens.css
+   so this mockup is judged in the real brand, not a stand-in.
+   Layer 1 raw palette · Layer 2 semantic. Dark fills in the
+   [data-theme="dark"] block that tokens.css has reserved.
+   ============================================================ */
+:root{
+  --font-sans:'Hanken Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+
+  --paper-0:#FFFFFF; --paper-50:#FBFAF8; --paper-100:#F5F3EF; --paper-200:#EDEAE3;
+  --paper-300:#E4E0D8; --paper-400:#CFC9BE;
+  --ink-900:#181B22; --ink-700:#3A404B; --ink-600:#5A616E; --ink-500:#767D8A; --ink-400:#9AA0AB;
+  --flame-50:#FEF2EC; --flame-500:#F15A2B; --flame-600:#DC4A1D; --flame-700:#B73B15;
+  --cobalt-50:#EAF0FE; --cobalt-500:#2D5BD6; --cobalt-600:#2148B4; --cobalt-700:#1A3A92;
+  --green-50:#E8F5EF; --green-500:#1F9D6B; --green-600:#168256;
+  --amberw-50:#FDF2DD; --amberw-500:#E8920C; --amberw-600:#C6790A;
+  --red-50:#FCEBE9; --red-500:#D6453B; --red-600:#B5332A;
+  --slate-50:#EDF0F4; --slate-500:#6A7585; --slate-600:#515B6B;
+
+  --bg-app:var(--paper-50); --bg-surface:var(--paper-0); --bg-sunken:var(--paper-100);
+  --bg-hover:var(--paper-100); --bg-active:var(--paper-200);
+  --fg-default:var(--ink-900); --fg-muted:var(--ink-600); --fg-subtle:var(--ink-500);
+  --fg-on-accent:#fff;
+  --border-subtle:var(--paper-200); --border-default:var(--paper-300); --border-strong:var(--paper-400);
+  --accent:var(--flame-500); --accent-hover:var(--flame-600); --accent-tint:var(--flame-50);
+  --accent-text:var(--flame-700); --link:var(--cobalt-500);
+
+  --stage-triage:#8A6BD1; --stage-clarify:#2D5BD6; --stage-plan:#1F8FB0; --stage-code:#F15A2B;
+  --stage-review:#E8920C; --stage-test:#1F9D6B; --stage-release:#5A616E;
+
+  --r-xs:4px; --r-sm:6px; --r-md:9px; --r-lg:13px; --r-pill:999px;
+  --shadow-xs:0 1px 2px rgba(24,27,34,.05);
+  --shadow-sm:0 1px 2px rgba(24,27,34,.06),0 2px 4px rgba(24,27,34,.04);
+  --shadow-md:0 2px 4px rgba(24,27,34,.05),0 6px 16px rgba(24,27,34,.07);
+  --diff-add-bg:#E8F5EF; --diff-del-bg:#FCEBE9;
+  --ease-out:cubic-bezier(.22,1,.36,1); --dur-fast:120ms; --dur-base:200ms;
+  --gutter:18px;
+}
+[data-theme="dark"]{
+  --bg-app:#14161B; --bg-surface:#1A1D24; --bg-sunken:#20242C;
+  --bg-hover:#232830; --bg-active:#2A3038;
+  --fg-default:#ECEDEF; --fg-muted:#A6ABB5; --fg-subtle:#848B96;
+  --border-subtle:#262B34; --border-default:#2F3540; --border-strong:#3C4351;
+  --accent:#F5763F; --accent-hover:#F7885A; --accent-tint:#2A1D18; --accent-text:#F89B72;
+  --link:#82A3F2;
+  --green-50:#12271F; --green-500:#35B586; --green-600:#4CC79A;
+  --red-50:#2A1715; --red-500:#E4645B; --red-600:#EE7C74;
+  --amberw-50:#2A2011; --amberw-500:#EFA53B;
+  --cobalt-50:#161E31; --slate-50:#1C2129;
+  --diff-add-bg:#12271F; --diff-del-bg:#2A1715;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.4); --shadow-md:0 6px 20px rgba(0,0,0,.45);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg-app); color:var(--fg-default); font-family:var(--font-sans);
+  font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:var(--font-mono); font-variant-numeric:tabular-nums}
+h1,h2,h3{margin:0}
+button{font:inherit; color:inherit; background:none; border:0; cursor:pointer}
+a{color:var(--link); text-decoration:none}
+
+/* type scale */
+.h1{font-weight:700; font-size:22px; line-height:1.2; letter-spacing:-.012em}
+.h3{font-weight:600; font-size:15px; line-height:1.3}
+.body-sm{font-size:13.5px; line-height:1.5; color:var(--fg-muted)}
+.caption{font-size:12px; font-weight:500; line-height:1.35; color:var(--fg-subtle)}
+.kicker{font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-subtle)}
+
+/* ---------- shell ---------- */
+.shell{display:grid; grid-template-columns:56px 1fr; height:100vh; overflow:hidden}
+body{overflow-y:auto}
+.rail{
+  border-right:1px solid var(--border-subtle); background:var(--bg-surface);
+  display:flex; flex-direction:column; align-items:center; gap:4px; padding:12px 0;
+  position:sticky; top:0; height:100vh;
+}
+.rail .mark{
+  width:32px; height:32px; border-radius:var(--r-md); background:var(--accent);
+  color:#fff; display:grid; place-items:center; font-weight:800; font-size:15px; margin-bottom:10px;
+}
+.rail button{
+  width:36px; height:36px; border-radius:var(--r-sm); display:grid; place-items:center;
+  color:var(--fg-subtle); transition:background var(--dur-fast) var(--ease-out);
+}
+.rail button:hover{background:var(--bg-hover); color:var(--fg-default)}
+.rail button[aria-current="page"]{background:var(--accent-tint); color:var(--accent-text)}
+.main{min-width:0; min-height:0; display:grid; grid-template-rows:auto auto minmax(0,1fr) auto}
+
+/* ---------- header ---------- */
+header.top{
+  z-index:20; padding:14px var(--gutter) 0;
+  background:color-mix(in srgb, var(--bg-app) 92%, transparent);
+  backdrop-filter:blur(8px); border-bottom:1px solid var(--border-subtle);
+}
+.crumbs{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--fg-subtle)}
+.titlerow{display:flex; align-items:flex-start; gap:12px; margin-top:6px; flex-wrap:wrap}
+.titlerow .grow{flex:1; min-width:280px}
+.metarow{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:5px; font-size:12.5px; color:var(--fg-muted)}
+.metarow .dot{width:3px;height:3px;border-radius:50%;background:var(--border-strong)}
+
+.chip{
+  display:inline-flex; align-items:center; gap:5px; border-radius:var(--r-pill);
+  padding:2px 9px; font-size:11.5px; font-weight:600; line-height:1.5; white-space:nowrap;
+}
+.chip .bead{width:6px;height:6px;border-radius:50%}
+.chip.failure{background:var(--red-50); color:var(--red-600)} .chip.failure .bead{background:var(--red-500)}
+.chip.success{background:var(--green-50); color:var(--green-600)} .chip.success .bead{background:var(--green-500)}
+.chip.active{background:var(--cobalt-50); color:var(--cobalt-600)} .chip.active .bead{background:var(--cobalt-500)}
+.chip.neutral{background:var(--bg-sunken); color:var(--fg-muted)} .chip.neutral .bead{background:var(--fg-subtle)}
+.chip.attention{background:var(--amberw-50); color:var(--amberw-600)} .chip.attention .bead{background:var(--amberw-500)}
+.tag{
+  display:inline-flex; align-items:center; border:1px solid var(--border-default); border-radius:var(--r-xs);
+  padding:1px 6px; font-family:var(--font-mono); font-size:11px; color:var(--fg-muted); background:var(--bg-surface);
+}
+
+.btn{
+  display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 12px;
+  border-radius:var(--r-sm); border:1px solid var(--border-default); background:var(--bg-surface);
+  font-size:13px; font-weight:500; box-shadow:var(--shadow-xs);
+  transition:background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+.btn:hover{background:var(--bg-hover)}
+.btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+.btn.primary:hover{background:var(--accent-hover)}
+.btn.icon{width:32px; padding:0; justify-content:center}
+
+/* ---------- step strip ---------- */
+.steps{display:flex; align-items:stretch; gap:6px; padding:12px 0 14px; overflow-x:auto}
+.step{
+  flex:1 1 0; min-width:124px; text-align:left; padding:8px 10px; border-radius:var(--r-md);
+  border:1px solid var(--border-subtle); background:var(--bg-surface);
+  transition:transform var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+.step:hover{transform:translateY(-1px); border-color:var(--border-strong)}
+.step .top{display:flex; align-items:center; gap:6px}
+.step .name{font-size:12.5px; font-weight:600; text-transform:capitalize}
+.step .dur{margin-left:auto; font-size:11px; color:var(--fg-subtle); font-family:var(--font-mono)}
+.step .bar{height:3px; border-radius:2px; margin-top:7px; background:var(--border-subtle)}
+.step.done .bar{background:var(--green-500)}
+.step.failed{border-color:var(--red-500); background:var(--red-50)}
+.step.failed .bar{background:var(--red-500)}
+.step.failed .name{color:var(--red-600)}
+.step.pending{opacity:.55}
+.step.current{box-shadow:0 0 0 2px color-mix(in srgb, var(--red-500) 30%, transparent)}
+.tick{width:15px;height:15px;border-radius:50%;display:grid;place-items:center;font-size:9px;font-weight:700;color:#fff;flex:none}
+.tick.ok{background:var(--green-500)} .tick.bad{background:var(--red-500)} .tick.idle{background:var(--border-strong)}
+
+/* ---------- failure banner (mockup 03) ---------- */
+.blocker{
+  margin:0 var(--gutter) var(--gutter); border:1px solid var(--red-500); border-left-width:3px;
+  border-radius:var(--r-md); background:var(--red-50); padding:12px 14px;
+  display:grid; grid-template-columns:1fr auto; gap:14px;
+}
+.blocker h2{font-size:14px; font-weight:700; color:var(--red-600); display:flex; align-items:center; gap:7px}
+.blocker p{margin:5px 0 0; font-size:13.5px; color:var(--fg-default); max-width:78ch}
+.blocker pre{
+  margin:9px 0 0; padding:9px 11px; border-radius:var(--r-sm);
+  background:var(--bg-surface); border:1px solid color-mix(in srgb, var(--red-500) 28%, transparent);
+  font-family:var(--font-mono); font-size:11.5px; line-height:1.65; overflow-x:auto; color:var(--fg-default);
+}
+.blocker .next{
+  align-self:center; text-align:right; display:flex; flex-direction:column; gap:7px; align-items:flex-end;
+}
+
+/* ---------- 3-column body (mockup 02) ---------- */
+.body{display:grid; grid-template-columns:266px minmax(0,1fr) 296px; gap:var(--gutter);
+  padding:0 var(--gutter) var(--gutter); min-height:0}
+.body > div{min-height:0; height:100%; overflow-y:auto; overscroll-behavior:contain; padding-right:2px}
+/* the centre pane is the subject of the page, so it fills its column and
+   scrolls inside itself — content-height cards are what made the three
+   columns end at three different baselines. */
+.col-center > .card{height:100%; display:flex; flex-direction:column; min-height:0}
+.col-center > .card > header{flex:none}
+.col-center .lens.on{flex:1; min-height:0; overflow-y:auto; display:block}
+@media (max-width:1440px){ .body{grid-template-columns:240px minmax(0,1fr) 272px} }
+@media (max-width:1180px){ .body{grid-template-columns:minmax(0,1fr) 280px} .col-left{grid-column:1/-1} }
+@media (max-width:900px){ .body{grid-template-columns:minmax(0,1fr)} }
+
+.card{background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:var(--r-lg); box-shadow:var(--shadow-sm)}
+.card + .card{margin-top:var(--gutter)}
+.card > header{padding:11px 13px; border-bottom:1px solid var(--border-subtle); display:flex; align-items:center; gap:8px}
+.card > .pad{padding:12px 13px}
+.count{margin-left:auto; font-family:var(--font-mono); font-size:11px; color:var(--fg-subtle)}
+
+/* file rows */
+.filelist{list-style:none; margin:0; padding:4px}
+.filelist button{
+  width:100%; display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:var(--r-sm); text-align:left;
+}
+.filelist button:hover{background:var(--bg-hover)}
+.filelist button[aria-current="true"]{background:var(--accent-tint)}
+.path{flex:1; min-width:0; font-family:var(--font-mono); font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.plus{font-family:var(--font-mono); font-size:11px; color:var(--green-600)}
+.minus{font-family:var(--font-mono); font-size:11px; color:var(--red-600)}
+
+/* lens tabs */
+.lenses{display:flex; align-items:center; gap:4px; padding:4px; background:var(--bg-sunken); border-radius:var(--r-sm)}
+.lenses button{padding:4px 11px; border-radius:var(--r-xs); font-size:12.5px; font-weight:500; color:var(--fg-muted)}
+.lenses button[aria-selected="true"]{background:var(--bg-surface); color:var(--fg-default); box-shadow:var(--shadow-xs); font-weight:600}
+.lens{display:none} .lens.on{display:block}
+
+/* diff */
+.diffhead{
+  display:flex; align-items:center; gap:8px; padding:8px 12px;
+  border-bottom:1px solid var(--border-subtle); background:var(--bg-sunken);
+  border-radius:var(--r-lg) var(--r-lg) 0 0;
+}
+div.diff{padding:8px 0; overflow-x:auto; font-family:var(--font-mono); font-size:11.5px; line-height:1.75}
+div.diff > div{padding:1px 12px; white-space:pre}
+div.diff .ln{display:inline-block; width:34px; color:var(--fg-subtle); user-select:none; text-align:right; margin-right:12px}
+div.diff .add{background:var(--diff-add-bg); color:var(--green-600)}
+div.diff .del{background:var(--diff-del-bg); color:var(--red-600)}
+div.diff .hunk{color:var(--fg-subtle); background:var(--bg-sunken)}
+div.diff .ctx{color:var(--fg-muted)}
+
+/* grouped activity (the noise-collapse idea) */
+.act{list-style:none; margin:0; padding:4px}
+.act > li{border-radius:var(--r-sm)}
+.act .row{width:100%; display:flex; align-items:center; gap:9px; padding:7px 9px; border-radius:var(--r-sm); text-align:left}
+.act .row:hover{background:var(--bg-hover)}
+.act .label{flex:1; min-width:0; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.act .label b{font-weight:600}
+.act .meta{font-family:var(--font-mono); font-size:11px; color:var(--fg-subtle); flex:none; white-space:nowrap}
+.act .kids{display:none; padding:0 9px 8px 30px; min-width:0}
+.act li.open .kids{display:block}
+.act li.open .caret{transform:rotate(90deg)}
+.caret{transition:transform var(--dur-fast) var(--ease-out); color:var(--fg-subtle); flex:none}
+.kids div{font-family:var(--font-mono); font-size:11px; color:var(--fg-muted); padding:2px 0; overflow:hidden; text-overflow:ellipsis}
+.badge-err{background:var(--red-50); color:var(--red-600); border-radius:var(--r-xs); padding:0 5px; font-size:10.5px; font-weight:600}
+
+/* tape minimap — hindcast's colour-coded tick strip, Forge palette */
+.withtape{display:grid; grid-template-columns:minmax(0,1fr) 14px; gap:10px; align-items:stretch}
+.withtape > div:first-child{min-width:0}
+.tape{align-self:stretch; min-height:200px; display:flex; flex-direction:column; gap:2px; padding:5px 3px;
+  background:var(--bg-sunken); border-radius:var(--r-pill)}
+.tape i{display:block; flex:1 1 0; min-height:3px; border-radius:1px; background:var(--border-strong); cursor:pointer}
+.tape i.prose{background:var(--fg-subtle)}
+.tape i.tool{background:var(--cobalt-500); opacity:.55}
+.tape i.err{background:var(--red-500); flex:1.6 1 0}
+.tape i.think{background:#8A6BD1; opacity:.45}
+.tape i.edit{background:var(--green-500); opacity:.7}
+.tapekey{display:flex; gap:10px; flex-wrap:wrap; padding:8px 13px 0}
+.tapekey span{display:inline-flex; align-items:center; gap:5px; font-size:11px; color:var(--fg-subtle)}
+.tapekey i{width:8px; height:8px; border-radius:2px; display:inline-block}
+
+/* story rows */
+.act .row.err{background:color-mix(in srgb, var(--red-50) 70%, transparent)}
+.act .row.err:hover{background:var(--red-50)}
+.act .glyph{width:18px; text-align:center; flex:none; font-size:12px; color:var(--fg-subtle)}
+.act .row.err .glyph{color:var(--red-500)}
+.out{font-family:var(--font-mono); font-size:11px; color:var(--fg-muted); background:var(--bg-sunken);
+  border-radius:var(--r-xs); padding:4px 7px; margin:3px 0; white-space:pre-wrap; word-break:break-word}
+.out.bad{background:var(--red-50); color:var(--red-600)}
+.trunc{font-size:11px; color:var(--link); padding:2px 0}
+.prose p{margin:0 0 9px; font-size:13.5px; line-height:1.6; color:var(--fg-default)}
+.thinktick{display:inline-flex; align-items:center; gap:5px; font-size:11px; color:#8A6BD1; padding:3px 0}
+.thinktick b{font-weight:600}
+
+/* transcript rows — one line per event, outcome not payload */
+.tr{list-style:none; margin:0; padding:2px 0}
+.tr li{border-bottom:1px solid var(--border-subtle)}
+.tr li:last-child{border-bottom:0}
+.tr .row{width:100%; display:flex; align-items:baseline; gap:10px; padding:5px 13px; text-align:left}
+.tr .row:hover{background:var(--bg-hover)}
+.tr .ts{font-family:var(--font-mono); font-size:10.5px; color:var(--fg-subtle); flex:none; width:56px}
+.tr .tool{font-family:var(--font-mono); font-size:11.5px; font-weight:600; flex:none; width:104px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.tr .arg{flex:1; min-width:0; font-family:var(--font-mono); font-size:11.5px; color:var(--fg-muted);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.tr .res{flex:none; font-family:var(--font-mono); font-size:11px; color:var(--fg-subtle); white-space:nowrap}
+.tr li.bad .tool{color:var(--red-600)} .tr li.bad{background:color-mix(in srgb, var(--red-50) 55%, transparent)}
+.tr li.bad .res{color:var(--red-600)}
+.tr .body{display:none; padding:0 13px 9px 79px}
+.tr li.open .body{display:block}
+.tr li.think .row{opacity:.6}
+.tr .mcp{color:var(--cobalt-600)}
+.allctl{display:flex; gap:4px; align-items:center}
+.allctl button{font-size:11px; color:var(--fg-subtle); padding:2px 7px; border-radius:var(--r-xs)}
+.allctl button:hover{background:var(--bg-hover); color:var(--fg-default)}
+.kbd{font-family:var(--font-mono); font-size:10px; border:1px solid var(--border-default);
+  border-radius:3px; padding:0 4px; color:var(--fg-subtle)}
+
+/* right rail */
+.stat{display:flex; align-items:baseline; gap:8px; padding:5px 0}
+.stat .k{font-size:12.5px; color:var(--fg-muted); flex:none; white-space:nowrap}
+.stat .v{margin-left:auto; text-align:right}
+.stat .v{font-family:var(--font-mono); font-size:12.5px; font-weight:500}
+.legend{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--fg-muted); padding:2px 0}
+.legend .sw{width:8px;height:8px;border-radius:2px}
+.bars{display:flex; align-items:flex-end; gap:3px; height:38px; margin:6px 0 2px}
+.bars i{flex:1; background:var(--cobalt-500); border-radius:1px; opacity:.85}
+.artifact{display:flex; align-items:center; gap:8px; padding:6px 0; font-size:12.5px}
+.artifact .sz{margin-left:auto; font-family:var(--font-mono); font-size:11px; color:var(--fg-subtle)}
+
+/* where-the-time-went — a PROPORTIONAL bar, deliberately not another dot row:
+   the strip at the top is the run (7 stages, sibling sessions); this is one
+   job's own 192 seconds. Same data as a timestamp list, but it answers
+   "what was slow", which five dots in a row cannot. */
+.spend{margin:0 var(--gutter) var(--gutter); padding:13px 16px 12px}
+.spanbar{display:flex; height:26px; border-radius:var(--r-sm); overflow:hidden; margin:10px 0 8px;
+  border:1px solid var(--border-subtle)}
+.spanbar i{display:flex; align-items:center; justify-content:center; font-family:var(--font-mono);
+  font-size:10.5px; color:#fff; white-space:nowrap; overflow:hidden}
+.spanbar i.wait{background:var(--border-strong); color:var(--fg-muted)}
+.spanbar i.boot{background:var(--slate-500)}
+.spanbar i.work{background:var(--cobalt-500)}
+.spanbar i.test{background:var(--red-500)}
+.spankey{display:flex; gap:16px; flex-wrap:wrap}
+.spankey span{display:inline-flex; align-items:baseline; gap:6px; font-size:11.5px; color:var(--fg-muted)}
+.spankey b{font-family:var(--font-mono); font-size:11px; color:var(--fg-default); font-weight:500}
+.spankey em{font-style:normal; font-family:var(--font-mono); font-size:10.5px; color:var(--fg-subtle)}
+
+.note{
+  margin:0 var(--gutter) var(--gutter); padding:12px 14px; border-left:3px solid var(--accent);
+  background:var(--accent-tint); border-radius:0 var(--r-md) var(--r-md) 0; font-size:13px; color:var(--fg-default);
+}
+.note b{color:var(--accent-text)}
+.note ul{margin:6px 0 0; padding-left:18px} .note li{margin:2px 0}
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="rail" aria-label="Workspace">
+    <div class="mark">F</div>
+    <button aria-current="page" title="Agents" aria-label="Agents">◉</button>
+    <button title="Issues" aria-label="Issues">▤</button>
+    <button title="Pipeline" aria-label="Pipeline">⑃</button>
+    <button title="Runners" aria-label="Runners">▧</button>
+    <button title="Knowledge" aria-label="Knowledge">◫</button>
+    <button title="Settings" aria-label="Settings">⚙</button>
+  </nav>
+
+  <div class="main">
+    <header class="top">
+      <div class="crumbs">
+        <a href="#">getcontent</a><span>/</span><a href="#">Agents</a><span>/</span>
+        <span class="mono">d089d6f3</span>
+      </div>
+
+      <div class="titlerow">
+        <div class="grow">
+          <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+            <h1 class="h1">Held jobs must not count toward the runner cap</h1>
+            <span class="chip failure"><span class="bead"></span>Test failed</span>
+            <span class="tag">test</span>
+          </div>
+          <div class="metarow">
+            <a href="#" class="mono">ISS-914</a>
+            <span class="dot"></span><span>runner <b>ubuntu6</b> · linux · v0.2.14</span>
+            <span class="dot"></span><span class="mono">ISS-914-held-jobs-runner-cap</span>
+            <span class="dot"></span><span>3m 12s</span>
+            <span class="dot"></span><span>Aug 23, 00:58</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:7px;align-items:center">
+          <button class="btn">Open issue</button>
+          <button class="btn primary">Re-dispatch</button>
+          <button class="btn" id="theme">◐ Dark</button>
+          <button class="btn icon" aria-label="More actions">⋯</button>
+        </div>
+      </div>
+
+      <!-- Step strip: the run, not just this session. Each is a sibling session. -->
+      <div class="steps" role="tablist" aria-label="Pipeline run">
+        <button class="step done"><span class="top"><span class="tick ok">✓</span><span class="name">triage</span><span class="dur">42s</span></span><span class="bar"></span></button>
+        <button class="step done"><span class="top"><span class="tick ok">✓</span><span class="name">clarify</span><span class="dur">1m18s</span></span><span class="bar"></span></button>
+        <button class="step done"><span class="top"><span class="tick ok">✓</span><span class="name">plan</span><span class="dur">2m03s</span></span><span class="bar"></span></button>
+        <button class="step done"><span class="top"><span class="tick ok">✓</span><span class="name">code</span><span class="dur">6m41s</span></span><span class="bar"></span></button>
+        <button class="step done"><span class="top"><span class="tick ok">✓</span><span class="name">review</span><span class="dur">1m52s</span></span><span class="bar"></span></button>
+        <button class="step failed current" aria-current="true"><span class="top"><span class="tick bad">✕</span><span class="name">test</span><span class="dur">3m12s</span></span><span class="bar"></span></button>
+        <button class="step pending"><span class="top"><span class="tick idle">·</span><span class="name">release</span><span class="dur">—</span></span><span class="bar"></span></button>
+      </div>
+    </header>
+
+    <!-- ①  The failure is the headline, not a red dot 400 rows down. -->
+    <section class="blocker">
+      <div>
+        <h2><span aria-hidden="true">✕</span> 1 of 429 tests failed — merge blocked</h2>
+        <p>The PR's <span class="mono">ci-passed</span> check never went green: <b>dispatch-gates</b> still counts a
+           <span class="mono">held</span> job in <span class="mono">countInFlightForRunner</span>, so the cap-1 runner reads as full.</p>
+        <pre>AssertionError: expected 1 to be +0 // Object.is equality
+  ❯ packages/core/src/jobs/dispatch-gates.test.ts:214:38
+      212|   await holdJob(job.id, 'needs_decision');
+      213|   const load = await countInFlightForRunner(runner.id);
+      214|   expect(load).toBe(0);
+         |                ^</pre>
+      </div>
+      <div class="next">
+        <span class="caption">Suggested next step</span>
+        <button class="btn">Send back to <b>&nbsp;fix</b></button>
+        <a href="#" class="caption">View full test log →</a>
+      </div>
+    </section>
+
+    <div class="body">
+      <!-- ── left: what happened + what changed ───────────────── -->
+      <div class="col-left">
+        <section class="card">
+          <header><h3 class="h3">What the agent did</h3></header>
+          <div class="pad">
+            <p class="body-sm" style="margin:0">Excluded <span class="mono">held</span> jobs from the runner-load CTE and
+              from the project serial gate, then added a regression test that holds a job and asserts the runner reports
+              zero in-flight. Left the L1 <span class="mono">issueBusyJob</span> count untouched — RFC 0002 requires a held
+              job to still block a duplicate.</p>
+          </div>
+        </section>
+
+        <section class="card">
+          <header><h3 class="h3">Files changed</h3><span class="count">4</span></header>
+          <ul class="filelist">
+            <li><button data-file="gates" aria-current="true"><span class="path">core/src/jobs/dispatch-gates.ts</span><span class="plus">+34</span><span class="minus">−6</span></button></li>
+            <li><button data-file="test"><span class="path">core/src/jobs/dispatch-gates.test.ts</span><span class="plus">+102</span><span class="minus">−3</span></button></li>
+            <li><button data-file="hold"><span class="path">core/src/jobs/hold.ts</span><span class="plus">+18</span><span class="minus">−2</span></button></li>
+            <li><button data-file="loop"><span class="path">core/src/jobs/loop-monitor.ts</span><span class="plus">+6</span><span class="minus">−0</span></button></li>
+          </ul>
+        </section>
+
+        <section class="card">
+          <header><h3 class="h3">Agent notes</h3></header>
+          <div class="pad">
+            <p class="body-sm" style="margin:0">The plan asked for one predicate change; the CTE turned out to have a
+              second copy in <span class="mono">checkLayer4RunnerFull</span>. Both are updated, which is why the diff is
+              larger than the plan's estimate.</p>
+            <div style="margin-top:9px;display:flex;gap:6px;flex-wrap:wrap">
+              <span class="chip attention"><span class="bead"></span>scope grew</span>
+              <span class="chip neutral"><span class="bead"></span>1 extra fix</span>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── center: lenses ───────────────────────────────────── -->
+      <div class="col-center">
+        <section class="card">
+          <header>
+            <div class="lenses" role="tablist" aria-label="View">
+              <button role="tab" aria-selected="false" data-lens="story">Story</button>
+              <button role="tab" aria-selected="true" data-lens="diff">Diff</button>
+              <button role="tab" aria-selected="false" data-lens="transcript">Transcript</button>
+            </div>
+            <span class="count">41 turns · 429 tool calls · 3 errors</span>
+          </header>
+
+          <!-- DIFF lens: the real artefact of a code/test step -->
+          <div class="lens on" data-lens="diff">
+            <div class="diffhead">
+              <span class="mono" style="font-size:12px;flex:1">packages/core/src/jobs/dispatch-gates.ts</span>
+              <span class="plus">+34</span><span class="minus">−6</span>
+              <button class="btn" style="height:26px">Unified</button>
+            </div>
+            <div class="diff">
+<div class="hunk"><span class="ln">@@</span>-118,7 +118,9 @@ export async function countInFlightForRunner(</div>
+<div class="ctx"><span class="ln">118</span>  const rows = await db.execute(sql`</div>
+<div class="ctx"><span class="ln">119</span>    SELECT count(*)::int AS load</div>
+<div class="ctx"><span class="ln">120</span>      FROM jobs j</div>
+<div class="del"><span class="ln">121</span>-     WHERE j.status IN ('queued','dispatched','running','held')</div>
+<div class="add"><span class="ln">121</span>+     -- cm:guard `held` burns no runner slot (RFC 0002 INV-4)</div>
+<div class="add"><span class="ln">122</span>+     WHERE j.status IN ('queued','dispatched','running')</div>
+<div class="ctx"><span class="ln">123</span>        AND j.device_id = ${runnerId}</div>
+<div class="ctx"><span class="ln">124</span>        AND pr.status IN ('running','paused')</div>
+<div class="hunk"><span class="ln">@@</span>-171,4 +173,6 @@ async function checkLayer4RunnerFull(</div>
+<div class="ctx"><span class="ln">173</span>  const { rows: load } = await runnerLoadCte(tx, runnerId);</div>
+<div class="del"><span class="ln">174</span>-   if (load.inFlight >= cap) return blocked('runner_full');</div>
+<div class="add"><span class="ln">174</span>+   // the CTE has a second copy of the status filter — keep both aligned</div>
+<div class="add"><span class="ln">175</span>+   if (load.inFlightExcludingHeld >= cap) return blocked('runner_full');</div>
+</div>
+          </div>
+
+          <!-- STORY lens — row grammar derived from what the stream actually
+               carries (measured on forge-beta, 3 days: Bash 19.5k of 33.7k tool
+               calls · 1,051 is_error results · 12,899 thinking blocks all with
+               an EMPTY thinking string · tool_result p50 517 / p90 7,238 chars). -->
+          <div class="lens" data-lens="story">
+            <div class="tapekey">
+              <span><i style="background:var(--fg-subtle)"></i>prose</span>
+              <span><i style="background:var(--cobalt-500);opacity:.55"></i>tool</span>
+              <span><i style="background:var(--green-500);opacity:.7"></i>edit</span>
+              <span><i style="background:#8A6BD1;opacity:.45"></i>thought</span>
+              <span><i style="background:var(--red-500)"></i>error</span>
+            </div>
+            <div class="withtape" style="padding:8px 13px 12px">
+              <div>
+                <div class="prose">
+                  <p>Read the RFC and both gate helpers, reproduced the wedge with a held job on a cap-1 runner,
+                     then changed both copies of the status filter.</p>
+                </div>
+
+                <ul class="act" style="padding:0">
+                  
+
+                  
+
+                  
+
+                  
+
+                  <li><button class="row err"><span class="caret">▸</span><span class="glyph">⚑</span><span class="label"><b>3 tool calls returned an error</b></span><span class="meta">is_error</span></button>
+                    <div class="kids">
+                      <div class="out bad">Bash · pnpm --filter @forge/core test → exit 1</div>
+                      <div class="out bad">Read · packages/core/src/jobs/runner-load.ts → ENOENT (file does not exist)</div>
+                      <div class="out bad">Bash · gh pr checks 4127 → no checks reported yet</div>
+                    </div></li>
+
+<li class="open"><button class="row"><span class="caret">▸</span><span class="glyph">▶</span><span class="label"><b>Ran</b> 6 commands</span><span class="meta">Bash · 2m 22s</span><span class="badge-err">1 non-zero</span></button>
+                    <div class="kids">
+                      <div class="out">pnpm --filter @forge/core build → tsc clean (18.2s)</div>
+                      <div class="out bad">pnpm --filter @forge/core test → exit 1 · 428 passed, 1 failed, 3 skipped (2m04s)
+dispatch-gates.test.ts:214 AssertionError: expected 1 to be +0</div>
+                      <div class="out">pnpm verify → 13/13 checks (48s)</div>
+                      <div class="trunc">+ 3 more (git status, git add, git commit)</div>
+                    </div></li>
+
+<li><button class="row"><span class="caret">▸</span><span class="glyph">✎</span><span class="label"><b>Edited</b> 4 files <span class="plus">+160</span> <span class="minus">−11</span></span><span class="meta">Edit · 4 calls</span></button>
+                    <div class="kids">
+                      <div>dispatch-gates.ts +34 −6 · hold.ts +18 −2 · loop-monitor.ts +6 −0</div>
+                      <div>dispatch-gates.test.ts +102 −3 &nbsp;<span class="trunc">open in Diff →</span></div>
+                    </div></li>
+
+<li><button class="row"><span class="caret">▸</span><span class="glyph">◆</span><span class="label"><b>Forge</b> · 5 state changes</span><span class="meta">MCP · forge_*</span></button>
+                    <div class="kids">
+                      <div>step_start test · comment posted on ISS-914</div>
+                      <div>memory_search "held job runner cap" → 3 hits</div>
+                      <div>issues.get ISS-914 · phase.get</div>
+                    </div></li>
+
+<li><button class="row"><span class="caret">▸</span><span class="glyph">⌕</span><span class="label"><b>Explored</b> 23 files · 11 searches</span><span class="meta">Read·Grep · 21s</span></button>
+                    <div class="kids">
+                      <div>dispatch-gates.ts · hold.ts · loop-monitor.ts · docs/rfcs/0002-held-jobs.md</div>
+                      <div>grep "status IN ('queued','dispatched','running','held')" → 3 hits</div>
+                      <div>grep "runnerLoadCte" → 2 hits</div>
+                      <div class="trunc">+ 20 more reads</div>
+                    </div></li>
+                </ul>
+
+                <div class="prose" style="margin-top:10px">
+                  <p>The regression case still sees <span class="mono">load = 1</span>: <span class="mono">runnerLoadCte</span>
+                     re-derives the count from its own subquery, which the edit did not touch.</p>
+                </div>
+                <div class="thinktick">◇ <b>12</b> thinking pauses — text not emitted by the CLI, shown as density only</div>
+              </div>
+
+              <!-- the tape: one tick per event, click to jump -->
+              <div class="tape" aria-label="Session tape">
+                <i class="prose"></i><i class="tool"></i><i class="tool"></i><i class="think"></i><i class="tool"></i>
+                <i class="tool"></i><i class="think"></i><i class="tool"></i><i class="edit"></i><i class="edit"></i>
+                <i class="tool"></i><i class="think"></i><i class="edit"></i><i class="tool"></i><i class="err"></i>
+                <i class="prose"></i><i class="tool"></i><i class="think"></i><i class="tool"></i><i class="edit"></i>
+                <i class="tool"></i><i class="err"></i><i class="tool"></i><i class="think"></i><i class="tool"></i>
+                <i class="prose"></i><i class="tool"></i><i class="err"></i><i class="tool"></i><i class="prose"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- TRANSCRIPT lens: today's raw stream, kept for debugging -->
+          <div class="lens" data-lens="transcript">
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 13px;border-bottom:1px solid var(--border-subtle)">
+              <span class="caption" style="flex:1">Every event, newest last · virtualised (p90 job = 180 calls, max seen 1,055)</span>
+              <div class="allctl">
+                <button data-all="open">expand all <span class="kbd">e</span></button>
+                <button data-all="close">collapse <span class="kbd">c</span></button>
+              </div>
+            </div>
+            <ul class="tr">
+              <li><button class="row"><span class="ts">00:58:28</span><span class="tool">Read</span><span class="arg">packages/core/src/jobs/dispatch-gates.ts</span><span class="res">218 lines · 142ms</span></button>
+                <div class="body"><div class="out">1→ import { and, eq, inArray, sql } from 'drizzle-orm';
+2→ …
+<span class="trunc">218 lines — open full output ↗</span></div></div></li>
+
+              <li><button class="row"><span class="ts">00:58:31</span><span class="tool">Grep</span><span class="arg">"status IN ('queued','dispatched','running','held')"</span><span class="res">3 files · 211ms</span></button>
+                <div class="body"><div class="out">dispatch-gates.ts:121 · dispatch-gates.ts:174 · sweeper.ts:88</div></div></li>
+
+              <li class="think"><button class="row"><span class="ts">00:58:39</span><span class="tool">◇ thinking</span><span class="arg">signature only — the CLI emits no text for this block</span><span class="res">—</span></button></li>
+
+              <li><button class="row"><span class="ts">00:58:52</span><span class="tool">Edit</span><span class="arg">dispatch-gates.ts · countInFlightForRunner</span><span class="res"><span class="plus">+34</span> <span class="minus">−6</span> · 96ms</span></button>
+                <div class="body"><div class="out">- WHERE j.status IN ('queued','dispatched','running','held')
++ WHERE j.status IN ('queued','dispatched','running')   <span class="trunc">open in Diff →</span></div></div></li>
+
+              <li><button class="row"><span class="ts">00:59:24</span><span class="tool mcp">MCP forge</span><span class="arg">memory_search · "held job runner cap"</span><span class="res">3 hits · 1.4s</span></button>
+                <div class="body"><div class="out">held-jobs-burn-no-slot (0.82) · runner-cap-serial-gate (0.74) · rfc-0002-invariants (0.71)</div></div></li>
+
+              <li class="bad open"><button class="row"><span class="ts">01:00:41</span><span class="tool">Bash</span><span class="arg">pnpm --filter @forge/core test</span><span class="res">exit 1 · 2m 04s</span></button>
+                <div class="body"><div class="out bad">Test Files  1 failed | 212 passed (213)
+     Tests  1 failed | 428 passed | 3 skipped
+FAIL  src/jobs/dispatch-gates.test.ts &gt; held jobs &gt; burns no runner slot
+AssertionError: expected 1 to be +0
+<span class="trunc">31,402 chars — open full output ↗ (run-log.txt)</span></div></div></li>
+
+              <li class="bad"><button class="row"><span class="ts">01:00:44</span><span class="tool">Read</span><span class="arg">packages/core/src/jobs/runner-load.ts</span><span class="res">is_error · 38ms</span></button>
+                <div class="body"><div class="out bad">ENOENT: no such file or directory</div></div></li>
+
+              <li><button class="row"><span class="ts">01:01:12</span><span class="tool mcp">MCP forge</span><span class="arg">comments · create on ISS-914</span><span class="res">ok · 620ms</span></button></li>
+
+              <li><button class="row"><span class="ts">01:01:18</span><span class="tool">ToolSearch</span><span class="arg">select:forge_step_handoff_write</span><span class="res">1 schema · 12ms</span></button></li>
+            </ul>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── right: the numbers ───────────────────────────────── -->
+      <div>
+        <section class="card">
+          <header><h3 class="h3">Run summary</h3></header>
+          <div class="pad" style="display:flex;gap:14px;align-items:center">
+            <svg width="76" height="76" viewBox="0 0 42 42" aria-label="428 of 432 tests passed">
+              <circle cx="21" cy="21" r="16" fill="none" stroke="var(--border-subtle)" stroke-width="5"></circle>
+              <circle cx="21" cy="21" r="16" fill="none" stroke="var(--green-500)" stroke-width="5"
+                      stroke-dasharray="99.5 100.5" stroke-dashoffset="25" transform="rotate(-90 21 21)"></circle>
+              <circle cx="21" cy="21" r="16" fill="none" stroke="var(--red-500)" stroke-width="5"
+                      stroke-dasharray="1 99" stroke-dashoffset="-73.5" transform="rotate(-90 21 21)"></circle>
+              <text x="21" y="20.5" text-anchor="middle" font-size="9" font-weight="700" fill="var(--fg-default)">428</text>
+              <text x="21" y="27" text-anchor="middle" font-size="4.4" fill="var(--fg-subtle)">PASSED</text>
+            </svg>
+            <div style="flex:1">
+              <div class="legend"><span class="sw" style="background:var(--green-500)"></span>428 passed</div>
+              <div class="legend"><span class="sw" style="background:var(--red-500)"></span>1 failed</div>
+              <div class="legend"><span class="sw" style="background:var(--border-strong)"></span>3 skipped</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <header><h3 class="h3">Cost &amp; tokens</h3><span class="count">$2.41</span></header>
+          <div class="pad">
+            <div class="bars" aria-hidden="true">
+              <i style="height:22%"></i><i style="height:40%"></i><i style="height:31%"></i><i style="height:58%"></i>
+              <i style="height:47%"></i><i style="height:73%"></i><i style="height:52%"></i><i style="height:88%"></i>
+              <i style="height:61%"></i><i style="height:44%"></i><i style="height:100%"></i><i style="height:35%"></i>
+            </div>
+            <div class="stat"><span class="k">Input / output</span><span class="v">128.4k / 21.7k</span></div>
+            <div class="stat"><span class="k">Cache read / write</span><span class="v">1.2M / 84.1k</span></div>
+            <div class="stat"><span class="k">Context used</span><span class="v">96.3k</span></div>
+            <div class="stat"><span class="k">Model</span><span class="v">opus-5</span></div>
+            <div class="stat"><span class="k">Turns</span><span class="v">41</span></div>
+            <div class="stat"><span class="k">API time</span><span class="v">2m 41s of 3m 12s</span></div>
+            <div class="stat"><span class="k">Permission denials</span><span class="v">0</span></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <header><h3 class="h3">Artifacts</h3><span class="count">2</span></header>
+          <div class="pad" style="padding-top:6px">
+            <div class="artifact"><span aria-hidden="true">▤</span><a href="#">vitest-report.xml</a><span class="sz">18.7 KB</span></div>
+            <div class="artifact"><span aria-hidden="true">▤</span><a href="#">run-log.txt</a><span class="sz">402 KB</span></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <header><h3 class="h3">Runner</h3></header>
+          <div class="pad" style="padding-top:6px">
+            <div class="stat"><span class="k">Device</span><span class="v">ubuntu6</span></div>
+            <div class="stat"><span class="k">Repo</span><span class="v" style="font-size:11px">/home/forge/projects/getcontent</span></div>
+            <div class="stat"><span class="k">Cap</span><span class="v">1 · 1 in flight</span></div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- ── bottom: where the 3m 12s went ─────────────────────── -->
+    <section class="card spend">
+      <div style="display:flex;align-items:baseline;gap:10px">
+        <span class="kicker">Where the time went</span>
+        <span class="caption" style="margin-left:auto">00:58:06 &rarr; 01:01:18 &middot; 3m 12s wall</span>
+      </div>
+      <div class="spanbar" aria-label="Time breakdown">
+        <i class="wait" style="flex:7"   title="Queued - waiting for a free runner slot">7s</i>
+        <i class="boot" style="flex:15"  title="Dispatched to agent process ready">15s</i>
+        <i class="work" style="flex:130" title="Agent working: 23 reads, 11 searches, 4 edits">2m 10s agent</i>
+        <i class="test" style="flex:40"  title="pnpm --filter @forge/core test">40s tests</i>
+      </div>
+      <div class="spankey">
+        <span><b>7s</b> queued <em>00:58:06</em></span>
+        <span><b>15s</b> startup <em>00:58:13</em></span>
+        <span><b>2m 10s</b> agent <em>00:58:28</em></span>
+        <span><b>40s</b> tests <em>01:00:38</em></span>
+        <span style="color:var(--red-600)"><b style="color:var(--red-600)">&#10005;</b> failed <em>01:01:18</em></span>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<div class="note" style="margin:var(--gutter)">
+  <b>What this mockup is testing.</b> Layout from ChatGPT #02 (3 columns + a bottom band), failure treatment from #03,
+  rendered in Forge&rsquo;s real tokens so it can be judged as shippable. The screen above is exactly one viewport:
+  header, blocker, three equal-height columns that scroll independently, one footer band.
+  <ul>
+    <li><b>Failure first</b> &mdash; assertion, <span class="mono">file:line</span>, and the next action sit above the fold; today they are a red icon inside row ~400.</li>
+    <li><b>Diff is the default lens</b> &mdash; <span class="mono">buildFileDiff()</span> already computes these hunks and the rail throws them away.</li>
+    <li><b>429 tool calls collapse to 5 rows</b> &mdash; grouped by kind, ordered by significance (errors, commands, edits, Forge state, exploration). Measured on forge-beta: Bash is 58% of all calls, Read only 3.8%.</li>
+    <li><b>Two time axes, two shapes</b> &mdash; the top strip is the RUN (7 stages = sibling sessions, one click apart); the bottom bar is THIS job&rsquo;s 192 seconds, proportional, so &ldquo;what was slow&rdquo; is readable. Two dot-rows would have read as the same fact twice.</li>
+    <li><b>Outcome, not payload</b> &mdash; <span class="mono">tool_result</span> is p50 517 chars, p90 7,238, max 666,824. Rows show the extracted outcome; the full text lives behind a link, in the artifact.</li>
+    <li><b>No chat bubbles</b> &mdash; reserved for <span class="mono">metadata.type === 'interactive'</span>; a pipeline step is a report.</li>
+  </ul>
+</div>
+
+<script>
+const q = (s, r = document) => r.querySelector(s);
+const qa = (s, r = document) => [...r.querySelectorAll(s)];
+
+// lens tabs
+function showLens(name) {
+  qa('.lenses button').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.lens === name)));
+  qa('.lens').forEach((l) => l.classList.toggle('on', l.dataset.lens === name));
+}
+qa('.lenses button').forEach((b) => b.addEventListener('click', () => showLens(b.dataset.lens)));
+
+// collapsible activity groups
+qa('.act .row').forEach((r) => r.addEventListener('click', () => r.closest('li').classList.toggle('open')));
+
+// files-changed → focus that file's diff
+const DIFFS = {
+  gates: 'packages/core/src/jobs/dispatch-gates.ts',
+  test: 'packages/core/src/jobs/dispatch-gates.test.ts',
+  hold: 'packages/core/src/jobs/hold.ts',
+  loop: 'packages/core/src/jobs/loop-monitor.ts',
+};
+qa('.filelist button').forEach((b) => b.addEventListener('click', () => {
+  qa('.filelist button').forEach((x) => x.setAttribute('aria-current', String(x === b)));
+  q('.diffhead .mono').textContent = DIFFS[b.dataset.file];
+  q('.diffhead .plus').textContent = b.querySelector('.plus').textContent;
+  q('.diffhead .minus').textContent = b.querySelector('.minus').textContent;
+  showLens('diff');
+}));
+
+// "open in Diff →" anywhere jumps to the Diff lens
+qa('.trunc').forEach((t) => { if (t.textContent.includes('Diff')) t.addEventListener('click', () => showLens('diff')); });
+
+// expand / collapse all — the keyboard affordance claude-code-trace uses
+function setAll(open) { qa('.tr li, .act > li').forEach((li) => li.classList.toggle('open', open)); }
+qa('[data-all]').forEach((b) => b.addEventListener('click', () => setAll(b.dataset.all === 'open')));
+document.addEventListener('keydown', (e) => {
+  if (e.target.matches('input, textarea')) return;
+  if (e.key === 'e') setAll(true);
+  if (e.key === 'c') setAll(false);
+});
+
+// transcript rows toggle their own body
+qa('.tr .row').forEach((r) => r.addEventListener('click', () => r.closest('li').classList.toggle('open')));
+
+// theme toggle — proves the reserved [data-theme="dark"] block is a drop-in
+q('#theme').addEventListener('click', () => {
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark');
+  q('#theme').textContent = dark ? '◐ Dark' : '◑ Light';
+});
+</script>
+</body>
+</html>

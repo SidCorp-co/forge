@@ -26,9 +26,9 @@ import type { JobType } from '../db/schema.js';
 import {
   type HandoffScope,
   type HandoffStep,
-  type StepHandoffPayload,
   isHandoffStep,
   renderTerminationBlock,
+  type StepHandoffPayload,
 } from '../memory/step-handoff-schema.js';
 import { resolveHandoffsPolicy } from '../pipeline/handoff-policy.js';
 import type { UserPromptPolicyConfig } from '../pipeline/pipeline-config-schema.js';
@@ -126,6 +126,7 @@ const ISSUE_FIELDS_PER_STATE: Record<JobType, IssueField[]> = {
   release: [],
   fix: [],
   custom: [],
+  drive: [],
   pm: [],
   smoke: [],
   release_batch: [],
@@ -158,6 +159,7 @@ const SESSION_FIELDS_PER_STATE: Record<JobType, SessionFieldPolicy> = {
   release: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
   fix: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
   custom: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
+  drive: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
   pm: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
   smoke: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
   release_batch: {
@@ -452,6 +454,19 @@ export function injectTurnLevelRules(
   const firstNl = promptString.indexOf('\n');
   if (firstNl === -1) return `${promptString}${block}`;
   return `${promptString.slice(0, firstNl)}${block}${promptString.slice(firstNl)}`;
+}
+
+/**
+ * Splice a block in immediately after the first line (the `/<skill> <id>` invocation), so the
+ * agent reads it before any issue context. Returns the prompt unchanged when `block` is empty.
+ */
+export function injectAfterInvocation(promptString: string, block: string): string {
+  const b = block.trim();
+  if (b.length === 0) return promptString;
+  const wrapped = `\n\n${b}`;
+  const firstNl = promptString.indexOf('\n');
+  if (firstNl === -1) return `${promptString}${wrapped}`;
+  return `${promptString.slice(0, firstNl)}${wrapped}${promptString.slice(firstNl)}`;
 }
 
 export function buildJobPromptString(args: {

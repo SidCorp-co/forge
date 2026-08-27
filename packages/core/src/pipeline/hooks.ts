@@ -160,6 +160,11 @@ export interface HookPayloads {
     deviceId: string;
     runnerId: string;
   };
+  // cm:edge protocol -> packages/core/src/jobs/dispatch-subscribers.ts — the ONLY subscriber that turns this into a dispatch tick; heartbeat-ws emits it instead of calling the dispatcher so the WS layer does not import the job layer, and with no subscriber registered a runner coming online waits for the sweeper's backstop instead of dispatching at once
+  runnerOnline: {
+    projectId: string;
+    runnerId: string;
+  };
   // A device reported provision progress; bridge to the project room so web's
   // runner views update the live stepper.
   runnerProvisionStatus: {
@@ -383,6 +388,7 @@ export class HooksBus {
     };
   }
 
+  // cm:flow dispatch/emit after:outbox — fans the re-emitted transition out to every subscriber; the one that matters here schedules the per-project sweep
   // cm:guard emit MUST NOT throw on a subscriber error — ~48 call sites fire it after their primary mutation already committed; a rethrow here turns a successful write into a 500
   // cm:edge contract -> packages/core/src/pipeline/outbox-worker.ts — drainOutboxOnce keys its processed-vs-failed decision on EmitResult.failures; changing this shape breaks the outbox retry path
   async emit<T extends HookTopic>(topic: T, payload: HookPayloads[T]): Promise<EmitResult> {

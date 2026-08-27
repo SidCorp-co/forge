@@ -46,7 +46,6 @@ export function useStickToBottom({
     if (atBottomRef.current) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemCount, live]);
 
   return { scrollRef, bottomRef, onScroll };

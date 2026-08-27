@@ -14,7 +14,7 @@
  */
 
 import { logger } from '../logger.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { globalRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 

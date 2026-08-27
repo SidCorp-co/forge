@@ -18,11 +18,11 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
-  type TestDatabase,
   createTestDevice,
   createTestProject,
   createTestUser,
   setupTestDatabase,
+  type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
 
@@ -59,7 +59,7 @@ describe('ISS-786 state-integrity guards — composed A→C→B→D walk', () =>
     return { id: row.id, reopenCount: row.reopen_count };
   }
 
-  async function insertComment(
+  async function _insertComment(
     issueId: string,
     authorId: string,
     opts: { isAi: boolean; authorDeviceId: string | null; createdAt: Date },
@@ -89,7 +89,7 @@ describe('ISS-786 state-integrity guards — composed A→C→B→D walk', () =>
     `);
   }
 
-  async function logTransition(
+  async function _logTransition(
     issueId: string,
     actorId: string,
     from: string,
@@ -103,46 +103,20 @@ describe('ISS-786 state-integrity guards — composed A→C→B→D walk', () =>
     `);
   }
 
-  it('walks A (needs_info self-release refused) -> C (plan-less approved refused) -> B (evidence-less developed refused) -> D (verified-cause stall)', async () => {
+  it('walks C (plan-less approved refused) -> B (evidence-less developed refused) -> D (verified-cause stall)', async () => {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
     const device = await createTestDevice(harness.db, owner.id);
     await registerPlanStageSkill(project.id, owner.id);
 
-    const { findUnansweredBounce } = await import('../../src/pipeline/bounce-replay-guard.js');
     const { transitionIssueStatus } = await import('../../src/issues/apply-transition.js');
     const { checkStageStallAndPause } = await import('../../src/pipeline/stage-stall-guard.js');
 
-    // ---- A: an agent-authored comment must not release a needs_info bounce ----
-    const bouncedAt = new Date('2026-08-01T10:00:00Z');
     const issue = await insertIssue({
       projectId: project.id,
       ownerId: owner.id,
-      status: 'needs_info',
+      status: 'clarified',
     });
-    await logTransition(issue.id, device.id, 'clarified', 'needs_info', bouncedAt);
-
-    await insertComment(issue.id, owner.id, {
-      isAi: true,
-      authorDeviceId: device.id,
-      createdAt: new Date('2026-08-01T10:05:00Z'),
-    });
-    expect(await findUnansweredBounce(issue.id, 'clarified')).toEqual({
-      bounced: 'needs_info',
-      at: bouncedAt,
-    });
-
-    // A human comment is the only thing that actually answers it.
-    await insertComment(issue.id, owner.id, {
-      isAi: false,
-      authorDeviceId: null,
-      createdAt: new Date('2026-08-01T10:10:00Z'),
-    });
-    expect(await findUnansweredBounce(issue.id, 'clarified')).toBeNull();
-
-    // Human moves the issue on to `clarified`, mirroring what the released
-    // bounce actually lets happen next.
-    await harness.db.execute(sql`UPDATE issues SET status = 'clarified' WHERE id = ${issue.id}`);
 
     // ---- C: the writer refuses `approved` while the plan is blank ----
     const actor = { type: 'device' as const, id: device.id, ownerId: owner.id };
@@ -244,22 +218,16 @@ describe('ISS-786 state-integrity guards — composed A→C→B→D walk', () =>
   it('fails open end to end: a broken DB read never freezes the composed sequence', async () => {
     // Each guard's own unit suite already forces its query to throw and
     // asserts fail-open in isolation (transition-evidence.test.ts,
-    // work-evidence.test.ts, bounce-replay-guard.test.ts,
     // stage-stall-guard.test.ts). This checks the property that actually
     // matters operationally: a lookup for an issue that does not exist at all
     // (the sharpest "the read cannot succeed" case available without mocking
     // the DB client) still lets every guard return its safe default instead
     // of throwing out of the guard itself.
-    const { findUnansweredBounce, reopenEnteredFromNeedsInfo } = await import(
-      '../../src/pipeline/bounce-replay-guard.js'
-    );
     const { checkStageStallAndPause } = await import('../../src/pipeline/stage-stall-guard.js');
     const { checkTransitionEvidence } = await import('../../src/issues/transition-evidence.js');
     const ghostIssueId = '00000000-0000-0000-0000-000000000000';
     const ghostProjectId = '00000000-0000-0000-0000-000000000000';
 
-    await expect(findUnansweredBounce(ghostIssueId, 'clarified')).resolves.toBeNull();
-    await expect(reopenEnteredFromNeedsInfo(ghostIssueId)).resolves.toBe(false);
     await expect(
       checkStageStallAndPause({
         projectId: ghostProjectId,

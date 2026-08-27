@@ -337,15 +337,16 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
 
     case 'pass_rate':
     case 'approve_rate': {
-      // ISS-381 (2.1) — verdict promoted onto issue_step_contexts. pass_rate is
-      // over test handoffs (verdict pass/fail); approve_rate over review handoffs
-      // (verdict pass = APPROVE). `rate` is null for empty buckets so a chart can
-      // distinguish "no runs" from "0% pass".
-      const step = metric === 'pass_rate' ? 'test' : 'review';
+      const isPassRate = metric === 'pass_rate';
+      const step = isPassRate ? 'test' : 'review';
+      const passed = isPassRate
+        ? sql`verdict IN ('pass', 'verified_by_test')`
+        : sql`verdict = 'pass'`;
+      const eligible = isPassRate ? sql`verdict <> 'blocked_fixture'` : sql`true`;
       const rows = (await db.execute(sql`
         SELECT date_trunc(${bucket}, created_at) AS bucket,
-               (count(*) FILTER (WHERE verdict = 'pass')::float / count(*)) AS rate,
-               count(*)::int AS n
+               (count(*) FILTER (WHERE ${passed})::float / NULLIF(count(*) FILTER (WHERE ${eligible}), 0)) AS rate,
+               (count(*) FILTER (WHERE ${eligible}))::int AS n
         FROM issue_step_contexts
         WHERE project_id = ${projectId}
           AND step = ${step}

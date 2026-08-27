@@ -9,6 +9,7 @@
 pub mod chat;
 pub mod dispatch;
 pub mod preflight;
+pub mod setup_agent;
 pub mod skill_pull;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -19,6 +20,7 @@ use tokio::sync::{mpsc, watch, Semaphore};
 use crate::config::Config;
 use crate::error::Result;
 use crate::runner::claude_code::ClaudeCodeRunner;
+use crate::runner::inflight;
 use crate::runner::Runner;
 use crate::transport::frames::{job_id_of, session_id_of, Frame};
 use crate::transport::runners;
@@ -72,6 +74,7 @@ pub async fn run(
     let runner = Arc::new(ClaudeCodeRunner::new(
         core_url.clone(),
         device_token.clone(),
+        cfg.skills.clone(),
     ));
 
     // Discover server-side assignments (`/me/runners`). This is the source of
@@ -350,6 +353,66 @@ pub async fn run(
         });
     }
 
+    // Reap the per-issue worktrees the agent leaves behind. Nothing else does:
+    // `.claude/worktrees/` is the agent's own directory, so neither
+    // `workspace::worktree` nor any skill has ever removed one, and they
+    // accumulate until the disk fills — ubuntu6 hit 100% (342M free) on
+    // 2026-08-20 with 29G of them, which fails every job on the box.
+    // cm:guard runs on the bound repos only, never a scan of the filesystem — the
+    // reaper deletes checkouts, so the set it can even consider must come from
+    // config, not from whatever a walk happens to find under a similar name
+    {
+        let cfg = cfg.clone();
+        let mut cancel_rx = cancel_rx.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(6 * 3600));
+            loop {
+                tokio::select! {
+                    _ = tick.tick() => {
+                        for (slug, b) in &cfg.bindings {
+                            let gone = crate::workspace::worktree_reap::reap_repo(
+                                &b.repo_path,
+                                crate::workspace::worktree_reap::MIN_AGE,
+                            )
+                            .await;
+                            if !gone.is_empty() {
+                                tracing::info!(
+                                    "[worktree-reap] {slug}: removed {} stale worktree(s)",
+                                    gone.len()
+                                );
+                            }
+                        }
+                    }
+                    _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
+                }
+            }
+        });
+    }
+
+    // Materialise the skills embedded in this binary. Synchronous and cheap
+    // (a handful of small files, no network), and nothing consumes the tree
+    // yet — phase 3 wires it into worktrees behind `pipelineConfig.mode`.
+    // cm:why extract a release BEFORE anything reads it: a permission or
+    // data-dir failure then shows up in logs on a build where it breaks
+    // nothing, instead of on the build that first depends on it
+    match crate::workspace::bundled_skills::ensure_extracted(&cfg.skills) {
+        Ok(e) => tracing::info!(
+            "[skills] bundled set ready at {} — {} installed{}",
+            e.root.display(),
+            e.installed.len(),
+            if e.suppressed.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    ", {} suppressed: {}",
+                    e.suppressed.len(),
+                    e.suppressed.join(", ")
+                )
+            }
+        ),
+        Err(e) => tracing::warn!("[skills] bundled set unavailable: {e}"),
+    }
+
     // Background skill auto-pull (ISS-736) — OFF by default (canary gate).
     // Independent poller; `skill.sync` above stays the immediate, explicit path.
     if cfg.skills.auto_pull {
@@ -425,9 +488,13 @@ pub async fn run(
                             // on the ack POST.
                             let (client, runner) = (client.clone(), runner.clone());
                             tokio::spawn(async move {
+                                // cm:guard an `abort` error means this daemon has no SESSION for the job, which is not the same as there being no PROCESS — the agent child is setsid-detached and outlives a daemon restart. Answering `not_found` from an empty map told core the process was dead and it retried a second agent onto the same worktree (ISS-837). Ask the on-disk record instead.
                                 let outcome = match runner.abort(&jid).await {
-                                    Ok(_) => "killed",
-                                    Err(_) => "not_found",
+                                    Ok(_) => {
+                                        inflight::forget(&jid);
+                                        "killed"
+                                    }
+                                    Err(_) => inflight::reap_orphan(&jid).await.wire(),
                                 };
                                 if let Err(e) = lifecycle::kill_ack(&client, &jid, outcome).await {
                                     tracing::warn!("[cancel] kill-ack job={jid}: {e}");

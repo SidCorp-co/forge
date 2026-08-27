@@ -193,7 +193,6 @@ export function NavRailCompact({
         aria-label={onExpand ? 'Expand sidebar' : 'Forge'}
         className="group mb-4 inline-flex size-[30px] items-center justify-center rounded-md transition-colors hover:bg-hover"
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={assetPath('/forge-mark-32.png')}
           width={30}

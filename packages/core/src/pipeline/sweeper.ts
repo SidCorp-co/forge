@@ -22,31 +22,39 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { type AlertSweepResult, runAlertSweep } from '../admin/alert-sweeper.js';
 import { db } from '../db/client.js';
-import { type IssueStatus, agentSessions, comments, issues, jobs } from '../db/schema.js';
-import {
-  type DeviceLite,
-  type TransitionIssueRow,
-  applyStatusTransition,
-} from '../issues/apply-transition.js';
+import { agentSessions, type IssueStatus, jobs } from '../db/schema.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
 import { resolveGateSettings } from '../jobs/dispatch-gates.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { killGraceMs } from '../jobs/kill-gate.js';
 import {
+  getLoopThresholds,
   type LoopMonitorResult,
   type LoopScope,
-  getLoopThresholds,
   runLoopMonitor,
 } from '../jobs/loop-monitor.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
-import { type RetryRescueAlertResult, detectRetryRescueThresholds } from './retry-rescue-alert.js';
+import {
+  alarmUnrunnableBlockedDependents,
+  type BlockedDependentAlarmResult,
+  STALL_GRACE_MS,
+} from './blocked-dependent-alarms.js';
+import {
+  alarmAgedHolds,
+  alarmChurningIssues,
+  alarmStalledQueuedJobs,
+  type Inv7AlarmResult,
+} from './inv7-alarms.js';
+import { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
+import { type OrphanedPauseResult, resumeOrphanedPauses } from './run-pause.js';
 import { closeOpenRunForIssue, closeRunIfOneShot } from './runs.js';
-import { type StrandedIssuesResult, detectStrandedIssues } from './stranded-issues.js';
+import { detectStrandedIssues, type StrandedIssuesResult } from './stranded-issues.js';
 import { emitPipelineWedge } from './wedge.js';
+import { blockerStatusLabel, humanizeDuration } from './wedge-copy.js';
 
 export const PIPELINE_SWEEPER_QUEUE = 'pipeline-sweeper';
 
@@ -80,14 +88,18 @@ export interface IssueRunReapResult {
   reaped: number;
 }
 
+export interface IdleChatCloseResult {
+  closed: number;
+}
+
 export interface StallDetectResult {
   // pipeline_wedge notifications emitted for never-clearing dependency deadlocks.
   detected: number;
 }
 
-export interface ParkClosedUnmergedResult {
-  // dependent issues parked at `waiting` because their blocker was closed without merging.
-  parked: number;
+export interface ClosedUnmergedAlarmResult {
+  /** Dependents alarmed because their blocker closed without merging. */
+  alerted: number;
 }
 
 export interface StaleReleaseBatchClaimsResult {
@@ -103,16 +115,26 @@ export interface SweepResult {
   orphanedJobs: OrphanReconcileResult;
   neverClaimedDispatches: OrphanReconcileResult;
   orphanedOneShotRuns: OneShotRunReapResult;
+  /** Chat sessions closed after CHAT_IDLE_CLOSE_MS of quiet (reaps). */
+  idleChatSessions: IdleChatCloseResult;
   /** ISS-461 — issue runs closed because their backing issue is terminal (reaps). */
   orphanedIssueRuns: IssueRunReapResult;
   /** ISS-442 — dependency deadlocks surfaced (a gate that will never clear). */
   stalledDependencies: StallDetectResult;
-  /** ISS-639 — dependents parked because their blocker closed without merging. */
-  parkedClosedUnmerged: ParkClosedUnmergedResult;
+  /** ISS-639 — dependents alarmed because their blocker closed without merging. */
+  closedUnmergedAlarms: ClosedUnmergedAlarmResult;
+  /** Dependents alarmed because a `blocks` parent is still at `draft` (alarm only). */
+  draftBlockedAlarms: BlockedDependentAlarmResult;
+  /** RFC 0002 INV-7 — holds that outlived their threshold (alarm only). */
+  agedHolds: Inv7AlarmResult;
+  stalledQueuedJobs: Inv7AlarmResult;
+  /** RFC 0002 INV-7 — issues at or past `noProgressRounds` (alarm only). */
+  churningIssues: Inv7AlarmResult;
   /** ISS-764 — batch release claims orphaned by a terminal run (claim-subscriber backstop). */
   staleReleaseBatchClaims: StaleReleaseBatchClaimsResult;
   /** ISS-762 — issues parked at `waiting` with merged code, surfaced to project admins. */
   strandedIssues: StrandedIssuesResult;
+  orphanedPauses: OrphanedPauseResult;
   retryRescueThresholds: RetryRescueAlertResult;
   /** ISS-652 — Tier 1 ops alert engine push pass. */
   alerts: AlertSweepResult;
@@ -167,6 +189,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const orphanedOneShotRuns = await runPass('reapOrphanedOneShotRuns', () =>
     reapOrphanedOneShotRuns(now),
   );
+  const idleChatSessions = await runPass('closeIdleChatSessions', () => closeIdleChatSessions(now));
   // ISS-461 — close `issue`-kind runs whose backing issue already reached the
   // run-closing status (`closed`) but whose run never closed. closeOpenRunForIssue
   // fires only via applyTransition; a close that bypasses it (or predates that
@@ -187,14 +210,22 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const stalledDependencies = await runPass('detectStalledDependencies', () =>
     detectStalledDependencies(now),
   );
-  // ISS-639 — active counterpart to the blocks-gate `closed` bypass fix: a
-  // dependent whose blocker closed WITHOUT merging (under a stampable base)
-  // now simply sits queued past the gate rather than dispatching onto a base
-  // branch missing the blocker's code. Park it at `waiting` so a human picks
-  // the base, instead of leaving it silently stuck forever.
-  const parkedClosedUnmerged = await runPass('parkClosedUnmergedBlockedDependents', () =>
-    parkClosedUnmergedBlockedDependents(now),
+  // cm:why alarm, not a reap (RFC 0002 demoted it from a park): the dependent sits queued because its blocker closed without merging, and once a human fixes the blocker it dispatches by itself
+  const closedUnmergedAlarms = await runPass('alarmClosedUnmergedBlockedDependents', () =>
+    alarmClosedUnmergedBlockedDependents(now),
   );
+  // cm:why alarm, never a gate change — the owner's call 2026-08-14: a `blocks` edge onto a `draft` issue SHOULD keep waiting, because the edge is a deliberate statement of order. What was wrong was only that the wait was invisible.
+  const draftBlockedAlarms = await runPass('alarmUnrunnableBlockedDependents', () =>
+    alarmUnrunnableBlockedDependents(now),
+  );
+  const agedHolds = await runPass('alarmAgedHolds', () => alarmAgedHolds(now));
+  // cm:why alarm, not a reap: a plain `queued` job holds no capacity, so cancelling it frees nothing and only destroys work — and the state it reports (every gate passes, nothing started it) is one only a human can resolve, because the picker and the selector disagreeing is a configuration mismatch, not a stuck row
+  const stalledQueuedJobs = await runPass('alarmStalledQueuedJobs', () =>
+    alarmStalledQueuedJobs(now),
+  );
+  // cm:why an ACTIVE reaper, not an alarm: a run paused by a mechanism this build no longer has is not a state anyone can act on — there is nothing left to clear the reason, so surfacing it would ask a human to do the resume every time
+  const orphanedPauses = await runPass('resumeOrphanedPauses', () => resumeOrphanedPauses());
+  const churningIssues = await runPass('alarmChurningIssues', () => alarmChurningIssues());
 
   // cm:edge sideeffect -> packages/core/src/release-batch/claim-subscriber.ts — backstop for the pipelineRunStatusChanged hook: releases release_batch_run_id claims left behind if the subscriber threw or was skipped
   const staleReleaseBatchClaims = await runPass('reapStaleReleaseBatchClaims', () =>
@@ -230,27 +261,23 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     orphanedJobs: orphanedJobs as OrphanReconcileResult,
     neverClaimedDispatches: neverClaimedDispatches as OrphanReconcileResult,
     orphanedOneShotRuns: orphanedOneShotRuns as OneShotRunReapResult,
+    idleChatSessions: idleChatSessions as IdleChatCloseResult,
     orphanedIssueRuns: orphanedIssueRuns as IssueRunReapResult,
     stalledDependencies: stalledDependencies as StallDetectResult,
-    parkedClosedUnmerged: parkedClosedUnmerged as ParkClosedUnmergedResult,
+    closedUnmergedAlarms: closedUnmergedAlarms as ClosedUnmergedAlarmResult,
+    draftBlockedAlarms: draftBlockedAlarms as BlockedDependentAlarmResult,
+    agedHolds: agedHolds as Inv7AlarmResult,
+    stalledQueuedJobs: stalledQueuedJobs as Inv7AlarmResult,
+    churningIssues: churningIssues as Inv7AlarmResult,
     staleReleaseBatchClaims: staleReleaseBatchClaims as StaleReleaseBatchClaimsResult,
     strandedIssues: strandedIssues as StrandedIssuesResult,
+    orphanedPauses: orphanedPauses as OrphanedPauseResult,
     retryRescueThresholds: retryRescueThresholds as RetryRescueAlertResult,
     alerts: alerts as AlertSweepResult,
     backstopProjects: backstopProjects as number,
     queueSnapshots: queueSnapshots as number,
   };
 }
-
-/**
- * Grace window before a still-queued, dependency-blocked job is treated as a
- * deadlock rather than a normal wait. Long by design: a legit blocker can take
- * a while to merge. Override with `FORGE_STALL_GRACE_MS`.
- */
-const STALL_GRACE_MS = (() => {
-  const env = Number(process.env.FORGE_STALL_GRACE_MS);
-  return Number.isFinite(env) && env > 0 ? env : 45 * 60_000;
-})();
 
 type StalledRow = {
   job_id: string;
@@ -266,29 +293,6 @@ type StalledRow = {
   kind: string;
   queued_secs: number;
 };
-
-// ISS-619 — EN label for the blocker's internal status, used in the
-// business-language wedge summary. Falls back to a title-cased status for
-// any value not explicitly mapped (new statuses shouldn't need a code change
-// here to render legibly).
-const BLOCKER_STATUS_LABELS: Record<string, string> = {
-  needs_info: 'Needs info',
-  waiting: 'Waiting for review',
-  on_hold: 'On hold',
-  draft: 'Draft',
-  reopen: 'Reopened',
-};
-
-function blockerStatusLabel(status: string): string {
-  return (
-    BLOCKER_STATUS_LABELS[status] ??
-    status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ')
-  );
-}
-
-function humanizeDuration(mins: number): string {
-  return mins < 60 ? `~${mins}m` : `~${Math.round(mins / 60)}h`;
-}
 
 /**
  * ISS-442 — detect dependency deadlocks the dispatcher will never resolve and
@@ -397,11 +401,10 @@ type ClosedUnmergedRow = {
  * blocker as satisfying `blockedBy`/`decomposeChildrenPending`, so a
  * dependent whose blocker closed without merging now just sits `queued`
  * forever instead of silently dispatching onto a base branch missing the
- * blocker's code (devbox ISS-2/ISS-4). This pass actively unwedges it: past
+ * blocker's code (devbox ISS-2/ISS-4). This pass raises an ALARM on it: past
  * {@link STALL_GRACE_MS} (same grace window as `detectStalledDependencies` —
  * long enough for the ordinary close→`mark_merged` race to resolve on its
- * own), park the dependent issue at `waiting`, comment naming the unmerged
- * blocker, and reap its stuck run so the project's serial slot frees.
+ * own), emit a wedge naming the unmerged blocker.
  * Skips projects whose base is structurally unstampable (manual/toggle-off)
  * — that is the legitimate `OR status='closed'` bypass the gate still
  * honors, so those dependents are left alone. Best-effort: never throws
@@ -414,10 +417,11 @@ type ClosedUnmergedRow = {
  * can no longer arise from normal operation. This pass stays as the backstop
  * for pre-existing rows and direct DB writes that bypass both paths.
  */
-export async function parkClosedUnmergedBlockedDependents(
+
+export async function alarmClosedUnmergedBlockedDependents(
   now: Date = new Date(),
   scope: SweepScope = {},
-): Promise<ParkClosedUnmergedResult> {
+): Promise<ClosedUnmergedAlarmResult> {
   try {
     const cutoffIso = new Date(now.getTime() - STALL_GRACE_MS).toISOString();
     const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
@@ -442,7 +446,6 @@ export async function parkClosedUnmergedBlockedDependents(
         AND j.issue_id IS NOT NULL
         AND j.queued_at < ${cutoffIso}
         AND r.status = 'running'
-        AND wi.status <> 'waiting'
         AND (d.valid_until IS NULL OR d.valid_until > now())
         AND p.status = 'closed'
         AND p.merged_at IS NULL
@@ -451,7 +454,7 @@ export async function parkClosedUnmergedBlockedDependents(
       LIMIT 100
     `);
 
-    let parked = 0;
+    let alerted = 0;
     const stampableCache = new Map<string, boolean>();
     for (const row of rows) {
       try {
@@ -466,24 +469,21 @@ export async function parkClosedUnmergedBlockedDependents(
         // comments.author_id is non-nullable; nothing to attribute the park to.
         if (!row.created_by) continue;
 
-        const device: DeviceLite = { id: row.created_by, ownerId: row.created_by };
-        const issueRow: TransitionIssueRow = {
-          id: row.issue_id,
+        // cm:guard alarm ONLY — this pass must never write issues.status (RFC 0002 INV-5). It used to park the dependent at `waiting`, comment, and close the run; the comment then told the reader to "move this issue back to its stage", which is the intervention per occurrence the RFC removes. `pipelineHealth.waitingOn` already reports `waiting_on_dep` with the closed-unmerged blocker named, so the state does not lie without the park — and once the blocker is fixed the dependent dispatches with no manual move at all.
+        await emitPipelineWedge({
           projectId: row.project_id,
-          status: row.issue_status,
-          reopenCount: row.issue_reopen_count,
-        };
-        await applyStatusTransition(issueRow, 'waiting', device, { skip: true });
-
-        await db.insert(comments).values({
           issueId: row.issue_id,
-          authorId: row.created_by,
-          isAi: true,
-          body: `⛔ Blocked: ISS-${row.blocker_seq} "${row.blocker_title}" was closed without merging its code to the base branch (merged_at is empty). Pipeline can't build on it. Decide the base: reopen/merge the blocker, or \`mark_merged\` it if the code is genuinely in, then move this issue back to its stage.`,
+          hop: 'dispatch',
+          entity: 'job',
+          entityId: row.job_id,
+          reason: 'blocker_closed_unmerged',
+          title: 'Blocked on a blocker that closed without merging',
+          summary: `ISS-${row.blocker_seq} "${row.blocker_title}" is closed but its code never landed on the base branch (merged_at is empty), so this issue cannot dispatch.`,
+          nextStep:
+            'Reopen and merge the blocker, or `mark_merged` it if the code is genuinely in — this issue then dispatches by itself.',
+          action: 'Fix the blocker; no action is needed on this issue.',
         });
-
-        await closeOpenRunForIssue(row.issue_id, 'failed');
-        parked++;
+        alerted++;
       } catch (err) {
         logger.warn(
           { err, issueId: row.issue_id },
@@ -491,16 +491,16 @@ export async function parkClosedUnmergedBlockedDependents(
         );
       }
     }
-    if (parked > 0) {
+    if (alerted > 0) {
       logger.warn(
-        { parked },
-        'pipeline-sweeper: parked dependents blocked on closed-unmerged blocker',
+        { alerted },
+        'pipeline-sweeper: alarmed dependents blocked on closed-unmerged blocker',
       );
     }
-    return { parked };
+    return { alerted };
   } catch (err) {
     logger.error({ err }, 'pipeline-sweeper: park-closed-unmerged pass failed (skipped)');
-    return { parked: 0 };
+    return { alerted: 0 };
   }
 }
 
@@ -558,7 +558,7 @@ async function runDispatcherBackstop(): Promise<number> {
   return rows.length;
 }
 
-type SweepScope = LoopScope;
+export type SweepScope = LoopScope;
 
 type SessionAlarmRow = {
   id: string;
@@ -860,6 +860,76 @@ export async function reapOrphanedOneShotRuns(
   }
 
   return { reaped };
+}
+
+/**
+ * Close chat sessions that have gone quiet, instead of leaving them live.
+ *
+ * Resuming is free — the row keeps `claude_session_id`, so the next turn revives
+ * the session and `--resume` carries the conversation — while a session left
+ * live for many hours answers from a workspace nothing refreshed. Measured on
+ * session `228cdf03` (ceo-dashboard): live for 28h, then produced a release
+ * advisory in which 6 of 7 claims were false, because its checkout predated by
+ * 2.5h the merge it was asked about.
+ *
+ * Deliberately independent of the run's status, so a quiet session under a run
+ * that never closed is covered too — `reapOrphanedOneShotRuns` only looks at
+ * runs still `running`/`paused`, and the terminal-run trigger only labels.
+ */
+export const CHAT_IDLE_CLOSE_MS = 2 * 60 * 60_000;
+
+export async function closeIdleChatSessions(
+  now: Date = new Date(),
+  scope: SweepScope = {},
+): Promise<IdleChatCloseResult> {
+  // postgres-js rejects raw Date params; serialise to ISO before binding.
+  const cutoffIso = new Date(now.getTime() - CHAT_IDLE_CLOSE_MS).toISOString();
+  const projectClause = scope.projectId ? sql`AND s.project_id = ${scope.projectId}` : sql``;
+
+  // cm:guard never widen this SELECT to job-linked or `schedule.run` sessions. A job-linked session belongs to the loop monitor, and closing one here races its owner. A hung `schedule.run` closed `completed` makes the next terminal report write `schedules.lastStatus='success'` (schedules/service.ts) — a lie about an audit that never ran, which is the exact class this pass exists to prevent.
+  // cm:guard `started_at IS NOT NULL` — a row that never ran has nothing to close honestly; `idle` is also the DEFAULT status of a fresh session, so without this the pass would settle never-dispatched rows as `completed`.
+  const candidates = await db.execute<{ id: string }>(sql`
+    SELECT s.id
+    FROM agent_sessions s
+    WHERE s.status IN ('queued', 'running', 'idle')
+      AND s.started_at IS NOT NULL
+      AND COALESCE(s.last_heartbeat_at, s.started_at, s.updated_at, s.created_at) < ${cutoffIso}
+      AND COALESCE(s.metadata->>'source', '') <> 'schedule.run'
+      AND NOT EXISTS (
+        SELECT 1 FROM jobs j WHERE j.agent_session_id = s.id
+      )
+      ${projectClause}
+    ORDER BY s.updated_at ASC
+    LIMIT 200
+  `);
+
+  const ids = candidates.map((row) => row.id);
+  if (ids.length === 0) return { closed: 0 };
+
+  // cm:edge lockstep -> packages/core/src/agent-sessions/routes.ts — fourth writer of the completed-carries-no-reason contract (ISS-759)
+  const flipped = await applyKernelTransition(db, {
+    entity: 'session',
+    to: 'completed',
+    set: { failureReason: null, updatedAt: now },
+    where: and(
+      inArray(agentSessions.id, ids),
+      inArray(agentSessions.status, ['queued', 'running', 'idle']),
+    ),
+    fromStatus: 'active',
+    reason: 'chat_idle_timeout',
+    actor: { type: 'sweeper' },
+    source: 'sweeper',
+  });
+
+  for (const s of flipped) {
+    broadcastSessionEvent(s.id, s.projectId, s.deviceId, 'agent-session.status', {
+      status: 'completed',
+    });
+  }
+  if (flipped.length > 0) {
+    logger.info({ closed: flipped.length }, 'pipeline-sweeper: idle chat sessions closed');
+  }
+  return { closed: flipped.length };
 }
 
 /**

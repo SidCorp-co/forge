@@ -5,25 +5,26 @@ import {
   resolveChatDevice,
 } from '../agent-sessions/chat-turn.js';
 import { db } from '../db/client.js';
-import {
-  type ScheduleKind,
-  type ScheduleMode,
-  agentSessions,
-  projects,
-  scheduleRuns,
-  schedules,
-} from '../db/schema.js';
+import type { ScheduleMode } from '../db/schema.js';
+import { agentSessions, projects, scheduleRuns, schedules } from '../db/schema.js';
 import { findAvailableDeviceForProject } from '../lib/device-pool.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { hooks } from '../pipeline/hooks.js';
+import type { DispatchScheduleInput, DispatchScheduleResult } from './dispatch-types.js';
 import { buildDriftCheckPrompt } from './messages/drift-check-prompt.js';
 import { buildFeedbackDigestPrompt } from './messages/feedback-digest-prompt.js';
 import { buildProductMapRefreshPrompt } from './messages/product-map-refresh-prompt.js';
 import { getImprovementMessage } from './messages/registry.js';
-import { type AppliedVersions, buildSkillImprovePrompt } from './messages/skill-improve-prompt.js';
+import { buildSkillImprovePrompt } from './messages/skill-improve-prompt.js';
 import { buildSkillStewardPrompt } from './messages/skill-steward-prompt.js';
+import { buildUxImproverPrompt } from './messages/ux-improver-prompt.js';
+import {
+  dispatchScheduleReleaseBatchRun,
+  loadCreatedBy,
+  resolveScheduleTargetProject,
+} from './release-batch-dispatch.js';
 import { runScheduleScript } from './script/executor.js';
 
 // Keys for standing templates that build their own prompt instead of the steward.
@@ -31,6 +32,7 @@ import { runScheduleScript } from './script/executor.js';
 const DRIFT_CHECK_KEY = 'knowledge-drift-check';
 const PRODUCT_MAP_KEY = 'product-map-refresh';
 const FEEDBACK_DIGEST_KEY = 'feedback-triage-digest';
+const UX_IMPROVER_KEY = 'ux-contract-improve';
 
 // Standing templates with a DEDICATED non-steward builder: their sessions must
 // NOT be tagged metadata.steward (the steward-report parser would mis-handle
@@ -40,49 +42,67 @@ const NON_STEWARD_STANDING_KEYS = new Set<string>([
   DRIFT_CHECK_KEY,
   PRODUCT_MAP_KEY,
   FEEDBACK_DIGEST_KEY,
+  UX_IMPROVER_KEY,
 ]);
 
-export interface ScheduleRowForDispatch {
+type StandingBuilder = (input: { mode: ScheduleMode; projectId: string }) => string;
+
+// cm:guard A standing key listed here MUST also appear in NON_STEWARD_STANDING_KEYS above, or its session is tagged metadata.steward and the steward-report parser mis-handles output that is not a steward report. Absent from this map, a standing key silently falls through to the steward prompt instead of erroring.
+const STANDING_BUILDERS: Record<string, { build: StandingBuilder; defaultMode: ScheduleMode }> = {
+  [DRIFT_CHECK_KEY]: { build: buildDriftCheckPrompt, defaultMode: 'propose' },
+  [PRODUCT_MAP_KEY]: { build: buildProductMapRefreshPrompt, defaultMode: 'auto' },
+  [FEEDBACK_DIGEST_KEY]: { build: buildFeedbackDigestPrompt, defaultMode: 'propose' },
+  [UX_IMPROVER_KEY]: { build: buildUxImproverPrompt, defaultMode: 'propose' },
+};
+
+/**
+ * Resolves the prompt a prompt-kind schedule dispatches with, before any DB
+ * lookup. Returns `null` when a ONE-SHOT template was already applied at its
+ * current version — the caller turns that into a `skipped` result. Standing
+ * templates never return null: they bypass `appliedMessageVersions` because
+ * their value is in observing fresh signals on every cadence run.
+ */
+export function resolveTemplatePrompt(schedule: {
   id: string;
-  name?: string | null;
   projectId: string;
-  // Nullable: a kind='script' schedule carries no prompt at all (ISS-618).
   prompt: string | null;
-  runner: 'desktop' | 'antigravity';
-  targetProjectSlug: string | null;
-  /** When set, the skill-improve engine builds the prompt instead of using `prompt`. */
   templateKey?: string | null;
-  params?: Record<string, unknown> | null;
   mode?: ScheduleMode | null;
-  appliedMessageVersions?: AppliedVersions | null;
-  // ISS-618 — 'script' schedules run a sandboxed script, no agent session at all.
-  kind?: ScheduleKind | null;
-  script?: string | null;
-}
+  appliedMessageVersions?: Record<string, number> | null;
+}): { prompt: string; standing: boolean } | null {
+  const { templateKey } = schedule;
+  if (!templateKey) return { prompt: schedule.prompt ?? '', standing: false };
 
-export interface DispatchScheduleInput {
-  schedule: ScheduleRowForDispatch;
-  // Manual triggers attribute the session to the calling user; tick triggers
-  // fall back to the resolved project's creator (agent_sessions.user_id is
-  // nullable but useful to populate for audit + activity feeds).
-  actorUserId?: string;
-  // Marks the resulting session metadata so consumers can distinguish
-  // tick-driven runs from manual /:id/run triggers.
-  tick?: boolean;
-  // When the caller has already resolved `targetProjectSlug` (e.g. the route's
-  // auth gate), pass the resolved project here to skip a redundant lookup.
-  resolvedTarget?: { id: string; createdBy: string };
-}
+  if (getImprovementMessage(templateKey)?.standing) {
+    const entry = STANDING_BUILDERS[templateKey];
+    const build = entry?.build ?? buildSkillStewardPrompt;
+    logger.info(
+      { scheduleId: schedule.id, templateKey },
+      'schedule.dispatch: standing template dispatching (bypassing appliedMessageVersions)',
+    );
+    return {
+      prompt: build({
+        mode: schedule.mode ?? entry?.defaultMode ?? 'propose',
+        projectId: schedule.projectId,
+      }),
+      standing: true,
+    };
+  }
 
-export type DispatchScheduleResult =
-  // cm:why 'running' (interactive session path, decided later by the session's own lifecycle -> writeBackScheduleLastStatus) vs 'success' (script path, already ran synchronously in dispatchScheduleScriptRun) — the caller never re-derives which
-  | { ok: true; sessionId: string; status: 'running' | 'success'; resolvedProjectId: string }
-  | {
-      ok: false;
-      reason: 'project-not-found' | 'no-device' | 'unsupported-runner' | 'already-applied';
-      status: 'skipped';
-    }
-  | { ok: false; reason: 'session-failed'; status: 'failed'; sessionId?: string };
+  const built = buildSkillImprovePrompt({
+    templateKey,
+    mode: schedule.mode ?? 'propose',
+    appliedMessageVersions: schedule.appliedMessageVersions ?? null,
+  });
+  if (built === null) {
+    logger.info(
+      { scheduleId: schedule.id, templateKey },
+      'schedule.dispatch: skill-improve prompt skipped — message already applied at current version',
+    );
+    return null;
+  }
+  return { prompt: built, standing: false };
+}
 
 /**
  * Reroute schedule.run onto the interactive agent-session rails used by
@@ -118,6 +138,9 @@ export async function dispatchScheduleRun(
   if (schedule.kind === 'script') {
     return dispatchScheduleScriptRun(input);
   }
+  if (schedule.kind === 'release_batch') {
+    return dispatchScheduleReleaseBatchRun(input);
+  }
 
   // Antigravity adapter is HTTP-push and lives behind the (now-bypassed)
   // jobs/dispatcher path. Until antigravity gains an interactive WS entry
@@ -134,75 +157,9 @@ export async function dispatchScheduleRun(
     return { ok: false, reason: 'session-failed', status: 'failed' };
   }
 
-  // ISS-548/ISS-556 — when a schedule has a templateKey, build the prompt
-  // BEFORE any DB lookups.
-  // - Standing templates (standing===true) bypass appliedMessageVersions — every
-  //   cadence run fires unconditionally; the steward always has fresh signals.
-  // - One-shot templates still return null when already applied at current version
-  //   → return skipped early to avoid a wasted round-trip.
-  // Guarded above: reaching here means either templateKey is set (about to
-  // overwrite effectivePrompt unconditionally) or schedule.prompt is non-null.
-  let effectivePrompt: string = schedule.prompt ?? '';
-  let isStandingTemplate = false;
-  if (schedule.templateKey) {
-    const registryEntry = getImprovementMessage(schedule.templateKey);
-    if (registryEntry?.standing) {
-      // Standing template: always dispatch, bypass appliedMessageVersions.
-      isStandingTemplate = true;
-      if (schedule.templateKey === DRIFT_CHECK_KEY) {
-        effectivePrompt = buildDriftCheckPrompt({
-          mode: schedule.mode ?? 'propose',
-          projectId: schedule.projectId,
-        });
-        logger.info(
-          { scheduleId: schedule.id, templateKey: schedule.templateKey },
-          'schedule.dispatch: standing drift-check template dispatching (bypassing appliedMessageVersions)',
-        );
-      } else if (schedule.templateKey === PRODUCT_MAP_KEY) {
-        effectivePrompt = buildProductMapRefreshPrompt({
-          mode: schedule.mode ?? 'auto',
-          projectId: schedule.projectId,
-        });
-        logger.info(
-          { scheduleId: schedule.id, templateKey: schedule.templateKey },
-          'schedule.dispatch: standing product-map-refresh template dispatching (bypassing appliedMessageVersions)',
-        );
-      } else if (schedule.templateKey === FEEDBACK_DIGEST_KEY) {
-        effectivePrompt = buildFeedbackDigestPrompt({
-          mode: schedule.mode ?? 'propose',
-          projectId: schedule.projectId,
-        });
-        logger.info(
-          { scheduleId: schedule.id, templateKey: schedule.templateKey },
-          'schedule.dispatch: standing feedback-digest template dispatching (bypassing appliedMessageVersions)',
-        );
-      } else {
-        effectivePrompt = buildSkillStewardPrompt({
-          mode: schedule.mode ?? 'propose',
-          projectId: schedule.projectId,
-        });
-        logger.info(
-          { scheduleId: schedule.id, templateKey: schedule.templateKey },
-          'schedule.dispatch: standing steward template dispatching (bypassing appliedMessageVersions)',
-        );
-      }
-    } else {
-      // One-shot template: use existing idempotency gate.
-      const built = buildSkillImprovePrompt({
-        templateKey: schedule.templateKey,
-        mode: schedule.mode ?? 'propose',
-        appliedMessageVersions: schedule.appliedMessageVersions ?? null,
-      });
-      if (built === null) {
-        logger.info(
-          { scheduleId: schedule.id, templateKey: schedule.templateKey },
-          'schedule.dispatch: skill-improve prompt skipped — message already applied at current version',
-        );
-        return { ok: false, reason: 'already-applied', status: 'skipped' };
-      }
-      effectivePrompt = built;
-    }
-  }
+  const resolved = resolveTemplatePrompt(schedule);
+  if (resolved === null) return { ok: false, reason: 'already-applied', status: 'skipped' };
+  const { prompt: effectivePrompt, standing: isStandingTemplate } = resolved;
 
   let resolvedProjectId = schedule.projectId;
   let resolvedCreatedBy: string | undefined;
@@ -394,24 +351,9 @@ async function dispatchScheduleScriptRun(
     return { ok: false, reason: 'session-failed', status: 'failed' };
   }
 
-  let resolvedProjectId = schedule.projectId;
-  if (schedule.targetProjectSlug) {
-    const target =
-      input.resolvedTarget ??
-      (
-        await db
-          .select({ id: projects.id, createdBy: projects.createdBy })
-          .from(projects)
-          .where(eq(projects.slug, schedule.targetProjectSlug))
-          .limit(1)
-      )[0];
-    if (!target) return { ok: false, reason: 'project-not-found', status: 'skipped' };
-    resolvedProjectId = target.id;
-  }
-
-  const userId =
-    input.actorUserId ?? (await loadCreatedBy(resolvedProjectId, input.resolvedTarget?.createdBy));
-  if (!userId) return { ok: false, reason: 'project-not-found', status: 'skipped' };
+  const resolved = await resolveScheduleTargetProject(input);
+  if (!resolved) return { ok: false, reason: 'project-not-found', status: 'skipped' };
+  const { projectId: resolvedProjectId, userId } = resolved;
 
   const startedAt = new Date();
   const [run] = await db
@@ -623,12 +565,9 @@ export async function redispatchScheduleSessionOnFailover(
   }
 }
 
-async function loadCreatedBy(projectId: string, hint?: string): Promise<string | undefined> {
-  if (hint) return hint;
-  const [row] = await db
-    .select({ createdBy: projects.createdBy })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  return row?.createdBy;
-}
+// cm:edge naming -> packages/core/src/schedules/dispatch-types.ts — every caller imports these from this module; they live next door so the runner-less branches can use them without an import cycle, and re-exporting keeps that a file layout rather than an API change
+export type {
+  DispatchScheduleInput,
+  DispatchScheduleResult,
+  ScheduleRowForDispatch,
+} from './dispatch-types.js';

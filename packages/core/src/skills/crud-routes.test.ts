@@ -137,6 +137,7 @@ describe('POST /api/skills', () => {
   it('201 inserts project skill for owner', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'admin', orgRole: 'owner' }]); // access
+    selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]);
     insertReturning.mockResolvedValueOnce([
       {
         id: SKILL_ID,
@@ -175,9 +176,37 @@ describe('files round-trip (AC #4)', () => {
     },
   ];
 
+  // cm:guard proves the LOCK IS WIRED, not merely implemented: the pure resolver has its own unit tests, and a lock that never reaches the create path protects nothing
+  it('400 SKILL_LOCKED when the project declares the name locked', async () => {
+    authVerified();
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'admin', orgRole: 'owner' }]);
+    selectLimit.mockResolvedValueOnce([
+      { agentConfig: { pipelineConfig: { lockedSkills: ['s'] } } },
+    ]);
+
+    const res = await buildApp().request('/api/skills', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify({
+        name: 's',
+        description: 'd',
+        skillMd: 'md',
+        isGlobal: false,
+        projectId: PROJECT_ID,
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; details?: { reason?: string } };
+    expect(body.code).toBe('SKILL_LOCKED');
+    expect(body.details?.reason).toBe('project-declared');
+    expect(insertReturning).not.toHaveBeenCalled();
+  });
+
   it('create stores files[] byte-identical and hashes over skillMd + files', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'admin', orgRole: 'owner' }]); // access
+    selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]);
     // Echo back exactly what the handler inserted so the response reflects storage.
     insertReturning.mockImplementationOnce(async () => {
       const v = insertValues.mock.calls.at(-1)?.[0] as Record<string, unknown>;

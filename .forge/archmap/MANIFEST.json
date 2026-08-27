@@ -1,0 +1,28 @@
+{
+  "tool": "archmap",
+  "version": "0.1.4",
+  "algorithm": "sha256",
+  "files": {
+    ".gitattributes": "7ddb0d0cea0d2b6213418fe3a63083b7aed9d770055d839d231897402de0acfd",
+    "SPEC.md": "ffbcdc0cbe218ae61d1a40db54953802c00874fd14dec1594451831812bda433",
+    "VERSION": "8a3dad16d348c163566a456fcf650d85d7aeeda5e53d01ee1fa8dc15212915a7",
+    "archmap": "28e4097480c0a9b71c1bb5af35a7838325e7b6baed4a1e933cced0687db601f5",
+    "entry.mjs": "ea0fc33f928299ac01ced8799279d76cf25d50cac9e3e9cc450f77f0dab98c47",
+    "schema/arch.schema.json": "001b7cc318be44bb64b2d13e3bd792596835f50f949d561eaa1e39d3944a0339",
+    "src/check.mjs": "2c5ff43717025fadd2700c22c8f9df20c3bab7a974c8c0595f1dd8e66a18af7c",
+    "src/cli.mjs": "a70890afc9a2aa4fb1b01fdd7b21c3e534aa26d75eda4ad56c280189335dcc10",
+    "src/contracts/index.mjs": "0c30ec2ade3bce1c03e98cb1fbbcb0c08f0c91202ce29c83b06ff18c791d06e5",
+    "src/graph/export.mjs": "e2bbfb5182018c1605e044a8bd16e38c47b9b443bfd55280c555b46c209a1eea",
+    "src/graph/map.mjs": "1944a04724385be7e3dce6ae5c6866e68e19dc671350b6676769d82b04703314",
+    "src/graph/normalize.mjs": "35f654baeceaaef59de1530d94a53862d9dbfe0f4e472a64abdd7f2d36831b8e",
+    "src/hook/pending.mjs": "d75822926cef0a52c7875186b3d2eda7186a9204eae1b76a08fc5e0d7f09c4bd",
+    "src/hook/pre-edit.mjs": "5384bf7037af7f59c8e27d6b474965e0e2dd9cf5a229bb69fe9d62bd2c97a982",
+    "src/hook/resolve.mjs": "ac6465416c4a06161396ed2258cc2db6da42a35dcb2c42ffaf1eb878bd73fd71",
+    "src/index.mjs": "f5427602e89b8ceda9a0e5927522b3aa7daac7fe9d39ce93bc9de256298d500b",
+    "src/install.mjs": "9e736fc29aafed98e350453ffaaa8a9f13df3900dc44f2204e8cacacac02b9c8",
+    "src/manifest.mjs": "ca6560c9ec2c8047021aad1d245157d2613337ccea8d507653a29623e94f2262",
+    "src/providers/go.mjs": "968c25781ee803c04b589ef21e5144216915f6e01ef9472f50cd3eef3dd86230",
+    "src/providers/ts.mjs": "87b29609088c5365a6fbf86c1dbe5c143d2193a20195d408a29895072ab5cf01",
+    "src/providers/tsconfig.mjs": "0e6491f00ccd60760f4fdbe45ce422115ac5cd0d1c5800cde79749b479596151"
+  }
+}

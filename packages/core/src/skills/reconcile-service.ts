@@ -17,17 +17,15 @@ import { randomUUID } from 'node:crypto';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
+  deviceSkills,
+  divergenceCharters,
+  jobs,
+  projects,
   type ReconcileBundleSnapshot,
   type ReconcileGate,
   type ReconcileRunStatus,
   type ReconcileVerdict,
   type ReconcileVerifierVote,
-  deviceSkills,
-  divergenceCharters,
-  jobs,
-  organizationMembers,
-  projectMembers,
-  projects,
   reconcileRuns,
   runners,
   skillActivityEvents,

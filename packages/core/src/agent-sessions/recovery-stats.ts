@@ -21,9 +21,9 @@ import { agentSessions } from '../db/schema.js';
 import type { FailureKind } from '../pipeline/failure-classifier.js';
 import {
   DEFAULT_RECOVERY_STATS,
+  normaliseRecoveryStats,
   type PipelineHealth,
   type RecoveryStats,
-  normaliseRecoveryStats,
 } from './pipeline-control-types.js';
 
 /** ISS-450 — every v3 kind has a `byKind` bucket (the `unknown` class is

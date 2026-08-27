@@ -83,7 +83,6 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
       create.reset();
     }
     // `create` is stable from React Query; resetting only on `open` is intended.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Mirror the name into the slug until the user takes manual control.

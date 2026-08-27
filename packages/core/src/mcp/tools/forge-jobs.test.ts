@@ -24,6 +24,14 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
+// cm:edge contract -> packages/core/src/jobs/dispatch-gates.ts — these stubs must keep the real return SHAPES (a Map for the batch, a DispatchBarrier for the single job); dispatch-gates.test.ts owns whether the gate reasons themselves are right, this file only covers the MCP layer attaching them
+const gateReasonsMock = vi.fn(async (_projectId: string) => new Map<string, string>());
+const assertDispatchableMock = vi.fn(async (_jobId: string) => ({ ok: true }) as unknown);
+vi.mock('../../jobs/dispatch-gates.js', () => ({
+  gateReasonsForQueuedJobs: (projectId: string) => gateReasonsMock(projectId),
+  assertDispatchable: (jobId: string) => assertDispatchableMock(jobId),
+}));
+
 // ISS-442 C0 — the MCP cancel tool delegates to the shared cancelJob() helper.
 // Mock it here so these tests cover only the MCP layer (writer gate, arg
 // passthrough, JobCancelError → Error mapping); the helper's transactional
@@ -43,8 +51,28 @@ vi.mock('../../jobs/cancel-job.js', () => ({
   JobCancelError,
 }));
 
-const { forgeJobsListTool, forgeJobsGetTool, forgeJobsEventsTool, forgeJobsCancelTool } =
-  await import('./forge-jobs.js');
+const resumeJobMock = vi.fn();
+class JobResumeError extends Error {
+  constructor(
+    public readonly code: 'NOT_FOUND' | 'NOT_HELD',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'JobResumeError';
+  }
+}
+vi.mock('../../jobs/resume-job.js', () => ({
+  resumeHeldJob: (...args: unknown[]) => resumeJobMock(...args),
+  JobResumeError,
+}));
+
+const {
+  forgeJobsListTool,
+  forgeJobsGetTool,
+  forgeJobsEventsTool,
+  forgeJobsCancelTool,
+  forgeJobsResumeTool,
+} = await import('./forge-jobs.js');
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_PROJECT_ID = '99999999-9999-4999-8999-999999999999';
@@ -122,6 +150,48 @@ describe('forge_jobs.list', () => {
 
     expect(result.jobs).toHaveLength(1);
     expect(result.jobs[0]?.id).toBe(JOB_ID);
+  });
+
+  // cm:guard the gate reason must reach the CALLER, not just exist server-side — `queued` is the status of a job about to run AND of one blocked for weeks, and every diagnosis of the latter before this went through a hand-written database script
+  it('attaches gateReason to queued rows', async () => {
+    const tool = forgeJobsListTool(fakeDevice);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    selectLimit.mockResolvedValueOnce([baseJobRow]);
+    gateReasonsMock.mockResolvedValueOnce(new Map([[JOB_ID, 'blocked_by']]));
+
+    const result = (await tool.handler({ projectId: PROJECT_ID })) as {
+      jobs: Array<{ gateReason?: string | null }>;
+    };
+
+    expect(gateReasonsMock).toHaveBeenCalledWith(PROJECT_ID);
+    expect(result.jobs[0]?.gateReason).toBe('blocked_by');
+  });
+
+  it('reports gateReason null for a queued job that is merely awaiting its turn', async () => {
+    const tool = forgeJobsListTool(fakeDevice);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    selectLimit.mockResolvedValueOnce([baseJobRow]);
+    gateReasonsMock.mockResolvedValueOnce(new Map());
+
+    const result = (await tool.handler({ projectId: PROJECT_ID })) as {
+      jobs: Array<{ gateReason?: string | null }>;
+    };
+
+    expect(result.jobs[0]?.gateReason).toBeNull();
+  });
+
+  // cm:guard skip the gate query when nothing is queued — a terminal-only page must not pay for a scan whose every answer would be omitted anyway
+  it('does not query gates when no row is queued', async () => {
+    const tool = forgeJobsListTool(fakeDevice);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    selectLimit.mockResolvedValueOnce([{ ...baseJobRow, status: 'done' as const }]);
+
+    const result = (await tool.handler({ projectId: PROJECT_ID })) as {
+      jobs: Array<{ gateReason?: string | null }>;
+    };
+
+    expect(gateReasonsMock).not.toHaveBeenCalled();
+    expect(result.jobs[0]).not.toHaveProperty('gateReason');
   });
 
   it('rejects non-member with FORBIDDEN', async () => {
@@ -216,20 +286,19 @@ function makeDeviceCtx() {
   };
 }
 
-function makePatCtx(projectIds: string[] | null) {
-  return {
-    principal: {
-      kind: 'pat' as const,
-      userId: OWNER_ID,
-      tokenId: '77777777-7777-4777-8777-777777777777',
-      scopes: ['read', 'write'],
-      projectIds,
-      boundProjectId: null,
-    },
-    device: fakeDevice,
-    projectSlug: null,
-  };
-}
+const makePatCtx = (projectIds: string[] | null) => ({
+  principal: {
+    kind: 'pat' as const,
+    agency: 'human' as const,
+    userId: OWNER_ID,
+    tokenId: '77777777-7777-4777-8777-777777777777',
+    scopes: ['read', 'write'],
+    projectIds,
+    boundProjectId: null,
+  },
+  device: fakeDevice,
+  projectSlug: null,
+});
 
 describe('forge_jobs.get', () => {
   it('returns the job + agentSessionId when device owner is member', async () => {
@@ -415,5 +484,74 @@ describe('forge_jobs.cancel', () => {
     );
 
     await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/NOT_CANCELLABLE/);
+  });
+});
+
+describe('forge_jobs.resume', () => {
+  it('resumes for a writer and passes actor + reason + source', async () => {
+    const tool = forgeJobsResumeTool(makePatCtx(null));
+    selectLimit.mockResolvedValueOnce([{ ...baseJobRow, status: 'held' }]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    resumeJobMock.mockResolvedValueOnce({
+      jobId: JOB_ID,
+      status: 'queued',
+      heldReason: 'non_retryable_terminal',
+    });
+
+    const result = (await tool.handler({ jobId: JOB_ID, reason: 'repo re-cloned' })) as {
+      status: string;
+      heldReason: string;
+    };
+
+    expect(result).toEqual({
+      jobId: JOB_ID,
+      status: 'queued',
+      heldReason: 'non_retryable_terminal',
+    });
+    expect(resumeJobMock).toHaveBeenCalledWith(JOB_ID, {
+      actorUserId: OWNER_ID,
+      reason: 'repo re-cloned',
+      source: 'mcp',
+    });
+  });
+
+  it('defaults the reason when none is supplied', async () => {
+    const tool = forgeJobsResumeTool(makePatCtx(null));
+    selectLimit.mockResolvedValueOnce([{ ...baseJobRow, status: 'held' }]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    resumeJobMock.mockResolvedValueOnce({ jobId: JOB_ID, status: 'queued', heldReason: null });
+
+    await tool.handler({ jobId: JOB_ID });
+
+    expect(resumeJobMock).toHaveBeenCalledWith(
+      JOB_ID,
+      expect.objectContaining({ reason: 'manual resume (MCP)', source: 'mcp' }),
+    );
+  });
+
+  // cm:guard writer-gated, same as cancel — a resume moves a job, and a viewer who can restart a step on someone else's project can spend their runner budget
+  it('rejects a viewer with FORBIDDEN before calling the service', async () => {
+    const tool = forgeJobsResumeTool(makePatCtx(null));
+    selectLimit.mockResolvedValueOnce([{ ...baseJobRow, status: 'held' }]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'viewer', orgRole: null }]);
+
+    await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/FORBIDDEN/);
+    expect(resumeJobMock).not.toHaveBeenCalled();
+  });
+
+  it('throws NOT_FOUND for a missing job', async () => {
+    const tool = forgeJobsResumeTool(makePatCtx(null));
+    selectLimit.mockResolvedValueOnce([]);
+    await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/NOT_FOUND/);
+    expect(resumeJobMock).not.toHaveBeenCalled();
+  });
+
+  it('maps a NOT_HELD JobResumeError to an Error result', async () => {
+    const tool = forgeJobsResumeTool(makePatCtx(null));
+    selectLimit.mockResolvedValueOnce([baseJobRow]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    resumeJobMock.mockRejectedValueOnce(new JobResumeError('NOT_HELD', 'job is running, not held'));
+
+    await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/NOT_HELD/);
   });
 });

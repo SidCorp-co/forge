@@ -1,0 +1,417 @@
+{
+  "generatedAt": "2026-08-25T03:22:52.992Z",
+  "files": {
+    "packages/core/src/agent-sessions/chat-turn.test.ts": {
+      "fileLines": 590,
+      "maxFunctionLines": 274
+    },
+    "packages/core/src/agent-sessions/lifecycle-routes.test.ts": {
+      "fileLines": 1063,
+      "maxFunctionLines": 195
+    },
+    "packages/core/src/agent-sessions/lifecycle-routes.ts": {
+      "fileLines": 799,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/agent-sessions/routes.test.ts": {
+      "fileLines": 1587,
+      "maxFunctionLines": 164
+    },
+    "packages/core/src/agent-sessions/routes.ts": {
+      "fileLines": 895,
+      "maxFunctionLines": 180
+    },
+    "packages/core/src/chat/providers/litellm.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 184
+    },
+    "packages/core/src/chat/tools/mcp-adapter.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 220
+    },
+    "packages/core/src/comments/routes.ts": {
+      "fileLines": 558,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/db/schema.test.ts": {
+      "fileLines": 747,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/db/schema.ts": {
+      "fileLines": 3401,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/devices/routes.test.ts": {
+      "fileLines": 568,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/devices/routes.ts": {
+      "fileLines": 680,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/index.ts": {
+      "fileLines": 564,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/integrations/rocketchat/agent-chat-bridge.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 176
+    },
+    "packages/core/src/integrations/rocketchat/agent-chat.test.ts": {
+      "fileLines": 517,
+      "maxFunctionLines": 152
+    },
+    "packages/core/src/integrations/rocketchat/connection-manager.ts": {
+      "fileLines": 815,
+      "maxFunctionLines": 165
+    },
+    "packages/core/src/integrations/routes.test.ts": {
+      "fileLines": 1383,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/issues/attachment-routes.test.ts": {
+      "fileLines": 535,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/issues/decompose.ts": {
+      "fileLines": 548,
+      "maxFunctionLines": 251
+    },
+    "packages/core/src/issues/extras-routes-batch.test.ts": {
+      "fileLines": 513,
+      "maxFunctionLines": 210
+    },
+    "packages/core/src/issues/extras-routes.ts": {
+      "fileLines": 559,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/issues/pipeline-health.ts": {
+      "fileLines": 599,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/issues/routes.ts": {
+      "fileLines": 802,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/issues/transition.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 169
+    },
+    "packages/core/src/jobs/dispatch-gates.test.ts": {
+      "fileLines": 800,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/jobs/dispatcher.test.ts": {
+      "fileLines": 1256,
+      "maxFunctionLines": 588
+    },
+    "packages/core/src/jobs/dispatcher.ts": {
+      "fileLines": 858,
+      "maxFunctionLines": 259
+    },
+    "packages/core/src/jobs/events-routes.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 210
+    },
+    "packages/core/src/jobs/lifecycle-routes.test.ts": {
+      "fileLines": 856,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/jobs/lifecycle-routes.ts": {
+      "fileLines": 649,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/jobs/loop-monitor.test.ts": {
+      "fileLines": 527,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/jobs/loop-monitor.ts": {
+      "fileLines": 625,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/jobs/prompt-string.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 169
+    },
+    "packages/core/src/jobs/retry.test.ts": {
+      "fileLines": 668,
+      "maxFunctionLines": 379
+    },
+    "packages/core/src/jobs/retry.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 151
+    },
+    "packages/core/src/mcp/handler.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 152
+    },
+    "packages/core/src/mcp/tools/forge-comments.test.ts": {
+      "fileLines": 696,
+      "maxFunctionLines": 390
+    },
+    "packages/core/src/mcp/tools/forge-comments.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 158
+    },
+    "packages/core/src/mcp/tools/forge-config.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 192
+    },
+    "packages/core/src/mcp/tools/forge-config.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 172
+    },
+    "packages/core/src/mcp/tools/forge-coolify-deploy.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 257
+    },
+    "packages/core/src/mcp/tools/forge-feedback.test.ts": {
+      "fileLines": 767,
+      "maxFunctionLines": 168
+    },
+    "packages/core/src/mcp/tools/forge-feedback.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 215
+    },
+    "packages/core/src/mcp/tools/forge-issues.test.ts": {
+      "fileLines": 2489,
+      "maxFunctionLines": 1430
+    },
+    "packages/core/src/mcp/tools/forge-issues.ts": {
+      "fileLines": 1373,
+      "maxFunctionLines": 503
+    },
+    "packages/core/src/mcp/tools/forge-jobs.test.ts": {
+      "fileLines": 558,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/mcp/tools/forge-projects.test.ts": {
+      "fileLines": 877,
+      "maxFunctionLines": 152
+    },
+    "packages/core/src/mcp/tools/forge-step-start.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 204
+    },
+    "packages/core/src/me/attention-routes.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 207
+    },
+    "packages/core/src/me/attention-routes.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 205
+    },
+    "packages/core/src/memory/consolidation.test.ts": {
+      "fileLines": 683,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/memory/consolidation.ts": {
+      "fileLines": 764,
+      "maxFunctionLines": 151
+    },
+    "packages/core/src/metrics/routes.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 189
+    },
+    "packages/core/src/pipeline/analytics-routes.test.ts": {
+      "fileLines": 631,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/pipeline/failure-classifier.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 219
+    },
+    "packages/core/src/pipeline/orchestrator.test.ts": {
+      "fileLines": 1362,
+      "maxFunctionLines": 455
+    },
+    "packages/core/src/pipeline/orchestrator.ts": {
+      "fileLines": 878,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/pipeline/pipeline-config-schema.test.ts": {
+      "fileLines": 523,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/pipeline/pipeline-config-service.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 151
+    },
+    "packages/core/src/pipeline/subscribers.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 180
+    },
+    "packages/core/src/pipeline/sweeper.test.ts": {
+      "fileLines": 800,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/pipeline/sweeper.ts": {
+      "fileLines": 715,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/pm/routes.ts": {
+      "fileLines": 524,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/projects/health-routes.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 180
+    },
+    "packages/core/src/projects/routes.test.ts": {
+      "fileLines": 1712,
+      "maxFunctionLines": 353
+    },
+    "packages/core/src/projects/routes.ts": {
+      "fileLines": 811,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/prompt/user.test.ts": {
+      "fileLines": 567,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/runners/adapters/claude-code.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 210
+    },
+    "packages/core/src/runners/routes.ts": {
+      "fileLines": 697,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/runners/select.test.ts": {
+      "fileLines": 583,
+      "maxFunctionLines": 298
+    },
+    "packages/core/src/schedules/dispatch.test.ts": {
+      "fileLines": 1366,
+      "maxFunctionLines": 203
+    },
+    "packages/core/src/schedules/dispatch.ts": {
+      "fileLines": 540,
+      "maxFunctionLines": 0
+    },
+    "packages/core/src/schedules/routes.test.ts": {
+      "fileLines": 694,
+      "maxFunctionLines": 193
+    },
+    "packages/core/src/skills/builtin-seed.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 164
+    },
+    "packages/core/src/skills/reconcile-service.test.ts": {
+      "fileLines": 545,
+      "maxFunctionLines": 166
+    },
+    "packages/core/src/skills/reconcile-service.ts": {
+      "fileLines": 1350,
+      "maxFunctionLines": 160
+    },
+    "packages/core/src/skills/service.ts": {
+      "fileLines": 652,
+      "maxFunctionLines": 0
+    },
+    "packages/core/tests/integration/admin-aggregate-routes.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 211
+    },
+    "packages/core/tests/integration/budget-check-e2e.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 227
+    },
+    "packages/core/tests/integration/decomposition-e2e.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 229
+    },
+    "packages/core/tests/integration/dependency-routes-e2e.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 260
+    },
+    "packages/core/tests/integration/device-skills-activity.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 209
+    },
+    "packages/core/tests/integration/dispatch-loadbalance-e2e.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 167
+    },
+    "packages/core/tests/integration/dispatcher-gates-e2e.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 279
+    },
+    "packages/core/tests/integration/dispatcher-iss40-pipeline.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 156
+    },
+    "packages/core/tests/integration/failure-taxonomy-policy-e2e.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 303
+    },
+    "packages/core/tests/integration/issues-job-history-route.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 178
+    },
+    "packages/core/tests/integration/jobs-prompt-route.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 228
+    },
+    "packages/core/tests/integration/mcp-tools.test.ts": {
+      "fileLines": 560,
+      "maxFunctionLines": 368
+    },
+    "packages/core/tests/integration/memory-live.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 194
+    },
+    "packages/core/tests/integration/memory-search.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 321
+    },
+    "packages/core/tests/integration/memory-write-get-delete.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 305
+    },
+    "packages/core/tests/integration/org-tier.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 157
+    },
+    "packages/core/tests/integration/per-state-override-e2e.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 195
+    },
+    "packages/core/tests/integration/pipeline-e2e.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 262
+    },
+    "packages/core/tests/integration/pipeline-health-e2e.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 237
+    },
+    "packages/core/tests/integration/pipeline-per-project-config.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 216
+    },
+    "packages/core/tests/integration/runner-last-error-clear-e2e.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 215
+    },
+    "packages/core/tests/integration/session-context-staleness-e2e.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 169
+    },
+    "packages/core/tests/integration/session-group-resume-e2e.test.ts": {
+      "fileLines": 707,
+      "maxFunctionLines": 383
+    },
+    "packages/core/tests/integration/skill-activity.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 219
+    },
+    "packages/core/tests/integration/skill-routes.test.ts": {
+      "fileLines": 672,
+      "maxFunctionLines": 468
+    },
+    "packages/core/tests/integration/step-handoff-flow.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 185
+    }
+  }
+}

@@ -24,9 +24,9 @@ import { jobs, runners } from '../../db/schema.js';
 import { RUNNER_CAP_PER_RUNNER } from '../../jobs/dispatch-gates.js';
 import { deprecationFor } from '../deprecation.js';
 import {
+  assertDeviceOwnerIsMember,
   type ContextScopedMcpToolFactory,
   type McpContext,
-  assertDeviceOwnerIsMember,
   zodToMcpSchema,
 } from './lib.js';
 

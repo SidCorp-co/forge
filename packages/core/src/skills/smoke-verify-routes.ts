@@ -6,9 +6,9 @@ import { issueStatuses } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
-  NoRunnerOnlineError,
   buildSmokeVerifyReport,
   dispatchSmokeCanaries,
+  NoRunnerOnlineError,
 } from './smoke-verify.js';
 
 /**

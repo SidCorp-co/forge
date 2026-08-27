@@ -1,19 +1,19 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues, projects, skillRegistrations } from '../db/schema.js';
+import { type IssueStatus, issues, projects, runners, skillRegistrations } from '../db/schema.js';
 import { resolveMergeStates } from '../issues/merged-at.js';
 import { logger } from '../logger.js';
+import { missingAutonomousFacts } from '../projects/autonomous-contract.js';
 import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
   type PipelineConfigPatchInput,
-  STAGE_NAMES,
   pipelineConfigSchema,
+  STAGE_NAMES,
 } from './pipeline-config-schema.js';
 import { PIPELINE_STEPS } from './registry.js';
 import type { StagesConfig } from './state-machine.js';
-import { validateStatesConfig } from './state-machine.js';
-import { STAGE_FORWARD } from './state-machine.js';
+import { STAGE_FORWARD, validateStatesConfig } from './state-machine.js';
 
 /**
  * Typed errors thrown by {@link updatePipelineConfig}. REST and MCP callers
@@ -24,9 +24,11 @@ export type PipelineConfigErrorCode =
   | 'OPEN_LOCKED_ON'
   | 'STAGE_HAS_ISSUES'
   | 'AUTO_STAGE_NEEDS_SKILL'
+  | 'STAGE_POOL_UNKNOWN_RUNNER'
   | 'MISSING_SKILL_FOR_ENABLED_STAGE'
   | 'DEAD_END_CONFIG'
   | 'MERGE_STATE_DISABLED'
+  | 'AUTONOMOUS_FACTS_MISSING'
   | 'PROJECT_NOT_FOUND';
 
 export class PipelineConfigError extends Error {
@@ -64,6 +66,27 @@ export interface UpdatePipelineConfigResult {
 }
 
 /**
+ * Refuse a switch to autonomous mode while the project has left a required
+ * contract fact unanswered.
+ */
+// cm:guard the gate belongs on the WRITE, not on dispatch: rejecting an unanswered project at dispatch time would leave issues sitting in a mode nobody can see is broken, whereas refusing the switch keeps the project on the staged driver that still works
+// cm:edge contract -> packages/core/src/projects/autonomous-contract.ts — the required set is declared there; adding one locks out every project that has not answered it
+function assertAutonomousReady(
+  patch: PipelineConfigPatchInput,
+  currentAgentConfig: Record<string, unknown>,
+): void {
+  if ((patch as { mode?: string }).mode !== 'autonomous') return;
+  const missing = missingAutonomousFacts(currentAgentConfig['projectFacts']);
+  if (missing.length === 0) return;
+  const detail = missing.map((f) => `${f.key} (${f.role})`).join('; ');
+  throw new PipelineConfigError(
+    'AUTONOMOUS_FACTS_MISSING',
+    `autonomous mode needs project facts this project has not set: ${detail}. One set of skills ships in the runner binary — the difference between projects lives in projectFacts, so an unanswered key is a phase the agent cannot finish.`,
+    { missing: missing.map((f) => f.key) },
+  );
+}
+
+/**
  * Validate + atomically merge a pipeline-config patch onto the project's
  * `agentConfig` jsonb document. Authorization is the caller's responsibility
  * — both REST (`PATCH /projects/:id/pipeline-config`) and MCP
@@ -97,10 +120,7 @@ export async function updatePipelineConfig(
     const currentPipeline = (currentAc.pipelineConfig ?? {}) as Record<string, unknown>;
     const nextDoc: Record<string, unknown> = {};
     if (mergeDoc.pipelineConfig) {
-      const nextPipeline = {
-        ...currentPipeline,
-        ...(mergeDoc.pipelineConfig as object),
-      };
+      const nextPipeline = { ...currentPipeline, ...(mergeDoc.pipelineConfig as object) };
       const patchStates = (pipelinePatch as { states?: StagesConfig }).states;
       if (patchStates) {
         if (patchStates.open && patchStates.open.enabled === false) {
@@ -127,6 +147,31 @@ export async function updatePipelineConfig(
                 blockingIssueIds: blocking.map((b) => b.id),
                 stagesBlocked: Array.from(new Set(blocking.map((b) => b.status))),
               },
+            );
+          }
+        }
+
+        // cm:why validated at WRITE time because the runtime failure is invisible: a pool naming a device with no runner on this project produces an unplaceable job that sits `queued` while the fleet reads healthy — rejecting the patch is the only place an operator learns about the typo
+        const pooledStages = (
+          Object.entries(patchStates) as Array<[string, { deviceIds?: string[] } | undefined]>
+        ).filter((entry): entry is [string, { deviceIds: string[] }] =>
+          Boolean(entry[1]?.deviceIds?.length),
+        );
+        if (pooledStages.length > 0) {
+          const wanted = Array.from(new Set(pooledStages.flatMap(([, v]) => v.deviceIds)));
+          const bound = await db
+            .select({ deviceId: runners.deviceId })
+            .from(runners)
+            .where(and(eq(runners.projectId, projectId), inArray(runners.deviceId, wanted)));
+          const have = new Set(bound.map((r) => r.deviceId));
+          const unknown = pooledStages
+            .map(([stage, v]) => ({ stage, deviceIds: v.deviceIds.filter((d) => !have.has(d)) }))
+            .filter((e) => e.deviceIds.length > 0);
+          if (unknown.length > 0) {
+            throw new PipelineConfigError(
+              'STAGE_POOL_UNKNOWN_RUNNER',
+              'stage runner pool names a device with no runner on this project',
+              { stagesWithUnknownDevices: unknown },
             );
           }
         }
@@ -234,6 +279,7 @@ export async function updatePipelineConfig(
           { baseBranch: baseMergeState },
         );
       }
+      assertAutonomousReady(pipelinePatch, currentAc);
       nextDoc.pipelineConfig = nextPipeline;
     }
     const subkey = JSON.stringify(nextDoc);

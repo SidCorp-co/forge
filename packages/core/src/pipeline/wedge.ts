@@ -2,43 +2,58 @@
  * ISS-452 (ISS-442 C6 / invariant I7) — no silent wedge.
  *
  * `emitPipelineWedge` is the single surfacing point for a non-progressing
- * kernel state: the loop monitor's miss-handlers (jobs/loop-monitor.ts) and
- * the demoted sweepers' alarm passes call it when a hop exceeds its
- * threshold. It writes a `pipeline_wedge` notification to the project owner
- * carrying WHERE (which hop) + WHY (the reason) + WHAT a human should do;
- * the `notificationCreated` hook then fans it out to the owner's user room
- * AND the project room (ws/broadcast-subscribers.ts), so any operator with
- * the project open sees the wedge without a refresh.
+ * kernel state: the loop monitor's miss-handlers and the demoted sweepers'
+ * alarm passes call it when a hop exceeds its threshold. It writes a
+ * `pipeline_wedge` notification to the project owner carrying WHERE + WHY +
+ * WHAT to do; the `notificationCreated` hook fans it out to the owner's user
+ * room AND the project room. These rows are also the raw signal behind the
+ * interventions-per-issue metric (`issue_intervention_events`, migration
+ * 0117) — VISION §1 metric ②.
  *
- * These notification rows are the raw signal behind the queryable
- * interventions-per-issue metric (`issue_intervention_events` view, migration
- * 0117; REST `GET /api/pipeline/interventions`) — VISION §1 metric ②
- * (interventions per issue closed) is counted from them plus the audited
- * manual escape hatches (C0 `job_events.kind='intervention'`, C1
- * `kernel_transitions` user-actor run flips).
+ * Spam guard: at most one UNRESOLVED wedge per entity per
+ * {@link WEDGE_RENOTIFY_MS}, keyed on `resolution_key`; `resolvePipelineWedge`
+ * clears it. A self-clearing condition should not reach here at all — the
+ * caller knows (`holdResumesItself` in `jobs/hold.ts`).
  *
- * Spam guard: one UNREAD wedge notification per entity, keyed on the indexed
- * `resolution_key` column (`wedge:<entityId>`, ISS-510) rather than a body
- * marker — this keeps the visible body free of the entity id.
- *
- * ISS-619 — `title`/`summary`/`nextStep`/`secondaryIssueId` are OPTIONAL
- * business-language presentation fields. When a caller supplies them (today:
- * the dependency-stall detector in sweeper.ts), the notification shows a
- * plain-language title + a two-sentence body instead of the raw
- * `hop`/`entity`/`reason`/`action` template — the full technical detail still
- * goes to `logger.warn`/Sentry either way. Callers that don't supply them
- * (the ops-facing loop-monitor/stale-detector alarms) keep the original
- * technical template unchanged.
- *
- * Best-effort by contract: NEVER throws — surfacing must not break the reap
- * path that called it.
+ * ISS-619 — `title`/`summary`/`nextStep`/`secondaryIssueId` are optional
+ * business-language fields; without them the technical template is used. Never throws.
  */
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { createNotification } from '../notifications/routes.js';
+
+/**
+ * Shortest gap between two wedge notifications about the SAME entity.
+ */
+// cm:guard a re-notify FLOOR is required, and it must not be the read flag — the dedupe once matched `read = false`, so opening the notification re-armed it and the next monitor pass wrote another: read -> re-emit -> read, a closed loop that put 721 unresolved `pipeline_wedge` rows in the owner's bell (measured forge-beta 2026-08-14). Keying on `resolvedAt IS NULL` alone would swing the other way: with no resolve call for a key, the wedge would be emitted exactly once and never again.
+export const WEDGE_RENOTIFY_MS = 24 * 60 * 60_000;
+
+export function wedgeResolutionKey(entityId: string): string {
+  return `wedge:${entityId}`;
+}
+
+/**
+ * Entity id for a capacity outage: the subject is a project's runner pool, not
+ * any one job.
+ */
+// cm:guard the `capacity:` prefix is load-bearing — `wedgeResolutionKey` keys ONLY on entityId, so a bare projectId here would share a dedup key with any pass that ever emits about a project, and the two would silently resolve each other. Prefixing keeps the namespace separate without touching the key format every existing unresolved row already carries.
+// cm:guard key per POOL, not per project — with per-state device pools (`resolveStageOverrides`) `code` can be out of capacity while `triage` is fine, and a project-wide key would report the first outage and hide every other one. `stageKey` is `all` when no pool is in force, so the common case is still exactly one notification per project.
+export function capacityWedgeEntityId(projectId: string, stageKey: string): string {
+  return `capacity:${projectId}:${stageKey}`;
+}
+
+/**
+ * Clear the wedge notifications for `entityId` — the condition they reported is
+ * gone. Call this from whatever observes the recovery, never on a timer.
+ */
+// cm:edge lockstep -> packages/core/src/pipeline/wedge.ts#emitPipelineWedge — the key both sides use comes from `wedgeResolutionKey`; a caller that hand-writes `wedge:<id>` here and the emitter drifting apart means a resolved wedge stays in the bell forever
+export async function resolvePipelineWedge(entityId: string): Promise<number> {
+  return resolveNotifications(wedgeResolutionKey(entityId));
+}
 
 export type WedgeHop = 'ack' | 'claim' | 'heartbeat' | 'result' | 'dispatch';
 
@@ -47,7 +62,9 @@ export interface PipelineWedgeEvent {
   issueId?: string | null;
   /** WHERE — which loop hop missed. */
   hop: WedgeHop;
-  entity: 'job' | 'session' | 'run' | 'outbox';
+  // cm:guard `issue` carries NO job/session id, so it only fits an alarm whose subject is the issue itself (RFC 0002 INV-7 churn) — the dedup key is `wedge:<entityId>`, so passing an issue id under `entity:'job'` silently makes the once-per-entity guard mean once-per-issue while the payload claims a job that does not exist
+  // cm:guard `capacity` is the one entity whose id is NOT a row id — build it with `capacityWedgeEntityId`, never by hand, because its whole purpose is that many jobs hitting the same empty pool collapse into ONE notification. Passing a job id here would emit per failed job, which is the spam this type exists to avoid.
+  entity: 'job' | 'session' | 'run' | 'outbox' | 'issue' | 'capacity' | 'runner';
   entityId: string;
   /** WHY — what the detector saw (technical; logged, and used as the body fallback). */
   reason: string;
@@ -65,17 +82,17 @@ export interface PipelineWedgeEvent {
 
 export async function emitPipelineWedge(ev: PipelineWedgeEvent): Promise<void> {
   try {
-    const resolutionKey = `wedge:${ev.entityId}`;
+    const resolutionKey = wedgeResolutionKey(ev.entityId);
 
-    // Dedupe: an unread wedge for this entity already surfaces the problem.
     const [existing] = await db
       .select({ id: notifications.id })
       .from(notifications)
       .where(
         and(
           eq(notifications.type, 'pipeline_wedge'),
-          eq(notifications.read, false),
           eq(notifications.resolutionKey, resolutionKey),
+          isNull(notifications.resolvedAt),
+          gt(notifications.createdAt, new Date(Date.now() - WEDGE_RENOTIFY_MS)),
         ),
       )
       .limit(1);

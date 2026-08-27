@@ -20,20 +20,18 @@ import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  type TestDatabase,
   createTestDevice,
   createTestProject,
   createTestUser,
   setupTestDatabase,
+  type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
 
-// Mock the WS server so we can assert on the `job.assigned` envelope without
-// standing up a real socket layer. The claude-code adapter (runner path) and
-// `publishPipelineHealthChanged` both route through this module.
 vi.mock('../../src/ws/server.js', () => ({
   roomManager: {
-    publish: vi.fn(() => 0),
+    // cm:guard 1, never 0 — since ISS-862 the claude-code adapter reads this return as the number of OPEN sockets and reports `failed` for 0, so a stub answering 0 makes every dispatch in this file fail for a reason the file is not about. The stub exists so the `job.assigned` envelope can be asserted without a real socket layer; it must still answer like one that has a reader.
+    publish: vi.fn(() => 1),
   },
 }));
 
@@ -152,7 +150,7 @@ describe('ISS-194 per-state override end-to-end', () => {
       INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
       VALUES (
         ${id}, ${projectId}, ${Math.floor(Math.random() * 1_000_000)},
-        'Issue', 'open', 'medium', ${ownerId}
+        'Issue', 'approved', 'medium', ${ownerId}
       )
     `);
     return id;
@@ -203,14 +201,15 @@ describe('ISS-194 per-state override end-to-end', () => {
   it('forwards `model` + `permissionMode` from config to WS envelope and Inspector', async () => {
     const { ownerId, projectId, token } = await seedOwnerProjectDevice();
 
-    // Use `mode: 'manual'` so the auto-mode check in pipeline-config-service
-    // does not require a registered skill for the `approved` stage.
+    // cm:why mode:'manual' keeps pipeline-config-service's auto-mode check from demanding a registered skill for `approved`
+    // cm:guard the override tier MUST differ from DEFAULT_STAGE_MODELS['approved'] — pick one equal to the default and this test passes even when override forwarding is broken
+    // cm:edge lockstep -> packages/core/src/jobs/stage-overrides.ts — DEFAULT_STAGE_MODELS['approved'] is 'opus'; if it ever becomes 'sonnet', both tests in this file must switch to a different override tier
     const patchRes = await patchPipelineConfig(projectId, token, {
       states: {
         approved: {
           enabled: true,
           mode: 'manual',
-          model: 'opus',
+          model: 'sonnet',
           permissionMode: 'acceptEdits',
         },
       },
@@ -223,7 +222,7 @@ describe('ISS-194 per-state override end-to-end', () => {
         approved: {
           enabled: true,
           mode: 'manual',
-          model: 'opus',
+          model: 'sonnet',
           permissionMode: 'acceptEdits',
         },
       },
@@ -236,7 +235,7 @@ describe('ISS-194 per-state override end-to-end', () => {
     expect(result).toBe('dispatched');
 
     const data = jobAssignedCall();
-    expect(data.model).toBe('opus');
+    expect(data.model).toBe('sonnet');
     expect(data.permissionMode).toBe('acceptEdits');
     expect(data.jobId).toBe(jobId);
     expect(data.projectId).toBe(projectId);
@@ -264,8 +263,8 @@ describe('ISS-194 per-state override end-to-end', () => {
     // Inspector surfaces it as null — the WS-envelope assertion above is
     // where that override is proven for the Inspector contract.
     expect(body.resolvedFlags.state).toBe('approved');
-    expect(body.resolvedFlags.model).toBe('opus');
-    expect(body.model).toBe('opus');
+    expect(body.resolvedFlags.model).toBe('sonnet');
+    expect(body.model).toBe('sonnet');
     expect(Object.keys(body.payloadExtras)).not.toContain('model');
     expect(Object.keys(body.payloadExtras)).not.toContain('stageStatus');
   });
@@ -280,7 +279,7 @@ describe('ISS-194 per-state override end-to-end', () => {
         approved: {
           enabled: true,
           mode: 'manual',
-          model: 'opus',
+          model: 'sonnet',
           permissionMode: 'acceptEdits',
         },
       },
@@ -290,7 +289,7 @@ describe('ISS-194 per-state override end-to-end', () => {
     const issueId1 = await insertIssue(projectId, ownerId);
     const jobId1 = await insertCodeJob({ projectId, issueId: issueId1, ownerId });
     expect(await handleDispatch({ jobId: jobId1 })).toBe('dispatched');
-    expect(jobAssignedCall().model).toBe('opus');
+    expect(jobAssignedCall().model).toBe('sonnet');
     // Free the single runner's in-flight slot before the second dispatch.
     await markJobDone(jobId1);
 
@@ -327,11 +326,8 @@ describe('ISS-194 per-state override end-to-end', () => {
     expect(await handleDispatch({ jobId: jobId2 })).toBe('dispatched');
 
     const data2 = jobAssignedCall();
-    // ISS-535 — with the per-project override cleared, `model` falls back to
-    // the DEFAULT stage-routing policy (approved → sonnet) instead of
-    // disappearing from the envelope. `permissionMode` has no default policy,
-    // so buildOverridesPayload still omits it entirely.
-    expect(data2.model).toBe('sonnet');
+    // cm:why with the override cleared `model` falls back to DEFAULT_STAGE_MODELS rather than dropping out of the envelope (ISS-535); `permissionMode` has no default policy, so buildOverridesPayload omits it entirely
+    expect(data2.model).toBe('opus');
     expect(Object.keys(data2)).not.toContain('permissionMode');
     expect((data2.payload as { stageStatus?: unknown }).stageStatus).toBe('approved');
 
@@ -347,12 +343,10 @@ describe('ISS-194 per-state override end-to-end', () => {
         permissionMode: string | null;
       };
     };
-    // ISS-535 — the default stage-routing policy resolves approved → sonnet,
-    // so `persistPromptSnapshot` writes `model_used = 'sonnet'` and the
-    // Inspector surfaces it as the resolved model.
+    // cm:why persistPromptSnapshot writes `model_used` from the RESOLVED default, so the Inspector reports a concrete tier even with no override left
     expect(body.resolvedFlags.state).toBe('approved');
-    expect(body.resolvedFlags.model).toBe('sonnet');
+    expect(body.resolvedFlags.model).toBe('opus');
     expect(body.resolvedFlags.permissionMode).toBeNull();
-    expect(body.model).toBe('sonnet');
+    expect(body.model).toBe('opus');
   });
 });

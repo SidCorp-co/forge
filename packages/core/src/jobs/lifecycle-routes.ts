@@ -20,10 +20,12 @@ import { materializeJobUsage } from '../usage-records/materialize.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
-import { JobCancelError, cancelJob } from './cancel-job.js';
+import { cancelJob, JobCancelError } from './cancel-job.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { handleResumeFailed, isResumeFailedError } from './handle-resume-failed.js';
+import { salvageSchema, salvageSet } from './prior-attempts.js';
+import { JobResumeError, resumeHeldJob } from './resume-job.js';
 import type { RetryOutcome } from './retry.js';
 import { deriveSessionFinal } from './session-transcript.js';
 
@@ -57,9 +59,7 @@ const completeBodySchema = z
   .strict();
 
 const failBodySchema = z
-  .object({
-    error: z.string().max(10_000),
-  })
+  .object({ error: z.string().max(10_000), salvage: salvageSchema.optional() })
   .strict();
 
 const cancelBodySchema = z
@@ -454,10 +454,7 @@ jobLifecycleDeviceRoutes.post(
     let [updated] = await applyKernelTransition(db, {
       entity: 'job',
       to: 'failed',
-      set: {
-        error: input.error,
-        finishedAt: new Date(),
-      },
+      set: { error: input.error, finishedAt: new Date(), ...salvageSet(input.salvage) },
       where: and(eq(jobs.id, id), eq(jobs.status, job.status)),
       fromStatus: job.status,
       reason: input.error,
@@ -615,6 +612,43 @@ jobLifecycleUserRoutes.post(
       return c.json(result);
     } catch (e) {
       if (e instanceof JobCancelError) {
+        if (e.code === 'NOT_FOUND') throw notFound(e.message);
+        throw conflict(e.message, e.code);
+      }
+      throw e;
+    }
+  },
+);
+
+// cm:guard `member`, the same role cancel asks for — a resume is strictly less destructive than the cancel that was previously the only way out of a hold, so a stricter gate here would leave the operator with the bigger hammer and not the smaller one
+jobLifecycleUserRoutes.post(
+  '/:id/resume',
+  requireAuth(),
+  assertEmailVerified(),
+  zValidator('param', jobIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+
+    const job = await loadJob(id);
+    const access = await loadProjectAccess(job.projectId, userId);
+    assertProjectRole(access, 'member', 'not a project member');
+
+    const rawBody = await c.req.json().catch(() => ({}));
+    const parsedBody = cancelBodySchema.safeParse(rawBody ?? {});
+    if (!parsedBody.success) throw badRequest(z.flattenError(parsedBody.error));
+
+    try {
+      const result = await resumeHeldJob(id, {
+        actorUserId: userId,
+        reason: parsedBody.data.reason ?? 'manual resume (REST)',
+        source: 'rest',
+      });
+      return c.json(result);
+    } catch (e) {
+      if (e instanceof JobResumeError) {
         if (e.code === 'NOT_FOUND') throw notFound(e.message);
         throw conflict(e.message, e.code);
       }

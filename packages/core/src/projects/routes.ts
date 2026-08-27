@@ -35,9 +35,10 @@ import {
   pipelineConfigPatchSchema,
   pipelineConfigSchema,
 } from '../pipeline/pipeline-config-schema.js';
-import { PipelineConfigError, updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
+import { updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
 import { readAgentConfig } from './agent-config.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
+import { pipelineConfigHttpError } from './pipeline-config-http.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
 import { projectRunnerRoutes } from './runners-routes.js';
 import { skillsBootstrapRoutes } from './skills-bootstrap-routes.js';
@@ -98,8 +99,13 @@ export const updateProjectSchema = z
   .object({
     name: z.string().trim().min(1).max(200).optional(),
     description: z.string().trim().max(2000).nullable().optional(),
+    // cm:guard `kind` was create-only for two months, which made it unreachable for every project that already existed — including the one storefront it was added for (mowment stayed `standard` while ISS-808 was written about it being a storefront). A shape that can only be declared at birth is a shape nobody can correct.
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — `requires_preflight` reads this value out of `/me/runners`; flipping a project to `website` turns OFF its git preflight and workspace refresh, so this is a behaviour switch, not a label
+    kind: z.enum(projectKinds).optional(),
     repoPath: z.string().trim().max(500).nullable().optional(),
     repoUrl: z.string().trim().max(500).nullable().optional(),
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/setup_agent.rs — this text IS the setup agent's instruction set; it reaches the box via `/me/runners`, so a rename here silently gives every setup agent an empty procedure and sends it back to deriving one per job
+    workspaceSetup: z.string().trim().max(8000).nullable().optional(),
     baseBranch: z.string().trim().max(100).nullable().optional(),
     productionBranch: z.string().trim().max(100).nullable().optional(),
     defaultDeviceId: z.uuid().nullable().optional(),
@@ -319,6 +325,7 @@ projectRoutes.get(
         description: projects.description,
         repoPath: projects.repoPath,
         repoUrl: projects.repoUrl,
+        workspaceSetup: projects.workspaceSetup,
         baseBranch: projects.baseBranch,
         productionBranch: projects.productionBranch,
         defaultDeviceId: projects.defaultDeviceId,
@@ -450,9 +457,11 @@ projectRoutes.patch(
     }
     if (patch.name !== undefined) updates.name = patch.name;
     if (patch.description !== undefined) updates.description = patch.description;
+    if (patch.kind !== undefined) updates.kind = patch.kind;
     if (patch.repoPath !== undefined) updates.repoPath = patch.repoPath;
     if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
     if (patch.baseBranch !== undefined) updates.baseBranch = patch.baseBranch;
+    if (patch.workspaceSetup !== undefined) updates.workspaceSetup = patch.workspaceSetup;
     if (patch.productionBranch !== undefined) updates.productionBranch = patch.productionBranch;
     if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
     if (patch.stateContext !== undefined) {
@@ -515,8 +524,10 @@ projectRoutes.patch(
       orgId: projects.orgId,
       createdBy: projects.createdBy,
       description: projects.description,
+      kind: projects.kind,
       repoPath: projects.repoPath,
       repoUrl: projects.repoUrl,
+      workspaceSetup: projects.workspaceSetup,
       baseBranch: projects.baseBranch,
       productionBranch: projects.productionBranch,
       defaultDeviceId: projects.defaultDeviceId,
@@ -695,27 +706,7 @@ projectRoutes.patch(
       const result = await updatePipelineConfig({ projectId: id, patch });
       return c.json(result);
     } catch (err) {
-      if (err instanceof PipelineConfigError) {
-        switch (err.code) {
-          case 'OPEN_LOCKED_ON':
-          case 'DEAD_END_CONFIG':
-          case 'MERGE_STATE_DISABLED':
-            throw new HTTPException(400, {
-              message: err.message,
-              cause: { code: err.code, details: err.details },
-            });
-          case 'STAGE_HAS_ISSUES':
-          case 'AUTO_STAGE_NEEDS_SKILL':
-          case 'MISSING_SKILL_FOR_ENABLED_STAGE':
-            throw new HTTPException(409, {
-              message: err.message,
-              cause: { code: err.code, details: err.details },
-            });
-          case 'PROJECT_NOT_FOUND':
-            throw notFound();
-        }
-      }
-      throw err;
+      throw pipelineConfigHttpError(err);
     }
   },
 );

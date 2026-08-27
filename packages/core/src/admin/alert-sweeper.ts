@@ -114,8 +114,8 @@ export async function runAlertSweep(now: Date = new Date()): Promise<AlertSweepR
       const resolutionKey = opsAlertResolutionKey(alert.id);
 
       if (alert.status === 'ok') {
-        // cm:why includeRead — an acknowledged (read) ops_alert keeps resolved_at NULL, so it stays active under the partial unique index and would block a later recurrence from re-firing; the healthy pass ends the episode
-        resolved += await resolveNotifications(resolutionKey, { includeRead: true });
+        // cm:edge lockstep -> packages/core/src/notifications/auto-resolve.ts — this pass depends on resolveNotifications stamping READ-but-active rows too; an acknowledged ops_alert keeps resolved_at NULL, stays active under the partial unique index, and would block every later recurrence from re-firing
+        resolved += await resolveNotifications(resolutionKey);
         continue;
       }
 

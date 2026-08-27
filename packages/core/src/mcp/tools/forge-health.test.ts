@@ -68,7 +68,7 @@ describe('forge_health', () => {
     // The jobsActive query uses count() then where() then chains — our chain returns selectWhere directly.
     // Adapt: db.select(...).from().where() is the terminal Promise.
     // Re-program with proper chain for this test.
-    const inactiveSelectImpl = vi.fn(() => ({
+    const _inactiveSelectImpl = vi.fn(() => ({
       from: () => ({
         where: () => Promise.resolve([{ n: 3 }]),
       }),

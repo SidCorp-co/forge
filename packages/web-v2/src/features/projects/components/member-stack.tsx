@@ -19,7 +19,6 @@ export function MemberStack({ members, total, size = 24 }: MemberStackProps) {
     <div className="flex items-center">
       {members.map((m, i) => (
         <span
-          // eslint-disable-next-line react/no-array-index-key -- initials may repeat
           key={`${m}-${i}`}
           className="rounded-pill ring-2 ring-[color:var(--bg-surface)]"
           style={{ marginLeft: i ? -7 : 0 }}

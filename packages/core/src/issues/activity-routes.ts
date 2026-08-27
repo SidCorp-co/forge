@@ -10,8 +10,8 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import {
   type ActorRef,
   type ActorType,
-  type ResolvedActor,
   actorKey,
+  type ResolvedActor,
   resolveActors,
 } from './actor-resolution.js';
 

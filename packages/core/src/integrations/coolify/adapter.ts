@@ -1,6 +1,6 @@
 import { scrubLogText } from '@forge/observability';
 import { logger } from '../../logger.js';
-import { Sentry, isSentryEnabled } from '../../observability/sentry.js';
+import { isSentryEnabled, Sentry } from '../../observability/sentry.js';
 import { closeRun, setCurrentStepForce } from '../../pipeline/runs.js';
 import { verifyHmacSignature } from '../../webhooks/hmac.js';
 import {
@@ -45,10 +45,7 @@ interface DeployPayload extends Record<string, unknown> {
   resourceUuid: string;
 }
 
-function buildClient(ctx: {
-  config: CoolifyConfig;
-  secrets: CoolifySecrets;
-}): CoolifyClient {
+function buildClient(ctx: { config: CoolifyConfig; secrets: CoolifySecrets }): CoolifyClient {
   // Honour the 24h rotation window: include previousApiToken only if it
   // hasn't expired yet (validity guard lives in the shared rotation helper).
   const opts: ConstructorParameters<typeof CoolifyClient>[0] = {
@@ -419,6 +416,8 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
 export interface CoolifyDeploymentLogsResult {
   deploymentUuid: string;
   status: string | null;
+  /** Git SHA this deployment built, or null when Coolify did not report one. */
+  commit: string | null;
   logs: string;
   /** True when the log was tailed (older lines or leading bytes dropped). */
   truncated: boolean;
@@ -449,7 +448,14 @@ export async function fetchCoolifyDeploymentLogs(
   const preRedacted = redactCoolifyEnvDump(raw);
   const scrubbed = scrubLogText(preRedacted, extraSecrets);
   const { text, truncated } = tailLog(scrubbed);
-  return { deploymentUuid, status: dep.status ?? null, logs: text, truncated };
+  // cm:guard take the SHA from the deployment RECORD, never by parsing `SOURCE_COMMIT=` out of `text` — `redactCoolifyEnvDump` replaces every value in the runtime env block by design, so the log can never carry it, and this project's `deploy-policy` fact tells every agent to prove the deployed commit matches its merge.
+  return {
+    deploymentUuid,
+    status: dep.status ?? null,
+    commit: dep.commit ?? null,
+    logs: text,
+    truncated,
+  };
 }
 
 export interface CoolifyRuntimeLogsResult {

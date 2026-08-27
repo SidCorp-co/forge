@@ -7,14 +7,14 @@ import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import {
   memberLenses,
-  orgInvitations,
-  orgMemberRoles,
   organizationMembers,
   organizations,
+  orgInvitations,
+  orgMemberRoles,
   projects,
   users,
 } from '../db/schema.js';
-import { assertOrgAccess, orgRoleAtLeast } from '../lib/authz.js';
+import { assertOrgAccess } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';

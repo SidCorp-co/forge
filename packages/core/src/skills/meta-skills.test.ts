@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { META_SKILL_NAMES, MetaSkillReservedError, isMetaSkillName } from './meta-skills.js';
+import { isMetaSkillName, META_SKILL_NAMES, MetaSkillReservedError } from './meta-skills.js';
 
 describe('isMetaSkillName', () => {
   it('returns true for a reserved meta-skill name', () => {

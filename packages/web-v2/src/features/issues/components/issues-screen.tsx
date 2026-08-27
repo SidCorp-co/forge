@@ -23,6 +23,7 @@ import { useTabParam } from "@/lib/utils/use-tab-param";
 import { useEffect, useState } from "react";
 import { IssuesInsightsView } from "./issues-insights-view";
 import { IssuesListView } from "./issues-list-view";
+import { ReleaseGatePanel } from "./release-gate-panel";
 import { NewIssueDialog } from "./new-issue-dialog";
 
 type IssuesView = "board" | "list" | "insights";
@@ -106,6 +107,7 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
       ) : (
         <PageContainer className="min-h-dvh">
           {header}
+          {view === "list" ? <ReleaseGatePanel projectId={scope.projectId} /> : null}
           {view === "list" ? (
             <IssuesListView
               scope={scope}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ESCALATE_TOOL_NAME, buildEscalationToolset } from './escalate.js';
+import { buildEscalationToolset, ESCALATE_TOOL_NAME } from './escalate.js';
 
 describe('buildEscalationToolset', () => {
   it('exposes exactly one function tool named "escalate" requiring a question', () => {

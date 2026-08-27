@@ -24,7 +24,7 @@ const FIXTURE_FACTS = {
   'deploy-guide': 'Use forge_coolify_deploy with serviceId from Coolify.',
   'contracts-rule': 'NEVER import @forge/contracts internals across package boundaries.',
 } satisfies Record<string, string>;
-const FIXTURE_FACTS_CONFIG: Record<string, { alwaysInject?: boolean }> = {
+const _FIXTURE_FACTS_CONFIG: Record<string, { alwaysInject?: boolean }> = {
   'contracts-rule': { alwaysInject: true },
 };
 

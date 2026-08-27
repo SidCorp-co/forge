@@ -10,7 +10,7 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::config::Config;
-use crate::daemon::preflight;
+use crate::daemon::{preflight, setup_agent};
 use crate::error::{Error, Result};
 use crate::runner::claude_code::ClaudeCodeRunner;
 use crate::runner::{JobSpec, Runner, RunnerEvent, ToolPhase};
@@ -18,7 +18,7 @@ use crate::transport::events::{post_job_events, JobEventInput};
 use crate::transport::frames::JobAssigned;
 use crate::transport::runners::{self, MeRunner};
 use crate::transport::{lifecycle, CoreClient};
-use crate::workspace::skill_sync;
+use crate::workspace::{provision, refresh, salvage, skill_sync};
 
 /// Resolved working dir for one assigned project. The server (`/me/runners`)
 /// is the source of truth for `repo_path`; `config.toml` is only a local
@@ -27,6 +27,19 @@ use crate::workspace::skill_sync;
 pub(crate) struct Resolved {
     pub slug: String,
     pub repo_path: PathBuf,
+    /// The project's base branch per the server, when it has one. Only the
+    /// refresh reads it — the fast-forward target must be the base, not
+    /// whatever the folder currently sits on.
+    pub base_branch: Option<String>,
+    /// The project's shape per the server (`standard` / `website`). Decides
+    /// whether the git preflight applies at all.
+    pub kind: Option<String>,
+    /// The server-side runner row for this (device × project). Only re-provisioning
+    /// needs it — that call addresses a runner, not a project.
+    pub runner_id: Option<String>,
+    /// `projects.workspace_setup` — prose the setup agent follows instead of
+    /// deriving the repo's setup procedure for itself.
+    pub workspace_setup: Option<String>,
 }
 
 /// Merge server assignments with local config bindings for one project id.
@@ -56,18 +69,145 @@ pub(crate) fn resolve_repo(
         .map(PathBuf::from);
     let repo_path = server_path.or_else(|| config_match.map(|(_, b)| b.repo_path.clone()));
 
+    let base_branch = server_match
+        .and_then(|r| r.base_branch.as_deref())
+        .map(str::trim)
+        .filter(|b| !b.is_empty())
+        .map(str::to_string);
+
+    let kind = server_match
+        .and_then(|r| r.kind.as_deref())
+        .map(str::trim)
+        .filter(|k| !k.is_empty())
+        .map(str::to_string);
+
+    let runner_id = server_match.map(|r| r.runner_id.clone());
+    let workspace_setup = server_match
+        .and_then(|r| r.workspace_setup.as_deref())
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(str::to_string);
+
     match repo_path {
-        Some(repo_path) => Ok(Resolved { slug, repo_path }),
+        Some(repo_path) => Ok(Resolved {
+            slug,
+            repo_path,
+            base_branch,
+            kind,
+            runner_id,
+            workspace_setup,
+        }),
         None => Err(slug),
     }
 }
 
-/// `reconcile`/`verify_skill` jobs edit a skill body via MCP and never touch
-/// git, so the pipeline-lane git preflight (work tree / origin remote /
-/// reachability) does not apply to them — e.g. a storefront project has no
-/// repo by design (ISS-808).
-fn requires_preflight(job_type: &str) -> bool {
-    !matches!(job_type, "reconcile" | "verify_skill")
+/// Whether this job must pass the git preflight (work tree / origin remote /
+/// reachability) before the runner claims it.
+///
+/// Two independent reasons it may not apply:
+///   - the JOB never touches git — `reconcile`/`verify_skill` edit a skill body
+///     over MCP (ISS-808);
+///   - the PROJECT has no git repo by design — a `website` project is an
+///     Epodsystem storefront whose deliverable is store content, not commits.
+// cm:guard fail CLOSED on anything unrecognised, and `None` is unrecognised. A missing or unknown `kind` must REQUIRE the preflight — that is what keeps a normal project from losing its git checks because a field was dropped from `/me/runners` or a core predates it. Only the explicit string `website` skips.
+// cm:guard `website` was declared by ISS-387 (schema.ts: "a git repo is optional") and read by NOTHING for two months — ISS-808 then closed the reconcile half and put the pipeline half out of scope on the premise that storefront projects "already do not" run git-based stages. mowment received a `triage` job on 2026-08-14 and held on `preflight_failed: origin_remote`, so that premise was false. This function is the wire those two issues each left to the other.
+fn requires_preflight(job_type: &str, project_kind: Option<&str>) -> bool {
+    if matches!(job_type, "reconcile" | "verify_skill") {
+        return false;
+    }
+    project_kind != Some("website")
+}
+
+/// Blocking preflight failures that re-provisioning could plausibly fix: there
+/// is no folder, or the folder is not a checkout. Everything else (no `origin`,
+/// dead push credentials) survives a re-clone and stays a failure.
+// cm:guard match on the PREFIX, not the whole string — the detail carries a path and git's own stderr. And keep this list to faults `classify_workspace` can actually act on: sending an unreachable-remote job into a re-clone just spends 20s per attempt to fail the same way, and re-queues the runner's provision row for nothing.
+fn is_reprovisionable(err: &str) -> bool {
+    err.starts_with("repo_path:") || err.starts_with("work_tree:")
+}
+
+/// One measurement of the workspace: `Err` is blocking, `Ok` carries the
+/// repairable findings plus the git state the caller needs for the start-point.
+///
+/// `owns_root` is false for a stage that gets its own worktree (`code`/`fix`).
+/// Those run in a tree cut from `origin/<base>`, so the ROOT's branch is not
+/// theirs to fix — but a repo-level fault like `core.hooksPath` is inherited by
+/// every worktree and stays a finding for them too.
+async fn measure(
+    repo_path: &Path,
+    base_branch: Option<&str>,
+    owns_root: bool,
+) -> std::result::Result<(Vec<String>, refresh::WorkspaceGit), String> {
+    let mut findings = preflight::preflight(repo_path).await?.lines;
+    let git_state = refresh::refresh(repo_path, base_branch).await;
+    if !git_state.refreshed && owns_root {
+        findings.push(refresh::describe(&git_state));
+    }
+    Ok((findings, git_state))
+}
+
+/// What a stage is told about the workspace it is about to work in.
+///
+/// Three parts, any of which may be absent: what the setup agent did, what is
+/// still wrong after it, and — for a worktree lane — that the root it can see is
+/// not the base branch even though its own tree is.
+// cm:guard whatever else changes here, keep the last line. A stale checkout makes file content and `git log` agree WITH EACH OTHER, so "I verified by reading the files, not just history" is the one check that cannot catch it, and an agent that reads a stale tree reports confident, wrong findings (session 228cdf03, ceo-dashboard: 6 of 7 claims wrong).
+fn workspace_notice_text(
+    findings: &[String],
+    root_warning: Option<&str>,
+    setup_summary: Option<&str>,
+    base_branch: Option<&str>,
+) -> String {
+    let mut out = String::from("[workspace notice]\n");
+    if let Some(summary) = setup_summary {
+        out.push_str("A setup step ran in this workspace before you started. It reported:\n");
+        out.push_str(summary);
+        out.push_str("\n\n");
+    }
+    if !findings.is_empty() {
+        out.push_str("Still wrong after that, and yours to deal with:\n");
+        for f in findings {
+            out.push_str("- ");
+            out.push_str(f);
+            out.push('\n');
+        }
+        match base_branch {
+            Some(base) => out.push_str(&format!(
+                "Fix what you can before starting the task. Getting onto `{base}` and fast-forwarding it to `origin/{base}` is yours to do — but never by discarding uncommitted changes that are not yours: leave them, say so, and treat every file you read as possibly not `{base}`.\n"
+            )),
+            None => out.push_str(
+                "Work out what this checkout is on and get it onto the branch this step is supposed to run against, without discarding anyone else's uncommitted work.\n",
+            ),
+        }
+    }
+    if let Some(warning) = root_warning {
+        out.push_str(warning);
+        out.push('\n');
+    }
+    out.push_str("Until the tree is known-current, do not state what is or is not on the base branch from local files — check the remote before any such claim.");
+    out
+}
+
+/// What a worktree lane is told about a root it does not own.
+fn root_warning_text(described: &str, base_branch: Option<&str>) -> String {
+    match base_branch {
+        Some(base) => format!(
+            "Your own worktree was cut from `origin/{base}` and is current. The repo ROOT is not: {described}. Work in your worktree; do not read the root as if it were `{base}`, and do not try to fix it."
+        ),
+        None => format!(
+            "The repo ROOT is in an unknown state: {described}. Work in your worktree and do not read the root."
+        ),
+    }
+}
+
+/// Commit-ish a new ISS-* branch must be cut from, or `None` when the daemon
+/// could not resolve one and `git worktree add` has to fall back to HEAD.
+// cm:guard pass `origin/<base>` whenever it resolved, refreshed or NOT — with the hard refusal gone an unrefreshed root can sit on any branch, and `worktree add -b` with no start-point cuts the ISS-* branch from whatever that is. On anhome (2026-08-15) that root was `main`, the production branch. Gate on `base_sha`, not on `refreshed`: the sha is what proves the ref exists locally, and requiring `refreshed` would drop the start-point in exactly the case that needs it.
+fn start_point_for(state: &refresh::WorkspaceGit) -> Option<String> {
+    match (&state.base_sha, &state.base_branch) {
+        (Some(_), Some(base)) => Some(format!("origin/{base}")),
+        _ => None,
+    }
 }
 
 const FLUSH_INTERVAL: Duration = Duration::from_millis(500);
@@ -102,7 +242,7 @@ fn read_skills_ran_with(repo_path: &Path) -> Option<serde_json::Value> {
     let read_dir = std::fs::read_dir(&skills_dir).ok()?;
     let mut map = serde_json::Map::new();
     for entry in read_dir.flatten() {
-        if !entry.file_type().map_or(false, |ft| ft.is_dir()) {
+        if !entry.file_type().is_ok_and(|ft| ft.is_dir()) {
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -206,13 +346,113 @@ pub async fn handle(
     // `origin_remote:`/`work_tree:`/`repo_path:` sub-variants are load-bearing —
     // core's classifier (`packages/core/src/pipeline/failure-classifier.ts`)
     // pattern-matches on this exact string to pick failureKind (ISS-808).
-    if requires_preflight(&ja.job_type) {
-        if let Err(err) = preflight::preflight(&resolved.repo_path).await {
-            let msg = format!("preflight_failed: {err}");
-            tracing::error!("[job {job_id}] {msg}");
-            let _ = lifecycle::fail(client, &job_id, &msg).await;
-            return Ok(());
+    // cm:guard the workspace refresh below shares this gate deliberately — it fast-forwards a git checkout, so it is as meaningless on a repo-less project as the preflight is. Splitting them would send a `website` project into `git fetch` on a folder with no remote.
+    // Only create a worktree when core explicitly hands us a feature branch
+    // (e.g. code/fix stages). Triage/plan/review run in the repo root. Never
+    // fall back to the binding's base branch — that branch is already checked
+    // out in the main worktree, so `git worktree add` would refuse it.
+    let worktree_branch = ja
+        .payload
+        .get("worktreeBranch")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    let owns_root = worktree_branch.is_none();
+
+    let mut workspace_notice: Option<String> = None;
+    let mut worktree_start_point: Option<String> = None;
+    if requires_preflight(&ja.job_type, resolved.kind.as_deref()) {
+        let measured = match measure(
+            &resolved.repo_path,
+            resolved.base_branch.as_deref(),
+            owns_root,
+        )
+        .await
+        {
+            Ok(m) => Ok(m),
+            // cm:guard re-provision, then MEASURE again — never trust the provision status. It reports `ready` from the runner's own view of a sweep that may have hit `needs_manual_setup` for a reason no re-run changes (an occupied folder, no repo URL), and a job that proceeded on that word would run in the same broken tree it just failed on.
+            Err(err) if is_reprovisionable(&err) => match resolved.runner_id.as_deref() {
+                Some(runner_id) => {
+                    tracing::warn!(
+                        "[job {job_id}] {err} — re-provisioning the workspace before giving up"
+                    );
+                    provision::reprovision(client, cfg, runner_id).await;
+                    measure(
+                        &resolved.repo_path,
+                        resolved.base_branch.as_deref(),
+                        owns_root,
+                    )
+                    .await
+                }
+                None => Err(err),
+            },
+            Err(err) => Err(err),
+        };
+        let (mut findings, mut git_state) = match measured {
+            Ok(m) => m,
+            Err(err) => {
+                let msg = format!("preflight_failed: {err}");
+                tracing::error!("[job {job_id}] {msg}");
+                let _ = lifecycle::fail(client, &job_id, &msg).await;
+                return Ok(());
+            }
+        };
+        tracing::info!("[job {job_id}] {}", refresh::describe(&git_state));
+
+        // cm:guard when the workspace is wrong the job now RUNS anyway, so this repair-then-notice pair is the only mitigation left — drop it and a stage silently judges current code against an old checkout, which is the defect refresh.rs exists for. This lane used to fail the job with `preflight_failed: workspace_refresh`; a retry cannot check out a branch, so one wrong branch on ubuntu5 (anhome, 2026-08-15) became 4 identical 7-second failures over 8h, a box quarantine and a held job.
+        let mut setup_summary: Option<String> = None;
+        if !findings.is_empty() {
+            let outcome = setup_agent::run(
+                &resolved.repo_path,
+                &findings,
+                git_state.base_branch.as_deref(),
+                resolved.workspace_setup.as_deref(),
+            )
+            .await;
+            tracing::info!(
+                "[job {job_id}] setup agent ok={} — {}",
+                outcome.ok,
+                outcome.summary.lines().next().unwrap_or("")
+            );
+            setup_summary = Some(outcome.summary);
+            // Re-measure rather than believe the summary. A setup agent that
+            // broke the checkout must fail the job here, not hand a stage a tree
+            // that no longer has a work tree.
+            match measure(
+                &resolved.repo_path,
+                resolved.base_branch.as_deref(),
+                owns_root,
+            )
+            .await
+            {
+                Ok((f, g)) => {
+                    findings = f;
+                    git_state = g;
+                }
+                Err(err) => {
+                    let msg = format!("preflight_failed: {err}");
+                    tracing::error!("[job {job_id}] after setup agent: {msg}");
+                    let _ = lifecycle::fail(client, &job_id, &msg).await;
+                    return Ok(());
+                }
+            }
         }
+
+        let root_warning = (!owns_root && !git_state.refreshed).then(|| {
+            root_warning_text(
+                &refresh::describe(&git_state),
+                git_state.base_branch.as_deref(),
+            )
+        });
+        if !findings.is_empty() || root_warning.is_some() || setup_summary.is_some() {
+            workspace_notice = Some(workspace_notice_text(
+                &findings,
+                root_warning.as_deref(),
+                setup_summary.as_deref(),
+                git_state.base_branch.as_deref(),
+            ));
+        }
+        worktree_start_point = start_point_for(&git_state);
     }
 
     // ISS-449 (Decision B): explicit claim ack once preflight passes.
@@ -227,16 +467,29 @@ pub async fn handle(
         tracing::warn!("[job {job_id}] ack: {e}");
     }
 
-    // Only create a worktree when core explicitly hands us a feature branch
-    // (e.g. code/fix stages). Triage/plan/review run in the repo root. Never
-    // fall back to the binding's base branch — that branch is already checked
-    // out in the main worktree, so `git worktree add` would refuse it.
-    let worktree_branch = ja
-        .payload
-        .get("worktreeBranch")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string);
+    // cm:guard the notice must reach the SERVER as well as the prompt. As a `failed` job this condition was impossible to miss; as a prompt line it is visible only to the agent reading it, and a stage that ran on a workspace nobody could refresh with no row anywhere is exactly the state-lies-by-omission this replaced the failure with.
+    if let Some(notice) = &workspace_notice {
+        let ev = [JobEventInput::new(
+            "progress",
+            serde_json::json!({ "workspaceNotice": notice }),
+        )];
+        if let Err(e) = post_job_events(client, &job_id, &ev).await {
+            tracing::warn!("[job {job_id}] workspace notice event: {e}");
+        }
+    }
+
+    let prompt = match (&ja.prompt_string, &workspace_notice) {
+        (Some(prompt), Some(notice)) => Some(format!("{notice}\n\n{prompt}")),
+        _ => ja.prompt_string.clone(),
+    };
+
+    // cm:guard salvage is offered only to a job that serves an ISSUE. Without `issueKey` it cannot tell the job's checkout from a stale one — dev1 carried five agent worktrees on 2026-08-26, two dirty since 2026-08-12 — and a `pm`/`interactive` job has no branch of its own to preserve anything on.
+    let salvage_ctx = ja.issue_key.clone().map(|issue_key| SalvageCtx {
+        repo_root: resolved.repo_path.clone(),
+        base_branch: resolved.base_branch.clone(),
+        issue_key,
+        attempt: ja.attempts.unwrap_or(0),
+    });
 
     let spec = JobSpec {
         job_id: job_id.clone(),
@@ -245,7 +498,7 @@ pub async fn handle(
         issue_id: ja.issue_id.clone(),
         step: ja.job_type.clone(),
         repo_path: resolved.repo_path.clone(),
-        prompt: ja.prompt_string.clone(),
+        prompt,
         system_prompt: ja.system_prompt.clone(),
         model: ja.model.clone(),
         allowed_tools: ja.allowed_tools.clone(),
@@ -254,6 +507,7 @@ pub async fn handle(
         timeout_seconds: ja.timeout_seconds,
         mcp_servers_override: ja.mcp_servers_override.clone(),
         worktree_branch,
+        worktree_start_point,
         resume_id: ja.claude_session_id.clone(),
         agent_session_id: ja.agent_session_id.clone(),
     };
@@ -266,13 +520,28 @@ pub async fn handle(
         return Ok(());
     }
 
-    consume(client, &job_id, rx).await;
+    consume(client, &job_id, rx, salvage_ctx).await;
     Ok(())
+}
+
+/// What a failed job needs before its working copy can be preserved. The
+/// checkout is not named here: `salvage` finds the agent's own worktree for
+/// this issue, because the agent, not the runner, is what cut it.
+struct SalvageCtx {
+    repo_root: PathBuf,
+    base_branch: Option<String>,
+    issue_key: String,
+    attempt: u32,
 }
 
 /// Drain runner events, batching job events and posting on a 500ms cadence,
 /// then call complete/fail on the terminal event.
-async fn consume(client: &CoreClient, job_id: &str, mut rx: mpsc::Receiver<RunnerEvent>) {
+async fn consume(
+    client: &CoreClient,
+    job_id: &str,
+    mut rx: mpsc::Receiver<RunnerEvent>,
+    salvage_ctx: Option<SalvageCtx>,
+) {
     let mut buf: Vec<JobEventInput> = Vec::new();
     let mut flush = tokio::time::interval(FLUSH_INTERVAL);
     flush.tick().await;
@@ -342,17 +611,41 @@ async fn consume(client: &CoreClient, job_id: &str, mut rx: mpsc::Receiver<Runne
             }
         }
         Some(Terminal::Failed(err)) => {
-            if let Err(e) = lifecycle::fail(client, job_id, &err).await {
+            let salvage = salvage_for(salvage_ctx.as_ref(), job_id, &err).await;
+            if let Err(e) = lifecycle::fail_with_salvage(client, job_id, &err, salvage).await {
                 tracing::warn!("[job {job_id}] fail: {e}");
             } else {
                 tracing::info!("[job {job_id}] failed: {err}");
             }
         }
         None => {
-            // Channel closed with no terminal event — treat as failure.
-            let _ = lifecycle::fail(client, job_id, "runner ended without a result").await;
+            // cm:guard this arm salvages too, and it is the one that matters most: a runner that dies mid-stream leaves the LARGEST uncommitted diff, having neither committed nor reported. Skipping it because the error string is generic loses exactly the work worth keeping.
+            let err = "runner ended without a result";
+            let salvage = salvage_for(salvage_ctx.as_ref(), job_id, err).await;
+            let _ = lifecycle::fail_with_salvage(client, job_id, err, salvage).await;
         }
     }
+}
+
+/// Preserve the failed job's working copy, best-effort. Never propagates a
+/// failure of its own: `lifecycle::fail` must run whatever happened here.
+async fn salvage_for(
+    ctx: Option<&SalvageCtx>,
+    job_id: &str,
+    err: &str,
+) -> Option<serde_json::Value> {
+    let ctx = ctx?;
+    let s = salvage::salvage_wip(salvage::SalvageInput {
+        repo_root: &ctx.repo_root,
+        base_branch: ctx.base_branch.as_deref(),
+        issue_key: Some(ctx.issue_key.as_str()),
+        job_id,
+        attempt: ctx.attempt,
+        failure: err,
+    })
+    .await;
+    tracing::info!("[job {job_id}] salvage: {s:?}");
+    Some(s.to_json())
 }
 
 fn map_event(ev: RunnerEvent) -> Option<JobEventInput> {
@@ -405,6 +698,8 @@ mod tests {
             repo_path: repo_path.map(str::to_string),
             branch: None,
             status: "online".into(),
+            kind: Some("standard".into()),
+            workspace_setup: None,
         }
     }
 
@@ -456,14 +751,146 @@ mod tests {
 
     #[test]
     fn preflight_skipped_for_reconcile_and_verify_skill() {
-        assert!(!requires_preflight("reconcile"));
-        assert!(!requires_preflight("verify_skill"));
+        assert!(!requires_preflight("reconcile", Some("standard")));
+        assert!(!requires_preflight("verify_skill", Some("standard")));
+    }
+
+    /// A `website` project has no git repo by design, so no job type preflights.
+    #[test]
+    fn preflight_skipped_for_every_job_type_on_a_website_project() {
+        for job_type in ["triage", "plan", "code", "fix", "review", "release"] {
+            assert!(
+                !requires_preflight(job_type, Some("website")),
+                "{job_type} must not preflight on a storefront"
+            );
+        }
+    }
+
+    /// An absent or unknown kind must FAIL CLOSED — a dropped field can never
+    /// cost a normal project its git checks.
+    #[test]
+    fn preflight_required_when_the_kind_is_missing_or_unknown() {
+        assert!(requires_preflight("code", None));
+        assert!(requires_preflight("code", Some("")));
+        assert!(requires_preflight("code", Some("Website")));
+        assert!(requires_preflight("code", Some("something-new")));
     }
 
     #[test]
     fn preflight_required_for_pipeline_job_types() {
         for job_type in ["triage", "plan", "code", "fix", "review"] {
-            assert!(requires_preflight(job_type), "{job_type} should preflight");
+            assert!(
+                requires_preflight(job_type, Some("standard")),
+                "{job_type} should preflight"
+            );
         }
+    }
+
+    /// The anhome regression: root on `main` while the base is `release/stg`.
+    /// The refresh is refused, the job runs anyway, and the ISS-* branch must
+    /// still be cut from the base — not from whatever the root sits on.
+    #[test]
+    fn start_point_is_the_base_even_when_the_refresh_was_refused() {
+        let state = refresh::WorkspaceGit {
+            head_sha: Some("deadbeef".into()),
+            base_branch: Some("release/stg".into()),
+            base_sha: Some("cafe1234".into()),
+            refreshed: false,
+            detail: Some("checked out main , not the base branch release/stg — left alone".into()),
+        };
+        assert_eq!(
+            start_point_for(&state).as_deref(),
+            Some("origin/release/stg")
+        );
+    }
+
+    /// No `base_sha` means the fetch never landed, so `origin/<base>` may not
+    /// exist locally — naming it would fail the worktree instead of creating it.
+    #[test]
+    fn no_start_point_when_the_base_ref_did_not_resolve() {
+        let state = refresh::WorkspaceGit {
+            base_branch: Some("release/stg".into()),
+            detail: Some("fetch timed out after 20s".into()),
+            ..Default::default()
+        };
+        assert_eq!(start_point_for(&state), None);
+    }
+
+    #[test]
+    fn the_notice_tells_the_stage_to_check_the_base_branch_out() {
+        let text = workspace_notice_text(
+            &["workspace NOT refreshed (checked out main , not the base branch release/stg — left alone): HEAD dead, origin/release/stg cafe".into()],
+            None,
+            None,
+            Some("release/stg"),
+        );
+        assert!(
+            text.contains("checked out main"),
+            "keeps the observed state"
+        );
+        assert!(
+            text.contains("`release/stg`"),
+            "names the branch to move to"
+        );
+        assert!(
+            text.contains("check the remote before any such claim"),
+            "still forbids claiming what is on the base from local files"
+        );
+    }
+
+    /// With no base resolvable there is nothing to name, but the ban on
+    /// claiming base-branch content from local files must survive.
+    #[test]
+    fn the_notice_still_bans_base_branch_claims_with_no_base() {
+        let text = workspace_notice_text(
+            &["workspace NOT refreshed (detached HEAD)".into()],
+            None,
+            None,
+            None,
+        );
+        assert!(text.contains("check the remote before any such claim"));
+    }
+
+    /// The setup agent ran and cleared everything: the stage is told what
+    /// happened to its workspace but given nothing to do about it. Silence here
+    /// would be the state-lies-by-omission this whole path replaced a failure
+    /// with — a tree someone else changed, and no record the stage ever saw it.
+    #[test]
+    fn a_repaired_workspace_reports_the_repair_and_asks_for_nothing() {
+        let text = workspace_notice_text(
+            &[],
+            None,
+            Some("ran pnpm install; hooks restored"),
+            Some("main"),
+        );
+        assert!(text.contains("ran pnpm install"));
+        assert!(!text.contains("yours to deal with"));
+    }
+
+    /// A worktree lane must be told the root is stale and told NOT to fix it —
+    /// its own tree was cut from `origin/<base>` and is already correct, so a
+    /// stage that "helpfully" fast-forwards the root is doing unrelated work on
+    /// a branch another job may be using.
+    #[test]
+    fn a_worktree_lane_is_warned_off_the_root_instead_of_asked_to_fix_it() {
+        let warning = root_warning_text("workspace NOT refreshed (dirty tree)", Some("develop"));
+        let text = workspace_notice_text(&[], Some(&warning), None, Some("develop"));
+        assert!(text.contains("do not try to fix it"));
+        assert!(!text.contains("yours to do"));
+    }
+
+    /// The two faults a re-clone can fix, and the two it cannot.
+    #[test]
+    fn only_a_missing_folder_or_a_non_checkout_is_worth_reprovisioning() {
+        assert!(is_reprovisionable(
+            "repo_path: not a directory: /home/forge/projects/anhome"
+        ));
+        assert!(is_reprovisionable("work_tree: fatal: not a git repository"));
+        assert!(!is_reprovisionable(
+            "origin_remote: no 'origin' remote configured"
+        ));
+        assert!(!is_reprovisionable(
+            "push_credentials: ls-remote timed out after 20s"
+        ));
     }
 }

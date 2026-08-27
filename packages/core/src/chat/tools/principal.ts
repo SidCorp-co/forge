@@ -45,6 +45,8 @@ export function buildChatToolContext(opts: {
 }): McpContext {
   const principal: McpPrincipal = {
     kind: 'pat',
+    // cm:guard `agent`, not `human` — the PAT shape here is a carrier for the user's identity, not a claim that a person is typing. Flipping it hands every chat write the human exemption from the ISS-812 fabrication guard.
+    agency: 'agent',
     userId: opts.userId,
     tokenId: CHAT_TOKEN_ID,
     scopes: [],

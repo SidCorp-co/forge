@@ -8,7 +8,7 @@ import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 import { boss } from '../queue/boss.js';
 import { runMemoryFeedback } from './feedback-service.js';
-import { MAX_EMBED_CHARS, indexMemory, indexMemoryBestEffort } from './indexer.js';
+import { indexMemory, indexMemoryBestEffort, MAX_EMBED_CHARS } from './indexer.js';
 import { callFastModel, fastModelConfigured } from './llm.js';
 import { type MemoryHit, searchMemories } from './search.js';
 

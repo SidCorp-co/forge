@@ -96,13 +96,39 @@ fn publish_dir_atomically(staged: &Path, dest: &Path) -> Result<()> {
     if dest.exists() {
         let name = dest.file_name().and_then(|n| n.to_str()).unwrap_or("skill");
         let displaced = parent.join(format!(".{name}.old-{}", Uuid::new_v4()));
-        std::fs::rename(dest, &displaced)?;
-        std::fs::rename(staged, dest)?;
+        rename_settling(dest, &displaced)?;
+        rename_settling(staged, dest)?;
         let _ = std::fs::remove_dir_all(&displaced);
     } else {
-        std::fs::rename(staged, dest)?;
+        rename_settling(staged, dest)?;
     }
     Ok(())
+}
+
+/// `std::fs::rename`, on a platform where a reader can refuse it.
+// cm:guard every rename in `publish_dir_atomically` MUST go through this, not `std::fs::rename` — Windows fails a DIRECTORY rename with ERROR_ACCESS_DENIED while any file beneath it is open, so a reader holding `SKILL.md` breaks the publish whose entire purpose is to be invisible to readers. Measured on runner-ci's windows-latest leg: `dest_copy_atomic_no_torn_read` panicked on exactly this (`Os { code: 5, PermissionDenied }`) on 536b6285 (2026-08-24) and 4a0be7db (2026-08-26); runner-release re-runs that leg, so an intermittent red there stops a binary shipping.
+#[cfg(not(windows))]
+fn rename_settling(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::rename(from, to)
+}
+
+// cm:why the wait is bounded and short because the contention is a reader BETWEEN two reads, not a reader parked on the file — a handle that never closes is a different fault and must surface as the error rather than as a stall inside the skill lock
+#[cfg(windows)]
+fn rename_settling(from: &Path, to: &Path) -> std::io::Result<()> {
+    const ATTEMPTS: u32 = 40;
+    const PAUSE: std::time::Duration = std::time::Duration::from_millis(25);
+    let mut outcome = std::fs::rename(from, to);
+    for _ in 1..ATTEMPTS {
+        match outcome {
+            Ok(()) => return Ok(()),
+            Err(ref e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                std::thread::sleep(PAUSE);
+                outcome = std::fs::rename(from, to);
+            }
+            Err(_) => return outcome,
+        }
+    }
+    outcome
 }
 
 /// Build a staged sibling dir of `dest` to publish into later. Using a
@@ -267,7 +293,10 @@ fn detect_user_shadow(name: &str) -> Option<(PathBuf, Option<String>)> {
 /// longer in `keep` — the converge-on-delete set (ISS-802 stage ③ prune). A
 /// dir with no `.hash` marker is left alone: it was never seeded by Forge (a
 /// user-created folder under `.claude/skills/`), so pruning must not touch it.
+// cm:guard a bundled name is never prunable, marker or not — the server manifest never lists a skill that ships in this binary, so without this exclusion the first sync after an autonomous job deletes the skill set that job is running on
+// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/workspace/bundled_skills.rs — `seed_into` writes these dirs; the two must agree on the name set
 fn find_prunable(skills_root: &Path, keep: &std::collections::HashSet<&str>) -> Vec<PathBuf> {
+    let bundled = crate::workspace::bundled_skills::all_names();
     let Ok(entries) = std::fs::read_dir(skills_root) else {
         return Vec::new();
     };
@@ -277,7 +306,9 @@ fn find_prunable(skills_root: &Path, keep: &std::collections::HashSet<&str>) -> 
         .map(|e| e.path())
         .filter(|dir| {
             let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            !keep.contains(name) && read_hash_marker(dir).is_some()
+            !keep.contains(name)
+                && !bundled.iter().any(|b| b == name)
+                && read_hash_marker(dir).is_some()
         })
         .collect()
 }

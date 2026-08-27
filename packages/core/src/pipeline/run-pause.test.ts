@@ -4,7 +4,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const updateReturning = vi.fn(async () => [] as unknown[]);
 const updateSet = vi.fn((_set: unknown) => ({ where: () => ({ returning: updateReturning }) }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
-vi.mock('../db/client.js', () => ({ db: { update: dbUpdate } }));
+const selectWhere = vi.fn(async () => [] as unknown[]);
+const dbSelect = vi.fn(() => ({ from: () => ({ where: selectWhere }) }));
+vi.mock('../db/client.js', () => ({ db: { update: dbUpdate, select: dbSelect } }));
+
+vi.mock('../logger.js', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
 
 const wsPublish = vi.fn();
 vi.mock('../ws/server.js', () => ({
@@ -16,7 +22,15 @@ vi.mock('./hooks.js', () => ({
   hooks: { emit: (...a: unknown[]) => hookEmit(...(a as [])) },
 }));
 
-const { pauseRun, resumeRun, resumeRunsWhere } = await import('./run-pause.js');
+const {
+  isLivePauseReason,
+  LIVE_PAUSE_REASON_KINDS,
+  pauseReasonFor,
+  pauseRun,
+  resumeOrphanedPauses,
+  resumeRun,
+  resumeRunsWhere,
+} = await import('./run-pause.js');
 
 const RUN = {
   id: 'run-1',
@@ -114,5 +128,71 @@ describe('pipeline/run-pause', () => {
     expect(busEmit).toHaveBeenCalledTimes(2);
     expect(hookEmit).not.toHaveBeenCalled(); // caller bus wins over global hooks
     expect(wsPublish).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('pause-reason vocabulary', () => {
+  it('every live kind round-trips through pauseReasonFor', () => {
+    for (const kind of LIVE_PAUSE_REASON_KINDS) {
+      expect(isLivePauseReason(pauseReasonFor(kind, 'developed'))).toBe(true);
+    }
+  });
+
+  // cm:guard `reopen_cap` must stay unrecognised — RFC 0002 deleted that mechanism, and this assertion is what keeps a future edit from re-registering a kind whose resume path no longer exists
+  it('a retired kind is not live, and neither is a bare or empty reason', () => {
+    expect(isLivePauseReason('reopen_cap:developed')).toBe(false);
+    expect(isLivePauseReason('missing_skill')).toBe(true);
+    expect(isLivePauseReason('')).toBe(false);
+    expect(isLivePauseReason(null)).toBe(false);
+    expect(isLivePauseReason(undefined)).toBe(false);
+  });
+});
+
+describe('resumeOrphanedPauses', () => {
+  // cm:guard this is the whole point of the pass — forge-dev ISS-576/652 sat paused on `reopen_cap:developed` for 3 days after RFC 0002 deleted the cap, their queued triage jobs invisible to a picker that requires `r.status='running'`
+  it('frees a run whose pause reason has no owner left', async () => {
+    selectWhere.mockResolvedValueOnce([
+      {
+        id: 'run-9',
+        projectId: 'p1',
+        issueId: 'i1',
+        metadata: { pauseReason: 'reopen_cap:developed' },
+      },
+    ]);
+    updateReturning.mockResolvedValueOnce([{ ...RUN, id: 'run-9', status: 'running' }]);
+
+    const res = await resumeOrphanedPauses();
+
+    expect(res).toEqual({ detected: 1, resumed: 1 });
+    expect(updateSet).toHaveBeenCalledTimes(1);
+  });
+
+  // cm:guard a live kind must be left alone — its own resume path owns it, and racing that path here would resume a run the guard is still waiting to clear
+  it('leaves a run paused for a reason that still has an owner', async () => {
+    selectWhere.mockResolvedValueOnce([
+      {
+        id: 'run-8',
+        projectId: 'p1',
+        issueId: 'i1',
+        metadata: { pauseReason: 'missing_skill:plan' },
+      },
+    ]);
+
+    const res = await resumeOrphanedPauses();
+
+    expect(res).toEqual({ detected: 0, resumed: 0 });
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  // cm:guard an operator pause carries NO pauseReason — resuming one would override a human decision from a sweep, which is the opposite of what this pass is for
+  it('never touches a run with no pause reason at all', async () => {
+    selectWhere.mockResolvedValueOnce([
+      { id: 'run-7', projectId: 'p1', issueId: 'i1', metadata: {} },
+    ]);
+
+    const res = await resumeOrphanedPauses();
+
+    expect(res).toEqual({ detected: 0, resumed: 0 });
+    expect(updateSet).not.toHaveBeenCalled();
   });
 });

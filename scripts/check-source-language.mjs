@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // English-only source policy guard (ISS-65).
 //
 // Scans .ts/.tsx/.md files under packages/{web,dev,core}/src/ for
@@ -25,10 +26,14 @@
 //
 // Exit codes: 0 clean, 1 violations found, 2 invalid invocation.
 
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
+
+// cm:why resolved from this file rather than from `git rev-parse` or cwd — the checker must work in a source tarball with no .git and when invoked from any directory. Run from elsewhere, the old git-or-cwd root walked nothing and reported "0 violations across 0 files".
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 // Latin-1 Supplement letters (À–ÿ) excluding the math/punctuation glyphs
 // × (U+00D7) and ÷ (U+00F7), Latin Extended-A (Ā–ſ), and Vietnamese
@@ -36,27 +41,36 @@ import process from 'node:process';
 const NON_ENGLISH = /[À-ÖØ-öø-ſƠơƯưẠ-ỹ]/u;
 const NON_ENGLISH_GLOBAL = /[À-ÖØ-öø-ſƠơƯưẠ-ỹ]/gu;
 
-const SCAN_ROOTS = [
-  'packages/web-v2/src',
-  'packages/dev/src',
-  'packages/core/src',
-];
-const SCAN_EXTS = new Set(['.ts', '.tsx', '.md']);
+// cm:guard an unreadable config must abort, never fall back to DEFAULTS. Silently reverting to this repo's own layout is how a consuming repo gets a green run over a scope that does not exist there.
+const DEFAULTS = {
+  scanRoots: ['packages/web-v2/src', 'packages/core/src'],
+  scanExts: ['.ts', '.tsx', '.md'],
+  brandTokens: ['Pokémon', 'café', 'naïve', 'résumé', 'cliché', 'façade', 'jalapeño'],
+};
 
-// Brand-name allowlist — case-sensitive substrings. If every diacritic
-// occurrence on a line falls inside one of these tokens, the line passes.
-const BRAND_TOKENS = [
-  'Pokémon',
-  'café',
-  'naïve',
-  'résumé',
-  'cliché',
-  'façade',
-  'jalapeño',
-];
+const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
+
+function loadConfig() {
+  if (!existsSync(CONFIG_PATH)) return { ...DEFAULTS };
+  try {
+    const raw = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'));
+    return { ...DEFAULTS, ...(raw?.checkers?.['source-language'] ?? {}) };
+  } catch (err) {
+    console.error(`check-source-language: ${CONFIG_PATH} is unreadable — ${err.message}`);
+    process.exit(2);
+  }
+}
+
+const CFG = loadConfig();
+
+const SCAN_ROOTS = CFG.scanRoots;
+const SCAN_EXTS = new Set(CFG.scanExts);
+/** Case-sensitive substrings. A line passes when every diacritic on it falls inside one of these. */
+const BRAND_TOKENS = CFG.brandTokens;
 
 const DIRECTIVE_RE = /(?:\/\/|\/\*|<!--)\s*i18n-allow\s*:\s*(.+)/i;
-const LANG_PICKER_RE = /\bvalue\s*:\s*['"](?:vi|fr|de|es|ja|zh|ko|th|pt|it|ru|nl|sv|no|da|fi|pl|cs|tr|ar|he|hi|id|vn)['"]/;
+const LANG_PICKER_RE =
+  /\bvalue\s*:\s*['"](?:vi|fr|de|es|ja|zh|ko|th|pt|it|ru|nl|sv|no|da|fi|pl|cs|tr|ar|he|hi|id|vn)['"]/;
 
 const RED = '\x1b[31;1m';
 const RESET = '\x1b[0m';
@@ -70,16 +84,6 @@ function parseArgs(argv) {
   return null;
 }
 
-function gitRoot() {
-  try {
-    return execFileSync('git', ['rev-parse', '--show-toplevel'], {
-      encoding: 'utf8',
-    }).trim();
-  } catch {
-    return process.cwd();
-  }
-}
-
 function shouldScan(relPath) {
   const norm = relPath.split(sep).join('/');
   if (!SCAN_ROOTS.some((root) => norm.startsWith(`${root}/`))) return false;
@@ -91,11 +95,9 @@ function shouldScan(relPath) {
 function listStagedFiles() {
   let out;
   try {
-    out = execFileSync(
-      'git',
-      ['diff', '--cached', '--name-only', '--diff-filter=ACM', '-z'],
-      { encoding: 'utf8' },
-    );
+    out = execFileSync('git', ['diff', '--cached', '--name-only', '--diff-filter=ACM', '-z'], {
+      encoding: 'utf8',
+    });
   } catch {
     return [];
   }
@@ -147,7 +149,10 @@ function listAllFiles(root) {
 function isAllowed(line) {
   const directive = DIRECTIVE_RE.exec(line);
   if (directive) {
-    const reason = directive[1].replace(/\*\/\s*$/, '').replace(/-->\s*$/, '').trim();
+    const reason = directive[1]
+      .replace(/\*\/\s*$/, '')
+      .replace(/-->\s*$/, '')
+      .trim();
     if (reason.length > 0) return { allowed: true, reason: 'directive' };
     return { allowed: false, reason: 'i18n-allow directive present without reason text' };
   }
@@ -161,13 +166,10 @@ function isAllowed(line) {
   for (const match of matches) {
     const idx = match.index ?? 0;
     const covered = BRAND_TOKENS.some((token) => {
-      let from = 0;
-      while (true) {
-        const at = line.indexOf(token, from);
-        if (at < 0) return false;
+      for (let at = line.indexOf(token); at >= 0; at = line.indexOf(token, at + 1)) {
         if (idx >= at && idx < at + token.length) return true;
-        from = at + 1;
       }
+      return false;
     });
     if (!covered) return { allowed: false };
   }
@@ -198,6 +200,14 @@ function scanContent(file, content, violations) {
 
 function report(violations, mode, fileCount) {
   const useColor = process.stdout.isTTY === true;
+  // cm:guard `all` walking zero files means scanRoots resolved nowhere, not that the tree is clean. Before this, invoking the script from another directory printed "0 violations across 0 files" and exited 0 — the fail-open shape the other checkers exit 2 on.
+  if (mode === 'all' && fileCount === 0) {
+    console.error(
+      `check-source-language: no files under ${SCAN_ROOTS.join(', ')} — check ` +
+        'checkers.source-language.scanRoots in .forge/conformance.json',
+    );
+    return 2;
+  }
   if (violations.length === 0) {
     if (mode === 'all') {
       console.log(`check-source-language: 0 violations across ${fileCount} files`);
@@ -214,9 +224,7 @@ function report(violations, mode, fileCount) {
     'Fix: translate to English, or add the i18n-allow: directive on the same line if intentional.',
   );
   const fileSet = new Set(violations.map((v) => v.file));
-  console.error(
-    `${violations.length} violation(s) in ${fileSet.size} file(s).`,
-  );
+  console.error(`${violations.length} violation(s) in ${fileSet.size} file(s).`);
   return 1;
 }
 
@@ -226,7 +234,7 @@ function main() {
     console.error('Usage: check-source-language.mjs [--staged|--all]');
     process.exit(2);
   }
-  const root = gitRoot();
+  const root = ROOT;
   const violations = [];
   let fileCount = 0;
   if (mode === 'staged') {

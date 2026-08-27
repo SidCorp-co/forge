@@ -146,6 +146,53 @@ describe("UxContractTab", () => {
     expect(screen.getByRole("button", { name: "Reject" })).toBeInTheDocument();
   });
 
+  it("a proposal that supersedes a rule shows what approving retires, plus its evidence", () => {
+    mockDefaults();
+    useUxContractRules.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: [
+        {
+          id: "rule-active",
+          projectId: "proj-1",
+          group: "states",
+          text: "empty-search is distinct from first-run empty.",
+          severity: "should",
+          source: "preset",
+          status: "active",
+          evidenceIssueIds: [],
+          supersedesRuleId: null,
+          orderIndex: 0,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+        {
+          id: "rule-proposal",
+          projectId: "proj-1",
+          group: "states",
+          text: "empty-search is distinct from first-run empty.",
+          severity: "must",
+          source: "learned",
+          status: "proposed",
+          evidenceIssueIds: ["issue-7"],
+          supersedesRuleId: "rule-active",
+          orderIndex: 0,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      refetch: vi.fn(),
+    });
+    render(<UxContractTab project={project()} canEdit />);
+
+    expect(
+      screen.getByText("Replaces this rule (should → must). Approving retires it."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("link").some((a) => a.getAttribute("href")?.endsWith("/issue-7")),
+    ).toBe(true);
+  });
+
   it("non-admin: disables mutating controls with a visible reason, never a silent 403", () => {
     mockDefaults();
     useUxContractRules.mockReturnValue({

@@ -9,8 +9,8 @@ import { logger } from '../logger.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { ensurePersonalOrg } from '../orgs/service.js';
 import { sendVerificationEmail } from './email.js';
-import { MIN_PASSWORD_SCORE, evaluatePasswordStrength } from './password-strength.js';
 import { hashPassword } from './password.js';
+import { evaluatePasswordStrength, MIN_PASSWORD_SCORE } from './password-strength.js';
 import { issueVerificationToken } from './verification-token.js';
 
 export const registerSchema = z.object({

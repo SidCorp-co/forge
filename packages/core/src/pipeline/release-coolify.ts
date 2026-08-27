@@ -6,7 +6,7 @@ import { findDeliveryByRequestId } from '../integrations/deliveries.js';
 import { enqueueCoolifyDispatch } from '../integrations/queue.js';
 import { listActiveBindingsForProjectProvider } from '../integrations/store.js';
 import { logger } from '../logger.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { setCurrentStepForce } from './runs.js';
 
 /**
@@ -54,6 +54,7 @@ async function projectAutoProdDeploy(projectId: string): Promise<boolean> {
   }
 }
 
+// cm:flow release/deploy after:reap — job completion, not the close, is what dispatches the deploy; a prod binding parks for a human unless pipelineConfig.autoProdDeploy is on
 export async function tryDispatchCoolifyRelease(args: {
   projectId: string;
   issueId: string | null;

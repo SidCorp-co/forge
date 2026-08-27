@@ -64,6 +64,9 @@ export interface ProjectUpdateInput {
 	description?: string | null;
 	repoPath?: string | null;
 	repoUrl?: string | null;
+	/** Prose: how to bring this repo's workspace to a buildable state. Read by
+	 *  the runner's setup agent; blank means it derives the procedure per job. */
+	workspaceSetup?: string | null;
 	baseBranch?: string | null;
 	productionBranch?: string | null;
 	previewDeploy?: PreviewDeployConfig | null;
@@ -174,6 +177,8 @@ export interface PipelineStateConfig {
 	budget?: { perRunUsd?: number; perMonthUsd?: number; action?: "warn" | "pause" };
 	sessionGroup?: string;
 	skipComplexities?: string[];
+	/** Runner pool — the only devices this stage's jobs may land on. Empty/absent = whole fleet. */
+	deviceIds?: string[];
 	[key: string]: unknown;
 }
 
@@ -808,7 +813,9 @@ function stageHasOverride(sc: PipelineStateConfig): boolean {
 		(sc.disallowedTools?.length ?? 0) > 0 ||
 		Object.keys(sc.mcpServers ?? {}).length > 0 ||
 		(sc.skipComplexities?.length ?? 0) > 0 ||
-		Boolean(sc.sessionGroup)
+		Boolean(sc.sessionGroup) ||
+		// cm:why a stage whose ONLY override is its runner pool must still render — otherwise pinning a stage to a box makes that stage vanish from the one screen an operator checks it on
+		(sc.deviceIds?.length ?? 0) > 0
 	);
 }
 
@@ -847,7 +854,7 @@ export function denylistBaseline(rows: StagePermissionRow[]): DenylistDiff[] {
 	for (const row of rows) {
 		const tools = row.config.disallowedTools ?? [];
 		if (tools.length === 0) continue;
-		const key = [...tools].sort().join(" ");
+		const key = [...tools].sort().join("\u0000");
 		const entry = counts.get(key) ?? { set: new Set(tools), count: 0 };
 		entry.count += 1;
 		counts.set(key, entry);

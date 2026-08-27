@@ -116,24 +116,23 @@ function deviceCtx() {
   };
 }
 
-function patCtx(opts: {
+const patCtx = (opts: {
   userId?: string;
   scopes?: readonly string[];
   projectIds?: readonly string[] | null;
-}) {
-  return {
-    principal: {
-      kind: 'pat' as const,
-      userId: opts.userId ?? OWNER_ID,
-      tokenId: 'token-id',
-      scopes: opts.scopes ?? ['read', 'write'],
-      projectIds: opts.projectIds ?? null,
-      boundProjectId: null,
-    },
-    device: fakeDevice,
-    projectSlug: null,
-  };
-}
+}) => ({
+  principal: {
+    kind: 'pat' as const,
+    agency: 'human' as const,
+    userId: opts.userId ?? OWNER_ID,
+    tokenId: 'token-id',
+    scopes: opts.scopes ?? ['read', 'write'],
+    projectIds: opts.projectIds ?? null,
+    boundProjectId: null,
+  },
+  device: fakeDevice,
+  projectSlug: null,
+});
 
 describe('forge_projects.list', () => {
   it('returns visible projects with effective (org-aware) role mapping', async () => {
@@ -648,6 +647,7 @@ describe('forge_projects.get', () => {
     orgId: ORG_ID,
     createdBy: OWNER_ID,
     repoPath: '/srv/a',
+    workspaceSetup: 'pnpm install --frozen-lockfile',
     baseBranch: 'main',
     productionBranch: 'main',
     defaultDeviceId: DEVICE_ID,
@@ -676,6 +676,8 @@ describe('forge_projects.get', () => {
     expect(res.project.orgId).toBe(ORG_ID);
     expect(res.project.createdBy).toBe(OWNER_ID);
     expect(res.project.repoPath).toBe('/srv/a');
+    // cm:guard the handler hand-builds its response, so asserting the KEY EXISTS is not enough — a selected column dropped from the return literal still yields a key with `undefined`, which is how this field shipped invisible on 2026-08-18. Assert the value.
+    expect(res.project.workspaceSetup).toBe('pnpm install --frozen-lockfile');
     expect(res.project.defaultDeviceId).toBe(DEVICE_ID);
     expect(selectImpl).toHaveBeenCalledTimes(2);
   });
@@ -780,6 +782,7 @@ describe('forge_projects.get', () => {
         'repoPath',
         'role',
         'slug',
+        'workspaceSetup',
       ].sort(),
     );
     expect(res.project).not.toHaveProperty('agentConfig');

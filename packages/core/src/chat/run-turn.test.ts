@@ -35,6 +35,7 @@ vi.mock('./session.js', () => ({
 }));
 
 const { runChatTurn } = await import('./run-turn.js');
+
 import type { ChatProvider, ChatStreamEvent } from './providers/types.js';
 import type { ChatSessionRow } from './session.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';

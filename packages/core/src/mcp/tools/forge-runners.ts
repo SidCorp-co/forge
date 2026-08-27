@@ -1,20 +1,20 @@
-import { type SQL, and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import {
+  jobs,
   type RunnerStatus,
   type RunnerType,
-  jobs,
   runnerHosts,
   runnerStatuses,
-  runnerTypes,
   runners,
+  runnerTypes,
 } from '../../db/schema.js';
 import { countInFlightForRunner } from '../../jobs/dispatch-gates.js';
 import { runnerCapabilitiesSchema } from '../../runners/types.js';
 import {
-  type ContextScopedMcpToolFactory,
   assertPrincipalIsAdmin,
+  type ContextScopedMcpToolFactory,
   loadVisibleProjectIdsForPrincipal,
   zodToMcpSchema,
 } from './lib.js';
@@ -86,7 +86,7 @@ function parseCapabilitiesOrThrow(input: unknown): Record<string, unknown> {
 export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_runners',
   description:
-    'Manage runners for projects in your scope (projects you own or are a member of). Actions: `list` (optional projectId/status/type filters, restricted to your projects; returns inFlightCount per runner plus quarantinedUntil/quarantineReason — non-null means the box is HARD-excluded from dispatch after repeated identical preflight failures, distinct from the rate/usage/auth limitReason fields), `register` (insert with default status=offline; requires owner/admin on the target project), `retire` (sets status=disabled; requires owner/admin; refuses with RUNNER_BUSY unless force:true), `update_capabilities` (replaces capabilities jsonb after server-side validation; requires owner/admin).',
+    'Manage runners for projects in your scope (projects you own or are a member of). Actions: `list` (optional projectId/status/type filters, restricted to your projects; returns inFlightCount per runner plus quarantinedUntil/quarantineReason — non-null means the box is HARD-excluded from dispatch after repeated identical box-scoped failures, either the same preflight check or the same never-claimed dispatch; distinct from the rate/usage/auth limitReason fields), `register` (insert with default status=offline; requires owner/admin on the target project), `retire` (sets status=disabled; requires owner/admin; refuses with RUNNER_BUSY unless force:true), `update_capabilities` (replaces capabilities jsonb after server-side validation; requires owner/admin).',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);

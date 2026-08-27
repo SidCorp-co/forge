@@ -1,5 +1,5 @@
 import { logger } from '../../logger.js';
-import { Sentry, isSentryEnabled } from '../../observability/sentry.js';
+import { isSentryEnabled, Sentry } from '../../observability/sentry.js';
 import { recentOutboundDeliveries } from '../deliveries.js';
 import { findBindingById, findConnectionById, updateConnection } from '../store.js';
 

@@ -15,6 +15,8 @@ const wedgeQueue: Array<
   }>
 > = [];
 
+const jobsQueue: Array<Array<{ one: number }>> = [];
+
 const dbExecute = vi.fn(async (q: unknown) => {
   const chunks = (q as { queryChunks?: unknown[] }).queryChunks ?? [];
   // StringChunk.value is string[]; concatenate all template fragments.
@@ -39,6 +41,10 @@ const dbExecute = vi.fn(async (q: unknown) => {
   }
   if (/from\s+pipeline_outbox/i.test(firstSql)) {
     return staleCountQueue.shift() ?? [{ count: 0 }];
+  }
+  // cm:guard this branch must stay BELOW the `from issues` one: the stuck-issue query carries `FROM jobs j` inside its NOT EXISTS, so a jobs-first router swallows it and every test sees an empty stuck list. Default is "a job appeared", the successful-rescue case.
+  if (/from\s+jobs/i.test(firstSql)) {
+    return jobsQueue.shift() ?? [{ one: 1 }];
   }
   return [];
 });
@@ -81,6 +87,7 @@ beforeEach(() => {
   staleCountQueue.length = 0;
   wedgeQueue.length = 0;
   dbExecute.mockClear();
+  jobsQueue.length = 0;
   reEnqueueMock.mockReset();
   reEnqueueMock.mockResolvedValue(undefined);
   stallGuardMock.mockReset();
@@ -88,6 +95,23 @@ beforeEach(() => {
   applyStatusTransitionMock.mockReset();
   applyStatusTransitionMock.mockResolvedValue(undefined);
   sentryAddBreadcrumb.mockClear();
+});
+
+describe('rescue accounting', () => {
+  // cm:guard L0.7 — `rescued` used to count the ATTEMPT. `considerEnqueue` has a dozen paths that enqueue nothing (a disabled stage, a human gate, a race, a missing skill), and an issue parked on any of them is re-read every 60s forever: the counter and the warning breadcrumb both fired every minute for a loop that did nothing, which is how it stayed invisible.
+  it('does not count a rescue when the re-enqueue produced no job', async () => {
+    stuckQueue.push([{ id: 'iss-1', project_id: 'proj-1', status: 'confirmed', created_by: 'o' }]);
+    jobsQueue.push([]);
+    staleCountQueue.push([{ count: 0 }]);
+
+    const result = await runReconcilerOnce();
+
+    expect(reEnqueueMock).toHaveBeenCalledTimes(1);
+    expect(result.rescued).toBe(0);
+    expect(sentryAddBreadcrumb).not.toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'pipeline.reconciler.enqueued_missing' }),
+    );
+  });
 });
 
 describe('reconciler', () => {

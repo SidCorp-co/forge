@@ -45,3 +45,13 @@ if [ -f "$repo_root/scripts/check-test-signal.mjs" ]; then
     exit 1
   fi
 fi
+
+# cm:edge protocol -> .forge/codemap/hooks/pre-commit — codemap 0.13.0 ships its own hook and `cm install` prints `git config core.hooksPath .forge/codemap/hooks`; following that advice here would REPOINT hooksPath away from .githooks and silently disable both guards above, so this repo calls the committed checker from its own hook instead.
+if [ -x "$repo_root/.forge/codemap/cm" ]; then
+  if ! "$repo_root/.forge/codemap/cm" verify --staged --tier grammar; then
+    echo ""
+    echo "[pre-commit] FAIL: staged changes carry prose codemap does not allow (see above)."
+    echo "[pre-commit] Fix the comment, or record it as cm:why / cm:guard."
+    exit 1
+  fi
+fi

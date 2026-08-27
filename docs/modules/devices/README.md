@@ -4,7 +4,7 @@ Paired machines running `claude` CLI locally — the runtime plane's connection 
 
 ## Overview
 
-- User pairs devices (laptop, desktop, CI box) with their account; each installs the Forge agent (Tauri `dev` app or the `forge-runner` CLI).
+- User pairs devices (laptop, desktop, CI box) with their account; each installs the Forge agent (the `forge-runner` CLI).
 - A device is assigned to a project via the runners framework: assign the device in the web UI, then bind it locally with `forge-runner bind`.
 
 ## Data Flow
@@ -139,7 +139,6 @@ Project↔device routing is expressed through the **runners framework** (`runner
 
 | Command/Job | Description |
 |-------------|-------------|
-| `desktop-pairing-cleanup` (cron, hourly at :15) | Delete expired/consumed `desktop_pairing_codes` (browser-login codes) |
 | `device-status-detector` (cron 2m) | Mark offline devices whose heartbeat has lapsed (90s threshold) |
 | `device-offline-prune` (cron, daily 04:00) | Revoke devices offline > 30 days and remove their runners |
 | `device-status-broadcaster` | WebSocket fan-out of `device.status` events |

@@ -52,6 +52,8 @@ import { MergeStatesSection } from "./merge-states-section";
 import { ConcurrencySection } from "./concurrency-section";
 import { IntakeGateSection } from "./intake-gate-section";
 import { StagePermissionsSection } from "./stage-permissions-section";
+import { RunnerPoolsSection } from "./runner-pools-section";
+import { useProjectRunners } from "@/features/runners/hooks";
 import { AgentConfigSection } from "./agent-config-section";
 import {
   API_ONLY_KEYS,
@@ -152,6 +154,13 @@ export function PipelineTab({
   const unregister = useUnregisterSkill(projectId);
   const adopt = useAdoptSkill(projectId);
   const skillPending = register.isPending || unregister.isPending || adopt.isPending;
+
+  const runnersQ = useProjectRunners(projectId);
+  const deviceNames = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const r of runnersQ.data ?? []) if (r.deviceId && r.deviceName) m[r.deviceId] = r.deviceName;
+    return m;
+  }, [runnersQ.data]);
 
   // Local working copy of the full config — preserves opaque keys on save.
   const [draft, setDraft] = useState<PipelineConfig | null>(null);
@@ -458,13 +467,15 @@ export function PipelineTab({
         {/* Session groups — round-trips the full fetched config. */}
         <SessionGroupsSection projectId={projectId} config={server} canEdit={canEdit} />
 
-        <StagePermissionsSection config={server} />
+        <StagePermissionsSection config={server} deviceNames={deviceNames} />
 
         {/* Merge points (mergeStates) — round-trips the full fetched config. */}
         <MergeStatesSection projectId={projectId} config={server} canEdit={canEdit} />
 
         {/* Concurrency (maxConcurrentIssues) — round-trips the full fetched config. */}
         <ConcurrencySection projectId={projectId} config={server} canEdit={canEdit} />
+
+        <RunnerPoolsSection projectId={projectId} config={server} canEdit={canEdit} />
 
         <IntakeGateSection projectId={projectId} config={server} canEdit={canEdit} />
 

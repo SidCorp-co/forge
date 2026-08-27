@@ -5,39 +5,34 @@
 // but downstream consumers MUST use `import type` so no runtime code from
 // `@forge/core` ends up bundled into `web`.
 
+export { type LoginInput, loginSchema } from './auth/login.js';
+export { type RegisterInput, registerSchema } from './auth/register.js';
 export * as schema from './db/schema.js';
-
-export { loginSchema, type LoginInput } from './auth/login.js';
-export { registerSchema, type RegisterInput } from './auth/register.js';
-
-export {
-  issueCreateSchema,
-  issuePatchSchema,
-  issueFiltersSchema,
-  type IssueCreateInput,
-  type IssuePatchInput,
-  type IssueFilters,
-} from './issues/routes.js';
-
-export {
-  createProjectSchema,
-  updateProjectSchema,
-  previewDeployPatchSchema,
-  type CreateProjectInput,
-  type UpdateProjectInput,
-  type PreviewDeployConfig,
-} from './projects/routes.js';
-
-export {
-  ReleaseNotesSchema,
-  ReleaseNotesSectionSchema,
-  releaseNotesSections,
-  type ReleaseNotes,
-  type ReleaseNotesSection,
-} from './issues/release-notes.js';
-
 // Integration provider + capability descriptor surface for `@forge/contracts`.
 // Type-only: the runtime `capabilitiesFor` / `DEFAULT_CAPABILITIES` values stay
 // core-internal so no integration runtime leaks into clients. The owner /
 // environment / delivery enums are already reachable via the `schema` namespace.
-export type { IntegrationProvider, IntegrationCapabilities } from './integrations/types.js';
+export type { IntegrationCapabilities, IntegrationProvider } from './integrations/types.js';
+export {
+  type ReleaseNotes,
+  ReleaseNotesSchema,
+  type ReleaseNotesSection,
+  ReleaseNotesSectionSchema,
+  releaseNotesSections,
+} from './issues/release-notes.js';
+export {
+  type IssueCreateInput,
+  type IssueFilters,
+  type IssuePatchInput,
+  issueCreateSchema,
+  issueFiltersSchema,
+  issuePatchSchema,
+} from './issues/routes.js';
+export {
+  type CreateProjectInput,
+  createProjectSchema,
+  type PreviewDeployConfig,
+  previewDeployPatchSchema,
+  type UpdateProjectInput,
+  updateProjectSchema,
+} from './projects/routes.js';

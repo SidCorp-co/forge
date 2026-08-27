@@ -6,8 +6,9 @@
 // the mutation factory, the row value snaps back since nothing is invalidated).
 
 import { Menu, NativeSelect, Select, StatusChip, type MenuItem, type SelectOption } from "@/design";
-import { allowedTransitions, statusLabel, statusToChip } from "../derive";
-import { type IssueAgentStatus, type IssueStatus } from "../types";
+import { allowedTransitions, statusToChip } from "../derive";
+import { useStatusLabeller } from "../vocabulary";
+import type { IssueAgentStatus, IssueStatus } from "../types";
 
 interface InlineSelectProps {
   value: string;
@@ -74,6 +75,7 @@ interface StatusEditProps {
  * picking a target that 409s and silently snaps back (ISS-308 E1).
  */
 export function StatusEdit({ status, agentStatus, onTransition, disabled, size }: StatusEditProps) {
+  const statusLabel = useStatusLabeller();
   const items: MenuItem[] = allowedTransitions(status).map((s) => ({
     label: statusLabel(s),
     onSelect: () => onTransition(s),

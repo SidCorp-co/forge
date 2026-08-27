@@ -28,6 +28,7 @@ import {
   forgeJobsEventsTool,
   forgeJobsGetTool,
   forgeJobsListTool,
+  forgeJobsResumeTool,
 } from './tools/forge-jobs.js';
 import { forgeKnowledgeTool } from './tools/forge-knowledge.js';
 import {
@@ -45,6 +46,7 @@ import {
 } from './tools/forge-metrics.js';
 import { forgeOpsHealthTool } from './tools/forge-ops-health.js';
 import { forgeOrgsListTool, forgeOrgsMembersTool } from './tools/forge-orgs.js';
+import { forgePhaseTool } from './tools/forge-phase.js';
 // ISS-483 §E#3: the forge_pipeline_runs_* / forge_pm_* standalone shims are
 // superseded by the forge_project_pipeline_runs / forge_project_pm action
 // dispatchers. Removed the 9 shims with zero references (repo + every project's
@@ -92,9 +94,10 @@ import { forgeStepStartTool } from './tools/forge-step-start.js';
 import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
 import { forgeUploadsTool } from './tools/forge-uploads.js';
 import { forgeUxFindingsTool } from './tools/forge-ux-findings.js';
-import { type McpTool, forgeVersionTool } from './tools/forge-version.js';
-import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/lib.js';
+import { forgeUxImproverTool } from './tools/forge-ux-improver.js';
+import { forgeVersionTool, type McpTool } from './tools/forge-version.js';
 import type { McpContext } from './tools/lib.js';
+import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/lib.js';
 
 /**
  * Build an MCP server wired to the per-request {@link McpContext}. Tool
@@ -230,10 +233,12 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeCollaboratorsTool(ctx),
     forgeOpsHealthTool(ctx),
     forgeIssuesTool(ctx),
+    forgePhaseTool(ctx),
     forgeStepStartTool(ctx),
     forgeCommentsTool(ctx),
     forgeFeedbackTool(ctx),
     forgeUxFindingsTool(ctx),
+    forgeUxImproverTool(ctx),
     forgeUploadsTool(ctx),
     forgeConfigTool(ctx),
     forgeKnowledgeTool(ctx),
@@ -264,6 +269,8 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeHealthTool(ctx.device),
     forgeDivergenceChartersTool(ctx),
     forgeReconcileTool(ctx),
+    // cm:guard append new tools HERE, immediately above the last one — every position shifts the indices below it, so the tail is the only insertion point that leaves all existing tools where callers pinned them
+    forgeJobsResumeTool(ctx),
     // cm:guard keep this registration LAST — callers pin to `tools/list` ordering, so inserting above it shifts every index they rely on
     forgeGuideTool(ctx),
   ];

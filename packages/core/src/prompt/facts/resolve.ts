@@ -23,14 +23,18 @@ import {
 } from '../../knowledge/service.js';
 import { logger } from '../../logger.js';
 import {
+  DEFAULT_NO_PROGRESS_ROUNDS,
+  resolveNoProgressRounds,
+} from '../../pipeline/reopen-policy.js';
+import {
   PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS,
   type RESERVED_PROJECT_FACT_KEYS,
   selectAlwaysInjectFacts,
 } from '../../projects/project-facts.js';
 import {
   CANONICAL_LADDER,
-  FORGE_FACTS,
   type FactRenderContext,
+  FORGE_FACTS,
   type ForgeFact,
   getFact,
 } from './registry.js';
@@ -58,6 +62,9 @@ export interface ProjectFactInputs {
    *  (e.g. the system-prompt builder) reuse it instead of reading `projects`
    *  a second time for the `## Project Config` block. */
   branches: { baseBranch: string | null; productionBranch: string | null };
+  /** `pipelineConfig.reopenPolicy.noProgressRounds`, defaulted. Advisory —
+   *  rendered into `## Project Config` for the agent to judge against. */
+  noProgressRounds: number;
   /** Resolver for `{{project:<key>}}`. */
   project: ProjectVarResolver;
   /** Author-defined `agentConfig.projectFacts` keys (for dumping all guides). */
@@ -214,6 +221,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   let testingUrls: TestingUrl[] = [];
   let testNotes: string | null = null;
   let integrations: IntegrationRow[] = [];
+  let noProgressRounds = DEFAULT_NO_PROGRESS_ROUNDS;
   try {
     const [row] = await db
       .select({
@@ -234,6 +242,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
         projectFactsConfig?: Record<string, { alwaysInject?: boolean }>;
       } | null) ?? null;
     states = ac?.pipelineConfig?.states ?? {};
+    noProgressRounds = resolveNoProgressRounds(row?.agentConfig);
     projectFacts = ac?.projectFacts && typeof ac.projectFacts === 'object' ? ac.projectFacts : {};
     projectFactsConfig =
       ac?.projectFactsConfig && typeof ac.projectFactsConfig === 'object'
@@ -277,6 +286,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   return {
     ladder: buildLadder(states),
     branches: { baseBranch, productionBranch },
+    noProgressRounds,
     project: makeProjectResolver({
       baseBranch,
       productionBranch,

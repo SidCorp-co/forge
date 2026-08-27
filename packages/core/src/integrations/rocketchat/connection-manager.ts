@@ -13,10 +13,10 @@
 import { and, eq, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { runExternalChatTurn } from '../../chat/external-chat.js';
-import { ESCALATE_TOOL_NAME, buildEscalationToolset } from '../../chat/tools/escalate.js';
+import { buildEscalationToolset, ESCALATE_TOOL_NAME } from '../../chat/tools/escalate.js';
 import {
-  type ExternalMcpToolsets,
   buildExternalMcpToolsets,
+  type ExternalMcpToolsets,
 } from '../../chat/tools/external-mcp.js';
 import { mergeToolsets } from '../../chat/tools/mcp-adapter.js';
 import { buildChatToolContext } from '../../chat/tools/principal.js';

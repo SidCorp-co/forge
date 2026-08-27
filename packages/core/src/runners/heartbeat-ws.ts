@@ -2,11 +2,11 @@ import { and, eq } from 'drizzle-orm';
 import type { WebSocket } from 'ws';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { runnerTypes, runners } from '../db/schema.js';
-import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
+import { runners, runnerTypes } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { hooks } from '../pipeline/hooks.js';
+import { roomManager } from '../ws/room-manager.js';
 import { projectRoom, runnerRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 import { defaultRunnerCapabilities } from './select.js';
 
 type DevicePrincipal = { type: 'device'; deviceId: string; ownerId: string };
@@ -142,10 +142,9 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
     event: 'runner.status',
     data: { runnerId, status: 'online' },
   });
-  // ISS-40 PR-E — runner came online (or is brand-new): re-tick the project
-  // in case any queued jobs were waiting on `runner_full` / `no_worker_online`.
+  // cm:edge protocol -> packages/core/src/jobs/dispatch-subscribers.ts — ISS-40 PR-E: a runner coming online must re-tick the project, since queued jobs may have been held on `runner_full` / `no_worker_online`. Announced rather than called: importing the job layer from here put this file inside a 52-file import cycle.
   if (wasOffline) {
-    void dispatchTickForProject(input.projectId);
+    void hooks.emit('runnerOnline', { projectId: input.projectId, runnerId });
   }
   // Echo back so the daemon learns its runnerId.
   try {

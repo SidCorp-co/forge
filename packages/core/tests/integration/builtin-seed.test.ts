@@ -5,7 +5,7 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { skills } from '../../src/db/schema.js';
 import { hashSkillBody } from '../../src/skills/hash.js';
-import { type TestDatabase, setupTestDatabase, truncateAll } from '../helpers/index.js';
+import { setupTestDatabase, type TestDatabase, truncateAll } from '../helpers/index.js';
 
 // Imported dynamically in beforeAll: builtin-seed.js transitively reaches
 // src/db/client.ts, which validates env at import time — a static import

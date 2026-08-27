@@ -4,11 +4,16 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { type IssueStatus, issueDependencies, issueStatuses, issues } from '../db/schema.js';
+import {
+  type IssueStatus,
+  issueDependencies,
+  issueStatuses,
+  issues,
+  waitingKinds,
+} from '../db/schema.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
-import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { isReopenEntry } from '../pipeline/state-machine.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import {
@@ -16,12 +21,14 @@ import {
   TransitionError,
   transitionIssueStatus,
 } from './apply-transition.js';
+import type { UnblockedDependent } from './drop-cascade.js';
 
 const transitionBodySchema = z
   .object({
     toStatus: z.enum(issueStatuses),
     reason: z.string().trim().min(1).max(2000).optional(),
-    override: z.boolean().optional().default(false),
+    // cm:guard optional here on purpose (RFC 0002 INV-5) — a UI that cannot ask the user which kind must send nothing rather than a default, because a wrong kind renders a wrong banner and only a human can correct it
+    waitingKind: z.enum(waitingKinds).optional(),
   })
   .strict();
 
@@ -33,7 +40,7 @@ const badRequest = (details: unknown) =>
 const notFound = () =>
   new HTTPException(404, { message: 'issue not found', cause: { code: 'NOT_FOUND' } });
 
-const forbidden = (message: string, code = 'FORBIDDEN') =>
+const _forbidden = (message: string, code = 'FORBIDDEN') =>
   new HTTPException(403, { message, cause: { code } });
 
 /**
@@ -45,7 +52,8 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
   switch (err.code) {
     case 'NO_OP':
       return new HTTPException(409, { message: 'issue already in toStatus', cause });
-    case 'REOPEN_CAP_EXCEEDED':
+    case 'TRANSITION_REASON_REQUIRED':
+    case 'WAITING_KIND_REQUIRED':
       return new HTTPException(422, { message: err.detail, cause });
     case 'PLAN_REQUIRED':
       return new HTTPException(409, { message: err.detail, cause });
@@ -74,39 +82,61 @@ const UNBLOCK_CASCADE_DEPENDENT_CAP = 10;
  * blocker has at least one outgoing `kind='blocks'` dependent — the toast
  * confirms the cascade fired before the dispatcher tick lands.
  */
+// cm:guard an entry carrying `dependents` must NOT be re-queried — a `dropped` blocker has already had its edges expired inside the transition and the query below filters expired edges out, so re-deriving finds nothing and the cascade goes unannounced on the one status that needs it most
 export async function triggerTerminalDispatch(
-  terminal: Array<{ issueId: string; projectId: string; issSeq?: number | null; at?: Date }>,
+  terminal: Array<{
+    issueId: string;
+    projectId: string;
+    issSeq?: number | null;
+    at?: Date;
+    dependents?: UnblockedDependent[];
+  }>,
 ): Promise<void> {
   if (terminal.length === 0) return;
   const parentProjectIds = new Set(terminal.map((t) => t.projectId));
 
   const childTargets = new Map<string, string>(); // childProjectId -> blockerIssueId
   try {
-    const issueIds = terminal.map((t) => t.issueId);
-    const dependents = await db
-      .select({
-        fromIssueId: issueDependencies.fromIssueId,
-        toIssueId: issueDependencies.toIssueId,
-        depProjectId: issueDependencies.projectId,
-        toIssSeq: issues.issSeq,
-      })
-      .from(issueDependencies)
-      .innerJoin(issues, eq(issues.id, issueDependencies.toIssueId))
-      .where(
-        and(
-          inArray(issueDependencies.fromIssueId, issueIds),
-          eq(issueDependencies.kind, 'blocks'),
-          sql`(${issueDependencies.validUntil} IS NULL OR ${issueDependencies.validUntil} > now())`,
-        ),
-      );
-
     const byBlocker = new Map<string, Array<{ issueId: string; issSeq: number }>>();
-    for (const row of dependents) {
-      if (row.depProjectId && !parentProjectIds.has(row.depProjectId)) {
-        if (!childTargets.has(row.depProjectId)) {
-          childTargets.set(row.depProjectId, row.fromIssueId);
-        }
+    const noteChild = (depProjectId: string | null, blockerId: string) => {
+      if (depProjectId && !parentProjectIds.has(depProjectId) && !childTargets.has(depProjectId)) {
+        childTargets.set(depProjectId, blockerId);
       }
+    };
+
+    for (const t of terminal) {
+      if (!t.dependents) continue;
+      for (const d of t.dependents) {
+        noteChild(d.projectId, t.issueId);
+        const list = byBlocker.get(t.issueId) ?? [];
+        list.push({ issueId: d.issueId, issSeq: d.issSeq });
+        byBlocker.set(t.issueId, list);
+      }
+    }
+
+    const issueIds = terminal.filter((t) => !t.dependents).map((t) => t.issueId);
+    const dependents =
+      issueIds.length === 0
+        ? []
+        : await db
+            .select({
+              fromIssueId: issueDependencies.fromIssueId,
+              toIssueId: issueDependencies.toIssueId,
+              depProjectId: issueDependencies.projectId,
+              toIssSeq: issues.issSeq,
+            })
+            .from(issueDependencies)
+            .innerJoin(issues, eq(issues.id, issueDependencies.toIssueId))
+            .where(
+              and(
+                inArray(issueDependencies.fromIssueId, issueIds),
+                eq(issueDependencies.kind, 'blocks'),
+                sql`(${issueDependencies.validUntil} IS NULL OR ${issueDependencies.validUntil} > now())`,
+              ),
+            );
+
+    for (const row of dependents) {
+      noteChild(row.depProjectId, row.fromIssueId);
       const list = byBlocker.get(row.fromIssueId) ?? [];
       list.push({ issueId: row.toIssueId, issSeq: row.toIssSeq });
       byBlocker.set(row.fromIssueId, list);
@@ -157,7 +187,7 @@ transitionRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { toStatus, reason, override } = c.req.valid('json');
+    const { toStatus, reason, waitingKind } = c.req.valid('json');
     const userId = c.get('userId');
 
     const [issue] = await db
@@ -178,16 +208,6 @@ transitionRoutes.post(
     const access = await loadProjectAccess(issue.projectId, userId);
     assertProjectRole(access, 'member');
 
-    // `override` bypasses the reopen cap; requesting it on a reopen entry
-    // requires project admin, checked before any write.
-    if (
-      override &&
-      isReopenEntry(fromStatus, toStatus) &&
-      !projectRoleAtLeast(access.role, 'admin')
-    ) {
-      throw forbidden('override requires project admin', 'OVERRIDE_DENIED');
-    }
-
     let result: StatusTransitionResult;
     try {
       result = await transitionIssueStatus(
@@ -199,7 +219,7 @@ transitionRoutes.post(
         },
         toStatus,
         { type: 'user', id: userId },
-        { reason, overrideReopenCap: override },
+        { reason, transitionReason: reason, waitingKind },
       );
     } catch (err) {
       if (err instanceof TransitionError) throw transitionErrorToHttp(err);
@@ -216,6 +236,7 @@ transitionRoutes.post(
           projectId: issue.projectId,
           issSeq: issue.issSeq,
           at: result.updatedAt,
+          ...(toStatus === 'dropped' ? { dependents: result.unblockedDependents } : {}),
         },
       ]);
     }

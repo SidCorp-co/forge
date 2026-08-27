@@ -110,7 +110,6 @@ export function SessionGroupsSection({
     setGroups(seedGroups(config));
     setPolicy(seededPolicy);
     // seededPolicy derives from config; config is the only real dependency.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config]);
 
   const initial = useMemo(() => snapshot(seeded, seededPolicy), [seeded, seededPolicy]);

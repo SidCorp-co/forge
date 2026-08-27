@@ -9,12 +9,12 @@ import { logger } from '../logger.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { mergeAgentConfig, readAgentConfig } from './agent-config.js';
 import {
-  PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS,
-  RESERVED_PROJECT_FACT_KEYS,
   mergeProjectFacts,
   mergeProjectFactsConfig,
+  PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS,
   projectFactsConfigPatchSchema,
   projectFactsPatchSchema,
+  RESERVED_PROJECT_FACT_KEYS,
 } from './project-facts.js';
 
 // ─── Project facts (ISS-521) ─────────────────────────────────────────────────

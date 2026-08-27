@@ -19,21 +19,50 @@
 // Exit: 0 clean, 1 violations, 2 invalid invocation.
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = process.cwd();
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE_PATH = join(ROOT, '.forge', 'test-signal-baseline.json');
+const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
 
-const MIN_ASSERTIONS = 20;
-const DECLARATION_RATIO = 0.5;
-const MOCK_RATIO = 0.7;
+// cm:why `.onDelete` is deliberately absent from declarationPattern — cascade-vs-restrict decides whether deleting a parent destroys child rows, which the declaration does not make obvious and a bug here loses data
+const DEFAULTS = {
+  scanRoots: [
+    'packages/core/src',
+    'packages/core/tests',
+    'packages/web-v2/src',
+    'packages/web-v2/tests',
+    'packages/contracts/src',
+    'packages/contracts/tests',
+  ],
+  testFileSuffixes: ['.test.ts', '.test.tsx'],
+  minAssertions: 20,
+  declarationRatio: 0.5,
+  mockRatio: 0.7,
+  declarationPattern:
+    '\\.(columnType|notNull|hasDefault|primary|isUnique|dataType|foreignKeys|indexes)\\b|withTimezone\\(|names\\.sort\\(\\)',
+  mockPattern: 'toHaveBeenCalled[A-Za-z]*\\(',
+  assertPattern: 'expect\\(',
+};
 
-// cm:why `.onDelete` is deliberately absent — cascade-vs-restrict decides whether deleting a parent destroys child rows, which the declaration does not make obvious and a bug here loses data
-const DECLARATION_RE =
-  /\.(columnType|notNull|hasDefault|primary|isUnique|dataType|foreignKeys|indexes)\b|withTimezone\(|names\.sort\(\)/g;
-const MOCK_RE = /toHaveBeenCalled[A-Za-z]*\(/g;
-const ASSERT_RE = /expect\(/g;
+// cm:guard an unreadable config must abort, never fall back to DEFAULTS. Silently reverting to this repo's own layout is how a consuming repo gets a green run over a scope that does not exist there.
+function loadConfig() {
+  if (!existsSync(CONFIG_PATH)) return { ...DEFAULTS };
+  try {
+    const raw = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'));
+    return { ...DEFAULTS, ...(raw?.checkers?.['test-signal'] ?? {}) };
+  } catch (err) {
+    console.error(`check-test-signal: ${CONFIG_PATH} is unreadable — ${err.message}`);
+    process.exit(2);
+  }
+}
+
+const CFG = loadConfig();
+const DECLARATION_RE = new RegExp(CFG.declarationPattern, 'g');
+const MOCK_RE = new RegExp(CFG.mockPattern, 'g');
+const ASSERT_RE = new RegExp(CFG.assertPattern, 'g');
 
 function countMatches(text, re) {
   return (text.match(re) ?? []).length;
@@ -50,17 +79,17 @@ export function scoreFile(text) {
 
 /** @returns {string[]} reasons this file trips, empty when clean */
 export function violationsFor(score) {
-  if (score.assertions < MIN_ASSERTIONS) return [];
+  if (score.assertions < CFG.minAssertions) return [];
   const reasons = [];
   const decl = score.declaration / score.assertions;
   const mock = score.mock / score.assertions;
-  if (decl >= DECLARATION_RATIO) {
+  if (decl >= CFG.declarationRatio) {
     reasons.push(
       `${Math.round(decl * 100)}% of assertions restate a declaration ` +
         `(${score.declaration}/${score.assertions}) — these fail on intended change, never on a bug`,
     );
   }
-  if (mock >= MOCK_RATIO) {
+  if (mock >= CFG.mockRatio) {
     reasons.push(
       `${Math.round(mock * 100)}% of assertions only check that a mock was called ` +
         `(${score.mock}/${score.assertions}) — asserts wiring, not behaviour`,
@@ -69,33 +98,35 @@ export function violationsFor(score) {
   return reasons;
 }
 
+function isTestFile(path) {
+  return CFG.testFileSuffixes.some((s) => path.endsWith(s));
+}
+
 function walk(dir, out) {
   if (!existsSync(dir)) return out;
   for (const entry of readdirSync(dir)) {
     if (entry === 'node_modules' || entry === 'dist' || entry.startsWith('.')) continue;
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) walk(full, out);
-    else if (full.endsWith('.test.ts') || full.endsWith('.test.tsx')) out.push(full);
+    else if (isTestFile(full)) out.push(full);
   }
   return out;
 }
 
 function collectAll() {
   const files = [];
-  for (const pkg of ['core', 'web-v2', 'dev', 'contracts']) {
-    walk(join(ROOT, 'packages', pkg, 'src'), files);
-    walk(join(ROOT, 'packages', pkg, 'tests'), files);
-  }
+  for (const root of CFG.scanRoots) walk(join(ROOT, root), files);
   return files;
 }
 
 function collectStaged() {
   const out = execFileSync('git', ['diff', '--cached', '--name-only', '--diff-filter=ACM'], {
+    cwd: ROOT,
     encoding: 'utf8',
   });
   return out
     .split('\n')
-    .filter((f) => f.endsWith('.test.ts') || f.endsWith('.test.tsx'))
+    .filter(isTestFile)
     .map((f) => join(ROOT, f))
     .filter((f) => existsSync(f));
 }
@@ -116,6 +147,14 @@ if (!['--all', '--staged', '--update-baseline'].includes(mode)) {
 }
 
 const files = mode === '--staged' ? collectStaged() : collectAll();
+// cm:guard `--all` finding zero test files means scanRoots point nowhere, not that the repo has no tests. Reporting clean there is the fail-open shape every checker in this repo exits 2 on; `--staged` may legitimately be empty.
+if (mode !== '--staged' && files.length === 0) {
+  console.error(
+    `check-test-signal: no test files under ${CFG.scanRoots.join(', ')} — check ` +
+      'checkers.test-signal.scanRoots in .forge/conformance.json',
+  );
+  process.exit(2);
+}
 const baseline = loadBaseline();
 const current = {};
 const failures = [];
@@ -130,8 +169,7 @@ for (const file of files) {
 
   const was = baseline[rel];
   // cm:guard a baselined file may only IMPROVE — equal counts pass, higher counts fail.
-  const worse =
-    !was || score.declaration > was.declaration || score.mock > was.mock;
+  const worse = !was || score.declaration > was.declaration || score.mock > was.mock;
   if (worse) failures.push({ rel, reasons, was, score });
 }
 

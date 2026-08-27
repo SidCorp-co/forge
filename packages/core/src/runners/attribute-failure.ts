@@ -15,19 +15,46 @@ import { db } from '../db/client.js';
 import { runners } from '../db/schema.js';
 import { logger } from '../logger.js';
 
+const PREFLIGHT_PREFIX = 'preflight_failed:';
+
+/** Job error the ack hop writes when no runner ever claimed the dispatch. */
+// cm:edge contract -> packages/core/src/jobs/loop-monitor.ts — this is `reapAckMisses`'s `cfg.error`, persisted verbatim to `jobs.error`; the two spellings must match or a no-ack box stops being attributable and quarantine goes blind again
+export const NO_ACK_ERROR = 'dispatch_unclaimed';
+
+const NO_ACK_SUMMARY =
+  'dispatch_unclaimed: accepted the dispatch and never claimed it (no ack, zero job events)';
+
+/** A failure the BOX owns, as opposed to one the agent's work produced. */
+export interface BoxFault {
+  /** What two failures must SHARE to count as the same fault repeating. */
+  key: string;
+  /** What `runners.lastError` should read while this fault stands. */
+  summary: string;
+}
+
 /**
- * Failure text the RUNNER produced about its own environment, as opposed to the
- * agent's work. The runner emits `preflight_failed: <check>: <detail>` before
- * any agent starts (runner daemon/preflight.rs), so the prefix is a reliable
- * box-scoped marker.
+ * Classify a job failure as box-scoped, or null when the box does not own it.
+ *
+ * Two classes qualify, and they are deliberately not interchangeable:
+ * `preflight_failed: <check>` is the runner reporting on its own environment
+ * before any agent starts (runner daemon/preflight.rs), keyed per check;
+ * `dispatch_unclaimed` is the runner accepting work and never starting it.
  */
-export function isBoxAttributable(error: string | null | undefined): boolean {
-  return typeof error === 'string' && error.trimStart().startsWith('preflight_failed:');
+// cm:guard `session_lost` MUST NOT be added here — an agent session that started and then died can die from the agent's OWN work (OOM, a prompt that wedges the CLI), and every consumer of a BoxFault says something about the BOX. `dispatch_unclaimed` is safe precisely because the ack hop's predicate proves zero job events and no ack, which no agent behaviour can produce.
+export function classifyBoxFault(error: string | null | undefined): BoxFault | null {
+  if (typeof error !== 'string') return null;
+  const text = error.trim();
+  if (text.startsWith(PREFLIGHT_PREFIX)) {
+    const check = text.slice(PREFLIGHT_PREFIX.length).split(':')[0]?.trim();
+    return check ? { key: `${PREFLIGHT_PREFIX} ${check}`, summary: summarize(text) } : null;
+  }
+  if (text === NO_ACK_ERROR) return { key: NO_ACK_ERROR, summary: NO_ACK_SUMMARY };
+  return null;
 }
 
 /** Trim to the column's useful width; the full text stays on the job row. */
-export function summarizeRunnerError(error: string): string {
-  return error.trim().slice(0, 500);
+function summarize(error: string): string {
+  return error.slice(0, 500);
 }
 
 /**
@@ -39,11 +66,12 @@ export async function attributeFailureToRunner(
   runnerId: string | null | undefined,
   error: string | null | undefined,
 ): Promise<boolean> {
-  if (!runnerId || !isBoxAttributable(error)) return false;
+  const fault = classifyBoxFault(error);
+  if (!runnerId || !fault) return false;
   try {
     await db
       .update(runners)
-      .set({ lastError: summarizeRunnerError(error as string), updatedAt: new Date() })
+      .set({ lastError: fault.summary, updatedAt: new Date() })
       .where(eq(runners.id, runnerId));
     logger.warn({ runnerId, error }, 'runner: box-scoped failure attributed');
     return true;

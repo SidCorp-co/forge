@@ -3,10 +3,10 @@
  * jobs from the `job_events` core already stores.
  *
  * The `forge-runner` CLI streams every raw Claude stream-json line as a
- * `stdout` job_event (and `claudeSessionId` as a `progress` event) but, unlike
- * the desktop app, never PATCHes the linked `agent_sessions` row — it can't,
- * because that route is user-JWT-gated and the runner holds only a device
- * token. So the session-detail page is empty for CLI-run jobs.
+ * `stdout` job_event (and `claudeSessionId` as a `progress` event) but never
+ * PATCHes the linked `agent_sessions` row — it can't, because that route is
+ * user-JWT-gated and the runner holds only a device token. So the
+ * session-detail page is empty for CLI-run jobs.
  *
  * Instead of a new device write-path + a Rust parser port, we derive the
  * transcript server-side on the device-authed paths core already owns: the
@@ -26,8 +26,6 @@ import { agentSessions, jobEvents } from '../db/schema.js';
 import { buildSessionFromEvents } from '../lib/agent-stream-parser.js';
 import { logger } from '../logger.js';
 
-// cm:edge lockstep -> packages/dev/src/lib/session-tracker.ts#SessionTracker — these two thresholds
-//   mirror the desktop tracker's; diverge and the same run flushes at two different cadences per client
 const INCREMENTAL_FLUSH_INTERVAL_MS = 30_000;
 const INCREMENTAL_FLUSH_STDOUT_THRESHOLD = 8;
 

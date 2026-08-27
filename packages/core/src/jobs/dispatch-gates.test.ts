@@ -24,6 +24,8 @@ vi.mock('../logger.js', () => ({
 
 const {
   assertDispatchable,
+  freshRunnerAvailability,
+  gateReasonsForQueuedJobs,
   checkLayer4RunnerFull,
   checkLayer5RunnerHeartbeat,
   pickNextDispatchableJobForProject,
@@ -85,6 +87,18 @@ function mockProjectAgentConfigOnce(value: Record<string, unknown> | null): void
   selectChainOnce(value ? [{ agentConfig: value }] : []);
 }
 
+// cm:why the cap read and the CASE row are queued ONLY when `job` is non-null, mirroring the asserter's short-circuit to not_found — queueing them unconditionally leaves two stubs unconsumed, and vitest carries a `mockResolvedValueOnce` queue across tests
+function mockAssertChain(opts: {
+  job: { projectId: string } | null;
+  cap?: Record<string, unknown> | null;
+  caseResult: { reason: string | null } | null | undefined;
+}): void {
+  selectChainOnce(opts.job ? [opts.job] : []);
+  if (!opts.job) return;
+  selectChainOnce(opts.cap ? [{ agentConfig: opts.cap }] : []);
+  dbExecute.mockResolvedValueOnce(opts.caseResult ? [opts.caseResult] : []);
+}
+
 describe('checkLayer4RunnerFull', () => {
   function runnerCapsOnce(
     value: { type: string; capabilities: Record<string, unknown> } | null,
@@ -129,6 +143,16 @@ describe('checkLayer4RunnerFull', () => {
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
     expect(text).toMatch(/LEFT\s+JOIN\s+pipeline_runs\s+pr\s+ON\s+pr\.id\s*=\s*j\.pipeline_run_id/);
     expect(text).toMatch(/pr\.status\s+IN\s*\(\s*'running'\s*,\s*'paused'\s*\)/);
+  });
+
+  // cm:guard the runner cap counts only jobs that occupy a runner, so `held` must stay out of it (RFC 0002) — a held job has released its slot and may wait for hours, and counting it would let one stalled job exhaust a cap=1 runner for the whole project
+  it('does not count `held` toward the runner cap (RFC 0002)', async () => {
+    runnerCapsOnce({ type: 'claude-code', capabilities: {} });
+    dbExecute.mockResolvedValueOnce([{ count: '0' }]);
+    await checkLayer4RunnerFull('r1');
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+    expect(text).toMatch(/j\.status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*\)/);
+    expect(text).not.toContain("'held'");
   });
 });
 
@@ -219,7 +243,9 @@ describe('pickNextDispatchableJobForProject', () => {
     expect(text).toMatch(/FROM\s+agent_sessions\s+s/);
     expect(text).toMatch(/s\.metadata->>'issueId'/);
     expect(text).toMatch(/FROM\s+jobs\s+other/);
-    expect(text).toMatch(/other\.status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*\)/);
+    expect(text).toMatch(
+      /other\.status\s+IN\s*\(\s*'dispatched'\s*,\s*'running'\s*,\s*'held'\s*\)/,
+    );
 
     // L2 — git-aware (ISS-232). Replaces the prior status-based check with
     // `merged_at IS NULL` so the gate defers to the state-machine writer
@@ -424,6 +450,33 @@ describe('pickNextDispatchableJobForProject', () => {
   });
 });
 
+describe('the `held` asymmetry (RFC 0002)', () => {
+  // cm:guard assert all three arms together, never one alone — `held` in `issueBusyJob` only stops a duplicate job for the same issue, while `held` absent from `running_ids` and `runner_load` is the entire reason it may wait indefinitely; add it to either CTE and one held job wedges the whole project, which is the `waiting` park RFC 0002 deletes, moved one axis down
+  it('sits in L1 issue_busy but in NEITHER running_ids NOR runner_load', async () => {
+    mockProjectAgentConfigOnce(null);
+    dbExecute.mockResolvedValueOnce([]);
+    await pickNextDispatchableJobForProject('p1');
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+
+    const issueBusy = text.match(
+      /FROM\s+jobs\s+other[\s\S]*?other\.status\s+IN\s*\(([^)]*)\)/,
+    )?.[1];
+    const runningIds = text.match(/running_ids\s+AS\s*\(([\s\S]*?)\)\s*,/)?.[1];
+    const runnerLoad = text.match(/runner_load\s+AS\s*\(([\s\S]*?)\)\s*,/)?.[1];
+
+    // cm:guard keep these five positive assertions — a regex that stopped matching leaves the slice `undefined`, and every `not.toContain` below then passes on nothing, so the test would go green precisely when the SQL it guards was rewritten
+    expect(issueBusy).toBeTruthy();
+    expect(runningIds).toBeTruthy();
+    expect(runnerLoad).toBeTruthy();
+    expect(runningIds).toContain("'dispatched'");
+    expect(runnerLoad).toContain("'dispatched'");
+
+    expect(issueBusy).toContain("'held'");
+    expect(runningIds).not.toContain("'held'");
+    expect(runnerLoad).not.toContain("'held'");
+  });
+});
+
 describe('hasNonTerminalPriorSession', () => {
   it('returns false when no non-terminal sessions match the issue', async () => {
     dbExecute.mockResolvedValueOnce([]);
@@ -513,28 +566,6 @@ describe('checkLayer5RunnerHeartbeat', () => {
 // pg-boss-direct path (`handleDispatch` / `handlePmDispatch`) enforces the
 // same invariants the picker does on every tick.
 describe('assertDispatchable', () => {
-  function mockAssertChain(opts: {
-    job: { projectId: string } | null;
-    /** `agent_config` row `resolveProjectCap` should read for this assert
-     *  (e.g. `{ pipelineConfig: { maxConcurrentIssues: 3 } }`), or null to
-     *  simulate a missing project → DEFAULT cap. Only consulted when `job`
-     *  is non-null (the asserter short-circuits to not_found otherwise). */
-    cap?: Record<string, unknown> | null;
-    caseResult: { reason: string | null } | null | undefined;
-  }): void {
-    // 1) jobs lookup → returns [job] or []
-    selectChainOnce(opts.job ? [opts.job] : []);
-    if (opts.job) {
-      // 2) resolveProjectCap → reads projects.agent_config. Queued only when a
-      // job exists, mirroring the asserter's short-circuit on a missing job.
-      selectChainOnce(opts.cap ? [{ agentConfig: opts.cap }] : []);
-      // 3) the CASE-driven SQL — returns 0 or 1 row.
-      const rows =
-        opts.caseResult === undefined ? [] : opts.caseResult === null ? [] : [opts.caseResult];
-      dbExecute.mockResolvedValueOnce(rows);
-    }
-  }
-
   it('returns not_found when the job row is missing', async () => {
     mockAssertChain({ job: null, caseResult: undefined });
     const r = await assertDispatchable('missing');
@@ -583,7 +614,10 @@ describe('assertDispatchable', () => {
     expect(text).not.toMatch(/'manual_hold'/);
     expect(text).toMatch(/'retry_cooldown'/);
     expect(text).toMatch(/'issue_busy'/);
+    expect(text).toMatch(/'stale_trigger'/);
     expect(text).toMatch(/'blocked_by'/);
+    // cm:why asserting the ABSENCE of `release_decompose_pending` is the only way this stays fixed — it sat in `GateSkipReason` for months naming an arm the CASE never had, and `assertDispatchable` casts the raw reason into that union, so tsc cannot tell a member from a fiction
+    expect(text).not.toMatch(/'release_decompose_pending'/);
     expect(text).toMatch(/'decompose_children_pending'/);
     expect(text).toMatch(/'project_cap'/);
     expect(text).toMatch(/'runner_stale'/);
@@ -678,6 +712,7 @@ describe('assertDispatchable', () => {
     const predicateSignatures = [
       /FROM\s+agent_sessions\s+s/, // issueBusySession
       /FROM\s+jobs\s+other/, // issueBusyJob
+      /payload->>'stageStatus'/,
       /d\.kind\s*=\s*'blocks'/, // blockedBy
       /d2\.kind\s*=\s*'decomposes'/, // decomposeChildrenPending
     ];
@@ -708,5 +743,69 @@ describe('assertDispatchable', () => {
     );
     const matches = src.match(/running_ids\s+AS\s*\(/g) ?? [];
     expect(matches.length).toBe(1);
+  });
+});
+
+// cm:guard this and `assertDispatchable` MUST take their CASE from the one builder — the arm ORDER is the answer they return, so two copies report a different "most specific reason" for the same job and the surfaces that read them start contradicting each other
+describe('gateReasonsForQueuedJobs', () => {
+  it('maps only the gated jobs, leaving dispatchable ones out', async () => {
+    selectChainOnce([{ agentConfig: { pipelineConfig: { maxConcurrentIssues: 1 } } }]);
+    dbExecute.mockResolvedValueOnce([
+      { id: 'j1', reason: 'blocked_by' },
+      { id: 'j2', reason: null },
+      { id: 'j3', reason: 'runner_stale' },
+    ]);
+
+    const gates = await gateReasonsForQueuedJobs('p1');
+
+    expect(gates.get('j1')).toBe('blocked_by');
+    expect(gates.get('j3')).toBe('runner_stale');
+    expect(gates.has('j2')).toBe(false);
+    expect(gates.size).toBe(2);
+  });
+
+  it('returns an empty map when the project has no queued jobs', async () => {
+    selectChainOnce([{ agentConfig: null }]);
+    dbExecute.mockResolvedValueOnce([]);
+
+    expect((await gateReasonsForQueuedJobs('p1')).size).toBe(0);
+  });
+
+  // cm:guard the batch query must stay scoped to `status='queued'` — a dispatched or running job has no gate to report, and including one would label live work with the reason it passed on its way out of the queue
+  it('scopes the scan to the project and to queued jobs', async () => {
+    selectChainOnce([{ agentConfig: null }]);
+    dbExecute.mockResolvedValueOnce([]);
+
+    await gateReasonsForQueuedJobs('proj-x');
+
+    const rendered = JSON.stringify(dbExecute.mock.calls.at(-1)?.[0]);
+    expect(rendered).toContain('proj-x');
+    expect(rendered).toContain('queued');
+  });
+});
+
+describe('freshRunnerAvailability', () => {
+  it('returns the picker’s own two counts', async () => {
+    dbExecute.mockResolvedValueOnce([{ total: 3, with_capacity: 1 }]);
+
+    expect(await freshRunnerAvailability('p1')).toEqual({ total: 3, withCapacity: 1 });
+  });
+
+  // cm:guard an empty pool must read as 0/0, never as an absent row the caller coerces to "available" — pipelineHealth turns total>0 into "waiting for a slot" and total===0 into "no runner is online", opposite verdicts
+  it('reads an empty result as no runners at all', async () => {
+    dbExecute.mockResolvedValueOnce([]);
+
+    expect(await freshRunnerAvailability('p1')).toEqual({ total: 0, withCapacity: 0 });
+  });
+
+  // cm:guard it must read `fresh_capable_runners`, not a local copy of the availability WHERE — a second copy is how pipelineHealth came to disagree with the gate and report nothing for 11 jobs stuck behind dead runners
+  it('counts from the barrier builder’s CTE, scoped to the project', async () => {
+    dbExecute.mockResolvedValueOnce([{ total: 0, with_capacity: 0 }]);
+
+    await freshRunnerAvailability('proj-y');
+
+    const rendered = JSON.stringify(dbExecute.mock.calls.at(-1)?.[0]);
+    expect(rendered).toContain('fresh_capable_runners');
+    expect(rendered).toContain('proj-y');
   });
 });

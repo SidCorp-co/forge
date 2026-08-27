@@ -202,7 +202,7 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     expect(rows[0]?.resolved_at).toBeNull();
   });
 
-  // cm:guard an acknowledged (read) active alert MUST still be resolved on the healthy pass — otherwise resolved_at stays NULL, the partial unique index keeps blocking, and a later recurrence is silently dropped (ISS-652 review blocker: resolveNotifications includeRead)
+  // cm:guard an acknowledged (read) active alert MUST still be resolved on the healthy pass — otherwise resolved_at stays NULL, the partial unique index keeps blocking, and a later recurrence is silently dropped (ISS-652 review blocker; resolveNotifications matches on resolved_at IS NULL, not read = false)
   it('resolves an acknowledged alert on the healthy pass so a recurrence re-fires', async () => {
     await seedAdmin();
     const { jobId } = await seedOrphan();

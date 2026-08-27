@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import type { Actor } from './activity.js';
 import { assertHookDelivered, hooks } from './hooks.js';
 import { emitPipelineWedge } from './wedge.js';
@@ -95,6 +95,7 @@ async function claimBatch(): Promise<OutboxRow[]> {
   `);
 }
 
+// cm:flow dispatch/outbox after:transition — claims the row the trigger wrote and re-emits it on the hooks bus, out of band from the transaction that produced it
 export async function drainOutboxOnce(): Promise<{ processed: number; failed: number }> {
   let processed = 0;
   let failed = 0;

@@ -40,9 +40,9 @@ vi.mock('../db/client.js', () => {
 
 // ISS-411 — observe the operator-cancel → issue `on_hold` park without the
 // real state-machine. parkIssueOnCancel is best-effort, so the spy resolves.
-const applyStatusTransitionSpy = vi.fn(async (..._args: unknown[]) => undefined);
+const transitionIssueStatusSpy = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../issues/apply-transition.js', () => ({
-  applyStatusTransition: (...args: unknown[]) => applyStatusTransitionSpy(...args),
+  transitionIssueStatus: (...args: unknown[]) => transitionIssueStatusSpy(...args),
 }));
 
 const publishSpy = vi.fn();
@@ -246,19 +246,55 @@ describe('cancelPipelineRun', () => {
       },
     ]);
 
-    await cancelPipelineRun(RUN_ID);
+    const result = await cancelPipelineRun(RUN_ID);
 
-    expect(applyStatusTransitionSpy).toHaveBeenCalledTimes(1);
-    const [issueArg, toStatus, deviceArg, opts] = applyStatusTransitionSpy.mock.calls[0] as [
+    expect(result.issueParked).toBe(true);
+    expect(transitionIssueStatusSpy).toHaveBeenCalledTimes(1);
+    const [issueArg, toStatus, actorArg, opts] = transitionIssueStatusSpy.mock.calls[0] as [
       { id: string; status: string },
       string,
-      { id: string; ownerId: string },
+      { type: string; id: string; ownerId?: string },
       { skip?: boolean },
     ];
     expect(issueArg).toMatchObject({ id: ISSUE_ID, status: 'in_progress' });
     expect(toStatus).toBe('on_hold');
-    expect(deviceArg).toMatchObject({ id: 'owner-1', ownerId: 'owner-1' });
+    expect(actorArg).toMatchObject({ type: 'device', id: 'owner-1', ownerId: 'owner-1' });
     expect(opts).toMatchObject({ skip: true });
+  });
+
+  // cm:guard the park must be attributed to the caller, not to `projects.createdBy` — a device actor stamps `isAi: true` and the interventions metric (VISION §1 ②) counts only user-actor transitions, so a park recorded as a device is an intervention nobody can measure
+  it('attributes the park to the human who cancelled, not to the project creator', async () => {
+    updateReturning.mockResolvedValueOnce([runRow('cancelled', { finishedAt: new Date() })]);
+    updateReturning.mockResolvedValueOnce([]);
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: ISSUE_ID,
+        projectId: PROJECT_ID,
+        status: 'in_progress',
+        reopenCount: 0,
+        createdBy: 'owner-1',
+      },
+    ]);
+
+    await cancelPipelineRun(RUN_ID, { actorUserId: 'human-7' });
+
+    const [, , actorArg] = transitionIssueStatusSpy.mock.calls[0] as [
+      unknown,
+      string,
+      { type: string; id: string },
+    ];
+    expect(actorArg).toEqual({ type: 'user', id: 'human-7' });
+  });
+
+  // cm:guard `parkIssue: false` is the "kill this run so a clean one starts" intent — leaving the issue actionable IS the point there, so this must never be "fixed" by parking anyway (the replacement run within seconds is the requested outcome, not the ISS-411 bug)
+  it('leaves the issue alone when the caller asks for a clean restart', async () => {
+    updateReturning.mockResolvedValueOnce([runRow('cancelled', { finishedAt: new Date() })]);
+    updateReturning.mockResolvedValueOnce([]);
+
+    const result = await cancelPipelineRun(RUN_ID, { parkIssue: false });
+
+    expect(result.issueParked).toBe(false);
+    expect(transitionIssueStatusSpy).not.toHaveBeenCalled();
   });
 
   it('does NOT re-park an issue already on_hold/terminal on cancel', async () => {
@@ -276,7 +312,7 @@ describe('cancelPipelineRun', () => {
 
     await cancelPipelineRun(RUN_ID);
 
-    expect(applyStatusTransitionSpy).not.toHaveBeenCalled();
+    expect(transitionIssueStatusSpy).not.toHaveBeenCalled();
   });
 
   it('does NOT park for a non-issue (pm/interactive/system) run', async () => {
@@ -287,6 +323,6 @@ describe('cancelPipelineRun', () => {
 
     await cancelPipelineRun(RUN_ID);
 
-    expect(applyStatusTransitionSpy).not.toHaveBeenCalled();
+    expect(transitionIssueStatusSpy).not.toHaveBeenCalled();
   });
 });

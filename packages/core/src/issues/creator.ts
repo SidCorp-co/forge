@@ -1,4 +1,4 @@
-import { type SQL, and, inArray, isNotNull, isNull, notInArray, or, sql } from 'drizzle-orm';
+import { and, inArray, isNotNull, isNull, notInArray, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, users } from '../db/schema.js';
 

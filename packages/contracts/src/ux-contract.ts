@@ -46,6 +46,8 @@ export interface UxContractRule {
 	source: UxRuleSource;
 	status: UxRuleStatus;
 	evidenceIssueIds: string[];
+	/** Set on a `proposed` rule that replaces another: approving it retires the target. */
+	supersedesRuleId: string | null;
 	orderIndex: number;
 	createdAt: string;
 	updatedAt: string;
@@ -83,4 +85,58 @@ export interface UxContractRulePatch {
 	source?: UxRuleSource;
 	status?: UxRuleStatus;
 	orderIndex?: number;
+}
+
+export type UxImproverCandidateKind = "add" | "strengthen" | "retire";
+
+/** Why the improver declined to propose something it clustered. */
+export type UxImproverRefusalReason =
+	| "one-off"
+	| "already-covered"
+	| "already-proposed";
+
+export interface UxImproverCandidate {
+	/** Stable within a report; what `propose` selects by. */
+	key: string;
+	kind: UxImproverCandidateKind;
+	group: UxRuleGroup;
+	text: string;
+	severity: UxRuleSeverity;
+	/** `strengthen`: the active rule to replace. `retire`: the stale proposal to withdraw. */
+	targetRuleId: string | null;
+	evidenceIssueIds: string[];
+	findingIds: string[];
+	distinctIssueCount: number;
+	occurrences: number;
+	rationale: string;
+}
+
+export interface UxImproverRefusal {
+	kind: UxImproverCandidateKind;
+	reason: UxImproverRefusalReason;
+	detail: string;
+	sample: string;
+	distinctIssueCount: number;
+	/** `already-proposed`: the inbox row this gap belongs to. `propose` unions the evidence below onto it. */
+	targetRuleId: string | null;
+	evidenceIssueIds: string[];
+}
+
+export interface UxImproverReport {
+	findingsConsidered: number;
+	clusters: number;
+	candidates: UxImproverCandidate[];
+	refused: UxImproverRefusal[];
+	thresholds: {
+		lookbackDays: number;
+		minRecurrenceIssues: number;
+		similarityThreshold: number;
+		staleProposalDays: number;
+	};
+}
+
+export interface UxImproverProposalOutcome {
+	key: string;
+	action: "proposed" | "evidence-refreshed" | "retired" | "unmatched";
+	ruleId: string | null;
 }

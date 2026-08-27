@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildCommentTree,
   type CommentAttachmentLite,
   type CommentRow,
-  buildCommentTree,
   walkCommentTree,
 } from './tree.js';
 

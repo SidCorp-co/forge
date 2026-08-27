@@ -22,22 +22,16 @@ vi.mock('../db/client.js', () => ({
   db: { select: vi.fn(), execute: vi.fn() },
 }));
 
-const {
-  classifyPipelineHealthForIssue,
-  classifyWaitingCause,
-  recordTickAt,
-  getLastTickAt,
-  resetLastTickAtForTest,
-} = await import('./pipeline-health.js');
+const { classifyPipelineHealthForIssue, recordTickAt, getLastTickAt, resetLastTickAtForTest } =
+  await import('./pipeline-health.js');
 type ClassifyInput = import('./pipeline-health.js').ClassifyInput;
-type PipelineHealthLatestRun = import('./pipeline-health.js').PipelineHealthLatestRun;
 
 const QUEUED_AT = new Date('2026-05-17T08:00:00.000Z');
 const TICK_AT = new Date('2026-05-17T08:01:00.000Z');
 
 function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
   return {
-    issue: { id: 'iss-1', status: 'approved', mergedAt: null },
+    issue: { id: 'iss-1', status: 'approved', mergedAt: null, waitingKind: null },
     sessions: [],
     jobs: [],
     deps: [],
@@ -47,8 +41,8 @@ function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
     cap: 5,
     baseStampable: true,
     runnerInFlight: new Map(),
+    runnerPool: { total: 1, withCapacity: 1 },
     lastTickAt: null,
-    latestRun: null,
     ...over,
   };
 }
@@ -61,6 +55,9 @@ function job(
     queuedAt: Date;
     runnerId: string | null;
     agentSessionId: string | null;
+    pipelineRunStatus: string | null;
+    stageStatus: string | null;
+    retryAfterAt: Date | null;
   }> = {},
 ) {
   return {
@@ -70,6 +67,9 @@ function job(
     queuedAt: over.queuedAt ?? QUEUED_AT,
     runnerId: over.runnerId ?? null,
     agentSessionId: over.agentSessionId ?? null,
+    pipelineRunStatus: over.pipelineRunStatus ?? 'running',
+    stageStatus: over.stageStatus ?? null,
+    retryAfterAt: over.retryAfterAt ?? null,
   };
 }
 
@@ -120,6 +120,25 @@ describe('classifyPipelineHealthForIssue', () => {
     const out = classifyPipelineHealthForIssue(baseInput({ jobs: [dispatched, queued] }));
     expect(out.waitingOn?.reason).toBe('issue_busy');
     expect(out.waitingOn?.details.blockingJobId).toBe('job-dispatched');
+  });
+
+  // cm:guard `job_held` must OUTRANK issue_busy for a held sibling (RFC 0002) — both are true, but only job_held names the machine condition and tells the reader no action is needed; reporting issue_busy instead sends them looking for an active run that does not exist
+  it('reports job_held, not issue_busy, when the sibling blocking a queued job is held', () => {
+    const held = job({ id: 'job-held', status: 'held', type: 'code' });
+    const queued = job({ id: 'job-queued', type: 'review' });
+    const out = classifyPipelineHealthForIssue(baseInput({ jobs: [held, queued] }));
+    expect(out.waitingOn?.reason).toBe('job_held');
+    expect(out.waitingOn?.details.heldJobId).toBe('job-held');
+  });
+
+  // cm:guard a held job with NO queued sibling is the common case and the one the old code reported as nothing at all — keep this test even though it looks like a duplicate of the one above; they exercise opposite sides of the `queuedJobs.length === 0` return
+  it("reports job_held when the held job is the issue's only job", () => {
+    const held = job({ id: 'job-solo', status: 'held', type: 'code' });
+    const out = classifyPipelineHealthForIssue(
+      baseInput({ jobs: [{ ...held, failureReason: 'all_devices_exhausted' }] }),
+    );
+    expect(out.waitingOn?.reason).toBe('job_held');
+    expect(out.waitingOn?.details.holdReason).toBe('all_devices_exhausted');
   });
 
   it('classifies waiting_on_dep for an unmerged blocks parent', () => {
@@ -267,154 +286,89 @@ describe('classifyPipelineHealthForIssue', () => {
   });
 });
 
-function run(over: Partial<PipelineHealthLatestRun> = {}): PipelineHealthLatestRun {
-  return {
-    id: over.id ?? 'run-1',
-    status: over.status ?? 'paused',
-    pauseReason: over.pauseReason ?? null,
-  };
-}
+describe('classifyPipelineHealthForIssue — the two gates that never clear themselves', () => {
+  // cm:guard these four are the regression suite for the two blind spots — a paused parent run and an empty runner pool both reported NO waitingOn at all, which is indistinguishable from a healthy issue awaiting its turn; that silence is what let ISS-576/ISS-652 sit paused for 3 days
+  it.each(['paused', 'cancelled', 'failed', 'completed'])(
+    'classifies run_not_running when the parent run is %s',
+    (runStatus) => {
+      const out = classifyPipelineHealthForIssue(
+        baseInput({ jobs: [job({ pipelineRunStatus: runStatus })] }),
+      );
+      expect(out.waitingOn?.reason).toBe('run_not_running');
+      expect(out.waitingOn?.details).toEqual({ runStatus, queuedJobId: 'job-1' });
+    },
+  );
 
-describe('classifyWaitingCause (ISS-828)', () => {
-  it('reopen_cap: paused run with a `reopen_cap:` pause reason', () => {
-    expect(
-      classifyWaitingCause({
-        mergedAt: null,
-        decompChildCount: 0,
-        latestRun: run({ pauseReason: 'reopen_cap:developed' }),
+  it('reports run_not_running ahead of every other queued gate', () => {
+    const out = classifyPipelineHealthForIssue(
+      baseInput({
+        cap: 1,
+        runningIssueIds: new Set(['iss-other']),
+        runningIssueCount: 1,
+        runnerPool: { total: 0, withCapacity: 0 },
+        deps: [
+          { fromIssueId: 'iss-blocker', kind: 'blocks', fromStatus: 'open', fromMergedAt: null },
+        ],
+        jobs: [job({ pipelineRunStatus: 'paused' })],
       }),
-    ).toBe('reopen_cap');
-  });
-
-  it('decompose_parent: outgoing decompose edges exist', () => {
-    expect(classifyWaitingCause({ mergedAt: null, decompChildCount: 2, latestRun: null })).toBe(
-      'decompose_parent',
     );
+    expect(out.waitingOn?.reason).toBe('run_not_running');
   });
 
-  it('merged_parked: mergedAt is stamped (stranded / BLOCKED-FIXTURE fold)', () => {
-    expect(
-      classifyWaitingCause({
-        mergedAt: new Date('2026-08-11T00:00:00.000Z'),
-        decompChildCount: 0,
-        latestRun: null,
+  it('classifies runner_stale when no runner is fresh, even with a pinned runner recorded', () => {
+    const out = classifyPipelineHealthForIssue(
+      baseInput({
+        jobs: [job({ runnerId: 'rnr-1' })],
+        runnerInFlight: new Map([['rnr-1', { type: 'claude-code', cap: 1, inFlight: 1 }]]),
+        runnerPool: { total: 0, withCapacity: 0 },
       }),
-    ).toBe('merged_parked');
-  });
-
-  it('retry_exhausted: the run is terminal (finalize-failure closed it)', () => {
-    for (const status of ['completed', 'failed', 'cancelled'] as const) {
-      expect(
-        classifyWaitingCause({ mergedAt: null, decompChildCount: 0, latestRun: run({ status }) }),
-      ).toBe('retry_exhausted');
-    }
-  });
-
-  it('plan_approval: default — no run, or a plain running/paused run', () => {
-    expect(classifyWaitingCause({ mergedAt: null, decompChildCount: 0, latestRun: null })).toBe(
-      'plan_approval',
     );
-    expect(
-      classifyWaitingCause({
-        mergedAt: null,
-        decompChildCount: 0,
-        latestRun: run({ status: 'running' }),
-      }),
-    ).toBe('plan_approval');
-    // A paused run with an unrecognized/absent reason is not `reopen_cap` —
-    // missing_skill/stage_stalled never transition the issue to `waiting` in
-    // the first place (see the `WaitingCause` doc comment), so this is the
-    // safe generic fallback for anything else.
-    expect(
-      classifyWaitingCause({
-        mergedAt: null,
-        decompChildCount: 0,
-        latestRun: run({ pauseReason: null }),
-      }),
-    ).toBe('plan_approval');
+    expect(out.waitingOn?.reason).toBe('runner_stale');
+    expect(out.waitingOn?.details).toEqual({ freshRunners: 0 });
   });
 
-  it('precedence: a paused reopen_cap run wins over decompChildren/merged/terminal', () => {
-    expect(
-      classifyWaitingCause({
-        mergedAt: new Date('2026-08-11T00:00:00.000Z'),
-        decompChildCount: 3,
-        latestRun: run({ pauseReason: 'reopen_cap:developed' }),
-      }),
-    ).toBe('reopen_cap');
-  });
-
-  it('precedence: decompose_parent wins over merged_parked/terminal', () => {
-    expect(
-      classifyWaitingCause({
-        mergedAt: new Date('2026-08-11T00:00:00.000Z'),
-        decompChildCount: 1,
-        latestRun: run({ status: 'failed' }),
-      }),
-    ).toBe('decompose_parent');
-  });
-
-  it('precedence: merged_parked wins over a terminal run', () => {
-    expect(
-      classifyWaitingCause({
-        mergedAt: new Date('2026-08-11T00:00:00.000Z'),
-        decompChildCount: 0,
-        latestRun: run({ status: 'failed' }),
-      }),
-    ).toBe('merged_parked');
+  it('classifies runner_full pool-wide for an unpinned candidate when every runner is busy', () => {
+    const out = classifyPipelineHealthForIssue(
+      baseInput({ jobs: [job()], runnerPool: { total: 2, withCapacity: 0 } }),
+    );
+    expect(out.waitingOn?.reason).toBe('runner_full');
+    expect(out.waitingOn?.details).toEqual({ freshRunners: 2, runnersWithCapacity: 0 });
   });
 });
 
-describe('classifyPipelineHealthForIssue — waitingCause wiring', () => {
-  it('attaches waitingCause only when issue.status is `waiting`', () => {
-    const notWaiting = classifyPipelineHealthForIssue(
-      baseInput({ issue: { id: 'i', status: 'approved', mergedAt: null } }),
-    );
-    expect(notWaiting.waitingCause).toBeUndefined();
-
-    const waiting = classifyPipelineHealthForIssue(
-      baseInput({ issue: { id: 'i', status: 'waiting', mergedAt: null } }),
-    );
-    expect(waiting.waitingCause).toEqual({ kind: 'plan_approval' });
+describe('waitingCause is a pass-through of issues.waiting_kind (RFC 0002 INV-5)', () => {
+  it('reports the authored kind verbatim', () => {
+    for (const kind of ['needs_decision', 'needs_resource'] as const) {
+      const out = classifyPipelineHealthForIssue(
+        baseInput({ issue: { id: 'i', status: 'waiting', mergedAt: null, waitingKind: kind } }),
+      );
+      expect(out.waitingCause).toEqual({ kind });
+    }
   });
 
-  it('reflects the reopen-cap park end to end', () => {
+  // cm:guard the five-way derivation this replaced inferred `merged_parked` from exactly this row shape (waiting + a merged_at) — a re-introduced inference is what put an override button on the wrong park on ISS-163
+  it('reports NO cause when the kind was never authored, whatever else the row says', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({
-        issue: { id: 'i', status: 'waiting', mergedAt: null },
-        latestRun: run({ pauseReason: 'reopen_cap:developed' }),
-      }),
-    );
-    expect(out.waitingCause).toEqual({ kind: 'reopen_cap' });
-  });
-
-  it('reflects a decompose-parent park even with no active run', () => {
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        issue: { id: 'i', status: 'waiting', mergedAt: null },
+        issue: {
+          id: 'i',
+          status: 'waiting',
+          mergedAt: new Date('2026-08-11T00:00:00.000Z'),
+          waitingKind: null,
+        },
         decompChildren: [{ childIssueId: 'child-1', status: 'draft', mergedAt: null }],
       }),
     );
-    expect(out.waitingCause).toEqual({ kind: 'decompose_parent' });
+    expect(out.waitingCause).toBeUndefined();
   });
 
-  it('reflects a merged-but-parked (stranded / BLOCKED-FIXTURE) park', () => {
+  it('drops a stale kind on an issue that is no longer waiting', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({
-        issue: { id: 'i', status: 'waiting', mergedAt: new Date('2026-08-11T00:00:00.000Z') },
+        issue: { id: 'i', status: 'in_progress', mergedAt: null, waitingKind: 'needs_decision' },
       }),
     );
-    expect(out.waitingCause).toEqual({ kind: 'merged_parked' });
-  });
-
-  it('reflects a retry-exhausted park (closed run, no queued jobs)', () => {
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        issue: { id: 'i', status: 'waiting', mergedAt: null },
-        latestRun: run({ status: 'failed', pauseReason: null }),
-      }),
-    );
-    expect(out.waitingCause).toEqual({ kind: 'retry_exhausted' });
+    expect(out.waitingCause).toBeUndefined();
   });
 });
 

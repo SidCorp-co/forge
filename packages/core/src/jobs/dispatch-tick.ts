@@ -26,6 +26,8 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { pickNextDispatchableJobForProject } from './dispatch-gates.js';
 import { handleDispatch } from './dispatcher.js';
+import { releaseHeldJobs } from './hold.js';
+import { discardStaleTriggerJobs } from './stale-trigger.js';
 
 /** Per-project promise tail. */
 const projectLocks = new Map<string, Promise<unknown>>();
@@ -51,6 +53,7 @@ const MAX_DISPATCH_PER_TICK = 50;
  *
  * Always resolves; never rejects (errors are logged, not propagated).
  */
+// cm:flow dispatch/tick after:emit — coalesces every trigger for one project into a single sweep; ~8 call sites fire it with `void`, which is why the harness has to drain it
 export function dispatchTickForProject(
   projectId: string,
   options?: { triggerBlockerIssueId?: string },
@@ -90,6 +93,13 @@ async function runTickInner(projectId: string, triggerBlockerIssueId?: string): 
   // ISS-164 — record per-project dispatcher heartbeat for pipelineHealth.lastTickAt.
   recordTickAt(projectId);
 
+  // cm:guard release BEFORE the picker runs, never after (RFC 0002) — a runner coming back online fires this tick, and a release that landed after the pick would leave the freshly-queued job waiting for the NEXT trigger, which on a quiet project can be the 5-minute backstop
+  try {
+    await releaseHeldJobs(projectId);
+  } catch (err) {
+    logger.warn({ err, projectId }, 'dispatch-tick: hold release failed');
+  }
+
   // ISS-164 — issues with queued work at sweep start; the post-sweep
   // pipelineHealth broadcast unions these with any issues whose jobs we end
   // up dispatching so still-gated rows get a refreshed `lastTickAt`.
@@ -111,6 +121,13 @@ async function runTickInner(projectId: string, triggerBlockerIssueId?: string): 
     for (const r of rows) if (r.issue_id) affectedIssueIds.add(r.issue_id);
   } catch (err) {
     logger.warn({ err, projectId }, 'dispatch-tick: queued-issue pre-snapshot failed');
+  }
+
+  // cm:guard sits AFTER the hold release, AFTER the pre-snapshot, and BEFORE the picker (ISS-789), and all three edges are load-bearing: a job released from hold may have had its trigger move on while it waited; the snapshot must still see the job as `queued` or the discarded job's issue gets no pipelineHealth broadcast and the board keeps showing the reason for a job that no longer exists; and running after the pick would let the picker's own skip hide it for another cycle while `jobs_active_unique` blocks its replacement.
+  try {
+    await discardStaleTriggerJobs(projectId);
+  } catch (err) {
+    logger.warn({ err, projectId }, 'dispatch-tick: stale-trigger discard failed');
   }
 
   try {
@@ -173,4 +190,23 @@ async function runTickInner(projectId: string, triggerBlockerIssueId?: string): 
 /** Test helper — override the debounce window. */
 export function setDispatchTickDebounceMs(ms: number): void {
   debounceMs = ms;
+}
+
+// cm:guard the integration harness MUST await this before dropping a worker database. Every trigger above is fire-and-forget, so a sweep outlives the test that caused it; dropping the database under one produced `database "test_w<N>_<hash>" does not exist` from runTickInner, and vitest attributes that rejection to whichever FILE happens to be running — which is why a docs-only commit could turn core-integration red.
+// cm:edge protocol -> packages/core/tests/helpers/db.ts — cleanup() calls this first; reordering it after client.end() restores the race
+/**
+ * Await every in-flight sweep and settle the lock map.
+ *
+ * A sweep can chain another (dispatch → job complete → re-tick), so this
+ * drains in rounds rather than awaiting a single snapshot. `rounds` bounds it
+ * so a pathological re-tick loop surfaces as a leak rather than hanging the
+ * suite; the residual project ids are returned for the caller to report.
+ */
+export async function quiesceDispatchTicks(rounds = 20): Promise<string[]> {
+  for (let i = 0; i < rounds; i++) {
+    const inflight = [...projectLocks.values()];
+    if (inflight.length === 0) return [];
+    await Promise.allSettled(inflight);
+  }
+  return [...projectLocks.keys()];
 }

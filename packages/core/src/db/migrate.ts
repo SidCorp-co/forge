@@ -2,11 +2,11 @@ import { readFileSync } from 'node:fs';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
-import { Sentry, initSentry } from '../observability/sentry.js';
+import { initSentry, Sentry } from '../observability/sentry.js';
 import {
-  type JournalEntry,
   describeUnrecorded,
-  findUnrecordedMigrations,
+  type JournalEntry,
+  partitionUnrecorded,
   unrecordedSentryEvent,
 } from './migration-audit.js';
 
@@ -32,10 +32,16 @@ try {
   const recorded = await sql<{ created_at: string }[]>`
     SELECT created_at FROM drizzle.__drizzle_migrations
   `;
-  const unrecorded = findUnrecordedMigrations(
+  const { investigated, unexpected } = partitionUnrecorded(
     journal.entries,
     recorded.map((r) => Number(r.created_at)),
   );
+  if (investigated.length > 0) {
+    console.log(
+      `[migrate] ${investigated.length} known-unrecorded migration(s), schema verified, not alarmed: ${investigated.map((m) => m.tag).join(', ')}`,
+    );
+  }
+  const unrecorded = unexpected;
   if (unrecorded.length > 0) {
     console.warn(describeUnrecorded(unrecorded));
     // cm:guard ISS-809 — best-effort: a Sentry failure must never fail container start, so this
@@ -56,7 +62,7 @@ try {
   }
 
   console.log(
-    `[migrate] done — journal ${journal.entries.length}, recorded ${recorded.length}, unrecorded ${unrecorded.length}`,
+    `[migrate] done — journal ${journal.entries.length}, recorded ${recorded.length}, known-unrecorded ${investigated.length}, unexpected ${unrecorded.length}`,
   );
 } catch (err) {
   console.error('[migrate] failed', err);

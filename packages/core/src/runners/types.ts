@@ -56,9 +56,11 @@ export interface DispatchInput {
     type: string;
     payload: unknown;
     dispatchedAt: Date;
+    /** `jobs.attempts` — which try this is. */
+    attempts: number;
     /**
      * Linked `agent_sessions` row id (when the job was created via a pipeline
-     * transition). The desktop runner uses `jobId` as its local session key
+     * transition). The runner uses `jobId` as its local session key
      * but needs `agentSessionId` to PATCH the canonical session row on
      * completion (messages, claudeSessionId, diff). Optional because PM /
      * direct dispatches may not have a linked session yet.

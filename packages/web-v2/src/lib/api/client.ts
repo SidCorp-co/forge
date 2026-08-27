@@ -3,12 +3,10 @@
 // the httpOnly `forge_auth` cookie attached and lets the `/api` + `/ws`
 // rewrites (next.config.ts → E2E_CORE_PROXY_URL) proxy to core. In prod
 // NEXT_PUBLIC_API_URL is set to core's absolute origin at build time.
+import { CORE_URL } from '@/lib/utils/core-url';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
-/** Core base URL without `/api` suffix — used to derive the WS URL. Empty
- *  string for the relative default, which yields a relative `/ws` (resolved
- *  same-origin by the browser + proxied in dev). */
-const CORE_URL = API_URL.replace(/\/api\/?$/, '');
 
 /** WebSocket URL. Prefer `NEXT_PUBLIC_WS_URL`; otherwise derive from the API
  *  URL. With the relative default this resolves to `/ws` (same-origin). */
@@ -85,20 +83,6 @@ export async function apiClient<T>(endpoint: string, options: RequestInit = {}):
   const res = await fetchRaw(endpoint, options);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
-}
-
-/**
- * Resolve a server-relative path (e.g. `/api/attachments/abc/download`) to an
- * absolute URL anchored at the core API origin. Pass-through for absolute URLs
- * and empty input. Use for `<img src>`, `<video src>`, and `<a href>` where
- * `fetch` wrappers aren't involved and the browser would otherwise resolve
- * against the web origin. With the relative default `CORE_URL` is empty, so
- * the path is returned unchanged (already same-origin).
- */
-export function coreFileUrl(path: string): string {
-  if (!path) return path;
-  if (/^https?:\/\//i.test(path)) return path;
-  return `${CORE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
 /** Multipart-aware client. Sends FormData without the JSON Content-Type. */

@@ -15,9 +15,9 @@ import {
   spawnReconcileRun,
 } from '../../skills/reconcile-service.js';
 import {
-  type ContextScopedMcpToolFactory,
   assertPrincipalIsAdmin,
   assertPrincipalIsMember,
+  type ContextScopedMcpToolFactory,
   principalUserId,
   resolveEffectiveProjectId,
   zodToMcpSchema,

@@ -14,13 +14,13 @@ import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
-  type TestDatabase,
-  type TestUser,
   createTestDevice,
   createTestProject,
   createTestProjectMember,
   createTestUser,
   setupTestDatabase,
+  type TestDatabase,
+  type TestUser,
   truncateAll,
 } from '../helpers/index.js';
 
@@ -174,7 +174,8 @@ describe('runner fault flags clear when the fault is over', () => {
       expect(h.last_error).toBeNull();
     });
 
-    it('drops an auth limit and its mirror, which carry no reset time', async () => {
+    // cm:guard this assertion is INVERTED from what it once said, on purpose — it used to demand that a heartbeat DROP the auth limit, which is the bug that let device dev1-ai013 burn 421 jobs in 5.5h (forge-beta 2026-08-14): the stamp was erased ~30s after every failure, so no dispatch gate ever saw it. A heartbeat proves the daemon is alive, never that its OAuth session is valid.
+    it('KEEPS an auth limit — a heartbeat is not evidence the credentials were fixed', async () => {
       const s = await seedRunner({
         lastError: 'API Error: 401 invalid authentication credentials',
         limitReason: 'auth',
@@ -182,8 +183,24 @@ describe('runner fault flags clear when the fault is over', () => {
       });
       await mods.mirrorHeartbeatToRunners(s.deviceId);
       const h = await healthOf(s.runnerId);
-      expect(h.limit_reason).toBeNull();
-      expect(h.last_error).toBeNull();
+      expect(h.limit_reason).toBe('auth');
+      expect(h.last_error).toBe('API Error: 401 invalid authentication credentials');
+    });
+
+    // cm:guard `retire` writes `disabled` and this UPDATE reverted it inside one beat (measured 2026-08-14: retired 08:19:29, back online 08:19:59), which left no MCP-reachable way to take a bad runner out of the pool
+    it('leaves a disabled runner disabled instead of forcing it back online', async () => {
+      const s = await seedRunner({});
+      await harness.db.execute(
+        sql`UPDATE runners SET status = 'disabled' WHERE id = ${s.runnerId}`,
+      );
+
+      const transitions = await mods.mirrorHeartbeatToRunners(s.deviceId);
+
+      const rows = (await harness.db.execute(
+        sql`SELECT status FROM runners WHERE id = ${s.runnerId}`,
+      )) as unknown as { status: string }[];
+      expect(rows[0]?.status).toBe('disabled');
+      expect(transitions.map((t) => t.id)).not.toContain(s.runnerId);
     });
 
     it('leaves an unexpired throttle and its mirror in place', async () => {

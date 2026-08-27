@@ -248,6 +248,37 @@ export const improvementMessages: ImprovementMessage[] = [
     defaultMode: 'propose',
     standing: true,
   },
+  {
+    key: 'ux-contract-improve',
+    title: 'Standing UX-contract improver — learn contract rules from UX findings',
+    message:
+      'The UX improver agent reads the deterministic aggregation of this project’s ' +
+      'ux_findings (forge_ux_improver action=candidates): recurring gap clusters that span ' +
+      'at least 3 distinct issues, each with the evidence issue ids that taught it, plus the ' +
+      'clusters the detector refused and why. It adversarially reviews every candidate — ' +
+      'trying to refute it as a one-off, as already covered by an active rule, or as too ' +
+      'vague to act on — and calls forge_ux_improver action=propose with only the survivors. ' +
+      'Proposals land at status="proposed" for the project-settings inbox; the agent never ' +
+      'activates a rule and never edits the compiled contract prose.',
+    rationale:
+      'The UX Completeness Contract only becomes a LEARNING artifact if the gaps review and ' +
+      'verify-live keep finding actually feed back into it. Without a standing improver, ' +
+      'ux_findings accumulate as a write-only log: the same missing empty-search is flagged ' +
+      'on issue after issue and the contract never gains the rule that would have prevented ' +
+      'it. Counting recurrence is deterministic and lives in core; judging whether a ' +
+      'recurring gap deserves a permanent rule is what this agent adds, and a human still ' +
+      'approves every proposal.',
+    appliesWhen:
+      'The project has a UX Completeness Contract — ux_contract_rules rows and/or a ' +
+      'projectFacts["ux-contract"] fact — AND a frontend surface whose review/verify-live ' +
+      'stages write ux_findings. A project with no findings yet is a no-op run, not an error.',
+    appliesToSkills: ['forge-review', 'forge-verify-live'],
+    category: 'quality',
+    version: 1,
+    recommended: false,
+    defaultMode: 'propose',
+    standing: true,
+  },
 ];
 
 // ── Lookups ───────────────────────────────────────────────────────────────────

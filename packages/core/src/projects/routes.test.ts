@@ -568,6 +568,48 @@ describe('PATCH /api/projects/:id', () => {
     });
   });
 
+  // cm:guard assert on `updateSet`, not on the response — `updateReturning` is mocked, so a body assertion passes even when the handler never maps `kind` into the SET, which is the exact bug that kept the field create-only
+  it('200 kind: reaches the UPDATE, so an existing project can be re-shaped as a storefront', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: 'p1',
+        slug: 'p-one',
+        name: 'P One',
+        orgId: ORG_ID,
+        createdBy: 'uuid-owner',
+        kind: 'website',
+        agentConfig: null,
+        webhookSecret: null,
+        createdAt: new Date(),
+      },
+    ]);
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH',
+      body: JSON.stringify({ kind: 'website' }),
+      token,
+    });
+    expect(res.status).toBe(200);
+    expect(updateSet).toHaveBeenCalledWith({ kind: 'website' });
+  });
+
+  it('400 BAD_REQUEST on an unknown kind, so a typo never turns the git preflight off', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH',
+      body: JSON.stringify({ kind: 'storefront' }),
+      token,
+    });
+    expect(res.status).toBe(400);
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
   it('200 accepts null defaultDeviceId to clear the assignment', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);

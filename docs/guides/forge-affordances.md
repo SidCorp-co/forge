@@ -148,21 +148,41 @@ and leaving the auto-stamp, silently unblocking work that is still blocked.
 
 ---
 
-## A residual you cannot finish here — three homes, no fourth
+## A bug you find while working — fix it, don't file it
 
-**Trigger:** a follow-up, a security residual, or an unanswered policy call that
-you cannot resolve inside the work you are doing.
+**Trigger:** while working an issue you hit a defect, gap or missing check that
+the plan never mentioned.
 
-**Tool / semantics:** exactly one of — an **issue** that passes the four gates ·
-a **`blocks` edge** onto the issue that would otherwise ship without it · a line
-in **`docs/proposals/`** for a decision awaiting sign-off. If none of the three
-fit, say it in a comment on the issue you are already on.
+**Tool / semantics:** **fix it in this issue**, then DECLARE it under
+`Extra fixes:` in your comment — one line per fix, naming the file and what was
+wrong. Declaring is what makes it authorized rather than scope-creep: review
+judges a declared extra fix on its merit like any other code, and is told never
+to send work back for fixing a real bug it found on the way.
+
+**Red flag — `file-instead-of-fix`:** filing a fixable defect as a new issue
+instead of fixing it. Measured 2026-08-18 on forge-dev: 30 open `draft`s, the
+oldest untouched for 54 days, most of them defects a stage deferred rather than
+fixed — including ISS-791 and ISS-845, which describe drafts being filed and
+forgotten while themselves sitting filed and forgotten.
+
+---
+
+## A residual genuinely out of reach — three homes, and none of them is a new issue
+
+**Trigger:** something you cannot resolve inside the work you are doing — a
+human decision, or work no diff here can carry.
+
+**Tool / semantics:** exactly one of — a **`blocks` edge** onto the issue that
+would otherwise ship without it · a line in **`docs/proposals/`** for a decision
+awaiting sign-off · **`waiting`** + `waitingKind` + `reason` when it blocks THIS
+issue. If none of the three fit, say it in a comment on the issue you are
+already on.
 
 Both directions of this have cost real damage. Four stages once flagged an
 unauthenticated data leak, each asked for a follow-up, none was filed, and it
-shipped — so silence is not the safe option. And a new unowned `draft` is not a
-hand-off: nobody browses drafts, so filing one moves a residual from
-silently-lost to silently-parked.
+shipped — so silence is not the safe option. But filing was the wrong
+correction: a new unowned `draft` is not a hand-off, it only moves a residual
+from silently-lost to silently-parked.
 
 **Red flag — `silent-nonwork`:** dropping a residual entirely, or parking it as
 an unowned `draft` instead of one of the three homes.
@@ -194,4 +214,5 @@ affordance above instead:
 - **`fix-by-hand-and-forget`** — a hand-fix with no status move and no captured learning.
 - **`draft-as-note`** — filing a note, log, question or record as an issue at all; `draft` hides it, it does not make it appropriate.
 - **`close-without-unmark`** — closing non-work and leaving the `merged_at` auto-stamp, which unblocks dependents as if it had shipped.
-- **`silent-nonwork`** — dropping a residual, or parking it as an unowned `draft` instead of an issue / a `blocks` edge / a `docs/proposals/` line.
+- **`silent-nonwork`** — dropping a residual, or parking it as an unowned `draft` instead of a `blocks` edge / a `docs/proposals/` line / `waiting`.
+- **`file-instead-of-fix`** — filing a defect you could have fixed in the issue you are already working, instead of fixing it and declaring it under `Extra fixes:`.

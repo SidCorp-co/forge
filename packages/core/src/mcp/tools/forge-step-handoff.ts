@@ -5,8 +5,8 @@ import {
   getIssueContexts,
   writeIssueContext,
 } from '../../pipeline/issue-context-store.js';
-import { assertDeviceOwnerIsMember, assertDeviceOwnerIsWriter, zodToMcpSchema } from './lib.js';
 import type { DeviceScopedMcpToolFactory } from './lib.js';
+import { assertDeviceOwnerIsMember, assertDeviceOwnerIsWriter, zodToMcpSchema } from './lib.js';
 
 /**
  * MCP tools for step-handoff persistence (proposal Y). Thin wrappers over

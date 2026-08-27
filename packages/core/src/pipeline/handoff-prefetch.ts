@@ -2,8 +2,8 @@ import type { JobType } from '../db/schema.js';
 import {
   type HandoffScope,
   type HandoffStep,
-  type StepHandoffPayload,
   isHandoffStep,
+  type StepHandoffPayload,
 } from '../memory/step-handoff-schema.js';
 import type { PriorHandoff } from '../prompt/user.js';
 import { resolveHandoffsPolicy } from './handoff-policy.js';

@@ -14,12 +14,10 @@ const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 // The where step resolves to an array of dependent rows.
 const dependentsAwait = vi.fn(
   async () =>
-    [] as Array<{
-      fromIssueId: string;
-      toIssueId: string;
-      depProjectId: string;
-      toIssSeq: number;
-    }>,
+    [] as Array<
+      | { fromIssueId: string; toIssueId: string; depProjectId: string; toIssSeq: number }
+      | { issueId: string; issSeq: number; projectId: string }
+    >,
 );
 const dependentsWhere = vi.fn(() => dependentsAwait());
 const dependentsInnerJoin = vi.fn(() => ({ where: dependentsWhere }));
@@ -30,7 +28,7 @@ const selectFrom = vi.fn(() => ({
 
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
-const updateSet = vi.fn(() => ({ where: updateWhere }));
+const updateSet = vi.fn((_values: Record<string, unknown>) => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 // ISS-196 — `withActorContext` calls `tx.execute(SELECT set_config(...))`
 // before the UPDATE. Stub `tx.execute` so it does not throw under the
@@ -47,6 +45,8 @@ vi.mock('../db/client.js', () => {
     db: {
       select: vi.fn(() => ({ from: selectFrom })),
       update: dbUpdate,
+      // cm:why the reopen-reason comment (RFC 0002 INV-8) is a real insert on the reopen path, and postReopenReasonComment deliberately does not swallow its error — an unmocked insert therefore turns every reopen test into a 500
+      insert: vi.fn(() => ({ values: async () => undefined })),
       transaction: vi.fn(async (cb: (tx: typeof txStub) => unknown) => cb(txStub)),
     },
   };
@@ -88,6 +88,8 @@ function buildApp() {
 beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
+  // cm:guard keep a default for reads no test queues: an exhausted `mockResolvedValueOnce` returns `undefined`, which throws inside the caller's destructuring and reaches the test as a 500 — so a new read added to the route under test fails every case here with the wrong reason
+  selectLimit.mockResolvedValue([]);
   updateReturning.mockReset();
   publish.mockReset();
   projectAccess.mockReset();
@@ -194,49 +196,60 @@ describe('POST /api/issues/:id/transition', () => {
     expect(dbUpdate).not.toHaveBeenCalled();
   });
 
-  it('422 REOPEN_CAP_EXCEEDED at 5 without override', async () => {
+  // cm:guard the three cap tests deleted from this spot asserted a 422 at reopenCount>=5 and an admin-only override. RFC 0002 removed the cap outright — reopenCount still increments (ISS-535 model escalation reads it), it just gates nothing. A returning 422 here means someone re-added the ceiling.
+  // cm:guard all three stopping statuses, not just reopen — `waiting` and `needs_info` mean "a human is needed", and one that does not say WHAT is needed is a question nobody can answer; on forge-beta 2026-08-14 all 43 issues at `waiting` were exactly that
+  it.each([
+    ['reopen', 'closed'],
+    ['waiting', 'in_progress'],
+    ['needs_info', 'open'],
+  ])('422 TRANSITION_REASON_REQUIRED entering %s with no reason', async (to, from) => {
     const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'closed', reopenCount: 5 });
-    const res = await req({ toStatus: 'reopen' }, token);
+    queueAuthAndIssue({ status: from, reopenCount: 0 });
+    const res = await req({ toStatus: to }, token);
     expect(res.status).toBe(422);
-    const body = (await res.json()) as { code: string; details: { max: number } };
-    expect(body.code).toBe('REOPEN_CAP_EXCEEDED');
-    expect(body.details.max).toBe(5);
-  });
-
-  it('403 OVERRIDE_DENIED when non-admin requests override', async () => {
-    const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'closed', reopenCount: 5, role: 'member' });
-    const res = await req({ toStatus: 'reopen', override: true }, token);
-    expect(res.status).toBe(403);
     const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('OVERRIDE_DENIED');
+    expect(body.code).toBe('TRANSITION_REASON_REQUIRED');
+    expect(dbUpdate).not.toHaveBeenCalled();
   });
 
-  it('200 when project admin overrides the reopen cap', async () => {
+  // cm:guard the kind is REQUIRED but must never be DEFAULTED — this test fails both ways: drop the requirement and it 200s, add a default and it 200s. Guessing the kind is what rendered the wrong button on ISS-163.
+  it('422 WAITING_KIND_REQUIRED when a `waiting` park states a reason but no kind', async () => {
     const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'closed', reopenCount: 5, role: 'admin' });
+    queueAuthAndIssue({ status: 'in_progress', reopenCount: 0 });
+    const res = await req({ toStatus: 'waiting', reason: 'need the staging DB password' }, token);
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('WAITING_KIND_REQUIRED');
+    expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  it('200 when a `waiting` park carries both a reason and a kind', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'in_progress', reopenCount: 0 });
     updateReturning.mockResolvedValueOnce([
-      { id: ISSUE_ID, status: 'reopen', reopenCount: 6, updatedAt: new Date() },
+      { id: ISSUE_ID, status: 'waiting', reopenCount: 0, updatedAt: new Date() },
     ]);
-    const res = await req({ toStatus: 'reopen', override: true }, token);
+    const res = await req(
+      {
+        toStatus: 'waiting',
+        reason: 'need the staging DB password',
+        waitingKind: 'needs_resource',
+      },
+      token,
+    );
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { status: string; reopenCount: number };
-    expect(body.status).toBe('reopen');
-    expect(body.reopenCount).toBe(6);
-    expect(publish).toHaveBeenCalledOnce();
   });
 
-  it('200 closed → reopen increments reopen_count', async () => {
+  it('200 closed → reopen with a reason increments reopen_count, at any count', async () => {
     const token = await signUserToken(USER_ID);
-    queueAuthAndIssue({ status: 'closed', reopenCount: 0 });
+    queueAuthAndIssue({ status: 'closed', reopenCount: 9 });
     updateReturning.mockResolvedValueOnce([
-      { id: ISSUE_ID, status: 'reopen', reopenCount: 1, updatedAt: new Date() },
+      { id: ISSUE_ID, status: 'reopen', reopenCount: 10, updatedAt: new Date() },
     ]);
-    const res = await req({ toStatus: 'reopen' }, token);
+    const res = await req({ toStatus: 'reopen', reason: 'the 500 is back on prod' }, token);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { reopenCount: number };
-    expect(body.reopenCount).toBe(1);
+    expect(body.reopenCount).toBe(10);
   });
 
   it('200 non-reopen transition does not touch reopen_count', async () => {
@@ -350,5 +363,38 @@ describe('POST /api/issues/:id/transition', () => {
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('STALE_TRANSITION');
     expect(publish).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/issues/:id/transition — dropping a blocker', () => {
+  it('a drop announces the dependents it released, though the edges are already expired', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'open', issSeq: 7 });
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, status: 'dropped', reopenCount: 0, updatedAt: new Date() },
+    ]);
+    dependentsAwait.mockResolvedValueOnce([
+      { issueId: '44444444-4444-4444-8444-444444444444', issSeq: 12, projectId: PROJECT_ID },
+    ]);
+
+    const res = await req({ toStatus: 'dropped' }, token);
+    expect(res.status).toBe(200);
+    // cm:guard exactly ONE read. A second would run after the expiry, and every dependent query filters `valid_until > now()`, so it would return nothing and this cascade would be silent — the whole reason the list is carried instead of re-derived.
+    expect(dependentsAwait).toHaveBeenCalledTimes(1);
+
+    const expiry = updateSet.mock.calls.find(
+      (c) => (c[0] as Record<string, unknown> | undefined)?.validUntil !== undefined,
+    );
+    expect(expiry).toBeDefined();
+
+    const cascade = publish.mock.calls.filter(
+      (c) => (c[1] as { event: string }).event === 'issue.unblockCascade',
+    );
+    expect(cascade).toHaveLength(1);
+    expect((cascade[0] as [string, { data: Record<string, unknown> }])[1].data).toMatchObject({
+      blockerId: ISSUE_ID,
+      blockerIssSeq: 7,
+      dependents: [{ issueId: '44444444-4444-4444-8444-444444444444', issSeq: 12 }],
+    });
   });
 });

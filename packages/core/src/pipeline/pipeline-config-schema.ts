@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { issueComplexities } from '../db/schema.js';
 import {
   INTEGRATION_SERVER_NAMES,
-  MCP_CATALOG_NAMES,
   isKnownMcpServerName,
+  MCP_CATALOG_NAMES,
 } from './mcp-catalog.js';
 import { PIPELINE_STEPS, type StepToggleKey } from './registry.js';
 
@@ -251,6 +251,10 @@ export const stageConfigSchema = z.object({
   // Session-group membership (PR-5). Joins this stage to a named group whose
   // members share a Claude CLI session via --resume across the group.
   sessionGroup: z.string().min(1).max(64).optional(),
+  // cm:why per-state runner pool: unset/empty = whole fleet (pre-pool behaviour), one element = a hard pin, and every other selection rule still applies WITHIN the pool rather than being replaced by it
+  // cm:edge contract -> packages/core/src/runners/select.ts — apply the pool INSIDE the candidate queries next to rate_limited_until, never as an exclude set: both wrap-arounds in selectRunnerForJob deliberately clear excludeDeviceIds
+  // cm:guard an all-busy/all-limited pool leaves the job queued — never widen the pool to place it, or the operator loses the guarantee that a stage ran where they pinned it
+  deviceIds: z.array(z.uuid()).max(20).optional(),
   // Complexity-based auto-skip. When the issue landing on this stage has a
   // `complexity` in this list, the soft-skip resolver treats the stage as
   // skippable (reason `complexity_skip`) instead of dispatching its job —
@@ -413,6 +417,13 @@ export const pipelineConfigSchema = z
     // Defaults: 150000 tokens / 3 reopen cycles.
     maxResumeTokens: z.number().int().min(0).optional(),
     maxResumeReopenCycles: z.number().int().min(0).optional(),
+    // cm:guard advisory ONLY (RFC 0002 INV-8) — this replaced `REOPEN_CAP`, and the whole point is that nothing in core reads it to make a decision. It is rendered into the agent's `## Project Config` block and judged by the agent; a dispatch gate or transition that branches on it re-creates the cap that parked issues which were making progress.
+    reopenPolicy: z
+      .object({
+        noProgressRounds: z.number().int().min(1).max(100),
+      })
+      .strict()
+      .optional(),
     // ISS-232 — git-aware L2 dependency gate config.
     mergeStates: mergeStatesSchema.optional(),
     // Project-default MCP servers seeded into EVERY job's temp `--mcp-config`
@@ -429,6 +440,11 @@ export const pipelineConfigSchema = z
     // gate. Default (absent/false) keeps the gate: prod never auto-deploys
     // (safety valve for the autonomous pipeline). Per-project opt-in only.
     autoProdDeploy: z.boolean().optional(),
+    // cm:why per-project rather than global so the two drivers run side by side on one fleet and can be compared on the same issues — a global flag would make the comparison a migration
+    mode: z.enum(['staged', 'autonomous']).optional(),
+    // cm:guard MUST stay declared here — this schema STRIPS unknown keys, so a lock that is not in the object literal is dropped by PATCH /pipeline-config and silently never takes effect, while skills/lock.ts keeps reporting the project as unlocked
+    // cm:edge contract -> packages/core/src/skills/lock.ts — readLockedSkills() parses exactly this field; `false` and a malformed value read as ABSENT there, never as "unlocked"
+    lockedSkills: z.union([z.boolean(), z.array(z.string())]).optional(),
   })
   // PR-5 — cross-field validation: every `states[x].sessionGroup` must be a
   // declared group in `sessionGroups`. Without this, a typo

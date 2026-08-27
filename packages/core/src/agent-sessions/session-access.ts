@@ -3,7 +3,7 @@ import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { type ProjectMemberRole, agentSessions } from '../db/schema.js';
+import { agentSessions, type ProjectMemberRole } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 

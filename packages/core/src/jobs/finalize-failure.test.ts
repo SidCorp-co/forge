@@ -10,7 +10,8 @@
  *      `waiting` AND reaps the open run;
  *  (c) a verify-first recovery skip touches neither status nor run;
  *  (d) a job with no issue never touches issue state;
- *  (e) every path frees the slot + broadcasts job.failed + emits jobFailed;
+ *  (e) every path broadcasts job.failed + emits jobFailed — freeing the runner
+ *      slot now rides on that emit, asserted in dispatch-subscribers.test.ts;
  *  (f) a precomputedRetry short-circuits scheduleAutoRetryWithVerify.
  */
 
@@ -58,11 +59,11 @@ function selectChain() {
 const updateSetMock = vi.fn((_values: unknown) => undefined);
 
 // cm:why the jsonb-merge value is a drizzle `sql` fragment holding its interpolation as a Param, and the object graph is circular — so the payload is probed by walking it rather than by JSON.stringify
-function mentions(value: unknown, needle: string, seen = new Set<unknown>()): boolean {
+function _mentions(value: unknown, needle: string, seen = new Set<unknown>()): boolean {
   if (typeof value === 'string') return value.includes(needle);
   if (value === null || typeof value !== 'object' || seen.has(value)) return false;
   seen.add(value);
-  return Object.values(value as Record<string, unknown>).some((v) => mentions(v, needle, seen));
+  return Object.values(value as Record<string, unknown>).some((v) => _mentions(v, needle, seen));
 }
 vi.mock('../db/client.js', () => ({
   db: {
@@ -138,14 +139,17 @@ vi.mock('../pipeline/hooks.js', () => ({
   hooks: { emit: (...args: unknown[]) => hooksEmitMock(...args) },
 }));
 
+// cm:edge contract -> packages/core/src/jobs/hold.ts — its import chain reaches queue/boss.ts via enqueue.js, whose top-level env import throws without DB env (same pitfall as reconcile-service.ts above); hold.test.ts covers the real thing
+const holdJobMock = vi.fn(async (..._args: unknown[]): Promise<string | null> => null);
+const holdAutoReleasesMock = vi.fn((..._args: unknown[]) => false);
+vi.mock('./hold.js', () => ({
+  holdJobForReason: (...args: unknown[]) => holdJobMock(...args),
+  holdAutoReleases: (...args: unknown[]) => holdAutoReleasesMock(...args),
+}));
+
 const syncSessionMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('./agent-session-link.js', () => ({
   syncAgentSessionLifecycle: (...args: unknown[]) => syncSessionMock(...args),
-}));
-
-const dispatchTickMock = vi.fn(async (..._args: unknown[]) => undefined);
-vi.mock('./dispatch-tick.js', () => ({
-  dispatchTickForProject: (...args: unknown[]) => dispatchTickMock(...args),
 }));
 
 const publishHealthMock = vi.fn(async (..._args: unknown[]) => undefined);
@@ -219,7 +223,6 @@ describe('finalizeFailedJob', () => {
       { skip: true },
     );
     expect(closeRunMock).not.toHaveBeenCalled();
-    expect(dispatchTickMock).toHaveBeenCalledWith('p1');
     expect(syncSessionMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'j1' }), 'failed', {
       retryPending: true,
     });
@@ -246,27 +249,43 @@ describe('finalizeFailedJob', () => {
     expect(closeRunMock).not.toHaveBeenCalled();
   });
 
-  it('parks the issue at `waiting` and reaps the run when retry is NOT scheduled', async () => {
-    scheduleRetryMock.mockResolvedValueOnce({ scheduled: false });
+  // cm:guard assert the LIST of statuses written, not a call count — the revert to entry-status is itself an applyStatusTransition call, so any assertion phrased as "called once" passes unchanged while the `waiting` park is restored alongside it, which is exactly what RFC 0002 INV-1 forbids
+  it('holds the job and reverts the issue to entry-status when retry is NOT scheduled — never `waiting`', async () => {
+    scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'retry_rounds_exhausted' });
+    holdJobMock.mockResolvedValueOnce('held-job-1');
     const retry = await finalizeFailedJob(makeJob({ type: 'code' }), {
       error: 'boom',
       exitCode: 1,
     });
 
     expect(retry.scheduled).toBe(false);
-    expect(applyTransitionMock).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'i1' }),
-      'waiting',
-      expect.objectContaining({ id: 'owner1' }),
-      { skip: true },
-    );
+    const [heldJob, heldReason] = holdJobMock.mock.calls[0] ?? [];
+    expect((heldJob as { id: string }).id).toBe('j1');
+    expect(heldReason).toBe('retry_rounds_exhausted');
+
+    const statusesWritten = applyTransitionMock.mock.calls.map((c) => c[1]);
+    expect(statusesWritten).toEqual(['approved']);
+    expect(statusesWritten).not.toContain('waiting');
+
+    const wedge = emitWedgeMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(wedge.issueId).toBe('i1');
+    expect(wedge.entityId).toBe('held-job-1');
+  });
+
+  // cm:guard INV-4 — closing the run cascades over `held`, so a close here would cancel the successor this path just created and turn the hold into a silent dead end; that is the one way RFC 0002 lands strictly worse than the park it replaced
+  it('does NOT close the run when a job was held', async () => {
+    scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'all_devices_exhausted' });
+    holdJobMock.mockResolvedValueOnce('held-job-2');
+    await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
+    expect(closeRunMock).not.toHaveBeenCalled();
+  });
+
+  it('closes the run when the reason holds nothing (a cancel)', async () => {
+    scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'cancellation_requested' });
+    holdJobMock.mockResolvedValueOnce(null);
+    await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
     expect(closeRunMock).toHaveBeenCalledWith('i1', 'failed');
-    expect(syncSessionMock).toHaveBeenCalledWith(expect.any(Object), 'failed', {
-      retryPending: false,
-    });
-    expect(emitWedgeMock).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: 'p1', issueId: 'i1', hop: 'dispatch', entity: 'job' }),
-    );
+    expect(emitWedgeMock).not.toHaveBeenCalled();
   });
 
   it('does NOT touch issue state or run for a job with no issue (system job)', async () => {
@@ -276,7 +295,6 @@ describe('finalizeFailedJob', () => {
     expect(applyTransitionMock).not.toHaveBeenCalled();
     expect(closeRunMock).not.toHaveBeenCalled();
     expect(publishHealthMock).not.toHaveBeenCalled();
-    expect(dispatchTickMock).toHaveBeenCalledWith('p1');
     expect(emitWedgeMock).not.toHaveBeenCalled();
   });
 
@@ -290,7 +308,6 @@ describe('finalizeFailedJob', () => {
       // The issue already recovered — no revert, no waiting, no run close.
       expect(applyTransitionMock).not.toHaveBeenCalled();
       expect(closeRunMock).not.toHaveBeenCalled();
-      expect(dispatchTickMock).toHaveBeenCalledWith('p1');
       expect(syncSessionMock).toHaveBeenCalledWith(expect.any(Object), 'failed', {
         retryPending: false,
       });
@@ -324,17 +341,13 @@ describe('finalizeFailedJob', () => {
 
     expect(retry.scheduled).toBe(false);
     expect(scheduleRetryMock).not.toHaveBeenCalled();
-    // precomputed { scheduled:false } + issue → parks at waiting + reaps run.
     expect(applyTransitionMock).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'i1' }),
-      'waiting',
+      'approved',
       expect.any(Object),
       { skip: true },
     );
     expect(closeRunMock).toHaveBeenCalledWith('i1', 'failed');
-    expect(emitWedgeMock).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: 'p1', issueId: 'i1', hop: 'dispatch', entity: 'job' }),
-    );
   });
 
   it('ISS-823 review blocker: stamps the runner limit BEFORE calling scheduleAutoRetryWithVerify', async () => {
@@ -354,51 +367,35 @@ describe('finalizeFailedJob', () => {
     expect(callOrder).toEqual(['scheduleAutoRetryWithVerify']);
   });
 
-  it('wedge carries business-language content for all_devices_exhausted', async () => {
+  // cm:guard the copy must not tell the reader to clear anything — a hold that says "clear the park to resume" is the intervention RFC 0002 removed, re-introduced as a sentence
+  it('wedge carries hold copy that says the step resumes itself, for all_devices_exhausted', async () => {
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'all_devices_exhausted' });
+    holdJobMock.mockResolvedValueOnce('held-job-3');
     await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
 
-    expect(emitWedgeMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'Pipeline paused: every runner is rate-limited',
-        summary: expect.any(String),
-        nextStep: expect.any(String),
-      }),
-    );
+    const call = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
+    expect(call.title).toBe('Step held: every runner is rate-limited');
+    expect(call.nextStep).toMatch(/resumes itself/);
+    expect(call.nextStep).not.toMatch(/clear the park/);
   });
 
-  // cm:guard ISS-163 — without this write the park reason survives only in comment prose, and bounce-replay-guard cannot tell a self-clearing capacity park from one holding a human decision
-  it('records the park reason on the run so the replay guard can classify the park', async () => {
+  // cm:guard a hold that resumes itself must emit NOTHING here — `releaseHeldJobs` re-queues it the moment its condition clears, and `alarmAgedHolds` is the 6h escalation if it does not. Emitting at hold time is what filled the owner's bell with 721 unresolved rows whose own action text said "No action needed" (forge-beta 2026-08-14).
+  it('emits NO wedge when the hold will release itself', async () => {
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'all_devices_exhausted' });
+    holdJobMock.mockResolvedValueOnce('held-job-4');
+    holdAutoReleasesMock.mockReturnValueOnce(true);
     await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
 
-    const written = updateSetMock.mock.calls[0]?.[0];
-    expect(mentions(written, 'parkReason')).toBe(true);
-    expect(mentions(written, 'all_devices_exhausted')).toBe(true);
+    expect(emitWedgeMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard the write targets the run while it is still running/paused, so it MUST precede the close that flips it terminal
-  it('records the park reason before closing the run', async () => {
-    const order: string[] = [];
-    updateSetMock.mockImplementation(() => {
-      order.push('recordParkReason');
-      return undefined;
-    });
-    closeRunMock.mockImplementation(async () => {
-      order.push('closeOpenRunForIssue');
-    });
-    scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'all_devices_exhausted' });
+  it('still emits for a hold that waits on a human', async () => {
+    scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'non_retryable_terminal' });
+    holdJobMock.mockResolvedValueOnce('held-job-5');
+    holdAutoReleasesMock.mockReturnValueOnce(false);
     await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
 
-    expect(order).toEqual(['recordParkReason', 'closeOpenRunForIssue']);
-  });
-
-  it('wedge falls back to the technical template for a reason with no business-language mapping', async () => {
-    scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'cancellation_requested' });
-    await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
-
-    const call = emitWedgeMock.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(call.title).toBeUndefined();
-    expect(call.summary).toBeUndefined();
+    const call = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
+    expect(call.title).toBe('Step held: non-retryable failure');
   });
 });

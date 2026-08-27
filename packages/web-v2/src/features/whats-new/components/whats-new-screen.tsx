@@ -27,7 +27,6 @@ export function WhatsNewScreen() {
   useEffect(() => {
     if (topId) void markSeen();
     // markSeen is a fresh closure each render; topId is the stable trigger.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topId]);
 
   return (

@@ -5,17 +5,18 @@
  * historical NULL rows fall back to `deriveActionFromKind(failureKind)`):
  * `terminal` never retries; `failover`/`quarantine` (CLI startup death,
  * ISS-402; per-account spend/session limit, ISS-823) do an IMMEDIATE
- * different-device failover, parking `all_devices_exhausted` only when every
- * online device is rate-limited (not merely offline); `retry`
- * (`infra`/`timeout`) takes the standard bounded round-robin: uniform
- * `RETRY_COOLDOWN_MS` (60s) between attempts, `RETRY_TRIES_PER_DEVICE` (3)
- * tries per device before rotating (state in `payload._autoRetry`), bounded
- * by `RETRY_MAX_ROUNDS` (10) sweeps — the failover path shares this budget so
- * it cannot ping-pong unbounded. Detail: docs/modules/agents-jobs.
+ * different-device failover; `retry` (`infra`/`timeout`) takes the standard
+ * bounded round-robin: uniform `RETRY_COOLDOWN_MS` (60s) between attempts,
+ * `RETRY_TRIES_PER_DEVICE` (3) tries per device before rotating (state in
+ * `payload._autoRetry`), bounded by `RETRY_MAX_ROUNDS` (10) sweeps — the
+ * failover path shares this budget so it cannot ping-pong unbounded.
  *
- * Structural guards ahead of any class: cancellation-requested, and the
- * verify-first check (issue already advanced/reverted, so retrying is wasted
- * spend).
+ * A round is one sweep over the devices that can take the work, so an empty
+ * pool spends none: the chain DEFERS (`CAPACITY_DEFER_CEILING_MS`), notifies
+ * once per pool, and only then gives up with `all_devices_exhausted`, which
+ * holds and releases itself. Two structural guards run ahead of any class:
+ * cancellation-requested, and verify-first (the issue already advanced or
+ * reverted, so retrying is wasted spend). Detail: docs/modules/agents-jobs.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -29,13 +30,19 @@ import {
 import { db } from '../db/client.js';
 import { jobEvents, jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { Sentry, isSentryEnabled } from '../observability/sentry.js';
+import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { classifyFailure, deriveActionFromKind } from '../pipeline/failure-classifier.js';
 import { verifyRecovery } from '../pipeline/recovery-verifier.js';
+import {
+  capacityWedgeEntityId,
+  emitPipelineWedge,
+  resolvePipelineWedge,
+} from '../pipeline/wedge.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
 import { buildVerifierPrompt } from '../skills/reconcile-service.js';
 import { enqueueJob, enqueueReconcileJob } from './enqueue.js';
+import { resolveStageOverrides } from './stage-overrides.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -56,6 +63,13 @@ export const RETRY_TRIES_PER_DEVICE = 3;
 export const RETRY_MAX_ROUNDS = 10;
 
 /**
+ * How long a job may sit deferred for want of ANY usable device before it stops
+ * retrying and holds instead.
+ */
+// cm:guard short on purpose, and the reason is which HOLD REASON the job lands on. Deferring rides out a seconds-long provider throttle (owner call 2026-08-12: an all-limited fleet defers rather than parks) without spending the lineage's single auto-release on a blip. Past this ceiling, holding is strictly cheaper than retrying: `all_devices_exhausted` is condition-checked in jobs/hold.ts, so `releaseHeldJobs` re-queues it the moment a device frees up — zero dispatch churn and zero human interventions. A LONG ceiling would just burn retries against a fleet that is already known to be empty.
+export const CAPACITY_DEFER_CEILING_MS = 5 * 60_000;
+
+/**
  * Round-robin rotation state carried on `payload[AUTO_RETRY_PAYLOAD_KEY]`.
  *
  *   - `round`  — 1-based sweep counter (1..RETRY_MAX_ROUNDS).
@@ -71,13 +85,31 @@ export interface AutoRetryPayload {
   target: string | null;
   tries: number;
   done: string[];
+  /** When this chain first found NO usable device. Null once one appears. */
+  deferredSince?: string | null;
 }
+
+/**
+ * What {@link nextRotation} decided. Three outcomes, not two: "nowhere to send
+ * it" is not the same answer as "budget spent".
+ */
+// cm:guard keep `defer` distinct from `give_up` — collapsing them is the defect this type exists to prevent. A round means one sweep over the usable devices, so advancing it when there are none charges the budget for a sweep that never happened: sid-desk went round 2 -> 3 in 90 seconds against a fully rate-limited pool (measured 2026-08-14), reached `retry_rounds_exhausted` (the hold reason with NO auto-release) and needed a human, when the honest answer was `all_devices_exhausted`, which clears itself.
+export type RotationOutcome =
+  | { kind: 'rotate'; state: AutoRetryPayload }
+  | { kind: 'defer'; state: AutoRetryPayload }
+  | { kind: 'give_up'; reason: 'retry_rounds_exhausted' | 'all_devices_exhausted' };
 
 /** Always returns a normalized state — never undefined — so callers can read
  *  fields without guards. A first dispatch (no prior state) reads as the
  *  round-1 zero state. */
 export function readAutoRetryPayload(payload: unknown): AutoRetryPayload {
-  const zero: AutoRetryPayload = { round: 1, target: null, tries: 0, done: [] };
+  const zero: AutoRetryPayload = {
+    round: 1,
+    target: null,
+    tries: 0,
+    done: [],
+    deferredSince: null,
+  };
   if (!payload || typeof payload !== 'object') return zero;
   const raw = (payload as Record<string, unknown>)[AUTO_RETRY_PAYLOAD_KEY];
   if (!raw || typeof raw !== 'object') return zero;
@@ -87,53 +119,133 @@ export function readAutoRetryPayload(payload: unknown): AutoRetryPayload {
     target: typeof r.target === 'string' ? r.target : null,
     tries: typeof r.tries === 'number' && r.tries >= 0 ? r.tries : 0,
     done: Array.isArray(r.done) ? r.done.filter((x): x is string => typeof x === 'string') : [],
+    deferredSince: typeof r.deferredSince === 'string' ? r.deferredSince : null,
   };
 }
 
 /**
- * Compute the rotation state for the NEXT attempt, or `null` to stop (the
- * 10-round budget is exhausted). Pure except for the online-device lookup.
+ * Decide where the NEXT attempt goes, given the devices that can actually take
+ * it. Pure — the caller owns the pool read so both halves see one snapshot.
  *
  * Rules:
+ *   0. No usable device → DEFER, spending no round, until
+ *      [`CAPACITY_DEFER_CEILING_MS`] has passed; then give up with
+ *      `all_devices_exhausted`.
  *   1. If the device that just ran is still the round's target and has tries
  *      left → stay on it (tries + 1).
  *   2. Otherwise the device is done for this round → add it (and the intended
  *      target, if selection couldn't honour the pin) to `done`, then pick the
  *      next online device not yet done this round.
  *   3. If every online device is done → the round is complete. Advance to the
- *      next round (reset `done`) unless we've hit RETRY_MAX_ROUNDS, in which
- *      case return `null` to stop.
+ *      next round (reset `done`) unless we've hit RETRY_MAX_ROUNDS.
  */
-async function nextRotation(
+// cm:guard every `rotate` outcome below is reached with `online` non-empty, which is what makes `target` non-null STRUCTURALLY rather than by a check. It used to be `online[0] ?? null` on an empty pool, and a null target cost the retry both of its aims at once (dispatcher.ts: `pinDeviceId = autoRetry.target`, `excludeDeviceIds = autoRetry.done`, and the round advance had just cleared `done`) — so it re-picked the box that had only just failed. Reintroducing a rotate path that tolerates an empty pool brings that back.
+export function nextRotation(
   job: JobRow,
   state: AutoRetryPayload,
-): Promise<AutoRetryPayload | null> {
+  online: string[],
+  now: Date,
+): RotationOutcome {
   const ranOn = job.deviceId ?? null;
   // First failure has no prior target: the device that just ran IS this
   // round's first target, and the original attempt counts as its first try.
   const target = state.target ?? ranOn;
   const tries = state.target ? state.tries : 1;
 
+  if (online.length === 0) {
+    const deferredSince = state.deferredSince ?? now.toISOString();
+    const waited = now.getTime() - new Date(deferredSince).getTime();
+    if (waited > CAPACITY_DEFER_CEILING_MS) {
+      return { kind: 'give_up', reason: 'all_devices_exhausted' };
+    }
+    // cm:guard carry `target`, `tries`, `done` and `round` through UNCHANGED — a deferral is the absence of an attempt, so the sweep must resume exactly where it stopped. Rebuilding any of them here re-creates the lost-aim bug from the other direction.
+    return { kind: 'defer', state: { ...state, target, tries, deferredSince } };
+  }
+
   if (ranOn && target === ranOn && tries < RETRY_TRIES_PER_DEVICE) {
-    return { round: state.round, target: ranOn, tries: tries + 1, done: state.done };
+    return {
+      kind: 'rotate',
+      state: {
+        round: state.round,
+        target: ranOn,
+        tries: tries + 1,
+        done: state.done,
+        deferredSince: null,
+      },
+    };
   }
 
   const done = Array.from(
     new Set([...state.done, target, ranOn].filter((x): x is string => Boolean(x))),
   );
-  const required = (job.payload as { requiredCapabilities?: RequiredCapabilities } | null)
-    ?.requiredCapabilities;
-  const online = await onlineCapableDeviceIds(job.projectId, required);
   const remaining = online.filter((d) => !done.includes(d));
 
   if (remaining.length > 0) {
-    return { round: state.round, target: remaining[0] ?? null, tries: 1, done };
+    return {
+      kind: 'rotate',
+      state: {
+        round: state.round,
+        target: remaining[0] ?? null,
+        tries: 1,
+        done,
+        deferredSince: null,
+      },
+    };
   }
 
   const nextRound = state.round + 1;
-  if (nextRound > RETRY_MAX_ROUNDS) return null;
+  if (nextRound > RETRY_MAX_ROUNDS) return { kind: 'give_up', reason: 'retry_rounds_exhausted' };
   // New sweep: clear `done`, start again from the first online device.
-  return { round: nextRound, target: online[0] ?? null, tries: 1, done: [] };
+  return {
+    kind: 'rotate',
+    state: { round: nextRound, target: online[0] ?? null, tries: 1, done: [], deferredSince: null },
+  };
+}
+
+/**
+ * Tell the operator the pool has nothing to run on — once per pool, not once
+ * per job.
+ *
+ * The second pool read (`includeLimited`) happens ONLY here, on the deferral
+ * path, because it buys exactly one thing: which of the two outages this is.
+ */
+// cm:guard the two cases need DIFFERENT human actions and must not be merged into "no capacity": every box rate-limited means top up quota or wait out the provider's reset, while nothing online means go bring a runner up. A single message would send the operator to the wrong place half the time.
+// cm:edge contract -> packages/core/src/pipeline/wedge.ts — the dedup and the resolve BOTH key on `capacityWedgeEntityId`; a caller that builds the id differently on one side emits a notification nothing can ever clear
+async function notifyCapacityOutage(
+  job: JobRow,
+  entityId: string,
+  required: RequiredCapabilities | undefined,
+  stagePool: string[] | null,
+): Promise<void> {
+  const present = await onlineCapableDeviceIds(job.projectId, required, {
+    includeLimited: true,
+    allowDeviceIds: stagePool,
+  });
+  const allLimited = present.length > 0;
+  const scope = stagePool ? `the ${job.type} runner pool` : 'this project';
+
+  await emitPipelineWedge({
+    projectId: job.projectId,
+    issueId: job.issueId,
+    hop: 'dispatch',
+    entity: 'capacity',
+    entityId,
+    reason: allLimited
+      ? `all ${present.length} capable device(s) are rate-limited or quarantined`
+      : 'no capable device is online',
+    action: allLimited
+      ? 'raise the account limit or wait for the provider reset'
+      : 'bring a runner online for this project',
+    title: allLimited
+      ? `No capacity: every runner for ${scope} is limited`
+      : `No capacity: no runner online for ${scope}`,
+    summary: allLimited
+      ? `Work for ${scope} is paused because all ${present.length} of its runners have hit an account limit. Steps keep waiting and resume by themselves once one frees up.`
+      : `Work for ${scope} is paused because none of its runners are online. Steps keep waiting and resume by themselves once one connects.`,
+    nextStep: allLimited
+      ? 'Raise the account spend/usage limit, or wait for the provider reset — no other action needed.'
+      : 'Start a runner for this project (forge-runner on a paired device).',
+  });
 }
 
 /**
@@ -179,10 +291,6 @@ export async function scheduleAutoRetryWithVerify(
   job: JobRow,
   reason: string,
 ): Promise<RetryOutcome> {
-  if (job.cancellationRequested) {
-    return { scheduled: false, reason: 'cancellation_requested' };
-  }
-
   // ISS-450 — the classification below DRIVES the per-class retry policy
   // (code → no retry, transient-cc → immediate device failover) as well as
   // labelling the row for the operator UI / recovery stats.
@@ -224,6 +332,12 @@ export async function scheduleAutoRetryWithVerify(
       logger.warn({ err, jobId: job.id }, 'retry: failed to persist classification, continuing');
     }
   }
+
+  // cm:guard ISS-812 AC2 — this guard must stay BELOW the persist block above: a cancelled job still failed, and returning before classification is what left 4 rows on forge-beta (measured 2026-08-26, 60d window) at status='failed' carrying real error text ([NO_RESULT_EXIT], [RESULT_ERROR]) with failure_kind, failure_reason and classifier_version all NULL. Every other no-retry path pre-stamps the row at flip time; this was the only one that recorded nothing, and silence is the defect the epic exists to remove.
+  if (job.cancellationRequested) {
+    return { scheduled: false, reason: 'cancellation_requested' };
+  }
+
   if (job.agentSessionId) {
     try {
       await incrementRecoveryStats(job.agentSessionId, classified.kind);
@@ -283,53 +397,46 @@ export async function scheduleAutoRetryWithVerify(
     return { scheduled: false, reason: 'non_retryable_terminal' };
   }
 
-  // cm:why an empty health-gated set alongside a non-empty unfiltered set means the fleet is up but every box is rate-limited — distinguishable from all-offline, and it decides which reason a give-up reports
   const isFailoverAction = effectiveAction === 'failover' || effectiveAction === 'quarantine';
-  let allRunnersLimited = false;
-  if (isFailoverAction) {
-    const required = (job.payload as { requiredCapabilities?: RequiredCapabilities } | null)
-      ?.requiredCapabilities;
-    const [healthyDevices, allDevices] = await Promise.all([
-      onlineCapableDeviceIds(job.projectId, required),
-      onlineCapableDeviceIds(job.projectId, required, { includeLimited: true }),
-    ]);
-    // cm:why owner call 2026-08-12: an all-limited fleet DEFERS to the rotation instead of parking —
-    //   a seconds-long provider throttle self-heals where parking made it a human intervention
-    // cm:guard the reason is only reported once the ROUND BUDGET runs out, never on entry — parking on
-    //   entry is what this call reversed, and it is what turns a 2-minute throttle into an intervention
-    allRunnersLimited = healthyDevices.length === 0 && allDevices.length > 0;
-    if (allRunnersLimited) {
-      logger.info(
-        { jobId: job.id, failureAction: effectiveAction, reason },
-        'retry: every online device is rate-limited, deferring to the rotation',
-      );
-    }
-  }
+  // cm:why resolved once and threaded into BOTH the capacity notification and the rotation: reading the pool twice could straddle a config edit and let the two disagree about which boxes exist
+  const stagePool = (await resolveStageOverrides(job.projectId, job.payload)).deviceIds;
+  const required = (job.payload as { requiredCapabilities?: RequiredCapabilities } | null)
+    ?.requiredCapabilities;
+  // cm:guard scope the read to the pool and read it for EVERY action, not just failover — an unscoped set makes a fully-limited pool look survivable, and skipping the read on the `retry` action is how an infra retry used to burn its whole budget against boxes dispatch would refuse
+  const healthyDevices = await onlineCapableDeviceIds(job.projectId, required, {
+    allowDeviceIds: stagePool,
+  });
 
   // cm:why forcing tries to the per-device cap makes nextRotation treat the device that just ran as exhausted, so it rotates immediately instead of spending same-device tries
   const state = readAutoRetryPayload(job.payload);
-  let next: AutoRetryPayload | null;
-  if (isFailoverAction) {
-    next = await nextRotation(job, {
-      ...state,
-      target: state.target ?? job.deviceId ?? null,
-      tries: RETRY_TRIES_PER_DEVICE,
-    });
-  } else {
-    next = await nextRotation(job, state);
-  }
-  if (next === null) {
+  const outcome = nextRotation(
+    job,
+    isFailoverAction
+      ? { ...state, target: state.target ?? job.deviceId ?? null, tries: RETRY_TRIES_PER_DEVICE }
+      : state,
+    healthyDevices,
+    new Date(),
+  );
+
+  const stageKey = stagePool ? job.type : 'all';
+  const capacityEntityId = capacityWedgeEntityId(job.projectId, stageKey);
+
+  if (outcome.kind === 'give_up') {
     logger.info(
-      { jobId: job.id, attempts: job.attempts, rounds: RETRY_MAX_ROUNDS, allRunnersLimited, reason },
-      'retry: round budget exhausted',
+      { jobId: job.id, attempts: job.attempts, rounds: RETRY_MAX_ROUNDS, reason: outcome.reason },
+      'retry: chain stopped',
     );
-    // cm:why a fleet that was limited the whole way gets the business-language wedge that names the
-    //   cap (finalize-failure's all_devices_exhausted copy), not the generic rounds-exhausted one
-    return {
-      scheduled: false,
-      reason: allRunnersLimited ? 'all_devices_exhausted' : 'retry_rounds_exhausted',
-    };
+    // cm:guard the reason now comes from WHAT HAPPENED, not from a reading taken at give-up time. It used to be `allRunnersLimited ? … : …` evaluated on entry, so one device recovering for one instant mid-burn flipped a capacity outage to `retry_rounds_exhausted` — the hold reason that never auto-releases — and the job then needed a human forever.
+    return { scheduled: false, reason: outcome.reason };
   }
+
+  if (outcome.kind === 'defer') {
+    await notifyCapacityOutage(job, capacityEntityId, required, stagePool);
+  } else {
+    // cm:guard resolving here is what makes the capacity notification self-clearing — a successful rotation IS the recovery, and nothing else observes it. Without this the bell stays red about a pool that came back.
+    await resolvePipelineWedge(capacityEntityId);
+  }
+  const next = outcome.state;
 
   const immediateFailover =
     isFailoverAction && next.target !== null && next.target !== job.deviceId;

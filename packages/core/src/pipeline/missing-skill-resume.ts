@@ -12,7 +12,7 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from './hooks.js';
-import { PAUSE_REASON_PREFIX, buildMissingSkillReason } from './missing-skill-guard.js';
+import { buildMissingSkillReason, PAUSE_REASON_PREFIX } from './missing-skill-guard.js';
 import { reEnqueueForIssue } from './orchestrator.js';
 import { resumeRunsWhere } from './run-pause.js';
 

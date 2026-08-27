@@ -20,9 +20,9 @@ import { AttachmentError, persistCommentAttachment } from './attachment-service.
 import { pgConstraintName, pgErrorCode } from './error-mapping.js';
 import { parseMentions, resolveMentions } from './mentions.js';
 import {
+  buildCommentTree,
   type CommentAttachmentLite,
   type CommentRow,
-  buildCommentTree,
   walkCommentTree,
 } from './tree.js';
 

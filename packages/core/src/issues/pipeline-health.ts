@@ -2,40 +2,66 @@
  * ISS-164 (D4 of ISS-141) — pipelineHealth derived field + WS broadcast.
  *
  * Single server-side source of truth for per-issue gate state. Loader runs a
- * live join over `issues + jobs + agent_sessions + issue_dependencies` and
- * mirrors the Layer-1..L4 predicates in `jobs/dispatch-gates.ts`. No
- * persisted gate column is consulted — `jobs.gate_reason` is intentionally
- * NOT read here so this layer stays correct after ISS-162 (D1) eventually
- * drops it (the column is still in the schema today, but reading it would
- * mask the 29-min plan-stage UI blind spot from ISS-137).
+ * live join over `issues + jobs + pipeline_runs + agent_sessions +
+ * issue_dependencies`, plus the picker's own `fresh_capable_runners` CTE
+ * (`freshRunnerAvailability`), and mirrors EVERY arm of the dispatch CASE in
+ * `jobs/dispatch-gates.ts`. A gate with no arm here renders as an idle,
+ * actionable issue. `jobs.gate_reason` is deliberately NOT read: this layer
+ * must stay correct after ISS-162 (D1) drops the column, and reading it would
+ * mask the 29-min plan-stage UI blind spot from ISS-137.
  *
  * WS event `issue.pipelineHealth.changed` is published directly (NOT routed
- * through `pipeline/hooks.ts` → `ws/broadcast-subscribers.ts`) because the
- * payload is a derived snapshot recomputed at publish time. Matches the
- * existing direct-publish pattern for `issue.statusChanged` (see
- * `ws/broadcast-subscribers.ts:38`). Future maintainers: keep it direct.
+ * through `pipeline/hooks.ts` -> `ws/broadcast-subscribers.ts`) because the
+ * payload is a derived snapshot recomputed at publish time — the same pattern
+ * `issue.statusChanged` uses. Keep it direct.
  *
- * `lastTickAt` is sourced from the in-memory map below. On multi-process
- * deploys each process keeps its own copy; clients connected to a different
- * process see stale liveness. Acceptable for v1 — ISS-163 (D2) ships a
- * pg-boss-backed health probe that closes the gap.
+ * `lastTickAt` comes from the in-memory map below, so on multi-process deploys
+ * clients on another process see stale liveness (closed by ISS-163's probe).
  */
 
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
-  type IssueStatus,
-  type PipelineRunStatus,
   agentSessions,
+  type IssueStatus,
   issueDependencies,
   issues,
   jobs,
   pipelineRuns,
   runners,
 } from '../db/schema.js';
-import { resolveGateSettings, runnerSupportsJobType } from '../jobs/dispatch-gates.js';
+import { freshRunnerAvailability, resolveGateSettings } from '../jobs/dispatch-gates.js';
+import { extractStageStatus } from '../jobs/stage-overrides.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
+import {
+  heldWaitingOn,
+  retryCooldownWaitingOn,
+  runnerWaitingOn,
+  staleTriggerWaitingOn,
+} from './pipeline-health-reasons.js';
+import type {
+  ClassifyInput,
+  PipelineHealth,
+  PipelineHealthDecompChild,
+  PipelineHealthDep,
+  PipelineHealthJob,
+  PipelineHealthRunnerSat,
+  PipelineHealthSession,
+} from './pipeline-health-types.js';
+
+// cm:edge contract -> packages/core/src/issues/pipeline-health-types.ts — every consumer imports these names from THIS path, so the re-export is the public surface; dropping it moves the break to eleven call sites rather than one
+export type {
+  ClassifyInput,
+  PipelineHealth,
+  PipelineHealthDecompChild,
+  PipelineHealthDep,
+  PipelineHealthJob,
+  PipelineHealthRunnerSat,
+  PipelineHealthSession,
+  PipelineWaitingReason,
+  WaitingCause,
+} from './pipeline-health-types.js';
 
 /**
  * Per-project in-memory dispatcher heartbeat. Set by `recordTickAt` from
@@ -57,137 +83,56 @@ export function resetLastTickAtForTest(): void {
   lastTickAtByProject.clear();
 }
 
-export type PipelineWaitingReason =
-  | 'issue_busy'
-  | 'waiting_on_dep'
-  | 'waiting_on_decomp_children'
-  | 'project_full'
-  | 'runner_full';
-
 /**
- * ISS-828 — why an issue sitting at `status='waiting'` actually got there.
- * `waiting` has 5 real producers today (verified against origin/main, not
- * assumed): a plan awaiting human approval (`plan_approval`), the decompose
- * review gate (`decompose_parent`, `issues/decompose.ts`), the reopen-cap
- * escalation (`reopen_cap`, `issues/apply-transition.ts`), a job's retry
- * budget being exhausted (`retry_exhausted`, `jobs/finalize-failure.ts` —
- * closes the run, so no pause to resume), and code already merged but parked
- * for manual review (`merged_parked` — folds the forge-test BLOCKED-FIXTURE
- * park and the stranded/closed-unmerged-blocker park together; both mean
- * "code is in, a human must decide", the actual sub-reason lives in comments).
- *
- * `missing_skill:`/`stage_stalled:` pause reasons (`missing-skill-guard.ts`,
- * `stage-stall-guard.ts`) are deliberately NOT modeled here: those guards only
- * pause the `pipeline_run` — they never transition `issues.status`, so an
- * issue paused for either reason keeps its normal actionable status (e.g.
- * `approved`), never reaches `waiting`. Modeling them here would be dead code.
+ * Q3 — the issue's live jobs, bucketed by issue id.
  */
-export type WaitingCause =
-  | 'plan_approval'
-  | 'decompose_parent'
-  | 'reopen_cap'
-  | 'retry_exhausted'
-  | 'merged_parked';
-
-export interface PipelineHealth {
-  stage: IssueStatus;
-  activeSession?: { id: string; status: 'queued' | 'running'; skill: string };
-  waitingOn?: {
-    reason: PipelineWaitingReason;
-    since: string;
-    details: Record<string, unknown>;
-  };
-  queuedAt?: string;
-  lastTickAt?: string;
-  /** Only set when `stage === 'waiting'`. */
-  waitingCause?: { kind: WaitingCause };
-}
-
-export interface PipelineHealthSession {
-  id: string;
-  status: string;
-  metadata: Record<string, unknown> | null;
-}
-
-export interface PipelineHealthJob {
-  id: string;
-  type: string;
-  status: string;
-  queuedAt: Date;
-  runnerId: string | null;
-  agentSessionId: string | null;
-}
-
-export interface PipelineHealthDep {
-  fromIssueId: string;
-  kind: string;
-  fromStatus: string;
-  /** Blocker's `issues.merged_at` — the L2 gate keys on this, not status. */
-  fromMergedAt: Date | null;
-}
-
-/** Outgoing `kind='decomposes'` edge: this issue is the decompose PARENT and
- *  its forward jobs wait for every child to land (gate
- *  `decomposeChildrenPending`). */
-export interface PipelineHealthDecompChild {
-  childIssueId: string;
-  status: string;
-  mergedAt: Date | null;
-}
-
-export interface PipelineHealthRunnerSat {
-  type: string;
-  cap: number;
-  inFlight: number;
-}
-
-/** The issue's latest `kind='issue'` `pipeline_runs` row — only looked up by
- *  the loader for issues actually at `status='waiting'` (cheap: gated query,
- *  see `hydratePipelineHealthForIssues`). `null` when no run exists yet. */
-export interface PipelineHealthLatestRun {
-  id: string;
-  status: PipelineRunStatus;
-  pauseReason: string | null;
-}
-
-export interface ClassifyInput {
-  issue: { id: string; status: string; mergedAt: Date | null };
-  sessions: PipelineHealthSession[];
-  jobs: PipelineHealthJob[];
-  deps: PipelineHealthDep[];
-  decompChildren: PipelineHealthDecompChild[];
-  runningIssueIds: ReadonlySet<string>;
-  runningIssueCount: number;
-  cap: number;
-  /** From `resolveGateSettings` — when the base merge state can never stamp
-   *  `merged_at`, the gate honors `status='closed'` as satisfaction. */
-  baseStampable: boolean;
-  runnerInFlight: ReadonlyMap<string, PipelineHealthRunnerSat>;
-  lastTickAt: Date | null;
-  /** Only consulted when `issue.status === 'waiting'`. */
-  latestRun?: PipelineHealthLatestRun | null;
-}
-
-const RUN_TERMINAL_STATUSES = new Set<PipelineRunStatus>(['completed', 'failed', 'cancelled']);
-
-/**
- * Pure sub-classifier for `waitingCause` — see the `WaitingCause` doc comment
- * for the precedence rationale. Exported so `derive.ts`-style callers (and
- * tests) can exercise it without constructing a full `ClassifyInput`.
- */
-export function classifyWaitingCause(input: {
-  mergedAt: Date | null;
-  decompChildCount: number;
-  latestRun: PipelineHealthLatestRun | null | undefined;
-}): WaitingCause {
-  const { mergedAt, decompChildCount, latestRun } = input;
-  if (latestRun?.status === 'paused' && latestRun.pauseReason?.startsWith('reopen_cap:')) {
-    return 'reopen_cap';
+// cm:guard `held` MUST be loaded here but MUST NOT be counted at the runner-in-flight query in the loader below — this feeds the `issue_busy` and `job_held` reasons, which mirror L1 `issueBusyJob` (held blocks a duplicate), while that query mirrors `runner_load` (held burns no cap). Drop it here and the gate refuses to dispatch while pipelineHealth reports no waitingOn at all — the exact lie this file's lockstep edge exists to prevent.
+async function loadActiveJobsByIssue(
+  projectId: string,
+  ids: string[],
+): Promise<Map<string, PipelineHealthJob[]>> {
+  const rows = await db
+    .select({
+      id: jobs.id,
+      type: jobs.type,
+      status: jobs.status,
+      queuedAt: jobs.queuedAt,
+      runnerId: jobs.runnerId,
+      agentSessionId: jobs.agentSessionId,
+      issueId: jobs.issueId,
+      failureReason: jobs.failureReason,
+      pipelineRunStatus: pipelineRuns.status,
+      payload: jobs.payload,
+      retryAfterAt: jobs.retryAfterAt,
+    })
+    .from(jobs)
+    .leftJoin(pipelineRuns, eq(pipelineRuns.id, jobs.pipelineRunId))
+    .where(
+      and(
+        eq(jobs.projectId, projectId),
+        inArray(jobs.issueId, ids),
+        inArray(jobs.status, ['queued', 'dispatched', 'running', 'held']),
+      ),
+    );
+  const byIssue = new Map<string, PipelineHealthJob[]>();
+  for (const r of rows) {
+    if (!r.issueId) continue;
+    const bucket = byIssue.get(r.issueId) ?? [];
+    bucket.push({
+      id: r.id,
+      type: r.type,
+      status: r.status,
+      queuedAt: r.queuedAt,
+      runnerId: r.runnerId,
+      agentSessionId: r.agentSessionId,
+      failureReason: r.failureReason,
+      pipelineRunStatus: r.pipelineRunStatus,
+      stageStatus: extractStageStatus(r.payload),
+      retryAfterAt: r.retryAfterAt,
+    });
+    byIssue.set(r.issueId, bucket);
   }
-  if (decompChildCount > 0) return 'decompose_parent';
-  if (mergedAt !== null) return 'merged_parked';
-  if (latestRun && RUN_TERMINAL_STATUSES.has(latestRun.status)) return 'retry_exhausted';
-  return 'plan_approval';
+  return byIssue;
 }
 
 /**
@@ -208,8 +153,8 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     cap,
     baseStampable,
     runnerInFlight,
+    runnerPool,
     lastTickAt,
-    latestRun,
   } = input;
 
   const queuedJobs = issueJobs.filter((j) => j.status === 'queued');
@@ -226,14 +171,15 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
   }
   if (lastTickAt) out.lastTickAt = lastTickAt.toISOString();
 
-  if (issue.status === 'waiting') {
-    out.waitingCause = {
-      kind: classifyWaitingCause({
-        mergedAt: issue.mergedAt,
-        decompChildCount: decompChildren.length,
-        latestRun,
-      }),
-    };
+  if (issue.status === 'waiting' && issue.waitingKind) {
+    out.waitingCause = { kind: issue.waitingKind };
+  }
+
+  // cm:guard this call MUST stay above the `queuedJobs.length === 0` return — a held job is usually the issue's ONLY job, so deriving it from inside the queued-candidate block below reports nothing at all in exactly the case that matters
+  const held = heldWaitingOn(issueJobs);
+  if (held) {
+    out.waitingOn = held;
+    return out;
   }
 
   if (queuedJobs.length === 0) return out;
@@ -242,6 +188,23 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
   if (!candidate) return out;
   const sinceIso = candidate.queuedAt.toISOString();
   out.queuedAt = sinceIso;
+
+  // cm:guard this arm belongs FIRST among the queued reasons, matching the CASE in dispatch-gates.ts — a paused or terminal parent run makes every later gate moot, and reporting `project_full` or `runner_full` for it sends the reader after a slot that would change nothing
+  if (candidate.pipelineRunStatus && candidate.pipelineRunStatus !== 'running') {
+    out.waitingOn = {
+      reason: 'run_not_running',
+      since: sinceIso,
+      details: { runStatus: candidate.pipelineRunStatus, queuedJobId: candidate.id },
+    };
+    return out;
+  }
+
+  // cm:guard the cooldown arm belongs HERE, third, exactly where `retry_cooldown` sits in the dispatch CASE — ahead of both issue_busy arms and of staleness. Until ISS-789 the reason had no member in `PipelineWaitingReason` at all, so every cooldown-gated job rendered as an idle, actionable issue while the picker was refusing it.
+  const cooldown = retryCooldownWaitingOn(candidate, sinceIso, input.now ?? new Date());
+  if (cooldown) {
+    out.waitingOn = cooldown;
+    return out;
+  }
 
   const blockingSession = sessions.find(
     (s) => (s.status === 'running' || s.status === 'queued') && s.id !== candidate.agentSessionId,
@@ -258,6 +221,13 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
             blockingJobType: blockingJob!.type,
           },
     };
+    return out;
+  }
+
+  // cm:guard this arm must sit exactly where `stale_trigger` sits in the dispatch CASE — after both issue_busy arms, before blocked_by. Reporting it earlier would claim a job is stale during the one window where a non-trigger status is legitimate (a sibling step mid-flight), and omitting it renders the issue idle-and-actionable for the up-to-a-tick window before `jobs/stale-trigger.ts` discards the job.
+  const stale = staleTriggerWaitingOn(candidate, issue.status, sinceIso);
+  if (stale) {
+    out.waitingOn = stale;
     return out;
   }
 
@@ -312,23 +282,10 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     return out;
   }
 
-  if (candidate.runnerId) {
-    const sat = runnerInFlight.get(candidate.runnerId);
-    if (
-      sat &&
-      sat.inFlight >= sat.cap &&
-      runnerSupportsJobType(
-        sat.type as Parameters<typeof runnerSupportsJobType>[0],
-        candidate.type as Parameters<typeof runnerSupportsJobType>[1],
-      )
-    ) {
-      out.waitingOn = {
-        reason: 'runner_full',
-        since: sinceIso,
-        details: { runnerId: candidate.runnerId, cap: sat.cap, inFlight: sat.inFlight },
-      };
-      return out;
-    }
+  const runnerWait = runnerWaitingOn(candidate, sinceIso, runnerInFlight, runnerPool);
+  if (runnerWait) {
+    out.waitingOn = runnerWait;
+    return out;
   }
 
   return out;
@@ -350,6 +307,49 @@ function runnerDefaultConcurrency(_runnerType: string): number {
   return 1;
 }
 
+/**
+ * Q6 — in-flight load on the runners that queued candidates are pinned to.
+ * Empty when no candidate has a `runner_id` (nothing to be saturated).
+ */
+// cm:guard count only `dispatched|running` here — this mirrors the gate's `runner_load` CTE, where `held` is deliberately absent because a held job has released its slot; adding it reports `runner_full` for a runner that is in fact free
+async function loadPinnedRunnerSaturation(
+  jobsByIssue: ReadonlyMap<string, PipelineHealthJob[]>,
+): Promise<Map<string, PipelineHealthRunnerSat>> {
+  const candidateRunnerIds = new Set<string>();
+  for (const list of jobsByIssue.values()) {
+    for (const j of list) {
+      if (j.status === 'queued' && j.runnerId) candidateRunnerIds.add(j.runnerId);
+    }
+  }
+  const out = new Map<string, PipelineHealthRunnerSat>();
+  if (candidateRunnerIds.size === 0) return out;
+
+  const ids = [...candidateRunnerIds];
+  const runnerRows = await db
+    .select({ id: runners.id, type: runners.type, capabilities: runners.capabilities })
+    .from(runners)
+    .where(inArray(runners.id, ids));
+  const inFlightRows = await db
+    .select({ runnerId: jobs.runnerId, count: sql<string>`COUNT(*)::text` })
+    .from(jobs)
+    .where(and(inArray(jobs.runnerId, ids), inArray(jobs.status, ['dispatched', 'running'])))
+    .groupBy(jobs.runnerId);
+
+  const inFlightByRunner = new Map<string, number>();
+  for (const r of inFlightRows) {
+    if (r.runnerId) inFlightByRunner.set(r.runnerId, Number(r.count));
+  }
+  for (const r of runnerRows) {
+    const caps = (r.capabilities ?? {}) as Record<string, unknown>;
+    const cap =
+      typeof caps.maxConcurrent === 'number' && caps.maxConcurrent > 0
+        ? caps.maxConcurrent
+        : runnerDefaultConcurrency(r.type);
+    out.set(r.id, { type: r.type, cap, inFlight: inFlightByRunner.get(r.id) ?? 0 });
+  }
+  return out;
+}
+
 export async function hydratePipelineHealthForIssues(
   projectId: string,
   issueIds: readonly string[],
@@ -365,32 +365,11 @@ export async function hydratePipelineHealthForIssues(
       status: issues.status,
       projectId: issues.projectId,
       mergedAt: issues.mergedAt,
+      waitingKind: issues.waitingKind,
     })
     .from(issues)
     .where(inArray(issues.id, ids));
   const issuesById = new Map(issueRows.map((r) => [r.id, r]));
-
-  // Q1b — latest issue-run per issue, ONLY for issues actually at `waiting`
-  // (ISS-828 `waitingCause`) — gated so list-view health hydration for the
-  // common (non-waiting) case never pays this extra query.
-  const waitingIds = issueRows.filter((r) => r.status === 'waiting').map((r) => r.id);
-  const latestRunByIssue = new Map<string, PipelineHealthLatestRun>();
-  if (waitingIds.length > 0) {
-    const latestRunRows = await db
-      .selectDistinctOn([pipelineRuns.issueId], {
-        issueId: pipelineRuns.issueId,
-        id: pipelineRuns.id,
-        status: pipelineRuns.status,
-        pauseReason: sql<string | null>`(${pipelineRuns.metadata}->>'pauseReason')`,
-      })
-      .from(pipelineRuns)
-      .where(and(inArray(pipelineRuns.issueId, waitingIds), eq(pipelineRuns.kind, 'issue')))
-      .orderBy(pipelineRuns.issueId, desc(pipelineRuns.startedAt));
-    for (const r of latestRunRows) {
-      if (!r.issueId) continue;
-      latestRunByIssue.set(r.issueId, { id: r.id, status: r.status, pauseReason: r.pauseReason });
-    }
-  }
 
   // Q2 — non-idle agent_sessions linked to these issues via metadata.issueId.
   const sessionRows = await db
@@ -421,39 +400,7 @@ export async function hydratePipelineHealthForIssues(
     sessionsByIssue.set(r.issueId, bucket);
   }
 
-  // Q3 — live jobs (queued/dispatched/running) for these issues.
-  const jobRows = await db
-    .select({
-      id: jobs.id,
-      type: jobs.type,
-      status: jobs.status,
-      queuedAt: jobs.queuedAt,
-      runnerId: jobs.runnerId,
-      agentSessionId: jobs.agentSessionId,
-      issueId: jobs.issueId,
-    })
-    .from(jobs)
-    .where(
-      and(
-        eq(jobs.projectId, projectId),
-        inArray(jobs.issueId, ids),
-        inArray(jobs.status, ['queued', 'dispatched', 'running']),
-      ),
-    );
-  const jobsByIssue = new Map<string, PipelineHealthJob[]>();
-  for (const r of jobRows) {
-    if (!r.issueId) continue;
-    const bucket = jobsByIssue.get(r.issueId) ?? [];
-    bucket.push({
-      id: r.id,
-      type: r.type,
-      status: r.status,
-      queuedAt: r.queuedAt,
-      runnerId: r.runnerId,
-      agentSessionId: r.agentSessionId,
-    });
-    jobsByIssue.set(r.issueId, bucket);
-  }
+  const jobsByIssue = await loadActiveJobsByIssue(projectId, ids);
 
   // Q4 — incoming `blocks` edges pointing AT these issues, with the
   // blocker's merged_at (the gate's actual satisfaction key).
@@ -532,51 +479,9 @@ export async function hydratePipelineHealthForIssues(
   );
   const runningIssueCount = runningIssueIds.size;
 
-  // Q6 — runner saturation, only for queued candidates with a pinned runner.
-  const candidateRunnerIds = new Set<string>();
-  for (const list of jobsByIssue.values()) {
-    for (const j of list) {
-      if (j.status === 'queued' && j.runnerId) candidateRunnerIds.add(j.runnerId);
-    }
-  }
-  const runnerInFlight = new Map<string, { type: string; cap: number; inFlight: number }>();
-  if (candidateRunnerIds.size > 0) {
-    const runnerRows = await db
-      .select({
-        id: runners.id,
-        type: runners.type,
-        capabilities: runners.capabilities,
-      })
-      .from(runners)
-      .where(inArray(runners.id, [...candidateRunnerIds]));
-    const inFlightRows = await db
-      .select({ runnerId: jobs.runnerId, count: sql<string>`COUNT(*)::text` })
-      .from(jobs)
-      .where(
-        and(
-          inArray(jobs.runnerId, [...candidateRunnerIds]),
-          inArray(jobs.status, ['dispatched', 'running']),
-        ),
-      )
-      .groupBy(jobs.runnerId);
-    const inFlightByRunner = new Map<string, number>();
-    for (const r of inFlightRows) {
-      if (r.runnerId) inFlightByRunner.set(r.runnerId, Number(r.count));
-    }
-    for (const r of runnerRows) {
-      const caps = (r.capabilities ?? {}) as Record<string, unknown>;
-      const runnerCap =
-        typeof caps.maxConcurrent === 'number' && caps.maxConcurrent > 0
-          ? caps.maxConcurrent
-          : runnerDefaultConcurrency(r.type);
-      runnerInFlight.set(r.id, {
-        type: r.type,
-        cap: runnerCap,
-        inFlight: inFlightByRunner.get(r.id) ?? 0,
-      });
-    }
-  }
+  const runnerInFlight = await loadPinnedRunnerSaturation(jobsByIssue);
 
+  const runnerPool = await freshRunnerAvailability(projectId);
   const lastTickAt = getLastTickAt(projectId);
 
   for (const issueId of ids) {
@@ -587,6 +492,7 @@ export async function hydratePipelineHealthForIssues(
         id: issueRow.id,
         status: issueRow.status,
         mergedAt: issueRow.mergedAt,
+        waitingKind: issueRow.waitingKind,
       },
       sessions: sessionsByIssue.get(issueId) ?? [],
       jobs: jobsByIssue.get(issueId) ?? [],
@@ -597,8 +503,8 @@ export async function hydratePipelineHealthForIssues(
       cap,
       baseStampable,
       runnerInFlight,
+      runnerPool,
       lastTickAt,
-      latestRun: latestRunByIssue.get(issueId) ?? null,
     });
     map.set(issueId, health);
   }

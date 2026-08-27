@@ -6,16 +6,16 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import {
-  type RunnerStatus,
-  type RunnerType,
   agentSessions,
   jobEvents,
   jobs,
+  type RunnerStatus,
+  type RunnerType,
   runnerEvents,
   runnerHosts,
   runnerStatuses,
-  runnerTypes,
   runners,
+  runnerTypes,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';

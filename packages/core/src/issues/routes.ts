@@ -12,8 +12,8 @@ import {
   issuePriorities,
   issueStatuses,
   issues,
-  jobTypes,
   jobs,
+  jobTypes,
   labels,
   projectMembers,
   usageRecords,
@@ -30,14 +30,14 @@ import {
   AttachmentError,
   type AttachmentErrorEntry,
   type DecodedAttachment,
-  type PersistedIssueAttachment,
   decodeAndValidateAttachments,
+  type PersistedIssueAttachment,
   persistDecodedIssueAttachments,
 } from './attachment-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
 import { applyIntakeGate, finalizeIntake } from './intake-gate.js';
-import { SHARED_ISSUE_PATCH_FIELDS, collectIssueFieldUpdates } from './patch-fields.js';
-import { type PipelineHealth, hydratePipelineHealthForIssues } from './pipeline-health.js';
+import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
+import { hydratePipelineHealthForIssues, type PipelineHealth } from './pipeline-health.js';
 
 // Defence against partial drizzle mocks in unit tests + transient DB blips:
 // pipelineHealth is derived; the list/single endpoints must not 500 if the
@@ -56,8 +56,9 @@ async function safeHydratePipelineHealth(
     return new Map();
   }
 }
+
 import type { IssueBranchOverride } from '../branches/resolve.js';
-import { DecomposeError, IntegrationBranchError, decomposeParent } from './decompose.js';
+import { DecomposeError, decomposeParent, IntegrationBranchError } from './decompose.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
 const attachmentInputSchema = z
@@ -69,12 +70,14 @@ const attachmentInputSchema = z
   .strict();
 
 import { isSelfReferentialBranch, issueMetadataSchema } from './metadata.js';
+
 export {
-  branchNameSchema,
   branchConfigOverrideSchema,
-  issueMetadataSchema,
+  branchNameSchema,
   isSelfReferentialBranch,
+  issueMetadataSchema,
 } from './metadata.js';
+
 import { type ReleaseNotes, ReleaseNotesSchema } from './release-notes.js';
 
 export const issueCreateSchema = z

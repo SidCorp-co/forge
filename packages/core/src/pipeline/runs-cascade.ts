@@ -57,6 +57,7 @@ export interface CascadeResult {
  * one. `cancelPipelineRun` previously cleaned only `queued|dispatched`;
  * unifying here closes that gap.
  */
+// cm:flow release/reap after:close — closing the run reaps its child jobs, and on a `pipeline_completed` close the release job that is still running flips to done, NOT cancelled; that sentinel is why a successful release does not look like a cancelled one
 // cm:guard every terminal pipeline_runs.status transition must route through this helper — nothing else reaps child jobs
 // cm:edge lockstep -> packages/core/src/jobs/loop-monitor.ts — orphan-hygiene defence 2; the three defences move together
 // cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — orphan-hygiene defence 3
@@ -86,7 +87,7 @@ export async function cascadeCancelChildJobs(
         },
     where: and(
       eq(jobs.pipelineRunId, runId),
-      inArray(jobs.status, ['queued', 'dispatched', 'running']),
+      inArray(jobs.status, ['queued', 'dispatched', 'running', 'held']),
     ),
     fromStatus: 'active',
     reason,

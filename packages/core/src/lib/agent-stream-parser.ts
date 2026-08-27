@@ -1,22 +1,16 @@
 /**
- * Port of the desktop Claude stream-json parser (`packages/dev/src/lib/
- * stream-parser.ts` + the `mergeMessages` helper from `session-tracker.ts`).
+ * Claude stream-json → canonical `agent_sessions.messages`.
  *
- * Why a server-side copy (ISS-283): the `forge-runner` CLI authenticates with
- * a device token only and cannot call the user-JWT-gated
- * `PATCH /api/agent-sessions/:id` the desktop uses. But the runner already
- * streams every raw Claude stream-json line to core as a `stdout` job_event,
- * so core holds the full transcript. Core therefore derives the canonical
- * `agent_sessions.messages` from those events using this parser, so CLI-run
- * sessions render identically to desktop-run ones.
+ * The `forge-runner` CLI holds only a device token and cannot call the
+ * user-JWT-gated `PATCH /api/agent-sessions/:id`, but it streams every raw
+ * stream-json line to core as a `stdout` job_event — so core derives the
+ * transcript itself (ISS-283).
  *
- * Kept byte-faithful to the desktop parser so the web `AgentMessage[]` renderer
- * produces the same output for both origins. The ONLY intentional change: the
- * desktop `messageCounter` was a module-level mutable — non-deterministic in a
- * multi-session server — so id generation is externalised into a per-derive
- * factory (`createIdFactory`). IDs only need to be unique within one session's
- * message array, which `buildSessionFromEvents` guarantees by threading a
- * single factory through one full re-derive.
+ * Id generation is a per-derive factory (`createIdFactory`) rather than a
+ * module-level counter: ids only need to be unique within one session's message
+ * array, and a shared mutable would make a multi-session server
+ * non-deterministic. `buildSessionFromEvents` threads one factory per pass,
+ * which is what makes a re-derive idempotent.
  */
 
 // Optional fields carry explicit `| undefined` because core compiles with
@@ -27,6 +21,13 @@ export interface ToolCall {
   name: string;
   input?: Record<string, unknown> | undefined;
   output?: string | undefined;
+  /** `tool_result.is_error`. Measured on forge-beta 2026-08-23: 1,051 of 33,671
+   *  tool results over 3 days carry `is_error: true`, and every one of them
+   *  rendered as an ordinary row until this field was kept. */
+  isError?: boolean | undefined;
+  /** tool_use event → tool_result event, in ms. Not in the stream: derived by
+   *  `buildSessionFromEvents` from the two job_events' own timestamps. */
+  durationMs?: number | undefined;
 }
 
 export interface AgentTodo {
@@ -54,6 +55,19 @@ export interface AgentMessage {
   blocks?: ContentBlock[] | undefined;
   subtype?: string | undefined;
   model?: string | undefined;
+  /** `tool_result.is_error`, on the tool_result message itself; mergeMessages
+   *  copies it onto the matching toolCall. */
+  isError?: boolean | undefined;
+  /** Set by `buildSessionFromEvents` on a tool_result message before merging;
+   *  mergeMessages moves it onto the toolCall. */
+  durationMs?: number | undefined;
+  /** Assistant `thinking` blocks in this message. Count only: measured on
+   *  forge-beta 2026-08-23, all 12,899 thinking blocks in 3 days carry an EMPTY
+   *  `thinking` string (signature only), so there is no text to render — only
+   *  the fact that the model paused here. */
+  thinkingCount?: number | undefined;
+  /** Present on the `result` message only. */
+  totals?: RunTotals | undefined;
   usage?:
     | {
         input_tokens?: number;
@@ -62,6 +76,19 @@ export interface AgentMessage {
         cache_creation_input_tokens?: number;
       }
     | undefined;
+}
+
+/** The `result` line's totals. Claude Code emits `total_cost_usd`; `cost_usd`
+ *  is the pre-2025 spelling and is still accepted so old transcripts re-derive
+ *  unchanged. */
+export interface RunTotals {
+  totalCostUsd?: number | undefined;
+  durationMs?: number | undefined;
+  durationApiMs?: number | undefined;
+  numTurns?: number | undefined;
+  permissionDenials?: number | undefined;
+  stopReason?: string | undefined;
+  isError?: boolean | undefined;
 }
 
 export interface ParseResult {
@@ -110,9 +137,12 @@ function parseAssistantMessage(
   const blocks: ContentBlock[] = [];
   const toolCalls: ToolCall[] = [];
   const textParts: string[] = [];
+  let thinkingCount = 0;
 
   for (const c of content) {
-    if (c.type === 'text') {
+    if (c.type === 'thinking') {
+      thinkingCount += 1;
+    } else if (c.type === 'text') {
       const text = c.text ?? '';
       if (text) {
         blocks.push({ type: 'text', text });
@@ -127,7 +157,7 @@ function parseAssistantMessage(
 
   const text = textParts.join('');
   const hasTodos = blocks.some((b) => b.type === 'todos');
-  if (!text && toolCalls.length === 0 && !hasTodos) return { messages: [] };
+  if (!text && toolCalls.length === 0 && !hasTodos && thinkingCount === 0) return { messages: [] };
 
   const message: AgentMessage = {
     id: makeId(),
@@ -137,6 +167,7 @@ function parseAssistantMessage(
     toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
     blocks: blocks.length > 0 ? blocks : undefined,
     model: (msg?.model as string) ?? (data.model as string) ?? undefined,
+    thinkingCount: thinkingCount > 0 ? thinkingCount : undefined,
     usage:
       (msg?.usage as AgentMessage['usage']) ?? (data.usage as AgentMessage['usage']) ?? undefined,
   };
@@ -241,19 +272,36 @@ function parseUserMessage(
       timestamp,
       toolOutput: (r.content as string) ?? '',
       toolName: r.tool_use_id,
+      isError: r.is_error === true ? true : undefined,
     })),
   };
 }
 
+function num(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+}
+
+// cm:guard read `total_cost_usd` FIRST — `cost_usd` is the pre-2025 key and was the only one this read, so every session since the rename ended on the string 'Agent finished.' with cost, duration, turn count and permission denials all discarded. Keep the fallback so old transcripts re-derive unchanged.
 function parseResultMessage(
   data: Record<string, unknown>,
   timestamp: number,
   makeId: () => string,
 ): ParseResult {
-  const cost = data.cost_usd as number | undefined;
+  const totals: RunTotals = {
+    totalCostUsd: num(data.total_cost_usd) ?? num(data.cost_usd),
+    durationMs: num(data.duration_ms),
+    durationApiMs: num(data.duration_api_ms),
+    numTurns: num(data.num_turns),
+    permissionDenials: Array.isArray(data.permission_denials)
+      ? data.permission_denials.length
+      : undefined,
+    stopReason: typeof data.stop_reason === 'string' ? data.stop_reason : undefined,
+    isError: data.is_error === true ? true : undefined,
+  };
+  const cost = totals.totalCostUsd;
   const content = cost !== undefined ? `Cost: $${cost.toFixed(4)}` : 'Agent finished.';
   return {
-    messages: [{ id: makeId(), type: 'system', timestamp, content }],
+    messages: [{ id: makeId(), type: 'system', timestamp, content, subtype: 'result', totals }],
   };
 }
 
@@ -293,12 +341,16 @@ export function mergeMessages(messages: AgentMessage[], parsed: AgentMessage[]):
       };
     } else if (p.type === 'tool_result' && last?.type === 'assistant' && last.toolCalls) {
       const toolId = p.toolName;
-      const newCalls = last.toolCalls.map((t) =>
-        t.id === toolId ? { ...t, output: p.toolOutput } : t,
-      );
+      const settled = (t: ToolCall): ToolCall => ({
+        ...t,
+        output: p.toolOutput,
+        ...(p.isError === true ? { isError: true } : {}),
+        ...(p.durationMs !== undefined ? { durationMs: p.durationMs } : {}),
+      });
+      const newCalls = last.toolCalls.map((t) => (t.id === toolId ? settled(t) : t));
       const newBlocks = last.blocks?.map((b) =>
-        b.type === 'tool' && b.toolCall?.id === toolId
-          ? { ...b, toolCall: { ...b.toolCall!, output: p.toolOutput } }
+        b.type === 'tool' && b.toolCall && b.toolCall.id === toolId
+          ? { ...b, toolCall: settled(b.toolCall) }
           : b,
       );
       messages[messages.length - 1] = { ...last, toolCalls: newCalls, blocks: newBlocks };
@@ -348,17 +400,25 @@ export function buildSessionFromEvents(events: JobEventLike[]): DerivedSession {
   const makeId = createIdFactory();
   const messages: AgentMessage[] = [];
   let claudeSessionId: string | null = null;
+  // cm:why a tool's duration is nowhere in the stream — the only record is the gap between the two job_events carrying its tool_use and its tool_result, which is why it is derived here and not in the parser.
+  const startedAt = new Map<string, number>();
 
   for (const ev of events) {
     if (ev.kind === 'stdout') {
       const line = (ev.data as { line?: unknown } | null | undefined)?.line;
       if (line == null) continue;
-      const { messages: parsed, sessionId } = parseStreamMessages(
-        line,
-        makeId,
-        toEventTimestamp(ev.ts),
-      );
+      const ts = toEventTimestamp(ev.ts);
+      const { messages: parsed, sessionId } = parseStreamMessages(line, makeId, ts);
       if (sessionId) claudeSessionId = sessionId;
+      for (const p of parsed) {
+        if (ts === undefined) continue;
+        if (p.type === 'assistant') {
+          for (const tc of p.toolCalls ?? []) if (!startedAt.has(tc.id)) startedAt.set(tc.id, ts);
+        } else if (p.type === 'tool_result' && p.toolName) {
+          const began = startedAt.get(p.toolName);
+          if (began !== undefined && ts >= began) p.durationMs = ts - began;
+        }
+      }
       if (parsed.length > 0) mergeMessages(messages, parsed);
     } else if (ev.kind === 'progress') {
       const sid = (ev.data as { claudeSessionId?: unknown } | null | undefined)?.claudeSessionId;

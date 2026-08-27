@@ -14,7 +14,7 @@
 
 import { eq, sql } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
-import { type IssueStatus, activityLog, issueStatuses, issues, projects } from '../db/schema.js';
+import { activityLog, type IssueStatus, issueStatuses, issues, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { resolveMergeStates } from './merged-at.js';
 
@@ -45,7 +45,8 @@ const POST_CODE_STATUSES: readonly IssueStatus[] = ['developed', 'testing', 'tes
 // cm:guard the ONLY place issue statuses are bucketed into a progress figure — a second counter (chat self-count, a bespoke report) re-opens ISS-671's 54-issue incident
 export function bucketOf(status: IssueStatus, hasShippedEvidence: boolean): ProgressBucket {
   if (status === 'released' || (status === 'closed' && hasShippedEvidence)) return 'shipped';
-  if (status === 'closed') return 'closed_unshipped';
+  // cm:guard `dropped` is terminal and shipped nothing BY DEFINITION — falling through to the `in_flight` default would count every dropped issue as work still in progress, forever, which is the shape of the ISS-671 incident this function exists to prevent
+  if (status === 'closed' || status === 'dropped') return 'closed_unshipped';
   if (REMAINING_STATUSES.has(status)) return 'remaining';
   return 'in_flight';
 }

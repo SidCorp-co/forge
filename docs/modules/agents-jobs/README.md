@@ -93,18 +93,14 @@ as invisible starvation.
 
 ```mermaid
 flowchart TD
-  A([issues.status changed]) --> B{"leaving waiting / on_hold?"}
-  B -- "agent actor, no operator_unblock" --> X1["status moves, NO job dispatched<br/>(skipped-park-exit comment)"]
-  B -- "no · or user / operator_unblock" --> C["considerEnqueue"]
+  A([issues.status changed]) --> C["considerEnqueue — no park gate (RFC 0002 INV-6)"]
   C --> D{"1–3 · jobType mapped? pipeline enabled?<br/>stage enabled, not manual, toggle on?"}
   D -- no --> X2["stop — human-gated or disabled"]
   D -- yes --> E{"4 · status still live in DB?"}
   E -- "changed under us" --> X3["drop — lost the race"]
-  E -- yes --> F{"5–8 · evidence guards<br/>plan-required · needs_info-reopen<br/>empty-reopen · unexplained-reopen"}
+  E -- yes --> F{"5 · evidence guard<br/>approved with a blank plan?"}
   F -- fail --> X4["route to clarified / needs_info<br/>+ comment"]
-  F -- pass --> G{"9 · bounce-replay<br/>stage already exited via a bounce?"}
-  G -- "unanswered" --> X5["route back to that bounce<br/>+ comment"]
-  G -- "answered · or capacity park cleared" --> H{"skill registered?"}
+  F -- pass --> H{"skill registered?"}
   H -- no --> X6["open run + pause missing_skill:<br/>or soft-skip"]
   H -- yes --> I{"active job of this type already?"}
   I -- yes --> X7["dedup — drop"]
@@ -118,14 +114,13 @@ flowchart TD
 | 3 | stage config | `states.<stage>.enabled:false` · `mode:'manual'` · `auto*` off | stop / gate |
 | 4 | live-status re-verify | issue status changed since the hook fired | drop |
 | 5 | plan-required | `approved` with blank `plan` | `clarified`, or `needs_info` if a `plan` job already ran |
-| 6 | needs_info-reopen | `fix` where `reopen` came straight from `needs_info` | `needs_info` |
-| 7 | empty-reopen | `fix` with no prior `code`/`fix` job | `needs_info` |
-| 8 | unexplained-reopen | `fix` where `reopen` left `released`/`closed` with no rationale | `needs_info` |
-| 9 | bounce-replay | stage was exited via a bounce and nothing new arrived | back to that bounce |
 
-Guards 5–8 + the `needs_info` release rule are the state-integrity family:
-[state-integrity-guards.md](../../architecture/state-integrity-guards.md). Guard 9's capacity-park
-exception: [failure-taxonomy-and-action-policy.md](../../architecture/failure-taxonomy-and-action-policy.md).
+Guards 6–9 (needs_info-reopen, empty-reopen, unexplained-reopen, bounce-replay) are **deleted** —
+RFC 0002 INV-8 replaced all four with a `reason` required on the `reopen` write itself. Each of them
+detected a missing rationale *after* the fact, and each detected it by stranding the issue at
+`needs_info`; on ISS-163 that stranding refused four legitimate resume attempts in a row. Guard 5 is
+the last of the state-integrity family on the dispatch path:
+[state-integrity-guards.md](../../architecture/state-integrity-guards.md).
 
 ### Dispatch gates (`jobs/dispatch-gates.ts`)
 

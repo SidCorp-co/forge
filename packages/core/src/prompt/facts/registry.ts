@@ -19,7 +19,6 @@
 // is pure.
 
 import type { IssueStatus, JobType } from '../../db/schema.js';
-import { LIFECYCLE_GUIDE_POINTER, PARK_EXIT_RULE } from '../../pipeline/park-states.js';
 
 export type FactCategory = 'enum' | 'protocol' | 'format' | 'reference';
 export type FactTier = 'mandatory' | 'contextual';
@@ -80,25 +79,30 @@ An issue is a unit of WORK with a named deliverable and an owner, whose completi
 | To park work that never started | leave it at \`draft\` | \`on_hold\` from \`draft\` — \`on_hold\` is a deliberate pause for ACTIVE work only |
 | To finish a fix made by hand, outside the pipeline | drive it through \`status\` and/or capture a \`forge_memory\` learning | Fixing it and forgetting — no status move, no learning recorded |
 | An issue you are working turns out NOT to be work (a note, a question, a duplicate, already done) | Act on it yourself — comment saying which gate it fails and where the content went, THEN \`needs_info\` if a human owes you requirements, or \`closed\` + \`forge_issues action=unmark\` if it is not work at all | Leaving it filed for someone else to find · \`closed\` WITHOUT \`unmark\` — closing auto-stamps \`merged_at\`, which unblocks every \`blocks\` dependent as if the work had shipped · moving status with no comment, so the next reader cannot tell why |
-| A residual you cannot finish here (a follow-up, an unanswered policy call) | ONE of: an issue that passes the gates · a \`blocks\` edge onto the issue that would ship without it · a line in \`docs/proposals/\` | A new unowned \`draft\` — it is not a hand-off, nobody browses drafts. Equally: staying silent because none of the three fit — say it in a comment on the issue you are on |
+| A bug, gap or defect you find WHILE working an issue | **Fix it now, in this issue**, and DECLARE it in your comment under \`Extra fixes:\` — extra work is REPORTED, never filed | Filing it instead of fixing it. A new \`draft\` is not a hand-off: nobody owns it, nothing ages it, and a two-minute fix becomes backlog nobody reads |
+| A residual genuinely out of reach (needs a human decision, or work no diff here can carry) | ONE of: a \`blocks\` edge onto the issue that would ship without it · a line in \`docs/proposals/\` · \`waiting\` + \`reason\` when it blocks THIS issue | Filing a new issue to carry it — that is not one of the options. Equally: staying silent because none of the three fit — say it in a comment on the issue you are on |
 
-**Forge red flags:** prose-deps · open-then-block · open-as-note · draft-as-note · plan-by-hand · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget · close-without-unmark · silent-nonwork.
-Full reference: \`docs/guides/forge-affordances.md\` · what counts as an issue: guide \`what-is-an-issue\`.`;
+**Forge red flags:** prose-deps · open-then-block · open-as-note · draft-as-note · plan-by-hand · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget · close-without-unmark · silent-nonwork · file-instead-of-fix.
+Full reference: \`docs/guides/forge-affordances.md\` · what counts as an issue: guide \`what-is-an-issue\` · how to write the body of one (pick the shape first, mermaid renders, attach HTML never paste it): guide \`writing-an-issue\`.`;
+
+// cm:edge lockstep -> packages/core/src/guides/registry.ts — the pipeline-and-issue-lifecycle guide is what this pointer resolves to; renaming the guide slug there without changing it here sends every agent to a 404
+const LIFECYCLE_GUIDE_POINTER = 'forge_guide get pipeline-and-issue-lifecycle';
 
 const PIPELINE_RULES_TEXT = `## Pipeline Rules
 - **Always advance the state — never leave an issue parked.** The FINAL action of every step MUST be a \`forge_issues.update\` that moves \`status\`. Setting status is what triggers the next step; an issue left in its current status stalls the pipeline forever. Do this even if your skill instructions don't mention a transition.
 - **Single-shot turn — never background-and-exit.** Your step is ONE headless turn; when you stop, the whole process group is killed. Any \`run_in_background\` task dies with it and you never see its result — so NEVER end your turn while still waiting on background output (the job reports \`done\` but the issue is left parked, the silent stall above). To wait on an async result (deploy / build / migration), poll in the FOREGROUND so the turn blocks until you have the answer, then verify and set status. If the wait would exceed your budget, set the handoff status and exit cleanly — do NOT background-poll-and-exit. Backgrounding is fine ONLY for a helper you consume within the SAME turn (e.g. a dev server you query before finishing).
 - **Where to move next.** The \`## This State\` section below names the exact status to set on success and on a block — follow it. Otherwise follow the \`### Status ladder\` section — it is project-resolved and OVERRIDES the default. Only when neither is present, default forward along: \`open → confirmed → clarified → approved → developed → testing → tested → released → closed\` (intermediate states you don't own auto-advance).
-- **Deviate freely when warranted.** Transitions are NOT restricted to the happy path. From ANY state you may set \`needs_info\` (requirements missing/unclear), \`waiting\` (blocked on a human decision / can't proceed), \`reopen\` (regression or failed check), or \`on_hold\` (deliberate pause) the moment you hit that condition — don't force the ladder. Only \`draft\` is never a valid target. Reopens are capped: past the cap, a \`reopen\` you request lands the issue at \`waiting\` for a human instead — report that outcome and stop, do not retry the transition or pick another forward status.
-- **Leaving a park is NOT symmetric with entering one.** ${PARK_EXIT_RULE} Park semantics in full: \`${LIFECYCLE_GUIDE_POINTER}\`.
-- **You never self-rescue a crash.** If your job fails mechanically (process crash / non-zero exit), the SYSTEM reverts the issue to the stage's entry-status and re-dispatches automatically (retry budget + backoff); when the budget is exhausted it parks the issue at \`waiting\`. Do NOT set \`on_hold\` to "hold" a failure — \`on_hold\` is a deliberate pause only.
+- **Deviate freely when warranted.** Transitions are NOT restricted to the happy path. From ANY state you may set \`needs_info\` (requirements missing/unclear — put the QUESTION in \`reason\`, it is the only place the reporter sees it), \`waiting\` (blocked on a human decision / can't proceed), \`reopen\` (regression or failed check), or \`on_hold\` (deliberate pause) the moment you hit that condition — don't force the ladder. Only \`draft\` is never a valid target. **Three of them STOP the pipeline and are REJECTED without a \`reason\`: \`reopen\`, \`waiting\`, \`needs_info\`.** Pass \`reason\` on the same \`forge_issues\` call; it is posted as a comment before the status flips. \`waiting\` additionally requires \`waitingKind\`. This is not paperwork — a stopped pipeline that does not say what it is waiting for is a question nobody can answer, and 43 issues sat exactly like that before the rule existed.
+- **\`waiting\` means a human is needed, and YOU are its only author.** Set it when something only a person can supply is missing — a decision between tradeoffs (\`needs_decision\`) or a resource you cannot create, e.g. a test account, credentials, third-party data (\`needs_resource\`). Pass BOTH \`waitingKind\` and \`reason\` on the same \`forge_issues\` call — the write is REJECTED without either (core never guesses the kind, and never will). Write the \`reason\` as the actual ask, addressed to the person who will read it: name what you need, why you cannot get it yourself, and what happens once you have it. The decompose review gate is the ONLY \`waiting\` the system writes by itself; everywhere else an agent or a human put it there deliberately. Leaving it needs nothing special: set the next status and the pipeline dispatches, from any actor and any surface. Park semantics in full: \`${LIFECYCLE_GUIDE_POINTER}\`.
+- **You never self-rescue a crash, and a crash never touches the issue.** If your job fails mechanically (process crash / non-zero exit / no runner / provider quota), the SYSTEM reverts the issue to the stage's entry-status and re-dispatches (retry budget + backoff). When the budget is spent, the JOB is \`held\` — the issue stays where it is and is NOT parked at \`waiting\`, because nothing is being asked of a human. Do NOT set \`on_hold\` or \`waiting\` to "hold" a failure.
+- **Five rounds with no movement is your stop signal, not a cap.** Nothing limits how many times an issue may be reopened. But if you have fixed the same problem ~5 times and nothing has changed — same failure, same symptom, no new information — stop fixing and set \`waiting\` with a comment saying what you tried and what you now need from a human. Five rounds that each moved something forward are normal work; keep going.
 - **Decompose is system-owned — do NOT hand-set parent/child statuses.** When you decompose a parent into children, core parks the parent at \`waiting\` (the review gate) and creates the children at \`draft\`. A human approving the parent (→ \`approved\`) auto-cascades the children to \`approved\`. The parent's own forward work is held by the dispatcher until ALL children's code is merged (each child's \`merged_at\` set, or \`closed\`), then the parent runs its integration LAST. The kickoff is anchored to these system transitions — manually moving a decompose parent or child breaks it.
 - **Status LAST**, after all other work (commits, comments, handoff). Don't hand-set system-owned derived fields — EXCEPT \`merged_at\` (next bullet).
-- **\`merged_at\` is the downstream-unblock signal.** A \`blocks\`/\`decomposes\` dependent dispatches as soon as its blocker has \`merged_at\` set (or is \`closed\`) — NOT when the blocker reaches \`released\`. It auto-stamps only on leaving the project's base-merge state (\`mergeStates.baseBranch\` — often \`released\`, sometimes \`tested\`). So if you merge the issue branch to the base branch then PARK at that state (a manual gate the system won't auto-advance), nothing stamps it and downstream stalls silently — stamp it yourself right after the merge lands: \`forge_issues.mark_merged({ issueId, target: 'base' })\`. Forge never merges or stamps server-side; the \`## Merge required\` block carries the details. **Verify before you stamp.** \`merged_at\` is CALLER-ASSERTED — nothing server-side checks git. Confirm the commits are actually reachable from the target branch ON THE REMOTE (\`git fetch\`, then \`git merge-base --is-ancestor <sha> origin/<branch>\`; after a squash merge the sha never appears, so check the issue's diff is present instead) before you stamp or close. A push exit code, matching branch names, or \"the previous step said so\" is not evidence. Closing also auto-stamps it, so closing an abandoned issue whose code never landed wrongly unblocks its dependents — follow with \`forge_issues.unmark\`.
+- **\`merged_at\` is the downstream-unblock signal.** A \`blocks\`/\`decomposes\` dependent dispatches as soon as its blocker has \`merged_at\` set (or is \`closed\`) — NOT when the blocker reaches \`released\`. It auto-stamps only on leaving the project's base-merge state (\`mergeStates.baseBranch\` — often \`released\`, sometimes \`tested\`). So if you merge the issue branch to the base branch then PARK at that state (a manual gate the system won't auto-advance), nothing stamps it and downstream stalls silently — stamp it yourself right after the merge lands: \`forge_issues.mark_merged({ issueId, target: 'base' })\`. Forge never merges or stamps server-side; the \`## Merge required\` block carries the details. **Verify before you stamp.** \`merged_at\` is CALLER-ASSERTED — nothing server-side checks git. Confirm the commits are actually reachable from the target branch ON THE REMOTE (\`git fetch\`, then \`git merge-base --is-ancestor <sha> origin/<branch>\`; after a squash merge the sha never appears, so check the issue's diff is present instead) before you stamp or close. A push exit code, matching branch names, or "the previous step said so" is not evidence. Closing also auto-stamps it, so closing an abandoned issue whose code never landed wrongly unblocks its dependents — follow with \`forge_issues.unmark\`.
 - **A blocker's \`merged_at\` is a claim, not proof.** It let you dispatch, but nothing verified it, and several projects have had a dependent build against code that was never on the base branch. Before you rely on a blocker's or a decompose child's work, confirm it is actually there. If it is not: say so in a comment and set \`waiting\` (or \`reopen\` if it is your own issue's code) — do NOT silently build against it, and do NOT merge the blocker yourself.
 - **Branch discipline.** Create the ISS-* branch in this issue's OWN worktree, cut from \`baseBranch\` — \`git worktree add .claude/worktrees/iss-XX-short-title -b ISS-XX-short-title origin/<baseBranch>\`, reusing the worktree if it already exists. NEVER \`git checkout\`/\`stash\`/\`reset\`/\`clean\` in the shared root checkout: other agents are working in it right now and their uncommitted changes are unrecoverable once you clobber them. Never switch branches mid-work. Full protocol: the \`## Worktree isolation\` section.
 - **Never merge or roll back a shared branch to rescue an environment.** Merging into \`baseBranch\`/\`productionBranch\` belongs to the ONE step your skill says owns it; no other step may merge there, and NO step may \`git revert\`, \`reset --hard\` or force-push a shared branch — not even to "restore" a deploy you think you broke. From inside a single step you cannot tell your own change from a pre-existing outage (an API that has been down for hours reads exactly like one you just broke), and a rollback deletes reviewed work while the outage survives it. When the environment you need is broken, or is missing code a previous step claimed was merged: post the evidence as a comment and set \`waiting\`. Reverting is a human decision.
-- **A stale clone is not evidence of absence.** The runner's checkout can be many commits behind the remote. Before concluding that code, a column, a symbol or a commit does NOT exist — and especially before bouncing an issue on that basis — run \`git fetch origin\` and read \`origin/<baseBranch>\`, not your local HEAD (\`git log origin/<base> -- <path>\`, \`git grep <symbol> origin/<base>\`). A MISSING \`ISS-XX-*\` BRANCH proves nothing: branches are pruned after merge, so its absence is the normal post-merge state, and even a live \`git ls-remote\` cannot tell \"never existed\" from \"already merged and cleaned up\". If Forge says an issue merged and your working copy disagrees, fetch before you trust your copy.
+- **A stale clone is not evidence of absence.** The runner's checkout can be many commits behind the remote. Before concluding that code, a column, a symbol or a commit does NOT exist — and especially before bouncing an issue on that basis — run \`git fetch origin\` and read \`origin/<baseBranch>\`, not your local HEAD (\`git log origin/<base> -- <path>\`, \`git grep <symbol> origin/<base>\`). A MISSING \`ISS-XX-*\` BRANCH proves nothing: branches are pruned after merge, so its absence is the normal post-merge state, and even a live \`git ls-remote\` cannot tell "never existed" from "already merged and cleaned up". If Forge says an issue merged and your working copy disagrees, fetch before you trust your copy.
 - **ISS-* branch is source of truth.** Kept alive through the pipeline. Squash-merges to \`productionBranch\` at release.
 - **Check in first.** The prompt does NOT inline the issue body, comments, attachments, or handoffs — it carries only the title + a pointer. Begin every step by calling \`forge_step_start\` (\`{ projectId, issueId, stage }\`) — it marks the issue in-flight when the step defines a working status (code/fix → \`in_progress\`) and returns your working bundle: the issue (full body when small; a lean manifest with \`bodyTruncated:true\` + \`bodyManifest\` field-sizes when heavy fields exceed the threshold — pull fields you need via \`forge_issues.get { documentId, fields: ['plan', ...] }\`), comments (each with \`attachments[]\`), prior step handoffs, resolved \`branchConfig\`. Never assume data from the prompt. To read an attached image/file's CONTENT, call \`forge_uploads\` action=fetch (images come back viewable). If the tool errors, fall back to \`forge_issues.get\` + \`forge_comments.list\` and set the working status yourself.
 - **Never speak for a human.** An automated step must NEVER post a comment framed as a human/owner decision or an owner approval — every comment you post is recorded as agent-authored (\`isAi:true\`), and claiming otherwise is a fabrication, not a shortcut. If a human decided something, QUOTE that human's comment id — do not restate it as your own authority. Once a human has answered a \`needs_info\`, you may not silently override it: if you disagree or have new evidence, raise a NEW \`needs_info\` that quotes their answer — never contradict-in-place.
@@ -113,6 +117,8 @@ Only when you hit a reusable lesson — a project convention, a non-obvious gotc
 Before your final status update, update \`issues.sessionContext\` via \`forge_issues.update\`:
 \`{ currentState, decisions, filesModified, errorsResolved, reviewFeedback, sessionCount, lastUpdated }\`
 Merge with existing: increment sessionCount, append to arrays (skip duplicates), replace currentState. Cap arrays at 20.
+
+**On a review or test step that rejects (sets \`reopen\`), also append one \`churn\` entry:** \`churn[] = { round, progressed, whatChanged, verdict }\` — \`round\` = the issue's \`reopenCount\` after your write, \`progressed\` = true/false for whether THIS round moved anything at all, \`whatChanged\` = one line naming it (or what stayed identical), \`verdict\` = your one-line rejection reason. Nothing reads this to gate you; it is the only record that can tell "five rounds, five different blockers fixed" from "five rounds, nothing changed", and the \`noProgressRounds\` alert points a human straight at it.
 
 ## Output Rules
 - Zero narration. Tool calls are self-documenting.
@@ -165,15 +171,14 @@ const ISSUE_STAGES: readonly JobType[] = [
   'custom',
 ];
 
-// cm:edge lockstep -> packages/core/src/memory/step-handoff-schema.ts#stepHandoffSchema — these key
-//   lists are what the prompt TELLS the agent to send; drift and the agent is briefed on a stale shape
+// cm:edge lockstep -> packages/core/src/memory/step-handoff-schema.ts#stepHandoffSchema — these key lists are what the prompt tells the agent to send; drift briefs the agent on a stale shape
 const HANDOFF_KEYS: Partial<Record<JobType, string>> = {
   triage: 'summary, suggestedApproach, complexity, risks, affectedAreas',
   clarify: 'outcome, environment, stepsVerified[], rootCauseHypothesis, openQuestions',
   plan: 'planSummary, affectedFiles[], acceptanceChecklist[], unknowns',
   code: 'filesModified[], decisions[], verificationCommands[], knownLimitations[], commitSha',
   review: 'verdict, findings[], reviewedDiffSha',
-  test: 'result, failures[], flakyTests[]',
+  test: 'result, resultReason, failures[], flakyTests[]',
   fix: 'filesModified[], decisions[], reviewItemsResolved[], knownLimitations[]',
 };
 
@@ -186,7 +191,7 @@ export const FORGE_FACTS: readonly ForgeFact[] = [
     tier: 'mandatory',
     scope: 'global',
     namespace: 'forge',
-    version: 6,
+    version: 7,
     render: () => PIPELINE_RULES_TEXT,
   },
   {
@@ -390,15 +395,57 @@ Handoff is best-effort context for the next step; it never replaces the mandator
     scope: 'global',
     namespace: 'forge',
     appliesTo: ['code', 'fix'],
-    version: 2,
+    version: 3,
     render: () => `## Worktree isolation
 Implement on the ISS-* branch inside a dedicated git worktree under \`.claude/worktrees/iss-XX-short-title/\` — never check out branches in the main tree.
 - Create on first entry; REUSE the existing worktree if it's already present (fix re-enters the one code created).
-- Resolve collisions by reusing rather than recreating; clean up only at release.
+- Resolve collisions by reusing rather than recreating. Do NOT delete it when you finish — \`fix\` and \`review\` re-enter this same worktree; the \`worktree-cleanup\` fact makes removal a release-stage step.
 - The root checkout is SHARED with other agents running right now. Never \`git checkout\`, \`git stash\`, \`git reset\` or \`git clean\` there. Uncommitted changes you find are very likely someone else's in-flight work; clobbering them is silent, and they cannot get it back.
 - Resolve every path against your WORKTREE root, not the repo root — including "quick" edits to packages your issue only touches incidentally. An absolute repo-root path writes into whatever branch the shared tree happens to be on.
 - Uncommitted changes already in your worktree that you did not make mean a prior attempt was interrupted. Inspect them and adopt or discard deliberately; never assume they are yours.
 - **Your adopted skill's steps may still tell you to \`git checkout\` / \`git stash\` in the main tree. That text predates this protocol — this block wins.** Skills are copied per project and do not receive template fixes, so a stale procedure is expected; follow it for WHAT to build, not for where to stand.`,
+  },
+  // cm:guard this fact and `worktree-protocol` are the two halves of one lifecycle: that one says CREATE and never delete, this one is the only place deletion is ever asked for. `worktree-protocol` carried the sentence "clean up only at release" while its own `appliesTo` was `['code','fix']` — so the instruction existed and no stage it named could ever read it. Measured 2026-08-14: ~200 abandoned worktrees fleet-wide, one project holding 17G / 1.69M files in `.claude/worktrees`, and ubuntu6 down to 951MB free on a 78G disk.
+  // cm:edge lockstep -> packages/core/src/prompt/facts/registry.ts#worktree-protocol — that fact tells the agent to create the worktree and to REUSE it across code/fix/review; if its path convention or reuse rule changes, the removal step here has to follow or it deletes the wrong thing (or nothing)
+  // cm:why a release-stage step, NOT a background reaper — a sweep would have to guess from the outside whether a worktree is still wanted, and guessing wrong deletes an agent's in-flight work. At release the answer is already known: this issue's branch just merged, so its worktree is provably finished.
+  {
+    id: 'worktree-cleanup',
+    title: "Remove this issue's worktree at release",
+    category: 'protocol',
+    tier: 'contextual',
+    scope: 'global',
+    namespace: 'forge',
+    appliesTo: ['release'],
+    version: 1,
+    render: () => `## Remove this issue's worktree
+The branch you just merged leaves a worktree behind at \`.claude/worktrees/iss-XX-short-title/\`, carrying its own \`node_modules\` and build cache — routinely 0.8-3 GB each. Nothing else ever removes it, so releasing without this step is how a runner box fills up and every project on it starts failing.
+
+Remove ONLY this issue's worktree, and only after checking it:
+1. \`git -C <worktree> status --porcelain\` — if any TRACKED file is modified, STOP. Do not remove it, and say so in your handoff: uncommitted work you did not author is someone's interrupted attempt, and it is unrecoverable once deleted. Untracked files (\`??\`) are build output and do not block removal.
+2. \`git worktree remove .claude/worktrees/iss-XX-short-title --force\` from the repo root. \`--force\` is required (untracked build output) and is safe only because step 1 already cleared it.
+3. \`git worktree prune\` — drops the stale admin entry so \`git worktree list\` stops naming a directory that is gone.
+
+Never sweep other issues' worktrees, however old they look: a directory you did not create may hold an agent's work in progress right now.`,
+  },
+  // cm:guard the RULE lives here and the OBSERVATION lives in the runner's `[workspace notice]`, and they must not swap places. What is wrong right now is only knowable on the box at dispatch; what an agent may do about it is policy, and policy in a per-box prompt line is policy that drifts per box and cannot be reviewed.
+  // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — `workspace_notice_text` writes the `[workspace notice]` block this fact refers to by name; rename the prefix there and this text points at something the agent never receives
+  // cm:edge contract -> packages/core/src/mcp/tools/forge-projects.ts — the write-back this fact asks for is `forge_projects.update` with `workspaceSetup`; that field is the ONLY reason the derivation is paid for once instead of once per job
+  {
+    id: 'workspace-discipline',
+    title: 'The workspace you were handed',
+    category: 'protocol',
+    tier: 'contextual',
+    scope: 'global',
+    namespace: 'forge',
+    appliesTo: ISSUE_STAGES,
+    version: 1,
+    render: () => `## The workspace you were handed
+A setup step may have run in this checkout seconds before you started, and anything it changed or could not fix arrives as a \`[workspace notice]\` at the top of your prompt. If there is no notice, the workspace was already in the shape this step expects.
+
+- **Read the notice before you read the code.** It is the only thing that can tell you the tree is not what it looks like: a stale checkout makes file content and \`git log\` agree with each other, so reading the files cannot catch it.
+- **Uncommitted work you did not author is not yours to discard.** Not with \`checkout --force\`, \`reset --hard\` or \`clean\`. Leave it, and say in your result that you did — it is someone's interrupted attempt and it is unrecoverable.
+- **A workspace fault is not a reason to abandon the task**, and it is not this issue's work either. Fix what stands between you and the task, do the task, and report the repair under \`Extra fixes:\`.
+- **If the notice says this project declares no setup procedure and you worked one out, record it**: \`forge_projects.update\` with \`workspaceSetup\` = the minimal ordered steps that set this repo up from a fresh clone. Only steps you actually ran and saw succeed. That write is what stops the next job paying to work it out again; if it is refused for lack of permission, say so in your result and move on rather than retrying.`,
   },
   // ISS-552 (C1) — trigger-phrased red-flag fact for code + fix stages.
   // Teaches by trigger condition (ISS-541: "if X happened, do Y"), not by
@@ -424,10 +471,7 @@ export function getFact(id: string): ForgeFact | undefined {
   return FACT_BY_ID.get(id);
 }
 
-export function listFacts(opts?: {
-  tier?: FactTier;
-  namespace?: FactNamespace;
-}): ForgeFact[] {
+export function listFacts(opts?: { tier?: FactTier; namespace?: FactNamespace }): ForgeFact[] {
   return FORGE_FACTS.filter(
     (f) =>
       (opts?.tier ? f.tier === opts.tier : true) &&

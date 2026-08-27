@@ -49,7 +49,7 @@ function buildApp() {
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
-const OTHER_USER = '99999999-9999-4999-8999-999999999999';
+const _OTHER_USER = '99999999-9999-4999-8999-999999999999';
 const RUNNER_ID = '44444444-4444-4444-8444-444444444444';
 
 beforeEach(() => {
@@ -292,8 +292,6 @@ describe('GET …/metrics/timeseries — series shape', () => {
     expect(body.series).toHaveLength(48);
   });
 
-  // ── ISS-381 (Part 2) new-collection metrics ──────────────────────────────
-
   it('pass_rate: ratio of test verdict=pass over issue_step_contexts', async () => {
     authVerified();
     accessAsOwner();
@@ -312,10 +310,9 @@ describe('GET …/metrics/timeseries — series shape', () => {
     expect(body.series[0]?.rate).toBeNull();
     const serialized = JSON.stringify(executedSql);
     expect(serialized).toContain('issue_step_contexts');
-    expect(serialized).toContain('verdict');
+    expect(serialized).toMatch(/verified_by_test.*blocked_fixture/);
     expect(serialized).toContain('step = ');
   });
-
   it('approve_rate: targets review handoffs', async () => {
     authVerified();
     accessAsOwner();

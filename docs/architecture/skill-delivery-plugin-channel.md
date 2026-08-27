@@ -10,7 +10,7 @@ by this work:
 
 | # | Channel | Scope | Mechanism |
 |---|---------|-------|-----------|
-| 1 | Disk, per-project | Per-project shadow/override skills | `workspace/skill_sync.rs` — server pushes the effective manifest, the runner seeds `.claude/skills/<name>/` into the job's worktree on every job (ISS-278). The `install_only` fan-out (ISS-737) was REMOVED 2026-08-10 along with its seed-list and admin sweep. |
+| 1 | Disk, per-project | Per-project shadow/override skills | `workspace/skill_sync.rs` — the runner seeds `.claude/skills/<name>/` from the server's effective manifest, hash-diffed against a local cache (ISS-278). Three call sites, **none of them per-job**: workspace provision (`workspace/provision.rs`), the operator-initiated `skill.sync` push (`daemon/dispatch.rs::handle_skill_sync`), and the background auto-pull poller / `forge-runner sync` CLI (`daemon/skill_pull.rs`, ISS-736/740). The `install_only` fan-out (ISS-737) was REMOVED 2026-08-10 along with its seed-list and admin sweep. |
 | 2 | MCP-served | Meta, read-only prompts | Served live over the project's `/mcp` connection — no on-disk copy. |
 | **3** | **Plugin marketplace** | **Shared/global skills** | **This doc.** Installed once per device via `claude plugin`; every job on that device inherits it for free. |
 

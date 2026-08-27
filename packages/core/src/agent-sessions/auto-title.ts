@@ -21,7 +21,7 @@ Title:`;
 function postProcessTitle(raw: string): string | null {
   let title = raw
     .trim()
-    .replace(/^["'\`]+|["'\`]+$/g, '')
+    .replace(/^["'`]+|["'`]+$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
   if (!title || isSystemNoise(title)) return null;

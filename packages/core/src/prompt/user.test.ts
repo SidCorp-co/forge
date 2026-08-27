@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type IssueSnapshot, buildJobPromptString, injectTurnLevelRules } from './user.js';
+import { buildJobPromptString, type IssueSnapshot, injectTurnLevelRules } from './user.js';
 
 const SAMPLE: IssueSnapshot = {
   title: 'Add rate limiting',

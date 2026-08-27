@@ -29,7 +29,6 @@ Legacy "project owner" gates (settings PATCH, DELETE, archive, pipeline-config) 
 | Door | Key | Notes |
 |---|---|---|
 | Web / Mobile | `forge_auth` cookie (JWT) | full per-role access |
-| Desktop (Forge Dev) | Device token | acts as the user (no scopes) |
 | Script / AI tool | PAT (`/settings`) | user rights ∩ `projectIds` allowlist ∩ **scopes** |
 | Runner callback (no session) | HMAC signature / capability URL | `POST /api/runners/:id/events` is signed with `x-forge-signature` + `x-forge-timestamp` against the integration's `callbackSecret` (replay-windowed); `GET /api/runners/skills-zip/:hash` is gated purely by the unguessable content hash. Neither carries a user identity — they are machine doors, and they must NOT sit behind `requireAuth`. See `runners/routes.ts` (`runnerCallbackRoutes`) and the mount-order guard in `index.ts` |
 

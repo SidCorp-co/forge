@@ -104,6 +104,7 @@ function buildPatCtx(scopes: string[], projectIds: string[] | null = null) {
   return {
     principal: {
       kind: 'pat' as const,
+      agency: 'human' as const,
       userId: OWNER_ID,
       tokenId: TOKEN_ID,
       scopes,

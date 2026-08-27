@@ -20,7 +20,7 @@ Single trunk = `main`. **No `develop`, no `staging`, no long-lived release branc
 | Feature flags | Incomplete work merges behind `isEnabled('flagName')` (default off, env-controlled) |
 | Hot-fix | Same as feature: branch from main, merge back fast. No separate hotfix track. |
 | Revert culture | If `main` breaks, revert within 30 min. Don't push fix-forward unless revert is structurally impossible. |
-| Pre-push hook | `.githooks/pre-push` — cheap guards only (warns on branch naming, hard-fails the tauri `bundle.active` guard). Builds/tests are opt-in: `PREPUSH_BUILD=1` / `PREPUSH_FULL=1`. Install via `git config core.hooksPath .githooks` (auto-set by `pnpm install` postinstall). |
+| Pre-push hook | `.githooks/pre-push` — cheap guards only (warns on branch naming). Builds/tests are opt-in: `PREPUSH_BUILD=1` / `PREPUSH_FULL=1`. Install via `git config core.hooksPath .githooks` (auto-set by `pnpm install` postinstall). |
 | Release tagging | Tag `vX.Y.Z` on commits when ready to ship. No release branch. |
 
 ### Branch naming — pick one scheme
@@ -59,9 +59,17 @@ Full model: [Trunk-Based Development guide](docs/guides/trunk-based-development.
 
 1. Fork the repo and create a branch from `main`. Pick a name from the
    [Branch naming](#branch-naming--pick-one-scheme) table above.
-2. Write code + tests. For local pre-flight, `PREPUSH_BUILD=1 git push` builds
-   the packages you touched (`PREPUSH_FULL=1` also runs their test suites).
-   The hook is convenience, **not** the gate — CI is.
+2. Write code + tests. When you are done coding, run **`pnpm verify`** — the same
+   way you would run a build before trusting a change. It runs every conformance
+   check CI runs, reports all of them in one pass, and prints the declared
+   couplings (`cm:guard` / `cm:edge` / `cm:flow`) on the files you touched. Fix,
+   re-run, push when it is clean.
+
+   Hooks are convenience, **not** the gate. `PREPUSH_BUILD=1 git push` builds the
+   packages you touched (`PREPUSH_FULL=1` also runs their suites), and the
+   Claude Code plugin surfaces guards while you edit — but neither is required to
+   be correct. `pnpm verify` and CI are, and they run the same set: a step in
+   `ci.yml` that `verify` neither runs nor declares fails `verify --ci-parity`.
 3. Commit using [Conventional Commits](https://www.conventionalcommits.org/):
    - `feat: add X` — new feature
    - `fix: Y` — bug fix

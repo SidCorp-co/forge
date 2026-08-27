@@ -41,7 +41,7 @@ Indexes: partial unique on `(issue_id, step, attempt) WHERE kind='handoff'` (ups
 | `plan` | `planSummary`, `affectedFiles[≤30]`, `acceptanceChecklist[≤15]`, `unknowns[≤10]` |
 | `code` | `filesModified[≤50]` (path+op), `decisions[≤10]` (what/why), `verificationCommands[≤10]`, `knownLimitations[≤5]`, `commitSha?` |
 | `review` | `verdict` (pass/needs_fix/no_change), `findings[≤20]` (file/severity/note), `reviewedDiffSha` |
-| `test` | `result` (pass/fail), `failures[≤20]` (test/trace), `flakyTests[≤10]` |
+| `test` | `result` (pass = verified directly; fail = executed verification failed; blocked_fixture = required fixture/resource unavailable; verified_by_test = automated evidence verified the criterion), `resultReason` (required for blocked_fixture/verified_by_test), `failures[≤20]` (test/trace), `flakyTests[≤10]` |
 | `fix` | `filesModified[≤50]`, `decisions[≤10]`, `reviewItemsResolved[≤20]`, `knownLimitations[≤5]` |
 
 Steps outside this union (`clarify`, `release`, `custom`, `pm`) emit no handoff — gated by `isHandoffStep()` / `HANDOFF_STEPS`.

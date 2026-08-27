@@ -4,7 +4,6 @@ import {
   activityLog,
   actorTypes,
   comments,
-  desktopPairingCodes,
   devicePlatforms,
   deviceStatuses,
   devices,
@@ -19,8 +18,8 @@ import {
   jobEventKinds,
   jobEvents,
   jobStatuses,
-  jobTypes,
   jobs,
+  jobTypes,
   labels,
   memorySources,
   modelTiers,
@@ -49,7 +48,6 @@ type AnyTable =
   | typeof refreshTokens
   | typeof devices
   | typeof pairingCodes
-  | typeof desktopPairingCodes
   | typeof jobs
   | typeof jobEvents
   | typeof issues
@@ -67,7 +65,7 @@ function columnByName(table: AnyTable, name: string) {
   return col;
 }
 
-function withTimezone(col: unknown): boolean | undefined {
+function _withTimezone(col: unknown): boolean | undefined {
   return (col as { config?: { withTimezone?: boolean } }).config?.withTimezone;
 }
 
@@ -222,22 +220,18 @@ describe('db/schema — pairing_codes', () => {
   });
 });
 
-describe('db/schema — desktop_pairing_codes', () => {
-  it('approved_user_id references users.id with onDelete cascade', () => {
-    const cfg = getTableConfig(desktopPairingCodes);
-    expect(cfg.foreignKeys).toHaveLength(1);
-    const fk = cfg.foreignKeys[0];
-    if (!fk) throw new Error('expected FK');
-    const ref = fk.reference();
-    expect(ref.columns[0]?.name).toBe('approved_user_id');
-    expect(ref.foreignColumns[0]?.name).toBe('id');
-    expect(fk.onDelete).toBe('cascade');
-  });
-});
-
 describe('db/schema — jobs', () => {
   it('exports the status, type, and model tier enum values', () => {
-    expect(jobStatuses).toEqual(['queued', 'dispatched', 'running', 'done', 'failed', 'cancelled']);
+    // cm:guard `held` sits between `running` and the terminal three ON PURPOSE (RFC 0002) — every predicate that splits this enum reads it positionally in review, so a `held` appended after `cancelled` would look terminal to the next reader even though nothing in code treats order as semantic
+    expect(jobStatuses).toEqual([
+      'queued',
+      'dispatched',
+      'running',
+      'held',
+      'done',
+      'failed',
+      'cancelled',
+    ]);
     expect(jobTypes).toEqual([
       'triage',
       'clarify',
@@ -254,6 +248,7 @@ describe('db/schema — jobs', () => {
       'release_batch',
       'reconcile',
       'verify_skill',
+      'drive',
     ]);
     expect(modelTiers).toEqual(['haiku', 'sonnet', 'opus']);
   });
@@ -355,6 +350,7 @@ describe('db/schema — issues', () => {
       'on_hold',
       'needs_info',
       'draft',
+      'dropped',
     ]);
     expect(issuePriorities).toEqual(['critical', 'high', 'medium', 'low', 'none']);
   });
@@ -523,8 +519,6 @@ describe('db/schema — activity_log', () => {
     expect(t.enumValues).toEqual([...actorTypes]);
   });
 });
-
-// ===== PM Agent (ISS-17) =====================================================
 
 describe('db/schema — pm agent enum extensions', () => {
   it('memorySources includes decision and policy', () => {

@@ -15,6 +15,7 @@ How-to guides for specific developer tasks. Each guide is task-oriented — "how
 | [what-is-an-issue.md](what-is-an-issue.md) | What counts as an issue at all — the four gates, where a note / question / audit finding goes instead, draft vs open, and the description contract. Mirrors the public `what-is-an-issue` capability guide |
 | [forge-affordances.md](forge-affordances.md) | Operating affordances for connected agents — when to use Forge's own tools (`set_dependency`, draft-vs-open, config writes, memory recall) as trigger → tool → red-flag |
 | [skill-improve.md](skill-improve.md) | Skill self-evolution loop — enable improvement messages, how the agent evaluates and applies them per-project, how to write new messages for the registry |
+| [adopt-conformance.md](adopt-conformance.md) | Take a repo from no gates to one axis that actually blocks a merge, then repeat — the six steps per axis, the three exit codes, freezing debt, and the two CI halves that turn "runs" into "gates" |
 
 The Diátaxis quickstart lives at [../quickstart.md](../quickstart.md).
 

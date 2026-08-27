@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { jobTypes } from '../../db/schema.js';
 import { getResolvedFact, listResolvedFacts } from '../../prompt/facts/resolve.js';
-import { assertPrincipalIsMember, zodToMcpSchema } from './lib.js';
 import type { ContextScopedMcpToolFactory } from './lib.js';
+import { assertPrincipalIsMember, zodToMcpSchema } from './lib.js';
 
 const listInputSchema = z
   .object({ projectId: z.uuid(), stage: z.enum(jobTypes).optional() })

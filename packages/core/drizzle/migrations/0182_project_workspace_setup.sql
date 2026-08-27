@@ -1,0 +1,11 @@
+-- How to set this repo up, declared once per project instead of re-derived per job.
+--
+-- A stage that lands in a broken workspace has to work out the repo's setup
+-- procedure from scratch, with the stage's own (expensive) model, on every job:
+-- `core.hooksPath` alone failed 105 sidpeak jobs in the 7 days to 2026-08-15,
+-- each needing the same `pnpm install`. This column is where whoever knows the
+-- repo writes that procedure down so nobody pays for it twice.
+--
+-- Prose, not a command list, and never executed by the runner: a shell line any
+-- project admin could write would otherwise run unreviewed on every runner box.
+ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "workspace_setup" text;

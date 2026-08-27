@@ -1,0 +1,6 @@
+{
+  "$why": "A skipped `describe` reports as a passing file, so the runner cannot tell you it stopped running. Every entry here is a suite that is skipped on purpose; the reason has to say what would have to change for it to run, because `waiting on ISS-214's endpoints` is what the device-runner E2E said for months after those endpoints shipped — and when the flag was finally set on 2026-08-25 it failed on the first line. A reason that cannot expire is not a reason.",
+  "declared": {
+    "packages/core/tests/integration/memory-live.test.ts": "Asserts real pgvector ranking against a live embeddings provider (EMBEDDINGS_BASE_URL + EMBEDDINGS_API_KEY). Not a missing-wiring skip: giving CI those credentials would put a paid third-party call on every PR, and a stubbed provider would assert the stub. Run it by hand against a real endpoint when touching packages/core/src/memory/embeddings."
+  }
+}

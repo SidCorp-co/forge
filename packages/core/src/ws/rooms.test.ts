@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  GLOBAL_ROOM,
-  RoomManager,
-  type Subscriber,
   deviceRoom,
+  GLOBAL_ROOM,
   globalRoom,
   projectRoom,
+  RoomManager,
+  type Subscriber,
   userRoom,
 } from './rooms.js';
 

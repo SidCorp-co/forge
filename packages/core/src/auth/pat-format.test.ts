@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  generatePatPlaintext,
+  isPatLike,
+  isPatValid,
   PAT_PATTERN,
   PAT_PREFIX_LEN,
   PAT_PREFIX_PATTERN,
   PAT_STRING_PATTERN,
-  generatePatPlaintext,
-  isPatLike,
-  isPatValid,
   patEnvForNodeEnv,
   patPrefixOf,
 } from './pat-format.js';
