@@ -102,21 +102,24 @@ export async function applyUxImproverProposals(
     .where(eq(uxContractRules.projectId, projectId));
 
   // cm:guard This pass, not the `duplicate` branch below, is what keeps an inbox proposal's evidence current: once a proposal exists the detector REFUSES the gap as `already-proposed`, so it never reaches `candidates` and the duplicate branch never sees it again. Delete this and evidence freezes at whatever the first run happened to observe.
+  // cm:guard Union ACROSS refusals before writing, one UPDATE per target. Jaccard is not transitive, so two clusters that are unrelated to each other can both match one proposal's text — write per refusal off the once-loaded row and the second UPDATE silently drops the first one's issues, while `outcomes` still reports both as refreshed.
+  const refreshes = new Map<string, string[]>();
   for (const refusal of report.refused) {
     if (refusal.reason !== 'already-proposed' || !refusal.targetRuleId) continue;
     const target = existing.find((r) => r.id === refusal.targetRuleId);
     if (!target) continue;
-    const merged = unionEvidence(target.evidenceIssueIds, refusal.evidenceIssueIds);
-    if (merged.length === (target.evidenceIssueIds as string[]).length) continue;
+    const base = refreshes.get(target.id) ?? (target.evidenceIssueIds as string[]);
+    refreshes.set(target.id, unionEvidence(base, refusal.evidenceIssueIds));
+  }
+  for (const [ruleId, merged] of refreshes) {
+    const target = existing.find((r) => r.id === ruleId);
+    if (!target || merged.length === (target.evidenceIssueIds as string[]).length) continue;
     await db
       .update(uxContractRules)
       .set({ evidenceIssueIds: merged, updatedAt: now })
-      .where(eq(uxContractRules.id, target.id));
-    outcomes.push({
-      key: `evidence:${target.id}`,
-      action: 'evidence-refreshed',
-      ruleId: target.id,
-    });
+      .where(eq(uxContractRules.id, ruleId));
+    target.evidenceIssueIds = merged;
+    outcomes.push({ key: `evidence:${ruleId}`, action: 'evidence-refreshed', ruleId });
     mutated = true;
   }
 

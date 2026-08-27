@@ -189,6 +189,36 @@ describe('UX improver — safe to re-run on a cadence (ISS-579)', () => {
     expect(rules[0]?.evidence_issue_ids).toContain(fourth);
   });
 
+  it('unions ACROSS refusals — two unrelated clusters matching one proposal do not clobber each other', async () => {
+    const { owner, project } = await seedProject();
+    const RULE_TEXT = 'alpha bravo charlie delta echo foxtrot';
+    const CLUSTERS = ['alpha bravo charlie delta', 'charlie delta echo foxtrot'];
+    await harness.db.execute(sql`
+      INSERT INTO ux_contract_rules (project_id, "group", text, severity, source, status, evidence_issue_ids)
+      VALUES (${project.id}, 'states', ${RULE_TEXT}, 'must', 'learned', 'proposed', '[]'::jsonb)
+    `);
+
+    const seeded: string[] = [];
+    for (const detail of CLUSTERS) {
+      for (let i = 0; i < 3; i += 1) {
+        const issueId = await seedIssue(project.id, owner.id, `UI issue ${detail} ${i}`);
+        seeded.push(issueId);
+        await seedFinding(project.id, issueId, detail);
+      }
+    }
+
+    const report = await improver.loadUxImproverReport(project.id);
+    const refreshTargets = report.refused.filter((r) => r.reason === 'already-proposed');
+    expect(refreshTargets).toHaveLength(2);
+    expect(new Set(refreshTargets.map((r) => r.targetRuleId)).size).toBe(1);
+
+    const { outcomes } = await improver.applyUxImproverProposals(project.id, []);
+
+    expect(outcomes).toHaveLength(1);
+    const rules = await proposedRules(project.id);
+    expect([...(rules[0]?.evidence_issue_ids ?? [])].sort()).toEqual([...seeded].sort());
+  });
+
   it('a third pass with no new findings writes nothing at all', async () => {
     const { owner, project } = await seedProject();
     for (let i = 0; i < EMPTY_SEARCH.length; i += 1) {

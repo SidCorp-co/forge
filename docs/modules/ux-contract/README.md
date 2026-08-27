@@ -157,8 +157,10 @@ is a live gap, not an oversight.
    improver itself authored. It is fenced by `status='proposed'` AND `source='learned'` AND
    non-empty `evidenceIssueIds`; the last is what excludes a rule a human hand-created with
    `source: 'learned'`, since `ruleCreateSchema` has no `evidenceIssueIds` field.
-   Re-running is safe by construction: a candidate matching an existing proposal unions its
-   evidence instead of queueing a second row, because the schedule fires every cadence tick.
+   Re-running is safe by construction, but not through the `add`/`strengthen` write path — once
+   a proposal exists the detector refuses the gap as `already-proposed`, so the refresh happens
+   off the REFUSALS (see line 112), one UPDATE per target no matter how many clusters point at
+   it. That matters because the schedule fires on every cadence tick.
 6. **An approved supersede retires its target in the same request** — `ux-contract-routes.ts`
    PATCH, before the recompile. Skip it and both rules are `active`, so the compiled prose
    states the same requirement twice at two severities.
