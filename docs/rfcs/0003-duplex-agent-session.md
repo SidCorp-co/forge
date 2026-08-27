@@ -290,3 +290,178 @@ running one-shot this whole time, and it needs no residency window at all.
   fast path alive across a brief core outage.
 - Whether the CLI re-reads `--mcp-config` after `system/init`, which decides whether a long-resident
   session survives a device-token rotation. Not determinable from this repo.
+
+---
+
+# Implementation
+
+Everything below is the applicable half: types, wire format, and a build order where each phase lands
+green and is useful on its own.
+
+## Two protocols, one translator
+
+The CLI's stream-json input is **not** Forge's protocol. Core speaks an envelope to the runner; the
+runner renders it onto the CLI's stdin. Keeping them separate is what lets the CLI's format change
+without touching core.
+
+```
+core ──[ session.send envelope, over the existing /ws ]──► runner
+                                                             │  renders
+                                                             ▼
+                                          {"type":"user","message":{...}}  ──► CLI stdin
+```
+
+### Envelope — core → runner
+
+```jsonc
+{
+  "type": "session.send",
+  "sessionId": "<uuid>",          // minted by core, also passed as --session-id
+  "seq": 4,                       // monotonic per session, assigned by core
+  "kind": "answer",               // work | answer | inject | checkpoint | cancel
+  "body": "…",                    // absent for cancel
+  "deadlineMs": 5000              // how long core will wait for the ack
+}
+```
+
+### Ack — runner → core
+
+```jsonc
+{ "type": "session.ack", "sessionId": "…", "seq": 4, "result": "delivered" }
+{ "type": "session.ack", "sessionId": "…", "seq": 4, "result": "gone", "reason": "residency_expired" }
+```
+
+**`send` has exactly two outcomes.** `delivered` or `gone`. A missing ack past `deadlineMs`, a device
+with no live socket, an unknown `sessionId` — all `gone`. `gone` is always safe because it routes to
+the cold path, which stays load-bearing.
+
+### How each kind is rendered
+
+| kind | runner action |
+|---|---|
+| `work` | one stream-json user message; **once per session**, a second is `gone` with `reason: "work_already_sent"` |
+| `answer` | one user message, framed as the human's reply |
+| `inject` | one user message; pending `inject`s coalesce into the latest before writing |
+| `checkpoint` | one user message asking for a resume point, then wait for the turn to end |
+| `cancel` | `checkpoint`, then close stdin; `graceful_kill` on deadline |
+
+## Runner: `DuplexClaudeRunner`
+
+A second `Runner` impl. The trait is unchanged — `send` stops returning `NotImplemented`.
+
+```rust
+pub struct DuplexSession {
+    child: Child,
+    stdin: ChildStdin,                    // was Stdio::null()
+    last_written_seq: u64,
+    pending_inject: Option<String>,       // coalescing slot
+    state: RuntimeState,                  // starting|working|awaiting_input|checkpointing|closed
+    residency: Option<Instant>,           // deadline, set when core says awaiting_input
+}
+
+pub enum RuntimeState { Starting, Working, AwaitingInput, Checkpointing, Closed }
+```
+
+Spawn differs from `build_args` in four places:
+
+```rust
+cmd.stdin(std::process::Stdio::piped());              // was Stdio::null()
+args.push("--input-format".into());  args.push("stream-json".into());
+args.push("--replay-user-messages".into());
+args.push("--session-id".into());    args.push(spec.session_id.clone());
+// and `-p` no longer carries the prompt — it becomes the `work` message
+```
+
+`send` is idempotent by `seq`: drop anything at or below `last_written_seq`, then write and await the
+CLI's replay echo before acking `delivered`.
+
+Two new events on `RunnerEvent`:
+
+```rust
+TurnEnded { turn: u64 },                  // a {"type":"result"} line on stdout
+StateChanged { state: RuntimeState },
+```
+
+Crash recovery reuses `runner/inflight.rs`: the marker gains `last_written_seq`, so a daemon restart
+that finds a live child can resume acking without replaying a message.
+
+## Core: the send path
+
+```ts
+type SendResult = { ok: true } | { ok: false; reason: 'gone' };
+
+// packages/core/src/sessions/session-send.ts
+export async function sendToSession(
+  sessionId: string,
+  kind: 'work' | 'answer' | 'inject' | 'checkpoint' | 'cancel',
+  body?: string,
+): Promise<SendResult>;
+```
+
+It resolves the session's `deviceId`, allocates the next `seq`, publishes over the device's socket,
+and awaits the ack. No retry loop, no pending state, no core decision that waits on a process.
+
+`answer-resume.ts` gains exactly one branch — **the ack is the commit point**:
+
+```ts
+const sent = await sendToSession(session.id, 'answer', comment.body);
+if (sent.ok) return;                    // the agent continues; do NOT transition or dispatch
+await transitionIssueStatus(/* → open, today's path */);
+```
+
+## Schema
+
+One new column and one new config key. No new table.
+
+```ts
+// agent_sessions
+runtimeState: text('runtime_state', { enum: runtimeStates }).notNull().default('starting'),
+lastInboxSeq: integer('last_inbox_seq').notNull().default(0),
+```
+
+```ts
+// pipelineConfig
+sessionMode: 'print' | 'duplex';        // default 'print'
+sessionResidencySeconds: number;        // default 0
+```
+
+`runtimeState` is what repays principle №10. The reaper's quiet-timeout applies **only** while
+`runtimeState = 'working'`; `awaiting_input` is exempt from it and bounded by residency instead. So
+"alive but not progressing" stops being indistinguishable from "wedged", and the runner no longer has
+to assert progress it cannot observe.
+
+## Turn end: report, then classify
+
+The runner reports the observable fact; core owns the meaning.
+
+```
+runner: TurnEnded ──► core reads the issue's status
+                        needs_info        ──► session.state = awaiting_input + residencySeconds
+                        closed | dropped  ──► session.close
+                        anything else     ──► session.send checkpoint, then close, cold path
+```
+
+The runner never classifies a turn end. A self-reported state would be the
+claim-instead-of-measurement this repo refuses elsewhere.
+
+## Build order
+
+| # | Lands | Useful on its own because |
+|---|---|---|
+| 1 | `DuplexClaudeRunner` behind `sessionMode: 'duplex'`, `work` only — functional parity with print mode | proves a job runs start to finish on the new path with nothing else changed; print mode stays the default |
+| 2 | `TurnEnded` + core classification + `runtimeState` | **the observability payoff, at residency 0** — a dashboard can finally say *working* vs *awaiting input*, and the reaper stops guessing from silence |
+| 3 | `answer` + ack-is-commit in `answer-resume` + the residency timer | the park fast path; safe at every residency value including 0 |
+| 4 | `inject`, `checkpoint`, `cancel` replacing signal-kill | steering a live agent, and a teardown that writes down what it knew |
+
+Phase 2 is the one that pays first, and it pays without turning residency on at all.
+
+**Chat first.** `daemon/chat.rs` is a conversation that has been running one-shot the whole time and
+needs no residency window. It is the honest smoke test for phases 1 and 4, and it exercises `send`
+before any pipeline job depends on it.
+
+## Lockstep
+
+- `forge-drive/SKILL.md` — *"Then **end your session**"* becomes *"then finish your turn"*. Ship it
+  with phase 3, never before: under `sessionMode: 'print'` waiting really is a lie.
+- `jobs/loop-monitor.ts` — the quiet computation reads `runtimeState`. Ships with phase 2.
+- `docs/architecture/runner-daemon.md` — the spawn description. Ships with phase 1.
