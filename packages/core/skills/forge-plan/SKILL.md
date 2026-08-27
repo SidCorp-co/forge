@@ -55,8 +55,7 @@ Checkout the latest baseBranch (from `forge_config`, see preamble for the detect
 
 Read everything available:
 - title, description — what needs to change
-- acceptanceCriteria / aiAcceptanceCriteria — what "done" looks like
-- suggestedSolution / aiSuggestedSolution — proposed approach (if any)
+- acceptanceCriteria — what "done" looks like
 - Triage comment — complexity and category context
 - **attachments** — screenshots, mockups, or files the user uploaded. If the issue has `attachments` (array of `{name, mime, url}`), **fetch and read each one** using the Read tool (for images) or WebFetch (for other files). Screenshots often show the bug or desired UI — they are critical context that the description alone may not capture.
 - **relations** — check the issue's `relations` field for linked issues

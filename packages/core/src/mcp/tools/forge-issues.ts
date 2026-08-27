@@ -182,7 +182,7 @@ export function findVerifiedClaimViolation(value: unknown): VerifiedClaimViolati
   return walk(value, '', 0);
 }
 
-const dataSchema = z
+const dataObject = z
   .object({
     title: z.string().trim().min(1).max(500).optional(),
     description: z.string().max(100_000).nullable().optional(),
@@ -271,8 +271,12 @@ const dataSchema = z
     // to avoid clobbering the existing set.
     labels: z.array(z.string().trim().min(1)).max(50).optional(),
   })
-  .strict()
-  .optional();
+  .strict();
+
+// cm:edge contract -> packages/core/skills — the bundled skill markdown hand-writes `forge_issues → update → { data: { ... } }` payloads, and this object is `.strict()`, so a key named in a skill but absent here fails the whole call (the `status` write included) with a 400; `builtin-seed-field-names.test.ts` asserts the two sides agree.
+export const ISSUE_UPDATE_DATA_KEYS = Object.keys(dataObject.shape);
+
+const dataSchema = dataObject.optional();
 
 /**
  * Heavy free-text fields — large TOAST bodies that dominate token count on
