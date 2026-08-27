@@ -206,10 +206,8 @@ describe('@forge/core MCP server', () => {
     }
   });
 
-  // ISS-145 — PAT principals must be blocked from the consolidated
-  // `forge_project_pm` dispatcher at the action level (any of the six
-  // device-only actions). Acceptance criterion 7.
-  it('blocks PAT principal on every forge_project_pm action with PM_REQUIRES_DEVICE', async () => {
+  // cm:edge lockstep -> packages/core/src/mcp/pm-device-gate.test.ts — this list is the GATED half of forge_project_pm's actions and that file holds the ungated half; an action moved in DEVICE_REQUIRED without moving here leaves both files passing while one of them asserts the opposite of the gate
+  it('blocks PAT principal on every gated forge_project_pm action with PM_REQUIRES_DEVICE', async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createMcpServer({
       principal: humanPat('00000000-0000-4000-8000-0000000000ab'),
@@ -220,14 +218,7 @@ describe('@forge/core MCP server', () => {
     const client = new Client({ name: 'test', version: '0.0.0' });
     await client.connect(clientTransport);
     try {
-      for (const action of [
-        'snapshot',
-        'graph',
-        'runner_load',
-        'dispatch',
-        'set_dependency',
-        'write_decision',
-      ]) {
+      for (const action of ['dispatch', 'set_dependency', 'write_decision']) {
         const res = await client.callTool({
           name: 'forge_project_pm',
           arguments: { action, projectId: '00000000-0000-4000-8000-0000000000bb' },

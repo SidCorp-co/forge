@@ -148,31 +148,36 @@ import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/lib.js
  *    (ISS-7). Device-token only.
  */
 /**
- * Tools that intrinsically require a paired device — they query `runners`
- * by `device.id` or otherwise assume the principal owns local runner state.
- * For PAT principals these tools 403 with `PM_REQUIRES_DEVICE` before any
- * DB call is made, both to surface a clean error and to avoid leaking the
- * stub-device id into a downstream FK lookup.
+ * Tools and actions that intrinsically require a paired device. For PAT
+ * principals these 403 with `PM_REQUIRES_DEVICE` before any DB call is made,
+ * both to surface a clean error and to avoid leaking the stub-device id into
+ * a downstream FK lookup.
  *
- * ISS-145 — gating is now `(tool, action)` to account for the consolidated
- * `forge_project_pm` dispatcher: a `true` value gates the whole tool name
- * (legacy shims keep this for byte-identical behaviour), a `Set<string>`
- * gates per-action so PAT callers can still invoke unrelated actions on a
- * dispatcher that happens to host device-only actions.
+ * ISS-145 — gating is `(tool, action)` to account for the consolidated
+ * `forge_project_pm` dispatcher: a `true` value gates the whole tool name, a
+ * `Set<string>` gates per-action so PAT callers can still invoke unrelated
+ * actions on a dispatcher that happens to host device-only actions.
  */
+// cm:guard an action belongs here ONLY when it needs runner state a PAT cannot have: `dispatch`/`write_decision` call assertPmActor (a `runners` lookup keyed on device.id), and `set_dependency` can run decomposeParent, which creates an integration branch. ISS-868 removed snapshot/graph/runner_load, which only ever called assertDeviceOwnerIsMember — gating them left a PAT with no way to READ the graph it was being told it could not write.
 const DEVICE_REQUIRED: ReadonlyMap<string, ReadonlySet<string> | true> = new Map<
   string,
   ReadonlySet<string> | true
 >([
-  [
-    'forge_project_pm',
-    new Set(['snapshot', 'graph', 'runner_load', 'dispatch', 'set_dependency', 'write_decision']),
-  ],
+  ['forge_project_pm', new Set(['dispatch', 'set_dependency', 'write_decision'])],
   // ISS-483 §E#3 retired the other forge_pm.* shims; forge_pm.set_dependency
   // is the lone survivor and keeps its per-tool gate (byte-identical to the
   // pre-consolidation behaviour).
   ['forge_pm.set_dependency', true],
 ]);
+
+// cm:guard a refusal names the condition to SATISFY, not only the one that failed (ISS-787/ISS-868) — the bare code sent callers hunting for a scope that does not exist, when the answer is a different credential class plus a PAT-reachable route for the common case
+// cm:edge contract -> packages/core/src/mcp/tools/forge-issues.ts — names data.relations as the PAT path for blocks/relates edges; if that field stops being applied on create/update this text becomes a lie
+const PM_DEVICE_REFUSAL =
+  'FORBIDDEN: PM_REQUIRES_DEVICE — this action needs a paired-device token (pair a runner with `forge-runner pair`); ' +
+  'a personal access token has no runner state to act on, and no PAT scope grants it. ' +
+  'Read-only forge_project_pm actions (snapshot, graph, runner_load) do work with a PAT. ' +
+  'To set or retract a blocks/relates edge with a PAT, use forge_issues create/update with data.relations ' +
+  '(retract by re-sending the same edge with validUntil in the past), and read edges back from forge_issues get.';
 
 function classifyError(err: unknown): { code: AuditResultCode; message: string } {
   const message = err instanceof Error ? err.message : String(err);
@@ -357,7 +362,7 @@ export function createMcpServer(ctx: McpContext): Server {
       if (blocked) {
         writeMcpAudit({ ...auditBase, resultCode: 'forbidden' });
         return {
-          content: [{ type: 'text', text: 'FORBIDDEN: PM_REQUIRES_DEVICE' }],
+          content: [{ type: 'text', text: PM_DEVICE_REFUSAL }],
           isError: true,
         };
       }

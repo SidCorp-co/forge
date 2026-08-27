@@ -62,7 +62,7 @@ The same shape costs tokens rather than a stall: a stage lands in a checkout who
     title: 'Issue dependencies & decompose',
     summary:
       'How blocks edges gate dispatch, the merged_at unblock signal, why decompose lifecycle is system-owned, and the one decompose action that IS yours.',
-    version: 2,
+    version: 3,
     body: `## Issue dependencies & decompose
 
 ### Relation kinds
@@ -73,8 +73,9 @@ Edges are directional \`fromIssue --kind--> toIssue\`:
 
 ### Setting a blocks edge — avoid the create-then-block race
 - Blocker known **at create time** → pass it in the create call itself (\`data.relations: [{ kind: 'blocks', dependsOnId }]\`), committed before the issue dispatches. This is atomic.
-- Both issues already exist → set the edge via the PM dependency tool with \`from\` = the blocker.
+- Both issues already exist → \`forge_issues action=update\` with \`data.relations: [{ kind: 'blocks', dependsOnId }]\`, relative to the issue you are updating (\`dependsOnId\` = it blocks me, \`blocksId\` = I block it). This works with any credential class and commits the edge before the call's own status transition. Or set it via the PM dependency tool with \`from\` = the blocker — that route needs a paired-device token.
 - Red flag: creating the new issue at \`open\` and setting the blocks edge in a second call — the issue can dispatch in the gap between the two calls.
+- Verify, don't assume: \`forge_issues action=get\` returns \`relations.blocks\` and \`relations.blockedBy\`, each edge flagged \`expired\` once its \`validUntil\` has passed. Retract an edge by re-sending it with \`validUntil\` in the past — the write reports \`updated: true\`.
 
 ### The merged_at unblock signal
 A dependent dispatches the moment its blocker's \`merged_at\` is stamped, not when the blocker reaches \`released\`. \`merged_at\` auto-stamps only when a project's pipeline actually walks through the base-merge state. If you merge an issue's branch to the base branch and then **park** at that state manually (a gate the system doesn't auto-advance through), nothing stamps it and every downstream dependent stalls silently — stamp it yourself right after the merge lands.
@@ -399,7 +400,7 @@ against live code or git before you rely on it.
 | You need | Call |
 |---|---|
 | Issues, status, tasks | \`forge_issues\`, \`forge_comments\` |
-| Ordering between issues | \`forge_project_pm action=set_dependency\` (\`from\` = the blocker) |
+| Ordering between issues | \`forge_issues.create\`/\`.update\` with \`data.relations\`, or \`forge_project_pm action=set_dependency\` (\`from\` = the blocker; needs a paired device) |
 | Repo path, branches, preview URLs, test credentials | \`forge_projects.get\` |
 | Pipeline gates, \`projectFacts\` | \`forge_config\` |
 | A decision, learning or convention worth keeping | \`forge_memory_write\` |
