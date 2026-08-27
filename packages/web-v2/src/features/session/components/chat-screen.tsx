@@ -458,6 +458,8 @@ export function ChatScreen({
             items: skillsQ.data ?? [],
             loading: skillsQ.isLoading,
             error: skillsQ.error,
+            // cm:why isFetching, not isLoading — isLoading is false while REFETCHING a query already in `error` status, which is exactly the retry press the panel has to acknowledge
+            fetching: skillsQ.isFetching,
             retry: () => void skillsQ.refetch(),
           }}
         />

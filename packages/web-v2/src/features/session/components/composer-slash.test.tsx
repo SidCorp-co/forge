@@ -11,6 +11,7 @@ import { act, cleanup, createEvent, fireEvent, render, screen, waitFor } from "@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { InvokableSkill } from "@/features/skills/types";
 import { Composer } from "./composer";
+import type { SlashSkillsSource } from "./slash-skills-menu";
 
 expect.extend(matchers);
 
@@ -27,6 +28,7 @@ function renderComposer(
     items?: InvokableSkill[];
     loading?: boolean;
     error?: unknown;
+    fetching?: boolean;
     onSend?: (m: string, f: File[]) => Promise<void>;
     withSkills?: boolean;
     actions?: React.ReactNode;
@@ -41,12 +43,23 @@ function renderComposer(
           items: over.items ?? SKILLS,
           loading: over.loading ?? false,
           error: over.error ?? null,
+          fetching: over.fetching ?? false,
           retry,
         };
   const view = render(
     <Composer onSend={onSend} allowAttachments actions={over.actions} slashSkills={slashSkills} />,
   );
-  return { ...view, onSend, retry };
+  /** Re-render with a settled source — how a retry's outcome actually arrives. */
+  const settle = (next: Partial<SlashSkillsSource>) =>
+    view.rerender(
+      <Composer
+        onSend={onSend}
+        allowAttachments
+        actions={over.actions}
+        slashSkills={{ ...(slashSkills as SlashSkillsSource), ...next }}
+      />,
+    );
+  return { ...view, onSend, retry, settle };
 }
 
 function textarea() {
@@ -293,6 +306,62 @@ describe("Composer — slash skills menu", () => {
     fireEvent.keyDown(el, { key: "Escape" });
     fireEvent.click(screen.getByLabelText("Insert a skill"));
     await waitFor(() => expect(screen.getByRole("listbox")).toBeInTheDocument());
+  });
+
+  it("a keyboard Retry that SUCCEEDS does not strand focus on the body", () => {
+    const { retry, settle } = renderComposer({ items: [], error: new Error("boom") });
+    const el = textarea();
+    act(() => el.focus());
+    typeInto(el, "/");
+    fireEvent.keyDown(el, { key: "Tab" });
+    const btn = screen.getByRole("button", { name: "Retry" });
+    expect(document.activeElement).toBe(btn);
+    // cm:guard focus must leave the button BEFORE the retry can unmount it. React fires no blur for a node removed while focused, so a fix that only handled blur would leave activeElement on <body> with the panel still up and its keys — which live on the textarea — unreachable.
+    fireEvent.click(btn);
+    expect(document.activeElement).toBe(textarea());
+    act(() => settle({ items: SKILLS, error: null }));
+    expect(retry).toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(textarea());
+    // cm:why the last two assertions are the point — a stranded focus leaves the panel mounted and its keys, which live on the textarea, unreachable, so proving Escape still works is what proves focus came home
+    fireEvent.keyDown(textarea(), { key: "Escape" });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("focus leaving the panel for outside the composer dismisses it", () => {
+    renderComposer({ items: [], error: new Error("boom") });
+    const el = textarea();
+    act(() => el.focus());
+    typeInto(el, "/");
+    fireEvent.keyDown(el, { key: "Tab" });
+    const btn = screen.getByRole("button", { name: "Retry" });
+    const send = screen.getByLabelText("Send message");
+    act(() => {
+      fireEvent.blur(btn, { relatedTarget: send });
+      send.focus();
+    });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("focus returning to the textarea keeps the panel up", () => {
+    renderComposer({ items: [], error: new Error("boom") });
+    const el = textarea();
+    act(() => el.focus());
+    typeInto(el, "/");
+    fireEvent.keyDown(el, { key: "Tab" });
+    const btn = screen.getByRole("button", { name: "Retry" });
+    fireEvent.blur(btn, { relatedTarget: textarea() });
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+  });
+
+  it("Retry says it is retrying while the fetch is in flight", () => {
+    renderComposer({ items: [], error: new Error("boom"), fetching: true });
+    const el = textarea();
+    act(() => el.focus());
+    typeInto(el, "/");
+    const btn = screen.getByRole("button", { name: /Retrying/ });
+    expect(btn).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
   });
 
   it("a press outside both the row and the panel dismisses it", () => {

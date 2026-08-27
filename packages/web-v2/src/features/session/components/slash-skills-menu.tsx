@@ -11,7 +11,7 @@
 // panel only reaches on a race, not by design.
 
 import { useEffect } from "react";
-import { Icon, Skeleton } from "@/design";
+import { Icon, Skeleton, Spinner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import type { InvokableSkill } from "@/features/skills/types";
 import { useAnchoredMenu } from "./anchored-menu";
@@ -21,6 +21,13 @@ export interface SlashSkillsSource {
   items: InvokableSkill[];
   loading: boolean;
   error: unknown;
+  /**
+   * A fetch is in flight. Distinct from `loading`, and the difference is the
+   * whole point: react-query's `isLoading` is false while REFETCHING a query
+   * that is already in `error` status, so a retry press would otherwise
+   * re-render the identical error block with nothing to say it was heard.
+   */
+  fetching: boolean;
   retry: () => void;
 }
 
@@ -48,6 +55,20 @@ interface SlashSkillsMenuProps extends SlashSkillsSource {
    * The caller closes and returns focus to the textarea.
    */
   onLeave: () => void;
+  /**
+   * Hand focus back to the textarea WITHOUT closing — pressed Retry keeps the
+   * panel up to show the outcome, but must not leave focus on a button that a
+   * successful retry is about to unmount. React fires no blur for a node
+   * removed while focused, so nothing else would notice.
+   */
+  onReturnFocus: () => void;
+  /**
+   * The textarea the panel belongs to. Focus arriving THERE is the panel doing
+   * its job (a Retry press hands focus back); focus arriving anywhere else —
+   * including the send button, which is the next tab stop — means the user has
+   * navigated away and the panel must not stay mounted over the conversation.
+   */
+  homeRef: React.RefObject<HTMLTextAreaElement | null>;
 }
 
 export function SlashSkillsMenu({
@@ -61,10 +82,13 @@ export function SlashSkillsMenu({
   items,
   loading,
   error,
+  fetching,
   retry,
   anchorRef,
   panelRef,
   onLeave,
+  onReturnFocus,
+  homeRef,
 }: SlashSkillsMenuProps) {
   const pos = useAnchoredMenu({
     open,
@@ -105,9 +129,11 @@ export function SlashSkillsMenu({
           onLeave();
         }
       }}
-      // cm:guard onBlur, not onFocusOut-on-window — the panel only ever holds focus when Tab was redirected into its error state, so focus leaving it again means the user is done with the panel, and leaving it mounted would strand an invisible tab stop over the conversation
+      // cm:guard focus leaving the panel closes it, with ONE exception: the textarea, which is where a Retry press hands focus back. Exempting the whole anchor row instead would exempt the send button — the next tab stop — and leave the panel mounted over the conversation, which is the stranded tab stop this closes. Exempting nothing would hide the retry's outcome the moment the user can act on it.
       onBlur={(e) => {
-        if (panelRef.current?.contains(e.relatedTarget as Node | null)) return;
+        const rt = e.relatedTarget as Node | null;
+        if (panelRef.current?.contains(rt)) return;
+        if (rt && rt === homeRef.current) return;
         onLeave();
       }}
       // cm:guard preventDefault on the PANEL's mousedown, not just on each row — mousedown's default action moves focus, which blurs the textarea, which closes the menu, which detaches the target before its `click` is dispatched. That is what made the error state's Retry unpressable, and it is why a press on the header or an empty line dismissed the panel. Safari clears focus to the body here, so `relatedTarget` alone cannot cover it.
@@ -134,10 +160,16 @@ export function SlashSkillsMenu({
           <p className="text-[11px] text-subtle">{formatApiError(error)}</p>
           <button
             type="button"
-            onClick={retry}
-            className="mt-1.5 rounded-md border border-line px-2 py-1 text-[12px] text-fg transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            disabled={fetching}
+            // cm:guard hand focus back BEFORE retrying — a successful retry unmounts this button, and React fires no blur for a node removed while focused, so focus would be stranded on <body> with the panel still up and its keys (which live on the textarea) unreachable
+            onClick={() => {
+              onReturnFocus();
+              retry();
+            }}
+            className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-[12px] text-fg transition-colors hover:bg-hover focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Retry
+            {fetching && <Spinner size={11} />}
+            {fetching ? "Retrying…" : "Retry"}
           </button>
         </div>
       )}

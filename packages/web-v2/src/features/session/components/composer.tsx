@@ -121,7 +121,8 @@ export function Composer({
   const [slashHighlight, setSlashHighlight] = useState(0);
   const [slashCaret, setSlashCaret] = useState(0);
   // cm:guard Escape has to be remembered against the DISMISSED TOKEN's start offset, not just as `slashOpen=false` — keeping on typing inside the same token calls syncSlash again, which would re-open the panel the user just dismissed and cost an Escape per keystroke. A new token (different start) is a new question and does re-open.
-  const [slashDismissedAt, setSlashDismissedAt] = useState<number | null>(null);
+  // cm:guard a REF, not state: React dispatches onSelect during the same keydown that pressed Escape, so a state value read from syncSlash's closure is the PRE-Escape render's and wipes the dismissal it just recorded. Nothing renders from this, so a ref is the right tool and the staleness cannot come back.
+  const slashDismissedAt = useRef<number | null>(null);
   // cm:guard the trigger exists only once there is something to insert, but loading AND error keep it visible — otherwise the button appears and vanishes as the query settles, and a failed fetch becomes invisible instead of offering its retry
   const skillsKnown = !!slashSkills;
   const hasSkills =
@@ -140,14 +141,15 @@ export function Composer({
       const token = findSlashToken(next, caret);
       if (!token) {
         setSlashOpen(false);
-        setSlashDismissedAt(null);
+        slashDismissedAt.current = null;
         return;
       }
       setSlashHighlight(0);
-      if (token.start !== slashDismissedAt) setSlashDismissedAt(null);
-      if (reopen && token.start !== slashDismissedAt) setSlashOpen(true);
+      const dismissed = slashDismissedAt.current === token.start;
+      if (!dismissed) slashDismissedAt.current = null;
+      if (reopen && !dismissed) setSlashOpen(true);
     },
-    [slashDismissedAt],
+    [],
   );
 
   /** Replace the active token with the picked skill and restore the caret. */
@@ -179,7 +181,7 @@ export function Composer({
     if (findSlashToken(value, caret)) {
       setSlashCaret(caret);
       setSlashHighlight(0);
-      setSlashDismissedAt(null);
+      slashDismissedAt.current = null;
       setSlashOpen(true);
       el?.focus();
       return;
@@ -193,7 +195,7 @@ export function Composer({
     setValue(next);
     setSlashCaret(nextCaret);
     setSlashHighlight(0);
-    setSlashDismissedAt(null);
+    slashDismissedAt.current = null;
     setSlashOpen(true);
     requestAnimationFrame(() => {
       const node = textareaRef.current;
@@ -326,7 +328,7 @@ export function Composer({
         // cm:guard Escape dismisses the menu ONLY — the typed text stays, which is the whole point of it here
         e.preventDefault();
         setSlashOpen(false);
-        setSlashDismissedAt(slashToken?.start ?? null);
+        slashDismissedAt.current = slashToken?.start ?? null;
         return;
       }
     }
@@ -479,9 +481,12 @@ export function Composer({
               setSlashOpen(false);
               textareaRef.current?.focus();
             }}
+            onReturnFocus={() => textareaRef.current?.focus()}
+            homeRef={textareaRef}
             items={slashSkills.items}
             loading={slashSkills.loading}
             error={slashSkills.error}
+            fetching={slashSkills.fetching}
             retry={slashSkills.retry}
           />
         )}
