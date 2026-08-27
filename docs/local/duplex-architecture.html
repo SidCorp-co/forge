@@ -358,57 +358,72 @@ assumed.</figcaption>
 </figure>
 
 <h2>Figure 5 · asking once</h2>
-<h3>The question ledger — record as you go, ask when you run out of work</h3>
+<h3>The question ledger — every question carries its own answer</h3>
 
 <figure>
-<svg viewBox="0 0 1000 268" role="img" aria-label="The question ledger: add records a question durably without changing status; flush composes one comment with every pending question and enters needs_info once.">
+<svg viewBox="0 0 1000 424" role="img" aria-label="The question ledger: add records a question with a required recommendation and a reversible flag; flush posts one comment and starts a durable deadline; at expiry the agent either decides on its recommendation or, in two named cases, keeps waiting.">
  <defs><marker id="f5" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--ink2)"/></marker>
- <marker id="f5w" markerWidth="10" markerHeight="10" refX="7.5" refY="3.4" orient="auto"><path d="M0,0 L7.5,3.4 L0,6.8z" fill="var(--warn)"/></marker></defs>
+ <marker id="f5s" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--sess)"/></marker>
+ <marker id="f5w" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--warn)"/></marker></defs>
 
- <text class="sk" x="16" y="26">AS THE AGENT WORKS</text>
- <rect x="16" y="38" width="176" height="52" rx="7" fill="var(--sess-bg)" stroke="var(--sess)"/>
- <text class="sl" x="30" y="57" fill="var(--sess)">phase 1 · a blocker</text>
- <text class="sm" x="30" y="76">questions.add</text>
- <rect x="212" y="38" width="176" height="52" rx="7" fill="var(--sess-bg)" stroke="var(--sess)"/>
- <text class="sl" x="226" y="57" fill="var(--sess)">phase 3 · another</text>
- <text class="sm" x="226" y="76">questions.add</text>
- <rect x="408" y="38" width="176" height="52" rx="7" fill="var(--sess-bg)" stroke="var(--sess)"/>
- <text class="sl" x="422" y="57" fill="var(--sess)">phase 7 · another</text>
- <text class="sm" x="422" y="76">questions.add</text>
+ <rect x="16" y="26" width="300" height="140" rx="8" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="sk" x="30" y="46">1 · AS YOU WORK</text>
+ <text class="st" x="30" y="70">questions.add</text>
+ <text class="sm" x="30" y="92">question + context</text>
+ <text class="sm" x="30" y="110" fill="var(--warn)">recommendation — REQUIRED</text>
+ <text class="sm" x="30" y="128" fill="var(--warn)">reversible: true | false</text>
+ <text class="sm" x="30" y="150">no status change, no notification</text>
 
- <path d="M104,90 L104,116" fill="none" stroke="var(--ink2)" stroke-width="1.4" marker-end="url(#f5)"/>
- <path d="M300,90 L300,116" fill="none" stroke="var(--ink2)" stroke-width="1.4" marker-end="url(#f5)"/>
- <path d="M496,90 L496,116" fill="none" stroke="var(--ink2)" stroke-width="1.4" marker-end="url(#f5)"/>
+ <path d="M316,96 L346,96" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f5)"/>
 
- <rect x="16" y="120" width="568" height="44" rx="7" fill="var(--panel2)" stroke="var(--line2)"/>
- <text class="st" x="30" y="139">the ledger — durable from the first add</text>
- <text class="sm" x="30" y="155">no status change · no notification · the agent keeps working</text>
+ <rect x="350" y="26" width="300" height="140" rx="8" fill="var(--core-bg)" stroke="var(--core)"/>
+ <text class="sk" x="364" y="46" fill="var(--core)">2 · OUT OF WORK</text>
+ <text class="st" x="364" y="70" fill="var(--core)">questions.flush</text>
+ <text class="sm" x="364" y="92">ONE comment, all pending</text>
+ <text class="sm" x="364" y="110">each with its recommendation</text>
+ <text class="sm" x="364" y="128">via transitionReason — INV-8</text>
+ <text class="sm" x="364" y="150">deadline starts: durable, core-side</text>
 
- <path d="M584,142 L680,142" fill="none" stroke="var(--warn)" stroke-width="2.2" marker-end="url(#f5w)"/>
- <text class="sm" x="590" y="134" fill="var(--warn)">out of work</text>
+ <path d="M500,166 L500,192" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f5)"/>
+ <rect x="350" y="196" width="300" height="34" rx="7" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="sl" x="364" y="217">3 · deadline expires, nobody answered</text>
 
- <rect x="684" y="106" width="302" height="76" rx="8" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="1.6"/>
- <text class="st" x="698" y="126" fill="var(--warn)">questions.flush</text>
- <text class="sm" x="698" y="145">ONE comment, every pending question</text>
- <text class="sm" x="698" y="161">then → needs_info  (comment first, INV-8)</text>
- <text class="sm" x="698" y="177" fill="var(--warn)">arms residency — once per batch</text>
+ <path d="M500,230 L500,244 L250,244 L250,262" fill="none" stroke="var(--sess)" stroke-width="1.8" marker-end="url(#f5s)"/>
+ <path d="M500,230 L500,244 L750,244 L750,262" fill="none" stroke="var(--warn)" stroke-width="1.8" marker-end="url(#f5w)"/>
 
- <rect x="16" y="188" width="970" height="66" rx="7" fill="var(--core-bg)" stroke="var(--core)"/>
- <text class="sl" x="30" y="207" fill="var(--core)">THE RULE — you do not ask when you find a question. You ask when you run out of work you can do without an answer.</text>
- <text class="sm" x="30" y="226">blocks everything → out of work is immediate, so flush is immediate. blocks one path → record it, work the others.</text>
- <text class="sm" x="30" y="243">needs_info is enterable ONLY through flush, and flush always takes the whole ledger — so a park with nothing new is not expressible.</text>
+ <rect x="16" y="266" width="470" height="104" rx="8" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.6"/>
+ <text class="sl" x="30" y="287" fill="var(--sess)">DECIDE — a recommendation exists, reversible: true</text>
+ <text class="sm" x="30" y="309">comment FIRST: what I decided, and that nobody answered</text>
+ <text class="sm" x="30" y="327">then act on it — the issue leaves needs_info</text>
+ <text class="sm" x="30" y="345">best for the RESULT, never cheapest to build</text>
+ <text class="sm" x="30" y="363">and it does not ask again</text>
+
+ <rect x="514" y="266" width="472" height="104" rx="8" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="1.6"/>
+ <text class="sl" x="528" y="287" fill="var(--warn)">KEEP WAITING — the only two escape hatches</text>
+ <text class="sm" x="528" y="309">no recommendation: no basis to prefer a branch</text>
+ <text class="sm" x="528" y="327">reversible: false — data, contract, auth, money,</text>
+ <text class="sm" x="528" y="345">a migration, or a decision a human already made</text>
+ <text class="sm" x="528" y="363">stays parked; a human must answer</text>
+
+ <rect x="16" y="382" width="970" height="34" rx="7" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="sl" x="30" y="403">THE RULE — a question is asked with its answer already attached, so the deadline is a decision rather than a longer wait.</text>
 </svg>
-<figcaption><b>No special case for an urgent question.</b> "Run out of work" already covers every
-blocking radius: a total blocker leaves nothing else to do, so it flushes at once. On a partial
-answer the unanswered questions stay pending and a second flush is legitimate — re-asking something
-already answered is what the ledger forecloses.</figcaption>
+<figcaption><b>Size is not impact.</b> A large but reversible answer is decided; a small irreversible
+one is not. The old version of this figure said <i>&quot;needs_info is enterable ONLY through
+flush&quot;</i> and sorted questions by blocking radius — both are withdrawn. The gate reinvented a
+guard <code>state-integrity-guards.md</code> records as deleted because <i>&quot;unlike the guard it
+cannot strand the issue&quot;</i>, and the radius axis had no consumer. What the deadline reads is
+reversibility, and nothing else. <b>One prerequisite:</b> <code>needs_info</code> is absent from
+<code>NOTIFY_ON_STATUS</code> and all 17 parked issues have zero replies — until somebody is told a
+question exists, every deadline expires unanswered and this collapses into <i>always decide, never
+ask</i>.</figcaption>
 </figure>
 
 <h2>Figure 6 · the journey</h2>
 <h3>One issue, every branch</h3>
 
 <figure>
-<svg viewBox="0 0 1000 704" role="img" aria-label="Flowchart of one issue: no question closes in one session; a question answered inside the residency window stays in the same session; an expired window checkpoints, closes, and a later answer starts a second session that rehydrates.">
+<svg viewBox="0 0 1000 710" role="img" aria-label="Flowchart of one issue: no question closes in one session; a question answered inside the residency window stays in the same session; an expired window checkpoints and closes; then either the park deadline expires and the agent decides on its own recommendation, or the question is one it cannot decide and waits for a human.">
  <defs>
   <marker id="f6" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--ink2)"/></marker>
   <marker id="f6s" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--sess)"/></marker>
@@ -471,7 +486,7 @@ already answered is what the ledger forecloses.</figcaption>
  <text class="sm" x="70" y="478" fill="var(--sess)">B · yes</text>
  <rect x="14" y="524" width="420" height="66" rx="8" fill="var(--sess-bg)" stroke="var(--sess)"/>
  <text class="sl" x="28" y="543" fill="var(--sess)">B — send returns delivered</text>
- <text class="sm" x="28" y="561">same session, same context · core does NOT transition or dispatch</text>
+ <text class="sm" x="28" y="561">same session, same context · no transition, no dispatch</text>
  <text class="sm" x="28" y="577">no cold start · ONE job for the whole issue</text>
 
  <!-- path C -->
@@ -484,24 +499,36 @@ already answered is what the ledger forecloses.</figcaption>
 
  <path d="M762,512 L762,532" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f6)"/>
  <rect x="540" y="536" width="446" height="44" rx="7" fill="var(--panel2)" stroke="var(--line2)"/>
- <text class="sl" x="554" y="554">the issue rests at needs_info</text>
- <text class="sm" x="554" y="570">durable: phase journal + the question ledger</text>
+ <text class="sl" x="554" y="554">the issue waits at needs_info — but not forever</text>
+ <text class="sm" x="554" y="570">durable: phase journal + the question ledger + a deadline</text>
 
- <path d="M762,580 L762,600" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f6)"/>
- <rect x="540" y="604" width="446" height="44" rx="7" fill="var(--panel2)" stroke="var(--line2)"/>
- <text class="sl" x="554" y="622">a human answers, whenever</text>
- <text class="sm" x="554" y="638">send returns gone → issue → open → a NEW job</text>
+ <path d="M762,580 L762,596" fill="none" stroke="var(--ink2)" stroke-width="1.5"/>
+ <path d="M762,596 L648,596 L648,616" fill="none" stroke="var(--sess)" stroke-width="1.8" marker-end="url(#f6s)"/>
+ <path d="M762,596 L884,596 L884,616" fill="none" stroke="var(--warn)" stroke-width="1.8" marker-end="url(#f6w)"/>
 
- <path d="M762,648 L762,660" fill="none" stroke="var(--sess)" stroke-width="1.5" marker-end="url(#f6s)"/>
- <rect x="540" y="664" width="446" height="32" rx="7" fill="var(--sess-bg)" stroke="var(--sess)" stroke-dasharray="4 3"/>
- <text class="sl" x="554" y="685" fill="var(--sess)">↺ back to working — rehydrates from journal + ledger · TWO jobs</text>
+ <rect x="540" y="620" width="216" height="76" rx="7" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.6"/>
+ <text class="sl" x="552" y="639" fill="var(--sess)">C · the deadline expires</text>
+ <text class="sm" x="552" y="657">DECIDE on the</text>
+ <text class="sm" x="552" y="672">recommendation, comment it</text>
+ <text class="sm" x="552" y="688">→ open → a NEW job</text>
+
+ <rect x="770" y="620" width="216" height="76" rx="7" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="1.6"/>
+ <text class="sl" x="782" y="639" fill="var(--warn)">D · cannot decide</text>
+ <text class="sm" x="782" y="657">no recommendation, or</text>
+ <text class="sm" x="782" y="672">reversible: false</text>
+ <text class="sm" x="782" y="688">stays parked for a human</text>
 </svg>
-<figcaption><b>Three outcomes, one spine.</b> <b>A</b> never parks and closes in one session.
+<figcaption><b>Four outcomes, one spine.</b> <b>A</b> never parks and closes in one session.
 <b>B</b> parks and is answered in time, so the same session picks up with its context intact — one
-job. <b>C</b> parks and is not answered in time, so the session checkpoints and releases its slot;
-the later answer starts a second session that rehydrates. Two more branches are not drawn: a
-<b>partial</b> answer re-enters the flush box with only what is still pending, and a turn that ends
-with the work unfinished and nothing to ask is an anomaly — core checkpoints it onto path C.</figcaption>
+job. <b>C</b> parks, nobody answers, and the deadline expires: the agent proceeds on the
+recommendation it wrote when it found the question, comments what it decided, and a second session
+carries that decision forward. <b>D</b> is the only branch that genuinely waits — no recommendation
+was possible, or the answer is not reversible. Two branches are still undrawn: a <b>partial</b> answer
+re-enters flush with only what is still pending, and a turn that ends with the work unfinished and
+nothing to ask is an anomaly, which core checkpoints. <b>Note what C creates:</b>
+<code>answer-resume.ts</code> requires <code>status === 'needs_info'</code>, so an answer arriving
+after a decision is currently dropped without a word — routine under this rule, and a
+principle-№10 violation. It must reopen that decision, naming what it contradicts.</figcaption>
 </figure>
 
 <h2>Build order</h2>
