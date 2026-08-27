@@ -173,6 +173,27 @@ describe('ISS-868 issue relations read', () => {
     expect(edge?.gatesDispatch).toBe(true);
   });
 
+  it('uses the closed bypass only when the project base is structurally unstampable', async () => {
+    await harness.db.execute(sql`
+      UPDATE projects
+      SET agent_config = jsonb_build_object(
+        'pipelineConfig',
+        jsonb_build_object(
+          'mergeStates', jsonb_build_object('baseBranch', 'released'),
+          'states', jsonb_build_object('released', jsonb_build_object('mode', 'manual'))
+        )
+      )
+      WHERE id = ${projectId}
+    `);
+    const blocker = await insertIssue(631, 'closed');
+    const dependent = await insertIssue(632);
+    await insertEdge(blocker, dependent, 'blocks');
+
+    const [edge] = (await loadIssueRelations(dependent)).blockedBy;
+    expect(edge?.otherMergedAt).toBeNull();
+    expect(edge?.gatesDispatch).toBe(false);
+  });
+
   it('omits the other issue title and the edge reason', async () => {
     const blocker = await insertIssue(401);
     const dependent = await insertIssue(402);

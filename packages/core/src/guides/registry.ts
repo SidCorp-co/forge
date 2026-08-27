@@ -62,12 +62,12 @@ The same shape costs tokens rather than a stall: a stage lands in a checkout who
     title: 'Issue dependencies & decompose',
     summary:
       'How blocks edges gate dispatch, the merged_at unblock signal, why decompose lifecycle is system-owned, and the one decompose action that IS yours.',
-    version: 3,
+    version: 4,
     body: `## Issue dependencies & decompose
 
 ### Relation kinds
 Edges are directional \`fromIssue --kind--> toIssue\`:
-- \`blocks\` — **the only kind that affects dispatch.** A → blocks → B means B cannot dispatch until A's code has reached the base branch — concretely, until A has \`merged_at\` set OR A is \`closed\`. It is **not** gated on A reaching \`released\`: a blocker parked at a manual release gate already unblocks B the instant its \`merged_at\` is stamped.
+- \`blocks\` — **the only kind that affects dispatch.** A → blocks → B means B cannot dispatch until A's code has reached the base branch — normally, until A has \`merged_at\` set. A reopened issue stays a blocker even if its prior merge stamp remains. A closed issue without \`merged_at\` unblocks B only when the project's base branch cannot be stamped structurally. It is **not** gated on A reaching \`released\`: a blocker parked at a manual release gate already unblocks B the instant its \`merged_at\` is stamped.
 - \`relates\`, \`duplicates\`, \`parent\` — metadata only, no dispatch effect.
 - \`decomposes\` — epic → child; engages the system-owned decomposition lifecycle below. Do not create this edge by hand outside that flow.
 
