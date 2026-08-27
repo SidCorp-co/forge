@@ -269,6 +269,8 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
     // cm:edge lockstep -> packages/core/src/runners/select.ts — the `capabilities @>` join is the ONE clause `selectRunnerForJob` applies that the picker's CTE does not, and it must stay: a job no runner is capable of is offered by the picker, rejected by the selector, and spins queued with no gate reason for any UI to show (measured 2026-08-14: 11 jobs across 5 projects sat 6-22 days in exactly that state). Surfacing that is A3's whole reason to exist.
     // cm:guard nullif BEFORE coalesce on requiredCapabilities — `->` on a JSON null yields jsonb 'null', not SQL NULL, so a bare coalesce leaves `@> 'null'` matching nothing and every job carrying `requiredCapabilities: null` reads as starved while dispatcher.ts (`?? {}`) places it fine
     // cm:edge lockstep -> packages/core/src/jobs/stage-overrides.ts — the `pool` lateral reads the per-stage device pool from exactly the path resolveStageOverrides reads, keyed by the job's own `payload.stageStatus`; a pool naming only offline devices wedges a queue with every gate passing, which is the shape A3 exists to name
+    // cm:guard compare the pool as `uuid`, never `device_id::text` — `z.uuid()` accepts uppercase hex and nothing normalizes it, while `::text` on a uuid column always renders lowercase, so a pool configured with an uppercase id matches zero runners here and every runner in runners/select.ts (which binds a parameter against the uuid column, and so parses case-insensitively). A moving queue would read `runner_starved`, and at three such projects A3 goes crit and pages every platform admin.
+    // cm:guard the pool arm needs BOTH `IS NULL` and `jsonb_typeof(...) <> 'array'`, in that order — no pool configured is SQL NULL, on which `jsonb_typeof` returns NULL, so a typeof-only arm evaluates the whole OR to NULL and every healthy project reads as starved; and an `IS NULL`-only arm lets `jsonb_array_length` THROW on a scalar, which the sweeper's try/catch swallows into zeros while the GET 500s.
     // cm:guard keep BOTH of those clauses: they are the two `selectRunnerForJob` applies that `fresh_capable_runners` does not, so a job can pass every picker gate and still be unplaceable — drop either and genuine starvation reports `ok`
     const rows = await db.execute<{
       queued_count: number;
@@ -306,8 +308,11 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
             AND rr.capabilities @> coalesce(nullif(j.payload -> 'requiredCapabilities', 'null'::jsonb), '{}'::jsonb)
             AND (
               pool.device_ids IS NULL
+              OR jsonb_typeof(pool.device_ids) <> 'array'
               OR jsonb_array_length(pool.device_ids) = 0
-              OR rr.device_id::text IN (SELECT jsonb_array_elements_text(pool.device_ids))
+              OR rr.device_id IN (
+                SELECT nullif(e, '')::uuid FROM jsonb_array_elements_text(pool.device_ids) AS e
+              )
             )
         )
     `);

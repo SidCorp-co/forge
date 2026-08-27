@@ -70,16 +70,21 @@ async function claimOrEscalate(input: {
   let notificationId = claimed[0]?.id;
 
   if (!notificationId) {
+    // cm:guard the CTE must be `FOR UPDATE`, not a plain `FROM notifications prev` self-join — a non-locked rowmark is re-read under EvalPlanQual, so with two core replicas sweeping at once BOTH read the pre-update severity, both report an escalation, and the recipient is notified twice for one move. Locking the row first serializes them: the loser sees the winner's severity and refreshes the text silently.
+    // cm:guard refresh title/body on EVERY sweep, notify only on a severity move — gating the whole UPDATE on the severity change froze the text for the life of the incident, so an A2 opened at 3 stuck jobs still read "3 jobs" at 30, with no second notification coming to correct it. Reading `prev` is the only way to have both: RETURNING yields the NEW row, so the pre-update severity is otherwise unreachable.
     const updated = await db.execute<{ id: string; escalated: boolean }>(sql`
+      WITH locked AS (
+        SELECT id, severity FROM notifications
+        WHERE user_id = ${userId} AND resolution_key = ${resolutionKey}
+          AND type = 'ops_alert' AND resolved_at IS NULL
+        FOR UPDATE
+      )
       UPDATE notifications n
       SET severity = ${severity}, title = ${title}, body = ${body}
-      FROM notifications prev
+      FROM locked prev
       WHERE prev.id = n.id
-        AND n.user_id = ${userId} AND n.resolution_key = ${resolutionKey}
-        AND n.type = 'ops_alert' AND n.resolved_at IS NULL
       RETURNING n.id, (prev.severity IS DISTINCT FROM ${severity}) AS escalated
     `);
-    // cm:guard refresh title/body on EVERY sweep but notify only on a severity move — gating the whole UPDATE on the severity change froze the text for the life of the incident, so an A2 that opened at 3 stuck jobs still read "3 jobs" at 30. `FROM notifications prev` is what makes both possible in one statement: RETURNING yields the NEW row, so the pre-update severity is unreachable without the self-join.
     if (!updated[0]?.escalated) return false;
     notificationId = updated[0].id;
   }

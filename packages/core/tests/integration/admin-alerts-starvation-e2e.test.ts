@@ -179,6 +179,39 @@ describe('A3 runner starvation (ISS-652)', () => {
     expect(findAlert(cleared, 'A3')?.status).toBe('ok');
   });
 
+  // cm:guard `z.uuid()` accepts uppercase hex and nothing normalizes it, but `device_id::text` on a uuid column always renders lowercase — so comparing as text matches nothing here while runners/select.ts, binding a parameter against the uuid column, matches fine. This runner IS in the pool and IS dispatchable; A3 saying otherwise would page every platform admin about a moving queue.
+  it('stays ok when the stage pool names this runner in uppercase hex', async () => {
+    const owner = await createTestUser(ctx.harness.db);
+    const project = await createTestProject(ctx.harness.db, owner.id);
+    const deviceId = '22222222-2222-4222-8222-222222222222';
+    await ctx.harness.db.execute(sql`
+      INSERT INTO devices (id, owner_id, name, platform, token_hash, token_prefix, status)
+      VALUES (${deviceId}, ${owner.id}, 'pool fixture', 'linux', 'x', 'pooltest', 'online')
+    `);
+    await ctx.harness.db.execute(sql`
+      UPDATE projects
+      SET agent_config = ${JSON.stringify({
+        pipelineConfig: { states: { approved: { deviceIds: [deviceId.toUpperCase()] } } },
+      })}::jsonb
+      WHERE id = ${project.id}
+    `);
+    const run = await fx.insertRun(project.id, 'running');
+    const runnerId = await fx.insertRunner({ projectId: project.id, status: 'online' });
+    await ctx.harness.db.execute(
+      sql`UPDATE runners SET device_id = ${deviceId} WHERE id = ${runnerId}`,
+    );
+    await fx.insertJob({
+      projectId: project.id,
+      runId: run,
+      status: 'queued',
+      queuedAgoMinutes: 10,
+      payload: { stageStatus: 'approved' },
+    });
+
+    const { body } = await getAlerts(ctx, await ctx.adminToken());
+    expect(findAlert(body, 'A3')?.status).toBe('ok');
+  });
+
   // cm:why cap=2 so issue B PASSES project_cap and the sole runner being full is the only thing left holding it — genuine capacity starvation, which no upstream gate clears
   it('fires when a job past project_cap still has no free runner slot', async () => {
     const owner = await createTestUser(ctx.harness.db);
