@@ -123,6 +123,38 @@ describe('forge_pipeline_runs.list', () => {
     expect(result.runs[0]?.id).toBe(RUN_ID);
   });
 
+  // cm:guard assert BOTH halves — the limit reaching `.limit()` as limit+1 AND the un-inflated limit reaching the envelope. Passing overfetch() to both reports a bound page as `hasMore:false`, and no other test in this file reads the envelope at all.
+  it('over-fetches by one and reports the limit that bound the page', async () => {
+    const tool = forgePipelineRunsListTool(makeDeviceCtx());
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    selectLimit.mockResolvedValueOnce(
+      Array.from({ length: 3 }, (_, i) => ({ ...baseRun, id: `run-${i}` })),
+    );
+
+    const result = (await tool.handler({ projectId: PROJECT_ID, limit: 2 })) as {
+      runs: unknown[];
+      returned: number;
+      limit: number;
+      hasMore: boolean;
+      truncatedBy: string;
+    };
+
+    expect(selectLimit).toHaveBeenLastCalledWith(3);
+    expect(result).toMatchObject({ returned: 2, limit: 2, hasMore: true, truncatedBy: 'limit' });
+    expect(result.runs).toHaveLength(2);
+  });
+
+  it('says hasMore:false on a complete page, so a short list is not read as a whole one', async () => {
+    const tool = forgePipelineRunsListTool(makeDeviceCtx());
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    selectLimit.mockResolvedValueOnce([baseRun]);
+
+    const result = await tool.handler({ projectId: PROJECT_ID, limit: 2 });
+
+    expect(result).toMatchObject({ returned: 1, limit: 2, hasMore: false });
+    expect(result).not.toHaveProperty('truncated');
+  });
+
   it('rejects non-member with FORBIDDEN', async () => {
     const tool = forgePipelineRunsListTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);

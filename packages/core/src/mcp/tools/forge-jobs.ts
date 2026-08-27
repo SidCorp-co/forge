@@ -14,6 +14,7 @@ import {
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
+import { buildListEnvelope, overfetch } from './list-envelope.js';
 
 /**
  * MCP Phase 1 (ISS-7) — read-only diagnostic surfaces over the jobs/events
@@ -43,7 +44,6 @@ const listInputSchema = z
 // headroom under the observed spill threshold (40 rows/~41K fit, 50/~52K did
 // not).
 const DEFAULT_LIST_LIMIT = 25;
-const MAX_RESPONSE_CHARS = 38_000;
 
 const getInputSchema = z.object({ jobId: z.uuid() }).strict();
 
@@ -65,12 +65,13 @@ const cancelInputSchema = z
 export const forgeJobsListTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_jobs.list',
   description:
-    'List jobs scoped to a project (default 25, max 200; ordered newest-first). Supports status/type/issueId filters. Returns a lightweight projection per job: the heavy fields (payload, promptBlocks, failureMeta jsonb and the unbounded userPromptSnapshot/error text) are OMITTED to stay under the response token cap — fetch them per-job via forge_jobs.get. Every `queued` row also carries `gateReason` — the exact dispatch gate holding it (`blocked_by`, `runner_stale`, `pipeline_run_not_running`, …) or null when it is dispatchable and merely awaiting its turn. READ IT before assuming a queued job is progressing: `queued` is the status both of a job about to run and of one blocked indefinitely. A hard response-size cap trims the oldest rows when needed; when that happens the result carries truncated:true + a notice (narrow with filters or a smaller limit). Requires device owner to be a project member.',
+    'List jobs scoped to a project (default 25, max 200; ordered newest-first). Supports status/type/issueId filters. Returns a lightweight projection per job: the heavy fields (payload, promptBlocks, failureMeta jsonb and the unbounded userPromptSnapshot/error text) are OMITTED to stay under the response token cap — fetch them per-job via forge_jobs.get. Every `queued` row also carries `gateReason` — the exact dispatch gate holding it (`blocked_by`, `runner_stale`, `pipeline_run_not_running`, …) or null when it is dispatchable and merely awaiting its turn. READ IT before assuming a queued job is progressing: `queued` is the status both of a job about to run and of one blocked indefinitely. EVERY response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit looks exactly like a complete one. `truncated:true` + `truncatedBy` + a notice say which cap bit (your limit, or the hard response-size cap). Requires device owner to be a project member.',
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId, status, type, issueId, limit } = listInputSchema.parse(args);
     await assertDeviceOwnerIsMember(device, projectId);
 
+    const jobsLimit = limit ?? DEFAULT_LIST_LIMIT;
     const conds: SQL[] = [eq(jobs.projectId, projectId)];
     if (status) conds.push(eq(jobs.status, status));
     if (type) conds.push(eq(jobs.type, type));
@@ -116,7 +117,7 @@ export const forgeJobsListTool: DeviceScopedMcpToolFactory = (device) => ({
       .from(jobs)
       .where(and(...conds))
       .orderBy(desc(jobs.queuedAt))
-      .limit(limit ?? DEFAULT_LIST_LIMIT);
+      .limit(overfetch(jobsLimit));
 
     // cm:why one extra project-scoped query, not one per row — the gate is stateless, so `queued` alone cannot say whether a job is about to run or blocked forever, and without this the only way to find out is a hand-written script against the database (which is how 11 jobs came to sit queued for 6-22 days unnoticed)
     const gates = rows.some((r) => r.status === 'queued')
@@ -127,25 +128,12 @@ export const forgeJobsListTool: DeviceScopedMcpToolFactory = (device) => ({
       ...(r.status === 'queued' ? { gateReason: gates.get(r.id) ?? null } : {}),
     }));
 
-    // Hard total-response cap: trim from the tail (oldest) until the serialized
-    // payload fits MAX_RESPONSE_CHARS, so a large explicit `limit` (or a verbose
-    // run of jobs) can never spill to a file. Always keep at least one row.
-    let kept = withGates;
-    while (kept.length > 1 && JSON.stringify({ jobs: kept }).length > MAX_RESPONSE_CHARS) {
-      kept = kept.slice(0, -1);
-    }
-
-    if (kept.length < withGates.length) {
-      return {
-        jobs: kept,
-        truncated: true,
-        returned: kept.length,
-        requested: limit ?? DEFAULT_LIST_LIMIT,
-        notice: `Response truncated to the ${kept.length} most recent of ${withGates.length} jobs to stay under the MCP output cap. Narrow with status/type/issueId filters or a smaller limit; fetch full job bodies via forge_jobs.get.`,
-      };
-    }
-
-    return { jobs: kept };
+    return buildListEnvelope({
+      key: 'jobs',
+      items: withGates,
+      limit: jobsLimit,
+      hint: 'narrow with status/type/issueId filters, and fetch full job bodies via forge_jobs.get',
+    });
   },
 });
 
@@ -164,10 +152,31 @@ export const forgeJobsGetTool: ContextScopedMcpToolFactory = ({ principal }) => 
   },
 });
 
+/**
+ * Replace an oversized `job_events.data` with its own measurement.
+ *
+ * ISS-787 review round 2. `data` is the only unbounded column on this surface —
+ * the runner maps each Claude stream-json line to one event and stores the
+ * whole JSON — and dropping such a row for size wedged the replay: the page
+ * came back empty, `lastSeq` fell back to the caller's own `sinceSeq`, and the
+ * notice told them to re-call with it. Bounding the payload instead keeps the
+ * row, so the cursor always clears the event that could not be sent.
+ */
+// cm:guard keep this cap well under MAX_RESPONSE_CHARS — it is what guarantees no SINGLE event can exhaust the response budget, which is what stops the size trim ever returning zero rows and freezing the cursor
+const MAX_EVENT_DATA_CHARS = 8_000;
+
+function boundEventData<T extends { data: unknown }>(event: T): T {
+  const bytes = JSON.stringify(event.data ?? null).length;
+  if (bytes <= MAX_EVENT_DATA_CHARS) return event;
+  return { ...event, data: { omitted: true, bytes } };
+}
+
 export const forgeJobsEventsTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_jobs.events',
   description:
-    'Stream-replay job_events for a job (paginated by sinceSeq). Read-only; returns { items, lastSeq }.',
+    'Stream-replay job_events for a job (paginated by sinceSeq). Read-only; returns { items, lastSeq, returned, limit, hasMore }. ' +
+    'READ `hasMore`: a page bound by your own limit looks exactly like the end of the stream. `lastSeq` ALWAYS advances past every event this page accounted for, so re-calling with sinceSeq:lastSeq never replays and never stalls. ' +
+    'An event whose `data` exceeds the per-event cap is returned with `data:{omitted:true,bytes:N}` rather than dropped — the stream stays contiguous and the cursor keeps moving.',
   inputSchema: zodToMcpSchema(eventsInputSchema),
   handler: async (args) => {
     const { jobId, sinceSeq, limit } = eventsInputSchema.parse(args);
@@ -179,15 +188,38 @@ export const forgeJobsEventsTool: ContextScopedMcpToolFactory = ({ principal }) 
     if (sinceSeq !== undefined) whereClauses.push(gt(jobEvents.seq, sinceSeq));
     const where = whereClauses.length === 1 ? whereClauses[0] : and(...whereClauses);
 
-    const items = await db
+    const eventsLimit = limit ?? 200;
+    const fetched = await db
       .select()
       .from(jobEvents)
       .where(where)
       .orderBy(asc(jobEvents.seq))
-      .limit(limit ?? 200);
+      .limit(overfetch(eventsLimit));
 
+    const bounded = fetched.map(boundEventData);
+    // cm:guard events are CURSOR-paginated, so the size trim must shed the NEWEST rows — shedding the oldest would move lastSeq past events the caller never received, and nothing replays them
+    const envelope = buildListEnvelope({
+      key: 'items',
+      items: bounded,
+      limit: eventsLimit,
+      hint: 're-call with the returned sinceSeq',
+      order: 'asc',
+      sizeTrimSheds: 'newest',
+    });
+    const items = envelope.items as typeof bounded;
+    // cm:guard `lastSeq` must come from the RETURNED tail, never the overfetched probe row — it is the cursor the caller passes back as `sinceSeq`, so reading it off the dropped row skips one event on every page and the replay silently loses it
     const lastSeq = items.length > 0 ? Number(items[items.length - 1]?.seq ?? 0) : (sinceSeq ?? 0);
-    return { items, lastSeq };
+    const { items: _, notice: __, ...metadata } = envelope;
+    return {
+      ...metadata,
+      items,
+      lastSeq,
+      ...(envelope.truncated
+        ? {
+            notice: `More events match than were returned. Re-call with sinceSeq: ${lastSeq} for the next page.`,
+          }
+        : {}),
+    };
   },
 });
 

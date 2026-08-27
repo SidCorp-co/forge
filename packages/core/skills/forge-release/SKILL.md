@@ -57,8 +57,7 @@ In local-only mode, `forge-release` is not applicable — there is no production
 forge_comments → create → {
   data: {
     body: "**Release skipped** — project is in local-only mode (no Coolify, no preview URL). In this mode the pipeline ends at `developed` for human review; the human closes the issue manually when satisfied. Skip forge-release.",
-    issue: "<documentId>",
-    author: "Charizard"
+    issue: "<documentId>"
   }
 }
 ```
@@ -226,8 +225,7 @@ Reaching this point means the gate already confirmed the issue's commits are on 
 forge_comments → create → {
   data: {
     body: "**Released** — Merged to <productionBranch>. <deploy status>.",
-    issue: "<documentId>",
-    author: "Dragonite"
+    issue: "<documentId>"
   }
 }
 ```

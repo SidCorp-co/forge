@@ -24,11 +24,11 @@
  */
 
 import { z } from 'zod';
+import { CoolifyApiError } from '../../integrations/coolify/client.js';
 import {
   fetchCoolifyDeploymentLogs,
   fetchCoolifyRuntimeLogs,
-} from '../../integrations/coolify/adapter.js';
-import { CoolifyApiError } from '../../integrations/coolify/client.js';
+} from '../../integrations/coolify/log-fetch.js';
 import type { CoolifyConfig } from '../../integrations/coolify/types.js';
 import { findLastOutbound, findLastOutboundForTarget } from '../../integrations/deliveries.js';
 import { effectiveConfig, listActiveBindingsForProjectProvider } from '../../integrations/store.js';
@@ -62,9 +62,11 @@ const inputSchema = z
     /** runtime-logs: the Coolify application (target) resourceUuid to tail;
      *  defaults to the integration's sole target when it has exactly one. */
     resourceUuid: z.string().optional(),
-    /** runtime-logs: number of recent lines to request (clamped 1..1000).
-     *  Coerced — MCP transports routinely deliver numeric args as strings. */
-    lines: z.coerce.number().int().positive().optional(),
+    /** logs + runtime-logs: number of recent lines to keep. REJECTED outside
+     *  1..1000, not clamped into it — a description that says "clamped" of a
+     *  bound that hard-fails is the same lie ISS-787 removed from `lines`
+     *  itself. Coerced: MCP transports routinely deliver numbers as strings. */
+    lines: z.coerce.number().int().min(1).max(1000).optional(),
   })
   .strict();
 
@@ -91,6 +93,29 @@ async function activeCoolifyIntegrations(projectId: string) {
     breakerOpenedAt: pair.connection.breakerOpenedAt,
     pair,
   }));
+}
+
+/**
+ * Pick the one integration the caller means: an explicit `integrationId`, else
+ * the project's sole active integration. Returns null when the project has
+ * none — the only case the caller must shape itself, because each action's
+ * "nothing configured" payload names different fields.
+ */
+function resolveIntegrationRow<T extends { id: string }>(
+  rows: T[],
+  input: { integrationId?: string | undefined },
+): T | null {
+  const row = input.integrationId
+    ? rows.find((r) => r.id === input.integrationId)
+    : rows.length === 1
+      ? rows[0]
+      : undefined;
+  if (row) return row;
+  if (input.integrationId) {
+    throw new Error('BAD_REQUEST: no active Coolify integration with that integrationId');
+  }
+  if (rows.length === 0) return null;
+  throw new Error('BAD_REQUEST: multiple active Coolify integrations — pass integrationId');
 }
 
 export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
@@ -138,16 +163,22 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Requires integrationId when multiple active Coolify integrations exist. ' +
     'Secrets (Authorization/Cookie/X-Api-Key headers, token/apiKey/password/jwt fields, tokenized ' +
     "URLs, and the integration's own apiToken) are redacted line-by-line; build-stage stderr is " +
-    'preserved. Returns { integrationId, deploymentUuid, status, commit, logs, truncated }. `commit` is the git SHA this deployment built, read from the deployment record — the log line `SOURCE_COMMIT=` is redacted with the rest of the env dump, so compare THIS field against your merge SHA to prove the change is live. On a Coolify API ' +
-    'error returns { error, httpStatus } with no raw body. Tailed to last ~100 lines / ~16KB ' +
-    '(truncated:true when cut). ' +
+    'preserved. Returns { integrationId, deploymentUuid, status, commit, logs, truncated, fetchedAt, logsDigest }. `commit` is the git SHA this deployment built, read from the deployment record — the log line `SOURCE_COMMIT=` is redacted with the rest of the env dump, so compare THIS field against your merge SHA to prove the change is live. On a Coolify API ' +
+    'error returns { error, httpStatus } with no raw body. Tailed to the last `lines` ' +
+    '(default 100) / ~16KB, truncated:true when cut. `lines` outside 1..1000 is REJECTED, not ' +
+    'clamped — a value of 5000 is a validation error, not a 1000-line tail. ' +
+    'A build log that has not moved is INDISTINGUISHABLE from a stale snapshot by eye, so compare ' +
+    '`logsDigest` across calls: identical digest + advancing `fetchedAt` means Coolify really is ' +
+    'returning the same bytes, not that this tool cached them. Neither proves the build is hung — ' +
+    'read `status` for that. ' +
     'runtime-logs: tail the LIVE application container log (NOT the build log) via Coolify ' +
     'applications/{uuid}/logs. Resolves the target from resourceUuid (else the integration sole ' +
-    'target; multiple targets => pass resourceUuid, see list); optional `lines` (1..1000, default 100). ' +
-    'Same scrubbing/tailing as logs. CAVEAT: for a docker-compose application Coolify returns only ONE ' +
+    'target; multiple targets => pass resourceUuid, see list); optional `lines` (default 100, ' +
+    'rejected outside 1..1000). ' +
+    'Same scrubbing/tailing, `fetchedAt` and `logsDigest` as logs. CAVEAT: for a docker-compose application Coolify returns only ONE ' +
     "container's logs and its public API has NO working per-service selector — reliable for " +
     'single-container apps; a compose deploy cannot be narrowed to a specific service here. Returns ' +
-    '{ integrationId, resourceUuid, logs, truncated } or { error, httpStatus }. ' +
+    '{ integrationId, resourceUuid, logs, truncated, fetchedAt, logsDigest } or { error, httpStatus }. ' +
     'Project scope comes from the X-Forge-Project-Slug header (or an explicit projectId). ' +
     'Authorization: project membership.',
   inputSchema: zodToMcpSchema(inputSchema),
@@ -322,25 +353,14 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         // Resolve the integration row. Explicit integrationId wins; otherwise
         // require exactly one active Coolify integration (multiple is ambiguous).
-        const rows = await activeCoolifyIntegrations(projectId);
-        const row = input.integrationId
-          ? rows.find((r) => r.id === input.integrationId)
-          : rows.length === 1
-            ? rows[0]
-            : undefined;
+        const row = resolveIntegrationRow(await activeCoolifyIntegrations(projectId), input);
         if (!row) {
-          if (input.integrationId) {
-            throw new Error('BAD_REQUEST: no active Coolify integration with that integrationId');
-          }
-          if (rows.length === 0) {
-            return {
-              integrationId: null,
-              deploymentUuid: null,
-              logs: null,
-              reason: 'no-integration',
-            };
-          }
-          throw new Error('BAD_REQUEST: multiple active Coolify integrations — pass integrationId');
+          return {
+            integrationId: null,
+            deploymentUuid: null,
+            logs: null,
+            reason: 'no-integration',
+          };
         }
 
         // Resolve the deploymentUuid: explicit param, else the integration's
@@ -361,7 +381,7 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
 
         try {
-          const result = await fetchCoolifyDeploymentLogs(row.pair, deploymentUuid);
+          const result = await fetchCoolifyDeploymentLogs(row.pair, deploymentUuid, input.lines);
           return { integrationId: row.id, ...result };
         } catch (err) {
           // Surface a clear message; NEVER echo the raw Coolify body (may leak).
@@ -382,26 +402,9 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
         const projectId = await resolveProjectId(input, ctx);
         await assertPrincipalIsMember(principal, projectId);
 
-        // Resolve the integration row exactly like `logs`.
-        const rows = await activeCoolifyIntegrations(projectId);
-        const row = input.integrationId
-          ? rows.find((r) => r.id === input.integrationId)
-          : rows.length === 1
-            ? rows[0]
-            : undefined;
+        const row = resolveIntegrationRow(await activeCoolifyIntegrations(projectId), input);
         if (!row) {
-          if (input.integrationId) {
-            throw new Error('BAD_REQUEST: no active Coolify integration with that integrationId');
-          }
-          if (rows.length === 0) {
-            return {
-              integrationId: null,
-              resourceUuid: null,
-              logs: null,
-              reason: 'no-integration',
-            };
-          }
-          throw new Error('BAD_REQUEST: multiple active Coolify integrations — pass integrationId');
+          return { integrationId: null, resourceUuid: null, logs: null, reason: 'no-integration' };
         }
 
         // Resolve the target application to tail: explicit resourceUuid wins;

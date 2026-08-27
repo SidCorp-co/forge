@@ -224,14 +224,16 @@ describe('forge_comments tool', () => {
       comments: unknown[];
       truncated: boolean;
       returned: number;
-      requested: number;
+      limit: number;
+      truncatedBy: string;
       notice: string;
     };
 
     expect(result.truncated).toBe(true);
     expect(result.returned).toBeLessThan(50);
-    expect(result.requested).toBe(50);
-    expect(result.notice).toMatch(/truncated/i);
+    expect(result.limit).toBe(50);
+    expect(result.truncatedBy).toBe('response-size');
+    expect(result.notice).toMatch(/more rows match/i);
     // Total serialized response must stay under a safe threshold
     expect(JSON.stringify(result).length).toBeLessThan(50_000);
   });

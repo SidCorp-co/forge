@@ -1,13 +1,3 @@
-/**
- * ISS-242 — MCP tool tests for `forge_coolify_deploy` (list/deploy/status).
- *
- * The contract under test is "auth gating + action routing + input/output
- * shape". The dispatch semantics + the manual/auto idempotency guard live in
- * `release-coolify.ts` and are covered in `release-coolify.test.ts`, so here we
- * mock `tryDispatchCoolifyRelease` / `resolveLatestIssueRunId` and assert the
- * tool delegates correctly and passes the outcome through unchanged.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../config/env.js', () => ({
@@ -18,9 +8,6 @@ vi.mock('../../config/env.js', () => ({
   },
 }));
 
-// FIFO result queue: each awaited drizzle chain consumes the next entry, so
-// tests just push results in call order (membership check first, then the
-// integration query).
 const resultQueue: unknown[] = [];
 // biome-ignore lint/suspicious/noExplicitAny: minimal chainable drizzle stub
 function makeThenable(): any {
@@ -52,8 +39,14 @@ vi.mock('../../pipeline/release-coolify.js', () => ({
   isIssueAtReleaseStage: (a: unknown) => isIssueAtReleaseStageSpy(a),
 }));
 
-const findLastOutboundSpy = vi.fn();
-const findLastOutboundForTargetSpy = vi.fn();
+const findLastOutboundSpy = vi.fn(),
+  findLastOutboundForTargetSpy = vi.fn();
+const fetchDeploymentLogsSpy = vi.fn(),
+  fetchRuntimeLogsSpy = vi.fn();
+vi.mock('../../integrations/coolify/log-fetch.js', () => ({
+  fetchCoolifyDeploymentLogs: (...a: unknown[]) => fetchDeploymentLogsSpy(...a),
+  fetchCoolifyRuntimeLogs: (...a: unknown[]) => fetchRuntimeLogsSpy(...a),
+}));
 vi.mock('../../integrations/deliveries.js', () => ({
   findLastOutbound: (a: unknown) => findLastOutboundSpy(a),
   findLastOutboundForTarget: (...a: unknown[]) => findLastOutboundForTargetSpy(...(a as [])),
@@ -94,12 +87,10 @@ function makeDeviceCtx() {
   };
 }
 
-/** Push the single effective-role row (lib/authz.ts) for a project member. */
 function pushMemberOk() {
   resultQueue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 }
 
-/** A binding+connection pair as `listActiveBindingsForProjectProvider` returns. */
 function pair(
   id: string,
   environment: string,
@@ -109,22 +100,14 @@ function pair(
     breakerOpenedAt?: Date | null;
   } = {},
 ) {
+  const base = { id, provider: 'coolify', active: true };
   return {
-    binding: {
-      id,
-      environment,
-      projectId: PROJECT_ID,
-      provider: 'coolify',
-      config: {},
-      active: true,
-    },
+    binding: { ...base, environment, projectId: PROJECT_ID, config: {} },
     connection: {
-      id,
-      provider: 'coolify',
+      ...base,
       config: opts.config ?? {},
       lastHealthStatus: opts.lastHealthStatus ?? null,
       breakerOpenedAt: opts.breakerOpenedAt ?? null,
-      active: true,
     },
   };
 }
@@ -138,6 +121,8 @@ beforeEach(() => {
   isIssueAtReleaseStageSpy.mockReset();
   findLastOutboundSpy.mockReset();
   findLastOutboundForTargetSpy.mockReset();
+  fetchDeploymentLogsSpy.mockReset();
+  fetchRuntimeLogsSpy.mockReset();
 });
 
 describe('forge_coolify_deploy → list', () => {
@@ -396,6 +381,69 @@ describe('forge_coolify_deploy → deploy', () => {
   });
 });
 
+describe('forge_coolify_deploy → logs', () => {
+  it('passes lines to deployment-log reads and returns their freshness metadata', async () => {
+    const tool = forgeCoolifyDeployTool(makeDeviceCtx());
+    pushMemberOk();
+    const integration = pair(STAGING_INT, 'staging');
+    resultQueue.push([integration]);
+    findLastOutboundSpy.mockResolvedValueOnce({
+      response: { deployment_uuid: 'dep-1' },
+    });
+    fetchDeploymentLogsSpy.mockResolvedValueOnce({
+      deploymentUuid: 'dep-1',
+      status: 'running',
+      commit: null,
+      logs: 'step 1',
+      truncated: false,
+      fetchedAt: '2026-08-27T00:00:00.000Z',
+      logsDigest: 'deadbeefcafe',
+    });
+
+    const result = await tool.handler({
+      action: 'logs',
+      projectId: PROJECT_ID,
+      lines: 3,
+    });
+
+    expect(fetchDeploymentLogsSpy).toHaveBeenCalledWith(integration, 'dep-1', 3);
+    expect(result).toMatchObject({
+      integrationId: STAGING_INT,
+      fetchedAt: '2026-08-27T00:00:00.000Z',
+      logsDigest: 'deadbeefcafe',
+    });
+  });
+
+  it('passes lines to runtime-log reads and returns their freshness metadata', async () => {
+    const tool = forgeCoolifyDeployTool(makeDeviceCtx());
+    pushMemberOk();
+    const integration = pair(STAGING_INT, 'staging', {
+      config: { targets: [{ id: 'target-1', label: 'Core', resourceUuid: 'app-1' }] },
+    });
+    resultQueue.push([integration]);
+    fetchRuntimeLogsSpy.mockResolvedValueOnce({
+      resourceUuid: 'app-1',
+      logs: 'ready',
+      truncated: false,
+      fetchedAt: '2026-08-27T00:00:00.000Z',
+      logsDigest: 'facefeedcafe',
+    });
+
+    const result = await tool.handler({
+      action: 'runtime-logs',
+      projectId: PROJECT_ID,
+      lines: 7,
+    });
+
+    expect(fetchRuntimeLogsSpy).toHaveBeenCalledWith(integration, 'app-1', 7);
+    expect(result).toMatchObject({
+      integrationId: STAGING_INT,
+      fetchedAt: '2026-08-27T00:00:00.000Z',
+      logsDigest: 'facefeedcafe',
+    });
+  });
+});
+
 describe('forge_coolify_deploy → status', () => {
   it('returns the latest outbound delivery per TARGET of each active integration', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
@@ -427,7 +475,6 @@ describe('forge_coolify_deploy → status', () => {
       }>;
     };
 
-    // One row per target (Backend + Frontend).
     expect(result.deliveries).toHaveLength(2);
     expect(result.deliveries).toEqual(
       expect.arrayContaining([

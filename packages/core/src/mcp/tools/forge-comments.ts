@@ -20,6 +20,7 @@ import {
   principalHookActor,
   zodToMcpSchema,
 } from './lib.js';
+import { buildListEnvelope, overfetch } from './list-envelope.js';
 
 /**
  * Action-based parity port of the legacy Strapi MCP `forge_comments` tool.
@@ -45,7 +46,8 @@ const attachmentInputSchema = z
   })
   .strict();
 
-const dataSchema = z
+// cm:edge contract -> packages/core/skills — shipped Markdown templates carry `forge_comments → create` examples an agent copies verbatim; this schema is `.strict()`, so a key in an example that is not here is a hard rejection at the agent's first call. `skills/shipped-templates.test.ts` parses every template against this export.
+export const commentCreateDataSchema = z
   .object({
     body: z.string().trim().min(1).max(10_000).optional(),
     issue: z.uuid().optional(),
@@ -60,7 +62,7 @@ const inputSchema = z
     action: z.enum(['list', 'create', 'delete']),
     documentId: z.uuid().optional(),
     filters: filtersSchema,
-    data: dataSchema,
+    data: commentCreateDataSchema,
     limit: z.number().int().min(1).max(200).optional(),
   })
   .strict();
@@ -134,12 +136,11 @@ function decodeBase64Strict(input: string): Buffer | null {
   return Buffer.from(trimmed, 'base64');
 }
 
-const MAX_RESPONSE_CHARS = 38_000;
-
 export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_comments',
   description:
     'List, create, or delete issue comments. List requires filters.issue (issue UUID). ' +
+    'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. ' +
     'Create requires data.issue + data.body. Delete requires documentId. All actions ' +
     'enforce project membership via the device principal. Body shape — see guide writing-an-issue: outcome first, trace underneath; mermaid fences render, and an attached .html renders inline. ' +
     'Attachments: for anything bigger than a tiny snippet use the forge_uploads tool ' +
@@ -162,6 +163,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
         const projectId = await loadIssueProjectId(issueId);
         await assertPrincipalIsWriter(principal, projectId);
 
+        const commentsLimit = input.limit ?? 50;
         const rows = await db
           .select({
             id: comments.id,
@@ -176,33 +178,20 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
           .from(comments)
           .where(eq(comments.issueId, issueId))
           .orderBy(asc(comments.createdAt))
-          .limit(input.limit ?? 50);
+          .limit(overfetch(commentsLimit));
 
         const attachmentsByCommentId = await listCommentAttachmentsForIssue(issueId);
         const serialized = rows.map((r) =>
           serialize(r as CommentRow, attachmentsByCommentId.get(r.id) ?? []),
         );
 
-        // Hard total-response cap: trim from the front (oldest) until the
-        // serialized payload fits MAX_RESPONSE_CHARS, so a large limit or
-        // verbose comment thread can never spill to a file. Oldest-first
-        // ordering means trimming the front keeps the newest comments. Always
-        // keep at least one comment.
-        let kept = serialized;
-        while (kept.length > 1 && JSON.stringify({ comments: kept }).length > MAX_RESPONSE_CHARS) {
-          kept = kept.slice(1);
-        }
-
-        if (kept.length < serialized.length) {
-          return {
-            comments: kept,
-            truncated: true,
-            returned: kept.length,
-            requested: input.limit ?? 50,
-            notice: `Response truncated to the ${kept.length} most recent of ${serialized.length} comments to stay under the MCP output cap. Use a smaller limit or fetch comments individually.`,
-          };
-        }
-        return { comments: kept };
+        return buildListEnvelope({
+          key: 'comments',
+          items: serialized,
+          limit: commentsLimit,
+          hint: 'read the full thread in the UI',
+          order: 'asc',
+        });
       }
 
       case 'create': {

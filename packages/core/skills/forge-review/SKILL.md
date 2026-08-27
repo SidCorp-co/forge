@@ -139,7 +139,7 @@ Always include `Reviewed SHA: <short-sha>` in the comment body, even on a clean 
 
 Post findings as issue comment:
 ```
-forge_comments → create → { data: { body: "<review output>", issue: "<documentId>", author: "Lapras" } }
+forge_comments → create → { data: { body: "<review output>", issue: "<documentId>" } }
 ```
 
 - **No Bug findings (APPROVE)** → Check if the branch has been pushed: `git log origin/<branch> --oneline -1`. If pushed → `forge_issues → update → { data: { status: "testing" } }` — review exits **straight to `testing`** (the `developed → deploying → testing` hop was retired; `deploying` is no longer a valid status). If NOT pushed (subagent/standalone review before push) → do not change status, just post the review comment.

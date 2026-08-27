@@ -1,6 +1,6 @@
 import { FILTERED } from '@forge/observability';
 import { describe, expect, it } from 'vitest';
-import { flattenLogs, redactCoolifyEnvDump, tailLog } from './logs.js';
+import { flattenLogs, logDigest, redactCoolifyEnvDump, tailLog } from './logs.js';
 
 describe('flattenLogs', () => {
   it('parses a JSON-encoded array of { output } lines', () => {
@@ -144,5 +144,23 @@ describe('redactCoolifyEnvDump (ISS-412)', () => {
     expect(lines[5]).toBe(`SENTRY_DSN_CORE=${FILTERED}`);
     // No DSN value survives.
     expect(out).not.toContain('logs.canawan.com');
+  });
+});
+
+describe('logDigest (ISS-787)', () => {
+  it('is stable for identical text, so a caller can prove two reads matched', () => {
+    const snapshot = '#13 24.08 building...\n#14 25.01 done';
+    expect(logDigest(snapshot)).toBe(logDigest(snapshot));
+  });
+
+  it('changes when a single byte of the log advances', () => {
+    const before = logDigest('#13 24.08 building...');
+    const after = logDigest('#13 24.08 building...\n#14 25.01 done');
+    expect(after).not.toBe(before);
+  });
+
+  it('is short enough to paste into a comment', () => {
+    expect(logDigest('anything')).toHaveLength(12);
+    expect(logDigest('anything')).toMatch(/^[0-9a-f]{12}$/);
   });
 });
