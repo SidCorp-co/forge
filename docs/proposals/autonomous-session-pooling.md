@@ -7,6 +7,9 @@
 
 Replace print mode: the runner spawns a Claude session that waits, and pools jobs to it.
 
+Workflow diagrams for all three shapes (today, rebuilt, refuted), rendered and reviewed:
+`docs/local/session-workflow-rebuild.html` — local only, not committed.
+
 ## The mechanism exists
 
 `--input-format stream-json` (with `--print` and `--output-format stream-json`) is a long-lived
