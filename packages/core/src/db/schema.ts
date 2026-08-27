@@ -2027,7 +2027,6 @@ export const notificationTypes = [
   // cm:why ISS-762 — `waiting` + merged code is the one issue state that contradicts itself, and nothing else surfaces it
   'issue_stranded',
   'retry_rescue_threshold',
-  // cm:why ISS-652 — one generic type for all 5 Tier 1 ops alerts; identity is carried in resolutionKey (ops-alert:A1..A5), not a per-alert type
   'ops_alert',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
@@ -2047,10 +2046,7 @@ export const notifications = pgTable(
     // ISS-510 — per-event severity (from the `@forge/contracts` notification
     // contract) drives toast tone + bell hue. Nullable: legacy rows predate it.
     severity: text('severity'),
-    // ISS-510 — auto-resolve linkage. A problem notification carries a stable
-    // per-condition key (e.g. `issue:<id>:status`); when the condition clears
-    // (issue reaches a healthy status) the resolver marks every matching unread
-    // row read and stamps `resolvedAt`. Both nullable — most rows carry neither.
+    // cm:guard `resolvedAt IS NULL` is what "still happening" means, and every reader must use it — NOT `read = false`, which only says whether a human has looked. resolveNotifications clears by key on that predicate alone (this comment claimed "unread" until main corrected the code); an ops_alert additionally has a partial unique index over the same predicate, so a row left unstamped blocks its own recurrence forever.
     resolutionKey: text('resolution_key'),
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
     issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'set null' }),
@@ -2061,15 +2057,9 @@ export const notifications = pgTable(
     secondaryIssueId: uuid('secondary_issue_id').references(() => issues.id, {
       onDelete: 'set null',
     }),
-    // agent_session_id is intentionally a bare uuid (no FK) until the agent_sessions
-    // table lands in a later B2 migration — adding the FK then is additive.
     agentSessionId: uuid('agent_session_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    /**
-     * ISS-849 — redelivery-dedup key (e.g. `transition:<outboxId>`). Distinct
-     * from `resolutionKey`, which is the per-issue auto-resolve mechanism
-     * (ISS-510) and is already load-bearing for reopen/waiting notifications.
-     */
+    // cm:why ISS-849 redelivery guard (`transition:<outboxId>`) — deliberately NOT `resolutionKey`, which answers "is the condition still true"; one key says do-not-send-twice, the other says the incident is over, and collapsing them would resolve an alert the moment it was redelivered
     dedupeKey: text('dedupe_key'),
   },
   (t) => ({
@@ -2081,11 +2071,8 @@ export const notifications = pgTable(
     projectCreatedIdx: index('notifications_project_created_idx').on(t.projectId, t.createdAt),
     // ISS-510 — resolver lookup: unread rows for a given resolution key.
     resolutionKeyIdx: index('notifications_resolution_key_read_idx').on(t.resolutionKey, t.read),
-    // cm:edge contract -> packages/core/src/admin/alert-sweeper.ts — claims via `INSERT ... ON CONFLICT (user_id, resolution_key) WHERE resolved_at IS NULL AND resolution_key IS NOT NULL AND type = 'ops_alert'`; the ON CONFLICT predicate must match this one verbatim or inference fails
-    // cm:guard keep this index scoped to type = 'ops_alert' — notify-transitions.ts legitimately leaves several unread rows under one `issue:<id>:status` key (waiting + reopen), so an unscoped unique index cannot be created on live data and would then silently drop those notifications
-    userResolutionKeyActiveOpsAlertUq: uniqueIndex(
-      'notifications_user_resolution_key_active_ops_alert_uq',
-    )
+    // cm:guard alert-sweeper.ts's `INSERT ... ON CONFLICT (user_id, resolution_key) WHERE ...` infers THIS index, so its predicate must match verbatim or the insert throws; and the `type = 'ops_alert'` scope must stay, because notify-transitions.ts legitimately leaves several active rows under one `issue:<id>:status` key (waiting + reopen) that an unscoped unique index would refuse to create over and then silently drop
+    opsAlertActiveUq: uniqueIndex('notifications_ops_alert_active_uq')
       .on(t.userId, t.resolutionKey)
       .where(sql`resolved_at IS NULL AND resolution_key IS NOT NULL AND type = 'ops_alert'`),
     dedupeKeyIdx: index('notifications_dedupe_key_idx').on(t.dedupeKey),

@@ -240,8 +240,7 @@ export async function runShutdown(
 ): Promise<number> {
   logger.info({ signal }, '@forge/core shutdown initiated');
 
-  // server.close() stops accepting new connections immediately and resolves
-  // once all in-flight requests have finished.
+  // cm:guard build this promise BEFORE awaiting anything below — server.close() stops accepting new connections at the call, and only resolves once the in-flight requests drain, so constructing it later keeps the listener open across the whole shutdown sequence
   const httpClosed = new Promise<void>((resolve, reject) => {
     server.close((err) => (err ? reject(err) : resolve()));
   });

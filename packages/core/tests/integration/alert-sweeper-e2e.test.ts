@@ -8,10 +8,10 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
-  type TestDatabase,
   createTestProject,
   createTestUser,
   setupTestDatabase,
+  type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
 
@@ -20,12 +20,109 @@ type Mods = {
   runAlertSweep: typeof import('../../src/admin/alert-sweeper.js').runAlertSweep;
 };
 
-describe('runAlertSweep E2E (ISS-652)', () => {
-  let harness: TestDatabase;
-  let mods: Mods;
+let harness: TestDatabase;
 
-  const ADMIN_EMAIL = 'admin@test.forge.local';
-  const ADMIN_EMAIL_2 = 'admin2@test.forge.local';
+const ADMIN_EMAIL = 'admin@test.forge.local';
+const ADMIN_EMAIL_2 = 'admin2@test.forge.local';
+
+let clockMs = Date.parse('2026-01-01T00:00:00Z');
+function nextNow(): Date {
+  clockMs += 10 * 60_000;
+  return new Date(clockMs);
+}
+
+async function seedAdmin() {
+  const admin = await createTestUser(harness.db, { email: ADMIN_EMAIL });
+  await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${admin.id}`);
+  return admin;
+}
+
+async function seedSecondAdmin() {
+  const admin = await createTestUser(harness.db, { email: ADMIN_EMAIL_2 });
+  await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${admin.id}`);
+  return admin;
+}
+
+/** On the ADMIN_EMAILS allow-list, but never verified — must not be notified. */
+async function seedUnverifiedAdmin() {
+  return createTestUser(harness.db, { email: ADMIN_EMAIL });
+}
+
+async function seedOrphan() {
+  const owner = await createTestUser(harness.db);
+  const project = await createTestProject(harness.db, owner.id);
+  const runId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, finished_at)
+    VALUES (${runId}, ${project.id}, 'system', 'cancelled', now(), now())
+  `);
+  const jobId = randomUUID();
+  await harness.db.execute(
+    sql`ALTER TABLE jobs DISABLE TRIGGER trg_jobs_no_active_under_terminal_run`,
+  );
+  await harness.db.execute(sql`
+    INSERT INTO jobs (id, project_id, type, status, payload, pipeline_run_id, created_by)
+    VALUES (${jobId}, ${project.id}, 'code', 'queued', '{}'::jsonb, ${runId}, ${owner.id})
+  `);
+  await harness.db.execute(
+    sql`ALTER TABLE jobs ENABLE TRIGGER trg_jobs_no_active_under_terminal_run`,
+  );
+  return { projectId: project.id, runId, jobId };
+}
+
+async function clearOrphan(jobId: string) {
+  await harness.db.execute(
+    sql`ALTER TABLE jobs DISABLE TRIGGER trg_jobs_no_active_under_terminal_run`,
+  );
+  await harness.db.execute(sql`UPDATE jobs SET status = 'cancelled' WHERE id = ${jobId}`);
+  await harness.db.execute(
+    sql`ALTER TABLE jobs ENABLE TRIGGER trg_jobs_no_active_under_terminal_run`,
+  );
+}
+
+/** Jobs dispatched `ageSeconds` ago under a still-running pipeline_run: A2 fodder, invisible to A1 and A3. */
+async function seedStuckJobs(count: number, ageSeconds: number) {
+  const owner = await createTestUser(harness.db);
+  const project = await createTestProject(harness.db, owner.id);
+  const runId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
+    VALUES (${runId}, ${project.id}, 'system', 'running', now())
+  `);
+  for (let i = 0; i < count; i++) {
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, type, status, payload, pipeline_run_id, created_by, queued_at, dispatched_at)
+      VALUES (${randomUUID()}, ${project.id}, 'code', 'running', '{}'::jsonb, ${runId}, ${owner.id},
+              now() - (${ageSeconds}::int * interval '1 second'),
+              now() - (${ageSeconds}::int * interval '1 second'))
+    `);
+  }
+}
+
+async function opsAlertRows(resolutionKey = 'ops-alert:A1') {
+  const rows = await harness.db.execute<{
+    id: string;
+    user_id: string;
+    severity: string | null;
+    read: boolean;
+    resolved_at: Date | null;
+    resolution_key: string;
+  }>(sql`
+    SELECT id, user_id, severity, read, resolved_at, resolution_key FROM notifications
+    WHERE type = 'ops_alert' AND resolution_key = ${resolutionKey}
+  `);
+  return rows as unknown as Array<{
+    id: string;
+    user_id: string;
+    severity: string | null;
+    read: boolean;
+    resolved_at: Date | null;
+    resolution_key: string;
+  }>;
+}
+
+describe('runAlertSweep E2E (ISS-652)', () => {
+  let mods: Mods;
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
@@ -55,106 +152,6 @@ describe('runAlertSweep E2E (ISS-652)', () => {
   });
 
   // cm:why the in-process sweep-interval gate is a real module-level singleton across this whole file (not reset per test); each call must pass a `now` strictly >5min past every prior call so the gate never skips a sweep this suite depends on
-  let clockMs = Date.parse('2026-01-01T00:00:00Z');
-  function nextNow(): Date {
-    clockMs += 10 * 60_000;
-    return new Date(clockMs);
-  }
-
-  async function seedAdmin() {
-    const admin = await createTestUser(harness.db, { email: ADMIN_EMAIL });
-    await harness.db.execute(
-      sql`UPDATE users SET email_verified_at = now() WHERE id = ${admin.id}`,
-    );
-    return admin;
-  }
-
-  async function seedSecondAdmin() {
-    const admin = await createTestUser(harness.db, { email: ADMIN_EMAIL_2 });
-    await harness.db.execute(
-      sql`UPDATE users SET email_verified_at = now() WHERE id = ${admin.id}`,
-    );
-    return admin;
-  }
-
-  /** On the ADMIN_EMAILS allow-list, but never verified — must not be notified. */
-  async function seedUnverifiedAdmin() {
-    return createTestUser(harness.db, { email: ADMIN_EMAIL });
-  }
-
-  async function seedOrphan() {
-    const owner = await createTestUser(harness.db);
-    const project = await createTestProject(harness.db, owner.id);
-    const runId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, finished_at)
-      VALUES (${runId}, ${project.id}, 'system', 'cancelled', now(), now())
-    `);
-    const jobId = randomUUID();
-    await harness.db.execute(
-      sql`ALTER TABLE jobs DISABLE TRIGGER trg_jobs_no_active_under_terminal_run`,
-    );
-    await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, type, status, payload, pipeline_run_id, created_by)
-      VALUES (${jobId}, ${project.id}, 'code', 'queued', '{}'::jsonb, ${runId}, ${owner.id})
-    `);
-    await harness.db.execute(
-      sql`ALTER TABLE jobs ENABLE TRIGGER trg_jobs_no_active_under_terminal_run`,
-    );
-    return { projectId: project.id, runId, jobId };
-  }
-
-  async function clearOrphan(jobId: string) {
-    await harness.db.execute(
-      sql`ALTER TABLE jobs DISABLE TRIGGER trg_jobs_no_active_under_terminal_run`,
-    );
-    await harness.db.execute(sql`UPDATE jobs SET status = 'cancelled' WHERE id = ${jobId}`);
-    await harness.db.execute(
-      sql`ALTER TABLE jobs ENABLE TRIGGER trg_jobs_no_active_under_terminal_run`,
-    );
-  }
-
-  /** Jobs dispatched `ageSeconds` ago under a still-running pipeline_run: A2 fodder, invisible to A1 and A3. */
-  async function seedStuckJobs(count: number, ageSeconds: number) {
-    const owner = await createTestUser(harness.db);
-    const project = await createTestProject(harness.db, owner.id);
-    const runId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
-      VALUES (${runId}, ${project.id}, 'system', 'running', now())
-    `);
-    for (let i = 0; i < count; i++) {
-      await harness.db.execute(sql`
-        INSERT INTO jobs (id, project_id, type, status, payload, pipeline_run_id, created_by, queued_at, dispatched_at)
-        VALUES (${randomUUID()}, ${project.id}, 'code', 'running', '{}'::jsonb, ${runId}, ${owner.id},
-                now() - (${ageSeconds}::int * interval '1 second'),
-                now() - (${ageSeconds}::int * interval '1 second'))
-      `);
-    }
-  }
-
-  async function opsAlertRows(resolutionKey = 'ops-alert:A1') {
-    const rows = await harness.db.execute<{
-      id: string;
-      user_id: string;
-      severity: string | null;
-      read: boolean;
-      resolved_at: Date | null;
-      resolution_key: string;
-    }>(sql`
-      SELECT id, user_id, severity, read, resolved_at, resolution_key FROM notifications
-      WHERE type = 'ops_alert' AND resolution_key = ${resolutionKey}
-    `);
-    return rows as unknown as Array<{
-      id: string;
-      user_id: string;
-      severity: string | null;
-      read: boolean;
-      resolved_at: Date | null;
-      resolution_key: string;
-    }>;
-  }
-
   it('writes exactly one unread notification per admin when A1 crosses into crit', async () => {
     const admin = await seedAdmin();
     await seedOrphan();

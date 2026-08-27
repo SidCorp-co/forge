@@ -37,7 +37,7 @@ const ALERT_TITLES: Record<AdminAlert['id'], string> = {
 
 /**
  * Atomically claim (or escalate) this admin's ops-alert row. Backed by the
- * `notifications_user_resolution_key_active_ops_alert_uq` partial unique index
+ * `notifications_ops_alert_active_uq` partial unique index
  * (one active `ops_alert` row per `(user_id, resolution_key)`), so this is safe
  * under concurrent sweepers (multiple core replicas) — unlike a
  * check-then-insert.

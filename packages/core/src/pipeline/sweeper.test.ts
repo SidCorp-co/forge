@@ -11,12 +11,13 @@ const zeroAxis = { reaped: 0, killRequested: 0, awaitingKill: 0 };
 // ISS-449 — the loop monitor is the primary pass; the sweeper only drives it.
 // Mock it so these tests assert the sweeper's own contract (ordering, alarm
 // passes, still-active reapers) without pulling in the loop's reap graph.
-const runLoopMonitorMock = vi.fn(async (..._args: unknown[]) => ({
+const zeroLoopResult = {
   ackMisses: zeroAxis,
   sessions: { queueTimedOut: 0, heartbeatTimedOut: 0, noClientAcked: 0 },
   sessionLostJobs: zeroAxis,
   resultMisses: zeroAxis,
-}));
+};
+const runLoopMonitorMock = vi.fn(async (..._args: unknown[]) => zeroLoopResult);
 vi.mock('../jobs/loop-monitor.js', () => ({
   runLoopMonitor: (...args: unknown[]) => runLoopMonitorMock(...(args as [])),
   getLoopThresholds: () => ({ queueMs: 120_000, heartbeatMs: 180_000, ackMs: 180_000 }),
@@ -48,14 +49,8 @@ vi.mock('./retry-rescue-alert.js', () => ({
 }));
 
 // cm:why ISS-652 — alertSweep issues its own real db.execute calls (alert-queries.ts); this suite's db.execute mock is a single shared mockResolvedValueOnce queue, so an unmocked pass would silently consume another pass's queued result
-const runAlertSweepMock = vi.fn(async (_now?: Date) => ({
-  evaluated: 0,
-  notified: 0,
-  resolved: 0,
-}));
-vi.mock('../admin/alert-sweeper.js', () => ({
-  runAlertSweep: (now?: Date) => runAlertSweepMock(now),
-}));
+const alertsMock = vi.fn(async (_now?: Date) => ({ evaluated: 0, notified: 0, resolved: 0 }));
+vi.mock('../admin/alert-sweeper.js', () => ({ runAlertSweep: (now?: Date) => alertsMock(now) }));
 
 const dbExecute = vi.fn(async (..._args: unknown[]) => [] as Array<Record<string, unknown>>);
 const sessionsWhere = vi.fn();
@@ -190,30 +185,15 @@ beforeEach(() => {
   sessionsWhere.mockResolvedValue([]);
   selectWhere.mockReset();
   selectWhere.mockResolvedValue([]);
-  closeRunIfOneShotMock.mockClear();
   closeRunIfOneShotMock.mockResolvedValue(undefined);
-  closeOpenRunForIssueMock.mockClear();
   closeOpenRunForIssueMock.mockResolvedValue(undefined);
   queuedProjectsRows.length = 0;
   dbExecute.mockResolvedValue([]);
-  dbInsertValues.mockClear();
   dbInsertValues.mockResolvedValue(undefined);
-  resolveGateSettingsMock.mockClear();
   resolveGateSettingsMock.mockResolvedValue({ cap: 1, baseStampable: true });
-  applyStatusTransitionMock.mockClear();
   applyStatusTransitionMock.mockResolvedValue(undefined);
-  emitWedgeMock.mockClear();
-  detectRetryRescueThresholdsMock.mockClear();
   detectRetryRescueThresholdsMock.mockResolvedValue({ detected: 0, notified: 0 });
-  runAlertSweepMock.mockClear();
-  runAlertSweepMock.mockResolvedValue({ evaluated: 0, notified: 0, resolved: 0 });
-  runLoopMonitorMock.mockClear();
-  runLoopMonitorMock.mockResolvedValue({
-    ackMisses: zeroAxis,
-    sessions: { queueTimedOut: 0, heartbeatTimedOut: 0, noClientAcked: 0 },
-    sessionLostJobs: zeroAxis,
-    resultMisses: zeroAxis,
-  });
+  runLoopMonitorMock.mockResolvedValue(zeroLoopResult);
 });
 
 describe('runPipelineSweep — retry rescue thresholds', () => {
@@ -257,11 +237,9 @@ describe('runPipelineSweep — watch-only alarm passes', () => {
 
 describe('runPipelineSweep — alert sweep (ISS-652)', () => {
   it('runs the alert sweep and exposes its result', async () => {
-    runAlertSweepMock.mockResolvedValueOnce({ evaluated: 5, notified: 2, resolved: 1 });
-
+    alertsMock.mockResolvedValueOnce({ evaluated: 5, notified: 2, resolved: 1 });
     const result = await runPipelineSweep();
-
-    expect(runAlertSweepMock).toHaveBeenCalledTimes(1);
+    expect(alertsMock).toHaveBeenCalledTimes(1);
     expect(result.alerts).toEqual({ evaluated: 5, notified: 2, resolved: 1 });
   });
 });

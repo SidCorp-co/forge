@@ -13,7 +13,7 @@ import { z } from 'zod';
 import { setTotalCount } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
-import { DEFAULT_STALE_SECONDS, computeAlerts } from './alert-queries.js';
+import { computeAlerts, DEFAULT_STALE_SECONDS } from './alert-queries.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });

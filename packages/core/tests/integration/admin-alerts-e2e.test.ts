@@ -1,781 +1,122 @@
 /**
- * ISS-652 — GET /api/admin/alerts against real Postgres (own requireAdmin
- * router, same pattern as ISS-651's admin-aggregate-routes.test.ts) so the
- * raw SQL in alert-queries.ts (window functions, quarantine exclusion,
- * terminal-run join) is actually exercised.
+ * ISS-652 — GET /api/admin/alerts against real Postgres: the auth gate, the
+ * response contract, and A1/A2.
+ *
+ * A3 lives in `admin-alerts-starvation-e2e.test.ts` and A4/A5 in
+ * `admin-alerts-spend-automation-e2e.test.ts`; all three share the harness in
+ * `tests/helpers/alert-app.ts` and the seeders in `alert-fixtures.ts`.
  */
 
-import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { RequestIdVars } from '../../src/middleware/request-id.js';
-import {
-  type TestDatabase,
-  createTestProject,
-  createTestUser,
-  setupTestDatabase,
-  truncateAll,
-} from '../helpers/index.js';
+import { type AlertApp, findAlert, getAlerts, setupAlertApp } from '../helpers/alert-app.js';
+import { type AlertFixtures, alertFixtures } from '../helpers/alert-fixtures.js';
+import { createTestProject, createTestUser, truncateAll } from '../helpers/index.js';
 
 describe('admin alert routes (ISS-652)', () => {
-  let harness: TestDatabase;
-  let app: Hono<{ Variables: RequestIdVars }>;
-  let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
-
-  const ADMIN_EMAIL = 'admin@test.forge.local';
+  let ctx: AlertApp;
+  let fx: AlertFixtures;
 
   beforeAll(async () => {
-    harness = await setupTestDatabase();
-    process.env.DATABASE_URL = harness.url;
-    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
-    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-    process.env.SMTP_HOST ??= 'localhost';
-    process.env.SMTP_PORT ??= '1025';
-    process.env.SMTP_USER ??= 'test';
-    process.env.SMTP_PASS ??= 'test';
-    process.env.SMTP_FROM ??= 'test@example.com';
-    process.env.APP_BASE_URL ??= 'http://localhost:3000';
-    process.env.CORS_ORIGINS ??= 'http://localhost:3000';
-    process.env.NODE_ENV ??= 'test';
-    process.env.ADMIN_EMAILS = ADMIN_EMAIL;
-
-    const { adminAlertRoutes } = await import('../../src/admin/alert-routes.js');
-    const { errorHandler } = await import('../../src/middleware/error.js');
-    const { requestId } = await import('../../src/middleware/request-id.js');
-    const jwtMod = await import('../../src/auth/jwt.js');
-    signUserToken = jwtMod.signUserToken;
-
-    app = new Hono<{ Variables: RequestIdVars }>();
-    app.use('*', requestId());
-    app.route('/api/admin', adminAlertRoutes);
-    app.onError(errorHandler);
+    ctx = await setupAlertApp();
+    fx = alertFixtures(ctx.harness);
   }, 120_000);
 
   afterAll(async () => {
-    if (harness) await harness.cleanup();
+    if (ctx?.harness) await ctx.harness.cleanup();
   });
 
   beforeEach(async () => {
-    await truncateAll(harness.db);
+    await truncateAll(ctx.harness.db);
   });
-
-  async function verifiedUser(email: string) {
-    const user = await createTestUser(harness.db, { email });
-    await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
-    return user;
-  }
-
-  async function adminToken() {
-    const admin = await verifiedUser(ADMIN_EMAIL);
-    return signUserToken(admin.id);
-  }
-
-  async function insertRun(projectId: string, status: string): Promise<string> {
-    const id = randomUUID();
-    const finishedAt =
-      status === 'running' || status === 'paused' ? null : new Date().toISOString();
-    await harness.db.execute(sql`
-      INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, finished_at)
-      VALUES (${id}, ${projectId}, 'system', ${status}, now(), ${finishedAt})
-    `);
-    return id;
-  }
-
-  async function insertIssue(args: {
-    projectId: string;
-    createdById: string;
-    seq: number;
-    status?: string;
-  }): Promise<string> {
-    const id = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, title, status, created_by_id, iss_seq)
-      VALUES (${id}, ${args.projectId}, 'alert fixture', ${args.status ?? 'approved'},
-              ${args.createdById}, ${args.seq})
-    `);
-    return id;
-  }
-
-  async function insertJob(args: {
-    projectId: string;
-    runId: string;
-    status: string;
-    type?: string;
-    payload?: Record<string, unknown>;
-    runnerId?: string | null;
-    issueId?: string | null;
-    dispatchedAgoMinutes?: number;
-    queuedAgoMinutes?: number;
-  }): Promise<string> {
-    const id = randomUUID();
-    const dispatchedAt =
-      args.dispatchedAgoMinutes === undefined
-        ? null
-        : new Date(Date.now() - args.dispatchedAgoMinutes * 60_000).toISOString();
-    const queuedAt =
-      args.queuedAgoMinutes === undefined
-        ? new Date().toISOString()
-        : new Date(Date.now() - args.queuedAgoMinutes * 60_000).toISOString();
-    await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, issue_id, type, status, payload, pipeline_run_id, runner_id, created_by, queued_at, dispatched_at)
-      VALUES (
-        ${id}, ${args.projectId}, ${args.issueId ?? null}, ${args.type ?? 'code'}, ${args.status},
-        ${JSON.stringify(args.payload ?? {})}::jsonb, ${args.runId}, ${args.runnerId ?? null},
-        (SELECT created_by FROM projects WHERE id = ${args.projectId}), ${queuedAt}, ${dispatchedAt}
-      )
-    `);
-    return id;
-  }
-
-  async function insertRunner(args: {
-    projectId: string;
-    status: string;
-    capabilities?: Record<string, unknown>;
-    quarantinedUntil?: string | null;
-    // cm:why defaults to a fresh heartbeat (now), like a real 'online' runner; override to simulate the A3 staleness/rate-limit contributors
-    lastSeenAt?: string | null;
-    rateLimitedUntil?: string | null;
-    limitReason?: string | null;
-    provisionStatus?: string | null;
-  }): Promise<string> {
-    const id = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, type, host, name, status, capabilities, quarantined_until, last_seen_at, rate_limited_until, limit_reason, provision_status)
-      VALUES (
-        ${id}, ${args.projectId}, 'claude-code', 'remote', 'test-runner', ${args.status},
-        ${JSON.stringify(args.capabilities ?? {})}::jsonb, ${args.quarantinedUntil ?? null},
-        ${args.lastSeenAt === undefined ? new Date().toISOString() : args.lastSeenAt},
-        ${args.rateLimitedUntil ?? null}, ${args.limitReason ?? null}, ${args.provisionStatus ?? null}
-      )
-    `);
-    return id;
-  }
-
-  async function insertBinding(projectId: string): Promise<string> {
-    const owner = await createTestUser(harness.db);
-    const connectionId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO integration_connections (id, owner_type, owner_id, provider)
-      VALUES (${connectionId}, 'user', ${owner.id}, 'coolify')
-    `);
-    const bindingId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO integration_bindings (id, connection_id, project_id, provider, environment)
-      VALUES (${bindingId}, ${connectionId}, ${projectId}, 'coolify', 'prod')
-    `);
-    return bindingId;
-  }
-
-  async function insertDelivery(args: {
-    bindingId: string;
-    direction: 'outbound' | 'inbound';
-    status: 'ok' | 'failed';
-    createdAgoMinutes?: number;
-  }): Promise<void> {
-    const createdAt = new Date(Date.now() - (args.createdAgoMinutes ?? 1) * 60_000).toISOString();
-    await harness.db.execute(sql`
-      INSERT INTO integration_deliveries (id, binding_id, direction, event_name, status, created_at)
-      VALUES (${randomUUID()}, ${args.bindingId}, ${args.direction}, 'deploy', ${args.status}, ${createdAt})
-    `);
-  }
-
-  async function insertUsage(args: {
-    projectId: string | null;
-    cost: number;
-    recordedAgoHours: number;
-  }): Promise<void> {
-    const id = randomUUID();
-    const recordedAt = new Date(Date.now() - args.recordedAgoHours * 3_600_000).toISOString();
-    await harness.db.execute(sql`
-      INSERT INTO usage_records (id, project_id, source, model, estimated_cost, recorded_at)
-      VALUES (${id}, ${args.projectId}, 'api', 'test-model', ${args.cost}, ${recordedAt})
-    `);
-  }
-
-  async function insertPromptSchedule(projectId: string): Promise<string> {
-    const id = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO schedules (id, project_id, name, cron, kind, enabled)
-      VALUES (${id}, ${projectId}, 'prompt alert fixture', '0 * * * *', 'prompt', true)
-    `);
-    return id;
-  }
-
-  async function insertPromptSession(args: {
-    projectId: string;
-    scheduleId: string;
-    status: 'completed' | 'completed_via_recovery' | 'cancelled_stale' | 'failed';
-    createdAgoMinutes: number;
-  }): Promise<void> {
-    const runId = randomUUID();
-    const sessionId = randomUUID();
-    const createdAt = new Date(Date.now() - args.createdAgoMinutes * 60_000).toISOString();
-    await harness.db.execute(sql`
-      INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, finished_at)
-      VALUES (${runId}, ${args.projectId}, 'system', 'completed', ${createdAt}, now())
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, metadata, created_at, updated_at)
-      VALUES (
-        ${sessionId}, ${args.projectId}, ${runId}, ${args.status},
-        ${JSON.stringify({ source: 'schedule.run', scheduleId: args.scheduleId })}::jsonb,
-        ${createdAt}, ${createdAt}
-      )
-    `);
-  }
 
   describe('auth gate', () => {
     it('401s an unauthenticated request', async () => {
-      const res = await app.request('/api/admin/alerts');
+      const res = await ctx.app.request('/api/admin/alerts');
       expect(res.status).toBe(401);
     });
 
     it('403s ADMIN_ONLY for a non-admin authenticated user', async () => {
-      const user = await verifiedUser('nobody@test.forge.local');
-      const token = await signUserToken(user.id);
-      const res = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
+      const user = await ctx.verifiedUser('nobody@test.forge.local');
+      const { signUserToken } = await import('../../src/auth/jwt.js');
+      const { res, body } = await getAlerts(ctx, await signUserToken(user.id));
       expect(res.status).toBe(403);
-      const body = (await res.json()) as { code?: string };
-      expect(body.code).toBe('ADMIN_ONLY');
+      expect((body as unknown as { code?: string }).code).toBe('ADMIN_ONLY');
     });
   });
 
-  describe('GET /api/admin/alerts', () => {
-    it('200s with exactly 5 items A1-A5, all ok, on healthy data', async () => {
-      const token = await adminToken();
-      const res = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
+  describe('response contract', () => {
+    // cm:guard assert the WHOLE public shape, not just id/status/count — the Ops Console drills on `entities` and dates the incident from `since`, so a field the route silently stopped populating passes a status-only assertion and reaches the UI as an undrillable alert
+    it('200s with exactly 5 items A1-A5, all ok and fully populated, on healthy data', async () => {
+      const { res, body } = await getAlerts(ctx, await ctx.adminToken());
+
       expect(res.status).toBe(200);
       expect(res.headers.get('X-Total-Count')).toBe('5');
-      const body = (await res.json()) as Array<{
-        id: string;
-        status: string;
-        count: number;
-      }>;
       expect(body.map((a) => a.id)).toEqual(['A1', 'A2', 'A3', 'A4', 'A5']);
-      for (const alert of body) expect(alert.status).toBe('ok');
-      expect(body[0]?.count).toBe(0);
-    });
-
-    it('A2 catches BOTH dispatched and running past staleSeconds (AC 5)', async () => {
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id);
-      const run = await insertRun(project.id, 'running');
-      await insertJob({
-        projectId: project.id,
-        runId: run,
-        status: 'dispatched',
-        dispatchedAgoMinutes: 20,
-      });
-      await insertJob({
-        projectId: project.id,
-        runId: run,
-        status: 'dispatched',
-        dispatchedAgoMinutes: 20,
-      });
-      await insertJob({
-        projectId: project.id,
-        runId: run,
-        status: 'running',
-        dispatchedAgoMinutes: 20,
-      });
-
-      const token = await adminToken();
-      const res = await app.request('/api/admin/alerts?staleSeconds=600', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const body = (await res.json()) as Array<{
-        id: string;
-        status: string;
-        count: number;
-      }>;
-      const a2 = body.find((a) => a.id === 'A2');
-      expect(a2?.count).toBe(3);
-      expect(a2?.status).not.toBe('ok');
-
-      const clearRes = await app.request('/api/admin/alerts?staleSeconds=86400', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const clearBody = (await clearRes.json()) as Array<{
-        id: string;
-        status: string;
-      }>;
-      expect(clearBody.find((a) => a.id === 'A2')?.status).toBe('ok');
-    });
-
-    it('A3 fires only when the only runner is quarantined, not just non-online (AC 7)', async () => {
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id);
-      const run = await insertRun(project.id, 'running');
-      await insertJob({
-        projectId: project.id,
-        runId: run,
-        status: 'queued',
-        queuedAgoMinutes: 10,
-      });
-      const runnerId = await insertRunner({
-        projectId: project.id,
-        status: 'online',
-        quarantinedUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
-      });
-
-      const token = await adminToken();
-      const res = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const body = (await res.json()) as Array<{
-        id: string;
-        status: string;
-        count: number;
-      }>;
-      const a3 = body.find((a) => a.id === 'A3');
-      expect(a3?.status).not.toBe('ok');
-      expect(a3?.count).toBeGreaterThanOrEqual(1);
-
-      await harness.db.execute(
-        sql`UPDATE runners SET quarantined_until = NULL WHERE id = ${runnerId}`,
-      );
-      const clearRes = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const clearBody = (await clearRes.json()) as Array<{
-        id: string;
-        status: string;
-      }>;
-      expect(clearBody.find((a) => a.id === 'A3')?.status).toBe('ok');
-    });
-
-    // cm:guard A3 must mirror the dispatch gate — online + unquarantined is insufficient when a runner is stale, rate-limited, full, or lacks the queued job's required capabilities
-    it('A3 fires when the only runner is online but its heartbeat is stale', async () => {
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id);
-      const run = await insertRun(project.id, 'running');
-      await insertJob({
-        projectId: project.id,
-        runId: run,
-        status: 'queued',
-        queuedAgoMinutes: 10,
-      });
-      const runnerId = await insertRunner({
-        projectId: project.id,
-        status: 'online',
-        lastSeenAt: new Date(Date.now() - 10 * 60_000).toISOString(),
-      });
-
-      const token = await adminToken();
-      const res = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const body = (await res.json()) as Array<{
-        id: string;
-        status: string;
-        count: number;
-      }>;
-      expect(body.find((a) => a.id === 'A3')?.status).not.toBe('ok');
-
-      await harness.db.execute(sql`UPDATE runners SET last_seen_at = now() WHERE id = ${runnerId}`);
-      const clearRes = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const clearBody = (await clearRes.json()) as Array<{
-        id: string;
-        status: string;
-      }>;
-      expect(clearBody.find((a) => a.id === 'A3')?.status).toBe('ok');
-    });
-
-    it('A3 fires when the only runner is online and fresh but rate-limited', async () => {
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id);
-      const run = await insertRun(project.id, 'running');
-      await insertJob({
-        projectId: project.id,
-        runId: run,
-        status: 'queued',
-        queuedAgoMinutes: 10,
-      });
-      const runnerId = await insertRunner({
-        projectId: project.id,
-        status: 'online',
-        rateLimitedUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
-      });
-
-      const token = await adminToken();
-      const res = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const body = (await res.json()) as Array<{
-        id: string;
-        status: string;
-        count: number;
-      }>;
-      expect(body.find((a) => a.id === 'A3')?.status).not.toBe('ok');
-
-      await harness.db.execute(
-        sql`UPDATE runners SET rate_limited_until = NULL WHERE id = ${runnerId}`,
-      );
-      const clearRes = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const clearBody = (await clearRes.json()) as Array<{
-        id: string;
-        status: string;
-      }>;
-      expect(clearBody.find((a) => a.id === 'A3')?.status).toBe('ok');
-    });
-
-    // cm:guard these two clauses reached `main` in dispatch-gates' fresh_capable_runners while A3 still hand-rolled its own runner filter, so for that whole window an auth-dead or unprovisioned box read as available and a genuinely starved queue reported `ok`. They fail the moment A3 stops sourcing runner health from the SSOT CTE.
-    it.each([
-      ['auth-limited (no reset time, so the rate-limit clause passes it)', { limitReason: 'auth' }],
-      ['provisioning, not ready', { provisionStatus: 'provisioning' }],
-    ])('A3 fires when the only runner is online and fresh but %s', async (_label, runnerState) => {
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id);
-      const run = await insertRun(project.id, 'running');
-      await insertJob({
-        projectId: project.id,
-        runId: run,
-        status: 'queued',
-        queuedAgoMinutes: 10,
-      });
-      const runnerId = await insertRunner({
-        projectId: project.id,
-        status: 'online',
-        ...runnerState,
-      });
-
-      const token = await adminToken();
-      const res = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const body = (await res.json()) as Array<{ id: string; status: string }>;
-      expect(body.find((a) => a.id === 'A3')?.status).not.toBe('ok');
-
-      await harness.db.execute(
-        sql`UPDATE runners SET limit_reason = NULL, provision_status = 'ready' WHERE id = ${runnerId}`,
-      );
-      const clearRes = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const clearBody = (await clearRes.json()) as Array<{ id: string; status: string }>;
-      expect(clearBody.find((a) => a.id === 'A3')?.status).toBe('ok');
-    });
-
-    // cm:guard a stale-trigger job is discarded by jobs/stale-trigger.ts, never dispatched — no runner would have helped, so counting it is the same class of false positive as the project_cap case below
-    it('A3 stays ok when the queued job is held by a stale trigger', async () => {
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id);
-      const run = await insertRun(project.id, 'running');
-      const issueId = await insertIssue({
-        projectId: project.id,
-        createdById: owner.id,
-        seq: 1,
-        status: 'developed',
-      });
-      await insertJob({
-        projectId: project.id,
-        runId: run,
-        status: 'queued',
-        type: 'code',
-        issueId,
-        // the enqueuer stamped `approved`, but the issue has since moved to `developed`
-        payload: { stageStatus: 'approved' },
-        queuedAgoMinutes: 10,
-      });
-      // cm:why no runner at all — the discriminating case: were staleTrigger dropped, zero runners would make A3 fire, so a passing test proves the gate is replayed
-      const token = await adminToken();
-      const res = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const body = (await res.json()) as Array<{ id: string; status: string }>;
-      expect(body.find((a) => a.id === 'A3')?.status).toBe('ok');
-    });
-
-    it('A3 fires when a job past project_cap still has no free runner slot', async () => {
-      // cm:why cap=2 so the queued job's issue PASSES project_cap, yet the sole runner is full — genuine capacity starvation the dispatcher cannot place until more runner capacity exists
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id);
-      await harness.db.execute(sql`
-        UPDATE projects
-        SET agent_config = '{"pipelineConfig":{"maxConcurrentIssues":2}}'::jsonb
-        WHERE id = ${project.id}
-      `);
-      const run = await insertRun(project.id, 'running');
-      const runnerId = await insertRunner({ projectId: project.id, status: 'online' });
-      const issueA = await insertIssue({ projectId: project.id, createdById: owner.id, seq: 1 });
-      const issueB = await insertIssue({ projectId: project.id, createdById: owner.id, seq: 2 });
-      await insertJob({
-        projectId: project.id,
-        runId: run,
-        issueId: issueA,
-        status: 'running',
-        runnerId,
-        dispatchedAgoMinutes: 1,
-      });
-      await insertJob({
-        projectId: project.id,
-        runId: run,
-        issueId: issueB,
-        status: 'queued',
-        queuedAgoMinutes: 10,
-      });
-
-      const token = await adminToken();
-      const res = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const body = (await res.json()) as Array<{ id: string; status: string }>;
-      expect(body.find((a) => a.id === 'A3')?.status).not.toBe('ok');
-
-      await harness.db.execute(sql`UPDATE jobs SET status = 'done' WHERE runner_id = ${runnerId}`);
-      const clearRes = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const clearBody = (await clearRes.json()) as Array<{
-        id: string;
-        status: string;
-      }>;
-      expect(clearBody.find((a) => a.id === 'A3')?.status).toBe('ok');
-    });
-
-    // cm:guard A3 must NOT fire for a job the dispatcher correctly holds at an upstream barrier — project_cap is evaluated BEFORE runner capacity, so a second issue queued behind a running one under the default cap of 1 is not runner starvation (it dispatches when the first completes)
-    it('A3 stays ok when a second issue is held by project_cap, not the runner (cap=1)', async () => {
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id);
-      const run = await insertRun(project.id, 'running');
-      // cm:why one runner, busy with issue A (pool has NO free slot) — the discriminating case: were project_cap dropped, the full runner would make A3 fire, so a passing test proves project_cap is respected
-      const busyRunner = await insertRunner({ projectId: project.id, status: 'online' });
-      const issueA = await insertIssue({ projectId: project.id, createdById: owner.id, seq: 1 });
-      const issueB = await insertIssue({ projectId: project.id, createdById: owner.id, seq: 2 });
-      await insertJob({
-        projectId: project.id,
-        runId: run,
-        issueId: issueA,
-        status: 'running',
-        runnerId: busyRunner,
-        dispatchedAgoMinutes: 1,
-      });
-      await insertJob({
-        projectId: project.id,
-        runId: run,
-        issueId: issueB,
-        status: 'queued',
-        queuedAgoMinutes: 10,
-      });
-
-      const token = await adminToken();
-      const res = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const body = (await res.json()) as Array<{ id: string; status: string }>;
-      expect(body.find((a) => a.id === 'A3')?.status).toBe('ok');
-    });
-
-    it('A3 fires when no runner satisfies the queued job capabilities', async () => {
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id);
-      const run = await insertRun(project.id, 'running');
-      await insertRunner({
-        projectId: project.id,
-        status: 'online',
-        capabilities: { gpu: false },
-      });
-      await insertJob({
-        projectId: project.id,
-        runId: run,
-        status: 'queued',
-        queuedAgoMinutes: 10,
-        payload: { requiredCapabilities: { gpu: true } },
-      });
-
-      const token = await adminToken();
-      const res = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const body = (await res.json()) as Array<{ id: string; status: string }>;
-      expect(body.find((a) => a.id === 'A3')?.status).not.toBe('ok');
-    });
-
-    it('A4 fires crit for a project whose current-window spend ratio clears the crit threshold', async () => {
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id);
-      await insertUsage({
-        projectId: project.id,
-        cost: 20,
-        recordedAgoHours: 0.5,
-      });
-      await insertUsage({
-        projectId: project.id,
-        cost: 2,
-        recordedAgoHours: 1.5,
-      });
-
-      const token = await adminToken();
-      const res = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const body = (await res.json()) as Array<{
-        id: string;
-        status: string;
-        count: number;
-      }>;
-      const a4 = body.find((a) => a.id === 'A4');
-      expect(a4?.status).toBe('crit');
-      expect(a4?.count).toBeGreaterThanOrEqual(1);
-    });
-
-    // cm:guard regression guard for the plan-review fix: a global-only fire (no single project individually crosses the ratio — e.g. project_id-less system usage) must still report count >= 1, never 0, or a consumer filtering on count > 0 silently drops a live spend spike
-    it('A4 count stays >= 1 on a global-only fire with no per-project contributor', async () => {
-      await insertUsage({ projectId: null, cost: 20, recordedAgoHours: 0.5 });
-
-      const token = await adminToken();
-      const res = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const body = (await res.json()) as Array<{
-        id: string;
-        status: string;
-        count: number;
-        entities: unknown[];
-      }>;
-      const a4 = body.find((a) => a.id === 'A4');
-      expect(a4?.status).not.toBe('ok');
-      expect(a4?.entities).toHaveLength(0);
-      expect(a4?.count).toBeGreaterThanOrEqual(1);
-    });
-
-    // cm:guard inbound webhook deliveries (recorded 'ok' by Coolify even on a reported deploy failure) must not dilute a real outbound delivery fail-rate
-    it('A5 fires on an outbound fail-rate even when inbound deliveries are all ok', async () => {
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id);
-      const bindingId = await insertBinding(project.id);
-
-      for (let i = 0; i < 5; i++) {
-        await insertDelivery({ bindingId, direction: 'inbound', status: 'ok' });
+      expect(body.map((a) => a.key)).toEqual([
+        'orphan_jobs',
+        'stuck_jobs',
+        'runner_starved',
+        'spend_spike',
+        'automation_failing',
+      ]);
+      for (const alert of body) {
+        expect(alert.status).toBe('ok');
+        expect(alert.count).toBe(0);
+        expect(alert.detail).toBeTruthy();
+        expect(alert.since).toBeNull();
+        expect(alert.entities).toEqual([]);
       }
-      for (let i = 0; i < 4; i++) {
-        await insertDelivery({
-          bindingId,
-          direction: 'outbound',
-          status: 'failed',
-        });
-      }
-      await insertDelivery({ bindingId, direction: 'outbound', status: 'ok' });
-
-      const token = await adminToken();
-      const res = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const body = (await res.json()) as Array<{
-        id: string;
-        status: string;
-        count: number;
-      }>;
-      const a5 = body.find((a) => a.id === 'A5');
-      expect(a5?.status).not.toBe('ok');
-      expect(a5?.count).toBeGreaterThanOrEqual(1);
     });
+  });
 
-    it('A5 stays ok when only inbound deliveries are failing', async () => {
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id);
-      const bindingId = await insertBinding(project.id);
-
-      for (let i = 0; i < 5; i++) {
-        await insertDelivery({
-          bindingId,
-          direction: 'inbound',
-          status: 'failed',
-        });
-      }
-      for (let i = 0; i < 5; i++) {
-        await insertDelivery({
-          bindingId,
-          direction: 'outbound',
-          status: 'ok',
-        });
-      }
-
-      const token = await adminToken();
-      const res = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const body = (await res.json()) as Array<{ id: string; status: string }>;
-      expect(body.find((a) => a.id === 'A5')?.status).toBe('ok');
-    });
-
-    it('A5 catches a trailing failure streak from prompt schedule sessions', async () => {
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id);
-      const scheduleId = await insertPromptSchedule(project.id);
-      for (let i = 0; i < 3; i++) {
-        await insertPromptSession({
-          projectId: project.id,
-          scheduleId,
-          status: 'failed',
-          createdAgoMinutes: 3 - i,
-        });
-      }
-
-      const token = await adminToken();
-      const res = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const body = (await res.json()) as Array<{
-        id: string;
-        status: string;
-        count: number;
-      }>;
-      const a5 = body.find((a) => a.id === 'A5');
-      expect(a5?.status).toBe('warn');
-      expect(a5?.count).toBe(1);
-
-      await insertPromptSession({
-        projectId: project.id,
-        scheduleId,
-        status: 'completed_via_recovery',
-        createdAgoMinutes: 0,
-      });
-      const clearRes = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const clearBody = (await clearRes.json()) as Array<{
-        id: string;
-        status: string;
-      }>;
-      expect(clearBody.find((a) => a.id === 'A5')?.status).toBe('ok');
-    });
-
-    it('A1 is crit for a job orphaned under a terminal pipeline_run', async () => {
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id);
-      const run = await insertRun(project.id, 'cancelled');
+  describe('A1 orphan jobs', () => {
+    it('is crit for a job orphaned under a terminal pipeline_run', async () => {
+      const owner = await createTestUser(ctx.harness.db);
+      const project = await createTestProject(ctx.harness.db, owner.id);
+      const run = await fx.insertRun(project.id, 'cancelled');
 
       // cm:why ISS-448's I1 trigger auto-cancels any active child written under a terminal run; disable it to simulate a pre-existing orphan, same as i1-orphan-trigger.test.ts's backfill case
-      await harness.db.execute(
+      await ctx.harness.db.execute(
         sql`ALTER TABLE jobs DISABLE TRIGGER trg_jobs_no_active_under_terminal_run`,
       );
-      await insertJob({ projectId: project.id, runId: run, status: 'queued' });
-      await harness.db.execute(
+      await fx.insertJob({ projectId: project.id, runId: run, status: 'queued' });
+      await ctx.harness.db.execute(
         sql`ALTER TABLE jobs ENABLE TRIGGER trg_jobs_no_active_under_terminal_run`,
       );
 
-      const token = await adminToken();
-      const res = await app.request('/api/admin/alerts', {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      const body = (await res.json()) as Array<{
-        id: string;
-        status: string;
-        count: number;
-      }>;
-      const a1 = body.find((a) => a.id === 'A1');
+      const { body } = await getAlerts(ctx, await ctx.adminToken());
+      const a1 = findAlert(body, 'A1');
       expect(a1?.status).toBe('crit');
       expect(a1?.count).toBe(1);
+      expect(a1?.entities).toHaveLength(1);
+      expect(a1?.since).not.toBeNull();
+    });
+  });
+
+  describe('A2 stuck jobs', () => {
+    // cm:guard AC 5 — a `dispatched`-only query (what forge-ops-health.ts does) returns 2 here and fails; a `running` job goes stuck exactly the same way and was the half nobody was told about
+    it('catches BOTH dispatched and running past staleSeconds', async () => {
+      const owner = await createTestUser(ctx.harness.db);
+      const project = await createTestProject(ctx.harness.db, owner.id);
+      const run = await fx.insertRun(project.id, 'running');
+      for (const status of ['dispatched', 'dispatched', 'running']) {
+        await fx.insertJob({
+          projectId: project.id,
+          runId: run,
+          status,
+          dispatchedAgoMinutes: 20,
+        });
+      }
+
+      const token = await ctx.adminToken();
+      const { body } = await getAlerts(ctx, token, '?staleSeconds=600');
+      const a2 = findAlert(body, 'A2');
+      expect(a2?.count).toBe(3);
+      expect(a2?.status).not.toBe('ok');
+
+      const { body: cleared } = await getAlerts(ctx, token, '?staleSeconds=86400');
+      expect(findAlert(cleared, 'A2')?.status).toBe('ok');
     });
   });
 });

@@ -80,6 +80,7 @@ const DELIVERY_MIN_SAMPLE = 5;
 const DELIVERY_WARN_RATE = 0.5;
 const DELIVERY_CRIT_RATE = 0.8;
 
+// cm:why ONE notification type for all 5 Tier 1 alerts, with the identity carried here in the resolutionKey — five `notificationTypes` values would mean five lockstep edits across schema.ts + contracts + emit.ts for a taxonomy ISS-654 makes configurable anyway, and the bell does not branch on type
 export function opsAlertResolutionKey(id: AdminAlertId): string {
   return `ops-alert:${id}`;
 }
