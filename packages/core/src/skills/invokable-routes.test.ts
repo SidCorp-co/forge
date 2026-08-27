@@ -98,6 +98,9 @@ describe('GET /api/skills/invokable', () => {
       skill('forge-review', false),
       skill('zeta-util', true, 'last alphabetically'),
       skill('forge-code', false),
+      skill('Bad_Name', true),
+      skill('1tool', true),
+      skill('tool/name', true),
       skill('alpha-util', true, 'first alphabetically'),
     ]);
 

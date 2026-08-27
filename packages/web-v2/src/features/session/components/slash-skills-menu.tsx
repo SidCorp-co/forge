@@ -54,7 +54,7 @@ interface SlashSkillsMenuProps extends SlashSkillsSource {
    * reachable that way) and is now leaving it, or Escape was pressed there.
    * The caller closes and returns focus to the textarea.
    */
-  onLeave: () => void;
+  onLeave: (dismissed?: boolean) => void;
   /**
    * Hand focus back to the textarea WITHOUT closing — pressed Retry keeps the
    * panel up to show the outcome, but must not leave focus on a button that a
@@ -126,7 +126,7 @@ export function SlashSkillsMenu({
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           e.preventDefault();
-          onLeave();
+          onLeave(true);
         }
       }}
       // cm:guard focus leaving the panel closes it, with ONE exception: the textarea, which is where a Retry press hands focus back. Exempting the whole anchor row instead would exempt the send button — the next tab stop — and leave the panel mounted over the conversation, which is the stranded tab stop this closes. Exempting nothing would hide the retry's outcome the moment the user can act on it.

@@ -261,6 +261,8 @@ describe("Composer — slash skills menu", () => {
     fireEvent.keyDown(btn, { key: "Escape" });
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     expect(document.activeElement).toBe(textarea());
+    typeInto(textarea(), "/more");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
   it("Tab is left alone when there is no error to retry", () => {

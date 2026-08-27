@@ -17,6 +17,7 @@ import {
   requestSkillSync,
   updateProjectSkill,
 } from './service.js';
+import { isSlashCommandSkillName } from './skill-name.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -166,7 +167,7 @@ skillCrudRoutes.get(
 
     const effective = await resolveRegisteredEffectiveSkills(projectId);
     const invokable = effective
-      .filter((e) => e.installOnly)
+      .filter((e) => e.installOnly && isSlashCommandSkillName(e.name))
       .map((e) => ({ name: e.name, description: e.description }))
       .sort((a, b) => a.name.localeCompare(b.name));
 

@@ -6,6 +6,7 @@
 
 import { z } from 'zod';
 import { agentSessionStatuses } from '../db/schema.js';
+import { SKILL_NAME_RE } from '../skills/skill-name.js';
 import { pageContextSchema } from './page-context.js';
 import { modelTierSchema } from './session-model.js';
 
@@ -27,10 +28,10 @@ export const startBodySchema = z
      * skills, so an arbitrary caller cannot slash-inject a skill it has not
      * been granted.
      */
-    skillName: z.string().min(1).max(128).optional(),
+    skillName: z.string().regex(SKILL_NAME_RE).optional(),
     /**
      * ISS-718 — the model this session should run on, remembered on the session
-     * and re-sent on every later turn. Absent = the runner's default.
+     * and re-sent on every later turn. Absent = Claude Code's configured Default.
      */
     model: modelTierSchema.nullable().optional(),
   })
@@ -61,7 +62,7 @@ export const sendBodySchema = z
      * ISS-718 — switch the session's model from this turn on. Three states, and
      * the difference matters: OMITTED keeps whatever the session last picked
      * (`metadata.model`), an explicit tier switches to it, and an explicit
-     * `null` clears the pick so the turn runs on the runner's default again.
+     * `null` selects Claude Code's configured Default for this and later turns.
      */
     model: modelTierSchema.nullable().optional(),
   })

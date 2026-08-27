@@ -41,6 +41,11 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+interface StagedFile {
+  id: string;
+  file: File;
+}
+
 interface ComposerProps {
   /**
    * Deliver the message (+ staged files). MUST reject (throw) on failure — the
@@ -107,9 +112,10 @@ export function Composer({
   slashSkills,
 }: ComposerProps) {
   const [value, setValue] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<StagedFile[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const nextFileId = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const slashPanelRef = useRef<HTMLDivElement>(null);
@@ -231,7 +237,13 @@ export function Composer({
       if (accepted.length > room) {
         errs.push(`Max ${MAX_FILES} attachments. Extras skipped.`);
       }
-      return [...prev, ...accepted.slice(0, Math.max(0, room))];
+      return [
+        ...prev,
+        ...accepted.slice(0, Math.max(0, room)).map((file) => ({
+          id: `file-${nextFileId.current++}`,
+          file,
+        })),
+      ];
     });
     setWarnings(errs);
   }, []);
@@ -271,15 +283,15 @@ export function Composer({
     [allowAttachments, acceptFiles],
   );
 
-  const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
+  const removeFile = (id: string) => {
+    setFiles((prev) => prev.filter((file) => file.id !== id));
     setWarnings([]);
   };
 
   const submit = async () => {
     if (!canSend) return;
     const text = value.trim();
-    const staged = files;
+    const staged = files.map(({ file }) => file);
     try {
       await onSend(text, staged);
       // Clear only on success — a thrown send (e.g. 409 no online runner)
@@ -347,8 +359,8 @@ export function Composer({
         {allowAttachments && warnings.length > 0 && (
           <Banner tone="attention">
             <ul className="space-y-0.5">
-              {warnings.map((w, i) => (
-                <li key={i}>{w}</li>
+              {warnings.map((w) => (
+                <li key={w}>{w}</li>
               ))}
             </ul>
           </Banner>
@@ -356,27 +368,27 @@ export function Composer({
 
         {allowAttachments && files.length > 0 && (
           <ul className="flex flex-col gap-1.5">
-            {files.map((f, i) => (
+            {files.map(({ id, file }) => (
               <li
-                key={`${f.name}-${i}`}
+                key={id}
                 className="flex items-center gap-2.5 rounded-md border border-line-subtle bg-surface px-2.5 py-1.5"
               >
                 <Icon
-                  name={f.type.startsWith("image/") ? "grid" : "folder"}
+                  name={file.type.startsWith("image/") ? "grid" : "folder"}
                   size={15}
                   className="flex-none text-subtle"
                 />
-                <span className="fg-body-sm min-w-0 flex-1 truncate text-fg" title={f.name}>
-                  {f.name}
+                <span className="fg-body-sm min-w-0 flex-1 truncate text-fg" title={file.name}>
+                  {file.name}
                 </span>
-                <span className="fg-caption flex-none">{formatSize(f.size)}</span>
+                <span className="fg-caption flex-none">{formatSize(file.size)}</span>
                 <IconButton
                   type="button"
                   icon="x"
                   size="sm"
-                  aria-label={`Remove ${f.name}`}
+                  aria-label={`Remove ${file.name}`}
                   disabled={busy}
-                  onClick={() => removeFile(i)}
+                  onClick={() => removeFile(id)}
                 />
               </li>
             ))}
@@ -477,8 +489,9 @@ export function Composer({
             onPick={insertSkill}
             anchorRef={rowRef}
             panelRef={slashPanelRef}
-            onLeave={() => {
+            onLeave={(dismissed) => {
               setSlashOpen(false);
+              if (dismissed) slashDismissedAt.current = slashToken?.start ?? null;
               textareaRef.current?.focus();
             }}
             onReturnFocus={() => textareaRef.current?.focus()}

@@ -32,7 +32,6 @@ interface ModelPickerProps {
    * applied, and the note would then claim the opposite of what happened.
    */
   unsent?: boolean;
-  /** null selects "Default" — send no override and let the runner decide. */
   onSelect: (model: ModelTier | null) => void;
   /** Viewers / no-device: show the current model but don't allow changing it. */
   disabled?: boolean;
@@ -115,7 +114,7 @@ export function ModelPicker({
 
           <ModelRow
             label={DEFAULT_LABEL}
-            sub="Whatever the runner is set to"
+            sub="Claude Code's configured default"
             selected={effective === null}
             onSelect={() => pick(null)}
           />

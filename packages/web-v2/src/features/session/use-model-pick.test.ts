@@ -27,7 +27,7 @@ describe("useModelPick", () => {
       initialProps: { p: null as ModelTier | null },
     });
     act(() => result.current.select("opus"));
-    act(() => result.current.markSent());
+    act(() => result.current.markSent("opus"));
     // cm:why the send has resolved but the row still says what it said before, which is the whole window this hook exists to cover
     expect(result.current.pendingModel).toBe("opus");
     expect(result.current.unsent).toBe(false);
@@ -41,7 +41,7 @@ describe("useModelPick", () => {
       initialProps: { p: null as ModelTier | null },
     });
     act(() => result.current.select("opus"));
-    act(() => result.current.markSent());
+    act(() => result.current.markSent("opus"));
     rerender({ p: null });
     expect(result.current.pendingModel).toBe("opus");
   });
@@ -53,7 +53,7 @@ describe("useModelPick", () => {
     act(() => result.current.select(null));
     expect(result.current.pendingModel).toBeNull();
     expect(result.current.unsent).toBe(true);
-    act(() => result.current.markSent());
+    act(() => result.current.markSent(null));
     expect(result.current.pendingModel).toBeNull();
     rerender({ p: null });
     expect(result.current.pendingModel).toBeUndefined();
@@ -62,15 +62,24 @@ describe("useModelPick", () => {
   it("a second pick before the first is confirmed is unsent again", () => {
     const { result } = renderHook(() => useModelPick(null));
     act(() => result.current.select("opus"));
-    act(() => result.current.markSent());
+    act(() => result.current.markSent("opus"));
     act(() => result.current.select("haiku"));
+    expect(result.current.pendingModel).toBe("haiku");
+    expect(result.current.unsent).toBe(true);
+  });
+
+  it("does not mark a newer pick sent when an earlier send resolves", () => {
+    const { result } = renderHook(() => useModelPick(null));
+    act(() => result.current.select("opus"));
+    act(() => result.current.select("haiku"));
+    act(() => result.current.markSent("opus"));
     expect(result.current.pendingModel).toBe("haiku");
     expect(result.current.unsent).toBe(true);
   });
 
   it("markSent on no pick is a no-op, not a phantom pick", () => {
     const { result } = renderHook(() => useModelPick("sonnet"));
-    act(() => result.current.markSent());
+    act(() => result.current.markSent(undefined));
     expect(result.current.pendingModel).toBeUndefined();
     expect(result.current.unsent).toBe(false);
   });

@@ -1,13 +1,13 @@
 // Reading the session's picked model back off its metadata (ISS-718).
 
-// cm:edge contract -> packages/core/src/agent-sessions/session-model.ts — the same guard on the same jsonb key; a client that trusted the raw value would label the picker with a tier core refuses to dispatch, which is the one thing the picker must never do
+// cm:edge contract -> packages/core/src/agent-sessions/session-model.ts — `default` remains a UI Default label while only DB tiers map to tier labels, so a raw jsonb value cannot make the picker offer a model core refuses
 import type { SessionMetadata } from "@/features/sessions/types";
 import { type ModelTier, MODEL_TIER_LABELS } from "./types";
 
 /**
- * The tier a session is running on, or null when it has never been picked (the
- * runner's own default). Anything that is not a known tier — a legacy string, a
- * number — reads as null rather than being shown, exactly as core reads it.
+ * The tier a session is running on, or null when it has never been picked or
+ * explicitly selected Claude Code's Default. Anything that is not a known tier
+ * reads as null rather than being shown.
  */
 export function readSessionModel(metadata: SessionMetadata | null | undefined): ModelTier | null {
   const value = metadata?.model;

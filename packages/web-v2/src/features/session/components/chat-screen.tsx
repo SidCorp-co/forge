@@ -228,16 +228,17 @@ export function ChatScreen({
       setActiveId(id);
     }
     // cm:guard both picks ride this ONE call: an explicit deviceId re-pins + dispatches this turn to that runner (omitted = reuse the binding / auto-pick), and the model pick is persisted by this same send — so neither may be cleared before it resolves. A throw keeps them for the retry, the contract the composer already keeps for the typed text.
+    const sentModel = modelPick.pendingModel;
     await send.mutateAsync({
       sessionId: id,
       message,
       files,
       deviceId: selectedDeviceId,
-      model: modelPick.pendingModel,
+      model: sentModel,
     });
     if (selectedDeviceId !== undefined) setSelectedDeviceId(undefined);
     // cm:why the pick has applied to a real turn here; useModelPick retires it only once the refetched row agrees, so the trigger never regresses to the previous model in between
-    modelPick.markSent();
+    modelPick.markSent(sentModel);
   };
 
   const busy = live || send.isPending || create.isPending;

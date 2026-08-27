@@ -9,6 +9,10 @@ describe("readSessionModel", () => {
     }
   });
 
+  it("renders Claude Code's explicit Default as the Default label", () => {
+    expect(readSessionModel({ model: "default" })).toBeNull();
+  });
+
   it("shows nothing for a value core would refuse to dispatch", () => {
     expect(readSessionModel({ model: "gpt-4" })).toBeNull();
     expect(readSessionModel({ model: "Opus" })).toBeNull();

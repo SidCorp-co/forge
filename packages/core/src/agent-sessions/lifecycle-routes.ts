@@ -20,21 +20,19 @@ import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../
 import {
   findAvailableDeviceForProject,
   findChatCapableDeviceForProject,
-  resolveRepoPath,
-  resolveRunnerRepoPath,
   resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import type { AuthVars } from '../middleware/auth.js';
-import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
+import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { extractReportFromMessages } from '../schedules/messages/skill-improve-prompt.js';
 import { extractStewardReportFromMessages } from '../schedules/messages/skill-steward-prompt.js';
 import { writeBackScheduleLastStatus } from '../schedules/service.js';
 import { resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
-import { broadcastSession, broadcastTurnAppended } from './broadcast.js';
+import { broadcastSession } from './broadcast.js';
 import {
   createChatSessionRow,
   dispatchChatTurn,
@@ -59,7 +57,6 @@ import {
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
 import { finalizeScheduleSessionFailure } from './session-failure.js';
-import { syncTurnsWithMessages } from './turns-helpers.js';
 
 export async function loadProjectBySlug(slug: string) {
   const [row] = await db
@@ -89,11 +86,13 @@ agentSessionLifecycleRoutes.post(
     const input = c.req.valid('json');
     const userId = c.get('userId');
 
-    const isReindex = input.type?.endsWith('-reindex') ?? false;
-    const isAgentSession = !!input.type;
-
-    if (!input.prompt && !isAgentSession) {
-      throw badRequest({ message: 'prompt is required for non-agent sessions' });
+    if (input.type) {
+      throw badRequest({
+        type: 'typed agent sessions are unavailable without the retired desktop client',
+      });
+    }
+    if (!input.prompt) {
+      throw badRequest({ message: 'prompt is required' });
     }
 
     const project = await loadProjectBySlug(input.projectSlug);
@@ -112,14 +111,10 @@ agentSessionLifecycleRoutes.post(
     );
     if (!client.isLocal && !client.deviceId) throw noClaudeClient('project');
 
-    const agentName = input.type ?? 'agent';
-    const rawPrompt =
-      input.prompt ?? (isReindex ? `${agentName}: Knowledge Reindex` : `${agentName}: Review`);
+    const rawPrompt = input.prompt;
 
     let title: string;
-    if (isAgentSession) {
-      title = isReindex ? `${agentName} Reindex` : `${agentName} Review`;
-    } else if (input.issueIds && input.issueIds.length > 0) {
+    if (input.issueIds && input.issueIds.length > 0) {
       const issueRows = await db
         .select({ id: issues.id, issSeq: issues.issSeq, title: issues.title })
         .from(issues)
@@ -140,56 +135,6 @@ agentSessionLifecycleRoutes.post(
         .replace(/^You are working on the following issues:\s*/i, '')
         .replace(/^You are working on:\s*/i, '')
         .slice(0, 120);
-    }
-
-    // ===== Agent review / reindex: a one-shot run with no follow-up turns, so
-    // it does NOT ride the chat-turn dispatcher — it publishes its own
-    // `agent:review` / `agent:reindex` event. Device resolution is still the
-    // shared `resolveChatDevice` above so it cannot drift from chat. =====
-    if (isAgentSession) {
-      const deviceId = client.deviceId;
-      const bindingRepo = deviceId ? await resolveRunnerRepoPath(project.id, deviceId) : null;
-      const rp = resolveRepoPath(input.repoPath, bindingRepo ?? project.repoPath);
-      const metadata: Record<string, unknown> = { type: input.type };
-      if (deviceId) metadata.deviceId = deviceId;
-      if (input.issueIds?.length === 1 && input.issueIds[0]) metadata.issueId = input.issueIds[0];
-
-      const nowDate = new Date();
-      const userMessage = { role: 'user', content: rawPrompt, timestamp: nowDate.getTime() };
-      const interactiveRun = await openOneShotRun({ projectId: project.id, kind: 'interactive' });
-      const { inserted, startSync } = await db.transaction(async (tx) => {
-        const [row] = await tx
-          .insert(agentSessions)
-          .values({
-            projectId: project.id,
-            userId,
-            deviceId,
-            pipelineRunId: interactiveRun.id,
-            title,
-            status: 'running',
-            startedAt: nowDate,
-            lastHeartbeatAt: nowDate,
-            repoPath: rp,
-            messages: [userMessage] as never,
-            metadata: metadata as never,
-          })
-          .returning();
-        if (!row) throw new Error('agent_sessions: insert returned no row');
-        const sync = await syncTurnsWithMessages(row.id, [], [userMessage], tx);
-        return { inserted: row, startSync: sync };
-      });
-      for (const t of startSync.appended) broadcastTurnAppended(inserted, t);
-
-      await recordSessionCreatedActivity(inserted, userId);
-
-      if (!client.isLocal && deviceId) {
-        roomManager.publish(deviceRoom(deviceId), {
-          event: isReindex ? 'agent:reindex' : 'agent:review',
-          data: { sessionId: inserted.id, repoPath: rp, projectSlug: input.projectSlug },
-        });
-      }
-      broadcastSession(inserted, 'agent-session.created');
-      return c.json(inserted, 201);
     }
 
     // ISS-733 — a skillName must resolve to an install_only effective skill for

@@ -5,13 +5,13 @@
 // otherwise `and/or`, a URL path and `24/7` would all pop the menu open while
 // someone is typing prose.
 
-/** An active `/…` token under the caret. `end` is the caret itself. */
+/** An active `/…` token under the caret. */
 export interface SlashToken {
   /** Index of the `/`. */
   start: number;
-  /** Index one past the last character of the token (= the caret). */
+  /** Index one past the last character of the token. */
   end: number;
-  /** The text after the `/`, which is what the list filters on (may be ''). */
+  /** The text after the `/` through the caret, which filters the list. */
   query: string;
 }
 
@@ -20,7 +20,8 @@ export interface SlashToken {
  *
  * Requires: the `/` opens the value or follows whitespace; every character
  * between it and the caret is non-whitespace. A caret before the `/`, or past a
- * space that ended the token, is not inside it.
+ * space that ended the token, is not inside it. `end` reaches the whole token so
+ * selecting a suggestion replaces the command rather than leaving its suffix.
  */
 export function findSlashToken(value: string, caret: number): SlashToken | null {
   const at = Math.max(0, Math.min(caret, value.length));
@@ -34,7 +35,9 @@ export function findSlashToken(value: string, caret: number): SlashToken | null 
   if (i < 0) return null;
   const before = i > 0 ? (value[i - 1] as string) : '';
   if (before && !/\s/.test(before)) return null;
-  return { start: i, end: at, query: value.slice(i + 1, at) };
+  let end = at;
+  while (end < value.length && !/\s/.test(value[end] as string)) end += 1;
+  return { start: i, end, query: value.slice(i + 1, at) };
 }
 
 /**

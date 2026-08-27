@@ -75,6 +75,9 @@ describe("ModelPicker", () => {
       "Sonnet",
       "Opus",
     ]);
+    expect(screen.getByRole("menuitemradio", { name: /^Default/ })).toHaveTextContent(
+      "Claude Code's configured default",
+    );
     expect(screen.getByRole("menuitemradio", { name: /^Haiku/ })).toHaveAttribute(
       "aria-checked",
       "true",

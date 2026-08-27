@@ -24,8 +24,8 @@ export interface ModelPick {
   /** True only while the pick has not yet been carried by a send. */
   unsent: boolean;
   select: (value: ModelTier | null) => void;
-  /** Call after a send carrying this pick resolves. */
-  markSent: () => void;
+  /** Mark the exact pick carried by a send after that send resolves. */
+  markSent: (value: ModelTier | null | undefined) => void;
   /** Switching or starting a conversation drops the pick. */
   reset: () => void;
 }
@@ -47,7 +47,8 @@ export function useModelPick(persistedModel: ModelTier | null): ModelPick {
     pendingModel: pick ? pick.value : undefined,
     unsent: !!pick && !pick.sent,
     select: (value) => setPick({ value, sent: false }),
-    markSent: () => setPick((p) => (p && !p.sent ? { ...p, sent: true } : p)),
+    markSent: (value) =>
+      setPick((p) => (p && !p.sent && p.value === value ? { ...p, sent: true } : p)),
     reset: () => setPick(null),
   };
 }

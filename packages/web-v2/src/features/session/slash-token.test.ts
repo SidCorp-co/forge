@@ -30,8 +30,16 @@ describe("findSlashToken", () => {
     expect(findSlashToken("/forge", 0)).toBeNull();
   });
 
-  it("reads the token only up to the caret, not to the end of the word", () => {
-    expect(findSlashToken("/forge-drive", 4)).toEqual({ start: 0, end: 4, query: "for" });
+  it("uses the caret to filter but keeps the whole token range", () => {
+    expect(findSlashToken("/forge-drive", 4)).toEqual({ start: 0, end: 12, query: "for" });
+  });
+
+  it("replaces a command suffix when the caret is inside it", () => {
+    const value = "/for-existing";
+    expect(replaceSlashToken(value, tokenAt(value, 4), "forge-drive")).toEqual({
+      value: "/forge-drive ",
+      caret: 13,
+    });
   });
 
   it("has no token in plain text", () => {

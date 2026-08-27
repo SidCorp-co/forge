@@ -17,17 +17,22 @@ import { type ModelTier, modelTiers } from '../db/schema.js';
 /** The tiers a caller may ask for — the `model_tier` DB enum, not a copy of it. */
 export const modelTierSchema = z.enum(modelTiers);
 
+export const sessionModelSchema = z.union([modelTierSchema, z.literal('default')]);
+
+export type SessionModel = ModelTier | 'default';
+
 /**
  * The session's remembered model, or null when it has none.
  *
  * `metadata.model` is written by {@link import('./chat-turn.js').dispatchChatTurn}
- * on an explicit pick and read back by every later turn. Anything that is not a
- * known tier — a legacy string, a number, a null — reads as "no selection"
- * rather than throwing: this runs on the dispatch path for every chat turn, and
- * one malformed jsonb row must not be able to wedge a conversation.
+ * on an explicit pick and read back by every later turn. `default` is a Claude
+ * Code control value rather than a DB tier; it must survive a resumed turn so
+ * the CLI clears its restored model instead of inheriting it. Anything else
+ * reads as "no selection" rather than throwing, so malformed jsonb cannot
+ * wedge a conversation.
  */
-export function readSessionModel(metadata: unknown): ModelTier | null {
+export function readSessionModel(metadata: unknown): SessionModel | null {
   const value = (metadata as { model?: unknown } | null | undefined)?.model;
-  const parsed = modelTierSchema.safeParse(value);
+  const parsed = sessionModelSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
 }

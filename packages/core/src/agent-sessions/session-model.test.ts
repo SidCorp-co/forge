@@ -19,6 +19,10 @@ describe('readSessionModel', () => {
     }
   });
 
+  it('keeps an explicit Claude Code default selection', () => {
+    expect(readSessionModel({ model: 'default' })).toBe('default');
+  });
+
   it('ignores a model the allow-list does not contain', () => {
     expect(readSessionModel({ model: 'gpt-4' })).toBeNull();
     expect(readSessionModel({ model: 'Sonnet' })).toBeNull();

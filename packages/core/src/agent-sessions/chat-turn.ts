@@ -16,6 +16,7 @@ import {
   resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
 import { openOneShotRun } from '../pipeline/runs.js';
+import { isSlashCommandSkillName } from '../skills/skill-name.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { listSessionAttachmentsByIds, type SessionAttachmentRef } from './attachment-service.js';
@@ -316,15 +317,12 @@ export interface DispatchChatTurnArgs {
    *   - `undefined` — no override: inherit `metadata.model`, so a plain /send
    *     keeps the last pick.
    *   - a tier — switch to it, and remember it on `metadata.model`.
-   *   - `null` — clear the pick; this turn and later ones run on the runner's
-   *     own default. Collapsing this into `undefined` would make "back to
-   *     Default" silently keep the old model.
+   *   - `null` — select Claude Code's Default for this turn and later ones.
+   *     Collapsing this into `undefined` would make "back to Default" silently
+   *     keep the old model.
    */
   model?: ModelTier | null | undefined;
 }
-
-/** Slash-command-safe skill name: lowercase, digits, hyphens, 1–128 chars. */
-const SKILL_NAME_RE = /^[a-z][a-z0-9-]{0,127}$/;
 
 /**
  * Append one user turn to a session and dispatch it to its Claude client.
@@ -382,13 +380,14 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   // the remote branch only ever publishes a WS event, it never writes the DB.
   const claudeSessionId = args.claudeSessionId ?? session.claudeSessionId ?? null;
   const resumable = !!claudeSessionId && !migrated;
-  // cm:why an explicit pick (including an explicit null, which clears) wins and is persisted below; only `undefined` inherits what the session remembers. The resolved value rides EVERY turn, not just the switching one — the CLI keeps the model in its own session file, but a migrated cold start lands on a runner that has no such file to inherit from.
-  const model = args.model === undefined ? readSessionModel(session.metadata) : args.model;
+  // cm:guard an explicit Default must emit `--model default` on resume, because omission inherits the prior Claude session model instead of the configured default
+  const model =
+    args.model === undefined ? readSessionModel(session.metadata) : (args.model ?? 'default');
   // Fail BEFORE any write when the shape is wrong, rather than after the user
   // turn + status='running' have already been committed with nothing to
   // dispatch it (the previous validation point was inside the cold-start
   // publish branch, after this transaction).
-  if (args.skillName && !SKILL_NAME_RE.test(args.skillName)) {
+  if (args.skillName && !isSlashCommandSkillName(args.skillName)) {
     throw new Error(`dispatchChatTurn: invalid skillName '${args.skillName}'`);
   }
 
@@ -403,14 +402,11 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   };
   // Pin the freshly-picked device so the next /send reuses it.
   if (deviceId && session.deviceId !== deviceId) updates.deviceId = deviceId;
-  // On migration the old Claude session id points at a file on the dead box —
-  // drop it so this turn cold-starts here and the new runner stamps a fresh id
-  // (which the next follow-up will `--resume` against this device).
   if (migrated) updates.claudeSessionId = null;
   const nextMeta = { ...prevMeta };
   if (deviceId) nextMeta.deviceId = deviceId;
-  // cm:why undefined (not delete) — JSON.stringify drops the key on write, so an explicit null clears the marker without the noDelete lint cost, matching how POST /:id/runner clears claudeSessionId
-  if (args.model !== undefined) nextMeta.model = args.model ?? undefined;
+  // cm:why `default` must remain in jsonb — omission means inherit the existing selection, while an explicit null asks Claude Code to clear its restored model
+  if (args.model !== undefined) nextMeta.model = args.model ?? 'default';
   if (args.pageContext) nextMeta.pageContext = args.pageContext;
   // ISS-733 fix — mark this turn as "invoked a skill on cold start" so the
   // PATCH /:id terminal-report handler can detect the sync-then-dispatch race

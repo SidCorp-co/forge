@@ -1,9 +1,9 @@
 // ISS-718 — the model half of the chat-turn dispatcher, in its own file because
 // chat-turn.test.ts is frozen at its current length in .forge/size-baseline.json.
 // What matters: the picked model reaches BOTH dispatch frames, an explicit pick
-// is remembered on the session, an explicit null clears it, and a later turn
-// that carries no override inherits it instead of silently falling back to the
-// runner's default.
+// is remembered on the session, an explicit null selects Claude Code's Default,
+// and a later turn that carries no override inherits it instead of silently
+// falling back to the configured default.
 //
 // `config/env.js` is stubbed because it throws at import when DATABASE_URL /
 // JWT_SECRET / DEVICE_TOKEN_PEPPER are absent, and this suite must stay hermetic.
@@ -97,15 +97,15 @@ function frame(event: 'agent:start' | 'agent:send'): Record<string, unknown> {
     ([room, env]) => room === `device:${DEVICE}` && (env as { event: string }).event === event,
   );
   const last = calls.at(-1);
-  expect(last, `no ${event} frame was published`).toBeDefined();
-  return (last?.[1] as { data: Record<string, unknown> }).data;
+  if (!last) throw new Error(`no ${event} frame was published`);
+  return (last[1] as { data: Record<string, unknown> }).data;
 }
 
 /** The metadata object written by the turn's UPDATE. */
 function writtenMetadata(): Record<string, unknown> {
   const call = updateSet.mock.calls.at(-1);
-  expect(call).toBeDefined();
-  return (call?.[0] as { metadata: Record<string, unknown> }).metadata;
+  if (!call) throw new Error('no session update was written');
+  return (call[0] as { metadata: Record<string, unknown> }).metadata;
 }
 
 beforeEach(() => {
@@ -194,7 +194,7 @@ describe('dispatchChatTurn — model transport', () => {
     expect(writtenMetadata().model).toBe('opus');
   });
 
-  it('an explicit null clears the pick instead of inheriting it', async () => {
+  it('an explicit null emits the Claude Code default model instead of inheriting the resumed model', async () => {
     updateReturning.mockResolvedValueOnce([baseSession({ deviceId: DEVICE })]);
     await dispatchChatTurn({
       session: baseSession({
@@ -208,9 +208,24 @@ describe('dispatchChatTurn — model transport', () => {
       message: 'again',
       model: null,
     });
-    expect(frame('agent:send')).not.toHaveProperty('model');
-    // cm:why `undefined` is how the dispatcher clears a jsonb key (JSON.stringify drops it on write), and asserting it is what proves the NEXT turn cannot resurrect 'opus'
-    expect(writtenMetadata().model).toBeUndefined();
+    expect(frame('agent:send').model).toBe('default');
+    expect(writtenMetadata().model).toBe('default');
+  });
+
+  it('keeps an explicit default on later omitted sends', async () => {
+    updateReturning.mockResolvedValueOnce([baseSession({ deviceId: DEVICE })]);
+    await dispatchChatTurn({
+      session: baseSession({
+        claudeSessionId: 'c-1',
+        deviceId: DEVICE,
+        metadata: { deviceId: DEVICE, model: 'default' },
+        messages: [{ role: 'user', content: 'a' }],
+      }),
+      project: PROJECT,
+      client: { deviceId: DEVICE, isLocal: false },
+      message: 'again',
+    });
+    expect(frame('agent:send').model).toBe('default');
   });
 
   it('a garbage metadata.model reads as no selection rather than being forwarded', async () => {

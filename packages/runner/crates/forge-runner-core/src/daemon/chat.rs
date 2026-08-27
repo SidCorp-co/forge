@@ -640,14 +640,14 @@ mod tests {
 
     #[test]
     fn send_frame_carries_the_model_and_tolerates_its_absence() {
-        let with_model: SendFrame = serde_json::from_value(json!({
+        let with_default: SendFrame = serde_json::from_value(json!({
             "sessionId": "s1",
             "message": "hi",
             "claudeSessionId": "c1",
-            "model": "sonnet"
+            "model": "default"
         }))
         .expect("frame with model");
-        assert_eq!(with_model.model.as_deref(), Some("sonnet"));
+        assert_eq!(with_default.model.as_deref(), Some("default"));
 
         let without: SendFrame = serde_json::from_value(json!({
             "sessionId": "s1",
