@@ -4,7 +4,7 @@
 - Supersedes: the withdrawn [session-pooling proposal](../proposals/autonomous-session-pooling.md)
 - Related: [RFC 0002](0002-park-axis-separation.md) (park axis) · [agent-driven pipeline](../proposals/agent-driven-pipeline.md) · [runner-daemon](../architecture/runner-daemon.md)
 
-Diagrams: `docs/local/duplex-architecture.html` — components, lifecycle, the queueing rule, and the
+Diagrams: `docs/proposals/duplex-architecture.html` — components, lifecycle, the queueing rule, and the
 ack-is-commit flow. Local only, not committed.
 
 ## Summary
@@ -392,7 +392,7 @@ That is the hole, and it is the whole hole.
   three"*, i.e. nothing reads it — the has-no-consumer failure `CLAUDE.md` names for `cm:why`. If a
   discriminator is wanted later, the axis is cost-if-wrong / reversibility, not blocking radius.
 
-### The park has a deadline, and expiry decides
+### The direction decides; what it cannot decide, parks
 
 **Owner decision, 2026-08-27.** A question is asked with its answer already attached. If no human
 answers before the deadline, the agent proceeds on its own recommendation, records that it did, and
@@ -403,6 +403,50 @@ This is a stronger design than the version it replaces, and for the reason the r
 ledger optimised round-trip **count** on a premise I invented (0.03 parks per issue measured, not
 three). This bounds round-trip **latency**, which is the cost that was actually measured — zero human
 replies across all 17 parked issues, median park age ~360 h. A park that decides cannot be infinite.
+
+#### Superseded, 2026-08-27 (second owner decision): the deadline decided nothing
+
+The decision above left the **deadline** doing the deciding. It does not. The direction is standing,
+stated once, and it answers the question before the question is asked:
+
+> Decide on the recommendation, grounded in project information. Prefer the best and most complete
+> outcome over the cheapest to build; a large workload is accepted to get there.
+
+This is a **preference rule, not an exemption**. It says which branch to take when more than one is
+open; it never says a guard may be skipped. The `reversible: false` list below therefore stays an
+absolute floor — a preference cannot make an irreversible thing reversible, and no direction is read
+as waiving one.
+
+**Grounded is the load-bearing word.** The recommendation must be derived from project information —
+`projectFacts`, `forge_knowledge`, project memory, the repo itself — and must name what it was derived
+from. A recommendation that cannot name its grounding is not a recommendation; that question has no
+basis and parks. This is the same defect the review flagged as the question-quality problem, moved
+from *"composed 60 minutes later from memory"* to *"composed from nothing"*.
+
+**What follows.** A question with a grounded recommendation that is reversible is *already answered*
+by the direction. Waiting on it buys nothing — the answer will not change, and the measured reply rate
+is zero over 17 parks. So it is decided **when it is found**, in the same session, and never enters
+`needs_info`. That empties the deadline's population:
+
+| | first decision: at the deadline | now |
+|---|---|---|
+| grounded recommendation, `reversible: true` | decide, after the wait | **decide on the spot** — no park, no status change, no second job |
+| no grounded recommendation | keep waiting | keep waiting |
+| `reversible: false` | keep waiting | keep waiting |
+
+The deadline decided exactly one row, and that row no longer waits. **The park deadline, its durable
+timestamp, and the expiry sweep are therefore not built.** Three sections below are superseded by
+this and describe machinery that is now not scheduled: *"This deadline is not the residency window"*
+(the residency timer itself is unaffected and still ships), the `At the deadline` column header on the
+escape-hatch table — read it as *at the moment the question is found* — and *"The deadline is durable
+and core-side"* in full. *"The record is posted before the decision is acted on"* survives and matters
+more: it is now the only place the owner ever sees the decision.
+
+**The ledger still records a decided question**, with `decidedBy: 'policy'` and the direction quoted.
+It changes no status, parks nothing, schedules nothing. It exists so the owner can audit whether the
+agent read the direction the way it was meant — the one failure this rule can produce that no code
+here can catch.
+
 
 **This deadline is not the residency window.** Two timers, two owners, two consequences: residency
 asks *should this process stay alive* (seconds to minutes; the consequence is a runner slot), the park
@@ -424,7 +468,7 @@ from memory is the question-quality problem the review flagged, and promoting it
 *decision* raises the stakes on getting it right. Two omissions are the two escape hatches, and they
 are the only ones:
 
-| At the deadline | When |
+| At the moment the question is found (was: at the deadline) | When |
 |---|---|
 | **decide** | a recommendation exists and `reversible: true` |
 | **keep waiting** | no recommendation — the agent genuinely has no basis to prefer a branch, and says so in the field's place |
@@ -472,10 +516,14 @@ correction as Revision 2 item 11, for the same reason: an in-process timer dies 
 
 **Notification stops being a preference and becomes a prerequisite.** I had sequenced the
 `NOTIFY_ON_STATUS` fix as *should land first*. Under this rule it **must**: `needs_info` is absent
-from `NOTIFY_ON_STATUS`, and all 17 parked issues have zero human replies. If nobody is told a
-question exists, every deadline expires unanswered and the rule degrades into *"always decide, never
-ask"* — the escape hatches would still hold, but the ask-and-wait path would be dead on arrival, and
-the deadline would be decoration.
+from `NOTIFY_ON_STATUS`, and all 17 parked issues have zero human replies.
+
+*Amended by the second decision.* This paragraph read the outcome *"always decide, never ask"* as the
+failure mode. For the grounded-and-reversible class it is now the **intent**, so there is no
+ask-and-wait path left to be dead on arrival. The gap it names gets worse rather than better: after
+the second decision the only issues that park are the ones that genuinely cannot be decided here, so
+a park nobody is notified about is no longer one unread question among many — it is the entire
+remaining population, and it is exactly the population a human is the only possible answer for.
 
 **A late answer must not be dropped silently.** `answer-resume.ts` requires
 `status === 'needs_info'`; once a deadline has expired and the agent has moved on, the issue is no
@@ -485,6 +533,14 @@ the answer may contradict a decision already acted on, and nobody is told. A lat
 decided question must reopen **that decision specifically**, as a comment naming what it contradicts.
 Dropping it is the state-never-lies violation (principle №10) that this whole RFC is otherwise trying
 to pay down.
+
+*Amended by the second decision.* A policy-decided question never enters `needs_info`, so
+`answer-resume.ts` is not the path that drops the late answer — there was no park to answer against,
+and the human was never asked. The concern survives in a harder form: the owner's first sight of the
+decision is a comment on an issue nobody notified them about, and disagreeing with it has no
+mechanism at all. Whatever reopens a decision must therefore work from a plain comment on a
+non-parked issue, not from the answer path.
+
 
 #### What this settles
 
