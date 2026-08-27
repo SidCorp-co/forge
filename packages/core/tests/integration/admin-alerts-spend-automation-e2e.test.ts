@@ -112,4 +112,23 @@ describe('A4 spend spike + A5 automation failures (ISS-652)', () => {
     const { body: cleared } = await getAlerts(ctx, token);
     expect(findAlert(cleared, 'A5')?.status).toBe('ok');
   });
+
+  // cm:guard this case is the only thing standing between a perf pass and a silent A5 regression — it spreads the streak across 40 days so a time bound on the schedule_events scan drops the two older failures and leaves streak=1 with no alert, while last_run_at still admits the schedule; every other schedule event in this suite is 0-3 minutes old and would survive any bound anyone is likely to add
+  it('A5 catches a streak spanning weeks, so a time bound on the event scan cannot pass', async () => {
+    const project = await newProject();
+    const scheduleId = await fx.insertPromptSchedule(project.id);
+    for (const createdAgoMinutes of [40 * 24 * 60, 20 * 24 * 60, 60]) {
+      await fx.insertPromptSession({
+        projectId: project.id,
+        scheduleId,
+        status: 'failed',
+        createdAgoMinutes,
+      });
+    }
+
+    const { body } = await getAlerts(ctx, await ctx.adminToken());
+    const a5 = findAlert(body, 'A5');
+    expect(a5?.status).toBe('warn');
+    expect(a5?.count).toBe(1);
+  });
 });

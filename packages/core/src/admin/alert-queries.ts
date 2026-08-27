@@ -456,8 +456,9 @@ function oldestIso(values: Array<PgTimestamp | null>): string | null {
 /** A5 — two contributors combined into one alert: schedule fail-streaks and integration-delivery fail-rates. */
 async function alertAutomationFailing(): Promise<AdminAlert> {
   const [scheduleRows, deliveryRows] = await Promise.all([
-    // cm:why no LIMIT here — `count` is documented as the true contributor total, so capping in SQL would understate it past ENTITY_LIMIT streaking schedules; only the display `entities` list is truncated
-    // cm:why the enabled + last_run_at gate is what lets A5 reach 'ok' again — a streak on a schedule nobody runs any more never clears on its own
+    // cm:guard never put a time bound on schedule_events, however tempting for I/O — a bound changes what a streak MEANS rather than just trimming rows: verified on Postgres 17, failures at 40d/20d/1h give streak=3 -> warn unbounded but streak=1 -> silence under the 8-day bound, while last_run_at still admits the schedule, so a slow-cadence failing schedule stops alarming and nothing looks wrong. A count bound (rn <= 5) does preserve the classification but buys no I/O, because row_number() must read and sort every partition row before rn exists to filter on; the only restructure that would cut I/O is a per-schedule LATERAL ... LIMIT, and the agent_sessions arm needs a partial expression index on (metadata ->> 'scheduleId', updated_at) first or it seq-scans once per schedule.
+    // cm:guard no LIMIT on the row set either — `count` is documented as the true contributor total, so capping in SQL would understate it past ENTITY_LIMIT streaking schedules; only the display `entities` list is truncated
+    // cm:guard keep the enabled + last_run_at gate — it is the only path by which A5 reaches 'ok' again, since a streak on a schedule nobody runs any more never clears on its own
     db.execute<ScheduleStreakRow>(sql`
       WITH schedule_events AS (
         SELECT schedule_id::text, status = 'success' AS succeeded, created_at
