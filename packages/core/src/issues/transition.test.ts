@@ -128,7 +128,7 @@ function queueAuthAndIssue(row: {
   role?: 'admin' | 'member' | 'viewer';
   issSeq?: number;
 }) {
-  // cm:guard the two selectLimit queues are ORDER-COUPLED to the route: assertEmailVerified reads first, the issue row second. Swap them and every test in this file 404s on a row that is really the verification check.
+  // cm:guard the two selectLimit queues are ORDER-COUPLED to the route: assertEmailVerified reads first, the issue row second. Measured 2026-08-27 by swapping them: 6 of 27 tests fail and NOT ONE of them 404s — the route reads the issue row as the verification check, so projectId/status come back undefined and you get 500s, a 422, and assertions on undefined ids. Nothing points at the order.
   selectLimit.mockResolvedValueOnce([
     { emailVerifiedAt: row.verified === false ? null : new Date() },
   ]);

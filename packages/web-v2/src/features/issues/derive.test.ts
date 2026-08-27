@@ -146,11 +146,13 @@ describe("allowedTransitions", () => {
 		expect(from).toContain("on_hold");
 		expect(from).toContain("reopen");
 	});
-	it("restricts draft to promote, direct-ship, or discard (ISS-431)", () => {
+	// cm:guard spell all four out and keep `dropped` among them — this list is a SECOND copy of core's DRAFT_EXIT_TARGETS, and core's refusal message renders that constant member by member, so any member missing here is a menu that hides a discard the server offers the user by name. Until 2026-08-27 (ISS-787) `dropped` was absent and `closed` was the only discard on offer: the one that stamps merged_at and unblocks every dependent of work that never existed.
+	it("restricts draft to promote, direct-ship, or either discard (ISS-431)", () => {
 		expect(allowedTransitions("draft")).toEqual([
 			"open",
 			"developed",
 			"closed",
+			"dropped",
 		]);
 	});
 });
@@ -200,14 +202,17 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 		// a commonly-valid target survives
 		expect(result).toContain("on_hold");
 	});
-	it("narrows hard when a draft row is in the mix (draft only allows open/developed/closed)", () => {
+	it("narrows hard when a draft row is in the mix (a draft's four exits bound the whole selection)", () => {
 		const rows = [
 			row({ id: "a", status: "draft" }),
 			row({ id: "b", status: "approved" }),
 		];
-		// draft allows [open, developed, closed]; approved excludes its own status
-		// but allows open/developed/closed → intersection is exactly those three.
-		expect(bulkAllowedStatuses(rows)).toEqual(["open", "developed", "closed"]);
+		expect(bulkAllowedStatuses(rows)).toEqual([
+			"open",
+			"developed",
+			"closed",
+			"dropped",
+		]);
 	});
 	it("preserves enum order in the result", () => {
 		const rows = [
