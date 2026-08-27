@@ -21,6 +21,7 @@ import {
   useElapsed,
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
+import { useInvokableSkills } from "@/features/skills/hooks";
 import { useOrgMembers } from "@/features/orgs/hooks";
 import { MEMBER_LENS_OPTIONS } from "@/features/orgs/types";
 import { useAuth } from "@/providers/auth-provider";
@@ -44,8 +45,10 @@ import {
   useSessionTurns,
   useSetSessionRunner,
 } from "../hooks";
-import { parseTurns } from "../types";
+import { type ModelTier, parseTurns } from "../types";
+import { readSessionModel } from "../session-model";
 import { Composer, ReadOnlyComposerNote } from "./composer";
+import { ModelPicker } from "./model-picker";
 import { Conversation } from "./conversation";
 import { ConversationList, EditableTitle } from "./conversation-list";
 import { RunnerPicker } from "./runner-picker";
@@ -118,6 +121,8 @@ export function ChatScreen({
   const [historyOpen, setHistoryOpen] = useState(false);
   // cm:why draft-mode pick only — a real session's runner is the server pin (session.deviceId via POST /:id/runner), not this state
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>();
+  // cm:guard three-state on purpose (ISS-718): undefined = untouched, null = explicitly back to the runner default, a tier = that tier. There is no save endpoint — the pick rides the next `send`, which is what persists it, so a failure surfaces through the existing send error path and needs no second one.
+  const [pendingModel, setPendingModel] = useState<ModelTier | null | undefined>();
 
   const recentSessions = latestQ.data?.items ?? [];
   const resolvedId = draft ? undefined : activeId ?? recentSessions[0]?.id;
@@ -130,6 +135,9 @@ export function ChatScreen({
   useEffect(() => {
     if (resolvedId) onSessionActiveRef.current?.(resolvedId);
   }, [resolvedId]);
+
+  // cm:why fetched for the PROJECT, not the session, so the list is already warm when a draft chat turns into a real one
+  const skillsQ = useInvokableSkills(projectId);
 
   const sessionQ = useSession(resolvedId);
   const turnsQ = useSessionTurns(resolvedId);
@@ -170,6 +178,7 @@ export function ChatScreen({
     setDraft(true);
     setActiveId(undefined);
     setSelectedDeviceId(undefined);
+    setPendingModel(undefined);
     setHistoryOpen(false);
   };
 
@@ -184,9 +193,9 @@ export function ChatScreen({
   const handlePick = (id: string) => {
     setDraft(false);
     setActiveId(id);
-    // Follow the newly-opened conversation's own runner binding rather than
-    // carrying the previous chat's pick across.
+    // cm:why follow the newly-opened conversation's own runner binding and model rather than carrying the previous chat's picks across
     setSelectedDeviceId(undefined);
+    setPendingModel(undefined);
     setHistoryOpen(false);
   };
 
@@ -216,10 +225,17 @@ export function ChatScreen({
       setDraft(false);
       setActiveId(id);
     }
-    // Pass the explicit runner pick (if any) so the server re-pins + dispatches
-    // this turn to it; omitted = reuse binding / auto-pick.
-    await send.mutateAsync({ sessionId: id, message, files, deviceId: selectedDeviceId });
+    // cm:guard both picks ride this ONE call: an explicit deviceId re-pins + dispatches this turn to that runner (omitted = reuse the binding / auto-pick), and the model pick is persisted by this same send — so neither may be cleared before it resolves. A throw keeps them for the retry, the contract the composer already keeps for the typed text.
+    await send.mutateAsync({
+      sessionId: id,
+      message,
+      files,
+      deviceId: selectedDeviceId,
+      model: pendingModel,
+    });
     if (selectedDeviceId !== undefined) setSelectedDeviceId(undefined);
+    // cm:why the server now owns the choice, so dropping the local pick is what makes the picker read the persisted value and stop saying "applies from your next message"
+    if (pendingModel !== undefined) setPendingModel(undefined);
   };
 
   const busy = live || send.isPending || create.isPending;
@@ -427,6 +443,19 @@ export function ChatScreen({
           busy={busy}
           allowAttachments
           sticky={false}
+          actions={
+            <ModelPicker
+              activeModel={readSessionModel(session?.metadata)}
+              pendingModel={pendingModel}
+              onSelect={setPendingModel}
+            />
+          }
+          slashSkills={{
+            items: skillsQ.data ?? [],
+            loading: skillsQ.isLoading,
+            error: skillsQ.error,
+            retry: () => void skillsQ.refetch(),
+          }}
         />
       ) : (
         <ReadOnlyComposerNote sticky={false} />

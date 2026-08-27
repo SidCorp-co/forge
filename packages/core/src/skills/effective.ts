@@ -30,6 +30,14 @@ export interface SkillFile {
 export interface EffectiveSkill {
   skillId: string;
   name: string;
+  /**
+   * The author's one-line summary (`skills.description`, NOT NULL in the DB).
+   * Carried so a caller that lists skills for a human — the chat composer's
+   * slash menu (ISS-718) — can label them without loading `skillMd`. Outside
+   * `effectiveHash` on purpose: rewording a description must not re-sync every
+   * runner's installed copy.
+   */
+  description: string;
   version: number;
   skillMd: string;
   files: SkillFile[];
@@ -77,6 +85,8 @@ export interface EffectiveSkill {
 export interface SkillBodyRow {
   id: string;
   name: string;
+  /** Optional so the pure helpers still accept legacy/partial fixtures. */
+  description?: string | null;
   version: number;
   scope: 'global' | 'project';
   skillMd: string | null;
@@ -124,6 +134,7 @@ export function computeEffectiveSkill(skill: SkillBodyRow): EffectiveSkill {
   return {
     skillId: skill.id,
     name: skill.name,
+    description: skill.description ?? '',
     version: skill.version,
     skillMd: md,
     files,
@@ -143,6 +154,7 @@ export function computeEffectiveSkill(skill: SkillBodyRow): EffectiveSkill {
 const skillBodyProjection = {
   id: skills.id,
   name: skills.name,
+  description: skills.description,
   version: skills.version,
   scope: skills.scope,
   skillMd: skills.skillMd,

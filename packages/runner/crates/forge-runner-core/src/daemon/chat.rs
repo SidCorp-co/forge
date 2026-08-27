@@ -4,8 +4,8 @@
 //! the desktop app already fulfils. Core resolves an online `claude-code`
 //! runner via `findAvailableDeviceForProject`, opens a one-shot
 //! `pipeline_run kind='interactive'`, and publishes:
-//!   - `agent:start` `{ sessionId, prompt, projectSlug, repoPath, systemPrompt }`
-//!   - `agent:send`  `{ sessionId, message, claudeSessionId, repoPath, projectSlug }`
+//!   - `agent:start` `{ sessionId, prompt, projectSlug, repoPath, systemPrompt, model }`
+//!   - `agent:send`  `{ sessionId, message, claudeSessionId, repoPath, projectSlug, model }`
 //!   - `agent:abort` `{ sessionId }`
 //!
 //! A chat turn is a ONE-SHOT `claude -p <text>` invocation (with `--resume
@@ -85,6 +85,8 @@ struct SendFrame {
     project_slug: Option<String>,
     #[serde(default)]
     repo_path: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
     #[serde(default)]
     mcp_servers_override: Option<serde_json::Value>,
     #[serde(default)]
@@ -286,7 +288,8 @@ pub async fn handle_send(
             project_slug: f.project_slug,
             // No system prompt on follow-ups — `--resume` keeps the original.
             system_prompt: None,
-            model: None,
+            // cm:guard a follow-up DOES carry a model. Verified on claude 2.1.241: `--resume` with a changed `--model` runs the new model (haiku -> sonnet -> haiku, one session id, read back from `modelUsage`), and `--resume` with no `--model` inherits the session's last one. Hardcoding None here made the picker a lie for every turn after the first.
+            model: f.model,
             resume_id: f.claude_session_id.filter(|s| !s.is_empty()),
             mcp_servers_override: f.mcp_servers_override,
             attachment_dir,
@@ -633,6 +636,25 @@ mod tests {
         assert_eq!(msg["model"], "claude-opus-4-8");
         assert_eq!(msg["usage"]["output_tokens"], 5);
         assert!(msg["id"].as_str().is_some());
+    }
+
+    #[test]
+    fn send_frame_carries_the_model_and_tolerates_its_absence() {
+        let with_model: SendFrame = serde_json::from_value(json!({
+            "sessionId": "s1",
+            "message": "hi",
+            "claudeSessionId": "c1",
+            "model": "sonnet"
+        }))
+        .expect("frame with model");
+        assert_eq!(with_model.model.as_deref(), Some("sonnet"));
+
+        let without: SendFrame = serde_json::from_value(json!({
+            "sessionId": "s1",
+            "message": "hi"
+        }))
+        .expect("frame without model");
+        assert_eq!(without.model, None);
     }
 
     #[test]

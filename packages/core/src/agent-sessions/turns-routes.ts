@@ -26,6 +26,7 @@ import {
   notFound,
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
+import { readSessionModel } from './session-model.js';
 import {
   extractPromptString,
   findTurnInSession,
@@ -207,6 +208,7 @@ agentSessionTurnsRoutes.post(
     const targetMessage = extractPromptString(lastUserEntry?.content);
     const meta = (session.metadata ?? {}) as { deviceId?: string };
     const targetDeviceId = meta.deviceId ?? session.deviceId ?? null;
+    const regenModel = readSessionModel(session.metadata);
     if (targetDeviceId && !targetMessage) {
       throw new HTTPException(409, {
         message: 'no dispatchable prompt found before this turn',
@@ -248,6 +250,8 @@ agentSessionTurnsRoutes.post(
           claudeSessionId: updated.claudeSessionId ?? null,
           repoPath: updated.repoPath ?? null,
           projectSlug: project?.slug ?? null,
+          // cm:edge lockstep -> packages/core/src/agent-sessions/chat-turn.ts — this republish bypasses dispatchChatTurn, so the session's picked model has to be re-read here or a regenerated turn silently drops back to the runner's default
+          ...(regenModel ? { model: regenModel } : {}),
         },
       });
     }
@@ -355,6 +359,7 @@ agentSessionTurnsRoutes.post(
       ...prevMeta,
       rerunOfSessionId: id,
     };
+    const rerunModel = readSessionModel(prevMeta);
 
     const nowDate = new Date();
     const seedMessage = { role: 'user', content: prompt, timestamp: nowDate.getTime() };
@@ -411,6 +416,8 @@ agentSessionTurnsRoutes.post(
           projectSlug: project?.slug ?? null,
           preBuilt: false,
           mcpServersOverride,
+          // cm:edge lockstep -> packages/core/src/agent-sessions/chat-turn.ts — a rerun cold-starts a NEW claude session, so nothing on the runner remembers the model; it must travel on the frame or the clone runs on a different model than the session it reruns
+          ...(rerunModel ? { model: rerunModel } : {}),
         },
       });
     }

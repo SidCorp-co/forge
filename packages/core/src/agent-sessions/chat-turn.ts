@@ -1,7 +1,13 @@
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
-import { agentSessions, devices, type MemberLens, memberLenses } from '../db/schema.js';
+import {
+  agentSessions,
+  devices,
+  type MemberLens,
+  type ModelTier,
+  memberLenses,
+} from '../db/schema.js';
 import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
 import { buildChatPreamble, TOOL_REFERENCE } from '../lib/chat-preamble.js';
 import {
@@ -22,6 +28,7 @@ import {
   readPersistedPageContext,
   samePageContext,
 } from './page-context.js';
+import { readSessionModel } from './session-model.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 
 // ============================================================================
@@ -303,6 +310,17 @@ export interface DispatchChatTurnArgs {
    * project skill BEFORE calling — this module only sanity-checks the shape.
    */
   skillName?: string | null;
+  /**
+   * ISS-718 — the model this turn (and every later turn of this session) runs
+   * on, as a THREE-state value:
+   *   - `undefined` — no override: inherit `metadata.model`, so a plain /send
+   *     keeps the last pick.
+   *   - a tier — switch to it, and remember it on `metadata.model`.
+   *   - `null` — clear the pick; this turn and later ones run on the runner's
+   *     own default. Collapsing this into `undefined` would make "back to
+   *     Default" silently keep the old model.
+   */
+  model?: ModelTier | null | undefined;
 }
 
 /** Slash-command-safe skill name: lowercase, digits, hyphens, 1–128 chars. */
@@ -364,6 +382,8 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   // the remote branch only ever publishes a WS event, it never writes the DB.
   const claudeSessionId = args.claudeSessionId ?? session.claudeSessionId ?? null;
   const resumable = !!claudeSessionId && !migrated;
+  // cm:why an explicit pick (including an explicit null, which clears) wins and is persisted below; only `undefined` inherits what the session remembers. The resolved value rides EVERY turn, not just the switching one — the CLI keeps the model in its own session file, but a migrated cold start lands on a runner that has no such file to inherit from.
+  const model = args.model === undefined ? readSessionModel(session.metadata) : args.model;
   // Fail BEFORE any write when the shape is wrong, rather than after the user
   // turn + status='running' have already been committed with nothing to
   // dispatch it (the previous validation point was inside the cold-start
@@ -389,6 +409,8 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   if (migrated) updates.claudeSessionId = null;
   const nextMeta = { ...prevMeta };
   if (deviceId) nextMeta.deviceId = deviceId;
+  // cm:why undefined (not delete) — JSON.stringify drops the key on write, so an explicit null clears the marker without the noDelete lint cost, matching how POST /:id/runner clears claudeSessionId
+  if (args.model !== undefined) nextMeta.model = args.model ?? undefined;
   if (args.pageContext) nextMeta.pageContext = args.pageContext;
   // ISS-733 fix — mark this turn as "invoked a skill on cold start" so the
   // PATCH /:id terminal-report handler can detect the sync-then-dispatch race
@@ -511,6 +533,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         preBuilt: args.preBuilt ?? false,
         systemPrompt: TOOL_REFERENCE,
         mcpServersOverride,
+        ...(model ? { model } : {}),
         ...(attachments.length ? { attachments } : {}),
       },
     });
@@ -525,6 +548,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         repoPath,
         projectSlug: project.slug,
         mcpServersOverride,
+        ...(model ? { model } : {}),
         ...(attachments.length ? { attachments } : {}),
       },
     });

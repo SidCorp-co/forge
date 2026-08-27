@@ -12,10 +12,14 @@ import { Banner, Button, Icon, IconButton, Textarea } from "@/design";
 import {
   type ClipboardEvent,
   type KeyboardEvent,
+  type ReactNode,
   useCallback,
   useRef,
   useState,
 } from "react";
+import type { InvokableSkill } from "@/features/skills/types";
+import { filterSkillsByQuery, findSlashToken, replaceSlashToken } from "../slash-token";
+import { SlashSkillsMenu, type SlashSkillsSource } from "./slash-skills-menu";
 
 // Mirror core's session attachment allow-list (agent-sessions/attachment-service
 // ALLOWED_MIMES) + UPLOADS_MAX_BYTES so the server never 400s what we staged.
@@ -59,6 +63,19 @@ interface ComposerProps {
    * visible but unclickable in some browsers/zoom levels (ISS-506).
    */
   sticky?: boolean;
+  /**
+   * Controls rendered inside the bordered input row, left of the textarea and
+   * right of the attach `+` (ISS-718 — the model picker goes here). A slot
+   * rather than a prop per control so the run thread, which passes nothing,
+   * keeps exactly its current row.
+   */
+  actions?: ReactNode;
+  /**
+   * Enables the `/`-autocomplete (ISS-718). Absent, or `items` empty with
+   * nothing loading and no error, and the `/` trigger is not rendered at all —
+   * a control that can do nothing must not be shown, even greyed out.
+   */
+  slashSkills?: SlashSkillsSource;
 }
 
 /** Band wrapper styling shared by the Composer + the read-only note. `sticky`
@@ -86,13 +103,98 @@ export function Composer({
   placeholder = "Message the agent…",
   allowAttachments = false,
   sticky = true,
+  actions,
+  slashSkills,
 }: ComposerProps) {
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
   // Sendable when there's text OR at least one staged file.
   const canSend = !disabled && !busy && (value.trim().length > 0 || files.length > 0);
+
+  // cm:guard `slashOpen` must stay a separate flag from "a token exists" (ISS-718) — a token remains under the caret after Escape, so deriving openness from the token alone re-opens the panel the user just dismissed and makes Escape look broken
+  const [slashOpen, setSlashOpen] = useState(false);
+  const [slashHighlight, setSlashHighlight] = useState(0);
+  const [slashCaret, setSlashCaret] = useState(0);
+  // cm:guard the trigger exists only once there is something to insert, but loading AND error keep it visible — otherwise the button appears and vanishes as the query settles, and a failed fetch becomes invisible instead of offering its retry
+  const skillsKnown = !!slashSkills;
+  const hasSkills =
+    skillsKnown &&
+    (slashSkills.items.length > 0 || slashSkills.loading || !!slashSkills.error);
+  const slashToken = skillsKnown ? findSlashToken(value, slashCaret) : null;
+  const slashMatches = slashToken
+    ? filterSkillsByQuery(slashSkills?.items ?? [], slashToken.query)
+    : [];
+  const slashMenuOpen = slashOpen && !!slashToken && hasSkills && !disabled;
+
+  /** Sync the token state from the live textarea after any edit / caret move. */
+  const syncSlash = useCallback(
+    (next: string, caret: number, reopen: boolean) => {
+      setSlashCaret(caret);
+      const token = findSlashToken(next, caret);
+      if (!token) {
+        setSlashOpen(false);
+        return;
+      }
+      setSlashHighlight(0);
+      if (reopen) setSlashOpen(true);
+    },
+    [],
+  );
+
+  /** Replace the active token with the picked skill and restore the caret. */
+  const insertSkill = useCallback(
+    (skill: InvokableSkill) => {
+      const el = textareaRef.current;
+      const caret = el?.selectionStart ?? slashCaret;
+      const token = findSlashToken(value, caret);
+      if (!token) return;
+      const next = replaceSlashToken(value, token, skill.name);
+      setValue(next.value);
+      setSlashOpen(false);
+      setSlashCaret(next.caret);
+      // cm:why the caret is restored after React commits the new value — set synchronously, the browser parks it at the end of the whole message instead of just past the inserted name
+      requestAnimationFrame(() => {
+        const node = textareaRef.current;
+        if (!node) return;
+        node.focus();
+        node.setSelectionRange(next.caret, next.caret);
+      });
+    },
+    [value, slashCaret],
+  );
+
+  /** The `/` trigger: open on an existing token, else insert one at the caret. */
+  const openSlashMenu = useCallback(() => {
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? value.length;
+    if (findSlashToken(value, caret)) {
+      setSlashCaret(caret);
+      setSlashHighlight(0);
+      setSlashOpen(true);
+      el?.focus();
+      return;
+    }
+    // cm:guard keep the token rule true — a `/` glued to the previous word is not a command, so the trigger has to insert a separating space or the menu it just opened would immediately close
+    const before = value.slice(0, caret);
+    const needsSpace = before.length > 0 && !/\s$/.test(before);
+    const insert = `${needsSpace ? " " : ""}/`;
+    const next = before + insert + value.slice(caret);
+    const nextCaret = caret + insert.length;
+    setValue(next);
+    setSlashCaret(nextCaret);
+    setSlashHighlight(0);
+    setSlashOpen(true);
+    requestAnimationFrame(() => {
+      const node = textareaRef.current;
+      if (!node) return;
+      node.focus();
+      node.setSelectionRange(nextCaret, nextCaret);
+    });
+  }, [value]);
 
   // Validate + stage picked/pasted files against the allow-list (size/mime/count
   // caps) so the server never rejects what we accepted.
@@ -176,12 +278,41 @@ export function Composer({
       setValue("");
       setFiles([]);
       setWarnings([]);
+      setSlashOpen(false);
+      setSlashCaret(0);
     } catch {
       // Keep the text + files; the parent surfaces the error (Banner + toast).
     }
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // cm:guard the slash menu owns ↑/↓/Enter/Escape ONLY while it is open — widening that would regress Enter-to-send and Shift+Enter-for-newline (ISS-462 / ISS-714), which are the composer's oldest contracts
+    if (slashMenuOpen) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        if (!slashMatches.length) return;
+        const step = e.key === "ArrowDown" ? 1 : -1;
+        setSlashHighlight(
+          (h) => (h + step + slashMatches.length) % slashMatches.length,
+        );
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey) {
+        const picked = slashMatches[slashHighlight];
+        if (picked) {
+          e.preventDefault();
+          insertSkill(picked);
+          return;
+        }
+        // cm:why no match to insert, so this falls through to the send below and the typed text goes as-is
+      }
+      if (e.key === "Escape") {
+        // cm:guard Escape dismisses the menu ONLY — the typed text stays, which is the whole point of it here
+        e.preventDefault();
+        setSlashOpen(false);
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submit();
@@ -237,7 +368,10 @@ export function Composer({
             send live inside ONE bordered box instead of three flex siblings,
             with the focus ring moving to the container so it reads as one
             control (ISS-714). */}
-        <div className="flex w-full items-end gap-1 rounded-2xl border border-line-strong bg-surface py-1.5 pl-1.5 pr-2 transition-shadow focus-within:border-[color:var(--link)] focus-within:shadow-[var(--shadow-focus)]">
+        <div
+          ref={rowRef}
+          className="flex w-full items-end gap-0.5 rounded-2xl border border-line-strong bg-surface py-1.5 pl-1.5 pr-2 transition-shadow focus-within:border-[color:var(--link)] focus-within:shadow-[var(--shadow-focus)] sm:gap-1"
+        >
           {allowAttachments && (
             <>
               <IconButton
@@ -261,10 +395,34 @@ export function Composer({
               />
             </>
           )}
+          {hasSkills && (
+            <IconButton
+              type="button"
+              variant="ghost"
+              icon="command"
+              aria-label="Insert a skill"
+              aria-haspopup="listbox"
+              aria-expanded={slashMenuOpen}
+              className="h-11 w-11 flex-none"
+              disabled={disabled || busy}
+              onClick={openSlashMenu}
+            />
+          )}
+          {actions}
           <Textarea
+            ref={textareaRef}
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => {
+              setValue(e.target.value);
+              syncSlash(e.target.value, e.target.selectionStart ?? 0, true);
+            }}
             onKeyDown={onKeyDown}
+            // cm:guard re-read the token on selection changes too — a click or an arrow key moves the caret out of (or into) a token without changing the text, so keying only off onChange leaves the menu stale
+            onSelect={(e) => {
+              const el = e.currentTarget;
+              syncSlash(el.value, el.selectionStart ?? 0, false);
+            }}
+            onBlur={() => setSlashOpen(false)}
             disabled={disabled}
             rows={1}
             placeholder={
@@ -284,6 +442,22 @@ export function Composer({
             onClick={submit}
           />
         </div>
+        {slashSkills && (
+          <SlashSkillsMenu
+            open={slashMenuOpen}
+            onClose={() => setSlashOpen(false)}
+            query={slashToken?.query ?? ""}
+            matches={slashMatches}
+            highlight={slashHighlight}
+            onHighlight={setSlashHighlight}
+            onPick={insertSkill}
+            anchorRef={rowRef}
+            items={slashSkills.items}
+            loading={slashSkills.loading}
+            error={slashSkills.error}
+            retry={slashSkills.retry}
+          />
+        )}
       </div>
     </div>
   );

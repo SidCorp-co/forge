@@ -48,6 +48,9 @@ export interface PipelineHealth {
   waitingCause?: { kind: WaitingCause };
 }
 
+// cm:edge contract -> packages/core/src/db/schema.ts — the `model_tier` enum, shared so a client's model picker cannot offer a tier POST /api/agent-sessions/{start,send} would reject (ISS-718)
+export type ModelTier = schema.ModelTier;
+
 export type ProjectMember = typeof schema.projectMembers.$inferSelect;
 
 export type Label = typeof schema.labels.$inferSelect;

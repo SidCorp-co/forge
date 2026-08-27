@@ -8,7 +8,7 @@ import { skillRegistrations, skills, skillTargets } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { SkillContentBlockedError } from '../security/findings.js';
-import { MANAGED_META_SKILLS } from './effective.js';
+import { MANAGED_META_SKILLS, resolveRegisteredEffectiveSkills } from './effective.js';
 import { SkillLockedError } from './lock.js';
 import { MetaSkillReservedError } from './meta-skills.js';
 import {
@@ -60,6 +60,8 @@ const listQuerySchema = z
     scope: z.enum(['global', 'project', 'all']).optional(),
   })
   .strict();
+
+const invokableQuerySchema = z.object({ projectId: z.uuid() }).strict();
 
 const syncStatusSchema = z
   .object({
@@ -135,6 +137,40 @@ skillCrudRoutes.get(
     // name, so both the global template and any project-adopted copy carry it.
     const metaNames = new Set<string>(MANAGED_META_SKILLS);
     return c.json(rows.map((r) => ({ ...r, managedMeta: metaNames.has(r.name) })));
+  },
+);
+
+/**
+ * `GET /api/skills/invokable?projectId=` — the skills a human may invoke as a
+ * slash-command inside an interactive chat on this project, i.e. what populates
+ * the composer's `/`-autocomplete (ISS-718).
+ *
+ * This is `resolveRegisteredEffectiveSkills` narrowed to `installOnly`, which is
+ * EXACTLY the set `POST /api/agent-sessions/start` already accepts as
+ * `skillName` (ISS-733); reusing that resolver is what keeps the menu from
+ * offering a skill the start route would then reject.
+ */
+// cm:edge contract -> packages/core/src/agent-sessions/lifecycle-routes.ts — the listed set must stay identical to /start's skillName allow-list, or the menu offers skills that route refuses
+// cm:guard registered BEFORE `GET /:id` — that handler's uuid param validator would claim the literal path and answer 400 for every request here
+skillCrudRoutes.get(
+  '/invokable',
+  zValidator('query', invokableQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('query');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    if (!access.role) throw forbidden('not a project member');
+
+    const effective = await resolveRegisteredEffectiveSkills(projectId);
+    const invokable = effective
+      .filter((e) => e.installOnly)
+      .map((e) => ({ name: e.name, description: e.description }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return c.json({ skills: invokable });
   },
 );
 

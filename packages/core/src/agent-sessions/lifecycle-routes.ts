@@ -1,3 +1,13 @@
+// === Static-path lifecycle routes (start / send / abort / build-prompt /
+// prompt-built). All mounted BEFORE the `:id` handlers to avoid uuid validator
+// collisions. The web UI calls these to drive an interactive Claude CLI
+// conversation through the device-runner — the device speaks the legacy
+// `agent:start | agent:send | agent:abort | agent:review | agent:reindex`
+// vocabulary on its WS channel (the Rust runner's `daemon/chat.rs` is the only
+// implementer since packages/dev was deleted 2026-08-23), so core just resolves
+// a device, persists the session row, and publishes the right event into the
+// device's room. Request bodies live in `lifecycle-schemas.ts`.
+
 import { randomUUID } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
 import { and, eq, inArray } from 'drizzle-orm';
@@ -5,15 +15,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import {
-  agentSessionStatuses,
-  agentSessions,
-  devices,
-  issues,
-  projects,
-  runners,
-  schedules,
-} from '../db/schema.js';
+import { agentSessions, devices, issues, projects, runners, schedules } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import {
   findAvailableDeviceForProject,
@@ -39,7 +41,15 @@ import {
   noClaudeClient,
   resolveChatDevice,
 } from './chat-turn.js';
-import { pageContextSchema } from './page-context.js';
+import {
+  abortBodySchema,
+  buildPromptBodySchema,
+  desktopStatusSchema,
+  promptBuiltBodySchema,
+  sendBodySchema,
+  setRunnerBodySchema,
+  startBodySchema,
+} from './lifecycle-schemas.js';
 import {
   badRequest,
   ensureSessionOwnerOrAdmin,
@@ -50,92 +60,6 @@ import {
 import { recordSessionCreatedActivity } from './session-activity.js';
 import { finalizeScheduleSessionFailure } from './session-failure.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
-
-// === Static-path lifecycle routes (start / send / abort / build-prompt /
-// prompt-built). All mounted BEFORE the `:id` handlers to avoid uuid validator
-// collisions. The web UI calls these to drive an interactive Claude CLI
-// conversation through the device-runner — the device speaks the legacy
-// `agent:start | agent:send | agent:abort | agent:review | agent:reindex`
-// vocabulary on its WS channel (packages/dev preserves these handlers from
-// Strapi parity), so core just resolves a device, persists the session row,
-// and publishes the right event into the device's room.
-
-const startBodySchema = z
-  .object({
-    projectSlug: z.string().min(1).max(120),
-    prompt: z.string().min(1).max(40_000).optional(),
-    repoPath: z.string().max(2000).nullable().optional(),
-    preBuilt: z.boolean().optional(),
-    issueIds: z.array(z.uuid()).max(50).optional(),
-    type: z.string().max(80).optional(),
-    origin: z.string().max(40).optional(),
-    pageContext: pageContextSchema.optional(),
-    // ISS-499 — session attachments to attach to the first turn.
-    attachmentIds: z.array(z.uuid()).max(10).optional(),
-    // ISS-733 — run an install_only project skill as turn 1 (chat-runs-skill).
-    // Validated below against the project's registered effective skills so an
-    // arbitrary caller cannot slash-inject a skill it hasn't been granted.
-    skillName: z.string().min(1).max(128).optional(),
-  })
-  .strict();
-
-const sendBodySchema = z
-  .object({
-    sessionId: z.uuid(),
-    // ISS-499 — empty allowed when attachmentIds are present (files-only send,
-    // e.g. attach a screenshot with no caption); the refine below enforces that
-    // a turn carries either text or at least one attachment.
-    message: z.string().max(40_000),
-    claudeSessionId: z.string().max(500).nullable().optional(),
-    // Explicit runner pick from the chat runner picker: dispatch THIS turn (and
-    // re-pin the session) to this device instead of reusing the pin / auto-
-    // picking. Validated in `resolveChatDevice` against the chat-capable gate.
-    deviceId: z.uuid().nullable().optional(),
-    origin: z.string().max(40).optional(),
-    pageContext: pageContextSchema.optional(),
-    // ISS-499 — session attachments to attach to this turn.
-    attachmentIds: z.array(z.uuid()).max(10).optional(),
-  })
-  .strict()
-  .refine((d) => d.message.trim().length > 0 || (d.attachmentIds?.length ?? 0) > 0, {
-    message: 'message or attachmentIds required',
-    path: ['message'],
-  });
-
-const abortBodySchema = z
-  .object({
-    sessionId: z.uuid(),
-  })
-  .strict();
-
-// cm:why deviceId: null means Auto — clears the pin so the next turn auto-picks
-const setRunnerBodySchema = z.object({ deviceId: z.uuid().nullable() }).strict();
-
-const buildPromptBodySchema = z
-  .object({
-    projectSlug: z.string().min(1).max(120),
-    issueIds: z.array(z.uuid()).min(1).max(50),
-  })
-  .strict();
-
-const promptBuiltBodySchema = z
-  .object({
-    requestId: z.string().min(1).max(120),
-    prompt: z.string().max(80_000).optional(),
-    error: z.string().max(2000).optional(),
-  })
-  .strict()
-  .refine((o) => o.prompt !== undefined || o.error !== undefined, {
-    message: 'prompt or error required',
-  });
-
-const desktopStatusSchema = z
-  .object({
-    sessionId: z.uuid(),
-    status: z.enum(agentSessionStatuses),
-    note: z.string().max(2000).nullable().optional(),
-  })
-  .strict();
 
 export async function loadProjectBySlug(slug: string) {
   const [row] = await db
@@ -301,6 +225,7 @@ agentSessionLifecycleRoutes.post(
       preBuilt: input.preBuilt ?? false,
       attachmentIds: input.attachmentIds,
       skillName: input.skillName ?? null,
+      model: input.model,
       broadcastEvent: 'agent-session.created',
     });
 
@@ -347,6 +272,7 @@ agentSessionLifecycleRoutes.post(
       pageContext: input.pageContext ?? null,
       claudeSessionId: input.claudeSessionId ?? null,
       attachmentIds: input.attachmentIds,
+      model: input.model,
     });
     return c.json({ ok: true });
   },
