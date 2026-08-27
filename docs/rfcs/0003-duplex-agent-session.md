@@ -639,8 +639,11 @@ before any pipeline job depends on it.
 - `jobs/loop-monitor.ts` — the quiet computation reads `runtimeState`. Ships with phase 2.
 - `docs/architecture/runner-daemon.md` — the spawn description. Ships with phase 1.
 - **`docs/modules/issues-pipeline/autonomous-status.md` (THE STANDARD) and
-  `scripts/check-autonomous-transitions.mjs`.** S1 says the driver may write `needs_info`; the ledger
-  says only `flush` may. Those are two rules over one status. R1 of the checker validates S1 against
-  the skill's status table, so a skill that changes to *"call `flush`, never set the status"* breaks
-  it. S1, S4 and the checker move with the ledger or the gate lands with the published standard
-  describing a vocabulary the code no longer has.
+  `scripts/check-autonomous-transitions.mjs` — no longer coupled, and that is the point.** The
+  withdrawn version put two rules over one status: S1 said the driver may write `needs_info`, the gate
+  said only `flush` may. R1 validates S1 against the skill's status table, so a skill rewritten to
+  *"call `flush`, never set the status"* would have broken it — and, worse, a skill that kept the old
+  wording would have passed R1 while misinstructing the agent, because R1 compares status **sets** and
+  never **how** a status may be written. Withdrawing the gate dissolves that coupling: `needs_info`
+  stays directly writable by the driver, S1 and S4 are unchanged, and the checker needs no new rule.
+  This bullet stays as the record of a lockstep that a design change removed rather than satisfied.
