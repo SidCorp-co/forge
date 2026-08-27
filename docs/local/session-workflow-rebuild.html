@@ -1,0 +1,389 @@
+<meta charset="utf-8">
+<title>Session Workflow Rebuild</title>
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --ink:#1a1a19; --ink2:#55534e; --ink3:#8b8880;
+    --line:#dedbd4; --line2:#c6c2b8;
+    --alive:#2f7d5d; --alive-bg:#e6f2ec; --alive-ink:#1c5540;
+    --dead:#b03a2e; --dead-bg:#fbeae7;
+    --warn:#a8641a; --warn-bg:#fbf1e3;
+    --cool:#2c5f8a; --cool-bg:#e7f0f7;
+    --mute:#efece6;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#16161a; --panel:#1e1e23; --ink:#eceae5; --ink2:#a8a59d; --ink3:#75726b;
+      --line:#33333b; --line2:#454550;
+      --alive:#5fbf92; --alive-bg:#163025; --alive-ink:#8fd9b4;
+      --dead:#e0705f; --dead-bg:#331b17;
+      --warn:#d9a05b; --warn-bg:#2e2314;
+      --cool:#6fa8d6; --cool-bg:#152836;
+      --mute:#26262c;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#16161a; --panel:#1e1e23; --ink:#eceae5; --ink2:#a8a59d; --ink3:#75726b;
+    --line:#33333b; --line2:#454550;
+    --alive:#5fbf92; --alive-bg:#163025; --alive-ink:#8fd9b4;
+    --dead:#e0705f; --dead-bg:#331b17;
+    --warn:#d9a05b; --warn-bg:#2e2314;
+    --cool:#6fa8d6; --cool-bg:#152836;
+    --mute:#26262c;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);
+       line-height:1.6;margin:0;padding:44px 24px 96px;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{font-size:29px;line-height:1.25;letter-spacing:-.02em;margin:0 0 6px;font-weight:650}
+  .sub{color:var(--ink2);font-size:15px;margin:0 0 34px;max-width:74ch}
+  h2{font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink3);
+     margin:52px 0 4px;font-weight:600}
+  h3{font-size:19px;margin:2px 0 6px;font-weight:600;letter-spacing:-.01em}
+  p{margin:0 0 12px;max-width:78ch;color:var(--ink2)}
+  p strong,li strong{color:var(--ink);font-weight:600}
+  code{font-family:var(--mono);font-size:.885em;background:var(--mute);
+       padding:1px 5px;border-radius:4px;color:var(--ink)}
+  figure{margin:20px 0 8px;background:var(--panel);border:1px solid var(--line);
+         border-radius:12px;padding:20px 18px 12px;overflow-x:auto}
+  figcaption{font-size:13.5px;color:var(--ink2);margin-top:12px;padding-top:11px;
+             border-top:1px solid var(--line);max-width:none}
+  figcaption b{color:var(--ink)}
+  svg{display:block;min-width:660px;width:100%;height:auto}
+  .st{font-family:var(--sans);font-size:12.5px;fill:var(--ink)}
+  .sl{font-family:var(--sans);font-size:11.5px;fill:var(--ink2)}
+  .sm{font-family:var(--mono);font-size:11px;fill:var(--ink2)}
+  .sk{font-family:var(--sans);font-size:11px;font-weight:650;fill:var(--ink3);
+      letter-spacing:.08em}
+  .big{font-family:var(--sans);font-size:15px;font-weight:650;fill:var(--ink)}
+  table{border-collapse:collapse;width:100%;font-size:14px;margin:14px 0 6px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);
+        vertical-align:top}
+  th{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink3);
+     font-weight:600;border-bottom:1px solid var(--line2)}
+  td code{white-space:nowrap}
+  .tw{overflow-x:auto}
+  .verdict{border-left:3px solid var(--alive);background:var(--alive-bg);
+           padding:14px 18px;border-radius:0 8px 8px 0;margin:22px 0}
+  .verdict.no{border-left-color:var(--dead);background:var(--dead-bg)}
+  .verdict p{margin:0;color:var(--ink)}
+  .verdict p+p{margin-top:8px}
+  .nums{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+        gap:12px;margin:20px 0 8px}
+  .num{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+       padding:14px 16px}
+  .num .v{font-family:var(--mono);font-size:25px;font-weight:600;letter-spacing:-.02em;
+          color:var(--ink);line-height:1.15}
+  .num .k{font-size:12px;color:var(--ink3);margin-top:5px;line-height:1.45}
+  .num.hot .v{color:var(--dead)}
+  .num.good .v{color:var(--alive)}
+  a{color:var(--cool);text-decoration:underline;text-underline-offset:2px;
+    text-decoration-thickness:1px;text-decoration-color:var(--line2)}
+  a:hover{text-decoration-color:var(--cool)}
+  ul{margin:0 0 12px;padding-left:20px;color:var(--ink2)}
+  li{margin-bottom:5px}
+  .foot{margin-top:56px;padding-top:16px;border-top:1px solid var(--line);
+        font-size:12.5px;color:var(--ink3)}
+</style>
+
+<div class="wrap">
+
+<h1>Session workflow, rebuilt <span style="font-size:15px;font-weight:400;color:var(--dead)">— proposal withdrawn, corrections inline</span></h1>
+<p class="sub">How the runner drives one issue today, what changes when the Claude session is held
+open instead of re-spawned, and the boundary the measurements draw around it. Every lane below is
+read from <code>claude_code.rs</code>, <code>answer-resume.ts</code> and
+<code>session-resume.ts</code> — not from the proposal.</p>
+
+<h2>Figure 1 · today</h2>
+<h3>Print mode — the process dies at the park</h3>
+
+<figure>
+<svg viewBox="0 0 1000 372" role="img" aria-label="Timeline of the current print-mode session: the claude process exits at the park and a second process cold-resumes it after an average 758 hours.">
+  <defs>
+    <marker id="a1" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto">
+      <path d="M0,0 L7,3.2 L0,6.4 z" fill="var(--ink3)"/>
+    </marker>
+    <marker id="a2" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto">
+      <path d="M0,0 L7,3.2 L0,6.4 z" fill="var(--dead)"/>
+    </marker>
+    <pattern id="hatch" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="7" stroke="var(--dead)" stroke-width="1.4" opacity=".38"/>
+    </pattern>
+  </defs>
+
+  <text class="sk" x="0" y="14">TIME</text>
+  <line x1="40" y1="10" x2="985" y2="10" stroke="var(--line2)" stroke-width="1" marker-end="url(#a1)"/>
+
+  <!-- lane labels -->
+  <text class="st" x="0" y="62">core</text>
+  <text class="st" x="0" y="126">runner</text>
+  <text class="st" x="0" y="196">claude</text>
+  <text class="sl" x="0" y="211">process</text>
+  <text class="st" x="0" y="290">human</text>
+
+  <!-- lane rules -->
+  <line x1="92" y1="58" x2="985" y2="58" stroke="var(--line)" stroke-dasharray="2 4"/>
+  <line x1="92" y1="122" x2="985" y2="122" stroke="var(--line)" stroke-dasharray="2 4"/>
+  <line x1="92" y1="196" x2="985" y2="196" stroke="var(--line)" stroke-dasharray="2 4"/>
+  <line x1="92" y1="286" x2="985" y2="286" stroke="var(--line)" stroke-dasharray="2 4"/>
+
+  <!-- core ticks -->
+  <circle cx="128" cy="58" r="4.5" fill="var(--cool)"/>
+  <text class="sm" x="112" y="44">dispatch drive</text>
+  <circle cx="704" cy="58" r="4.5" fill="var(--cool)"/>
+  <text class="sm" x="612" y="30">answer-resume → open</text>
+  <circle cx="768" cy="58" r="4.5" fill="var(--cool)"/>
+  <text class="sm" x="742" y="46">re-dispatch</text>
+
+  <!-- runner job bars -->
+  <rect x="128" y="110" width="330" height="24" rx="5" fill="var(--cool-bg)" stroke="var(--cool)"/>
+  <text class="sl" x="140" y="126" fill="var(--cool)">job 1 · claim, temp MCP config, spawn</text>
+  <rect x="768" y="110" width="200" height="24" rx="5" fill="var(--cool-bg)" stroke="var(--cool)"/>
+  <text class="sl" x="780" y="126" fill="var(--cool)">job 2 · new claim</text>
+
+  <!-- claude process alive bar 1 -->
+  <rect x="152" y="176" width="290" height="40" rx="6" fill="var(--alive-bg)" stroke="var(--alive)" stroke-width="1.4"/>
+  <text class="big" x="164" y="192" fill="var(--alive-ink)">ALIVE</text>
+  <text class="sm" x="164" y="208" fill="var(--alive-ink)">-p &lt;prompt&gt;   stdin = Stdio::null()</text>
+
+  <!-- gravestone -->
+  <line x1="442" y1="168" x2="442" y2="224" stroke="var(--dead)" stroke-width="2"/>
+  <text class="sm" x="404" y="238" fill="var(--dead)">exit</text>
+
+  <!-- dead gap -->
+  <rect x="442" y="176" width="326" height="40" rx="6" fill="url(#hatch)" stroke="var(--dead)" stroke-dasharray="5 4"/>
+  <text class="big" x="530" y="192" fill="var(--dead)">NO PROCESS</text>
+  <text class="sm" x="470" y="209" fill="var(--dead)">needs_info: 3 issues, avg 355 h, 0 human replies</text>
+
+  <!-- claude process alive bar 2 -->
+  <rect x="792" y="176" width="176" height="40" rx="6" fill="var(--alive-bg)" stroke="var(--alive)" stroke-width="1.4"/>
+  <text class="big" x="804" y="192" fill="var(--alive-ink)">ALIVE</text>
+  <text class="sm" x="804" y="208" fill="var(--alive-ink)">--resume &lt;id&gt;</text>
+
+  <!-- park marker -->
+  <path d="M442,168 L442,152 L360,152" fill="none" stroke="var(--warn)" stroke-width="1.4"/>
+  <rect x="228" y="139" width="132" height="24" rx="5" fill="var(--warn-bg)" stroke="var(--warn)"/>
+  <text class="sl" x="238" y="155" fill="var(--warn)">status → needs_info</text>
+
+  <!-- human -->
+  <circle cx="660" cy="286" r="4.5" fill="var(--ink)"/>
+  <text class="sm" x="600" y="306">comment = the answer</text>
+  <path d="M660,278 L660,66" fill="none" stroke="var(--ink3)" stroke-dasharray="3 3" marker-end="url(#a1)"/>
+
+  <!-- resume risk -->
+  <path d="M880,224 L880,254" fill="none" stroke="var(--ink3)" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#a1)"/>
+  <rect x="700" y="256" width="284" height="40" rx="6" fill="var(--mute)" stroke="var(--line2)"/>
+  <text class="sl" x="710" y="272" fill="var(--ink2)">a drive job resumes via forge_phase resume_point,</text>
+  <text class="sm" x="710" y="288" fill="var(--ink2)">not --resume — resume_policy.ts:145. Cold, but not broken.</text>
+
+  <!-- pin note -->
+  <text class="sm" x="424" y="336" fill="var(--dead)">the real cost: needs_info is absent from NOTIFY_ON_STATUS — nobody is told</text>
+  <text class="sm" x="128" y="358" fill="var(--ink3)">~7.5 s spawn + MCP handshake, paid twice — 0.19 % of a p50 drive job either way</text>
+</svg>
+<figcaption><b>The cost is not the spawn, it is the gap.</b> Two processes, two handshakes, and
+between them an average 758 hours in which nothing holds the issue's context. The answer arrives to
+a process that no longer exists, so core has to reconstruct a session that may not be there —
+<code>claude_code.rs</code> carries a whole <code>resume_failed</code> branch for exactly that.</figcaption>
+</figure>
+
+<h2>Figure 2 · rebuilt</h2>
+<h3>One session per issue, held open across its park</h3>
+
+<figure>
+<svg viewBox="0 0 1000 330" role="img" aria-label="Timeline of the rebuilt session: a single claude process stays alive through the park and receives the human answer on stdin.">
+  <defs>
+    <marker id="b1" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto">
+      <path d="M0,0 L7,3.2 L0,6.4 z" fill="var(--ink3)"/>
+    </marker>
+    <marker id="b2" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto">
+      <path d="M0,0 L7,3.2 L0,6.4 z" fill="var(--alive)"/>
+    </marker>
+  </defs>
+
+  <text class="sk" x="0" y="14">TIME</text>
+  <line x1="40" y1="10" x2="985" y2="10" stroke="var(--line2)" stroke-width="1" marker-end="url(#b1)"/>
+
+  <text class="st" x="0" y="62">core</text>
+  <text class="st" x="0" y="126">runner</text>
+  <text class="st" x="0" y="196">claude</text>
+  <text class="sl" x="0" y="211">process</text>
+  <text class="st" x="0" y="290">human</text>
+
+  <line x1="92" y1="58" x2="985" y2="58" stroke="var(--line)" stroke-dasharray="2 4"/>
+  <line x1="92" y1="122" x2="985" y2="122" stroke="var(--line)" stroke-dasharray="2 4"/>
+  <line x1="92" y1="196" x2="985" y2="196" stroke="var(--line)" stroke-dasharray="2 4"/>
+  <line x1="92" y1="286" x2="985" y2="286" stroke="var(--line)" stroke-dasharray="2 4"/>
+
+  <circle cx="128" cy="58" r="4.5" fill="var(--cool)"/>
+  <text class="sm" x="112" y="44">dispatch drive</text>
+  <circle cx="660" cy="58" r="4.5" fill="var(--cool)"/>
+  <text class="sm" x="596" y="44">answer → runner, not a job</text>
+
+  <!-- one runner job bar, whole width -->
+  <rect x="128" y="110" width="840" height="24" rx="5" fill="var(--cool-bg)" stroke="var(--cool)"/>
+  <text class="sl" x="140" y="126" fill="var(--cool)">one job · one claim · runner owns the pipe for its whole life</text>
+
+  <!-- one alive bar, whole width, with a waiting section -->
+  <rect x="152" y="176" width="816" height="40" rx="6" fill="var(--alive-bg)" stroke="var(--alive)" stroke-width="1.4"/>
+  <rect x="442" y="176" width="218" height="40" fill="var(--warn-bg)" opacity=".85"/>
+  <line x1="442" y1="176" x2="442" y2="216" stroke="var(--warn)" stroke-dasharray="4 3"/>
+  <line x1="660" y1="176" x2="660" y2="216" stroke="var(--warn)" stroke-dasharray="4 3"/>
+  <text class="big" x="164" y="192" fill="var(--alive-ink)">ALIVE</text>
+  <text class="sm" x="164" y="208" fill="var(--alive-ink)">--input-format stream-json   stdin = piped</text>
+  <text class="sl" x="452" y="193" fill="var(--warn)">blocked on stdin</text>
+  <text class="sm" x="452" y="208" fill="var(--warn)">context intact · 0 tokens</text>
+  <text class="big" x="700" y="192" fill="var(--alive-ink)">ALIVE</text>
+  <text class="sm" x="700" y="208" fill="var(--alive-ink)">same session · same transcript</text>
+  <line x1="968" y1="168" x2="968" y2="224" stroke="var(--alive)" stroke-width="2"/>
+  <text class="sm" x="932" y="238" fill="var(--alive)">exit</text>
+
+  <rect x="228" y="139" width="132" height="24" rx="5" fill="var(--warn-bg)" stroke="var(--warn)"/>
+  <text class="sl" x="238" y="155" fill="var(--warn)">status → needs_info</text>
+  <path d="M360,151 L442,151 L442,170" fill="none" stroke="var(--warn)" stroke-width="1.4"/>
+
+  <circle cx="600" cy="286" r="4.5" fill="var(--ink)"/>
+  <text class="sm" x="528" y="304">comment = the answer</text>
+  <path d="M600,278 L600,66" fill="none" stroke="var(--ink3)" stroke-dasharray="3 3" marker-end="url(#b1)"/>
+  <path d="M660,66 L660,104" fill="none" stroke="var(--ink3)" stroke-dasharray="3 3" marker-end="url(#b1)"/>
+  <path d="M672,134 L672,170" fill="none" stroke="var(--alive)" stroke-width="1.6" marker-end="url(#b2)"/>
+  <text class="sm" x="684" y="158" fill="var(--alive)">one JSON line written to stdin</text>
+
+  <text class="sm" x="128" y="264" fill="var(--ink3)">no --resume · no device pin · no resume_failed branch on this path · one spawn, one handshake</text>
+  <text class="sm" x="128" y="322" fill="var(--ink3)">--replay-user-messages echoes the line back, so the runner can tell &quot;queued&quot; from &quot;picked up&quot;</text>
+</svg>
+<figcaption><b>Same flags the ask names, applied to the boundary that pays.</b> The one line of Rust
+that has to change is <code>cmd.stdin(std::process::Stdio::null())</code> — the process cannot be
+told anything after spawn today, which is the whole reason the park has to kill it.</figcaption>
+</figure>
+
+<h2>Figure 3 · the shape, re-tested</h2>
+<h3>One session per runner, pooling issues</h3>
+
+<figure>
+<svg viewBox="0 0 1000 312" role="img" aria-label="One pooled process handling three issues, showing verified context bleed between them and autocompact firing mid-job.">
+  <defs>
+    <marker id="c1" markerWidth="10" markerHeight="10" refX="7.5" refY="3.4" orient="auto">
+      <path d="M0,0 L7.5,3.4 L0,6.8 z" fill="var(--dead)"/>
+    </marker>
+  </defs>
+
+  <rect x="92" y="34" width="876" height="66" rx="8" fill="var(--panel)" stroke="var(--line2)"/>
+  <text class="st" x="0" y="62">one</text>
+  <text class="st" x="0" y="78">process</text>
+  <text class="sk" x="106" y="54">SHARED TRANSCRIPT — GROWS FOREVER</text>
+
+  <rect x="112" y="62" width="240" height="28" rx="5" fill="var(--alive-bg)" stroke="var(--alive)"/>
+  <text class="sl" x="124" y="80" fill="var(--alive-ink)">ISS-A · drive · 67 min</text>
+  <rect x="366" y="62" width="240" height="28" rx="5" fill="var(--alive-bg)" stroke="var(--alive)"/>
+  <text class="sl" x="378" y="80" fill="var(--alive-ink)">ISS-B · drive · 67 min</text>
+  <rect x="620" y="62" width="240" height="28" rx="5" fill="var(--alive-bg)" stroke="var(--alive)"/>
+  <text class="sl" x="632" y="80" fill="var(--alive-ink)">ISS-C · drive · 67 min</text>
+
+  <!-- bleed arrows -->
+  <path d="M300,110 C300,140 400,140 400,112" fill="none" stroke="var(--dead)" stroke-width="1.8" marker-end="url(#c1)"/>
+  <path d="M556,110 C556,140 654,140 654,112" fill="none" stroke="var(--dead)" stroke-width="1.8" marker-end="url(#c1)"/>
+  <text class="sl" x="316" y="160" fill="var(--dead)">everything A saw, B sees</text>
+  <text class="sl" x="572" y="160" fill="var(--dead)">and C sees both</text>
+
+  <!-- verified box -->
+  <rect x="92" y="178" width="430" height="104" rx="8" fill="var(--warn-bg)" stroke="var(--warn)"/>
+  <text class="sl" x="106" y="198" fill="var(--warn)">Bleed is real — but an in-band reset exists:</text>
+  <text class="sm" x="106" y="220" fill="var(--ink)">→ &quot;Remember the word: ZANZIBAR&quot;</text>
+  <text class="sm" x="352" y="220" fill="var(--alive)">← stored</text>
+  <text class="sm" x="106" y="238" fill="var(--ink)">→ &quot;What word were you told?&quot;</text>
+  <text class="sm" x="352" y="238" fill="var(--dead)">← ZANZIBAR</text>
+  <text class="sm" x="106" y="256" fill="var(--alive)">→ &quot;/clear&quot;  emits conversation_reset, then:</text>
+  <text class="sm" x="106" y="272" fill="var(--alive)">→ &quot;What word were you told?&quot;</text>
+  <text class="sm" x="352" y="272" fill="var(--alive)">← NONE</text>
+
+  <!-- autocompact -->
+  <rect x="538" y="178" width="430" height="104" rx="8" fill="var(--warn-bg)" stroke="var(--warn)"/>
+  <text class="sl" x="552" y="198" fill="var(--warn)">And it fails at the worst moment:</text>
+  <rect x="552" y="210" width="400" height="16" rx="3" fill="var(--mute)" stroke="var(--line2)"/>
+  <rect x="552" y="210" width="330" height="16" rx="3" fill="var(--warn)" opacity=".55"/>
+  <line x1="882" y1="204" x2="882" y2="232" stroke="var(--dead)" stroke-width="2"/>
+  <text class="sm" x="838" y="246" fill="var(--dead)">--autocompact</text>
+  <text class="sm" x="552" y="262" fill="var(--warn)">the window fills mid-issue — unless /clear resets it</text>
+</svg>
+<figcaption><b>What survives the retest is narrower than first claimed.</b> The bleed is real, but
+<code>/clear</code> answers it: a cleared session has no prior transcript, so
+<code>forge-drive</code>'s clean-context reviewer stays isolated and the compact window resets between
+jobs. What <code>/clear</code> does <b>not</b> reset is process-level state — cwd, the per-issue
+worktree, env, <code>FORGE_VERDICT_FILE</code>. So pooling across <b>different repos</b> still has a
+real problem; pooling within one repo is not refuted by this evidence.</figcaption>
+</figure>
+
+<h2>Why the boundary sits there</h2>
+
+<div class="nums">
+  <div class="num"><div class="v">~7.5 s</div><div class="k">cold start with the real <code>--mcp-config</code>; the API call itself is 1.7–1.9 s of it</div></div>
+  <div class="num"><div class="v">4026 s</div><div class="k">p50 drive job, 59 finished jobs, last 30 days (p95 11654 s)</div></div>
+  <div class="num hot"><div class="v">0.19 %</div><div class="k">what pooling would actually reclaim off a median job</div></div>
+  <div class="num"><div class="v">43 %</div><div class="k">of the prefix that actually hits cache under production conditions — the 7.5× figure was a measurement error</div></div>
+</div>
+
+<p><b>Correction (2026-08-27):</b> the cache figure was measured with the <i>same</i> prompt twice.
+Production never does that — every drive job carries a different <code>--append-system-prompt</code>,
+which breaks the prefix. Re-measured with differing prompts, ~19k of ~45k tokens hit cache and 25,700
+are recreated per job; the payload reports <code>ephemeral_1h_input_tokens</code>, a 1-hour TTL
+against a 67-minute p50 job. &quot;The session is already warm&quot; is false. The startup ratio above
+still holds — it is scale-invariant — but it was never the load-bearing argument.</p>
+
+<div class="verdict no">
+<p><b>Withdrawn:</b> one session per <b>issue</b>, held across the park. Three findings kill it
+independently — the answer has nowhere to go (a <code>running</code> job makes
+<code>answer-resume</code> a swallowed no-op via <code>jobs_active_unique</code>), the 25 s synthetic
+heartbeat would make a park report progress forever (principle №10), and a held job takes both the
+project and runner slot, where forge-dev already has 7 parks against a cap of 3.</p>
+<p>It was also priced wrong: the 758 h belongs to <code>on_hold</code> — core's cancel-park, no
+question pending, no session to hold. The population it would serve is 3 issues, and drive jobs do
+not take the <code>--resume</code> path it was built around (<code>resume-policy.ts:145</code>;
+<code>resume_failed</code> fired 0 times in 90 days).</p>
+</div>
+<div class="verdict">
+<p><b>Do instead:</b> <code>needs_info</code> is absent from <code>NOTIFY_ON_STATUS</code> while
+<code>waiting</code> — the park nothing wakes — is present. All 17 parked issues have <b>zero</b>
+human replies. The question is asked on a surface no human reads; fix that first, then alarm an aged
+park, then thicken <code>forge_phase resume_point</code>.</p>
+</div>
+
+<h2>What changes in <code>build_args</code></h2>
+
+<div class="tw">
+<table>
+<thead><tr><th>Flag</th><th>Today</th><th>Rebuilt</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td><code>stdin</code></td><td><code>Stdio::null()</code></td><td><code>Stdio::piped()</code></td><td>the single line that makes a held session possible at all</td></tr>
+<tr><td><code>-p &lt;prompt&gt;</code></td><td>the whole job</td><td>first stdin message</td><td>the prompt becomes message 1 of a stream, not the process's only input</td></tr>
+<tr><td><code>--input-format</code></td><td>—</td><td><code>stream-json</code></td><td>realtime streaming input; the mechanism the ask names</td></tr>
+<tr><td><code>--replay-user-messages</code></td><td>—</td><td>on</td><td>echoes each stdin line back, so the runner distinguishes queued from picked up</td></tr>
+<tr><td><code>--session-id</code></td><td>scraped off the stream (<code>claude_code.rs:552</code>)</td><td>runner mints a UUID</td><td>the ledger has the id before the first event, not after</td></tr>
+<tr><td><code>--fork-session</code></td><td>—</td><td>on the resume path only</td><td>a new id rather than reusing one, which sidesteps <code>resume_failed</code></td></tr>
+<tr><td><code>--autocompact</code></td><td>inherits <code>auto</code></td><td>set explicitly</td><td>a session held across a park must not choose its own compact window</td></tr>
+<tr><td><code>--max-budget-usd</code></td><td>—</td><td>per job</td><td>a long-lived session needs a ceiling more than a print-mode one</td></tr>
+<tr><td colspan="4" style="color:var(--ink2)">Unchanged: <code>--output-format stream-json</code> · <code>--verbose</code> · <code>--include-partial-messages</code> · <code>--permission-mode</code> · <code>--mcp-config</code> · <code>--strict-mcp-config</code> · <code>--append-system-prompt</code> · <code>--allowed-tools</code> / <code>--disallowed-tools</code> · <code>--model</code></td></tr>
+<tr><td colspan="4" style="color:var(--ink2)">Not recommended: <code>--bare</code> and <code>--safe-mode</code> strip CLAUDE.md discovery and skill resolution, which the drive model depends on.</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2>What this does not solve</h2>
+<ul>
+<li>A held session still burns a runner slot for the whole park. Today's dead process does not — so
+this trades <b>758 hours of lost context</b> for <b>capacity held open</b>, and the cap needs a
+policy for how long a session may wait before the runner gives the slot back.</li>
+<li>A runner restart kills every held session. The <code>--resume</code> path does not go away; it
+stops being the <i>normal</i> path and becomes the recovery one.</li>
+<li>The three non-resuming parks are untouched. <code>waiting</code> and <code>on_hold</code> are
+stopped by a person and no answer restarts them — that is <a href="../modules/issues-pipeline/autonomous-status.md">S2</a>, and it
+is the rule the new checker holds the skills to.</li>
+</ul>
+
+<p class="foot">Measured 2026-08-27 · <code>claude</code> 2.1.247 · durations from
+<code>pipeline_run_step_durations</code>, 59 finished <code>drive</code> jobs over 30 days ·
+lanes read from <code>forge-runner-core/src/runner/claude_code.rs</code>,
+<code>pipeline/answer-resume.ts</code>, <code>jobs/session-resume.ts</code> ·
+written up in <code>docs/proposals/autonomous-session-pooling.md</code></p>
+
+</div>
