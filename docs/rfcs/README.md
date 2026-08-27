@@ -8,6 +8,7 @@ Request for Comments — long-form design proposals for significant changes. Eac
 |---|---|---|
 | [0001](0001-skill-delta-override.md) | Skill delta-override composition | Draft |
 | [0002](0002-park-axis-separation.md) | Park axis separation — mechanical failure holds the job, `waiting` means a human is needed | Draft |
+| [0003](0003-duplex-agent-session.md) | Duplex agent session — a running agent gets an inbox; resident while working, durable while waiting | Draft |
 
 Write the next one as `NNNN-kebab-case-title.md` (numbering restarted at 0001 — the previous archive was retired as outdated).
 
