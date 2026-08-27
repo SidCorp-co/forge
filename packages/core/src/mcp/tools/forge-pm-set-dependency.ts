@@ -27,7 +27,7 @@ import { decomposeParent } from '../../issues/decompose.js';
 import { detectCycle } from '../../issues/dependency-routes.js';
 import { publishPipelineHealthChanged } from '../../issues/pipeline-health.js';
 import { logger } from '../../logger.js';
-import { safeRecordActivity } from '../../pipeline/activity.js';
+import { type Actor, safeRecordActivity } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { deprecationFor } from '../deprecation.js';
 import {
@@ -51,9 +51,11 @@ export const pmSetDependencyInputSchema = z
   })
   .strict();
 
+// cm:guard pass `actor` whenever the caller knows its principal — a PAT reaches here behind a SYNTHETIC device (mcp/handler.ts stubDeviceForPat) whose id is an api_tokens row, so the default writes an activity_log actor_id that matches no `devices` row while the same request's status transition is attributed correctly through principalActor()
 export async function pmSetDependencyHandler(
   device: Device,
   input: z.infer<typeof pmSetDependencyInputSchema>,
+  actorOverride?: Actor,
 ) {
   // ISS-131 — was `assertPmActor`. Plan-pipeline agents legitimately need to
   // declare `blocks`/`decomposes` edges as part of writing a plan, but they
@@ -129,7 +131,7 @@ export async function pmSetDependencyHandler(
       kind: input.kind,
       ...(input.reason ? { reason: input.reason } : {}),
     };
-    const actor = { type: 'device' as const, id: device.id };
+    const actor = actorOverride ?? { type: 'device' as const, id: device.id };
     await Promise.all([
       safeRecordActivity({
         issueId: input.fromIssueId,
@@ -198,7 +200,7 @@ export async function pmSetDependencyHandler(
       ...(input.validUntil ? { validUntil: input.validUntil } : {}),
       ...(input.reason ? { reason: input.reason } : {}),
     };
-    const actor = { type: 'device' as const, id: device.id };
+    const actor = actorOverride ?? { type: 'device' as const, id: device.id };
     await Promise.all([
       safeRecordActivity({
         issueId: input.fromIssueId,
@@ -261,7 +263,7 @@ function recordDeprecation(ctx: McpContext, toolName: string) {
 export const forgePmSetDependencyTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_pm.set_dependency',
   description:
-    "[DEPRECATED — use forge_project_pm (action=set_dependency)] Record a dependency edge (blocks/relates/duplicates/parent/decomposes) between two issues in the same project. Idempotent on (projectId, fromIssueId, toIssueId, kind) — a duplicate call returns created:false and applies whichever of `validUntil`/`reason` you passed, reporting `updated:true` when it changed something. Expire an edge by setting `validUntil` in the past; that is the only way an agent can retract one (DELETE is JWT-only REST). Omitted fields are left alone. Caller must be a member of the project. Dispatcher convention (ISS-40 PR-E): only `kind='blocks'` rows gate dispatch — `(from=A, to=B, kind='blocks')` means A must reach a terminal status (released/closed) before B can dispatch. For `blocks` edges, cycles are rejected with a CYCLE_DETECTED error. ISS-138 (PR-D): when `kind='decomposes'`, the first edge added to a parent also triggers integration-branch creation + branchConfig auto-fill on parent and child. Pass `decomposeOpts.useIntegrationBranch: false` to opt out (children then branch off the project default).",
+    "[DEPRECATED — use forge_project_pm (action=set_dependency)] Requires a paired-device token: a personal access token is refused with PM_REQUIRES_DEVICE, and its blocks/relates path is forge_issues create/update data.relations instead. Record a dependency edge (blocks/relates/duplicates/parent/decomposes) between two issues in the same project. Idempotent on (projectId, fromIssueId, toIssueId, kind) — a duplicate call returns created:false and applies whichever of `validUntil`/`reason` you passed, reporting `updated:true` when it changed something. Expire an edge by setting `validUntil` in the past; that is the only way an agent can retract one (DELETE is JWT-only REST). Omitted fields are left alone. Caller must be a member of the project. Dispatcher convention (ISS-40 PR-E): only `kind='blocks'` rows gate dispatch — `(from=A, to=B, kind='blocks')` means B waits for A's `merged_at` stamp; a reopened A blocks again, and a closed A without that stamp unblocks B only on a structurally unstampable base. For `blocks` edges, cycles are rejected with a CYCLE_DETECTED error. ISS-138 (PR-D): when `kind='decomposes'`, the first edge added to a parent also triggers integration-branch creation + branchConfig auto-fill on parent and child. Pass `decomposeOpts.useIntegrationBranch: false` to opt out (children then branch off the project default).",
   inputSchema: zodToMcpSchema(pmSetDependencyInputSchema),
   handler: async (args) => {
     recordDeprecation(ctx, 'forge_pm.set_dependency');

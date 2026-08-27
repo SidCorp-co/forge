@@ -52,7 +52,7 @@ describe('forge facts registry', () => {
     expect(text).toContain('QUOTE that human');
     expect(text).toContain('NEW `needs_info`');
     const fact = getFact('pipeline-rules');
-    expect(fact?.version).toBe(7);
+    expect(fact?.version).toBe(8);
   });
 
   // cm:guard the prompt and the lifecycle guide must agree about `waiting`, and guides/registry.test.ts asserts the same three things — an agent reads the prompt, a human reads the guide, and the two disagreeing about who may write a status is how ISS-163 became six interventions

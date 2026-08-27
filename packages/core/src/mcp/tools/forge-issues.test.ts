@@ -141,6 +141,10 @@ vi.mock('../../issues/label-service.js', () => ({
   listIssueLabels: (...args: unknown[]) => listIssueLabelsMock(...args),
 }));
 
+// cm:guard the relations read joins `issues` twice, which the generic db.select chain above does not model — leave this mocked to an EMPTY graph, because every pre-existing `get` test in this file reaches it and would otherwise die on `outgoingRows.map is not a function` (ISS-868)
+vi.mock('../../issues/dependency-read.js', () => ({
+  loadIssueRelations: vi.fn(async () => ({ blocks: [], blockedBy: [] })),
+}));
 // ISS-571 — stub pmSetDependencyHandler so create-with-relations tests don't
 // need to program the full DB query chain that the real handler executes.
 const pmSetDependencyMock = vi.fn(async () => ({ id: 'dep-id-1', created: true }));
@@ -846,6 +850,7 @@ describe('forge_issues tool', () => {
           toIssueId: ISSUE_ID,
           kind: 'blocks',
         }),
+        { type: 'device', id: fakeDevice.id },
       );
     });
 
@@ -875,6 +880,7 @@ describe('forge_issues tool', () => {
           toIssueId: BLOCKED_ID,
           kind: 'blocks',
         }),
+        { type: 'device', id: fakeDevice.id },
       );
     });
 

@@ -25,9 +25,14 @@ const CHAT_SETTABLE_STATUSES = new Set(['draft', 'waiting', 'needs_info', 'on_ho
 const MIN_TITLE_CHARS = 10;
 const MIN_DESCRIPTION_CHARS = 200;
 
+// cm:guard every field this guard does NOT name is permitted, so widening `forge_issues` widens chat with it — `data.relations` reached update in ISS-868 and a room could retract a live `blocks` edge (re-send it with `validUntil` in the past) and dispatch a dependent ahead of its blocker, which is exactly what the `unblock` refusal below exists to stop
+// cm:edge lockstep -> packages/core/src/mcp/tools/forge-issues.ts — that tool's `data` schema is what chat can reach; a new side-effecting key there needs a decision here, not silence
 export function guardIssueWrites(args: Record<string, unknown>): string | null {
   const action = args.action;
   const data = (args.data ?? {}) as Record<string, unknown>;
+  if (data.relations !== undefined) {
+    return 'chat must not set issue dependencies — a `blocks` edge (and retracting one) changes what the pipeline dispatches and when; ask a human, or set it from an agent session';
+  }
   if (action === 'create') {
     data.status = 'draft';
     args.data = data;

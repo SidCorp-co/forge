@@ -79,6 +79,7 @@ export const forgeProjectPmTool: ContextScopedMcpToolFactory = ({ device }) => (
   name: 'forge_project_pm',
   description:
     'PM agent action dispatcher. Actions: snapshot | graph | runner_load | dispatch | set_dependency | write_decision. ' +
+    'CREDENTIAL CLASS: dispatch, write_decision and set_dependency require a paired-device token and refuse a personal access token with PM_REQUIRES_DEVICE; snapshot, graph and runner_load work with either. With a PAT, set or retract a blocks/relates edge through forge_issues create/update data.relations and read edges back from forge_issues get. ' +
     'snapshot/graph/runner_load: read-only; require projectId + project membership. ' +
     'graph also accepts optional rootIssueId (BFS) and depth (default 2, max 5); without rootIssueId returns the full graph capped at 200 nodes with truncated:true + remainingNodes:N. ' +
     'dispatch: enqueue a coder-skill job for an issue (projectId, issueId, jobType, reason; optional payload, modelTier); requires PM-actor capability. ' +
