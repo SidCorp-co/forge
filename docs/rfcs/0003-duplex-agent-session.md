@@ -4,6 +4,9 @@
 - Supersedes: the withdrawn [session-pooling proposal](../proposals/autonomous-session-pooling.md)
 - Related: [RFC 0002](0002-park-axis-separation.md) (park axis) · [agent-driven pipeline](../proposals/agent-driven-pipeline.md) · [runner-daemon](../architecture/runner-daemon.md)
 
+Diagrams: `docs/local/duplex-architecture.html` — components, lifecycle, the queueing rule, and the
+ack-is-commit flow. Local only, not committed.
+
 ## Summary
 
 A running agent gets an **inbox**. The runner spawns the CLI with a duplex channel instead of
