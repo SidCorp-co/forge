@@ -72,9 +72,10 @@ export const NON_TARGETABLE_STATUSES: ReadonlySet<IssueStatus> = new Set(['draft
  *
  * Two guardrails survive (the "moderate" in moderately-strict):
  *   1. `draft` is never a target (issues only enter draft at creation).
- *   2. A `draft` may only be promoted to `open`, discarded to `closed`, or
- *      handed off DIRECT-SHIP to `developed` (ISS-431) — an unaccepted AI
- *      proposal cannot teleport into early/mid pipeline stages.
+ *   2. A `draft` may only move to the four `DRAFT_EXIT_TARGETS` — promoted to
+ *      `open`, discarded to `dropped` (or `closed`), or handed off DIRECT-SHIP
+ *      to `developed` (ISS-431). An unaccepted AI proposal cannot teleport
+ *      into early/mid pipeline stages.
  *
  * Direct-ship (`draft → developed`): work implemented OUTSIDE the pipeline
  * (an operator/assistant session pushing its own ISS-* branch) enters at the
@@ -85,12 +86,18 @@ export const NON_TARGETABLE_STATUSES: ReadonlySet<IssueStatus> = new Set(['draft
  * already-finished work. Callers should set `sessionContext.branch` so the
  * reviewer knows what to diff.
  */
+// cm:guard `dropped` is the RIGHT discard for a draft and `closed` is the wrong one: closing stamps merged_at, so discarding a draft today unblocks every dependent of an issue whose work never existed. Keep `closed` only because callers predate the status.
+// cm:guard exported so the refusal in apply-transition.ts can NAME these instead of restating them — the message has to list the legal exits, and a second copy of the list is a message that goes stale without a single test going red
+export const DRAFT_EXIT_TARGETS: readonly IssueStatus[] = [
+  'open',
+  'closed',
+  'dropped',
+  'developed',
+];
+
 export function canTransitionFree(from: IssueStatus, to: IssueStatus): boolean {
   if (NON_TARGETABLE_STATUSES.has(to)) return false;
-  // cm:guard `dropped` is the RIGHT discard for a draft and `closed` is the wrong one: closing stamps merged_at, so discarding a draft today unblocks every dependent of an issue whose work never existed. Keep `closed` only because callers predate the status.
-  if (from === 'draft') {
-    return to === 'open' || to === 'closed' || to === 'dropped' || to === 'developed';
-  }
+  if (from === 'draft') return DRAFT_EXIT_TARGETS.includes(to);
   return true;
 }
 

@@ -128,11 +128,10 @@ function queueAuthAndIssue(row: {
   role?: 'admin' | 'member' | 'viewer';
   issSeq?: number;
 }) {
-  // 1) assertEmailVerified select
+  // cm:guard the two selectLimit queues are ORDER-COUPLED to the route: assertEmailVerified reads first, the issue row second. Swap them and every test in this file 404s on a row that is really the verification check.
   selectLimit.mockResolvedValueOnce([
     { emailVerifiedAt: row.verified === false ? null : new Date() },
   ]);
-  // 2) issue row lookup
   selectLimit.mockResolvedValueOnce([
     {
       id: ISSUE_ID,
@@ -142,7 +141,6 @@ function queueAuthAndIssue(row: {
       issSeq: row.issSeq ?? 1,
     },
   ]);
-  // 3) effective project access resolution
   projectAccess.mockResolvedValueOnce({
     projectId: PROJECT_ID,
     orgId: 'org-1',
@@ -484,5 +482,18 @@ describe('POST /api/issues/:id/transition — draft as a target (ISS-787)', () =
 
     expect((await req({ toStatus: 'confirmed' }, token)).status).toBe(200);
     expect(sqlText((updateWhere.mock.calls[0] as unknown[])?.[0])).not.toContain('not exists');
+  });
+
+  // cm:guard assert the message blames the SOURCE — the branch is only reachable with fromStatus `draft`, and the old wording named the TARGET (`'needs_info' is not a valid runtime status target`), which is false for every status it could name and reads as "that status was removed"
+  it('blames the draft source, not the target, when a draft may not go there', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'draft' });
+
+    const res = await req({ toStatus: 'needs_info' }, token);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { message: string };
+    expect(body.message).toContain('`draft`');
+    expect(body.message).not.toMatch(/not a valid runtime status target/);
+    expect(updateWhere).not.toHaveBeenCalled();
   });
 });
