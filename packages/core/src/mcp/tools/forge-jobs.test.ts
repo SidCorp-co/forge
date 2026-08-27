@@ -338,9 +338,8 @@ describe('forge_jobs.events', () => {
     const tool = forgeJobsEventsTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([baseJobRow]);
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
-    selectLimit.mockResolvedValueOnce([
-      { id: 'e1', jobId: JOB_ID, ts: new Date(), kind: 'stdout', data: { blob: 'x'.repeat(50_000) }, seq: 5 },
-    ]);
+    const fat = { id: 'e1', jobId: JOB_ID, ts: new Date(), kind: 'stdout', seq: 5 };
+    selectLimit.mockResolvedValueOnce([{ ...fat, data: { blob: 'x'.repeat(50_000) } }]);
 
     const result = (await tool.handler({ jobId: JOB_ID, sinceSeq: 4 })) as {
       items: unknown[];

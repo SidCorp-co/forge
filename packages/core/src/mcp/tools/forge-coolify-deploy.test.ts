@@ -39,8 +39,10 @@ vi.mock('../../pipeline/release-coolify.js', () => ({
   isIssueAtReleaseStage: (a: unknown) => isIssueAtReleaseStageSpy(a),
 }));
 
-const findLastOutboundSpy = vi.fn(), findLastOutboundForTargetSpy = vi.fn();
-const fetchDeploymentLogsSpy = vi.fn(), fetchRuntimeLogsSpy = vi.fn();
+const findLastOutboundSpy = vi.fn(),
+  findLastOutboundForTargetSpy = vi.fn();
+const fetchDeploymentLogsSpy = vi.fn(),
+  fetchRuntimeLogsSpy = vi.fn();
 vi.mock('../../integrations/coolify/log-fetch.js', () => ({
   fetchCoolifyDeploymentLogs: (...a: unknown[]) => fetchDeploymentLogsSpy(...a),
   fetchCoolifyRuntimeLogs: (...a: unknown[]) => fetchRuntimeLogsSpy(...a),
@@ -85,7 +87,9 @@ function makeDeviceCtx() {
   };
 }
 
-function pushMemberOk() { resultQueue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); }
+function pushMemberOk() {
+  resultQueue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+}
 
 function pair(
   id: string,
@@ -96,22 +100,14 @@ function pair(
     breakerOpenedAt?: Date | null;
   } = {},
 ) {
+  const base = { id, provider: 'coolify', active: true };
   return {
-    binding: {
-      id,
-      environment,
-      projectId: PROJECT_ID,
-      provider: 'coolify',
-      config: {},
-      active: true,
-    },
+    binding: { ...base, environment, projectId: PROJECT_ID, config: {} },
     connection: {
-      id,
-      provider: 'coolify',
+      ...base,
       config: opts.config ?? {},
       lastHealthStatus: opts.lastHealthStatus ?? null,
       breakerOpenedAt: opts.breakerOpenedAt ?? null,
-      active: true,
     },
   };
 }

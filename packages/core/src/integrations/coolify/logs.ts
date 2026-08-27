@@ -1,6 +1,6 @@
 // Pure log-shaping helpers for the Coolify `logs` action. Kept dependency-free
 // (no db / client imports) so they can be unit-tested without env, and reused
-// by the adapter's `fetchCoolifyDeploymentLogs`.
+// by `log-fetch.ts`'s `fetchCoolifyDeploymentLogs`.
 
 import { createHash } from 'node:crypto';
 import { FILTERED } from '@forge/observability';
