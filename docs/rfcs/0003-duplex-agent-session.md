@@ -392,6 +392,106 @@ That is the hole, and it is the whole hole.
   three"*, i.e. nothing reads it — the has-no-consumer failure `CLAUDE.md` names for `cm:why`. If a
   discriminator is wanted later, the axis is cost-if-wrong / reversibility, not blocking radius.
 
+### The park has a deadline, and expiry decides
+
+**Owner decision, 2026-08-27.** A question is asked with its answer already attached. If no human
+answers before the deadline, the agent proceeds on its own recommendation, records that it did, and
+does not ask again. It stops only when it **cannot** recommend, or when being wrong is **not
+recoverable**.
+
+This is a stronger design than the version it replaces, and for the reason the review gave: the old
+ledger optimised round-trip **count** on a premise I invented (0.03 parks per issue measured, not
+three). This bounds round-trip **latency**, which is the cost that was actually measured — zero human
+replies across all 17 parked issues, median park age ~360 h. A park that decides cannot be infinite.
+
+**This deadline is not the residency window.** Two timers, two owners, two consequences: residency
+asks *should this process stay alive* (seconds to minutes; the consequence is a runner slot), the park
+deadline asks *should we keep waiting for a human* (hours; the consequence is the outcome of the
+issue). Residency expiry checkpoints and releases a slot. Deadline expiry **decides**.
+
+#### `add` carries the recommendation, at add time
+
+```
+forge_questions.add {
+  issueId, question, context,
+  recommendation,   // what I will do if nobody answers. NOT optional.
+  reversible: true | false,
+}
+```
+
+`recommendation` is written when the question is found, not at expiry. Composing it 60 minutes later
+from memory is the question-quality problem the review flagged, and promoting it from *suggestion* to
+*decision* raises the stakes on getting it right. Two omissions are the two escape hatches, and they
+are the only ones:
+
+| At the deadline | When |
+|---|---|
+| **decide** | a recommendation exists and `reversible: true` |
+| **keep waiting** | no recommendation — the agent genuinely has no basis to prefer a branch, and says so in the field's place |
+| **keep waiting** | `reversible: false` |
+
+#### "Not recoverable" is a list, not a judgement
+
+Left to taste this becomes the undecidable test again, used either never or always. A question is
+`reversible: false` when its answer would:
+
+- change or delete data that cannot be reconstructed from the repo
+- change a published contract that other code, another package, or another team depends on
+- touch auth, permissions, money, or a customer-visible default
+- run a migration
+- **contradict a decision a human already recorded on this issue** — the ownership line in `CLAUDE.md`
+  forbids silently overriding one, and this is the item most likely to be missed, because the
+  recommendation will often look better than the decision it would override
+
+Everything else is `reversible: true`, including work that is large. Size is not impact.
+
+#### Best for the result, not cheapest to build
+
+The recommendation names the outcome that is **best**, explicitly not the one that is least work. This
+has to be stated because the default incentive runs the other way: an agent choosing between the
+narrow fix and the right one defaults to narrow, and a deadline turns that preference into shipped
+behaviour rather than into a question somebody reviews. If the better answer is the more expensive
+path, that is not a reason to prefer the other.
+
+#### The record is posted before the decision is acted on
+
+Not after. `apply-transition.ts:206-232` already establishes the shape and the reason: the transition
+reason is posted as a comment **before** the status write, because a park that commits without its
+reason is an unexplained park. A decision that commits without its record is an unexplained decision,
+and at a 43 % drive-job failure rate the session that would have posted it afterwards may not survive
+to do so. One comment per expiry, naming each question, the recommendation taken, and that nobody
+answered in time.
+
+#### The deadline is durable and core-side
+
+A timestamp on the question row that core sweeps — not an in-memory timer on the runner. Same
+correction as Revision 2 item 11, for the same reason: an in-process timer dies with the daemon, and
+`inv7-alarms.ts` already has the sweep shape for an aged hold.
+
+#### Two consequences this creates
+
+**Notification stops being a preference and becomes a prerequisite.** I had sequenced the
+`NOTIFY_ON_STATUS` fix as *should land first*. Under this rule it **must**: `needs_info` is absent
+from `NOTIFY_ON_STATUS`, and all 17 parked issues have zero human replies. If nobody is told a
+question exists, every deadline expires unanswered and the rule degrades into *"always decide, never
+ask"* — the escape hatches would still hold, but the ask-and-wait path would be dead on arrival, and
+the deadline would be decoration.
+
+**A late answer must not be dropped silently.** `answer-resume.ts` requires
+`status === 'needs_info'`; once a deadline has expired and the agent has moved on, the issue is no
+longer parked, so `resumableIssue` returns null and a human's answer is discarded without a word.
+Today that is rare. Under this rule it is routine, and it is the wrong behaviour: the human answered,
+the answer may contradict a decision already acted on, and nobody is told. A late answer against a
+decided question must reopen **that decision specifically**, as a comment naming what it contradicts.
+Dropping it is the state-never-lies violation (principle №10) that this whole RFC is otherwise trying
+to pay down.
+
+#### What this settles
+
+`blocks: 'all'|'path'|'final'` is gone and does not come back. The review's verdict was that the
+useful axis is cost-if-wrong / reversibility rather than blocking radius; this rule makes exactly that
+axis load-bearing, and it is the only axis the deadline reads.
+
 ### What is withdrawn, and why
 
 **Flush-only `needs_info`.** `state-integrity-guards.md:21` records `hasHumanAnswerSince` deleted and
