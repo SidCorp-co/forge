@@ -62,8 +62,10 @@ const inputSchema = z
     /** runtime-logs: the Coolify application (target) resourceUuid to tail;
      *  defaults to the integration's sole target when it has exactly one. */
     resourceUuid: z.string().optional(),
-    /** logs + runtime-logs: number of recent lines to keep (clamped 1..1000).
-     *  Coerced — MCP transports routinely deliver numeric args as strings. */
+    /** logs + runtime-logs: number of recent lines to keep. REJECTED outside
+     *  1..1000, not clamped into it — a description that says "clamped" of a
+     *  bound that hard-fails is the same lie ISS-787 removed from `lines`
+     *  itself. Coerced: MCP transports routinely deliver numbers as strings. */
     lines: z.coerce.number().int().min(1).max(1000).optional(),
   })
   .strict();
@@ -163,14 +165,16 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     "URLs, and the integration's own apiToken) are redacted line-by-line; build-stage stderr is " +
     'preserved. Returns { integrationId, deploymentUuid, status, commit, logs, truncated, fetchedAt, logsDigest }. `commit` is the git SHA this deployment built, read from the deployment record — the log line `SOURCE_COMMIT=` is redacted with the rest of the env dump, so compare THIS field against your merge SHA to prove the change is live. On a Coolify API ' +
     'error returns { error, httpStatus } with no raw body. Tailed to the last `lines` ' +
-    '(1..1000, default 100) / ~16KB, truncated:true when cut. ' +
+    '(default 100) / ~16KB, truncated:true when cut. `lines` outside 1..1000 is REJECTED, not ' +
+    'clamped — a value of 5000 is a validation error, not a 1000-line tail. ' +
     'A build log that has not moved is INDISTINGUISHABLE from a stale snapshot by eye, so compare ' +
     '`logsDigest` across calls: identical digest + advancing `fetchedAt` means Coolify really is ' +
     'returning the same bytes, not that this tool cached them. Neither proves the build is hung — ' +
     'read `status` for that. ' +
     'runtime-logs: tail the LIVE application container log (NOT the build log) via Coolify ' +
     'applications/{uuid}/logs. Resolves the target from resourceUuid (else the integration sole ' +
-    'target; multiple targets => pass resourceUuid, see list); optional `lines` (1..1000, default 100). ' +
+    'target; multiple targets => pass resourceUuid, see list); optional `lines` (default 100, ' +
+    'rejected outside 1..1000). ' +
     'Same scrubbing/tailing, `fetchedAt` and `logsDigest` as logs. CAVEAT: for a docker-compose application Coolify returns only ONE ' +
     "container's logs and its public API has NO working per-service selector — reliable for " +
     'single-container apps; a compose deploy cannot be narrowed to a specific service here. Returns ' +

@@ -35,6 +35,15 @@ vi.mock('../../db/client.js', () => ({
 
 const { forgeUxFindingsTool } = await import('./forge-ux-findings.js');
 
+/** The literal SQL a drizzle condition would render, with its params dropped. */
+function sqlText(node: unknown): string {
+  if (node === null || typeof node !== 'object') return '';
+  const chunks = (node as { queryChunks?: unknown[] }).queryChunks;
+  if (Array.isArray(chunks)) return chunks.map(sqlText).join('');
+  const value = (node as { value?: unknown }).value;
+  return Array.isArray(value) && value.every((v) => typeof v === 'string') ? value.join('') : '';
+}
+
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_SLUG = 'forge-dev';
 const OWNER_ID = '33333333-3333-4333-8333-333333333333';
@@ -234,6 +243,30 @@ describe('forge_ux_findings write', () => {
     expect(inserted.issueId).toBe(ISSUE_ID);
     // cm:guard runId MUST stay undefined on this path — the finding is not attributable to a run, and inventing one would misreport which pass found it
     expect(inserted.runId).toBeUndefined();
+  });
+
+  // cm:guard assert the rendered SQL, not the refusal — the db mock returns whatever count the test queues, so a `rate_limited` assertion passes with `eq(runId, null)` in place of `isNull` and the cap it is meant to defend is gone. `eq(col, null)` renders ` = ` with a null param and is never true; `isNull` renders ` is null`.
+  it('matches the null runId with IS NULL, so the escape hatch stays capped', async () => {
+    const tool = forgeUxFindingsTool(makeCtx());
+
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID }]);
+    selectLimit.mockResolvedValueOnce([{ n: 50 }]);
+
+    const result = await tool.handler({
+      action: 'write',
+      stage: 'review',
+      kind: 'other',
+      detail: 'The fiftieth finding on this issue',
+      issueId: ISSUE_ID,
+    });
+
+    expect(result).toMatchObject({ ok: false, reason: 'rate_limited' });
+    const capWhere = sqlText((selectWhere.mock.calls.at(-1) as unknown[])?.[0]);
+    expect(capWhere).toContain('is null');
+    expect(capWhere).not.toContain(' = null');
+    expect(insertValues).not.toHaveBeenCalled();
   });
 
   it('refuses an explicit issueId from another project, by name', async () => {

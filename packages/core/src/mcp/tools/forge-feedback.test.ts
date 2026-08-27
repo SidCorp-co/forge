@@ -11,21 +11,15 @@ vi.mock('../../config/env.js', () => ({
 
 // Drizzle mock chain for select + insert queries.
 // Mirrors the pattern from forge-issues.test.ts.
-//
 // effectiveProjectRole chains: select().from().leftJoin().leftJoin().where().limit()
 // resolveActiveJobContext:      select().from().innerJoin().where().limit()
 // count / list:                 select().from().where()[.orderBy()].limit()
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
-// leaf node: supports where (→limit/orderBy) only
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-// innerJoin node (one level deep)
 const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
-// second leftJoin node (authz chain — joins org table)
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
-// first leftJoin node (authz chain — joins projectMembers, then orgs via leftJoin2)
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
-// from() node: supports leftJoin, innerJoin, and where directly
 const selectFrom = vi.fn(() => ({
   where: selectWhere,
   leftJoin: selectLeftJoin,
@@ -34,7 +28,6 @@ const selectFrom = vi.fn(() => ({
 
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
-// update chain: update().set().where().returning()
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));
@@ -77,6 +70,12 @@ const ISSUE_ID = '77777777-7777-4777-8777-777777777777';
 const ORG_ID = '99999999-9999-4999-8999-999999999999';
 const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
 
+/** resolveProjectIdFromSlug then effectiveProjectRole — the two reads every action makes first, plus any rows the action reads after them. */
+function queueSlugAndMember(...then: unknown[][]): void {
+  let m = selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+  for (const rows of [[memberAccessRow], ...then]) m = m.mockResolvedValueOnce(rows);
+}
+
 const fakeDevice = {
   id: DEVICE_ID,
   ownerId: OWNER_ID,
@@ -105,7 +104,6 @@ function makeCtx(projectSlug = PROJECT_SLUG) {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  // Re-initialize chain mock implementations after reset (resetAllMocks clears them).
   selectFrom.mockImplementation(() => ({
     where: selectWhere,
     leftJoin: selectLeftJoin,
@@ -132,10 +130,7 @@ describe('forge_feedback submit', () => {
   it('happy path: returns {ok, id, signalKey}', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    // resolveProjectIdFromSlug
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    // assertPrincipalIsMember → effectiveProjectRole (two leftJoins)
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    queueSlugAndMember();
     // resolveActiveJobContext: agentSessions innerJoin jobs → running session
     selectLimit.mockResolvedValueOnce([
       { jobId: JOB_ID, runId: RUN_ID, issueId: ISSUE_ID, stage: 'code' },
@@ -144,7 +139,6 @@ describe('forge_feedback submit', () => {
     selectLimit.mockResolvedValueOnce([{ id: 'sess-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }]);
     // per-job count check: 0 existing
     selectLimit.mockResolvedValueOnce([{ n: 0 }]);
-    // insert returning
     insertReturning.mockResolvedValueOnce([
       {
         id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -173,8 +167,7 @@ describe('forge_feedback submit', () => {
   it('soft-rejects with rate_limited when per-job cap is hit', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    queueSlugAndMember();
     selectLimit.mockResolvedValueOnce([
       { jobId: JOB_ID, runId: RUN_ID, issueId: null, stage: 'code' },
     ]);
@@ -239,8 +232,7 @@ describe('forge_feedback submit', () => {
   it('hostile targetRef: signalKey contains no control chars or frame sentinels', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    queueSlugAndMember();
     selectLimit.mockResolvedValueOnce([
       { jobId: JOB_ID, runId: RUN_ID, issueId: ISSUE_ID, stage: 'code' },
     ]);
@@ -264,19 +256,16 @@ describe('forge_feedback submit', () => {
     const signalKey = inserted.signalKey as string;
     // Control chars must be stripped
     expect(signalKey).not.toMatch(/[­​-‏‪-‮⁠⁦-⁩﻿]/u);
-    // Frame sentinels must be stripped
     expect(signalKey).not.toContain('⟦');
     expect(signalKey).not.toContain('⟧');
     expect(signalKey).not.toContain('UNTRUSTED_DATA');
-    // Structure preserved — still a valid signal key prefix
     expect(signalKey).toMatch(/^self_report:skill:.*:friction$/);
   });
 
   it('missing required fields throw BAD_REQUEST', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    queueSlugAndMember();
     // handler throws at !input.summary before reaching resolveActiveJobContext — no 3rd mock needed
 
     await expect(
@@ -306,9 +295,7 @@ describe('forge_feedback list', () => {
   it('returns reports filtered by kind', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    selectLimit.mockResolvedValueOnce([baseReport]);
+    queueSlugAndMember([baseReport]);
 
     const result = (await tool.handler({
       action: 'list',
@@ -321,8 +308,7 @@ describe('forge_feedback list', () => {
   it('wraps untrusted text fields in markUntrusted framing', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    queueSlugAndMember();
     selectLimit.mockResolvedValueOnce([
       { ...baseReport, detail: 'some detail', suggestion: 'try this' },
     ]);
@@ -341,22 +327,49 @@ describe('forge_feedback list', () => {
   it('returns empty array when no reports match', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    selectLimit.mockResolvedValueOnce([]);
+    queueSlugAndMember([]);
 
     const result = (await tool.handler({ action: 'list' })) as { reports: unknown[] };
     expect(result.reports).toEqual([]);
     expect(result).not.toHaveProperty('truncated');
   });
 
+  // cm:guard assert BOTH halves — the limit reaching `.limit()` as limit+1 AND the un-inflated limit reaching the envelope. Passing overfetch() to both is the mutation that reports a bound page as `hasMore:false`, and it leaves every other test in this file green because they only assert row counts.
+  it('over-fetches by one and reports the limit that bound the page', async () => {
+    queueSlugAndMember();
+    selectLimit.mockResolvedValueOnce(
+      Array.from({ length: 4 }, (_, i) => ({ ...baseReport, id: `r${i}` })),
+    );
+
+    const result = (await forgeFeedbackTool(makeCtx()).handler({
+      action: 'list',
+      limit: 3,
+    })) as Record<string, unknown>;
+
+    expect(selectLimit).toHaveBeenLastCalledWith(4);
+    expect(result).toMatchObject({ returned: 3, limit: 3, hasMore: true, truncatedBy: 'limit' });
+    expect(result.reports).toHaveLength(3);
+  });
+
+  it('says hasMore:false on a complete page and states no unverifiable total', async () => {
+    queueSlugAndMember([baseReport, { ...baseReport, id: 'r2' }]);
+
+    const result = (await forgeFeedbackTool(makeCtx()).handler({
+      action: 'list',
+      limit: 25,
+    })) as Record<string, unknown>;
+
+    expect(result).toMatchObject({ returned: 2, limit: 25, hasMore: false });
+    expect(result).not.toHaveProperty('truncated');
+    expect(result).not.toHaveProperty('totalCount');
+    expect(JSON.stringify(result)).not.toMatch(/ of \d+/);
+  });
+
   it('tail-trims and sets truncated:true when response is too large', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    queueSlugAndMember();
 
-    // Generate 200 fat reports that will exceed the 38k char cap.
     const fatReports = Array.from({ length: 200 }, (_, i) => ({
       ...baseReport,
       id: `rr${i}rrrrr-rrrr-4rrr-8rrr-rrrrrrrrrrrr`.slice(0, 36),
@@ -413,8 +426,7 @@ describe('forge_feedback list', () => {
   it('filters.reviewed=true returns only reviewed reports', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    queueSlugAndMember();
     selectLimit.mockResolvedValueOnce([
       { ...baseReport, reviewedAt: new Date('2026-02-01T00:00:00Z') },
     ]);
@@ -430,9 +442,7 @@ describe('forge_feedback list', () => {
   it('filters.reviewed=false returns only unreviewed reports', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    selectLimit.mockResolvedValueOnce([{ ...baseReport, reviewedAt: null }]);
+    queueSlugAndMember([{ ...baseReport, reviewedAt: null }]);
 
     const result = (await tool.handler({
       action: 'list',
@@ -513,8 +523,7 @@ describe('forge_feedback review', () => {
     const tool = forgeFeedbackTool(makeCtx());
     const reviewedAt = new Date('2026-07-14T00:00:00Z');
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    queueSlugAndMember();
     updateReturning.mockResolvedValueOnce([{ id: REPORT_ID, reviewedAt }]);
 
     const result = (await tool.handler({
@@ -536,8 +545,7 @@ describe('forge_feedback review', () => {
   it('reviewed:false clears both reviewedAt and linkedIssueId', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    queueSlugAndMember();
     updateReturning.mockResolvedValueOnce([
       { id: REPORT_ID, reviewedAt: null, linkedIssueId: null },
     ]);
@@ -559,8 +567,7 @@ describe('forge_feedback review', () => {
     const reviewedAt = new Date('2026-07-20T00:00:00Z');
     const LINKED_ISSUE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]); // resolveEffectiveProjectId
-    selectLimit.mockResolvedValueOnce([memberAccessRow]); // assertPrincipalIsMember
+    queueSlugAndMember();
     mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]); // cm:why resolveLinkedIssue visibility fence
     selectLimit.mockResolvedValueOnce([{ id: LINKED_ISSUE_ID }]); // cm:why linkedIssueId lookup
     updateReturning.mockResolvedValueOnce([
@@ -591,8 +598,7 @@ describe('forge_feedback review', () => {
     const reviewedAt = new Date('2026-07-20T00:00:00Z');
     const FORGE_ISSUE_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    queueSlugAndMember();
     mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]);
     selectLimit.mockResolvedValueOnce([{ id: FORGE_ISSUE_ID }]); // cm:why lives in PROJECT_ID_2
     updateReturning.mockResolvedValueOnce([
@@ -617,8 +623,7 @@ describe('forge_feedback review', () => {
     const tool = forgeFeedbackTool(makeCtx());
     const HIDDEN_ISSUE_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    queueSlugAndMember();
     mockVisibleProjects([PROJECT_ID]);
     selectLimit.mockResolvedValueOnce([]); // cm:why not among visible projects
 
@@ -631,8 +636,7 @@ describe('forge_feedback review', () => {
   it('refuses a link when the caller can see no project at all', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    queueSlugAndMember();
     mockVisibleProjects([]);
 
     await expect(
@@ -648,8 +652,7 @@ describe('forge_feedback review', () => {
   it('throws NOT_FOUND when the report is not in the resolved project', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    queueSlugAndMember();
     updateReturning.mockResolvedValueOnce([]);
 
     await expect(tool.handler({ action: 'review', reportId: REPORT_ID })).rejects.toThrow(
@@ -660,8 +663,7 @@ describe('forge_feedback review', () => {
   it('throws BAD_REQUEST when reportId is missing', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    queueSlugAndMember();
 
     await expect(tool.handler({ action: 'review' })).rejects.toThrow(/BAD_REQUEST/);
   });
@@ -669,8 +671,7 @@ describe('forge_feedback review', () => {
   it('signalKey bulk-stamps every matching report in project scope and returns count', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    queueSlugAndMember();
     updateReturning.mockResolvedValueOnce([{ id: 'r1' }, { id: 'r2' }, { id: 'r3' }]);
 
     const result = await tool.handler({
@@ -729,8 +730,7 @@ describe('forge_feedback review', () => {
   it('reviewed:false on the bulk path clears reviewedAt AND the link', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    queueSlugAndMember();
     updateReturning.mockResolvedValueOnce([{ id: 'r1' }]);
 
     await tool.handler({

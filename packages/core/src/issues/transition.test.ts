@@ -97,6 +97,15 @@ beforeEach(() => {
   dependentsAwait.mockResolvedValue([]);
 });
 
+/** The literal SQL a drizzle condition would render, with its params dropped. */
+function sqlText(node: unknown): string {
+  if (node === null || typeof node !== 'object') return '';
+  const chunks = (node as { queryChunks?: unknown[] }).queryChunks;
+  if (Array.isArray(chunks)) return chunks.map(sqlText).join('');
+  const value = (node as { value?: unknown }).value;
+  return Array.isArray(value) && value.every((v) => typeof v === 'string') ? value.join('') : '';
+}
+
 const ISSUE_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const USER_ID = '33333333-3333-4333-8333-333333333333';
@@ -447,5 +456,33 @@ describe('POST /api/issues/:id/transition — draft as a target (ISS-787)', () =
     expect(body.code).toBe('ILLEGAL_TRANSITION');
     expect(body.message).toMatch(/could not be checked/i);
     expect(dbUpdate).not.toHaveBeenCalled();
+  });
+
+  // cm:guard assert the never-ran predicate is IN the UPDATE's WHERE, not merely that the pre-check ran — the pre-check and the UPDATE are separate reads, so with the WHERE arm gone every draft test still passes while a freshly-`open` issue that acquires its run between them is demoted to a status claiming nothing started. This is hand-written raw SQL no type-checker covers.
+  it('carries the never-ran predicate INTO the UPDATE, not just the pre-check', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'open' });
+    selectLimit.mockResolvedValueOnce([{ n: 0 }]);
+    selectLimit.mockResolvedValueOnce([{ n: 0 }]);
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, status: 'draft', reopenCount: 0, updatedAt: new Date() },
+    ]);
+
+    expect((await req({ toStatus: 'draft' }, token)).status).toBe(200);
+    const where = sqlText((updateWhere.mock.calls[0] as unknown[])?.[0]);
+    expect(where).toContain('not exists');
+    expect(where).toContain('pipeline_runs');
+    expect(where).toContain('from jobs');
+  });
+
+  it('leaves the never-ran predicate off a transition that is not to draft', async () => {
+    const token = await signUserToken(USER_ID);
+    queueAuthAndIssue({ status: 'open' });
+    updateReturning.mockResolvedValueOnce([
+      { id: ISSUE_ID, status: 'confirmed', reopenCount: 0, updatedAt: new Date() },
+    ]);
+
+    expect((await req({ toStatus: 'confirmed' }, token)).status).toBe(200);
+    expect(sqlText((updateWhere.mock.calls[0] as unknown[])?.[0])).not.toContain('not exists');
   });
 });
