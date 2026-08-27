@@ -5,6 +5,7 @@ import {
   resolveChatDevice,
 } from '../agent-sessions/chat-turn.js';
 import { db } from '../db/client.js';
+import type { ScheduleMode } from '../db/schema.js';
 import { agentSessions, projects, scheduleRuns, schedules } from '../db/schema.js';
 import { findAvailableDeviceForProject } from '../lib/device-pool.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
@@ -18,6 +19,7 @@ import { buildProductMapRefreshPrompt } from './messages/product-map-refresh-pro
 import { getImprovementMessage } from './messages/registry.js';
 import { buildSkillImprovePrompt } from './messages/skill-improve-prompt.js';
 import { buildSkillStewardPrompt } from './messages/skill-steward-prompt.js';
+import { buildUxImproverPrompt } from './messages/ux-improver-prompt.js';
 import {
   dispatchScheduleReleaseBatchRun,
   loadCreatedBy,
@@ -30,6 +32,7 @@ import { runScheduleScript } from './script/executor.js';
 const DRIFT_CHECK_KEY = 'knowledge-drift-check';
 const PRODUCT_MAP_KEY = 'product-map-refresh';
 const FEEDBACK_DIGEST_KEY = 'feedback-triage-digest';
+const UX_IMPROVER_KEY = 'ux-contract-improve';
 
 // Standing templates with a DEDICATED non-steward builder: their sessions must
 // NOT be tagged metadata.steward (the steward-report parser would mis-handle
@@ -39,7 +42,67 @@ const NON_STEWARD_STANDING_KEYS = new Set<string>([
   DRIFT_CHECK_KEY,
   PRODUCT_MAP_KEY,
   FEEDBACK_DIGEST_KEY,
+  UX_IMPROVER_KEY,
 ]);
+
+type StandingBuilder = (input: { mode: ScheduleMode; projectId: string }) => string;
+
+// cm:guard A standing key listed here MUST also appear in NON_STEWARD_STANDING_KEYS above, or its session is tagged metadata.steward and the steward-report parser mis-handles output that is not a steward report. Absent from this map, a standing key silently falls through to the steward prompt instead of erroring.
+const STANDING_BUILDERS: Record<string, { build: StandingBuilder; defaultMode: ScheduleMode }> = {
+  [DRIFT_CHECK_KEY]: { build: buildDriftCheckPrompt, defaultMode: 'propose' },
+  [PRODUCT_MAP_KEY]: { build: buildProductMapRefreshPrompt, defaultMode: 'auto' },
+  [FEEDBACK_DIGEST_KEY]: { build: buildFeedbackDigestPrompt, defaultMode: 'propose' },
+  [UX_IMPROVER_KEY]: { build: buildUxImproverPrompt, defaultMode: 'propose' },
+};
+
+/**
+ * Resolves the prompt a prompt-kind schedule dispatches with, before any DB
+ * lookup. Returns `null` when a ONE-SHOT template was already applied at its
+ * current version — the caller turns that into a `skipped` result. Standing
+ * templates never return null: they bypass `appliedMessageVersions` because
+ * their value is in observing fresh signals on every cadence run.
+ */
+export function resolveTemplatePrompt(schedule: {
+  id: string;
+  projectId: string;
+  prompt: string | null;
+  templateKey?: string | null;
+  mode?: ScheduleMode | null;
+  appliedMessageVersions?: Record<string, number> | null;
+}): { prompt: string; standing: boolean } | null {
+  const { templateKey } = schedule;
+  if (!templateKey) return { prompt: schedule.prompt ?? '', standing: false };
+
+  if (getImprovementMessage(templateKey)?.standing) {
+    const entry = STANDING_BUILDERS[templateKey];
+    const build = entry?.build ?? buildSkillStewardPrompt;
+    logger.info(
+      { scheduleId: schedule.id, templateKey },
+      'schedule.dispatch: standing template dispatching (bypassing appliedMessageVersions)',
+    );
+    return {
+      prompt: build({
+        mode: schedule.mode ?? entry?.defaultMode ?? 'propose',
+        projectId: schedule.projectId,
+      }),
+      standing: true,
+    };
+  }
+
+  const built = buildSkillImprovePrompt({
+    templateKey,
+    mode: schedule.mode ?? 'propose',
+    appliedMessageVersions: schedule.appliedMessageVersions ?? null,
+  });
+  if (built === null) {
+    logger.info(
+      { scheduleId: schedule.id, templateKey },
+      'schedule.dispatch: skill-improve prompt skipped — message already applied at current version',
+    );
+    return null;
+  }
+  return { prompt: built, standing: false };
+}
 
 /**
  * Reroute schedule.run onto the interactive agent-session rails used by
@@ -94,75 +157,9 @@ export async function dispatchScheduleRun(
     return { ok: false, reason: 'session-failed', status: 'failed' };
   }
 
-  // ISS-548/ISS-556 — when a schedule has a templateKey, build the prompt
-  // BEFORE any DB lookups.
-  // - Standing templates (standing===true) bypass appliedMessageVersions — every
-  //   cadence run fires unconditionally; the steward always has fresh signals.
-  // - One-shot templates still return null when already applied at current version
-  //   → return skipped early to avoid a wasted round-trip.
-  // Guarded above: reaching here means either templateKey is set (about to
-  // overwrite effectivePrompt unconditionally) or schedule.prompt is non-null.
-  let effectivePrompt: string = schedule.prompt ?? '';
-  let isStandingTemplate = false;
-  if (schedule.templateKey) {
-    const registryEntry = getImprovementMessage(schedule.templateKey);
-    if (registryEntry?.standing) {
-      // Standing template: always dispatch, bypass appliedMessageVersions.
-      isStandingTemplate = true;
-      if (schedule.templateKey === DRIFT_CHECK_KEY) {
-        effectivePrompt = buildDriftCheckPrompt({
-          mode: schedule.mode ?? 'propose',
-          projectId: schedule.projectId,
-        });
-        logger.info(
-          { scheduleId: schedule.id, templateKey: schedule.templateKey },
-          'schedule.dispatch: standing drift-check template dispatching (bypassing appliedMessageVersions)',
-        );
-      } else if (schedule.templateKey === PRODUCT_MAP_KEY) {
-        effectivePrompt = buildProductMapRefreshPrompt({
-          mode: schedule.mode ?? 'auto',
-          projectId: schedule.projectId,
-        });
-        logger.info(
-          { scheduleId: schedule.id, templateKey: schedule.templateKey },
-          'schedule.dispatch: standing product-map-refresh template dispatching (bypassing appliedMessageVersions)',
-        );
-      } else if (schedule.templateKey === FEEDBACK_DIGEST_KEY) {
-        effectivePrompt = buildFeedbackDigestPrompt({
-          mode: schedule.mode ?? 'propose',
-          projectId: schedule.projectId,
-        });
-        logger.info(
-          { scheduleId: schedule.id, templateKey: schedule.templateKey },
-          'schedule.dispatch: standing feedback-digest template dispatching (bypassing appliedMessageVersions)',
-        );
-      } else {
-        effectivePrompt = buildSkillStewardPrompt({
-          mode: schedule.mode ?? 'propose',
-          projectId: schedule.projectId,
-        });
-        logger.info(
-          { scheduleId: schedule.id, templateKey: schedule.templateKey },
-          'schedule.dispatch: standing steward template dispatching (bypassing appliedMessageVersions)',
-        );
-      }
-    } else {
-      // One-shot template: use existing idempotency gate.
-      const built = buildSkillImprovePrompt({
-        templateKey: schedule.templateKey,
-        mode: schedule.mode ?? 'propose',
-        appliedMessageVersions: schedule.appliedMessageVersions ?? null,
-      });
-      if (built === null) {
-        logger.info(
-          { scheduleId: schedule.id, templateKey: schedule.templateKey },
-          'schedule.dispatch: skill-improve prompt skipped — message already applied at current version',
-        );
-        return { ok: false, reason: 'already-applied', status: 'skipped' };
-      }
-      effectivePrompt = built;
-    }
-  }
+  const resolved = resolveTemplatePrompt(schedule);
+  if (resolved === null) return { ok: false, reason: 'already-applied', status: 'skipped' };
+  const { prompt: effectivePrompt, standing: isStandingTemplate } = resolved;
 
   let resolvedProjectId = schedule.projectId;
   let resolvedCreatedBy: string | undefined;

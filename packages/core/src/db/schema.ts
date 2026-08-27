@@ -3169,7 +3169,6 @@ export const improvementMessageDrafts = pgTable(
   }),
 );
 
-// ─── UX Contract ────────────────────────────────────────────────────────────
 // ISS-574 — Foundation for the UX Completeness Contract epic.
 // `ux_contract_rules` is the source-of-truth rule set; the compiler turns
 // active rules → projectFacts['ux-contract'] prose on every mutation.
@@ -3220,6 +3219,10 @@ export const uxContractRules = pgTable(
     source: text('source', { enum: uxRuleSources }).notNull().default('manual'),
     status: text('status', { enum: uxRuleStatuses }).notNull().default('active'),
     evidenceIssueIds: jsonb('evidence_issue_ids').notNull().default([]),
+    // cm:guard ISS-579 — a `proposed` row pointing here REPLACES its target on approval; the PATCH route retires the target in the same request. compileUxContract renders only `text`, so without this link an approved should→must strengthen would leave BOTH rules active and the prose would carry the rule twice.
+    supersedesRuleId: uuid('supersedes_rule_id').references((): AnyPgColumn => uxContractRules.id, {
+      onDelete: 'set null',
+    }),
     orderIndex: integer('order_index').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
