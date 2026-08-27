@@ -40,6 +40,7 @@ the only reason `release-gate-and-deploy.md` still exists as a file.
 | Retired | Why | Where it lives now |
 |---|---|---|
 | `release-gate-and-deploy.md` | All five waves shipped 2026-08-24; six modules in `core`/`contracts` name it as their design record, so it moved instead of being deleted | [../modules/issues-pipeline/release-gate.md](../modules/issues-pipeline/release-gate.md) |
+| `issue-field-surface.md` | All three steps shipped in `5d69e35f` 2026-08-27: five write-only columns plus `parent_issue_id` dropped by migration `0188`, 81 plumbing sites removed, and the two dead readers of `parent_issue_id` deleted. Kept as a file because it is the only record of WHY the surface is five fields wide | [issue-field-surface.md](issue-field-surface.md), until a module doc absorbs it |
 | `mcp-principal-agency.md` | The decision it was blocked on was made 2026-08-25 (attribution follows the token's owner; the ISS-812 guard's scope is unchanged) and shipped in `aba0b10d` | `agency` on `McpPrincipal` + `principalActor()` in `mcp/tools/lib.ts` |
 | `fan-out-scope.md` | The fix belongs to archmap, which is its own repo now — a Forge proposal describing another repo's work is filed in the wrong tracker | [SidCorp-co/archmap#1](https://github.com/SidCorp-co/archmap/issues/1) |
 | `rocketchat-bot.md` | Lane A shipped + live; its own body carried three SHIPPED markers (ISS-609, ISS-671/672/674/675/687/727) while this table said otherwise | [../modules/chat/README.md](../modules/chat/README.md) § RocketChat inbound flow |

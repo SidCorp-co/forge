@@ -104,20 +104,6 @@ function DepList({
   );
 }
 
-/** A standalone Parent row built from `issue.parentIssueId` when no enriched
- *  incoming `decomposes` edge is available (the column is set by core's
- *  decompose but the edge may be un-enriched). Falls back to a short-id tag. */
-function ParentFallback({ parentId, slug }: { parentId: string; slug: string }) {
-  return (
-    <div className="py-2">
-      <p className="fg-caption mb-1">Parent</p>
-      <div className="flex flex-col items-end gap-1.5">
-        <IssueRefBadge id={parentId} slug={slug} />
-      </div>
-    </div>
-  );
-}
-
 interface PropertiesRailProps {
   issue: IssueDetail;
   /** Project slug — for building links from relation badges to related issues. */
@@ -150,10 +136,6 @@ export function PropertiesRail({
   const subtasks = outgoing.filter(isDecompose);
   const duplicates = [...incoming, ...outgoing].filter((e) => e.kind === "duplicates");
   const related = [...incoming, ...outgoing].filter((e) => e.kind === "relates");
-  // The column is authoritative for parentage; surface it even when no enriched
-  // decompose edge came back.
-  const showParentFallback = parents.length === 0 && issue.parentIssueId != null;
-
   return (
     <div className="divide-y divide-line-subtle">
       <Row label="Status">
@@ -240,7 +222,6 @@ export function PropertiesRail({
       <DepList edges={blockedBy} self={issue.id} slug={slug} label="Blocked by" />
       <DepList edges={blocks} self={issue.id} slug={slug} label="Blocks" />
       <DepList edges={parents} self={issue.id} slug={slug} label="Parent" />
-      {showParentFallback && <ParentFallback parentId={issue.parentIssueId!} slug={slug} />}
       <DepList edges={subtasks} self={issue.id} slug={slug} label="Subtasks" />
       <DepList edges={duplicates} self={issue.id} slug={slug} label="Duplicates" />
       <DepList edges={related} self={issue.id} slug={slug} label="Related" />

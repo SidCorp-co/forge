@@ -385,17 +385,15 @@ describe('db/schema — issues', () => {
     expect(p.enumValues).toEqual([...issuePriorities]);
   });
 
-  it('FKs: project cascade, assignee set null, created_by restrict, parent self set null, release batch run set null', () => {
+  it('FKs: project cascade, assignee set null, created_by restrict, release batch run set null', () => {
     const cfg = getTableConfig(issues);
-    expect(cfg.foreignKeys).toHaveLength(5);
+    expect(cfg.foreignKeys).toHaveLength(4);
     const byCol = new Map(
       cfg.foreignKeys.map((fk) => [fk.reference().columns[0]?.name ?? '', fk] as const),
     );
     expect(byCol.get('project_id')?.onDelete).toBe('cascade');
     expect(byCol.get('assignee_id')?.onDelete).toBe('set null');
     expect(byCol.get('created_by_id')?.onDelete).toBe('restrict');
-    expect(byCol.get('parent_issue_id')?.onDelete).toBe('set null');
-    expect(byCol.get('parent_issue_id')?.reference().foreignTable).toBe(issues);
     expect(byCol.get('release_batch_run_id')?.onDelete).toBe('set null');
   });
 

@@ -1308,7 +1308,14 @@
       "idx": 188,
       "version": "7",
       "when": 1789689600000,
-      "tag": "0188_iss652_alert_notification_dedupe",
+      "tag": "0188_drop_unread_issue_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "7",
+      "when": 1789776000000,
+      "tag": "0189_iss652_alert_notification_dedupe",
       "breakpoints": true
     }
   ]

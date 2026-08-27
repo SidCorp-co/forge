@@ -56,7 +56,6 @@ function row(over: Partial<IssueRow> & { id: string }): IssueRow {
 		creatorEmail: over.creatorEmail ?? "owner@example.com",
 		creatorIsAgent: over.creatorIsAgent ?? false,
 		creatorLabel: over.creatorLabel ?? "owner@example.com",
-		parentIssueId: over.parentIssueId ?? null,
 		reopenCount: over.reopenCount ?? 0,
 		mergedAt: over.mergedAt ?? null,
 		createdAt: over.createdAt ?? "2026-01-01T00:00:00.000Z",

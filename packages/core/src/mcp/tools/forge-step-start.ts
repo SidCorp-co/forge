@@ -50,12 +50,7 @@ import { assertPrincipalIsWriter, zodToMcpSchema } from './lib.js';
 const STEP_START_RECENT_COMMENTS = 20;
 const STEP_START_COMMENTS_MAX_CHARS = 30_000;
 
-// When the total char count of heavy issue fields (description/plan/
-// acceptanceCriteria/suggestedSolution/sessionContext/ai*) exceeds this
-// threshold, forge_step_start returns a lean manifest instead of inlining the
-// full bodies. This prevents a single complex issue from dominating the agent's
-// context window on every step call. Small issues (under threshold) still get
-// the full body in one round-trip. Mirrors the comment-cap rationale above.
+// cm:why past this many chars of heavy fields, one complex issue would dominate the agent's context window on every step call, so step_start returns a lean manifest and lets the agent pull what it needs; under it, the full body still arrives in one round-trip.
 const STEP_START_BODY_MANIFEST_THRESHOLD = 2000;
 
 const inputSchema = z
@@ -84,7 +79,7 @@ function resolveStage(input: { stage?: JobType | undefined }, status: IssueStatu
 export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_step_start',
   description:
-    "Check in at the start of a pipeline step. Marks the issue with the step's in-flight status when one is defined (code/fix → `in_progress`; other steps keep their trigger status) and returns the working bundle: the issue (with `attachments[]`), the most-recent comments, the latest step handoffs, and the resolved `branchConfig` (issue override layered over project defaults — null means NOT configured; never fall back to main). The comment thread is capped to the most-recent N (oldest trimmed first) plus a hard char budget so the bundle stays under the MCP output cap; when trimmed the result carries `commentsTruncated:true` + `commentsReturned`/`commentsTotal` + a notice — fetch the full history via `forge_comments.list`. The issue body is threshold-gated: when the total size of heavy fields (description/plan/acceptanceCriteria/suggestedSolution/sessionContext/ai*) exceeds the threshold, the issue carries `bodyTruncated:true` and a `bodyManifest` (field → {chars} | null) instead of the full bodies — pull only the fields you need via `forge_issues.get { documentId, fields: ['plan', ...] }`. Small issues (under threshold) return the full body with no extra round-trip. Handoffs, branchConfig, and light scalars are never truncated. Idempotent — safe to re-call on resume; it never moves an issue that is not sitting at the step's trigger status. Call this FIRST, before any other action on the issue.",
+    "Check in at the start of a pipeline step. Marks the issue with the step's in-flight status when one is defined (code/fix → `in_progress`; other steps keep their trigger status) and returns the working bundle: the issue (with `attachments[]`), the most-recent comments, the latest step handoffs, and the resolved `branchConfig` (issue override layered over project defaults — null means NOT configured; never fall back to main). The comment thread is capped to the most-recent N (oldest trimmed first) plus a hard char budget so the bundle stays under the MCP output cap; when trimmed the result carries `commentsTruncated:true` + `commentsReturned`/`commentsTotal` + a notice — fetch the full history via `forge_comments.list`. The issue body is threshold-gated: when the total size of heavy fields (description/plan/acceptanceCriteria/sessionContext) exceeds the threshold, the issue carries `bodyTruncated:true` and a `bodyManifest` (field → {chars} | null) instead of the full bodies — pull only the fields you need via `forge_issues.get { documentId, fields: ['plan', ...] }`. Small issues (under threshold) return the full body with no extra round-trip. Handoffs, branchConfig, and light scalars are never truncated. Idempotent — safe to re-call on resume; it never moves an issue that is not sitting at the step's trigger status. Call this FIRST, before any other action on the issue.",
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);

@@ -75,14 +75,8 @@ describe('forge_pm.graph', () => {
       [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assert
       [{ total: 2 }], // count() for totalNodes
       [
-        { id: ROOT_ID, status: 'open', priority: 'medium', assigneeId: null, parentIssueId: null },
-        {
-          id: CHILD_ID,
-          status: 'open',
-          priority: 'low',
-          assigneeId: null,
-          parentIssueId: ROOT_ID,
-        },
+        { id: ROOT_ID, status: 'open', priority: 'medium', assigneeId: null },
+        { id: CHILD_ID, status: 'open', priority: 'low', assigneeId: null },
       ],
       [{ from: ROOT_ID, to: CHILD_ID, kind: 'blocks' }], // dep edges
     );
@@ -95,7 +89,7 @@ describe('forge_pm.graph', () => {
       rootIssueId: string | null;
     };
     expect(result.nodes).toHaveLength(2);
-    expect(result.edges).toHaveLength(2); // 1 dep + 1 parent
+    expect(result.edges).toHaveLength(1);
     expect(result.rootIssueId).toBeNull();
     expect(result.truncated).toBe(false);
     expect(result.remainingNodes).toBe(0);
@@ -135,15 +129,9 @@ describe('forge_pm.graph', () => {
       [{ from: ROOT_ID, to: CHILD_ID, kind: 'blocks' }],
       // depth 1: reverse deps to ROOT (cycle: CHILD also blocks ROOT)
       [{ from: CHILD_ID, to: ROOT_ID, kind: 'blocks' }],
-      // depth 1: child rows where ROOT is the issue
-      [],
-      // depth 1: child rows where ROOT is the parent
-      [],
       // depth 2: forward deps from CHILD
       [{ from: ROOT_ID, to: CHILD_ID, kind: 'blocks' }], // already seen
       // depth 2: reverse deps to CHILD
-      [],
-      [],
       [],
       // final: nodeRows for visited set
       [

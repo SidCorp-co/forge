@@ -1,6 +1,6 @@
 {
-  "id": "b05e2ac1-8643-4957-8f0c-de8bce320f97",
-  "prevId": "391b267d-3758-4a4e-a64f-40c783d32dd0",
+  "id": "b4824478-aeac-42ad-9fec-2329defebe41",
+  "prevId": "b05e2ac1-8643-4957-8f0c-de8bce320f97",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -6507,6 +6507,28 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "notifications_ops_alert_active_uq": {
+          "name": "notifications_ops_alert_active_uq",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "resolution_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "resolved_at IS NULL AND resolution_key IS NOT NULL AND type = 'ops_alert'",
           "concurrently": false,
           "method": "btree",
           "with": {}

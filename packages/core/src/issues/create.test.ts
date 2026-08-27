@@ -1,7 +1,9 @@
-// ISS-454 — POST /api/projects/:id/issues accepts + persists the operator-
-// entered ai* intake fields (aiSummary / aiSuggestedSolution /
-// aiAcceptanceCriteria). Omitting them must preserve the pre-ISS-454
-// behaviour (insert null).
+// ISS-454 quick capture persists the operator's context as `description`.
+// The ai* intake fields it originally also wrote were dropped once measurement
+// showed no pipeline stage ever read them, so the create surface must now
+// REJECT them — `issueCreateSchema` is `.strict()`, which is what enforces the
+// AC-is-decided-when-an-issue-runs rule structurally rather than by prompt.
+
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -99,12 +101,8 @@ function insertedRow(overrides: Record<string, unknown> = {}) {
     category: null,
     reportedBy: null,
     complexity: null,
-    aiSummary: null,
-    aiSuggestedSolution: null,
-    aiAcceptanceCriteria: null,
     assigneeId: null,
     createdById: USER_ID,
-    parentIssueId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -122,98 +120,54 @@ async function postIssue(body: Record<string, unknown>) {
   });
 }
 
-describe('POST /api/projects/:id/issues — ai* intake fields (ISS-454)', () => {
-  it('persists aiSummary / aiSuggestedSolution / aiAcceptanceCriteria and echoes them back', async () => {
+describe('POST /api/projects/:id/issues — quick-capture intake', () => {
+  it('persists the operator context as description and echoes it back', async () => {
     authVerified();
     memberAccess();
-    const criteria = ['login works', 'logout works'];
-    insertReturning.mockResolvedValueOnce([
-      insertedRow({
-        aiSummary: 'user wants SSO',
-        aiSuggestedSolution: 'wire OIDC',
-        aiAcceptanceCriteria: criteria,
-      }),
-    ]);
+    insertReturning.mockResolvedValueOnce([insertedRow({ description: 'user wants SSO' })]);
 
-    const res = await postIssue({
-      title: 'quick capture',
-      description: 'user wants SSO',
-      aiSummary: 'user wants SSO',
-      aiSuggestedSolution: 'wire OIDC',
-      aiAcceptanceCriteria: criteria,
-    });
+    const res = await postIssue({ title: 'quick capture', description: 'user wants SSO' });
     expect(res.status).toBe(201);
 
     expect(insertValues).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'quick capture',
         status: 'open',
-        aiSummary: 'user wants SSO',
-        aiSuggestedSolution: 'wire OIDC',
-        aiAcceptanceCriteria: criteria,
+        description: 'user wants SSO',
       }),
     );
 
-    const body = (await res.json()) as {
-      displayId: string;
-      status: string;
-      aiSummary: string | null;
-      aiSuggestedSolution: string | null;
-      aiAcceptanceCriteria: string[] | null;
-    };
+    const body = (await res.json()) as { displayId: string; status: string; description: string };
     expect(body.displayId).toBe('ISS-9');
     expect(body.status).toBe('open');
-    expect(body.aiSummary).toBe('user wants SSO');
-    expect(body.aiSuggestedSolution).toBe('wire OIDC');
-    expect(body.aiAcceptanceCriteria).toEqual(criteria);
+    expect(body.description).toBe('user wants SSO');
   });
 
-  it('defaults the ai* fields to null when omitted (pre-ISS-454 behaviour)', async () => {
+  it('creates with no body fields beyond the title', async () => {
     authVerified();
     memberAccess();
     insertReturning.mockResolvedValueOnce([insertedRow()]);
 
     const res = await postIssue({ title: 'quick capture' });
     expect(res.status).toBe(201);
-
     expect(insertValues).toHaveBeenCalledWith(
-      expect.objectContaining({
-        aiSummary: null,
-        aiSuggestedSolution: null,
-        aiAcceptanceCriteria: null,
-      }),
+      expect.objectContaining({ title: 'quick capture', description: null }),
     );
   });
 
-  it('accepts explicit nulls for the ai* fields', async () => {
-    authVerified();
-    memberAccess();
-    insertReturning.mockResolvedValueOnce([insertedRow()]);
+  for (const field of [
+    'aiSummary',
+    'aiSuggestedSolution',
+    'aiAcceptanceCriteria',
+    'suggestedSolution',
+    'parentIssueId',
+  ]) {
+    it(`400 on the dropped ${field} field, with no insert attempted`, async () => {
+      authVerified();
 
-    const res = await postIssue({
-      title: 'quick capture',
-      aiSummary: null,
-      aiSuggestedSolution: null,
-      aiAcceptanceCriteria: null,
+      const res = await postIssue({ title: 'quick capture', [field]: 'anything' });
+      expect(res.status).toBe(400);
+      expect(transaction).not.toHaveBeenCalled();
     });
-    expect(res.status).toBe(201);
-    expect(insertValues).toHaveBeenCalledWith(
-      expect.objectContaining({
-        aiSummary: null,
-        aiSuggestedSolution: null,
-        aiAcceptanceCriteria: null,
-      }),
-    );
-  });
-
-  it('400 when aiAcceptanceCriteria is not a string array', async () => {
-    authVerified();
-
-    const res = await postIssue({
-      title: 'quick capture',
-      aiAcceptanceCriteria: 'not-an-array',
-    });
-    expect(res.status).toBe(400);
-    expect(transaction).not.toHaveBeenCalled();
-  });
+  }
 });
