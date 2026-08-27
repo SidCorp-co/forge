@@ -3,6 +3,7 @@ import { issueStatuses } from '../db/schema.js';
 import {
   canTransition,
   canTransitionFree,
+  DRAFT_EXIT_TARGETS,
   getAllowedTransitions,
   isReopenEntry,
   MAX_SKIP_CHAIN,
@@ -131,6 +132,15 @@ describe('state machine', () => {
       expect(canTransitionFree('draft', 'approved')).toBe(false);
       expect(canTransitionFree('draft', 'testing')).toBe(false);
       expect(canTransitionFree('draft', 'released')).toBe(false);
+    });
+
+    // cm:guard spell the four out LITERALLY on both sides — comparing the computed set against DRAFT_EXIT_TARGETS is tautological, since canTransitionFree reads that same constant, and dropping a member from it passes. Verified 2026-08-27: removing 'dropped' left the tautological form green. The refusal in apply-transition.ts renders this list verbatim, so a silent divergence there is a message that lies about the rule.
+    it('exits a draft to exactly these four statuses and no others', () => {
+      const allowed = issueStatuses.filter(
+        (to) => to !== 'draft' && canTransitionFree('draft', to),
+      );
+      expect([...allowed].sort()).toEqual(['closed', 'developed', 'dropped', 'open']);
+      expect([...DRAFT_EXIT_TARGETS].sort()).toEqual(['closed', 'developed', 'dropped', 'open']);
     });
   });
 });

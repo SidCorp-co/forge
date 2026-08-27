@@ -11,7 +11,7 @@ import {
 import { logger } from '../logger.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
-import { canTransitionFree, isReopenEntry } from '../pipeline/state-machine.js';
+import { canTransitionFree, DRAFT_EXIT_TARGETS, isReopenEntry } from '../pipeline/state-machine.js';
 import { collectWorkEvidence, hasCodeEvidence } from '../pipeline/work-evidence.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -296,17 +296,16 @@ export async function transitionIssueStatus(
     });
   }
 
-  // Transitions are intentionally permissive (the system prompt guides the
-  // happy path); only `draft` is a forbidden target. `skip` still bypasses
-  // even that for the orchestrator's curated soft-skip chain.
+  // cm:guard `skip` bypasses this whole check ON PURPOSE — it is the orchestrator's curated soft-skip chain, and every other runtime transition is deliberately permissive because the system prompt, not this function, guides the happy path
   if (!options.skip && !canTransitionFree(fromStatus, requestedStatus)) {
     if (requestedStatus === 'draft') {
       await assertIssueNeverEnteredPipeline(issue.id, fromStatus);
     } else {
+      // cm:guard reaching here means fromStatus is `draft` — once the target is not `draft`, canTransitionFree fails for no other reason — so blame the SOURCE, never the target. The old wording said `'<target>' is not a valid runtime status target`, which is false for every status it ever named: walking ISS-787's AC6 hit it on `needs_info` and on `waiting`, both legal from everywhere except `draft`, and it reads as "that status was removed".
       throw new TransitionError(
         'ILLEGAL_TRANSITION',
-        `'${requestedStatus}' is not a valid runtime status target`,
-        { from: fromStatus, to: requestedStatus },
+        `a \`draft\` issue may only move to ${DRAFT_EXIT_TARGETS.map((s) => `\`${s}\``).join(', ')}. \`${requestedStatus}\` is a legal target from every other status, but not from \`draft\` — promote it to \`open\` first, or use \`dropped\` to discard it.`,
+        { from: fromStatus, to: requestedStatus, allowedFromDraft: [...DRAFT_EXIT_TARGETS] },
       );
     }
   }
