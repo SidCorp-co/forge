@@ -58,7 +58,7 @@ import { forgePipelineRunsGetTool } from './tools/forge-pipeline-runs.js';
 import { forgePmSetDependencyTool } from './tools/forge-pm-set-dependency.js';
 import { forgePostmanTargetTool } from './tools/forge-postman-target.js';
 import { forgeProjectPipelineRunsTool } from './tools/forge-project-pipeline-runs.js';
-import { forgeProjectPmTool } from './tools/forge-project-pm.js';
+import { forgeProjectPmTool, PM_ACTIONS } from './tools/forge-project-pm.js';
 import {
   forgeProjectsArchiveTool,
   forgeProjectsCreateTool,
@@ -170,12 +170,19 @@ const DEVICE_REQUIRED: ReadonlyMap<string, ReadonlySet<string> | true> = new Map
   ['forge_pm.set_dependency', true],
 ]);
 
+// cm:guard DERIVE the PAT-reachable list from DEVICE_REQUIRED, never retype it — the refusal is the one place that names actions a PAT CAN call, so a hand-written copy tells callers a newly-gated action still works while every test stays green
+// cm:edge contract -> packages/core/src/mcp/tools/forge-project-pm.ts — PM_ACTIONS is the enum this complement is taken against
+const patReachablePmActions: readonly string[] = PM_ACTIONS.filter((a: string) => {
+  const gated = DEVICE_REQUIRED.get('forge_project_pm');
+  return gated === true ? false : !gated?.has(a);
+});
+
 // cm:guard a refusal names the condition to SATISFY, not only the one that failed (ISS-787/ISS-868) — the bare code sent callers hunting for a scope that does not exist, when the answer is a different credential class plus a PAT-reachable route for the common case
 // cm:edge contract -> packages/core/src/mcp/tools/forge-issues.ts — names data.relations as the PAT path for blocks/relates edges; if that field stops being applied on create/update this text becomes a lie
 const PM_DEVICE_REFUSAL =
   'FORBIDDEN: PM_REQUIRES_DEVICE — this action needs a paired-device token (pair a device with `forge-runner login`, then `forge-runner start`); ' +
   'a personal access token has no runner state to act on, and no PAT scope grants it. ' +
-  'Read-only forge_project_pm actions (snapshot, graph, runner_load) do work with a PAT. ' +
+  `These forge_project_pm actions do work with a PAT: ${patReachablePmActions.join(', ')}. ` +
   'To set or retract a blocks/relates edge with a PAT, use forge_issues create/update with data.relations ' +
   '(retract by re-sending the same edge with validUntil in the past), and read edges back from forge_issues get.';
 

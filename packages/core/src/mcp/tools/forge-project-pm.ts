@@ -37,16 +37,19 @@ const escalateSchema = z
   })
   .strict();
 
+// cm:edge contract -> packages/core/src/mcp/server.ts — DEVICE_REQUIRED classifies these actions and the PM_DEVICE_REFUSAL text names the complement; adding an action here without classifying it there both leaves it PAT-reachable by default and makes the refusal advertise it as read-only
+export const PM_ACTIONS = [
+  'snapshot',
+  'graph',
+  'runner_load',
+  'dispatch',
+  'set_dependency',
+  'write_decision',
+] as const;
+
 const inputSchema = z
   .object({
-    action: z.enum([
-      'snapshot',
-      'graph',
-      'runner_load',
-      'dispatch',
-      'set_dependency',
-      'write_decision',
-    ]),
+    action: z.enum(PM_ACTIONS),
     projectId: z.uuid(),
     // graph
     rootIssueId: z.uuid().optional(),

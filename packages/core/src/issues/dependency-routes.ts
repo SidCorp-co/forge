@@ -102,12 +102,7 @@ issueDependencyRoutes.get(
     const access = await loadProjectAccess(issue.projectId, userId);
     if (!access.role) throw forbidden('not a project member');
 
-    const { outgoing, incoming } = await loadIssueDependencyEdges(id);
-
-    return c.json({
-      outgoing,
-      incoming,
-    });
+    return c.json(await loadIssueDependencyEdges(id));
   },
 );
 

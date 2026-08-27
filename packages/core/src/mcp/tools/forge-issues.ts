@@ -50,12 +50,8 @@ import {
 } from './lib.js';
 import { buildListEnvelope, overfetch } from './list-envelope.js';
 
-// Kinds allowed in the create-time `relations` field. `decomposes` is excluded
-// because it triggers integration-branch side effects that belong in the
-// dedicated decompose flow (forge_project_pm set_dependency kind=decomposes).
-// `duplicates` and `parent` are also excluded — they don't need to be atomic
-// with create. Route those through forge_project_pm.set_dependency directly.
-const createRelationKinds = ['blocks', 'relates'] as const;
+// cm:guard NEVER widen this to `decomposes` — that kind runs decomposeParent, which creates an integration branch and parks the parent, and this list is the PAT-reachable write path (ISS-868), so adding it would put runner-shaped side effects behind a credential class the device gate exists to keep out of them. `duplicates`/`parent` are excluded only because they carry no side effect worth an atomic write; route both through forge_project_pm set_dependency.
+const relationKinds = ['blocks', 'relates'] as const;
 
 /**
  * Action-based parity port of the legacy Strapi MCP `forge_issues` tool. The
@@ -234,17 +230,11 @@ const dataObject = z
     taskPriority: z.enum(issuePriorities).optional(),
     isAgentTask: z.boolean().optional(),
     taskAcceptanceCriteria: z.array(z.string()).nullable().optional(),
-    // ISS-571 — atomic dependency edges at create time. Each entry must set
-    // exactly one of dependsOnId (new issue will be blocked-by it) or blocksId
-    // (new issue blocks it). Edges are inserted BEFORE issueCreated fires so
-    // the L2 dispatch gate sees the blocking edge on the very first tick,
-    // closing the race between create + a subsequent set_dependency call.
-    // Restricted to blocks/relates; route decomposes through forge_project_pm.
     relations: z
       .array(
         z
           .object({
-            kind: z.enum(createRelationKinds).default('blocks'),
+            kind: z.enum(relationKinds).default('blocks'),
             dependsOnId: z.uuid().optional(),
             blocksId: z.uuid().optional(),
             reason: z.string().max(2000).optional(),
@@ -756,6 +746,17 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     const input = inputSchema.parse(args);
     const { device, principal } = ctx;
 
+    // cm:guard `data` is ONE shared schema across all 11 actions, so a field only `create`/`update` apply is accepted and dropped by the other nine — refuse it by name here rather than returning 200 on a write that did nothing (ISS-868). `transition` is the dangerous one: it wakes considerEnqueue→dispatch, so a discarded `blocks` edge ships the dependent ahead of its blocker.
+    if (
+      input.data?.relations !== undefined &&
+      input.action !== 'create' &&
+      input.action !== 'update'
+    ) {
+      throw new Error(
+        `BAD_REQUEST: data.relations is applied only by action 'create' and 'update' (got '${input.action}') — send the edges on the create/update call that carries them`,
+      );
+    }
+
     switch (input.action) {
       case 'list': {
         const projectId = await resolveProjectId(input, ctx);
@@ -860,8 +861,11 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           return projected;
         }
         // cm:edge contract -> packages/core/src/issues/dependency-read.ts — the ONLY read path an agent has onto its own edges; REST GET /api/issues/:id/dependencies is JWT-only, so without this a token that can write an edge still cannot verify one landed
-        const full = await serializeWithAttachments(issue);
-        return { ...full, relations: await loadIssueRelations(issue.id) };
+        const [full, relations] = await Promise.all([
+          serializeWithAttachments(issue),
+          loadIssueRelations(issue.id),
+        ]);
+        return { ...full, relations };
       }
 
       case 'create': {

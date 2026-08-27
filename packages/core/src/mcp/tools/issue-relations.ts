@@ -41,6 +41,10 @@ export async function applyIssueRelations(
   const actor = principalHookActor(ctx.principal, device);
   const applied: AppliedIssueRelation[] = [];
   for (const rel of relations ?? []) {
+    // cm:guard enforce EXACTLY one side here, not just "at least one" — the zod `.refine` in forge-issues.ts is the only other check, so a second caller of this helper (or a widened schema) would otherwise get the `dependsOnId` branch silently and lose the `blocksId` edge it also asked for
+    if ((rel.dependsOnId == null) === (rel.blocksId == null)) {
+      throw new Error('BAD_REQUEST: relation needs exactly one of dependsOnId or blocksId');
+    }
     const fromIssueId = rel.dependsOnId ?? issueId;
     const toIssueId = rel.dependsOnId != null ? issueId : rel.blocksId;
     if (!toIssueId) throw new Error('BAD_REQUEST: relation needs dependsOnId or blocksId');

@@ -97,6 +97,9 @@ export type IssueRelationDigest = {
   gatesDispatch: boolean;
 };
 
+const isExpired = (edge: IssueDependencyEdge, now: number): boolean =>
+  edge.validUntil != null && edge.validUntil.getTime() <= now;
+
 // cm:guard `gatesDispatch` answers "is this edge holding me RIGHT NOW", and it is three conditions, not one: incoming + kind `blocks` + unexpired + the blocker unsatisfied. Drop any of them and it lies in the ordinary case — a `decomposes` parent also lands in `blockedBy` while L2 never gates the child on it, and every satisfied dependency in the project would report a live blocker forever once its blocker merged.
 // cm:edge lockstep -> packages/core/src/issues/dependency-satisfaction.ts — the merged/reopen/closed half of the rule lives there, shared with pipeline-health.ts; the valid_until half is inline here because it is the only part `expired` also needs
 function digest(
@@ -106,11 +109,7 @@ function digest(
   baseStampable: boolean,
 ): IssueRelationDigest {
   const outgoing = edge.fromIssueId === issueId;
-  const expired = edge.validUntil != null && edge.validUntil.getTime() <= now;
-  const satisfied = isBlockerSatisfied(
-    { status: edge.fromStatus ?? '', mergedAt: edge.fromMergedAt },
-    baseStampable,
-  );
+  const expired = isExpired(edge, now);
   return {
     edgeId: edge.id,
     kind: edge.kind,
@@ -122,7 +121,14 @@ function digest(
     otherMergedAt: outgoing ? edge.toMergedAt : edge.fromMergedAt,
     validUntil: edge.validUntil,
     expired,
-    gatesDispatch: !outgoing && edge.kind === 'blocks' && !expired && !satisfied,
+    gatesDispatch:
+      !outgoing &&
+      edge.kind === 'blocks' &&
+      !expired &&
+      !isBlockerSatisfied(
+        { status: edge.fromStatus ?? '', mergedAt: edge.fromMergedAt },
+        baseStampable,
+      ),
   };
 }
 
@@ -138,9 +144,13 @@ export async function loadIssueRelations(
 ): Promise<{ blocks: IssueRelationDigest[]; blockedBy: IssueRelationDigest[] }> {
   const { outgoing, incoming } = await loadIssueDependencyEdges(issueId);
   const now = Date.now();
-  // cm:why `baseStampable` costs a `projects` read, so skip it when no incoming edge could use it — an empty graph is the common case on `forge_issues get` and this runs on every call
-  const projectId = incoming[0]?.projectId;
-  const baseStampable = projectId ? (await resolveGateSettings(projectId)).baseStampable : true;
+  // cm:guard keep this predicate the SAME SHAPE as `gatesDispatch`'s first three conjuncts — `baseStampable` costs a `projects` read on a path that runs on every agent turn, and only an unexpired incoming `blocks` edge ever consumes it; widening the test back to "any incoming edge" pays that read for every decomposes-only or all-expired graph, narrowing it past `gatesDispatch` reports a satisfied blocker as gating
+  const gatingProjectId = incoming.find(
+    (e) => e.kind === 'blocks' && !isExpired(e, now),
+  )?.projectId;
+  const baseStampable = gatingProjectId
+    ? (await resolveGateSettings(gatingProjectId)).baseStampable
+    : true;
   return {
     blocks: outgoing.map((e) => digest(e, issueId, now, baseStampable)),
     blockedBy: incoming.map((e) => digest(e, issueId, now, baseStampable)),
