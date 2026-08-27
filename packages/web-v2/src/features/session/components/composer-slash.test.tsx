@@ -157,12 +157,31 @@ describe("Composer — slash skills menu", () => {
     expect(screen.queryByText(/No skills are invokable/)).not.toBeInTheDocument();
   });
 
-  it("shows a retry when the list failed to load", () => {
+  it("shows a retry when the list failed to load, and a real click reaches it", () => {
     const { retry } = renderComposer({ items: [], error: new Error("boom") });
     typeInto(textarea(), "/");
     expect(screen.getByText("Couldn't load skills.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    // cm:guard press Retry the way a pointer does — mousedown, mouseup, THEN click. A bare fireEvent.click dispatches no mousedown, so it cannot catch a click-away handler that unmounts the panel before the click lands, which is exactly the bug this replaced.
+    const btn = screen.getByRole("button", { name: "Retry" });
+    fireEvent.mouseDown(btn);
+    fireEvent.mouseUp(btn);
+    fireEvent.click(btn);
     expect(retry).toHaveBeenCalled();
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+  });
+
+  it("a press inside the panel that is not a row does not dismiss it", () => {
+    renderComposer();
+    typeInto(textarea(), "/");
+    fireEvent.mouseDown(screen.getByText("Skills"));
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+  });
+
+  it("a press outside both the row and the panel dismisses it", () => {
+    renderComposer();
+    typeInto(textarea(), "/");
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
   it("keeps the trigger while the list is loading, so the state is visible", () => {

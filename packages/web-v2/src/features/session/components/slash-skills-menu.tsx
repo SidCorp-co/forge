@@ -57,6 +57,7 @@ export function SlashSkillsMenu({
     open,
     onClose,
     anchorRef,
+    panelRef: listRef,
     width: 360,
     placement: "above",
   });

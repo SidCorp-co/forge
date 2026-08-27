@@ -26,6 +26,13 @@ export interface AnchoredMenuOpts {
   onClose: () => void;
   /** The wrapper the panel is anchored to and that click-away must exclude. */
   anchorRef: RefObject<HTMLElement | null>;
+  /**
+   * The panel itself, when it is NOT a descendant of `anchorRef` — a
+   * viewport-fixed panel rendered as a sibling is outside the anchor, so
+   * click-away would close it on its own presses. Omit when the panel lives
+   * inside the anchor.
+   */
+  panelRef?: RefObject<HTMLElement | null>;
   /** Desired panel width; clamped to the viewport minus a gutter. */
   width?: number;
   /** `above` opens upward — the composer sits at the bottom of the screen. */
@@ -44,6 +51,7 @@ export function useAnchoredMenu({
   open,
   onClose,
   anchorRef,
+  panelRef,
   width = 300,
   placement = "below",
 }: AnchoredMenuOpts): MenuPosition | null {
@@ -52,8 +60,13 @@ export function useAnchoredMenu({
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
+      const target = e.target as Node;
       const anchor = anchorRef.current;
-      if (anchor && !anchor.contains(e.target as Node)) onClose();
+      if (!anchor) return;
+      // cm:guard the PANEL has to be excluded as well as the anchor whenever it is not a descendant of it. A viewport-fixed sibling panel is outside the anchor, so anchor-only click-away unmounts it on mousedown — before the `click` that carries its own onClick lands, which silently killed the error state's Retry button and turned a scrollbar drag into a dismissal.
+      if (anchor.contains(target)) return;
+      if (panelRef?.current?.contains(target)) return;
+      onClose();
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -64,7 +77,7 @@ export function useAnchoredMenu({
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open, onClose, anchorRef]);
+  }, [open, onClose, anchorRef, panelRef]);
 
   useLayoutEffect(() => {
     if (!open) {

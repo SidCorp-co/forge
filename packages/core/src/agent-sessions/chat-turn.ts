@@ -469,7 +469,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   }
 
   if (isLocal) {
-    // Desktop runs Claude locally — just mirror the user turn to web viewers.
+    // cm:guard a local turn is run by the CALLER, not by us — we only mirror it to web viewers. The resolved `model` deliberately does not travel here (ISS-718 AC#6): the only client that ever set origin='desktop' was packages/dev, deleted 2026-08-23. `metadata.model` is still persisted above, so a future local client inherits the pick — but it has to read that marker itself, because nothing on this branch hands it over.
     roomManager.publish(projectRoom(project.id), {
       event: 'agent:user-message',
       data: {
