@@ -13,7 +13,7 @@ import { jobEvents } from '../db/schema.js';
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /** What the operator did. Widen this, never the `kind` — see the edge below. */
-export type InterventionAction = 'cancel' | 'resume';
+export type InterventionAction = 'cancel' | 'resume' | 'answer' | 'inject';
 
 export interface InterventionEventInput {
   jobId: string;

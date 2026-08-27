@@ -1,0 +1,581 @@
+<meta charset="utf-8">
+<title>Duplex Session Architecture</title>
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --panel2:#f6f4f0; --ink:#1a1a19; --ink2:#55534e; --ink3:#8b8880;
+    --line:#dedbd4; --line2:#c6c2b8;
+    --core:#2c5f8a; --core-bg:#e7f0f7;
+    --runner:#7a4f9c; --runner-bg:#f0e9f7;
+    --sess:#2f7d5d; --sess-bg:#e6f2ec;
+    --warn:#a8641a; --warn-bg:#fbf1e3;
+    --dead:#b03a2e; --dead-bg:#fbeae7;
+    --mute:#efece6;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#16161a; --panel:#1e1e23; --panel2:#25252b; --ink:#eceae5; --ink2:#a8a59d; --ink3:#75726b;
+    --line:#33333b; --line2:#454550;
+    --core:#6fa8d6; --core-bg:#152836;
+    --runner:#b48ad6; --runner-bg:#241a30;
+    --sess:#5fbf92; --sess-bg:#163025;
+    --warn:#d9a05b; --warn-bg:#2e2314;
+    --dead:#e0705f; --dead-bg:#331b17;
+    --mute:#26262c;
+  }}
+  :root[data-theme="dark"]{
+    --bg:#16161a; --panel:#1e1e23; --panel2:#25252b; --ink:#eceae5; --ink2:#a8a59d; --ink3:#75726b;
+    --line:#33333b; --line2:#454550;
+    --core:#6fa8d6; --core-bg:#152836;
+    --runner:#b48ad6; --runner-bg:#241a30;
+    --sess:#5fbf92; --sess-bg:#163025;
+    --warn:#d9a05b; --warn-bg:#2e2314;
+    --dead:#e0705f; --dead-bg:#331b17;
+    --mute:#26262c;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.6;
+       margin:0;padding:44px 24px 96px;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{font-size:29px;line-height:1.25;letter-spacing:-.02em;margin:0 0 6px;font-weight:650}
+  .sub{color:var(--ink2);margin:0 0 34px;max-width:76ch}
+  h2{font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink3);
+     margin:52px 0 4px;font-weight:600}
+  h3{font-size:19px;margin:2px 0 6px;font-weight:600;letter-spacing:-.01em}
+  p{margin:0 0 12px;max-width:78ch;color:var(--ink2)}
+  p strong,li strong,td strong{color:var(--ink);font-weight:600}
+  code{font-family:var(--mono);font-size:.885em;background:var(--mute);padding:1px 5px;
+       border-radius:4px;color:var(--ink)}
+  figure{margin:20px 0 8px;background:var(--panel);border:1px solid var(--line);
+         border-radius:12px;padding:20px 18px 12px;overflow-x:auto}
+  figcaption{font-size:13.5px;color:var(--ink2);margin-top:12px;padding-top:11px;
+             border-top:1px solid var(--line)}
+  figcaption b{color:var(--ink)}
+  svg{display:block;min-width:680px;width:100%;height:auto}
+  .st{font-family:var(--sans);font-size:12.5px;fill:var(--ink)}
+  .sl{font-family:var(--sans);font-size:11.5px;fill:var(--ink2)}
+  .sm{font-family:var(--mono);font-size:10.5px;fill:var(--ink2)}
+  .sk{font-family:var(--sans);font-size:10.5px;font-weight:650;fill:var(--ink3);letter-spacing:.09em}
+  .big{font-family:var(--sans);font-size:14px;font-weight:650;fill:var(--ink)}
+  table{border-collapse:collapse;width:100%;font-size:14px;margin:14px 0 6px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink3);
+     font-weight:600;border-bottom:1px solid var(--line2)}
+  .tw{overflow-x:auto}
+  .note{border-left:3px solid var(--warn);background:var(--warn-bg);padding:13px 17px;
+        border-radius:0 8px 8px 0;margin:20px 0;max-width:none;color:var(--ink2)}
+  .rule{border-left:3px solid var(--core);background:var(--core-bg);padding:14px 18px;
+        border-radius:0 8px 8px 0;margin:22px 0}
+  .rule p{margin:0;color:var(--ink)}
+  ul{margin:0 0 12px;padding-left:20px;color:var(--ink2)}
+  li{margin-bottom:5px}
+  .foot{margin-top:56px;padding-top:16px;border-top:1px solid var(--line);
+        font-size:12.5px;color:var(--ink3)}
+</style>
+
+<div class="wrap">
+<h1>Duplex agent session — architecture</h1>
+<p class="sub">A running agent gets an inbox. One session per job; resident while working, durable
+while waiting. Nothing pooled. This is RFC 0003 drawn: the components, the state machine, the
+queueing rule, and the one flow that is subtle.</p>
+
+<h2>Figure 1 · components</h2>
+<h3>Two protocols, one translator</h3>
+
+<figure>
+<svg viewBox="0 0 1000 430" role="img" aria-label="Component diagram: core speaks a Forge envelope over the websocket to the runner daemon, which translates it onto the CLI's stream-json stdin.">
+ <defs>
+  <marker id="f1" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--ink3)"/></marker>
+  <marker id="f1c" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--core)"/></marker>
+  <marker id="f1s" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--sess)"/></marker>
+ </defs>
+
+ <!-- CORE -->
+ <rect x="14" y="44" width="248" height="330" rx="10" fill="var(--core-bg)" stroke="var(--core)" stroke-width="1.4"/>
+ <text class="sk" x="28" y="66" fill="var(--core)">CORE — OWNS WORK &amp; STATE</text>
+ <rect x="28" y="80" width="220" height="40" rx="6" fill="var(--panel)" stroke="var(--line2)"/>
+ <text class="st" x="40" y="98">job queue (pg-boss)</text>
+ <text class="sm" x="40" y="113">the only scheduler · unchanged</text>
+ <rect x="28" y="128" width="220" height="40" rx="6" fill="var(--panel)" stroke="var(--line2)"/>
+ <text class="st" x="40" y="146">dispatch-gates.ts</text>
+ <text class="sm" x="40" y="161">what runs where · unchanged</text>
+ <rect x="28" y="188" width="220" height="44" rx="6" fill="var(--panel)" stroke="var(--core)" stroke-dasharray="4 3"/>
+ <text class="st" x="40" y="206" fill="var(--core)">sendToSession()  ← NEW</text>
+ <text class="sm" x="40" y="222">delivered | gone — nothing else</text>
+ <rect x="28" y="240" width="220" height="40" rx="6" fill="var(--panel)" stroke="var(--line2)"/>
+ <text class="st" x="40" y="258">answer-resume.ts</text>
+ <text class="sm" x="40" y="273">+1 branch: ack is the commit</text>
+ <rect x="28" y="300" width="220" height="56" rx="6" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="sl" x="40" y="318">agent_sessions</text>
+ <text class="sm" x="40" y="334">runtimeState   ← NEW</text>
+ <text class="sm" x="40" y="348">lastInboxSeq   ← NEW</text>
+
+ <!-- WS gap -->
+ <text class="sk" x="268" y="112" fill="var(--ink3)">FORGE ENVELOPE</text>
+ <text class="sm" x="292" y="128">over /ws</text>
+ <path d="M262,150 L392,150" fill="none" stroke="var(--core)" stroke-width="1.8" marker-end="url(#f1c)"/>
+ <text class="sm" x="274" y="145" fill="var(--core)">session.send</text>
+ <path d="M392,178 L262,178" fill="none" stroke="var(--ink3)" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#f1)"/>
+ <text class="sm" x="278" y="193">session.ack</text>
+ <path d="M392,214 L262,214" fill="none" stroke="var(--ink3)" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#f1)"/>
+ <text class="sm" x="278" y="229">TurnEnded</text>
+
+ <!-- RUNNER -->
+ <rect x="394" y="44" width="240" height="330" rx="10" fill="var(--runner-bg)" stroke="var(--runner)" stroke-width="1.4"/>
+ <text class="sk" x="408" y="66" fill="var(--runner)">RUNNER — OWNS PROCESS</text>
+ <rect x="408" y="80" width="212" height="36" rx="6" fill="var(--panel)" stroke="var(--line2)"/>
+ <text class="st" x="420" y="103">claim · lease · inflight</text>
+ <rect x="408" y="124" width="212" height="98" rx="6" fill="var(--panel)" stroke="var(--runner)" stroke-dasharray="4 3"/>
+ <text class="st" x="420" y="142" fill="var(--runner)">DuplexSession  ← NEW</text>
+ <text class="sm" x="420" y="160">last_written_seq   drop ≤ seq</text>
+ <text class="sm" x="420" y="176">pending_inject     coalesces</text>
+ <text class="sm" x="420" y="192">residency deadline</text>
+ <text class="sm" x="420" y="208">state: RuntimeState</text>
+ <rect x="408" y="232" width="212" height="52" rx="6" fill="var(--warn-bg)" stroke="var(--warn)"/>
+ <text class="st" x="420" y="250" fill="var(--warn)">translator</text>
+ <text class="sm" x="420" y="267" fill="var(--warn)">envelope → stream-json msg</text>
+ <rect x="408" y="300" width="212" height="56" rx="6" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="sl" x="420" y="318">never classifies a turn end</text>
+ <text class="sm" x="420" y="336">reports it, core decides</text>
+
+ <!-- pipe gap -->
+ <text class="sk" x="654" y="112" fill="var(--ink3)">CLI PROTOCOL</text>
+ <text class="sm" x="654" y="128">stream-json</text>
+ <path d="M634,150 L748,150" fill="none" stroke="var(--warn)" stroke-width="1.8" marker-end="url(#f1s)"/>
+ <text class="sm" x="644" y="145" fill="var(--warn)">stdin (piped)</text>
+ <path d="M748,186 L634,186" fill="none" stroke="var(--sess)" stroke-width="1.4" marker-end="url(#f1)"/>
+ <text class="sm" x="646" y="201" fill="var(--sess)">stdout events</text>
+ <text class="sm" x="646" y="221" fill="var(--ink3)">replay = ack</text>
+
+ <!-- SESSION -->
+ <rect x="750" y="44" width="236" height="330" rx="10" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.4"/>
+ <text class="sk" x="764" y="66" fill="var(--sess)">SESSION — ONE PER JOB</text>
+ <rect x="764" y="80" width="208" height="40" rx="6" fill="var(--panel)" stroke="var(--line2)"/>
+ <text class="st" x="776" y="98">claude (one process)</text>
+ <text class="sm" x="776" y="113">--session-id from core</text>
+ <rect x="764" y="130" width="208" height="120" rx="6" fill="var(--panel)" stroke="var(--line2)"/>
+ <text class="sl" x="776" y="148">7 phases, same process</text>
+ <text class="sm" x="776" y="167">1 understand   2 plan</text>
+ <text class="sm" x="776" y="183">3 code         4 self-check</text>
+ <text class="sm" x="776" y="199">5 review       6 test</text>
+ <text class="sm" x="776" y="215">7 ship</text>
+ <rect x="776" y="222" width="184" height="22" rx="4" fill="var(--sess-bg)" stroke="var(--sess)" stroke-dasharray="3 2"/>
+ <text class="sm" x="784" y="237" fill="var(--sess)">phase 5 = in-process fork</text>
+ <rect x="764" y="262" width="208" height="94" rx="6" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="sl" x="776" y="280">inbox accepts, per session:</text>
+ <text class="sm" x="776" y="299">work        once, then rejected</text>
+ <text class="sm" x="776" y="315">answer      never coalesced</text>
+ <text class="sm" x="776" y="331">inject      coalesces</text>
+ <text class="sm" x="776" y="347">checkpoint · cancel</text>
+
+ <text class="sm" x="14" y="402" fill="var(--ink3)">Runner::send() is already in the trait (runner/mod.rs:119) and returns NotImplemented today (claude_code.rs:821) — this implements it.</text>
+ <text class="sm" x="14" y="420" fill="var(--ink3)">Trait unchanged. DuplexClaudeRunner is a second impl behind sessionMode: 'duplex'; print mode stays the default and the fallback.</text>
+</svg>
+<figcaption><b>The translator is the load-bearing boundary.</b> Core never writes stream-json and the
+CLI never sees a Forge envelope, so the CLI's input format can change without touching core. Only
+three things cross the websocket: a send, its ack, and events.</figcaption>
+</figure>
+
+<h2>Figure 2 · lifecycle</h2>
+<h3>The session declares its state instead of having it guessed</h3>
+
+<figure>
+<svg viewBox="0 0 1000 316" role="img" aria-label="Session state machine: starting, working, awaiting input, checkpointing, closed — with who decides each transition.">
+ <defs><marker id="f2" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--ink2)"/></marker></defs>
+
+ <rect x="16" y="80" width="126" height="52" rx="8" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="big" x="30" y="103">starting</text>
+ <text class="sm" x="30" y="120">spawn + work</text>
+
+ <rect x="212" y="80" width="150" height="52" rx="8" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.6"/>
+ <text class="big" x="226" y="103" fill="var(--sess)">working</text>
+ <text class="sm" x="226" y="120" fill="var(--sess)">emits progress</text>
+
+ <rect x="452" y="80" width="184" height="52" rx="8" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="1.6"/>
+ <text class="big" x="466" y="103" fill="var(--warn)">awaiting_input</text>
+ <text class="sm" x="466" y="120" fill="var(--warn)">alive · not progressing</text>
+
+ <rect x="716" y="80" width="150" height="52" rx="8" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="big" x="730" y="103">checkpointing</text>
+ <text class="sm" x="730" y="120">writes resume point</text>
+
+ <rect x="900" y="80" width="86" height="52" rx="8" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="big" x="914" y="103">closed</text>
+
+ <path d="M142,106 L206,106" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f2)"/>
+ <text class="sm" x="146" y="99">1st event</text>
+
+ <path d="M362,98 L446,98" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f2)"/>
+ <text class="sm" x="368" y="62">TurnEnded,</text>
+ <text class="sm" x="368" y="75">core: needs_info</text>
+ <path d="M446,120 L362,120" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f2)"/>
+ <text class="sm" x="382" y="136">answer delivered</text>
+
+ <path d="M636,106 L710,106" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f2)"/>
+ <text class="sm" x="600" y="164">residency expired,</text>
+ <text class="sm" x="600" y="178">or cancel</text>
+ <path d="M866,106 L894,106" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f2)"/>
+
+ <path d="M300,132 C300,200 780,206 800,134" fill="none" stroke="var(--ink2)" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#f2)"/>
+ <text class="sm" x="470" y="212">TurnEnded → core says closed / dropped / anomaly</text>
+
+ <rect x="16" y="234" width="470" height="66" rx="8" fill="var(--sess-bg)" stroke="var(--sess)"/>
+ <text class="sl" x="30" y="253" fill="var(--sess)">working — the quiet-timeout applies</text>
+ <text class="sm" x="30" y="272">silence here is the reaper's business, exactly as today</text>
+ <text class="sm" x="30" y="289">runtimeState lives on agent_sessions, so core reads it directly</text>
+
+ <rect x="500" y="234" width="486" height="66" rx="8" fill="var(--warn-bg)" stroke="var(--warn)"/>
+ <text class="sl" x="514" y="253" fill="var(--warn)">awaiting_input — EXEMPT from the quiet-timeout, bounded by residency</text>
+ <text class="sm" x="514" y="272">a parked session declares that it is parked, instead of asserting a</text>
+ <text class="sm" x="514" y="289">progress it cannot observe. That is the whole of the repayment.</text>
+</svg>
+<figcaption><b>Two states, two different rules.</b> Today one synthetic beat every 25 s covers
+everything that has not exited. Splitting the states buys one thing and it is worth stating narrowly:
+a session waiting on stdin no longer has to beat a false progress signal. It does <b>not</b> separate
+<i>thinking</i> from <i>wedged</i> — the beat still fires throughout <code>working</code>, so a stuck
+agent and a busy one remain the same observation. &quot;Running three hours: working or stuck?&quot;
+needs a progress signal with semantics (phases, tool calls, diff growth), which is not this design.
+And note what this state mostly does: under duplex a parked session is <b>alive</b>, so without
+<code>runtimeState</code> it would look like <code>working</code> — this is largely
+<b>preventing a regression duplex itself introduces</b>, not repaying older debt. Today's park is
+already unambiguous: the process exits and the job goes terminal.</figcaption>
+</figure>
+
+<p class="note"><b>Read the whole page against one default:</b> <code>sessionResidencySeconds</code>
+ships at <b>0</b> and <code>sessionMode</code> ships at <code>'print'</code>. Every residency-window
+path drawn below is therefore <i>off</i> on day one — figure 6's path B collapses into path C until an
+operator raises the window on purpose.</p>
+
+<h2>Figure 3 · the queueing rule</h2>
+<h3>Three queues, three owners, one prohibition</h3>
+
+<figure>
+<svg viewBox="0 0 1000 268" role="img" aria-label="Three queues: the job queue owned by core admits work; the runner slot decides what starts; the session inbox never admits work.">
+ <defs>
+  <marker id="f3" markerWidth="10" markerHeight="10" refX="7.5" refY="3.4" orient="auto"><path d="M0,0 L7.5,3.4 L0,6.8z" fill="var(--core)"/></marker>
+  <marker id="f3d" markerWidth="10" markerHeight="10" refX="7.5" refY="3.4" orient="auto"><path d="M0,0 L7.5,3.4 L0,6.8z" fill="var(--dead)"/></marker>
+ </defs>
+
+ <text class="sk" x="16" y="26">NEW WORK</text>
+ <circle cx="76" cy="60" r="13" fill="var(--core-bg)" stroke="var(--core)" stroke-width="1.6"/>
+ <text class="sm" x="98" y="64" fill="var(--core)">an issue becomes work</text>
+
+ <path d="M76,76 L76,104" fill="none" stroke="var(--core)" stroke-width="2.2" marker-end="url(#f3)"/>
+
+ <rect x="16" y="108" width="700" height="44" rx="7" fill="var(--core-bg)" stroke="var(--core)" stroke-width="1.6"/>
+ <text class="st" x="30" y="127" fill="var(--core)">① job queue (pg-boss)</text>
+ <text class="sm" x="30" y="143" fill="var(--core)">owner: core · holds work that has not started · THE ONLY SCHEDULER · unchanged</text>
+
+ <path d="M366,152 L366,176" fill="none" stroke="var(--core)" stroke-width="1.8" marker-end="url(#f3)"/>
+
+ <rect x="16" y="180" width="700" height="44" rx="7" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="st" x="30" y="199">② runner slot — dispatch-gates.ts</text>
+ <text class="sm" x="30" y="215">owner: the gates · decides which job may start now · RUNNER_CAP_PER_RUNNER = 1 · unchanged</text>
+
+ <rect x="740" y="108" width="246" height="116" rx="7" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.6"/>
+ <text class="st" x="754" y="127" fill="var(--sess)">③ session inbox</text>
+ <text class="sm" x="754" y="144" fill="var(--sess)">owner: the session</text>
+ <text class="sm" x="754" y="160" fill="var(--sess)">holds messages ABOUT the job</text>
+ <text class="sm" x="754" y="176" fill="var(--sess)">it is already running</text>
+ <text class="sm" x="754" y="200" fill="var(--sess)">answer · inject · checkpoint</text>
+ <text class="sm" x="754" y="215" fill="var(--sess)">cancel  (+ work, once)</text>
+
+ <path d="M96,50 C420,16 720,16 858,100" fill="none" stroke="var(--dead)" stroke-width="2.2" stroke-dasharray="7 5" marker-end="url(#f3d)"/>
+ <line x1="606" y1="12" x2="638" y2="44" stroke="var(--dead)" stroke-width="3.4"/>
+ <line x1="638" y1="12" x2="606" y2="44" stroke="var(--dead)" stroke-width="3.4"/>
+
+ <rect x="16" y="238" width="970" height="26" rx="6" fill="var(--dead-bg)" stroke="var(--dead)"/>
+ <text class="sl" x="30" y="256" fill="var(--dead)">THE RULE — work enters only through ①. The inbox never admits work. A second `work` message is rejected, so no second scheduler can appear.</text>
+</svg>
+<figcaption><b>This is what makes it not-pooling at the protocol level</b> rather than by convention.
+An inbox that could accept work would be a scheduler, and two schedulers deciding what runs where is
+the failure this rule forecloses.</figcaption>
+</figure>
+
+<h2>Figure 4 · the one subtle flow</h2>
+<h3>The commit point is a consumed turn, not an ack</h3>
+
+<figure>
+<svg viewBox="0 0 1000 340" role="img" aria-label="Sequence: a human comment reaches answer-resume, which records a durable send request; three outcomes follow — a turn confirmed consumed, an unknown that must be resolved, and an enforced gone that routes through the kill gate before dispatching.">
+ <defs><marker id="f4" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--ink2)"/></marker>
+ <marker id="f4s" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--sess)"/></marker>
+ <marker id="f4w" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--warn)"/></marker></defs>
+
+ <rect x="16" y="26" width="150" height="40" rx="7" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="st" x="30" y="51">human comments</text>
+ <path d="M166,46 L212,46" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f4)"/>
+
+ <rect x="216" y="26" width="176" height="40" rx="7" fill="var(--core-bg)" stroke="var(--core)"/>
+ <text class="st" x="230" y="51" fill="var(--core)">answer-resume.ts</text>
+ <path d="M392,46 L438,46" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f4)"/>
+
+ <rect x="442" y="20" width="330" height="52" rx="7" fill="var(--core-bg)" stroke="var(--core)" stroke-dasharray="4 3"/>
+ <text class="st" x="456" y="40" fill="var(--core)">send — durable, two-phase</text>
+ <text class="sm" x="456" y="59">send_requested_at written BEFORE the frame</text>
+
+ <path d="M607,72 L607,102" fill="none" stroke="var(--ink2)" stroke-width="1.5"/>
+ <path d="M607,102 L170,102 L170,140" fill="none" stroke="var(--sess)" stroke-width="1.8" marker-end="url(#f4s)"/>
+ <path d="M607,102 L500,102 L500,140" fill="none" stroke="var(--warn)" stroke-width="1.8" marker-end="url(#f4w)"/>
+ <path d="M607,102 L830,102 L830,140" fill="none" stroke="var(--ink2)" stroke-width="1.8" marker-end="url(#f4)"/>
+
+ <rect x="20" y="144" width="300" height="118" rx="8" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.6"/>
+ <text class="sl" x="34" y="164" fill="var(--sess)">confirmed — a turn consumed it</text>
+ <text class="sm" x="34" y="185">core does NOT transition</text>
+ <text class="sm" x="34" y="201">core does NOT dispatch</text>
+ <text class="sm" x="34" y="217">the cold path disarms HERE</text>
+ <text class="sm" x="34" y="233">and only here</text>
+ <text class="sm" x="34" y="252" fill="var(--sess)">the fast path</text>
+
+ <rect x="350" y="144" width="300" height="118" rx="8" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="1.6"/>
+ <text class="sl" x="364" y="164" fill="var(--warn)">unknown — the third outcome</text>
+ <text class="sm" x="364" y="185">echo seen, or nothing seen</text>
+ <text class="sm" x="364" y="201">answer recorded pending-applied</text>
+ <text class="sm" x="364" y="217">cold path STAYS ARMED</text>
+ <text class="sm" x="364" y="233">an episode resolves it</text>
+ <text class="sm" x="364" y="252" fill="var(--warn)">never relabelled as gone</text>
+
+ <rect x="680" y="144" width="300" height="118" rx="8" fill="var(--panel2)" stroke="var(--line2)" stroke-width="1.6"/>
+ <text class="sl" x="694" y="164">gone — enforced, not inferred</text>
+ <text class="sm" x="694" y="185">runner destroyed what it</text>
+ <text class="sm" x="694" y="201">could not vouch for</text>
+ <text class="sm" x="694" y="217">kill gate drives the job terminal</text>
+ <text class="sm" x="694" y="233">THEN transition to open + dispatch</text>
+ <text class="sm" x="694" y="252">the cold path — load-bearing</text>
+
+ <rect x="16" y="274" width="964" height="50" rx="7" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="sl" x="30" y="294">Three outcomes, not two. An echo proves the CLI parsed the line, never that a turn consumed it.</text>
+ <text class="sm" x="30" y="313">And gone must not dispatch on its own: the job row is still running, so jobs_active_unique wedges the issue at open with no job.</text>
+</svg>
+<figcaption><b>Revision 2 redrew this figure.</b> It used to say <i>&quot;exactly one branch runs,
+chosen by a single authoritative ack&quot;</i> and that every failure degrades to <code>gone</code>.
+Both were false. A <code>ChildStdin</code> pipe that is not being drained makes the write await past
+core&#39;s deadline, so core can call it <code>gone</code> and then have the answer consumed anyway —
+both branches run. And a half-written line does not degrade to <code>gone</code> at all: the CLI skips
+a malformed line and keeps going, leaving the session <b>alive</b> with a message silently lost. The
+figure now shows the shape this repo already uses for the same question in the kill gate — a durable
+request, a confirmation, and an <code>unknown</code> that must be <i>resolved</i> rather than
+assumed.</figcaption>
+</figure>
+
+<h2>Figure 5 · asking once</h2>
+<h3>The question ledger — every question carries its own answer</h3>
+
+<figure>
+<svg viewBox="0 0 1000 424" role="img" aria-label="The question ledger: add records a question with a required recommendation and a reversible flag; flush posts one comment and starts a durable deadline; at expiry the agent either decides on its recommendation or, in two named cases, keeps waiting.">
+ <defs><marker id="f5" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--ink2)"/></marker>
+ <marker id="f5s" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--sess)"/></marker>
+ <marker id="f5w" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--warn)"/></marker></defs>
+
+ <rect x="16" y="26" width="300" height="140" rx="8" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="sk" x="30" y="46">1 · AS YOU WORK</text>
+ <text class="st" x="30" y="70">questions.add</text>
+ <text class="sm" x="30" y="92">question + context</text>
+ <text class="sm" x="30" y="110" fill="var(--warn)">recommendation — REQUIRED</text>
+ <text class="sm" x="30" y="128" fill="var(--warn)">reversible: true | false</text>
+ <text class="sm" x="30" y="150">no status change, no notification</text>
+
+ <path d="M316,96 L346,96" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f5)"/>
+
+ <rect x="350" y="26" width="300" height="140" rx="8" fill="var(--core-bg)" stroke="var(--core)"/>
+ <text class="sk" x="364" y="46" fill="var(--core)">2 · OUT OF WORK</text>
+ <text class="st" x="364" y="70" fill="var(--core)">questions.flush</text>
+ <text class="sm" x="364" y="92">ONE comment, all pending</text>
+ <text class="sm" x="364" y="110">each with its recommendation</text>
+ <text class="sm" x="364" y="128">via transitionReason — INV-8</text>
+ <text class="sm" x="364" y="150">deadline starts: durable, core-side</text>
+
+ <path d="M500,166 L500,192" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f5)"/>
+ <rect x="350" y="196" width="300" height="34" rx="7" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="sl" x="364" y="217">3 · deadline expires, nobody answered</text>
+
+ <path d="M500,230 L500,244 L250,244 L250,262" fill="none" stroke="var(--sess)" stroke-width="1.8" marker-end="url(#f5s)"/>
+ <path d="M500,230 L500,244 L750,244 L750,262" fill="none" stroke="var(--warn)" stroke-width="1.8" marker-end="url(#f5w)"/>
+
+ <rect x="16" y="266" width="470" height="104" rx="8" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.6"/>
+ <text class="sl" x="30" y="287" fill="var(--sess)">DECIDE — a recommendation exists, reversible: true</text>
+ <text class="sm" x="30" y="309">comment FIRST: what I decided, and that nobody answered</text>
+ <text class="sm" x="30" y="327">then act on it — the issue leaves needs_info</text>
+ <text class="sm" x="30" y="345">best for the RESULT, never cheapest to build</text>
+ <text class="sm" x="30" y="363">and it does not ask again</text>
+
+ <rect x="514" y="266" width="472" height="104" rx="8" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="1.6"/>
+ <text class="sl" x="528" y="287" fill="var(--warn)">KEEP WAITING — the only two escape hatches</text>
+ <text class="sm" x="528" y="309">no recommendation: no basis to prefer a branch</text>
+ <text class="sm" x="528" y="327">reversible: false — data, contract, auth, money,</text>
+ <text class="sm" x="528" y="345">a migration, or a decision a human already made</text>
+ <text class="sm" x="528" y="363">stays parked; a human must answer</text>
+
+ <rect x="16" y="382" width="970" height="34" rx="7" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="sl" x="30" y="403">THE RULE — a question is asked with its answer already attached, so the deadline is a decision rather than a longer wait.</text>
+</svg>
+<figcaption><b>Size is not impact.</b> A large but reversible answer is decided; a small irreversible
+one is not. The old version of this figure said <i>&quot;needs_info is enterable ONLY through
+flush&quot;</i> and sorted questions by blocking radius — both are withdrawn. The gate reinvented a
+guard <code>state-integrity-guards.md</code> records as deleted because <i>&quot;unlike the guard it
+cannot strand the issue&quot;</i>, and the radius axis had no consumer. What the deadline reads is
+reversibility, and nothing else. <b>One prerequisite:</b> <code>needs_info</code> is absent from
+<code>NOTIFY_ON_STATUS</code> and all 17 parked issues have zero replies — until somebody is told a
+question exists, every deadline expires unanswered and this collapses into <i>always decide, never
+ask</i>.</figcaption>
+</figure>
+
+<p class="note"><b>Superseded in part, 2026-08-27 (second owner decision).</b> The figure below draws
+the first decision, in which the <i>deadline</i> decides. It does not: the standing direction —
+<i>decide on the recommendation, grounded in project information; best and most complete over cheapest
+to build</i> — answers the question before it is asked. A question with a grounded recommendation that
+is <code>reversible: true</code> is now decided <b>on the spot</b>, in the same session, and never
+enters <code>needs_info</code>. That was the only row the deadline ever decided, so <b>path C no longer
+exists</b> and the park deadline is not built. Paths <b>A</b>, <b>B</b> and <b>D</b> are unchanged.
+The geometry here still shows C; the redraw is pending. RFC 0003 §<i>The direction decides; what it
+cannot decide, parks</i> is authoritative.</p>
+
+<h2>Figure 6 · the journey</h2>
+<h3>One issue, every branch</h3>
+
+<figure>
+<svg viewBox="0 0 1000 710" role="img" aria-label="Flowchart of one issue: no question closes in one session; a question answered inside the residency window stays in the same session; an expired window checkpoints and closes; then either the park deadline expires and the agent decides on its own recommendation, or the question is one it cannot decide and waits for a human.">
+ <defs>
+  <marker id="f6" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--ink2)"/></marker>
+  <marker id="f6s" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--sess)"/></marker>
+  <marker id="f6w" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4z" fill="var(--warn)"/></marker>
+ </defs>
+
+ <rect x="14" y="14" width="452" height="20" rx="4" fill="var(--sess-bg)"/>
+ <text class="sk" x="24" y="29" fill="var(--sess)">ONE JOB · ONE SESSION · WARM</text>
+ <rect x="536" y="14" width="450" height="20" rx="4" fill="var(--warn-bg)"/>
+ <text class="sk" x="546" y="29" fill="var(--warn)">SESSION CLOSED · COLD CLI · WARM LEDGER</text>
+
+ <rect x="180" y="48" width="200" height="34" rx="7" fill="var(--core-bg)" stroke="var(--core)"/>
+ <text class="st" x="194" y="70" fill="var(--core)">issue → open</text>
+ <path d="M280,82 L280,102" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f6)"/>
+
+ <rect x="180" y="106" width="200" height="44" rx="7" fill="var(--core-bg)" stroke="var(--core)"/>
+ <text class="st" x="194" y="124" fill="var(--core)">dispatch · spawn</text>
+ <text class="sm" x="194" y="140">work = seq 1</text>
+ <path d="M280,150 L280,170" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f6)"/>
+
+ <rect x="132" y="174" width="296" height="66" rx="8" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.8"/>
+ <text class="big" x="146" y="196" fill="var(--sess)">working — phases 1..7</text>
+ <text class="sm" x="146" y="214">questions.add as blockers appear</text>
+ <text class="sm" x="146" y="230">no status change, no park</text>
+
+ <!-- path A: no question -->
+ <path d="M132,207 L60,207 L60,300" fill="none" stroke="var(--sess)" stroke-width="1.6" marker-end="url(#f6s)"/>
+ <text class="sm" x="16" y="262" fill="var(--sess)">A · nothing</text>
+ <text class="sm" x="16" y="277" fill="var(--sess)">to ask</text>
+ <rect x="14" y="304" width="104" height="40" rx="7" fill="var(--sess-bg)" stroke="var(--sess)"/>
+ <text class="st" x="26" y="322" fill="var(--sess)">closed</text>
+ <text class="sm" x="26" y="337" fill="var(--sess)">1 session</text>
+
+ <path d="M280,240 L280,262" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f6)"/>
+ <path d="M180,278 L152,278 L152,236 L200,236" fill="none" stroke="var(--sess)" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#f6s)"/>
+ <text class="sm" x="126" y="262" fill="var(--sess)">yes</text>
+
+ <rect x="180" y="266" width="220" height="34" rx="7" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="sl" x="194" y="287">out of work without an answer?</text>
+
+ <path d="M290,300 L290,320" fill="none" stroke="var(--warn)" stroke-width="1.6" marker-end="url(#f6w)"/>
+ <text class="sm" x="298" y="315" fill="var(--warn)">no → ask</text>
+
+ <rect x="180" y="324" width="248" height="52" rx="7" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="1.6"/>
+ <text class="st" x="194" y="343" fill="var(--warn)">questions.flush</text>
+ <text class="sm" x="194" y="360">one comment, all pending</text>
+ <text class="sm" x="194" y="372">→ needs_info</text>
+
+ <path d="M300,376 L300,396" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f6)"/>
+ <rect x="150" y="400" width="308" height="44" rx="7" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="sl" x="164" y="418">TurnEnded → core reads needs_info</text>
+ <text class="sm" x="164" y="434">awaiting_input · residency timer starts</text>
+
+ <path d="M300,444 L300,466" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f6)"/>
+ <rect x="176" y="470" width="256" height="34" rx="7" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="sl" x="190" y="491">answer inside the window?</text>
+
+ <!-- path B -->
+ <path d="M176,487 L124,487 L124,214 L128,214" fill="none" stroke="var(--sess)" stroke-width="1.8" marker-end="url(#f6s)"/>
+ <text class="sm" x="70" y="478" fill="var(--sess)">B · yes</text>
+ <rect x="14" y="524" width="420" height="66" rx="8" fill="var(--sess-bg)" stroke="var(--sess)"/>
+ <text class="sl" x="28" y="543" fill="var(--sess)">B — send returns delivered</text>
+ <text class="sm" x="28" y="561">same session, same context · no transition, no dispatch</text>
+ <text class="sm" x="28" y="577">no cold start · ONE job for the whole issue</text>
+
+ <!-- path C -->
+ <path d="M432,487 L536,487" fill="none" stroke="var(--warn)" stroke-width="1.8" marker-end="url(#f6w)"/>
+ <text class="sm" x="452" y="479" fill="var(--warn)">C · no</text>
+
+ <rect x="540" y="466" width="446" height="46" rx="7" fill="var(--warn-bg)" stroke="var(--warn)"/>
+ <text class="sl" x="554" y="485" fill="var(--warn)">checkpoint → stdin closed → session completed, job done</text>
+ <text class="sm" x="554" y="502">the slot is released · nothing is held</text>
+
+ <path d="M762,512 L762,532" fill="none" stroke="var(--ink2)" stroke-width="1.5" marker-end="url(#f6)"/>
+ <rect x="540" y="536" width="446" height="44" rx="7" fill="var(--panel2)" stroke="var(--line2)"/>
+ <text class="sl" x="554" y="554">the issue waits at needs_info — but not forever</text>
+ <text class="sm" x="554" y="570">durable: phase journal + the question ledger + a deadline</text>
+
+ <path d="M762,580 L762,596" fill="none" stroke="var(--ink2)" stroke-width="1.5"/>
+ <path d="M762,596 L648,596 L648,616" fill="none" stroke="var(--sess)" stroke-width="1.8" marker-end="url(#f6s)"/>
+ <path d="M762,596 L884,596 L884,616" fill="none" stroke="var(--warn)" stroke-width="1.8" marker-end="url(#f6w)"/>
+
+ <rect x="540" y="620" width="216" height="76" rx="7" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.6"/>
+ <text class="sl" x="552" y="639" fill="var(--sess)">C · the deadline expires</text>
+ <text class="sm" x="552" y="657">DECIDE on the</text>
+ <text class="sm" x="552" y="672">recommendation, comment it</text>
+ <text class="sm" x="552" y="688">→ open → a NEW job</text>
+
+ <rect x="770" y="620" width="216" height="76" rx="7" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="1.6"/>
+ <text class="sl" x="782" y="639" fill="var(--warn)">D · cannot decide</text>
+ <text class="sm" x="782" y="657">no recommendation, or</text>
+ <text class="sm" x="782" y="672">reversible: false</text>
+ <text class="sm" x="782" y="688">stays parked for a human</text>
+</svg>
+<figcaption><b>Four outcomes, one spine.</b> <b>A</b> never parks and closes in one session.
+<b>B</b> parks and is answered in time, so the same session picks up with its context intact — one
+job. <b>C</b> parks, nobody answers, and the deadline expires: the agent proceeds on the
+recommendation it wrote when it found the question, comments what it decided, and a second session
+carries that decision forward. That second session is <b>cold at the CLI</b> — <code>drive</code> jobs
+are excluded from <code>--resume</code> at <code>resume-policy.ts:145</code>, because on this project
+<code>states.open.sessionGroup</code> is <code>planning</code> and a resume would load a stale triage
+transcript — but the issue's context is <b>not</b> lost: it re-enters through <code>forge_phase</code>
+action <code>resume_point</code>. <b>D</b> is the only branch that genuinely waits, and the only one
+that spawns <b>no second job</b> — no recommendation was possible, or the answer is not reversible. Two branches are still undrawn: a <b>partial</b> answer
+re-enters flush with only what is still pending, and a turn that ends with the work unfinished and
+nothing to ask is an anomaly, which core checkpoints. <b>Note what C creates:</b>
+<code>answer-resume.ts</code> requires <code>status === 'needs_info'</code>, so an answer arriving
+after a decision is currently dropped without a word — routine under this rule, and a
+principle-№10 violation. It must reopen that decision, naming what it contradicts.</figcaption>
+</figure>
+
+<h2>Build order</h2>
+
+<div class="tw">
+<table>
+<thead><tr><th>#</th><th>Lands</th><th>Useful on its own because</th></tr></thead>
+<tbody>
+<tr><td><strong>1</strong></td><td><code>DuplexClaudeRunner</code> behind <code>sessionMode: 'duplex'</code>, <code>work</code> only</td><td>one message, one turn, one result — effectively print mode, so it proves the plumbing writes a line and reads a reply. It does <b>not</b> prove a session survives a turn: <code>claude_code.rs:651-666</code> tears the child down <code>RESULT_EXIT_GRACE</code> = 5 s after the <i>first</i> <code>result</code> line, and <code>result_seen</code> / <code>num_turns</code> / <code>succeeded</code> are all derived per-job from that same marker. Inverting that terminal model is the real work and it lands here, not in phase 2</td></tr>
+<tr><td><strong>2</strong></td><td><code>TurnEnded</code> + core classification + <code>runtimeState</code></td><td>turn-end classification replaces inference-from-silence for the <b>anomaly</b> case — a turn that ended with the work unfinished becomes a reported fact instead of a 60-minute timeout. At residency 0, <code>awaiting_input</code> exists for milliseconds and nothing observes it, so the <em>working</em>-vs-<em>awaiting-input</em> dashboard needs phase 3, not this row</td></tr>
+<tr><td><strong>3</strong></td><td><code>answer</code> + ack-is-commit + the residency timer</td><td>the park fast path; safe at every residency value including 0</td></tr>
+<tr><td><strong>4</strong></td><td><code>inject</code>, <code>checkpoint</code>, <code>cancel</code> replacing signal-kill</td><td>steering a live agent, and a teardown that writes down what it knew</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="rule">
+<p><strong>Chat goes first.</strong> <code>daemon/chat.rs</code> is a conversation that has been running
+one-shot the whole time and needs no residency window at all — so it exercises <code>send</code> end to
+end before any pipeline job depends on it.</p>
+</div>
+
+<h2>Lockstep, and what this does not do</h2>
+<ul>
+<li><code>forge-drive/SKILL.md</code> — <em>&quot;then end your session&quot;</em> becomes <em>&quot;then
+finish your turn&quot;</em>. Ships with phase 3, never earlier: under <code>sessionMode: 'print'</code>
+waiting really is a lie.</li>
+<li><code>jobs/loop-monitor.ts</code> — the quiet computation reads <code>runtimeState</code>. Phase 2.</li>
+<li><code>docs/architecture/runner-daemon.md</code> — the spawn description. Phase 1.</li>
+<li><strong>Not addressed:</strong> nothing here changes how often a job fails or who gets told that a
+question is waiting. This is a capability, not a remedy for either.</li>
+</ul>
+
+<p class="foot">RFC 0003 · <code>docs/rfcs/0003-duplex-agent-session.md</code> · branch
+<code>autonomous-transition-standard</code></p>
+</div>

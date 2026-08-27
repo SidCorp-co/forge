@@ -1,0 +1,354 @@
+/**
+ * ISS-652 — `runAlertSweep` against real Postgres, modelled on
+ * stranded-issues-e2e.test.ts. Uses A1 (orphan jobs) as the vehicle since it
+ * is the simplest alert to force into crit: dedup → escalate → clear.
+ */
+
+import { randomUUID } from 'node:crypto';
+import { sql } from 'drizzle-orm';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  createTestProject,
+  createTestUser,
+  setupTestDatabase,
+  type TestDatabase,
+  truncateAll,
+} from '../helpers/index.js';
+
+type Mods = {
+  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
+  runAlertSweep: typeof import('../../src/admin/alert-sweeper.js').runAlertSweep;
+};
+
+let harness: TestDatabase;
+
+const ADMIN_EMAIL = 'admin@test.forge.local';
+const ADMIN_EMAIL_2 = 'admin2@test.forge.local';
+
+let clockMs = Date.parse('2026-01-01T00:00:00Z');
+function nextNow(): Date {
+  clockMs += 10 * 60_000;
+  return new Date(clockMs);
+}
+
+async function seedAdmin() {
+  const admin = await createTestUser(harness.db, { email: ADMIN_EMAIL });
+  await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${admin.id}`);
+  return admin;
+}
+
+async function seedSecondAdmin() {
+  const admin = await createTestUser(harness.db, { email: ADMIN_EMAIL_2 });
+  await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${admin.id}`);
+  return admin;
+}
+
+/** On the ADMIN_EMAILS allow-list, but never verified — must not be notified. */
+async function seedUnverifiedAdmin() {
+  return createTestUser(harness.db, { email: ADMIN_EMAIL });
+}
+
+async function seedOrphan() {
+  const owner = await createTestUser(harness.db);
+  const project = await createTestProject(harness.db, owner.id);
+  const runId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, finished_at)
+    VALUES (${runId}, ${project.id}, 'system', 'cancelled', now(), now())
+  `);
+  const jobId = randomUUID();
+  await harness.db.execute(
+    sql`ALTER TABLE jobs DISABLE TRIGGER trg_jobs_no_active_under_terminal_run`,
+  );
+  await harness.db.execute(sql`
+    INSERT INTO jobs (id, project_id, type, status, payload, pipeline_run_id, created_by)
+    VALUES (${jobId}, ${project.id}, 'code', 'queued', '{}'::jsonb, ${runId}, ${owner.id})
+  `);
+  await harness.db.execute(
+    sql`ALTER TABLE jobs ENABLE TRIGGER trg_jobs_no_active_under_terminal_run`,
+  );
+  return { projectId: project.id, runId, jobId };
+}
+
+async function clearOrphan(jobId: string) {
+  await harness.db.execute(
+    sql`ALTER TABLE jobs DISABLE TRIGGER trg_jobs_no_active_under_terminal_run`,
+  );
+  await harness.db.execute(sql`UPDATE jobs SET status = 'cancelled' WHERE id = ${jobId}`);
+  await harness.db.execute(
+    sql`ALTER TABLE jobs ENABLE TRIGGER trg_jobs_no_active_under_terminal_run`,
+  );
+}
+
+/** Jobs dispatched `ageSeconds` ago under a still-running pipeline_run: A2 fodder, invisible to A1 and A3. */
+async function seedStuckJobs(count: number, ageSeconds: number) {
+  const owner = await createTestUser(harness.db);
+  const project = await createTestProject(harness.db, owner.id);
+  const runId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
+    VALUES (${runId}, ${project.id}, 'system', 'running', now())
+  `);
+  for (let i = 0; i < count; i++) {
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, type, status, payload, pipeline_run_id, created_by, queued_at, dispatched_at)
+      VALUES (${randomUUID()}, ${project.id}, 'code', 'running', '{}'::jsonb, ${runId}, ${owner.id},
+              now() - (${ageSeconds}::int * interval '1 second'),
+              now() - (${ageSeconds}::int * interval '1 second'))
+    `);
+  }
+}
+
+type OpsAlertRow = {
+  id: string;
+  user_id: string;
+  severity: string | null;
+  read: boolean;
+  resolved_at: Date | null;
+  resolution_key: string;
+  title: string;
+  body: string | null;
+};
+
+/** What an admin opening the bell does: read, but the condition is still live so `resolved_at` stays NULL. */
+async function acknowledge(userId: string, resolutionKey: string) {
+  await harness.db.execute(sql`
+    UPDATE notifications SET read = true
+    WHERE type = 'ops_alert' AND user_id = ${userId} AND resolution_key = ${resolutionKey}
+  `);
+}
+
+/** An A2 warn the admin has already opened: one stuck job, swept, then marked read with the condition still live. */
+async function openedThenAcknowledgedA2(runSweep: Mods['runAlertSweep'], userId: string) {
+  await seedStuckJobs(1, 700);
+  await runSweep(nextNow());
+  await acknowledge(userId, 'ops-alert:A2');
+}
+
+async function opsAlertRows(resolutionKey = 'ops-alert:A1'): Promise<OpsAlertRow[]> {
+  const rows = await harness.db.execute<OpsAlertRow>(sql`
+    SELECT id, user_id, severity, read, resolved_at, resolution_key, title, body FROM notifications
+    WHERE type = 'ops_alert' AND resolution_key = ${resolutionKey}
+  `);
+  return rows as unknown as OpsAlertRow[];
+}
+
+describe('runAlertSweep E2E (ISS-652)', () => {
+  let mods: Mods;
+
+  beforeAll(async () => {
+    harness = await setupTestDatabase();
+    process.env.DATABASE_URL = harness.url;
+    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+    process.env.SMTP_HOST ??= 'localhost';
+    process.env.SMTP_PORT ??= '1025';
+    process.env.SMTP_USER ??= 'test';
+    process.env.SMTP_PASS ??= 'test';
+    process.env.SMTP_FROM ??= 'test@example.com';
+    process.env.APP_BASE_URL ??= 'http://localhost:3000';
+    process.env.CORS_ORIGINS ??= 'http://localhost:3000';
+    process.env.NODE_ENV ??= 'test';
+    // cm:why both addresses baked in up front — config/env.ts parses ADMIN_EMAILS once at import time, so it cannot be changed per-test; a test seeding only one of the two never triggers the other's row
+    process.env.ADMIN_EMAILS = `${ADMIN_EMAIL},${ADMIN_EMAIL_2}`;
+
+    mods = (await import('../../src/admin/alert-sweeper.js')) as unknown as Mods;
+  }, 60_000);
+
+  afterAll(async () => {
+    if (harness) await harness.cleanup();
+  });
+
+  beforeEach(async () => {
+    await truncateAll(harness.db);
+  });
+
+  // cm:why the in-process sweep-interval gate is a real module-level singleton across this whole file (not reset per test); each call must pass a `now` strictly >5min past every prior call so the gate never skips a sweep this suite depends on
+  it('writes exactly one unread notification per admin when A1 crosses into crit', async () => {
+    const admin = await seedAdmin();
+    await seedOrphan();
+
+    const result = await mods.runAlertSweep(nextNow());
+    expect(result.notified).toBeGreaterThan(0);
+
+    const rows = await opsAlertRows();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.user_id === admin.id)).toBe(true);
+    expect(rows.every((r) => r.severity === 'error')).toBe(true);
+    expect(rows.every((r) => !r.read)).toBe(true);
+  });
+
+  it('dedups: a second sweep of the same unresolved condition adds no new rows', async () => {
+    await seedAdmin();
+    await seedOrphan();
+
+    const first = await mods.runAlertSweep(nextNow());
+    expect(first.notified).toBeGreaterThan(0);
+    const countAfterFirst = (await opsAlertRows()).length;
+
+    const second = await mods.runAlertSweep(nextNow());
+    expect(second.notified).toBe(0);
+    expect((await opsAlertRows()).length).toBe(countAfterFirst);
+  });
+
+  it('does not re-alert after an active notification is acknowledged', async () => {
+    await seedAdmin();
+    await seedOrphan();
+
+    await mods.runAlertSweep(nextNow());
+    const [created] = await opsAlertRows();
+    expect(created).toBeDefined();
+    await harness.db.execute(sql`
+      UPDATE notifications SET read = true WHERE id = ${created?.id}
+    `);
+
+    const repeated = await mods.runAlertSweep(nextNow());
+    const rows = await opsAlertRows();
+    expect(repeated.notified).toBe(0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe(created?.id);
+    expect(rows[0]?.read).toBe(true);
+    expect(rows[0]?.resolved_at).toBeNull();
+  });
+
+  // cm:guard an acknowledged (read) active alert MUST still be resolved on the healthy pass — otherwise resolved_at stays NULL, the partial unique index keeps blocking, and a later recurrence is silently dropped (ISS-652 review blocker; resolveNotifications matches on resolved_at IS NULL, not read = false)
+  it('resolves an acknowledged alert on the healthy pass so a recurrence re-fires', async () => {
+    await seedAdmin();
+    const { jobId } = await seedOrphan();
+
+    await mods.runAlertSweep(nextNow());
+    const [created] = await opsAlertRows();
+    expect(created).toBeDefined();
+    await harness.db.execute(sql`UPDATE notifications SET read = true WHERE id = ${created?.id}`);
+
+    // cm:why the healthy pass must stamp resolved_at on the acknowledged (read) row, not skip it
+    await clearOrphan(jobId);
+    const cleared = await mods.runAlertSweep(nextNow());
+    expect(cleared.resolved).toBeGreaterThan(0);
+    const afterClear = await opsAlertRows();
+    expect(afterClear).toHaveLength(1);
+    expect(afterClear[0]?.resolved_at).not.toBeNull();
+
+    // cm:why recurrence must claim a fresh unread row, not be swallowed by the now-resolved prior row
+    await seedOrphan();
+    const recurred = await mods.runAlertSweep(nextNow());
+    expect(recurred.notified).toBeGreaterThan(0);
+    const active = (await opsAlertRows()).filter((r) => r.resolved_at === null);
+    expect(active).toHaveLength(1);
+    expect(active[0]?.id).not.toBe(created?.id);
+    expect(active[0]?.read).toBe(false);
+  });
+
+  it('clears via resolveNotifications once the orphan is gone', async () => {
+    await seedAdmin();
+    const { jobId } = await seedOrphan();
+
+    await mods.runAlertSweep(nextNow());
+    expect((await opsAlertRows()).every((r) => !r.read)).toBe(true);
+
+    await clearOrphan(jobId);
+    const cleared = await mods.runAlertSweep(nextNow());
+    expect(cleared.resolved).toBeGreaterThan(0);
+    expect((await opsAlertRows()).every((r) => r.read && r.resolved_at !== null)).toBe(true);
+  });
+
+  // cm:why no seedAdmin() call — ADMIN_EMAILS is non-empty (set in beforeAll) but no users row matches it, so platformAdminUserIds() is empty
+  it('notifies nobody when no user matches the ADMIN_EMAILS allow-list, without throwing', async () => {
+    await seedOrphan();
+    await expect(mods.runAlertSweep(nextNow())).resolves.toMatchObject({
+      notified: 0,
+      evaluated: 5,
+    });
+  });
+
+  // cm:guard dedupe/claim must be per (userId, resolutionKey), not a single global check — two distinct admins must each get their own unread row
+  it('writes a distinct row per admin, not a single global row', async () => {
+    const admin1 = await seedAdmin();
+    const admin2 = await seedSecondAdmin();
+    await seedOrphan();
+
+    const result = await mods.runAlertSweep(nextNow());
+    expect(result.notified).toBe(2);
+
+    const rows = await opsAlertRows();
+    const userIds = rows.map((r) => r.user_id).sort();
+    expect(userIds).toEqual([admin1.id, admin2.id].sort());
+  });
+
+  // cm:guard escalation must stay in place on the ONE unread row (the unique index forbids a second) — a resolve-then-re-emit would leave a read row plus a new one for the same live condition
+  it('escalates warn -> crit on the same unread row', async () => {
+    const admin = await seedAdmin();
+    await seedStuckJobs(1, 700);
+
+    await mods.runAlertSweep(nextNow());
+    const warnRows = await opsAlertRows('ops-alert:A2');
+    expect(warnRows).toHaveLength(1);
+    expect(warnRows[0]?.severity).toBe('warning');
+
+    await seedStuckJobs(2, 700);
+    const escalated = await mods.runAlertSweep(nextNow());
+    expect(escalated.notified).toBeGreaterThan(0);
+
+    const critRows = await opsAlertRows('ops-alert:A2');
+    expect(critRows).toHaveLength(1);
+    expect(critRows[0]?.user_id).toBe(admin.id);
+    expect(critRows[0]?.severity).toBe('error');
+    expect(critRows[0]?.read).toBe(false);
+  });
+
+  it('escalates an ACKNOWLEDGED row back to unread, so the bell shows the crit', async () => {
+    const admin = await seedAdmin();
+    await openedThenAcknowledgedA2(mods.runAlertSweep, admin.id);
+
+    await seedStuckJobs(2, 700);
+    await mods.runAlertSweep(nextNow());
+
+    const rows = await opsAlertRows('ops-alert:A2');
+    expect(rows[0]?.severity).toBe('error');
+    expect(rows[0]?.read).toBe(false);
+  });
+
+  it('leaves an acknowledged row read while the severity holds steady', async () => {
+    const admin = await seedAdmin();
+    await openedThenAcknowledgedA2(mods.runAlertSweep, admin.id);
+
+    await mods.runAlertSweep(nextNow());
+
+    const rows = await opsAlertRows('ops-alert:A2');
+    expect(rows[0]?.severity).toBe('warning');
+    expect(rows[0]?.read).toBe(true);
+  });
+
+  // cm:guard the active row's TEXT must track the condition on every sweep, while the recipient is pinged only on a severity move. Gating the whole UPDATE on the severity change froze the count for the life of the incident, so an A2 opened at 1 stuck job still read "1 job" once 2 were stuck — the operator's only number, stale, with no second notification coming to correct it.
+  it('refreshes the active row body as the condition grows, without re-notifying', async () => {
+    await seedAdmin();
+    await seedStuckJobs(1, 700);
+
+    const first = await mods.runAlertSweep(nextNow());
+    expect(first.notified).toBe(1);
+    const opened = await opsAlertRows('ops-alert:A2');
+    expect(opened[0]?.body).toContain('1 job');
+
+    // cm:why a second stuck job keeps A2 at `warn` (crit needs 3) — the count moves but the severity does not, which is the ONLY combination that distinguishes a refresh from a re-notify
+    await seedStuckJobs(1, 700);
+    const second = await mods.runAlertSweep(nextNow());
+    expect(second.notified).toBe(0);
+
+    const refreshed = await opsAlertRows('ops-alert:A2');
+    expect(refreshed).toHaveLength(1);
+    expect(refreshed[0]?.id).toBe(opened[0]?.id);
+    expect(refreshed[0]?.severity).toBe('warning');
+    expect(refreshed[0]?.body).toContain('2 jobs');
+    expect(refreshed[0]?.body).not.toContain('1 job ');
+  });
+
+  // cm:guard platformAdminUserIds() must require a verified email — an allow-listed-but-unverified account must not receive cross-tenant alert details
+  it('does not notify an admin whose email is unverified', async () => {
+    await seedUnverifiedAdmin();
+    await seedOrphan();
+
+    const result = await mods.runAlertSweep(nextNow());
+    expect(result.notified).toBe(0);
+    expect(await opsAlertRows()).toHaveLength(0);
+  });
+});

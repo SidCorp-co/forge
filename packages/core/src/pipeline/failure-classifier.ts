@@ -19,7 +19,7 @@ import { parseRetryAfter, readRetryAfterHeader } from './retry-after-parser.js';
 
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — the runner's plain error string is its only routing lever
 // cm:guard bump CLASSIFIER_VERSION on any pattern change, and keep specific buckets ahead of the transient fallthrough
-export const CLASSIFIER_VERSION = 8;
+export const CLASSIFIER_VERSION = 9;
 
 export type FailureKind = 'code' | 'infra' | 'transient-cc' | 'timeout';
 
@@ -87,6 +87,13 @@ const TERMINAL_INFRA_PATTERNS: ReadonlyArray<RegExp> = [
   /\bpreflight[ _-]?failed:\s*repo_path\b/i,
 ];
 
+// cm:guard these three strings are the ONLY routing lever the duplex send path has (RFC 0003), and the bucket sits AHEAD of TIMEOUT on purpose: `session_ack_timeout` otherwise matches the generic /\btimeout\b/ and is diagnosed as a stalled agent, which is the opposite of the truth — the agent may be working fine and it is the CHANNEL that failed. Diagnosis `infra`, policy `retry`: a fresh session is the correct next move, and only a `gone` the kill gate has confirmed may dispatch one.
+const DUPLEX_SESSION_PATTERNS: ReadonlyArray<RegExp> = [
+  /\bsession_send_failed\b/i,
+  /\bsession_ack_timeout\b/i,
+  /\bsession_checkpoint_deadline_exceeded\b/i,
+];
+
 const TRANSIENT_PATTERNS: ReadonlyArray<RegExp> = [
   /\bECONN(RESET|REFUSED|ABORTED)\b/i,
   /\bEPIPE\b|\bnetwork[ _-]?error\b/i,
@@ -137,7 +144,8 @@ interface ClassifyInput {
  * returns a verdict — never throws, never `unknown`.
  *
  * Match order: structured `meta.error.type` → runner token → spend-cap →
- * usage/session limit → cc-startup signal → PERMISSION (infra) → TIMEOUT →
+ * usage/session limit → cc-startup signal → PERMISSION (infra) →
+ * DUPLEX_SESSION (infra) → TIMEOUT →
  * TERMINAL_INFRA (infra, terminal) → PERMANENT (code) → TRANSIENT (infra) →
  * CC_STARTUP text fallback → infra + needsReview. Permission/timeout precede
  * the broader buckets because their patterns are more specific.
@@ -247,6 +255,12 @@ function classifyKind(
   for (const pat of PERMISSION_PATTERNS) {
     if (pat.test(text)) {
       return { kind: 'infra', reason: reasonExcerpt || 'permission (pattern match)', meta };
+    }
+  }
+
+  for (const pat of DUPLEX_SESSION_PATTERNS) {
+    if (pat.test(text)) {
+      return { kind: 'infra', reason: reasonExcerpt || 'duplex session channel failure', meta };
     }
   }
 

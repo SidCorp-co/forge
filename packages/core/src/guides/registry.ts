@@ -147,7 +147,7 @@ Verify liveness on the deployed environment before declaring success — a deplo
     title: 'What is an issue?',
     summary:
       'The four gates a thing must pass to be an issue at all, where a note / question / audit finding goes instead, and the three-way routing that stops a residual becoming an unowned draft.',
-    version: 1,
+    version: 2,
     // cm:edge lockstep -> docs/guides/what-is-an-issue.md — the contributor-facing copy of this guide;
     //   the four gates and the routing table must say the same thing on both surfaces
     body: `## What is an issue?
@@ -202,7 +202,7 @@ Finding a filed item that fails the gates is not someone else's job. You are the
 Do not move it INTO \`draft\` — nothing may transition into \`draft\`, by design. \`closed\` + \`unmark\` is the exit for something that turned out not to be work.
 
 ### Then read
-Statuses, the three exits from \`draft\`, and the description contract: guide \`pipeline-and-issue-lifecycle\`. Which tool for which intent: guide \`agent-setup\`.
+Statuses, the four exits from \`draft\`, and the description contract: guide \`pipeline-and-issue-lifecycle\`. Which tool for which intent: guide \`agent-setup\`.
 
 Public copy of this page, no auth required: \`GET /api/guides/what-is-an-issue.md\`.`,
   },
@@ -268,8 +268,8 @@ Same discipline, shorter. Lead with the outcome, put the trace underneath. A com
     slug: 'pipeline-and-issue-lifecycle',
     title: 'Pipeline & issue lifecycle',
     summary:
-      'What belongs in a description, the three exits from draft (including the direct-ship route), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park is as free as entering it, the two authored kinds of `waiting`, and who owns which derived fields.',
-    version: 6,
+      'What belongs in a description, the four exits from draft (including the direct-ship route and the discard that does not stamp `merged_at`), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park is as free as entering it, the two authored kinds of `waiting`, and who owns which derived fields.',
+    version: 7,
     body: `## Pipeline & issue lifecycle
 
 ### An issue is a unit of WORK — draft vs open
@@ -278,19 +278,19 @@ Same discipline, shorter. Lead with the outcome, put the trace underneath. A com
 But \`draft\` is not a notepad either. Apply the test before you create anything: **an issue is work someone must do.** If nothing needs doing, it is not an issue — \`draft\` makes it invisible, not appropriate, and nobody ever opens the issue list looking for documentation. A note, learning, decision or record goes to \`forge_memory_write\` (durable business logic → repo \`docs/\`). Keep \`draft\` for follow-ups that need work later, and for decompose children awaiting parent approval. Red flags: \`open-as-note\` AND \`draft-as-note\`.
 
 ### Working an issue directly, outside the pipeline
-\`draft\` vs \`open\` is not the whole choice. \`draft\` has **three** exits, and picking the wrong one is what makes a direct session expensive:
+\`draft\` vs \`open\` is not the whole choice. \`draft\` has **four** exits, and picking the wrong one is what makes a direct session expensive:
 
 | You have | Set | Why |
 |---|---|---|
 | Finished the work entirely by hand; the pipeline has nothing left to do | \`closed\` | See the \`merged_at\` warning below before you do this |
 | Written AND pushed the \`ISS-*\` branch yourself; you want review → test → release run on it | \`developed\` **+ \`sessionContext.branch\`** | Enters at the REVIEW gate. Walking \`open\` instead re-runs triage/clarify/plan/code over already-finished work |
 | Not started it; you want the pipeline to do the whole thing | \`open\` | Full ladder from triage |
+| Decided against it; the work will not happen | \`dropped\` | Terminal, and does NOT stamp \`merged_at\` — this is the discard \`closed\` should not be used for |
 | Looked at it, not doing it now | leave \`draft\` | Costs nothing, dispatches nothing |
-| It turned out not to be work at all | delete it; write the content to memory/docs | \`draft-as-note\` |
 
-The \`developed\` route is the one people miss. It is the direct-ship path: you did the coding, the pipeline still gates it.
+Two of the four are easy to mix up. The \`developed\` route is the one people miss: it is the direct-ship path, where you did the coding and the pipeline still gates it. And \`dropped\` is the one people reach for \`closed\` instead of.
 
-**Closing is not free.** \`closed\` auto-stamps \`merged_at\`, and \`merged_at\` is exactly what releases every \`blocks\` dependent waiting on this issue. Closing something you ABANDONED rather than finished silently unblocks work that should still be blocked — call \`forge_issues\` \`unmark\` to clear the stamp in that case.
+**Closing is not free, and \`dropped\` is why you rarely need it.** \`closed\` auto-stamps \`merged_at\`, and \`merged_at\` is exactly what releases every \`blocks\` dependent waiting on this issue — so closing something you ABANDONED silently unblocks work that should still be blocked. \`dropped\` is terminal without the stamp (dependents are freed by edge expiry instead), so use it for anything discarded and keep \`closed\` for work that actually landed. If you have already closed an abandoned issue, call \`forge_issues\` \`unmark\` to clear the stamp.
 
 ### What is actually enforced, and what is only advice
 The runtime gate is permissive: **any status may move to any status, except that nothing may move INTO \`draft\`**, and \`draft\` itself may only leave to \`open\`, \`developed\`, \`closed\` or \`dropped\`. That is the whole rule. \`dropped\` is legal, and it is a dead end by **convention, not by the gate**: the \`transitions\` map offers it no exit because reopening a dropped issue would carry \`merged_at\` NULL into an issue that then ships, so re-filing is the correct move. The recommended discard for non-work is still \`closed\` + \`unmark\`, per **Closing is not free** above.

@@ -1,0 +1,212 @@
+<title>Duplex — Business Logic Delta</title>
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#ffffff; --panel2:#f6f4f0; --ink:#1a1a19; --ink2:#55534e; --ink3:#8b8880;
+    --line:#dedbd4; --line2:#c6c2b8;
+    --core:#2c5f8a; --core-bg:#e7f0f7;
+    --runner:#7a4f9c; --runner-bg:#f0e9f7;
+    --sess:#2f7d5d; --sess-bg:#e6f2ec;
+    --warn:#a8641a; --warn-bg:#fbf1e3;
+    --dead:#b03a2e; --dead-bg:#fbeae7;
+    --mute:#efece6;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#16161a; --panel:#1e1e23; --panel2:#25252b; --ink:#eceae5; --ink2:#a8a59d; --ink3:#75726b;
+    --line:#33333b; --line2:#454550;
+    --core:#6fa8d6; --core-bg:#152836;
+    --runner:#b48ad6; --runner-bg:#241a30;
+    --sess:#5fbf92; --sess-bg:#163025;
+    --warn:#d9a05b; --warn-bg:#2e2314;
+    --dead:#e0705f; --dead-bg:#331b17;
+    --mute:#26262c;
+  }}
+  :root[data-theme="dark"]{
+    --bg:#16161a; --panel:#1e1e23; --panel2:#25252b; --ink:#eceae5; --ink2:#a8a59d; --ink3:#75726b;
+    --line:#33333b; --line2:#454550;
+    --core:#6fa8d6; --core-bg:#152836;
+    --runner:#b48ad6; --runner-bg:#241a30;
+    --sess:#5fbf92; --sess-bg:#163025;
+    --warn:#d9a05b; --warn-bg:#2e2314;
+    --dead:#e0705f; --dead-bg:#331b17;
+    --mute:#26262c;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.6;
+       margin:0;padding:44px 24px 96px;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{font-size:29px;line-height:1.25;letter-spacing:-.02em;margin:0 0 6px;font-weight:650}
+  .sub{color:var(--ink2);margin:0 0 34px;max-width:76ch}
+  h2{font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink3);
+     margin:52px 0 4px;font-weight:600}
+  h3{font-size:19px;margin:2px 0 6px;font-weight:600;letter-spacing:-.01em}
+  p{margin:0 0 12px;max-width:78ch;color:var(--ink2)}
+  p strong,li strong,td strong{color:var(--ink);font-weight:600}
+  code{font-family:var(--mono);font-size:.885em;background:var(--mute);padding:1px 5px;
+       border-radius:4px;color:var(--ink)}
+  figure{margin:20px 0 8px;background:var(--panel);border:1px solid var(--line);
+         border-radius:12px;padding:20px 18px 12px;overflow-x:auto}
+  figcaption{font-size:13.5px;color:var(--ink2);margin-top:12px;padding-top:11px;
+             border-top:1px solid var(--line)}
+  figcaption b{color:var(--ink)}
+  svg{display:block;min-width:680px;width:100%;height:auto}
+  .st{font-family:var(--sans);font-size:12.5px;fill:var(--ink)}
+  .sl{font-family:var(--sans);font-size:11.5px;fill:var(--ink2)}
+  .sm{font-family:var(--mono);font-size:10.5px;fill:var(--ink2)}
+  .sk{font-family:var(--sans);font-size:10.5px;font-weight:650;fill:var(--ink3);letter-spacing:.09em}
+  .big{font-family:var(--sans);font-size:14px;font-weight:650;fill:var(--ink)}
+  table{border-collapse:collapse;width:100%;font-size:14px;margin:14px 0 6px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink3);
+     font-weight:600;border-bottom:1px solid var(--line2)}
+  .tw{overflow-x:auto}
+  .note{border-left:3px solid var(--warn);background:var(--warn-bg);padding:13px 17px;
+        border-radius:0 8px 8px 0;margin:20px 0;max-width:none;color:var(--ink2)}
+  .rule{border-left:3px solid var(--core);background:var(--core-bg);padding:14px 18px;
+        border-radius:0 8px 8px 0;margin:22px 0}
+  .rule p{margin:0;color:var(--ink)}
+  ul{margin:0 0 12px;padding-left:20px;color:var(--ink2)}
+  li{margin-bottom:5px}
+  .foot{margin-top:56px;padding-top:16px;border-top:1px solid var(--line);
+        font-size:12.5px;color:var(--ink3)}
+</style>
+<div class="wrap">
+<h1>Business-logic delta — what duplex changes about how Forge behaves</h1>
+<p class="sub">Not the process lifecycle, not the wire format. What happens to an issue, and what a
+person can and cannot do while a job is running. Companion to
+<code>duplex-architecture.html</code> (the design drawn) and
+<code>duplex-replaces-print.md</code> (the route).</p>
+
+<div class="rule"><p><strong>The happy path does not change at all.</strong> An issue that enters
+<code>open</code>, is triaged, is worked by an agent that never asks anything, and closes — that
+sequence is step-for-step identical before and after. Every change below is on an
+<strong>exception path</strong>: a question, a cancel, a human wanting to intervene. Plus chat, which
+is not the pipeline. If the replacement is judged by the happy path it will look like it did
+nothing, because on the happy path it does.</p></div>
+
+<h2>1 · A question arises</h2>
+<h3>An open question stops being a full stop</h3>
+<figure><svg viewBox="0 0 960 330" role="img"><defs><marker id="a-n" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--line2)"/></marker><marker id="a-core" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--core)"/></marker><marker id="a-sess" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--sess)"/></marker><marker id="a-warn" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--warn)"/></marker><marker id="a-dead" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--dead)"/></marker><marker id="a-run" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--runner)"/></marker></defs><text class="sk" x="2" y="70">TODAY</text><text class="sk" x="2" y="222">AFTER</text><rect x="66" y="44" width="128" height="44" rx="7" fill="var(--panel2)" stroke="var(--line2)" stroke-width="1.2"/>
+<text class="st" x="130.0" y="70.5" text-anchor="middle">agent working</text><rect x="224" y="44" width="128" height="44" rx="7" fill="var(--panel2)" stroke="var(--line2)" stroke-width="1.2"/>
+<text class="st" x="288.0" y="70.5" text-anchor="middle">hits a question</text><rect x="382" y="44" width="120" height="44" rx="7" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="1.2"/>
+<text class="st" x="442.0" y="70.5" text-anchor="middle">needs_info</text><rect x="530" y="44" width="124" height="44" rx="7" fill="var(--dead-bg)" stroke="var(--dead)" stroke-width="1.2"/>
+<text class="st" x="592.0" y="70.5" text-anchor="middle">session ENDS</text><rect x="682" y="44" width="150" height="44" rx="7" fill="var(--dead-bg)" stroke="var(--dead)" stroke-width="1.2"/>
+<text class="st" x="757.0" y="70.5" text-anchor="middle">issue parks</text><line x1="194" y1="66" x2="222" y2="66" stroke="var(--line2)" stroke-width="1.4" marker-end="url(#a-n)"/><line x1="352" y1="66" x2="380" y2="66" stroke="var(--line2)" stroke-width="1.4" marker-end="url(#a-n)"/><line x1="502" y1="66" x2="528" y2="66" stroke="var(--warn)" stroke-width="1.4" marker-end="url(#a-warn)"/><line x1="654" y1="66" x2="680" y2="66" stroke="var(--dead)" stroke-width="1.4" marker-end="url(#a-dead)"/><text class="sm" x="682" y="110">0 replies across 17 parks</text>
+<text class="sm" x="682" y="123">median park age ~360 h</text><rect x="66" y="196" width="128" height="44" rx="7" fill="var(--panel2)" stroke="var(--line2)" stroke-width="1.2"/>
+<text class="st" x="130.0" y="222.5" text-anchor="middle">agent working</text><rect x="224" y="196" width="128" height="44" rx="7" fill="var(--panel2)" stroke="var(--line2)" stroke-width="1.2"/>
+<text class="st" x="288.0" y="222.5" text-anchor="middle">hits a question</text><rect x="382" y="190" width="132" height="56" rx="7" fill="var(--core-bg)" stroke="var(--core)" stroke-width="1.2"/>
+<text class="st" x="448.0" y="215.0" text-anchor="middle">grounded  +</text>
+<text class="st" x="448.0" y="230.0" text-anchor="middle">reversible?</text><line x1="194" y1="218" x2="222" y2="218" stroke="var(--line2)" stroke-width="1.4" marker-end="url(#a-n)"/><line x1="352" y1="218" x2="380" y2="218" stroke="var(--line2)" stroke-width="1.4" marker-end="url(#a-n)"/><path d="M 514 218 H 535.0 V 166 H 556" fill="none" stroke="var(--sess)" stroke-width="1.4" marker-end="url(#a-sess)"/><path d="M 514 218 H 535.0 V 290 H 556" fill="none" stroke="var(--warn)" stroke-width="1.4" marker-end="url(#a-warn)"/><rect x="556" y="144" width="168" height="44" rx="7" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.2"/>
+<text class="st" x="640.0" y="170.5" text-anchor="middle">comment the decision</text><rect x="748" y="144" width="190" height="44" rx="7" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.2"/>
+<text class="st" x="843.0" y="170.5" text-anchor="middle">same session closes it</text><line x1="724" y1="166" x2="746" y2="166" stroke="var(--sess)" stroke-width="1.4" marker-end="url(#a-sess)"/><rect x="556" y="268" width="168" height="44" rx="7" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="1.2"/>
+<text class="st" x="640.0" y="294.5" text-anchor="middle">needs_info + notify</text><rect x="748" y="268" width="190" height="44" rx="7" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="1.2"/>
+<text class="st" x="843.0" y="294.5" text-anchor="middle">a human answers it</text><line x1="724" y1="290" x2="746" y2="290" stroke="var(--warn)" stroke-width="1.4" marker-end="url(#a-warn)"/></svg>
+<figcaption><b>Two changes, and only one of them is duplex.</b> The branch —
+<i>grounded and reversible ⇒ decide, comment, keep going</i> — is the standing direction, and it is
+<b>already shipped</b> in <code>forge-drive/SKILL.md</code>; it needs no session machinery at all.
+Duplex adds the second row: a question that genuinely needs a human can be answered
+<b>into the session that asked it</b>, instead of the session dying and a cold one being dispatched.
+The measured numbers on the TODAY lane are why the first change came first — a park nobody answers is
+not a question, it is a stall.</figcaption></figure>
+
+<h2>2 · A cancel</h2>
+<h3>A cancelled job stops being wasted work</h3>
+<figure><svg viewBox="0 0 960 240" role="img"><defs><marker id="a-n" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--line2)"/></marker><marker id="a-core" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--core)"/></marker><marker id="a-sess" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--sess)"/></marker><marker id="a-warn" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--warn)"/></marker><marker id="a-dead" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--dead)"/></marker><marker id="a-run" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--runner)"/></marker></defs><text class="sk" x="2" y="66">TODAY</text><text class="sk" x="2" y="196">AFTER</text><rect x="66" y="42" width="120" height="44" rx="7" fill="var(--panel2)" stroke="var(--line2)" stroke-width="1.2"/>
+<text class="st" x="126.0" y="68.5" text-anchor="middle">cancel</text><rect x="214" y="42" width="132" height="44" rx="7" fill="var(--dead-bg)" stroke="var(--dead)" stroke-width="1.2"/>
+<text class="st" x="280.0" y="68.5" text-anchor="middle">SIGTERM</text><rect x="374" y="42" width="150" height="44" rx="7" fill="var(--dead-bg)" stroke="var(--dead)" stroke-width="1.2"/>
+<text class="st" x="449.0" y="68.5" text-anchor="middle">process dies</text><rect x="552" y="42" width="190" height="44" rx="7" fill="var(--dead-bg)" stroke="var(--dead)" stroke-width="1.2"/>
+<text class="st" x="647.0" y="68.5" text-anchor="middle">unwritten work lost</text><rect x="770" y="42" width="168" height="44" rx="7" fill="var(--dead-bg)" stroke="var(--dead)" stroke-width="1.2"/>
+<text class="st" x="854.0" y="68.5" text-anchor="middle">next run starts blind</text><line x1="186" y1="64" x2="212" y2="64" stroke="var(--line2)" stroke-width="1.4" marker-end="url(#a-n)"/><line x1="346" y1="64" x2="372" y2="64" stroke="var(--dead)" stroke-width="1.4" marker-end="url(#a-dead)"/><line x1="524" y1="64" x2="550" y2="64" stroke="var(--dead)" stroke-width="1.4" marker-end="url(#a-dead)"/><line x1="742" y1="64" x2="768" y2="64" stroke="var(--dead)" stroke-width="1.4" marker-end="url(#a-dead)"/><rect x="66" y="172" width="120" height="44" rx="7" fill="var(--panel2)" stroke="var(--line2)" stroke-width="1.2"/>
+<text class="st" x="126.0" y="198.5" text-anchor="middle">cancel</text><rect x="214" y="172" width="132" height="44" rx="7" fill="var(--core-bg)" stroke="var(--core)" stroke-width="1.2"/>
+<text class="st" x="280.0" y="198.5" text-anchor="middle">checkpoint</text><rect x="374" y="172" width="150" height="44" rx="7" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.2"/>
+<text class="st" x="449.0" y="191.0" text-anchor="middle">agent writes</text>
+<text class="st" x="449.0" y="206.0" text-anchor="middle">a resume point</text><rect x="552" y="172" width="190" height="44" rx="7" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.2"/>
+<text class="st" x="647.0" y="198.5" text-anchor="middle">stdin closes, ends</text><rect x="770" y="172" width="168" height="44" rx="7" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.2"/>
+<text class="st" x="854.0" y="198.5" text-anchor="middle">next run resumes</text><line x1="186" y1="194" x2="212" y2="194" stroke="var(--line2)" stroke-width="1.4" marker-end="url(#a-n)"/><line x1="346" y1="194" x2="372" y2="194" stroke="var(--core)" stroke-width="1.4" marker-end="url(#a-core)"/><line x1="524" y1="194" x2="550" y2="194" stroke="var(--sess)" stroke-width="1.4" marker-end="url(#a-sess)"/><line x1="742" y1="194" x2="768" y2="194" stroke="var(--sess)" stroke-width="1.4" marker-end="url(#a-sess)"/></svg>
+<figcaption><b>Today a cancel is a signal.</b> Whatever the agent had worked out but not yet written
+down — which branch it was on, what it had ruled out, why the obvious fix was wrong — dies with the
+process, and the next attempt rediscovers it. After: cancel is a <i>message</i> first. The agent is
+asked for a resume point, writes it, and only then does stdin close. The business effect is that the
+cost of stopping an agent drops, which changes when stopping is the right call.</figcaption></figure>
+
+<h2>3 · Steering</h2>
+<h3>An operation that does not exist today</h3>
+<figure><svg viewBox="0 0 960 240" role="img"><defs><marker id="a-n" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--line2)"/></marker><marker id="a-core" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--core)"/></marker><marker id="a-sess" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--sess)"/></marker><marker id="a-warn" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--warn)"/></marker><marker id="a-dead" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--dead)"/></marker><marker id="a-run" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--runner)"/></marker></defs><text class="sk" x="2" y="66">TODAY</text><text class="sk" x="2" y="196">AFTER</text><rect x="66" y="42" width="190" height="44" rx="7" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="1.2"/>
+<text class="st" x="161.0" y="61.0" text-anchor="middle">minute 10 of 67:</text>
+<text class="st" x="161.0" y="76.0" text-anchor="middle">it is going wrong</text><path d="M 256 64 H 288.0 V 52 H 320" fill="none" stroke="var(--dead)" stroke-width="1.4" marker-end="url(#a-dead)"/><path d="M 256 64 H 288.0 V 110 H 320" fill="none" stroke="var(--line2)" stroke-width="1.4" marker-end="url(#a-n)"/><rect x="320" y="30" width="168" height="44" rx="7" fill="var(--dead-bg)" stroke="var(--dead)" stroke-width="1.2"/>
+<text class="st" x="404.0" y="56.5" text-anchor="middle">cancel — lose it all</text><rect x="320" y="88" width="168" height="44" rx="7" fill="var(--panel2)" stroke="var(--line2)" stroke-width="1.2"/>
+<text class="st" x="404.0" y="114.5" text-anchor="middle">wait and hope</text><text class="sm" x="510" y="52">Two levers, both bad. Nothing</text>
+<text class="sm" x="510" y="65">can be SAID to the process:</text>
+<text class="sm" x="510" y="78">Runner::send is NotImplemented.</text><rect x="66" y="172" width="190" height="44" rx="7" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="1.2"/>
+<text class="st" x="161.0" y="191.0" text-anchor="middle">minute 10 of 67:</text>
+<text class="st" x="161.0" y="206.0" text-anchor="middle">it is going wrong</text><rect x="320" y="172" width="168" height="44" rx="7" fill="var(--core-bg)" stroke="var(--core)" stroke-width="1.2"/>
+<text class="st" x="404.0" y="198.5" text-anchor="middle">inject</text><rect x="516" y="172" width="180" height="44" rx="7" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.2"/>
+<text class="st" x="606.0" y="198.5" text-anchor="middle">agent corrects</text><rect x="724" y="172" width="214" height="44" rx="7" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.2"/>
+<text class="st" x="831.0" y="198.5" text-anchor="middle">same run, same context</text><line x1="256" y1="194" x2="318" y2="194" stroke="var(--core)" stroke-width="1.4" marker-end="url(#a-core)"/><line x1="488" y1="194" x2="514" y2="194" stroke="var(--core)" stroke-width="1.4" marker-end="url(#a-core)"/><line x1="696" y1="194" x2="722" y2="194" stroke="var(--sess)" stroke-width="1.4" marker-end="url(#a-sess)"/></svg>
+<figcaption><b>This is the only genuinely new capability, not an improvement of an old one.</b> Ten
+minutes into a job you can see is going the wrong way, today there are exactly two levers: cancel and
+lose the work, or wait it out. There is no third, because there is no channel —
+<code>Runner::send</code> is declared in the trait and returns <code>NotImplemented</code>. With
+<code>inject</code> the correction lands in the running session and the work continues.
+<b>Whether this is exposed to a person or stays internal to checkpoint/cancel is an open decision</b>
+— exposing it needs a REST route, an MCP tool and a web surface that the phase plan does not
+currently contain.</figcaption></figure>
+
+<h2>4 · Chat</h2>
+<h3>A conversation stops being a series of unrelated processes</h3>
+<figure><svg viewBox="0 0 960 280" role="img"><defs><marker id="a-n" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--line2)"/></marker><marker id="a-core" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--core)"/></marker><marker id="a-sess" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--sess)"/></marker><marker id="a-warn" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--warn)"/></marker><marker id="a-dead" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--dead)"/></marker><marker id="a-run" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--runner)"/></marker></defs><text class="sk" x="2" y="66">TODAY</text><text class="sk" x="2" y="206">AFTER</text><rect x="66" y="42" width="120" height="44" rx="7" fill="var(--dead-bg)" stroke="var(--dead)" stroke-width="1.2"/>
+<text class="st" x="126.0" y="68.5" text-anchor="middle">spawn +7.5 s</text><rect x="196" y="42" width="116" height="44" rx="7" fill="var(--panel2)" stroke="var(--line2)" stroke-width="1.2"/>
+<text class="st" x="254.0" y="68.5" text-anchor="middle">turn 1</text><line x1="186" y1="64" x2="194" y2="64" stroke="var(--dead)" stroke-width="1.4" marker-end="url(#a-dead)"/><line x1="312" y1="64" x2="416" y2="64" stroke="var(--dead)" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#a-dead)"/><rect x="352" y="42" width="120" height="44" rx="7" fill="var(--dead-bg)" stroke="var(--dead)" stroke-width="1.2"/>
+<text class="st" x="412.0" y="68.5" text-anchor="middle">spawn +7.5 s</text><rect x="482" y="42" width="116" height="44" rx="7" fill="var(--panel2)" stroke="var(--line2)" stroke-width="1.2"/>
+<text class="st" x="540.0" y="68.5" text-anchor="middle">turn 2</text><line x1="472" y1="64" x2="480" y2="64" stroke="var(--dead)" stroke-width="1.4" marker-end="url(#a-dead)"/><line x1="598" y1="64" x2="702" y2="64" stroke="var(--dead)" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#a-dead)"/><rect x="638" y="42" width="120" height="44" rx="7" fill="var(--dead-bg)" stroke="var(--dead)" stroke-width="1.2"/>
+<text class="st" x="698.0" y="68.5" text-anchor="middle">spawn +7.5 s</text><rect x="768" y="42" width="116" height="44" rx="7" fill="var(--panel2)" stroke="var(--line2)" stroke-width="1.2"/>
+<text class="st" x="826.0" y="68.5" text-anchor="middle">turn 3</text><line x1="758" y1="64" x2="766" y2="64" stroke="var(--dead)" stroke-width="1.4" marker-end="url(#a-dead)"/><text class="sm" x="66" y="112">exit after every turn · context re-loaded by --resume · 7.5 s on each follow-up</text><rect x="66" y="182" width="120" height="44" rx="7" fill="var(--runner-bg)" stroke="var(--runner)" stroke-width="1.2"/>
+<text class="st" x="126.0" y="208.5" text-anchor="middle">spawn +7.5 s</text><rect x="214" y="182" width="120" height="44" rx="7" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.2"/>
+<text class="st" x="274.0" y="208.5" text-anchor="middle">turn 1</text><rect x="368" y="182" width="120" height="44" rx="7" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.2"/>
+<text class="st" x="428.0" y="208.5" text-anchor="middle">turn 2</text><rect x="522" y="182" width="120" height="44" rx="7" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.2"/>
+<text class="st" x="582.0" y="208.5" text-anchor="middle">turn 3</text><rect x="676" y="182" width="120" height="44" rx="7" fill="var(--sess-bg)" stroke="var(--sess)" stroke-width="1.2"/>
+<text class="st" x="736.0" y="208.5" text-anchor="middle">turn n</text><line x1="186" y1="204" x2="212" y2="204" stroke="var(--runner)" stroke-width="1.4" marker-end="url(#a-run)"/><line x1="334" y1="204" x2="366" y2="204" stroke="var(--sess)" stroke-width="1.4" marker-end="url(#a-sess)"/><line x1="488" y1="204" x2="520" y2="204" stroke="var(--sess)" stroke-width="1.4" marker-end="url(#a-sess)"/><line x1="642" y1="204" x2="674" y2="204" stroke="var(--sess)" stroke-width="1.4" marker-end="url(#a-sess)"/><text class="sm" x="214" y="252">one live session · no respawn, no --resume · the 7.5 s is paid once</text></svg>
+<figcaption><b>Chat has been one-shot the whole time.</b> Every follow-up turn spawns a new
+<code>claude -p</code> and reloads the conversation through the CLI's own <code>--resume</code>, so
+the startup cost is paid once per turn and the context depends on a resume working. RFC 0003
+dismissed startup cost as 0.19 % — measured against a 4026 s drive job, which is the wrong
+denominator: for a chat turn, 7.5 s is most of the wait. This is the clearest number the replacement
+moves, and it is measurable from <code>agent_session_turns.created_at</code> before and
+after.</figcaption></figure>
+
+<h2>Summary</h2>
+<div class="tw"><table>
+<tr><th>Change</th><th>Who notices</th><th>Lands</th><th>Comes from</th></tr>
+<tr><td>A recoverable, grounded question is decided instead of parked</td><td>the issue's owner —
+work continues, a comment explains the call</td><td><b>shipped</b></td><td>policy, not duplex</td></tr>
+<tr><td>A question that needs a human can be answered into the same session</td><td>whoever
+answers — no cold restart, context intact</td><td>phase 3</td><td>duplex</td></tr>
+<tr><td>A cancel leaves a resume point behind</td><td>the next run on that issue</td>
+<td>phase 4</td><td>duplex</td></tr>
+<tr><td><code>inject</code> — correct a running agent</td><td>an operator, if it is exposed</td>
+<td>phase 4 + surface work not yet planned</td><td>duplex</td></tr>
+<tr><td>Chat follow-up turns stop paying spawn cost</td><td>anyone using chat</td>
+<td>phase 1</td><td>duplex</td></tr>
+</table></div>
+
+<h2>What does not change</h2>
+<ul>
+<li><b>The happy path.</b> Stated again because it is the thing most likely to be misread as a
+regression in value.</li>
+<li><b>How often a job fails.</b> Nothing here touches the 43 % drive-job failure rate.</li>
+<li><b>Thinking versus wedged.</b> A session declares <i>waiting</i> versus <i>working</i>; inside
+<i>working</i> a stuck agent and a busy one remain the same observation. That needs a progress signal
+with semantics, which is separate and cheaper.</li>
+<li><b>Who is told a question is waiting.</b> <code>needs_info</code> is absent from
+<code>NOTIFY_ON_STATUS</code>. That is a two-line fix scheduled as A1, and it is a prerequisite rather
+than a part of this.</li>
+<li><b>Interventions per issue.</b> The north-star metric is not promised here. Duplex is a
+capability; <code>inject</code> arguably <i>adds</i> a category of intervention rather than removing
+one.</li>
+</ul>
+
+<p class="foot">Local render · <code>docs/proposals/duplex-business-logic.html</code> ·
+siblings: <code>duplex-architecture.html</code>, <code>duplex-replaces-print.md</code>,
+<code>docs/rfcs/0003-duplex-agent-session.md</code></p>
+</div>

@@ -3,7 +3,7 @@ import { CLASSIFIER_VERSION, classifyFailure, deriveActionFromKind } from './fai
 
 describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
   it('returns CLASSIFIER_VERSION on every result so callers can pin it', () => {
-    expect(CLASSIFIER_VERSION).toBe(8);
+    expect(CLASSIFIER_VERSION).toBe(9);
     expect(classifyFailure({}).version).toBe(CLASSIFIER_VERSION);
     expect(classifyFailure({ error: 'whatever' }).version).toBe(CLASSIFIER_VERSION);
   });
@@ -363,5 +363,24 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
       });
       expect(r.retryAfter).toBeNull();
     });
+  });
+});
+
+describe('duplex session channel failures (RFC 0003)', () => {
+  it('classifies a failed write as infra, retryable', () => {
+    const r = classifyFailure({ error: 'session_send_failed: stdin write aborted' });
+    expect(r.kind).toBe('infra');
+    expect(r.action).toBe('retry');
+  });
+
+  it('does NOT let session_ack_timeout fall into the generic timeout bucket', () => {
+    const r = classifyFailure({ error: 'session_ack_timeout after 10000ms' });
+    expect(r.kind).toBe('infra');
+  });
+
+  it('classifies a checkpoint that overran its deadline as infra', () => {
+    const r = classifyFailure({ error: 'session_checkpoint_deadline_exceeded' });
+    expect(r.kind).toBe('infra');
+    expect(r.action).toBe('retry');
   });
 });

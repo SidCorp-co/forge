@@ -2026,10 +2026,7 @@ export const notifications = pgTable(
     // ISS-510 — per-event severity (from the `@forge/contracts` notification
     // contract) drives toast tone + bell hue. Nullable: legacy rows predate it.
     severity: text('severity'),
-    // ISS-510 — auto-resolve linkage. A problem notification carries a stable
-    // per-condition key (e.g. `issue:<id>:status`); when the condition clears
-    // (issue reaches a healthy status) the resolver marks every matching unread
-    // row read and stamps `resolvedAt`. Both nullable — most rows carry neither.
+    // cm:guard `resolvedAt IS NULL` is what "still happening" means, and every reader must use it — NOT `read = false`, which only says whether a human has looked. resolveNotifications clears by key on that predicate alone (this comment claimed "unread" until main corrected the code); an ops_alert additionally has a partial unique index over the same predicate, so a row left unstamped blocks its own recurrence forever.
     resolutionKey: text('resolution_key'),
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
     issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'set null' }),
@@ -2040,15 +2037,9 @@ export const notifications = pgTable(
     secondaryIssueId: uuid('secondary_issue_id').references(() => issues.id, {
       onDelete: 'set null',
     }),
-    // agent_session_id is intentionally a bare uuid (no FK) until the agent_sessions
-    // table lands in a later B2 migration — adding the FK then is additive.
     agentSessionId: uuid('agent_session_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    /**
-     * ISS-849 — redelivery-dedup key (e.g. `transition:<outboxId>`). Distinct
-     * from `resolutionKey`, which is the per-issue auto-resolve mechanism
-     * (ISS-510) and is already load-bearing for reopen/waiting notifications.
-     */
+    // cm:why ISS-849 redelivery guard (`transition:<outboxId>`) — deliberately NOT `resolutionKey`, which answers "is the condition still true"; one key says do-not-send-twice, the other says the incident is over, and collapsing them would resolve an alert the moment it was redelivered
     dedupeKey: text('dedupe_key'),
   },
   (t) => ({
@@ -2060,6 +2051,10 @@ export const notifications = pgTable(
     projectCreatedIdx: index('notifications_project_created_idx').on(t.projectId, t.createdAt),
     // ISS-510 — resolver lookup: unread rows for a given resolution key.
     resolutionKeyIdx: index('notifications_resolution_key_read_idx').on(t.resolutionKey, t.read),
+    // cm:guard alert-sweeper.ts's `INSERT ... ON CONFLICT (user_id, resolution_key) WHERE ...` infers THIS index, so its predicate must match verbatim or the insert throws; and the `type = 'ops_alert'` scope must stay, because notify-transitions.ts legitimately leaves several active rows under one `issue:<id>:status` key (waiting + reopen) that an unscoped unique index would refuse to create over and then silently drop
+    opsAlertActiveUq: uniqueIndex('notifications_ops_alert_active_uq')
+      .on(t.userId, t.resolutionKey)
+      .where(sql`resolved_at IS NULL AND resolution_key IS NOT NULL AND type = 'ops_alert'`),
     dedupeKeyIdx: index('notifications_dedupe_key_idx').on(t.dedupeKey),
   }),
 );
@@ -2167,6 +2162,17 @@ export const agentSessionStatuses = [
 ] as const;
 export type AgentSessionStatus = (typeof agentSessionStatuses)[number];
 
+// cm:guard `status` and `runtimeState` answer different questions and must never be collapsed: `status` is the JOB's lifecycle (a `running` session may be mid-turn or parked on stdin), `runtimeState` is the PROCESS's, and it is the only one that distinguishes a session waiting for input from one still working. Print-mode sessions leave it NULL — a NULL here means "this runner never reported, infer nothing", which is not the same as `working`.
+// cm:guard `awaiting_input` is exempt from the loop-monitor QUIET-TIMEOUT only — it still HOLDS ITS RUNNER SLOT the entire time it is parked, exactly like `working`, and the residency window is what bounds it instead. Reading this as slot-exempt is the misreading that leaks a runner permanently: RUNNER_CAP_PER_RUNNER = 1, and once the quiet clock no longer applies, the residency deadline is the only thing that will ever reap a parked duplex session.
+export const sessionRuntimeStates = [
+  'starting',
+  'working',
+  'awaiting_input',
+  'checkpointing',
+  'closed',
+] as const;
+export type SessionRuntimeState = (typeof sessionRuntimeStates)[number];
+
 // Terminal cause written to `agent_sessions.failure_reason`. Reserved for
 // actual session execution failures (zombie sweeper, worker errors, user
 // cancellation). Dispatcher gate skips (issue_busy/waiting_on_dep/
@@ -2225,6 +2231,9 @@ export const agentSessions = pgTable(
     startedAt: timestamp('started_at', { withTimezone: true }),
     lastHeartbeatAt: timestamp('last_heartbeat_at', { withTimezone: true }),
     failureReason: text('failure_reason'),
+    runtimeState: text('runtime_state', { enum: sessionRuntimeStates }),
+    // cm:guard the HIGHEST inbox seq core has ALLOCATED for this session, not the highest the runner applied — the runner reports what it applied and core never back-fills this from it. Allocate with `UPDATE ... SET last_inbox_seq = last_inbox_seq + 1 RETURNING`, never a read-then-write: two concurrent sends that both read N and both send N+1 end with one written and the other dropped-and-acked-delivered, which is a silent message loss the ack contract says cannot happen.
+    lastInboxSeq: integer('last_inbox_seq').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -2251,6 +2260,46 @@ export const agentSessionsRelations = relations(agentSessions, ({ many, one }) =
   }),
   turns: many(agentSessionTurns),
 }));
+
+// cm:why one row per INTENT, not per attempt, so a redelivery finds its own row and re-publishes the same seq rather than allocating a second one — the runner can then drop a key it has already applied, which is the only deduplication that survives a retry
+export const sessionInboxKinds = ['work', 'answer', 'inject', 'checkpoint', 'cancel'] as const;
+export type SessionInboxKind = (typeof sessionInboxKinds)[number];
+
+// cm:guard `unknown` is a first-class outcome that MUST be resolved, never relabelled `gone`. Relabelling would only be sound if `gone` were idempotent with `delivered`, and it is not — `gone` mutates issue status and enqueues a job, so a message that was in fact consumed gets a second agent on top of it. A ChildStdin pipe is ~64 KiB: a CLI mid-turn that is not draining stdin makes the runner's write await past core's deadline, and the answer still lands when the pipe drains.
+export const sessionSendOutcomes = ['delivered', 'gone', 'unknown'] as const;
+export type SessionSendOutcome = (typeof sessionSendOutcomes)[number];
+
+export const sessionInbox = pgTable(
+  'session_inbox',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    agentSessionId: uuid('agent_session_id')
+      .notNull()
+      .references(() => agentSessions.id, { onDelete: 'cascade' }),
+    seq: integer('seq').notNull(),
+    kind: text('kind', { enum: sessionInboxKinds }).notNull(),
+    intentId: text('intent_id').notNull(),
+    body: text('body'),
+    sendRequestedAt: timestamp('send_requested_at', { withTimezone: true }).notNull().defaultNow(),
+    sendConfirmedAt: timestamp('send_confirmed_at', { withTimezone: true }),
+    sendOutcome: text('send_outcome', { enum: sessionSendOutcomes }),
+    // cm:guard THIS is the commit point, not `sendConfirmedAt` — a caller may only skip the durable cold path once this is set. The runner's ack proves the CLI parsed the line; it does not prove the model consumed it, because `queued_turn_count` is reported in the result payload, i.e. a queue that can still be non-empty when the process finishes and is then discarded at teardown. Treating the ack as acceptance converts this RFC's own failure mode from visible to invisible: the human's answer is gone and core has recorded success.
+    appliedAt: timestamp('applied_at', { withTimezone: true }),
+    appliedTurn: integer('applied_turn'),
+  },
+  (t) => ({
+    // cm:guard the idempotency key is (session, kind, intentId) and NEVER `seq`. A counter incremented per attempt cannot deduplicate — a redelivery of one intent gets a new number, and two intents racing a read-modify-write get the same one. The runner drops a KEY already applied, never a NUMBER already passed.
+    intentUnique: uniqueIndex('session_inbox_intent_unique').on(
+      t.agentSessionId,
+      t.kind,
+      t.intentId,
+    ),
+    seqUnique: uniqueIndex('session_inbox_seq_unique').on(t.agentSessionId, t.seq),
+    unresolvedIdx: index('session_inbox_unresolved_idx')
+      .on(t.sendRequestedAt)
+      .where(sql`send_confirmed_at IS NULL OR (send_outcome = 'unknown' AND applied_at IS NULL)`),
+  }),
+);
 
 // Sibling table that materializes each entry of `agent_sessions.messages` into
 // its own row so turns can be addressed by id. The jsonb blob remains the

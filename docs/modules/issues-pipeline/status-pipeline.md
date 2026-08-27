@@ -1,12 +1,12 @@
 # Issue Status Pipeline
 
-Issue lifecycle: 15 statuses, skill mapping, transitions. Per-project `pipelineConfig.auto*` gates auto-run.
+Issue lifecycle: 16 statuses, skill mapping, transitions. Per-project `pipelineConfig.auto*` gates auto-run.
 
 > Configuring stages (Auto / Manual gate / Skip) + recommended presets: [guides/pipeline-gates.md](../../guides/pipeline-gates.md). This page is the reference; the guide is the practical how-to.
 
 ## Statuses
 
-Source of truth: [`packages/core/src/db/schema.ts`](../../../packages/core/src/db/schema.ts) (`issueStatuses`, 15 entries). Keep this table in lockstep.
+Source of truth: [`packages/core/src/db/schema.ts`](../../../packages/core/src/db/schema.ts) (`issueStatuses`, 16 entries). Keep this table in lockstep.
 
 | # | Status | Meaning | Set by |
 |---|--------|---------|--------|
@@ -25,6 +25,7 @@ Source of truth: [`packages/core/src/db/schema.ts`](../../../packages/core/src/d
 | 13 | `on_hold` | Paused / blocked | Manual or infra failure |
 | 14 | `needs_info` | Human-gated bounce: blocked on reporter clarification (no auto-dispatch) | forge-triage, forge-clarify, or manual |
 | 15 | `draft` | AI-proposed issue awaiting human confirm (Dream / Doc-Sync schedules) | scheduled agent |
+| 16 | `dropped` | **Not work** — closed WITHOUT stamping `merged_at`, so no `blocks` dependent is released as if it shipped. Terminal with no exit: reopening one would leave `merged_at` NULL on an issue that then ships, so re-file instead. `drop-cascade.ts` expires its edges and records why on each dependent | any agent · a human |
 
 ## Flow
 

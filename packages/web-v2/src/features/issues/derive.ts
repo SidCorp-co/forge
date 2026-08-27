@@ -234,11 +234,13 @@ export function statusToTone(status: IssueStatus): SemanticTone {
  * (1) `draft` is never a transition target and (2) a `draft` may only be
  * promoted to `open`, handed off direct-ship to `developed` (ISS-431 — work
  * done outside the pipeline enters at the review gate), or discarded to
- * `closed`. Filtering to this set stops the menu from offering picks that 409
- * and silently snap back (ISS-308 E1).
+ * `dropped` (`closed` is accepted too, for callers older than `dropped`).
+ * Filtering to this set stops the menu from offering picks that 409 and
+ * silently snap back (ISS-308 E1).
  */
+// cm:edge lockstep -> packages/core/src/pipeline/state-machine.ts — this array is the second copy of DRAFT_EXIT_TARGETS, and core's refusal message now RENDERS that constant member by member, so a member missing here is a menu that hides a discard the server names to the user by that exact word. `dropped` was missing until 2026-08-27 (ISS-787), leaving `closed` the only discard the UI offered — the one that stamps merged_at and unblocks every dependent of work that never existed.
 export function allowedTransitions(from: IssueStatus): IssueStatus[] {
-	if (from === "draft") return ["open", "developed", "closed"];
+	if (from === "draft") return ["open", "developed", "closed", "dropped"];
 	return ISSUE_STATUSES.filter((s) => s !== from && s !== "draft");
 }
 
