@@ -71,6 +71,13 @@ const CHECKS = [
   },
   {
     axis: 'knowledge',
+    label: 'autonomous-transitions',
+    cmd: ['node', 'scripts/check-autonomous-transitions.mjs'],
+    // cm:edge naming -> scripts/check-autonomous-transitions.mjs — parses that script's success line
+    scanned: /agree across (\d+) files/,
+  },
+  {
+    axis: 'knowledge',
     label: 'codemap referential',
     cmd: ['.forge/codemap/cm', 'verify', '--tier', 'referential'],
     scanned: /"files":\s*(\d+)/,
@@ -156,6 +163,7 @@ const CHECKS = [
 
 // cm:edge contract -> .github/workflows/ci.yml — every `- run:` line and every named step there must appear as a key here; `--ci-parity` fails on an unlisted one. Adding a CI step without a line here is the drift this map exists to catch.
 const CI_COVERAGE = {
+  'node scripts/check-autonomous-transitions.mjs': 'verify',
   'node scripts/check-source-language.mjs --all': 'verify',
   'node scripts/check-test-signal.mjs --all': 'verify',
   'node scripts/check-size-budget.mjs --all': 'verify',

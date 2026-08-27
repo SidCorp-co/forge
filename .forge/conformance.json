@@ -21,7 +21,7 @@
     },
     "knowledge": {
       "level": 2,
-      "gate": "cm verify",
+      "gate": "cm verify + check-autonomous-transitions",
       "owns": "cm: couplings, prose discipline, module headers",
       "baseline": {
         "path": ".forge/codemap-baseline.json",

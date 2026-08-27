@@ -24,10 +24,10 @@ Four things arrive in the issue tracker that are not work:
 | already done | verify it against the repo, say so with the commit, then `dropped` |
 | a duplicate | comment naming the original, then `dropped` |
 
-`dropped`, never `done` — `done` stamps `merged_at` and unblocks every dependent as if the work had
+`dropped`, never `closed` — `closed` stamps `merged_at` and unblocks every dependent as if the work had
 shipped.
 
-If it is work but you cannot tell what finished looks like, that is `needs_human`, not a guess.
+If it is work but you cannot tell what finished looks like, that is `needs_info`, not a guess.
 
 ## 2 · Reproduce it
 
@@ -42,7 +42,7 @@ the feature is genuinely new surface with nothing to compare against, say that e
 than skipping the step silently.
 
 If you cannot reproduce it, do not proceed on the assumption that it is real. Comment with exactly
-what you tried and what happened instead, then `needs_human`.
+what you tried and what happened instead, then `needs_info`.
 
 ## What you write
 

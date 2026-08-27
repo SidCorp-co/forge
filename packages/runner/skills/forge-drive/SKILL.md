@@ -83,9 +83,23 @@ proceeding as though a review was recorded.
 `request_changes` sends you back to phase 3. Re-declare `code` with `forge_phase` so the journal
 shows the round, fix what the findings name, and go round again.
 
+## Statuses you may write
+
+These five, and nothing else. They are kernel statuses — the values `forge_issues` accepts. The
+board renders them under different names; write what is in this column, never what you see on a
+board.
+
+| Write | Means |
+|---|---|
+| `open` | claimed, yours |
+| `in_progress` | a session is working it |
+| `needs_info` | you are asking a human a question — the only park a human's answer restarts |
+| `closed` | finished; stamps `merged_at` |
+| `dropped` | not work; does not stamp `merged_at` |
+
 ## When to stop and ask
 
-Set `needs_human` and say why in a comment when, and only when, a human has something you cannot
+Set `needs_info` and say why in a comment when, and only when, a human has something you cannot
 get for yourself: a credential, a decision between real tradeoffs, access, or an answer about
 intent.
 
@@ -97,7 +111,7 @@ A human answering with a comment is what starts you again. The next session decl
 the same journal, so `forge_phase` action `resume_point` puts it back where you stopped — which is
 also why the question has to be in the comment and not only in your head.
 
-Do not set `needs_human` because something is hard, slow, or ambiguous in a way you could resolve
+Do not set `needs_info` because something is hard, slow, or ambiguous in a way you could resolve
 by reading more code. Read more code.
 
 ## What you may do without asking
@@ -110,14 +124,14 @@ by reading more code. Read more code.
 ## What the cloud still gates
 
 - **Deploy** — the project config decides whether it happens and how.
-- **Close** — `done` stamps `merged_at` and unblocks every dependent. `dropped` closes without
+- **Close** — `closed` stamps `merged_at` and unblocks every dependent. `dropped` closes without
   stamping; use it when the issue turns out not to be work at all.
 - **Merging into a branch you did not check out.** Ask.
 
 ## What no longer exists
 
 There are no intermediate statuses. Do not move the issue through `confirmed`, `approved`,
-`developed`, `testing` or `released` — those are gone in this mode. The issue is `running` from the
+`developed`, `testing` or `released` — those are gone in this mode. The issue is `in_progress` from the
 moment you claim it until you finish it.
 
 Do not file new issues for work you found. Fix it and declare it, or say in a comment that it is out
