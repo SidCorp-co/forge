@@ -149,11 +149,7 @@ export async function bootstrapProjectSkills(
     return result;
   }
 
-  // Single path: each stage binds a PROJECT-owned skill. Materialise one by
-  // cloning the same-name global `forge-<type>` template into this project
-  // (clone-on-first-use); a global is never registered directly. Stages whose
-  // template is absent (partial builtin seed) are skipped. See
-  // docs/skills-scope-playbook.md.
+  // cm:guard a global is NEVER registered directly — each stage binds a project-owned clone of the same-name `forge-<type>` global, so a stage whose template is missing from a partial builtin seed is skipped rather than bound to the global
   const toInsert: Array<{
     projectId: string;
     skillId: string;

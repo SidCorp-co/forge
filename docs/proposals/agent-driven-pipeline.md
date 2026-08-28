@@ -2,7 +2,7 @@
 
 - Status: **Phases 0–4 shipped; phase 5 instrumented and awaiting evidence** — owner sessions 2026-08-19/20.
 - Upgrade path: this becomes an RFC once the mode switch and the status vocabulary are agreed — both are cross-surface (REST, MCP, web, runner).
-- Related: [RFC 0002](../rfcs/0002-park-axis-separation.md) (park axis) · [skill-delivery ADR](../architecture/skill-delivery.md) · [runner-daemon](../architecture/runner-daemon.md)
+- Related: `packages/runner/README.md` · skill delivery: `runner/crates/forge-runner-core/src/workspace/skill_sync.rs`
 
 ## Summary
 
@@ -12,7 +12,7 @@ and merges into the base branch it checked out. The cloud stops being the contro
 the ledger plus two gates.
 
 The seven-stage process is **policy**. It currently lives in the **kernel**, which is what
-principle №11 forbids.
+principle `VISION: kernel-hard-policy-soft` forbids.
 
 ## Motivation
 
@@ -681,7 +681,8 @@ clearable rather than requiring DB access. Two candidate fixes:
 
 1. the L2 gate treats `dropped` as satisfying a `blocks` edge — defensible
    because `dropped` is terminal and can never merge, unlike `draft`, but it
-   contradicts the owner's 2026-08-14 ruling next door (`sweeper.ts:214`,
+   contradicts the owner's 2026-08-14 ruling next door (the
+   `alarmUnrunnableBlockedDependents` cm:why in `sweeper.ts`,
    "alarm, never a gate change") and loosens a safety gate;
 2. dropping an issue expires its own outgoing `blocks` edges — repairs the
    actual failure (the wave forgot to clean up) without touching the gate.

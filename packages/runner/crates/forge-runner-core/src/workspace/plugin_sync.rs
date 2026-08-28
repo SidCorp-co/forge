@@ -1,7 +1,6 @@
 //! Device-level shared-skill delivery via a Claude Code plugin marketplace
 //! (ISS-739) — the 3rd skill-delivery channel alongside per-project disk sync
-//! (`skill_sync`, ISS-737/ISS-278) and MCP-served meta prompts. See
-//! `docs/architecture/skill-delivery-plugin-channel.md` for the doctrine.
+//! (`skill_sync`, ISS-737/ISS-278) and MCP-served meta prompts.
 //!
 //! Every pipeline job spawns `claude -p` inheriting the daemon's default
 //! Claude config dir (`process::build_command` sets no `CLAUDE_CONFIG_DIR`),

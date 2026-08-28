@@ -2789,8 +2789,6 @@ export const integrationDeliveriesRelations = relations(integrationDeliveries, (
   }),
 }));
 
-// === Connection / Binding model (docs/integrations/connection-binding.md) ===
-//
 // Additive successor to project_integrations: the CREDENTIAL (connection, owned
 // by a principal — user now, org later) is split from the per-project+env LINK
 // (binding). Tables land empty+backfilled; all current read/dispatch paths keep

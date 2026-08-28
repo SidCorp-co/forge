@@ -1,0 +1,60 @@
+# Human Routing
+
+**Getting the next decision to a human who can make it.** Today Forge routes by **assignment and
+pull**; routing by expertise and authority is stated intent, not built.
+
+```mermaid
+flowchart LR
+  subgraph BUILT["Built today"]
+    S[pipeline stops<br/>waiting · needs_info · reopen<br/>reason required] --> AT[GET /me/attention<br/>5 buckets, self-clearing]
+    ASG[issues.assigneeId<br/>one user] --> AT
+    N[notifications<br/>@mentions] --> AT
+    AT --> HUM([human decides]) --> BACK[status advances]
+  end
+  subgraph NOT["Not built — VISION direction"]
+    K{what kind of<br/>decision?} -.-> B[business owner]
+    K -.-> A[architect]
+    K -.-> D[developer]
+    K -.-> SEC[security owner]
+  end
+```
+
+## Built today
+
+| Concern | Where it lives |
+|---|---|
+| Assignment — exactly one user per issue | `schema.ts:issues` (`assigneeId`), `schema.ts:tasks` (`assigneeId`) |
+| Authority — flat roles, two scopes | `schema.ts:orgMemberRoles`, `schema.ts:projectMemberRoles`, `core/src/lib/authz.ts:effectiveProjectRole` |
+| The pull surface | `core/src/me/attention-routes.ts` |
+| Stop-and-ask | `schema.ts:waitingKinds`, `issues.reason`, status `needs_info` |
+| Mentions and delivery | `core/src/notifications/` |
+| UI | web `features/attention/`, `notifications/`, `operator/` |
+
+### The five attention buckets
+
+`GET /me/attention` is the routing surface that exists. Every bucket derives from **live** state, so
+it self-clears — never from a read/unread flag, which became a mute switch once already.
+
+| Bucket | Fires on |
+|---|---|
+| `needsReview` | issues assigned to the caller in `developed` or `reopen` |
+| `awaitingInput` | issues assigned to the caller in `waiting`, `needs_info` or `on_hold` |
+| `mentions` | unread `@mention` notifications |
+| `failedJobs` | jobs the caller triggered that failed in 7 days — excluding superseded retry attempts and jobs whose issue already reached `closed`/`released` |
+| `pendingSkillUpdates` | reconcile runs at the human decision gate, for projects the caller admins |
+
+The bucket criteria are documented in one place — the header comment on
+`me/attention-routes.ts` — and it must stay in sync with the `WHERE` clauses below it.
+
+## Not built
+
+| Missing | Consequence today |
+|---|---|
+| Teams, candidate groups, claim | work goes to one named assignee or to nobody |
+| Expertise / capability model | nothing can pick *which* human suits a decision |
+| Decision-kind taxonomy | `waitingKinds` has exactly two values — `needs_decision`, `needs_resource`. There is no business / architecture / technical-risk / security split |
+| Availability | a stop can land on someone who is away, and nothing notices |
+| Escalation ladder | a stop that nobody answers stays stopped; only the attention pull surfaces it |
+
+`VISION: route-judgment-not-bottlenecks` is the commitment; VISION §5 records that this is
+"Direction, not yet reached". Do not describe the four-way routing above as if it ships.

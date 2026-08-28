@@ -94,7 +94,7 @@ describe('forge facts registry', () => {
     expect(text).toContain('draft');
     expect(text).toContain('forge_memory.search');
     expect(text).toContain('Forge red flags:');
-    expect(text).toContain('docs/guides/forge-affordances.md');
+    expect(text).toContain('What counts as an issue: guide `what-is-an-issue`');
   });
 
   it('Operating affordances names all six Forge red flags (criterion 4)', () => {

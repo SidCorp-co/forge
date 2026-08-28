@@ -3,7 +3,6 @@ import { type IssueStatus, issueStatuses } from '../db/schema.js';
 export type { IssueStatus };
 export { issueStatuses };
 
-// cm:edge naming -> docs/modules/issues-pipeline/status-pipeline.md — the ladder documented there and this map are the same happy path; change one, change the other
 // cm:guard ADVISORY, NOT A GATE. Nothing enforces this map. `canTransitionFree` below is the only runtime check and it permits ANY non-draft from → ANY non-draft to; reading a missing pair here as "illegal" has produced wrong conclusions and pointless multi-hop workarounds. Consumers are system-prompt generation, UI next-state suggestions and the soft-skip resolver.
 export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   open: ['confirmed', 'needs_info', 'on_hold'],

@@ -13,9 +13,8 @@
 //! `effective_hash` back as `installed_hash`, so there is no TS↔Rust hashing
 //! drift.
 //!
-//! Concurrency safety (staged-temp-dir + atomic rename, per-skill file lock)
-//! is documented in `docs/architecture/skill-delivery.md` ("Concurrency in
-//! `sync_skills`", ISS-743) — not restated here.
+//! Concurrency safety: a staged temp dir promoted by atomic rename, under a
+//! per-skill file lock (ISS-743).
 
 use std::path::{Path, PathBuf};
 

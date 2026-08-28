@@ -1,7 +1,7 @@
 // Server-designated Claude Code plugins (ISS-739 follow-up).
 //
 // A plugin is installed at DEVICE scope — one install serves every job the daemon dispatches
-// (docs/architecture/skill-delivery-plugin-channel.md). Designation, however, is per PROJECT, so a
+// Designation, however, is per PROJECT, so a
 // device resolves the UNION of the designations of every project it is bound to. Per-project
 // enable/disable is not expressible here: that lever is `enabledPlugins` in the repo's own
 // .claude/settings.json, which Claude Code honours at project scope.

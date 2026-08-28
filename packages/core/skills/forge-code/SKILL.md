@@ -145,11 +145,8 @@ and account for each one. Three outcomes, no fourth:
 "Did not touch" is not an outcome. Neither is a deprecation note or a "may be stale" header: both
 leave a second copy of a status the code already holds.
 
-Two things widen the list beyond what you happened to open. A change that moves a `BR-`/`UC-` must
-update [`docs/requirements/README.md`](../../../../docs/requirements/README.md) in the same diff —
-the register's anchor column is the join that makes the business↔module map generable, so an
-anchor pointing at a symbol you just renamed silently breaks it. And a doc claim you write must
-cite an identifier or a `file.ts:symbol` anchor, never a line number.
+A doc claim you write must cite an identifier or a `file.ts:symbol` anchor, never a line number —
+a line number goes stale the moment anything above it moves, and it goes stale in silence.
 
 Report the list under `Docs reviewed:` in the completion comment, one line per file with its
 outcome. An empty list is a claim that the issue opened no documentation, and it is checkable

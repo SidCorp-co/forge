@@ -1,8 +1,14 @@
 {
   "ignorePatterns": [
-    { "pattern": "^http://localhost" },
-    { "pattern": "^https?://localhost" },
-    { "pattern": "^http://127\\.0\\.0\\.1" },
+    {
+      "pattern": "^http://localhost"
+    },
+    {
+      "pattern": "^https?://localhost"
+    },
+    {
+      "pattern": "^http://127\\.0\\.0\\.1"
+    },
     {
       "comment": "Every SidCorp-co repo is private, and the checker runs unauthenticated — so a link to one answers 404 whether or not it exists. Scoped to the org rather than to `forge` because a cross-repo reference (e.g. an archmap issue cited from a Forge doc) hits exactly the same wall. What this mutes is a typo inside a SidCorp-co URL; what it would otherwise block is every correct one.",
       "pattern": "^https?://github\\.com/SidCorp-co/"
@@ -13,6 +19,11 @@
     }
   ],
   "replacementPatterns": [
+    {
+      "comment": "The same in-app help articles also link each other as `?path=<slug>` — the deep-link form the viewer routes on (`/docs?path=…`, docs-screen.tsx). Rewritten to the file, not muted, for the same reason as the bare-slug rule below: a dead slug must keep failing.",
+      "pattern": "^\\?path=([a-z0-9][a-z0-9-]*)$",
+      "replacement": "$1.md"
+    },
     {
       "comment": "In-app help articles (packages/web-v2/content/help) link each other by bare route slug, e.g. [Pair a runner](pair-a-runner) — correct for the renderer, which routes by slug, but not a filesystem path. Append .md so the checker still VERIFIES the target exists instead of muting it: a genuinely dead slug keeps failing.",
       "pattern": "^([a-z0-9][a-z0-9-]*)$",

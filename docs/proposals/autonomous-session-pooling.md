@@ -1,7 +1,7 @@
 # Autonomous session pooling
 
 - Status: **withdrawn 2026-08-27** — the mechanism is real, but the case for it was priced against the wrong population and rests on two claims that are now refuted. Kept as the record of what was measured; the work it points at is elsewhere.
-- Related: [agent-driven pipeline](agent-driven-pipeline.md) · [autonomous status](../modules/issues-pipeline/autonomous-status.md) · [RFC 0002 park axis](../rfcs/0002-park-axis-separation.md)
+- Related: [agent-driven pipeline](agent-driven-pipeline.md) · `AUTONOMOUS_DRIVER_STATUSES` (`core/src/pipeline/autonomous-mode.ts`)
 
 ## The ask
 
@@ -48,11 +48,11 @@ session is already warm"* is false.
 The headline number is the `on_hold` row: cancelled runs where nobody was asked anything. A held
 process fixes none of them. And on all 17 parked issues, human comments since the park: **zero**.
 
-**4. It optimises a path drive jobs do not take.** `jobs/resume-policy.ts:145` gates the
-session-group lookup on `job.type !== AUTONOMOUS_JOB_TYPE`, with a `cm:guard` saying why — a drive
-job resumes through `forge_phase resume_point`, never `--resume`. Measured over 90 days: drive jobs
-with `resume_failed` = **0**. The `[RESUME_FAILED]` branch this proposal was built around has never
-fired for the mode it targets.
+**4. It optimises a path drive jobs do not take.** `jobs/resume-policy.ts#resolveResumePolicy` gates
+the session-group lookup on `job.type !== AUTONOMOUS_JOB_TYPE`, with a `cm:guard` saying why — a
+drive job resumes through `forge_phase resume_point`, never `--resume`. Measured over 90 days: drive
+jobs with `resume_failed` = **0**. The `[RESUME_FAILED]` branch this proposal was built around has
+never fired for the mode it targets.
 
 ## What kills the held-session shape outright
 
@@ -60,15 +60,16 @@ Three findings, any one of them sufficient.
 
 **The answer has nowhere to go.** Held, the drive job stays `running`. `answer-resume` flips the
 issue to `open`, `dispatchAutonomous` hits the `jobs_active_unique` partial index (which covers
-`running`), and `autonomous-dispatch.ts:171-173` **swallows the conflict and returns `true`**. No
-job, no signal, nothing that knows to write into the living process's stdin. The design's central
-promise requires a core→runner answer channel that does not exist.
+`running`), and `autonomous-dispatch.ts#dispatchAutonomous`'s `ActiveJobConflictError` catch
+**swallows the conflict and returns `true`**. No job, no signal, nothing that knows to write into
+the living process's stdin. The design's central promise requires a core→runner answer channel that
+does not exist.
 
-**It would make the kernel lie.** `daemon/dispatch.rs:554` beats a synthetic `progress` event every
-`HEARTBEAT_INTERVAL = 25s` whenever no real batch went out. A process idling on stdin therefore
-reports itself healthy forever, and `reapResultMisses` (`RESULT_QUIET_MINUTES = 60`) never fires —
-every beat asserts progress for something that by definition is not progressing. That is a
-principle №10 *state-never-lies* violation at any duration. Suppress the beat instead and
+**It would make the kernel lie.** `daemon/dispatch.rs#consume` beats a synthetic `progress` event
+every `HEARTBEAT_INTERVAL = 25s` whenever no real batch went out. A process idling on stdin
+therefore reports itself healthy forever, and `reapResultMisses` (`RESULT_QUIET_MINUTES = 60`) never
+fires — every beat asserts progress for something that by definition is not progressing. That is a
+`VISION: state-never-lies` violation at any duration. Suppress the beat instead and
 `HEARTBEAT_TIMEOUT_MS_DEFAULT = 3 min` fails the session. There is no third option that leaves core
 untouched.
 
@@ -76,7 +77,7 @@ untouched.
 (per-runner, `RUNNER_CAP_PER_RUNNER = 1`). Today's parks are free, which is *why* several can
 coexist. Held, the first unanswered question takes the project's slot and throughput goes to zero
 until a human arrives. Live state: forge-dev has **7 parks against a cap of 3**; kinetrak has 1
-against a cap of **1**. And VISION §4 parks `concurrency caps >1` behind kernel trust, so raising the
+against a cap of **1**. And VISION parks `concurrency caps >1` behind kernel trust ("Not yet"), so raising the
 cap is not an available answer.
 
 `held` (RFC 0002) is not the escape hatch: it is slotless *because nothing is running*, and its
@@ -87,9 +88,9 @@ asking a human a question that only a human can answer".
 
 `ClaudeCodeRunner` is a single shared exec path — `daemon/mod.rs`, `daemon/chat.rs` and
 `daemon/dispatch.rs` all go through it, so this touches chat and schedules, not just `drive`. And
-`docs/architecture/skill-delivery.md:49` already recorded exactly this change as
-**"Deferred (high blast radius): switching the runner's shared `-p` exec path to stream-json +
-warm-up — pipeline-wide risk."**
+the skill-delivery design record (deleted in the 2026-08-28 docs cleanup; recoverable from git
+history) had already recorded exactly this change as **"Deferred (high blast radius): switching the
+runner's shared `-p` exec path to stream-json + warm-up — pipeline-wide risk."**
 
 ## Where the measured defect actually is
 

@@ -11,7 +11,7 @@ The final step in the issue pipeline: `released → closed`. Lands the issue's o
 
 The ISS-* branch holds this issue's changes. Release = get **this issue's own changes — and only those** — onto `productionBranch`, then deploy and close. The one non-obvious trap is called out in Step 6.
 
-**State-never-lies (VISION №10):** `merged_at` and the "Released" comment are promises other issues rely on — a blocks-gate/decompose child dispatches the moment `merged_at` is stamped, trusting the base branch now has this code. Never let branch-name equality or a push exit code stand in for verified git ancestry (see Step 4 and Step 8) — a wrongly-skipped merge or a silently-failed push must halt the release, not complete it.
+**State-never-lies (`VISION: state-never-lies`):** `merged_at` and the "Released" comment are promises other issues rely on — a blocks-gate/decompose child dispatches the moment `merged_at` is stamped, trusting the base branch now has this code. Never let branch-name equality or a push exit code stand in for verified git ancestry (see Step 4 and Step 8) — a wrongly-skipped merge or a silently-failed push must halt the release, not complete it.
 
 ## Usage
 

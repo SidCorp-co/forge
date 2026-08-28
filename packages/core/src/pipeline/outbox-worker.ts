@@ -35,7 +35,7 @@ import { emitPipelineWedge } from './wedge.js';
  * `claimBatch`'s own `CASE WHEN claimed_at IS NOT NULL` only when a row is
  * re-claimed after a failure, so the first delivery leaves it at 0. Capped at
  * `MAX_REDELIVERIES` — a row that hits the cap stays `processed_at IS NULL`
- * forever (VISION №10: never silently mark it done) and raises a
+ * forever (`VISION: state-never-lies`: never silently mark it done) and raises a
  * `pipeline_wedge` naming the issue and the stuck status.
  *
  * Accepted tradeoff: a retry re-emits to EVERY subscriber, not just the one

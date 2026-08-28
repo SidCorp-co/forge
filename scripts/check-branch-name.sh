@@ -1,5 +1,5 @@
 #!/bin/bash
-# Branch name validator — see docs/decisions/0014-trunk-based-development.md
+# Branch name validator.
 #
 # Two accepted schemes:
 #   1. Maintainer / Forge pipeline:
@@ -124,6 +124,5 @@ Rules:
 
 Override: SKIP_PREPUSH=1 git push  (use sparingly — emergency only).
 
-See docs/decisions/0014-trunk-based-development.md.
 EOF
 exit 1

@@ -1,5 +1,5 @@
 /**
- * A runner must never keep reporting a fault it has outlived (VISION No.10).
+ * A runner must never keep reporting a fault it has outlived (`VISION: state-never-lies`).
  *
  * Two writers set `runners.last_error` without a limit — `attributeFailureToRunner`
  * (preflight) and the dispatcher's adapter-failure path — and nothing cleared it:

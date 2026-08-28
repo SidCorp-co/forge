@@ -1,15 +1,14 @@
 #!/usr/bin/env node
 
-// Autonomous transition-standard gate (S1 of docs/modules/issues-pipeline/autonomous-status.md).
+// Autonomous transition-standard gate.
 //
 // The driver writes a KERNEL status. `needs_human` / `done` / `running` are render
 // labels from packages/contracts/src/issue-vocabulary.ts and nothing on the write
 // path translates them, so a surface that instructs one hands the agent a value
-// `forge_issues` rejects. Three static rules over three files:
+// `forge_issues` rejects. Two static rules over three files:
 //
 //   R1  the skill's "Statuses you may write" table == AUTONOMOUS_DRIVER_STATUSES
-//   R2  the doc's S1 table (first column) == AUTONOMOUS_DRIVER_STATUSES
-//   R3  no bundled skill names a render label as a status to write
+//   R2  no bundled skill names a render label as a status to write
 //
 // What this CANNOT see: what an agent actually wrote at runtime. That lives in
 // `activity_log` and CI has no database. This gate holds the specification only.
@@ -26,12 +25,11 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCES = {
   constant: 'packages/core/src/pipeline/autonomous-mode.ts',
   skill: 'packages/runner/skills/forge-drive/SKILL.md',
-  doc: 'docs/modules/issues-pipeline/autonomous-status.md',
   vocabulary: 'packages/contracts/src/issue-vocabulary.ts',
   schema: 'packages/core/src/db/schema.ts',
 };
 
-// cm:guard R3 walks the WHOLE bundled tree, not just forge-drive. The driver spawns forge-understand, forge-plan, forge-review and forge-ship as sub-agents and each of them writes status too — scoped to forge-drive this checker read green while `needs_human` / `done` / `running` sat in two of the other four.
+// cm:guard R2 walks the WHOLE bundled tree, not just forge-drive. The driver spawns forge-understand, forge-plan, forge-review and forge-ship as sub-agents and each of them writes status too — scoped to forge-drive this checker read green while `needs_human` / `done` / `running` sat in two of the other four.
 const SKILL_ROOT = 'packages/runner/skills';
 
 class CannotRun extends Error {}
@@ -79,7 +77,7 @@ function parseFirstColumn(text, startRe, rel, what) {
   return out;
 }
 
-// cm:edge contract -> packages/contracts/src/issue-vocabulary.ts — the label set is read from that file, never restated here, so adding a label there puts it under R3 the same day
+// cm:edge contract -> packages/contracts/src/issue-vocabulary.ts — the label set is read from that file, never restated here, so adding a label there puts it under R2 the same day
 function parseLabels(text) {
   const body = block(text, /export const LABEL_TO_KERNEL/, SOURCES.vocabulary, 'LABEL_TO_KERNEL');
   const end = body.indexOf('};');
@@ -98,7 +96,7 @@ function compare(actual, expected, rel, what, violations) {
   }
 }
 
-// cm:guard R3 is scoped to the bundled skills — the INSTRUCTION surfaces — and must never be widened to the docs: autonomous-status.md names every render label on purpose, in the rendering map that explains why they are not writable, so a tree-wide scan would flag the page that documents the rule.
+// cm:guard R2 is scoped to the bundled skills — the INSTRUCTION surfaces — and must never be widened tree-wide: a page that documents the render labels names every one of them on purpose, and a tree-wide scan flags the explanation as the violation.
 function checkLabels(text, rel, labels, kernelStatuses, violations) {
   const lines = text.split('\n');
   for (const [i, line] of lines.entries()) {
@@ -166,15 +164,6 @@ function main() {
       'the status table',
       violations,
     );
-
-    const docSrc = read(SOURCES.doc);
-    compare(
-      parseFirstColumn(docSrc, /^### S1 — The closed set/m, SOURCES.doc, "S1's table"),
-      expected,
-      SOURCES.doc,
-      "S1's table",
-      violations,
-    );
   } catch (err) {
     if (err instanceof CannotRun) {
       console.error(`autonomous-transitions: could not run — ${err.message}`);
@@ -191,7 +180,7 @@ function main() {
       `\nautonomous-transitions: ${violations.length} violation(s) across ${scanned} files`,
     );
     console.error(
-      'The standard is docs/modules/issues-pipeline/autonomous-status.md §S1; the declaration is AUTONOMOUS_DRIVER_STATUSES.',
+      'The only declaration of the standard is AUTONOMOUS_DRIVER_STATUSES in packages/core/src/pipeline/autonomous-mode.ts.',
     );
     return 1;
   }

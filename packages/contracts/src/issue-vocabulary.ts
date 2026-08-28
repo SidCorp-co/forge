@@ -15,8 +15,7 @@
 // stamping is a rule nothing else enforced; the gate needed no status of its
 // own because the release path already parks on `tested`.
 //
-// Design: docs/modules/issues-pipeline/release-gate.md (the gate),
-// docs/proposals/agent-driven-pipeline.md (the mode)
+// Design: docs/proposals/agent-driven-pipeline.md (the mode)
 
 import type { REGISTRY_ISSUE_STATUSES } from "./pipeline-registry.js";
 

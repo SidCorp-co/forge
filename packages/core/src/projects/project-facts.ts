@@ -1,5 +1,5 @@
 // Author-defined project constants referenced from a skill body via
-// `{{project:<key>}}` (see docs/modules/agents-jobs/skill-facts.md). Stored under
+// `{{project:<key>}}`. Stored under
 // `projects.agentConfig.projectFacts` as a flat kebab-case → text map.
 //
 // SECURITY: values are spliced VERBATIM into the device-installed SKILL.md, so

@@ -105,4 +105,4 @@ your repo. There is no desktop app — pairing is done from the command line.
 | Device stays **offline** | Is the agent running (`forge-runner status`)? Can it reach your Forge host? |
 | Device online but jobs stay queued | Is the project bound (step 4)? Is the Claude CLI installed **and signed in** on that machine? |
 
-See [Troubleshooting](troubleshooting) for more.
+See [Troubleshooting](?path=troubleshooting) for more.

@@ -1,6 +1,6 @@
 // Forge Facts registry — the single source of truth for the FIXED Forge
 // process knowledge a skill author would otherwise have to rediscover and
-// hand-copy into every SKILL.md (see `docs/modules/agents-jobs/skill-facts.md`).
+// hand-copy into every SKILL.md.
 //
 // Two consumers read this module:
 //   1. `prompt/system.ts` renders the `tier: 'mandatory'` facts into the
@@ -62,7 +62,6 @@ export interface ForgeFact {
 // re-encoding it in prose (e.g. a dependency written as text rather than a
 // `blocks` edge). Authored ONCE here and reused by the interactive chat
 // orientation (prompt/system.ts CHAT_NUDGE) so the two surfaces never drift.
-// Full reference: docs/guides/forge-affordances.md.
 export const OPERATING_AFFORDANCES_TEXT = `## Operating affordances
 Forge gives you a tool for things agents routinely do in prose. When you hit the trigger, reach for the tool — and avoid the red flag.
 
@@ -83,7 +82,7 @@ An issue is a unit of WORK with a named deliverable and an owner, whose completi
 | A residual genuinely out of reach (needs a human decision, or work no diff here can carry) | ONE of: a \`blocks\` edge onto the issue that would ship without it · a line in \`docs/proposals/\` · \`waiting\` + \`reason\` when it blocks THIS issue | Filing a new issue to carry it — that is not one of the options. Equally: staying silent because none of the three fit — say it in a comment on the issue you are on |
 
 **Forge red flags:** prose-deps · open-then-block · open-as-note · draft-as-note · plan-by-hand · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget · close-without-unmark · silent-nonwork · file-instead-of-fix.
-Full reference: \`docs/guides/forge-affordances.md\` · what counts as an issue: guide \`what-is-an-issue\` · how to write the body of one (pick the shape first, mermaid renders, attach HTML never paste it): guide \`writing-an-issue\`.`;
+What counts as an issue: guide \`what-is-an-issue\` · how to write the body of one (pick the shape first, mermaid renders, attach HTML never paste it): guide \`writing-an-issue\`.`;
 
 // cm:edge lockstep -> packages/core/src/guides/registry.ts — the pipeline-and-issue-lifecycle guide is what this pointer resolves to; renaming the guide slug there without changing it here sends every agent to a 404
 const LIFECYCLE_GUIDE_POINTER = 'forge_guide get pipeline-and-issue-lifecycle';

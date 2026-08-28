@@ -648,7 +648,7 @@ describe('POST /:id/resume (user)', () => {
     );
   });
 
-  // cm:guard 409 NOT_HELD, never 200 — a resume that reports success for a job it did not move is the state-lies failure VISION principle №10 forbids, and the operator would stop looking for the stuck step
+  // cm:guard 409 NOT_HELD, never 200 — a resume that reports success for a job it did not move is the state-lies failure `VISION: state-never-lies` forbids, and the operator would stop looking for the stuck step
   it('409 NOT_HELD when the job is in any other status', async () => {
     selectLimit.mockResolvedValueOnce([verifiedUser]);
     selectLimit.mockResolvedValueOnce([jobRow]);

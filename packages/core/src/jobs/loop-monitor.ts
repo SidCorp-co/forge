@@ -10,10 +10,7 @@
  *
  * JOB-axis hops (dispatch→ack, session_lost, result-stale) are two-phase via
  * `jobs/kill-gate.ts` (ISS-785): request-kill, then fail only once confirmed
- * — see the design doc for the hop table and the kill-gate rationale.
- *
- * Full hop table + the ISS-785 kill-gate model:
- * docs/architecture/job-loop-monitor.md
+ * — the rationale for that two-phase shape is in `jobs/kill-gate.ts`.
  */
 
 import type { SQL } from 'drizzle-orm';
@@ -245,7 +242,7 @@ async function resolveKillGateDecision(
   let outcome: JobRow['killOutcome'];
   if (cfg.forceConfirmAfterGrace) {
     confirmed = true;
-    // cm:guard record never_claimed, NOT not_found — no runner answered, and an audit column that invents an answer is the state-never-lies violation (VISION §10) this gate exists to prevent
+    // cm:guard record never_claimed, NOT not_found — no runner answered, and an audit column that invents an answer is the state-never-lies violation (`VISION: state-never-lies`) this gate exists to prevent
     outcome = ref.killOutcome ?? 'never_claimed';
   } else {
     const resolution = await resolveKillConfirmation(ref);
@@ -278,7 +275,7 @@ async function resolveKillGateDecision(
   return { phase: 'reaped', updated, confirmed };
 }
 
-// cm:guard the unconfirmed park is the ONE reap outcome with no retry and a possibly-live agent — its wedge must never reuse the confirmed branch's "routed to retry" text, or the operator reads "handled" and leaves the process writing git (VISION §10)
+// cm:guard the unconfirmed park is the ONE reap outcome with no retry and a possibly-live agent — its wedge must never reuse the confirmed branch's "routed to retry" text, or the operator reads "handled" and leaves the process writing git (`VISION: state-never-lies`)
 const UNCONFIRMED_WEDGE_ACTION =
   'NO retry was scheduled and the issue is parked at `waiting`. Before resuming it, check the assigned device and kill any agent process still running for this job — resuming while it lives puts two agents on the same worktree.';
 

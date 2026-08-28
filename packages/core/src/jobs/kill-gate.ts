@@ -12,8 +12,7 @@
  *
  * `requestJobKill` opens a kill EPISODE (stamp + publish);
  * `resolveKillConfirmation` decides whether it is now safe to treat the job
- * as genuinely dead, and therefore retryable. Episode scoping and the three
- * confirmation sources: docs/architecture/job-loop-monitor.md
+ * as genuinely dead, and therefore retryable.
  */
 
 // cm:guard a reap MUST NOT flip a job to failed before requestJobKill + a confirmed resolveKillConfirmation — an unconfirmed kill that still retries spawns a second agent on the same worktree (ISS-785)

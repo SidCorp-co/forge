@@ -19,7 +19,7 @@ export interface HelpContent {
   actions?: string[];
   /** Keyboard shortcuts (keys + what they do). */
   shortcuts?: HelpShortcut[];
-  /** Repo-relative doc path (e.g. `docs/modules/issues-pipeline/status-pipeline.md`). When set, the
+  /** Repo-relative doc path (e.g. `docs/architecture/system-overview.md`). When set, the
    *  popover shows a "Learn more" link that opens the Docs hub on that file. */
   docPath?: string;
   /** Override label for the docs deep-link (default "Learn more in docs"). */

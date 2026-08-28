@@ -35,32 +35,32 @@ Shipped or consumed proposals are **deleted** — git history is the design reco
 `git log --all --full-history -- docs/proposals/<name>.md` brings any of them back. Leaving one in
 place costs more than it saves: it reads as open work.
 
-The exception is a proposal **cited by path from source**: deleting it turns every one of those
-comments into a dangling pointer, so it moves to `modules/` and the citations move with it. That is
-the only reason `release-gate-and-deploy.md` still exists as a file.
+A proposal **cited by path from source** cannot simply be deleted — that turns every one of those
+comments into a dangling pointer. Either it moves to `modules/` and the citations move with it, or
+the citations go in the same commit.
 
 | Retired | Why | Where it lives now |
 |---|---|---|
-| `release-gate-and-deploy.md` | All five waves shipped 2026-08-24; six modules in `core`/`contracts` name it as their design record, so it moved instead of being deleted | [../modules/issues-pipeline/release-gate.md](../modules/issues-pipeline/release-gate.md) |
+| `release-gate-and-deploy.md` | All five waves shipped 2026-08-24; moved to `modules/`, then deleted with the rest of the module tree in the 2026-08-28 docs cleanup — the seven `core`/`contracts` pointers to it were removed in the same pass | git history · `release-batch/`, `issues/release-gate-hold.ts` |
 | `issue-field-surface.md` | All three steps shipped in `5d69e35f` 2026-08-27: five write-only columns plus `parent_issue_id` dropped by migration `0188`, 81 plumbing sites removed, and the two dead readers of `parent_issue_id` deleted. No source cites it by path, so the retire rule applies | git history |
 | `retry-context-continuity.md` | L1–L3 shipped 2026-08-26 (`da2a2189` core, `948d50f6`+`c1080aa9` runner). L4 (hold instead of rotating into exhausted accounts) is the only residual, and its own body says it belongs to ISS-862's scope rather than to a separate proposal | git history · L4 → ISS-862 |
 | `mcp-principal-agency.md` | The decision it was blocked on was made 2026-08-25 (attribution follows the token's owner; the ISS-812 guard's scope is unchanged) and shipped in `aba0b10d` | `agency` on `McpPrincipal` + `principalActor()` in `mcp/tools/lib.ts` |
 | `fan-out-scope.md` | The fix belongs to archmap, which is its own repo now — a Forge proposal describing another repo's work is filed in the wrong tracker | [SidCorp-co/archmap#1](https://github.com/SidCorp-co/archmap/issues/1) |
-| `rocketchat-bot.md` | Lane A shipped + live; its own body carried three SHIPPED markers (ISS-609, ISS-671/672/674/675/687/727) while this table said otherwise | [../modules/chat/README.md](../modules/chat/README.md) § RocketChat inbound flow |
-| `chat-provider-standardization.md` | P1 shipped 2026-07-02 in `934dab4a`, the commit naming its own ISS-604; P2 2026-07-03 (ISS-609); P3 write tools live in `chat/tools/` | [../modules/chat/README.md](../modules/chat/README.md) |
+| `rocketchat-bot.md` | Lane A shipped + live; its own body carried three SHIPPED markers (ISS-609, ISS-671/672/674/675/687/727) while this table said otherwise | `packages/core/src/chat/providers/` |
+| `chat-provider-standardization.md` | P1 shipped 2026-07-02 in `934dab4a`, the commit naming its own ISS-604; P2 2026-07-03 (ISS-609); P3 write tools live in `chat/tools/` | `packages/core/src/chat/providers/` |
 | `pm-lane-audit.md` | An audit whose decision was consumed — ISS-795 and its step 5 (ISS-801) both closed and merged 2026-08-08/09 | git history |
 | `cost-aware-model-routing.md` | Schema + cost rollup shipped; routing never written in the four months after 2026-04-20 | rollup: `pipeline_run_step_durations` (root `CLAUDE.md`) |
 | `mcp-project-scoped-tokens.md` | Design capture 2026-06-16 (ISS-496); no trace in the tree since | git history |
 | `memory-rag-retrieval-quality.md` | Research deliverable 2026-06-16; no trace in the tree, and never listed in this table at all | git history |
 
-Earlier retirements, with their live docs: memory v2 →
-[modules/memory-knowledge](../modules/memory-knowledge/README.md) · web-v2 redesign/parity (ISS-397)
+Earlier retirements, and where they live now: memory v2 →
+`packages/core/src/memory/` · web-v2 redesign/parity (ISS-397)
 → web-v2 is simply the canonical UI · step-handoff →
-[../modules/memory-knowledge/step-handoffs.md](../modules/memory-knowledge/step-handoffs.md) ·
-runner daemon → [../architecture/runner-daemon.md](../architecture/runner-daemon.md) · integration
-framework → [../integrations/framework.md](../integrations/framework.md) · prompt config →
-[../modules/agents-jobs/prompt-config.md](../modules/agents-jobs/prompt-config.md) · skill facts →
-[../modules/agents-jobs/skill-facts.md](../modules/agents-jobs/skill-facts.md).
+`packages/core/src/memory/step-handoff-schema.ts` ·
+runner daemon → `packages/runner/README.md` · integration
+framework → [../integrations/README.md](../integrations/README.md) · prompt config →
+`packages/core/src/prompt/state-prompts/` · skill facts →
+`packages/core/src/prompt/facts/registry.ts`.
 
 ## Naming convention
 
@@ -80,7 +80,7 @@ way `pm-lane-audit.md` was.
 | Formality | Sketch, one-page | Full template, FCP |
 | Status | Might not ever ship | Decided (accept/postpone/reject) |
 | Audience | Maintainer + early contributors | Full community |
-| Lifespan | Short — moves to modules/ on ship | Permanent historical record |
+| Lifespan | Short — deleted on ship; moves to modules/ only if source cites it | Permanent historical record |
 
 Use `proposals/` for "I'm thinking about this, not sure yet." Upgrade to an `rfcs/` RFC when the
 proposal affects API, architecture, or cross-team surfaces.

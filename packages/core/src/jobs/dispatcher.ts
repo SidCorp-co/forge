@@ -328,7 +328,7 @@ async function dispatchViaRunner(
     // simply has no runners at all there's nothing to observe; that's a
     // configuration condition rather than a worker death.
     await maybeRecordL5Skip(job.projectId, job.id, fallbackChain);
-    // cm:why the pool is named in the log because the two conditions are operationally different: an empty fleet is an outage, a busy/limited POOL is the configured price of pinning a stage — VISION No.10 forbids the second one reading as the first
+    // cm:why the pool is named in the log because the two conditions are operationally different: an empty fleet is an outage, a busy/limited POOL is the configured price of pinning a stage — `VISION: state-never-lies` forbids the second one reading as the first
     logger.warn(
       { jobId: job.id, projectId: job.projectId, fallbackChain, stagePool },
       stagePool

@@ -131,15 +131,22 @@ See [docs/architecture/system-overview.md](docs/architecture/system-overview.md)
 
 - **Skills** — author your own in `.claude/skills/` and register with a
   pipeline stage.
-- **Pipeline stages** — modify the
-  [issue status state machine](docs/modules/issues-pipeline/status-pipeline.md)
-  for domain flows (RFC required for public releases).
+- **Pipeline stages** — modify the issue status state machine
+  (`packages/core/src/pipeline/state-machine.ts`) for domain flows (RFC required
+  for public releases).
 - **Runners** — the device-agent runner is pluggable. Default runs `claude`
   CLI; future runners can be anything that emits the Forge event protocol.
 
 ## Roadmap
 
-See [docs/VISION.md §8](docs/VISION.md#8-roadmap-horizons).
+Ships when ready, no dates.
+
+| Horizon | Content |
+|---|---|
+| **Now — `v0.3.x`** | Two lanes, both for **trust**: *kernel hardening* (orphan gaps, false failures, failure taxonomy, recovery behaviour, state integrity) · *onboarding* (init wizard, skill smoke verification, bootstrap template, request intake, initial pipeline routing) |
+| **Next — `v0.4`** | Mobile read-only · session replay diff · webhook templates · early Spec exploration · human-routing foundations |
+| **Later** | Spec + Design stages · deep GitHub/GitLab · MCP registry · skill marketplace · organizational roles and permissions · OTel · audit export · security review · advanced routing and concurrency |
+| **`v1.0`** | Freeze API · skill format · device protocol · stage contracts · core lifecycle semantics. Then strict SemVer and LTS. |
 
 Device-runner pairing, the job pipeline, session replay, and webhook ingestion
 shipped across `v0.1.x`. `v0.3.0` added Organizations and the multi-runner
@@ -152,10 +159,9 @@ release.) See
 
 ## Documentation
 
-- [Vision](docs/VISION.md) — concept, audience, non-goals, horizons
+- [Vision](docs/VISION.md) — what Forge is / is not, why, who, principles
 - [Quickstart](docs/quickstart.md)
 - [Architecture](docs/architecture/system-overview.md)
-- [Guides](docs/guides/) — release, trunk-based development
 - [Modules](docs/modules/)
 - [RFCs](docs/rfcs/) — proposals through Final Comment Period
 - [Proposals](docs/proposals/) — in-flight design sketches
@@ -164,8 +170,7 @@ release.) See
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). The repo follows **Trunk-Based
 Development** — single `main`, no `develop`, branches live <1 day, feature
-flags absorb in-flight work. Full rules:
-[docs/guides/trunk-based-development.md](docs/guides/trunk-based-development.md).
+flags absorb in-flight work.
 
 First-time? Look for
 [`good-first-issue`](https://github.com/SidCorp-co/forge/labels/good-first-issue).

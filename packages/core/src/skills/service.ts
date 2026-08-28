@@ -168,8 +168,7 @@ export class SkillDeleteBlockedError extends Error {
 /**
  * Thrown when a stage registration targets a skill that is not a project skill
  * owned by this project. Only project skills are usable — adopt the global
- * template first (`applyGlobalSkillDefault`). See docs/skills-scope-playbook.md
- * (Rule 4).
+ * template first (`applyGlobalSkillDefault`).
  */
 export class SkillNotProjectScopedError extends Error {
   readonly code = 'SKILL_NOT_PROJECT_SCOPED';
@@ -239,9 +238,7 @@ export async function registerSkillForProject(
     return { projectId, skillId, stage: null };
   }
 
-  // Single path: only a project skill owned by THIS project may be registered.
-  // Globals are templates — they must be adopted (cloned) into the project
-  // first. See docs/skills-scope-playbook.md (Rule 4).
+  // cm:guard only a project skill owned by THIS project may be registered — a global is a template and must be adopted (cloned) first
   const [target] = await db
     .select({ scope: skills.scope, projectId: skills.projectId })
     .from(skills)
@@ -633,7 +630,7 @@ export class SkillAlreadyShadowedError extends Error {
  *
  * This is how a global enters a project under the single-path model: choosing a
  * skill for a stage materialises a project-owned copy; the global itself is
- * never registered or dispatched. See docs/skills-scope-playbook.md.
+ * never registered or dispatched.
  */
 export async function resolveOrAdoptProjectSkill(
   projectId: string,

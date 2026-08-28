@@ -108,4 +108,4 @@ own.
 | A paused issue isn't moving | On-hold issues only restart when **you resume** them. Resume it from the issue menu. |
 | Nothing runs automatically at all | Make sure the pipeline is enabled for the project in **Settings → Pipeline**. |
 
-See also [Troubleshooting](troubleshooting).
+See also [Troubleshooting](?path=troubleshooting).

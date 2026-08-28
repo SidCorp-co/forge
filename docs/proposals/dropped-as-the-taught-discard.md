@@ -14,7 +14,6 @@ Every agent-facing surface still teaches the workaround instead of the status:
 | Surface | What it says today |
 |---|---|
 | `packages/core/src/guides/registry.ts` — guide `what-is-an-issue` | "`closed` when it is not work at all", then "Closing non-work needs `unmark`" |
-| `docs/guides/forge-affordances.md` | `closed` + `forge_issues action=unmark` |
 | `.forge/orientation.md` (injected into every prompt on this project) | same row |
 | `packages/core/src/prompt/facts/registry.ts` | same, and it is **pinned byte-for-byte** by `rule-parity.test.ts` and `registry.test.ts` |
 
@@ -24,12 +23,12 @@ the whole dance unnecessary and cannot be forgotten halfway.
 
 ISS-787 fixed the narrower half of this — the **counted** claim. Three places said a `draft` has
 "three exits" and listed `closed` as the discard; those now say four and name `dropped`
-(`registry.ts` guide `pipeline-and-issue-lifecycle` v7, guide `what-is-an-issue` v2,
-`docs/guides/what-is-an-issue.md`). The **advice** was left alone deliberately, for the reason below.
+(`registry.ts` guide `pipeline-and-issue-lifecycle` v7, guide `what-is-an-issue` v2). The
+**advice** was left alone deliberately, for the reason below.
 
 ## Why it was not just fixed
 
-Two of those four surfaces are injected into the system prompt of every agent on every project the
+Two of those three surfaces are injected into the system prompt of every agent on every project the
 fleet serves, and one of them is pinned byte-for-byte by parity tests. Rewriting what agents are
 told to do with non-work is a change to fleet-wide operating guidance authored by the owner, not a
 correction of a factual error — and the two are not the same kind of edit. `dropped` also does not

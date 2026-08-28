@@ -16,7 +16,7 @@
  * once per pool, and only then gives up with `all_devices_exhausted`, which
  * holds and releases itself. Two structural guards run ahead of any class:
  * cancellation-requested, and verify-first (the issue already advanced or
- * reverted, so retrying is wasted spend). Detail: docs/modules/agents-jobs.
+ * reverted, so retrying is wasted spend).
  */
 
 import { randomUUID } from 'node:crypto';

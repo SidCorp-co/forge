@@ -88,8 +88,7 @@ export interface InboundDispatchResult {
  * Declares which integration surfaces a provider actually supports, so the UI
  * (and the connection/binding layer) can render to the provider's archetype
  * instead of one rigid layout — e.g. no empty delivery-log box for an
- * MCP-injection provider that never dispatches. See
- * docs/integrations/connection-binding.md.
+ * MCP-injection provider that never dispatches.
  *
  * Two archetypes today:
  *  - deploy / 2-way   (coolify): dispatch + inbound webhook + env split + prod gate + delivery log

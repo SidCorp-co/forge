@@ -17,8 +17,8 @@ Forge documentation, organized by purpose.
 1. **Repo state.** Read `/CLAUDE.md` (root) — current status, active migrations, and a "before you start" reading map.
 2. **Package context.** Read the `packages/<pkg>/CLAUDE.md` for the package you're touching.
 3. **In-flight work.** Check [proposals/](proposals/). Your task may already be planned (or explicitly out of scope).
-4. **Behavior canon.** For feature work, read the matching [modules/](modules/) doc — it answers "where does data come from, how does it flow."
-5. **Cross-cutting flows.** For anything spanning ≥2 modules, check [architecture/cross-module-flows.md](architecture/cross-module-flows.md).
+4. **Behavior canon.** For feature work, read the matching [modules/](modules/) domain — its map table says which doc to open, and each one opens with the diagram of that domain.
+5. **Invariants you must not break.** Before changing a guard, a status write, a retry path or skill delivery, read the matching [decisions/](decisions/) ADR — it says what the mechanism holds, not just what it does.
 
 If a doc disagrees with the code, trust the code, then propose a doc fix in the same PR. Do not silently re-derive.
 
@@ -28,24 +28,22 @@ If a doc disagrees with the code, trust the code, then propose a doc fix in the 
 |-----------|---------|
 | Run Forge for the first time | [quickstart.md](quickstart.md) |
 | Understand the overall system | [architecture/](architecture/) |
-| Understand a specific feature (issues, agents, devices, skills, chat, memory) | [modules/](modules/) |
+| Know why a mechanism was decided this way | [decisions/](decisions/) |
+| Understand a specific feature | [modules/](modules/) — seven domains, mapped in its README |
 | Propose a significant change | [rfcs/](rfcs/) |
 | Read planned but unshipped features | [proposals/](proposals/) |
 | Connect Forge to an external platform | [integrations/](integrations/) |
-| Follow a how-to for a specific task | [guides/](guides/) |
-| Understand the auth/permission model or threat surface | [security/](security/) |
 
 ## Folder purpose
 
 | Folder | Answers | Changes |
 |--------|---------|---------|
-| `architecture/` | How is the system built? How do modules chain together? | Rarely |
-| `guides/` | How do I do X? | When process changes |
+| `architecture/` | What planes exist, what runs where, what carries data between them | Rarely — a new one means the system grew a plane or a transport |
+| `decisions/` | Why was this decided, and what invariant does it hold? | Append-only, one per decision; never edited, only superseded |
 | `integrations/` | How does external platform Y work with Forge? | When platform API changes |
 | `modules/` | How does feature Z work? Where does its data come from? | When feature changes |
 | `proposals/` | What will we build next? | Move to `modules/` when shipped |
 | `rfcs/` | Proposals through Final Comment Period | One per major change |
-| `security/` | Who can reach what, and how is it attacked? | When an auth surface or entry door changes |
 
 ## Conventions
 

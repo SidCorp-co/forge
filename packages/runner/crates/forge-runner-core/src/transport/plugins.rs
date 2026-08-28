@@ -2,7 +2,7 @@
 //!
 //! The server resolves the UNION of the plugin designations of every project this device is bound
 //! to (`projects.agent_config.plugins`), because a Claude Code plugin installs at device scope —
-//! see `docs/architecture/skill-delivery-plugin-channel.md`. The local `[plugins]` block in
+//! one install serves every job. The local `[plugins]` block in
 //! config.toml stays authoritative for whether the sweep runs at all, so an operator keeps a kill
 //! switch that no server-side change can flip.
 

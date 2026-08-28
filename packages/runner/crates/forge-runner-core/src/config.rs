@@ -76,8 +76,7 @@ impl Default for UpdateSettings {
 }
 
 /// Device-level shared-skill delivery via a Claude Code plugin marketplace
-/// (ISS-739). See `docs/architecture/skill-delivery-plugin-channel.md` for
-/// the 3-channel doctrine and the SHA-pin decision.
+/// (ISS-739) — the 3rd delivery channel, SHA-pinned.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginSettings {
     /// Master switch. Defaults to OFF — the runner ships to every device via

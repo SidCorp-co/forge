@@ -6,13 +6,13 @@ and left the permission question exactly where it was.
 
 ## The asymmetry
 
-The server has one rule. `packages/core/src/release-batch/routes.ts:61`:
+The server has one rule. `packages/core/src/release-batch/routes.ts`:
 
 ```
 assertProjectRole(access, 'admin');
 ```
 
-The three surfaces that call `POST /projects/:id/release-batch` disagree with it and with each other:
+The three surfaces that call `POST /api/projects/:projectId/release-batches` disagree with it and with each other:
 
 | Surface | File | Gates on |
 |---|---|---|
@@ -41,6 +41,7 @@ that a non-admin sees a disabled control with a stated reason rather than a butt
 
 ## Not decided here
 
-Whether `admin` is the right server rule at all. If releasing should be a member-level action, the fix
-is one line in `routes.ts:61` and this proposal collapses to "delete the `canWrite` prop from the
-banner". That is a permissions decision, not a frontend one, and it belongs to the maintainer.
+Whether `admin` is the right server rule at all. If releasing should be a member-level action, the
+fix is one line in `routes.ts`'s `assertProjectRole(access, 'admin')` and this proposal collapses to
+"delete the `canWrite` prop from the banner". That is a permissions decision, not a frontend one,
+and it belongs to the maintainer.

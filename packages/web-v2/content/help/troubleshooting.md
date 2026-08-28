@@ -18,7 +18,7 @@ Common issues and how to clear them.
 ## A job is stuck in "queued"
 
 - Is a device **assigned to the project and bound** to a local checkout? See
-  [Pair a runner](pair-a-runner).
+  [Pair a runner](?path=pair-a-runner).
 - Is another job already running? Each project runs **one issue at a time**.
 - Is the **Claude CLI** installed and signed in on the runner machine? The agent
   launches it to do the work.

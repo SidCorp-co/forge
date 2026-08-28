@@ -147,13 +147,13 @@ jobs:
       - run: .forge/codemap/cm verify
       - run: .forge/codemap/cm verify --tier referential
       - run: .forge/codemap/cm verify --tier structural
-      # The autonomous transition standard (docs/modules/issues-pipeline/autonomous-status.md S1).
+      # The autonomous transition standard.
       # Same axis as codemap and no dependencies beyond node, so it rides this job rather than
       # adding an eleventh entry to ci-passed's needs list and its result loop.
-      # What it holds is the SPECIFICATION: that AUTONOMOUS_DRIVER_STATUSES, the doc's S1 table and
-      # every bundled skill name the same five kernel statuses, and that no skill instructs a render
-      # label. It cannot see what an agent wrote at runtime — that lives in activity_log and this
-      # job has no database.
+      # What it holds is the SPECIFICATION: that AUTONOMOUS_DRIVER_STATUSES and every bundled skill
+      # name the same five kernel statuses, and that no skill instructs a render label. It cannot
+      # see what an agent wrote at runtime — that lives in activity_log and this job has no
+      # database.
       - run: node scripts/check-autonomous-transitions.mjs
 
   archmap:

@@ -26,7 +26,7 @@ control. This page is the shortest path from zero to a running pipeline.
 1. **Create a project.** From the projects console, choose **New project**, give
    it a name, and pick the organization it belongs to.
 2. **Pair a runner.** A project needs a machine to run jobs. Follow
-   [Pair a runner](pair-a-runner) — install the agent, approve it, and assign it
+   [Pair a runner](?path=pair-a-runner) — install the agent, approve it, and assign it
    to your project.
 3. **File your first issue.** Open the project, create an issue describing what
    you want done, and let triage pick it up. Watch it advance through the
@@ -40,7 +40,7 @@ control. This page is the shortest path from zero to a running pipeline.
 
 ## Next
 
-- [Pair a runner](pair-a-runner) — the one piece most setups get stuck on.
-- [Manage your organization](manage-your-organization) — invite teammates and
+- [Pair a runner](?path=pair-a-runner) — the one piece most setups get stuck on.
+- [Manage your organization](?path=manage-your-organization) — invite teammates and
   set roles.
-- [Troubleshooting](troubleshooting) — if something doesn't light up.
+- [Troubleshooting](?path=troubleshooting) — if something doesn't light up.

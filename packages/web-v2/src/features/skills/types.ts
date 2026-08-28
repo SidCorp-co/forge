@@ -184,8 +184,7 @@ export interface SkillView extends SkillRow {
 /**
  * A pick-able skill for stage binding. Only `scope='project'` skills are
  * registrable; a `global` template that has NOT yet been adopted surfaces as an
- * `adopt` option so the UI can clone-then-register it in one step. See
- * docs/skills-scope-playbook.md.
+ * `adopt` option so the UI can clone-then-register it in one step.
  */
 export type UsableSkillOption =
   | { kind: "project"; skillId: string; name: string }

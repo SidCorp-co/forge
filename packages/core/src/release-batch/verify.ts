@@ -11,8 +11,6 @@
 // it matches the commit the release says it pushed. The first half is why the
 // pre-release read is taken at claim time, before anything moves — without it,
 // an agent reporting the commit that was already live verifies perfectly.
-//
-// Design: docs/modules/issues-pipeline/release-gate.md (L2.2)
 
 import { logger } from '../logger.js';
 

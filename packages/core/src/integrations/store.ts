@@ -10,8 +10,6 @@ import {
 import type { AdapterContext, IntegrationProvider } from './types.js';
 import { decryptJson, encryptJson } from './vault.js';
 
-// === Connection / Binding model (docs/integrations/connection-binding.md) ===
-//
 // Reads + CRUD over the integration tables. Since the ISS-399 cutover these are
 // the live read path for resolvers / MCP tools / inbound router; the legacy
 // project_integrations helpers they replaced were removed by ISS-410 (epic F5).

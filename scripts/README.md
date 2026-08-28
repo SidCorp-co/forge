@@ -228,8 +228,6 @@ Modes: `--all` (CI, via `pnpm --filter web-v2 lint`) · `--staged` (pre-commit) 
 
 ## check-branch-name.sh
 
-Validates a branch name against the [Trunk-Based Development](../docs/guides/trunk-based-development.md) naming convention. Wired into `.githooks/pre-push`.
-
 ## check-source-language.mjs — English-only source policy
 
 Fails if any `.ts`/`.tsx`/`.md` file under `packages/web-v2/src/` or `packages/core/src/` contains non-allowlisted diacritics. See ISS-65 for context — the project is English-only across UI strings, identifiers, comments, docs, and tests, after ISS-43 leaked Vietnamese copy onto `main`.

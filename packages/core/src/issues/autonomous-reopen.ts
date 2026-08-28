@@ -14,8 +14,6 @@
 // survives, because the rewrite lands after the guards have run against the
 // requested status: the reopen counter still increments and the authored reason
 // is still required and still posted under its `🔁 Reopened from X` heading.
-//
-// Design: docs/modules/issues-pipeline/release-gate.md (L0.4)
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';

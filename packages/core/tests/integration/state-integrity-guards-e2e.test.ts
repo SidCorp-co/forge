@@ -1,5 +1,5 @@
 /**
- * ISS-786 [Epic] — composed walk of the four VISION №10 state-integrity
+ * ISS-786 [Epic] — composed walk of the four `VISION: state-never-lies` state-integrity
  * guards against real Postgres. Every guard already has unit coverage that
  * mocks the query builder (and, for A/B/C, a real-DB test of its own
  * predicate); none of them exercises the SEQUENCE an issue actually walks:

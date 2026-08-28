@@ -10,8 +10,7 @@
  * Persisted on `jobs.classifier_version` so that, when patterns evolve,
  * a re-classified historical row keeps its original verdict (the sweeper
  * reads jobs.failure_kind, never re-runs the classifier on archived
- * rows). Version-by-version rationale:
- * docs/modules/agents-jobs/failure-classifier.md
+ * rows).
  */
 
 import { isSpendLimitError, isUsageLimitError } from '../runners/limit-detect.js';
@@ -218,7 +217,7 @@ function classifyKind(
     return { kind: runnerKind, reason: reasonExcerpt, meta };
   }
 
-  // cm:why ISS-823 — org/account spend-cap is per-account (evidence: docs/modules/agents-jobs/failure-classifier.md v7), so it fails over with exhaustion memory instead of going terminal
+  // cm:why ISS-823 — org/account spend-cap is per-account (evidence: CLASSIFIER_VERSION 7), so it fails over with exhaustion memory instead of going terminal
   if (isSpendLimitError(text)) {
     return {
       kind: 'transient-cc',

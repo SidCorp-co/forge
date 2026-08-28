@@ -145,16 +145,7 @@ export interface SweepResult {
 export async function runPipelineSweep(now: Date = new Date()): Promise<SweepResult> {
   const t0 = Date.now();
 
-  // Per-pass fault isolation. Historically these passes ran as a bare
-  // sequential `await` chain, so the FIRST pass to throw aborted the whole
-  // tick — starving every pass after it. That silently broke the run-axis
-  // reapers for days: a throw in an upstream pass (loop monitor / an alarm)
-  // meant `reapOrphanedOneShotRuns` never ran, so job-less `schedule.run`
-  // system runs + chat `interactive` runs leaked `running` forever across
-  // EVERY project (they have no `jobs` row, so nothing else closes them —
-  // VISION §5.10 "state never lies"). Now each pass runs isolated: one
-  // failure is logged + captured (so the culprit pass is identifiable in
-  // Sentry) but the remaining passes — crucially the reapers — still run.
+  // cm:why every pass is isolated rather than a bare sequential `await` chain — the first pass to throw used to abort the whole tick, which starved the run-axis reapers for days: `reapOrphanedOneShotRuns` never ran, and job-less `schedule.run` + chat `interactive` runs leaked `running` across EVERY project because no `jobs` row exists to close them (`VISION: state-never-lies`)
   const errors: Array<{ pass: string; err: unknown }> = [];
   const runPass = async <T>(name: string, fn: () => Promise<T>): Promise<T | undefined> => {
     try {
@@ -182,10 +173,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const neverClaimedDispatches = await runPass('alarmNeverClaimedDispatches', () =>
     alarmNeverClaimedDispatches(now),
   );
-  // ISS-445 — close job-less system/interactive runs (schedule.run + chat)
-  // whose backing agent_session is no longer live. These runs carry no `jobs`
-  // row, so the job loop never fires for them and they would leak `running`
-  // forever (VISION §5.10 "state never lies"). Still an ACTIVE reaper.
+  // cm:why an ACTIVE reaper, not dead code — `schedule.run` and chat `interactive` runs carry no `jobs` row, so the job loop never fires for them and a dead agent_session would leave them `running` forever (`VISION: state-never-lies`)
   const orphanedOneShotRuns = await runPass('reapOrphanedOneShotRuns', () =>
     reapOrphanedOneShotRuns(now),
   );

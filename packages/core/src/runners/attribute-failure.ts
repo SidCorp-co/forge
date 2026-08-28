@@ -4,7 +4,7 @@
 // OVER fails. A runner that accepts a job and then fails its own preflight wrote
 // nothing — so on pixelight three boxes failed every push-bearing job for three
 // days while `forge_runners list` reported `status: online, lastError: null`.
-// An operator read a healthy fleet (VISION No.10).
+// An operator read a healthy fleet (`VISION: state-never-lies`).
 //
 // Attribution, not retry policy: whether to keep retrying such a failure is the
 // classifier's job (ISS-757/ISS-812). This only makes the answer to "which box"

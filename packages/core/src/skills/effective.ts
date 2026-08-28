@@ -4,8 +4,7 @@ import { deviceSkills, devices, runners, skillRegistrations, skills } from '../d
 import { hashSkillBody } from './hash.js';
 
 /**
- * Skill-scope resolution. See docs/skills-scope-playbook.md for the normative
- * rules. The one rule that matters here:
+ * Skill-scope resolution. The one rule that matters here:
  *
  *   Only `scope='project'` skills are USABLE — installed on a device, bundled
  *   for a runner, dispatched in a pipeline. `global` skills are org-level
@@ -45,7 +44,7 @@ export interface EffectiveSkill {
   /**
    * The skill's scope. Only `project` is USABLE (installed/dispatched); a
    * `global` entry only ever appears in the catalog read as an adoptable
-   * template — see docs/skills-scope-playbook.md.
+   * template.
    */
   scope: 'global' | 'project';
   /**
@@ -243,8 +242,7 @@ export async function resolveEffectiveSkillsForProject(
 
 /**
  * The USABLE set: project-scoped skills only. No globals, no shadow merge —
- * this is exactly what may be installed/dispatched. See
- * docs/skills-scope-playbook.md (Rule 2).
+ * this is exactly what may be installed/dispatched.
  */
 export async function resolveProjectSkills(projectId: string): Promise<EffectiveSkill[]> {
   const rows = (await db
@@ -262,7 +260,7 @@ export async function resolveProjectSkills(projectId: string): Promise<Effective
  * since stage dispatch keys off `skill_registrations`, not this set). Globals
  * never enter this set — a registration that still points at a global (legacy
  * data; the register API now rejects it) contributes nothing unless the project
- * owns a same-name project skill. See docs/skills-scope-playbook.md (Rules 2 & 4).
+ * owns a same-name project skill.
  */
 export async function resolveRegisteredEffectiveSkills(
   projectId: string,

@@ -223,7 +223,7 @@ export async function syncAgentSessionLifecycle(
     await applyKernelTransition(db, {
       entity: 'session',
       to: status,
-      // cm:guard the completed branch MUST clear failureReason — the I1 trigger (migrations 0113/0118) stamps `orphan_under_terminal_run` on an ACTIVE session when its run goes terminal, and a late runner report then lands here and flips the row to `completed`; leaving the reason behind produces a completed-and-failed row (ISS-759, VISION No.10). Same contract as runs-cascade.ts's completedSuccess branch.
+      // cm:guard the completed branch MUST clear failureReason — the I1 trigger (migrations 0113/0118) stamps `orphan_under_terminal_run` on an ACTIVE session when its run goes terminal, and a late runner report then lands here and flips the row to `completed`; leaving the reason behind produces a completed-and-failed row (ISS-759, `VISION: state-never-lies`). Same contract as runs-cascade.ts's completedSuccess branch.
       set:
         status === 'failed'
           ? { failureReason: 'job_failed', updatedAt: new Date() }

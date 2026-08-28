@@ -108,7 +108,7 @@ describe('resumeHeldJob', () => {
     expect(dispatchMock).toHaveBeenCalledWith({ id: 'j1', type: 'code', issueId: 'i1' });
   });
 
-  // cm:guard the audit row is the ONLY record that a human overrode a condition no code would clear — a resume without it is indistinguishable from the job never having held, and VISION §1 metric ② undercounts by exactly the interventions that worked
+  // cm:guard the audit row is the ONLY record that a human overrode a condition no code would clear — a resume without it is indistinguishable from the job never having held, and M-02 undercounts by exactly the interventions that worked
   it('writes one audit row naming the actor, the reason and the action', async () => {
     selectRows.mockReturnValue([heldJob()]);
 
@@ -132,7 +132,7 @@ describe('resumeHeldJob', () => {
     expect(updateSet).not.toHaveBeenCalled();
   });
 
-  // cm:guard resuming a RUNNING job must fail, not no-op — the CAS below would miss and the caller would get a success for a job it never moved, which is the state-lies failure VISION principle №10 forbids
+  // cm:guard resuming a RUNNING job must fail, not no-op — the CAS below would miss and the caller would get a success for a job it never moved, which is the state-lies failure `VISION: state-never-lies` forbids
   it('refuses any status other than held, naming what it found', async () => {
     selectRows.mockReturnValue([heldJob({ status: 'running' })]);
     await expect(resumeHeldJob('j1', opts)).rejects.toThrow(/job is running, not held/);

@@ -148,8 +148,6 @@ Verify liveness on the deployed environment before declaring success — a deplo
     summary:
       'The four gates a thing must pass to be an issue at all, where a note / question / audit finding goes instead, and the three-way routing that stops a residual becoming an unowned draft.',
     version: 2,
-    // cm:edge lockstep -> docs/guides/what-is-an-issue.md — the contributor-facing copy of this guide;
-    //   the four gates and the routing table must say the same thing on both surfaces
     body: `## What is an issue?
 
 An issue is a unit of **work** — not a note, not a question, not a record of something already done.

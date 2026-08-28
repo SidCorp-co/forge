@@ -82,85 +82,53 @@
       ]
     },
     {
-      "id": "forge/strapi",
-      "kind": "service",
-      "purpose": "Strapi 5 backend (frozen, scheduled for deletion)",
-      "status": "legacy",
-      "decisions": [
-        "ADR-0010"
-      ],
-      "docs": "forge/strapi/CLAUDE.md"
-    },
-    {
       "id": "packages/runner",
       "kind": "service",
       "purpose": "Headless CLI device agent (Rust forge-runner daemon \u2014 CI runners, servers)",
       "status": "active",
       "decisions": [
         "ADR-0001"
-      ],
-      "docs": "docs/architecture/runner-daemon.md"
-    },
-    {
-      "id": "issues-pipeline",
-      "kind": "module",
-      "purpose": "18-status issue lifecycle, projects, comments, labels",
-      "status": "active",
-      "docs": "docs/modules/issues-pipeline/"
-    },
-    {
-      "id": "agents-jobs",
-      "kind": "module",
-      "purpose": "Job queue, dispatch, JobEvent streaming, session capture",
-      "status": "active",
-      "docs": "docs/modules/agents-jobs/"
-    },
-    {
-      "id": "devices",
-      "kind": "module",
-      "purpose": "Pairing, revocation, project binding, heartbeat",
-      "status": "active",
-      "docs": "docs/modules/devices/"
-    },
-    {
-      "id": "skills",
-      "kind": "module",
-      "purpose": "Built-in forge-* skills + user-authored skill registry",
-      "status": "active",
-      "docs": "docs/modules/skills/"
-    },
-    {
-      "id": "memory-knowledge",
-      "kind": "module",
-      "purpose": "pgvector semantic memory + RAG retrieval",
-      "status": "active",
-      "decisions": [
-        "ADR-0011"
-      ],
-      "docs": "docs/modules/memory-knowledge/"
-    },
-    {
-      "id": "chat",
-      "kind": "module",
-      "purpose": "Interactive agent chat sessions (separate from pipeline jobs)",
-      "status": "active",
-      "docs": "docs/modules/chat/"
-    },
-    {
-      "id": "auth",
-      "kind": "module",
-      "purpose": "Dual-principal JWT (user) + revocable token (device) + policy layer",
-      "status": "active",
-      "decisions": [
-        "ADR-0005"
       ]
     },
     {
-      "id": "feature.issue-pipeline-18status",
-      "kind": "feature",
-      "purpose": "open \u2192 confirmed \u2192 clarified \u2192 \u2026 \u2192 closed (max 5 reopen cycles)",
+      "id": "issue-work",
+      "kind": "module",
+      "purpose": "The issue as a lifecycle object: projects, comments, labels, relations",
       "status": "active",
-      "docs": "docs/modules/issues-pipeline/status-pipeline.md"
+      "docs": "docs/modules/issue-work/"
+    },
+    {
+      "id": "agent-execution",
+      "kind": "module",
+      "purpose": "Device/runner plane, job dispatch, event streaming, agent + chat sessions",
+      "status": "active",
+      "docs": "docs/modules/agent-execution/"
+    },
+    {
+      "id": "knowledge-memory-skills",
+      "kind": "module",
+      "purpose": "Skills, pgvector semantic memory, project knowledge \u2014 the context an execution gets",
+      "status": "active",
+      "docs": "docs/modules/knowledge-memory-skills/",
+      "decisions": [
+        "ADR-0011"
+      ]
+    },
+    {
+      "id": "organization-access",
+      "kind": "module",
+      "purpose": "Orgs, projects, membership; dual-principal auth (user JWT + revocable device token)",
+      "status": "active",
+      "decisions": [
+        "ADR-0005"
+      ],
+      "docs": "docs/modules/organization-access/"
+    },
+    {
+      "id": "feature.issue-status-ladder",
+      "kind": "feature",
+      "purpose": "16 statuses; happy path open -> ... -> closed, off-ladder waiting / needs_info / on_hold / reopen / draft / dropped",
+      "status": "active"
     },
     {
       "id": "feature.device-pairing",
@@ -217,6 +185,27 @@
       "kind": "external",
       "purpose": "Inbound webhooks for issue / PR sync",
       "status": "active"
+    },
+    {
+      "id": "lifecycle-pipeline",
+      "kind": "module",
+      "status": "active",
+      "purpose": "Runs, jobs, dispatch gates, retry, release gate \u2014 the engine that turns an issue into work",
+      "docs": "docs/modules/lifecycle-pipeline/"
+    },
+    {
+      "id": "human-routing",
+      "kind": "module",
+      "status": "partial",
+      "purpose": "Assignment + the /me/attention pull surface; routing by expertise and authority is not built",
+      "docs": "docs/modules/human-routing/"
+    },
+    {
+      "id": "control-observability",
+      "kind": "module",
+      "status": "active",
+      "purpose": "Event stream, audit trail, evidence retention, metrics, cost",
+      "docs": "docs/modules/control-observability/"
     }
   ],
   "edges": [
@@ -246,73 +235,47 @@
       "relation": "contains"
     },
     {
-      "from": "control-plane",
-      "to": "forge/strapi",
-      "relation": "contains",
-      "note": "frozen \u2014 replaced_by packages/core"
-    },
-    {
       "from": "runtime-plane",
       "to": "packages/runner",
       "relation": "contains"
     },
     {
-      "from": "forge/strapi",
-      "to": "packages/core",
-      "relation": "replaced_by"
-    },
-    {
       "from": "packages/core",
-      "to": "issues-pipeline",
+      "to": "issue-work",
       "relation": "contains"
     },
     {
       "from": "packages/core",
-      "to": "agents-jobs",
+      "to": "agent-execution",
       "relation": "contains"
     },
     {
       "from": "packages/core",
-      "to": "devices",
+      "to": "knowledge-memory-skills",
       "relation": "contains"
     },
     {
       "from": "packages/core",
-      "to": "skills",
+      "to": "organization-access",
       "relation": "contains"
     },
     {
-      "from": "packages/core",
-      "to": "memory-knowledge",
+      "from": "lifecycle-pipeline",
+      "to": "feature.issue-status-ladder",
       "relation": "contains"
     },
     {
-      "from": "packages/core",
-      "to": "chat",
-      "relation": "contains"
-    },
-    {
-      "from": "packages/core",
-      "to": "auth",
-      "relation": "contains"
-    },
-    {
-      "from": "issues-pipeline",
-      "to": "feature.issue-pipeline-18status",
-      "relation": "contains"
-    },
-    {
-      "from": "devices",
+      "from": "agent-execution",
       "to": "feature.device-pairing",
       "relation": "contains"
     },
     {
-      "from": "agents-jobs",
+      "from": "agent-execution",
       "to": "feature.session-replay",
       "relation": "contains"
     },
     {
-      "from": "agents-jobs",
+      "from": "agent-execution",
       "to": "feature.cost-aware-routing",
       "relation": "contains"
     },
@@ -322,35 +285,35 @@
       "relation": "depends_on"
     },
     {
-      "from": "memory-knowledge",
+      "from": "knowledge-memory-skills",
       "to": "postgres",
       "relation": "depends_on",
       "note": "pgvector column on memories table"
     },
     {
-      "from": "agents-jobs",
+      "from": "agent-execution",
       "to": "postgres",
       "relation": "depends_on",
       "note": "pg-boss queue tables"
     },
     {
-      "from": "auth",
+      "from": "organization-access",
       "to": "smtp",
       "relation": "depends_on"
     },
     {
-      "from": "memory-knowledge",
+      "from": "knowledge-memory-skills",
       "to": "litellm",
       "relation": "depends_on",
       "note": "embedding generation"
     },
     {
-      "from": "chat",
+      "from": "agent-execution",
       "to": "litellm",
       "relation": "depends_on"
     },
     {
-      "from": "issues-pipeline",
+      "from": "issue-work",
       "to": "github-webhook",
       "relation": "depends_on"
     },
@@ -379,16 +342,25 @@
     },
     {
       "from": "packages/core",
-      "exposes": "WebSocket",
-      "at": "/ws",
-      "to": "client-plane"
-    },
-    {
-      "from": "packages/core",
       "exposes": "MCP",
       "at": "/mcp",
       "to": "claude-cli",
       "note": "Streamable HTTP"
+    },
+    {
+      "from": "packages/core",
+      "to": "lifecycle-pipeline",
+      "relation": "contains"
+    },
+    {
+      "from": "packages/core",
+      "to": "human-routing",
+      "relation": "contains"
+    },
+    {
+      "from": "packages/core",
+      "to": "control-observability",
+      "relation": "contains"
     }
   ]
 }

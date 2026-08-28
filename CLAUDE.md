@@ -3,11 +3,12 @@
 # Forge
 
 Open-source control plane for Claude Code — full-stack project management + an AI agent pipeline
-that drives Claude end-to-end (triage → clarify → plan → code → review → test → release). pnpm +
-turbo monorepo, root package `forge`.
+that drives Claude end-to-end.
 
-**Constitution: [`docs/VISION.md`](docs/VISION.md)** — what Forge is / is not, principles (incl.
-№10 state-never-lies, №11 kernel-hard-policy-soft), roadmap. On intent conflicts, VISION wins.
+**Constitution: [`docs/VISION.md`](docs/VISION.md)** — what Forge is / is not, why, who, and the
+principles (incl. `VISION: state-never-lies`, `VISION: kernel-hard-policy-soft`). Intent only: no architecture,
+no versions, no roadmap. On intent conflicts, VISION wins — cite it by name, never by section
+number.
 
 ## Workspace
 
@@ -15,12 +16,9 @@ turbo monorepo, root package `forge`.
 |---|---|
 | `packages/core` | Hono backend. Single app (`src/index.ts`) mounting per-domain route modules (`src/<domain>/routes.ts`); Drizzle ORM over Postgres (pgvector); WebSocket server (`/ws`); MCP server (`/mcp`, tools in `src/mcp/tools/forge-*.ts`); the pipeline dispatcher that drives Claude. |
 | `packages/web-v2` | Next.js cloud UI, canonical at `/`. Feature modules under `src/features/<domain>/`. |
-| `packages/runner` | Headless Rust `forge-runner` CLI daemon (crates `forge-runner` / `forge-runner-core`) for servers/CI; pairs as a device. See `docs/architecture/runner-daemon.md`. |
+| `packages/runner` | Headless Rust `forge-runner` CLI daemon (crates `forge-runner` / `forge-runner-core`) for servers/CI; pairs as a device. |
 | `packages/contracts` | Shared cross-app TS types & registries (`issues.ts`, `pipeline-registry.ts`, `requests.ts`, `responses.ts`, `rows.ts`, `domain-templates.ts`). |
 | `packages/observability` | Shared telemetry helpers (incl. the secret scrubber). |
-
-A local `packages/web/`, `packages/dev/` or `nexus/` is leftover build residue — none has tracked
-files, all three are retired, safe to delete.
 
 ## Commands
 
@@ -77,8 +75,7 @@ what its row says. Name what was traded, what it costs, and the condition that e
 undeclared trade-off is indistinguishable from an unnoticed one six weeks later.
 
 **Before you change behaviour, know what you are replacing.** Requirement, then the design, then
-the business changelog (which `BR-`/`UC-` moves — [`docs/requirements/`](docs/requirements/README.md)),
-then the old logic this supersedes, then the cleanup that removes it. Code that ships beside the
+the old logic this supersedes, then the cleanup that removes it. Code that ships beside the
 thing it replaced leaves two live paths and a reader who cannot tell which one runs.
 
 ### There is no "already red"
@@ -128,8 +125,8 @@ line number — a line number is stale the moment anything above it moves, and s
   cap=1 runner slot. Three defences in lockstep (close-cascade, loop monitor, dispatch gates), plus
   `held` as a deliberate fourth shape that is NOT an orphan. New code that flips
   `pipeline_runs.status` terminal MUST route through a cascade-calling helper. The `cm:guard` and
-  the two `cm:edge lockstep` live on `packages/core/src/pipeline/runs-cascade.ts`; the table is in
-  [`docs/architecture/job-loop-monitor.md`](docs/architecture/job-loop-monitor.md).
+  the two `cm:edge lockstep` live on `packages/core/src/pipeline/runs-cascade.ts`; the four hops and
+  their thresholds are modelled in `packages/core/src/jobs/loop-monitor.ts`.
 - **A migration's `when` in `drizzle/migrations/meta/_journal.json` must exceed EVERY `created_at`
   already in the target DB** — drizzle reads the single highest `created_at` once and skips lower
   entries **silently, forever**, so the container starts and serves new code against an old schema
@@ -145,4 +142,3 @@ line number — a line number is stale the moment anything above it moves, and s
 | Every gate, its baseline, its origin | `scripts/README.md` |
 | Architecture, orphan hygiene, observability | `docs/architecture/` |
 | Per-domain deep detail | `docs/modules/<domain>/` |
-| Business rules & use cases (`BR-`/`UC-`) | `docs/requirements/README.md` |
