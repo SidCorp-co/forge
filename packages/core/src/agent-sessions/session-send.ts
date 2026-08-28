@@ -131,7 +131,7 @@ async function auditSend(req: SessionSendRequest, actor: SessionSendActor): Prom
  * An already-applied intent is returned untouched and is not re-published.
  */
 // cm:edge protocol -> packages/runner/crates/forge-runner-core/src/daemon/mod.rs — `session.send` is rendered onto the CLI's stdin by the runner; the envelope is Forge's protocol, NOT the CLI's stream-json, and the two must be free to change apart
-// cm:guard `inject` and `answer` write an audited `job_events` row in the SAME call, because both silently change what a running agent does and the interventions-per-issue metric (M-02) counts exactly that. An unaudited `inject` is a hole in the metric, not an omission the RFC stage may defer.
+// cm:guard `inject` and `answer` write an audited `job_events` row in the SAME call, because both silently change what a running agent does and the interventions-per-issue metric counts exactly that. An unaudited `inject` is a hole in the metric, not an omission the RFC stage may defer.
 export async function requestSessionSend(
   req: SessionSendRequest,
 ): Promise<SessionSendRequestResult> {

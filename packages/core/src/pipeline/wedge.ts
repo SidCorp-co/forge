@@ -8,7 +8,7 @@
  * WHAT to do; the `notificationCreated` hook fans it out to the owner's user
  * room AND the project room. These rows are also the raw signal behind the
  * interventions-per-issue metric (`issue_intervention_events`, migration
- * 0117) — M-02.
+ * 0117).
  *
  * Spam guard: at most one UNRESOLVED wedge per entity per
  * {@link WEDGE_RENOTIFY_MS}, keyed on `resolution_key`; `resolvePipelineWedge`

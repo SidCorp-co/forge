@@ -108,7 +108,7 @@ describe('resumeHeldJob', () => {
     expect(dispatchMock).toHaveBeenCalledWith({ id: 'j1', type: 'code', issueId: 'i1' });
   });
 
-  // cm:guard the audit row is the ONLY record that a human overrode a condition no code would clear — a resume without it is indistinguishable from the job never having held, and M-02 undercounts by exactly the interventions that worked
+  // cm:guard the audit row is the ONLY record that a human overrode a condition no code would clear — a resume without it is indistinguishable from the job never having held, and the interventions-per-issue count undercounts by exactly the interventions that worked
   it('writes one audit row naming the actor, the reason and the action', async () => {
     selectRows.mockReturnValue([heldJob()]);
 

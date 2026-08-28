@@ -229,9 +229,9 @@ pipelineAnalyticsRoutes.get(
  * intervention-class event — `wedge` (pipeline_wedge notifications),
  * `manual_cancel` (C0's audited job_events.kind='intervention'),
  * `user_run_flip` (C1 kernel_transitions, entity='run', actor_type='user').
- * Returns the per-issue rollup plus the raw events so M-02
- * (interventions per issue closed) is chartable. `issueId: null` groups the
- * project-scoped events (pm/system runs).
+ * Returns the per-issue rollup plus the raw events so interventions per issue
+ * closed is chartable. `issueId: null` groups the project-scoped events
+ * (pm/system runs).
  */
 /**
  * ISS-826 — retry failures that a later attempt rescued, reconstructed from

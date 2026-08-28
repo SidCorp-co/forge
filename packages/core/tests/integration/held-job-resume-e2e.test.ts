@@ -156,7 +156,7 @@ describe('held job resume E2E', () => {
     expect(enqueueMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard migration 0181's whole point — before it, `issue_intervention_events` hardcoded `manual_cancel` for every `kind='intervention'` row, so this resume would have been charted as a cancel in M-02
+  // cm:guard migration 0181's whole point — before it, `issue_intervention_events` hardcoded `manual_cancel` for every `kind='intervention'` row, so this resume would have been charted as a cancel in the interventions view
   it('appears in the interventions view as manual_resume, not manual_cancel', async () => {
     const jobId = await insertHeldJob();
     await mods.resumeHeldJob(jobId, { ...opts, actorUserId: ownerId });
