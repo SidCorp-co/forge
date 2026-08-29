@@ -8,6 +8,7 @@
 
 pub mod chat;
 pub mod dispatch;
+pub mod inbox;
 pub mod preflight;
 pub mod setup_agent;
 pub mod skill_pull;
@@ -559,6 +560,15 @@ pub async fn run(
                             if let Err(e) = chat::handle_send(&client, runner, &cfg, sem, frame.data).await {
                                 tracing::error!("[chat] send: {e}");
                             }
+                        });
+                    }
+                    // cm:edge protocol -> packages/core/src/agent-sessions/session-send.ts — the durable half. Core stamps an episode and publishes; this arm is what makes silence mean something, so an arm that panics or returns early without acking is indistinguishable to core from a runner that is gone.
+                    "session.send" => {
+                        let (client, runner) = (client.clone(), runner.clone());
+                        let guard = InflightGuard::enter(&inflight);
+                        tokio::spawn(async move {
+                            let _guard = guard;
+                            inbox::handle_session_send(&client, runner, frame.data).await;
                         });
                     }
                     "agent:abort" => {

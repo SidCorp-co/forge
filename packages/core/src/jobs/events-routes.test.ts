@@ -398,6 +398,16 @@ describe('jobs/events-routes POST /:id/events', () => {
 describe('jobs/events-routes · a park is not a heartbeat', () => {
   beforeEach(resetMocks);
 
+  // cm:guard assert on the SET PAYLOAD, never on a raw `db.update()` count. Three different rules write through the same mock — the ack fallback, the heartbeat sync and the runtime-state sync — so a count says only "some rule fired" and goes red whenever any unrelated one is added, which is how these three tests broke on a change that did not touch them.
+  const sets = (key: string) =>
+    updateSet.mock.calls.filter((c) => key in ((c[0] ?? {}) as object)).length;
+  const stateWritten = () =>
+    (
+      updateSet.mock.calls.find((c) => 'runtimeState' in ((c[0] ?? {}) as object))?.[0] as
+        | { runtimeState?: string }
+        | undefined
+    )?.runtimeState;
+
   // cm:guard the park's whole contract, and it arrives by a SECOND door: agent-sessions/routes.ts already refuses to treat `awaiting_input` as activity on the PATCH, and a job event carrying the same fact must be refused too. Without this the runner announces a park and stamps the session healthy in the same breath — `VISION: state-never-lies`, and the phase 2 exemption would be undone by the door nobody guarded.
   it('does not bump the heartbeat for a batch that only announces a park', async () => {
     jobRow.agentSessionId = 'session-1';
@@ -416,7 +426,8 @@ describe('jobs/events-routes · a park is not a heartbeat', () => {
       }),
     );
     expect(r.status).toBe(200);
-    expect(dbUpdate).toHaveBeenCalledTimes(1);
+    expect(sets('lastHeartbeatAt')).toBe(0);
+    expect(stateWritten()).toBe('awaiting_input');
   });
 
   // cm:guard the discriminating half — every OTHER state is activity. A rule that skipped the bump for any `runtimeState` row would park a working session outside the quiet clock, which is the un-reapable `running` row phase 2's guard names.
@@ -438,7 +449,8 @@ describe('jobs/events-routes · a park is not a heartbeat', () => {
       }),
     );
     expect(r.status).toBe(200);
-    expect(dbUpdate).toHaveBeenCalledTimes(3);
+    expect(sets('lastHeartbeatAt')).toBeGreaterThan(0);
+    expect(stateWritten()).toBe('working');
   });
 
   // cm:guard a MIXED batch is activity — the park is only quiet when nothing else happened in the same window. Reading "contains a park" as "is a park" would let one parked row silence a batch that also carried real tool output.
@@ -464,6 +476,7 @@ describe('jobs/events-routes · a park is not a heartbeat', () => {
       }),
     );
     expect(r.status).toBe(200);
-    expect(dbUpdate).toHaveBeenCalledTimes(3);
+    expect(sets('lastHeartbeatAt')).toBeGreaterThan(0);
+    expect(stateWritten()).toBe('awaiting_input');
   });
 });

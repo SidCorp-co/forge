@@ -13,6 +13,7 @@ pub mod agent_sessions;
 pub mod events;
 pub mod frames;
 pub mod heartbeat;
+pub mod inbox;
 pub mod lifecycle;
 pub mod plugins;
 pub mod provision;

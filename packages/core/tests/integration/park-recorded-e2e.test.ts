@@ -107,9 +107,10 @@ const working = { kind: 'progress', data: { runtimeState: 'working' } };
 const beat = { kind: 'progress', data: { heartbeat: true } };
 
 async function sessionRow(id: string) {
-  const rows = await harness.db.execute<{ runtime_state: string | null; last_heartbeat_at: string }>(
-    sql`SELECT runtime_state, last_heartbeat_at FROM agent_sessions WHERE id = ${id}`,
-  );
+  const rows = await harness.db.execute<{
+    runtime_state: string | null;
+    last_heartbeat_at: string;
+  }>(sql`SELECT runtime_state, last_heartbeat_at FROM agent_sessions WHERE id = ${id}`);
   return rows[0];
 }
 

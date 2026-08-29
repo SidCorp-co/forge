@@ -52,6 +52,14 @@ struct Session {
     turn_tx: TurnTx,
     /// Raised by [`Runner::send`] so the turn loop knows the idle clock stops.
     turn_started: Arc<tokio::sync::Notify>,
+    /// `(agent-session id, seq)` of the inbox message the CURRENT turn is
+    /// consuming, if this turn came from one. Reported back as `applied` when
+    /// the turn completes — RFC 0003's commit point.
+    // cm:guard the SESSION id, carried from the frame, never the map key: a pipeline session is keyed by `job_id` here, and the applied route is session-keyed, so reporting the key would 404 and leave core waiting on a commit that already happened.
+    pending_inbox: Option<(String, u64)>,
+    /// Completed turns, so an `applied` report can name the one that consumed
+    /// the message.
+    turns: u64,
     /// What this session was spawned with, and where its checkout stood at the
     /// last turn — the two facts a caller needs to decide whether the resident
     /// session can serve the next turn as-is.
@@ -172,6 +180,18 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
                     o.reset_turn();
                     ev
                 };
+                // cm:guard RFC 0003's commit point, and it is reported HERE rather than at the write because those are different claims: a message on the CLI's stdin whose session then dies was never read by the model. Core stands its durable path down on this report alone.
+                let consumed = {
+                    let mut map = sessions.lock().await;
+                    map.get_mut(job_id).and_then(|s| {
+                        s.turns += 1;
+                        let turn = s.turns;
+                        s.pending_inbox.take().map(|(sid, seq)| (sid, seq, turn))
+                    })
+                };
+                if let (Some((sid, seq, turn)), Some(client)) = (consumed, core) {
+                    crate::transport::inbox::applied(client, &sid, seq, turn).await;
+                }
                 // cm:guard ISS-873 phase 3 — a turn ending is not a JOB ending, and the runner cannot tell the two apart: the park is an issue-status move the driver made over MCP DURING the turn, so core holds the answer. `is_issue_job` is the discriminator and `core` is NOT — `core_for_state` is Some for every duplex spawn including chat, so keying on it would put a 404 on the hot path of every chat turn.
                 let job_ended = match (is_issue_job, core) {
                     (true, Some(client)) => {
@@ -590,6 +610,30 @@ impl ClaudeCodeRunner {
         })
     }
 
+    /// Push a message into a session that is already parked, and start a turn.
+    // cm:guard reuses the STORED channel rather than taking a new one. A parked pipeline session's events are still being read by `daemon/dispatch.rs#consume` — a parked turn sends no terminal event, so that loop never broke — and installing a fresh channel here would send the whole turn's output into a receiver nobody holds.
+    // cm:guard `resident` is the gate, not the map entry: the print path and a session already closed by the idle ceiling both leave an entry behind, and writing into either goes to a process that will never answer, which core would then be told was `delivered`.
+    pub async fn send_resident(
+        &self,
+        id: &SessionId,
+        message: &str,
+        pending: Option<(String, u64)>,
+    ) -> Result<()> {
+        let turn_tx = {
+            let mut map = self.sessions.lock().await;
+            let sess = map
+                .get_mut(id)
+                .ok_or_else(|| Error::Other("session not found".into()))?;
+            if sess.stdin.is_none() {
+                return Err(Error::Other("session is not resident".into()));
+            }
+            sess.pending_inbox = pending;
+            sess.turn_tx.clone()
+        };
+        let tx = turn_tx.lock().await.clone();
+        Runner::send(self, id, message.to_string(), tx).await
+    }
+
     /// Record the checkout the session has just been told about.
     pub async fn note_head(&self, id: &SessionId, head_sha: Option<String>) {
         if let Some(s) = self.sessions.lock().await.get_mut(id) {
@@ -795,6 +839,8 @@ impl Runner for ClaudeCodeRunner {
                 stdin: session_stdin,
                 turn_tx: turn_tx.clone(),
                 turn_started: turn_started.clone(),
+                pending_inbox: None,
+                turns: 0,
                 model: spec.model.clone(),
                 head_sha: None,
                 _permit: session_permit,

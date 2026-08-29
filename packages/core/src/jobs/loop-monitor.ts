@@ -19,6 +19,7 @@ import { db } from '../db/client.js';
 import { agentSessions, jobs, pipelineRuns } from '../db/schema.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
+import { resumeLapsedAnswers } from '../pipeline/answer-resume.js';
 import { emitPipelineWedge, type WedgeHop } from '../pipeline/wedge.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { finalizeFailedJob } from './finalize-failure.js';
@@ -130,6 +131,8 @@ export interface LoopMonitorResult {
   expiredParks: number;
   /** result-hop misses reaped (`stale`, no event for RESULT_QUIET_MINUTES). */
   resultMisses: JobAxisReapResult;
+  /** answers whose session turned out to be gone, returned to the driver as a dispatch. */
+  lapsedAnswers: number;
 }
 
 /** Resolve the linked issue for a session's wedge event via its pipeline_run
@@ -397,12 +400,7 @@ export async function reapZombieSessions(
   const { queueMs, heartbeatMs, ackFastMs } = getLoopThresholds();
   const queueCutoff = new Date(now.getTime() - queueMs);
   const heartbeatCutoff = new Date(now.getTime() - heartbeatMs);
-  // ISO string, NOT a Date: this cutoff is bound inside a raw `sql` COALESCE
-  // template (below), where drizzle has no column type to serialise a Date
-  // against — postgres-js then throws `TypeError: ... Received an instance of
-  // Date` on bind, aborting the loop monitor (the sweep's first pass) and, pre
-  // per-pass isolation, every reaper after it. The column-based `lt()` cutoffs
-  // above are fine (drizzle knows the column type); only this template needs ISO.
+  // cm:guard an ISO string, NEVER a Date — this one cutoff is bound inside a raw `sql` COALESCE template below, where drizzle has no column type to serialise a Date against and postgres-js throws on bind, taking down the sweep's first pass and (pre per-pass isolation) every reaper after it. The `lt()` cutoffs above are column-based and fine; only the template needs this.
   const ackFastCutoffIso = new Date(now.getTime() - ackFastMs).toISOString();
   const projectFilter = scope.projectId ? eq(agentSessions.projectId, scope.projectId) : undefined;
 
@@ -731,7 +729,9 @@ export async function runLoopMonitor(
   const expiredParks = await reapExpiredParks(now, scope);
   const sessionLostJobs = await reapSessionLostJobs(now, scope);
   const resultMisses = await reapResultMisses(now, scope);
-  return { ackMisses, sessions, expiredParks, sessionLostJobs, resultMisses };
+  // cm:guard AFTER the park reap, and that order is the hop's only path out of `unknown`: a park closed this tick is a terminal session, which is what makes `resolveSessionSend` say `gone` rather than keep waiting. Running it first would defer every fallback by a full tick for no reason.
+  const lapsedAnswers = await resumeLapsedAnswers(now, scope);
+  return { ackMisses, sessions, expiredParks, sessionLostJobs, resultMisses, lapsedAnswers };
 }
 
 function broadcastZombieTransition(

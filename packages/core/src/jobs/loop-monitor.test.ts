@@ -19,11 +19,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbExecute = vi.fn(async (..._args: unknown[]) => [] as Array<Record<string, unknown>>);
-// applyKernelTransition → db.update(...).set(...).where(...).returning()
 const updateReturning = vi.fn();
 const sweepWhereArgs: unknown[] = [];
 const sweepSetArgs: Array<Record<string, unknown>> = [];
-// loop-monitor's lookupIssueForRun → db.select(...).from(...).where(...).limit(1)
 const selectLimit = vi.fn(async () => [] as Array<{ issueId: string | null }>);
 
 vi.mock('../db/client.js', () => ({
@@ -55,6 +53,9 @@ vi.mock('./finalize-failure.js', () => ({
 }));
 
 const emitWedgeMock = vi.fn(async (..._args: unknown[]) => undefined);
+// cm:guard mocked for its IMPORT CHAIN, not its behaviour: `answer-resume` reaches `issues/apply-transition.js`, which loads `config/env` at module scope and throws here for want of a DATABASE_URL. Its own rules are asserted in `answer-fallback-e2e.test.ts` against real Postgres, which is the only lane that can fail on them.
+vi.mock('../pipeline/answer-resume.js', () => ({ resumeLapsedAnswers: vi.fn(async () => 0) }));
+
 vi.mock('../pipeline/wedge.js', () => ({
   emitPipelineWedge: (...args: unknown[]) => emitWedgeMock(...(args as [])),
 }));
@@ -166,7 +167,6 @@ describe('reapAckMisses — dispatch→ack hop', () => {
     expect(text).toMatch(/acked_at\s+IS\s+NULL/);
     expect(text).toMatch(/dispatched_at\s+IS\s+NOT\s+NULL/);
     expect(text).toMatch(/kill_requested_at/);
-    // Zero events of ANY kind — NOT scoped to result events.
     expect(text).toMatch(/NOT\s+EXISTS[\s\S]*job_events/);
     expect(text).not.toMatch(/kind\s*=\s*'result'/);
   });
@@ -443,8 +443,7 @@ describe('reapSessionLostJobs — heartbeat hop, job axis (was ISS-280), now kil
 
     const result = await reapSessionLostJobs(new Date('2026-05-30T00:00:00Z'));
 
-    // Both rows won their CAS so both counted; the first finalize threw but
-    // was swallowed so the second still ran.
+    // cm:guard both rows won their CAS, and the count must stay 2 — the first finalize threw and was swallowed, so a hop that let one failure end the pass would silently reap half a batch and report the half it managed.
     expect(result).toEqual({ reaped: 2, killRequested: 0, awaitingKill: 0 });
     expect(finalizeFailedJobMock).toHaveBeenCalledTimes(2);
   });
@@ -530,6 +529,7 @@ describe('runLoopMonitor — one tick, hops in dependency order', () => {
       expiredParks: 0,
       sessionLostJobs: { reaped: 0, killRequested: 0, awaitingKill: 0 },
       resultMisses: { reaped: 0, killRequested: 0, awaitingKill: 0 },
+      lapsedAnswers: 0,
     });
   });
 

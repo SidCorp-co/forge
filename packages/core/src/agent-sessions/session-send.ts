@@ -132,6 +132,23 @@ async function auditSend(req: SessionSendRequest, actor: SessionSendActor): Prom
 }
 
 /**
+ * The key the RUNNER holds this session under.
+ *
+ * A pipeline session lives in the runner's map under its job id; a chat session
+ * lives there under its own. The frame carries both because neither one serves
+ * the other's role — the report routes are addressed by session id either way.
+ */
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/inbox.rs — `SendFrame.job_id`, and the runner prefers it. Dropping this field does not fail anywhere: the runner falls back to the session id, finds no entry for a pipeline session, and acks `gone` — so core falls back for a session that is alive and still holding its runner slot.
+async function jobKeyOf(agentSessionId: string): Promise<string | undefined> {
+  const [job] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(eq(jobs.agentSessionId, agentSessionId))
+    .limit(1);
+  return job?.id;
+}
+
+/**
  * Open (or re-open) a send episode and publish it to the session's device.
  *
  * A redelivery of the same `(kind, intentId)` re-publishes the ORIGINAL row —
@@ -194,6 +211,7 @@ export async function requestSessionSend(
       kind: row.kind,
       body: row.body ?? undefined,
       deadlineMs: sendGraceMs(),
+      jobId: await jobKeyOf(req.agentSessionId),
     },
   });
   return { row, published: true, duplicate };
