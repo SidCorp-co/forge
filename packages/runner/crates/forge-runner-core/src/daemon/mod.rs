@@ -55,6 +55,9 @@ impl Drop for InflightGuard {
 /// on disk by `apply()`, so giving up this cycle just defers the restart to the
 /// next idle window or the next 6h tick.
 const DRAIN_TIMEOUT_SECS: u64 = 30 * 60;
+/// Per-session ceiling on the checkpoint turn a restart asks for.
+// cm:guard bounded, and a session that overruns is closed anyway. The daemon is exiting either way, and holding it open for an agent that will not answer leaves a `setsid`-detached child on the worktree the relaunched daemon is about to hand to a second agent.
+const CHECKPOINT_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
 const DRAIN_POLL_SECS: u64 = 30;
 
 /// Wait for in-flight work to finish, up to [`DRAIN_TIMEOUT_SECS`].
@@ -67,7 +70,7 @@ const DRAIN_POLL_SECS: u64 = 30;
 ///
 // cm:guard both restart paths MUST route their exit through this return value — the update path re-checked and the credential path did not, and one bug in one of two copies of the same loop is exactly what this function exists to make impossible.
 // cm:guard the ceiling bounds TURNS, never the park: a session parked at `awaiting_input` is not in-flight (`InflightGuard` is scoped to the frame task), so it reads as idle here and no amount of waiting would ever close it. `close_parked` is what ends it, and it runs ONLY after the drain succeeds — closing a park while a turn is still generating would drop that turn's result into a receiver the exiting daemon no longer reads.
-// cm:edge protocol -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — `close_all_resident` is the close half; the CHECKPOINT half does not exist until the phase 4 message vocabulary, so a parked session loses its context on restart and keeps only what is already on disk. That is strictly better than the alternative it replaces: exit(0) leaving a setsid-detached child writing the worktree the relaunched daemon is about to hand to a second agent.
+// cm:edge protocol -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — `checkpoint_and_close` is both halves: each resident session is asked to record where it is and given `CHECKPOINT_BUDGET` to answer before EOF. The alternative both replace is exit(0) leaving a setsid-detached child writing the worktree the relaunched daemon is about to hand to a second agent.
 async fn drain_to_idle<F, Fut>(inflight: &Arc<AtomicUsize>, what: &str, close_parked: F) -> bool
 where
     F: FnOnce() -> Fut,
@@ -94,14 +97,10 @@ where
     }
 }
 
-/// Close every resident session and tell core each one is gone.
-// cm:guard reports `closed` for each, best-effort — a park that is closed but still reads `awaiting_input` in core is exempt from the quiet clock (phase 2) while nothing is on the other end of the question, and only the residency backstop would ever reap it.
-async fn close_parked_sessions(runner: &Arc<ClaudeCodeRunner>, client: &Arc<CoreClient>) -> usize {
-    let closed = runner.close_all_resident().await;
-    for id in &closed {
-        crate::transport::agent_sessions::report_runtime_state(client, id, "closed").await;
-    }
-    closed.len()
+/// Checkpoint every resident session, then close it and tell core it is gone.
+// cm:guard the report is the runner's to make, not this function's: a pipeline session is keyed by `job_id`, which `/api/agent-sessions/:id` 404s on, and only the runner holds the job channel that serves it. This once PATCHed every id and silently reported nothing for exactly the sessions the park machinery is built for — a park that is closed but still reads `awaiting_input` in core is exempt from the quiet clock, so only the residency backstop would ever reap it.
+async fn close_parked_sessions(runner: &Arc<ClaudeCodeRunner>) -> usize {
+    runner.checkpoint_and_close(CHECKPOINT_BUDGET).await.len()
 }
 
 /// Run the daemon until Ctrl-C. `device_token` comes from the cred store.
@@ -216,7 +215,7 @@ pub async fn run(
     {
         let auto = cfg.update.auto;
         let inflight = inflight.clone();
-        let (runner, client) = (runner.clone(), client.clone());
+        let runner = runner.clone();
         let mut cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
@@ -243,7 +242,7 @@ pub async fn run(
                                         o.to
                                     );
                                     if drain_to_idle(&inflight, "update", || {
-                                        close_parked_sessions(&runner, &client)
+                                        close_parked_sessions(&runner)
                                     })
                                     .await
                                     {
@@ -291,7 +290,7 @@ pub async fn run(
     {
         let startup_token = device_token.clone();
         let inflight = inflight.clone();
-        let (runner, client) = (runner.clone(), client.clone());
+        let runner = runner.clone();
         let mut cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             let mut tick = tokio::time::interval(std::time::Duration::from_secs(30));
@@ -309,10 +308,8 @@ pub async fn run(
                         tracing::warn!(
                             "[cred] device token changed (re-login detected) — draining in-flight work, then restarting to apply it"
                         );
-                        if !drain_to_idle(&inflight, "cred", || {
-                            close_parked_sessions(&runner, &client)
-                        })
-                        .await
+                        if !drain_to_idle(&inflight, "cred", || close_parked_sessions(&runner))
+                            .await
                         {
                             continue;
                         }

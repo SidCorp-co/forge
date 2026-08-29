@@ -94,13 +94,9 @@ async function parkedSessionFor(issueId: string): Promise<string | null> {
  * dispatch.
  */
 // cm:guard the issue stays at `needs_info` when this returns true, and that is load-bearing rather than an omission: `jobs/turn-verdict-routes.ts` reads the SAME status to keep the session resident, so the parked session and the pending answer agree by construction. Moving the issue here would end the session the answer is on its way to.
+// cm:guard NO `actor`, which means no intervention row, and that is the opposite of what a human-initiated send does. Every `job_events kind='intervention'` lands in the `issue_intervention_events` view, i.e. VISION §1 metric ② — and answering a question the AGENT asked is the pipeline working, not someone stepping in. Auditing it would make the north-star metric climb on the exact path meant to lower it, and asymmetrically: the identical answer records nothing when no session happens to be parked, so the number would measure duplex adoption rather than interventions. Provenance is not lost — `intentId` IS the comment id.
 // cm:guard `published: false` is the ONLY synchronous fallback. Anything else — a runner that is silent, an ack that never comes — resolves through `resolveSessionSend`, because acting on a message that was in fact consumed puts a second agent on the same worktree.
-async function deliverToPark(
-  issueId: string,
-  commentId: string,
-  body: string,
-  actor: { id: string },
-): Promise<boolean> {
+async function deliverToPark(issueId: string, commentId: string, body: string): Promise<boolean> {
   const agentSessionId = await parkedSessionFor(issueId);
   if (!agentSessionId) return false;
   const { published } = await requestSessionSend({
@@ -108,7 +104,6 @@ async function deliverToPark(
     kind: 'answer',
     intentId: commentId,
     body,
-    actor: { userId: actor.id, reason: 'human answered a parked question', source: 'rest' },
   });
   return published;
 }
@@ -127,7 +122,7 @@ export function registerAnswerResume(bus: HooksBus): void {
       try {
         const issue = await resumableIssue(p.issueId);
         if (!issue) return;
-        if (await deliverToPark(p.issueId, p.commentId, p.body, p.actor)) {
+        if (await deliverToPark(p.issueId, p.commentId, p.body)) {
           logger.info(
             { issueId: p.issueId, commentId: p.commentId },
             'answer-resume: human answered, sent to the session that asked',

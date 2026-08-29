@@ -34,12 +34,6 @@ struct SendFrame {
     job_id: Option<String>,
 }
 
-/// What `checkpoint` asks for. Business text, not protocol — the kind is the
-/// contract, this is only how it is phrased to the agent.
-const CHECKPOINT_PROMPT: &str = "Write down where you are before this session ends: what you have \
-    changed so far, what you were about to do next, and anything you know that is not already in \
-    the repository. Do not start new work.";
-
 const DEFAULT_WRITE_MS: u64 = 8_000;
 
 // cm:guard the runner's write deadline must stay STRICTLY BELOW the grace core is waiting out, and on an overrun the runner must go SILENT rather than ack — a partial line cannot be un-written, the CLI skips a malformed one and keeps running, and an ack would tell core a `cancel` landed that was in fact lost.
@@ -70,7 +64,14 @@ pub async fn handle_session_send(client: &CoreClient, runner: Arc<ClaudeCodeRunn
             inbox::ack(client, &sid, seq, Ack::Gone).await;
         }
         "checkpoint" => {
-            deliver(client, &runner, &frame, &key, CHECKPOINT_PROMPT).await;
+            deliver(
+                client,
+                &runner,
+                &frame,
+                &key,
+                ClaudeCodeRunner::CHECKPOINT_PROMPT,
+            )
+            .await;
         }
         "work" | "answer" | "inject" => {
             let Some(body) = frame.body.clone().filter(|b| !b.trim().is_empty()) else {

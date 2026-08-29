@@ -60,6 +60,12 @@ struct Session {
     /// Completed turns, so an `applied` report can name the one that consumed
     /// the message.
     turns: u64,
+    /// Raised after each turn's verdict is sent. The only signal a caller
+    /// outside the turn loop has that a turn it started has finished.
+    turn_done: Arc<tokio::sync::Notify>,
+    /// Which door this session's state is reported by — a pipeline session is
+    /// keyed by `job_id` here and cannot be PATCHed session-side.
+    is_issue_job: bool,
     /// What this session was spawned with, and where its checkout stood at the
     /// last turn — the two facts a caller needs to decide whether the resident
     /// session can serve the next turn as-is.
@@ -140,6 +146,7 @@ struct TurnLoop<'a> {
     result_notify: &'a Arc<tokio::sync::Notify>,
     turn_tx: &'a TurnTx,
     turn_started: &'a Arc<tokio::sync::Notify>,
+    turn_done: &'a Arc<tokio::sync::Notify>,
     is_issue_job: bool,
 }
 
@@ -168,6 +175,7 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
         result_notify,
         turn_tx,
         turn_started,
+        turn_done,
         is_issue_job,
     } = r;
     let mut reported = false;
@@ -208,6 +216,8 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
                         let _ = tx.send(ev).await;
                     }
                 }
+                // cm:guard raised AFTER the verdict is on the channel, so a caller woken by it sees a turn that is fully reported. Raising it before would let `checkpoint_and_close` drop stdin between the turn ending and its result being sent, losing the very checkpoint it waited for.
+                turn_done.notify_waiters();
                 // cm:guard `reported` stays FALSE for a turn that did not end the job — the process exit path reads it to decide whether to classify, and marking a parked turn reported would leave a session that later dies with no terminal event at all.
                 reported = job_ended;
                 // cm:guard a FINISHED issue job must not sit resident to the idle ceiling: core has its terminal event, and every second after it holds a runner slot at RUNNER_CAP_PER_RUNNER = 1 for a job nobody will send another turn to. Chat does the opposite on purpose — its residency between turns is the feature.
@@ -649,8 +659,62 @@ impl ClaudeCodeRunner {
         }
     }
 
+    /// What `checkpoint` asks a session for before anything ends it.
+    // cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/daemon/inbox.rs — the `checkpoint` kind sends this same text. Two wordings for one kind would make a restart checkpoint and an operator checkpoint different acts under one name.
+    pub const CHECKPOINT_PROMPT: &'static str = "Write down where you are before this session ends: \
+        what you have changed so far, what you were about to do next, and anything you know that is \
+        not already in the repository. Do not start new work.";
+
+    /// Ask every resident session to record where it is, wait for the turn, and
+    /// then end it — the checkpoint half of RFC 0003's checkpoint-then-close.
+    ///
+    /// Returns the ids that were closed.
+    // cm:guard the wait is what makes this a checkpoint rather than a wasted write. Dropping stdin is EOF: closing straight after the write ends the session before the turn it just asked for can run, which spends a turn to produce nothing and is strictly worse than closing outright.
+    // cm:guard `budget` bounds the WHOLE session, and a timeout still closes. A restart that hangs on an agent which will not answer is worse than a lost checkpoint — the daemon is exiting either way, and a session left open past it is a `setsid`-detached child writing a worktree the relaunched daemon is about to hand to a second agent.
+    pub async fn checkpoint_and_close(&self, budget: std::time::Duration) -> Vec<SessionId> {
+        let resident: Vec<SessionId> = {
+            let map = self.sessions.lock().await;
+            map.iter()
+                .filter(|(_, s)| s.stdin.is_some())
+                .map(|(id, _)| id.clone())
+                .collect()
+        };
+        for id in &resident {
+            let done = {
+                let map = self.sessions.lock().await;
+                map.get(id).map(|s| s.turn_done.clone())
+            };
+            let Some(done) = done else { continue };
+            let notified = done.notified();
+            if self
+                .send_resident(id, Self::CHECKPOINT_PROMPT, None)
+                .await
+                .is_err()
+            {
+                continue;
+            }
+            if tokio::time::timeout(budget, notified).await.is_err() {
+                tracing::warn!("[claude] session={id} did not finish its checkpoint in time");
+            }
+        }
+        let closed = self.close_all_resident().await;
+        let core =
+            crate::transport::CoreClient::new(self.core_url.clone(), self.device_token.clone());
+        for id in &closed {
+            let (turn_tx, is_issue_job) = {
+                let map = self.sessions.lock().await;
+                match map.get(id) {
+                    Some(s) => (s.turn_tx.clone(), s.is_issue_job),
+                    None => continue,
+                }
+            };
+            report_session_closed(is_issue_job, &turn_tx, Some(&core), id).await;
+        }
+        closed
+    }
+
     /// End every live duplex session, returning the ids that were closed.
-    // cm:guard the ONLY thing that ends a parked session before the daemon exits. A park is not in-flight — `InflightGuard` is scoped to the frame task — so `drain_to_idle` reads an idle daemon and would exit(0) leaving a `setsid`-detached child holding the worktree, which is the second-agent-on-one-checkout hazard invariant 4 exists to prevent. Never call this while a turn is generating: EOF mid-turn is survivable (measured, claude 2.1.251) but the turn's result would land in a receiver the exiting daemon no longer reads.
+    // cm:guard the EOF half of what ends a parked session before the daemon exits — `checkpoint_and_close` is the caller, and calling this directly on the restart path is what skips the checkpoint. A park is not in-flight (`InflightGuard` is scoped to the frame task), so `drain_to_idle` reads an idle daemon and would exit(0) leaving a `setsid`-detached child holding the worktree, which is the second-agent-on-one-checkout hazard invariant 4 exists to prevent. Never call it while a turn is generating: EOF mid-turn is survivable (measured, claude 2.1.251) but the turn's result would land in a receiver the exiting daemon no longer reads.
     pub async fn close_all_resident(&self) -> Vec<SessionId> {
         let mut map = self.sessions.lock().await;
         let mut closed = Vec::new();
@@ -743,6 +807,7 @@ impl Runner for ClaudeCodeRunner {
             None
         };
         let turn_started = Arc::new(tokio::sync::Notify::new());
+        let turn_done = Arc::new(tokio::sync::Notify::new());
 
         let mut cmd = build_command(&args, &effective_repo);
         let stdin_mode = if spec.duplex {
@@ -841,6 +906,8 @@ impl Runner for ClaudeCodeRunner {
                 turn_started: turn_started.clone(),
                 pending_inbox: None,
                 turns: 0,
+                turn_done: turn_done.clone(),
+                is_issue_job,
                 model: spec.model.clone(),
                 head_sha: None,
                 _permit: session_permit,
@@ -963,6 +1030,7 @@ impl Runner for ClaudeCodeRunner {
         let result_notify_for_turns = result_notify.clone();
         let turn_tx_for_turns = turn_tx.clone();
         let turn_started_for_turns = turn_started.clone();
+        let turn_done_for_turns = turn_done.clone();
         let sessions_for_turns = self.sessions.clone();
         tokio::spawn(async move {
             let job_id = job_id_task;
@@ -977,6 +1045,7 @@ impl Runner for ClaudeCodeRunner {
                         result_notify: &result_notify_for_turns,
                         turn_tx: &turn_tx_for_turns,
                         turn_started: &turn_started_for_turns,
+                        turn_done: &turn_done_for_turns,
                         is_issue_job,
                     },
                     &mut reader,
@@ -1316,6 +1385,7 @@ mod tests {
         result_notify: Arc<tokio::sync::Notify>,
         turn_tx: TurnTx,
         turn_started: Arc<tokio::sync::Notify>,
+        turn_done: Arc<tokio::sync::Notify>,
         rx: mpsc::Receiver<RunnerEvent>,
     }
 
@@ -1329,6 +1399,7 @@ mod tests {
             result_notify: Arc::new(tokio::sync::Notify::new()),
             turn_tx,
             turn_started: Arc::new(tokio::sync::Notify::new()),
+            turn_done: Arc::new(tokio::sync::Notify::new()),
             rx,
         }
     }
@@ -1345,16 +1416,18 @@ mod tests {
             result_notify,
             turn_tx,
             turn_started,
+            turn_done,
             mut rx,
         } = resident_harness();
         let mut reader = never_ending().await;
         let loop_handle = {
-            let (s, o, rn, tt, ts) = (
+            let (s, o, rn, tt, ts, td) = (
                 sessions.clone(),
                 outcome.clone(),
                 result_notify.clone(),
                 turn_tx.clone(),
                 turn_started.clone(),
+                turn_done.clone(),
             );
             tokio::spawn(async move {
                 duplex_turns(
@@ -1366,6 +1439,7 @@ mod tests {
                         result_notify: &rn,
                         turn_tx: &tt,
                         turn_started: &ts,
+                        turn_done: &td,
                         is_issue_job: false,
                     },
                     &mut reader,
@@ -1406,6 +1480,7 @@ mod tests {
             result_notify,
             turn_tx,
             turn_started,
+            turn_done,
             rx: _rx,
         } = resident_harness();
         let mut reader = never_ending().await;
@@ -1419,6 +1494,7 @@ mod tests {
                     result_notify: &result_notify,
                     turn_tx: &turn_tx,
                     turn_started: &turn_started,
+                    turn_done: &turn_done,
                     is_issue_job: false,
                 },
                 &mut reader,
@@ -1441,16 +1517,18 @@ mod tests {
             result_notify,
             turn_tx,
             turn_started,
+            turn_done,
             mut rx,
         } = resident_harness();
         let mut reader = never_ending().await;
         let loop_handle = {
-            let (s, o, rn, tt, ts) = (
+            let (s, o, rn, tt, ts, td) = (
                 sessions.clone(),
                 outcome.clone(),
                 result_notify.clone(),
                 turn_tx.clone(),
                 turn_started.clone(),
+                turn_done.clone(),
             );
             tokio::spawn(async move {
                 duplex_turns(
@@ -1462,6 +1540,7 @@ mod tests {
                         result_notify: &rn,
                         turn_tx: &tt,
                         turn_started: &ts,
+                        turn_done: &td,
                         is_issue_job: false,
                     },
                     &mut reader,
@@ -1480,6 +1559,91 @@ mod tests {
         assert!(
             reported,
             "the last turn was reported, so exit must not report again"
+        );
+    }
+
+    /// A resident session around a trivial child, so the checkpoint path has a
+    /// real stdin to write to without spawning claude.
+    async fn parked_runner() -> (
+        ClaudeCodeRunner,
+        mpsc::Receiver<RunnerEvent>,
+        Arc<tokio::sync::Notify>,
+    ) {
+        let mut child = tokio::process::Command::new("cat")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .expect("cat must spawn");
+        let stdin = child.stdin.take();
+        let (tx, rx) = mpsc::channel(16);
+        let turn_done = Arc::new(tokio::sync::Notify::new());
+        let runner =
+            ClaudeCodeRunner::new("http://127.0.0.1:1", "tok", SkillSettings::default(), 1);
+        runner.sessions.lock().await.insert(
+            "j1".to_string(),
+            Session {
+                status: RunnerStatus::Running,
+                child: Some(child),
+                claude_session_id: None,
+                stdin,
+                turn_tx: Arc::new(Mutex::new(tx)),
+                turn_started: Arc::new(tokio::sync::Notify::new()),
+                pending_inbox: None,
+                turns: 0,
+                turn_done: turn_done.clone(),
+                is_issue_job: true,
+                model: None,
+                head_sha: None,
+                _permit: None,
+            },
+        );
+        (runner, rx, turn_done)
+    }
+
+    // cm:guard the WAIT is what makes this a checkpoint rather than a wasted write. Dropping stdin is EOF: a close that does not wait ends the session before the turn it just asked for can run, spending a turn to produce nothing — which is strictly worse than closing outright, and indistinguishable from it in any test that only asserts the session ended.
+    #[tokio::test]
+    async fn a_checkpoint_waits_for_the_turn_it_asked_for() {
+        let (runner, _rx, _done) = parked_runner().await;
+        let started = std::time::Instant::now();
+        let closed = runner
+            .checkpoint_and_close(std::time::Duration::from_millis(300))
+            .await;
+        assert_eq!(closed, vec!["j1".to_string()]);
+        assert!(
+            started.elapsed() >= std::time::Duration::from_millis(300),
+            "a session that never finished its checkpoint must hold the full budget: {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_finished_checkpoint_does_not_hold_the_restart_for_its_whole_budget() {
+        let (runner, _rx, done) = parked_runner().await;
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            done.notify_waiters();
+        });
+        let started = std::time::Instant::now();
+        runner
+            .checkpoint_and_close(std::time::Duration::from_secs(30))
+            .await;
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "the turn reported done, so the budget must not be waited out: {:?}",
+            started.elapsed()
+        );
+    }
+
+    // cm:guard the close must survive an agent that never answers. The daemon is exiting either way, and a session left open past the budget is a `setsid`-detached child on the worktree the relaunched daemon is about to hand to a second agent.
+    #[tokio::test]
+    async fn a_session_that_never_answers_is_still_closed() {
+        let (runner, _rx, _done) = parked_runner().await;
+        runner
+            .checkpoint_and_close(std::time::Duration::from_millis(50))
+            .await;
+        assert!(
+            runner.resident(&"j1".to_string()).await.is_none(),
+            "the budget elapsing must not leave the session resident"
         );
     }
 

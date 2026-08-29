@@ -152,6 +152,16 @@ describe('a human answer while the session is still parked', () => {
     expect(await inboxRows()).toEqual([{ kind: 'answer', body: 'yes, use postgres', seq: 1 }]);
   });
 
+  // cm:guard the driver's own resume must NOT chart as a manual intervention. Every `job_events kind='intervention'` row lands in `issue_intervention_events`, which is VISION §1 metric ②, and this path fires only when a session happens to be parked — so auditing it would make the north-star number measure duplex adoption rather than interventions, climbing on the path built to lower it.
+  it('does not chart the answer as a manual intervention', async () => {
+    await askingSession({ runtimeState: 'awaiting_input' });
+    await humanAnswers();
+    const rows = await harness.db.execute<{ n: number }>(sql`
+      SELECT COUNT(*)::int AS n FROM issue_intervention_events WHERE issue_id = ${issueId}
+    `);
+    expect(rows[0]?.n).toBe(0);
+  });
+
   it('falls back to a dispatch when no session is parked on the question', async () => {
     await humanAnswers();
     expect(await issueStatus()).toBe('open');
