@@ -123,36 +123,37 @@ function Group({
 }) {
   const matched = total ?? items.length;
   const collapsible = items.length > COLLAPSE_ABOVE;
-  // cm:why null means "nobody has decided yet", so the default follows the CURRENT length. Seeding useState from the first render instead leaves a group that grew past the threshold on a WS refetch stuck expanded, which is the case this collapse exists for.
+  // cm:guard `toggled` only ever applies WHILE the group is collapsible, and it starts null so the default follows the CURRENT length. Both halves are load-bearing: seed it from the first render and a group that grows past the threshold stays expanded, and let a stale `false` outlive `collapsible` and a group that shrinks back under it renders its header over zero rows with no button left to reopen them.
   const [toggled, setToggled] = useState<boolean | null>(null);
   if (items.length === 0) return null;
-  const expanded = toggled ?? !collapsible;
-  const heading = (
-    <>
-      <h2 className="fg-label text-fg">{title}</h2>
-      <CountBadge>{matched}</CountBadge>
-    </>
-  );
+  const expanded = collapsible ? (toggled ?? false) : true;
+  // cm:why the h2 wraps the button rather than sitting inside it: a heading nested in a button is not announced as a heading, so collapsible groups would silently drop out of screen-reader heading navigation while the non-collapsible ones stayed in it.
   return (
     <section className="flex flex-col gap-2">
-      {collapsible ? (
-        <button
-          type="button"
-          aria-expanded={expanded}
-          onClick={() => setToggled(!expanded)}
-          className="flex items-center gap-2 rounded-md px-0.5 py-1 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]"
-        >
-          <Icon
-            name="chevronRight"
-            size={15}
-            className="text-subtle transition-transform duration-[150ms]"
-            style={{ transform: expanded ? "rotate(90deg)" : "none" }}
-          />
-          {heading}
-        </button>
-      ) : (
-        <div className="flex items-center gap-2 px-0.5">{heading}</div>
-      )}
+      <h2 className="fg-label text-fg">
+        {collapsible ? (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setToggled(!expanded)}
+            className="flex w-full items-center gap-2 rounded-md px-0.5 py-1 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]"
+          >
+            <Icon
+              name="chevronRight"
+              size={15}
+              className="text-subtle transition-transform duration-[150ms]"
+              style={{ transform: expanded ? "rotate(90deg)" : "none" }}
+            />
+            {title}
+            <CountBadge>{matched}</CountBadge>
+          </button>
+        ) : (
+          <span className="flex items-center gap-2 px-0.5">
+            {title}
+            <CountBadge>{matched}</CountBadge>
+          </span>
+        )}
+      </h2>
       {expanded && (
         <div className="flex flex-col gap-1.5">
           {items.map((it, i) => (

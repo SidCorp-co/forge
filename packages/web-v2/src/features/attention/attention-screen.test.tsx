@@ -110,6 +110,23 @@ describe("AttentionScreen · unseen drafts", () => {
     expect(screen.queryByText("proposal 900")).toBeNull();
   });
 
+  // cm:guard the reachability floor: a group that stops being collapsible must show its rows again, whatever the user last toggled. Otherwise a draft cleared live (this diff invalidates ['attention'] on comment.created) shrinks the list under the threshold and strands the survivors behind a button that no longer renders.
+  it("shows the rows again when a collapsed group shrinks back under the threshold", () => {
+    view = emptyView({ unseenDrafts: drafts(20), unseenDraftsTotal: 22 });
+    const { rerender } = render(<AttentionScreen />);
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    fireEvent.click(screen.getByRole("button", { expanded: true }));
+    view = emptyView({ unseenDrafts: drafts(3), unseenDraftsTotal: 3 });
+    rerender(<AttentionScreen />);
+    expect(screen.getByText("proposal 900")).toBeInTheDocument();
+  });
+
+  it("announces every group title as a heading, collapsible or not", () => {
+    view = emptyView({ unseenDrafts: drafts(20), unseenDraftsTotal: 22 });
+    render(<AttentionScreen />);
+    expect(screen.getByRole("heading", { name: /Unseen drafts/ })).toBeInTheDocument();
+  });
+
   it("hides the group entirely when there is nothing unseen", () => {
     view = emptyView({
       needsReview: [
