@@ -105,8 +105,8 @@ function CountBadge({ children }: { children: ReactNode }) {
   );
 }
 
-/** Above this many rows a group starts collapsed — a long backlog must be
- *  countable without pushing every other bucket off the screen. */
+/** Above this many rows a group that OPTED IN starts collapsed — a long backlog
+ *  must be countable without pushing every other bucket off the screen. */
 const COLLAPSE_ABOVE = 5;
 
 function Group({
@@ -114,15 +114,18 @@ function Group({
   items,
   onOpen,
   total,
+  collapsible: mayCollapse = false,
 }: {
   title: string;
   items: AttentionItem[];
   onOpen: (link: string) => void;
   /** Unclipped match count when the API capped `items`. Defaults to items.length. */
   total?: number;
+  collapsible?: boolean;
 }) {
   const matched = total ?? items.length;
-  const collapsible = items.length > COLLAPSE_ABOVE;
+  // cm:why collapsing is opt-in per bucket, never derived from length alone: the buckets core caps at 5 could not trip it, but skill updates (cap 20) and offline runners (client-derived, unbounded) could — and an operator with 6 dead runners would open this screen to an infra alert collapsed to nothing by default.
+  const collapsible = mayCollapse && items.length > COLLAPSE_ABOVE;
   // cm:guard `toggled` only ever applies WHILE the group is collapsible, and it starts null so the default follows the CURRENT length. Both halves are load-bearing: seed it from the first render and a group that grows past the threshold stays expanded, and let a stale `false` outlive `collapsible` and a group that shrinks back under it renders its header over zero rows with no button left to reopen them.
   const [toggled, setToggled] = useState<boolean | null>(null);
   if (items.length === 0) return null;
@@ -250,6 +253,7 @@ export function AttentionScreen() {
             items={scoped.unseenDrafts}
             onOpen={open}
             total={unseenDraftsTotal}
+            collapsible
           />
           <Group title="Offline runners" items={scoped.offlineRunners} onOpen={open} />
         </div>

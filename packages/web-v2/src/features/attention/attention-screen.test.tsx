@@ -62,7 +62,8 @@ function emptyView(over: Partial<AttentionView> = {}): AttentionView {
     total: 0,
   };
   const merged = { ...base, ...over };
-  merged.total = merged.unseenDrafts.length + merged.needsReview.length;
+  merged.total =
+    merged.unseenDrafts.length + merged.needsReview.length + merged.offlineRunners.length;
   return merged;
 }
 
@@ -121,10 +122,30 @@ describe("AttentionScreen · unseen drafts", () => {
     expect(screen.getByText("proposal 900")).toBeInTheDocument();
   });
 
-  it("announces every group title as a heading, collapsible or not", () => {
+  // cm:guard assert the NESTING DIRECTION, not that a heading exists: jsdom resolves role=heading for an h2 nested inside a button, so `getByRole('heading')` passes on the very defect this guards — real AT folds that h2 into the button's accessible name and the group leaves heading navigation.
+  it("keeps the group title a heading with the disclosure inside it, not the reverse", () => {
     view = emptyView({ unseenDrafts: drafts(20), unseenDraftsTotal: 22 });
     render(<AttentionScreen />);
-    expect(screen.getByRole("heading", { name: /Unseen drafts/ })).toBeInTheDocument();
+    const heading = screen.getByRole("heading", { name: /Unseen drafts/ });
+    const toggle = screen.getByRole("button", { expanded: false });
+    expect(heading.contains(toggle)).toBe(true);
+    expect(toggle.querySelector("h1,h2,h3,h4,h5,h6")).toBeNull();
+  });
+
+  // cm:guard collapsing is opt-in per bucket. Deriving it from length alone hides an unbounded client-derived bucket (offline runners) behind a closed disclosure the operator never asked for.
+  it("leaves other buckets expanded however long they get", () => {
+    view = emptyView({
+      offlineRunners: Array.from({ length: 9 }, (_, i) => ({
+        kind: "runner_offline" as const,
+        title: `runner-${i} is offline`,
+        link: "/runners",
+        since: "2026-08-29T16:00:00.000Z",
+        status: "offline",
+      })),
+    });
+    render(<AttentionScreen />);
+    expect(screen.getByText("runner-8 is offline")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { expanded: false })).toBeNull();
   });
 
   it("hides the group entirely when there is nothing unseen", () => {
