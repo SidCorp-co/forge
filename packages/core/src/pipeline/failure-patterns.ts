@@ -90,6 +90,11 @@ const re =
  * cause; nothing matching leaves `unclassified`, which is a real member and is
  * counted, not a silent floor.
  *
+ * `[RESULT_ERROR] error_during_execution` (95 live rows) also has no rule, and
+ * that is the answer rather than a gap: the CLI reports an error and says
+ * nothing about it, so there is no cause to record. Naming it would dress an
+ * absence up as a diagnosis, which is the move this whole issue exists to undo.
+ *
  * A generic `timeout` deliberately has no rule. The named timeout hops
  * (`queue_timeout`, `heartbeat_timeout`, `no_client_ack`) are written as
  * literals by `jobs/loop-monitor.ts` and never reach this table, so a bare
@@ -102,8 +107,12 @@ export const CAUSE_RULES: ReadonlyArray<CauseRule> = [
   { cause: 'agent_startup_failed', test: (t) => t.includes('[MCP_INIT_FAILED]') },
   { cause: 'agent_killed', test: (t) => t.includes('[SIGNAL_KILLED]') },
   {
+    // cm:why `Agent completed with errors` is the SAME failure as `[NO_RESULT_*]`, in the runner's older wording: `succeeded_opt.unwrap_or(false)` defaults a MISSING CLI result line to failure (see jobs/finalize-done.ts, which root-caused it). 1,231 live rows across 4 projects, 2026-05-04 → 2026-06-15 — the single largest signature that would otherwise read unclassified.
     cause: 'agent_exited_without_result',
-    test: (t) => t.includes('[NO_RESULT_CLEAN_EXIT]') || t.includes('[NO_RESULT_EXIT]'),
+    test: (t) =>
+      t.includes('[NO_RESULT_CLEAN_EXIT]') ||
+      t.includes('[NO_RESULT_EXIT]') ||
+      /agent completed with errors/i.test(t),
   },
   { cause: 'agent_skill_missing', test: (t) => t.includes('[NO_WORK]') },
   { cause: 'provider_spend_cap', test: (t) => isSpendLimitError(t) },
@@ -148,7 +157,7 @@ export const CAUSE_RULES: ReadonlyArray<CauseRule> = [
     ),
   },
   { cause: 'agent_skill_missing', test: re(/unknown command|skill[ _-]?registration/i) },
-  { cause: 'resume_failed', test: re(/\bresume_failed\b/i) },
+  { cause: 'resume_failed', test: re(/\bresume_failed\b|no conversation found with session id/i) },
   { cause: 'runner_unsupported_type', test: re(/\brunner_unsupported_type\b/i) },
   { cause: 'forge_budget_exhausted', test: re(/\bmonthly_budget_exhausted\b/i) },
   {

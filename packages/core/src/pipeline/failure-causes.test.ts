@@ -152,6 +152,8 @@ const LIVE_SIGNATURES: ReadonlyArray<[FailureCause, string]> = [
     'agent_exited_without_result',
     '[NO_RESULT_CLEAN_EXIT] claude exited 0 before emitting a result event',
   ],
+  ['agent_exited_without_result', 'Agent completed with errors'],
+  ['resume_failed', 'No conversation found with session ID: 8e058709-9cdf-4914-a7e0-5ae68a3408ad'],
   ['agent_killed', '[SIGNAL_KILLED] signal=9'],
   ['workspace_preflight_failed', 'preflight_failed: work_tree /home/forge/projects/anhome'],
   [
@@ -264,5 +266,19 @@ describe('unclassified is counted, not hidden', () => {
     for (const [, error] of LIVE_SIGNATURES) {
       expect(classifyFailure({ error }).cause).not.toBe('unclassified');
     }
+  });
+});
+
+describe('the residue that stays unclassified on purpose', () => {
+  it('leaves a CLI error that carries no detail unclassified rather than inventing a diagnosis', () => {
+    const r = classifyFailure({ error: '[RESULT_ERROR] error_during_execution' });
+    expect(r.cause).toBe('unclassified');
+    expect(r.meta?.needsReview).toBe(true);
+  });
+
+  it('leaves a bare timeout unclassified — the named hops write their own token', () => {
+    expect(classifyFailure({ error: 'Request stalled: operation timeout' }).cause).toBe(
+      'unclassified',
+    );
   });
 });

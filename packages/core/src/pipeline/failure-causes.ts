@@ -3,20 +3,18 @@
  *
  * `agent_sessions.failure_reason` held one value, `job_failed`, for every
  * agent-side failure, so the record said nothing (`VISION: state-never-lies`).
- * It also held free text: `agent-sessions/session-failure.ts` wrote a
- * human-readable sentence into the same column `queue_timeout` uses as a token,
- * which is why 55 live rows carry prose — 9 of them the agent's own prompt.
+ * It also held free text: `session-failure.ts` wrote a human-readable sentence
+ * into the same column `queue_timeout` uses as a token, which is why 55 live
+ * rows carry prose — 9 of them the agent's own prompt. Two axes, two columns:
+ * the sentence now goes to `failure_detail`.
  *
- * Two axes, two columns. `failure_reason` carries a member of `FAILURE_CAUSES`
- * and nothing else; the sentence goes to `failure_detail`.
- *
- * Derivation order was mandated and is worth stating, because reversing it is
- * how the previous attempt overreached: the first two causes come from reading
- * the eight transcripts ISS-871 left undiagnosed (7 × `provider_spend_cap`,
- * 1 × `provider_refused_request`). Every other member traces either to a
- * counted live signature on the read-only replica, or to a writer that exists
- * in this codebase today — the count or the call site is named on each line.
- * Nothing here was invented to round out a set.
+ * Derivation order was mandated, and reversing it is how the previous attempt
+ * overreached. The first two causes come from the eight transcripts ISS-871
+ * left undiagnosed (7 × `provider_spend_cap`, 1 × `provider_refused_request`);
+ * every other member traces to a counted live signature or to a writer in this
+ * codebase, named on its own line. Over 90 days of forge-beta failures (10,904
+ * rows, 2026-08-29) 99.1% land on a named cause; `failure-patterns.ts` says why
+ * the one detail-free residue keeps no member.
  */
 
 // cm:guard every member needs live rows or a named writer, and the line must say which — a cause nobody emits is indistinguishable from one nobody looked for, and it is what lets a taxonomy rot the way `job_failed` rotted
@@ -38,7 +36,8 @@ export const FAILURE_CAUSES = [
   'agent_startup_failed',
   /** zero turns because the skill never reached the device. 72 jobs/60d (`[NO_WORK]`). */
   'agent_skill_missing',
-  /** exited before emitting a result event. 18 jobs/60d (`[NO_RESULT_*]`). */
+  /** exited before emitting a result event. 1,249 jobs/90d — 18 as `[NO_RESULT_*]`
+   *  and 1,231 in the runner's older wording, `Agent completed with errors`. */
   'agent_exited_without_result',
   /** killed by a signal. 1 job/60d (`[SIGNAL_KILLED]`). */
   'agent_killed',
@@ -60,8 +59,6 @@ export const FAILURE_CAUSES = [
   'queue_timeout',
   /** the ack hop reaped it. 7 sessions all-time. */
   'no_client_ack',
-  /** no capable runner was online. Writer: web-v2 dispatcher-skip vocabulary. */
-  'no_worker_online',
   /** the websocket publish that carries a chat turn failed. Writers:
    *  schedules/dispatch.ts, rocketchat/agent-chat.ts, rocketchat/escalation.ts. */
   'ws_publish_failed',
@@ -69,7 +66,8 @@ export const FAILURE_CAUSES = [
   'forge_budget_exhausted',
   /** the runner cannot run this job type. 21 jobs all-time. */
   'runner_unsupported_type',
-  /** a resume attempt failed. Writer: jobs/lifecycle-routes.ts. */
+  /** a resume attempt failed, incl. the CLI having no such conversation to
+   *  resume. Writer: jobs/lifecycle-routes.ts; 10 jobs/90d from the CLI side. */
   'resume_failed',
   /** duplex residency window elapsed. Writer: jobs/park-deadline.ts. */
   'residency_expired',
@@ -126,7 +124,6 @@ export const FAILURE_CAUSE_ORIGIN: Record<FailureCause, FailureOrigin> = {
   heartbeat_timeout: 'transport',
   queue_timeout: 'transport',
   no_client_ack: 'transport',
-  no_worker_online: 'transport',
   ws_publish_failed: 'transport',
   forge_budget_exhausted: 'forge',
   runner_unsupported_type: 'forge',
