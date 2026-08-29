@@ -16,14 +16,12 @@
 
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { agentSessions, jobs, runners } from '../db/schema.js';
 import {
-  agentSessions,
-  jobs,
-  runners,
   type SessionInboxKind,
   type SessionSendOutcome,
   sessionInbox,
-} from '../db/schema.js';
+} from '../db/schema-session-inbox.js';
 import { insertInterventionEvent } from '../jobs/intervention-event.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { deviceRoom } from '../ws/rooms.js';

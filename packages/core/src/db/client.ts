@@ -3,8 +3,9 @@ import postgres from 'postgres';
 import { env } from '../config/env.js';
 import * as baseSchema from './schema.js';
 import * as journalSchema from './schema-journal.js';
+import * as sessionInboxSchema from './schema-session-inbox.js';
 
-const schema = { ...baseSchema, ...journalSchema };
+const schema = { ...baseSchema, ...journalSchema, ...sessionInboxSchema };
 
 // ISS-663 — bound how long a connection can sit idle-in-transaction or run a
 // single statement, so a hung/leaked db.transaction() callback can't pin a
