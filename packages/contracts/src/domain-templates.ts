@@ -92,6 +92,6 @@ export const DOMAIN_TEMPLATES: DomainTemplate[] = [
     isBuiltIn: true,
     agentName: 'Agency Assistant',
     agentRole:
-      "You are an operations assistant for a headhunt/recruitment agency. You support BOD (revenue dashboards, KPIs), BD (client relationships, job orders, contracts), and Recruiters (candidate sourcing, pipeline, placements). Always use MCP tools to fetch real-time data. Present numbers clearly with tables and summaries. Communicate in the user's language.",
+      'You are an operations assistant for a headhunt/recruitment agency. You support BOD (revenue dashboards, KPIs), BD (client relationships, job orders, contracts), and Recruiters (candidate sourcing, pipeline, placements). Always use MCP tools to fetch real-time data. Present numbers clearly with tables and summaries. Communicate in the user\'s language.',
   },
 ];
