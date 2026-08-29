@@ -11,8 +11,9 @@
 
 import { readdirSync } from 'node:fs';
 
+// cm:guard `\s+` after the hashes, never `\s*`, and it must match `headingLevel`'s. CommonMark renders `##Honest costs` as a paragraph, so `\s*` both accepted a heading no reader sees and left the section unable to be closed by the next such line.
 // cm:edge contract -> docs/proposals/README.md — that file publishes this heading to whoever writes the next proposal; the two are agreed by nothing a compiler checks, so a reword here with none there leaves authors following a rule the gate no longer enforces
-export const SECTION_RE = /^(#{2,6})\s*(?:\d+\.\s*)?honest costs\b.*$/im;
+export const SECTION_RE = /^(#{2,6})\s+(?:\d+\.\s*)?honest costs\b.*$/im;
 
 /** The index at any depth carries the rule, not a price of its own. */
 const INDEX = 'README.md';
@@ -37,18 +38,30 @@ const PLACEHOLDER_RE = /^(tbd|todo|t\.b\.d\.?|n\/a|none|nothing|unknown|\?+)\.?$
 const ROW_RE = /^\s*(\||[-*+]\s|\d+\.\s)/;
 
 // cm:guard a fenced block is not content. `## Honest costs` inside a ```md example satisfied the heading match while the document itself priced nothing — the published rule refuses an absent section, and a section that exists only as an illustration of the rule is absent.
+// cm:guard close on the OPENING marker's char and length, per CommonMark — a toggle that flips on any fence line reopens the block at the inner ````` of a nested example, and the illustrated section reads as a real one again. An unclosed fence swallowing the rest of the document is not a bug here: that is what a renderer shows the reader, and the gate must agree with the page rather than with the source.
 function withoutFences(text) {
-  let fenced = false;
+  let open = null;
   return text
     .split('\n')
     .map((line) => {
-      if (/^\s*(```|~~~)/.test(line)) {
-        fenced = !fenced;
+      const fence = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+      if (fence) {
+        const [char, len] = [fence[1][0], fence[1].length];
+        if (open === null) {
+          open = { char, len };
+          return '';
+        }
+        if (char === open.char && len >= open.len) open = null;
         return '';
       }
-      return fenced ? '' : line;
+      return open ? '' : line;
     })
     .join('\n');
+}
+
+// cm:why a commented-out heading is not on the page either, and `<!-- ## Honest costs -->` satisfied the match — same false green as the fenced example, one syntax over
+function withoutComments(text) {
+  return text.replace(/<!--[\s\S]*?-->/g, '');
 }
 
 function headingLevel(line) {
@@ -69,25 +82,26 @@ function sectionBody(text, match) {
   return (end < 0 ? after : after.slice(0, end)).filter((l) => l.trim() !== '');
 }
 
+// cm:guard separator cells are dropped, and the floor is counted over what is left. Counting the raw line let `| The commitment | What it costs you |` plus `|---|---|` clear a floor of 12 with two words of actual price — in the very table shape the README mandates, which is the shape a thin section will take.
 function cells(line) {
   return line
     .replace(ROW_RE, '')
     .split('|')
     .map((c) => c.replace(/[*_`]/g, '').trim())
-    .filter(Boolean);
+    .filter((c) => c && !/^:?-{2,}:?$/.test(c));
 }
 
 /**
  * Returns the reasons `rel` fails the rule, one string each. Empty means it passes.
  */
 export function judgeDocument(rel, raw) {
-  const text = withoutFences(raw);
+  const text = withoutComments(withoutFences(raw));
   const match = SECTION_RE.exec(text);
   if (!match) {
     return [`${rel}: no \`## Honest costs\` section — nothing here says what choosing this costs`];
   }
   const body = sectionBody(text, match);
-  const words = body.join(' ').split(/\s+/).filter(Boolean).length;
+  const words = body.flatMap(cells).join(' ').split(/\s+/).filter(Boolean).length;
   const reasons = [];
   if (words < MIN_WORDS) {
     reasons.push(

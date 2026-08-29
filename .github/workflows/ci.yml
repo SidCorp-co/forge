@@ -187,6 +187,7 @@ jobs:
       core: ${{ steps.filter.outputs.core }}
       runner: ${{ steps.filter.outputs.runner }}
       docs: ${{ steps.filter.outputs.docs }}
+      scripts: ${{ steps.filter.outputs.scripts }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -204,11 +205,6 @@ jobs:
               - 'packages/contracts/**'
             core:
               - 'packages/core/**'
-              # scripts/**/*.test.mjs is collected by packages/core/vitest.config.ts and by
-              # nothing else, so a change to a checker or its test only runs when this job
-              # does. Without this line a scripts-only PR skips them, and a skipped job
-              # passes `ci-passed`.
-              - 'scripts/**'
               - 'pnpm-workspace.yaml'
               - 'pnpm-lock.yaml'
               - 'package.json'
@@ -219,6 +215,14 @@ jobs:
             docs:
               - 'docs/**'
               - '**.md'
+            # scripts/**/*.test.mjs is collected by packages/core/vitest.config.ts and by
+            # nothing else, so those tests run only when the `core` job does — a
+            # scripts-only PR skipped them, and a skipped job passes `ci-passed`. Its own
+            # output rather than a line under `core:`, because `core` also gates
+            # core-integration, and making every checker edit pay a Testcontainers run is a
+            # cost with no test in it.
+            scripts:
+              - 'scripts/**'
 
   web:
     needs: changes
@@ -235,7 +239,7 @@ jobs:
 
   core:
     needs: changes
-    if: needs.changes.outputs.core == 'true'
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.scripts == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

@@ -84,6 +84,51 @@ describe('judgeDocument', () => {
     expect(judgeDocument('a.md', withCode)).toEqual([]);
   });
 
+  it('does not let a nested fence reopen the block and re-admit an example', () => {
+    const nested = [
+      '# A proposal',
+      '',
+      '## How to write one',
+      '',
+      '````md',
+      '```',
+      '## Honest costs',
+      '',
+      '| Choice | What it costs you |',
+      '|---|---|',
+      '| an example row | that prices an example, and nothing this document chose |',
+      '```',
+      '````',
+      '',
+    ].join('\n');
+    expect(judgeDocument('a.md', nested).join(' ')).toContain('no `## Honest costs` section');
+  });
+
+  it('does not accept a heading that is commented out', () => {
+    const commented =
+      '# A proposal\n\n<!--\n## Honest costs\n\n- a price nobody can read on the page\n-->\n';
+    expect(judgeDocument('a.md', commented).join(' ')).toContain('no `## Honest costs` section');
+  });
+
+  it('does not accept `##Honest costs`, which renders as a paragraph', () => {
+    const unspaced = PRICED.replace('## Honest costs', '##Honest costs');
+    expect(judgeDocument('a.md', unspaced).join(' ')).toContain('no `## Honest costs` section');
+  });
+
+  it('counts the price, not the table scaffolding, against the floor', () => {
+    const scaffolding = [
+      '# A proposal',
+      '',
+      '## Honest costs',
+      '',
+      '| Choice | What it costs you |',
+      '|---|---|',
+      '| X | some money for you |',
+      '',
+    ].join('\n');
+    expect(judgeDocument('a.md', scaffolding).join(' ')).toContain('prices nothing');
+  });
+
   it('does not read `N/A for self-hosted` as a placeholder', () => {
     const qualified = PRICED.replace(
       'you operate and upgrade it yourself, and no shared plane absorbs your outage',
