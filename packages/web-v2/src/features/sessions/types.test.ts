@@ -1,5 +1,13 @@
+import {
+  FAILURE_CAUSES,
+  FAILURE_CAUSE_PRESENTATION,
+  LEGACY_NEUTRAL_REASONS,
+} from "@forge/contracts/failure-causes";
 import { describe, expect, it } from "vitest";
 import {
+  FAILURE_REASON_LABEL,
+  failureReasonAction,
+  failureReasonLabel,
   HEARTBEAT_REAP_MS,
   STALLED_THRESHOLD_MS,
   deriveLiveness,
@@ -171,6 +179,70 @@ describe("classifySessionOutcome (ISS-322 four-bucket classifier)", () => {
     }
   });
 
+  it("ISS-877: paints every real cause red and names it, instead of a bare Failed", () => {
+    for (const reason of [
+      "provider_spend_cap",
+      "provider_auth_expired",
+      "provider_subscription_disabled",
+      "agent_startup_failed",
+      "agent_skill_missing",
+      "workspace_disk_full",
+      "workspace_preflight_failed",
+      "runner_unreachable",
+      "session_lost",
+      "unclassified",
+    ]) {
+      const o = classifySessionOutcome("failed", reason);
+      expect(o.bucket, reason).toBe("failed");
+      expect(o.statusKey, reason).toBe("failed");
+      expect(o.label, reason).not.toBe("Failed");
+      expect(o.tooltip, reason).not.toBe("");
+    }
+  });
+
+  it("ISS-877: keeps lifecycle conclusions and the residency bound neutral", () => {
+    for (const reason of ["orphan_under_terminal_run", "manual_ops_stale_chat_schedule"]) {
+      expect(classifySessionOutcome("failed", reason).statusKey, reason).toBe("swept");
+    }
+    expect(classifySessionOutcome("failed", "residency_expired").bucket).toBe("swept");
+  });
+
+  // cm:guard iterate FAILURE_CAUSES, never a list written out here — the list this replaces was hand-copied and drifted in both directions at once: it named `no_worker_online`, which core had retired, and omitted `no_client_ack`, which core writes on every ack-hop reap, so the one cause with no label was the one the test could not see. It also asserted only the label, which is why six causes reached this point with no action.
+  it("ISS-877: every cause core can write has a label and an action", () => {
+    for (const cause of FAILURE_CAUSES) {
+      expect(failureReasonLabel(cause), cause).toBeTruthy();
+      expect(failureReasonAction(cause), cause).toBeTruthy();
+    }
+  });
+
+  // cm:why this cannot catch a WRONG value in FAILURE_CAUSE_PRESENTATION — that map is the definition, so both sides move together. What it catches is a hardcoded special case creeping back into classifySessionOutcome, which is how the two surfaces diverged in the first place: verified by pinning one cause in the function and watching this go red naming it.
+  it("ISS-877: every cause reads the same way here as it does to the failure metric", () => {
+    for (const cause of FAILURE_CAUSES) {
+      const bucket = classifySessionOutcome("failed", cause).bucket;
+      expect(bucket, cause).toBe(
+        FAILURE_CAUSE_PRESENTATION[cause] === "failure" ? "failed" : FAILURE_CAUSE_PRESENTATION[cause],
+      );
+    }
+  });
+
+  it("ISS-877: a dispatcher skip reason on an old row reads neutral, not as a raw token", () => {
+    for (const reason of LEGACY_NEUTRAL_REASONS) {
+      expect(classifySessionOutcome("failed", reason).statusKey, reason).toBe("swept");
+      expect(failureReasonLabel(reason), reason).toBeTruthy();
+    }
+  });
+
+  it("ISS-877: a legacy job_failed row reads as unclassified, not as a diagnosis", () => {
+    expect(FAILURE_REASON_LABEL.job_failed).toBe("Unclassified");
+    expect(classifySessionOutcome("failed", "job_failed").label).toBe("Unclassified");
+  });
+
+  it("ISS-877: the pre-rename hyphen spelling still renders", () => {
+    expect(FAILURE_REASON_LABEL["ws-publish-failed"]).toBe(
+      FAILURE_REASON_LABEL.ws_publish_failed,
+    );
+  });
+
   it("returns active (deferring to statusToChip) for non-terminal states", () => {
     expect(classifySessionOutcome("running").bucket).toBe("active");
     expect(classifySessionOutcome("stalled").statusKey).toBe("zombie");
@@ -179,9 +251,16 @@ describe("classifySessionOutcome (ISS-322 four-bucket classifier)", () => {
 });
 
 describe("isRealFailure (only genuine failures count as attention)", () => {
-  it("is true only for job_failed / unknown-reason failed rows", () => {
+  it("is true for an unclassified row (legacy or current) and an unknown-reason row", () => {
     expect(isRealFailure("failed", "job_failed")).toBe(true);
+    expect(isRealFailure("failed", "unclassified")).toBe(true);
     expect(isRealFailure("failed", null)).toBe(true);
+  });
+
+  it("ISS-877: is true for a provider/agent/workspace cause — those need attention", () => {
+    expect(isRealFailure("failed", "provider_spend_cap")).toBe(true);
+    expect(isRealFailure("failed", "agent_startup_failed")).toBe(true);
+    expect(isRealFailure("failed", "workspace_disk_full")).toBe(true);
   });
 
   it("is false for swept / cleanup / success / cancelled_stale", () => {

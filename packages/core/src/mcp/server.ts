@@ -42,6 +42,7 @@ import {
   forgeMetricsProjectRetryRescuesTool,
   forgeMetricsProjectStepDurationsTool,
   forgeMetricsProjectTimeseriesTool,
+  forgeMetricsSessionFailuresTool,
   forgeMetricsStepDurationsTool,
 } from './tools/forge-metrics.js';
 import { forgeOpsHealthTool } from './tools/forge-ops-health.js';
@@ -282,6 +283,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeReconcileTool(ctx),
     // cm:guard append new tools HERE, immediately above the last one — every position shifts the indices below it, so the tail is the only insertion point that leaves all existing tools where callers pinned them
     forgeJobsResumeTool(ctx),
+    forgeMetricsSessionFailuresTool(ctx),
     // cm:guard keep this registration LAST — callers pin to `tools/list` ordering, so inserting above it shifts every index they rely on
     forgeGuideTool(ctx),
   ];

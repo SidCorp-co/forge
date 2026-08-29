@@ -60,7 +60,7 @@ import {
   statusToChip,
   classifySessionOutcome,
   isRealFailure,
-  FAILURE_REASON_LABEL,
+  failureReasonLabel,
   type AgentSessionDisplayStatus,
   type SessionFilter,
   type SessionRow,
@@ -702,7 +702,7 @@ function StatusCell({
     : outcome.bucket === "active"
       ? statusToChip(display)
       : outcome.statusKey;
-  const reason = row.failureReason ? FAILURE_REASON_LABEL[row.failureReason] ?? row.failureReason : null;
+  const reason = failureReasonLabel(row.failureReason) ?? row.failureReason ?? null;
   const showReason =
     !!reason && (display === "failed" || display === "stalled" || display === "cancelled_stale");
   // Red reason text only for a genuine failure; swept/cleanup reads subtle.

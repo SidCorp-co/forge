@@ -3,12 +3,12 @@
 // without importing Zod at runtime.
 
 export type {
-  LoginInput,
-  RegisterInput,
-  IssueCreateInput,
-  IssuePatchInput,
-  IssueFilters,
   CreateProjectInput,
-  UpdateProjectInput,
+  IssueCreateInput,
+  IssueFilters,
+  IssuePatchInput,
+  LoginInput,
   PreviewDeployConfig,
+  RegisterInput,
+  UpdateProjectInput,
 } from '@forge/core/public';

@@ -17,57 +17,57 @@
 //
 // Design: docs/proposals/agent-driven-pipeline.md (the mode)
 
-import type { REGISTRY_ISSUE_STATUSES } from "./pipeline-registry.js";
+import type { REGISTRY_ISSUE_STATUSES } from './pipeline-registry.js';
 
 export type KernelIssueStatus = (typeof REGISTRY_ISSUE_STATUSES)[number];
 
 export const AUTONOMOUS_LABELS = [
-	"draft",
-	"open",
-	"running",
-	"needs_human",
-	"awaiting_release",
-	"done",
-	"dropped",
+  'draft',
+  'open',
+  'running',
+  'needs_human',
+  'awaiting_release',
+  'done',
+  'dropped',
 ] as const;
 
 export type AutonomousLabel = (typeof AUTONOMOUS_LABELS)[number];
 
 /** The kernel status a label is written as. */
 export const LABEL_TO_KERNEL: Record<AutonomousLabel, KernelIssueStatus> = {
-	draft: "draft",
-	open: "open",
-	running: "in_progress",
-	needs_human: "needs_info",
-	// cm:edge contract -> packages/core/src/release-batch/gate.ts — the gate resolver returns `tested` as the park status, and that is the ONLY reason this label writes there; a resolver that parks elsewhere leaves the board naming a status the release path never reads
-	awaiting_release: "tested",
-	done: "closed",
-	dropped: "dropped",
+  draft: 'draft',
+  open: 'open',
+  running: 'in_progress',
+  needs_human: 'needs_info',
+  // cm:edge contract -> packages/core/src/release-batch/gate.ts — the gate resolver returns `tested` as the park status, and that is the ONLY reason this label writes there; a resolver that parks elsewhere leaves the board naming a status the release path never reads
+  awaiting_release: 'tested',
+  done: 'closed',
+  dropped: 'dropped',
 };
 
 // cm:guard every kernel status must map to SOME label, including the ones the autonomous driver never writes — a staged issue moved onto an autonomous project, or one from before the switch, still has to render as something. A missing entry is a blank cell on the board, not an error anyone sees.
 const KERNEL_TO_LABEL: Record<KernelIssueStatus, AutonomousLabel> = {
-	draft: "draft",
-	open: "open",
-	confirmed: "running",
-	clarified: "running",
-	approved: "running",
-	in_progress: "running",
-	developed: "running",
-	testing: "running",
-	tested: "awaiting_release",
-	released: "running",
-	// cm:edge lockstep -> packages/core/src/issues/apply-transition.ts — `reopen` reads as `open` only because the autonomous rewrite lands it there; drop that rewrite and the board shows a queued issue no dispatcher will ever pick up, which is how ISS-141 sat for an hour looking like it was running
-	reopen: "open",
-	waiting: "needs_human",
-	on_hold: "needs_human",
-	needs_info: "needs_human",
-	closed: "done",
-	dropped: "dropped",
+  draft: 'draft',
+  open: 'open',
+  confirmed: 'running',
+  clarified: 'running',
+  approved: 'running',
+  in_progress: 'running',
+  developed: 'running',
+  testing: 'running',
+  tested: 'awaiting_release',
+  released: 'running',
+  // cm:edge lockstep -> packages/core/src/issues/apply-transition.ts — `reopen` reads as `open` only because the autonomous rewrite lands it there; drop that rewrite and the board shows a queued issue no dispatcher will ever pick up, which is how ISS-141 sat for an hour looking like it was running
+  reopen: 'open',
+  waiting: 'needs_human',
+  on_hold: 'needs_human',
+  needs_info: 'needs_human',
+  closed: 'done',
+  dropped: 'dropped',
 };
 
 export function toAutonomousLabel(status: KernelIssueStatus): AutonomousLabel {
-	return KERNEL_TO_LABEL[status];
+  return KERNEL_TO_LABEL[status];
 }
 
 /**
@@ -75,11 +75,8 @@ export function toAutonomousLabel(status: KernelIssueStatus): AutonomousLabel {
  * `agentConfig.pipelineConfig.mode`; anything other than `autonomous` renders
  * the kernel status as-is, which is what every existing client already does.
  */
-export function renderStatus(
-	status: KernelIssueStatus,
-	mode: string | undefined,
-): string {
-	return mode === "autonomous" ? toAutonomousLabel(status) : status;
+export function renderStatus(status: KernelIssueStatus, mode: string | undefined): string {
+  return mode === 'autonomous' ? toAutonomousLabel(status) : status;
 }
 
 /**
@@ -89,9 +86,9 @@ export function renderStatus(
  */
 // cm:guard absent must mean STAGED, never "unknown": a malformed config that relabelled the board would tell an operator their staged project is running a driver it is not
 export function readPipelineMode(agentConfig: unknown): string | undefined {
-	if (typeof agentConfig !== "object" || agentConfig === null) return undefined;
-	const pipeline = (agentConfig as Record<string, unknown>)["pipelineConfig"];
-	if (typeof pipeline !== "object" || pipeline === null) return undefined;
-	const mode = (pipeline as Record<string, unknown>)["mode"];
-	return typeof mode === "string" ? mode : undefined;
+  if (typeof agentConfig !== 'object' || agentConfig === null) return undefined;
+  const pipeline = (agentConfig as Record<string, unknown>)['pipelineConfig'];
+  if (typeof pipeline !== 'object' || pipeline === null) return undefined;
+  const mode = (pipeline as Record<string, unknown>)['mode'];
+  return typeof mode === 'string' ? mode : undefined;
 }

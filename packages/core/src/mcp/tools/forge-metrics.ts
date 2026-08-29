@@ -4,6 +4,12 @@ import { db } from '../../db/client.js';
 import { jobTypes } from '../../db/schema.js';
 import { BUCKETS, METRICS, runTimeseries } from '../../metrics/queries.js';
 import {
+  FAILURE_CAUSE_ORIGIN,
+  type FailureCause,
+  isRealFailureCause,
+  resolveFailureCause,
+} from '../../pipeline/failure-causes.js';
+import {
   assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,
   loadVisibleProjectIdsForPrincipal,
@@ -30,6 +36,13 @@ const projectInputSchema = z
   .strict();
 
 const retryRescuesInputSchema = z
+  .object({
+    projectId: z.uuid(),
+    days: z.number().int().min(1).max(90).optional().default(30),
+  })
+  .strict();
+
+const sessionFailuresInputSchema = z
   .object({
     projectId: z.uuid(),
     days: z.number().int().min(1).max(90).optional().default(30),
@@ -142,6 +155,118 @@ export const forgeMetricsProjectRetryRescuesTool: ContextScopedMcpToolFactory = 
     return {
       rows,
       total: rows.reduce((total, row) => total + row.rescues, 0),
+      windowDays: input.days,
+      projectId: input.projectId,
+    };
+  },
+});
+
+// cm:guard the two statuses that mean the session itself ended badly. `completed` and `completed_via_recovery` are deliberately absent even when they carry a `failure_reason` — a recovered session succeeded, and counting its old reason would report a rescue as a death.
+const FAILED_SESSION_STATUSES: ReadonlySet<string> = new Set(['failed', 'cancelled_stale']);
+
+export interface SessionFailureRow {
+  cause: FailureCause;
+  origin: string;
+  sessions: number;
+  isRealFailure: boolean;
+  lastAt: string | null;
+}
+
+/**
+ * ISS-877 — group failed sessions by cause so the taxonomy is measurable
+ * rather than merely stored.
+ *
+ * `unclassified` is a row like any other, and `unclassifiedRate` is returned
+ * beside the rows. That is the invariant, not a nicety: an unclassified rate
+ * nobody can see is how `job_failed` survived long enough to swallow every
+ * agent-side failure in the system. The rate will read HIGH at first and
+ * should — rows written before this shipped resolve to `unclassified` through
+ * `LEGACY_CAUSE_ALIAS`, which is an accurate measurement of an era that
+ * classified nothing. The number worth watching is the rate over rows written
+ * after it.
+ *
+ * A session counts as failed when its STATUS says so, not merely because it
+ * carries a `failure_reason`. The two disagree on live data: 37 forge-beta
+ * sessions sit at `completed` holding one (30 `orphan_under_terminal_run`, 6
+ * `heartbeat_timeout`), the ISS-759 shape the `cm:guard` on
+ * `agent-sessions/routes.ts` names. Counting those as deaths would make the one
+ * surface built against a lying session row repeat the lie, so they are
+ * excluded from the histogram and returned as `nonFailedWithFailureReason`
+ * instead — a number with a name beats a filter nobody sees. The field spans
+ * every status outside the failed pair, LIVE ones included: the I1 trigger
+ * stamps a cause on a session that is still `running`, and a row claiming to
+ * be running and failed at once is the same lie one tense earlier.
+ *
+ * The mirror case is included rather than excluded: a `failed` session holding
+ * NO reason at all is counted, as `unclassified`. It is the purest form of the
+ * defect this issue exists to end, and a query that asked for a reason before
+ * counting a failure could never see it.
+ */
+// cm:guard `unclassified` must stay a first-class row here — filtering it out, folding it into "other", or reporting only the classified share re-hides the exact hole this tool exists to expose
+// cm:guard the status filter and `nonFailedWithFailureReason` are one mechanism: rows excluded from the histogram must stay counted somewhere in the response. Narrowing the WHERE without carrying the excluded rows out under their own name is how a metric starts reading clean because it stopped looking.
+// cm:guard a failed session with a NULL `failure_reason` is IN, and is the most important row here — it recorded nothing at all, which is the hole this tool measures. Re-adding `failure_reason IS NOT NULL` to the WHERE drops it from both sides of `unclassifiedRate`, so the rate improves precisely because the worst rows stopped being counted.
+export const forgeMetricsSessionFailuresTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'forge_metrics.session_failures',
+  description:
+    'Failed agent sessions grouped by ISS-877 failure cause. Requires project membership. Params: `projectId` and `days` (1..90, default 30). Counts sessions whose STATUS is `failed` or `cancelled_stale`. Returns `{ rows: [{ cause, origin, sessions, isRealFailure, lastAt }], total, unclassified, unclassifiedRate, nonFailedWithFailureReason, windowDays, projectId }`. `nonFailedWithFailureReason` counts sessions at any other status that still carry a reason — `completed` (the ISS-759 completed-yet-failed shape) and live `running`/`queued` rows the I1 trigger stamped — reported rather than silently dropped. Legacy rows (`job_failed`, free text) resolve to `unclassified` at read time — a high historical rate is the honest measurement of the era before causes were recorded, not a bug.',
+  inputSchema: zodToMcpSchema(sessionFailuresInputSchema),
+  handler: async (args) => {
+    const input = sessionFailuresInputSchema.parse(args);
+    await assertPrincipalIsMember(ctx.principal, input.projectId);
+
+    const result = await db.execute(sql`
+      SELECT status, failure_reason, count(*)::int AS sessions, max(updated_at) AS last_at
+      FROM agent_sessions
+      WHERE project_id = ${input.projectId}
+        AND updated_at >= now() - (${input.days}::int * interval '1 day')
+        AND (status IN ('failed', 'cancelled_stale') OR failure_reason IS NOT NULL)
+      GROUP BY status, failure_reason
+    `);
+
+    const byCause = new Map<FailureCause, { sessions: number; lastAt: Date | null }>();
+    let nonFailedWithFailureReason = 0;
+    for (const row of result as unknown as Array<{
+      status: string | null;
+      failure_reason: string | null;
+      sessions: number | string;
+      last_at: string | Date | null;
+    }>) {
+      if (!FAILED_SESSION_STATUSES.has(row.status ?? '')) {
+        nonFailedWithFailureReason += num(row.sessions);
+        continue;
+      }
+      const cause = resolveFailureCause(row.failure_reason);
+      const prev = byCause.get(cause);
+      const lastAt = row.last_at ? new Date(row.last_at) : null;
+      byCause.set(cause, {
+        sessions: (prev?.sessions ?? 0) + num(row.sessions),
+        lastAt:
+          prev?.lastAt && lastAt
+            ? prev.lastAt > lastAt
+              ? prev.lastAt
+              : lastAt
+            : (lastAt ?? prev?.lastAt ?? null),
+      });
+    }
+
+    const rows: SessionFailureRow[] = [...byCause.entries()]
+      .map(([cause, agg]) => ({
+        cause,
+        origin: FAILURE_CAUSE_ORIGIN[cause],
+        sessions: agg.sessions,
+        isRealFailure: isRealFailureCause(cause),
+        lastAt: agg.lastAt ? agg.lastAt.toISOString() : null,
+      }))
+      .sort((a, b) => b.sessions - a.sessions || a.cause.localeCompare(b.cause));
+
+    const total = rows.reduce((sum, row) => sum + row.sessions, 0);
+    const unclassified = byCause.get('unclassified')?.sessions ?? 0;
+    return {
+      rows,
+      total,
+      unclassified,
+      unclassifiedRate: total === 0 ? 0 : unclassified / total,
+      nonFailedWithFailureReason,
       windowDays: input.days,
       projectId: input.projectId,
     };

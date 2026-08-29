@@ -138,7 +138,7 @@ export async function cascadeCancelChildJobs(
       entity: 'session',
       to: sessionTarget,
       set: completedSuccess
-        ? { failureReason: null, updatedAt: now }
+        ? { failureReason: null, failureDetail: null, updatedAt: now }
         : { failureReason: reason, updatedAt: now },
       where: and(
         inArray(agentSessions.id, abortedSessionIds),

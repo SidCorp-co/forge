@@ -17,8 +17,8 @@ import {
   deriveStage,
   statusToChip,
   statusToRun,
-  FAILURE_REASON_ACTION,
-  FAILURE_REASON_LABEL,
+  failureReasonAction,
+  failureReasonLabel,
   type SessionRow,
 } from "@/features/sessions/types";
 import { useSessionCost, useSessions } from "@/features/sessions/hooks";
@@ -255,10 +255,10 @@ export function ContextRail({
         <Section title="Blocked">
           <Banner tone={failureReason === "user_cancelled" ? "attention" : "danger"}>
             <span className="font-semibold">
-              {FAILURE_REASON_LABEL[failureReason] ?? failureReason}
+              {failureReasonLabel(failureReason) ?? failureReason}
             </span>
-            {FAILURE_REASON_ACTION[failureReason] && (
-              <span className="mt-0.5 block">{FAILURE_REASON_ACTION[failureReason]}</span>
+            {failureReasonAction(failureReason) && (
+              <span className="mt-0.5 block">{failureReasonAction(failureReason)}</span>
             )}
           </Banner>
         </Section>

@@ -22,6 +22,7 @@ flowchart LR
 | Dispatch and its gates | `core/src/jobs/dispatcher.ts`, `core/src/jobs/dispatch-gates.ts` |
 | Advisory status map | `core/src/pipeline/state-machine.ts:transitions` |
 | Retry, escalation, failure class | `core/src/jobs/retry.ts`, `core/src/pipeline/failure-classifier.ts` |
+| Failure cause taxonomy | `core/src/pipeline/failure-causes.ts:FAILURE_CAUSES`, `core/src/pipeline/failure-patterns.ts:CAUSE_RULES` |
 | Orphan hygiene | `core/src/pipeline/runs-cascade.ts`, `core/src/jobs/loop-monitor.ts`, `core/src/jobs/kill-gate.ts` |
 | Autonomous driver mode | `core/src/pipeline/autonomous-mode.ts:AUTONOMOUS_DRIVER_STATUSES` |
 | Release gate and batches | `core/src/release-batch/`, `core/src/issues/release-gate-hold.ts` |

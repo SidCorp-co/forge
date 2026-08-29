@@ -6,6 +6,12 @@
  * retry) that `scheduleAutoRetryWithVerify` obeys instead of re-deriving
  * retryability from `kind` itself.
  *
+ * ISS-877 added a third axis: `cause` (what actually happened). It is derived
+ * from the same text by the same call, so the job lane and the session lane can
+ * never disagree about why a run died — `jobs/agent-session-link.ts` asks this
+ * function instead of stamping the `job_failed` that used to stand for all of
+ * them. Pattern tables live in `failure-patterns.ts`.
+ *
  * `version` is bumped whenever the patterns below change semantically.
  * Persisted on `jobs.classifier_version` so that, when patterns evolve,
  * a re-classified historical row keeps its original verdict (the sweeper
@@ -14,11 +20,23 @@
  */
 
 import { isSpendLimitError, isUsageLimitError } from '../runners/limit-detect.js';
+import type { FailureCause } from './failure-causes.js';
+import {
+  CC_STARTUP_PATTERNS,
+  causeForMetaErrorType,
+  causeForText,
+  DUPLEX_SESSION_PATTERNS,
+  PERMANENT_PATTERNS,
+  PERMISSION_PATTERNS,
+  TERMINAL_INFRA_PATTERNS,
+  TIMEOUT_PATTERNS,
+  TRANSIENT_PATTERNS,
+} from './failure-patterns.js';
 import { parseRetryAfter, readRetryAfterHeader } from './retry-after-parser.js';
 
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — the runner's plain error string is its only routing lever
 // cm:guard bump CLASSIFIER_VERSION on any pattern change, and keep specific buckets ahead of the transient fallthrough
-export const CLASSIFIER_VERSION = 9;
+export const CLASSIFIER_VERSION = 10;
 
 export type FailureKind = 'code' | 'infra' | 'transient-cc' | 'timeout';
 
@@ -29,6 +47,10 @@ export interface ClassifyResult {
   kind: FailureKind;
   /** Policy verdict callers must obey instead of re-deriving from `kind`. */
   action: FailureAction;
+  /** Diagnosis: what happened, in the ISS-877 taxonomy. Independent of both
+   *  `kind` and `action` — a provider spend cap and a runner going offline are
+   *  the same policy and different causes. */
+  cause: FailureCause;
   reason: string;
   meta: Record<string, unknown> | null;
   version: number;
@@ -51,70 +73,6 @@ export function deriveActionFromKind(kind: FailureKind): FailureAction {
       return 'retry';
   }
 }
-
-const PERMISSION_PATTERNS: ReadonlyArray<RegExp> = [
-  /\b(401|403)\b/,
-  /\bunauthorized\b/i,
-  /\bforbidden\b/i,
-  /\bpermission[ _-]?denied\b/i,
-];
-
-const TIMEOUT_PATTERNS: ReadonlyArray<RegExp> = [
-  /\btimeout\b/i,
-  /\bETIMEDOUT\b/i,
-  /no[ _-]?progress[ _-]?for[ _-]/i,
-  /heartbeat[ _-]?(missing|stale)/i,
-];
-
-// Subpatterns moved to PERMISSION_PATTERNS / TIMEOUT_PATTERNS above are
-// intentionally absent here so each text matches exactly one bucket.
-const PERMANENT_PATTERNS: ReadonlyArray<RegExp> = [
-  /content[ _-]?filter(ing)?/i,
-  /invalid_request_error/i,
-  /\bvalidation[ _-]?error\b|\bschema[ _-]?error\b/i,
-  /\bquota[ _-]?exceeded\b/i,
-  /\bbilling[ _-]?(error|required)\b/i,
-  /\bmissing_prompt_string\b/i,
-  /\brunner_unsupported_type\b/i,
-];
-
-// cm:guard these are `infra` with a TERMINAL action, and the pair is the point — the DIAGNOSIS is the runner's workspace and the POLICY is "retrying cannot fix it". They were `code`, which is the same policy reached by lying about the cause: a human triaging a red job read "code" and went looking at a diff, when the fault was that /home/forge/projects/anhome was not a git repo (ubuntu1, 8 jobs on 2026-08-14). ISS-808's original reason still holds for the action — a project with no git repo by design (e.g. a storefront) can't fix these by retrying.
-// cm:edge protocol -> packages/core/src/pipeline/failure-classifier.ts#deriveActionFromKind — that fallback maps kind->action for pre-ISS-823 rows and CANNOT express this pair; anything added here is invisible to it, so a historical row keeps its old verdict by design
-const TERMINAL_INFRA_PATTERNS: ReadonlyArray<RegExp> = [
-  /\bpreflight[ _-]?failed:\s*origin_remote\b/i,
-  /\bpreflight[ _-]?failed:\s*work_tree\b/i,
-  /\bpreflight[ _-]?failed:\s*repo_path\b/i,
-];
-
-// cm:guard these three strings are the ONLY routing lever the duplex send path has (RFC 0003), and the bucket sits AHEAD of TIMEOUT on purpose: `session_ack_timeout` otherwise matches the generic /\btimeout\b/ and is diagnosed as a stalled agent, which is the opposite of the truth — the agent may be working fine and it is the CHANNEL that failed. Diagnosis `infra`, policy `retry`: a fresh session is the correct next move, and only a `gone` the kill gate has confirmed may dispatch one.
-const DUPLEX_SESSION_PATTERNS: ReadonlyArray<RegExp> = [
-  /\bsession_send_failed\b/i,
-  /\bsession_ack_timeout\b/i,
-  /\bsession_checkpoint_deadline_exceeded\b/i,
-];
-
-const TRANSIENT_PATTERNS: ReadonlyArray<RegExp> = [
-  /\bECONN(RESET|REFUSED|ABORTED)\b/i,
-  /\bEPIPE\b|\bnetwork[ _-]?error\b/i,
-  /\b50[0-9]\b|\bservice[ _-]?unavailable\b|\bbad[ _-]?gateway\b/i,
-  /\b429\b|\brate[ _-]?limit/i,
-  /runner (offline|stale|disconnected)/i,
-  /pg-?boss[ _-]?(error|timeout)/i,
-  // ISS-451 (C5) — runner pre-claim preflight failures (missing repo, bad git
-  // tree, unreachable push remote, missing hooks path) are environment
-  // problems by construction.
-  /\bpreflight[ _-]?failed\b/i,
-];
-
-// ISS-450 — the ISS-402 cc-startup-death signature, used only as a TEXT
-// fallback when the caller could not derive structured `signals` (the
-// preferred source). A Claude-CLI session that dies during startup retries
-// uselessly on the same device; `transient-cc` routes it to an immediate
-// different-device failover instead.
-const CC_STARTUP_PATTERNS: ReadonlyArray<RegExp> = [
-  /\bunknown command\b/i,
-  /skill[ _-]?registration/i,
-];
 
 interface ClassifyInput {
   /** Free-form error excerpt (jobs.error or job_events result.result). */
@@ -153,13 +111,17 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
   const text = (input.error ?? '').trim();
   const meta = input.meta ?? null;
   const retryAfter = extractRetryAfter(meta);
-  const { kind, reason, meta: resultMeta, action } = classifyKind(text, meta, input.signals);
+  const { kind, reason, meta: resultMeta, action, cause } = classifyKind(text, meta, input.signals);
+  // cm:guard an `unclassified` cause MUST arrive with `meta.needsReview` — the operator's review queue reads the flag and the taxonomy metric reads the cause, so a row that is one without the other makes the unclassified rate and the queue disagree, and a hole nobody can see is how `job_failed` lasted 1,787 rows
+  const reviewedMeta =
+    cause === 'unclassified' ? { ...(resultMeta ?? {}), needsReview: true } : resultMeta;
   return {
     kind,
+    cause,
     // cm:guard an explicit `action` from classifyKind MUST win — kind and action are two independent axes (diagnosis vs policy) and collapsing them is what forced `preflight_failed: work_tree` to be labelled `code` just to stop it retrying
     action: action ?? deriveActionFromKind(kind),
     reason,
-    meta: resultMeta,
+    meta: reviewedMeta,
     version: CLASSIFIER_VERSION,
     retryAfter,
   };
@@ -171,17 +133,21 @@ function classifyKind(
   signals: ClassifyInput['signals'],
 ): {
   kind: FailureKind;
+  cause: FailureCause;
   reason: string;
   meta: Record<string, unknown> | null;
   action?: FailureAction;
 } {
   const reasonExcerpt = text.length > 200 ? `${text.slice(0, 197)}…` : text;
+  // cm:guard derive the cause ONCE, here, and let every branch below carry it — the policy buckets each span several causes (TRANSIENT alone covers a provider 429, an offline runner and a workspace preflight), so a per-branch cause would have to pick one and be wrong about the other two
+  const textCause = causeForText(text);
 
   const metaErrorType = readMetaErrorType(meta);
   if (metaErrorType) {
     if (metaErrorType === 'authentication_error' || metaErrorType === 'permission_error') {
       return {
         kind: 'infra',
+        cause: causeForMetaErrorType(metaErrorType) ?? textCause,
         reason: `${metaErrorType}: ${truncate(extractMetaMessage(meta) ?? reasonExcerpt, 150)}`,
         meta,
       };
@@ -189,6 +155,7 @@ function classifyKind(
     if (metaErrorType === 'invalid_request_error' || metaErrorType === 'billing_error') {
       return {
         kind: 'code',
+        cause: causeForMetaErrorType(metaErrorType) ?? textCause,
         reason: `${metaErrorType}: ${truncate(extractMetaMessage(meta) ?? reasonExcerpt, 150)}`,
         meta,
       };
@@ -200,6 +167,7 @@ function classifyKind(
     ) {
       return {
         kind: 'infra',
+        cause: causeForMetaErrorType(metaErrorType) ?? textCause,
         reason: `${metaErrorType}: ${truncate(extractMetaMessage(meta) ?? reasonExcerpt, 150)}`,
         meta,
       };
@@ -214,13 +182,14 @@ function classifyKind(
   // message in its detail still flows to the PERMANENT/TRANSIENT patterns.
   const runnerKind = classifyRunnerToken(text);
   if (runnerKind) {
-    return { kind: runnerKind, reason: reasonExcerpt, meta };
+    return { kind: runnerKind, cause: textCause, reason: reasonExcerpt, meta };
   }
 
   // cm:why ISS-823 — org/account spend-cap is per-account (evidence: CLASSIFIER_VERSION 7), so it fails over with exhaustion memory instead of going terminal
   if (isSpendLimitError(text)) {
     return {
       kind: 'transient-cc',
+      cause: 'provider_spend_cap',
       reason: 'org/account spend limit → per-account failover with exhaustion memory',
       meta: { ...(meta ?? {}), limitScope: 'account-spend' },
     };
@@ -233,6 +202,7 @@ function classifyKind(
   if (isUsageLimitError(text)) {
     return {
       kind: 'transient-cc',
+      cause: 'provider_usage_limit',
       reason: 'usage/session limit → cross-device failover',
       meta,
     };
@@ -246,6 +216,7 @@ function classifyKind(
   if (signals?.diedBeforeFirstToolUse === true && (signals.sessionMessageCount ?? 0) <= 3) {
     return {
       kind: 'transient-cc',
+      cause: 'agent_startup_failed',
       reason: 'cc-startup-death (≤3 msgs, no tool use)',
       meta,
     };
@@ -253,19 +224,34 @@ function classifyKind(
 
   for (const pat of PERMISSION_PATTERNS) {
     if (pat.test(text)) {
-      return { kind: 'infra', reason: reasonExcerpt || 'permission (pattern match)', meta };
+      return {
+        kind: 'infra',
+        cause: textCause,
+        reason: reasonExcerpt || 'permission (pattern match)',
+        meta,
+      };
     }
   }
 
   for (const pat of DUPLEX_SESSION_PATTERNS) {
     if (pat.test(text)) {
-      return { kind: 'infra', reason: reasonExcerpt || 'duplex session channel failure', meta };
+      return {
+        kind: 'infra',
+        cause: 'duplex_channel_failed',
+        reason: reasonExcerpt || 'duplex session channel failure',
+        meta,
+      };
     }
   }
 
   for (const pat of TIMEOUT_PATTERNS) {
     if (pat.test(text)) {
-      return { kind: 'timeout', reason: reasonExcerpt || 'timeout (pattern match)', meta };
+      return {
+        kind: 'timeout',
+        cause: textCause,
+        reason: reasonExcerpt || 'timeout (pattern match)',
+        meta,
+      };
     }
   }
 
@@ -274,6 +260,7 @@ function classifyKind(
       return {
         kind: 'infra',
         action: 'terminal',
+        cause: 'workspace_preflight_failed',
         reason: reasonExcerpt || 'workspace preflight (pattern match)',
         meta,
       };
@@ -282,13 +269,23 @@ function classifyKind(
 
   for (const pat of PERMANENT_PATTERNS) {
     if (pat.test(text)) {
-      return { kind: 'code', reason: reasonExcerpt || 'permanent (pattern match)', meta };
+      return {
+        kind: 'code',
+        cause: textCause,
+        reason: reasonExcerpt || 'permanent (pattern match)',
+        meta,
+      };
     }
   }
 
   for (const pat of TRANSIENT_PATTERNS) {
     if (pat.test(text)) {
-      return { kind: 'infra', reason: reasonExcerpt || 'transient (pattern match)', meta };
+      return {
+        kind: 'infra',
+        cause: textCause,
+        reason: reasonExcerpt || 'transient (pattern match)',
+        meta,
+      };
     }
   }
 
@@ -296,17 +293,18 @@ function classifyKind(
     if (pat.test(text)) {
       return {
         kind: 'transient-cc',
+        cause: 'agent_skill_missing',
         reason: reasonExcerpt || 'cc-startup-death (pattern match)',
         meta,
       };
     }
   }
 
-  // No bucket matched. There is no `unknown` class anymore (I4): default to
-  // `infra` (bounded retry — the conservative choice) and flag the row for
-  // the operator UI so the pattern gap is visible instead of hidden.
+  // cm:why no POLICY bucket matched; `infra` is the conservative default (bounded retry) and `needsReview` puts the pattern gap on the operator UI instead of hiding it (I4 removed the `unknown` KIND, which is a different axis from the `unclassified` cause)
+  // cm:guard carry `textCause` here rather than hard-coding `unclassified` — a POLICY gap and a CAUSE gap are different holes, and most texts that reach this branch (`dispatch_unclaimed`, `monthly_budget_exhausted`, `No space left on device`) have a perfectly well-known cause and merely no retry rule. Collapsing the two loses the diagnosis for exactly the failures nobody has written a policy for yet.
   return {
     kind: 'infra',
+    cause: textCause,
     reason: reasonExcerpt || 'unclassified',
     meta: { ...(meta ?? {}), needsReview: true },
   };

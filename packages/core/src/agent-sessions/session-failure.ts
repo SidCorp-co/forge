@@ -1,4 +1,5 @@
 import { logger } from '../logger.js';
+import type { FailureCause } from '../pipeline/failure-causes.js';
 import {
   classifyFailure,
   type FailureAction,
@@ -133,6 +134,7 @@ export async function finalizeScheduleSessionFailure(opts: {
 }): Promise<{
   kind: FailureKind;
   action: FailureAction;
+  cause: FailureCause;
   reason: string;
   /** Post-write schedule failover; no-op unless the classifier said `failover`. */
   recoverAfterWrite: (metadata: unknown) => Promise<void>;
@@ -142,7 +144,9 @@ export async function finalizeScheduleSessionFailure(opts: {
   const text = extractSessionFailureText(opts.messages, opts.note, { excludeRoles: ['user'] });
   const classified = classifyFailure({ error: text });
 
-  opts.set.failureReason = classified.reason;
+  // cm:guard ISS-877 — `failureReason` takes the CAUSE token and `failureDetail` takes the sentence. This assignment used to put `classified.reason` (a sentence) into the column `queue_timeout` and `user_cancelled` use as a token, which is how 55 live rows came to hold prose — including 9 that hold the agent's own prompt as its reason for failing. Never widen `failureReason` back to free text; add a member to `FAILURE_CAUSES` instead.
+  opts.set.failureReason = classified.cause;
+  opts.set.failureDetail = classified.reason || null;
 
   if (classified.action === 'failover') {
     const reset = parseUsageLimitReset(text);
@@ -155,6 +159,7 @@ export async function finalizeScheduleSessionFailure(opts: {
   return {
     kind: classified.kind,
     action: classified.action,
+    cause: classified.cause,
     reason: classified.reason,
     recoverAfterWrite: async (metadata: unknown) => {
       if (classified.action !== 'failover') return;

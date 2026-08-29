@@ -21,6 +21,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import type { IssueBranchOverride } from '../branches/resolve.js';
 import type { ReleaseNotes } from '../issues/release-notes.js';
+import { FAILURE_CAUSES, type FailureCause } from '../pipeline/failure-causes.js';
 
 /**
  * pgvector column type. Dimension is fixed per column — the `memories.embedding`
@@ -2181,22 +2182,10 @@ export const sessionRuntimeStates = [
 ] as const;
 export type SessionRuntimeState = (typeof sessionRuntimeStates)[number];
 
-// Terminal cause written to `agent_sessions.failure_reason`. Reserved for
-// actual session execution failures (zombie sweeper, worker errors, user
-// cancellation). Dispatcher gate skips (issue_busy/waiting_on_dep/
-// project_full/runner_full/manual_hold) are recomputed by the picker on
-// every tick (ISS-162 Stateless Gates) — no persisted gate state lives on
-// the session row, and the picker itself filters gated jobs out of its
-// SELECT.
-export const agentSessionFailureReasons = [
-  'queue_timeout',
-  'heartbeat_timeout',
-  'no_worker_online',
-  'user_cancelled',
-  'job_failed',
-  'migration_zombie_cleanup',
-] as const;
-export type AgentSessionFailureReason = (typeof agentSessionFailureReasons)[number];
+// cm:edge contract -> packages/contracts/src/failure-causes.ts — ISS-877 made that module the single taxonomy for core, web-v2 and the MCP metric; this alias exists so the schema keeps naming its own column's vocabulary, not so a second list can grow here
+// cm:guard dispatcher gate skips (issue_busy / waiting_on_dep / project_full / runner_full / manual_hold) are NOT members and must never be added — ISS-162 made them stateless, recomputed by the picker every tick, so persisting one on the session row revives a gate state that goes stale the moment the condition clears
+export const agentSessionFailureReasons = FAILURE_CAUSES;
+export type AgentSessionFailureReason = FailureCause;
 
 export const agentSessions = pgTable(
   'agent_sessions',
@@ -2228,17 +2217,13 @@ export const agentSessions = pgTable(
     pipelineHealth: jsonb('pipeline_health').$type<
       import('../agent-sessions/pipeline-control-types.js').PipelineHealth | null
     >(),
-    // ISS-34 zombie-fix lifecycle stamps. `dispatchedAt` is set when the
-    // pipeline enqueues; `startedAt` when a worker actually claims (CAS from
-    // queued → running); `lastHeartbeatAt` is bumped on every worker write
-    // (message append, claudeSessionId set, status patch). `failureReason`
-    // is a free-form text column whose canonical values are listed in
-    // `agentSessionFailureReasons` above (terminal causes from ISS-34 plus
-    // ISS-40 PR-E dispatcher skip reasons).
+    // cm:guard ISS-34 zombie-fix stamps, and each marks a DIFFERENT moment: `dispatchedAt` when the pipeline enqueues, `startedAt` only when a worker CAS-claims queued→running, `lastHeartbeatAt` on EVERY worker write (message append, claudeSessionId set, status patch). The heartbeat reaper reads the third; widening what bumps it, or bumping it from a core-side write, makes a dead runner look alive.
     dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
     startedAt: timestamp('started_at', { withTimezone: true }),
     lastHeartbeatAt: timestamp('last_heartbeat_at', { withTimezone: true }),
-    failureReason: text('failure_reason'),
+    // cm:guard ISS-877 — the `{ enum }` here is the ONLY thing stopping free text returning to this column, so removing it is not a typing detail: `agent-sessions/session-failure.ts` used to write a classifier SENTENCE where `queue_timeout` writes a token, and 55 live rows ended up holding prose, 9 of them the agent's own prompt. There is no CHECK constraint on purpose — migration 0180 measured what one costs here, where a missed writer turns every INSERT into a 23514 — so the compile error is the whole enforcement, and the human sentence goes to `failureDetail`.
+    failureReason: text('failure_reason', { enum: agentSessionFailureReasons }),
+    failureDetail: text('failure_detail'),
     runtimeState: text('runtime_state', { enum: sessionRuntimeStates }),
     // cm:guard the HIGHEST inbox seq core has ALLOCATED for this session, not the highest the runner applied — the runner reports what it applied and core never back-fills this from it. Allocate with `UPDATE ... SET last_inbox_seq = last_inbox_seq + 1 RETURNING`, never a read-then-write: two concurrent sends that both read N and both send N+1 end with one written and the other dropped-and-acked-delivered, which is a silent message loss the ack contract says cannot happen.
     lastInboxSeq: integer('last_inbox_seq').notNull().default(0),
