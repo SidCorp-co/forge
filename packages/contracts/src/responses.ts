@@ -132,13 +132,7 @@ export interface DeviceSkillReportBody {
 }
 
 // cm:guard status is `synced` only when observedSha === installedHash; a runner pre-dating observation (<0.7.1) must report `unknown`, never `synced`
-export type DeviceSkillStatusValue =
-  | 'synced'
-  | 'outdated'
-  | 'missing'
-  | 'unknown'
-  | 'shadowed'
-  | 'stale';
+export type DeviceSkillStatusValue = 'synced' | 'outdated' | 'missing' | 'unknown' | 'shadowed' | 'stale';
 
 // One row of the per-device skill freshness from
 // `GET /api/projects/:projectId/devices/:deviceId/skills` (user-token auth,
