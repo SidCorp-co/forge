@@ -325,7 +325,8 @@ describe('jobs/agent-session-link — ISS-877 failure cause', () => {
     expect(updateCalls[0]?.set.failureDetail).toBe('a shape no rule has ever seen');
   });
 
-  it('ISS-877: prefers the sweeper\u2019s precise failureReason over the raw error text', async () => {
+  // cm:why the sweeper's phrase is the only thing in this pair that names a cause — the error text is generic. It is NOT that `failureReason` wins by being that column: the two are joined and `CAUSE_RULES` order decides, so an error text carrying a more specific marker outranks it.
+  it('ISS-877: reads the sweeper\u2019s precise failureReason when the error text names nothing', async () => {
     await syncAgentSessionLifecycle(
       {
         ...baseJob,
@@ -336,6 +337,19 @@ describe('jobs/agent-session-link — ISS-877 failure cause', () => {
       'failed',
     );
     expect(updateCalls[0]?.set.failureReason).toBe('session_lost');
+  });
+
+  it('ISS-877: lets the more specific of the two columns win, whichever it is', async () => {
+    await syncAgentSessionLifecycle(
+      {
+        ...baseJob,
+        agentSessionId: 'sess-1',
+        failureReason: 'session_lost',
+        error: '[NO_RESULT_CLEAN_EXIT] the CLI exited with no result line',
+      } as never,
+      'failed',
+    );
+    expect(updateCalls[0]?.set.failureReason).toBe('agent_exited_without_result');
   });
 
   it('ISS-877: `job_failed` is not written by this path any more', async () => {

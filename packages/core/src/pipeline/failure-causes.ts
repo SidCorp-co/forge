@@ -159,6 +159,8 @@ export const LEGACY_CAUSE_ALIAS: Readonly<Record<string, FailureCause>> = {
 };
 
 const CAUSE_SET: ReadonlySet<string> = new Set(FAILURE_CAUSES);
+// cm:guard a Map, not the object literal — `raw` comes from a free-text column, and a plain object answers `toString`, `constructor` and `valueOf` off its PROTOTYPE, so a bare `LEGACY_CAUSE_ALIAS[raw]` hands back a function typed `FailureCause` for a row holding any of those words
+const ALIAS_LOOKUP: ReadonlyMap<string, FailureCause> = new Map(Object.entries(LEGACY_CAUSE_ALIAS));
 
 /**
  * Turn whatever is in `failure_reason` into a cause. Historic tokens go through
@@ -178,7 +180,7 @@ const CAUSE_SET: ReadonlySet<string> = new Set(FAILURE_CAUSES);
 export function resolveFailureCause(raw: string | null | undefined): FailureCause {
   if (!raw) return 'unclassified';
   if (CAUSE_SET.has(raw)) return raw as FailureCause;
-  return LEGACY_CAUSE_ALIAS[raw] ?? 'unclassified';
+  return ALIAS_LOOKUP.get(raw) ?? 'unclassified';
 }
 
 /** Whether a cause names something that went wrong, as opposed to a lifecycle

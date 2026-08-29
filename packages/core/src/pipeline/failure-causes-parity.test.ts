@@ -30,7 +30,13 @@ describe('the core and contracts copies of the taxonomy', () => {
 
   it('resolve every legacy spelling the same way', () => {
     expect(CONTRACT_ALIAS).toEqual(LEGACY_CAUSE_ALIAS);
-    for (const raw of [...Object.keys(LEGACY_CAUSE_ALIAS), 'a shape nobody has seen', '']) {
+    for (const raw of [
+      ...Object.keys(LEGACY_CAUSE_ALIAS),
+      'a shape nobody has seen',
+      'toString',
+      'constructor',
+      '',
+    ]) {
       expect(contractResolve(raw), raw).toBe(resolveFailureCause(raw));
     }
     expect(contractResolve(null)).toBe(resolveFailureCause(null));

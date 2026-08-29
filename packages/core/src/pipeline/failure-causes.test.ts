@@ -233,6 +233,13 @@ describe('legacy rows stay readable without being rewritten', () => {
     expect(resolveFailureCause('')).toBe('unclassified');
   });
 
+  // cm:why `LEGACY_CAUSE_ALIAS` is a plain object literal, so its PROTOTYPE answers `toString`, `constructor` and `valueOf` — a bare `ALIAS[raw]` hands those back as functions typed `FailureCause`, and the column is free text on old rows, so the input is not ours to trust.
+  it('does not resolve a prototype method name into a cause', () => {
+    for (const raw of ['toString', 'constructor', 'valueOf', '__proto__', 'hasOwnProperty']) {
+      expect(resolveFailureCause(raw), raw).toBe('unclassified');
+    }
+  });
+
   it('aliases only to real members', () => {
     for (const target of Object.values(LEGACY_CAUSE_ALIAS)) {
       expect(FAILURE_CAUSES).toContain(target);

@@ -204,9 +204,12 @@ export async function ensureAgentSessionForJob(
  * up on were readable this way — seven `provider_spend_cap`, one
  * `provider_refused_request` — without opening a transcript.
  *
- * `jobs.failureReason` is preferred over `jobs.error` when present because a
- * sweeper writes a precise phrase there (`session_lost`, `dispatch_unclaimed`)
- * that the raw error text does not contain.
+ * Both columns are JOINED and classified as one text, deliberately rather than
+ * preferring either: a sweeper writes a precise phrase into `failureReason`
+ * (`session_lost`, `dispatch_unclaimed`) that the error text lacks, while the
+ * runner writes its marker (`[NO_RESULT_CLEAN_EXIT]`, `[SIGNAL_KILLED]`) into
+ * `error` and leaves the other holding a sentence. When both name a cause,
+ * `CAUSE_RULES` order decides, most-specific-first — not the column.
  */
 // cm:edge contract -> packages/core/src/pipeline/failure-classifier.ts — one classifier for both lanes is what stops the job row and the session row disagreeing about the same death
 function deriveSessionFailure(job: JobRow): {

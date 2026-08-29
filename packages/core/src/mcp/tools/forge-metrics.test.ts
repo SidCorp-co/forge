@@ -299,12 +299,12 @@ describe('forge_metrics.session_failures (ISS-877)', () => {
     const tool = forgeMetricsSessionFailuresTool(buildCtx());
     const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
       total: number;
-      completedWithFailureReason: number;
+      nonFailedWithFailureReason: number;
       rows: Array<{ cause: string }>;
     };
 
     expect(res.total).toBe(6);
-    expect(res.completedWithFailureReason).toBe(37);
+    expect(res.nonFailedWithFailureReason).toBe(37);
     expect(res.rows.map((r) => r.cause).sort()).toEqual([
       'provider_spend_cap',
       'residency_expired',
@@ -337,10 +337,30 @@ describe('forge_metrics.session_failures (ISS-877)', () => {
     const tool = forgeMetricsSessionFailuresTool(buildCtx());
     const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
       total: number;
-      completedWithFailureReason: number;
+      nonFailedWithFailureReason: number;
     };
     expect(res.total).toBe(2);
-    expect(res.completedWithFailureReason).toBe(0);
+    expect(res.nonFailedWithFailureReason).toBe(0);
+  });
+
+  it('counts a still-running session the I1 trigger stamped, which is the same lie one tense earlier', async () => {
+    mockMembership();
+    executeImpl.mockResolvedValueOnce([
+      { status: 'failed', failure_reason: 'session_lost', sessions: '1', last_at: null },
+      {
+        status: 'running',
+        failure_reason: 'orphan_under_terminal_run',
+        sessions: '4',
+        last_at: null,
+      },
+    ]);
+    const tool = forgeMetricsSessionFailuresTool(buildCtx());
+    const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
+      total: number;
+      nonFailedWithFailureReason: number;
+    };
+    expect(res.total).toBe(1);
+    expect(res.nonFailedWithFailureReason).toBe(4);
   });
 
   it('returns zero excluded rows rather than omitting the field when every session really failed', async () => {
@@ -350,8 +370,8 @@ describe('forge_metrics.session_failures (ISS-877)', () => {
     ]);
     const tool = forgeMetricsSessionFailuresTool(buildCtx());
     const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
-      completedWithFailureReason: number;
+      nonFailedWithFailureReason: number;
     };
-    expect(res.completedWithFailureReason).toBe(0);
+    expect(res.nonFailedWithFailureReason).toBe(0);
   });
 });

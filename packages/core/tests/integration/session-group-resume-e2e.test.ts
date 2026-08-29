@@ -241,7 +241,7 @@ describe('ISS-195 session-group resume end-to-end', () => {
       UPDATE agent_sessions
       SET claude_session_id = ${claudeSessionId},
           status = 'failed',
-          failure_reason = 'job_failed',
+          failure_reason = 'session_lost',
           updated_at = now()
       WHERE id = (SELECT agent_session_id FROM jobs WHERE id = ${jobId})
     `);
