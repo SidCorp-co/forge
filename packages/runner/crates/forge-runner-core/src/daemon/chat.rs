@@ -448,6 +448,7 @@ async fn consume(client: &CoreClient, session_id: &str, mut rx: mpsc::Receiver<R
 
     let mut turn_msgs: Vec<Value> = Vec::new();
     let mut claude_sid: Option<String> = None;
+    let mut runtime_state: Option<String> = None;
     let mut tool_calls: u32 = 0;
     let mut dirty = false;
 
@@ -464,6 +465,8 @@ async fn consume(client: &CoreClient, session_id: &str, mut rx: mpsc::Receiver<R
         tokio::select! {
             ev = rx.recv() => match ev {
                 Some(RunnerEvent::ClaudeSessionId(sid)) => { claude_sid = Some(sid); dirty = true; }
+                // cm:guard recorded, NOT flushed on its own — a state change is not new transcript, and marking it dirty would post a whole-transcript PATCH per turn end on top of the terminal one that already carries it.
+                Some(RunnerEvent::StateChanged(state)) => { runtime_state = Some(state.to_string()); }
                 Some(RunnerEvent::Stdout(json)) => {
                     // cm:guard counting must NOT set `dirty` — a tool-heavy stretch emits no assistant text, so marking it dirty turns a silent period into one full-transcript PATCH every FLUSH_INTERVAL. Session 5250d5e1 (15 min, 17 text turns, dozens of tool calls) would have gone from ~17 writes to ~1200, each carrying the whole growing messages array. The count rides the next text flush and the terminal patch, which always fires; nothing reads the interim value.
                     tool_calls = tool_calls.saturating_add(count_tool_uses(&json));
@@ -484,6 +487,7 @@ async fn consume(client: &CoreClient, session_id: &str, mut rx: mpsc::Receiver<R
                         messages: Some(merged(&baseline, &turn_msgs)),
                         claude_session_id: claude_sid.clone(),
                         tool_call_count: Some(tool_calls),
+                        runtime_state: runtime_state.clone(),
                     };
                     if let Err(e) = agent_sessions::patch_session(client, session_id, &patch).await {
                         if e.to_string().contains("SESSION_TERMINATED") {
@@ -506,6 +510,7 @@ async fn consume(client: &CoreClient, session_id: &str, mut rx: mpsc::Receiver<R
                 messages: Some(merged(&baseline, &turn_msgs)),
                 claude_session_id: claude_sid.clone(),
                 tool_call_count: Some(tool_calls),
+                runtime_state: runtime_state.clone(),
             };
             if let Err(e) = agent_sessions::patch_session(client, session_id, &patch).await {
                 tracing::warn!("[chat {session_id}] final patch: {e}");
@@ -562,6 +567,8 @@ async fn patch_failed(
         messages: Some(msgs),
         claude_session_id: claude_sid,
         tool_call_count: tool_calls,
+        // cm:guard a failed turn reports `closed`, never the park — a session that died is not waiting for anyone, and `awaiting_input` is the one value that exempts a row from the heartbeat hop.
+        runtime_state: Some("closed".into()),
     };
     agent_sessions::patch_session(client, session_id, &patch).await
 }

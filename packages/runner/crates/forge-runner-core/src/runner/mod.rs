@@ -96,6 +96,9 @@ pub enum RunnerEvent {
     },
     /// Captured CLI session id (for resume bookkeeping on core).
     ClaudeSessionId(String),
+    /// The PROCESS's own state, distinct from the job's lifecycle status.
+    // cm:guard emitted BEFORE the turn's terminal event, never after — the consumer breaks out of its loop on Done/Failed, so a state sent afterwards lands in a receiver nobody is reading and the park is never recorded.
+    StateChanged(&'static str),
     Done {
         exit_code: i32,
     },

@@ -652,6 +652,8 @@ async fn salvage_for(
 
 fn map_event(ev: RunnerEvent) -> Option<JobEventInput> {
     match ev {
+        // cm:guard pipeline jobs are print until ISS-873 phase 3, so nothing emits this on this path yet. When phase 3 flips them, a state change must become a job event here — dropping it silently is how the loop monitor would keep inferring progress from silence on a session that already declares it.
+        RunnerEvent::StateChanged(_) => None,
         RunnerEvent::Stdout(json) => Some(JobEventInput::new(
             "stdout",
             serde_json::json!({ "line": json }),

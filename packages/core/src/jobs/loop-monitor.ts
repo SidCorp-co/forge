@@ -438,22 +438,16 @@ export async function reapZombieSessions(
     });
   }
 
-  // Heartbeat hop (pipeline/pm, + ISS-675 escalation, + ISS-727 agent-chat):
-  // running with stale heartbeat. Falls back through startedAt → updatedAt →
-  // createdAt so a rolling deploy with workers still running older code
-  // doesn't over-sweep. A RocketChat escalation or agent-chat session
-  // (metadata.escalation or metadata.agentChat set, no metadata.type) rides
-  // the SAME runner heartbeat mechanism as a pipeline/pm session, so it must
-  // match here too — otherwise an attached-then-hung runner (claudeSessionId
-  // already set, so the no_client_ack hop below can never claim it) leaves
-  // the session `running` forever: no completion bridge fires (silence in
-  // the room) and the per-rid dedup never clears.
+  // cm:guard keep the startedAt → updatedAt → createdAt fallback chain — a rolling deploy leaves workers on older code that stamp fewer of these columns, and reading only the first one over-sweeps every session they own.
+  // cm:guard escalation and agent-chat sessions (ISS-675, ISS-727) MUST match here even though they carry no `metadata.type`: they ride the same runner heartbeat, and an attached-then-hung runner has `claudeSessionId` set, so the no-client hop below can never claim it — dropping them from this hop leaves the session `running` forever, no completion bridge, silence in the room, and the per-rid dedup never clears.
   const heartbeatFailed = await applyKernelTransition(db, {
     entity: 'session',
     to: 'failed',
     set: { failureReason: 'heartbeat_timeout', updatedAt: now },
     where: and(
       eq(agentSessions.status, 'running'),
+      // cm:guard the ONLY exemption from this hop, and it is an exemption from the QUIET CLOCK alone — a parked session still holds its runner slot, and the residency deadline is what bounds it (schema.ts, `sessionRuntimeStates`). Written as IS DISTINCT FROM so a NULL still gets reaped: print-mode sessions never report a state, and reading NULL as "maybe parked" would exempt every job on the old path from the heartbeat hop.
+      sql`${agentSessions.runtimeState} IS DISTINCT FROM 'awaiting_input'`,
       or(
         and(
           isNotNull(agentSessions.lastHeartbeatAt),

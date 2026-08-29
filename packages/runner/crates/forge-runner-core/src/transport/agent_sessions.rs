@@ -43,6 +43,20 @@ pub async fn get_messages(client: &CoreClient, session_id: &str) -> Result<Vec<V
         .unwrap_or_default())
 }
 
+/// Report the PROCESS state for a session with no other patch riding along.
+/// Used when the session ends with nobody consuming its event stream — the
+/// idle ceiling closing an abandoned resident session.
+// cm:guard best-effort by design: a failed report must not take down the close. The row is left claiming `awaiting_input` on a session whose status is already terminal, which the heartbeat hop does not look at — a lost PATCH here costs a stale field, while a close that unwound on it would leak the process this call exists to record the death of.
+pub async fn report_runtime_state(client: &CoreClient, session_id: &str, state: &str) {
+    let patch = SessionPatch {
+        runtime_state: Some(state.to_string()),
+        ..Default::default()
+    };
+    if let Err(e) = patch_session(client, session_id, &patch).await {
+        tracing::debug!("[chat {session_id}] runtime-state report ({state}): {e}");
+    }
+}
+
 /// Fields the runner writes back while streaming / finishing a chat turn.
 /// `None` fields are omitted so a heartbeat-only PATCH doesn't clobber state.
 #[derive(Debug, Default, Serialize)]
@@ -50,6 +64,9 @@ pub async fn get_messages(client: &CoreClient, session_id: &str) -> Result<Vec<V
 pub struct SessionPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    // cm:edge contract -> packages/core/src/agent-sessions/routes.ts — `runtimeState` on patchSchema there is a `.strict()` enum accepted from the DEVICE principal only, and `awaiting_input` is the one value that exempts a session from the heartbeat hop. A value this side does not have there is a 400 the runner logs and drops, leaving the park invisible and the session reaped at 3 minutes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_state: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub messages: Option<Vec<Value>>,
     // `null` is meaningful (clear), so serialize Some(None) as null but omit None.

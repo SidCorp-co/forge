@@ -10,6 +10,7 @@ import {
   agentSessions,
   agentSessionTurns,
   issues,
+  sessionRuntimeStates,
   usageRecords,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
@@ -91,6 +92,7 @@ const patchSchema = z
     metadata: z.unknown().optional(),
     diff: z.unknown().optional(),
     toolCallCount: z.number().int().min(0).optional(),
+    runtimeState: z.enum(sessionRuntimeStates).nullable().optional(),
   })
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
@@ -573,15 +575,19 @@ agentSessionRoutes.patch(
     if (patch.title !== undefined) updates.title = patch.title;
     if (patch.status !== undefined) updates.status = patch.status;
     if (patch.claudeSessionId !== undefined) updates.claudeSessionId = patch.claudeSessionId;
+    // cm:guard DEVICE principal only, for the same reason `toolCallCount` is. `awaiting_input` exempts a session from the heartbeat hop, so a project member who could set it could park any session outside the quiet clock forever — an un-reapable `running` row holding a runner slot at RUNNER_CAP_PER_RUNNER = 1.
+    if (patch.runtimeState !== undefined && c.get('principal') === 'device') {
+      updates.runtimeState = patch.runtimeState;
+    }
     if (patch.repoPath !== undefined) updates.repoPath = patch.repoPath;
     if (patch.messages !== undefined) updates.messages = patch.messages;
     if (patch.usage !== undefined) updates.usage = patch.usage;
     if (patch.metadata !== undefined) updates.metadata = patch.metadata;
     if (patch.diff !== undefined) updates.diff = patch.diff;
 
-    // Any worker-side write is a heartbeat signal; CAS queued→running on
-    // first activity so the sweeper sees a fresh stamp.
+    // cm:guard any worker-side write is a heartbeat signal and CASes queued→running, but a park is NOT activity. `awaiting_input` deliberately does not bump `lastHeartbeatAt` — a session waiting on a human is not progressing, and stamping it healthy is the exact shape `VISION: state-never-lies` forbids. The heartbeat hop exempts the park by READING the state (`jobs/loop-monitor.ts`), never by being told the session is alive.
     const isWorkerActivity =
+      (patch.runtimeState !== undefined && patch.runtimeState !== 'awaiting_input') ||
       patch.messages !== undefined ||
       patch.claudeSessionId !== undefined ||
       patch.usage !== undefined ||

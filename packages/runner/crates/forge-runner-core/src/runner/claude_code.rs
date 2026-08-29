@@ -125,6 +125,9 @@ impl Outcome {
 struct TurnLoop<'a> {
     sessions: &'a Sessions,
     job_id: &'a str,
+    /// Where to report `closed` when the ceiling ends a session nobody is
+    /// consuming. `None` on a path with no agent-session row to report against.
+    core: Option<&'a crate::transport::CoreClient>,
     outcome: &'a Arc<Mutex<Outcome>>,
     result_notify: &'a Arc<tokio::sync::Notify>,
     turn_tx: &'a TurnTx,
@@ -136,6 +139,7 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
     let TurnLoop {
         sessions,
         job_id,
+        core,
         outcome,
         result_notify,
         turn_tx,
@@ -152,7 +156,11 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
                     o.reset_turn();
                     ev
                 };
-                let _ = turn_tx.lock().await.send(ev).await;
+                {
+                    let tx = turn_tx.lock().await;
+                    let _ = tx.send(RunnerEvent::StateChanged("awaiting_input")).await;
+                    let _ = tx.send(ev).await;
+                }
                 reported = true;
             }
             _ = &mut *reader => return reported,
@@ -166,6 +174,12 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
                 // process-level path below then reaps and cleans up.
                 if let Some(s) = sessions.lock().await.get_mut(job_id) {
                     s.stdin = None;
+                }
+                if let Some(client) = core {
+                    crate::transport::agent_sessions::report_runtime_state(
+                        client, job_id, "closed",
+                    )
+                    .await;
                 }
                 return reported;
             }
@@ -724,6 +738,9 @@ impl Runner for ClaudeCodeRunner {
         if let Some(pid) = child.id() {
             inflight::record(&job_id, pid);
         }
+        if spec.duplex {
+            let _ = tx.send(RunnerEvent::StateChanged("working")).await;
+        }
         let turn_tx: TurnTx = Arc::new(Mutex::new(tx.clone()));
         self.sessions.lock().await.insert(
             job_id.clone(),
@@ -848,6 +865,10 @@ impl Runner for ClaudeCodeRunner {
         let core_url_for_verdicts = self.core_url.clone();
         let token_for_verdicts = self.device_token.clone();
         let worktree_for_verdicts = PathBuf::from(&effective_repo);
+        // cm:guard built only for a session that HAS an agent-session row. A pipeline job's `job_id` is not a session id, and reporting a runtime state against it would 404 every close.
+        let core_for_state = spec.duplex.then(|| {
+            crate::transport::CoreClient::new(self.core_url.clone(), self.device_token.clone())
+        });
         let outcome_for_turns = outcome.clone();
         let result_notify_for_turns = result_notify.clone();
         let turn_tx_for_turns = turn_tx.clone();
@@ -861,6 +882,7 @@ impl Runner for ClaudeCodeRunner {
                     TurnLoop {
                         sessions: &sessions_for_turns,
                         job_id: &job_id,
+                        core: core_for_state.as_ref(),
                         outcome: &outcome_for_turns,
                         result_notify: &result_notify_for_turns,
                         turn_tx: &turn_tx_for_turns,
@@ -1103,6 +1125,7 @@ impl Runner for ClaudeCodeRunner {
             .flush()
             .await
             .map_err(|e| Error::Other(format!("failed to flush the turn: {e}")))?;
+        let _ = tx.send(RunnerEvent::StateChanged("working")).await;
         *sess.turn_tx.lock().await = tx;
         sess.turn_started.notify_one();
         Ok(())
@@ -1248,6 +1271,7 @@ mod tests {
                     TurnLoop {
                         sessions: &s,
                         job_id: "j1",
+                        core: None,
                         outcome: &o,
                         result_notify: &rn,
                         turn_tx: &tt,
@@ -1262,11 +1286,20 @@ mod tests {
 
         outcome.lock().await.succeeded = Some(true);
         result_notify.notify_one();
-        let ev = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+        let first = tokio::time::timeout(Duration::from_secs(1), rx.recv())
             .await
             .expect("a finished turn must report")
             .expect("channel open");
-        assert!(matches!(ev, RunnerEvent::Done { .. }), "{ev:?}");
+        // cm:guard the park MUST arrive before the terminal event — the consumer breaks its loop on Done/Failed, so a state sent afterwards lands in a receiver nobody reads and the session stays recorded as working while it waits on a human.
+        assert!(
+            matches!(first, RunnerEvent::StateChanged("awaiting_input")),
+            "{first:?}"
+        );
+        let second = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .expect("the turn must also report its verdict")
+            .expect("channel open");
+        assert!(matches!(second, RunnerEvent::Done { .. }), "{second:?}");
         assert!(
             !loop_handle.is_finished(),
             "the session must outlive its turn"
@@ -1291,6 +1324,7 @@ mod tests {
                 TurnLoop {
                     sessions: &sessions,
                     job_id: "j1",
+                    core: None,
                     outcome: &outcome,
                     result_notify: &result_notify,
                     turn_tx: &turn_tx,
@@ -1333,6 +1367,7 @@ mod tests {
                     TurnLoop {
                         sessions: &s,
                         job_id: "j1",
+                        core: None,
                         outcome: &o,
                         result_notify: &rn,
                         turn_tx: &tt,
