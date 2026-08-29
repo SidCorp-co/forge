@@ -10,9 +10,10 @@
 --
 --   * CHECK — migration 0180 measured the cost on this table family. One writer
 --     missed and the constraint turns every write into a 23514 rather than
---     recording anything. `toFailureCause()` (pipeline/failure-causes.ts) is the
---     funnel instead: an unknown value becomes `unclassified` and its text
---     survives here in `failure_detail`.
+--     recording anything. The TYPE is the funnel instead: `schema.ts` declares
+--     the column `text('failure_reason', { enum: agentSessionFailureReasons })`,
+--     so free text is a build error rather than a runtime reject, and an
+--     unrecognized value read off an old row becomes `unclassified`.
 --   * BACKFILL — `pipeline/failure-classifier.ts` states that a historical row
 --     keeps its original verdict and the classifier is never re-run on archived
 --     rows. The 1,787 legacy `job_failed` rows resolve to `unclassified` at READ

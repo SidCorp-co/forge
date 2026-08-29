@@ -2182,7 +2182,7 @@ export const sessionRuntimeStates = [
 ] as const;
 export type SessionRuntimeState = (typeof sessionRuntimeStates)[number];
 
-// cm:edge contract -> packages/core/src/pipeline/failure-causes.ts — ISS-877 made that module the single taxonomy for both lanes; this alias exists so the schema keeps naming its own column's vocabulary, not so a second list can grow here
+// cm:edge contract -> packages/contracts/src/failure-causes.ts — ISS-877 made that module the single taxonomy for core, web-v2 and the MCP metric; this alias exists so the schema keeps naming its own column's vocabulary, not so a second list can grow here
 // cm:guard dispatcher gate skips (issue_busy / waiting_on_dep / project_full / runner_full / manual_hold) are NOT members and must never be added — ISS-162 made them stateless, recomputed by the picker every tick, so persisting one on the session row revives a gate state that goes stale the moment the condition clears
 export const agentSessionFailureReasons = FAILURE_CAUSES;
 export type AgentSessionFailureReason = FailureCause;
@@ -2221,8 +2221,8 @@ export const agentSessions = pgTable(
     dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
     startedAt: timestamp('started_at', { withTimezone: true }),
     lastHeartbeatAt: timestamp('last_heartbeat_at', { withTimezone: true }),
-    // cm:guard ISS-877 — `failureReason` carries a `FailureCause` and NOTHING else; the human sentence belongs in `failureDetail`. The two used to share this column: `agent-sessions/session-failure.ts` wrote a classifier sentence where `queue_timeout` writes a token, and 55 live rows ended up holding prose, 9 of them the agent's own prompt. There is no CHECK constraint on purpose — migration 0180 measured what one costs here (a missed writer turns every INSERT into a 23514) — the TYPE is the funnel instead, and no request body can supply this field (`agent-sessions/routes.ts#patchSchema` is `.strict()` without it).
-    failureReason: text('failure_reason'),
+    // cm:guard ISS-877 — the `{ enum }` here is the ONLY thing stopping free text returning to this column, so removing it is not a typing detail: `agent-sessions/session-failure.ts` used to write a classifier SENTENCE where `queue_timeout` writes a token, and 55 live rows ended up holding prose, 9 of them the agent's own prompt. There is no CHECK constraint on purpose — migration 0180 measured what one costs here, where a missed writer turns every INSERT into a 23514 — so the compile error is the whole enforcement, and the human sentence goes to `failureDetail`.
+    failureReason: text('failure_reason', { enum: agentSessionFailureReasons }),
     failureDetail: text('failure_detail'),
     runtimeState: text('runtime_state', { enum: sessionRuntimeStates }),
     // cm:guard the HIGHEST inbox seq core has ALLOCATED for this session, not the highest the runner applied — the runner reports what it applied and core never back-fills this from it. Allocate with `UPDATE ... SET last_inbox_seq = last_inbox_seq + 1 RETURNING`, never a read-then-write: two concurrent sends that both read N and both send N+1 end with one written and the other dropped-and-acked-delivered, which is a silent message loss the ack contract says cannot happen.

@@ -6,7 +6,7 @@
 // `db/schema.ts` (`core/pipeline/registry.test.ts`).
 
 import {
-  REGISTRY_JOB_TYPES,
+  type REGISTRY_JOB_TYPES,
   REGISTRY_PIPELINE_RUN_KINDS,
   REGISTRY_PIPELINE_RUN_STATUSES,
 } from "@forge/contracts/pipeline-registry";

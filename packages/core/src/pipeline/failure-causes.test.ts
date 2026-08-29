@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { agentSessions } from '../db/schema.js';
 import {
   FAILURE_CAUSE_ORIGIN,
   FAILURE_CAUSES,
@@ -247,6 +248,16 @@ describe('free text never reads back as itself', () => {
     expect(resolveFailureCause("I'll check ISS-54's status and what it's waiting on.")).toBe(
       'unclassified',
     );
+  });
+});
+
+describe('the column cannot take free text', () => {
+  // cm:guard this assertion IS the enforcement — remove `{ enum: agentSessionFailureReasons }` from the column and `Insert['failureReason']` widens to `string`, which no runtime test can see and no other test asserts. It compiles to `true` only while the column is bound; unbound, the conditional resolves to `never` and `typecheck` fails here naming this line.
+  it('types the insert as a FailureCause, so a sentence is a build error', () => {
+    type Inserted = NonNullable<typeof agentSessions.$inferInsert.failureReason>;
+    type BoundToTaxonomy = Inserted extends FailureCause ? true : never;
+    const bound: BoundToTaxonomy = true;
+    expect(bound).toBe(true);
   });
 });
 

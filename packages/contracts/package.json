@@ -10,6 +10,10 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./failure-causes": {
+      "types": "./src/failure-causes.ts",
+      "default": "./src/failure-causes.ts"
+    },
     "./pipeline-registry": {
       "types": "./src/pipeline-registry.ts",
       "default": "./src/pipeline-registry.ts"

@@ -201,7 +201,7 @@ describe('PATCH /api/agent-sessions/:id — who may say a session is parked', ()
 });
 
 describe('PATCH /api/agent-sessions/:id — ISS-877 failureReason is server-derived', () => {
-  // cm:guard this is the ONLY runtime enforcement that `agent_sessions.failure_reason` holds a `FailureCause` and never caller text — `failure-causes.ts` states outright that there is no write funnel and no CHECK constraint BECAUSE this body cannot carry the field. Widening `patchSchema` to accept it re-opens the enum-mixed-with-free-text hole ISS-877 closed, and nothing else in the suite would notice.
+  // cm:guard the `{ enum }` on the column stops CORE writing free text, and this stops a REQUEST supplying it — the type cannot see a value that arrives as JSON at runtime, so widening `patchSchema` to accept `failureReason` re-opens the enum-mixed-with-free-text hole from the one direction the compiler is blind to, and nothing else in the suite would notice.
   it('rejects the field outright rather than storing whatever arrived', async () => {
     seedRunningSession();
     const res = await patchAsDevice({

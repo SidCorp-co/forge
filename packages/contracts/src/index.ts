@@ -1,5 +1,6 @@
 export * from "./divergence-charters.js";
 export * from "./domain-templates.js";
+export * from "./failure-causes.js";
 export * from "./integrations.js";
 export * from "./issue-vocabulary.js";
 export * from "./issues.js";

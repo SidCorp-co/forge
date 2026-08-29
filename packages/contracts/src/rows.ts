@@ -6,11 +6,11 @@
 // field, which surfaces as a TS2344 constraint violation when the consumer
 // resolves a different drizzle-orm copy than `@forge/core`.
 
-import type { schema } from '@forge/core/public';
+import type { schema } from "@forge/core/public";
 
 export type User = Pick<
-  typeof schema.users.$inferSelect,
-  'id' | 'email' | 'emailVerifiedAt' | 'createdAt'
+	typeof schema.users.$inferSelect,
+	"id" | "email" | "emailVerifiedAt" | "createdAt"
 >;
 
 export type Project = typeof schema.projects.$inferSelect;
@@ -20,32 +20,32 @@ export type Project = typeof schema.projects.$inferSelect;
 // never re-derives gate state across endpoints. See
 // `packages/core/src/issues/pipeline-health.ts` for the loader.
 export type PipelineWaitingReason =
-  | 'issue_busy'
-  | 'job_held'
-  | 'run_not_running'
-  | 'retry_cooldown'
-  | 'stale_trigger'
-  | 'waiting_on_dep'
-  | 'waiting_on_decomp_children'
-  | 'project_full'
-  | 'runner_stale'
-  | 'runner_full';
+	| "issue_busy"
+	| "job_held"
+	| "run_not_running"
+	| "retry_cooldown"
+	| "stale_trigger"
+	| "waiting_on_dep"
+	| "waiting_on_decomp_children"
+	| "project_full"
+	| "runner_stale"
+	| "runner_full";
 
 // cm:edge contract -> packages/core/src/db/schema.ts — mirrors `waitingKinds`; a value here that core cannot store renders a banner nothing can produce, and the reverse leaves an authored kind falling through to generic copy
-export type WaitingCause = 'needs_decision' | 'needs_resource';
+export type WaitingCause = "needs_decision" | "needs_resource";
 
 export interface PipelineHealth {
-  stage: schema.IssueStatus;
-  activeSession?: { id: string; status: 'queued' | 'running'; skill: string };
-  waitingOn?: {
-    reason: PipelineWaitingReason;
-    since: string;
-    details: Record<string, unknown>;
-  };
-  queuedAt?: string;
-  lastTickAt?: string;
-  /** Only set when `stage === 'waiting'`. */
-  waitingCause?: { kind: WaitingCause };
+	stage: schema.IssueStatus;
+	activeSession?: { id: string; status: "queued" | "running"; skill: string };
+	waitingOn?: {
+		reason: PipelineWaitingReason;
+		since: string;
+		details: Record<string, unknown>;
+	};
+	queuedAt?: string;
+	lastTickAt?: string;
+	/** Only set when `stage === 'waiting'`. */
+	waitingCause?: { kind: WaitingCause };
 }
 
 // cm:edge contract -> packages/core/src/db/schema.ts — the `model_tier` enum, shared so a client's model picker cannot offer a tier POST /api/agent-sessions/{start,send} would reject (ISS-718)
@@ -60,21 +60,21 @@ export type Label = typeof schema.labels.$inferSelect;
 // `agentSessions` / `agentStatus` are populated only when the caller opts in
 // with `?withAgentSessions=1` (see ISS-128).
 export type Issue = typeof schema.issues.$inferSelect & {
-  displayId: string;
-  agentSessions?: Array<{
-    id: string;
-    status: string;
-    metadata: Record<string, unknown> | null;
-    createdAt: Date | string;
-    updatedAt: Date | string;
-    title: string | null;
-  }>;
-  agentStatus?: 'running' | 'queued' | 'completed' | 'failed' | null;
-  // ISS-437 — search endpoint only, when the caller opts in with `?withCost=1`:
-  // per-issue usage rollup in USD (0 when the issue never produced usage).
-  estimatedCost?: number;
-  // ISS-164 — list + single + by-display endpoints always populate this.
-  pipelineHealth: PipelineHealth;
+	displayId: string;
+	agentSessions?: Array<{
+		id: string;
+		status: string;
+		metadata: Record<string, unknown> | null;
+		createdAt: Date | string;
+		updatedAt: Date | string;
+		title: string | null;
+	}>;
+	agentStatus?: "running" | "queued" | "completed" | "failed" | null;
+	// ISS-437 — search endpoint only, when the caller opts in with `?withCost=1`:
+	// per-issue usage rollup in USD (0 when the issue never produced usage).
+	estimatedCost?: number;
+	// ISS-164 — list + single + by-display endpoints always populate this.
+	pipelineHealth: PipelineHealth;
 };
 
 export type Comment = typeof schema.comments.$inferSelect;
@@ -95,7 +95,8 @@ export type Runner = typeof schema.runners.$inferSelect;
 
 export type ActivityLog = typeof schema.activityLog.$inferSelect;
 
-export type SkillActivityEventRow = typeof schema.skillActivityEvents.$inferSelect;
+export type SkillActivityEventRow =
+	typeof schema.skillActivityEvents.$inferSelect;
 
 export type UpdatePacketRow = typeof schema.updatePackets.$inferSelect;
 
@@ -105,40 +106,40 @@ export type KnowledgeEntry = typeof schema.knowledgeEntries.$inferSelect;
 // ISS-546/ISS-556 — improvement-message registry type (cross-app parity).
 // Pure data shape; no DB import needed — the registry is a git-committed module.
 export type ImprovementMessageCategory =
-  | 'code-quality'
-  | 'testing'
-  | 'documentation'
-  | 'performance'
-  | 'security'
-  | 'dx'
-  | 'ops'
-  | 'pipeline-correctness'
-  | 'quality'
-  | 'steward'
-  | 'general';
+	| "code-quality"
+	| "testing"
+	| "documentation"
+	| "performance"
+	| "security"
+	| "dx"
+	| "ops"
+	| "pipeline-correctness"
+	| "quality"
+	| "steward"
+	| "general";
 
 export interface ImprovementMessage {
-  key: string;
-  title: string;
-  message: string;
-  rationale: string;
-  appliesToSkills?: readonly string[];
-  appliesWhen?: string;
-  category: ImprovementMessageCategory;
-  version: number;
-  recommended: boolean;
-  defaultMode: 'propose' | 'auto';
-  /** When true, the dispatch engine bypasses the appliedMessageVersions gate and fires every run. */
-  standing?: boolean;
+	key: string;
+	title: string;
+	message: string;
+	rationale: string;
+	appliesToSkills?: readonly string[];
+	appliesWhen?: string;
+	category: ImprovementMessageCategory;
+	version: number;
+	recommended: boolean;
+	defaultMode: "propose" | "auto";
+	/** When true, the dispatch engine bypasses the appliedMessageVersions gate and fires every run. */
+	standing?: boolean;
 }
 
 export interface ImprovementMessageEntry extends ImprovementMessage {
-  enablement: {
-    enabled: boolean;
-    scheduleId: string;
-    mode: string;
-    cron: string;
-  } | null;
+	enablement: {
+		enabled: boolean;
+		scheduleId: string;
+		mode: string;
+		cron: string;
+	} | null;
 }
 
 export type UxContractRuleRow = typeof schema.uxContractRules.$inferSelect;
@@ -146,22 +147,23 @@ export type UxFindingRow = typeof schema.uxFindings.$inferSelect;
 
 // ISS-554 — improvement message draft (bottom-up proposal from a graduated candidate).
 export interface ImprovementMessageDraft {
-  id: string;
-  key: string;
-  title: string;
-  message: string;
-  rationale: string;
-  appliesWhen: string | null;
-  appliesToSkills: string[];
-  category: string;
-  status: 'pending_review' | 'published' | 'dismissed';
-  source: 'bottom_up';
-  candidateId: string | null;
-  signalKey: string;
-  sourceProjectId: string | null;
-  createdAt: string;
-  updatedAt: string;
+	id: string;
+	key: string;
+	title: string;
+	message: string;
+	rationale: string;
+	appliesWhen: string | null;
+	appliesToSkills: string[];
+	category: string;
+	status: "pending_review" | "published" | "dismissed";
+	source: "bottom_up";
+	candidateId: string | null;
+	signalKey: string;
+	sourceProjectId: string | null;
+	createdAt: string;
+	updatedAt: string;
 }
 
 // cm:why ISS-800 — Divergence Charter row type, Update Pipeline §5
-export type DivergenceCharterRow = typeof schema.divergenceCharters.$inferSelect;
+export type DivergenceCharterRow =
+	typeof schema.divergenceCharters.$inferSelect;

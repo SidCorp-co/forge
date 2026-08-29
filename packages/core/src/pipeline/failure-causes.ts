@@ -151,7 +151,7 @@ export const FAILURE_CAUSE_ORIGIN: Record<FailureCause, FailureOrigin> = {
  * IS the unclassified era, and pretending otherwise would trade an admitted
  * lie for a confident one.
  */
-// cm:edge contract -> packages/web-v2/src/features/sessions/types.ts — that file renders these same strings; a key added here without its label/tooltip there shows an operator a raw token
+// cm:edge lockstep -> packages/contracts/src/failure-causes.ts — web-v2 cannot import this file (core is not on its dependency path) and core cannot VALUE-import contracts (the prod image ships no contracts package — see contracts-runtime-boundary.test.ts, and ISS-510's boot crash). So the list and this alias table exist TWICE on purpose, exactly as NOTIFICATION_TYPES does, and `failure-causes-parity.test.ts` is what keeps the copies identical. Edit both.
 export const LEGACY_CAUSE_ALIAS: Readonly<Record<string, FailureCause>> = {
   job_failed: 'unclassified',
   usage_limit: 'provider_usage_limit',
@@ -164,18 +164,17 @@ const CAUSE_SET: ReadonlySet<string> = new Set(FAILURE_CAUSES);
  * Turn whatever is in `failure_reason` into a cause. Historic tokens go through
  * the alias table; free text and unknown tokens read `unclassified`.
  *
- * This is a READ-side normalizer, and it is deliberately not paired with a
- * write-side one, because nothing caller-supplied can reach the column: the
- * agent-session PATCH body (`agent-sessions/routes.ts#patchSchema`) is
- * `.strict()` and has no `failureReason` field, so every value is either a
- * literal in this codebase or a `FailureCause` off the classifier. What stops a
- * raw string is therefore the TYPE, checked at build time, and the guard below
- * is the rule for the next editor rather than a runtime funnel. There is no
- * CHECK constraint either, and that is the same decision measured: migration
- * 0180 found what a CHECK costs on this table family — one writer missed and
- * every INSERT raises 23514 instead of recording anything.
+ * The write side is held by the TYPE, not by a runtime funnel and not by a
+ * CHECK: `schema.ts` declares the column `text('failure_reason', { enum:
+ * agentSessionFailureReasons })`, so a `set: { failureReason: someText }`
+ * anywhere in core is a compile error. That is deliberate over a CHECK —
+ * migration 0180 measured what one costs on this table family, where a single
+ * missed writer turns every INSERT into a 23514 — and it is why nothing here
+ * normalizes on write. Two things make it hold and both are load-bearing: the
+ * `{ enum }` on the column, and `patchSchema` staying `.strict()` without a
+ * `failureReason` field so no request body can supply one past the type.
  */
-// cm:guard `failureReason` is typed `FailureCause` and must stay that way — widening it back to `string`, here or on the Drizzle column, is all it takes to re-create the enum-mixed-with-free-text state this issue exists to end, and nothing at runtime would catch it. A value with no member gets a member added to FAILURE_CAUSES; the sentence goes to `failureDetail`.
+// cm:guard read the column through this, never by comparing the raw string — pre-ISS-877 rows carry `job_failed`, `usage_limit` and `ws-publish-failed`, and a literal comparison silently stops matching them
 export function resolveFailureCause(raw: string | null | undefined): FailureCause {
   if (!raw) return 'unclassified';
   if (CAUSE_SET.has(raw)) return raw as FailureCause;
@@ -183,7 +182,9 @@ export function resolveFailureCause(raw: string | null | undefined): FailureCaus
 }
 
 /** Whether a cause names something that went wrong, as opposed to a lifecycle
- *  conclusion or a person pressing cancel. Drives the red/neutral split. */
+ *  conclusion or a person pressing cancel. This is the METRIC question — for
+ *  how a cause should read to an operator, which is a different question with
+ *  different answers, see `FAILURE_CAUSE_PRESENTATION` in `@forge/contracts`. */
 export function isRealFailureCause(cause: FailureCause): boolean {
   const origin = FAILURE_CAUSE_ORIGIN[cause];
   return origin !== 'lifecycle' && origin !== 'user';

@@ -6,4 +6,4 @@
 // zod schema stays in core because the validators that consume it (REST
 // PATCH + the MCP forge_issues tool) also live in core.
 
-export type { ReleaseNotes, ReleaseNotesSection } from '@forge/core/public';
+export type { ReleaseNotes, ReleaseNotesSection } from "@forge/core/public";

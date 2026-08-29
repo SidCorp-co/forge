@@ -15,12 +15,15 @@
 // booleans signal presence), never `Omit<Row, 'secretsEnc'>`. Timestamps are
 // `string` (ISO) because these are the JSON-serialized client shapes.
 
-import type { IntegrationProvider, schema } from '@forge/core/public';
+import type { IntegrationProvider, schema } from "@forge/core/public";
 
 // === Enums — mirrored from the DB schema source of truth (no hand-copied unions) ===
 
 /** `'coolify' | 'postman' | 'epodsystem' | 'sentry' | 'rocketchat'`. */
-export type { IntegrationProvider, IntegrationCapabilities } from '@forge/core/public';
+export type {
+	IntegrationCapabilities,
+	IntegrationProvider,
+} from "@forge/core/public";
 
 /** `'user' | 'org'` — the connection owner namespace. */
 export type IntegrationOwnerType = schema.IntegrationOwnerType;
@@ -38,21 +41,21 @@ export type IntegrationDeliveryStatus = schema.IntegrationDeliveryStatus;
  * Projection of `summarizeConnection`; never echoes the encrypted secret bytes.
  */
 export interface ConnectionSummary {
-  id: string;
-  ownerType: IntegrationOwnerType;
-  ownerId: string;
-  provider: IntegrationProvider;
-  displayName: string | null;
-  /** Connection-scoped non-secret config (e.g. coolify baseUrl, postman region). */
-  config: Record<string, unknown>;
-  active: boolean;
-  lastHealthStatus: string | null;
-  lastHealthAt: string | null;
-  breakerOpenedAt: string | null;
-  /** True when an encrypted credential is stored — the bytes are never returned. */
-  hasSecrets: boolean;
-  createdAt: string;
-  updatedAt: string;
+	id: string;
+	ownerType: IntegrationOwnerType;
+	ownerId: string;
+	provider: IntegrationProvider;
+	displayName: string | null;
+	/** Connection-scoped non-secret config (e.g. coolify baseUrl, postman region). */
+	config: Record<string, unknown>;
+	active: boolean;
+	lastHealthStatus: string | null;
+	lastHealthAt: string | null;
+	breakerOpenedAt: string | null;
+	/** True when an encrypted credential is stored — the bytes are never returned. */
+	hasSecrets: boolean;
+	createdAt: string;
+	updatedAt: string;
 }
 
 /**
@@ -62,29 +65,29 @@ export interface ConnectionSummary {
  * `config` is the effective overlay (connection.config + binding overrides).
  */
 export interface BindingSummary {
-  id: string;
-  connectionId: string;
-  projectId: string;
-  provider: IntegrationProvider;
-  environment: IntegrationEnvironment;
-  config: Record<string, unknown>;
-  /** Raw binding-tier overrides (e.g. coolify resourceUuid/branch) — `config`
-   *  is the merged connection+binding view; this distinguishes a per-project
-   *  value from one inherited off the shared connection. */
-  bindingConfig: Record<string, unknown>;
-  /** ISS-558 — binding label. Empty string = default/unlabeled; non-empty = named
-   *  extra storefront (epodsystem only). Always '' for non-epodsystem providers. */
-  label: string;
-  active: boolean;
-  lastHealthStatus: string | null;
-  lastHealthAt: string | null;
-  breakerOpenedAt: string | null;
-  /** True when the connection stores an encrypted credential. */
-  hasSecrets: boolean;
-  /** True when the binding carries an inbound-webhook HMAC secret. */
-  integrationSecretSet: boolean;
-  createdAt: string;
-  updatedAt: string;
+	id: string;
+	connectionId: string;
+	projectId: string;
+	provider: IntegrationProvider;
+	environment: IntegrationEnvironment;
+	config: Record<string, unknown>;
+	/** Raw binding-tier overrides (e.g. coolify resourceUuid/branch) — `config`
+	 *  is the merged connection+binding view; this distinguishes a per-project
+	 *  value from one inherited off the shared connection. */
+	bindingConfig: Record<string, unknown>;
+	/** ISS-558 — binding label. Empty string = default/unlabeled; non-empty = named
+	 *  extra storefront (epodsystem only). Always '' for non-epodsystem providers. */
+	label: string;
+	active: boolean;
+	lastHealthStatus: string | null;
+	lastHealthAt: string | null;
+	breakerOpenedAt: string | null;
+	/** True when the connection stores an encrypted credential. */
+	hasSecrets: boolean;
+	/** True when the binding carries an inbound-webhook HMAC secret. */
+	integrationSecretSet: boolean;
+	createdAt: string;
+	updatedAt: string;
 }
 
 // === Composed status card (read-only hub) ===
@@ -97,27 +100,27 @@ export interface BindingSummary {
  *                  (no signal ≠ degraded). ISS-429.
  */
 export type IntegrationCardStatus =
-  | 'connected'
-  | 'attention'
-  | 'error'
-  | 'not_configured'
-  | 'disabled'
-  | 'unverified';
+	| "connected"
+	| "attention"
+	| "error"
+	| "not_configured"
+	| "disabled"
+	| "unverified";
 
 /** One card in the composed integrations-status read model (`GET .../integrations/status`). */
 export interface IntegrationStatusCard {
-  key: string;
-  label: string;
-  status: IntegrationCardStatus;
-  detail: string;
-  /** ISO timestamp of the last real sync/health-check, or null when none exists. */
-  lastSyncAt: string | null;
-  configured: boolean;
-  meta?: Record<string, unknown>;
+	key: string;
+	label: string;
+	status: IntegrationCardStatus;
+	detail: string;
+	/** ISO timestamp of the last real sync/health-check, or null when none exists. */
+	lastSyncAt: string | null;
+	configured: boolean;
+	meta?: Record<string, unknown>;
 }
 
 export interface IntegrationsStatus {
-  cards: IntegrationStatusCard[];
+	cards: IntegrationStatusCard[];
 }
 
 // === Delivery audit row ===
@@ -128,18 +131,18 @@ export interface IntegrationsStatus {
  * Scoped by `bindingId` since the ISS-410 retirement of project_integrations.
  */
 export interface IntegrationDeliveryRow {
-  id: string;
-  bindingId: string | null;
-  direction: IntegrationDeliveryDirection;
-  eventName: string;
-  status: IntegrationDeliveryStatus;
-  requestId: string | null;
-  payload: Record<string, unknown>;
-  response: Record<string, unknown> | null;
-  errorMessage: string | null;
-  durationMs: number | null;
-  createdAt: string;
-  completedAt: string | null;
+	id: string;
+	bindingId: string | null;
+	direction: IntegrationDeliveryDirection;
+	eventName: string;
+	status: IntegrationDeliveryStatus;
+	requestId: string | null;
+	payload: Record<string, unknown>;
+	response: Record<string, unknown> | null;
+	errorMessage: string | null;
+	durationMs: number | null;
+	createdAt: string;
+	completedAt: string | null;
 }
 
 // === Health / test-connection result ===
@@ -152,10 +155,10 @@ export interface IntegrationDeliveryRow {
  * 4-value coarse bucket (needs_reauth maps to `attention`).
  */
 export interface IntegrationHealthResult {
-  status: 'ok' | 'degraded' | 'error' | 'needs_reauth';
-  message?: string;
-  /** Free-form provider diagnostics surfaced to operators in the test-connection UI. */
-  diagnostics?: Record<string, unknown>;
+	status: "ok" | "degraded" | "error" | "needs_reauth";
+	message?: string;
+	/** Free-form provider diagnostics surfaced to operators in the test-connection UI. */
+	diagnostics?: Record<string, unknown>;
 }
 
 /**
@@ -169,9 +172,9 @@ export type ConnectionTestResult = IntegrationHealthResult;
 
 /** Result of `POST .../confirm-prod-deploy`. `integrationId` stays the binding id. */
 export interface ConfirmProdDeployResult {
-  confirmed: boolean;
-  runId: string | null;
-  integrationId: string;
+	confirmed: boolean;
+	runId: string | null;
+	integrationId: string;
 }
 
 // === Provider config / secret inputs ===
@@ -179,9 +182,9 @@ export interface ConfirmProdDeployResult {
 /** One Coolify deploy target (a single application UUID). `id` is server-assigned
  *  when omitted; a write replaces the whole `targets` array. */
 export interface CoolifyTargetInput {
-  id?: string;
-  label: string;
-  resourceUuid: string;
+	id?: string;
+	label: string;
+	resourceUuid: string;
 }
 
 /**
@@ -190,26 +193,26 @@ export interface CoolifyTargetInput {
  * (e.g. a split backend + frontend) that deploy together.
  */
 export interface CoolifyConfigInput {
-  baseUrl: string;
-  targets: CoolifyTargetInput[];
+	baseUrl: string;
+	targets: CoolifyTargetInput[];
 }
 export interface CoolifySecretsInput {
-  apiToken: string;
+	apiToken: string;
 }
 
-export type PostmanRegion = 'us' | 'eu';
-export type PostmanMode = 'minimal' | 'full';
+export type PostmanRegion = "us" | "eu";
+export type PostmanMode = "minimal" | "full";
 
 /** Postman non-secret write-target (`connection.config`). */
 export interface PostmanConfigInput {
-  workspaceId?: string;
-  workspaceName: string;
-  collectionId?: string;
-  region: PostmanRegion;
-  mode: PostmanMode;
+	workspaceId?: string;
+	workspaceName: string;
+	collectionId?: string;
+	region: PostmanRegion;
+	mode: PostmanMode;
 }
 export interface PostmanSecretsInput {
-  apiKey: string;
+	apiKey: string;
 }
 
 /**
@@ -218,14 +221,14 @@ export interface PostmanSecretsInput {
  * is optional — the operator only supplies the `crmk_` key as the secret.
  */
 export interface EpodsystemConfigInput {
-  storeSlug?: string;
-  storeName?: string;
-  themeId?: string;
-  draftThemeId?: string;
-  commerceEnabled?: boolean;
+	storeSlug?: string;
+	storeName?: string;
+	themeId?: string;
+	draftThemeId?: string;
+	commerceEnabled?: boolean;
 }
 export interface EpodsystemSecretsInput {
-  apiKey: string;
+	apiKey: string;
 }
 
 /**
@@ -237,11 +240,11 @@ export interface EpodsystemSecretsInput {
  * share ONE host + auth token (the token already reads every project it can see).
  */
 export interface SentryTargetInput {
-  label: string;
-  organizationSlug?: string;
-  projectSlug?: string;
-  environment?: string;
-  notes?: string;
+	label: string;
+	organizationSlug?: string;
+	projectSlug?: string;
+	environment?: string;
+	notes?: string;
 }
 
 /**
@@ -253,15 +256,15 @@ export interface SentryTargetInput {
  * auth token is the secret.
  */
 export interface SentryConfigInput {
-  host: string;
-  targets?: SentryTargetInput[];
-  /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
-  organizationSlug?: string;
-  /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
-  projectSlug?: string;
+	host: string;
+	targets?: SentryTargetInput[];
+	/** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
+	organizationSlug?: string;
+	/** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
+	projectSlug?: string;
 }
 export interface SentrySecretsInput {
-  authToken: string;
+	authToken: string;
 }
 
 /**
@@ -271,12 +274,12 @@ export interface SentrySecretsInput {
  * The bot credential is a personal-access token + its user id (both secrets).
  */
 export interface RocketchatConfigInput {
-  serverUrl: string;
-  rids?: string[];
+	serverUrl: string;
+	rids?: string[];
 }
 export interface RocketchatSecretsInput {
-  authToken: string;
-  userId: string;
+	authToken: string;
+	userId: string;
 }
 
 // === Request bodies ===
@@ -288,45 +291,45 @@ export interface RocketchatSecretsInput {
  * it is optional here.
  */
 export type IntegrationBindingCreateInput =
-  | {
-      provider: 'coolify';
-      environment: IntegrationEnvironment;
-      config: CoolifyConfigInput;
-      secrets: CoolifySecretsInput;
-    }
-  | {
-      provider: 'postman';
-      environment?: IntegrationEnvironment;
-      config: PostmanConfigInput;
-      secrets: PostmanSecretsInput;
-    }
-  | {
-      provider: 'epodsystem';
-      environment?: IntegrationEnvironment;
-      config: EpodsystemConfigInput;
-      secrets: EpodsystemSecretsInput;
-      /** ISS-558 — optional kebab label for a named storefront (e.g. 'partner-a').
-       *  Absent/empty = the default binding. */
-      label?: string;
-    }
-  | {
-      provider: 'sentry';
-      environment?: IntegrationEnvironment;
-      config: SentryConfigInput;
-      secrets: SentrySecretsInput;
-    }
-  | {
-      provider: 'rocketchat';
-      environment?: IntegrationEnvironment;
-      config: RocketchatConfigInput;
-      secrets: RocketchatSecretsInput;
-    };
+	| {
+			provider: "coolify";
+			environment: IntegrationEnvironment;
+			config: CoolifyConfigInput;
+			secrets: CoolifySecretsInput;
+	  }
+	| {
+			provider: "postman";
+			environment?: IntegrationEnvironment;
+			config: PostmanConfigInput;
+			secrets: PostmanSecretsInput;
+	  }
+	| {
+			provider: "epodsystem";
+			environment?: IntegrationEnvironment;
+			config: EpodsystemConfigInput;
+			secrets: EpodsystemSecretsInput;
+			/** ISS-558 — optional kebab label for a named storefront (e.g. 'partner-a').
+			 *  Absent/empty = the default binding. */
+			label?: string;
+	  }
+	| {
+			provider: "sentry";
+			environment?: IntegrationEnvironment;
+			config: SentryConfigInput;
+			secrets: SentrySecretsInput;
+	  }
+	| {
+			provider: "rocketchat";
+			environment?: IntegrationEnvironment;
+			config: RocketchatConfigInput;
+			secrets: RocketchatSecretsInput;
+	  };
 
 /** Body for `PATCH /:projectId/integrations/:id` — re-validated against the existing provider. */
 export interface IntegrationBindingUpdateInput {
-  config?: Record<string, unknown>;
-  secrets?: Record<string, unknown>;
-  active?: boolean;
+	config?: Record<string, unknown>;
+	secrets?: Record<string, unknown>;
+	active?: boolean;
 }
 
 /**
@@ -334,49 +337,49 @@ export interface IntegrationBindingUpdateInput {
  * connection is the credential, owned by a principal; `displayName` is optional.
  */
 export type ConnectionCreateInput =
-  | {
-      provider: 'coolify';
-      displayName?: string;
-      config: CoolifyConfigInput;
-      secrets: CoolifySecretsInput;
-      /** Present = org-owned connection (requires org admin); absent = personal. */
-      orgId?: string;
-    }
-  | {
-      provider: 'postman';
-      displayName?: string;
-      config: PostmanConfigInput;
-      secrets: PostmanSecretsInput;
-      orgId?: string;
-    }
-  | {
-      provider: 'sentry';
-      displayName?: string;
-      config: SentryConfigInput;
-      secrets: SentrySecretsInput;
-      orgId?: string;
-    }
-  | {
-      provider: 'epodsystem';
-      displayName?: string;
-      config: EpodsystemConfigInput;
-      secrets: EpodsystemSecretsInput;
-      orgId?: string;
-    }
-  | {
-      provider: 'rocketchat';
-      displayName?: string;
-      config: RocketchatConfigInput;
-      secrets: RocketchatSecretsInput;
-      orgId?: string;
-    };
+	| {
+			provider: "coolify";
+			displayName?: string;
+			config: CoolifyConfigInput;
+			secrets: CoolifySecretsInput;
+			/** Present = org-owned connection (requires org admin); absent = personal. */
+			orgId?: string;
+	  }
+	| {
+			provider: "postman";
+			displayName?: string;
+			config: PostmanConfigInput;
+			secrets: PostmanSecretsInput;
+			orgId?: string;
+	  }
+	| {
+			provider: "sentry";
+			displayName?: string;
+			config: SentryConfigInput;
+			secrets: SentrySecretsInput;
+			orgId?: string;
+	  }
+	| {
+			provider: "epodsystem";
+			displayName?: string;
+			config: EpodsystemConfigInput;
+			secrets: EpodsystemSecretsInput;
+			orgId?: string;
+	  }
+	| {
+			provider: "rocketchat";
+			displayName?: string;
+			config: RocketchatConfigInput;
+			secrets: RocketchatSecretsInput;
+			orgId?: string;
+	  };
 
 /** Body for `PATCH /integration-connections/:id` — re-validated against the existing provider. */
 export interface ConnectionUpdateInput {
-  displayName?: string;
-  config?: Record<string, unknown>;
-  secrets?: Record<string, unknown>;
-  active?: boolean;
+	displayName?: string;
+	config?: Record<string, unknown>;
+	secrets?: Record<string, unknown>;
+	active?: boolean;
 }
 
 /**
@@ -386,19 +389,19 @@ export interface ConnectionUpdateInput {
  * connection and be an admin of the target project.
  */
 export interface BindExistingConnectionRequest {
-  projectId: string;
-  environment: IntegrationEnvironment;
-  /** Optional binding-tier overrides (coolify `targets[]`) so the shared
-   *  connection deploys different apps in this project. Connection-tier keys
-   *  (baseUrl) are dropped server-side. */
-  config?: Record<string, unknown>;
+	projectId: string;
+	environment: IntegrationEnvironment;
+	/** Optional binding-tier overrides (coolify `targets[]`) so the shared
+	 *  connection deploys different apps in this project. Connection-tier keys
+	 *  (baseUrl) are dropped server-side. */
+	config?: Record<string, unknown>;
 }
 
 // === Response envelopes ===
 
 /** `{ connection }` — connection list items, create (201) + update. */
 export interface ConnectionResponse {
-  connection: ConnectionSummary;
+	connection: ConnectionSummary;
 }
 
 /**
@@ -406,14 +409,14 @@ export interface ConnectionResponse {
  * the freshly minted inbound-webhook HMAC `integrationSecret` (shown once).
  */
 export interface BindingResponse {
-  integration: BindingSummary;
-  integrationSecret?: string;
-  /**
-   * Immediate post-create/bind health probe (ISS-429) — create + bind-existing
-   * run the adapter healthcheck right away so the integration starts from a
-   * real state. `null` when the probe crashed at the transport layer.
-   */
-  health?: IntegrationHealthResult | null;
+	integration: BindingSummary;
+	integrationSecret?: string;
+	/**
+	 * Immediate post-create/bind health probe (ISS-429) — create + bind-existing
+	 * run the adapter healthcheck right away so the integration starts from a
+	 * real state. `null` when the probe crashed at the transport layer.
+	 */
+	health?: IntegrationHealthResult | null;
 }
 
 // These list routes return a bare `{ items }` object (not the X-Total-Count +
@@ -421,20 +424,20 @@ export interface BindingResponse {
 
 /** List envelope for connections (`GET /integration-connections`). */
 export interface ConnectionListResponse {
-  items: ConnectionSummary[];
+	items: ConnectionSummary[];
 }
 /** List envelope for project bindings (`GET /:projectId/integrations`). */
 export interface BindingListResponse {
-  items: BindingSummary[];
+	items: BindingSummary[];
 }
 /** List envelope for delivery rows (`GET .../integrations/:id/deliveries`). */
 export interface IntegrationDeliveryListResponse {
-  items: IntegrationDeliveryRow[];
+	items: IntegrationDeliveryRow[];
 }
 
 /** List envelope for a connection's bindings (`GET /integration-connections/:id/bindings`). */
 export interface ConnectionBindingsResponse {
-  items: BindingSummary[];
+	items: BindingSummary[];
 }
 
 // === MCP injection preview (ISS-429) ===
@@ -463,24 +466,30 @@ export interface ConnectionBindingsResponse {
  *                      problem (`no_credential`) or a health/reauth issue.
  */
 export interface McpServerPreviewEntry {
-  provider: IntegrationProvider;
-  serverName: string;
-  /** Binding id backing this entry — null for the synthetic not_configured row. */
-  bindingId: string | null;
-  environment: IntegrationEnvironment | null;
-  configured: boolean;
-  active: boolean;
-  willInject: boolean;
-  reason: 'ok' | 'not_configured' | 'disabled' | 'no_credential' | 'shadowed' | 'not_declared';
-  url: string | null;
-  headers: Record<string, string> | null;
-  lastHealthStatus: string | null;
-  lastHealthAt: string | null;
+	provider: IntegrationProvider;
+	serverName: string;
+	/** Binding id backing this entry — null for the synthetic not_configured row. */
+	bindingId: string | null;
+	environment: IntegrationEnvironment | null;
+	configured: boolean;
+	active: boolean;
+	willInject: boolean;
+	reason:
+		| "ok"
+		| "not_configured"
+		| "disabled"
+		| "no_credential"
+		| "shadowed"
+		| "not_declared";
+	url: string | null;
+	headers: Record<string, string> | null;
+	lastHealthStatus: string | null;
+	lastHealthAt: string | null;
 }
 
 /** Envelope for `GET /:projectId/integrations/mcp-preview`. */
 export interface McpPreviewResponse {
-  servers: McpServerPreviewEntry[];
+	servers: McpServerPreviewEntry[];
 }
 
 /**
@@ -490,6 +499,6 @@ export interface McpPreviewResponse {
  * request id (202) rather than a synchronous delivery summary.
  */
 export interface DeliveryRetryResponse {
-  requestId: string;
-  queued: true;
+	requestId: string;
+	queued: true;
 }

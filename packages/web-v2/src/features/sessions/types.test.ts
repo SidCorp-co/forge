@@ -1,6 +1,13 @@
+import {
+  FAILURE_CAUSES,
+  FAILURE_CAUSE_PRESENTATION,
+  LEGACY_NEUTRAL_REASONS,
+} from "@forge/contracts/failure-causes";
 import { describe, expect, it } from "vitest";
 import {
   FAILURE_REASON_LABEL,
+  failureReasonAction,
+  failureReasonLabel,
   HEARTBEAT_REAP_MS,
   STALLED_THRESHOLD_MS,
   deriveLiveness,
@@ -200,43 +207,28 @@ describe("classifySessionOutcome (ISS-322 four-bucket classifier)", () => {
     expect(classifySessionOutcome("failed", "residency_expired").bucket).toBe("swept");
   });
 
+  // cm:guard iterate FAILURE_CAUSES, never a list written out here — the list this replaces was hand-copied and drifted in both directions at once: it named `no_worker_online`, which core had retired, and omitted `no_client_ack`, which core writes on every ack-hop reap, so the one cause with no label was the one the test could not see. It also asserted only the label, which is why six causes reached this point with no action.
   it("ISS-877: every cause core can write has a label and an action", () => {
-    for (const reason of [
-      "provider_spend_cap",
-      "provider_usage_limit",
-      "provider_subscription_disabled",
-      "provider_auth_expired",
-      "provider_overloaded",
-      "provider_refused_request",
-      "agent_startup_failed",
-      "agent_skill_missing",
-      "agent_exited_without_result",
-      "agent_killed",
-      "skill_not_synced",
-      "workspace_preflight_failed",
-      "workspace_disk_full",
-      "runner_unreachable",
-      "duplex_channel_failed",
-      "session_lost",
-      "heartbeat_timeout",
-      "queue_timeout",
-      "no_worker_online",
-      "ws_publish_failed",
-      "forge_budget_exhausted",
-      "runner_unsupported_type",
-      "resume_failed",
-      "residency_expired",
-      "audit_ran_blind",
-      "orphan_under_terminal_run",
-      "pipeline_cancelled",
-      "pipeline_completed",
-      "pipeline_failed",
-      "migration_zombie_cleanup",
-      "manual_ops_stale_chat_schedule",
-      "user_cancelled",
-      "unclassified",
-    ]) {
-      expect(FAILURE_REASON_LABEL[reason], reason).toBeTruthy();
+    for (const cause of FAILURE_CAUSES) {
+      expect(failureReasonLabel(cause), cause).toBeTruthy();
+      expect(failureReasonAction(cause), cause).toBeTruthy();
+    }
+  });
+
+  // cm:why this cannot catch a WRONG value in FAILURE_CAUSE_PRESENTATION — that map is the definition, so both sides move together. What it catches is a hardcoded special case creeping back into classifySessionOutcome, which is how the two surfaces diverged in the first place: verified by pinning one cause in the function and watching this go red naming it.
+  it("ISS-877: every cause reads the same way here as it does to the failure metric", () => {
+    for (const cause of FAILURE_CAUSES) {
+      const bucket = classifySessionOutcome("failed", cause).bucket;
+      expect(bucket, cause).toBe(
+        FAILURE_CAUSE_PRESENTATION[cause] === "failure" ? "failed" : FAILURE_CAUSE_PRESENTATION[cause],
+      );
+    }
+  });
+
+  it("ISS-877: a dispatcher skip reason on an old row reads neutral, not as a raw token", () => {
+    for (const reason of LEGACY_NEUTRAL_REASONS) {
+      expect(classifySessionOutcome("failed", reason).statusKey, reason).toBe("swept");
+      expect(failureReasonLabel(reason), reason).toBeTruthy();
     }
   });
 

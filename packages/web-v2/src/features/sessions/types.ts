@@ -4,6 +4,12 @@
 // uses `id`, NOT `documentId`, and carries no per-session dollar cost / model).
 // The display-status derivation + status vocabulary are ported from the v1
 // `packages/web/src/features/agent/api.ts` so both UIs agree.
+import {
+  FAILURE_CAUSE_PRESENTATION,
+  type FailureCause,
+  LEGACY_NEUTRAL_REASONS,
+  resolveFailureCause,
+} from "@forge/contracts/failure-causes";
 import type { StatusKey } from "@/design/status";
 import type { StageKey } from "@/design/stages";
 
@@ -60,50 +66,25 @@ export interface LivenessResult {
   reapInMs: number | null;
 }
 
-// cm:edge contract -> packages/core/src/pipeline/failure-causes.ts — core writes these strings into `agent_sessions.failure_reason`; a cause added there without a label and an action below renders an operator a raw snake_case token
-export type SessionFailureReason =
-  | "provider_spend_cap"
-  | "provider_usage_limit"
-  | "provider_subscription_disabled"
-  | "provider_auth_expired"
-  | "provider_overloaded"
-  | "provider_refused_request"
-  | "agent_startup_failed"
-  | "agent_skill_missing"
-  | "agent_exited_without_result"
-  | "agent_killed"
-  | "workspace_preflight_failed"
-  | "workspace_disk_full"
-  | "runner_unreachable"
-  | "duplex_channel_failed"
-  | "session_lost"
-  | "ws_publish_failed"
-  | "forge_budget_exhausted"
-  | "runner_unsupported_type"
-  | "resume_failed"
-  | "residency_expired"
-  | "audit_ran_blind"
-  | "orphan_under_terminal_run"
-  | "pipeline_cancelled"
-  | "pipeline_completed"
-  | "pipeline_failed"
-  | "manual_ops_stale_chat_schedule"
-  | "unclassified"
-  | "queue_timeout"
-  | "heartbeat_timeout"
-  | "no_worker_online"
-  | "user_cancelled"
-  | "migration_zombie_cleanup"
-  // cm:guard dispatcher skip reasons, surfaced on a QUEUED row and never written to `failure_reason` — ISS-162 made them stateless, so treating one as a stored terminal cause resurrects gate state that goes stale the moment the condition clears
+// cm:edge contract -> packages/contracts/src/failure-causes.ts — `FailureCause` IS that module's list, imported rather than re-typed. It used to be a hand-copied union here, and the copy drifted: `no_client_ack` shipped with no member and no label, so both render sites fell through to the raw snake_case token, while a cause core had already retired kept one.
+export type SessionFailureReason = FailureCause | LegacyFailureReason;
+
+/**
+ * Strings that appear in this field on live rows without being causes.
+ *
+ * The dispatcher's skip reasons come from `jobs/dispatch-gates.ts` and describe
+ * why a job was not started, not how a session died — ISS-162 made them
+ * stateless, recomputed every tick, so they are never stored as a terminal
+ * cause. `job_failed` and `ws-publish-failed` are retired spellings that 1,787
+ * and a handful of live rows still carry.
+ */
+export type LegacyFailureReason =
   | "issue_busy"
   | "waiting_on_dep"
   | "project_full"
   | "runner_full"
-  // ISS-733 fix — a chat-runs-skill cold start (e.g. Build Project Brain) fired
-  // before the skill finished syncing to the runner; the CLI treated the
-  // slash-command as unknown text. Real failure (red), not a benign cleanup.
-  | "skill_not_synced"
-  // cm:guard retired by ISS-877, kept because 1,787 live rows still carry it, and it must render as "Unclassified" — it stood for every agent-side failure at once, so showing it as a diagnosis is the lie the taxonomy replaced
+  | "no_worker_online"
+  | "ws-publish-failed"
   | "job_failed";
 
 /** Usage telemetry jsonb — every key is optional (older rows omit fields). */
@@ -213,7 +194,8 @@ export function isAwaitingReply(session: Pick<SessionRow, "status" | "metadata">
 
 /** Operator-facing label for each terminal failure reason — surfaced on the
  *  list row + the detail blocker-card so "failed" is actionable (ISS-378). */
-export const FAILURE_REASON_LABEL: Record<string, string> = {
+// cm:guard `Record<SessionFailureReason, …>` and NOT `Record<string, …>` — the exhaustiveness is the whole defence. Typed loosely, a cause added in contracts renders as a raw token and nothing anywhere goes red; typed this way it is a build error in this file, which is how it should arrive.
+export const FAILURE_REASON_LABEL: Record<SessionFailureReason, string> = {
   provider_spend_cap: "Spend limit reached",
   provider_usage_limit: "Usage limit reached",
   provider_subscription_disabled: "Subscription disabled",
@@ -245,6 +227,8 @@ export const FAILURE_REASON_LABEL: Record<string, string> = {
   queue_timeout: "Queue timeout",
   heartbeat_timeout: "No heartbeat",
   no_worker_online: "No runner online",
+  no_client_ack: "No acknowledgement",
+  skill_not_synced: "Skill not ready yet",
   user_cancelled: "Cancelled",
   job_failed: "Unclassified",
   migration_zombie_cleanup: "Swept (migration)",
@@ -252,12 +236,11 @@ export const FAILURE_REASON_LABEL: Record<string, string> = {
   waiting_on_dep: "Waiting on dependency",
   project_full: "Project at capacity",
   runner_full: "Runner at capacity",
-  skill_not_synced: "Skill not ready yet",
 };
 
 /** Suggested next action for a failed/stalled session — the one-line remedy on
  *  the detail blocker-card (ISS-378 AC#6). */
-export const FAILURE_REASON_ACTION: Record<string, string> = {
+export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
   provider_spend_cap: "The account hit its spend cap — raise it, or wait for the window to reset.",
   provider_usage_limit: "The account hit its usage window — it retries once the window resets.",
   provider_subscription_disabled:
@@ -285,6 +268,7 @@ export const FAILURE_REASON_ACTION: Record<string, string> = {
   queue_timeout: "No runner picked it up — check the fleet strip for an online runner.",
   heartbeat_timeout: "The runner died mid-run — Retry to re-dispatch.",
   no_worker_online: "Bring a runner online or check device pairing, then Retry.",
+  no_client_ack: "The runner never acknowledged the dispatch — Retry to re-send.",
   user_cancelled: "Cancelled by a user — Rerun to start a fresh session.",
   job_failed: "The cause wasn't recorded — open the run timeline to see why.",
   issue_busy: "Another session holds this issue — it will retry once that frees.",
@@ -292,7 +276,37 @@ export const FAILURE_REASON_ACTION: Record<string, string> = {
   project_full: "Project hit its concurrency cap — it will dispatch when a slot frees.",
   runner_full: "The runner is at capacity — it will dispatch when a slot frees.",
   skill_not_synced: "The skill hadn't finished syncing to the runner yet — start a new chat to retry.",
+  orphan_under_terminal_run: "The run ended while this was still open — nothing to do.",
+  pipeline_cancelled: "The pipeline run was cancelled — nothing to do.",
+  pipeline_completed: "The run finished while this was still open — nothing to do.",
+  pipeline_failed: "The run failed and this was cleaned up with it — see the run timeline.",
+  migration_zombie_cleanup: "Swept by a migration — nothing to do.",
+  manual_ops_stale_chat_schedule: "An operator cleared this stale session — nothing to do.",
 };
+
+/**
+ * Look a stored reason up, from a caller that only has a `string`.
+ *
+ * The maps above are exhaustive over the union so a missing entry is a build
+ * error; a caller reading a row off the wire has plain text and must come
+ * through here. `resolveFailureCause` is what makes an old spelling land on the
+ * right entry instead of the fallback.
+ */
+export function failureReasonLabel(reason: string | null | undefined): string | null {
+  if (!reason) return null;
+  return (
+    FAILURE_REASON_LABEL[reason as SessionFailureReason] ??
+    FAILURE_REASON_LABEL[resolveFailureCause(reason)]
+  );
+}
+
+export function failureReasonAction(reason: string | null | undefined): string | null {
+  if (!reason) return null;
+  return (
+    FAILURE_REASON_ACTION[reason as SessionFailureReason] ??
+    FAILURE_REASON_ACTION[resolveFailureCause(reason)]
+  );
+}
 
 /**
  * Single source of truth for heartbeat liveness across the fleet strip, list,
@@ -392,33 +406,22 @@ export function statusToChip(display: AgentSessionDisplayStatus): StatusKey {
  */
 export type SessionOutcomeBucket = "success" | "failed" | "cleanup" | "swept" | "active";
 
-/** `failureReason`s that mark a benign pipeline cleanup (ISS-258 cascade). The
- *  `pipeline_*` values are the `jobs`-table vocab — defensive: post-ISS-352 the
- *  session itself is `completed`, but a legacy row may still carry them. */
-const CLEANUP_REASONS = new Set<string>([
-  "migration_zombie_cleanup",
-  "pipeline_completed",
-  "pipeline_failed",
-  "pipeline_cancelled",
-  // cm:why ISS-877 — the I1 trigger's marker and an operator's manual clear are the same shape: something ended the run around a session that was still alive, which is cleanup rather than a fault
-  "orphan_under_terminal_run",
-  "manual_ops_stale_chat_schedule",
-]);
-
-/** `failureReason`s that are a lifecycle/capacity cancel or a stale sweep — NOT
- *  a code failure, so they read neutral (`swept`) rather than red. */
-const SWEEP_OR_CANCEL_REASONS = new Set<string>([
-  "queue_timeout",
-  "heartbeat_timeout",
-  "no_worker_online",
-  "user_cancelled",
-  "issue_busy",
-  "waiting_on_dep",
-  "project_full",
-  "runner_full",
-  // cm:guard ISS-877 — the residency window closing is a lifecycle bound, not a fault; it is the ONLY taxonomy cause that belongs in this set, because every other member names something that actually went wrong and must stay red
-  "residency_expired",
-]);
+/**
+ * How a stored reason reads to an operator, resolved rather than looked up in a
+ * set of strings kept here.
+ *
+ * The two sets this replaces were hand-copied from core and disagreed with it:
+ * `residency_expired` was a real failure to the MCP failure metric and a sweep
+ * here in the same change, and `no_worker_online` sat in the sweep set after
+ * core had retired it. `FAILURE_CAUSE_PRESENTATION` answers this question once,
+ * for both surfaces; `LEGACY_NEUTRAL_REASONS` covers the dispatcher skip
+ * reasons, which are not causes and never were.
+ */
+// cm:guard the UI question ("is this the user's problem") is NOT the metric question ("did the fleet break") — `isRealFailureCause` in contracts answers the second, and a heartbeat timeout is deliberately true there and neutral here. Do not collapse them back into one predicate.
+function presentationOf(reason: string): "cleanup" | "swept" | "failure" {
+  if (LEGACY_NEUTRAL_REASONS.has(reason)) return "swept";
+  return FAILURE_CAUSE_PRESENTATION[resolveFailureCause(reason)];
+}
 
 export interface SessionOutcome {
   bucket: SessionOutcomeBucket;
@@ -456,7 +459,8 @@ export function classifySessionOutcome(
 
   if (display === "failed") {
     const reason = failureReason ?? null;
-    if (reason && CLEANUP_REASONS.has(reason)) {
+    const presentation = reason ? presentationOf(reason) : "failure";
+    if (presentation === "cleanup") {
       return {
         bucket: "cleanup",
         statusKey: "swept",
@@ -465,13 +469,13 @@ export function classifySessionOutcome(
           "This step was automatically cleaned up when the pipeline finished — not a failure.",
       };
     }
-    if (reason && SWEEP_OR_CANCEL_REASONS.has(reason)) {
+    if (presentation === "swept") {
       return {
         bucket: "swept",
         statusKey: "swept",
-        label: FAILURE_REASON_LABEL[reason] ?? "Cancelled",
+        label: failureReasonLabel(reason) ?? "Cancelled",
         tooltip:
-          FAILURE_REASON_ACTION[reason] ??
+          failureReasonAction(reason) ??
           "Cancelled by a lifecycle or capacity rule — not a failure.",
       };
     }
@@ -479,9 +483,8 @@ export function classifySessionOutcome(
     return {
       bucket: "failed",
       statusKey: "failed",
-      label: (reason && FAILURE_REASON_LABEL[reason]) ?? "Failed",
-      tooltip:
-        (reason && FAILURE_REASON_ACTION[reason]) ?? "The agent step failed — see the run timeline.",
+      label: failureReasonLabel(reason) ?? "Failed",
+      tooltip: failureReasonAction(reason) ?? "The agent step failed — see the run timeline.",
     };
   }
 

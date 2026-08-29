@@ -193,9 +193,15 @@ export interface SessionFailureRow {
  * surface built against a lying session row repeat the lie, so they are
  * excluded from the histogram and returned as `completedWithFailureReason`
  * instead — a number with a name beats a filter nobody sees.
+ *
+ * The mirror case is included rather than excluded: a `failed` session holding
+ * NO reason at all is counted, as `unclassified`. It is the purest form of the
+ * defect this issue exists to end, and a query that asked for a reason before
+ * counting a failure could never see it.
  */
 // cm:guard `unclassified` must stay a first-class row here — filtering it out, folding it into "other", or reporting only the classified share re-hides the exact hole this tool exists to expose
 // cm:guard the status filter and `completedWithFailureReason` are one mechanism: rows excluded from the histogram must stay counted somewhere in the response. Narrowing the WHERE without carrying the excluded rows out under their own name is how a metric starts reading clean because it stopped looking.
+// cm:guard a failed session with a NULL `failure_reason` is IN, and is the most important row here — it recorded nothing at all, which is the hole this tool measures. Re-adding `failure_reason IS NOT NULL` to the WHERE drops it from both sides of `unclassifiedRate`, so the rate improves precisely because the worst rows stopped being counted.
 export const forgeMetricsSessionFailuresTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_metrics.session_failures',
   description:
@@ -209,8 +215,8 @@ export const forgeMetricsSessionFailuresTool: ContextScopedMcpToolFactory = (ctx
       SELECT status, failure_reason, count(*)::int AS sessions, max(updated_at) AS last_at
       FROM agent_sessions
       WHERE project_id = ${input.projectId}
-        AND failure_reason IS NOT NULL
         AND updated_at >= now() - (${input.days}::int * interval '1 day')
+        AND (status IN ('failed', 'cancelled_stale') OR failure_reason IS NOT NULL)
       GROUP BY status, failure_reason
     `);
 

@@ -311,6 +311,38 @@ describe('forge_metrics.session_failures (ISS-877)', () => {
     ]);
   });
 
+  // cm:why the row that recorded nothing at all is the purest form of the defect ISS-877 exists to end, and the first version of this query could not see it: `failure_reason IS NOT NULL` dropped it from the numerator AND the denominator, so the unclassified rate improved by not counting the worst rows.
+  it('counts a failed session that recorded no reason at all as unclassified', async () => {
+    mockMembership();
+    executeImpl.mockResolvedValueOnce([
+      { status: 'failed', failure_reason: null, sessions: '9', last_at: null },
+      { status: 'failed', failure_reason: 'provider_spend_cap', sessions: '1', last_at: null },
+    ]);
+    const tool = forgeMetricsSessionFailuresTool(buildCtx());
+    const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
+      total: number;
+      unclassified: number;
+      unclassifiedRate: number;
+    };
+    expect(res.total).toBe(10);
+    expect(res.unclassified).toBe(9);
+    expect(res.unclassifiedRate).toBeCloseTo(0.9);
+  });
+
+  it('does not count a completed session that recorded no reason either way', async () => {
+    mockMembership();
+    executeImpl.mockResolvedValueOnce([
+      { status: 'failed', failure_reason: 'provider_spend_cap', sessions: '2', last_at: null },
+    ]);
+    const tool = forgeMetricsSessionFailuresTool(buildCtx());
+    const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
+      total: number;
+      completedWithFailureReason: number;
+    };
+    expect(res.total).toBe(2);
+    expect(res.completedWithFailureReason).toBe(0);
+  });
+
   it('returns zero excluded rows rather than omitting the field when every session really failed', async () => {
     mockMembership();
     executeImpl.mockResolvedValueOnce([
