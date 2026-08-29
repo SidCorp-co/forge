@@ -177,8 +177,8 @@ First-time? Look for
 
 Significant changes require an RFC — see [docs/rfcs/](docs/rfcs/) for format.
 
-Security vulnerabilities: **do not open public issues** — see
-[SECURITY.md](SECURITY.md).
+Security vulnerabilities: **do not open public issues** — use GitHub's
+[private vulnerability reporting form](https://github.com/SidCorp-co/forge/security/advisories/new).
 
 ## License
 
