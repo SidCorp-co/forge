@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
-import { issues } from '../../db/schema.js';
+import { issues, projects } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { deviceRoom } from '../../ws/rooms.js';
 import { roomManager } from '../../ws/server.js';
@@ -16,6 +16,17 @@ import type {
 /** `ISS-<seq>` for an issue-bound job. Null for `pm`/`interactive`/`system`
  *  jobs, and on any lookup failure — the runner treats an absent key as "do not
  *  salvage", which is the safe direction. */
+// cm:guard defaults to `print` for an absent project, an absent config or an absent key — duplex is opt-in per project (ISS-873 phase 3) and a read that failed must never be the thing that flips a project's process model. `pipelineConfig` is not parsed through its Zod schema here on purpose: this runs on every dispatch, and a config that fails validation for an unrelated key must not stop the job going out.
+async function sessionModeOf(projectId: string): Promise<'print' | 'duplex'> {
+  const [row] = await db
+    .select({ agentConfig: projects.agentConfig })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  const cfg = (row?.agentConfig ?? {}) as { pipelineConfig?: { sessionMode?: unknown } };
+  return cfg.pipelineConfig?.sessionMode === 'duplex' ? 'duplex' : 'print';
+}
+
 async function issueKeyOf(issueId: string | null): Promise<string | null> {
   if (!issueId) return null;
   try {
@@ -75,6 +86,7 @@ export const claudeCodeAdapter: RunnerAdapter = {
     }
 
     const issueKey = await issueKeyOf(job.issueId);
+    const sessionMode = await sessionModeOf(job.projectId);
 
     const delivered = roomManager.publish(deviceRoom(runner.deviceId), {
       event: 'job.assigned',
@@ -95,6 +107,8 @@ export const claudeCodeAdapter: RunnerAdapter = {
         attempts: job.attempts,
         // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — the runner keys its local session by `jobId`, so this field is its only route back to the agent_sessions row; drop it and the transcript, claudeSessionId and diff are never written.
         ...(job.agentSessionId ? { agentSessionId: job.agentSessionId } : {}),
+        // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — the runner reads `sessionMode` to decide `Stdio::piped()` vs `-p`, and an older runner ignores it entirely and stays print. That is the whole opt-in: dropping this field does not break a job, it silently pins every project back to print and the phase-3 rollout reads as "no project ever opted in".
+        sessionMode,
       },
     });
     // cm:guard `publish` returns the number of OPEN sockets it wrote to, and a job.assigned frame is the ONLY delivery — the runner has no catch-up fetch, so 0 means this job will never be claimed. Reporting `dispatched` anyway is what made a WS-dead / HTTP-heartbeat-alive device produce `dispatch_unclaimed` 4.5 minutes later, and since ISS-862 taught quarantine to count those, a core-side WS fault would have set aside every runner on the project at once. Never drop this return value again.

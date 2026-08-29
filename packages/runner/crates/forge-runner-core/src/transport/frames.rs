@@ -44,6 +44,9 @@ pub struct JobAssigned {
     pub claude_session_id: Option<String>,
     #[serde(default)]
     pub runner_type: Option<String>,
+    // cm:edge contract -> packages/core/src/runners/adapters/claude-code.ts — `"duplex"` is the ONLY value that opts a project in; absent, null or anything else reads as print. Deserialised as a plain Option<String> rather than an enum on purpose: a core that adds a third mode must not make every job frame fail to parse on a runner that predates it.
+    #[serde(default)]
+    pub session_mode: Option<String>,
     #[serde(default)]
     pub agent_session_id: Option<String>,
     /// `ISS-<seq>` for the issue this job serves. The runner matches it against

@@ -109,3 +109,108 @@ async fn send(client: &CoreClient, url: &str, body: serde_json::Value) -> Result
     }
     Ok(())
 }
+
+/// Ask core whether a duplex turn ending is also the JOB ending.
+// cm:edge contract -> packages/core/src/jobs/turn-verdict-routes.ts — reads `done` out of the JSON body by name; a rename there does not fail here, it makes `unwrap_or(true)` the answer for every turn and every park finalizes the job it was waiting on.
+// cm:guard fails CLOSED to `done: true` on ANY error — a runner that cannot reach core must finish the job, not hold a resident session on a question core never confirmed. The opposite default leaks the slot on exactly the failure where nobody is watching (RUNNER_CAP_PER_RUNNER = 1), and a job finished early is retryable while a wedged slot is not.
+pub async fn turn_is_job_end(client: &CoreClient, job_id: &str) -> bool {
+    let url = client.url(&format!("/api/jobs/{job_id}/turn-verdict"));
+    let resp = match client
+        .http()
+        .get(&url)
+        .bearer_auth(client.device_token())
+        .send()
+        .await
+    {
+        Ok(r) if r.status().is_success() => r,
+        Ok(r) => {
+            tracing::warn!(
+                "[job {job_id}] turn-verdict {}: finishing the job",
+                r.status()
+            );
+            return true;
+        }
+        Err(e) => {
+            tracing::warn!("[job {job_id}] turn-verdict: {e} — finishing the job");
+            return true;
+        }
+    };
+    match resp.json::<serde_json::Value>().await {
+        Ok(v) => v
+            .get("done")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(true),
+        Err(e) => {
+            tracing::warn!("[job {job_id}] turn-verdict body: {e} — finishing the job");
+            true
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// One-shot HTTP server: answers the first request with `status` + `body`.
+    async fn serve_once(status: &'static str, body: &'static str) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 2048];
+            let _ = sock.read(&mut buf).await;
+            let resp = format!(
+                "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = sock.write_all(resp.as_bytes()).await;
+            let _ = sock.shutdown().await;
+        });
+        format!("http://{addr}")
+    }
+
+    fn client(url: String) -> CoreClient {
+        CoreClient::new(url, String::from("tok"))
+    }
+
+    #[tokio::test]
+    async fn a_parked_job_keeps_its_session() {
+        let url = serve_once("200 OK", r#"{"done":false}"#).await;
+        assert!(!turn_is_job_end(&client(url), "job-1").await);
+    }
+
+    #[tokio::test]
+    async fn a_finished_job_ends() {
+        let url = serve_once("200 OK", r#"{"done":true}"#).await;
+        assert!(turn_is_job_end(&client(url), "job-1").await);
+    }
+
+    // cm:guard the three failure shapes all answer TRUE, and that asymmetry is deliberate: a wrong `true` finishes a job that is retryable, a wrong `false` wedges the only runner slot on a question core never confirmed. These are the tests that fail if someone "fixes" the default to be cautious.
+    #[tokio::test]
+    async fn a_renamed_key_finishes_the_job_rather_than_holding_the_slot() {
+        let url = serve_once("200 OK", r#"{"finished":false}"#).await;
+        assert!(turn_is_job_end(&client(url), "job-1").await);
+    }
+
+    #[tokio::test]
+    async fn a_server_error_finishes_the_job() {
+        let url = serve_once("500 Internal Server Error", r#"{"error":"boom"}"#).await;
+        assert!(turn_is_job_end(&client(url), "job-1").await);
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_core_finishes_the_job() {
+        // Bind then drop, so the port is closed and the connect refuses.
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        drop(l);
+        assert!(turn_is_job_end(&client(format!("http://{addr}")), "job-1").await);
+    }
+
+    #[tokio::test]
+    async fn a_body_that_is_not_json_finishes_the_job() {
+        let url = serve_once("200 OK", "not json at all").await;
+        assert!(turn_is_job_end(&client(url), "job-1").await);
+    }
+}

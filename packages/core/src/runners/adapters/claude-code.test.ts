@@ -49,6 +49,45 @@ describe('claude-code adapter', () => {
   beforeEach(() => {
     publish.mockClear();
     publish.mockReturnValue(1);
+    // cm:guard reset the QUEUE, not just the calls — `mockResolvedValueOnce` values that no test consumed spill into the next one, and a leaked row is read as this test's own fixture. Four tests failed that way when the adapter grew its second select.
+    selectLimit.mockReset();
+    selectLimit.mockResolvedValue([] as never);
+  });
+
+  async function dispatchWith(agentConfig: unknown): Promise<Record<string, unknown>> {
+    // cm:guard `issueId: null` so `issueKeyOf` returns without selecting — this fixture then queues exactly ONE row and it is unambiguously the config read. With an issue id the two selects are told apart only by call order, which is a test that breaks on a refactor rather than on the rule.
+    selectLimit.mockResolvedValueOnce([{ agentConfig }] as never);
+    await claudeCodeAdapter.dispatch({
+      job: {
+        id: 'job-sm',
+        projectId: 'p-1',
+        issueId: null,
+        attempts: 0,
+        type: 'code',
+        payload: {},
+        dispatchedAt: new Date('2026-08-29T00:00:00.000Z'),
+      } as never,
+      runner: runner(),
+    });
+    return (publish.mock.calls[0]?.[1] as { data: Record<string, unknown> }).data;
+  }
+
+  // cm:guard the DEFAULT direction is the whole safety of the phase 3 opt-in. `sessionMode` inverts a project's process model, so every shape that is not the literal 'duplex' — absent config, absent key, an unknown value — must read as print. A default that leaked the other way flips the fleet on a release nobody measured, which is phase 5's job and is bounded by a measured window.
+  it('opts a project in only on the literal duplex', async () => {
+    expect((await dispatchWith({ pipelineConfig: { sessionMode: 'duplex' } })).sessionMode).toBe(
+      'duplex',
+    );
+  });
+
+  it.each([
+    ['no agentConfig at all', null],
+    ['no pipelineConfig', {}],
+    ['no sessionMode key', { pipelineConfig: {} }],
+    ['an explicit print', { pipelineConfig: { sessionMode: 'print' } }],
+    ['a value nobody recognises', { pipelineConfig: { sessionMode: 'stream-json' } }],
+    ['the wrong case', { pipelineConfig: { sessionMode: 'Duplex' } }],
+  ])('stays print with %s', async (_label, cfg) => {
+    expect((await dispatchWith(cfg)).sessionMode).toBe('print');
   });
 
   // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — without `issueKey` the runner declines to salvage a failed job's working copy at all (it cannot tell this job's checkout from a stale one), so dropping this field disables L1 with nothing going red.

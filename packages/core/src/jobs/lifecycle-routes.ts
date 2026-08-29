@@ -28,6 +28,7 @@ import { salvageSchema, salvageSet } from './prior-attempts.js';
 import { JobResumeError, resumeHeldJob } from './resume-job.js';
 import type { RetryOutcome } from './retry.js';
 import { deriveSessionFinal } from './session-transcript.js';
+import { jobTurnVerdictRoutes } from './turn-verdict-routes.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -92,6 +93,8 @@ async function loadJob(jobId: string) {
 }
 
 export const jobLifecycleDeviceRoutes = new Hono<{ Variables: DeviceVars }>();
+// cm:guard mounted HERE and not in index.ts — the turn verdict is a device lifecycle read, and index.ts is at its size baseline: a second mount line there costs an amnesty for a route that already has a router.
+jobLifecycleDeviceRoutes.route('/', jobTurnVerdictRoutes);
 
 // ISS-449 (ISS-442 C3 / I3) — explicit runner ACK for the dispatch→ack hop.
 // The runner calls this right after its pre-claim preflight passes (ISS-451)

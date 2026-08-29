@@ -156,12 +156,31 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
                     o.reset_turn();
                     ev
                 };
+                // cm:guard ISS-873 phase 3 — a turn ending is not a JOB ending, and the runner cannot tell the two apart: the park is an issue-status move the driver made over MCP DURING the turn, so core holds the answer. `is_issue_job` is the discriminator and `core` is NOT — `core_for_state` is Some for every duplex spawn including chat, so keying on it would put a 404 on the hot path of every chat turn.
+                let job_ended = match (is_issue_job, core) {
+                    (true, Some(client)) => {
+                        crate::transport::lifecycle::turn_is_job_end(client, job_id).await
+                    }
+                    // cm:guard chat's every turn end IS its park — there is no job to finish, and residency between turns is the whole feature.
+                    _ => true,
+                };
                 {
                     let tx = turn_tx.lock().await;
+                    // cm:guard the park is announced whether or not the job ended, and BEFORE the terminal event — core reads it to exempt the session from the quiet clock, and a state sent after the consumer breaks lands in a receiver nobody is reading.
                     let _ = tx.send(RunnerEvent::StateChanged("awaiting_input")).await;
-                    let _ = tx.send(ev).await;
+                    if job_ended {
+                        let _ = tx.send(ev).await;
+                    }
                 }
-                reported = true;
+                // cm:guard `reported` stays FALSE for a turn that did not end the job — the process exit path reads it to decide whether to classify, and marking a parked turn reported would leave a session that later dies with no terminal event at all.
+                reported = job_ended;
+                // cm:guard a FINISHED issue job must not sit resident to the idle ceiling: core has its terminal event, and every second after it holds a runner slot at RUNNER_CAP_PER_RUNNER = 1 for a job nobody will send another turn to. Chat does the opposite on purpose — its residency between turns is the feature.
+                if is_issue_job && job_ended {
+                    if let Some(s) = sessions.lock().await.get_mut(job_id) {
+                        s.stdin = None;
+                    }
+                    return reported;
+                }
             }
             _ = &mut *reader => return reported,
         }

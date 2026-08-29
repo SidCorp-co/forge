@@ -23,7 +23,8 @@ import type { HooksBus } from './hooks.js';
 import { pipelineConfigSchema } from './pipeline-config-schema.js';
 
 /** The park the driver enters to ask a question. */
-const QUESTION_STATUS = 'needs_info';
+// cm:edge lockstep -> packages/core/src/jobs/turn-verdict-routes.ts — the turn verdict asks the SAME question from the other end (may this session stay resident?), and the two answers must name one status: a verdict that parked on `waiting` too would hold a runner slot for a pause a human chose, and a resume that did would take that pause away from them.
+export const QUESTION_STATUS = 'needs_info';
 
 // cm:guard `needs_info` ONLY, never the other two parks the autonomous vocabulary also renders as needs_human — `waiting` and `on_hold` are stopped by a person, and a comment on one is discussion, not permission to restart. Resuming those would take the pause away from the human who chose it.
 async function resumableIssue(issueId: string) {

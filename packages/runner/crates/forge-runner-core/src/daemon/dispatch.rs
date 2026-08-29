@@ -508,8 +508,8 @@ pub async fn handle(
         mcp_servers_override: ja.mcp_servers_override.clone(),
         worktree_branch,
         worktree_start_point,
-        // cm:edge ordering -> packages/runner/crates/forge-runner-core/src/daemon/chat.rs — chat went duplex in ISS-873 phase 1 and pipeline jobs deliberately did NOT. Flipping this before phase 3 lands is the ordering bug the plan exists to prevent: the 25s synthetic beat and the result-miss reaper are both still print-shaped, and a duplex job that finished one turn already has a `result` row.
-        duplex: false,
+        // cm:guard OPT-IN, and the default direction is the whole safety of it: only the literal `"duplex"` flips a job, so a project that never set `pipelineConfig.sessionMode`, a core that does not send the field, and a value nobody recognises all stay print. The fleet-wide default flip is phase 5 and is bounded by a measured release, not by this line.
+        duplex: ja.session_mode.as_deref() == Some("duplex"),
         resume_id: ja.claude_session_id.clone(),
         agent_session_id: ja.agent_session_id.clone(),
     };
@@ -696,6 +696,32 @@ fn map_event(ev: RunnerEvent) -> Option<JobEventInput> {
 mod tests {
     use super::*;
     use crate::config::Binding;
+
+    fn frame(session_mode: Option<&str>) -> JobAssigned {
+        serde_json::from_value(serde_json::json!({
+            "jobId": "j1", "projectId": "p1", "type": "code",
+            "sessionMode": session_mode,
+        }))
+        .expect("job.assigned must parse")
+    }
+
+    // cm:guard opt-in, and the DEFAULT direction is the safety. A core that does not send the field, a project that never set it, and a value nobody recognises must all stay print — the fleet-wide flip is phase 5 and is bounded by a measured release.
+    #[test]
+    fn only_the_literal_duplex_opts_a_job_in() {
+        assert!(frame(Some("duplex")).session_mode.as_deref() == Some("duplex"));
+        for m in [None, Some("print"), Some("Duplex"), Some("stream-json")] {
+            assert!(
+                frame(m).session_mode.as_deref() != Some("duplex"),
+                "{m:?} must not flip a job to duplex"
+            );
+        }
+    }
+
+    // cm:guard a frame carrying a mode this runner has never heard of must still PARSE — deserialising into an enum would make every job undeliverable to a runner that predates a new mode, which is a fleet outage caused by a field it did not need.
+    #[test]
+    fn an_unknown_mode_still_parses_the_frame() {
+        assert_eq!(frame(Some("telepathy")).job_id, "j1");
+    }
 
     // cm:guard the KEY is the contract, not the presence of a row — core reads `data.runtimeState` by that exact name to decide the batch is not a heartbeat (`jobs/events-routes.ts`). Asserting only that map_event returned Some would pass a rename that silently makes every park count as activity.
     #[test]
