@@ -1290,9 +1290,12 @@ impl Runner for ClaudeCodeRunner {
         Ok(())
     }
 
+    // cm:guard the SIGNAL path stays, and `cancel` is why: core's two-phase kill gate (ISS-785) waits on a `killed` ack and a turn that is generating stops for nothing else. ISS-873 phase 4 reads as though this becomes checkpoint-then-close — it must not, on this path: a cancel that waited out a checkpoint budget would leave the gate holding a runner slot for a stop the operator asked for now. Checkpoint-then-close is the RESTART path (`checkpoint_and_close`) and the `cancel` inbox kind, both of which act between turns.
+    // cm:guard stdin is dropped WITH the child, or the killed session stays `resident`: `resident()` reads stdin alone, so a `send_resident` into a corpse would write to a broken pipe and ack `delivered` for a message no model will ever see, and `checkpoint_and_close` would spend its budget waiting on a turn that cannot start.
     async fn abort(&self, session: &SessionId) -> Result<()> {
         let mut s = self.sessions.lock().await;
         if let Some(sess) = s.get_mut(session) {
+            sess.stdin = None;
             if let Some(mut child) = sess.child.take() {
                 graceful_kill(&mut child).await;
             }
@@ -1598,6 +1601,35 @@ mod tests {
             },
         );
         (runner, rx, turn_done)
+    }
+
+    // cm:guard an aborted session must stop being `resident`. `resident()` reads stdin alone, so a session whose child was killed but whose stdin stayed in the map still answers "send to me" — the write goes to a broken pipe and the runner acks `delivered` for a message no model will ever see, which is the one ack core acts on by standing its durable path down.
+    #[tokio::test]
+    async fn an_aborted_session_is_no_longer_resident() {
+        let (runner, _rx, _done) = parked_runner().await;
+        let id = "j1".to_string();
+        assert!(runner.resident(&id).await.is_some());
+        Runner::abort(&runner, &id).await.expect("abort");
+        assert!(runner.resident(&id).await.is_none());
+        assert!(
+            runner.send_resident(&id, "hello", None).await.is_err(),
+            "an aborted session must refuse a send rather than write into a corpse"
+        );
+    }
+
+    // cm:guard an aborted session must not cost the restart its checkpoint budget either — there is no turn left to wait for.
+    #[tokio::test]
+    async fn an_aborted_session_is_not_checkpointed() {
+        let (runner, _rx, _done) = parked_runner().await;
+        Runner::abort(&runner, &"j1".to_string())
+            .await
+            .expect("abort");
+        let started = std::time::Instant::now();
+        assert!(runner
+            .checkpoint_and_close(std::time::Duration::from_secs(30))
+            .await
+            .is_empty());
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
     }
 
     // cm:guard the WAIT is what makes this a checkpoint rather than a wasted write. Dropping stdin is EOF: a close that does not wait ends the session before the turn it just asked for can run, spending a turn to produce nothing — which is strictly worse than closing outright, and indistinguishable from it in any test that only asserts the session ended.
