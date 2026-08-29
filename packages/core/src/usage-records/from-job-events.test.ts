@@ -129,16 +129,90 @@ describe('extractUsageFromEvents', () => {
     expect(extractUsageFromEvents(events)).toBeNull();
   });
 
-  it('takes the LAST result line on a resumed session (cumulative wins)', () => {
+  // cm:guard the two directions are asserted TOGETHER on one fixture because that is the whole rule: summing the cost would bill 6.5 for a session that cost 5.5, and taking the last usage would bill turn 2's tokens for a job that ran two turns. A test that checked only one of them passes on code that has the pair the wrong way round.
+  it('sums the per-turn halves of a duplex session and takes cost from the last', () => {
     const later = new Date('2026-06-10T13:00:00Z');
     const events = [
-      stdout(resultLine({ cost: 1.0, input: 100, output: 10 }), TS),
-      stdout(resultLine({ cost: 5.5, input: 999, output: 88 }), later),
+      stdout(
+        resultLine({
+          cost: 1.0,
+          turns: 4,
+          input: 100,
+          output: 10,
+          cacheRead: 0,
+          cacheCreation: 31881,
+        }),
+        TS,
+      ),
+      stdout(
+        resultLine({
+          cost: 5.5,
+          turns: 3,
+          input: 999,
+          output: 88,
+          cacheRead: 31881,
+          cacheCreation: 937,
+        }),
+        later,
+      ),
     ];
     const out = extractUsageFromEvents(events);
     expect(out?.estimatedCost).toBe(5.5);
-    expect(out?.inputTokens).toBe(999);
+    expect(out?.inputTokens).toBe(1099);
+    expect(out?.outputTokens).toBe(98);
+    expect(out?.cacheReadTokens).toBe(31881);
+    expect(out?.cacheCreationTokens).toBe(32818);
+    expect(out?.requestCount).toBe(7);
     expect(out?.recordedAt).toEqual(later);
+  });
+
+  // cm:guard a print job must extract byte-identically before and after the sum — one result line makes summing and last-wins the same number, and this is the assertion that says so rather than leaving it to be inferred.
+  it('is unchanged on a single-result print job', () => {
+    const one = resultLine({
+      cost: 2.0,
+      turns: 9,
+      input: 7,
+      output: 5,
+      cacheRead: 3,
+      cacheCreation: 2,
+    });
+    const out = extractUsageFromEvents([stdout(one)]);
+    expect(out).toMatchObject({
+      inputTokens: 7,
+      outputTokens: 5,
+      cacheReadTokens: 3,
+      cacheCreationTokens: 2,
+      requestCount: 9,
+      estimatedCost: 2.0,
+    });
+  });
+
+  it('estimates a costless duplex session from the SUMMED tokens', () => {
+    const events = [
+      stdout(
+        resultLine({
+          input: 100,
+          output: 10,
+          modelUsage: { m: { inputTokens: 1, outputTokens: 1 } },
+        }),
+      ),
+      stdout(
+        resultLine({
+          input: 100,
+          output: 10,
+          modelUsage: { m: { inputTokens: 2, outputTokens: 2 } },
+        }),
+      ),
+    ];
+    const out = extractUsageFromEvents(events);
+    expect(out?.estimatedCost).toBe(
+      estimateCost('m', {
+        inputTokens: 200,
+        outputTokens: 20,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+      }),
+    );
   });
 
   it('defaults requestCount to 1 and model to unknown when unavailable', () => {

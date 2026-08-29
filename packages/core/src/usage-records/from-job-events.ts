@@ -3,12 +3,14 @@
  * job already streamed to core.
  *
  * The `forge-runner` CLI streams every raw Claude `stream-json` stdout line as a
- * `stdout` job_event (`data.line` = the raw line). The terminal `result` line
- * carries the cumulative `usage` token block (snake_case) AND `total_cost_usd`
- * — the authoritative dollar cost the CLI computes itself. Core already stores
- * all of this; it just never materialized a usage_records row from it, so
- * cost-summary / withCost return 0 for CLI-runner work. This extractor closes
- * that gap purely from stored events (no runner change).
+ * `stdout` job_event (`data.line` = the raw line). A `result` line carries a
+ * `usage` token block (snake_case) AND `total_cost_usd` — the authoritative
+ * dollar cost the CLI computes itself. Core already stores all of this; it just
+ * never materialized a usage_records row from it, so cost-summary / withCost
+ * return 0 for CLI-runner work. This extractor closes that gap purely from
+ * stored events (no runner change).
+ *
+ * A print job emits exactly one `result`; a duplex session emits one per turn.
  *
  * Pure + side-effect-free so it can be unit-tested against real payload shapes;
  * the DB hook lives in `materialize.ts`.
@@ -91,14 +93,12 @@ function pickModel(
  * Extract one usage record from a job's events, or null when there is no
  * terminal `result` line (e.g. the job died before Claude emitted its result —
  * nothing reliable to record).
- *
- * `events` may be in any order; the LAST result line wins (a resumed session
- * emits one result per turn-group, and the final one carries the cumulative
- * usage + total cost).
  */
+// cm:guard the two halves of a `result` line accumulate DIFFERENTLY, and reading either one the other's way silently misbills every duplex job. Measured on claude 2.1.251, 2026-08-29, two turns of one resident session: `usage` and `num_turns` are PER-TURN (turn 2 read `output_tokens: 3`, not 6), while `total_cost_usd` and `modelUsage` are CUMULATIVE (0.319836 -> 0.3452315). So tokens and turns are summed across every result line and cost is taken from the last — the reverse of what the original one-result-per-job shape suggested. On print there is exactly one result line, where summing and last-wins are the same number.
 export function extractUsageFromEvents(events: UsageEventRow[]): ExtractedUsage | null {
   let resultLine: Record<string, unknown> | null = null;
   let resultTs: Date | null = null;
+  const totals = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, turns: 0 };
   const assistantModelTokens = new Map<string, number>();
   let firstAssistantModel: string | null = null;
 
@@ -108,7 +108,13 @@ export function extractUsageFromEvents(events: UsageEventRow[]): ExtractedUsage 
     const type = line.type;
     if (type === 'result') {
       resultLine = line;
-      resultTs = ev.ts; // last wins
+      resultTs = ev.ts;
+      const u = (line.usage ?? {}) as Record<string, unknown>;
+      totals.input += num(u.input_tokens);
+      totals.output += num(u.output_tokens);
+      totals.cacheRead += num(u.cache_read_input_tokens);
+      totals.cacheCreation += num(u.cache_creation_input_tokens);
+      totals.turns += num(line.num_turns);
     } else if (type === 'assistant') {
       const msg = line.message as Record<string, unknown> | undefined;
       const model = msg?.model;
@@ -123,13 +129,11 @@ export function extractUsageFromEvents(events: UsageEventRow[]): ExtractedUsage 
 
   if (!resultLine) return null;
 
-  const usage = (resultLine.usage ?? {}) as Record<string, unknown>;
-  const inputTokens = num(usage.input_tokens);
-  const outputTokens = num(usage.output_tokens);
-  const cacheReadTokens = num(usage.cache_read_input_tokens);
-  const cacheCreationTokens = num(usage.cache_creation_input_tokens);
+  const { input: inputTokens, output: outputTokens } = totals;
+  const { cacheRead: cacheReadTokens, cacheCreation: cacheCreationTokens } = totals;
+  // cm:guard `pickModel` reads the LAST line's `modelUsage` alone, which is right for the same reason the sums above are: that map is cumulative, so it already names the dominant model of the whole session rather than of the final turn.
   const model = pickModel(resultLine, assistantModelTokens, firstAssistantModel);
-  const requestCount = num(resultLine.num_turns) || 1;
+  const requestCount = totals.turns || 1;
 
   const totalCost = resultLine.total_cost_usd;
   const estimatedCost =
