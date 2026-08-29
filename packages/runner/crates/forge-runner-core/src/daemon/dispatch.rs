@@ -652,8 +652,12 @@ async fn salvage_for(
 
 fn map_event(ev: RunnerEvent) -> Option<JobEventInput> {
     match ev {
-        // cm:guard pipeline jobs are print until ISS-873 phase 3, so nothing emits this on this path yet. When phase 3 flips them, a state change must become a job event here — dropping it silently is how the loop monitor would keep inferring progress from silence on a session that already declares it.
-        RunnerEvent::StateChanged(_) => None,
+        // cm:edge lockstep -> packages/core/src/jobs/events-routes.ts — core reads `data.runtimeState` to decide whether the batch counts as a heartbeat, and a park must NOT. Renaming this key silently turns every park on the pipeline path back into activity, which is the exact rule phase 2 wrote into agent-sessions/routes.ts.
+        // cm:guard the session's runtime state is reported over PATCH /agent-sessions (transport/agent_sessions.rs) and that PATCH is the authority — this row is the job TIMELINE copy. Dropping it is how an operator reading job events sees an unexplained gap where the session was parked on a human.
+        RunnerEvent::StateChanged(state) => Some(JobEventInput::new(
+            "progress",
+            serde_json::json!({ "runtimeState": state }),
+        )),
         RunnerEvent::Stdout(json) => Some(JobEventInput::new(
             "stdout",
             serde_json::json!({ "line": json }),
@@ -692,6 +696,40 @@ fn map_event(ev: RunnerEvent) -> Option<JobEventInput> {
 mod tests {
     use super::*;
     use crate::config::Binding;
+
+    // cm:guard the KEY is the contract, not the presence of a row — core reads `data.runtimeState` by that exact name to decide the batch is not a heartbeat (`jobs/events-routes.ts`). Asserting only that map_event returned Some would pass a rename that silently makes every park count as activity.
+    #[test]
+    fn state_change_becomes_a_progress_row_carrying_the_state() {
+        let ev = map_event(RunnerEvent::StateChanged("awaiting_input"))
+            .expect("a state change must reach core, not be dropped");
+        assert_eq!(ev.kind, "progress");
+        assert_eq!(ev.data["runtimeState"], "awaiting_input");
+    }
+
+    #[test]
+    fn every_declared_state_survives_the_mapping() {
+        for state in [
+            "starting",
+            "working",
+            "awaiting_input",
+            "checkpointing",
+            "closed",
+        ] {
+            let ev = map_event(RunnerEvent::StateChanged(state)).expect(state);
+            assert_eq!(ev.data["runtimeState"], state);
+        }
+    }
+
+    // cm:guard the two terminal events stay UNMAPPED. `consume` breaks its loop on them and calls lifecycle::complete/fail; a row here as well would post an event for a job core has already finalized, which is a 409 on a terminal job.
+    #[test]
+    fn terminal_events_are_not_job_event_rows() {
+        assert!(map_event(RunnerEvent::Done { exit_code: 0 }).is_none());
+        assert!(map_event(RunnerEvent::Failed {
+            error: "x".into(),
+            kind: crate::runner::FailureKind::Transient
+        })
+        .is_none());
+    }
 
     fn me(project_id: &str, slug: &str, repo_path: Option<&str>) -> MeRunner {
         MeRunner {

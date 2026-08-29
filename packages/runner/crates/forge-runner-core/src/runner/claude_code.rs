@@ -573,6 +573,19 @@ impl ClaudeCodeRunner {
             s.stdin = None;
         }
     }
+
+    /// End every live duplex session, returning the ids that were closed.
+    // cm:guard the ONLY thing that ends a parked session before the daemon exits. A park is not in-flight — `InflightGuard` is scoped to the frame task — so `drain_to_idle` reads an idle daemon and would exit(0) leaving a `setsid`-detached child holding the worktree, which is the second-agent-on-one-checkout hazard invariant 4 exists to prevent. Never call this while a turn is generating: EOF mid-turn is survivable (measured, claude 2.1.251) but the turn's result would land in a receiver the exiting daemon no longer reads.
+    pub async fn close_all_resident(&self) -> Vec<SessionId> {
+        let mut map = self.sessions.lock().await;
+        let mut closed = Vec::new();
+        for (id, s) in map.iter_mut() {
+            if s.stdin.take().is_some() {
+                closed.push(id.clone());
+            }
+        }
+        closed
+    }
 }
 
 #[async_trait]

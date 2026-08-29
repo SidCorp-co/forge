@@ -81,6 +81,24 @@ const { jobEventsRoutes } = await import('./events-routes.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
 
+const validJobId = '11111111-1111-4111-8111-111111111111';
+const body = (events: unknown[]) => JSON.stringify({ events });
+
+function resetMocks(): void {
+  vi.clearAllMocks();
+  selectLimit.mockImplementation(async () => [jobRow]);
+  jobRow.status = 'running';
+  jobRow.deviceId = 'dev-1';
+  jobRow.agentSessionId = null;
+  insertReturning.mockReset();
+  txExecute.mockReset();
+  updateReturning.mockReset();
+  updateReturning.mockResolvedValue([]);
+  updateSet.mockClear();
+  updateWhere.mockClear();
+  dbUpdate.mockClear();
+}
+
 function buildApp() {
   const app = new Hono<{ Variables: import('../middleware/request-id.js').RequestIdVars }>();
   app.use('*', requestId());
@@ -98,27 +116,11 @@ function req(path: string, init: RequestInit & { token?: string } = {}) {
 }
 
 describe('jobs/events-routes POST /:id/events', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    selectLimit.mockImplementation(async () => [jobRow]);
-    jobRow.status = 'running';
-    jobRow.deviceId = 'dev-1';
-    jobRow.agentSessionId = null;
-    insertReturning.mockReset();
-    txExecute.mockReset();
-    updateReturning.mockReset();
-    updateReturning.mockResolvedValue([]);
-    updateSet.mockClear();
-    updateWhere.mockClear();
-    dbUpdate.mockClear();
-  });
+  beforeEach(resetMocks);
 
   afterEach(() => {
     vi.clearAllMocks();
   });
-
-  const validJobId = '11111111-1111-4111-8111-111111111111';
-  const body = (events: unknown[]) => JSON.stringify({ events });
 
   it('rejects with 401 when no auth header is present', async () => {
     const app = buildApp();
@@ -390,5 +392,78 @@ describe('jobs/events-routes POST /:id/events', () => {
     expect(json.lastSeq).toBe(7);
     const vals = insertValues.mock.calls[0]?.[0] as Array<{ seq: number }>;
     expect(vals.map((v) => v.seq)).toEqual([6, 7]);
+  });
+});
+
+describe('jobs/events-routes · a park is not a heartbeat', () => {
+  beforeEach(resetMocks);
+
+  // cm:guard the park's whole contract, and it arrives by a SECOND door: agent-sessions/routes.ts already refuses to treat `awaiting_input` as activity on the PATCH, and a job event carrying the same fact must be refused too. Without this the runner announces a park and stamps the session healthy in the same breath — `VISION: state-never-lies`, and the phase 2 exemption would be undone by the door nobody guarded.
+  it('does not bump the heartbeat for a batch that only announces a park', async () => {
+    jobRow.agentSessionId = 'session-1';
+    txExecute.mockResolvedValueOnce([]);
+    txExecute.mockResolvedValueOnce([{ max_seq: 0 }]);
+    insertReturning.mockResolvedValueOnce([
+      { seq: 1, kind: 'progress', ts: new Date(), data: { runtimeState: 'awaiting_input' } },
+    ]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/events`, {
+        method: 'POST',
+        token: 'dev-1-token',
+        body: body([{ kind: 'progress', data: { runtimeState: 'awaiting_input' } }]),
+      }),
+    );
+    expect(r.status).toBe(200);
+    expect(dbUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  // cm:guard the discriminating half — every OTHER state is activity. A rule that skipped the bump for any `runtimeState` row would park a working session outside the quiet clock, which is the un-reapable `running` row phase 2's guard names.
+  it('still bumps the heartbeat when the session says it is working', async () => {
+    jobRow.agentSessionId = 'session-1';
+    txExecute.mockResolvedValueOnce([]);
+    txExecute.mockResolvedValueOnce([{ max_seq: 0 }]);
+    insertReturning.mockResolvedValueOnce([
+      { seq: 1, kind: 'progress', ts: new Date(), data: { runtimeState: 'working' } },
+    ]);
+    updateReturning.mockResolvedValueOnce([]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/events`, {
+        method: 'POST',
+        token: 'dev-1-token',
+        body: body([{ kind: 'progress', data: { runtimeState: 'working' } }]),
+      }),
+    );
+    expect(r.status).toBe(200);
+    expect(dbUpdate).toHaveBeenCalledTimes(3);
+  });
+
+  // cm:guard a MIXED batch is activity — the park is only quiet when nothing else happened in the same window. Reading "contains a park" as "is a park" would let one parked row silence a batch that also carried real tool output.
+  it('bumps the heartbeat when a park arrives alongside real work', async () => {
+    jobRow.agentSessionId = 'session-1';
+    txExecute.mockResolvedValueOnce([]);
+    txExecute.mockResolvedValueOnce([{ max_seq: 0 }]);
+    insertReturning.mockResolvedValueOnce([
+      { seq: 1, kind: 'stdout', ts: new Date(), data: {} },
+      { seq: 2, kind: 'progress', ts: new Date(), data: { runtimeState: 'awaiting_input' } },
+    ]);
+    updateReturning.mockResolvedValueOnce([]);
+
+    const app = buildApp();
+    const r = await app.fetch(
+      req(`/api/jobs/${validJobId}/events`, {
+        method: 'POST',
+        token: 'dev-1-token',
+        body: body([
+          { kind: 'stdout', data: {} },
+          { kind: 'progress', data: { runtimeState: 'awaiting_input' } },
+        ]),
+      }),
+    );
+    expect(r.status).toBe(200);
+    expect(dbUpdate).toHaveBeenCalledTimes(3);
   });
 });

@@ -65,12 +65,21 @@ const DRAIN_POLL_SECS: u64 = 30;
 /// start a second one on the same checkout.
 ///
 // cm:guard both restart paths MUST route their exit through this return value — the update path re-checked and the credential path did not, and one bug in one of two copies of the same loop is exactly what this function exists to make impossible.
-// cm:guard a duplex session parked at `awaiting_input` will never drain on its own, so the timeout must stay a CEILING, not become a wait-forever. Chat parks TODAY (claude_code.rs emits the state at turn end), and `InflightGuard` is scoped to the frame task, so a parked session reads as IDLE here and this loop exits without closing it — the ceiling bounds the turn, never the park. Making the park drainable — checkpoint, close, then exit — lands with the phase 5 flip, and core's residency deadline (jobs/park-deadline.ts) is the backstop until then.
-async fn drain_to_idle(inflight: &Arc<AtomicUsize>, what: &str) -> bool {
+// cm:guard the ceiling bounds TURNS, never the park: a session parked at `awaiting_input` is not in-flight (`InflightGuard` is scoped to the frame task), so it reads as idle here and no amount of waiting would ever close it. `close_parked` is what ends it, and it runs ONLY after the drain succeeds — closing a park while a turn is still generating would drop that turn's result into a receiver the exiting daemon no longer reads.
+// cm:edge protocol -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — `close_all_resident` is the close half; the CHECKPOINT half does not exist until the phase 4 message vocabulary, so a parked session loses its context on restart and keeps only what is already on disk. That is strictly better than the alternative it replaces: exit(0) leaving a setsid-detached child writing the worktree the relaunched daemon is about to hand to a second agent.
+async fn drain_to_idle<F, Fut>(inflight: &Arc<AtomicUsize>, what: &str, close_parked: F) -> bool
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = usize>,
+{
     let mut waited = 0u64;
     loop {
         let busy = inflight.load(Ordering::Acquire);
         if busy == 0 {
+            let closed = close_parked().await;
+            if closed > 0 {
+                tracing::warn!("[{what}] closed {closed} parked session(s) before restarting");
+            }
             return true;
         }
         if waited >= DRAIN_TIMEOUT_SECS {
@@ -82,6 +91,16 @@ async fn drain_to_idle(inflight: &Arc<AtomicUsize>, what: &str) -> bool {
         tokio::time::sleep(std::time::Duration::from_secs(DRAIN_POLL_SECS)).await;
         waited += DRAIN_POLL_SECS;
     }
+}
+
+/// Close every resident session and tell core each one is gone.
+// cm:guard reports `closed` for each, best-effort — a park that is closed but still reads `awaiting_input` in core is exempt from the quiet clock (phase 2) while nothing is on the other end of the question, and only the residency backstop would ever reap it.
+async fn close_parked_sessions(runner: &Arc<ClaudeCodeRunner>, client: &Arc<CoreClient>) -> usize {
+    let closed = runner.close_all_resident().await;
+    for id in &closed {
+        crate::transport::agent_sessions::report_runtime_state(client, id, "closed").await;
+    }
+    closed.len()
 }
 
 /// Run the daemon until Ctrl-C. `device_token` comes from the cred store.
@@ -196,6 +215,7 @@ pub async fn run(
     {
         let auto = cfg.update.auto;
         let inflight = inflight.clone();
+        let (runner, client) = (runner.clone(), client.clone());
         let mut cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
@@ -221,7 +241,11 @@ pub async fn run(
                                         o.from,
                                         o.to
                                     );
-                                    if drain_to_idle(&inflight, "update").await {
+                                    if drain_to_idle(&inflight, "update", || {
+                                        close_parked_sessions(&runner, &client)
+                                    })
+                                    .await
+                                    {
                                         tracing::warn!(
                                             "[update] idle — restarting to apply update"
                                         );
@@ -266,6 +290,7 @@ pub async fn run(
     {
         let startup_token = device_token.clone();
         let inflight = inflight.clone();
+        let (runner, client) = (runner.clone(), client.clone());
         let mut cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             let mut tick = tokio::time::interval(std::time::Duration::from_secs(30));
@@ -283,7 +308,11 @@ pub async fn run(
                         tracing::warn!(
                             "[cred] device token changed (re-login detected) — draining in-flight work, then restarting to apply it"
                         );
-                        if !drain_to_idle(&inflight, "cred").await {
+                        if !drain_to_idle(&inflight, "cred", || {
+                            close_parked_sessions(&runner, &client)
+                        })
+                        .await
+                        {
                             continue;
                         }
                         tracing::warn!("[cred] restarting to pick up new credentials");
@@ -619,10 +648,55 @@ async fn sweep_plugins(client: &CoreClient, cfg: &Config) {
 mod tests {
     use super::*;
 
+    /// Counts the calls and reports how many sessions it "closed".
+    fn spy(closed: usize) -> (Arc<AtomicUsize>, impl FnOnce() -> std::future::Ready<usize>) {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen = calls.clone();
+        (calls, move || {
+            seen.fetch_add(1, Ordering::AcqRel);
+            std::future::ready(closed)
+        })
+    }
+
     #[tokio::test(start_paused = true)]
     async fn idle_drains_immediately() {
         let inflight = Arc::new(AtomicUsize::new(0));
-        assert!(drain_to_idle(&inflight, "test").await);
+        let (_calls, close) = spy(0);
+        assert!(drain_to_idle(&inflight, "test", close).await);
+    }
+
+    // cm:guard a park is NOT in-flight, so an idle drain is exactly when a resident session is still alive and holding the worktree. Skipping the close here is the exit(0)-with-a-detached-survivor that invariant 4 exists to prevent.
+    #[tokio::test(start_paused = true)]
+    async fn an_idle_drain_still_closes_the_parked_sessions() {
+        let inflight = Arc::new(AtomicUsize::new(0));
+        let (calls, close) = spy(2);
+        assert!(drain_to_idle(&inflight, "test", close).await);
+        assert_eq!(calls.load(Ordering::Acquire), 1);
+    }
+
+    // cm:guard the close must NOT run when the drain refuses — the restart is deferred, the daemon keeps living, and closing a park there would end a session nobody asked to end while its human is still composing an answer.
+    #[tokio::test(start_paused = true)]
+    async fn a_refused_drain_closes_nothing() {
+        let inflight = Arc::new(AtomicUsize::new(1));
+        let (calls, close) = spy(1);
+        assert!(!drain_to_idle(&inflight, "test", close).await);
+        assert_eq!(calls.load(Ordering::Acquire), 0);
+    }
+
+    // cm:guard the close runs AFTER the wait, never before: EOF on a session whose turn is still generating drops that turn's result into a receiver the exiting daemon no longer reads.
+    #[tokio::test(start_paused = true)]
+    async fn the_close_waits_for_the_turn_to_finish() {
+        let inflight = Arc::new(AtomicUsize::new(1));
+        let finisher = inflight.clone();
+        let (calls, close) = spy(1);
+        let observed = calls.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(DRAIN_POLL_SECS * 3)).await;
+            assert_eq!(observed.load(Ordering::Acquire), 0, "closed mid-turn");
+            finisher.fetch_sub(1, Ordering::AcqRel);
+        });
+        assert!(drain_to_idle(&inflight, "test", close).await);
+        assert_eq!(calls.load(Ordering::Acquire), 1);
     }
 
     // The bug this function was extracted for: the credential path drained,
@@ -632,7 +706,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn busy_past_the_ceiling_refuses_the_restart() {
         let inflight = Arc::new(AtomicUsize::new(1));
-        assert!(!drain_to_idle(&inflight, "test").await);
+        assert!(!drain_to_idle(&inflight, "test", || std::future::ready(0)).await);
     }
 
     #[tokio::test(start_paused = true)]
@@ -643,14 +717,14 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_secs(DRAIN_POLL_SECS * 3)).await;
             finisher.fetch_sub(1, Ordering::AcqRel);
         });
-        assert!(drain_to_idle(&inflight, "test").await);
+        assert!(drain_to_idle(&inflight, "test", || std::future::ready(0)).await);
     }
 
     #[tokio::test(start_paused = true)]
     async fn the_ceiling_is_a_ceiling_and_not_a_wait_forever() {
         let inflight = Arc::new(AtomicUsize::new(1));
         let started = tokio::time::Instant::now();
-        let _ = drain_to_idle(&inflight, "test").await;
+        let _ = drain_to_idle(&inflight, "test", || std::future::ready(0)).await;
         assert!(started.elapsed().as_secs() <= DRAIN_TIMEOUT_SECS + DRAIN_POLL_SECS);
     }
 }

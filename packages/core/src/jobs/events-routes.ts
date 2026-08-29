@@ -94,6 +94,13 @@ jobEventsListRoutes.get(
   },
 );
 
+// cm:guard reads `data.runtimeState` by name out of an untyped jsonb payload — the runner writes that key in `daemon/dispatch.rs#map_event` and nothing type-checks the pair. A rename on either side does not fail: it silently makes every park count as activity again.
+function isParkEvent(e: { kind: string; data?: unknown }): boolean {
+  if (e.kind !== 'progress') return false;
+  const d = e.data as { runtimeState?: unknown } | null | undefined;
+  return d?.runtimeState === 'awaiting_input';
+}
+
 jobEventsRoutes.post(
   '/:id/events',
   requireDevice(),
@@ -176,17 +183,10 @@ jobEventsRoutes.post(
       logger.warn({ err, jobId }, 'job-events: ack fallback stamp failed (continuing)');
     }
 
-    // Heartbeat sync: bump the linked agent_sessions row so the zombie sweeper
-    // doesn't kill an in-flight pipeline job. CAS queued→running on first event
-    // stamps startedAt; later batches bump lastHeartbeatAt only. Best-effort —
-    // failures here must not break event ingest.
-    //
-    // Why here and not in the desktop worker: the worker uses `jobId` as its
-    // local session key and would need to know the linked `agentSessionId` to
-    // PATCH the row directly. Doing it server-side keeps the worker oblivious
-    // to the linkage; PR-B will surface `agentSessionId` to the worker so the
-    // session row also gets messages/diff streamed live.
-    if (job.agentSessionId) {
+    // cm:guard server-side and NOT in the worker on purpose: the worker keys its local session by `jobId` and would have to learn the linked `agentSessionId` to PATCH the row itself. Moving it there couples every worker to the linkage for a bump core can do from the id it already has.
+    // cm:guard best-effort, and it must stay that way — a throw here would fail event INGEST, losing the runner's output to protect a freshness stamp the sweeper can recover from on the next batch.
+    // cm:edge lockstep -> packages/core/src/agent-sessions/routes.ts — the SAME rule as `isWorkerActivity` there, and it has to be in both: a park announced over PATCH and a park announced as a job event are the same fact arriving by two doors, and a rule on only one door leaves the other stamping the session healthy while it waits on a human.
+    if (job.agentSessionId && events.some((e) => !isParkEvent(e))) {
       try {
         const heartbeatNow = new Date();
         const flipped = await db
