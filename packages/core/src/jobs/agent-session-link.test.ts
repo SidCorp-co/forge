@@ -243,6 +243,7 @@ describe('jobs/agent-session-link', () => {
       await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: 'sess-1' } as never, 'done');
       expect(updateCalls[0]?.set.status).toBe('completed');
       expect(updateCalls[0]?.set.failureReason).toBeNull();
+      expect(updateCalls[0]?.set.failureDetail).toBeNull();
     });
 
     it('ISS-759: the cancelled→completed mapping clears it too', async () => {
@@ -257,7 +258,7 @@ describe('jobs/agent-session-link', () => {
     it('ISS-759: a failed session still records why', async () => {
       await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: 'sess-1' } as never, 'failed');
       expect(updateCalls[0]?.set.status).toBe('failed');
-      expect(updateCalls[0]?.set.failureReason).toBe('job_failed');
+      expect(updateCalls[0]?.set.failureReason).toBeTruthy();
     });
 
     it('maps cancelled → completed (enum has no cancelled); closes run as cancelled', async () => {
@@ -289,5 +290,56 @@ describe('jobs/agent-session-link', () => {
       });
       expect(closeRunIfOneShotMock).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('jobs/agent-session-link — ISS-877 failure cause', () => {
+  beforeEach(() => {
+    selectQueue.length = 0;
+    updateCalls.length = 0;
+    insertCalls.length = 0;
+    publishMock.mockReset();
+    closeRunIfOneShotMock.mockClear();
+  });
+
+  it('ISS-877: the failure carries the job row\u2019s own cause, not a blanket marker', async () => {
+    await syncAgentSessionLifecycle(
+      {
+        ...baseJob,
+        agentSessionId: 'sess-1',
+        error:
+          "[RESULT_ERROR] success: You've hit your org's monthly spend limit \u00b7 run /usage-credits to ask your admin for a higher limit",
+      } as never,
+      'failed',
+    );
+    expect(updateCalls[0]?.set.failureReason).toBe('provider_spend_cap');
+    expect(updateCalls[0]?.set.failureDetail).toContain('spend limit');
+  });
+
+  it('ISS-877: a job whose error names nothing the taxonomy knows lands on unclassified, never on free text', async () => {
+    await syncAgentSessionLifecycle(
+      { ...baseJob, agentSessionId: 'sess-1', error: 'a shape no rule has ever seen' } as never,
+      'failed',
+    );
+    expect(updateCalls[0]?.set.failureReason).toBe('unclassified');
+    expect(updateCalls[0]?.set.failureDetail).toBe('a shape no rule has ever seen');
+  });
+
+  it('ISS-877: prefers the sweeper\u2019s precise failureReason over the raw error text', async () => {
+    await syncAgentSessionLifecycle(
+      {
+        ...baseJob,
+        agentSessionId: 'sess-1',
+        failureReason: 'session_lost',
+        error: 'the runner said nothing useful',
+      } as never,
+      'failed',
+    );
+    expect(updateCalls[0]?.set.failureReason).toBe('session_lost');
+  });
+
+  it('ISS-877: `job_failed` is not written by this path any more', async () => {
+    await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: 'sess-1' } as never, 'failed');
+    expect(updateCalls[0]?.set.failureReason).not.toBe('job_failed');
   });
 });

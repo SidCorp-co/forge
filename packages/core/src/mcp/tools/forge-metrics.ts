@@ -4,6 +4,12 @@ import { db } from '../../db/client.js';
 import { jobTypes } from '../../db/schema.js';
 import { BUCKETS, METRICS, runTimeseries } from '../../metrics/queries.js';
 import {
+  FAILURE_CAUSE_ORIGIN,
+  type FailureCause,
+  isRealFailureCause,
+  resolveFailureCause,
+} from '../../pipeline/failure-causes.js';
+import {
   assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,
   loadVisibleProjectIdsForPrincipal,
@@ -30,6 +36,13 @@ const projectInputSchema = z
   .strict();
 
 const retryRescuesInputSchema = z
+  .object({
+    projectId: z.uuid(),
+    days: z.number().int().min(1).max(90).optional().default(30),
+  })
+  .strict();
+
+const sessionFailuresInputSchema = z
   .object({
     projectId: z.uuid(),
     days: z.number().int().min(1).max(90).optional().default(30),
@@ -142,6 +155,89 @@ export const forgeMetricsProjectRetryRescuesTool: ContextScopedMcpToolFactory = 
     return {
       rows,
       total: rows.reduce((total, row) => total + row.rescues, 0),
+      windowDays: input.days,
+      projectId: input.projectId,
+    };
+  },
+});
+
+export interface SessionFailureRow {
+  cause: FailureCause;
+  origin: string;
+  sessions: number;
+  isRealFailure: boolean;
+  lastAt: string | null;
+}
+
+/**
+ * ISS-877 — group failed sessions by cause so the taxonomy is measurable
+ * rather than merely stored.
+ *
+ * `unclassified` is a row like any other, and `unclassifiedRate` is returned
+ * beside the rows. That is the invariant, not a nicety: an unclassified rate
+ * nobody can see is how `job_failed` survived long enough to swallow every
+ * agent-side failure in the system. The rate will read HIGH at first and
+ * should — rows written before this shipped resolve to `unclassified` through
+ * `LEGACY_CAUSE_ALIAS`, which is an accurate measurement of an era that
+ * classified nothing. The number worth watching is the rate over rows written
+ * after it.
+ */
+// cm:guard `unclassified` must stay a first-class row here — filtering it out, folding it into "other", or reporting only the classified share re-hides the exact hole this tool exists to expose
+export const forgeMetricsSessionFailuresTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'forge_metrics.session_failures',
+  description:
+    'Failed agent sessions grouped by ISS-877 failure cause. Requires project membership. Params: `projectId` and `days` (1..90, default 30). Returns `{ rows: [{ cause, origin, sessions, isRealFailure, lastAt }], total, unclassified, unclassifiedRate, windowDays, projectId }`. Legacy rows (`job_failed`, free text) resolve to `unclassified` at read time — a high historical rate is the honest measurement of the era before causes were recorded, not a bug.',
+  inputSchema: zodToMcpSchema(sessionFailuresInputSchema),
+  handler: async (args) => {
+    const input = sessionFailuresInputSchema.parse(args);
+    await assertPrincipalIsMember(ctx.principal, input.projectId);
+
+    const result = await db.execute(sql`
+      SELECT failure_reason, count(*)::int AS sessions, max(updated_at) AS last_at
+      FROM agent_sessions
+      WHERE project_id = ${input.projectId}
+        AND failure_reason IS NOT NULL
+        AND updated_at >= now() - (${input.days}::int * interval '1 day')
+      GROUP BY failure_reason
+    `);
+
+    const byCause = new Map<FailureCause, { sessions: number; lastAt: Date | null }>();
+    for (const row of result as unknown as Array<{
+      failure_reason: string | null;
+      sessions: number | string;
+      last_at: string | Date | null;
+    }>) {
+      const cause = resolveFailureCause(row.failure_reason);
+      const prev = byCause.get(cause);
+      const lastAt = row.last_at ? new Date(row.last_at) : null;
+      byCause.set(cause, {
+        sessions: (prev?.sessions ?? 0) + num(row.sessions),
+        lastAt:
+          prev?.lastAt && lastAt
+            ? prev.lastAt > lastAt
+              ? prev.lastAt
+              : lastAt
+            : (lastAt ?? prev?.lastAt ?? null),
+      });
+    }
+
+    const rows: SessionFailureRow[] = [...byCause.entries()]
+      .map(([cause, agg]) => ({
+        cause,
+        origin: FAILURE_CAUSE_ORIGIN[cause],
+        sessions: agg.sessions,
+        isRealFailure: isRealFailureCause(cause),
+        lastAt: agg.lastAt ? agg.lastAt.toISOString() : null,
+      }))
+      .sort((a, b) => b.sessions - a.sessions || a.cause.localeCompare(b.cause));
+
+    const total = rows.reduce((sum, row) => sum + row.sessions, 0);
+    const unclassified = byCause.get('unclassified')?.sessions ?? 0;
+    return {
+      rows,
+      total,
+      unclassified,
+      unclassifiedRate: total === 0 ? 0 : unclassified / total,
       windowDays: input.days,
       projectId: input.projectId,
     };

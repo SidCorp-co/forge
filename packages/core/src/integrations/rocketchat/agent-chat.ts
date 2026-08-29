@@ -214,7 +214,7 @@ export async function startAgentChat(args: StartAgentChatArgs): Promise<StartAge
       await applyKernelTransition(db, {
         entity: 'session',
         to: 'failed',
-        set: { failureReason: 'ws-publish-failed' },
+        set: { failureReason: 'ws_publish_failed' },
         where: eq(agentSessions.id, session.id),
         fromStatus: session.status,
         reason: 'ws-publish-failed',
@@ -383,7 +383,7 @@ export async function redispatchAgentChatSessionOnFailover(
         entity: 'session',
         to: 'failed',
         set: {
-          failureReason: 'ws-publish-failed',
+          failureReason: 'ws_publish_failed',
           metadata: {
             ...retryMeta,
             agentChat: { ...retryAgentChat, deliveredAt: new Date().toISOString() },

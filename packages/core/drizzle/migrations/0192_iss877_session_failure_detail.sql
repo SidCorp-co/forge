@@ -1,0 +1,21 @@
+-- ISS-877 — split the two axes `agent_sessions.failure_reason` was carrying.
+--
+-- The column held an enum token (`queue_timeout`, `user_cancelled`) AND, from
+-- `agent-sessions/session-failure.ts`, a human-readable classifier sentence.
+-- 55 live rows carry prose as a result; 9 of them are the agent's own prompt,
+-- stored as the reason it failed.
+--
+-- After this, `failure_reason` is the cause token and `failure_detail` is the
+-- sentence. No CHECK constraint and no backfill:
+--
+--   * CHECK — migration 0180 measured the cost on this table family. One writer
+--     missed and the constraint turns every write into a 23514 rather than
+--     recording anything. `toFailureCause()` (pipeline/failure-causes.ts) is the
+--     funnel instead: an unknown value becomes `unclassified` and its text
+--     survives here in `failure_detail`.
+--   * BACKFILL — `pipeline/failure-classifier.ts` states that a historical row
+--     keeps its original verdict and the classifier is never re-run on archived
+--     rows. The 1,787 legacy `job_failed` rows resolve to `unclassified` at READ
+--     time via `LEGACY_CAUSE_ALIAS`, which is what they honestly are.
+
+ALTER TABLE "agent_sessions" ADD COLUMN "failure_detail" text;

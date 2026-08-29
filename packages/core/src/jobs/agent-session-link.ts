@@ -3,6 +3,8 @@ import { db } from '../db/client.js';
 import { agentSessions, issues, jobs } from '../db/schema.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
+import type { FailureCause } from '../pipeline/failure-causes.js';
+import { classifyFailure } from '../pipeline/failure-classifier.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -192,6 +194,37 @@ export async function ensureAgentSessionForJob(
 }
 
 /**
+ * ISS-877 — the cause this session died of, asked of the SAME classifier the
+ * job lane already asked.
+ *
+ * This function replaces the literal `'job_failed'`. That literal was the whole
+ * defect: the `jobs` row beside it already carried `failure_kind`,
+ * `failure_reason`, `failure_meta` and `classifier_version`, so the diagnosis
+ * existed and was thrown away one column over. All eight sessions ISS-871 gave
+ * up on were readable this way — seven `provider_spend_cap`, one
+ * `provider_refused_request` — without opening a transcript.
+ *
+ * `jobs.failureReason` is preferred over `jobs.error` when present because a
+ * sweeper writes a precise phrase there (`session_lost`, `dispatch_unclaimed`)
+ * that the raw error text does not contain.
+ */
+// cm:edge contract -> packages/core/src/pipeline/failure-classifier.ts — one classifier for both lanes is what stops the job row and the session row disagreeing about the same death
+function deriveSessionFailure(job: JobRow): {
+  failureReason: FailureCause;
+  failureDetail: string | null;
+} {
+  const text = [job.failureReason, job.error].filter(Boolean).join(' — ');
+  const classified = classifyFailure({
+    error: text,
+    meta: (job.failureMeta ?? null) as Record<string, unknown> | null,
+  });
+  return {
+    failureReason: classified.cause,
+    failureDetail: classified.reason || text || null,
+  };
+}
+
+/**
  * Mirror a job lifecycle transition (done / failed / cancelled) onto its
  * linked `agent_sessions` row. Best-effort — swallows errors so a failure to
  * write observability metadata never breaks the lifecycle response.
@@ -223,11 +256,11 @@ export async function syncAgentSessionLifecycle(
     await applyKernelTransition(db, {
       entity: 'session',
       to: status,
-      // cm:guard the completed branch MUST clear failureReason — the I1 trigger (migrations 0113/0118) stamps `orphan_under_terminal_run` on an ACTIVE session when its run goes terminal, and a late runner report then lands here and flips the row to `completed`; leaving the reason behind produces a completed-and-failed row (ISS-759, `VISION: state-never-lies`). Same contract as runs-cascade.ts's completedSuccess branch.
+      // cm:guard the completed branch MUST clear failureReason AND failureDetail — the I1 trigger (migrations 0113/0118) stamps `orphan_under_terminal_run` on an ACTIVE session when its run goes terminal, and a late runner report then lands here and flips the row to `completed`; leaving the reason behind produces a completed-and-failed row (ISS-759, `VISION: state-never-lies`). Same contract as runs-cascade.ts's completedSuccess branch.
       set:
         status === 'failed'
-          ? { failureReason: 'job_failed', updatedAt: new Date() }
-          : { failureReason: null, updatedAt: new Date() },
+          ? { ...deriveSessionFailure(job), updatedAt: new Date() }
+          : { failureReason: null, failureDetail: null, updatedAt: new Date() },
       where: eq(agentSessions.id, job.agentSessionId),
       reason: `job_${outcome}`,
       actor: { type: 'system' },

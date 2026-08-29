@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  FAILURE_REASON_LABEL,
   HEARTBEAT_REAP_MS,
   STALLED_THRESHOLD_MS,
   deriveLiveness,
@@ -171,6 +172,85 @@ describe("classifySessionOutcome (ISS-322 four-bucket classifier)", () => {
     }
   });
 
+  it("ISS-877: paints every real cause red and names it, instead of a bare Failed", () => {
+    for (const reason of [
+      "provider_spend_cap",
+      "provider_auth_expired",
+      "provider_subscription_disabled",
+      "agent_startup_failed",
+      "agent_skill_missing",
+      "workspace_disk_full",
+      "workspace_preflight_failed",
+      "runner_unreachable",
+      "session_lost",
+      "unclassified",
+    ]) {
+      const o = classifySessionOutcome("failed", reason);
+      expect(o.bucket, reason).toBe("failed");
+      expect(o.statusKey, reason).toBe("failed");
+      expect(o.label, reason).not.toBe("Failed");
+      expect(o.tooltip, reason).not.toBe("");
+    }
+  });
+
+  it("ISS-877: keeps lifecycle conclusions and the residency bound neutral", () => {
+    for (const reason of ["orphan_under_terminal_run", "manual_ops_stale_chat_schedule"]) {
+      expect(classifySessionOutcome("failed", reason).statusKey, reason).toBe("swept");
+    }
+    expect(classifySessionOutcome("failed", "residency_expired").bucket).toBe("swept");
+  });
+
+  it("ISS-877: every cause core can write has a label and an action", () => {
+    for (const reason of [
+      "provider_spend_cap",
+      "provider_usage_limit",
+      "provider_subscription_disabled",
+      "provider_auth_expired",
+      "provider_overloaded",
+      "provider_refused_request",
+      "agent_startup_failed",
+      "agent_skill_missing",
+      "agent_exited_without_result",
+      "agent_killed",
+      "skill_not_synced",
+      "workspace_preflight_failed",
+      "workspace_disk_full",
+      "runner_unreachable",
+      "duplex_channel_failed",
+      "session_lost",
+      "heartbeat_timeout",
+      "queue_timeout",
+      "no_worker_online",
+      "ws_publish_failed",
+      "forge_budget_exhausted",
+      "runner_unsupported_type",
+      "resume_failed",
+      "residency_expired",
+      "audit_ran_blind",
+      "orphan_under_terminal_run",
+      "pipeline_cancelled",
+      "pipeline_completed",
+      "pipeline_failed",
+      "migration_zombie_cleanup",
+      "manual_ops_stale_chat_schedule",
+      "user_cancelled",
+      "unclassified",
+    ]) {
+      expect(FAILURE_REASON_LABEL[reason], reason).toBeTruthy();
+    }
+  });
+
+  it("ISS-877: a legacy job_failed row reads as unclassified, not as a diagnosis", () => {
+    expect(FAILURE_REASON_LABEL.job_failed).toBe("Unclassified");
+    expect(classifySessionOutcome("failed", "job_failed").label).toBe("Unclassified");
+  });
+
+  it("ISS-877: the pre-rename hyphen spelling still renders", () => {
+    expect(FAILURE_REASON_LABEL["ws-publish-failed"]).toBe(
+      FAILURE_REASON_LABEL.ws_publish_failed,
+    );
+  });
+
   it("returns active (deferring to statusToChip) for non-terminal states", () => {
     expect(classifySessionOutcome("running").bucket).toBe("active");
     expect(classifySessionOutcome("stalled").statusKey).toBe("zombie");
@@ -179,9 +259,16 @@ describe("classifySessionOutcome (ISS-322 four-bucket classifier)", () => {
 });
 
 describe("isRealFailure (only genuine failures count as attention)", () => {
-  it("is true only for job_failed / unknown-reason failed rows", () => {
+  it("is true for an unclassified row (legacy or current) and an unknown-reason row", () => {
     expect(isRealFailure("failed", "job_failed")).toBe(true);
+    expect(isRealFailure("failed", "unclassified")).toBe(true);
     expect(isRealFailure("failed", null)).toBe(true);
+  });
+
+  it("ISS-877: is true for a provider/agent/workspace cause — those need attention", () => {
+    expect(isRealFailure("failed", "provider_spend_cap")).toBe(true);
+    expect(isRealFailure("failed", "agent_startup_failed")).toBe(true);
+    expect(isRealFailure("failed", "workspace_disk_full")).toBe(true);
   });
 
   it("is false for swept / cleanup / success / cancelled_stale", () => {

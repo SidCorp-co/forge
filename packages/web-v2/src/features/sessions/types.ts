@@ -60,13 +60,41 @@ export interface LivenessResult {
   reapInMs: number | null;
 }
 
+// cm:edge contract -> packages/core/src/pipeline/failure-causes.ts — core writes these strings into `agent_sessions.failure_reason`; a cause added there without a label and an action below renders an operator a raw snake_case token
 export type SessionFailureReason =
+  | "provider_spend_cap"
+  | "provider_usage_limit"
+  | "provider_subscription_disabled"
+  | "provider_auth_expired"
+  | "provider_overloaded"
+  | "provider_refused_request"
+  | "agent_startup_failed"
+  | "agent_skill_missing"
+  | "agent_exited_without_result"
+  | "agent_killed"
+  | "workspace_preflight_failed"
+  | "workspace_disk_full"
+  | "runner_unreachable"
+  | "duplex_channel_failed"
+  | "session_lost"
+  | "ws_publish_failed"
+  | "forge_budget_exhausted"
+  | "runner_unsupported_type"
+  | "resume_failed"
+  | "residency_expired"
+  | "audit_ran_blind"
+  | "orphan_under_terminal_run"
+  | "pipeline_cancelled"
+  | "pipeline_completed"
+  | "pipeline_failed"
+  | "manual_ops_stale_chat_schedule"
+  | "unclassified"
   | "queue_timeout"
   | "heartbeat_timeout"
   | "no_worker_online"
   | "user_cancelled"
-  | "job_failed"
   | "migration_zombie_cleanup"
+  // cm:guard dispatcher skip reasons, surfaced on a QUEUED row and never written to `failure_reason` — ISS-162 made them stateless, so treating one as a stored terminal cause resurrects gate state that goes stale the moment the condition clears
   | "issue_busy"
   | "waiting_on_dep"
   | "project_full"
@@ -74,7 +102,9 @@ export type SessionFailureReason =
   // ISS-733 fix — a chat-runs-skill cold start (e.g. Build Project Brain) fired
   // before the skill finished syncing to the runner; the CLI treated the
   // slash-command as unknown text. Real failure (red), not a benign cleanup.
-  | "skill_not_synced";
+  | "skill_not_synced"
+  // cm:guard retired by ISS-877, kept because 1,787 live rows still carry it, and it must render as "Unclassified" — it stood for every agent-side failure at once, so showing it as a diagnosis is the lie the taxonomy replaced
+  | "job_failed";
 
 /** Usage telemetry jsonb — every key is optional (older rows omit fields). */
 export interface SessionUsage {
@@ -184,11 +214,39 @@ export function isAwaitingReply(session: Pick<SessionRow, "status" | "metadata">
 /** Operator-facing label for each terminal failure reason — surfaced on the
  *  list row + the detail blocker-card so "failed" is actionable (ISS-378). */
 export const FAILURE_REASON_LABEL: Record<string, string> = {
+  provider_spend_cap: "Spend limit reached",
+  provider_usage_limit: "Usage limit reached",
+  provider_subscription_disabled: "Subscription disabled",
+  provider_auth_expired: "Sign-in expired",
+  provider_overloaded: "Model provider overloaded",
+  provider_refused_request: "Request refused",
+  agent_startup_failed: "Agent didn't start",
+  agent_skill_missing: "Skill missing on runner",
+  agent_exited_without_result: "Agent exited with no result",
+  agent_killed: "Agent killed",
+  workspace_preflight_failed: "Checkout not usable",
+  workspace_disk_full: "Runner disk full",
+  runner_unreachable: "Runner unreachable",
+  duplex_channel_failed: "Session channel failed",
+  session_lost: "Session lost",
+  ws_publish_failed: "Delivery failed",
+  "ws-publish-failed": "Delivery failed",
+  forge_budget_exhausted: "Project budget spent",
+  runner_unsupported_type: "Runner can't run this step",
+  resume_failed: "Resume failed",
+  residency_expired: "Session window expired",
+  audit_ran_blind: "Ran without evidence",
+  orphan_under_terminal_run: "Cleaned up (run ended)",
+  pipeline_cancelled: "Pipeline cancelled",
+  pipeline_completed: "Cleaned up (run finished)",
+  pipeline_failed: "Cleaned up (run failed)",
+  manual_ops_stale_chat_schedule: "Cleared by an operator",
+  unclassified: "Unclassified",
   queue_timeout: "Queue timeout",
   heartbeat_timeout: "No heartbeat",
   no_worker_online: "No runner online",
   user_cancelled: "Cancelled",
-  job_failed: "Job failed",
+  job_failed: "Unclassified",
   migration_zombie_cleanup: "Swept (migration)",
   issue_busy: "Issue busy",
   waiting_on_dep: "Waiting on dependency",
@@ -200,11 +258,35 @@ export const FAILURE_REASON_LABEL: Record<string, string> = {
 /** Suggested next action for a failed/stalled session — the one-line remedy on
  *  the detail blocker-card (ISS-378 AC#6). */
 export const FAILURE_REASON_ACTION: Record<string, string> = {
+  provider_spend_cap: "The account hit its spend cap — raise it, or wait for the window to reset.",
+  provider_usage_limit: "The account hit its usage window — it retries once the window resets.",
+  provider_subscription_disabled:
+    "Claude Code access is off for this organization — an admin has to turn it back on.",
+  provider_auth_expired: "The runner's sign-in expired — re-authenticate it, then Retry.",
+  provider_overloaded: "The model provider was busy — Retry.",
+  provider_refused_request: "The provider refused the request — check the model and prompt settings.",
+  agent_startup_failed: "The agent never got going on this runner — check its MCP config, then Retry.",
+  agent_skill_missing: "The skill hasn't reached this runner — sync it, then Retry.",
+  agent_exited_without_result: "The agent exited before reporting — Retry to re-dispatch.",
+  agent_killed: "Something killed the agent process — check the runner logs.",
+  workspace_preflight_failed: "The runner's checkout is unusable — fix the repo path or remote.",
+  workspace_disk_full: "The runner is out of disk — free space, then Retry.",
+  runner_unreachable: "The runner never picked it up — check it's online, then Retry.",
+  duplex_channel_failed: "The session channel dropped — a fresh session is the next step.",
+  session_lost: "The session died without reporting — Retry to re-dispatch.",
+  ws_publish_failed: "The reply couldn't be delivered — start a new chat to retry.",
+  "ws-publish-failed": "The reply couldn't be delivered — start a new chat to retry.",
+  forge_budget_exhausted: "This project spent its monthly budget — raise it or wait for the cycle.",
+  runner_unsupported_type: "This runner can't run this step — assign a runner that can.",
+  resume_failed: "Resuming the previous session failed — Rerun to start fresh.",
+  residency_expired: "The session outlived its window — Rerun to start fresh.",
+  audit_ran_blind: "The scheduled run called no tools, so it produced no evidence — Rerun.",
+  unclassified: "The cause wasn't recorded — open the run timeline to see why.",
   queue_timeout: "No runner picked it up — check the fleet strip for an online runner.",
   heartbeat_timeout: "The runner died mid-run — Retry to re-dispatch.",
   no_worker_online: "Bring a runner online or check device pairing, then Retry.",
   user_cancelled: "Cancelled by a user — Rerun to start a fresh session.",
-  job_failed: "The agent step failed — open the run timeline to see why.",
+  job_failed: "The cause wasn't recorded — open the run timeline to see why.",
   issue_busy: "Another session holds this issue — it will retry once that frees.",
   waiting_on_dep: "Blocked on a dependency issue — resolve the blocker first.",
   project_full: "Project hit its concurrency cap — it will dispatch when a slot frees.",
@@ -318,6 +400,9 @@ const CLEANUP_REASONS = new Set<string>([
   "pipeline_completed",
   "pipeline_failed",
   "pipeline_cancelled",
+  // cm:why ISS-877 — the I1 trigger's marker and an operator's manual clear are the same shape: something ended the run around a session that was still alive, which is cleanup rather than a fault
+  "orphan_under_terminal_run",
+  "manual_ops_stale_chat_schedule",
 ]);
 
 /** `failureReason`s that are a lifecycle/capacity cancel or a stale sweep — NOT
@@ -331,6 +416,8 @@ const SWEEP_OR_CANCEL_REASONS = new Set<string>([
   "waiting_on_dep",
   "project_full",
   "runner_full",
+  // cm:guard ISS-877 — the residency window closing is a lifecycle bound, not a fault; it is the ONLY taxonomy cause that belongs in this set, because every other member names something that actually went wrong and must stay red
+  "residency_expired",
 ]);
 
 export interface SessionOutcome {
@@ -388,11 +475,11 @@ export function classifySessionOutcome(
           "Cancelled by a lifecycle or capacity rule — not a failure.",
       };
     }
-    // job_failed, or a null/unknown reason on a failed row → a real failure.
+    // cm:guard the label must name the CAUSE, not repeat "Failed" — a chip that says "Failed" for all 20 causes is the `job_failed` column rendered as pixels, and being readable without opening the transcript is the whole deliverable of ISS-877
     return {
       bucket: "failed",
       statusKey: "failed",
-      label: "Failed",
+      label: (reason && FAILURE_REASON_LABEL[reason]) ?? "Failed",
       tooltip:
         (reason && FAILURE_REASON_ACTION[reason]) ?? "The agent step failed — see the run timeline.",
     };

@@ -21,6 +21,7 @@ vi.mock('../schedules/dispatch.js', () => ({
 const { detectUnexpandedSkillFailure, finalizeScheduleSessionFailure } = await import(
   './session-failure.js'
 );
+const { FAILURE_CAUSES } = await import('../pipeline/failure-causes.js');
 
 // ISS-733 fix — the sync-then-dispatch race: a chat-runs-skill cold start can
 // report `completed` even when the skill file hadn't synced to the runner's
@@ -195,5 +196,44 @@ describe('finalizeScheduleSessionFailure', () => {
     expect(result.action).toBe('failover');
     await result.recoverAfterWrite({ source: 'chat' });
     expect(redispatchScheduleSessionOnFailoverMock).not.toHaveBeenCalled();
+  });
+  it('ISS-877: writes a cause token into failureReason and the sentence into failureDetail', async () => {
+    const set: Record<string, unknown> = {};
+    await finalizeScheduleSessionFailure({
+      sessionId: 'sess-1',
+      messages: [
+        {
+          role: 'assistant',
+          content:
+            "[RESULT_ERROR] You've hit your weekly limit \u00b7 resets 11am (Asia/Ho_Chi_Minh)",
+        },
+      ],
+      note: null,
+      baseMetadata: { source: 'schedule.run', scheduleId: 'sched-1' },
+      set,
+    });
+    expect(set.failureReason).toBe('provider_usage_limit');
+    expect(FAILURE_CAUSES).toContain(set.failureReason);
+    expect(String(set.failureDetail)).toContain('cross-device failover');
+  });
+
+  it('ISS-877: a sentence can never land in failureReason again, whatever the transcript says', async () => {
+    for (const content of [
+      'some unrelated tool error',
+      "I'll look at the screenshots and check how CSAT sending decides its window.",
+      '[RESULT_ERROR] success: a provider message nobody has a pattern for',
+    ]) {
+      const set: Record<string, unknown> = {};
+      await finalizeScheduleSessionFailure({
+        sessionId: 'sess-1',
+        messages: [{ role: 'assistant', content }],
+        note: null,
+        baseMetadata: { source: 'chat' },
+        set,
+      });
+      expect(FAILURE_CAUSES, content).toContain(set.failureReason);
+      expect(set.failureReason, content).toBe('unclassified');
+      expect(set.failureDetail, content).toBeTruthy();
+    }
   });
 });

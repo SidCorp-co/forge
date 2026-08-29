@@ -898,7 +898,7 @@ export async function closeIdleChatSessions(
   const flipped = await applyKernelTransition(db, {
     entity: 'session',
     to: 'completed',
-    set: { failureReason: null, updatedAt: now },
+    set: { failureReason: null, failureDetail: null, updatedAt: now },
     where: and(
       inArray(agentSessions.id, ids),
       inArray(agentSessions.status, ['queued', 'running', 'idle']),

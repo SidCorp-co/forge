@@ -23,6 +23,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { agentSessions, type agentSessions as agentSessionsTable } from '../../db/schema.js';
 import { logger } from '../../logger.js';
+import { resolveFailureCause } from '../../pipeline/failure-causes.js';
 import { AGENT_CHAT_FALLBACK_REPLY, redispatchAgentChatSessionOnFailover } from './agent-chat.js';
 import { extractFinalAssistantText } from './escalation-bridge.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
@@ -157,12 +158,14 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
     .returning({ id: agentSessions.id });
   if (claimed.length === 0) return;
 
-  // cm:why the CAS claim above already stamped THIS session's deliveredAt, so retrying here can never double-post — its "delivery" is really a hand-off to the retry; a content-side outcome (completed, no usable/screened text) is never retried, since retrying would just reproduce the same content decision; deterministic non-infra failures (skill_not_synced, ws-publish-failed) are excluded because retrying them on every runner produces the same outcome
+  // cm:why the CAS claim above already stamped THIS session's deliveredAt, so retrying here can never double-post — its "delivery" is really a hand-off to the retry; a content-side outcome (completed, no usable/screened text) is never retried, since retrying would just reproduce the same content decision; deterministic non-infra failures (skill_not_synced, ws_publish_failed) are excluded because retrying them on every runner produces the same outcome
+  // cm:guard compare the RESOLVED cause, never the raw column — rows written before ISS-877 carry `ws-publish-failed` with a hyphen, and a literal comparison silently starts failing over the one class this list exists to exclude
+  const failureCause = resolveFailureCause(session.failureReason);
   if (
     session.status !== 'completed' &&
-    session.failureReason !== 'user_cancelled' &&
-    session.failureReason !== 'skill_not_synced' &&
-    session.failureReason !== 'ws-publish-failed'
+    failureCause !== 'user_cancelled' &&
+    failureCause !== 'skill_not_synced' &&
+    failureCause !== 'ws_publish_failed'
   ) {
     const failover = await redispatchAgentChatSessionOnFailover(session);
     if (failover.ok) return;

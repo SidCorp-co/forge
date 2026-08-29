@@ -162,7 +162,7 @@ export async function startEscalation(args: StartEscalationArgs): Promise<StartE
       await applyKernelTransition(db, {
         entity: 'session',
         to: 'failed',
-        set: { failureReason: 'ws-publish-failed' },
+        set: { failureReason: 'ws_publish_failed' },
         where: eq(agentSessions.id, session.id),
         fromStatus: session.status,
         reason: 'ws-publish-failed',

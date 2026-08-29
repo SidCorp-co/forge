@@ -621,6 +621,7 @@ agentSessionRoutes.patch(
       existing.failureReason !== 'user_cancelled'
     ) {
       updates.failureReason = null;
+      updates.failureDetail = null;
     }
 
     // ISS-733 fix — a chat-runs-skill cold start (turn 1 = `/${skillName}`,
@@ -723,6 +724,7 @@ agentSessionRoutes.patch(
       existing.failureReason !== 'user_cancelled'
     ) {
       updates.failureReason = null;
+      updates.failureDetail = null;
     }
 
     // Dual-write: when the worker PATCHes the messages array we mirror append /

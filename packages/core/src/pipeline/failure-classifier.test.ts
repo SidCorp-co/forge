@@ -3,7 +3,7 @@ import { CLASSIFIER_VERSION, classifyFailure, deriveActionFromKind } from './fai
 
 describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
   it('returns CLASSIFIER_VERSION on every result so callers can pin it', () => {
-    expect(CLASSIFIER_VERSION).toBe(9);
+    expect(CLASSIFIER_VERSION).toBe(10);
     expect(classifyFailure({}).version).toBe(CLASSIFIER_VERSION);
     expect(classifyFailure({ error: 'whatever' }).version).toBe(CLASSIFIER_VERSION);
   });
