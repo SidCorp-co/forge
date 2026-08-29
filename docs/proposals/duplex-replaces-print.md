@@ -249,3 +249,19 @@ and it has no reader for `sessionResidencySeconds`.
   honour it; that is a lever, not a mechanism.
 - **How often a job fails, and who is told a question is waiting.** A1 covers the second. The
   architecture doc's own closing line applies: this is a capability, not a remedy for either.
+
+## Honest costs
+
+- **An involuntary daemon exit now ends the agent's work after its turn.** `Stdio::piped()` means the
+  daemon holds the only write end, so the `setsid`-detached survivor `inflight.rs` was written around
+  stops existing. That is a trade taken on purpose — the survivor is also the two-agents-one-worktree
+  race — but a crash that used to cost nothing now costs the rest of the job.
+- **A parked session occupies a process ceiling.** Residency means a job waiting on a human is a live
+  process against `RUNNER_CAP_PER_RUNNER`, so the fleet's capacity is now spent on waiting as well as
+  on working, and the park has to be made drainable rather than merely tolerated.
+- **The 25 s synthetic beat goes away.** Liveness stops being asserted by the daemon and starts being
+  declared by the session, so anything that stops declaring is caught by the quiet clock rather than
+  by a missing heartbeat — a later signal, deliberately, because the beat was asserting progress that
+  was not happening.
+- **Phase 6 removes the escape.** `sessionMode` and `print` are deleted, so a project that finds
+  duplex worse for it has no per-project flag to fall back to, only a release to roll back.

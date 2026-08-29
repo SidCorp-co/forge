@@ -45,3 +45,15 @@ Whether `admin` is the right server rule at all. If releasing should be a member
 fix is one line in `routes.ts`'s `assertProjectRole(access, 'admin')` and this proposal collapses to
 "delete the `canWrite` prop from the banner". That is a permissions decision, not a frontend one,
 and it belongs to the maintainer.
+
+## Honest costs
+
+- **The fix removes an affordance rather than adding one.** Members who see a Release button today
+  stop seeing an enabled one. That is correct — it 403s — but it is a capability disappearing from
+  three screens, and the people it disappears for did not experience the bug as their problem.
+- **One hook is one shared point of failure.** `useCanRelease` resolving the role once means a wrong
+  read breaks all three surfaces together instead of one, and every new release surface inherits the
+  dependency.
+- **It may be spent on the wrong side.** If the maintainer decides releasing is a member-level
+  action, one line in `routes.ts` settles it and the hook plus its three tests are work done to
+  enforce a rule that no longer exists.

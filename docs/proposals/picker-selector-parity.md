@@ -39,3 +39,17 @@ still produces the silent shape above. It is a real defect with no current victi
    not just today's clause list. Without it the pair drifts apart again on the next filter added.
 3. `gateReason: null` on a job no runner can be selected for should be impossible by construction,
    not by review.
+
+## Honest costs
+
+The price of closing it, not of the defect:
+
+- **The dispatch query gets wider.** `fresh_capable_runners` gains a per-state pool predicate it does
+  not have today, so the CTE that answers "is this job dispatchable?" now carries project config in
+  it, and every future filter must be added twice on purpose.
+- **The parity test fires on legitimate one-sided edits.** Asserting that neither side gains a clause
+  the other lacks is the point, and it means a deliberate asymmetry has to argue with the test rather
+  than land quietly.
+- **More jobs report as blocked.** A `pool_empty` gate reason names a condition that today reads as
+  dispatchable. Nothing gets worse; a fleet operator sees red where there was silence, which is the
+  whole trade.

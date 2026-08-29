@@ -2,7 +2,7 @@
 
 Project-level utilities. Each script is standalone (no shared lib) and has a comment header explaining its contract.
 
-## Ten gates, five axes
+## Twelve gates, five axes
 
 Each gate sits in `ci-passed`'s `needs` **and** is named in its result loop. Both halves are
 load-bearing: `ci-passed` runs `if: always()`, so a job listed in `needs` but absent from the loop
@@ -16,8 +16,9 @@ to 84, the two length rules to 143 — and each stopped drifting the day it was 
 **An axis measures at its weakest gate.** Reporting the strongest would let one locked checker hide
 a sibling that stopped blocking, which is the whole failure mode here. `form` is gated four times
 (biome for `core`'s rules · `check-size-budget` for the length baseline biome cannot hold ·
-`check-lint-budget` for `web-v2` · a bare `biome check scripts` for the checkers themselves) and
-`behaviour` three times (reachability · signal · flow coverage).
+`check-lint-budget` for `web-v2` · a bare `biome check scripts` for the checkers themselves),
+`behaviour` three times (reachability · signal · flow coverage) and `knowledge` three (couplings ·
+the autonomous status standard · honest costs).
 
 | Axis | Gate (CI job) | Owns | Must not touch |
 |---|---|---|---|
@@ -26,6 +27,8 @@ a sibling that stopped blocking, which is the whole failure mode here. `form` is
 | lint debt | `check-lint-budget` — `web` | per (file, rule) biome violations in `web-v2`, frozen | which rules exist — `packages/web-v2/biome.json` declares them |
 | checkers | `biome check scripts` — `conformance` | the files in `scripts/` that implement every other gate | anything under `packages/` |
 | knowledge | `cm verify` — `codemap` | `cm:` couplings, prose discipline, module headers | anything a tool can derive |
+| transitions | `check-autonomous-transitions` — `codemap` | that every bundled skill writes the kernel statuses `AUTONOMOUS_DRIVER_STATUSES` declares, never a render label | what an agent wrote at runtime — that lives in `activity_log` |
+| costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs | whether the price stated is honest — that is review's |
 | relations | `archmap check` — `archmap` | which module may depend on which | how a file is written |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |

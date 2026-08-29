@@ -80,3 +80,15 @@ Deciding needs the crash rate broken down by cause, which is the actual prerequi
   than a slow stage (startup failures already are)
 - report the rate per stage, per project, so "roughly 1 in 2" stops being an estimate
 - then choose, and re-measure the same p50/p95 pair on a project that runs UI stages
+
+## Honest costs
+
+- **The prerequisite is a person watching a browser die.** The `got_init` question is answerable only
+  from a live crash, so closing this costs a session that cannot be spent reading code — which is
+  precisely why it is still open.
+- **Both shapes carry a standing bill.** A surviving browser shares one failure across every attempt
+  and lets state leak between them; an isolated one pays a process launch per attempt in wall-clock
+  and in memory on a runner box that is also running the agent.
+- **New failure tokens are a contract.** Making a mid-session MCP death distinguishable adds a token
+  core's classifier, the alarms and every dashboard reading them have to learn, and a token reported
+  for the wrong cause is worse than a slow stage.

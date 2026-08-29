@@ -62,6 +62,23 @@ framework → [../integrations/README.md](../integrations/README.md) · prompt c
 `packages/core/src/prompt/state-prompts/` · skill facts →
 `packages/core/src/prompt/facts/registry.ts`.
 
+## Every proposal prices itself
+
+**Required section, gated:** every `.md` here carries a `## Honest costs` heading saying what
+adopting the proposal takes away from whoever adopts it — for an open residual, the cost of the
+proposed fix, not of the bug it fixes. Boundaries and non-goals are a different question and do not
+satisfy it.
+
+| | |
+|---|---|
+| Shape | a table or a list, one cost per row — not a paragraph |
+| Refused | an absent section · a section that prices nothing · `TBD` / `N/A` where the price goes |
+| Gate | `node scripts/check-honest-costs.mjs`, run by `pnpm verify` and by CI's `lang-check` job |
+| Not gated | whether the stated price is honest — that is review's, and the author's |
+
+`docs/VISION.md` is held to the same rule. `README.md` is this index rather than a proposal, and the
+`.html` files are drawn figures with no markdown heading tree, so neither is in scope.
+
 ## Naming convention
 
 `<topic>.md` — short, kebab-case, topic-focused (e.g. `agent-driven-pipeline.md`). No `proposal-` prefix;

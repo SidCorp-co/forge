@@ -9,6 +9,13 @@
 
 ### Added
 
+- `docs/VISION.md` and every proposal now say what adopting them costs the reader, and a gate keeps
+  it that way. The constitution had a Boundaries section — what Forge will not become — and nothing
+  pricing what choosing Forge takes from a team that chooses it, while the repo's own rule reads "a
+  trade-off is priced or it is not taken". `check-honest-costs` refuses an absent section, one that
+  prices nothing, and a `TBD` where the price goes; it cannot judge whether a stated price is honest,
+  and says so. (ISS-882)
+
 - Attention lists agent-filed `draft` issues that no human has looked at yet. `draft` is inert by
   design — the dispatcher never picks it up and nothing notifies on a draft create — so a proposal
   an agent filed used to be reachable from no surface in the product: measured 2026-08-30, 428 of
