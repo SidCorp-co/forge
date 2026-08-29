@@ -99,6 +99,17 @@ describe("AttentionScreen · unseen drafts", () => {
     expect(screen.getByText(/Showing 20 of 22/)).toBeInTheDocument();
   });
 
+  // cm:guard a group that GROWS past the threshold between renders must collapse too — seeding the open flag from the first render is the easy way to get this wrong, and the symptom is 20 rows appearing where 3 were.
+  it("collapses a group that grows past the threshold after first render", () => {
+    view = emptyView({ unseenDrafts: drafts(3), unseenDraftsTotal: 3 });
+    const { rerender } = render(<AttentionScreen />);
+    expect(screen.getByText("proposal 900")).toBeInTheDocument();
+    view = emptyView({ unseenDrafts: drafts(20), unseenDraftsTotal: 22 });
+    rerender(<AttentionScreen />);
+    expect(screen.getByRole("button", { expanded: false })).toBeInTheDocument();
+    expect(screen.queryByText("proposal 900")).toBeNull();
+  });
+
   it("hides the group entirely when there is nothing unseen", () => {
     view = emptyView({
       needsReview: [

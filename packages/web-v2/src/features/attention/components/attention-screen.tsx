@@ -6,7 +6,7 @@
 // its source. Live via WS: cross-project events only arrive on subscribed rooms,
 // so we fan out a `useRoom` per project (the Ops-monitor pattern) — the
 // `['attention']` invalidations in `lib/ws/event-router.ts` then refetch.
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatRelativeTime } from "@/lib/utils/format";
 import {
@@ -46,7 +46,7 @@ const KIND_META: Record<AttentionKind, { label: string; icon: IconName; fg: stri
   mention: { label: "Mention", icon: "mail", ...tone("mention") },
   failed_job: { label: "Failed", icon: "alert", ...tone("failed_job") },
   pending_skill_update: { label: "Skill update", icon: "clock", ...tone("pending_skill_update") },
-  unseen_draft: { label: "Unseen draft", icon: "mail", ...tone("unseen_draft") },
+  unseen_draft: { label: "Unseen draft", icon: "inbox", ...tone("unseen_draft") },
   runner_offline: { label: "Runner offline", icon: "server", ...tone("runner_offline") },
 };
 
@@ -94,7 +94,7 @@ function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: st
   );
 }
 
-function CountBadge({ children }: { children: React.ReactNode }) {
+function CountBadge({ children }: { children: ReactNode }) {
   return (
     <span
       className="inline-flex min-w-[18px] items-center justify-center rounded-pill px-1.5 font-semibold"
@@ -123,9 +123,10 @@ function Group({
 }) {
   const matched = total ?? items.length;
   const collapsible = items.length > COLLAPSE_ABOVE;
-  const [open, setOpen] = useState(!collapsible);
+  // cm:why null means "nobody has decided yet", so the default follows the CURRENT length. Seeding useState from the first render instead leaves a group that grew past the threshold on a WS refetch stuck expanded, which is the case this collapse exists for.
+  const [toggled, setToggled] = useState<boolean | null>(null);
   if (items.length === 0) return null;
-  const expanded = collapsible ? open : true;
+  const expanded = toggled ?? !collapsible;
   const heading = (
     <>
       <h2 className="fg-label text-fg">{title}</h2>
@@ -138,7 +139,7 @@ function Group({
         <button
           type="button"
           aria-expanded={expanded}
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => setToggled(!expanded)}
           className="flex items-center gap-2 rounded-md px-0.5 py-1 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]"
         >
           <Icon
@@ -159,7 +160,7 @@ function Group({
           ))}
           {matched > items.length && (
             <p className="fg-caption px-0.5 text-muted">
-              Showing {items.length} of {matched}. Open one to work it — the rest stay here.
+              Showing {items.length} of {matched} — clear these and the rest follow.
             </p>
           )}
         </div>
