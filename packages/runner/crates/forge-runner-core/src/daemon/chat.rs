@@ -8,16 +8,16 @@
 //!   - `agent:send`  `{ sessionId, message, claudeSessionId, repoPath, projectSlug, model }`
 //!   - `agent:abort` `{ sessionId }`
 //!
-//! A chat turn is a ONE-SHOT `claude -p <text>` invocation (with `--resume
-//! <claudeSessionId>` for follow-ups) — there is no long-lived stdin. Multi-turn
-//! context is carried entirely by Claude's own `--resume`. We reuse the existing
-//! [`ClaudeCodeRunner::start`] (session key = `sessionId`, so `agent:abort` maps
-//! straight onto the right process) and stream the reply back with
-//! `PATCH /api/agent-sessions/:id`, exactly like the desktop.
+//! A chat session is RESIDENT (ISS-873 phase 1): the first turn spawns a
+//! duplex process whose stdin stays open and every follow-up is written into
+//! it. `--resume` is the fallback for a session this daemon no longer holds —
+//! a restart, the idle ceiling, or a model change. Session key = `sessionId`,
+//! so `agent:abort` still maps onto the right process; replies stream back
+//! with `PATCH /api/agent-sessions/:id`, exactly like the desktop.
 //!
-//! Chat deliberately never goes through the `jobs` table or `dispatch::handle`,
-//! so it cannot consume the pipeline `job.assigned` cap. It has its own
-//! `chat_max_concurrent` budget (a semaphore owned by the daemon).
+//! Chat never goes through the `jobs` table or `dispatch::handle`, so it cannot
+//! consume the pipeline cap. Its own `chat_max_concurrent` budget queues turns;
+//! live processes are capped in the runner (ISS-873 invariant 3).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -333,18 +333,41 @@ async fn run_turn(
         turn.resume_id.is_some()
     );
 
-    // cm:guard refresh HERE and not in handle_start / handle_send — both funnel through this function, and a per-caller refresh is exactly how the resume lane got forgotten. Session 228cdf03 idled 28h and answered from the checkout it was created with.
+    // cm:guard refresh HERE and not in handle_start / handle_send — both funnel through this function, and a per-caller refresh is exactly how the resume lane got forgotten. Session 228cdf03 idled 28h and answered from the checkout it was created with. Residency does NOT move it: `run_turn` is entered once per TURN, not once per spawn — the two only looked the same while a turn was a spawn.
     let git_state = refresh::refresh(Path::new(&turn.repo_path), None).await;
     tracing::info!("[chat {session_id}] {}", refresh::describe(&git_state));
-    // cm:why the agent cannot detect staleness on its own, so telling it is the only mitigation — a stale checkout makes file content and `git log` agree WITH EACH OTHER, which makes "I verified by reading the files, not just history" the one check that cannot catch it.
-    let prompt = if git_state.refreshed {
-        turn.prompt.clone()
-    } else {
+
+    // cm:guard a session that can be reused must NOT be reused across a model change — the picker is honoured by respawning with `--model`, exactly as it was before residency. Verified 2026-08-29 that an in-band `/model` also works, but it costs its own turn and its result would be read as the answer to the user's question; that lands with the phase 4 message vocabulary, not here.
+    let resident = runner.resident(&session_id).await;
+    let reuse = match &resident {
+        Some(r) if r.model == turn.model => true,
+        Some(_) => {
+            tracing::info!("[chat {session_id}] model changed — closing the resident session");
+            runner.close(&session_id).await;
+            false
+        }
+        None => false,
+    };
+
+    // cm:guard ISS-873 invariant 7 — a RESIDENT session already holds the pre-refresh file contents, so a checkout that moved under it must be announced. Under one-shot this was free: the process was always newer than the refresh. A stale checkout makes file content and `git log` agree WITH EACH OTHER, which makes "I verified by reading the files, not just history" the one check that cannot catch it.
+    let moved_under_us = reuse
+        && resident
+            .as_ref()
+            .is_some_and(|r| r.head_sha.is_some() && r.head_sha != git_state.head_sha);
+    let prompt = if !git_state.refreshed {
         format!(
             "[workspace notice] {}\nWhile this holds, do not state what is or is not on the base branch from local files — check the remote before any such claim.\n\n{}",
             refresh::describe(&git_state),
             turn.prompt
         )
+    } else if moved_under_us {
+        format!(
+            "[workspace notice] the checkout moved under this session since your last turn ({}). Anything you read from these files earlier may be stale — re-read before relying on it.\n\n{}",
+            refresh::describe(&git_state),
+            turn.prompt
+        )
+    } else {
+        turn.prompt.clone()
     };
 
     // Session key = sessionId so `agent:abort` → `runner.abort(sessionId)` hits
@@ -356,7 +379,7 @@ async fn run_turn(
         issue_id: None,
         step: "chat".into(),
         repo_path: turn.repo_path.clone().into(),
-        prompt: Some(prompt),
+        prompt: Some(prompt.clone()),
         system_prompt: turn.system_prompt.clone(),
         model: turn.model.clone(),
         allowed_tools: None,
@@ -372,13 +395,28 @@ async fn run_turn(
     };
 
     let (tx, rx) = mpsc::channel::<RunnerEvent>(200);
-    if let Err(e) = runner.start(spec, tx).await {
+    // cm:guard `send` failing must fall back to a spawn, never fail the turn. The resident session can go away between the `resident()` check and the write — the idle ceiling, an abort, a crash — and a user whose message is refused because a process died in that window has lost the turn for a reason that has nothing to do with them.
+    let started = if reuse {
+        match runner.send(&session_id, prompt.clone(), tx.clone()).await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                tracing::info!("[chat {session_id}] resident send failed ({e}) — respawning");
+                runner.start(spec, tx).await.map(|_| ())
+            }
+        }
+    } else {
+        runner.start(spec, tx).await.map(|_| ())
+    };
+    if let Err(e) = started {
         let msg = format!("failed to start chat turn: {e}");
         tracing::error!("[chat {session_id}] {msg}");
         let _ = patch_failed(client, &session_id, &[], None, &msg, None).await;
         cleanup_attachments(turn.attachment_dir.as_deref()).await;
         return Ok(());
     }
+    runner
+        .note_head(&session_id, git_state.head_sha.clone())
+        .await;
 
     consume(client, &session_id, rx).await;
     // Best-effort temp cleanup — runs even on a failed turn (consume always

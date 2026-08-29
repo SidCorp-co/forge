@@ -45,14 +45,37 @@ struct Session {
     status: RunnerStatus,
     child: Option<tokio::process::Child>,
     claude_session_id: Option<String>,
+    /// Held open for the life of a DUPLEX session — dropping it is EOF, which
+    /// is how a resident session is closed. `None` on the print path.
+    stdin: Option<tokio::process::ChildStdin>,
+    /// Where the CURRENT turn's events go. Swapped by [`Runner::send`].
+    turn_tx: TurnTx,
+    /// Raised by [`Runner::send`] so the turn loop knows the idle clock stops.
+    turn_started: Arc<tokio::sync::Notify>,
+    /// What this session was spawned with, and where its checkout stood at the
+    /// last turn — the two facts a caller needs to decide whether the resident
+    /// session can serve the next turn as-is.
+    model: Option<String>,
+    head_sha: Option<String>,
+    // cm:guard the permit is held by the SESSION, not by the turn — that is invariant 3 of ISS-873. A turn-scoped permit bounds turns, and once a process outlives its turn the same count bounds nothing: three abandoned resident sessions would sit at zero held permits while three processes ran.
+    _permit: Option<tokio::sync::OwnedSemaphorePermit>,
 }
+
+/// The current turn's event sink. Shared by the stdout reader, the completion
+/// task and [`Runner::send`], because a resident process outlives any one of them.
+type TurnTx = Arc<Mutex<mpsc::Sender<RunnerEvent>>>;
 
 type Sessions = Arc<Mutex<HashMap<String, Session>>>;
 
 /// Grace period after the definitive `{type:result}` marker for the CLI to
 /// exit on its own before we kill it + report terminal. Guards the
 /// hang-after-result bug (anthropics/claude-code#25629).
+// cm:guard PRINT ONLY. On the duplex path a `{type:result}` ends the TURN and the process is expected to stay alive, so applying this grace there would kill every resident session five seconds after its first answer — the exact behaviour residency exists to remove.
 const RESULT_EXIT_GRACE: Duration = Duration::from_secs(5);
+
+/// How long a duplex session may sit between turns before it is closed.
+// cm:guard a resident session with nobody talking to it is a leaked process holding a permit, and nothing else reaps it: the daemon's drain counter tracks TURNS (`InflightGuard` is scoped to the frame task), so an idle session reads as idle and a restart would exit(0) leaving a setsid-detached survivor. This ceiling is the only thing that closes it. `sessionResidencySeconds` gets its reader in phase 3 and replaces this const with a per-project value.
+const SESSION_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 /// Signals captured from the claude stream + process exit, written
 /// incrementally by the reader/completion tasks so they survive a reader abort
@@ -80,6 +103,105 @@ struct Outcome {
     mcp_failed: Vec<String>,
     /// Captured child exit status (carries exit code / terminating signal).
     exit: Option<ExitStatus>,
+}
+
+impl Outcome {
+    /// Clear what belongs to ONE turn, keeping what belongs to the process.
+    // cm:guard `mcp_failed` and `exit` are process-scoped and must survive the reset — an MCP server that failed at `system/init` is still failed on turn 4, and clearing it would let a session that never reached its tools report every later turn as healthy.
+    fn reset_turn(&mut self) {
+        self.succeeded = None;
+        self.usage_limit = None;
+        self.result_seen = false;
+        self.result_error = None;
+        self.num_turns = None;
+        self.result_text = None;
+    }
+}
+
+/// Drive a resident session turn-by-turn until the process ends or the idle
+/// ceiling closes it. Returns whether the LAST turn already got a terminal
+/// event, so the process-level path does not report the same turn twice.
+// cm:guard the idle ceiling applies only BETWEEN turns. Arming it during a turn would reap a long one — a 15-minute build is silent on this channel and indistinguishable from an abandoned session by clock alone, which is the same mistake the 25s beat exists to paper over on the print path.
+struct TurnLoop<'a> {
+    sessions: &'a Sessions,
+    job_id: &'a str,
+    outcome: &'a Arc<Mutex<Outcome>>,
+    result_notify: &'a Arc<tokio::sync::Notify>,
+    turn_tx: &'a TurnTx,
+    turn_started: &'a Arc<tokio::sync::Notify>,
+    is_issue_job: bool,
+}
+
+async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>) -> bool {
+    let TurnLoop {
+        sessions,
+        job_id,
+        outcome,
+        result_notify,
+        turn_tx,
+        turn_started,
+        is_issue_job,
+    } = r;
+    let mut reported = false;
+    loop {
+        tokio::select! {
+            _ = result_notify.notified() => {
+                let ev = {
+                    let mut o = outcome.lock().await;
+                    let ev = turn_verdict(&o, is_issue_job);
+                    o.reset_turn();
+                    ev
+                };
+                let _ = turn_tx.lock().await.send(ev).await;
+                reported = true;
+            }
+            _ = &mut *reader => return reported,
+        }
+        tokio::select! {
+            _ = turn_started.notified() => {}
+            _ = &mut *reader => return reported,
+            _ = tokio::time::sleep(SESSION_IDLE_TIMEOUT) => {
+                tracing::info!("[claude] job={job_id} idle past the session ceiling — closing");
+                // Dropping stdin is EOF, which ends the CLI session; the
+                // process-level path below then reaps and cleans up.
+                if let Some(s) = sessions.lock().await.get_mut(job_id) {
+                    s.stdin = None;
+                }
+                return reported;
+            }
+        }
+    }
+}
+
+/// The verdict for ONE duplex turn, from the `{type:result}` event alone.
+// cm:guard exit code, signal and stderr are deliberately NOT read here: on a resident session none of them exist yet at turn end, and a classifier that reads them would report every healthy turn as `[NO_RESULT]`. A process that dies WITHOUT a result still goes through the full classification path — that is a session failure, not a turn.
+fn turn_verdict(o: &Outcome, is_issue_job: bool) -> RunnerEvent {
+    if let Some(msg) = o.usage_limit.clone() {
+        return RunnerEvent::Failed {
+            error: format!("[USAGE_LIMIT] {msg}"),
+            kind: FailureKind::UsageLimit,
+        };
+    }
+    if is_issue_job && o.succeeded == Some(true) && o.num_turns == Some(0) {
+        let detail = o.result_text.clone().unwrap_or_default();
+        return RunnerEvent::Failed {
+            error: format!(
+                "[NO_WORK] claude produced 0 turns — no work done (skill likely not installed on this device): {detail}"
+            ),
+            kind: FailureKind::Transient,
+        };
+    }
+    if o.succeeded == Some(true) {
+        return RunnerEvent::Done { exit_code: 0 };
+    }
+    RunnerEvent::Failed {
+        error: o
+            .result_error
+            .clone()
+            .map(|e| format!("[RESULT_ERROR] {e}"))
+            .unwrap_or_else(|| "[NO_RESULT] the turn ended without a result event".into()),
+        kind: FailureKind::Transient,
+    }
 }
 
 /// Split an [`ExitStatus`] into `(exit_code, terminating_signal)`.
@@ -254,6 +376,8 @@ pub struct ClaudeCodeRunner {
     device_token: String,
     skills: SkillSettings,
     sessions: Sessions,
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/config.rs — sized from `chat_max_concurrent`, but it counts something different: that budget queues TURNS in `daemon/chat.rs`, this one caps live duplex PROCESSES. They were one number while a turn was a process; keeping only the turn budget is how three abandoned resident sessions would sit at zero held permits.
+    session_sem: Arc<tokio::sync::Semaphore>,
 }
 
 impl ClaudeCodeRunner {
@@ -261,17 +385,26 @@ impl ClaudeCodeRunner {
         core_url: impl Into<String>,
         device_token: impl Into<String>,
         skills: SkillSettings,
+        session_cap: usize,
     ) -> Self {
         Self {
             core_url: core_url.into(),
             device_token: device_token.into(),
             skills,
             sessions: Arc::new(Mutex::new(HashMap::new())),
+            session_sem: Arc::new(tokio::sync::Semaphore::new(session_cap.max(1))),
         }
     }
 }
 
 // cm:guard the print/duplex split lives HERE and nowhere else — `-p` and `--input-format` are the two halves of one decision, and while they were decided in two places a spawn could carry both, which is a process holding a prompt it will never read off a stdin it will never be given.
+/// What a live duplex session was spawned with. `None` means no live session.
+pub struct Resident {
+    pub model: Option<String>,
+    /// `head_sha` recorded at the last turn, or `None` if none was recorded.
+    pub head_sha: Option<String>,
+}
+
 fn build_args(spec: &JobSpec, mcp_path: &str, prompt: &str) -> Vec<String> {
     let mode = spec
         .permission_mode
@@ -399,6 +532,35 @@ fn spawn_verdict_poller(
     })
 }
 
+impl ClaudeCodeRunner {
+    /// What the live duplex session for `id` was spawned with, if there is one.
+    pub async fn resident(&self, id: &SessionId) -> Option<Resident> {
+        let map = self.sessions.lock().await;
+        let s = map.get(id)?;
+        // cm:guard a session with no stdin is not resident whatever its status says — the print path and a session already closed by the idle ceiling both leave the entry behind until the completion task reaps it, and sending into either writes into a process that will never answer.
+        s.stdin.as_ref()?;
+        Some(Resident {
+            model: s.model.clone(),
+            head_sha: s.head_sha.clone(),
+        })
+    }
+
+    /// Record the checkout the session has just been told about.
+    pub async fn note_head(&self, id: &SessionId, head_sha: Option<String>) {
+        if let Some(s) = self.sessions.lock().await.get_mut(id) {
+            s.head_sha = head_sha;
+        }
+    }
+
+    /// End a live session between turns: EOF on stdin, then let the completion
+    /// task reap. Used when the next turn cannot reuse it (a model change).
+    pub async fn close(&self, id: &SessionId) {
+        if let Some(s) = self.sessions.lock().await.get_mut(id) {
+            s.stdin = None;
+        }
+    }
+}
+
 #[async_trait]
 impl Runner for ClaudeCodeRunner {
     fn kind(&self) -> RunnerKind {
@@ -466,6 +628,20 @@ impl Runner for ClaudeCodeRunner {
             .filter(|s| *s > 0)
             .map(Duration::from_secs);
 
+        // cm:guard acquired BEFORE the spawn and held by the session, so the ceiling counts processes. Acquiring after would let every caller spawn first and queue second, which bounds nothing.
+        let session_permit = if spec.duplex {
+            Some(
+                self.session_sem
+                    .clone()
+                    .acquire_owned()
+                    .await
+                    .map_err(|e| Error::Other(format!("session semaphore closed: {e}")))?,
+            )
+        } else {
+            None
+        };
+        let turn_started = Arc::new(tokio::sync::Notify::new());
+
         let mut cmd = build_command(&args, &effective_repo);
         let stdin_mode = if spec.duplex {
             std::process::Stdio::piped()
@@ -519,7 +695,8 @@ impl Runner for ClaudeCodeRunner {
         })?;
         tracing::info!("[claude] spawned job={job_id}");
 
-        if spec.duplex {
+        // cm:guard stdin is HELD, not dropped — dropping it is EOF, and EOF is how a duplex session ends. Everything downstream (the turn loop, `send`, the idle ceiling) exists because this handle stays open; closing it here would silently restore one-shot behaviour with none of the print path's reaping.
+        let session_stdin = if spec.duplex {
             let mut stdin = child
                 .stdin
                 .take()
@@ -529,8 +706,10 @@ impl Runner for ClaudeCodeRunner {
                 .await
                 .map_err(|e| Error::Other(format!("failed to write the first turn: {e}")))?;
             let _ = stdin.flush().await;
-            // cm:guard stdin is dropped here ON PURPOSE and this is the whole reason phase 1 is behaviour-preserving: EOF does NOT cut the turn (measured, claude 2.1.251 — stdin closed 400ms into a long generation still produced the complete result, then exit 0), so the process still ends with its turn exactly as `-p` did. Holding stdin open is what makes a session RESIDENT, and it lands with the inverted completion task — not here, where the completion path still assumes result implies exit.
-        }
+            Some(stdin)
+        } else {
+            None
+        };
 
         let stdout = child
             .stdout
@@ -545,12 +724,19 @@ impl Runner for ClaudeCodeRunner {
         if let Some(pid) = child.id() {
             inflight::record(&job_id, pid);
         }
+        let turn_tx: TurnTx = Arc::new(Mutex::new(tx.clone()));
         self.sessions.lock().await.insert(
             job_id.clone(),
             Session {
                 status: RunnerStatus::Running,
                 child: Some(child),
                 claude_session_id: None,
+                stdin: session_stdin,
+                turn_tx: turn_tx.clone(),
+                turn_started: turn_started.clone(),
+                model: spec.model.clone(),
+                head_sha: None,
+                _permit: session_permit,
             },
         );
 
@@ -570,8 +756,9 @@ impl Runner for ClaudeCodeRunner {
         });
 
         // stdout reader.
+        let duplex = spec.duplex;
         let reader = {
-            let tx = tx.clone();
+            let turn_tx = turn_tx.clone();
             let sessions = self.sessions.clone();
             let outcome = outcome.clone();
             let result_notify = result_notify.clone();
@@ -590,7 +777,11 @@ impl Runner for ClaudeCodeRunner {
                             if let Some(s) = sessions.lock().await.get_mut(&job_id) {
                                 s.claude_session_id = Some(sid.to_string());
                             }
-                            let _ = tx.send(RunnerEvent::ClaudeSessionId(sid.to_string())).await;
+                            let _ = turn_tx
+                                .lock()
+                                .await
+                                .send(RunnerEvent::ClaudeSessionId(sid.to_string()))
+                                .await;
                             got_sid = true;
                         }
                     }
@@ -634,7 +825,15 @@ impl Runner for ClaudeCodeRunner {
                         // Definitive done marker — wake the completion task.
                         result_notify.notify_one();
                     }
-                    if tx.send(RunnerEvent::Stdout(json)).await.is_err() {
+                    // cm:guard a send error is fatal on PRINT (the one consumer went away, so nothing will ever read again) and expected on DUPLEX (chat's `consume` drops its receiver at every turn end, and the next `send` installs a fresh one). Breaking here on duplex would stop reading stdout for a process that is still alive and about to be asked another question.
+                    if turn_tx
+                        .lock()
+                        .await
+                        .send(RunnerEvent::Stdout(json))
+                        .await
+                        .is_err()
+                        && !duplex
+                    {
                         break;
                     }
                 }
@@ -649,9 +848,31 @@ impl Runner for ClaudeCodeRunner {
         let core_url_for_verdicts = self.core_url.clone();
         let token_for_verdicts = self.device_token.clone();
         let worktree_for_verdicts = PathBuf::from(&effective_repo);
+        let outcome_for_turns = outcome.clone();
+        let result_notify_for_turns = result_notify.clone();
+        let turn_tx_for_turns = turn_tx.clone();
+        let turn_started_for_turns = turn_started.clone();
+        let sessions_for_turns = self.sessions.clone();
         tokio::spawn(async move {
             let job_id = job_id_task;
             let mut reader = reader;
+            let already_reported = if duplex {
+                duplex_turns(
+                    TurnLoop {
+                        sessions: &sessions_for_turns,
+                        job_id: &job_id,
+                        outcome: &outcome_for_turns,
+                        result_notify: &result_notify_for_turns,
+                        turn_tx: &turn_tx_for_turns,
+                        turn_started: &turn_started_for_turns,
+                        is_issue_job,
+                    },
+                    &mut reader,
+                )
+                .await
+            } else {
+                false
+            };
             let exit_poll = {
                 let sessions = sessions.clone();
                 let outcome = outcome.clone();
@@ -795,58 +1016,62 @@ impl Runner for ClaudeCodeRunner {
             }
             let _ = std::fs::remove_file(&mcp_path);
 
-            if succeeded {
-                let _ = tx.send(RunnerEvent::Done { exit_code: 0 }).await;
-            } else if let Some(msg) = usage_limit {
-                // cm:edge contract -> packages/core/src/pipeline/failure-classifier.ts — an unrecognized token degrades to infra + needsReview
-                let _ = tx
-                    .send(RunnerEvent::Failed {
-                        error: format!("[USAGE_LIMIT] {msg}"),
-                        kind: FailureKind::UsageLimit,
-                    })
-                    .await;
-            } else if resume_failed {
-                let body: String = stderr.trim().chars().take(500).collect();
-                let _ = tx
-                    .send(RunnerEvent::Failed {
-                        error: format!("[RESUME_FAILED] {body}"),
-                        kind: FailureKind::ResumeFailed,
-                    })
-                    .await;
-            } else if no_work {
-                // ISS-626 — zero-turn pipeline result (CLI short-circuited, e.g.
-                // an unknown /forge-<skill> command). Carry the result text so
-                // core's classifier routes it (an "Unknown command" line matches
-                // the cc-startup patterns → transient-cc → different-device
-                // failover to a runner that HAS the skill).
-                let detail = result_text.unwrap_or_default();
-                let _ = tx
-                    .send(RunnerEvent::Failed {
-                        error: format!(
-                            "[NO_WORK] claude produced 0 turns — no work done (skill likely not installed on this device): {detail}"
-                        ),
-                        kind: FailureKind::Transient,
-                    })
-                    .await;
-            } else {
-                let (exit_code, signal) = match outcome_exit {
-                    Some(ref st) => split_exit(st),
-                    None => (None, None),
-                };
-                let error = classify_failure_reason(
-                    exit_code,
-                    signal,
-                    result_seen,
-                    result_error.as_deref(),
-                    &mcp_failed,
-                    &stderr,
-                );
-                let _ = tx
-                    .send(RunnerEvent::Failed {
-                        error,
-                        kind: FailureKind::Transient,
-                    })
-                    .await;
+            // cm:guard a duplex turn that already reported must NOT be reported again here. `already_reported` is the whole reason the turn loop returns a bool: the process ends AFTER its last turn's verdict, and re-classifying at exit would emit a second terminal event for work core already recorded as finished.
+            let emit = turn_tx.lock().await.clone();
+            if !already_reported {
+                if succeeded {
+                    let _ = emit.send(RunnerEvent::Done { exit_code: 0 }).await;
+                } else if let Some(msg) = usage_limit {
+                    // cm:edge contract -> packages/core/src/pipeline/failure-classifier.ts — an unrecognized token degrades to infra + needsReview
+                    let _ = tx
+                        .send(RunnerEvent::Failed {
+                            error: format!("[USAGE_LIMIT] {msg}"),
+                            kind: FailureKind::UsageLimit,
+                        })
+                        .await;
+                } else if resume_failed {
+                    let body: String = stderr.trim().chars().take(500).collect();
+                    let _ = tx
+                        .send(RunnerEvent::Failed {
+                            error: format!("[RESUME_FAILED] {body}"),
+                            kind: FailureKind::ResumeFailed,
+                        })
+                        .await;
+                } else if no_work {
+                    // ISS-626 — zero-turn pipeline result (CLI short-circuited, e.g.
+                    // an unknown /forge-<skill> command). Carry the result text so
+                    // core's classifier routes it (an "Unknown command" line matches
+                    // the cc-startup patterns → transient-cc → different-device
+                    // failover to a runner that HAS the skill).
+                    let detail = result_text.unwrap_or_default();
+                    let _ = tx
+                        .send(RunnerEvent::Failed {
+                            error: format!(
+                                "[NO_WORK] claude produced 0 turns — no work done (skill likely not installed on this device): {detail}"
+                            ),
+                            kind: FailureKind::Transient,
+                        })
+                        .await;
+                } else {
+                    let (exit_code, signal) = match outcome_exit {
+                        Some(ref st) => split_exit(st),
+                        None => (None, None),
+                    };
+                    let error = classify_failure_reason(
+                        exit_code,
+                        signal,
+                        result_seen,
+                        result_error.as_deref(),
+                        &mcp_failed,
+                        &stderr,
+                    );
+                    let _ = tx
+                        .send(RunnerEvent::Failed {
+                            error,
+                            kind: FailureKind::Transient,
+                        })
+                        .await;
+                }
             }
             sessions.lock().await.remove(&job_id);
             inflight::forget(&job_id);
@@ -855,9 +1080,32 @@ impl Runner for ClaudeCodeRunner {
         Ok(job_id)
     }
 
-    async fn send(&self, _session: &SessionId, _message: String) -> Result<()> {
-        // Interactive follow-ups are a chat feature; pipeline jobs are one-shot.
-        Err(Error::NotImplemented("ClaudeCodeRunner::send"))
+    async fn send(
+        &self,
+        session: &SessionId,
+        message: String,
+        tx: mpsc::Sender<RunnerEvent>,
+    ) -> Result<()> {
+        // cm:guard the tx is installed and `turn_started` raised only AFTER the write succeeded. Raising first stops the idle clock for a turn that never reached the CLI, and the session would then sit resident until the job timeout with no turn in it.
+        let mut map = self.sessions.lock().await;
+        let sess = map
+            .get_mut(session)
+            .ok_or_else(|| Error::Other("session not found".into()))?;
+        let stdin = sess
+            .stdin
+            .as_mut()
+            .ok_or_else(|| Error::Other("session is not duplex — nothing to send to".into()))?;
+        stdin
+            .write_all(user_message_line(&message).as_bytes())
+            .await
+            .map_err(|e| Error::Other(format!("failed to write the turn: {e}")))?;
+        stdin
+            .flush()
+            .await
+            .map_err(|e| Error::Other(format!("failed to flush the turn: {e}")))?;
+        *sess.turn_tx.lock().await = tx;
+        sess.turn_started.notify_one();
+        Ok(())
     }
 
     async fn abort(&self, session: &SessionId) -> Result<()> {
@@ -947,6 +1195,221 @@ mod tests {
             "{args:?}"
         );
         assert!(has_pair(&args, "-p", "hello"), "{args:?}");
+    }
+
+    struct Harness {
+        sessions: Sessions,
+        outcome: Arc<Mutex<Outcome>>,
+        result_notify: Arc<tokio::sync::Notify>,
+        turn_tx: TurnTx,
+        turn_started: Arc<tokio::sync::Notify>,
+        rx: mpsc::Receiver<RunnerEvent>,
+    }
+
+    fn resident_harness() -> Harness {
+        let (tx, rx) = mpsc::channel(16);
+        let turn_tx: TurnTx = Arc::new(Mutex::new(tx));
+        let sessions: Sessions = Arc::new(Mutex::new(HashMap::new()));
+        Harness {
+            sessions,
+            outcome: Arc::new(Mutex::new(Outcome::default())),
+            result_notify: Arc::new(tokio::sync::Notify::new()),
+            turn_tx,
+            turn_started: Arc::new(tokio::sync::Notify::new()),
+            rx,
+        }
+    }
+
+    async fn never_ending() -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async { std::future::pending::<()>().await })
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_finished_turn_reports_and_the_session_stays_open() {
+        let Harness {
+            sessions,
+            outcome,
+            result_notify,
+            turn_tx,
+            turn_started,
+            mut rx,
+        } = resident_harness();
+        let mut reader = never_ending().await;
+        let loop_handle = {
+            let (s, o, rn, tt, ts) = (
+                sessions.clone(),
+                outcome.clone(),
+                result_notify.clone(),
+                turn_tx.clone(),
+                turn_started.clone(),
+            );
+            tokio::spawn(async move {
+                duplex_turns(
+                    TurnLoop {
+                        sessions: &s,
+                        job_id: "j1",
+                        outcome: &o,
+                        result_notify: &rn,
+                        turn_tx: &tt,
+                        turn_started: &ts,
+                        is_issue_job: false,
+                    },
+                    &mut reader,
+                )
+                .await
+            })
+        };
+
+        outcome.lock().await.succeeded = Some(true);
+        result_notify.notify_one();
+        let ev = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .expect("a finished turn must report")
+            .expect("channel open");
+        assert!(matches!(ev, RunnerEvent::Done { .. }), "{ev:?}");
+        assert!(
+            !loop_handle.is_finished(),
+            "the session must outlive its turn"
+        );
+        loop_handle.abort();
+    }
+
+    // cm:guard this is the discriminating test for the idle ceiling: arming it DURING a turn reaps a long one, and a 15-minute build is silent on this channel and indistinguishable from an abandoned session by clock alone.
+    #[tokio::test(start_paused = true)]
+    async fn the_idle_ceiling_does_not_arm_while_a_turn_is_running() {
+        let Harness {
+            sessions,
+            outcome,
+            result_notify,
+            turn_tx,
+            turn_started,
+            rx: _rx,
+        } = resident_harness();
+        let mut reader = never_ending().await;
+        let loop_handle = tokio::spawn(async move {
+            duplex_turns(
+                TurnLoop {
+                    sessions: &sessions,
+                    job_id: "j1",
+                    outcome: &outcome,
+                    result_notify: &result_notify,
+                    turn_tx: &turn_tx,
+                    turn_started: &turn_started,
+                    is_issue_job: false,
+                },
+                &mut reader,
+            )
+            .await
+        });
+        tokio::time::sleep(SESSION_IDLE_TIMEOUT * 3).await;
+        assert!(
+            !loop_handle.is_finished(),
+            "a turn that has not produced a result yet is not an idle session"
+        );
+        loop_handle.abort();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_abandoned_session_is_closed_by_the_idle_ceiling() {
+        let Harness {
+            sessions,
+            outcome,
+            result_notify,
+            turn_tx,
+            turn_started,
+            mut rx,
+        } = resident_harness();
+        let mut reader = never_ending().await;
+        let loop_handle = {
+            let (s, o, rn, tt, ts) = (
+                sessions.clone(),
+                outcome.clone(),
+                result_notify.clone(),
+                turn_tx.clone(),
+                turn_started.clone(),
+            );
+            tokio::spawn(async move {
+                duplex_turns(
+                    TurnLoop {
+                        sessions: &s,
+                        job_id: "j1",
+                        outcome: &o,
+                        result_notify: &rn,
+                        turn_tx: &tt,
+                        turn_started: &ts,
+                        is_issue_job: false,
+                    },
+                    &mut reader,
+                )
+                .await
+            })
+        };
+        outcome.lock().await.succeeded = Some(true);
+        result_notify.notify_one();
+        let _ = rx.recv().await;
+        tokio::time::sleep(SESSION_IDLE_TIMEOUT + Duration::from_secs(1)).await;
+        let reported = tokio::time::timeout(Duration::from_secs(1), loop_handle)
+            .await
+            .expect("the ceiling must close an abandoned session")
+            .expect("loop panicked");
+        assert!(
+            reported,
+            "the last turn was reported, so exit must not report again"
+        );
+    }
+
+    #[test]
+    fn a_turn_that_ends_with_no_result_is_not_a_success() {
+        let ev = turn_verdict(&Outcome::default(), false);
+        match ev {
+            RunnerEvent::Failed { error, .. } => {
+                assert!(error.starts_with("[NO_RESULT]"), "{error}")
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_usage_limit_outranks_a_successful_result() {
+        let o = Outcome {
+            succeeded: Some(true),
+            usage_limit: Some("out of extra usage".into()),
+            ..Default::default()
+        };
+        match turn_verdict(&o, false) {
+            RunnerEvent::Failed { kind, .. } => assert_eq!(kind, FailureKind::UsageLimit),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn zero_turns_on_an_issue_job_is_no_work_and_on_chat_is_not() {
+        let o = Outcome {
+            succeeded: Some(true),
+            num_turns: Some(0),
+            ..Default::default()
+        };
+        match turn_verdict(&o, true) {
+            RunnerEvent::Failed { error, .. } => assert!(error.starts_with("[NO_WORK]"), "{error}"),
+            other => panic!("{other:?}"),
+        }
+        assert!(matches!(turn_verdict(&o, false), RunnerEvent::Done { .. }));
+    }
+
+    // cm:guard an MCP server that failed at `system/init` is still failed on turn 4 — clearing it per turn would let a session that never reached its tools report every later turn as healthy.
+    #[test]
+    fn resetting_a_turn_keeps_what_belongs_to_the_process() {
+        let mut o = Outcome {
+            succeeded: Some(true),
+            num_turns: Some(3),
+            mcp_failed: vec!["forge(failed)".into()],
+            ..Default::default()
+        };
+        o.reset_turn();
+        assert_eq!(o.succeeded, None);
+        assert_eq!(o.num_turns, None);
+        assert!(!o.result_seen);
+        assert_eq!(o.mcp_failed, vec!["forge(failed)".to_string()]);
     }
 
     #[test]

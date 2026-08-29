@@ -103,6 +103,7 @@ pub async fn run(
         core_url.clone(),
         device_token.clone(),
         cfg.skills.clone(),
+        (cfg.runner.chat_max_concurrent as usize).max(1),
     ));
 
     // Discover server-side assignments (`/me/runners`). This is the source of

@@ -118,7 +118,14 @@ pub trait Runner: Send + Sync {
     fn kind(&self) -> RunnerKind;
     /// Spawn the job, streaming normalized events on `tx`. Returns the session id.
     async fn start(&self, spec: JobSpec, tx: mpsc::Sender<RunnerEvent>) -> Result<SessionId>;
-    async fn send(&self, session: &SessionId, message: String) -> Result<()>;
+    /// Send one more turn into a LIVE session, streaming its events on `tx`.
+    // cm:guard a turn owns its own channel because a resident session outlives any one of them — chat's consumer breaks at every turn end, so re-using the channel from `start` would drop turn 2 into a receiver nobody is reading.
+    async fn send(
+        &self,
+        session: &SessionId,
+        message: String,
+        tx: mpsc::Sender<RunnerEvent>,
+    ) -> Result<()>;
     async fn abort(&self, session: &SessionId) -> Result<()>;
     fn status(&self, session: &SessionId) -> RunnerStatus;
 }
