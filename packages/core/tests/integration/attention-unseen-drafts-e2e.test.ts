@@ -42,6 +42,7 @@ let deviceId: string;
 let projectAdminId: string;
 let orgAdminId: string;
 let plainMemberId: string;
+let viewerId: string;
 let app: Hono<{ Variables: import('../../src/middleware/request-id.js').RequestIdVars }>;
 let authHeader: string;
 let seq = 0;
@@ -81,15 +82,24 @@ beforeEach(async () => {
   projectAdminId = (await createTestUser(harness.db)).id;
   orgAdminId = (await createTestUser(harness.db)).id;
   plainMemberId = (await createTestUser(harness.db)).id;
+  viewerId = (await createTestUser(harness.db)).id;
   await harness.db.execute(sql`UPDATE users SET email_verified_at = now()`);
   await createTestOrgMember(harness.db, { orgId: org.id, userId: projectAdminId });
   await createTestOrgMember(harness.db, { orgId: org.id, userId: plainMemberId });
+  await createTestOrgMember(harness.db, { orgId: org.id, userId: viewerId });
   await createTestOrgMember(harness.db, { orgId: org.id, userId: orgAdminId, role: 'admin' });
   await createTestProjectMember(harness.db, {
     projectId,
     userId: projectAdminId,
     role: 'admin',
   });
+  // cm:guard these two MUST hold real `project_members` rows, or the negative cases below only re-prove what authz.ts already guarantees: measured 2026-08-30, with them absent, deleting `role = 'admin'` from adminsProject left 18 of 18 cases passing.
+  await createTestProjectMember(harness.db, {
+    projectId,
+    userId: plainMemberId,
+    role: 'member',
+  });
+  await createTestProjectMember(harness.db, { projectId, userId: viewerId, role: 'viewer' });
 
   const { signUserToken } = await import('../../src/auth/jwt.js');
   authHeader = `Bearer ${await signUserToken(ownerId)}`;
@@ -204,10 +214,19 @@ describe('attention · unseen agent-filed drafts', () => {
     expect((await attentionAs(orgAdminId)).unseenDrafts).toHaveLength(1);
   });
 
-  // cm:guard membership alone must NOT admit anyone. Every project member seeing every agent proposal is how a queue becomes noise nobody reads, which is the failure mode this bucket was built to avoid rather than cause.
-  it('does not reach a plain project member who did not file it', async () => {
+  // cm:guard membership alone must NOT admit anyone, and this is a TENANT boundary, not a preference: the same `adminsProject` predicate gates `pendingSkillUpdates`, so a one-line widening here hands every agent-filed draft AND every skill-update gate to every member of the project.
+  it('does not reach a project member at role member', async () => {
     await draft({ createdBy: otherId, assignee: null });
-    expect((await attentionAs(plainMemberId)).unseenDrafts).toHaveLength(0);
+    const body = await attentionAs(plainMemberId);
+    expect(body.unseenDrafts).toHaveLength(0);
+    expect(body.unseenDraftsTotal).toBe(0);
+  });
+
+  it('does not reach a project member at role viewer', async () => {
+    await draft({ createdBy: otherId, assignee: null });
+    const body = await attentionAs(viewerId);
+    expect(body.unseenDrafts).toHaveLength(0);
+    expect(body.unseenDraftsTotal).toBe(0);
   });
 
   // cm:guard assignment wins over BOTH fallbacks. An assigned proposal in the project admin's list as well means two people each assume the other triaged it.
@@ -273,6 +292,19 @@ describe('attention · unseen agent-filed drafts', () => {
     expect(rows.map((r) => r.issueRef)).toHaveLength(3);
     const seqs = rows.map((r) => r.issueRef);
     expect(seqs[0]).toBe(`ISS-${seq - 1}`);
+  });
+
+  // cm:guard the count must be measured through the SAME predicate as the list. Only the cap half of that guard is covered by the case below: if the count were wider, a total of 3 over a list of 1 would go unnoticed, which is the surface lying in the same breath it was added to stop a surface from lying.
+  it('counts only what the predicate matches, not every draft', async () => {
+    await draft();
+    const seen = await draft();
+    await comment(seen, { isAi: false });
+    await draft({ via: 'web' });
+    await draft({ createdBy: otherId, assignee: otherId });
+    await draft({ status: 'open' });
+    const body = await attention();
+    expect(body.unseenDrafts).toHaveLength(1);
+    expect(body.unseenDraftsTotal).toBe(1);
   });
 
   // cm:guard the cap bounds the SCREEN, never the truth. A total computed from the capped list instead of the predicate is how a 22-deep backlog renders as "20" and stops being a backlog anyone chases.
