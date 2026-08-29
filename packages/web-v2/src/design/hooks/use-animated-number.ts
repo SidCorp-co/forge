@@ -22,7 +22,7 @@ export function useAnimatedNumber(value: number, duration = 320): number {
     const start = performance.now();
     const tick = (t: number) => {
       const p = Math.min(1, (t - start) / duration);
-      const eased = 1 - (1 - p) ** 3; // ease-out cubic
+      const eased = 1 - Math.pow(1 - p, 3); // ease-out cubic
       setDisplay(from + (value - from) * eased);
       if (p < 1) rafRef.current = requestAnimationFrame(tick);
       else fromRef.current = value;

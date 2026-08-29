@@ -95,7 +95,7 @@ describe("isSupported", () => {
   it("is true when AudioContext is present", () => {
     (globalThis as { window?: unknown }).window = {
       localStorage: makeLocalStorage(),
-      AudioContext: (() => {}) as unknown,
+      AudioContext: function () {} as unknown,
     };
     expect(isSupported()).toBe(true);
   });
