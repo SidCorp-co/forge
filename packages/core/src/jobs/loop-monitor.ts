@@ -30,6 +30,7 @@ import {
   resolveKillConfirmation,
 } from './kill-gate.js';
 import { LAST_PHASE_CTE, LAST_PROGRESS_AT } from './progress-signal.js';
+import { NOT_PARKED, RESIDENT_SESSION_JOIN, RESULT_GUARD } from './resident-session.js';
 
 // Lazily loaded (ISS-584 B). schedules/dispatch.js pulls a heavy prompt-builder
 // chain (and through it the env-validating embeddings module); importing it
@@ -587,10 +588,10 @@ export async function reapZombieSessions(
 
 /**
  * Hop 3c (job axis) — session-lost propagation. When a linked session is
- * terminal but its job is still active (and never emitted a `result` event),
- * kill-gate it and route the confirmed reap through the shared finalize
- * tail. Moved from pipeline/sweeper.ts `reconcileOrphanedJobs` (ISS-280
- * semantics preserved, incl. the result-event false-positive guard).
+ * terminal but its job is still active, kill-gate it and route the confirmed
+ * reap through the shared finalize tail. Moved from pipeline/sweeper.ts
+ * `reconcileOrphanedJobs` (ISS-280 semantics preserved; its result-event
+ * false-positive guard now reads print-only, see `resident-session.ts`).
  *
  * ISS-37 lived here: the session heartbeat hop had already failed the
  * linked session while the job's own process kept running, and this hop —
@@ -609,10 +610,7 @@ export async function reapSessionLostJobs(
     JOIN agent_sessions s ON s.id = j.agent_session_id
     WHERE j.status IN ('dispatched', 'running')
       AND s.status IN ('failed', 'cancelled_stale')
-      AND NOT EXISTS (
-        SELECT 1 FROM job_events e
-        WHERE e.job_id = j.id AND e.kind = 'result'
-      )
+      AND ${RESULT_GUARD}
       ${projectClause}
   `);
 
@@ -651,10 +649,10 @@ export async function reapSessionLostJobs(
 
 /**
  * Hop 4 — result. A claimed job whose latest event (or dispatch, if events
- * are gone quiet entirely) is older than RESULT_QUIET_MINUTES and that never
- * emitted a `result` event: the worker is wedged. Moved from
- * jobs/stale-detector.ts `runStaleSweep` (ISS-258 semantics preserved, incl.
- * the result-event finalize-drop guard), now ticking every minute.
+ * are gone quiet entirely) is older than RESULT_QUIET_MINUTES: the worker is
+ * wedged. Moved from jobs/stale-detector.ts `runStaleSweep` (ISS-258
+ * semantics preserved; its finalize-drop guard and the park exemption are
+ * both in `resident-session.ts`), now ticking every minute.
  */
 export async function reapResultMisses(
   _now: Date = new Date(),
@@ -672,11 +670,10 @@ export async function reapResultMisses(
     FROM jobs j
     LEFT JOIN last_event le ON le.job_id = j.id
     LEFT JOIN last_phase lp ON lp.run_id = j.pipeline_run_id
+    ${RESIDENT_SESSION_JOIN}
     WHERE j.status IN ('dispatched', 'running')
-      AND NOT EXISTS (
-        SELECT 1 FROM job_events
-        WHERE job_id = j.id AND kind = 'result'
-      )
+      AND ${RESULT_GUARD}
+      AND ${NOT_PARKED}
       AND ${LAST_PROGRESS_AT} < now() - interval '${sql.raw(String(RESULT_QUIET_MINUTES))} minutes'
       ${projectClause}
   `);
