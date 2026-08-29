@@ -6,6 +6,7 @@
 // its source. Live via WS: cross-project events only arrive on subscribed rooms,
 // so we fan out a `useRoom` per project (the Ops-monitor pattern) — the
 // `['attention']` invalidations in `lib/ws/event-router.ts` then refetch.
+import { type ReactNode, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatRelativeTime } from "@/lib/utils/format";
 import {
@@ -35,6 +36,7 @@ const KIND_TONE: Record<AttentionKind, SemanticTone> = {
   mention: "neutral",
   failed_job: "failure",
   pending_skill_update: "attention",
+  unseen_draft: "attention",
   runner_offline: "infra",
 };
 
@@ -44,6 +46,7 @@ const KIND_META: Record<AttentionKind, { label: string; icon: IconName; fg: stri
   mention: { label: "Mention", icon: "mail", ...tone("mention") },
   failed_job: { label: "Failed", icon: "alert", ...tone("failed_job") },
   pending_skill_update: { label: "Skill update", icon: "clock", ...tone("pending_skill_update") },
+  unseen_draft: { label: "Unseen draft", icon: "inbox", ...tone("unseen_draft") },
   runner_offline: { label: "Runner offline", icon: "server", ...tone("runner_offline") },
 };
 
@@ -91,32 +94,81 @@ function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: st
   );
 }
 
+function CountBadge({ children }: { children: ReactNode }) {
+  return (
+    <span
+      className="inline-flex min-w-[18px] items-center justify-center rounded-pill px-1.5 font-semibold"
+      style={{ fontSize: 11, lineHeight: "16px", color: "var(--fg-muted)", background: "var(--paper-100)" }}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** Above this many rows a group that OPTED IN starts collapsed — a long backlog
+ *  must be countable without pushing every other bucket off the screen. */
+const COLLAPSE_ABOVE = 5;
+
 function Group({
   title,
   items,
   onOpen,
+  total,
+  collapsible: mayCollapse = false,
 }: {
   title: string;
   items: AttentionItem[];
   onOpen: (link: string) => void;
+  /** Unclipped match count when the API capped `items`. Defaults to items.length. */
+  total?: number;
+  collapsible?: boolean;
 }) {
+  const matched = total ?? items.length;
+  // cm:why collapsing is opt-in per bucket, never derived from length alone: the buckets core caps at 5 could not trip it, but skill updates (cap 20) and offline runners (client-derived, unbounded) could — and an operator with 6 dead runners would open this screen to an infra alert collapsed to nothing by default.
+  const collapsible = mayCollapse && items.length > COLLAPSE_ABOVE;
+  // cm:guard `toggled` only ever applies WHILE the group is collapsible, and it starts null so the default follows the CURRENT length. Both halves are load-bearing: seed it from the first render and a group that grows past the threshold stays expanded, and let a stale `false` outlive `collapsible` and a group that shrinks back under it renders its header over zero rows with no button left to reopen them.
+  const [toggled, setToggled] = useState<boolean | null>(null);
   if (items.length === 0) return null;
+  const expanded = collapsible ? (toggled ?? false) : true;
+  // cm:why the h2 wraps the button rather than sitting inside it: a heading nested in a button is not announced as a heading, so collapsible groups would silently drop out of screen-reader heading navigation while the non-collapsible ones stayed in it.
   return (
     <section className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 px-0.5">
-        <h2 className="fg-label text-fg">{title}</h2>
-        <span
-          className="inline-flex min-w-[18px] items-center justify-center rounded-pill px-1.5 font-semibold"
-          style={{ fontSize: 11, lineHeight: "16px", color: "var(--fg-muted)", background: "var(--paper-100)" }}
-        >
-          {items.length}
-        </span>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        {items.map((it, i) => (
-          <AttentionRow key={`${it.kind}-${it.link}-${i}`} item={it} onOpen={onOpen} />
-        ))}
-      </div>
+      <h2 className="fg-label text-fg">
+        {collapsible ? (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setToggled(!expanded)}
+            className="flex w-full items-center gap-2 rounded-md px-0.5 py-1 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]"
+          >
+            <Icon
+              name="chevronRight"
+              size={15}
+              className="text-subtle transition-transform duration-[150ms]"
+              style={{ transform: expanded ? "rotate(90deg)" : "none" }}
+            />
+            {title}
+            <CountBadge>{matched}</CountBadge>
+          </button>
+        ) : (
+          <span className="flex items-center gap-2 px-0.5">
+            {title}
+            <CountBadge>{matched}</CountBadge>
+          </span>
+        )}
+      </h2>
+      {expanded && (
+        <div className="flex flex-col gap-1.5">
+          {items.map((it, i) => (
+            <AttentionRow key={`${it.kind}-${it.link}-${i}`} item={it} onOpen={onOpen} />
+          ))}
+          {matched > items.length && (
+            <p className="fg-caption px-0.5 text-muted">
+              Showing {items.length} of {matched}, highest priority first.
+            </p>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -135,14 +187,21 @@ export function AttentionScreen() {
     mentions: view.mentions.filter(keep),
     failedJobs: view.failedJobs.filter(keep),
     pendingSkillUpdates: view.pendingSkillUpdates.filter(keep),
+    unseenDrafts: view.unseenDrafts.filter(keep),
     offlineRunners: view.offlineRunners.filter(keep),
   };
+  // cm:why the org filter can drop rows core counted, so the unclipped total is scaled down to what survived it rather than shown raw — a "20 of 22" over 3 visible rows reads as a bug, and re-deriving it from the list alone would hide a real backlog instead.
+  const unseenDraftsTotal =
+    scoped.unseenDrafts.length === view.unseenDrafts.length
+      ? view.unseenDraftsTotal
+      : scoped.unseenDrafts.length;
   const total =
     scoped.needsReview.length +
     scoped.awaitingInput.length +
     scoped.mentions.length +
     scoped.failedJobs.length +
     scoped.pendingSkillUpdates.length +
+    scoped.unseenDrafts.length +
     scoped.offlineRunners.length;
 
   const open = (link: string) => router.push(link);
@@ -173,8 +232,8 @@ export function AttentionScreen() {
       <header className="mb-5">
         <h1 className="fg-h2">Attention</h1>
         <p className="fg-body-sm mt-1 text-muted">
-          Cross-project items waiting on you — reviews, blocked work, mentions, failures, and offline
-          runners.
+          Cross-project items waiting on you — reviews, blocked work, mentions, failures, unseen
+          drafts, and offline runners.
         </p>
       </header>
 
@@ -189,6 +248,13 @@ export function AttentionScreen() {
           <Group title="Mentions" items={scoped.mentions} onOpen={open} />
           <Group title="Failed jobs" items={scoped.failedJobs} onOpen={open} />
           <Group title="Skill updates" items={scoped.pendingSkillUpdates} onOpen={open} />
+          <Group
+            title="Unseen drafts"
+            items={scoped.unseenDrafts}
+            onOpen={open}
+            total={unseenDraftsTotal}
+            collapsible
+          />
           <Group title="Offline runners" items={scoped.offlineRunners} onOpen={open} />
         </div>
       )}

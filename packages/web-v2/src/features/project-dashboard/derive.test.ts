@@ -169,6 +169,9 @@ describe("projectAttention", () => {
 			},
 		],
 		pendingSkillUpdates: [],
+		// cm:why the per-project dashboard deliberately does NOT carry unseen drafts: every row it renders pairs with an action button (retry / diff / input) and "read this proposal and decide" is not one of them. The cross-project inbox and the overview digest are that bucket's surfaces.
+		unseenDrafts: [],
+		unseenDraftsTotal: 0,
 		offlineRunners: [],
 		total: 3,
 	};

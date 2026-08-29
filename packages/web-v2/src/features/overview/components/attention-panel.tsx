@@ -1,8 +1,10 @@
-// The dashboard's headline actionable block: a compact, prioritized digest of
-// the cross-project Attention inbox (`useAttention`). Shows the highest-signal
-// items first (failures → reviews → awaiting input → offline runners →
-// mentions), caps the list so the dashboard stays dense, and links each row to
-// its source. Empty → a quiet "all clear" state.
+/**
+ * The dashboard's headline actionable block: a compact, prioritized digest of
+ * the cross-project Attention inbox (`useAttention`). Shows the highest-signal
+ * items first (failures → reviews → awaiting input → offline runners →
+ * mentions → unseen drafts), caps the list so the dashboard stays dense, and
+ * links each row to its source. Empty → a quiet "all clear" state.
+ */
 import { Card, CardContent, Icon, type IconName, MonoTag } from '@/design';
 import { TONE_META, type SemanticTone } from '@/design/status';
 import { formatRelativeTime } from '@/features/projects/derive';
@@ -18,6 +20,7 @@ const KIND_TONE: Record<AttentionKind, SemanticTone> = {
   needs_review: 'active',
   awaiting_input: 'attention',
   pending_skill_update: 'attention',
+  unseen_draft: 'attention',
   runner_offline: 'infra',
   mention: 'neutral',
 };
@@ -29,6 +32,7 @@ const KIND_META: Record<AttentionKind, { label: string; icon: IconName; fg: stri
   pending_skill_update: { label: 'Skill update', icon: 'clock', ...toneColors('pending_skill_update') },
   runner_offline: { label: 'Offline', icon: 'server', ...toneColors('runner_offline') },
   mention: { label: 'Mention', icon: 'mail', ...toneColors('mention') },
+  unseen_draft: { label: 'Unseen', icon: 'mail', ...toneColors('unseen_draft') },
 };
 
 function toneColors(kind: AttentionKind): { fg: string; bg: string } {
@@ -47,6 +51,8 @@ function prioritized(view: AttentionView): AttentionItem[] {
     ...view.pendingSkillUpdates,
     ...view.offlineRunners,
     ...view.mentions,
+    // cm:why last, deliberately: a capped digest ordered by signal must not let a 20-deep proposal backlog push a failed job off a 6-row panel, and the drafts stay reachable through the overflow link and the full inbox.
+    ...view.unseenDrafts,
   ];
 }
 

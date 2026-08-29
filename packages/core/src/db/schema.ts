@@ -3398,7 +3398,7 @@ export const reconcileRuns = pgTable(
       .where(sql`status IN ('pending','running','verifying','decided')`),
     projectCreatedIdx: index('reconcile_runs_project_created_idx').on(t.projectId, t.createdAt),
     packetIdx: index('reconcile_runs_packet_idx').on(t.packetId),
-    // cm:edge contract -> packages/core/src/me/attention-routes.ts — the pendingSkillUpdates bucket's escalated-run clause mirrors this predicate; keep both in sync.
+    // cm:edge contract -> packages/core/src/me/attention-buckets.ts — the pendingSkillUpdates bucket's escalated-run clause mirrors this predicate; keep both in sync.
     pendingGateIdx: index('reconcile_runs_pending_gate_idx')
       .on(t.projectId)
       .where(

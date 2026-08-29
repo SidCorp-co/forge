@@ -79,6 +79,11 @@ export async function hydrateCreatorsForIssues(
   );
 }
 
+// cm:edge contract -> packages/core/src/me/attention-buckets.ts — the unseen-draft bucket scopes to agent-filed issues with THIS predicate, and it decides whose inbox a draft lands in. Widening it to match a human-channel row nags a person about a draft they typed themselves; narrowing it drops an agent's draft back to being reachable from nowhere.
+export function agentChannelCondition(): SQL {
+  return sql`${issues.createdVia} IS NOT NULL AND ${issues.createdVia} <> 'web'`;
+}
+
 /**
  * ISS-756 — `createdBy` search predicate. `value === 'agent'` returns every
  * agent-channel row. A person's uuid EXCLUDES their agent-channel rows — an
@@ -86,8 +91,6 @@ export async function hydrateCreatorsForIssues(
  * that person must not surface it (keeps display and filter in lockstep).
  */
 export function buildCreatedByCondition(value: string): SQL {
-  if (value === 'agent') {
-    return sql`${issues.createdVia} IS NOT NULL AND ${issues.createdVia} <> 'web'`;
-  }
+  if (value === 'agent') return agentChannelCondition();
   return sql`${issues.createdById} = ${value} AND (${issues.createdVia} IS NULL OR ${issues.createdVia} = 'web')`;
 }

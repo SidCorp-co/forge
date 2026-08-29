@@ -49,12 +49,16 @@ export function useAttention() {
     const mentions = base?.mentions ?? [];
     const failedJobs = base?.failedJobs ?? [];
     const pendingSkillUpdates = base?.pendingSkillUpdates ?? [];
+    const unseenDrafts = base?.unseenDrafts ?? [];
     return {
       needsReview,
       awaitingInput,
       mentions,
       failedJobs,
       pendingSkillUpdates,
+      unseenDrafts,
+      // cm:guard pass core's count through, never `unseenDrafts.length` — that list is capped, and recomputing the total from it is how a 22-deep backlog renders as 20 and stops being one anybody chases.
+      unseenDraftsTotal: base?.unseenDraftsTotal ?? 0,
       offlineRunners,
       total:
         needsReview.length +
@@ -62,6 +66,7 @@ export function useAttention() {
         mentions.length +
         failedJobs.length +
         pendingSkillUpdates.length +
+        unseenDrafts.length +
         offlineRunners.length,
     };
   }, [attentionQ.data, offlineRunners]);

@@ -97,6 +97,7 @@ export function OverviewScreen() {
     const mentions = v.mentions.filter(keep);
     const failedJobs = v.failedJobs.filter(keep);
     const pendingSkillUpdates = v.pendingSkillUpdates.filter(keep);
+    const unseenDrafts = v.unseenDrafts.filter(keep);
     const offlineRunners = v.offlineRunners;
     return {
       needsReview,
@@ -104,6 +105,9 @@ export function OverviewScreen() {
       mentions,
       failedJobs,
       pendingSkillUpdates,
+      unseenDrafts,
+      unseenDraftsTotal:
+        unseenDrafts.length === v.unseenDrafts.length ? v.unseenDraftsTotal : unseenDrafts.length,
       offlineRunners,
       total:
         needsReview.length +
@@ -111,6 +115,7 @@ export function OverviewScreen() {
         mentions.length +
         failedJobs.length +
         pendingSkillUpdates.length +
+        unseenDrafts.length +
         offlineRunners.length,
     };
   }, [attention.view, scopedSlugs]);

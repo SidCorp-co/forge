@@ -59,6 +59,11 @@ function authVerified() {
   queryQueue.push([{ emailVerifiedAt: new Date() }]);
 }
 
+// cm:why the mock resolves the queue POSITIONALLY, so a bucket a case does not care about still has to occupy its slot — this names that padding instead of repeating `push([])`.
+function emptyBuckets(n: number) {
+  for (let i = 0; i < n; i += 1) queryQueue.push([]);
+}
+
 describe('GET /api/me/attention', () => {
   it('401 without token', async () => {
     const res = await buildApp().request('/api/me/attention');
@@ -67,11 +72,7 @@ describe('GET /api/me/attention', () => {
 
   it('returns empty buckets when nothing matches', async () => {
     authVerified();
-    queryQueue.push([]); // needsReview
-    queryQueue.push([]); // awaitingInput
-    queryQueue.push([]); // mentions
-    queryQueue.push([]); // failedJobs
-    queryQueue.push([]); // cm:why 5th queued result feeds the pendingSkillUpdates query — the mock resolves positionally
+    emptyBuckets(5);
 
     const res = await buildApp().request('/api/me/attention', {
       headers: { authorization: `Bearer ${await token()}` },
@@ -84,6 +85,8 @@ describe('GET /api/me/attention', () => {
       mentions: [],
       failedJobs: [],
       pendingSkillUpdates: [],
+      unseenDrafts: [],
+      unseenDraftsTotal: 0,
       total: 0,
     });
   });
@@ -199,9 +202,7 @@ describe('GET /api/me/attention', () => {
 
   it('failed_job without linked issue links to project root, omits issueRef', async () => {
     authVerified();
-    queryQueue.push([]);
-    queryQueue.push([]);
-    queryQueue.push([]);
+    emptyBuckets(3);
     queryQueue.push([
       {
         id: JOB_ID,
@@ -215,7 +216,7 @@ describe('GET /api/me/attention', () => {
         projectName: 'Alpha',
       },
     ]);
-    queryQueue.push([]); // cm:why pendingSkillUpdates
+    emptyBuckets(1);
 
     const res = await buildApp().request('/api/me/attention', {
       headers: { authorization: `Bearer ${await token()}` },
@@ -240,9 +241,7 @@ describe('GET /api/me/attention', () => {
   // failing a job, letting a retry succeed, and confirming the item clears.
   it('failed_job resolved-issue exclusion: only the still-relevant row is queued', async () => {
     authVerified();
-    queryQueue.push([]);
-    queryQueue.push([]);
-    queryQueue.push([]);
+    emptyBuckets(3);
     // Simulates the SQL already excluding a failed job whose issue is
     // closed/released — only the failed job on a NON-terminal issue (or a
     // null-issue job) is ever queued for this bucket.
@@ -259,7 +258,7 @@ describe('GET /api/me/attention', () => {
         projectName: 'Alpha',
       },
     ]);
-    queryQueue.push([]); // cm:why pendingSkillUpdates
+    emptyBuckets(1);
 
     const res = await buildApp().request('/api/me/attention', {
       headers: { authorization: `Bearer ${await token()}` },
@@ -273,9 +272,7 @@ describe('GET /api/me/attention', () => {
 
   it('failed_job retry-chain exclusion: latest attempt with no child still surfaces', async () => {
     authVerified();
-    queryQueue.push([]);
-    queryQueue.push([]);
-    queryQueue.push([]);
+    emptyBuckets(3);
     // Simulates the SQL already excluding every superseded attempt — only the
     // latest (childless) attempt in the retry chain is ever queued.
     queryQueue.push([
@@ -291,7 +288,7 @@ describe('GET /api/me/attention', () => {
         projectName: 'Alpha',
       },
     ]);
-    queryQueue.push([]); // cm:why pendingSkillUpdates
+    emptyBuckets(1);
 
     const res = await buildApp().request('/api/me/attention', {
       headers: { authorization: `Bearer ${await token()}` },
@@ -306,10 +303,7 @@ describe('GET /api/me/attention', () => {
   // cm:why ISS-807 — the mock resolves whatever is queued regardless of the WHERE clause, so this covers the row→response mapping and the `total` roll-up, NOT the admin-scoping or state-predicate SQL
   it('pendingSkillUpdates: an escalated run with no decidedAt falls back to createdAt for `since`', async () => {
     authVerified();
-    queryQueue.push([]); // needsReview
-    queryQueue.push([]); // awaitingInput
-    queryQueue.push([]); // mentions
-    queryQueue.push([]); // failedJobs
+    emptyBuckets(4);
     const createdAt = new Date('2026-04-26T08:00:00Z');
     queryQueue.push([
       {
@@ -339,5 +333,85 @@ describe('GET /api/me/attention', () => {
       since: createdAt.toISOString(),
       status: 'escalated',
     });
+  });
+});
+
+describe('GET /api/me/attention · unseen drafts', () => {
+  // cm:why the mock chain resolves positionally and ignores every `where`, so what these two cases can fail on is the row→item mapping and the two independent numbers. The PREDICATE (agent channel · owned-for-answer · no human comment) is unfalsifiable here and is covered against real Postgres in tests/integration/attention-unseen-drafts-e2e.test.ts.
+  it('unseen_draft maps to an issue item and joins `total`', async () => {
+    authVerified();
+    const updatedAt = new Date('2026-08-27T16:05:13Z');
+    emptyBuckets(5);
+    queryQueue.push([
+      {
+        id: ISSUE_ID_1,
+        issSeq: 871,
+        title: 'Half of all forge-drive sessions fail',
+        status: 'draft',
+        updatedAt,
+        projectSlug: 'forge-dev',
+        projectName: 'Forge Dev',
+      },
+    ]);
+    queryQueue.push([{ total: 1 }]);
+
+    const res = await buildApp().request('/api/me/attention', {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      unseenDrafts: Array<{ kind: string; issueRef: string; status: string; link: string }>;
+      unseenDraftsTotal: number;
+      total: number;
+    };
+    expect(body.total).toBe(1);
+    expect(body.unseenDraftsTotal).toBe(1);
+    expect(body.unseenDrafts[0]).toMatchObject({
+      kind: 'unseen_draft',
+      issueRef: 'ISS-871',
+      status: 'draft',
+      link: `/projects/forge-dev/issues/${ISSUE_ID_1}`,
+    });
+  });
+
+  // cm:guard `total` counts rows SENT, `unseenDraftsTotal` counts rows that MATCH. Collapsing them is how a rail badge starts claiming a number the screen cannot show.
+  it('reports the unclipped total while `total` counts only the rows sent', async () => {
+    authVerified();
+    emptyBuckets(5);
+    queryQueue.push([
+      {
+        id: ISSUE_ID_2,
+        issSeq: 886,
+        title: 'draft one',
+        status: 'draft',
+        updatedAt: new Date('2026-08-28T17:00:00Z'),
+        projectSlug: 'forge-dev',
+        projectName: 'Forge Dev',
+      },
+      {
+        id: ISSUE_ID_3,
+        issSeq: 885,
+        title: 'draft two',
+        status: 'draft',
+        updatedAt: new Date('2026-08-28T17:00:00Z'),
+        projectSlug: 'forge-dev',
+        projectName: 'Forge Dev',
+      },
+    ]);
+    queryQueue.push([{ total: 22 }]);
+
+    const res = await buildApp().request('/api/me/attention', {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+
+    const body = (await res.json()) as {
+      unseenDrafts: unknown[];
+      unseenDraftsTotal: number;
+      total: number;
+    };
+    expect(body.unseenDrafts).toHaveLength(2);
+    expect(body.unseenDraftsTotal).toBe(22);
+    expect(body.total).toBe(2);
   });
 });
