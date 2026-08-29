@@ -95,6 +95,15 @@ const PENDING_SKILL_UPDATES_CAP = 20;
 // rows in `jobs`; drizzle requires an alias to reference the table twice).
 const retryJobs = alias(jobs, 'retry_jobs');
 
+// cm:edge contract -> packages/core/src/notifications/notify-transitions.ts — a park notifies `assigneeId ?? createdById`, so the bucket that carries the same park must resolve ownership the same way. Notifying the creator and then bucketing by assignee is how a question reaches a human's inbox and no list they can act on: an agent-filed issue has no assignee, and MCP `forge_issues` cannot set one.
+// cm:why `needsReview` deliberately keeps assignee-only. A question parked on an issue you filed is addressed to you; a `developed` issue with no assignee is not yours to review merely because you opened it.
+function ownedForAnswer(userId: string) {
+  return or(
+    eq(issues.assigneeId, userId),
+    and(isNull(issues.assigneeId), eq(issues.createdById, userId)),
+  );
+}
+
 export const meAttentionRoutes = new Hono<{ Variables: AuthVars }>();
 meAttentionRoutes.use('/attention', requireAuth(), assertEmailVerified());
 
@@ -133,9 +142,7 @@ meAttentionRoutes.get('/attention', async (c) => {
         })
         .from(issues)
         .innerJoin(projects, eq(projects.id, issues.projectId))
-        .where(
-          and(eq(issues.assigneeId, userId), inArray(issues.status, [...AWAITING_INPUT_STATUSES])),
-        )
+        .where(and(ownedForAnswer(userId), inArray(issues.status, [...AWAITING_INPUT_STATUSES])))
         .orderBy(desc(issues.updatedAt))
         .limit(PER_BUCKET),
 

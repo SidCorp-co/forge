@@ -15,6 +15,7 @@ import { emitNotification } from './emit.js';
  * - `tested`  — parked at the manual release gate, needs a human to advance.
  * - `reopen`  — a regression / failed pipeline/deploy landed the issue back.
  * - `waiting` — parked for human review (decompose gate, exhausted retries).
+ * - `needs_info` — the autonomous driver asked a question only a human can answer.
  * - `closed`  — the work shipped.
  *
  * `tested`/`reopen` also cover "pipeline failed" and "deploy result": those
@@ -26,6 +27,7 @@ const NOTIFY_ON_STATUS: ReadonlySet<IssueStatus> = new Set<IssueStatus>([
   'tested',
   'reopen',
   'waiting',
+  'needs_info',
   'closed',
 ]);
 
@@ -35,6 +37,9 @@ const NOTIFY_ON_STATUS: ReadonlySet<IssueStatus> = new Set<IssueStatus>([
  * state the matching unread row is cleared automatically.
  */
 const PROBLEM_STATUSES: ReadonlySet<IssueStatus> = new Set<IssueStatus>(['reopen', 'waiting']);
+
+// cm:edge contract -> packages/core/src/pipeline/answer-resume.ts — the same park. `answer-resume` wakes `needs_info` and NOTHING else; a notification for a park it cannot wake asks a human to answer into a surface that will not restart the work.
+const QUESTION_STATUS: IssueStatus = 'needs_info';
 
 /**
  * Healthy statuses that clear an outstanding `issue:<id>:status` problem
@@ -54,6 +59,7 @@ function severityForStatus(to: IssueStatus): NotificationSeverity {
     case 'reopen':
       return 'error';
     case 'waiting':
+    case 'needs_info':
     case 'tested':
       return 'warning';
     case 'closed':
@@ -66,6 +72,20 @@ function severityForStatus(to: IssueStatus): NotificationSeverity {
 /** Stable per-issue auto-resolve key for status-problem notifications. */
 function statusResolutionKey(issueId: string): string {
   return `issue:${issueId}:status`;
+}
+
+// cm:guard the park gets its OWN key, never `statusResolutionKey` — that one is per-ISSUE and shared with `reopen`/`waiting`, so clearing it when a question is answered would also clear a `waiting` park nobody addressed. One key per park, or answering one question silently discards another park's notification.
+function questionResolutionKey(issueId: string): string {
+  return `issue:${issueId}:question`;
+}
+
+/**
+ * The auto-resolve key a notification for `to` carries, or `null` when the
+ * ping is informational (`tested` / `closed`) and nothing later clears it.
+ */
+function resolutionKeyForStatus(to: IssueStatus, issueId: string): string | null {
+  if (to === QUESTION_STATUS) return questionResolutionKey(issueId);
+  return PROBLEM_STATUSES.has(to) ? statusResolutionKey(issueId) : null;
 }
 
 /**
@@ -108,6 +128,8 @@ function bodyForStatus(to: IssueStatus, reason?: string): string {
       return 'Reopened — needs another look.';
     case 'waiting':
       return 'Parked for your review.';
+    case 'needs_info':
+      return 'The driver asked a question — it cannot continue until you answer.';
     case 'closed':
       return 'Closed.';
     default:
@@ -141,6 +163,11 @@ export function registerTransitionNotifications(bus: HooksBus): void {
     // cm:why ISS-762 — the stranded alarm asks a human to unpark; ANY move off `waiting` is that human answering, including a move to another unhealthy status. Gating this on HEALTHY_STATUSES would leave the alarm lit after the decision was made.
     if (p.to !== 'waiting') {
       await resolveNotifications(strandedResolutionKey(p.issueId));
+    }
+
+    // cm:why same shape as the stranded rule above, and for the same reason: a move OFF the park is the human answering. It cannot be gated on HEALTHY_STATUSES — `answer-resume.ts` restarts the driver at AUTONOMOUS_ENTRY_STATUS (`open`), which is not healthy and never becomes healthy, so a health-gated key would stay lit from the answer until `developed`.
+    if (p.from === QUESTION_STATUS && p.to !== QUESTION_STATUS) {
+      await resolveNotifications(questionResolutionKey(p.issueId));
     }
 
     if (!NOTIFY_ON_STATUS.has(p.to)) return;
@@ -179,9 +206,7 @@ export function registerTransitionNotifications(bus: HooksBus): void {
         body: bodyForStatus(p.to, p.reason),
         issueId: p.issueId,
         severity: severityForStatus(p.to),
-        // Only problem statuses carry a key so a later healthy transition can
-        // auto-clear them; a `tested`/`closed` ping is informational (no key).
-        resolutionKey: PROBLEM_STATUSES.has(p.to) ? statusResolutionKey(p.issueId) : null,
+        resolutionKey: resolutionKeyForStatus(p.to, p.issueId),
         dedupeKey,
       });
     } catch (err) {
