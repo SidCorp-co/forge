@@ -10,6 +10,11 @@
  *
  * Asserted on the UPDATE payload the handler builds, not on whether a mock was
  * called — that payload is the whole observable behaviour of this path.
+ *
+ * ISS-877 added a second claim the body may not make, for the same reason in a
+ * different column: `failureReason` is a taxonomy token the server derives, and
+ * a caller who could set it could write anything into the one field an operator
+ * reads to learn why a session died.
  */
 
 import { Hono } from 'hono';
@@ -192,5 +197,24 @@ describe('PATCH /api/agent-sessions/:id — who may say a session is parked', ()
     seedRunningSession();
     const res = await patchAsDevice({ runtimeState: 'parked' });
     expect(res.status).toBe(400);
+  });
+});
+
+describe('PATCH /api/agent-sessions/:id — ISS-877 failureReason is server-derived', () => {
+  // cm:guard this is the ONLY runtime enforcement that `agent_sessions.failure_reason` holds a `FailureCause` and never caller text — `failure-causes.ts` states outright that there is no write funnel and no CHECK constraint BECAUSE this body cannot carry the field. Widening `patchSchema` to accept it re-opens the enum-mixed-with-free-text hole ISS-877 closed, and nothing else in the suite would notice.
+  it('rejects the field outright rather than storing whatever arrived', async () => {
+    seedRunningSession();
+    const res = await patchAsDevice({
+      status: 'failed',
+      failureReason: 'whatever the caller felt like',
+    });
+    expect(res.status).toBe(400);
+    expect(persisted()).toBeUndefined();
+  });
+
+  it('still accepts the same PATCH without it', async () => {
+    seedRunningSession();
+    const res = await patchAsDevice({ status: 'failed' });
+    expect(res.status).toBe(200);
   });
 });

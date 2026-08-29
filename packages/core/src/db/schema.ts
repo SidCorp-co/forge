@@ -2221,7 +2221,7 @@ export const agentSessions = pgTable(
     dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
     startedAt: timestamp('started_at', { withTimezone: true }),
     lastHeartbeatAt: timestamp('last_heartbeat_at', { withTimezone: true }),
-    // cm:guard ISS-877 — `failureReason` carries a `FailureCause` and NOTHING else; the human sentence belongs in `failureDetail`. The two used to share this column: `agent-sessions/session-failure.ts` wrote a classifier sentence where `queue_timeout` writes a token, and 55 live rows ended up holding prose, 9 of them the agent's own prompt. There is no CHECK constraint on purpose — migration 0180 measured what one costs here (a missed writer turns every INSERT into a 23514) — so `toFailureCause()` is the funnel instead.
+    // cm:guard ISS-877 — `failureReason` carries a `FailureCause` and NOTHING else; the human sentence belongs in `failureDetail`. The two used to share this column: `agent-sessions/session-failure.ts` wrote a classifier sentence where `queue_timeout` writes a token, and 55 live rows ended up holding prose, 9 of them the agent's own prompt. There is no CHECK constraint on purpose — migration 0180 measured what one costs here (a missed writer turns every INSERT into a 23514) — the TYPE is the funnel instead, and no request body can supply this field (`agent-sessions/routes.ts#patchSchema` is `.strict()` without it).
     failureReason: text('failure_reason'),
     failureDetail: text('failure_detail'),
     runtimeState: text('runtime_state', { enum: sessionRuntimeStates }),

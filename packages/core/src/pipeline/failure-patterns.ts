@@ -90,10 +90,14 @@ const re =
  * cause; nothing matching leaves `unclassified`, which is a real member and is
  * counted, not a silent floor.
  *
- * `[RESULT_ERROR] error_during_execution` (95 live rows) also has no rule, and
- * that is the answer rather than a gap: the CLI reports an error and says
- * nothing about it, so there is no cause to record. Naming it would dress an
- * absence up as a diagnosis, which is the move this whole issue exists to undo.
+ * `[RESULT_ERROR] error_during_execution` ALONE has no rule, and that is the
+ * answer rather than a gap: the CLI reports an error and says nothing about it,
+ * so there is no cause to record. Naming it would dress an absence up as a
+ * diagnosis, which is the move this whole issue exists to undo. It is 7 of the
+ * 8 rows that stay unclassified over 90 days of forge-beta failures; the 8th
+ * says `API Error: Internal server error` with nothing to say whether the
+ * provider or Forge served it, and guessing is the same error in the other
+ * direction.
  *
  * A generic `timeout` deliberately has no rule. The named timeout hops
  * (`queue_timeout`, `heartbeat_timeout`, `no_client_ack`) are written as
@@ -115,13 +119,16 @@ export const CAUSE_RULES: ReadonlyArray<CauseRule> = [
       /agent completed with errors/i.test(t),
   },
   { cause: 'agent_skill_missing', test: (t) => t.includes('[NO_WORK]') },
-  { cause: 'provider_spend_cap', test: (t) => isSpendLimitError(t) },
+  { cause: 'provider_spend_cap', test: (t) => isSpendLimitError(t) || /spend limit/i.test(t) },
   { cause: 'provider_subscription_disabled', test: re(/organization has disabled/i) },
   {
     cause: 'provider_auth_expired',
     test: re(/oauth session expired|failed to authenticate|not logged in|please run \/login/i),
   },
-  { cause: 'provider_usage_limit', test: (t) => isUsageLimitError(t) },
+  {
+    cause: 'provider_usage_limit',
+    test: (t) => isUsageLimitError(t) || /usage\/session limit/i.test(t),
+  },
   {
     cause: 'provider_refused_request',
     test: re(
@@ -134,6 +141,10 @@ export const CAUSE_RULES: ReadonlyArray<CauseRule> = [
       /\b529\b|\boverloaded\b|(connection (closed|lost)|response stalled) mid-(response|stream)|\b50[0-9]\b|service[ _-]?unavailable|bad[ _-]?gateway|\b429\b|rate[ _-]?limit|request timed out/i,
     ),
   },
+  // cm:guard the classifier's own HARD-LITERAL verdicts are part of its input vocabulary and each needs a rule here — `agent-session-link.ts#deriveSessionFailure` feeds `jobs.failure_reason` (already a classifier `reason`) back in, so a literal with no matching rule drops the session lane silently to `unclassified`. That is what happened to 88 live rows carrying `cc-startup-death (≤3 msgs, no tool use)`: the job row named the cause and the session row said nothing, which is `job_failed` under a new label. The `reasonExcerpt || '…'` verdicts need nothing, because the excerpt IS the original text and round-trips by construction; only the three branches that overwrite the text with a sentence of their own do.
+  // cm:edge lockstep -> packages/core/src/pipeline/failure-classifier.ts — a new or reworded literal `reason:` there (one not built from `reasonExcerpt`) needs its rule here in the same change
+  { cause: 'agent_skill_missing', test: re(/cc-startup-death \(pattern match\)/i) },
+  { cause: 'agent_startup_failed', test: re(/cc-startup-death/i) },
   { cause: 'workspace_disk_full', test: re(/no space left|\bENOSPC\b/i) },
   { cause: 'workspace_preflight_failed', test: re(/preflight[ _-]?failed/i) },
   {

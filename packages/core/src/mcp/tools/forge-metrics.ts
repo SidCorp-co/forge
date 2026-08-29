@@ -161,6 +161,9 @@ export const forgeMetricsProjectRetryRescuesTool: ContextScopedMcpToolFactory = 
   },
 });
 
+// cm:guard the two statuses that mean the session itself ended badly. `completed` and `completed_via_recovery` are deliberately absent even when they carry a `failure_reason` — a recovered session succeeded, and counting its old reason would report a rescue as a death.
+const FAILED_SESSION_STATUSES: ReadonlySet<string> = new Set(['failed', 'cancelled_stale']);
+
 export interface SessionFailureRow {
   cause: FailureCause;
   origin: string;
@@ -181,32 +184,48 @@ export interface SessionFailureRow {
  * `LEGACY_CAUSE_ALIAS`, which is an accurate measurement of an era that
  * classified nothing. The number worth watching is the rate over rows written
  * after it.
+ *
+ * A session counts as failed when its STATUS says so, not merely because it
+ * carries a `failure_reason`. The two disagree on live data: 37 forge-beta
+ * sessions sit at `completed` holding one (30 `orphan_under_terminal_run`, 6
+ * `heartbeat_timeout`), the ISS-759 shape the `cm:guard` on
+ * `agent-sessions/routes.ts` names. Counting those as deaths would make the one
+ * surface built against a lying session row repeat the lie, so they are
+ * excluded from the histogram and returned as `completedWithFailureReason`
+ * instead — a number with a name beats a filter nobody sees.
  */
 // cm:guard `unclassified` must stay a first-class row here — filtering it out, folding it into "other", or reporting only the classified share re-hides the exact hole this tool exists to expose
+// cm:guard the status filter and `completedWithFailureReason` are one mechanism: rows excluded from the histogram must stay counted somewhere in the response. Narrowing the WHERE without carrying the excluded rows out under their own name is how a metric starts reading clean because it stopped looking.
 export const forgeMetricsSessionFailuresTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_metrics.session_failures',
   description:
-    'Failed agent sessions grouped by ISS-877 failure cause. Requires project membership. Params: `projectId` and `days` (1..90, default 30). Returns `{ rows: [{ cause, origin, sessions, isRealFailure, lastAt }], total, unclassified, unclassifiedRate, windowDays, projectId }`. Legacy rows (`job_failed`, free text) resolve to `unclassified` at read time — a high historical rate is the honest measurement of the era before causes were recorded, not a bug.',
+    'Failed agent sessions grouped by ISS-877 failure cause. Requires project membership. Params: `projectId` and `days` (1..90, default 30). Counts sessions whose STATUS is `failed` or `cancelled_stale`. Returns `{ rows: [{ cause, origin, sessions, isRealFailure, lastAt }], total, unclassified, unclassifiedRate, completedWithFailureReason, windowDays, projectId }`. `completedWithFailureReason` counts sessions that settled non-failed yet still carry a reason — the ISS-759 completed-yet-failed shape, reported rather than silently dropped. Legacy rows (`job_failed`, free text) resolve to `unclassified` at read time — a high historical rate is the honest measurement of the era before causes were recorded, not a bug.',
   inputSchema: zodToMcpSchema(sessionFailuresInputSchema),
   handler: async (args) => {
     const input = sessionFailuresInputSchema.parse(args);
     await assertPrincipalIsMember(ctx.principal, input.projectId);
 
     const result = await db.execute(sql`
-      SELECT failure_reason, count(*)::int AS sessions, max(updated_at) AS last_at
+      SELECT status, failure_reason, count(*)::int AS sessions, max(updated_at) AS last_at
       FROM agent_sessions
       WHERE project_id = ${input.projectId}
         AND failure_reason IS NOT NULL
         AND updated_at >= now() - (${input.days}::int * interval '1 day')
-      GROUP BY failure_reason
+      GROUP BY status, failure_reason
     `);
 
     const byCause = new Map<FailureCause, { sessions: number; lastAt: Date | null }>();
+    let completedWithFailureReason = 0;
     for (const row of result as unknown as Array<{
+      status: string | null;
       failure_reason: string | null;
       sessions: number | string;
       last_at: string | Date | null;
     }>) {
+      if (!FAILED_SESSION_STATUSES.has(row.status ?? '')) {
+        completedWithFailureReason += num(row.sessions);
+        continue;
+      }
       const cause = resolveFailureCause(row.failure_reason);
       const prev = byCause.get(cause);
       const lastAt = row.last_at ? new Date(row.last_at) : null;
@@ -238,6 +257,7 @@ export const forgeMetricsSessionFailuresTool: ContextScopedMcpToolFactory = (ctx
       total,
       unclassified,
       unclassifiedRate: total === 0 ? 0 : unclassified / total,
+      completedWithFailureReason,
       windowDays: input.days,
       projectId: input.projectId,
     };

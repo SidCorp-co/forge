@@ -183,14 +183,30 @@ describe('forge_metrics.session_failures (ISS-877)', () => {
   it('groups by cause and folds every legacy spelling of "we did not classify it" into one counted row', async () => {
     mockMembership();
     executeImpl.mockResolvedValueOnce([
-      { failure_reason: 'provider_spend_cap', sessions: '7', last_at: '2026-08-27T04:15:00Z' },
-      { failure_reason: 'job_failed', sessions: '1397', last_at: '2026-08-26T00:00:00Z' },
       {
+        status: 'failed',
+        failure_reason: 'provider_spend_cap',
+        sessions: '7',
+        last_at: '2026-08-27T04:15:00Z',
+      },
+      {
+        status: 'failed',
+        failure_reason: 'job_failed',
+        sessions: '1397',
+        last_at: '2026-08-26T00:00:00Z',
+      },
+      {
+        status: 'failed',
         failure_reason: 'org/account spend limit → per-account failover',
         sessions: '39',
         last_at: '2026-08-25T00:00:00Z',
       },
-      { failure_reason: 'user_cancelled', sessions: '2', last_at: '2026-08-20T00:00:00Z' },
+      {
+        status: 'failed',
+        failure_reason: 'user_cancelled',
+        sessions: '2',
+        last_at: '2026-08-20T00:00:00Z',
+      },
     ]);
 
     const tool = forgeMetricsSessionFailuresTool(buildCtx());
@@ -219,8 +235,8 @@ describe('forge_metrics.session_failures (ISS-877)', () => {
   it('reports the unclassified rate rather than only the classified share', async () => {
     mockMembership();
     executeImpl.mockResolvedValueOnce([
-      { failure_reason: 'provider_spend_cap', sessions: '3', last_at: null },
-      { failure_reason: 'job_failed', sessions: '1', last_at: null },
+      { status: 'failed', failure_reason: 'provider_spend_cap', sessions: '3', last_at: null },
+      { status: 'failed', failure_reason: 'job_failed', sessions: '1', last_at: null },
     ]);
     const tool = forgeMetricsSessionFailuresTool(buildCtx());
     const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
@@ -232,7 +248,7 @@ describe('forge_metrics.session_failures (ISS-877)', () => {
   it('never omits the unclassified row, which is the only reason the rate stays honest', async () => {
     mockMembership();
     executeImpl.mockResolvedValueOnce([
-      { failure_reason: 'job_failed', sessions: '5', last_at: null },
+      { status: 'failed', failure_reason: 'job_failed', sessions: '5', last_at: null },
     ]);
     const tool = forgeMetricsSessionFailuresTool(buildCtx());
     const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
@@ -255,5 +271,55 @@ describe('forge_metrics.session_failures (ISS-877)', () => {
     expect(res.rows).toEqual([]);
     expect(res.total).toBe(0);
     expect(res.unclassifiedRate).toBe(0);
+  });
+  it('excludes a completed session that still carries a reason, and names the count', async () => {
+    mockMembership();
+    executeImpl.mockResolvedValueOnce([
+      { status: 'failed', failure_reason: 'provider_spend_cap', sessions: '4', last_at: null },
+      {
+        status: 'completed',
+        failure_reason: 'orphan_under_terminal_run',
+        sessions: '30',
+        last_at: null,
+      },
+      { status: 'completed', failure_reason: 'heartbeat_timeout', sessions: '6', last_at: null },
+      {
+        status: 'completed_via_recovery',
+        failure_reason: 'job_failed',
+        sessions: '1',
+        last_at: null,
+      },
+      {
+        status: 'cancelled_stale',
+        failure_reason: 'residency_expired',
+        sessions: '2',
+        last_at: null,
+      },
+    ]);
+    const tool = forgeMetricsSessionFailuresTool(buildCtx());
+    const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
+      total: number;
+      completedWithFailureReason: number;
+      rows: Array<{ cause: string }>;
+    };
+
+    expect(res.total).toBe(6);
+    expect(res.completedWithFailureReason).toBe(37);
+    expect(res.rows.map((r) => r.cause).sort()).toEqual([
+      'provider_spend_cap',
+      'residency_expired',
+    ]);
+  });
+
+  it('returns zero excluded rows rather than omitting the field when every session really failed', async () => {
+    mockMembership();
+    executeImpl.mockResolvedValueOnce([
+      { status: 'failed', failure_reason: 'provider_auth_expired', sessions: '3', last_at: null },
+    ]);
+    const tool = forgeMetricsSessionFailuresTool(buildCtx());
+    const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
+      completedWithFailureReason: number;
+    };
+    expect(res.completedWithFailureReason).toBe(0);
   });
 });

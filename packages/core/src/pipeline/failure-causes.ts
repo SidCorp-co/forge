@@ -13,8 +13,8 @@
  * left undiagnosed (7 × `provider_spend_cap`, 1 × `provider_refused_request`);
  * every other member traces to a counted live signature or to a writer in this
  * codebase, named on its own line. Over 90 days of forge-beta failures (10,904
- * rows, 2026-08-29) 99.1% land on a named cause; `failure-patterns.ts` says why
- * the one detail-free residue keeps no member.
+ * rows, 2026-08-29) 99.93% land on a named cause; `failure-patterns.ts` says
+ * why the 8 detail-free rows keep no member.
  */
 
 // cm:guard every member needs live rows or a named writer, and the line must say which — a cause nobody emits is indistinguishable from one nobody looked for, and it is what lets a taxonomy rot the way `job_failed` rotted
@@ -32,7 +32,9 @@ export const FAILURE_CAUSES = [
   /** provider rejected the request itself — unrecognized model, content policy.
    *  2 jobs/60d, one of them session 1a950b18 (`[claude-code:unrecognized_model]`). */
   'provider_refused_request',
-  /** MCP init failed, missing MCP config, temp dir owned by another uid. 14 jobs/60d. */
+  /** the CLI spawned and died before doing anything — MCP init failed, missing
+   *  MCP config, temp dir owned by another uid, or the ISS-450 startup-death
+   *  signal (≤3 messages, no tool use). 120 jobs/90d, 88 of them the latter. */
   'agent_startup_failed',
   /** zero turns because the skill never reached the device. 72 jobs/60d (`[NO_WORK]`). */
   'agent_skill_missing',
@@ -159,26 +161,25 @@ export const LEGACY_CAUSE_ALIAS: Readonly<Record<string, FailureCause>> = {
 const CAUSE_SET: ReadonlySet<string> = new Set(FAILURE_CAUSES);
 
 /**
- * Read side: turn whatever is in `failure_reason` into a cause. Historic tokens
- * go through the alias table; free text and unknown tokens read `unclassified`.
+ * Turn whatever is in `failure_reason` into a cause. Historic tokens go through
+ * the alias table; free text and unknown tokens read `unclassified`.
+ *
+ * This is a READ-side normalizer, and it is deliberately not paired with a
+ * write-side one, because nothing caller-supplied can reach the column: the
+ * agent-session PATCH body (`agent-sessions/routes.ts#patchSchema`) is
+ * `.strict()` and has no `failureReason` field, so every value is either a
+ * literal in this codebase or a `FailureCause` off the classifier. What stops a
+ * raw string is therefore the TYPE, checked at build time, and the guard below
+ * is the rule for the next editor rather than a runtime funnel. There is no
+ * CHECK constraint either, and that is the same decision measured: migration
+ * 0180 found what a CHECK costs on this table family — one writer missed and
+ * every INSERT raises 23514 instead of recording anything.
  */
+// cm:guard `failureReason` is typed `FailureCause` and must stay that way — widening it back to `string`, here or on the Drizzle column, is all it takes to re-create the enum-mixed-with-free-text state this issue exists to end, and nothing at runtime would catch it. A value with no member gets a member added to FAILURE_CAUSES; the sentence goes to `failureDetail`.
 export function resolveFailureCause(raw: string | null | undefined): FailureCause {
   if (!raw) return 'unclassified';
   if (CAUSE_SET.has(raw)) return raw as FailureCause;
   return LEGACY_CAUSE_ALIAS[raw] ?? 'unclassified';
-}
-
-/**
- * Write side, and the reason there is no CHECK constraint on the column.
- * Migration 0180 measured what a CHECK costs on this table family: one writer
- * missed and every INSERT raises 23514 instead of recording anything. So the
- * constraint is a funnel rather than a wall — an unknown value becomes
- * `unclassified` and its text survives in `failure_detail`, which loses no
- * evidence and cannot take a deploy down.
- */
-// cm:guard every write to `agent_sessions.failure_reason` goes through here or passes a `FailureCause` literal — a raw string reaching the column re-creates the enum-mixed-free-text state this issue exists to end
-export function toFailureCause(raw: string | null | undefined): FailureCause {
-  return resolveFailureCause(raw);
 }
 
 /** Whether a cause names something that went wrong, as opposed to a lifecycle

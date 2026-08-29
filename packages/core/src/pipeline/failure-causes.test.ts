@@ -6,7 +6,6 @@ import {
   isRealFailureCause,
   LEGACY_CAUSE_ALIAS,
   resolveFailureCause,
-  toFailureCause,
 } from './failure-causes.js';
 import { classifyFailure } from './failure-classifier.js';
 
@@ -240,12 +239,12 @@ describe('legacy rows stay readable without being rewritten', () => {
   });
 });
 
-describe('the write funnel', () => {
-  it('never lets an unknown string reach the column as itself', () => {
-    expect(toFailureCause('[RESULT_ERROR] success: something nobody has a pattern for')).toBe(
+describe('free text never reads back as itself', () => {
+  it('normalizes the prose 55 live rows hold, rather than surfacing it as a cause', () => {
+    expect(resolveFailureCause('[RESULT_ERROR] success: something nobody has a pattern for')).toBe(
       'unclassified',
     );
-    expect(toFailureCause("I'll check ISS-54's status and what it's waiting on.")).toBe(
+    expect(resolveFailureCause("I'll check ISS-54's status and what it's waiting on.")).toBe(
       'unclassified',
     );
   });
@@ -265,6 +264,41 @@ describe('unclassified is counted, not hidden', () => {
   it('is NOT reached for anything the taxonomy does name', () => {
     for (const [, error] of LIVE_SIGNATURES) {
       expect(classifyFailure({ error }).cause).not.toBe('unclassified');
+    }
+  });
+});
+
+describe("the classifier's own verdicts survive the round trip", () => {
+  // cm:why `agent-session-link.ts#deriveSessionFailure` joins `jobs.failure_reason` (a classifier `reason` sentence) with `jobs.error` and classifies the pair, so the classifier reads its own output. 88 live rows proved what that costs: the job row said `cc-startup-death (≤3 msgs, no tool use)` and the session row said nothing, which is `job_failed` under a new name.
+  it('classifies the startup-death verdict the job lane already wrote, joined with a detail-free CLI error', () => {
+    const r = classifyFailure({
+      error: 'cc-startup-death (≤3 msgs, no tool use) — [RESULT_ERROR] error_during_execution',
+    });
+    expect(r.cause).toBe('agent_startup_failed');
+  });
+
+  it('keeps the pattern-matched startup death separate from the signal-derived one', () => {
+    expect(classifyFailure({ error: 'cc-startup-death (pattern match)' }).cause).toBe(
+      'agent_skill_missing',
+    );
+  });
+
+  it('lets a named provider cause in the same text outrank the startup verdict', () => {
+    const r = classifyFailure({
+      error: 'cc-startup-death (≤3 msgs, no tool use) — Not logged in · Please run /login',
+    });
+    expect(r.cause).toBe('provider_auth_expired');
+  });
+
+  // cm:why the three branches that DISCARD the error text and write a sentence of their own are the whole exposure. Every other verdict is `reasonExcerpt`, i.e. the original text, which classifies on the second pass exactly as it did on the first.
+  it('round-trips each verdict that replaces the error text rather than quoting it', () => {
+    const verdicts = [
+      'org/account spend limit → per-account failover with exhaustion memory',
+      'usage/session limit → cross-device failover',
+      'cc-startup-death (≤3 msgs, no tool use)',
+    ];
+    for (const verdict of verdicts) {
+      expect(classifyFailure({ error: verdict }).cause).not.toBe('unclassified');
     }
   });
 });
