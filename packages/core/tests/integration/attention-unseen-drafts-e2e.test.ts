@@ -43,6 +43,8 @@ let projectAdminId: string;
 let orgAdminId: string;
 let plainMemberId: string;
 let viewerId: string;
+let foreignOrgAdminId: string;
+let foreignProjectAdminId: string;
 let app: Hono<{ Variables: import('../../src/middleware/request-id.js').RequestIdVars }>;
 let authHeader: string;
 let seq = 0;
@@ -100,6 +102,21 @@ beforeEach(async () => {
     role: 'member',
   });
   await createTestProjectMember(harness.db, { projectId, userId: viewerId, role: 'viewer' });
+
+  // cm:guard a SECOND org holding a SECOND project, with an admin on each side of it. Both correlation clauses in adminsProject (`project_members.project_id = projects.id`, `organization_members.org_id = projects.org_id`) are invisible to a single-project single-org fixture: measured 2026-08-30, deleting either left 591 of 591 integration cases green while every project of every org became readable to anyone holding one admin row anywhere.
+  foreignOrgAdminId = (await createTestUser(harness.db)).id;
+  foreignProjectAdminId = (await createTestUser(harness.db)).id;
+  await harness.db.execute(sql`UPDATE users SET email_verified_at = now()`);
+  const foreignOrg = await seedOrg(harness.db, foreignOrgAdminId);
+  const foreignProject = await createTestProject(harness.db, foreignOrgAdminId, {
+    orgId: foreignOrg.id,
+  });
+  await createTestOrgMember(harness.db, { orgId: foreignOrg.id, userId: foreignProjectAdminId });
+  await createTestProjectMember(harness.db, {
+    projectId: foreignProject.id,
+    userId: foreignProjectAdminId,
+    role: 'admin',
+  });
 
   const { signUserToken } = await import('../../src/auth/jwt.js');
   authHeader = `Bearer ${await signUserToken(ownerId)}`;
@@ -227,6 +244,28 @@ describe('attention · unseen agent-filed drafts', () => {
     const body = await attentionAs(viewerId);
     expect(body.unseenDrafts).toHaveLength(0);
     expect(body.unseenDraftsTotal).toBe(0);
+  });
+
+  // cm:guard `organization_members.org_id = projects.org_id`. An org owner is admin over THEIR org's projects and nothing else; without the correlation the clause reads "is an admin of any org at all", and one tenant's proposals land in another tenant's inbox.
+  it('does not reach an admin of a different org', async () => {
+    await draft({ createdBy: otherId, assignee: null });
+    const body = await attentionAs(foreignOrgAdminId);
+    expect(body.unseenDrafts).toHaveLength(0);
+    expect(body.unseenDraftsTotal).toBe(0);
+  });
+
+  // cm:guard `project_members.project_id = projects.id`. Same failure one level down: a project admin somewhere must not be a project admin everywhere.
+  it('does not reach a project admin of a different project', async () => {
+    await draft({ createdBy: otherId, assignee: null });
+    const body = await attentionAs(foreignProjectAdminId);
+    expect(body.unseenDrafts).toHaveLength(0);
+    expect(body.unseenDraftsTotal).toBe(0);
+  });
+
+  // cm:guard the creator half of the owner rule, tested on someone who is NOT also an admin — `ownerId` is the org owner, so every case using it passes on the admin clause alone and says nothing about this one. A member who files a proposal with their own credential must keep seeing it.
+  it('reaches the creator even when they administer nothing', async () => {
+    await draft({ createdBy: plainMemberId, assignee: null });
+    expect((await attentionAs(plainMemberId)).unseenDrafts).toHaveLength(1);
   });
 
   // cm:guard assignment wins over BOTH fallbacks. An assigned proposal in the project admin's list as well means two people each assume the other triaged it.
