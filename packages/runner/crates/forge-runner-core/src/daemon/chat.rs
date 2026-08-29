@@ -392,6 +392,8 @@ async fn run_turn(
         resume_id: turn.resume_id.clone(),
         agent_session_id: Some(session_id.clone()),
         duplex: true,
+        // cm:guard chat takes the DEFAULT and no project value, because the field is `pipelineConfig.sessionResidencySeconds` and chat has no pipeline behind it. A chat session's residency is bounded by the same const it always was; giving it a pipeline project's number would make a project setting silently change how long an unrelated chat window stays warm.
+        session_residency_seconds: None,
     };
 
     let (tx, rx) = mpsc::channel::<RunnerEvent>(200);

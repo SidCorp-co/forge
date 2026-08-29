@@ -21,7 +21,7 @@ import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import type { LoopScope } from './loop-monitor.js';
 
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — mirrors `SESSION_IDLE_TIMEOUT`, the ceiling the runner actually enforces. `pipelineConfig.sessionResidencySeconds` declares a default of 0 but has NO reader on either side, so 0 is in force nowhere; this must track the const until phase 5 gives the field its reader, or core reaps a park the runner still considers live.
+// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — this number and `SESSION_IDLE_TIMEOUT` are ONE value in two places, and `resolve_residency` there reads the same `sessionResidencySeconds` with the same rule: absent or 0 means this default, never zero residency. Diverge and core reaps a park the runner still considers live, at which point `residency_expired` stops meaning "the runner is gone".
 const DEFAULT_RESIDENCY_SECONDS = 10 * 60;
 
 // cm:guard a grace, not a tuning margin — it exists so the runner always closes its own park first and core only sees the ones it could not. Shrinking it toward zero makes the two sides race and the recorded failureReason stop meaning "the runner is gone".

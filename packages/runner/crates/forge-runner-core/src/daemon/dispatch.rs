@@ -510,6 +510,7 @@ pub async fn handle(
         worktree_start_point,
         // cm:guard OPT-IN, and the default direction is the whole safety of it: only the literal `"duplex"` flips a job, so a project that never set `pipelineConfig.sessionMode`, a core that does not send the field, and a value nobody recognises all stay print. The fleet-wide default flip is phase 5 and is bounded by a measured release, not by this line.
         duplex: ja.session_mode.as_deref() == Some("duplex"),
+        session_residency_seconds: ja.session_residency_seconds,
         resume_id: ja.claude_session_id.clone(),
         agent_session_id: ja.agent_session_id.clone(),
     };

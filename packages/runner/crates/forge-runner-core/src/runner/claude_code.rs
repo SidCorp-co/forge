@@ -91,6 +91,16 @@ const RESULT_EXIT_GRACE: Duration = Duration::from_secs(5);
 // cm:guard a resident session with nobody talking to it is a leaked process holding a permit, and nothing else reaps it: the daemon's drain counter tracks TURNS (`InflightGuard` is scoped to the frame task), so an idle session reads as idle and a restart would exit(0) leaving a setsid-detached survivor. This ceiling is the only thing that closes it. `sessionResidencySeconds` gets its reader in phase 3 and replaces this const with a per-project value.
 const SESSION_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
+/// How long this session may sit parked between turns.
+// cm:edge lockstep -> packages/core/src/jobs/park-deadline.ts — core's backstop resolves the SAME field with a COALESCE onto the same default, and fires at that value plus a grace. Resolving `0` differently here is what would make the two race: core reaping a park this side still considers live, with `residency_expired` no longer meaning "the runner is gone".
+// cm:guard `Some(0)` means "use the default", NOT "no residency". The config key defaults to 0 and no project has set it, so reading 0 literally would turn residency off for the entire fleet the moment this reader shipped — a regression against the phase 1b const it replaces, and exactly why ISS-873 moved this reader out of phase 3.
+fn resolve_residency(configured: Option<u64>) -> Duration {
+    match configured {
+        Some(secs) if secs > 0 => Duration::from_secs(secs),
+        _ => SESSION_IDLE_TIMEOUT,
+    }
+}
+
 /// Signals captured from the claude stream + process exit, written
 /// incrementally by the reader/completion tasks so they survive a reader abort
 /// and let us emit a precise, diagnosable failure reason.
@@ -148,6 +158,7 @@ struct TurnLoop<'a> {
     turn_started: &'a Arc<tokio::sync::Notify>,
     turn_done: &'a Arc<tokio::sync::Notify>,
     is_issue_job: bool,
+    residency: Duration,
 }
 
 /// Tell core the idle ceiling ended this session.
@@ -177,6 +188,7 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
         turn_started,
         turn_done,
         is_issue_job,
+        residency,
     } = r;
     let mut reported = false;
     loop {
@@ -233,7 +245,7 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
         tokio::select! {
             _ = turn_started.notified() => {}
             _ = &mut *reader => return reported,
-            _ = tokio::time::sleep(SESSION_IDLE_TIMEOUT) => {
+            _ = tokio::time::sleep(residency) => {
                 tracing::info!("[claude] job={job_id} idle past the session ceiling — closing");
                 // Dropping stdin is EOF, which ends the CLI session; the
                 // process-level path below then reaps and cleans up.
@@ -808,6 +820,7 @@ impl Runner for ClaudeCodeRunner {
         };
         let turn_started = Arc::new(tokio::sync::Notify::new());
         let turn_done = Arc::new(tokio::sync::Notify::new());
+        let residency_secs = spec.session_residency_seconds;
 
         let mut cmd = build_command(&args, &effective_repo);
         let stdin_mode = if spec.duplex {
@@ -1047,6 +1060,7 @@ impl Runner for ClaudeCodeRunner {
                         turn_started: &turn_started_for_turns,
                         turn_done: &turn_done_for_turns,
                         is_issue_job,
+                        residency: resolve_residency(residency_secs),
                     },
                     &mut reader,
                 )
@@ -1341,6 +1355,7 @@ mod tests {
             resume_id: None,
             agent_session_id: None,
             duplex,
+            session_residency_seconds: None,
         }
     }
 
@@ -1443,6 +1458,7 @@ mod tests {
                         turn_tx: &tt,
                         turn_started: &ts,
                         turn_done: &td,
+                        residency: SESSION_IDLE_TIMEOUT,
                         is_issue_job: false,
                     },
                     &mut reader,
@@ -1499,6 +1515,7 @@ mod tests {
                     turn_started: &turn_started,
                     turn_done: &turn_done,
                     is_issue_job: false,
+                    residency: SESSION_IDLE_TIMEOUT,
                 },
                 &mut reader,
             )
@@ -1544,6 +1561,7 @@ mod tests {
                         turn_tx: &tt,
                         turn_started: &ts,
                         turn_done: &td,
+                        residency: SESSION_IDLE_TIMEOUT,
                         is_issue_job: false,
                     },
                     &mut reader,
@@ -1677,6 +1695,15 @@ mod tests {
             runner.resident(&"j1".to_string()).await.is_none(),
             "the budget elapsing must not leave the session resident"
         );
+    }
+
+    // cm:guard `Some(0)` resolves to the DEFAULT, never to zero. The config key defaults to 0 and no project has set it, so a literal reading turns residency off for the whole fleet the moment this reader ships — the arithmetic that moved this out of ISS-873 phase 3 in the first place. Core's `park-deadline.ts` COALESCEs onto the same default and fires at that value plus a grace, so the two must agree or core reaps a park this side still considers live.
+    #[test]
+    fn a_zero_or_absent_residency_is_the_default_and_not_no_residency() {
+        assert_eq!(resolve_residency(None), SESSION_IDLE_TIMEOUT);
+        assert_eq!(resolve_residency(Some(0)), SESSION_IDLE_TIMEOUT);
+        assert_eq!(resolve_residency(Some(3600)), Duration::from_secs(3600));
+        assert_eq!(resolve_residency(Some(1)), Duration::from_secs(1));
     }
 
     // cm:guard the discriminating pair for the door choice. An issue job's `runtime_state` reaches core ONLY as a job event; sending it over the session-keyed PATCH silently 404s, which is how the column stayed NULL for every duplex pipeline session with three hops reading it.

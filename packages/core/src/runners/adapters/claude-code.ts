@@ -17,14 +17,24 @@ import type {
  *  jobs, and on any lookup failure — the runner treats an absent key as "do not
  *  salvage", which is the safe direction. */
 // cm:guard defaults to `print` for an absent project, an absent config or an absent key — duplex is opt-in per project (ISS-873 phase 3) and a read that failed must never be the thing that flips a project's process model. `pipelineConfig` is not parsed through its Zod schema here on purpose: this runs on every dispatch, and a config that fails validation for an unrelated key must not stop the job going out.
-async function sessionModeOf(projectId: string): Promise<'print' | 'duplex'> {
+// cm:guard ONE read for both fields. Two calls would let the mode and the residency come from different snapshots of the same row — a job spawned duplex with the residency of a config that no longer says duplex.
+async function sessionSettingsOf(
+  projectId: string,
+): Promise<{ sessionMode: 'print' | 'duplex'; sessionResidencySeconds?: number }> {
   const [row] = await db
     .select({ agentConfig: projects.agentConfig })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  const cfg = (row?.agentConfig ?? {}) as { pipelineConfig?: { sessionMode?: unknown } };
-  return cfg.pipelineConfig?.sessionMode === 'duplex' ? 'duplex' : 'print';
+  const cfg = (row?.agentConfig ?? {}) as {
+    pipelineConfig?: { sessionMode?: unknown; sessionResidencySeconds?: unknown };
+  };
+  const secs = cfg.pipelineConfig?.sessionResidencySeconds;
+  return {
+    sessionMode: cfg.pipelineConfig?.sessionMode === 'duplex' ? 'duplex' : 'print',
+    // cm:guard a positive number ONLY. The key defaults to 0 and no project has set it, so forwarding 0 would be indistinguishable on the wire from a project asking for no residency at all — the runner resolves absent and 0 to the same default for exactly that reason, and sending nothing keeps the two sides agreeing by construction.
+    ...(typeof secs === 'number' && secs > 0 ? { sessionResidencySeconds: secs } : {}),
+  };
 }
 
 async function issueKeyOf(issueId: string | null): Promise<string | null> {
@@ -86,7 +96,7 @@ export const claudeCodeAdapter: RunnerAdapter = {
     }
 
     const issueKey = await issueKeyOf(job.issueId);
-    const sessionMode = await sessionModeOf(job.projectId);
+    const sessionSettings = await sessionSettingsOf(job.projectId);
 
     const delivered = roomManager.publish(deviceRoom(runner.deviceId), {
       event: 'job.assigned',
@@ -108,7 +118,8 @@ export const claudeCodeAdapter: RunnerAdapter = {
         // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — the runner keys its local session by `jobId`, so this field is its only route back to the agent_sessions row; drop it and the transcript, claudeSessionId and diff are never written.
         ...(job.agentSessionId ? { agentSessionId: job.agentSessionId } : {}),
         // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — the runner reads `sessionMode` to decide `Stdio::piped()` vs `-p`, and an older runner ignores it entirely and stays print. That is the whole opt-in: dropping this field does not break a job, it silently pins every project back to print and the phase-3 rollout reads as "no project ever opted in".
-        sessionMode,
+        // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — `sessionResidencySeconds` rides alongside and is resolved there by `resolve_residency`, which must agree with `jobs/park-deadline.ts`'s COALESCE: core's backstop fires at this value plus a grace, so a runner reading it differently gets its park reaped while it still considers the session live.
+        ...sessionSettings,
       },
     });
     // cm:guard `publish` returns the number of OPEN sockets it wrote to, and a job.assigned frame is the ONLY delivery — the runner has no catch-up fetch, so 0 means this job will never be claimed. Reporting `dispatched` anyway is what made a WS-dead / HTTP-heartbeat-alive device produce `dispatch_unclaimed` 4.5 minutes later, and since ISS-862 taught quarantine to count those, a core-side WS fault would have set aside every runner on the project at once. Never drop this return value again.

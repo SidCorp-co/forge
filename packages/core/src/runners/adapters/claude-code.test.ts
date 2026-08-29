@@ -90,6 +90,23 @@ describe('claude-code adapter', () => {
     expect((await dispatchWith(cfg)).sessionMode).toBe('print');
   });
 
+  // cm:guard a positive number ONLY, and the OMISSION is the contract: the key defaults to 0, no project has set it, and forwarding 0 is indistinguishable on the wire from a project asking for no residency at all. `resolve_residency` on the runner resolves absent and 0 to the same default for exactly this reason — sending 0 here would only work while the two sides happen to agree, and the moment one reads it literally residency is off fleet-wide.
+  it.each([
+    ['an unset key', { pipelineConfig: { sessionMode: 'duplex' } }],
+    ['an explicit zero', { pipelineConfig: { sessionMode: 'duplex', sessionResidencySeconds: 0 } }],
+    ['a string', { pipelineConfig: { sessionMode: 'duplex', sessionResidencySeconds: '600' } }],
+    ['a negative', { pipelineConfig: { sessionMode: 'duplex', sessionResidencySeconds: -1 } }],
+  ])('sends no residency for %s', async (_label, cfg) => {
+    expect(await dispatchWith(cfg)).not.toHaveProperty('sessionResidencySeconds');
+  });
+
+  it('forwards a residency the project actually configured', async () => {
+    const data = await dispatchWith({
+      pipelineConfig: { sessionMode: 'duplex', sessionResidencySeconds: 3600 },
+    });
+    expect(data.sessionResidencySeconds).toBe(3600);
+  });
+
   // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — without `issueKey` the runner declines to salvage a failed job's working copy at all (it cannot tell this job's checkout from a stale one), so dropping this field disables L1 with nothing going red.
   it('forwards issueKey so a failed job can have its working copy salvaged', async () => {
     selectLimit.mockResolvedValueOnce([{ issSeq: 862 }]);

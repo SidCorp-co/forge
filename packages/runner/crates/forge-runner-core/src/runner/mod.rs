@@ -62,6 +62,10 @@ pub struct JobSpec {
     pub agent_session_id: Option<String>,
     // cm:guard duplex means the prompt arrives on stdin as a stream-json message instead of `-p`, so a duplex spawn with no prompt is a live process nobody ever spoke to. Chat sets this; pipeline jobs stay print until ISS-873 phase 3, and the fleet-wide flip is phase 5 — do NOT default it to true to "get there sooner", the beat and the result-miss reaper are still print-shaped.
     pub duplex: bool,
+    /// How long a resident session may sit parked between turns, from
+    /// `pipelineConfig.sessionResidencySeconds`. `None` and `Some(0)` both mean
+    /// "use the default" — see `resolve_residency`.
+    pub session_residency_seconds: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
