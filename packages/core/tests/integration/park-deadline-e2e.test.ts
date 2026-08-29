@@ -27,6 +27,7 @@ import {
 let harness: TestDatabase;
 let projectId: string;
 let reapExpiredParks: typeof import('../../src/jobs/park-deadline.js').reapExpiredParks;
+let reapSessionLostJobs: typeof import('../../src/jobs/loop-monitor.js').reapSessionLostJobs;
 
 const MINUTES = 60_000;
 // cm:guard ISO strings, never Date objects — postgres-js has no column type to bind a Date against inside a raw `sql` template and throws ERR_INVALID_ARG_TYPE.
@@ -43,6 +44,7 @@ beforeAll(async () => {
     broadcastToProject: vi.fn(),
   }));
   ({ reapExpiredParks } = await import('../../src/jobs/park-deadline.js'));
+  ({ reapSessionLostJobs } = await import('../../src/jobs/loop-monitor.js'));
 }, 60_000);
 
 afterAll(async () => {
@@ -67,6 +69,7 @@ async function setResidency(seconds: number): Promise<void> {
 async function session(opts: {
   quietMinutes: number;
   runtimeState?: string | null;
+  withJob?: boolean;
 }): Promise<string> {
   const id = randomUUID();
   const runId = randomUUID();
@@ -86,7 +89,24 @@ async function session(opts: {
             ${at}::timestamptz, ${at}::timestamptz, ${state},
             ${at}::timestamptz, ${at}::timestamptz)
   `);
+  if (opts.withJob) {
+    const actorId = (await createTestUser(harness.db)).id;
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, pipeline_run_id, agent_session_id, created_by,
+                        type, status, dispatched_at, queued_at)
+      VALUES (${randomUUID()}, ${projectId}, ${runId}, ${id}, ${actorId},
+              'code', 'running', ${at}::timestamptz, ${at}::timestamptz)
+    `);
+  }
   return id;
+}
+
+async function jobKillOpened(): Promise<boolean> {
+  const rows = await harness.db.execute<{ n: number }>(sql`
+    SELECT COUNT(*)::int AS n FROM jobs
+     WHERE project_id = ${projectId} AND kill_requested_at IS NOT NULL
+  `);
+  return (rows[0]?.n ?? 0) > 0;
 }
 
 async function stateOf(id: string): Promise<{ status: string; reason: string | null }> {
@@ -140,6 +160,22 @@ describe('the residency deadline', () => {
   it('does not touch a print-mode session that reports no state', async () => {
     await session({ quietMinutes: 120, runtimeState: null });
     expect(await sweep()).toBe(0);
+  });
+
+  // cm:guard the point of the hop is CAPACITY, not a tidier row. Closing the session while its job stays `running` leaks the runner slot exactly as before at RUNNER_CAP_PER_RUNNER = 1 — this pair is the only assertion that the park hop buys anything.
+  it('lets the session-lost hop open a kill on the job it was holding', async () => {
+    await session({ quietMinutes: 20, withJob: true });
+    expect(await jobKillOpened()).toBe(false);
+    await sweep();
+    await reapSessionLostJobs(new Date(), { projectId });
+    expect(await jobKillOpened()).toBe(true);
+  });
+
+  it('leaves that job alone while the park is still live', async () => {
+    await session({ quietMinutes: 2, withJob: true });
+    await sweep();
+    await reapSessionLostJobs(new Date(), { projectId });
+    expect(await jobKillOpened()).toBe(false);
   });
 
   it('separates an expired park from a live one in the same sweep', async () => {
