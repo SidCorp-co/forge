@@ -1,11 +1,15 @@
 // The verdict half of check-honest-costs, kept apart from the CLI so it can be
-// tested without reading the tree.
+// tested. The CLI spawns nothing but does exit at module scope; everything a
+// test needs to drive — which files are in scope, and whether one of them
+// prices anything — lives here.
 //
 // What it can see: whether a document carries a section that prices what
 // choosing it costs, and whether that section says anything. What it CANNOT
 // see: whether the price stated there is honest. That half belongs to review
 // and to whoever writes the doc — a checker asserting it would be reading
 // prose for sincerity, which is the kind of claim this repo refuses to make.
+
+import { readdirSync } from 'node:fs';
 
 // cm:edge contract -> docs/proposals/README.md — that file publishes this heading to whoever writes the next proposal; the two are agreed by nothing a compiler checks, so a reword here with none there leaves authors following a rule the gate no longer enforces
 export const SECTION_RE = /^(#{2,6})\s*(?:\d+\.\s*)?honest costs\b.*$/im;
@@ -18,6 +22,12 @@ export function selectProposals(entries) {
   return entries.filter((n) => n.endsWith('.md') && n.split('/').pop() !== INDEX);
 }
 
+// cm:guard the `recursive` flag belongs HERE, with the filter it is half of. It sat in the CLI for one round, where the only thing that could test it was a hand-built copy of the tree — and a filter tested over a synthetic list stays green when the listing that feeds it goes flat, which is the under-scope re-opening with every test still passing.
+export function listProposals(dir) {
+  const entries = readdirSync(dir, { recursive: true }).map((n) => String(n).split('\\').join('/'));
+  return selectProposals(entries);
+}
+
 /** A section that is present and says nothing is the shape this gate exists to refuse. */
 const MIN_WORDS = 12;
 
@@ -25,6 +35,21 @@ const MIN_WORDS = 12;
 const PLACEHOLDER_RE = /^(tbd|todo|t\.b\.d\.?|n\/a|none|nothing|unknown|\?+)\.?$/i;
 
 const ROW_RE = /^\s*(\||[-*+]\s|\d+\.\s)/;
+
+// cm:guard a fenced block is not content. `## Honest costs` inside a ```md example satisfied the heading match while the document itself priced nothing — the published rule refuses an absent section, and a section that exists only as an illustration of the rule is absent.
+function withoutFences(text) {
+  let fenced = false;
+  return text
+    .split('\n')
+    .map((line) => {
+      if (/^\s*(```|~~~)/.test(line)) {
+        fenced = !fenced;
+        return '';
+      }
+      return fenced ? '' : line;
+    })
+    .join('\n');
+}
 
 function headingLevel(line) {
   return /^(#{1,6})\s/.exec(line)?.[1].length ?? 0;
@@ -55,7 +80,8 @@ function cells(line) {
 /**
  * Returns the reasons `rel` fails the rule, one string each. Empty means it passes.
  */
-export function judgeDocument(rel, text) {
+export function judgeDocument(rel, raw) {
+  const text = withoutFences(raw);
   const match = SECTION_RE.exec(text);
   if (!match) {
     return [`${rel}: no \`## Honest costs\` section — nothing here says what choosing this costs`];

@@ -1,5 +1,8 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { judge, judgeDocument, selectProposals } from './honest-costs.mjs';
+import { judge, judgeDocument, listProposals, selectProposals } from './honest-costs.mjs';
 
 const PRICED = `# A proposal
 
@@ -58,6 +61,29 @@ describe('judgeDocument', () => {
     expect(judgeDocument('a.md', nested)).toEqual([]);
   });
 
+  it('does not accept a heading that only appears inside a fenced example', () => {
+    const illustrated = [
+      '# A proposal',
+      '',
+      '## How to write one',
+      '',
+      '```md',
+      '## Honest costs',
+      '',
+      '| Choice | What it costs you |',
+      '|---|---|',
+      '| an example row | that prices an example, and nothing this document chose |',
+      '```',
+      '',
+    ].join('\n');
+    expect(judgeDocument('a.md', illustrated).join(' ')).toContain('no `## Honest costs` section');
+  });
+
+  it('ignores a fenced block sitting inside a real section', () => {
+    const withCode = `${PRICED}\n\`\`\`sh\nTBD\n\`\`\`\n`;
+    expect(judgeDocument('a.md', withCode)).toEqual([]);
+  });
+
   it('does not read `N/A for self-hosted` as a placeholder', () => {
     const qualified = PRICED.replace(
       'you operate and upgrade it yourself, and no shared plane absorbs your outage',
@@ -109,5 +135,22 @@ describe('selectProposals', () => {
 
   it('leaves the drawn figures and directory entries out', () => {
     expect(selectProposals(['duplex-architecture.html', 'nested', 'a.md'])).toEqual(['a.md']);
+  });
+});
+
+describe('listProposals', () => {
+  it('walks subdirectories on a real tree, and skips an index at any depth', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'honest-costs-'));
+    mkdirSync(join(dir, 'rfc-drafts'));
+    for (const rel of [
+      'README.md',
+      'flat.md',
+      'drawn.html',
+      'rfc-drafts/README.md',
+      'rfc-drafts/sub.md',
+    ]) {
+      writeFileSync(join(dir, rel), '# x\n');
+    }
+    expect(listProposals(dir).sort()).toEqual(['flat.md', 'rfc-drafts/sub.md']);
   });
 });

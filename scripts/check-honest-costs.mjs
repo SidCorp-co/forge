@@ -16,11 +16,11 @@
 //
 // Exit codes: 0 clean, 1 violations found, 2 could not run.
 
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { judge, selectProposals } from './lib/honest-costs.mjs';
+import { judge, listProposals } from './lib/honest-costs.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -35,15 +35,13 @@ function read(rel) {
   }
 }
 
-// cm:edge protocol -> scripts/lib/honest-costs.mjs — the `recursive` listing here and `selectProposals` there are one rule in two halves: drop the flag and the filter still passes on a shorter list, which is a scope bug that reads as a clean run
 function proposals() {
-  let entries;
+  let found;
   try {
-    entries = readdirSync(resolve(ROOT, PROPOSALS), { recursive: true });
+    found = listProposals(resolve(ROOT, PROPOSALS));
   } catch (err) {
     return { error: `${PROPOSALS}: ${err.message}` };
   }
-  const found = selectProposals(entries.map((n) => String(n).split('\\').join('/')));
   if (found.length === 0) return { error: `${PROPOSALS}: no proposal found — is the path right?` };
   return { found: found.map((n) => `${PROPOSALS}/${n}`) };
 }
