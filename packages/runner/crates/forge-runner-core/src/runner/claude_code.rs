@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::Value;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, Mutex};
 
 use super::inflight;
@@ -30,6 +30,16 @@ const AUTONOMOUS_STEP: &str = "drive";
 
 /// How often the runner looks for a reviewer result mid-session.
 const VERDICT_POLL_INTERVAL: Duration = Duration::from_secs(15);
+
+/// One `--input-format stream-json` user message, newline-terminated.
+// cm:guard the CLI accepts exactly this envelope and rejects a bare string — verified on claude 2.1.251, 2026-08-29. A malformed line is not an error: the process stays alive with nothing to answer, so the turn hangs until the job timeout with no diagnosis anywhere.
+fn user_message_line(text: &str) -> String {
+    let msg = serde_json::json!({
+        "type": "user",
+        "message": { "role": "user", "content": [{ "type": "text", "text": text }] }
+    });
+    format!("{msg}\n")
+}
 
 struct Session {
     status: RunnerStatus,
@@ -261,7 +271,8 @@ impl ClaudeCodeRunner {
     }
 }
 
-fn build_args(spec: &JobSpec, mcp_path: &str) -> Vec<String> {
+// cm:guard the print/duplex split lives HERE and nowhere else — `-p` and `--input-format` are the two halves of one decision, and while they were decided in two places a spawn could carry both, which is a process holding a prompt it will never read off a stdin it will never be given.
+fn build_args(spec: &JobSpec, mcp_path: &str, prompt: &str) -> Vec<String> {
     let mode = spec
         .permission_mode
         .as_deref()
@@ -277,6 +288,12 @@ fn build_args(spec: &JobSpec, mcp_path: &str) -> Vec<String> {
         "--permission-mode".into(),
         mode.into(),
     ];
+    if spec.duplex {
+        args.push("--input-format".into());
+        args.push("stream-json".into());
+        // cm:guard the replay comes back as `type:"user"` with `isReplay:true`, and chat's `parse_assistant_message` keys on `type=="assistant"`, so it is inert there. Any future consumer that reads user turns off this stream MUST skip replays or it will persist the prompt twice.
+        args.push("--replay-user-messages".into());
+    }
     if let Some(sp) = spec.system_prompt.as_deref().filter(|s| !s.is_empty()) {
         args.push("--append-system-prompt".into());
         args.push(sp.into());
@@ -308,6 +325,10 @@ fn build_args(spec: &JobSpec, mcp_path: &str) -> Vec<String> {
     if let Some(rid) = spec.resume_id.as_deref().filter(|s| !s.is_empty()) {
         args.push("--resume".into());
         args.push(rid.into());
+    }
+    if !spec.duplex {
+        args.push("-p".into());
+        args.push(prompt.into());
     }
     args
 }
@@ -433,9 +454,7 @@ impl Runner for ClaudeCodeRunner {
             slug,
             spec.mcp_servers_override.as_ref(),
         )?;
-        let mut args = build_args(&spec, &mcp_path.to_string_lossy());
-        args.push("-p".into());
-        args.push(prompt);
+        let args = build_args(&spec, &mcp_path.to_string_lossy(), &prompt);
 
         let invoked_with_resume = spec.resume_id.is_some();
         // ISS-570 hard-fail on a down `forge` server is scoped to reconciler-driven
@@ -448,7 +467,12 @@ impl Runner for ClaudeCodeRunner {
             .map(Duration::from_secs);
 
         let mut cmd = build_command(&args, &effective_repo);
-        cmd.stdin(std::process::Stdio::null())
+        let stdin_mode = if spec.duplex {
+            std::process::Stdio::piped()
+        } else {
+            std::process::Stdio::null()
+        };
+        cmd.stdin(stdin_mode)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
         // Give MCP servers room to connect before the `system/init` snapshot.
@@ -494,6 +518,19 @@ impl Runner for ClaudeCodeRunner {
             Error::Other(format!("failed to spawn claude: {e}"))
         })?;
         tracing::info!("[claude] spawned job={job_id}");
+
+        if spec.duplex {
+            let mut stdin = child
+                .stdin
+                .take()
+                .ok_or_else(|| Error::Other("no stdin on a duplex spawn".into()))?;
+            stdin
+                .write_all(user_message_line(&prompt).as_bytes())
+                .await
+                .map_err(|e| Error::Other(format!("failed to write the first turn: {e}")))?;
+            let _ = stdin.flush().await;
+            // cm:guard stdin is dropped here ON PURPOSE and this is the whole reason phase 1 is behaviour-preserving: EOF does NOT cut the turn (measured, claude 2.1.251 — stdin closed 400ms into a long generation still produced the complete result, then exit 0), so the process still ends with its turn exactly as `-p` did. Holding stdin open is what makes a session RESIDENT, and it lands with the inverted completion task — not here, where the completion path still assumes result implies exit.
+        }
 
         let stdout = child
             .stdout
@@ -849,6 +886,91 @@ impl Runner for ClaudeCodeRunner {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn spec(duplex: bool) -> JobSpec {
+        JobSpec {
+            job_id: "j1".into(),
+            project_id: String::new(),
+            project_slug: None,
+            issue_id: None,
+            step: "chat".into(),
+            repo_path: "/tmp".into(),
+            prompt: Some("hello".into()),
+            system_prompt: None,
+            model: None,
+            allowed_tools: None,
+            disallowed_tools: None,
+            permission_mode: None,
+            timeout_seconds: None,
+            mcp_servers_override: None,
+            worktree_branch: None,
+            worktree_start_point: None,
+            resume_id: None,
+            agent_session_id: None,
+            duplex,
+        }
+    }
+
+    fn args_for(duplex: bool) -> Vec<String> {
+        build_args(&spec(duplex), "/tmp/mcp.json", "hello")
+    }
+
+    fn has_pair(args: &[String], flag: &str, value: &str) -> bool {
+        args.windows(2).any(|w| w[0] == flag && w[1] == value)
+    }
+
+    #[test]
+    fn a_duplex_spawn_reads_its_turn_off_stdin() {
+        let args = args_for(true);
+        assert!(has_pair(&args, "--input-format", "stream-json"), "{args:?}");
+        assert!(
+            args.iter().any(|a| a == "--replay-user-messages"),
+            "{args:?}"
+        );
+        assert!(
+            !args.iter().any(|a| a == "-p"),
+            "a duplex spawn that also carries -p answers the flag and never reads stdin: {args:?}"
+        );
+    }
+
+    // cm:guard the output format is `--output-format stream-json` on BOTH modes and the input format only on duplex — asserting the bare string `stream-json` is present would pass on the print path too, which is why every assertion here is on the FLAG/VALUE pair.
+    #[test]
+    fn a_print_spawn_still_has_no_input_format() {
+        let args = args_for(false);
+        assert!(!args.iter().any(|a| a == "--input-format"), "{args:?}");
+        assert!(
+            !args.iter().any(|a| a == "--replay-user-messages"),
+            "{args:?}"
+        );
+        assert!(
+            has_pair(&args, "--output-format", "stream-json"),
+            "{args:?}"
+        );
+        assert!(has_pair(&args, "-p", "hello"), "{args:?}");
+    }
+
+    #[test]
+    fn the_turn_envelope_is_the_one_the_cli_accepts() {
+        let line = user_message_line("hi");
+        assert!(line.ends_with('\n'), "{line:?}");
+        let v: Value = serde_json::from_str(line.trim()).expect("one JSON object per line");
+        assert_eq!(v["type"], "user");
+        assert_eq!(v["message"]["role"], "user");
+        assert_eq!(v["message"]["content"][0]["type"], "text");
+        assert_eq!(v["message"]["content"][0]["text"], "hi");
+    }
+
+    #[test]
+    fn a_prompt_that_would_break_the_line_is_escaped_not_embedded() {
+        let line = user_message_line("a\nb\"c");
+        assert_eq!(
+            line.matches('\n').count(),
+            1,
+            "a raw newline splits the message: {line:?}"
+        );
+        let v: Value = serde_json::from_str(line.trim()).unwrap();
+        assert_eq!(v["message"]["content"][0]["text"], "a\nb\"c");
+    }
 
     #[test]
     fn killed_by_signal_reports_signal_token() {

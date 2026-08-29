@@ -508,6 +508,8 @@ pub async fn handle(
         mcp_servers_override: ja.mcp_servers_override.clone(),
         worktree_branch,
         worktree_start_point,
+        // cm:edge ordering -> packages/runner/crates/forge-runner-core/src/daemon/chat.rs — chat went duplex in ISS-873 phase 1 and pipeline jobs deliberately did NOT. Flipping this before phase 3 lands is the ordering bug the plan exists to prevent: the 25s synthetic beat and the result-miss reaper are both still print-shaped, and a duplex job that finished one turn already has a `result` row.
+        duplex: false,
         resume_id: ja.claude_session_id.clone(),
         agent_session_id: ja.agent_session_id.clone(),
     };

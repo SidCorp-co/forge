@@ -368,6 +368,7 @@ async fn run_turn(
         worktree_start_point: None,
         resume_id: turn.resume_id.clone(),
         agent_session_id: Some(session_id.clone()),
+        duplex: true,
     };
 
     let (tx, rx) = mpsc::channel::<RunnerEvent>(200);

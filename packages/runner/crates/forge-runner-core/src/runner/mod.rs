@@ -60,6 +60,8 @@ pub struct JobSpec {
     /// `claudeSessionId` from core — the single source of truth for resume.
     pub resume_id: Option<String>,
     pub agent_session_id: Option<String>,
+    // cm:guard duplex means the prompt arrives on stdin as a stream-json message instead of `-p`, so a duplex spawn with no prompt is a live process nobody ever spoke to. Chat sets this; pipeline jobs stay print until ISS-873 phase 3, and the fleet-wide flip is phase 5 — do NOT default it to true to "get there sooner", the beat and the result-miss reaper are still print-shaped.
+    pub duplex: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
