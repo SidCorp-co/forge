@@ -38,11 +38,11 @@ healthy status and never will be — so a `PROBLEM_STATUSES` key gated on health
 | | |
 |---|---|
 | Measure | what each bound actually bounds once a process outlives its work |
-| Baseline | `chat_max_concurrent` = 3 (`config.rs#default_chat_max_concurrent`) bounds **turns** — `_permit` is a local dropped when `run_turn` returns. Nothing under `packages/runner/crates/` names eviction, residency or checkpoint: 0 hits, 2026-08-29. `sessionResidencySeconds` has exactly one occurrence in the repo, its own declaration in `pipeline-config-schema.ts` — no reader |
-| Target | the semaphore refuses the 4th resident **process**; `sessionResidencySeconds` has a reader; the runner can end residency unilaterally, checkpoint-first, and reports the reason |
+| Baseline | `chat_max_concurrent` = 3 (`config.rs#default_chat_max_concurrent`) bounded **turns** — fixed in phase 1: `session_sem` now caps live duplex processes. The runner's residency ceiling is a const (`claude_code.rs#SESSION_IDLE_TIMEOUT`), not the config field; core reads `sessionResidencySeconds` as the backstop's override (`jobs/park-deadline.ts`), the runner still does not |
+| Target | the semaphore refuses the 4th resident **process** — DONE, phase 1; `sessionResidencySeconds` has a RUNNER reader (phase 5, not 3: its default of `0` would turn residency off fleet-wide); the runner can end residency unilaterally, checkpoint-first, and reports the reason |
 | Red test | hold 3 idle resident sessions and send a 4th `work` — passes today, which is the defect; must be refused after |
 | Consumes | phase 1 — the permit, the chat idle window and the release event are one deliverable, and phase 1 is where the object they bound first exists (A3 as a separate pre-phase is withdrawn) |
-| Priced | `chat_max_concurrent` stays 3 — nothing in the runner prices memory. The amnesty ends when a reader for `sessionResidencySeconds` and an eviction path both exist |
+| Priced | `chat_max_concurrent` stays 3 — nothing in the runner prices memory. The amnesty ends when a RUNNER reader for `sessionResidencySeconds` and an eviction path both exist |
 | Blocks | every duplex phase |
 
 ### G3 — no state lies about progress
@@ -222,9 +222,10 @@ first makes a process outlive the work that started it.
 The eviction *mechanism* exists in the design only — RFC 0003 §Ownership: *"the runner may end
 residency unilaterally — upgrade, drain, reboot, OOM — but must `checkpoint` first and must report
 the reason."* Nothing under `packages/runner/crates/` names eviction, residency or checkpoint (0
-hits, 2026-08-29) and `sessionResidencySeconds` has no reader, so what is missing is both the code
-and the **accounting**: who counts a resident session, against what budget, and what happens at the
-limit.
+hits, 2026-08-29). Core answers half the accounting since 2026-08-29 — `jobs/park-deadline.ts`
+closes a park the runner failed to close, which is who counts a resident session and what happens at
+the limit. The runner half is still missing: it cannot end residency unilaterally, checkpoint-first,
+and it has no reader for `sessionResidencySeconds`.
 
 ## Lockstep
 
