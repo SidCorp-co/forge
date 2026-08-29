@@ -9,9 +9,10 @@
 // did the same. A convention nobody checks is the convention that produced that
 // gap, so the rule arrives with something that complains.
 //
-// Scope: docs/VISION.md and every proposal under docs/proposals/. `README.md`
-// there is the index — it carries the rule, not a price of its own — and the
-// `.html` files are drawn figures, which hold no markdown heading tree to check.
+// Scope: docs/VISION.md and every proposal under docs/proposals/, subdirectories
+// included. A `README.md` at any depth is an index — it carries the rule, not a
+// price of its own — and the `.html` files are drawn figures, which hold no
+// markdown heading tree to check.
 //
 // Exit codes: 0 clean, 1 violations found, 2 could not run.
 
@@ -19,13 +20,12 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { judge } from './lib/honest-costs.mjs';
+import { judge, selectProposals } from './lib/honest-costs.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const VISION = 'docs/VISION.md';
 const PROPOSALS = 'docs/proposals';
-const INDEX = 'README.md';
 
 function read(rel) {
   try {
@@ -35,14 +35,15 @@ function read(rel) {
   }
 }
 
+// cm:edge protocol -> scripts/lib/honest-costs.mjs — the `recursive` listing here and `selectProposals` there are one rule in two halves: drop the flag and the filter still passes on a shorter list, which is a scope bug that reads as a clean run
 function proposals() {
   let entries;
   try {
-    entries = readdirSync(resolve(ROOT, PROPOSALS));
+    entries = readdirSync(resolve(ROOT, PROPOSALS), { recursive: true });
   } catch (err) {
     return { error: `${PROPOSALS}: ${err.message}` };
   }
-  const found = entries.filter((n) => n.endsWith('.md') && n !== INDEX);
+  const found = selectProposals(entries.map((n) => String(n).split('\\').join('/')));
   if (found.length === 0) return { error: `${PROPOSALS}: no proposal found — is the path right?` };
   return { found: found.map((n) => `${PROPOSALS}/${n}`) };
 }
@@ -67,7 +68,7 @@ function main() {
     );
     console.error(
       `Add a \`## Honest costs\` section saying what this takes from whoever adopts it — the price of the\n` +
-        `choices it makes, not the boundaries it draws. The convention is in ${PROPOSALS}/${INDEX}.`,
+        `choices it makes, not the boundaries it draws. The convention is in ${PROPOSALS}/README.md.`,
     );
     return 1;
   }

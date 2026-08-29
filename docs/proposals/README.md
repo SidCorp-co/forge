@@ -64,7 +64,7 @@ framework → [../integrations/README.md](../integrations/README.md) · prompt c
 
 ## Every proposal prices itself
 
-**Required section, gated:** every `.md` here carries a `## Honest costs` heading saying what
+**Required section, gated:** every `.md` here, subdirectories included, carries a `## Honest costs` heading saying what
 adopting the proposal takes away from whoever adopts it — for an open residual, the cost of the
 proposed fix, not of the bug it fixes. Boundaries and non-goals are a different question and do not
 satisfy it.
@@ -76,8 +76,8 @@ satisfy it.
 | Gate | `node scripts/check-honest-costs.mjs`, run by `pnpm verify` and by CI's `lang-check` job |
 | Not gated | whether the stated price is honest — that is review's, and the author's |
 
-`docs/VISION.md` is held to the same rule. `README.md` is this index rather than a proposal, and the
-`.html` files are drawn figures with no markdown heading tree, so neither is in scope.
+`docs/VISION.md` is held to the same rule. A `README.md` at any depth is an index rather than a
+proposal, and the `.html` files are drawn figures with no markdown heading tree, so neither is in scope.
 
 ## Naming convention
 

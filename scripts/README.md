@@ -1,6 +1,6 @@
 # scripts/
 
-Project-level utilities. Each script is standalone (no shared lib) and has a comment header explaining its contract.
+Project-level utilities. Each script has a comment header explaining its contract. A checker whose verdict is worth testing keeps that half in `lib/` — the CLI spawns, reads the tree and exits, none of which a test can call.
 
 ## Twelve gates, five axes
 

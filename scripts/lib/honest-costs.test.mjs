@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { judge, judgeDocument } from './honest-costs.mjs';
+import { judge, judgeDocument, selectProposals } from './honest-costs.mjs';
 
 const PRICED = `# A proposal
 
@@ -90,5 +90,24 @@ describe('judge', () => {
 
   it('counts the documents it scanned when everything passes', () => {
     expect(judge({ 'a.md': PRICED, 'b.md': PRICED })).toEqual({ code: 0, scanned: 2 });
+  });
+});
+
+describe('selectProposals', () => {
+  it('takes a proposal nested one directory down', () => {
+    expect(selectProposals(['a.md', 'rfc-drafts', 'rfc-drafts/sub.md'])).toEqual([
+      'a.md',
+      'rfc-drafts/sub.md',
+    ]);
+  });
+
+  it('excludes the index at every depth, not only at the top', () => {
+    expect(selectProposals(['README.md', 'nested/README.md', 'nested/real.md'])).toEqual([
+      'nested/real.md',
+    ]);
+  });
+
+  it('leaves the drawn figures and directory entries out', () => {
+    expect(selectProposals(['duplex-architecture.html', 'nested', 'a.md'])).toEqual(['a.md']);
   });
 });

@@ -205,4 +205,4 @@ not taken, and a document that prices everything except itself has taken one unp
 | `state-never-lies` | evidence takes time, and a step that cannot show any is stopped rather than waved through. You will watch work park where a more agreeable system would have reported success |
 | `route-judgment-not-bottlenecks` | someone still has to answer. The loop halts at a routed decision, and a question nobody picks up is work that does not continue — fewer bottlenecks, not none |
 | `trust-gates-capability` | capability whose value is obvious to you waits behind kernel work you did not ask for. Reach is earned rather than scheduled, which means asking for it does not move it |
-| Apache-2.0 core, no governance suite | SSO, audit-grade permissioning and the rest of enterprise governance are not here and are not coming. If compliance needs them now, that is bought elsewhere |
+| Apache-2.0 core | nobody is contractually on the hook for it. No warranty, no support you have not arranged, and a fork you diverge is a fork you maintain — the licence that makes it yours to run is the licence that makes it yours to carry |

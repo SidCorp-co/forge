@@ -10,6 +10,14 @@
 // cm:edge contract -> docs/proposals/README.md — that file publishes this heading to whoever writes the next proposal; the two are agreed by nothing a compiler checks, so a reword here with none there leaves authors following a rule the gate no longer enforces
 export const SECTION_RE = /^(#{2,6})\s*(?:\d+\.\s*)?honest costs\b.*$/im;
 
+/** The index at any depth carries the rule, not a price of its own. */
+const INDEX = 'README.md';
+
+// cm:guard filter by BASENAME over a RECURSIVE listing. A flat read, or a whole-path compare against `README.md`, both narrow the enforced scope below the one `docs/proposals/README.md` publishes ("every `.md` here") — and a document the gate never opens is one it reports as priced, because the success line counts what it scanned rather than what exists.
+export function selectProposals(entries) {
+  return entries.filter((n) => n.endsWith('.md') && n.split('/').pop() !== INDEX);
+}
+
 /** A section that is present and says nothing is the shape this gate exists to refuse. */
 const MIN_WORDS = 12;
 
