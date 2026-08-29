@@ -135,6 +135,22 @@ struct TurnLoop<'a> {
     is_issue_job: bool,
 }
 
+/// Tell core the idle ceiling ended this session.
+// cm:guard the two paths report by DIFFERENT doors and neither one serves both: an issue job's session key is a `job_id`, which the session-keyed PATCH 404s on, and chat has no job to post an event against. Sending an issue job's state over the PATCH is the bug that left `runtime_state` NULL for every duplex pipeline session while three hops read the column — the quiet-clock exemption, the residency deadline and the result guard.
+async fn report_session_closed(
+    is_issue_job: bool,
+    turn_tx: &TurnTx,
+    core: Option<&crate::transport::CoreClient>,
+    job_id: &str,
+) {
+    if is_issue_job {
+        let tx = turn_tx.lock().await;
+        let _ = tx.send(RunnerEvent::StateChanged("closed")).await;
+    } else if let Some(client) = core {
+        crate::transport::agent_sessions::report_runtime_state(client, job_id, "closed").await;
+    }
+}
+
 async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>) -> bool {
     let TurnLoop {
         sessions,
@@ -191,14 +207,10 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
                 tracing::info!("[claude] job={job_id} idle past the session ceiling — closing");
                 // Dropping stdin is EOF, which ends the CLI session; the
                 // process-level path below then reaps and cleans up.
+                // cm:guard announced BEFORE stdin is dropped, while `consume` is still reading this channel — a parked turn sent no terminal event, so the consumer is alive until EOF reaps the process. After the drop it is a race against that reap.
+                report_session_closed(is_issue_job, turn_tx, core, job_id).await;
                 if let Some(s) = sessions.lock().await.get_mut(job_id) {
                     s.stdin = None;
-                }
-                if let Some(client) = core {
-                    crate::transport::agent_sessions::report_runtime_state(
-                        client, job_id, "closed",
-                    )
-                    .await;
                 }
                 return reported;
             }
@@ -897,7 +909,7 @@ impl Runner for ClaudeCodeRunner {
         let core_url_for_verdicts = self.core_url.clone();
         let token_for_verdicts = self.device_token.clone();
         let worktree_for_verdicts = PathBuf::from(&effective_repo);
-        // cm:guard built only for a session that HAS an agent-session row. A pipeline job's `job_id` is not a session id, and reporting a runtime state against it would 404 every close.
+        // cm:guard built for EVERY duplex spawn, and the two paths use it differently on purpose: chat's key IS its agent-session id, so it may PATCH the session directly, while a pipeline job's key is a `job_id` and every session-keyed PATCH with it 404s. The pipeline path therefore reports state as a job EVENT (core writes the column in `jobs/events-routes.ts`) and uses this client only for the job-keyed turn verdict.
         let core_for_state = spec.duplex.then(|| {
             crate::transport::CoreClient::new(self.core_url.clone(), self.device_token.clone())
         });
@@ -1422,6 +1434,27 @@ mod tests {
         assert!(
             reported,
             "the last turn was reported, so exit must not report again"
+        );
+    }
+
+    // cm:guard the discriminating pair for the door choice. An issue job's `runtime_state` reaches core ONLY as a job event; sending it over the session-keyed PATCH silently 404s, which is how the column stayed NULL for every duplex pipeline session with three hops reading it.
+    #[tokio::test]
+    async fn an_issue_job_reports_its_close_on_the_job_channel() {
+        let (tx, mut rx) = mpsc::channel(4);
+        let turn_tx: TurnTx = Arc::new(Mutex::new(tx));
+        report_session_closed(true, &turn_tx, None, "j1").await;
+        let ev = rx.try_recv().expect("the close must reach the job channel");
+        assert!(matches!(ev, RunnerEvent::StateChanged("closed")), "{ev:?}");
+    }
+
+    #[tokio::test]
+    async fn a_chat_session_does_not_report_its_close_on_the_job_channel() {
+        let (tx, mut rx) = mpsc::channel(4);
+        let turn_tx: TurnTx = Arc::new(Mutex::new(tx));
+        report_session_closed(false, &turn_tx, None, "s1").await;
+        assert!(
+            rx.try_recv().is_err(),
+            "chat has no job to post an event against — it reports over the session PATCH"
         );
     }
 

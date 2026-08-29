@@ -1,10 +1,18 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, asc, eq, gt, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, isNull, notInArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { agentSessions, jobEventKinds, jobEvents, jobs } from '../db/schema.js';
+import {
+  agentSessions,
+  jobEventKinds,
+  jobEvents,
+  jobs,
+  type SessionRuntimeState,
+  sessionRuntimeStates,
+  terminalAgentSessionStatuses,
+} from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -94,11 +102,19 @@ jobEventsListRoutes.get(
   },
 );
 
-// cm:guard reads `data.runtimeState` by name out of an untyped jsonb payload — the runner writes that key in `daemon/dispatch.rs#map_event` and nothing type-checks the pair. A rename on either side does not fail: it silently makes every park count as activity again.
-function isParkEvent(e: { kind: string; data?: unknown }): boolean {
-  if (e.kind !== 'progress') return false;
+// cm:guard reads `data.runtimeState` by name out of an untyped jsonb payload — the runner writes that key in `daemon/dispatch.rs#map_event` and nothing type-checks the pair. A rename on either side does not fail: it silently makes every park count as activity again AND stops the column below ever being written.
+// cm:guard a value the enum does not know is DROPPED, never written. The column is `text` with no database check, so an unrecognised string would persist and then read as "not parked" to the quiet-clock exemption and "not a park" to the residency deadline — a session invisible to both hops.
+function runtimeStateOf(e: { kind: string; data?: unknown }): SessionRuntimeState | undefined {
+  if (e.kind !== 'progress') return undefined;
   const d = e.data as { runtimeState?: unknown } | null | undefined;
-  return d?.runtimeState === 'awaiting_input';
+  const raw = d?.runtimeState;
+  return (sessionRuntimeStates as readonly unknown[]).includes(raw)
+    ? (raw as SessionRuntimeState)
+    : undefined;
+}
+
+function isParkEvent(e: { kind: string; data?: unknown }): boolean {
+  return runtimeStateOf(e) === 'awaiting_input';
 }
 
 jobEventsRoutes.post(
@@ -225,6 +241,30 @@ jobEventsRoutes.post(
           { err, jobId, agentSessionId: job.agentSessionId },
           'events-routes: agent_sessions heartbeat sync failed',
         );
+      }
+    }
+
+    // cm:guard the JOB-EVENTS door is the ONLY writer of `runtime_state` on the pipeline path. The session-keyed PATCH cannot serve it: the runner keys a pipeline session by `job_id`, so a PATCH to `/api/agent-sessions/:id` with that id 404s. Without this write the column stays NULL for every duplex job, and all three readers of it — the quiet-clock exemption (loop-monitor.ts), the residency deadline (park-deadline.ts) and the result guard (resident-session.ts) — are inert on the path they were built for.
+    // cm:guard OUTSIDE the heartbeat branch above, and that separation is the point: a park-only batch must record the park while NOT counting as activity. Folding this in there would make the two rules one, and the park would be invisible in exactly the case it matters.
+    if (job.agentSessionId) {
+      const reported = events.reduce<SessionRuntimeState | undefined>(
+        (acc, e) => runtimeStateOf(e) ?? acc,
+        undefined,
+      );
+      if (reported) {
+        try {
+          await db
+            .update(agentSessions)
+            .set({ runtimeState: reported, updatedAt: new Date() })
+            .where(
+              and(
+                eq(agentSessions.id, job.agentSessionId),
+                notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
+              ),
+            );
+        } catch (err) {
+          logger.warn({ err, jobId, reported }, 'events-routes: runtime-state sync failed');
+        }
       }
     }
 
