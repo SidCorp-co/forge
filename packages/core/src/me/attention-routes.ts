@@ -1,37 +1,26 @@
-import {
-  and,
-  desc,
-  eq,
-  exists,
-  inArray,
-  isNull,
-  notExists,
-  notInArray,
-  or,
-  sql,
-} from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
 import { Hono } from 'hono';
-import { db } from '../db/client.js';
-import {
-  commentMentions,
-  comments,
-  issues,
-  jobs,
-  notifications,
-  organizationMembers,
-  projectMembers,
-  projects,
-  reconcileRuns,
-} from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import {
+  type AttentionFailedJobRow,
+  type AttentionIssueRow,
+  type AttentionMentionRow,
+  type AttentionReconcileRow,
+  selectAwaitingInput,
+  selectFailedJobs,
+  selectMentions,
+  selectNeedsReview,
+  selectPendingSkillUpdates,
+  selectUnseenDraftCount,
+  selectUnseenDrafts,
+} from './attention-buckets.js';
 
 type AttentionKind =
   | 'needs_review'
   | 'awaiting_input'
   | 'mention'
   | 'failed_job'
-  | 'pending_skill_update';
+  | 'pending_skill_update'
+  | 'unseen_draft';
 
 interface AttentionItem {
   kind: AttentionKind;
@@ -44,64 +33,70 @@ interface AttentionItem {
   projectName?: string;
 }
 
+// cm:edge contract -> packages/web-v2/src/features/attention/types.ts — that file mirrors this response verbatim and says so ("do NOT guess field names"); the two move together or the screen renders a bucket the API stopped sending.
 interface AttentionResponse {
   needsReview: AttentionItem[];
   awaitingInput: AttentionItem[];
   mentions: AttentionItem[];
   failedJobs: AttentionItem[];
   pendingSkillUpdates: AttentionItem[];
+  unseenDrafts: AttentionItem[];
+  /** Unclipped count behind `unseenDrafts`, which is capped. */
+  unseenDraftsTotal: number;
   total: number;
 }
 
-/**
- * Bucket criteria for `GET /me/attention` (ISS-665 — keep this comment in sync
- * with the WHERE clauses below; it is the single place documenting why an item
- * is/isn't "needs attention"):
- *
- * - `needsReview`    — issues assigned to the caller sitting in a status that
- *   needs the caller's action (`developed` awaiting review, `reopen` awaiting
- *   a fix). Self-clearing: driven by live `issues.status`.
- * - `awaitingInput`  — issues assigned to the caller blocked on a human
- *   (`waiting`, `needs_info`, `on_hold`). Self-clearing: live `issues.status`.
- * - `mentions`       — unread `@mention` notifications for the caller.
- *   Self-clearing: driven by `notifications.read`.
- * - `failedJobs`     — jobs the caller triggered that failed in the trailing
- *   7 days, EXCLUDING:
- *     1. superseded attempts — any job with a later retry (`jobs.retryOf`
- *        points back at it). `jobs/retry.ts` inserts every retry as a NEW row
- *        and leaves the original `status='failed'` forever, so without this
- *        exclusion a resolved-by-retry failure keeps reporting itself for up
- *        to 7 days. The LATEST attempt in a chain has no retry pointing at
- *        it, so it still surfaces if it is itself still failed.
- *     2. jobs whose linked issue has already reached a terminal state
- *        (`closed`, `released`) — the problem was resolved by hand even
- *        though the job row itself stays `failed`. Jobs with no linked issue
- *        (PM/system/deploy jobs) are NOT excluded by this rule.
- * - `pendingSkillUpdates` — reconcile runs at the human decision gate for
- *   projects the caller admins (explicit `project_members` admin OR org
- *   owner/admin — mirrors `effectiveProjectRole`, ISS-807): `status='decided'
- *   AND gate='human'`, OR `status='escalated' AND verdict='escalate' AND
- *   acknowledged_at IS NULL`. Derived ENTIRELY from live `reconcile_runs`
- *   state — never from notification read status (invariant 10: a read/unread
- *   flag became a mute switch once already, the 75-draft incident).
- */
-const NEEDS_REVIEW_STATUSES = ['developed', 'reopen'] as const;
-const AWAITING_INPUT_STATUSES = ['waiting', 'needs_info', 'on_hold'] as const;
-const FAILED_JOB_RESOLVED_ISSUE_STATUSES = ['closed', 'released'] as const;
-const PER_BUCKET = 5;
-const PENDING_SKILL_UPDATES_CAP = 20;
+const issueLink = (slug: string, docId: string) => `/projects/${slug}/issues/${docId}`;
 
-// Self-join alias for the retry-chain exclusion (a job and its retry are both
-// rows in `jobs`; drizzle requires an alias to reference the table twice).
-const retryJobs = alias(jobs, 'retry_jobs');
+function issueItem(kind: AttentionKind, r: AttentionIssueRow): AttentionItem {
+  return {
+    kind,
+    title: r.title,
+    link: issueLink(r.projectSlug, r.id),
+    since: r.updatedAt.toISOString(),
+    issueRef: `ISS-${r.issSeq}`,
+    status: r.status,
+    projectSlug: r.projectSlug,
+    projectName: r.projectName,
+  };
+}
 
-// cm:edge contract -> packages/core/src/notifications/notify-transitions.ts — a park notifies `assigneeId ?? createdById`, so the bucket that carries the same park must resolve ownership the same way. Notifying the creator and then bucketing by assignee is how a question reaches a human's inbox and no list they can act on: an agent-filed issue has no assignee, and MCP `forge_issues` cannot set one.
-// cm:why `needsReview` deliberately keeps assignee-only. A question parked on an issue you filed is addressed to you; a `developed` issue with no assignee is not yours to review merely because you opened it.
-function ownedForAnswer(userId: string) {
-  return or(
-    eq(issues.assigneeId, userId),
-    and(isNull(issues.assigneeId), eq(issues.createdById, userId)),
-  );
+function mentionItem(r: AttentionMentionRow): AttentionItem {
+  return {
+    kind: 'mention',
+    title: r.notificationTitle ?? `Mention in ISS-${r.issSeq}`,
+    link: issueLink(r.projectSlug, r.issueDocId),
+    since: r.mentionedAt.toISOString(),
+    issueRef: `ISS-${r.issSeq}`,
+    projectSlug: r.projectSlug,
+    projectName: r.projectName,
+  };
+}
+
+function failedJobItem(r: AttentionFailedJobRow): AttentionItem {
+  const item: AttentionItem = {
+    kind: 'failed_job',
+    title: r.error ? `${r.type} failed: ${r.error.slice(0, 80)}` : `${r.type} job failed`,
+    link: r.issueDocId ? issueLink(r.projectSlug, r.issueDocId) : `/projects/${r.projectSlug}`,
+    since: (r.finishedAt ?? r.createdAt).toISOString(),
+    status: 'failed',
+    projectSlug: r.projectSlug,
+    projectName: r.projectName,
+  };
+  if (r.issSeq != null) item.issueRef = `ISS-${r.issSeq}`;
+  return item;
+}
+
+function skillUpdateItem(r: AttentionReconcileRow): AttentionItem {
+  return {
+    kind: 'pending_skill_update',
+    title: 'Skill update pending',
+    link: `/projects/${r.projectSlug}/library?tab=updates`,
+    since: (r.decidedAt ?? r.createdAt).toISOString(),
+    status: r.status,
+    projectSlug: r.projectSlug,
+    projectName: r.projectName,
+  };
 }
 
 export const meAttentionRoutes = new Hono<{ Variables: AuthVars }>();
@@ -110,236 +105,48 @@ meAttentionRoutes.use('/attention', requireAuth(), assertEmailVerified());
 meAttentionRoutes.get('/attention', async (c) => {
   const userId = c.get('userId');
 
-  const [needsReviewRows, awaitingInputRows, mentionRows, failedJobRows, pendingSkillUpdateRows] =
-    await Promise.all([
-      db
-        .select({
-          id: issues.id,
-          issSeq: issues.issSeq,
-          title: issues.title,
-          status: issues.status,
-          updatedAt: issues.updatedAt,
-          projectSlug: projects.slug,
-          projectName: projects.name,
-        })
-        .from(issues)
-        .innerJoin(projects, eq(projects.id, issues.projectId))
-        .where(
-          and(eq(issues.assigneeId, userId), inArray(issues.status, [...NEEDS_REVIEW_STATUSES])),
-        )
-        .orderBy(desc(issues.updatedAt))
-        .limit(PER_BUCKET),
+  const [
+    needsReviewRows,
+    awaitingInputRows,
+    mentionRows,
+    failedJobRows,
+    pendingSkillUpdateRows,
+    unseenDraftRows,
+    unseenDraftCountRows,
+  ] = await Promise.all([
+    selectNeedsReview(userId),
+    selectAwaitingInput(userId),
+    selectMentions(userId),
+    selectFailedJobs(userId),
+    selectPendingSkillUpdates(userId),
+    selectUnseenDrafts(userId),
+    selectUnseenDraftCount(userId),
+  ]);
 
-      db
-        .select({
-          id: issues.id,
-          issSeq: issues.issSeq,
-          title: issues.title,
-          status: issues.status,
-          updatedAt: issues.updatedAt,
-          projectSlug: projects.slug,
-          projectName: projects.name,
-        })
-        .from(issues)
-        .innerJoin(projects, eq(projects.id, issues.projectId))
-        .where(and(ownedForAnswer(userId), inArray(issues.status, [...AWAITING_INPUT_STATUSES])))
-        .orderBy(desc(issues.updatedAt))
-        .limit(PER_BUCKET),
+  const needsReview = needsReviewRows.map((r) => issueItem('needs_review', r));
+  const awaitingInput = awaitingInputRows.map((r) => issueItem('awaiting_input', r));
+  const mentions = mentionRows.map(mentionItem);
+  const failedJobs = failedJobRows.map(failedJobItem);
+  const pendingSkillUpdates = pendingSkillUpdateRows.map(skillUpdateItem);
+  const unseenDrafts = unseenDraftRows.map((r) => issueItem('unseen_draft', r));
+  const unseenDraftsTotal = Number(unseenDraftCountRows[0]?.total ?? 0);
 
-      db
-        .select({
-          notificationId: notifications.id,
-          notificationTitle: notifications.title,
-          mentionedAt: commentMentions.createdAt,
-          issueDocId: issues.id,
-          issSeq: issues.issSeq,
-          projectSlug: projects.slug,
-          projectName: projects.name,
-        })
-        .from(commentMentions)
-        .innerJoin(comments, eq(comments.id, commentMentions.commentId))
-        .innerJoin(issues, eq(issues.id, comments.issueId))
-        .innerJoin(projects, eq(projects.id, issues.projectId))
-        .leftJoin(
-          notifications,
-          and(
-            eq(notifications.userId, commentMentions.userId),
-            eq(notifications.type, 'mention'),
-            eq(notifications.issueId, comments.issueId),
-          ),
-        )
-        .where(
-          and(
-            eq(commentMentions.userId, userId),
-            // Surface only mentions whose corresponding notification is unread,
-            // OR mentions with no notification row (older comments before the
-            // notify-mentions subscriber landed).
-            sql`(${notifications.read} IS NULL OR ${notifications.read} = false)`,
-          ),
-        )
-        .orderBy(desc(commentMentions.createdAt))
-        .limit(PER_BUCKET),
-
-      db
-        .select({
-          id: jobs.id,
-          type: jobs.type,
-          finishedAt: jobs.finishedAt,
-          createdAt: jobs.createdAt,
-          error: jobs.error,
-          issueDocId: issues.id,
-          issSeq: issues.issSeq,
-          projectSlug: projects.slug,
-          projectName: projects.name,
-        })
-        .from(jobs)
-        .innerJoin(projects, eq(projects.id, jobs.projectId))
-        .leftJoin(issues, eq(issues.id, jobs.issueId))
-        .where(
-          and(
-            eq(jobs.createdBy, userId),
-            eq(jobs.status, 'failed'),
-            sql`${jobs.createdAt} >= now() - interval '7 days'`,
-            // Exclusion 1: drop every superseded attempt in a retry chain — see
-            // the criteria doc above.
-            notExists(
-              db.select({ one: sql`1` }).from(retryJobs).where(eq(retryJobs.retryOf, jobs.id)),
-            ),
-            // Exclusion 2: drop failures whose linked issue already moved on;
-            // null-issue jobs (no `jobs.issueId`) are kept.
-            or(
-              isNull(issues.id),
-              notInArray(issues.status, [...FAILED_JOB_RESOLVED_ISSUE_STATUSES]),
-            ),
-          ),
-        )
-        .orderBy(desc(sql`coalesce(${jobs.finishedAt}, ${jobs.createdAt})`))
-        .limit(PER_BUCKET),
-
-      db
-        .select({
-          id: reconcileRuns.id,
-          status: reconcileRuns.status,
-          verdict: reconcileRuns.verdict,
-          createdAt: reconcileRuns.createdAt,
-          decidedAt: reconcileRuns.decidedAt,
-          projectSlug: projects.slug,
-          projectName: projects.name,
-        })
-        .from(reconcileRuns)
-        .innerJoin(projects, eq(projects.id, reconcileRuns.projectId))
-        .where(
-          and(
-            or(
-              exists(
-                db
-                  .select({ one: sql`1` })
-                  .from(projectMembers)
-                  .where(
-                    and(
-                      eq(projectMembers.projectId, projects.id),
-                      eq(projectMembers.userId, userId),
-                      eq(projectMembers.role, 'admin'),
-                    ),
-                  ),
-              ),
-              exists(
-                db
-                  .select({ one: sql`1` })
-                  .from(organizationMembers)
-                  .where(
-                    and(
-                      eq(organizationMembers.orgId, projects.orgId),
-                      eq(organizationMembers.userId, userId),
-                      inArray(organizationMembers.role, ['owner', 'admin']),
-                    ),
-                  ),
-              ),
-            ),
-            or(
-              and(eq(reconcileRuns.status, 'decided'), eq(reconcileRuns.gate, 'human')),
-              and(
-                eq(reconcileRuns.status, 'escalated'),
-                eq(reconcileRuns.verdict, 'escalate'),
-                isNull(reconcileRuns.acknowledgedAt),
-              ),
-            ),
-          ),
-        )
-        .orderBy(desc(sql`coalesce(${reconcileRuns.decidedAt}, ${reconcileRuns.createdAt})`))
-        .limit(PENDING_SKILL_UPDATES_CAP),
-    ]);
-
-  const issueLink = (slug: string, docId: string) => `/projects/${slug}/issues/${docId}`;
-
-  const needsReview: AttentionItem[] = needsReviewRows.map((r) => ({
-    kind: 'needs_review',
-    title: r.title,
-    link: issueLink(r.projectSlug, r.id),
-    since: r.updatedAt.toISOString(),
-    issueRef: `ISS-${r.issSeq}`,
-    status: r.status,
-    projectSlug: r.projectSlug,
-    projectName: r.projectName,
-  }));
-
-  const awaitingInput: AttentionItem[] = awaitingInputRows.map((r) => ({
-    kind: 'awaiting_input',
-    title: r.title,
-    link: issueLink(r.projectSlug, r.id),
-    since: r.updatedAt.toISOString(),
-    issueRef: `ISS-${r.issSeq}`,
-    status: r.status,
-    projectSlug: r.projectSlug,
-    projectName: r.projectName,
-  }));
-
-  const mentions: AttentionItem[] = mentionRows.map((r) => ({
-    kind: 'mention',
-    title: r.notificationTitle ?? `Mention in ISS-${r.issSeq}`,
-    link: issueLink(r.projectSlug, r.issueDocId),
-    since: r.mentionedAt.toISOString(),
-    issueRef: `ISS-${r.issSeq}`,
-    projectSlug: r.projectSlug,
-    projectName: r.projectName,
-  }));
-
-  const failedJobs: AttentionItem[] = failedJobRows.map((r) => {
-    const item: AttentionItem = {
-      kind: 'failed_job',
-      title: r.error ? `${r.type} failed: ${r.error.slice(0, 80)}` : `${r.type} job failed`,
-      link: r.issueDocId ? issueLink(r.projectSlug, r.issueDocId) : `/projects/${r.projectSlug}`,
-      since: (r.finishedAt ?? r.createdAt).toISOString(),
-      status: 'failed',
-      projectSlug: r.projectSlug,
-      projectName: r.projectName,
-    };
-    if (r.issSeq != null) item.issueRef = `ISS-${r.issSeq}`;
-    return item;
-  });
-
-  const pendingSkillUpdates: AttentionItem[] = pendingSkillUpdateRows.map((r) => ({
-    kind: 'pending_skill_update',
-    title: 'Skill update pending',
-    link: `/projects/${r.projectSlug}/library?tab=updates`,
-    since: (r.decidedAt ?? r.createdAt).toISOString(),
-    status: r.status,
-    projectSlug: r.projectSlug,
-    projectName: r.projectName,
-  }));
-
+  // cm:guard `total` counts the ROWS returned, never `unseenDraftsTotal` — the rail badge and the screen both derive from it, and a badge that counts rows the response did not send cannot be reconciled with what the user sees.
   const response: AttentionResponse = {
     needsReview,
     awaitingInput,
     mentions,
     failedJobs,
     pendingSkillUpdates,
+    unseenDrafts,
+    unseenDraftsTotal,
     total:
       needsReview.length +
       awaitingInput.length +
       mentions.length +
       failedJobs.length +
-      pendingSkillUpdates.length,
+      pendingSkillUpdates.length +
+      unseenDrafts.length,
   };
 
   return c.json(response);

@@ -77,6 +77,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "comment.created":
 		case "comment.updated":
 		case "comment.deleted": {
+			// cm:why a human comment is the receipt that clears an unseen agent-filed draft (ISS-881), and an @mention arrives as a comment too; without this the row the user just acted on stays on screen until something unrelated refetches.
+			qc.invalidateQueries({ queryKey: ["attention"] });
 			if (data?.issueId) {
 				qc.invalidateQueries({ queryKey: ["comments", data.issueId] });
 				qc.invalidateQueries({ queryKey: ["activities", data.issueId] });

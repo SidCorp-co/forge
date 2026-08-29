@@ -6,6 +6,7 @@
 // its source. Live via WS: cross-project events only arrive on subscribed rooms,
 // so we fan out a `useRoom` per project (the Ops-monitor pattern) — the
 // `['attention']` invalidations in `lib/ws/event-router.ts` then refetch.
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatRelativeTime } from "@/lib/utils/format";
 import {
@@ -35,6 +36,7 @@ const KIND_TONE: Record<AttentionKind, SemanticTone> = {
   mention: "neutral",
   failed_job: "failure",
   pending_skill_update: "attention",
+  unseen_draft: "attention",
   runner_offline: "infra",
 };
 
@@ -44,6 +46,7 @@ const KIND_META: Record<AttentionKind, { label: string; icon: IconName; fg: stri
   mention: { label: "Mention", icon: "mail", ...tone("mention") },
   failed_job: { label: "Failed", icon: "alert", ...tone("failed_job") },
   pending_skill_update: { label: "Skill update", icon: "clock", ...tone("pending_skill_update") },
+  unseen_draft: { label: "Unseen draft", icon: "mail", ...tone("unseen_draft") },
   runner_offline: { label: "Runner offline", icon: "server", ...tone("runner_offline") },
 };
 
@@ -91,32 +94,76 @@ function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: st
   );
 }
 
+function CountBadge({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      className="inline-flex min-w-[18px] items-center justify-center rounded-pill px-1.5 font-semibold"
+      style={{ fontSize: 11, lineHeight: "16px", color: "var(--fg-muted)", background: "var(--paper-100)" }}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** Above this many rows a group starts collapsed — a long backlog must be
+ *  countable without pushing every other bucket off the screen. */
+const COLLAPSE_ABOVE = 5;
+
 function Group({
   title,
   items,
   onOpen,
+  total,
 }: {
   title: string;
   items: AttentionItem[];
   onOpen: (link: string) => void;
+  /** Unclipped match count when the API capped `items`. Defaults to items.length. */
+  total?: number;
 }) {
+  const matched = total ?? items.length;
+  const collapsible = items.length > COLLAPSE_ABOVE;
+  const [open, setOpen] = useState(!collapsible);
   if (items.length === 0) return null;
+  const expanded = collapsible ? open : true;
+  const heading = (
+    <>
+      <h2 className="fg-label text-fg">{title}</h2>
+      <CountBadge>{matched}</CountBadge>
+    </>
+  );
   return (
     <section className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 px-0.5">
-        <h2 className="fg-label text-fg">{title}</h2>
-        <span
-          className="inline-flex min-w-[18px] items-center justify-center rounded-pill px-1.5 font-semibold"
-          style={{ fontSize: 11, lineHeight: "16px", color: "var(--fg-muted)", background: "var(--paper-100)" }}
+      {collapsible ? (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-2 rounded-md px-0.5 py-1 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]"
         >
-          {items.length}
-        </span>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        {items.map((it, i) => (
-          <AttentionRow key={`${it.kind}-${it.link}-${i}`} item={it} onOpen={onOpen} />
-        ))}
-      </div>
+          <Icon
+            name="chevronRight"
+            size={15}
+            className="text-subtle transition-transform duration-[150ms]"
+            style={{ transform: expanded ? "rotate(90deg)" : "none" }}
+          />
+          {heading}
+        </button>
+      ) : (
+        <div className="flex items-center gap-2 px-0.5">{heading}</div>
+      )}
+      {expanded && (
+        <div className="flex flex-col gap-1.5">
+          {items.map((it, i) => (
+            <AttentionRow key={`${it.kind}-${it.link}-${i}`} item={it} onOpen={onOpen} />
+          ))}
+          {matched > items.length && (
+            <p className="fg-caption px-0.5 text-muted">
+              Showing {items.length} of {matched}. Open one to work it — the rest stay here.
+            </p>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -135,14 +182,21 @@ export function AttentionScreen() {
     mentions: view.mentions.filter(keep),
     failedJobs: view.failedJobs.filter(keep),
     pendingSkillUpdates: view.pendingSkillUpdates.filter(keep),
+    unseenDrafts: view.unseenDrafts.filter(keep),
     offlineRunners: view.offlineRunners.filter(keep),
   };
+  // cm:why the org filter can drop rows core counted, so the unclipped total is scaled down to what survived it rather than shown raw — a "20 of 22" over 3 visible rows reads as a bug, and re-deriving it from the list alone would hide a real backlog instead.
+  const unseenDraftsTotal =
+    scoped.unseenDrafts.length === view.unseenDrafts.length
+      ? view.unseenDraftsTotal
+      : scoped.unseenDrafts.length;
   const total =
     scoped.needsReview.length +
     scoped.awaitingInput.length +
     scoped.mentions.length +
     scoped.failedJobs.length +
     scoped.pendingSkillUpdates.length +
+    scoped.unseenDrafts.length +
     scoped.offlineRunners.length;
 
   const open = (link: string) => router.push(link);
@@ -173,8 +227,8 @@ export function AttentionScreen() {
       <header className="mb-5">
         <h1 className="fg-h2">Attention</h1>
         <p className="fg-body-sm mt-1 text-muted">
-          Cross-project items waiting on you — reviews, blocked work, mentions, failures, and offline
-          runners.
+          Cross-project items waiting on you — reviews, blocked work, mentions, failures, unseen
+          drafts, and offline runners.
         </p>
       </header>
 
@@ -189,6 +243,12 @@ export function AttentionScreen() {
           <Group title="Mentions" items={scoped.mentions} onOpen={open} />
           <Group title="Failed jobs" items={scoped.failedJobs} onOpen={open} />
           <Group title="Skill updates" items={scoped.pendingSkillUpdates} onOpen={open} />
+          <Group
+            title="Unseen drafts"
+            items={scoped.unseenDrafts}
+            onOpen={open}
+            total={unseenDraftsTotal}
+          />
           <Group title="Offline runners" items={scoped.offlineRunners} onOpen={open} />
         </div>
       )}

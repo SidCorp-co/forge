@@ -6,7 +6,8 @@ pull**; routing by expertise and authority is stated intent, not built.
 ```mermaid
 flowchart LR
   subgraph BUILT["Built today"]
-    S[pipeline stops<br/>waiting · needs_info · reopen<br/>reason required] --> AT[GET /me/attention<br/>5 buckets, self-clearing]
+    S[pipeline stops<br/>waiting · needs_info · reopen<br/>reason required] --> AT[GET /me/attention<br/>6 buckets, self-clearing]
+    DR[agent-filed draft<br/>no assignee, no notification] --> AT
     ASG[issues.assigneeId<br/>one user] --> AT
     N[notifications<br/>@mentions] --> AT
     AT --> HUM([human decides]) --> BACK[status advances]
@@ -25,26 +26,38 @@ flowchart LR
 |---|---|
 | Assignment — exactly one user per issue | `schema.ts:issues` (`assigneeId`), `schema.ts:tasks` (`assigneeId`) |
 | Authority — flat roles, two scopes | `schema.ts:orgMemberRoles`, `schema.ts:projectMemberRoles`, `core/src/lib/authz.ts:effectiveProjectRole` |
-| The pull surface | `core/src/me/attention-routes.ts` |
+| The pull surface | `core/src/me/attention-routes.ts` (response + mapping), `core/src/me/attention-buckets.ts` (the bucket queries) |
 | Stop-and-ask | `schema.ts:waitingKinds`, `issues.reason`, status `needs_info` |
 | Mentions and delivery | `core/src/notifications/` |
 | UI | web `features/attention/`, `notifications/`, `operator/` |
 
-### The five attention buckets
+### The six attention buckets
 
 `GET /me/attention` is the routing surface that exists. Every bucket derives from **live** state, so
 it self-clears — never from a read/unread flag, which became a mute switch once already.
 
-| Bucket | Fires on |
-|---|---|
-| `needsReview` | issues assigned to the caller in `developed` or `reopen` |
-| `awaitingInput` | issues assigned to the caller in `waiting`, `needs_info` or `on_hold` |
-| `mentions` | unread `@mention` notifications |
-| `failedJobs` | jobs the caller triggered that failed in 7 days — excluding superseded retry attempts and jobs whose issue already reached `closed`/`released` |
-| `pendingSkillUpdates` | reconcile runs at the human decision gate, for projects the caller admins |
+Ownership resolves two ways. `needsReview` is **assignee-only**; the buckets that carry a question or
+a proposal use `ownedForAnswer` — assignee, or the **creator** while nobody is assigned — because an
+agent-filed issue has no assignee and MCP `forge_issues` cannot set one.
+
+| Bucket | Fires on | Owner rule |
+|---|---|---|
+| `needsReview` | issues in `developed` or `reopen` | assignee |
+| `awaitingInput` | issues in `waiting`, `needs_info` or `on_hold` | `ownedForAnswer` |
+| `mentions` | unread `@mention` notifications | mentioned user |
+| `failedJobs` | jobs the caller triggered that failed in 7 days — excluding superseded retry attempts and jobs whose issue already reached `closed`/`released` | job creator |
+| `pendingSkillUpdates` | reconcile runs at the human decision gate, for projects the caller admins | project admin |
+| `unseenDrafts` | `draft` issues an **agent** filed (`created_via` set and not `web`) that no human has commented on — capped, with `unseenDraftsTotal` reporting the unclipped count | `ownedForAnswer` |
+
+`unseenDrafts` exists because `draft` is inert by design: the dispatcher never picks it up and
+`NOTIFY_ON_STATUS` carries no `draft`, and that hook fires on `transition` rather than create — so
+before this bucket an agent-filed draft was reachable from no surface at all. A human comment
+(`is_ai = false AND author_device_id IS NULL`) is the receipt that clears it; an agent cannot forge
+one. That is an **approximation** of the durable seen-receipt tracked in ISS-791, not that receipt:
+it cannot tell "never read" from "read and parked without replying".
 
 The bucket criteria are documented in one place — the header comment on
-`me/attention-routes.ts` — and it must stay in sync with the `WHERE` clauses below it.
+`me/attention-buckets.ts` — and it must stay in sync with the `WHERE` clauses below it.
 
 ## Not built
 

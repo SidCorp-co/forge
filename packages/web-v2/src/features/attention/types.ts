@@ -12,6 +12,7 @@ export type AttentionKind =
   | "mention"
   | "failed_job"
   | "pending_skill_update"
+  | "unseen_draft"
   | "runner_offline";
 
 /** One actionable row. `link` is a basePath-relative href (router.push handles
@@ -36,6 +37,10 @@ export interface AttentionResponse {
   mentions: AttentionItem[];
   failedJobs: AttentionItem[];
   pendingSkillUpdates: AttentionItem[];
+  /** Agent-filed `draft` issues no human has commented on. Capped by core. */
+  unseenDrafts: AttentionItem[];
+  /** Unclipped count behind `unseenDrafts` — render it, don't recompute it. */
+  unseenDraftsTotal: number;
   total: number;
 }
 
