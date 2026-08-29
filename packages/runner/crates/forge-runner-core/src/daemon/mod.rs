@@ -56,6 +56,34 @@ impl Drop for InflightGuard {
 const DRAIN_TIMEOUT_SECS: u64 = 30 * 60;
 const DRAIN_POLL_SECS: u64 = 30;
 
+/// Wait for in-flight work to finish, up to [`DRAIN_TIMEOUT_SECS`].
+///
+/// Returns whether the daemon is idle NOW — the only condition under which a
+/// caller may `exit(0)`. A caller that ignores it and exits anyway does not
+/// kill the agent: the child is `setsid`-detached (`runner/inflight.rs`), so it
+/// survives and keeps writing the worktree while the relaunched daemon may
+/// start a second one on the same checkout.
+///
+// cm:guard both restart paths MUST route their exit through this return value — the update path re-checked and the credential path did not, and one bug in one of two copies of the same loop is exactly what this function exists to make impossible.
+// cm:guard a duplex session parked at `awaiting_input` counts as in-flight and will never drain on its own, so the timeout must stay a CEILING, not become a wait-forever. Making the park drainable — checkpoint, close, then exit — lands with phase 3 (docs/proposals/duplex-replaces-print.md); until residency exists no session can park, and the ceiling alone is correct.
+async fn drain_to_idle(inflight: &Arc<AtomicUsize>, what: &str) -> bool {
+    let mut waited = 0u64;
+    loop {
+        let busy = inflight.load(Ordering::Acquire);
+        if busy == 0 {
+            return true;
+        }
+        if waited >= DRAIN_TIMEOUT_SECS {
+            tracing::warn!(
+                "[{what}] still busy ({busy} in-flight) after {waited}s — deferring restart to the next idle window"
+            );
+            return false;
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(DRAIN_POLL_SECS)).await;
+        waited += DRAIN_POLL_SECS;
+    }
+}
+
 /// Run the daemon until Ctrl-C. `device_token` comes from the cred store.
 pub async fn run(
     cfg: Config,
@@ -192,25 +220,7 @@ pub async fn run(
                                         o.from,
                                         o.to
                                     );
-                                    let mut waited = 0u64;
-                                    loop {
-                                        let busy = inflight.load(Ordering::Acquire);
-                                        if busy == 0 {
-                                            break;
-                                        }
-                                        if waited >= DRAIN_TIMEOUT_SECS {
-                                            tracing::warn!(
-                                                "[update] still busy ({busy} in-flight) after {waited}s — deferring restart to next idle window"
-                                            );
-                                            break;
-                                        }
-                                        tokio::time::sleep(std::time::Duration::from_secs(
-                                            DRAIN_POLL_SECS,
-                                        ))
-                                        .await;
-                                        waited += DRAIN_POLL_SECS;
-                                    }
-                                    if inflight.load(Ordering::Acquire) == 0 {
+                                    if drain_to_idle(&inflight, "update").await {
                                         tracing::warn!(
                                             "[update] idle — restarting to apply update"
                                         );
@@ -272,11 +282,8 @@ pub async fn run(
                         tracing::warn!(
                             "[cred] device token changed (re-login detected) — draining in-flight work, then restarting to apply it"
                         );
-                        let mut waited = 0u64;
-                        while inflight.load(Ordering::Acquire) != 0 && waited < DRAIN_TIMEOUT_SECS {
-                            tokio::time::sleep(std::time::Duration::from_secs(DRAIN_POLL_SECS))
-                                .await;
-                            waited += DRAIN_POLL_SECS;
+                        if !drain_to_idle(&inflight, "cred").await {
+                            continue;
                         }
                         tracing::warn!("[cred] restarting to pick up new credentials");
                         // Exit 0 → systemd Restart=always relaunches THIS unit
@@ -605,4 +612,44 @@ async fn sweep_plugins(client: &CoreClient, cfg: &Config) {
         .collect();
 
     crate::workspace::plugin_sync::ensure_plugins(&cfg.plugins, &server).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn idle_drains_immediately() {
+        let inflight = Arc::new(AtomicUsize::new(0));
+        assert!(drain_to_idle(&inflight, "test").await);
+    }
+
+    // The bug this function was extracted for: the credential path drained,
+    // then exited whether or not anything was still running. A detached agent
+    // child survives that exit and keeps writing the worktree the relaunched
+    // daemon may hand to a second agent.
+    #[tokio::test(start_paused = true)]
+    async fn busy_past_the_ceiling_refuses_the_restart() {
+        let inflight = Arc::new(AtomicUsize::new(1));
+        assert!(!drain_to_idle(&inflight, "test").await);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn work_that_finishes_inside_the_ceiling_allows_the_restart() {
+        let inflight = Arc::new(AtomicUsize::new(1));
+        let finisher = inflight.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(DRAIN_POLL_SECS * 3)).await;
+            finisher.fetch_sub(1, Ordering::AcqRel);
+        });
+        assert!(drain_to_idle(&inflight, "test").await);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_ceiling_is_a_ceiling_and_not_a_wait_forever() {
+        let inflight = Arc::new(AtomicUsize::new(1));
+        let started = tokio::time::Instant::now();
+        let _ = drain_to_idle(&inflight, "test").await;
+        assert!(started.elapsed().as_secs() <= DRAIN_TIMEOUT_SECS + DRAIN_POLL_SECS);
+    }
 }
