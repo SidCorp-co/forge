@@ -65,7 +65,7 @@ const DRAIN_POLL_SECS: u64 = 30;
 /// start a second one on the same checkout.
 ///
 // cm:guard both restart paths MUST route their exit through this return value — the update path re-checked and the credential path did not, and one bug in one of two copies of the same loop is exactly what this function exists to make impossible.
-// cm:guard a duplex session parked at `awaiting_input` counts as in-flight and will never drain on its own, so the timeout must stay a CEILING, not become a wait-forever. Making the park drainable — checkpoint, close, then exit — lands with phase 3 (docs/proposals/duplex-replaces-print.md); until residency exists no session can park, and the ceiling alone is correct.
+// cm:guard a duplex session parked at `awaiting_input` will never drain on its own, so the timeout must stay a CEILING, not become a wait-forever. Chat parks TODAY (claude_code.rs emits the state at turn end), and `InflightGuard` is scoped to the frame task, so a parked session reads as IDLE here and this loop exits without closing it — the ceiling bounds the turn, never the park. Making the park drainable — checkpoint, close, then exit — lands with the phase 5 flip, and core's residency deadline (jobs/park-deadline.ts) is the backstop until then.
 async fn drain_to_idle(inflight: &Arc<AtomicUsize>, what: &str) -> bool {
     let mut waited = 0u64;
     loop {

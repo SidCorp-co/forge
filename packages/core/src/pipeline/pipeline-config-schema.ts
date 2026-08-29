@@ -447,7 +447,7 @@ export const pipelineConfigSchema = z
     lockedSkills: z.union([z.boolean(), z.array(z.string())]).optional(),
     // cm:guard ships ABSENT, which reads as `print`. Duplex is opt-in per project on purpose: it inverts the runner's terminal model (claude_code.rs tears the child down RESULT_EXIT_GRACE after the FIRST result line), so a project flipped here is running a different process lifecycle, not a tuned one.
     sessionMode: z.enum(['print', 'duplex']).optional(),
-    // cm:guard 0 is the DEFAULT and it is not a disabled value — at 0 a duplex session that finishes a turn is told to close immediately, which is the safe shape: `awaiting_input` exists for milliseconds and no runner slot is held. Raising it trades a held slot (RUNNER_CAP_PER_RUNNER = 1) for the park fast path, so it is a capacity decision, never a latency tweak.
+    // cm:guard NO READER on the runner side yet, so the declared default of 0 is in force nowhere — the ceiling actually enforced is `SESSION_IDLE_TIMEOUT` (claude_code.rs). Only core reads this today, as the residency backstop in jobs/park-deadline.ts. Giving it the runner reader means 0 becomes the fleet default and turns residency OFF for every project that has not opted in, which is why it lands with the phase 5 flip and not before: raising it trades a held slot (RUNNER_CAP_PER_RUNNER = 1) for the park fast path, so it is a capacity decision, never a latency tweak.
     sessionResidencySeconds: z.number().int().min(0).max(3600).optional(),
   })
   // PR-5 — cross-field validation: every `states[x].sessionGroup` must be a

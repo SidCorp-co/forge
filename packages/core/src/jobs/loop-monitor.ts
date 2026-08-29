@@ -29,6 +29,7 @@ import {
   requestJobKill,
   resolveKillConfirmation,
 } from './kill-gate.js';
+import { reapExpiredParks } from './park-deadline.js';
 import { LAST_PHASE_CTE, LAST_PROGRESS_AT } from './progress-signal.js';
 import { NOT_PARKED, RESIDENT_SESSION_JOIN, RESULT_GUARD } from './resident-session.js';
 
@@ -125,6 +126,8 @@ export interface LoopMonitorResult {
   sessions: ZombieSessionReapResult;
   /** Jobs failed because their linked session is terminal (`session_lost`). */
   sessionLostJobs: JobAxisReapResult;
+  /** parks closed because the runner never honoured its own residency ceiling. */
+  expiredParks: number;
   /** result-hop misses reaped (`stale`, no event for RESULT_QUIET_MINUTES). */
   resultMisses: JobAxisReapResult;
 }
@@ -724,9 +727,11 @@ export async function runLoopMonitor(
 ): Promise<LoopMonitorResult> {
   const ackMisses = await reapAckMisses(now, scope);
   const sessions = await reapZombieSessions(now, scope);
+  // cm:guard BEFORE reapSessionLostJobs, same same-tick propagation as ISS-280 — a park closed this tick must free its job on this tick too, or the runner slot it was holding stays held for a full extra minute for no reason.
+  const expiredParks = await reapExpiredParks(now, scope);
   const sessionLostJobs = await reapSessionLostJobs(now, scope);
   const resultMisses = await reapResultMisses(now, scope);
-  return { ackMisses, sessions, sessionLostJobs, resultMisses };
+  return { ackMisses, sessions, expiredParks, sessionLostJobs, resultMisses };
 }
 
 function broadcastZombieTransition(

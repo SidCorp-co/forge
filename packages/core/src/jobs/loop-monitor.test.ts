@@ -523,11 +523,11 @@ describe('reapResultMisses — result hop (was ISS-258 runStaleSweep), now kill-
 
 describe('runLoopMonitor — one tick, hops in dependency order', () => {
   it('aggregates all hop results', async () => {
-    // Every hop sees zero candidates by default.
     const result = await runLoopMonitor(new Date('2026-06-12T00:00:00Z'));
     expect(result).toEqual({
       ackMisses: { reaped: 0, killRequested: 0, awaitingKill: 0 },
       sessions: { queueTimedOut: 0, heartbeatTimedOut: 0, noClientAcked: 0 },
+      expiredParks: 0,
       sessionLostJobs: { reaped: 0, killRequested: 0, awaitingKill: 0 },
       resultMisses: { reaped: 0, killRequested: 0, awaitingKill: 0 },
     });
