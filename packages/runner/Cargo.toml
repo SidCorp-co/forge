@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/forge-runner-core", "crates/forge-runner"]
 
 [workspace.package]
-version = "0.8.0"
+version = "0.9.0"
 edition = "2021"
 license = "MIT"
 
