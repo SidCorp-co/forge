@@ -4,14 +4,15 @@
  * This is the ONLY runtime that can fail on this bucket's predicate.
  * `me/attention-routes.test.ts` mocks `db.select()` into a chain that ignores
  * every `where` and resolves positionally, so there it maps rows it was handed
- * and cannot disagree about which rows those should be. The four narrowings
- * ARE the deliverable: agent channel, owned-for-answer, no human comment, and
- * a cap whose total still tells the truth.
+ * and cannot disagree about which rows those should be. Four narrowings ARE the
+ * deliverable: agent channel, owner rule, no human comment, priority order
+ * under a cap whose total still tells the truth.
  *
- * Measured on forge-dev 2026-08-29, the state that produced ISS-881: 25 drafts,
- * 22 of them `created_via='mcp'`, all 22 with `assignee_id` NULL, all 22 with
- * zero human comments — and no surface anywhere listed one of them. ISS-871
- * ("half of all forge-drive sessions fail") was the 11th-newest of the 22.
+ * The routing half is what live data falsified first (forge-beta, 2026-08-30):
+ * MCP stamps `createdById: device.ownerId`, so creator-only returned 428
+ * qualifying drafts over 16 projects to the paired account nobody signs into
+ * and 0 to the org admin who does. ISS-871 sits at rank 17 of those 428 under
+ * priority-then-recency, and rank 28 under plain recency.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -22,6 +23,7 @@ import {
   createTestDevice,
   createTestOrgMember,
   createTestProject,
+  createTestProjectMember,
   createTestUser,
   seedOrg,
   setupTestDatabase,
@@ -37,6 +39,9 @@ let ownerId: string;
 let otherId: string;
 let projectId: string;
 let deviceId: string;
+let projectAdminId: string;
+let orgAdminId: string;
+let plainMemberId: string;
 let app: Hono<{ Variables: import('../../src/middleware/request-id.js').RequestIdVars }>;
 let authHeader: string;
 let seq = 0;
@@ -73,6 +78,19 @@ beforeEach(async () => {
   projectId = (await createTestProject(harness.db, ownerId, { orgId: org.id })).id;
   deviceId = (await createTestDevice(harness.db, ownerId)).id;
 
+  projectAdminId = (await createTestUser(harness.db)).id;
+  orgAdminId = (await createTestUser(harness.db)).id;
+  plainMemberId = (await createTestUser(harness.db)).id;
+  await harness.db.execute(sql`UPDATE users SET email_verified_at = now()`);
+  await createTestOrgMember(harness.db, { orgId: org.id, userId: projectAdminId });
+  await createTestOrgMember(harness.db, { orgId: org.id, userId: plainMemberId });
+  await createTestOrgMember(harness.db, { orgId: org.id, userId: orgAdminId, role: 'admin' });
+  await createTestProjectMember(harness.db, {
+    projectId,
+    userId: projectAdminId,
+    role: 'admin',
+  });
+
   const { signUserToken } = await import('../../src/auth/jwt.js');
   authHeader = `Bearer ${await signUserToken(ownerId)}`;
 });
@@ -98,16 +116,31 @@ async function attention(): Promise<Body> {
   return (await res.json()) as Body;
 }
 
+async function attentionAs(userId: string): Promise<Body> {
+  const { signUserToken } = await import('../../src/auth/jwt.js');
+  const res = await app.request('/api/me/attention', {
+    headers: { authorization: `Bearer ${await signUserToken(userId)}` },
+  });
+  expect(res.status).toBe(200);
+  return (await res.json()) as Body;
+}
+
 async function draft(
-  opts: { status?: string; via?: string | null; createdBy?: string; assignee?: string | null } = {},
+  opts: {
+    status?: string;
+    via?: string | null;
+    createdBy?: string;
+    assignee?: string | null;
+    priority?: string;
+  } = {},
 ): Promise<string> {
   const id = randomUUID();
   seq += 1;
   await harness.db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, created_via, created_by_id, assignee_id)
+    INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_via, created_by_id, assignee_id)
     VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${opts.status ?? 'draft'},
-            ${opts.via === undefined ? 'mcp' : opts.via}, ${opts.createdBy ?? ownerId},
-            ${opts.assignee ?? null})
+            ${opts.priority ?? 'medium'}, ${opts.via === undefined ? 'mcp' : opts.via},
+            ${opts.createdBy ?? ownerId}, ${opts.assignee ?? null})
   `);
   return id;
 }
@@ -155,8 +188,32 @@ describe('attention · unseen agent-filed drafts', () => {
     expect((await attention()).unseenDrafts).toHaveLength(0);
   });
 
-  it('does not surface an unowned draft the caller did not file', async () => {
+  // cm:why this case INVERTED with the routing fix and that is the point: `ownerId` administers the project, and an unowned agent proposal is a triage item for whoever administers it — not only for whichever account happened to be holding the runner's credential.
+  it('surfaces an unowned draft the caller did not file, when the caller administers the project', async () => {
     await draft({ createdBy: otherId, assignee: null });
+    expect((await attention()).unseenDrafts).toHaveLength(1);
+  });
+
+  it('reaches an explicit project admin who neither filed it nor owns it', async () => {
+    await draft({ createdBy: otherId, assignee: null });
+    expect((await attentionAs(projectAdminId)).unseenDrafts).toHaveLength(1);
+  });
+
+  it('reaches an org admin, which is how the real deployment routes', async () => {
+    await draft({ createdBy: otherId, assignee: null });
+    expect((await attentionAs(orgAdminId)).unseenDrafts).toHaveLength(1);
+  });
+
+  // cm:guard membership alone must NOT admit anyone. Every project member seeing every agent proposal is how a queue becomes noise nobody reads, which is the failure mode this bucket was built to avoid rather than cause.
+  it('does not reach a plain project member who did not file it', async () => {
+    await draft({ createdBy: otherId, assignee: null });
+    expect((await attentionAs(plainMemberId)).unseenDrafts).toHaveLength(0);
+  });
+
+  // cm:guard assignment wins over BOTH fallbacks. An assigned proposal in the project admin's list as well means two people each assume the other triaged it.
+  it('does not reach the project admin once someone is assigned', async () => {
+    await draft({ createdBy: otherId, assignee: otherId });
+    expect((await attentionAs(projectAdminId)).unseenDrafts).toHaveLength(0);
     expect((await attention()).unseenDrafts).toHaveLength(0);
   });
 
@@ -205,6 +262,17 @@ describe('attention · unseen agent-filed drafts', () => {
     const id = await draft();
     await harness.db.execute(sql`UPDATE issues SET status = 'open' WHERE id = ${id}`);
     expect((await attention()).unseenDrafts).toHaveLength(0);
+  });
+
+  // cm:guard priority outranks recency here, or a fleet-deep backlog hands all 20 rows to whichever project wrote last. Measured: under plain recency ISS-871 sat at rank 28 of 428 and this bucket could not show its own reason for existing.
+  it('orders by priority before recency', async () => {
+    await draft({ priority: 'low' });
+    await draft({ priority: 'critical' });
+    await draft({ priority: 'medium' });
+    const rows = (await attention()).unseenDrafts;
+    expect(rows.map((r) => r.issueRef)).toHaveLength(3);
+    const seqs = rows.map((r) => r.issueRef);
+    expect(seqs[0]).toBe(`ISS-${seq - 1}`);
   });
 
   // cm:guard the cap bounds the SCREEN, never the truth. A total computed from the capped list instead of the predicate is how a 22-deep backlog renders as "20" and stops being a backlog anyone chases.

@@ -57,12 +57,12 @@ import { agentChannelCondition } from '../issues/creator.js';
  *   acknowledged_at IS NULL`. Derived ENTIRELY from live `reconcile_runs`
  *   state — never from notification read status (invariant 10: a read/unread
  *   flag became a mute switch once already, the 75-draft incident).
- * - `unseenDrafts`   — `draft` issues an AGENT filed, owned by the caller
- *   through {@link ownedForAnswer}, that no human has commented on yet
- *   (ISS-881). `draft` is the inert proposal status: the dispatcher never
- *   touches it and no notification fires on a draft create, so before this
- *   bucket an agent-filed draft was reachable from no surface at all.
- *   Three deliberate narrowings, each of which the queue depends on:
+ * - `unseenDrafts`   — `draft` issues an AGENT filed that no human has
+ *   commented on yet, routed by {@link unseenDraftOwner} (ISS-881). `draft` is
+ *   the inert proposal status: the dispatcher never touches it and no
+ *   notification fires on a draft create, so before this bucket an agent-filed
+ *   draft was reachable from no surface at all.
+ *   Four deliberate narrowings, each of which the queue depends on:
  *     1. agent channel only (`created_via` set and not `web`) — a draft a
  *        person typed on the web has already been seen by that person, and
  *        nagging them about it is what teaches a queue to be ignored. Legacy
@@ -73,9 +73,16 @@ import { agentChannelCondition } from '../issues/creator.js';
  *        receipt, and an agent cannot forge it. This is an APPROXIMATION of
  *        the durable seen-receipt ISS-791 owns, not that receipt: it cannot
  *        tell "never read" from "read and parked without replying".
- *     3. capped at {@link UNSEEN_DRAFTS_CAP} while `unseenDraftsTotal` reports
- *        the UNCLIPPED count, so a backlog is bounded on screen and never
- *        hidden from it.
+ *     3. assignment wins, and only an UNOWNED draft falls back to the creator
+ *        or to whoever administers the project — see
+ *        {@link unseenDraftOwner} for why the creator alone reaches nobody.
+ *     4. ordered by priority then recency and capped at
+ *        {@link UNSEEN_DRAFTS_CAP}, while `unseenDraftsTotal` reports the
+ *        UNCLIPPED count — so a backlog is bounded on screen, ordered by what
+ *        matters, and never hidden. Measured on forge-beta 2026-08-30 for the
+ *        real owner: 428 qualifying drafts over 16 projects, of which 22 are
+ *        forge-dev's. This bucket is CALLER-scoped, not project-scoped; any
+ *        single project's figure understates what one person sees.
  *   Self-clearing both ways: leaving `draft`, or a human comment, drops the
  *   row with no bookkeeping. Nothing here writes state.
  */
@@ -85,7 +92,7 @@ const FAILED_JOB_RESOLVED_ISSUE_STATUSES = ['closed', 'released'] as const;
 const PER_BUCKET = 5;
 const PENDING_SKILL_UPDATES_CAP = 20;
 
-// cm:why 20, not PER_BUCKET: the cap must still return the draft this bucket was built to surface. ISS-871 was the 11th-newest of 22 qualifying drafts on forge-dev when it was measured, so every cap at or below 10 renders the bucket unable to show its own reason for existing.
+// cm:why 20, not PER_BUCKET: the cap must still return the draft this bucket was built to surface. Measured on forge-beta 2026-08-30 against the CALLER's full cross-project set (428 drafts, 16 projects — not the 22 in forge-dev alone), ISS-871 ranks 17th under this bucket's priority-then-recency order, so every cap at or below 16 renders the bucket unable to show its own reason for existing. Under plain recency it ranked 28th, which is why the order is not `desc(updatedAt)` like its neighbours.
 export const UNSEEN_DRAFTS_CAP = 20;
 
 // cm:why drizzle cannot reference one table twice in a statement, and the retry-chain exclusion compares a job against its own retry row.
@@ -131,7 +138,6 @@ export interface AttentionReconcileRow {
 
 // cm:edge contract -> packages/core/src/notifications/notify-transitions.ts — a park notifies `assigneeId ?? createdById`, so the bucket that carries the same park must resolve ownership the same way. Notifying the creator and then bucketing by assignee is how a question reaches a human's inbox and no list they can act on: an agent-filed issue has no assignee, and MCP `forge_issues` cannot set one.
 // cm:why `needsReview` deliberately keeps assignee-only. A question parked on an issue you filed is addressed to you; a `developed` issue with no assignee is not yours to review merely because you opened it.
-// cm:why `unseenDrafts` shares this resolver on WEAKER footing than the parks do: NOTIFY_ON_STATUS carries no `draft` and that hook fires on `transition`, never on create, so a draft create notifies nobody. For an agent-filed draft this bucket is the only surface in the product, and a narrower owner rule here does not degrade a signal — it removes the only one.
 export function ownedForAnswer(userId: string) {
   return or(
     eq(issues.assigneeId, userId),
@@ -169,12 +175,50 @@ export function selectAwaitingInput(userId: string): Promise<AttentionIssueRow[]
     .limit(PER_BUCKET) as Promise<AttentionIssueRow[]>;
 }
 
-// cm:guard both reads of this bucket MUST go through this one predicate. A list built from a wider rule than the count (or the reverse) shows 20 rows under a total of 3 — the surface would then be lying in the same breath it was added to stop a surface from lying.
+function adminsProject(userId: string) {
+  return or(
+    exists(
+      db
+        .select({ one: sql`1` })
+        .from(projectMembers)
+        .where(
+          and(
+            eq(projectMembers.projectId, projects.id),
+            eq(projectMembers.userId, userId),
+            eq(projectMembers.role, 'admin'),
+          ),
+        ),
+    ),
+    exists(
+      db
+        .select({ one: sql`1` })
+        .from(organizationMembers)
+        .where(
+          and(
+            eq(organizationMembers.orgId, projects.orgId),
+            eq(organizationMembers.userId, userId),
+            inArray(organizationMembers.role, ['owner', 'admin']),
+          ),
+        ),
+    ),
+  );
+}
+
+// cm:guard assignment still wins: an assigned draft reaches ONLY its assignee. The creator-or-admin fallback applies while nobody owns it, so widening it past `assigneeId IS NULL` puts one proposal in two lists and each reader assumes the other triaged it.
+// cm:why the creator alone reaches NOBODY on a real deployment, which is the defect this rule exists to fix rather than a refinement of it. MCP `forge_issues create` stamps `createdById: device.ownerId` — the account that paired the runner — while the person who opens the UI signs in as a different org admin. Measured on forge-beta 2026-08-30: creator-only returned 428 drafts to the paired account nobody signs into and exactly 0 to the org admin who does, so `draft` had a bucket and still reached no human. Project admin is the same resolver `pendingSkillUpdates` already uses for a triage gate.
+function unseenDraftOwner(userId: string): SQL {
+  return or(
+    eq(issues.assigneeId, userId),
+    and(isNull(issues.assigneeId), or(eq(issues.createdById, userId), adminsProject(userId))),
+  ) as SQL;
+}
+
+// cm:guard both reads of this bucket MUST go through this one predicate, and both MUST join `projects` — `adminsProject` resolves against `projects.id`/`projects.orgId`. A list built from a wider rule than the count (or the reverse) shows 20 rows under a total of 3, and the surface would then be lying in the same breath it was added to stop a surface from lying.
 function unseenDraftCondition(userId: string): SQL {
   return and(
     eq(issues.status, 'draft'),
     agentChannelCondition(),
-    ownedForAnswer(userId),
+    unseenDraftOwner(userId),
     notExists(
       db
         .select({ one: sql`1` })
@@ -190,13 +234,16 @@ function unseenDraftCondition(userId: string): SQL {
   ) as SQL;
 }
 
+// cm:why priority before recency, unlike every neighbouring bucket: those are capped at 5 over a caller's own handful, this one sits in front of a 428-deep cross-project backlog where pure recency means one busy project owns all 20 rows and a `high` proposal from last week is never seen.
+const PRIORITY_RANK = sql`case ${issues.priority} when 'critical' then 0 when 'high' then 1 when 'medium' then 2 when 'low' then 3 else 4 end`;
+
 export function selectUnseenDrafts(userId: string): Promise<AttentionIssueRow[]> {
   return db
     .select(issueFields)
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(unseenDraftCondition(userId))
-    .orderBy(desc(issues.updatedAt))
+    .orderBy(PRIORITY_RANK, desc(issues.updatedAt))
     .limit(UNSEEN_DRAFTS_CAP) as Promise<AttentionIssueRow[]>;
 }
 
@@ -205,6 +252,7 @@ export function selectUnseenDraftCount(userId: string): Promise<{ total: number 
   return db
     .select({ total: sql<number>`count(*)::int` })
     .from(issues)
+    .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(unseenDraftCondition(userId)) as Promise<{ total: number | null }[]>;
 }
 
@@ -269,35 +317,6 @@ export function selectFailedJobs(userId: string): Promise<AttentionFailedJobRow[
     )
     .orderBy(desc(sql`coalesce(${jobs.finishedAt}, ${jobs.createdAt})`))
     .limit(PER_BUCKET) as Promise<AttentionFailedJobRow[]>;
-}
-
-function adminsProject(userId: string) {
-  return or(
-    exists(
-      db
-        .select({ one: sql`1` })
-        .from(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, projects.id),
-            eq(projectMembers.userId, userId),
-            eq(projectMembers.role, 'admin'),
-          ),
-        ),
-    ),
-    exists(
-      db
-        .select({ one: sql`1` })
-        .from(organizationMembers)
-        .where(
-          and(
-            eq(organizationMembers.orgId, projects.orgId),
-            eq(organizationMembers.userId, userId),
-            inArray(organizationMembers.role, ['owner', 'admin']),
-          ),
-        ),
-    ),
-  );
 }
 
 export function selectPendingSkillUpdates(userId: string): Promise<AttentionReconcileRow[]> {

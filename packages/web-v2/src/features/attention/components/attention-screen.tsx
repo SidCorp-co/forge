@@ -164,7 +164,7 @@ function Group({
           ))}
           {matched > items.length && (
             <p className="fg-caption px-0.5 text-muted">
-              Showing {items.length} of {matched} — clear these and the rest follow.
+              Showing {items.length} of {matched}, highest priority first.
             </p>
           )}
         </div>

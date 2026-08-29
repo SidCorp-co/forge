@@ -47,7 +47,7 @@ agent-filed issue has no assignee and MCP `forge_issues` cannot set one.
 | `mentions` | unread `@mention` notifications | mentioned user |
 | `failedJobs` | jobs the caller triggered that failed in 7 days — excluding superseded retry attempts and jobs whose issue already reached `closed`/`released` | job creator |
 | `pendingSkillUpdates` | reconcile runs at the human decision gate, for projects the caller admins | project admin |
-| `unseenDrafts` | `draft` issues an **agent** filed (`created_via` set and not `web`) that no human has commented on — capped, with `unseenDraftsTotal` reporting the unclipped count | `ownedForAnswer` |
+| `unseenDrafts` | `draft` issues an **agent** filed (`created_via` set and not `web`) that no human has commented on — priority-ordered, capped, with `unseenDraftsTotal` reporting the unclipped count | assignee; unassigned falls back to creator **or project admin** |
 
 `unseenDrafts` exists because `draft` is inert by design: the dispatcher never picks it up and
 `NOTIFY_ON_STATUS` carries no `draft`, and that hook fires on `transition` rather than create — so
@@ -55,6 +55,18 @@ before this bucket an agent-filed draft was reachable from no surface at all. A 
 (`is_ai = false AND author_device_id IS NULL`) is the receipt that clears it; an agent cannot forge
 one. That is an **approximation** of the durable seen-receipt tracked in ISS-791, not that receipt:
 it cannot tell "never read" from "read and parked without replying".
+
+**Why it does not stop at the creator.** MCP `forge_issues create` stamps `createdById` with the
+account that paired the runner, and on a real deployment the person who opens the UI signs in as a
+different org admin. Measured on forge-beta 2026-08-30: a creator-only rule returned 428 drafts to
+the paired account nobody signs into and **0** to the org admin who does. So an unassigned draft
+also reaches whoever administers the project — the resolver `pendingSkillUpdates` already uses for a
+triage gate. Assignment still wins: an assigned draft reaches only its assignee.
+
+**Scope, stated plainly:** every bucket here is CALLER-scoped, not project-scoped. One org admin's
+`unseenDrafts` spans every project they administer (428 over 16 projects when this shipped), which
+is why the cap is 20, the order is priority-then-recency, and the screen collapses the group above
+five rows while the count stays honest.
 
 The bucket criteria are documented in one place — the header comment on
 `me/attention-buckets.ts` — and it must stay in sync with the `WHERE` clauses below it.
