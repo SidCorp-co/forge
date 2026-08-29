@@ -2162,6 +2162,14 @@ export const agentSessionStatuses = [
 ] as const;
 export type AgentSessionStatus = (typeof agentSessionStatuses)[number];
 
+// cm:guard the four statuses after which NOTHING more can happen in the session. `resolveSessionSend` reads this to decide a queued message can never be consumed, and `lifecycle/transition.ts` restricts its `to` to it — a status added here that is not in fact terminal would let a send resolve `gone` against a session still running, which is the second-agent-on-one-worktree race RFC 0003 exists to avoid.
+export const terminalAgentSessionStatuses = [
+  'completed',
+  'failed',
+  'completed_via_recovery',
+  'cancelled_stale',
+] as const satisfies readonly AgentSessionStatus[];
+
 // cm:guard `status` and `runtimeState` answer different questions and must never be collapsed: `status` is the JOB's lifecycle (a `running` session may be mid-turn or parked on stdin), `runtimeState` is the PROCESS's, and it is the only one that distinguishes a session waiting for input from one still working. Print-mode sessions leave it NULL — a NULL here means "this runner never reported, infer nothing", which is not the same as `working`.
 // cm:guard `awaiting_input` is exempt from the loop-monitor QUIET-TIMEOUT only — it still HOLDS ITS RUNNER SLOT the entire time it is parked, exactly like `working`, and the residency window is what bounds it instead. Reading this as slot-exempt is the misreading that leaks a runner permanently: RUNNER_CAP_PER_RUNNER = 1, and once the quiet clock no longer applies, the residency deadline is the only thing that will ever reap a parked duplex session.
 export const sessionRuntimeStates = [

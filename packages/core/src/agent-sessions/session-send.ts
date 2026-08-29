@@ -16,7 +16,13 @@
 
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, jobs, runners } from '../db/schema.js';
+import {
+  type AgentSessionStatus,
+  agentSessions,
+  jobs,
+  runners,
+  terminalAgentSessionStatuses,
+} from '../db/schema.js';
 import {
   type SessionInboxKind,
   type SessionSendOutcome,
@@ -28,6 +34,10 @@ import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 
 export type SessionInboxRow = typeof sessionInbox.$inferSelect;
+
+function isTerminalSession(status: AgentSessionStatus): boolean {
+  return (terminalAgentSessionStatuses as readonly string[]).includes(status);
+}
 
 const SEND_ACK_MS_DEFAULT = 10_000;
 const SEND_ACK_MS_FLOOR = 2_000;
@@ -226,8 +236,9 @@ export interface SendResolution {
  * Decide what one episode now means. Three outcomes, and the third is not a
  * degenerate case of the other two:
  *   - `delivered` — the runner answered within this episode;
- *   - `gone` — the runner answered `gone`, or the owning runner's heartbeat is
- *     stale past `dispatchLivenessMs()`, which is a fact about the box;
+ *   - `gone` — the runner answered `gone`, the session has reached a terminal
+ *     status, or the owning runner's heartbeat is stale past
+ *     `dispatchLivenessMs()`, which is a fact about the box;
  *   - `unknown` — the episode has lapsed with the runner online and silent.
  */
 // cm:guard `unknown` must never be relabelled `gone` by a caller that wants a binary. `gone` is the branch that mutates issue status and enqueues, so acting on it while the message was in fact consumed puts a second agent on the same worktree — the race `kill-gate.ts` exists to prevent. An `unknown` is resolved by waiting for the apply report or by driving the job terminal through the kill gate first.
@@ -242,11 +253,13 @@ export async function resolveSessionSend(
   if (isSendEpisodeLive(row, now)) return { outcome: 'unknown', applied };
 
   const [session] = await db
-    .select({ deviceId: agentSessions.deviceId })
+    .select({ deviceId: agentSessions.deviceId, status: agentSessions.status })
     .from(agentSessions)
     .where(eq(agentSessions.id, row.agentSessionId))
     .limit(1);
-  if (!session?.deviceId) return { outcome: 'gone', applied };
+  // cm:guard the ONLY path out of `unknown` for a runner that is online and silent forever — an old build with no `session.send` arm, or one that dropped the frame. Without it a lapsed episode stays `unknown` for as long as the box heartbeats, and the caller waiting on `gone` to fall back never falls back, so the human's answer is lost in silence. Safe precisely because it is terminal: no agent is running on that worktree, so the fallback cannot put a second one there.
+  if (!session || isTerminalSession(session.status)) return { outcome: 'gone', applied };
+  if (!session.deviceId) return { outcome: 'gone', applied };
 
   const [runner] = await db
     .select({ lastSeenAt: runners.lastSeenAt })

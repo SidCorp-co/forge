@@ -30,13 +30,13 @@
 import type { SQL } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import {
-  type AgentSessionStatus,
   agentSessions,
   type JobStatus,
   jobs,
   kernelTransitions,
   type PipelineRunStatus,
   pipelineRuns,
+  type terminalAgentSessionStatuses,
 } from '../db/schema.js';
 import { logger } from '../logger.js';
 
@@ -84,10 +84,7 @@ export interface JobTransitionArgs extends BaseArgs {
 }
 export interface SessionTransitionArgs extends BaseArgs {
   entity: 'session';
-  to: Extract<
-    AgentSessionStatus,
-    'completed' | 'failed' | 'completed_via_recovery' | 'cancelled_stale'
-  >;
+  to: (typeof terminalAgentSessionStatuses)[number];
   set?: Partial<Omit<SessionRow, 'id' | 'status'>>;
 }
 export interface RunTransitionArgs extends BaseArgs {

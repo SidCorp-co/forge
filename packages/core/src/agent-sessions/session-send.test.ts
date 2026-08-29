@@ -13,8 +13,19 @@ vi.mock('drizzle-orm', () => ({
 }));
 
 vi.mock('../db/schema.js', () => ({
-  agentSessions: { id: 'id', deviceId: 'device_id', lastInboxSeq: 'last_inbox_seq' },
+  agentSessions: {
+    id: 'id',
+    deviceId: 'device_id',
+    lastInboxSeq: 'last_inbox_seq',
+    status: 'status',
+  },
   jobs: 'jobs-table',
+  terminalAgentSessionStatuses: [
+    'completed',
+    'failed',
+    'completed_via_recovery',
+    'cancelled_stale',
+  ],
   runners: { deviceId: 'device_id', lastSeenAt: 'last_seen_at' },
   sessionInbox: { agentSessionId: 'sid', kind: 'kind', intentId: 'iid', seq: 'seq', id: 'id' },
 }));
@@ -99,7 +110,7 @@ describe('resolveSessionSend', () => {
   });
 
   it('refuses to read an answer whose episode has aged out', async () => {
-    selectQueue.push([{ deviceId: 'dev-1' }], [{ lastSeenAt: new Date(NOW) }]);
+    selectQueue.push([{ deviceId: 'dev-1', status: 'running' }], [{ lastSeenAt: new Date(NOW) }]);
     const r = row({ sendConfirmedAt: new Date(NOW + 100), sendOutcome: 'delivered' });
     const past = NOW + sendEpisodeWindowMs() + 1;
     const res = await resolveSessionSend(r, past);
@@ -107,19 +118,50 @@ describe('resolveSessionSend', () => {
   });
 
   it('is unknown, not gone, when the episode lapsed but the runner is heartbeating', async () => {
-    selectQueue.push([{ deviceId: 'dev-1' }], [{ lastSeenAt: new Date(NOW + 100) }]);
+    selectQueue.push(
+      [{ deviceId: 'dev-1', status: 'running' }],
+      [{ lastSeenAt: new Date(NOW + 100) }],
+    );
     const res = await resolveSessionSend(row(), NOW + sendEpisodeWindowMs() + 1);
     expect(res.outcome).toBe('unknown');
   });
 
+  // cm:guard the terminal-session cases are the ONLY exit from `unknown` when the box keeps heartbeating — a runner too old to know the `session.send` arm is online and silent forever. Delete these and a lost answer looks exactly like a slow one.
+  it.each(['completed', 'failed', 'completed_via_recovery', 'cancelled_stale'])(
+    'is gone once the session has reached %s, however healthy the runner',
+    async (status) => {
+      selectQueue.push([{ deviceId: 'dev-1', status }], [{ lastSeenAt: new Date(NOW + 100) }]);
+      const res = await resolveSessionSend(row(), NOW + sendEpisodeWindowMs() + 1);
+      expect(res.outcome).toBe('gone');
+    },
+  );
+
+  it('stays unknown for a session that is still running', async () => {
+    selectQueue.push(
+      [{ deviceId: 'dev-1', status: 'running' }],
+      [{ lastSeenAt: new Date(NOW + 100) }],
+    );
+    const res = await resolveSessionSend(row(), NOW + sendEpisodeWindowMs() + 1);
+    expect(res.outcome).toBe('unknown');
+  });
+
+  it('is gone when the session row has vanished entirely', async () => {
+    selectQueue.push([]);
+    const res = await resolveSessionSend(row(), NOW + sendEpisodeWindowMs() + 1);
+    expect(res.outcome).toBe('gone');
+  });
+
   it('is gone when the owning runner stopped heartbeating', async () => {
-    selectQueue.push([{ deviceId: 'dev-1' }], [{ lastSeenAt: new Date(NOW - 600_000) }]);
+    selectQueue.push(
+      [{ deviceId: 'dev-1', status: 'running' }],
+      [{ lastSeenAt: new Date(NOW - 600_000) }],
+    );
     const res = await resolveSessionSend(row(), NOW + sendEpisodeWindowMs() + 1);
     expect(res.outcome).toBe('gone');
   });
 
   it('is gone when the session has no device to reach', async () => {
-    selectQueue.push([{ deviceId: null }]);
+    selectQueue.push([{ deviceId: null, status: 'running' }]);
     const res = await resolveSessionSend(row(), NOW + sendEpisodeWindowMs() + 1);
     expect(res.outcome).toBe('gone');
   });

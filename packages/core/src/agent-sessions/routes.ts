@@ -27,6 +27,7 @@ import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from 
 import { extractTurnPreview } from './chat-preview.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
 import { createChatSessionRow } from './chat-turn.js';
+import { agentSessionInboxRoutes } from './inbox-routes.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
 import { agentSessionPipelineControlRoutes } from './pipeline-control-routes.js';
 import { BLIND_SCHEDULE_RUN_REASON, isBlindScheduleRun } from './schedule-evidence.js';
@@ -126,6 +127,7 @@ agentSessionRoutes.use('*', requireUserOrDevice(), assertEmailVerified());
 // / prompt-built / desktop-status) — mounted FIRST so they keep beating the
 // `:id` handlers below, exactly like the pre-split registration order.
 agentSessionRoutes.route('/', agentSessionLifecycleRoutes);
+agentSessionRoutes.route('/', agentSessionInboxRoutes);
 
 // Pipeline-session types for the retry endpoint. Mirrors the predicate
 // used by sweeper.ts and the migration backfill.
