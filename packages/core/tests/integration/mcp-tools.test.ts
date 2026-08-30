@@ -18,6 +18,8 @@ import {
 // Embeddings service is stubbed so no external LiteLLM needed.
 
 const DIM = 1536;
+// cm:edge contract -> packages/core/src/issues/release-record-required.ts — a device close with no releaseNotes is refused, and every close in this file goes over MCP as a device
+const SKIP_NOTE = { section: 'Skip', userFacing: '-' };
 
 function hotVector(hotIdx: number, mag = 1): number[] {
   const v = new Array<number>(DIM).fill(0);
@@ -146,8 +148,6 @@ describe('F4 MCP tools integration', () => {
     return JSON.parse(first.text);
   }
 
-  // ---------- tools/list ----------
-
   it('tools/list: includes the known tools with input schemas', async () => {
     const { user } = await seedProject('admin');
     const { plaintext } = await issueDeviceToken({
@@ -178,8 +178,6 @@ describe('F4 MCP tools integration', () => {
       await ctx.close();
     }
   });
-
-  // ---------- forge_memory.search ----------
 
   it('forge_memory.search: happy path returns hits', async () => {
     const { user, project } = await seedProject('admin');
@@ -257,8 +255,6 @@ describe('F4 MCP tools integration', () => {
     }
   });
 
-  // ---------- forge_skills.list / get ----------
-
   it('forge_skills.list: returns global + project-scoped skills only', async () => {
     const { user, project } = await seedProject('admin');
     const otherProject = await createTestProject(harness.db, user.id, { slug: 'other' });
@@ -309,8 +305,6 @@ describe('F4 MCP tools integration', () => {
       await ctx.close();
     }
   });
-
-  // ---------- forge_skills.register ----------
 
   it('forge_skills.register: admin device succeeds', async () => {
     const { user, project } = await seedProject('admin');
@@ -392,7 +386,6 @@ describe('F4 MCP tools integration', () => {
     }
   });
 
-  // ---------- forge_issues: read-after-write consistency (ISS-663) ----------
   //
   // ISS-663 reported a `forge_issues action=list` response mixing hours-stale
   // rows with fresh ones. The `list`/`get` handlers are plain uncached
@@ -483,7 +476,7 @@ describe('F4 MCP tools integration', () => {
         arguments: {
           action: 'create',
           projectId: project.id,
-          data: { title: 'closes immediately', status: 'draft' },
+          data: { title: 'closes immediately', status: 'draft', releaseNotes: SKIP_NOTE },
         },
       });
       const created = parseToolResult(createRes as never) as { documentId: string };

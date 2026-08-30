@@ -2,7 +2,7 @@
 
 Project-level utilities. Each script has a comment header explaining its contract. A checker whose verdict is worth testing keeps that half in `lib/` — the CLI spawns, reads the tree and exits, none of which a test can call.
 
-## Twelve gates, five axes
+## Thirteen gates, six axes
 
 Each gate sits in `ci-passed`'s `needs` **and** is named in its result loop. Both halves are
 load-bearing: `ci-passed` runs `if: always()`, so a job listed in `needs` but absent from the loop
@@ -20,6 +20,11 @@ a sibling that stopped blocking, which is the whole failure mode here. `form` is
 `behaviour` three times (reachability · signal · flow coverage) and `knowledge` three (couplings ·
 the autonomous status standard · honest costs).
 
+**`record` is the axis that was missing.** The other five each own a property of the code, and on
+2026-08-28 commit `3df9a8e9` removed 1,034 lines from `CHANGELOG.md` inside a commit about dangling
+docs pointers whose message never named the file. Every gate above ran on that change and every one
+passed, because the external record of what shipped belonged to none of them.
+
 | Axis | Gate (CI job) | Owns | Must not touch |
 |---|---|---|---|
 | format + lint | `biome check` — `core` | whitespace, import order, recommended rules | comment content |
@@ -34,12 +39,13 @@ the autonomous status standard · honest costs).
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
 | flows | `check-flow-coverage` — `core-integration` | whether every declared `cm:flow` step is executed end-to-end | which flows exist — codemap declares them |
 | language | `check-source-language` — `lang-check` | English-only source policy | everything else |
+| record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, and whether a published entry can leave without a declared reason | whether an entry is TRUE, or whether a change deserved one — that is review's |
 
 ### Conformance levels
 
 `.forge/conformance.json` declares each axis's level — `0` no checker · `1` measures, does not
 block · `2` baseline the old, block the new · `3` zero violations. Today: form 2 · knowledge 2 ·
-relations 2 · behaviour 2 · language 3.
+relations 2 · behaviour 2 · language 3 · record 3.
 
 Level 2 is the claim *"old debt frozen, new debt blocked"*, so each such axis must also name where
 its debt is frozen and which direction improves it — `baseline: {path, keyBy, improves}`, where
@@ -230,6 +236,48 @@ other checker exits 2 on.
 Modes: `--all` (CI, via `pnpm --filter web-v2 lint`) · `--staged` (pre-commit) · `--update-baseline`.
 
 ## check-branch-name.sh
+
+## check-release-record.mjs — the record of what shipped may not lose entries
+
+`CHANGELOG.md` is the external record of what shipped, and until 2026-08-28 nothing owned it.
+Commit `3df9a8e9` removed **1,034 lines, added 0** — the whole `[Unreleased]` block, every released
+version section and the style header — inside a commit about closing 94 dangling docs pointers whose
+message never named the file. Twelve gates ran on it and every one passed. The in-app What's New
+feed parses this file (`packages/web-v2/src/lib/changelog.ts`) and renders an empty list when it
+finds no `## [` heading, so it went blank for every signed-in user without throwing.
+
+Two rules:
+
+| | Fails when |
+|---|---|
+| `structure` | the file carries no `## [Unreleased]` heading — the What's New feed, the release step, the release cutter, the batch release plan and the release-notes schema all key on it |
+| `no-silent-loss` | an entry present at the base revision is absent at HEAD and nothing declares the removal |
+
+Entries are compared as a **set of whitespace-normalised bullet texts, position-independent**. That
+is what lets `forge-cut-release` promote `## [Unreleased]` to `## [X.Y.Z]` and open a fresh one — a
+release cut moves every entry under a new heading without losing one, and a positional comparison
+would turn the next release red. Normalising whitespace is what stops a hard-wrap reflow reading as
+30 deletions. Nothing further is normalised: case and punctuation are how you tell a reword from the
+same entry.
+
+Base revision comes from `baseRev()` in `lib/baseline-ratchet.mjs` — merge-base against `origin/main`
+with the `HEAD~1` fallback, because a commit pushed straight to `main` has `origin/main == HEAD` and
+a rule whose base can equal its subject passes everything. **No base revision is exit 2**, which is
+why `lang-check` carries `fetch-depth: 0`.
+
+### Removing an entry is legal, and it is declared
+
+`.forge/changelog-amnesty.json` holds one `{entry, reason}` per removal, the entry verbatim and the
+reason non-empty. That file is the ledger of every edit made to an already-published record: a
+correction is fine, a correction nobody can see is not. It is not a bulk baseline and there is no
+`--update-baseline` — a public record is edited one line at a time or not at all.
+
+```bash
+node scripts/check-release-record.mjs      # 0 the record holds · 1 it was broken · 2 could not run
+```
+
+The verdict half is in `lib/release-record.mjs` so it can be tested without a git tree; the CLI
+reads git and exits.
 
 ## check-source-language.mjs — English-only source policy
 

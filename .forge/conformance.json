@@ -65,6 +65,13 @@
       "gate": "check-source-language",
       "owns": "English-only source policy",
       "baseline": null
+    },
+    "record": {
+      "level": 3,
+      "gate": "check-release-record",
+      "owns": "whether the external record of what shipped keeps the heading its readers parse for, and whether an entry once published can be removed without saying so",
+      "$why": "The other five axes each own a property of the CODE. On 2026-08-28 commit 3df9a8e9 removed 1,034 lines from CHANGELOG.md inside a docs-pointer commit whose message never named the file; twelve gates ran and every one passed, because the record was nobody's. No baseline: it starts at zero debt, and a removal is declared per-instance in .forge/changelog-amnesty.json rather than frozen in bulk \u2014 a public record is edited one line at a time or not at all.",
+      "baseline": null
     }
   },
   "checkers": {

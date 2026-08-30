@@ -374,7 +374,8 @@ describe('close cascade', () => {
     expect(targetIds).not.toContain(CHILD_B);
     for (const call of applyStatusTransition.mock.calls) {
       expect(call[1]).toBe('closed');
-      expect(call[3]).toEqual({ skip: true });
+      // cm:edge contract -> packages/core/src/issues/release-record-required.ts — `viaCloseCascade` is what exempts this cascade from the release-record refusal, and it is passed HERE and nowhere else; the assertion is on the flag, not on the call, because dropping it leaves an abandoned epic's children open in silence
+      expect(call[3]).toEqual({ skip: true, viaCloseCascade: true });
     }
   });
 });

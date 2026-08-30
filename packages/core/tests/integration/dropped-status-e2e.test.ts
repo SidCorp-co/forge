@@ -42,11 +42,15 @@ describe('dropped status E2E', () => {
     projectId = (await createTestProject(harness.db, owner.id)).id;
   });
 
+  // cm:edge contract -> packages/core/src/issues/release-record-required.ts — the release note is this fixture's precondition, not scenery: the close below is a DEVICE close and one with no note is refused, so without it this file would fail at the close instead of at the `merged_at` assertion it is about
   async function insertIssue(seq: number, status: string): Promise<string> {
     const id = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
-      VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status}, ${ownerId})
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, release_notes)
+      VALUES (
+        ${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${status}, ${ownerId},
+        jsonb_build_object('section', 'Skip', 'userFacing', '-')
+      )
     `);
     return id;
   }

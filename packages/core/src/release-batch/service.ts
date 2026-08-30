@@ -14,6 +14,7 @@ import {
   TransitionError,
   transitionIssueStatus,
 } from '../issues/apply-transition.js';
+import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
 import { logger } from '../logger.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
@@ -71,6 +72,18 @@ export class ClaimConflictError extends Error {
   }
 }
 
+/**
+ * One or more issues in the batch have no release note, so the batch would
+ * close them claiming a ship nobody wrote anything about.
+ */
+// cm:guard distinct from ClaimConflictError ON PURPOSE — "wrong status or already claimed" and "nothing written about what shipped" need different remedies, and folding the second into the first is how a caller retries forever against an error that will never clear on its own
+export class ReleaseRecordMissingError extends Error {
+  constructor(public readonly issueIds: string[]) {
+    super(`RELEASE_RECORD_MISSING: ${issueIds.length} issue(s) have no release note`);
+    this.name = 'ReleaseRecordMissingError';
+  }
+}
+
 export class BatchInFlightError extends Error {
   constructor(public readonly existingJobId: string | null) {
     super('BATCH_IN_FLIGHT');
@@ -113,6 +126,11 @@ export async function createReleaseBatch(
     (r) => r.status !== gateStatus || r.releaseBatchRunId !== null,
   );
   if (notClaimable.length > 0) throw new ClaimConflictError(notClaimable.map((r) => r.id));
+
+  // cm:guard refuse at the CLAIM, not at the close. `finish` closes with `viaReleasePath`, which the release-record refusal exempts, so this preflight IS that exemption's justification — ISS-863's own evidence row is a batch that closed two issues whose releaseNotes was null. Refusing here strands nothing: nothing has moved yet, no run is open and no issue is claimed.
+  // cm:edge lockstep -> packages/core/src/issues/release-record-required.ts — one rule, two doors. That module exempts `viaReleasePath` BECAUSE of this line; delete it and the batch path silently closes unrecorded issues again.
+  const unrecorded = await issuesMissingReleaseRecord(issueIds);
+  if (unrecorded.length > 0) throw new ReleaseRecordMissingError(unrecorded);
 
   const plan = await resolveReleasePlan(projectId);
   // cm:guard an empty pool must REFUSE, never fall back to the fleet: the pool exists because one box holds the production credential, and a release that lands anywhere else fails halfway through with the merge already pushed

@@ -54,6 +54,7 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
       return new HTTPException(409, { message: 'issue already in toStatus', cause });
     case 'TRANSITION_REASON_REQUIRED':
     case 'WAITING_KIND_REQUIRED':
+    case 'RELEASE_RECORD_REQUIRED':
       return new HTTPException(422, { message: err.detail, cause });
     case 'PLAN_REQUIRED':
       return new HTTPException(409, { message: err.detail, cause });

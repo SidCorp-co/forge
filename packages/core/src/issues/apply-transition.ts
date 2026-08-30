@@ -21,6 +21,7 @@ import { recordDropUnblock } from './drop-unblock.js';
 import { markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { resolveAgentCloseTarget } from './release-gate-hold.js';
+import { refuseUnrecordedClose } from './release-record-required.js';
 import { checkTransitionEvidence } from './transition-evidence.js';
 import { postTransitionReasonComment, requiresAuthoredReason } from './transition-reason.js';
 
@@ -64,7 +65,8 @@ export type TransitionErrorCode =
   | 'WAITING_KIND_REQUIRED'
   | 'STALE_TRANSITION'
   | 'PLAN_REQUIRED'
-  | 'NO_WORK_EVIDENCE';
+  | 'NO_WORK_EVIDENCE'
+  | 'RELEASE_RECORD_REQUIRED';
 
 /**
  * Typed transition failure. `message` keeps the legacy `CODE: detail` shape
@@ -137,6 +139,12 @@ export interface ApplyStatusTransitionOptions {
    */
   // cm:guard `issues/decompose.ts` is the ONLY caller entitled to set this, and like `viaReleasePath` it must never be plumbed through a route parameter or an MCP argument — an agent that could ask for it could park itself where no comment of a human's will ever reach it, which is the whole defect the rewrite removes. It is exempt because a comment on a decomposed parent is discussion of the split, not approval of it: waking that park would dispatch the parent's integration before its children exist.
   viaDecomposeGate?: boolean;
+  /**
+   * This close PROPAGATES a close that already happened rather than making
+   * one: the decompose cascade closing an abandoned parent's children.
+   */
+  // cm:guard `decomposition-subscribers.ts` handleCloseCascade is the ONLY caller entitled to set this, and like the two above it must never be plumbed through a route or an MCP argument. It exists because the release-record refusal needs an exemption NARROWER than `skip`: orchestrator.ts's auto-skip chain carries `skip` too and can anchor on `closed`, so exempting `skip` would auto-close an unrecorded issue on any project whose `released` stage has no registered skill.
+  viaCloseCascade?: boolean;
 }
 
 export interface StatusTransitionResult {
@@ -360,6 +368,12 @@ export async function transitionIssueStatus(
       status: fromStatus,
       requested: requestedStatus,
     });
+  }
+
+  // cm:guard reads `toStatus`, never `requestedStatus` — an agent close that resolveAgentCloseTarget rewrote to the release gate is not making the shipped claim, and refusing it there would park the session at a status it cannot leave
+  const unrecorded = await refuseUnrecordedClose(issue.id, toStatus, actor, options);
+  if (unrecorded) {
+    throw new TransitionError('RELEASE_RECORD_REQUIRED', unrecorded.detail, unrecorded.details);
   }
 
   const txResult = await executeTransitionWrite({

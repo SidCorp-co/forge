@@ -97,7 +97,8 @@ const AT_WORK = {
 beforeEach(() => {
   vi.clearAllMocks();
   projectSelectLimit.mockReset();
-  projectSelectLimit.mockResolvedValue([]);
+  // cm:edge contract -> packages/core/src/issues/release-record-required.ts — that rule reads through this same channel on every device close, so the fallback row carries a release note: without one every close here would be refused for a reason this file is not about, and with an EMPTY fallback it would pass for the equally wrong reason that the rule found no row
+  projectSelectLimit.mockResolvedValue([{ id: ISSUE_ID, releaseNotes: { section: 'Skip' } }]);
   updateReturning.mockReset();
   updateReturning.mockResolvedValue([]);
 });

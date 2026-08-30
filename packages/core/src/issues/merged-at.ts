@@ -130,9 +130,14 @@ export async function markMergedIfLeavingBase(
  * instead: close ⇒ done ⇒ stamp. The trade-off is deliberate:
  *   - pipeline closes already stamped on leaving the base merge state, so
  *     this is a no-op there (`WHERE merged_at IS NULL`);
- *   - no system path auto-closes issues (decompose → waiting/approved,
- *     cancel → on_hold, failures → waiting/reopen), so a buggy agent can't
- *     stamp through here;
+ *   - TWO system paths auto-close, and both are now gated on a release note
+ *     existing (`release-record-required.ts`): the decompose close cascade
+ *     (`decomposition-subscribers.ts`, which propagates a close already made
+ *     and is exempt via `viaCloseCascade`), and the orchestrator's auto-skip
+ *     chain, which anchors on `closed` when the `released` stage has no
+ *     registered skill and is NOT exempt — it catches the refusal and stops.
+ *     Everything else routes elsewhere (cancel → on_hold, failures →
+ *     waiting/reopen);
  *   - a close-as-abandon wrongly unblocks dependents, but visibly (audit
  *     comment in `apply-transition.ts`) and reversibly (`unmark`) — better
  *     than the old failure mode of an invisible, indefinite wedge.

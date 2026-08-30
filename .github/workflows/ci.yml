@@ -55,11 +55,22 @@ jobs:
   lang-check:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 is load-bearing for check-release-record — it compares CHANGELOG.md
+      # against the same file at the base revision, and a depth-1 checkout has neither
+      # origin/main nor HEAD~1. That checker exits 2 rather than passing on nothing, so
+      # dropping this line turns the gate red instead of turning it silent.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
       - run: node scripts/check-source-language.mjs --all
+      # The release record: CHANGELOG.md keeps the `## [Unreleased]` heading its five readers
+      # parse for, and an entry published there is not removed without a declared reason.
+      # 3df9a8e9 removed 1,034 lines of it inside a commit about docs pointers and all twelve
+      # gates passed — every axis owned a property of the code and none owned the record.
+      - run: node scripts/check-release-record.mjs
       # Test-signal guard: fails only when a test file gets MORE
       # declaration-restating or mock-only assertions than its frozen baseline
       # (.forge/test-signal-baseline.json). Same contract as the codemap baseline.

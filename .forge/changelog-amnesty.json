@@ -1,0 +1,4 @@
+{
+  "$comment": "Every deliberate removal from CHANGELOG.md, one entry each. `scripts/check-release-record.mjs` refuses a removal that is not here, so this file is the ledger of every edit made to a record that has already been published — a correction is fine, a correction nobody can see is not. `entry` is the removed text verbatim (whitespace is normalised before matching, so a rewrap does not need one); `reason` says why it goes and may not be empty.",
+  "removals": []
+}
