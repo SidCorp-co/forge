@@ -17,43 +17,24 @@
 // Exit: 0 clean · 1 a file got longer or a new one is over budget · 2 could not run.
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  loadBaseline,
+  parseMode,
+  scopeConfig,
+  sortDeep,
+  stagedFiles,
+  writeBaseline,
+} from './lib/debt-ratchet.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE_PATH = join(ROOT, '.forge', 'size-baseline.json');
-const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
 
 // cm:guard the two rules sit in DIFFERENT biome groups — file length under `style`, function length under `complexity`. Assuming both were `complexity` produced a baseline that silently froze 0 of the 56 file-length violations and still reported clean.
 const FILE_RULE = 'lint/style/noExcessiveLinesPerFile';
 const FN_RULE = 'lint/complexity/noExcessiveLinesPerFunction';
-
-// cm:guard fails closed on an absent registry exactly like check-lint-budget.mjs, and the two must not drift. A built-in fallback here meant the same missing .forge/conformance.json made one checker exit 2 and its sibling quietly measure a hardcoded scope and report a result — the softer answer to the more complete failure, in the same CI job. It also matters to conformance-audit R9, which reads THIS checker's scope list out of the manifest to decide who owns the two length rules: a fallback the manifest never declared makes the audit and the checker disagree about what is covered.
-function config() {
-  let raw;
-  try {
-    raw = readFileSync(CONFIG_PATH, 'utf8');
-  } catch (err) {
-    return { error: `${CONFIG_PATH} could not be read: ${err.code ?? err.message}` };
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (err) {
-    return { error: `${CONFIG_PATH} is not valid JSON: ${err.message}` };
-  }
-  const scopes = parsed?.checkers?.['size-budget']?.scopes;
-  if (!Array.isArray(scopes)) {
-    return { error: `${CONFIG_PATH} declares no checkers['size-budget'].scopes array` };
-  }
-  if (scopes.length === 0) {
-    return {
-      error: `${CONFIG_PATH} declares an empty size-budget scope list — nothing would be measured`,
-    };
-  }
-  return { scopes };
-}
 
 // cm:edge contract -> packages/core/biome.json — reads the two rule categories declared there. Turning either rule off, or renaming it, empties this checker's input and it reports clean; the zero-diagnostics guard below is what turns that into an exit 2 instead of a false pass.
 function collect(scopes) {
@@ -109,30 +90,18 @@ function collect(scopes) {
   return { measured };
 }
 
-function stagedFiles() {
-  const out = execFileSync('git', ['diff', '--cached', '--name-only', '--diff-filter=ACM'], {
-    cwd: ROOT,
-    encoding: 'utf8',
-  });
-  return new Set(out.split('\n').filter(Boolean));
-}
-
-function loadBaseline() {
-  if (!existsSync(BASELINE_PATH)) return {};
-  try {
-    return JSON.parse(readFileSync(BASELINE_PATH, 'utf8')).files ?? {};
-  } catch {
-    return null;
-  }
-}
-
-const mode = process.argv[2] ?? '--all';
-if (!['--all', '--staged', '--update-baseline'].includes(mode)) {
-  console.error('usage: check-size-budget.mjs [--all|--staged|--update-baseline]');
+const parsed = parseMode(
+  process.argv,
+  ['--all', '--staged', '--update-baseline'],
+  'check-size-budget.mjs',
+);
+if (parsed.error) {
+  console.error(parsed.error);
   process.exit(2);
 }
+const mode = parsed.mode;
 
-const cfg = config();
+const cfg = scopeConfig(ROOT, 'size-budget');
 if (cfg.error) {
   console.error(`check-size-budget: ${cfg.error}`);
   process.exit(2);
@@ -145,20 +114,20 @@ if (error) {
 }
 
 if (mode === '--update-baseline') {
-  const files = Object.fromEntries([...measured.entries()].sort(([a], [b]) => a.localeCompare(b)));
-  writeFileSync(
-    BASELINE_PATH,
-    `${JSON.stringify({ generatedAt: new Date().toISOString(), files }, null, 2)}\n`,
-  );
+  writeBaseline(BASELINE_PATH, {
+    generatedAt: new Date().toISOString(),
+    files: sortDeep(Object.fromEntries(measured)),
+  });
   console.log(`size-budget baseline written: ${measured.size} file(s) frozen`);
   process.exit(0);
 }
 
-const baseline = loadBaseline();
-if (baseline === null) {
+const doc = loadBaseline(BASELINE_PATH);
+if (doc === null) {
   console.error(`check-size-budget: ${BASELINE_PATH} is unreadable — refusing to report clean`);
   process.exit(2);
 }
+const baseline = doc.files ?? {};
 
 // cm:guard a rule the baseline knows about must still be PRODUCING diagnostics. Freezing 56 file-length violations and then reading zero of them is indistinguishable from a clean tree by count alone, and that is exactly how a wrong rule category (style vs complexity) shipped a baseline that gated nothing. Re-baseline after a genuine cleanup and this self-corrects.
 for (const kind of ['fileLines', 'maxFunctionLines']) {
@@ -174,7 +143,15 @@ for (const kind of ['fileLines', 'maxFunctionLines']) {
   }
 }
 
-const scope = mode === '--staged' ? stagedFiles() : null;
+let scope = null;
+if (mode === '--staged') {
+  const staged = stagedFiles(ROOT);
+  if (staged.error) {
+    console.error(`check-size-budget: ${staged.error}`);
+    process.exit(2);
+  }
+  scope = staged.files;
+}
 const failures = [];
 for (const [file, now] of measured) {
   if (scope && !scope.has(file)) continue;

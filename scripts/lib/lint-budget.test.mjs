@@ -4,7 +4,6 @@ import {
   drainFaults,
   drainMatcher,
   emptiedScopes,
-  freezeFaults,
   mergeOriginal,
 } from './lint-budget.mjs';
 
@@ -17,28 +16,6 @@ const matchers = [drainMatcher(CORE)];
 /** The one argument shape drainFaults takes, with only the interesting part varying. */
 const drain = ({ measured = {}, baseline = {}, changed = [], renamed = new Map() }) =>
   drainFaults({ measured, baseline, changed: new Set(changed), renamed, matchers });
-
-describe('freeze', () => {
-  it('refuses a file that gained a diagnostic', () => {
-    const faults = freezeFaults({ 'a.ts': { r: 3 } }, { 'a.ts': { r: 2 } });
-    expect(faults).toEqual([{ file: 'a.ts', reasons: ['r: 3 (baseline allowed 2)'] }]);
-  });
-
-  it('lets a file keep the debt it was frozen with', () => {
-    expect(freezeFaults({ 'a.ts': { r: 2 } }, { 'a.ts': { r: 2 } })).toEqual([]);
-  });
-
-  it('refuses a rule the file was never frozen for, even when its total is unchanged', () => {
-    const faults = freezeFaults({ 'a.ts': { other: 2 } }, { 'a.ts': { r: 2 } });
-    expect(faults[0].reasons).toEqual(['other: 2 (baseline allowed 0)']);
-  });
-
-  it('judges only the staged set when one is given', () => {
-    const measured = { 'a.ts': { r: 9 }, 'b.ts': { r: 9 } };
-    const faults = freezeFaults(measured, {}, new Set(['b.ts']));
-    expect(faults.map((f) => f.file)).toEqual(['b.ts']);
-  });
-});
 
 describe('drain', () => {
   // cm:guard EQUAL must fail. Non-increase is what every other baseline in this repo already enforces and it is why the codemap baseline sat at 3% drained for months — shipping it under the name "drain" is the substitution a plan review bounced this issue for once.

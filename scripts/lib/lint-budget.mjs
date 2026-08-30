@@ -8,6 +8,12 @@
 // rules, not two names for one.
 //
 // Drain is opt-in per scope. A scope with no `drain` block is freeze-only.
+//
+// The freeze comparison, the registry read and the baseline I/O moved to
+// debt-ratchet.mjs when check-test-signal joined them (ISS-848); what is left
+// here is the part that is about biome specifically.
+
+import { fileTotal } from './debt-ratchet.mjs';
 
 // cm:guard these two categories belong to check-size-budget.mjs, which freezes them by LINE COUNT. Counting them here as well would freeze the same debt under two directions of improvement, and a file that split one 300-line function into two would satisfy one checker while failing the other.
 // cm:edge lockstep -> scripts/conformance-audit.mjs — R9 imports this set to decide which `warn` rule is size-budget's to count and which is lint-budget's; a category moving between the two checkers must move here, or R9 demands a baseline from the wrong one
@@ -15,16 +21,6 @@ export const SIZE_RULES = new Set([
   'lint/style/noExcessiveLinesPerFile',
   'lint/complexity/noExcessiveLinesPerFunction',
 ]);
-
-/** Diagnostics in one file, summed across rules. */
-export function fileTotal(rules) {
-  return Object.values(rules ?? {}).reduce((a, n) => a + (typeof n === 'number' ? n : 0), 0);
-}
-
-/** Every file's diagnostics, summed. `files` is the baseline/measured `{path: {rule: n}}` shape. */
-export function total(files) {
-  return Object.values(files ?? {}).reduce((a, rules) => a + fileTotal(rules), 0);
-}
 
 // cm:guard MEASURE, do not enumerate. Three rounds of review each found another config that empties this checker's input while biome still exits 0 — top-level `linter.enabled`, the same switch behind `extends`, then a single `overrides` block with no second file at all — and each fix closed one instance of "biome scans the scope but lints nothing". This catches a scope emptied ENTIRELY, whatever line did it, because it parses no config.
 // cm:guard it does NOT catch a scope emptied in PART, and do not write that it does. Measured 2026-08-27: an `overrides` block scoped to `src/features/issues/**` leaves web-v2 at 186 diagnostics over 459 scanned files, so this never fires, `linterFault` cannot see it, and the next `--update-baseline` drops 9 files and 24 frozen diagnostics at exit 0. Closing it needs a per-file signal distinguishing "unlinted" from "fixed" that biome's JSON reporter does not expose, and refusing `overrides` outright would false-fail the legitimate don't-lint-generated-code block. Pinned by a test in lint-budget.test.mjs.
@@ -50,26 +46,6 @@ export function drainMatcher(scope) {
   const include = new RegExp(d.include);
   const exclude = d.exclude ? new RegExp(d.exclude) : null;
   return (file) => include.test(file) && !exclude?.test(file);
-}
-
-/**
- * Freeze: no file may hold more of a rule than its baseline allows.
- *
- * `scope` limits which files are judged (pre-commit's staged set); null judges all.
- */
-export function freezeFaults(measured, baseline, scope = null) {
-  const faults = [];
-  for (const [file, now] of Object.entries(measured)) {
-    if (scope && !scope.has(file)) continue;
-    const was = baseline[file] ?? {};
-    const reasons = [];
-    for (const [rule, count] of Object.entries(now)) {
-      const allowed = was[rule] ?? 0;
-      if (count > allowed) reasons.push(`${rule}: ${count} (baseline allowed ${allowed})`);
-    }
-    if (reasons.length) faults.push({ file, reasons });
-  }
-  return faults;
 }
 
 // cm:guard a RENAME is freeze-only, never drained. The baseline is path-keyed, so a moved file arrives as a new path carrying the same debt; asking it to also pay one would fire this rule on every move, and a rule that fires on renames is a rule someone turns off — the same reasoning compareDown's total carries in scripts/lib/baseline-ratchet.mjs.
