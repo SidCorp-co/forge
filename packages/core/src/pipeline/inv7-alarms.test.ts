@@ -8,6 +8,7 @@ vi.mock('../db/client.js', () => ({
 const emitWedgeMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('./wedge.js', () => ({
   emitPipelineWedge: (...args: unknown[]) => emitWedgeMock(...(args as [])),
+  reviewRoundsWedgeEntityId: (runId: string) => `rounds:${runId}`,
 }));
 
 // cm:edge contract -> packages/core/src/jobs/hold.ts — HOLD_PAYLOAD_KEY must stay `__hold` and this `holdResumesItself` stub must keep AUTO_RELEASE_REASONS' membership; importing the real module pulls queue/boss.ts, whose load-time env validation throws under vitest. hold.test.ts owns the real predicate — this stub only has to agree with it.
@@ -31,8 +32,13 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const { alarmAgedHolds, alarmChurningIssues, alarmStalledQueuedJobs, HOLD_AGE_ALARM_MS } =
-  await import('./inv7-alarms.js');
+const {
+  alarmAgedHolds,
+  alarmChurningIssues,
+  alarmRejectionStreaks,
+  alarmStalledQueuedJobs,
+  HOLD_AGE_ALARM_MS,
+} = await import('./inv7-alarms.js');
 
 const NOW = new Date('2026-08-14T12:00:00.000Z');
 
@@ -214,5 +220,86 @@ describe('alarmStalledQueuedJobs', () => {
     await alarmStalledQueuedJobs(NOW);
 
     expect(gateReasons).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('alarmRejectionStreaks', () => {
+  const streakRow = {
+    run_id: 'run-9',
+    project_id: 'proj-1',
+    issue_id: 'iss-3',
+    iss_seq: 878,
+    title: 'noProgressRounds has teeth',
+    streak: 5,
+    threshold: 5,
+  };
+
+  it('surfaces the streak and the threshold, naming the issue', async () => {
+    dbExecute.mockResolvedValueOnce([streakRow]);
+
+    const res = await alarmRejectionStreaks();
+
+    expect(res.alerted).toBe(1);
+    expect(wedge().issueId).toBe('iss-3');
+    expect(wedge().title).toContain('ISS-878');
+    expect(wedge().title).toContain('5 times in a row');
+    expect(wedge().reason).toBe('rejection_streak:5/5');
+  });
+
+  // cm:guard the copy must name WHICH count reached the threshold — `noProgressRounds` backs total reopens in `alarmChurningIssues` and consecutive rejections here, and a wedge that prints only the number leaves the reader unable to tell whether five rounds were wasted or five different blockers were fixed
+  it('says it counted consecutive rejections, not total rounds', async () => {
+    dbExecute.mockResolvedValueOnce([streakRow]);
+
+    await alarmRejectionStreaks();
+
+    expect(wedge().summary).toContain('CONSECUTIVE');
+    expect(wedge().summary).toContain('since the last approval');
+    expect(wedge().summary).toContain('normal work');
+  });
+
+  // cm:guard the alert's authority is that the reviewer wrote the verdicts, so the copy must not present `sessionContext.churn` as its basis — churn is agent-written, and an alert that rested on it would let the agent decide whether it is churning
+  it('rests the alert on the reviewer findings, with churn only as the agent account', async () => {
+    dbExecute.mockResolvedValueOnce([streakRow]);
+
+    await alarmRejectionStreaks();
+
+    expect(wedge().summary).toContain("reviewer's own verdicts");
+    expect(wedge().nextStep).toContain('findings');
+    expect(wedge().nextStep).toContain('it believes');
+  });
+
+  // cm:guard the entity must be the RUN under the `rounds:` namespace — `alarmChurningIssues` already emits under `wedge:<issueId>`, and sharing that key would let either pass silence the other while an approve resolved the wrong one
+  it('keys the wedge on the run, never on the issue id', async () => {
+    dbExecute.mockResolvedValueOnce([streakRow]);
+
+    await alarmRejectionStreaks();
+
+    expect(wedge().entity).toBe('run');
+    expect(wedge().entityId).toBe('rounds:run-9');
+    expect(wedge().entityId).not.toContain('iss-3');
+  });
+
+  it('names nothing blocked — the alert is visibility only', async () => {
+    dbExecute.mockResolvedValueOnce([streakRow]);
+
+    await alarmRejectionStreaks();
+
+    expect(wedge().action).toContain('nothing is blocked');
+  });
+
+  it('falls back to a generic label when the issue has no sequence number', async () => {
+    dbExecute.mockResolvedValueOnce([{ ...streakRow, iss_seq: null, title: null }]);
+
+    await alarmRejectionStreaks();
+
+    expect(wedge().title).toContain('An issue');
+    expect(wedge().title).not.toContain('ISS-');
+  });
+
+  it('emits nothing when no run has reached its threshold', async () => {
+    const res = await alarmRejectionStreaks();
+
+    expect(res.alerted).toBe(0);
+    expect(emitWedgeMock).not.toHaveBeenCalled();
   });
 });

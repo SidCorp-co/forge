@@ -5,6 +5,13 @@
 // DIFFERENT blocker, and a counter cannot tell that apart from five rounds that
 // changed nothing. The number survives as orientation the agent reads and
 // judges against; nothing here blocks a dispatch or writes a status.
+//
+// One number, three readers, two counts. The prompt prints it to the agent.
+// `alarmChurningIssues` measures it against TOTAL reopens, which only move on a
+// `reopen` transition — staged mode. `alarmRejectionStreaks` measures it against
+// CONSECUTIVE review rejections in one run — autonomous mode, where no reopen
+// ever happens and the first count is frozen. Which count fired is named in each
+// wedge, because a reader who cannot tell them apart cannot judge the rounds.
 
 export const DEFAULT_NO_PROGRESS_ROUNDS = 5;
 

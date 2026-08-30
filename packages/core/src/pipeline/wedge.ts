@@ -47,6 +47,15 @@ export function capacityWedgeEntityId(projectId: string, stageKey: string): stri
 }
 
 /**
+ * Entity id for a review loop going round without landing: the subject is one
+ * run's rejection streak, not the issue.
+ */
+// cm:guard the subject MUST be the run, never the issue id — `alarmChurningIssues` already emits under `wedge:<issueId>`, and the two passes count different things (total reopens vs consecutive rejections). Sharing a key would let whichever fired first silence the other, and `resolvePipelineWedge` on an approve would clear a churn wedge nobody resolved.
+export function reviewRoundsWedgeEntityId(runId: string): string {
+  return `rounds:${runId}`;
+}
+
+/**
  * Clear the wedge notifications for `entityId` — the condition they reported is
  * gone. Call this from whatever observes the recovery, never on a timer.
  */
