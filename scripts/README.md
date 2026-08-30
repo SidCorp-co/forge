@@ -2,7 +2,7 @@
 
 Project-level utilities. Each script has a comment header explaining its contract. A checker whose verdict is worth testing keeps that half in `lib/` — the CLI spawns, reads the tree and exits, none of which a test can call.
 
-## Twelve gates, five axes
+## Thirteen gates, five axes
 
 Each gate sits in `ci-passed`'s `needs` **and** is named in its result loop. Both halves are
 load-bearing: `ci-passed` runs `if: always()`, so a job listed in `needs` but absent from the loop
@@ -17,8 +17,8 @@ to 84, the two length rules to 143 — and each stopped drifting the day it was 
 a sibling that stopped blocking, which is the whole failure mode here. `form` is gated four times
 (biome for `core`'s rules · `check-size-budget` for the length baseline biome cannot hold ·
 `check-lint-budget` for `web-v2` · a bare `biome check scripts` for the checkers themselves),
-`behaviour` three times (reachability · signal · flow coverage) and `knowledge` three (couplings ·
-the autonomous status standard · honest costs).
+`behaviour` three times (reachability · signal · flow coverage) and `knowledge` four (couplings ·
+the autonomous status standard · honest costs · the mode-qualification of injected docs).
 
 | Axis | Gate (CI job) | Owns | Must not touch |
 |---|---|---|---|
@@ -28,6 +28,7 @@ the autonomous status standard · honest costs).
 | checkers | `biome check scripts` — `conformance` | the files in `scripts/` that implement every other gate | anything under `packages/` |
 | knowledge | `cm verify` — `codemap` | `cm:` couplings, prose discipline, module headers | anything a tool can derive |
 | transitions | `check-autonomous-transitions` — `codemap` | that every bundled skill writes the kernel statuses `AUTONOMOUS_DRIVER_STATUSES` declares, never a render label | what an agent wrote at runtime — that lives in `activity_log` |
+| injected docs | `check-injected-doc-modes` — `codemap` | that a status transition in a guide body or a mandatory fact names the pipeline mode it belongs to | whether the prose around a qualified transition is true; a project's own `projectFacts`, which live in the DB |
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs | whether the price stated is honest — that is review's |
 | relations | `archmap check` — `archmap` | which module may depend on which | how a file is written |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |

@@ -79,6 +79,14 @@ const CHECKS = [
   // cm:guard scoped to docs/VISION.md + every .md under docs/proposals/, subdirectories included, and it must stay that narrow at the TOP: the rule is that a document ASKING to be adopted prices what adoption costs, and widened to every .md in the repo it would demand a price from a module doc that proposes nothing, which earns the checker an ignore list — where the next real violation hides.
   {
     axis: 'knowledge',
+    label: 'injected-doc-modes',
+    // cm:edge naming -> scripts/check-injected-doc-modes.mjs — parses that script's success line
+    cmd: ['node', 'scripts/check-injected-doc-modes.mjs'],
+    scanned: /^injected-doc-modes: (\d+) transition/m,
+    unit: 'transitions',
+  },
+  {
+    axis: 'knowledge',
     label: 'honest-costs',
     // cm:edge naming -> scripts/check-honest-costs.mjs — parses that script's success line
     cmd: ['node', 'scripts/check-honest-costs.mjs'],
@@ -174,6 +182,7 @@ const CHECKS = [
 const CI_COVERAGE = {
   'node scripts/check-autonomous-transitions.mjs': 'verify',
   'node scripts/check-honest-costs.mjs': 'verify',
+  'node scripts/check-injected-doc-modes.mjs': 'verify',
   'node scripts/check-source-language.mjs --all': 'verify',
   'node scripts/check-test-signal.mjs --all': 'verify',
   'node scripts/check-size-budget.mjs --all': 'verify',
