@@ -78,12 +78,22 @@ export function detectUnexpandedSkillFailure(
 }
 
 /**
+ * ISS-875 — the classifier's reason is `<class> → <predicted disposition>`
+ * (`usage/session limit → cross-device failover`). Only the class half is a
+ * fact at classification time; the failover path re-states the other half from
+ * what it actually did.
+ */
+export function failureClassOf(reason: string): string {
+  const [head] = reason.split(' → ');
+  return (head ?? reason).trim() || reason;
+}
+
+/**
  * ISS-824 — recover a schedule run the classifier routed to `failover` (device-
  * exhaustion classes: usage/session limit, org spend cap, cc-startup-death) by
  * failing over to a device whose account has headroom (reuses the loop-monitor
- * failover). No headroom device → the schedule's next cron tick recovers once
- * the window resets. Best-effort — never throws (a recovery failure must not
- * break the status write that already persisted the classified reason).
+ * failover). Best-effort — never throws (a recovery failure must not break the
+ * status write that already persisted the classified reason).
  */
 export async function recoverScheduleOnFailoverAction(
   sessionId: string,
@@ -94,10 +104,12 @@ export async function recoverScheduleOnFailoverAction(
   if (meta.source !== 'schedule.run') return;
   try {
     const { redispatchScheduleSessionOnFailover } = await import('../schedules/dispatch.js');
-    const result = await redispatchScheduleSessionOnFailover(sessionId);
+    const result = await redispatchScheduleSessionOnFailover(sessionId, {
+      failureClass: failureClassOf(reason),
+    });
     logger.info(
       { sessionId, scheduleId: meta.scheduleId, reason, result },
-      'agent-sessions: schedule failure classified as failover → cross-account failover',
+      'agent-sessions: schedule failure classified as failover',
     );
   } catch (err) {
     logger.error(
@@ -140,7 +152,6 @@ export async function finalizeScheduleSessionFailure(opts: {
   recoverAfterWrite: (metadata: unknown) => Promise<void>;
 }> {
   // cm:guard classify runner-authored text ONLY. A schedule session's transcript opens with the schedule's own prompt as a `user` message, so an unfiltered blob is fed to the classifier AS IF it were the error: every pattern runs against the prompt, and a prompt that merely says "usage limit" or "rate limit" is classified `failover` and triggers a real cross-account schedule failover. Measured live on forge-beta 2026-08-13: `improve:optimize-skills` and `improve:product-map-refresh` both stored 198 chars of their own prompt as `agent_sessions.failure_reason`.
-  // cm:edge lockstep -> packages/core/src/agent-sessions/routes.ts — the runner-limit path in that file carries the same guard for the same reason; a fix to one that skips the other leaves half the terminal-report surface classifying user text
   const text = extractSessionFailureText(opts.messages, opts.note, { excludeRoles: ['user'] });
   const classified = classifyFailure({ error: text });
 
@@ -148,12 +159,17 @@ export async function finalizeScheduleSessionFailure(opts: {
   opts.set.failureReason = classified.cause;
   opts.set.failureDetail = classified.reason || null;
 
+  const base = (opts.baseMetadata ?? {}) as Record<string, unknown>;
   if (classified.action === 'failover') {
     const reset = parseUsageLimitReset(text);
     opts.set.metadata = {
-      ...(opts.baseMetadata ?? {}),
+      ...base,
       ...(reset ? { limitResetAt: reset.toISOString() } : {}),
     };
+    // cm:guard the predicted `→ cross-device failover` may only stand where SOME failover path can act on the row. A schedule run gets its true disposition stamped post-write by redispatchScheduleSessionOnFailover; an agent-chat session has its own copy of that machinery (integrations/rocketchat/agent-chat.ts) which runs on its own trigger, so its disposition is not ours to state. What is left — a plain chat session — has no failover path at all, and settles here.
+    if (base.source !== 'schedule.run' && base.agentChat == null) {
+      opts.set.failureDetail = `${failureClassOf(classified.reason)} → no failover (plain chat session)`;
+    }
   }
 
   return {
