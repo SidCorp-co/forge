@@ -18,6 +18,7 @@ import {
   NoReleaseGateError,
   NoRunnerOnlineError,
   ReleasePoolEmptyError,
+  ReleaseRecordMissingError,
 } from '../release-batch/service.js';
 
 export interface ScheduledCutOutcome {
@@ -52,13 +53,15 @@ export async function runScheduledReleaseCut(args: {
       output: `cut ${result.issueIds.length} issue(s) as run ${result.runId}`,
     };
   } catch (err) {
+    // cm:guard `ReleaseRecordMissingError` is on this list for the same reason as ClaimConflictError, even though neither clears on its own: a nightly cron that reports `failed` every night until a human writes a release note is the alarm nobody reads by week two. The message names the count, so the tick is still actionable.
     // cm:guard every one of these is "not now", never "broken" — a cron that reports failure for a batch already in flight, or for a release box offline at 04:00, is one people learn to ignore, and the next failure they ignore is a real one.
     if (
       err instanceof BatchInFlightError ||
       err instanceof ClaimConflictError ||
       err instanceof NoRunnerOnlineError ||
       err instanceof ReleasePoolEmptyError ||
-      err instanceof NoReleaseGateError
+      err instanceof NoReleaseGateError ||
+      err instanceof ReleaseRecordMissingError
     ) {
       return { status: 'skipped', output: `no cut this tick: ${(err as Error).message}` };
     }

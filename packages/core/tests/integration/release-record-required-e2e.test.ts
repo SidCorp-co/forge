@@ -126,13 +126,27 @@ describe('release record required E2E', () => {
     expect((await stored(id)).status).toBe('closed');
   });
 
-  it('leaves a system chain carrying `skip` alone, so the decompose cascade still closes children', async () => {
+  it('leaves the decompose close cascade alone, so an abandoned epic still closes its children', async () => {
     const { applyStatusTransition } = await import('../../src/issues/apply-transition.js');
     const id = await insertIssue('in_progress');
 
-    await applyStatusTransition(await load(id), 'closed', device(), { skip: true });
+    await applyStatusTransition(await load(id), 'closed', device(), {
+      skip: true,
+      viaCloseCascade: true,
+    });
 
     expect((await stored(id)).status).toBe('closed');
+  });
+
+  // cm:guard the exemption is `viaCloseCascade`, NOT `skip`. orchestrator.ts's auto-skip chain carries `skip` too, and resolveSkipTarget answers `closed` for a `released` stage with no registered skill — so a `skip` exemption would auto-close an unrecorded issue on any freshly-onboarded project. The chain catches this refusal and stops, which leaves the issue at `released`: unclosed and honest.
+  it('refuses a bare `skip`, which is what the orchestrator auto-skip chain carries', async () => {
+    const { applyStatusTransition } = await import('../../src/issues/apply-transition.js');
+    const id = await insertIssue('released');
+
+    await expect(
+      applyStatusTransition(await load(id), 'closed', device(), { skip: true }),
+    ).rejects.toThrow('RELEASE_RECORD_REQUIRED');
+    expect(await stored(id)).toEqual({ status: 'released', mergedAt: null });
   });
 
   it('leaves `dropped` alone, which is terminal without claiming a ship', async () => {
@@ -142,5 +156,46 @@ describe('release record required E2E', () => {
     await applyStatusTransition(await load(id), 'dropped', device());
 
     expect(await stored(id)).toEqual({ status: 'dropped', mergedAt: null });
+  });
+
+  // cm:guard the OTHER door. `finishReleaseBatch` closes with `viaReleasePath`, which the transition rule exempts, so the batch is refused at its CLAIM instead — and this block is the whole justification for that exemption. ISS-863's evidence row is a batch that closed two issues whose releaseNotes was null; delete the preflight and that path is open again.
+  describe('the release batch, refused at the claim rather than the close', () => {
+    async function claim(ids: string[]) {
+      const { createReleaseBatch } = await import('../../src/release-batch/service.js');
+      return createReleaseBatch({ projectId, issueIds: ids, userId: ownerId });
+    }
+
+    async function claimedRunId(id: string): Promise<unknown> {
+      const rows = await harness.db.execute(sql`
+        SELECT release_batch_run_id FROM issues WHERE id = ${id}
+      `);
+      return rows[0]?.release_batch_run_id ?? null;
+    }
+
+    it('refuses the whole batch when any issue has no release note, and claims nothing', async () => {
+      const { ReleaseRecordMissingError } = await import('../../src/release-batch/service.js');
+      const noted = await insertIssue('tested', SKIP_NOTE);
+      const bare = await insertIssue('tested');
+
+      const err = await claim([noted, bare]).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ReleaseRecordMissingError);
+      expect((err as { issueIds: string[] }).issueIds).toEqual([bare]);
+      expect(await claimedRunId(noted)).toBeNull();
+      expect(await claimedRunId(bare)).toBeNull();
+      expect((await stored(bare)).status).toBe('tested');
+    });
+
+    // cm:guard the refusal must come from the NOTE, not from something else failing first — a fully-noted batch has to get PAST this preflight, or the case above would pass just as well against a preflight that refused everything
+    it('lets a fully-noted batch past this preflight', async () => {
+      const a = await insertIssue('tested', SKIP_NOTE);
+      const b = await insertIssue('tested', SKIP_NOTE);
+
+      const err = await claim([a, b]).catch((e: unknown) => e);
+
+      expect(err).not.toBeInstanceOf(
+        (await import('../../src/release-batch/service.js')).ReleaseRecordMissingError,
+      );
+    });
   });
 });

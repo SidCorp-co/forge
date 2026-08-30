@@ -18,9 +18,15 @@ const txSelectFrom = vi.fn(() => ({
   innerJoin: () => ({ where: txDependentsWhere }),
 }));
 
-const selectLimit = vi.fn(async () => [] as unknown[]);
+// cm:why the builder is thenable AND carries `.limit` because drizzle's is — the rule reads issuesMissingReleaseRecord, which awaits `.where(...)` with no limit, while the transition's other reads still chain `.limit(1)`; a mock answering only one of the two shapes reports the rule as passing on a query it never made
+const selectRows = vi.fn(async () => [] as unknown[]);
 const dbSelect = vi.fn(() => ({
-  from: vi.fn(() => ({ where: vi.fn(() => ({ limit: selectLimit })) })),
+  from: vi.fn(() => ({
+    where: vi.fn(() => {
+      const pending = selectRows();
+      return Object.assign(pending, { limit: () => pending });
+    }),
+  })),
 }));
 
 vi.mock('../db/client.js', () => {
@@ -82,12 +88,12 @@ const AT_WORK = {
 };
 
 function issueRow(releaseNotes: unknown) {
-  selectLimit.mockResolvedValueOnce([{ releaseNotes }]);
+  selectRows.mockResolvedValueOnce([{ id: ISSUE_ID, releaseNotes }]);
 }
 
 // cm:why every select answers with the row the rule refuses, so an exemption test cannot pass by the rule simply failing to find an issue — the close has to be let through on the exemption itself
 function everyRowRefusable() {
-  selectLimit.mockResolvedValue([{ releaseNotes: null }]);
+  selectRows.mockResolvedValue([{ id: ISSUE_ID, releaseNotes: null }]);
 }
 
 function queueUpdate(status: string) {
@@ -102,8 +108,8 @@ async function close(actor: typeof AGENT | typeof HUMAN, options = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  selectLimit.mockReset();
-  selectLimit.mockResolvedValue([]);
+  selectRows.mockReset();
+  selectRows.mockResolvedValue([]);
   updateReturning.mockReset();
   updateReturning.mockResolvedValue([]);
 });
@@ -143,6 +149,13 @@ describe('an agent close', () => {
     expect((await close(AGENT)).status).toBe('closed');
   });
 
+  // cm:guard `skip` must NOT exempt, and this is the case that proves it: orchestrator.ts's auto-skip chain carries `skip` and resolveSkipTarget answers `closed` for a `released` stage with no registered skill, so exempting the flag would auto-close an unrecorded issue on any freshly-onboarded project. The chain catches this refusal and stops, leaving the issue at `released`.
+  it('does NOT exempt a bare `skip`, which the orchestrator auto-skip chain also carries', async () => {
+    issueRow(null);
+
+    await expect(close(AGENT, { skip: true })).rejects.toThrow('RELEASE_RECORD_REQUIRED');
+  });
+
   // cm:guard `Skip` is the honest answer for a change with no user-facing half, and it MUST pass — a rule that only accepts a bullet would push an internal fix towards inventing one, which is a worse record than none
   it('accepts a `Skip` note, because what is refused is silence, not a decision not to publish', async () => {
     issueRow({ section: 'Skip', userFacing: '-' });
@@ -168,11 +181,11 @@ describe('the closes this rule deliberately does not touch', () => {
   });
 
   // cm:guard the decompose close cascade closes a parent's children this way and SWALLOWS the error, so a refusal there would not fail anything — it would leave the children open in silence, which is the failure shape this rule exists to remove
-  it('a system chain carrying `skip`, which propagates a close rather than making one', async () => {
+  it('the decompose close cascade, which propagates a close rather than making one', async () => {
     everyRowRefusable();
     queueUpdate('closed');
 
-    expect((await close(AGENT, { skip: true })).status).toBe('closed');
+    expect((await close(AGENT, { viaCloseCascade: true })).status).toBe('closed');
   });
 
   it('`dropped`, which closes without claiming anything shipped', async () => {

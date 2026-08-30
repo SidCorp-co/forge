@@ -7,6 +7,7 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
@@ -18,6 +19,7 @@ import {
   NoReleaseGateError,
   NoRunnerOnlineError,
   ReleasePoolEmptyError,
+  ReleaseRecordMissingError,
 } from './service.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
@@ -80,6 +82,13 @@ releaseBatchRoutes.post(
         throw conflict(
           'CLAIM_CONFLICT',
           'One or more issues could not be claimed (wrong status or already in a batch)',
+        );
+      }
+      if (err instanceof ReleaseRecordMissingError) {
+        throw conflict(
+          'RELEASE_RECORD_MISSING',
+          `${err.issueIds.length} issue(s) in this batch have no release note, and closing them ` +
+            `would claim a ship nobody wrote anything about. ${RELEASE_RECORD_REMEDY}`,
         );
       }
       if (err instanceof BatchInFlightError) {

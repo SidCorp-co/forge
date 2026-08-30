@@ -78,9 +78,13 @@
   their position, so re-wrapping a line or cutting a release moves them all without complaint.
   Separately, an automated close that would mark an issue as shipped is now refused while nothing
   has been written about what shipped: four issues closed that way in one day in August, their
-  release notes never written and the omission found by a sweep days later. Writing "no user-facing
-  change" is a complete answer and always was — what is refused is saying nothing. Closing an issue
-  by hand is untouched, and so is discarding one as not-work. (ISS-880)
+  release notes never written and the omission found by a sweep days later. The batch release is
+  stopped earlier, when it claims the issues rather than when it closes them, so it never gets far
+  enough to make the claim. Writing "no user-facing change" is a complete answer and always was —
+  what is refused is saying nothing. Closing an issue by hand is untouched, and so is discarding
+  one as not-work. What the refusal holds is that something is written on the issue before it
+  closes; whether that line then reaches this file is the first half's job, not its own.
+  (ISS-880)
 
 - A pipeline run under an issue that was DROPPED is now closed, and its queued steps with
   it. The backstop that closes runs whose issue has already finished matched only `closed`,

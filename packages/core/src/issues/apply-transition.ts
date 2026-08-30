@@ -139,6 +139,12 @@ export interface ApplyStatusTransitionOptions {
    */
   // cm:guard `issues/decompose.ts` is the ONLY caller entitled to set this, and like `viaReleasePath` it must never be plumbed through a route parameter or an MCP argument — an agent that could ask for it could park itself where no comment of a human's will ever reach it, which is the whole defect the rewrite removes. It is exempt because a comment on a decomposed parent is discussion of the split, not approval of it: waking that park would dispatch the parent's integration before its children exist.
   viaDecomposeGate?: boolean;
+  /**
+   * This close PROPAGATES a close that already happened rather than making
+   * one: the decompose cascade closing an abandoned parent's children.
+   */
+  // cm:guard `decomposition-subscribers.ts` handleCloseCascade is the ONLY caller entitled to set this, and like the two above it must never be plumbed through a route or an MCP argument. It exists because the release-record refusal needs an exemption NARROWER than `skip`: orchestrator.ts's auto-skip chain carries `skip` too and can anchor on `closed`, so exempting `skip` would auto-close an unrecorded issue on any project whose `released` stage has no registered skill.
+  viaCloseCascade?: boolean;
 }
 
 export interface StatusTransitionResult {

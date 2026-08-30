@@ -291,7 +291,8 @@ async function handleCloseCascade(payload: HookPayloads['transition']): Promise<
         },
         'closed',
         device,
-        { skip: true },
+        // cm:edge contract -> packages/core/src/issues/release-record-required.ts — `viaCloseCascade` is the exemption that keeps this working, and it exists for this call site alone: `skip` is shared with orchestrator.ts's auto-skip chain, which can anchor on `closed` and must NOT be exempt
+        { skip: true, viaCloseCascade: true },
       );
     } catch (err) {
       logger.warn(
