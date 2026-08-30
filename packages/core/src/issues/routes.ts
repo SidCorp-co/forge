@@ -1,12 +1,11 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, count, eq, inArray, sql } from 'drizzle-orm';
+import { and, count, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { registerIssueCommentRoutes } from '../comments/routes.js';
 import { db } from '../db/client.js';
 import {
-  type IssueStatus,
   issueComplexities,
   issueLabels,
   issuePriorities,
@@ -26,18 +25,13 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
-import {
-  AttachmentError,
-  type AttachmentErrorEntry,
-  type DecodedAttachment,
-  decodeAndValidateAttachments,
-  type PersistedIssueAttachment,
-  persistDecodedIssueAttachments,
-} from './attachment-service.js';
+import { AttachmentError } from './attachment-service.js';
+import { createIssue, IssueCreateError } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
-import { applyIntakeGate, finalizeIntake } from './intake-gate.js';
+import { LabelResolutionError, resolveLabelIdsForWrite } from './label-service.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { hydratePipelineHealthForIssues, type PipelineHealth } from './pipeline-health.js';
+import { issueRelationInputSchema } from './relations-service.js';
 
 // Defence against partial drizzle mocks in unit tests + transient DB blips:
 // pipelineHealth is derived; the list/single endpoints must not 500 if the
@@ -89,8 +83,10 @@ export const issueCreateSchema = z
     complexity: z.enum(issueComplexities).nullable().optional(),
     reportedBy: z.string().trim().min(1).max(200).nullable().optional(),
     assigneeId: z.uuid().nullable().optional(),
-    labels: z.array(z.uuid()).max(100).optional(),
+    labels: z.array(z.string().trim().min(1)).max(100).optional(),
     attachments: z.array(attachmentInputSchema).max(10).optional(),
+    detectorKey: z.string().trim().min(1).max(120).optional(),
+    relations: z.array(issueRelationInputSchema).max(20).optional(),
     // ISS-130 — narrow allow-list for entry status. The F4 transition
     // endpoint still owns post-creation status changes; this only exists so
     // decomposition children can land at `on_hold` (parked, no auto-triage)
@@ -115,7 +111,7 @@ export const issuePatchSchema = z
     plan: z.string().max(200_000).nullable().optional(),
     acceptanceCriteria: z.string().max(100_000).nullable().optional(),
     assigneeId: z.uuid().nullable().optional(),
-    labels: z.array(z.uuid()).max(100).optional(),
+    labels: z.array(z.string().trim().min(1)).max(100).optional(),
     metadata: issueMetadataSchema.optional(),
     releaseNotes: ReleaseNotesSchema.nullable().optional(),
   })
@@ -189,23 +185,6 @@ async function assertAssigneeIsMember(projectId: string, assigneeId: string): Pr
   }
 }
 
-async function assertLabelsInProject(
-  projectId: string,
-  labelIds: readonly string[],
-): Promise<void> {
-  if (labelIds.length === 0) return;
-  const rows = await db
-    .select({ id: labels.id })
-    .from(labels)
-    .where(and(eq(labels.projectId, projectId), inArray(labels.id, [...labelIds])));
-  if (rows.length !== new Set(labelIds).size) {
-    throw new HTTPException(400, {
-      message: 'one or more labels do not belong to this project',
-      cause: { code: 'INVALID_LABELS' },
-    });
-  }
-}
-
 export const issueProjectRoutes = new Hono<{ Variables: AuthVars }>();
 issueProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -226,96 +205,45 @@ issueProjectRoutes.post(
     assertProjectRole(access, 'member');
 
     if (input.assigneeId) await assertAssigneeIsMember(projectId, input.assigneeId);
-    if (input.labels && input.labels.length > 0)
-      await assertLabelsInProject(projectId, input.labels);
 
-    // Decode + size-cap attachments BEFORE opening the transaction so a bad
-    // payload doesn't leave a half-created issue with no files.
-    let decodedAttachments: DecodedAttachment[] = [];
-    if (input.attachments && input.attachments.length > 0) {
-      try {
-        decodedAttachments = decodeAndValidateAttachments(input.attachments);
-      } catch (err) {
-        if (err instanceof AttachmentError) {
-          throw new HTTPException(400, {
-            message: err.message,
-            cause: { code: err.code },
-          });
-        }
-        throw err;
-      }
-    }
-
-    // ISS-606: a gated project parks every would-be `open` create at draft.
-    const intake = await applyIntakeGate(projectId, input.status ?? 'open');
-
-    const created = await db.transaction(async (tx) => {
-      const [inserted] = await tx
-        .insert(issues)
-        .values({
-          projectId,
-          title: input.title,
-          description: input.description ?? null,
-          status: intake.status,
-          priority: input.priority ?? 'medium',
-          category: input.category ?? null,
-          complexity: input.complexity ?? null,
-          reportedBy: input.reportedBy ?? null,
-          assigneeId: input.assigneeId ?? null,
-          createdById: userId,
-          createdVia: 'web',
-        })
-        .returning();
-      if (!inserted) throw new Error('issues: insert returned no row');
-
-      if (input.labels && input.labels.length > 0) {
-        await tx
-          .insert(issueLabels)
-          .values(input.labels.map((labelId) => ({ issueId: inserted.id, labelId })));
-      }
-
-      return inserted as IssueRow;
-    });
-
-    let attachmentsResult: {
-      persisted: PersistedIssueAttachment[];
-      errors: AttachmentErrorEntry[];
-    } = { persisted: [], errors: [] };
-    if (decodedAttachments.length > 0) {
-      attachmentsResult = await persistDecodedIssueAttachments(
-        created.id,
-        decodedAttachments,
-        userId,
+    let result: Awaited<ReturnType<typeof createIssue>>;
+    try {
+      result = await createIssue(
+        { ...input, projectId },
+        { createdById: userId, createdVia: 'web', actor: { type: 'user', id: userId } },
       );
+    } catch (err) {
+      throw toHttpCreateError(err);
     }
 
-    // ISS-606: label + owner notification for a gated (parked) create.
-    if (intake.gated) await finalizeIntake(projectId, { id: created.id, title: created.title });
+    // cm:why a detectorKey that already tracks a live issue is a successful no-op, not a conflict — the caller asked for "one issue per detector" and got it; 200 says nothing was created without making it an error the client must special-case as a failure
+    if (result.deduped) return c.json(result, 200);
 
-    await hooks.emit('issueCreated', {
-      issueId: created.id,
-      projectId: created.projectId,
-      actor: { type: 'user', id: userId },
-      status: created.status as IssueStatus,
-      snapshot: {
-        title: created.title,
-        description: created.description,
-        priority: created.priority,
-        category: created.category,
-        reportedBy: created.reportedBy,
-        assigneeId: created.assigneeId,
-        labels: input.labels ?? [],
-      },
-    });
-
-    const response: Record<string, unknown> = serializeIssue(created);
-    response.attachments = attachmentsResult.persisted;
-    if (attachmentsResult.errors.length > 0) {
-      response.attachmentErrors = attachmentsResult.errors;
-    }
+    const response: Record<string, unknown> = serializeIssue(result.issue as IssueRow);
+    response.attachments = result.attachments;
+    if (result.attachmentErrors.length > 0) response.attachmentErrors = result.attachmentErrors;
+    if (result.relations.length > 0) response.relations = result.relations;
     return c.json(response, 201);
   },
 );
+
+// cm:edge lockstep -> packages/core/src/issues/create-service.ts — every error the create service can raise needs a case here, or it surfaces as an unmapped 500
+function toHttpCreateError(err: unknown): unknown {
+  if (err instanceof LabelResolutionError) {
+    return new HTTPException(400, {
+      message: 'one or more labels do not exist in this project',
+      cause: { code: 'INVALID_LABELS', details: { missing: err.missing } },
+    });
+  }
+  if (err instanceof AttachmentError) {
+    return new HTTPException(400, { message: err.message, cause: { code: err.code } });
+  }
+  if (err instanceof IssueCreateError) {
+    const code = err.code === 'INVALID_STATUS' ? 'INVALID_STATUS' : 'INVALID_DETECTOR_KEY';
+    return new HTTPException(400, { message: `${code}: ${err.value}`, cause: { code } });
+  }
+  return err;
+}
 
 const displayIdParamSchema = z.object({
   id: z.uuid(),
@@ -566,8 +494,15 @@ issueRoutes.patch(
     assertProjectRole(access, 'member');
 
     if (patch.assigneeId) await assertAssigneeIsMember(issue.projectId, patch.assigneeId);
-    if (patch.labels && patch.labels.length > 0)
-      await assertLabelsInProject(issue.projectId, patch.labels);
+    // cm:guard `undefined` means "no change" and `[]` means "clear every label" — collapsing the two makes an unrelated PATCH silently wipe the issue's labels
+    let resolvedLabelIds: string[] | undefined;
+    if (patch.labels !== undefined) {
+      try {
+        resolvedLabelIds = await resolveLabelIdsForWrite(issue.projectId, patch.labels);
+      } catch (err) {
+        throw toHttpCreateError(err);
+      }
+    }
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     const changedFields: string[] = [];
@@ -610,21 +545,21 @@ issueRoutes.patch(
       // Label add/remove activity is emitted INSIDE the transaction so it
       // rolls back with the label delta on failure. Non-label activity is
       // emitted post-commit via the hooks bus (see after this block).
-      if (patch.labels !== undefined) {
+      if (resolvedLabelIds !== undefined) {
         const existing = await tx
           .select({ labelId: issueLabels.labelId })
           .from(issueLabels)
           .where(eq(issueLabels.issueId, id));
         const oldSet = new Set(existing.map((r) => r.labelId));
-        const newSet = new Set(patch.labels);
+        const newSet = new Set(resolvedLabelIds);
         const labelsAdded = [...newSet].filter((l) => !oldSet.has(l));
         const labelsRemoved = [...oldSet].filter((l) => !newSet.has(l));
 
         await tx.delete(issueLabels).where(eq(issueLabels.issueId, id));
-        if (patch.labels.length > 0) {
+        if (resolvedLabelIds.length > 0) {
           await tx
             .insert(issueLabels)
-            .values(patch.labels.map((labelId) => ({ issueId: id, labelId })));
+            .values(resolvedLabelIds.map((labelId) => ({ issueId: id, labelId })));
         }
 
         for (const labelId of labelsAdded) {

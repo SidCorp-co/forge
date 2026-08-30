@@ -11,7 +11,7 @@ import {
 } from '../helpers/index.js';
 
 type ReadModule = typeof import('../../src/issues/dependency-read.js');
-type WriteModule = typeof import('../../src/mcp/tools/issue-relations.js');
+type WriteModule = typeof import('../../src/issues/relations-service.js');
 
 describe('ISS-868 issue relations writer', () => {
   let harness: TestDatabase;
@@ -34,7 +34,7 @@ describe('ISS-868 issue relations writer', () => {
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
     ({ loadIssueRelations } = await import('../../src/issues/dependency-read.js'));
-    ({ applyIssueRelations } = await import('../../src/mcp/tools/issue-relations.js'));
+    ({ applyIssueRelations } = await import('../../src/issues/relations-service.js'));
   }, 60_000);
 
   afterAll(async () => {
@@ -63,46 +63,17 @@ describe('ISS-868 issue relations writer', () => {
     return id;
   }
 
-  function makePatCtx(): Parameters<WriteModule['applyIssueRelations']>[0] {
-    const tokenId = randomUUID();
-    const device = {
-      id: tokenId,
-      ownerId,
-      name: 'synthetic-pat-device',
-      platform: 'linux' as const,
-      agentVersion: null,
-      tokenHash: 'test-token-hash',
-      tokenPrefix: 'test0001',
-      disabledAt: null,
-      status: 'online' as const,
-      lastSeenAt: null,
-      pairedAt: new Date(),
-      capabilities: null,
-      machineId: null,
-      gitCredentialRef: null,
-      createdAt: new Date(),
-    };
-    return {
-      device,
-      principal: {
-        kind: 'pat' as const,
-        agency: 'human' as const,
-        userId: ownerId,
-        tokenId,
-        scopes: ['read', 'write'],
-        projectIds: null,
-        boundProjectId: null,
-      },
-      projectSlug: null,
-    } as Parameters<WriteModule['applyIssueRelations']>[0];
+  // cm:guard a PAT reaches the write behind a SYNTHETIC device whose id is an api_tokens row, so the writer's actor MUST be the user — a device-shaped actor writes an activity_log actor_id matching no `devices` row
+  function makePatWriter(): Parameters<WriteModule['applyIssueRelations']>[0] {
+    return { actor: { type: 'user', id: ownerId }, createdById: ownerId };
   }
 
   it('persists update-style direction mapping and retraction for a PAT principal', async () => {
     const blocker = await insertIssue(91, 'developed');
     const dependent = await insertIssue(92);
-    const ctx = makePatCtx();
+    const writer = makePatWriter();
 
-    const [created] = await applyIssueRelations(ctx, projectId, dependent, [
+    const [created] = await applyIssueRelations(writer, projectId, dependent, [
       { kind: 'blocks', dependsOnId: blocker },
     ]);
     expect(created).toMatchObject({
@@ -116,7 +87,7 @@ describe('ISS-868 issue relations writer', () => {
     const [live] = (await loadIssueRelations(dependent, projectId)).blockedBy;
     expect(live).toMatchObject({ fromIssueId: blocker, toIssueId: dependent, gatesDispatch: true });
 
-    const [retracted] = await applyIssueRelations(ctx, projectId, dependent, [
+    const [retracted] = await applyIssueRelations(writer, projectId, dependent, [
       { kind: 'blocks', dependsOnId: blocker, validUntil: '2020-01-01T00:00:00.000Z' },
     ]);
     expect(retracted).toMatchObject({ edgeId: created?.edgeId, created: false, updated: true });
@@ -141,9 +112,9 @@ describe('ISS-868 issue relations writer', () => {
     const blockerB = await insertIssue(94);
     const dependent = await insertIssue(95);
     const downstream = await insertIssue(96);
-    const ctx = makePatCtx();
+    const writer = makePatWriter();
 
-    const applied = await applyIssueRelations(ctx, projectId, dependent, [
+    const applied = await applyIssueRelations(writer, projectId, dependent, [
       { kind: 'blocks', dependsOnId: blockerA },
       { kind: 'blocks', dependsOnId: blockerB },
       { kind: 'blocks', blocksId: downstream },

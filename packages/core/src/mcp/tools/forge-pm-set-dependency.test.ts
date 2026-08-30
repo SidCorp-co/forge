@@ -32,12 +32,8 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
-// ISS-40 PR-E added a cycle pre-check on `kind='blocks'` inserts that walks
-// the dependency graph via its own `db.select` chain. The queue-mock above
-// is shaped for the tool's own calls, not the cycle walk; stub the helper
-// to return `null` (no cycle) so this test stays focused on the tool's own
-// branches. Cycle detection itself is covered by `dependency-routes.test.ts`.
-vi.mock('../../issues/dependency-routes.js', () => ({
+// cm:guard stub `detectCycle` rather than letting it run — it walks the graph through its OWN db.select, and the queue mock above is shaped for the write's calls only, so a real walk silently consumes the row staged for the insert and every assertion drifts by one. Cycle detection has its own tests in issues/cycle-detect.test.ts.
+vi.mock('../../issues/cycle-detect.js', () => ({
   detectCycle: vi.fn(async () => null),
 }));
 
@@ -353,7 +349,7 @@ describe('forge_pm.set_dependency — retracting an existing edge', () => {
   });
 });
 
-// cm:guard these two tests are the ONLY gate on `deferHealthPublish`'s default — the flag suppresses a WS refresh a caller then owes itself (see issue-relations.ts), so a refactor that flips the default to "always defer" is invisible without the first of them and every relations caller silently stops refreshing the dependent's waiting banner
+// cm:guard these two tests are the ONLY gate on `deferHealthPublish`'s default — the flag suppresses a WS refresh a caller then owes itself (see issues/relations-service.ts), so a refactor that flips the default to "always defer" is invisible without the first of them and every relations caller silently stops refreshing the dependent's waiting banner
 describe('forge_pm.set_dependency — deferHealthPublish', () => {
   function queueFreshBlocksInsert() {
     pushMemberOk();

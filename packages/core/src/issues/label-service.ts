@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, labels } from '../db/schema.js';
 
@@ -18,4 +18,50 @@ export async function listIssueLabels(issueId: string): Promise<IssueLabelLite[]
     .from(issueLabels)
     .innerJoin(labels, eq(labels.id, issueLabels.labelId))
     .where(eq(issueLabels.issueId, issueId));
+}
+
+// cm:guard carry the missing VALUES, not a message — REST answers 400 `INVALID_LABELS` and MCP answers a `BAD_REQUEST: …` string naming each unresolved label, and both are asserted; a shared message rewrites one caller's contract
+export class LabelResolutionError extends Error {
+  constructor(readonly missing: string[]) {
+    super('INVALID_LABELS');
+    this.name = 'LabelResolutionError';
+  }
+}
+
+const LABEL_UUID_PATTERN =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+/**
+ * ISS-633 — strict name/uuid -> id resolver for `data.labels` WRITES. Every
+ * supplied value MUST resolve to a label that belongs to `projectId` — an
+ * unknown name, an unknown uuid, or a uuid belonging to another project all
+ * throw. No auto-create.
+ */
+// cm:why resolves names as well as uuids so an agent can write `labels:['bug']` without a lookup round trip; the tolerant READ-path resolver (forge-issues.ts) drops unknowns instead, and the two must not be swapped
+export async function resolveLabelIdsForWrite(
+  projectId: string,
+  rawValues: readonly string[],
+): Promise<string[]> {
+  const uuidValues = [...new Set(rawValues.filter((v) => LABEL_UUID_PATTERN.test(v)))];
+  const nameValues = [...new Set(rawValues.filter((v) => !LABEL_UUID_PATTERN.test(v)))];
+  if (uuidValues.length === 0 && nameValues.length === 0) return [];
+
+  const matchConds = [];
+  if (uuidValues.length > 0) matchConds.push(inArray(labels.id, uuidValues));
+  if (nameValues.length > 0) matchConds.push(inArray(labels.name, nameValues));
+
+  const rows = await db
+    .select({ id: labels.id, name: labels.name })
+    .from(labels)
+    .where(and(eq(labels.projectId, projectId), or(...matchConds)))
+    .limit(uuidValues.length + nameValues.length + 1);
+
+  const foundIds = new Set(rows.map((r) => r.id));
+  const foundNames = new Set(rows.map((r) => r.name));
+  const missing = [
+    ...uuidValues.filter((v) => !foundIds.has(v)),
+    ...nameValues.filter((v) => !foundNames.has(v)),
+  ];
+  if (missing.length > 0) throw new LabelResolutionError(missing);
+  return [...foundIds];
 }

@@ -51,7 +51,11 @@ const txUpdateWhere = vi.fn(() => {
 });
 const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
 const txUpdate = vi.fn(() => ({ set: txUpdateSet }));
-const txInsertValues = vi.fn(async (_values?: unknown) => undefined);
+// cm:guard the tx insert must satisfy BOTH shapes — a bare await (the issueLabels rows) and `.returning()` (the issue row, staged per test via insertReturning) — because ISS-889 moved create's `insert(issues)` inside the transaction alongside the label rows; drop either and every create test fails on a shape, not on the behaviour it asserts
+const txInsertValues = vi.fn((_values?: unknown) => ({
+  returning: insertReturning,
+  then: (r: (v: unknown) => unknown) => Promise.resolve(undefined).then(r),
+}));
 const txInsert = vi.fn(() => ({ values: txInsertValues }));
 // ISS-633 — label replace-set delete (issueLabels) inside the update tx.
 const txDeleteWhere = vi.fn(async () => undefined);
@@ -137,7 +141,9 @@ vi.mock('../../issues/attachment-service.js', async (importActual) => {
 // get/update/transition/mark_merged/unmark tests don't need to stage an extra
 // query. Defaults to no labels; individual label tests override per-call.
 const listIssueLabelsMock = vi.fn(async (..._args: unknown[]) => [] as unknown[]);
-vi.mock('../../issues/label-service.js', () => ({
+// cm:guard override ONLY `listIssueLabels` here — `resolveLabelIdsForWrite` and `LabelResolutionError` must stay REAL, or the create/update label tests assert against a stub and the BAD_REQUEST mapping in forge-issues.ts compares against an undefined class
+vi.mock('../../issues/label-service.js', async (importActual) => ({
+  ...(await importActual<typeof import('../../issues/label-service.js')>()),
   listIssueLabels: (...args: unknown[]) => listIssueLabelsMock(...args),
 }));
 
@@ -145,17 +151,13 @@ vi.mock('../../issues/label-service.js', () => ({
 vi.mock('../../issues/dependency-read.js', () => ({
   loadIssueRelations: vi.fn(async () => ({ blocks: [], blockedBy: [] })),
 }));
-// ISS-571 — stub pmSetDependencyHandler so create-with-relations tests don't
-// need to program the full DB query chain that the real handler executes.
-const pmSetDependencyMock = vi.fn(async () => ({ id: 'dep-id-1', created: true }));
-vi.mock('./forge-pm-set-dependency.js', async (importActual) => {
-  const actual = await importActual<typeof import('./forge-pm-set-dependency.js')>();
-  return {
-    ...actual,
-    // Assign mock directly to avoid TS2556 (spread of unknown[] into typed params).
-    pmSetDependencyHandler: pmSetDependencyMock as unknown as typeof actual.pmSetDependencyHandler,
-  };
-});
+// cm:why stubbing the shared edge write keeps create-with-relations tests off the full DB chain the real one walks; the ordering they assert is the tool's, not the edge write's
+const setEdgeMock = vi.fn(async () => ({ id: 'dep-id-1', created: true }));
+type DepService = typeof import('../../issues/dependency-service.js');
+vi.mock('../../issues/dependency-service.js', async (importActual) => ({
+  ...(await importActual<DepService>()),
+  setIssueDependency: setEdgeMock as unknown as DepService['setIssueDependency'],
+}));
 
 const { forgeIssuesTool, findVerifiedClaimViolation } = await import('./forge-issues.js');
 const { db: mockDb } = await import('../../db/client.js');
@@ -707,7 +709,7 @@ describe('forge_issues tool', () => {
     expect(result.plan).toBe('p1');
     expect(result.acceptanceCriteria).toContain('ac1');
     expect(result.acceptanceCriteria).toContain('UNTRUSTED_DATA source="issue.acceptanceCriteria"');
-    expect(insertValues).toHaveBeenCalledWith(
+    expect(txInsertValues).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'New', plan: 'p1', acceptanceCriteria: 'ac1' }),
     );
   });
@@ -730,7 +732,7 @@ describe('forge_issues tool', () => {
     })) as { status: string };
 
     expect(result.status).toBe('on_hold');
-    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ status: 'on_hold' }));
+    expect(txInsertValues).toHaveBeenCalledWith(expect.objectContaining({ status: 'on_hold' }));
     expect(hooks.emit).toHaveBeenCalledWith(
       'issueCreated',
       expect.objectContaining({ status: 'on_hold' }),
@@ -752,7 +754,7 @@ describe('forge_issues tool', () => {
         data: { title: 'should fail', status: 'in_progress' },
       }),
     ).rejects.toThrow(/BAD_REQUEST/);
-    expect(insertValues).not.toHaveBeenCalled();
+    expect(txInsertValues).not.toHaveBeenCalled();
   });
 
   // ISS-236 — drafts are AI-generated proposals; the create allow-list
@@ -775,7 +777,7 @@ describe('forge_issues tool', () => {
     })) as { status: string };
 
     expect(result.status).toBe('draft');
-    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ status: 'draft' }));
+    expect(txInsertValues).toHaveBeenCalledWith(expect.objectContaining({ status: 'draft' }));
     expect(hooks.emit).toHaveBeenCalledWith(
       'issueCreated',
       expect.objectContaining({ status: 'draft' }),
@@ -799,7 +801,7 @@ describe('forge_issues tool', () => {
       data: { title: 'normal create' },
     });
 
-    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ status: 'open' }));
+    expect(txInsertValues).toHaveBeenCalledWith(expect.objectContaining({ status: 'open' }));
     expect(hooks.emit).toHaveBeenCalledWith(
       'issueCreated',
       expect.objectContaining({ status: 'open' }),
@@ -811,7 +813,7 @@ describe('forge_issues tool', () => {
     const BLOCKER_ID = '77777777-7777-4777-8777-777777777777';
     const BLOCKED_ID = '88888888-8888-4888-8888-888888888888';
 
-    it('calls pmSetDependencyHandler with dependsOnId BEFORE hooks.emit(issueCreated)', async () => {
+    it('commits the dependsOnId edge BEFORE hooks.emit(issueCreated)', async () => {
       const tool = forgeIssuesTool({
         principal: { kind: 'device', device: fakeDevice },
         device: fakeDevice,
@@ -823,7 +825,7 @@ describe('forge_issues tool', () => {
 
       const { hooks } = await import('../../pipeline/hooks.js');
       const callOrder: string[] = [];
-      pmSetDependencyMock.mockImplementationOnce(async () => {
+      setEdgeMock.mockImplementationOnce(async () => {
         callOrder.push('setDep');
         return { id: 'dep-id-1', created: true };
       });
@@ -842,20 +844,19 @@ describe('forge_issues tool', () => {
 
       // edge must be committed before the hook fires
       expect(callOrder).toEqual(['setDep', 'issueCreated']);
-      expect(pmSetDependencyMock).toHaveBeenCalledWith(
-        fakeDevice,
+      expect(setEdgeMock).toHaveBeenCalledWith(
         expect.objectContaining({
           projectId: PROJECT_ID,
           fromIssueId: BLOCKER_ID,
           toIssueId: ISSUE_ID,
           kind: 'blocks',
         }),
-        { type: 'device', id: fakeDevice.id },
+        { actor: { type: 'device', id: fakeDevice.id }, createdById: OWNER_ID },
         { deferHealthPublish: true },
       );
     });
 
-    it('calls pmSetDependencyHandler with blocksId (new issue blocks the target)', async () => {
+    it('commits a blocksId edge with the new issue on the blocking side', async () => {
       const tool = forgeIssuesTool({
         principal: { kind: 'device', device: fakeDevice },
         device: fakeDevice,
@@ -873,20 +874,19 @@ describe('forge_issues tool', () => {
         },
       });
 
-      expect(pmSetDependencyMock).toHaveBeenCalledWith(
-        fakeDevice,
+      expect(setEdgeMock).toHaveBeenCalledWith(
         expect.objectContaining({
           projectId: PROJECT_ID,
           fromIssueId: ISSUE_ID,
           toIssueId: BLOCKED_ID,
           kind: 'blocks',
         }),
-        { type: 'device', id: fakeDevice.id },
+        { actor: { type: 'device', id: fakeDevice.id }, createdById: OWNER_ID },
         { deferHealthPublish: true },
       );
     });
 
-    it('create without relations does not call pmSetDependencyHandler (backward compat)', async () => {
+    it('create without relations writes no edge (backward compat)', async () => {
       const tool = forgeIssuesTool({
         principal: { kind: 'device', device: fakeDevice },
         device: fakeDevice,
@@ -898,7 +898,7 @@ describe('forge_issues tool', () => {
 
       await tool.handler({ action: 'create', data: { title: 'plain issue' } });
 
-      expect(pmSetDependencyMock).not.toHaveBeenCalled();
+      expect(setEdgeMock).not.toHaveBeenCalled();
     });
 
     it('rejects a relation with both dependsOnId and blocksId set', async () => {
@@ -916,7 +916,7 @@ describe('forge_issues tool', () => {
           } as unknown as Record<string, unknown>,
         }),
       ).rejects.toThrow();
-      expect(pmSetDependencyMock).not.toHaveBeenCalled();
+      expect(setEdgeMock).not.toHaveBeenCalled();
     });
 
     it('rejects a relation with neither dependsOnId nor blocksId set', async () => {
@@ -934,7 +934,7 @@ describe('forge_issues tool', () => {
           } as unknown as Record<string, unknown>,
         }),
       ).rejects.toThrow();
-      expect(pmSetDependencyMock).not.toHaveBeenCalled();
+      expect(setEdgeMock).not.toHaveBeenCalled();
     });
 
     it('rejects a relation with kind=decomposes (must use forge_project_pm instead)', async () => {
@@ -952,10 +952,10 @@ describe('forge_issues tool', () => {
           } as unknown as Record<string, unknown>,
         }),
       ).rejects.toThrow();
-      expect(pmSetDependencyMock).not.toHaveBeenCalled();
+      expect(setEdgeMock).not.toHaveBeenCalled();
     });
 
-    it('propagates a pmSetDependencyHandler error and does not emit issueCreated', async () => {
+    it('propagates an edge-write error and does not emit issueCreated', async () => {
       const tool = forgeIssuesTool({
         principal: { kind: 'device', device: fakeDevice },
         device: fakeDevice,
@@ -966,7 +966,7 @@ describe('forge_issues tool', () => {
       insertReturning.mockResolvedValueOnce([baseIssueRow]);
 
       const { hooks } = await import('../../pipeline/hooks.js');
-      pmSetDependencyMock.mockRejectedValueOnce(
+      setEdgeMock.mockRejectedValueOnce(
         new Error('CYCLE_DETECTED: adding this blocks edge would form a loop'),
       );
 
@@ -1305,7 +1305,7 @@ describe('forge_issues tool', () => {
     })) as { releaseNotes: typeof rn | null };
 
     expect(result.releaseNotes).toEqual(rn);
-    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ releaseNotes: rn }));
+    expect(txInsertValues).toHaveBeenCalledWith(expect.objectContaining({ releaseNotes: rn }));
   });
 
   it('update writes releaseNotes onto an existing issue', async () => {
@@ -1668,7 +1668,7 @@ describe('forge_issues tool', () => {
         tool.handler({ action: 'mark_merged', data: { issueId: ISSUE_ID, target: 'base' } }),
       ).rejects.toThrow(/NO_WORK_EVIDENCE/);
       expect(updateSet).not.toHaveBeenCalled();
-      expect(insertValues).not.toHaveBeenCalled();
+      expect(txInsertValues).not.toHaveBeenCalled();
     });
 
     it('mark_merged does NOT evidence-gate a PAT (human) principal', async () => {
@@ -1868,7 +1868,7 @@ describe('forge_issues tool', () => {
       })) as { labels: Array<{ id: string }> };
 
       expect(result.labels).toEqual([{ id: LABEL_ID, name: 'area:mobile', color: '#000' }]);
-      expect(insertValues).toHaveBeenCalledWith(
+      expect(txInsertValues).toHaveBeenCalledWith(
         expect.arrayContaining([{ issueId: ISSUE_ID, labelId: LABEL_ID }]),
       );
       expect(hooks.emit).toHaveBeenCalledWith(
