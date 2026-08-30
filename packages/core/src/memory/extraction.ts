@@ -219,7 +219,7 @@ export async function runExtractionForIssue(
           text: f.fact,
           metadata: { category: f.category, origin: 'extraction', issueId },
         },
-        { semanticDedup: true },
+        { nearDuplicateProbe: true },
       );
       factsWritten++;
       logger.info(
@@ -227,7 +227,7 @@ export async function runExtractionForIssue(
           projectId,
           issueId,
           category: f.category,
-          dedupedInto: result.dedupedInto,
+          nearDuplicateOf: result.nearDuplicateOf,
           fact: f.fact.slice(0, 60),
         },
         'memory.extraction: fact stored',

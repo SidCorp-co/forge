@@ -155,7 +155,7 @@ describe('runExtractionForIssue', () => {
         sourceRef: expect.stringMatching(/^extracted:[0-9a-f]{12}$/),
         metadata: expect.objectContaining({ category: 'correction', origin: 'extraction' }),
       }),
-      { semanticDedup: true },
+      { nearDuplicateProbe: true },
     );
     expect(insertedValues[0]?.values).toMatchObject({
       subject: 'deploy',

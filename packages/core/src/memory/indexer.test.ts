@@ -30,7 +30,6 @@ const conflictMock = vi.fn();
 const returningMock = vi.fn();
 const selectLimitMock = vi.fn();
 const updateSetMock = vi.fn();
-const updateReturningMock = vi.fn();
 vi.mock('../db/client.js', () => ({
   db: {
     insert: () => ({
@@ -49,16 +48,19 @@ vi.mock('../db/client.js', () => ({
         where: () => ({ limit: () => selectLimitMock() }),
       }),
     }),
+    // cm:guard ISS-876: the indexer must never UPDATE a row other than the one its natural key upserts — this stub exists purely so a reintroduced absorb is caught by `expect(updateSetMock).not.toHaveBeenCalled()` instead of passing silently
     update: () => ({
       set: (s: unknown) => {
         updateSetMock(s);
-        return { where: () => ({ returning: () => updateReturningMock() }) };
+        return { where: () => ({ returning: async () => [] }) };
       },
     }),
   },
 }));
 
-const { indexMemory, indexMemoryBestEffort } = await import('./indexer.js');
+const { NEAR_DUPLICATE_THRESHOLD, indexMemory, indexMemoryBestEffort } = await import(
+  './indexer.js'
+);
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -69,13 +71,11 @@ beforeEach(() => {
   returningMock.mockReset();
   selectLimitMock.mockReset();
   updateSetMock.mockReset();
-  updateReturningMock.mockReset();
   searchMemoriesMock.mockReset();
   warnMock.mockReset();
   embedMock.mockResolvedValue([0.1, 0.2]);
   returningMock.mockResolvedValue([{ id: 'm-1', embeddedAt: new Date() }]);
   selectLimitMock.mockResolvedValue([]);
-  updateReturningMock.mockResolvedValue([{ id: 'm-existing', embeddedAt: new Date() }]);
   searchMemoriesMock.mockResolvedValue([]);
 });
 
@@ -132,7 +132,7 @@ describe('indexMemory', () => {
   });
 });
 
-describe('indexMemory semantic dedup', () => {
+describe('indexMemory near-duplicate probe', () => {
   const input = {
     projectId: PROJECT_ID,
     source: 'knowledge' as const,
@@ -140,127 +140,58 @@ describe('indexMemory semantic dedup', () => {
     text: 'always use python3',
   };
 
-  it('does not search for duplicates when the option is off', async () => {
+  it('does not probe when the option is off', async () => {
     await indexMemory(input);
     expect(searchMemoriesMock).not.toHaveBeenCalled();
   });
 
-  it('absorbs the write into a near-identical existing row', async () => {
+  // cm:guard ISS-876: the probe may only REPORT — the write must land on the ref the caller named and no other row may be touched; the absorb this replaced overwrote 4 of 6 dated summary rows on forge-dev and returned an archived snapshot ref that forge_memory.get could not read
+  it('writes the ref the caller named and leaves the near-identical row untouched', async () => {
     searchMemoriesMock.mockResolvedValueOnce([
       { id: 'm-existing', sourceRef: 'old-ref', score: 0.93 },
     ]);
 
-    const result = await indexMemory(input, { semanticDedup: true });
+    const result = await indexMemory(input, { nearDuplicateProbe: true });
 
-    expect(result.id).toBe('m-existing');
-    expect(result.dedupedInto).toBe('old-ref');
+    expect(valuesMock.mock.calls[0]?.[0]).toMatchObject({ sourceRef: 'new-ref' });
+    expect(updateSetMock).not.toHaveBeenCalled();
+    expect(result.nearDuplicateOf).toBe('old-ref');
     expect(result.dedupeScore).toBe(0.93);
-    expect(valuesMock).not.toHaveBeenCalled();
-    // The absorbing row is revived and refreshed.
-    const set = updateSetMock.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(set.archivedAt).toBeNull();
-    expect(set.textContent).toBe('always use python3');
   });
 
-  // cm:guard the merge overwrites the target's text — without this snapshot the previous wording is gone for good, which already destroyed unique knowledge twice
-  it('archives the text a merge is about to overwrite', async () => {
+  it('reports nothing at exactly the threshold (strictly-above only)', async () => {
     searchMemoriesMock.mockResolvedValueOnce([
-      { id: 'm-existing', sourceRef: 'old-ref', score: 0.93 },
+      { id: 'm-edge', sourceRef: 'edge-ref', score: NEAR_DUPLICATE_THRESHOLD },
     ]);
-    selectLimitMock
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ textContent: 'THE ORIGINAL WORDING', metadata: { k: 'v' } }]);
 
-    const result = await indexMemory(input, { semanticDedup: true });
+    const result = await indexMemory(input, { nearDuplicateProbe: true });
 
-    expect(result.supersededSnapshotRef).toMatch(/^old-ref__superseded-\d+$/);
-    const archived = valuesMock.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(archived.textContent).toBe('THE ORIGINAL WORDING');
-    expect(archived.sourceRef).toBe(result.supersededSnapshotRef);
-    expect(archived.metadata).toMatchObject({
-      k: 'v',
-      supersededBySourceRef: 'new-ref',
-      supersededIntoSourceRef: 'old-ref',
-    });
+    expect(result.nearDuplicateOf).toBeUndefined();
+    expect(updateSetMock).not.toHaveBeenCalled();
+    expect(valuesMock.mock.calls[0]?.[0]).toMatchObject({ sourceRef: 'new-ref' });
   });
 
-  // cm:guard the snapshot must be archived on insert — a searchable copy is a near-perfect match for the text that just replaced it, so it would absorb the next write and cascade
-  it('archives the snapshot so it can never become a dedup target itself', async () => {
-    searchMemoriesMock.mockResolvedValueOnce([
-      { id: 'm-existing', sourceRef: 'old-ref', score: 0.93 },
-    ]);
-    selectLimitMock
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ textContent: 'THE ORIGINAL WORDING', metadata: {} }]);
-
-    await indexMemory(input, { semanticDedup: true });
-
-    const archived = valuesMock.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(archived.archivedAt).toBeDefined();
-    expect(archived.archivedAt).not.toBeNull();
-  });
-
-  it('skips the snapshot when the merge would rewrite identical text', async () => {
-    searchMemoriesMock.mockResolvedValueOnce([
-      { id: 'm-existing', sourceRef: 'old-ref', score: 0.93 },
-    ]);
-    selectLimitMock
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ textContent: 'always use python3', metadata: {} }]);
-
-    const result = await indexMemory(input, { semanticDedup: true });
-
-    expect(result.supersededSnapshotRef).toBeUndefined();
-    expect(valuesMock).not.toHaveBeenCalled();
-  });
-
-  // cm:guard losing the snapshot must not lose the write — the merge is still the caller's intent, so a failed archive degrades to the old behaviour rather than throwing
-  it('still completes the merge when archiving fails', async () => {
-    searchMemoriesMock.mockResolvedValueOnce([
-      { id: 'm-existing', sourceRef: 'old-ref', score: 0.93 },
-    ]);
-    selectLimitMock.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('db down'));
-
-    const result = await indexMemory(input, { semanticDedup: true });
-
-    expect(result.dedupedInto).toBe('old-ref');
-    expect(result.supersededSnapshotRef).toBeUndefined();
-  });
-
-  it('skips dedup when the exact natural key already exists (upsert refines it)', async () => {
+  it('skips the probe when the exact natural key already exists (that write refines its own row)', async () => {
     selectLimitMock.mockResolvedValueOnce([{ id: 'm-1' }]);
-    const result = await indexMemory(input, { semanticDedup: true });
+    const result = await indexMemory(input, { nearDuplicateProbe: true });
     expect(searchMemoriesMock).not.toHaveBeenCalled();
-    expect(result.dedupedInto).toBeUndefined();
+    expect(result.nearDuplicateOf).toBeUndefined();
     expect(valuesMock).toHaveBeenCalled();
   });
 
-  it('inserts normally when the best match is below the threshold', async () => {
+  it('reports nothing when the best match is below the threshold', async () => {
     searchMemoriesMock.mockResolvedValueOnce([{ id: 'm-far', sourceRef: 'far', score: 0.7 }]);
-    const result = await indexMemory(input, { semanticDedup: true });
-    expect(result.dedupedInto).toBeUndefined();
+    const result = await indexMemory(input, { nearDuplicateProbe: true });
+    expect(result.nearDuplicateOf).toBeUndefined();
     expect(valuesMock).toHaveBeenCalled();
   });
 
-  it('skips dedup on degraded writes (no vector to compare)', async () => {
+  it('skips the probe on degraded writes (no vector to compare)', async () => {
     embedMock.mockRejectedValueOnce(new FakeEmbeddingUnavailableError('down'));
-    const result = await indexMemory(input, { semanticDedup: true });
+    const result = await indexMemory(input, { nearDuplicateProbe: true });
     expect(searchMemoriesMock).not.toHaveBeenCalled();
     expect(result.degraded).toBe(true);
-  });
-
-  it('falls back to a normal insert when the dedup target vanishes mid-flight', async () => {
-    searchMemoriesMock.mockResolvedValueOnce([
-      { id: 'm-doomed', sourceRef: 'old-ref', score: 0.93 },
-    ]);
-    // Concurrent delete/purge between the similarity search and the update.
-    updateReturningMock.mockResolvedValueOnce([]);
-
-    const result = await indexMemory(input, { semanticDedup: true });
-
-    expect(result.dedupedInto).toBeUndefined();
-    expect(result.id).toBe('m-1');
-    expect(valuesMock).toHaveBeenCalled();
+    expect(updateSetMock).not.toHaveBeenCalled();
   });
 });
 

@@ -374,7 +374,7 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
           text: item.content.trim(),
           metadata: { category, origin: 'consolidation' },
         },
-        { semanticDedup: true },
+        { nearDuplicateProbe: true },
       );
       created++;
     } catch (err) {

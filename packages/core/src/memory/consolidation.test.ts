@@ -201,7 +201,7 @@ describe('runConsolidationForProject', () => {
         source: 'knowledge',
         sourceRef: expect.stringMatching(/^consolidated:[0-9a-f]{12}$/),
       }),
-      { semanticDedup: true },
+      { nearDuplicateProbe: true },
     );
     // update → same natural key re-embedded
     expect(indexMemoryMock).toHaveBeenCalledWith(

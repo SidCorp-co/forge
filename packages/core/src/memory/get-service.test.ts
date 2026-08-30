@@ -50,6 +50,18 @@ describe('getMemoryInputSchema', () => {
     expect(r.success).toBe(true);
   });
 
+  it('defaults includeArchived off so a soft-deleted row is not current memory', () => {
+    const r = getMemoryInputSchema.safeParse({ projectId: PROJECT_ID });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.includeArchived).toBeUndefined();
+  });
+
+  it('accepts includeArchived:true', () => {
+    const r = getMemoryInputSchema.safeParse({ projectId: PROJECT_ID, includeArchived: true });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.includeArchived).toBe(true);
+  });
+
   it('rejects orderBy outside the allow-list', () => {
     const r = getMemoryInputSchema.safeParse({ projectId: PROJECT_ID, orderBy: 'random' });
     expect(r.success).toBe(false);

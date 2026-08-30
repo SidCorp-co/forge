@@ -47,42 +47,34 @@ export interface IndexResult {
    */
   degraded: boolean;
   /**
-   * Set when semantic dedup absorbed this write into an existing
-   * near-identical row (memory-v2 phase 2): the `sourceRef` of that row.
-   * `id` is the absorbing row's id. Callers should reuse this sourceRef for
-   * future refinements instead of their requested one.
+   * Advisory only: the `sourceRef` of an existing same-source row whose text
+   * is near-identical (cosine > NEAR_DUPLICATE_THRESHOLD) to this write. The
+   * write still landed on the ref the caller named. A caller refining that
+   * other record should re-issue the write under THIS ref — an exact-key
+   * write is the only way one memory row ever replaces another's text.
    */
-  dedupedInto?: string;
-  /**
-   * Set alongside `dedupedInto`: cosine score of the absorbing row, and the
-   * `sourceRef` of the archived snapshot holding the text this write replaced.
-   * Present so a caller can SEE that a merge happened and recover the previous
-   * wording — dedup is similarity-based, so it can absorb a topically different
-   * row, and silently overwriting that row's text destroyed unique knowledge.
-   */
+  nearDuplicateOf?: string;
+  /** Cosine score of `nearDuplicateOf`; set only alongside it. */
   dedupeScore?: number;
-  supersededSnapshotRef?: string;
 }
 
 export interface IndexOptions {
   /**
-   * memory-v2 phase 2 — semantic dedup, ported from forge-agents crud.ts.
-   * When the write would CREATE a new row (no exact natural-key match) but a
-   * semantically near-identical row (cosine > DEDUP_THRESHOLD) already exists
-   * under the same source, the write refines THAT row instead of inserting a
-   * near-duplicate. Exact-key re-writes (intentional refinement) and degraded
-   * writes (no vector to compare) bypass dedup. Enabled by the agent-curated
-   * write paths for `note`/`knowledge`; never by lifecycle mirrors.
+   * Report (never act on) an existing same-source row whose text is
+   * near-identical to this write, as `nearDuplicateOf` + `dedupeScore`.
+   * Costs one vector search. Exact-key re-writes and degraded writes (no
+   * vector to compare) skip the probe. Enabled by the agent-curated write
+   * paths for `note`/`knowledge`; never by lifecycle mirrors.
    */
-  semanticDedup?: boolean;
+  nearDuplicateProbe?: boolean;
 }
 
 /**
  * 0.85 mirrors forge-agents. NOTE (proposal open question): tuned on the
  * predecessor's embedding model — re-validate against the configured model
- * before relying on it for aggressive consolidation.
+ * before reading a hit as anything stronger than "look at this too".
  */
-export const DEDUP_THRESHOLD = 0.85;
+export const NEAR_DUPLICATE_THRESHOLD = 0.85;
 
 /**
  * Strict variant — throws on DB upsert failure or non-outage embedding
@@ -118,46 +110,20 @@ export async function indexMemory(input: IndexInput, opts?: IndexOptions): Promi
   }
   const degraded = vector === null;
 
-  if (opts?.semanticDedup && vector !== null) {
-    const target = await findDedupTarget(input, vector);
-    if (target) {
-      const supersededSnapshotRef = await archiveSupersededText(input, target);
-      const [updated] = await db
-        .update(memories)
-        .set({
-          textContent: input.text,
-          embedding: vector,
-          metadata: input.metadata ?? {},
-          archivedAt: null,
-          embeddedAt: sql`now()`,
-          updatedAt: sql`now()`,
-        })
-        .where(eq(memories.id, target.id))
-        .returning({ id: memories.id, embeddedAt: memories.embeddedAt });
-      if (updated) {
-        logger.info(
-          {
-            projectId: input.projectId,
-            source: input.source,
-            requestedSourceRef: input.sourceRef,
-            dedupedInto: target.sourceRef,
-            score: target.score,
-          },
-          'memory.indexer: semantic dedup absorbed write into existing row',
-        );
-        return {
-          id: updated.id,
-          embeddedAt: updated.embeddedAt,
-          truncated,
-          degraded: false,
-          dedupedInto: target.sourceRef,
-          dedupeScore: target.score,
-          ...(supersededSnapshotRef ? { supersededSnapshotRef } : {}),
-        };
-      }
-      // Row vanished between search and update (concurrent delete) — fall
-      // through to the normal insert path.
-    }
+  // cm:guard ISS-876: the probe REPORTS, it never redirects the write — an absorb can only ever fire on a ref the caller just invented (findNearDuplicate returns null on an exact-key hit), so acting on it overwrites a record nobody named; that destroyed 4 of 6 dated summary rows on forge-dev and the snapshot ref it handed back was archived, hence unreadable through forge_memory.get
+  const nearDuplicate =
+    opts?.nearDuplicateProbe && vector !== null ? await findNearDuplicate(input, vector) : null;
+  if (nearDuplicate) {
+    logger.info(
+      {
+        projectId: input.projectId,
+        source: input.source,
+        sourceRef: input.sourceRef,
+        nearDuplicateOf: nearDuplicate.sourceRef,
+        score: nearDuplicate.score,
+      },
+      'memory.indexer: write is near-identical to an existing row, reporting it to the caller',
+    );
   }
 
   const [row] = await db
@@ -195,65 +161,27 @@ export async function indexMemory(input: IndexInput, opts?: IndexOptions): Promi
     // Shouldn't happen — UPSERT with returning always returns a row.
     throw new Error('memory.indexer: upsert returned no row');
   }
-  return { id: row.id, embeddedAt: row.embeddedAt, truncated, degraded };
+  return {
+    id: row.id,
+    embeddedAt: row.embeddedAt,
+    truncated,
+    degraded,
+    ...(nearDuplicate
+      ? { nearDuplicateOf: nearDuplicate.sourceRef, dedupeScore: nearDuplicate.score }
+      : {}),
+  };
 }
 
 /**
- * Dedup target lookup: skip when the exact natural key already exists (the
- * upsert path refines it — that's intentional), otherwise return the closest
- * same-source row above DEDUP_THRESHOLD.
+ * Near-duplicate probe: skip when the exact natural key already exists (that
+ * write refines its own row), otherwise return the closest same-source row
+ * above NEAR_DUPLICATE_THRESHOLD. Read-only — the caller reports the hit and
+ * writes its own ref regardless.
  */
-// cm:guard the only thing between similarity-based dedup and permanent knowledge loss — a merge overwrites the target's textContent, and without this snapshot the previous wording is unrecoverable (already lost twice, on two deliberately distinct sourceRefs)
-async function archiveSupersededText(
-  input: IndexInput,
-  target: { id: string; sourceRef: string },
-): Promise<string | null> {
-  try {
-    const [previous] = await db
-      .select({ textContent: memories.textContent, metadata: memories.metadata })
-      .from(memories)
-      .where(eq(memories.id, target.id))
-      .limit(1);
-    if (!previous) return null;
-    if (previous.textContent.trim() === input.text.trim()) return null;
-
-    const snapshotRef = `${target.sourceRef}__superseded-${Date.now()}`;
-    await db.insert(memories).values({
-      projectId: input.projectId,
-      source: input.source,
-      sourceRef: snapshotRef,
-      textContent: previous.textContent,
-      // cm:why archived on insert — the snapshot must stay out of every read surface and out of the dedup search (an archived copy is a near-perfect match, so a searchable one would absorb the next write and cascade)
-      archivedAt: sql`now()`,
-      metadata: {
-        ...((previous.metadata as Record<string, unknown> | null) ?? {}),
-        supersededBySourceRef: input.sourceRef,
-        supersededIntoSourceRef: target.sourceRef,
-      },
-    });
-    logger.info(
-      {
-        projectId: input.projectId,
-        source: input.source,
-        supersededInto: target.sourceRef,
-        snapshotRef,
-      },
-      'memory.indexer: archived the text a semantic-dedup merge is about to replace',
-    );
-    return snapshotRef;
-  } catch (err) {
-    logger.warn(
-      { err, projectId: input.projectId, targetId: target.id },
-      'memory.indexer: could not archive superseded text before dedup merge',
-    );
-    return null;
-  }
-}
-
-async function findDedupTarget(
+async function findNearDuplicate(
   input: IndexInput,
   vector: number[],
-): Promise<{ id: string; sourceRef: string; score: number } | null> {
+): Promise<{ sourceRef: string; score: number } | null> {
   const [exact] = await db
     .select({ id: memories.id })
     .from(memories)
@@ -274,8 +202,8 @@ async function findDedupTarget(
     sourceFilter: [input.source],
   });
   const best = similar[0];
-  if (!best || best.score <= DEDUP_THRESHOLD) return null;
-  return { id: best.id, sourceRef: best.sourceRef, score: best.score };
+  if (!best || best.score <= NEAR_DUPLICATE_THRESHOLD) return null;
+  return { sourceRef: best.sourceRef, score: best.score };
 }
 
 /**
