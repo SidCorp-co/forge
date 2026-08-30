@@ -47,6 +47,24 @@
 
 ### Fixed
 
+- A pipeline run under an issue that was DROPPED is now closed, and its queued steps with
+  it. The backstop that closes runs whose issue has already finished matched only `closed`,
+  while the set of statuses that close a run has been `{closed, dropped}` — so an issue
+  abandoned rather than completed left its run open forever with its queued steps orphaned
+  underneath, and nothing on any axis reaped them. `dropped` is one of the five statuses the
+  autonomous driver may write, so this was reachable on every autonomous project. (ISS-879)
+
+- Cancelling a pipeline run from the run view now announces itself. Cancel flipped the run
+  and told the browser, but never emitted the lifecycle event three other things listen for,
+  so an operator cancel silently skipped them: release-batch claims were left for a
+  once-a-minute sweeper to find, the new frozen-queue notification was never cleared, and
+  memory candidates were never mined from a cancelled issue run at all. (ISS-879)
+
+- Clearing a notification is now a single locked statement instead of a read followed by a
+  write. With one clearer per notification that pair was safe; the frozen-queue notification
+  above is the first with two, and both could see the same row unread before either wrote,
+  decrementing the reader's unread count twice for one notification. (ISS-879)
+
 - `noProgressRounds` now reaches the mode the pipeline actually runs in. The knob had two readers and
   only one worked: the prompt printed it to every agent, while the alarm compared it to an issue's
   total reopen count — a number that moves only on a `reopen` transition, which autonomous mode never

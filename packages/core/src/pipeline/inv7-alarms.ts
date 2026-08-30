@@ -266,11 +266,12 @@ export async function alarmPausedRunsWithQueuedWork(
     logger.info({ alerted, paused: rows.length }, 'inv7: paused runs with frozen work surfaced');
   }
   // cm:guard say it when the scan is truncated — a capped sweep and a quiet one both report `alerted: 0` for the rows they never read, and a silent alarm is the failure this pass exists to end
-  // cm:why a log and not a wedge, which is a real weakness in a pass whose whole premise is that logs were not enough: the cap is GLOBAL and this query takes no project scope, so a truncated sweep has no single owner to notify. Reaching it needs 200 simultaneous frozen-work paused runs, a state in which 200 wedges are already in someone's bell. If it ever fires in production the answer is a wedge about the cap itself, not a bigger number.
-  if (rows.length >= PAUSED_RUN_SCAN_LIMIT) {
+  // cm:guard trigger on `alerted`, NEVER on `rows.length` — with frozen-work rows sorted first, a full page whose alarms fit inside it PROVES nothing was missed, and the zero-queue population never shrinks, so a full page is the steady state on an old fleet. Warning on it would fire every minute forever about a benign condition and be tuned out exactly before a real truncation arrived.
+  // cm:why a log and not a wedge, which is a real weakness in a pass whose whole premise is that logs were not enough: the cap is GLOBAL and this query takes no project scope, so the unexamined tail belongs to projects the sweep never read and there is no owner to notify. If it ever fires in production the answer is a wedge about the cap itself, not a bigger number.
+  if (alerted >= PAUSED_RUN_SCAN_LIMIT) {
     logger.warn(
       { limit: PAUSED_RUN_SCAN_LIMIT, alerted },
-      'inv7: paused-run scan hit its row cap — runs beyond it were not examined this sweep',
+      'inv7: paused-run scan filled its cap with frozen work — runs beyond it were not examined',
     );
   }
   return { alerted };
