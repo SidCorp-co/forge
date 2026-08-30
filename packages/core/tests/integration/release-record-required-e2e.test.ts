@@ -25,7 +25,7 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-type IssueRow = { id: string; projectId: string; status: string; reopenCount: number };
+type IssueRow = import('../../src/issues/apply-transition.js').TransitionIssueRow;
 
 describe('release record required E2E', () => {
   let harness: TestDatabase;
