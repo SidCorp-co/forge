@@ -16,7 +16,7 @@ to 84, the two length rules to 143 — and each stopped drifting the day it was 
 **An axis measures at its weakest gate.** Reporting the strongest would let one locked checker hide
 a sibling that stopped blocking, which is the whole failure mode here. `form` is gated four times
 (biome for `core`'s rules · `check-size-budget` for the length baseline biome cannot hold ·
-`check-lint-budget` for `web-v2` · a bare `biome check scripts` for the checkers themselves),
+`check-lint-budget` for `web-v2` and `core` · a bare `biome check scripts` for the checkers themselves),
 `behaviour` three times (reachability · signal · flow coverage) and `knowledge` four (couplings ·
 the autonomous status standard · honest costs · the mode-qualification of injected docs).
 
@@ -29,7 +29,7 @@ passed, because the external record of what shipped belonged to none of them.
 |---|---|---|---|
 | format + lint | `biome check` — `core` | whitespace, import order, recommended rules | comment content |
 | size | `check-size-budget` — `conformance` | file & function length, frozen per file | which rules exist — biome declares them |
-| lint debt | `check-lint-budget` — `web` | per (file, rule) biome violations in `web-v2`, frozen | which rules exist — `packages/web-v2/biome.json` declares them |
+| lint debt | `check-lint-budget` — `conformance` | per (file, rule) biome violations in `web-v2` and `core`, frozen; drained on touch where a scope asks for it | which rules exist — each package's `biome.json` declares them |
 | checkers | `biome check scripts` — `conformance` | the files in `scripts/` that implement every other gate | anything under `packages/` |
 | knowledge | `cm verify` — `codemap` | `cm:` couplings, prose discipline, module headers | anything a tool can derive |
 | transitions | `check-autonomous-transitions` — `codemap` | that every bundled skill writes the kernel statuses `AUTONOMOUS_DRIVER_STATUSES` declares, never a render label | what an agent wrote at runtime — that lives in `activity_log` |
@@ -212,29 +212,118 @@ Append to `CHECKS` with a `scanned` regex matching that checker's own success li
 fail-closed contract cannot hold for it. If you add the step to CI too, add it to `CI_COVERAGE` in
 the same commit — `--ci-parity` fails otherwise, which is the point.
 
-## check-lint-budget.mjs — biome debt in web-v2, frozen per (file, rule)
+## check-lint-budget.mjs — every biome diagnostic that is not a length rule, frozen per (file, rule)
 
-`packages/web-v2/biome.json` owns the rules; this owns only the baseline biome lacks — the same
-split as `check-size-budget.mjs`, one package over.
+Each package's `biome.json` owns the rules; this owns only the baseline biome lacks — the same split
+as `check-size-budget.mjs`, which keeps the two length rules because it freezes them by line count.
 
-web-v2 had no biome config at all until 2026-08-23. Measured the day it got one: **748 diagnostics —
-409 formatter, 185 import order, 151 real lint errors.** `error` meant 151 red builds, `warn` meant
-nothing held, so 226 violations across 101 files are frozen in `.forge/lint-baseline.json`. A file
-already carrying debt may keep it and may lose it; it may not gain any.
+It counts **every** diagnostic biome emits in a scope except the two length rules
+`check-size-budget.mjs` owns — error severity included, and today 147 of web-v2's 210 frozen
+diagnostics are errors. Severity decides only whether biome itself would have failed the build:
+`error` meant red builds nobody could clear, and a severity biome exits 0 on (`warn`, `info`, or a
+rule left at its default by `on`) held nothing. So both packages' debt is frozen per (file, rule) in
+`.forge/lint-baseline.json` and only growth fails. Frozen per rule rather than per line, so moving or reflowing code inside a file is not a violation. Measured 2026-08-27: **487 violations
+across 175 files** — web-v2 210 of an original 226 (95 files), core 277 of 280 (80 files, of which
+53 diagnostics across 32 files are drainable).
 
-Frozen per (file, rule) rather than per line, so moving or reflowing code inside a file is not a
-violation.
+`web-v2` had no biome config at all until 2026-08-23 — 748 diagnostics on the day it got one, 409
+formatter, 185 import order, 151 real lint errors. The **formatter stays off** there on purpose:
+enabling it is a 313-file, 22k-line diff that would bury every real change, and that is a separate
+decision from the linter.
 
-The **formatter is off** in that config on purpose. Enabling it is a 313-file, 22k-line diff that
-would bury every real change under it, and it is a separate decision from the linter — which is why
-the two were separated rather than shipped together.
+`packages/core` joined on 2026-08-27 (ISS-833) carrying 280 diagnostics that nothing counted, because
+biome exits 0 on a warning and the blocking `core` lint step therefore passed straight over them.
+**Registering it was a scope entry in `.forge/conformance.json` plus one `--update-baseline` run** —
+no second script, no second baseline file. That is the contract to hold when the next class arrives.
 
-Exit `0` clean · `1` a file gained a violation · `2` could not run. That last one includes the case
-biome reports **zero** diagnostics: web-v2 carries debt at rest, so an empty report means the scope
-matched nothing or the config stopped loading, and reporting clean there is the fail-open shape every
-other checker exits 2 on.
+### Level 1 is forbidden, and three rules say so rather than this paragraph
 
-Modes: `--all` (CI, via `pnpm --filter web-v2 lint`) · `--staged` (pre-commit) · `--update-baseline`.
+A check that runs, prints, and blocks nothing has no baseline to be held to, and every gate this
+repo lost was at level 1 while documented as blocking. A check you cannot pass on the day you add it
+is frozen at level 2 that same day — never merged at level 1 behind a comment promising cleanup.
+`continue-on-error: true` is the same shape written in YAML.
+
+**R8** fails on a CI step that cannot fail. **R9** fails on a biome rule left at a severity biome
+exits 0 on that no baselined checker counts. **R10** fails on an axis that does not declare a
+numeric level of at least 2 — including by omitting the key or quoting the digit. None of the three
+is a number to read; each is a build that goes red.
+
+### Adding a scope
+
+```json
+{ "cwd": "packages/<pkg>", "args": ["check", "src"],
+  "drain": { "include": "^packages/<pkg>/src/", "exclude": "\\.test\\.tsx?$" } }
+```
+
+The scope directory must hold a `biome.json` — the linter-enabled guard reads it, and reads any
+config it `extends`. A `biome.jsonc`, or a config resolved from a parent directory, exits 2 rather
+than being assumed healthy.
+
+`drain` is optional and a scope without it is freeze-only. `--update-baseline` then freezes the new
+scope's debt and seeds its `original`; the `improves: down` ratchet accepts the widened baseline
+because it compares totals per *area* and this one is new (see `lib/baseline-ratchet.mjs`).
+
+### Drain — the half freezing does not do
+
+Freezing stops growth; it does not reduce. The codemap baseline sat frozen for months at 3% drained,
+which is the evidence that "not higher" and "lower when you edit it" are different rules. So for a
+scope that declares `drain`: **touch a file it matches and its count must come back strictly
+lower.** Equal fails. A file already at 0 stays at 0, a new file must be 0, and a rename carries its
+debt through unpaid — the baseline is path-keyed, so charging a move would fire on every rename, and
+a rule that fires on renames is a rule someone switches off.
+
+Pay it by removing one diagnostic: restructure so the compiler narrows, or write
+`// biome-ignore <rule>: <the invariant>`, which forces the reason into the source next to the code
+it justifies. **Never `biome check --write` these rules** — it rewrites `a!.b` to `a?.b`, turning
+"throw when the invariant is violated" into "silently evaluate to undefined".
+
+Drain needs a branch delta. On a push straight to `main` the merge-base *is* HEAD, so drain is
+skipped, freeze still runs, and the skip is **printed** — an unprinted skip reads identically to a
+pass, which is how the prose gate once ran over zero files while printing success.
+
+### Numbers, modes, exit codes
+
+Every run prints, per scope, `current / original (N% drained)`. `original` is written once and
+`--update-baseline` may only add a missing key: a denominator that gets recomputed makes each
+percentage relative to the last re-freeze, so it can never fall and "trending to 0" stays exactly as
+unfalsifiable as it was before anyone printed it. web-v2's `226` is its measured freeze figure from
+2026-08-23, seeded by hand because the field did not exist yet; core's `280` was measured the day it
+was registered.
+
+Exit `0` clean · `1` a file gained a violation or skipped its payment · `2` could not run. Three
+guards produce that last one, because a scope legitimately drained to zero and a scope nobody is
+linting report identical numbers:
+
+- **the baseline disagrees with the measurement** — a scope whose baseline freezes debt and which now
+  measures **zero** exits 2, whatever config line did it, because this parses no config. Three review
+  rounds each found another way to empty the input while biome still exits 0 — top-level
+  `linter.enabled`, the same switch behind `extends`, then a single `overrides` block needing no second
+  file at all — and enumeration lost every round. Draining a scope to zero is a real achievement and
+  stays recordable, but never silently: `--update-baseline --accept-emptied-scope=<scope>` writes it,
+  and the bare re-freeze refuses.
+
+  **It catches a scope emptied entirely, not one emptied in part, and that gap is open.** Measured
+  2026-08-27: an `overrides` block scoped to `src/features/issues/**` leaves web-v2 at 186 diagnostics
+  over a full 459 scanned files, so no guard here fires and the next `--update-baseline` drops 9 files
+  and 24 frozen diagnostics at exit 0 — accepted by `improves: down`, which only faults on a rise.
+  Closing it needs a per-file "was this linted" signal biome's JSON reporter does not expose, and
+  refusing `overrides` outright would false-fail the legitimate don't-lint-generated-code block. A test
+  in `lib/lint-budget.test.mjs` pins it as declared rather than left to be rediscovered.
+- **files scanned** — biome's own `summary` says how many files it looked at, and zero means the scope
+  matched nothing. A narrowed `files.includes` lands here.
+- **the linter is on** — the scope's resolved config, following `extends` to the end of the chain, must
+  not disable the linter. An `extends` this checker cannot resolve from the filesystem (biome's package
+  form, say) is itself an error, never a skip.
+
+The last two are now a **second opinion that names the cause**: they fire before biome runs and say
+which config line is wrong, where the first says only that the numbers stopped adding up. Keep all
+three — a guard that explains a failure is worth having even once another guard would have caught it.
+
+Modes: `--all` (CI, in the always-on `conformance` job; also `pnpm --filter web-v2 lint`) ·
+`--staged` (**freeze-only** — the payment is due against the branch, not a half-staged tree) ·
+`--update-baseline` (`--accept-emptied-scope` to confirm a scope really did drain to zero).
+`--staged` exists for a pre-commit hook but **no hook runs it today**: `.githooks/pre-commit` runs
+`check-source-language` and `check-test-signal` and nothing else. The gate is the `conformance` job.
 
 ## check-branch-name.sh
 
@@ -359,11 +448,14 @@ printing `0 violations`.
 |---|---|---|
 | R1 | an entrypoint exists | the repo had 6 checkers and no command for months |
 | R2 | every check proves it scanned something | `core typecheck` and `conformance levels`, 2026-08-14 |
-| R3 | every level-2 axis has a baseline with a direction | all four, until `improves` was added |
+| R3 | every declared baseline, `alsoBaseline` included, has a direction | all four until `improves` was added; then 3 of 6 again, because the loop read only `spec.baseline` |
 | R4 | every `ci-passed` needs-job is asserted by it | `archmap`, measured 2026-08-13 |
 | R5 | both meta-checks present | — |
 | R6 | no blocking level without CI to block with | — |
 | R7 | the relations gate can resolve the graph it claims to cover | `archmap check` dropped 841 of 997 edges, 2026-08-23 |
+| R8 | no CI step runs where it cannot fail | the desktop Rust gate, `continue-on-error: true` for months behind a comment promising cleanup |
+| R9 | every **declared** severity biome exits 0 on (`warn`, `info`, `on`) is counted by a baselined checker — it reads the configs, so a rule left non-blocking by preset default is out of its reach | `packages/core`'s 280 `warn` diagnostics, invisible to R1–R7 because all seven judge a *declared* axis |
+| R10 | every declared axis declares a numeric level of at least 2 | R1–R9 all skip an axis that is not level 2, and `hardened` needs only 4 of 5 — so an axis could declare 1, omit the key, or quote the digit, and pass the audit |
 
 Profiles bound **shape**, never tool choice — `baseline` (one axis measures) · `standard` (two axes
 block, both meta-checks) · `hardened` (every declared axis blocks, every needs-job asserted). "Two
@@ -377,7 +469,7 @@ Exit `2` on an unreadable manifest, an unknown profile name, or a manifest with 
 With no `profile` declared it reports the highest one the repo would meet and exits on the rules
 alone.
 
-It audits shape, not worth: a repo can pass all six with an axis measuring something pointless. That
+It audits shape, not worth: a repo can pass all ten with an axis measuring something pointless. That
 is deliberate — choosing what to measure is the repo's call, and a tool that ruled on it would start
 dictating stacks.
 

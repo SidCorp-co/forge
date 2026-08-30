@@ -80,6 +80,8 @@
       "$comment": "Ceiling on edges `arch check` cannot resolve. Measured 2026-08-23: 171, all of them node_modules subpath exports (hono/http-exception and friends), which belong to no module and so cannot violate a contract. It was 997 until `.arch.json` declared a tsConfig \u2014 841 of those were web-v2's `@/*` alias, and an unresolvable edge is DROPPED, so three locked contracts over that package were being checked against an empty graph. Audit rule R7 fails if it climbs back."
     },
     "lint-budget": {
+      "$comment": "Registering a class is this list plus one `--update-baseline` run — no second script, no second baseline file. That is the whole claim ISS-833 made for a shared ratchet, and `packages/core` is the proof of it: its `warn`-severity rules produced 280 diagnostics that nothing counted, because biome exits 0 on a warning. A scope with no `drain` block is freeze-only.",
+      "$drain": "Freezing does not reduce — the codemap baseline sat frozen for months at 3% drained. `drain` adds the rule that does: a file in the branch delta matching `include` and not `exclude`, whose baseline count is above zero, must come back STRICTLY lower. web-v2 declares none on purpose: 98 debt-carrying files with the formatter deliberately off is a separate decision from turning the linter on.",
       "scopes": [
         {
           "cwd": "packages/web-v2",
@@ -87,6 +89,18 @@
             "check",
             "src"
           ]
+        },
+        {
+          "cwd": "packages/core",
+          "args": [
+            "check",
+            "src",
+            "tests"
+          ],
+          "drain": {
+            "include": "^packages/core/src/",
+            "exclude": "\\.test\\.tsx?$"
+          }
         }
       ]
     },

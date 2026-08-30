@@ -1,6 +1,257 @@
 {
-  "generatedAt": "2026-08-24T17:39:20.980Z",
+  "generatedAt": "2026-08-26T21:34:35.210Z",
+  "original": {
+    "packages/web-v2": 226,
+    "packages/core": 280
+  },
   "files": {
+    "packages/core/src/agent-sessions/chat-turn.test.ts": {
+      "lint/correctness/noUnsafeOptionalChaining": 5
+    },
+    "packages/core/src/agent-sessions/lifecycle-routes.test.ts": {
+      "lint/style/noNonNullAssertion": 4,
+      "lint/suspicious/noExplicitAny": 12
+    },
+    "packages/core/src/auth/oauth/handler.ts": {
+      "lint/complexity/useOptionalChain": 1,
+      "lint/style/noNonNullAssertion": 2
+    },
+    "packages/core/src/auth/pat-format.test.ts": {
+      "lint/style/noNonNullAssertion": 1
+    },
+    "packages/core/src/auth/reauth.ts": {
+      "lint/complexity/useOptionalChain": 1
+    },
+    "packages/core/src/comments/attachment-auth.test.ts": {
+      "lint/suspicious/noExplicitAny": 2
+    },
+    "packages/core/src/devices/login-routes.ts": {
+      "lint/style/noNonNullAssertion": 5
+    },
+    "packages/core/src/improvement-messages/routes.ts": {
+      "lint/style/noNonNullAssertion": 1
+    },
+    "packages/core/src/integrations/coolify/circuit-breaker.ts": {
+      "lint/complexity/useOptionalChain": 1
+    },
+    "packages/core/src/integrations/epodsystem/adapter.test.ts": {
+      "lint/correctness/noUnsafeOptionalChaining": 4,
+      "lint/correctness/noUnusedFunctionParameters": 4
+    },
+    "packages/core/src/integrations/epodsystem/resolver.test.ts": {
+      "lint/correctness/noUnsafeOptionalChaining": 3
+    },
+    "packages/core/src/integrations/postman/adapter.test.ts": {
+      "lint/correctness/noUnsafeOptionalChaining": 4,
+      "lint/correctness/noUnusedFunctionParameters": 4
+    },
+    "packages/core/src/integrations/postman/resolver.test.ts": {
+      "lint/correctness/noUnsafeOptionalChaining": 1
+    },
+    "packages/core/src/integrations/postman/resolver.ts": {
+      "lint/complexity/useOptionalChain": 1
+    },
+    "packages/core/src/integrations/queue.ts": {
+      "lint/complexity/useOptionalChain": 3,
+      "lint/suspicious/noExplicitAny": 1
+    },
+    "packages/core/src/integrations/rocketchat/connection-manager.ts": {
+      "lint/complexity/useOptionalChain": 1
+    },
+    "packages/core/src/integrations/sentry/adapter.test.ts": {
+      "lint/correctness/noUnsafeOptionalChaining": 2
+    },
+    "packages/core/src/integrations/sentry/resolver.test.ts": {
+      "lint/correctness/noUnsafeOptionalChaining": 2
+    },
+    "packages/core/src/integrations/sentry/resolver.ts": {
+      "lint/complexity/useOptionalChain": 1
+    },
+    "packages/core/src/issues/extras-routes.ts": {
+      "lint/style/noNonNullAssertion": 3
+    },
+    "packages/core/src/issues/intake-gate.test.ts": {
+      "lint/correctness/noUnusedFunctionParameters": 1
+    },
+    "packages/core/src/jobs/agent-session-link.test.ts": {
+      "lint/correctness/noUnusedFunctionParameters": 1,
+      "lint/style/noNonNullAssertion": 1
+    },
+    "packages/core/src/jobs/dispatcher.test.ts": {
+      "lint/correctness/noUnsafeOptionalChaining": 2
+    },
+    "packages/core/src/jobs/enqueue.test.ts": {
+      "lint/suspicious/noTemplateCurlyInString": 2
+    },
+    "packages/core/src/jobs/retry.test.ts": {
+      "lint/correctness/noUnsafeOptionalChaining": 2
+    },
+    "packages/core/src/knowledge/migrate-project-facts.test.ts": {
+      "lint/correctness/noUnsafeOptionalChaining": 1
+    },
+    "packages/core/src/mcp/tools/forge-comments.ts": {
+      "lint/style/noNonNullAssertion": 2
+    },
+    "packages/core/src/mcp/tools/forge-divergence-charters.ts": {
+      "lint/style/noNonNullAssertion": 1
+    },
+    "packages/core/src/mcp/tools/forge-feedback.test.ts": {
+      "lint/style/noNonNullAssertion": 1
+    },
+    "packages/core/src/mcp/tools/forge-issues.ts": {
+      "lint/style/noNonNullAssertion": 1
+    },
+    "packages/core/src/mcp/tools/forge-projects.ts": {
+      "lint/complexity/useOptionalChain": 2
+    },
+    "packages/core/src/mcp/tools/forge-ux-findings.ts": {
+      "lint/complexity/useOptionalChain": 1
+    },
+    "packages/core/src/mcp/tools/lib.ts": {
+      "lint/complexity/useOptionalChain": 2
+    },
+    "packages/core/src/memory/indexer.test.ts": {
+      "lint/correctness/noUnsafeOptionalChaining": 1
+    },
+    "packages/core/src/memory/signals/reopen-loop.ts": {
+      "lint/correctness/noUnusedFunctionParameters": 1
+    },
+    "packages/core/src/metrics/queries.ts": {
+      "lint/complexity/useOptionalChain": 1
+    },
+    "packages/core/src/middleware/require-fresh-auth.ts": {
+      "lint/complexity/useOptionalChain": 1
+    },
+    "packages/core/src/pipeline/pipeline-config-service.ts": {
+      "lint/complexity/useLiteralKeys": 1
+    },
+    "packages/core/src/pipeline/registry.test.ts": {
+      "lint/suspicious/noTemplateCurlyInString": 1
+    },
+    "packages/core/src/pipeline/release-coolify.test.ts": {
+      "lint/correctness/noUnsafeOptionalChaining": 2
+    },
+    "packages/core/src/pipeline/runs-control.test.ts": {
+      "lint/correctness/noUnsafeOptionalChaining": 1
+    },
+    "packages/core/src/pipeline/runs-read-routes.test.ts": {
+      "lint/style/noNonNullAssertion": 3
+    },
+    "packages/core/src/pipeline/runs-rollup.test.ts": {
+      "lint/style/noNonNullAssertion": 9
+    },
+    "packages/core/src/pipeline/subscribers.test.ts": {
+      "lint/correctness/noUnsafeOptionalChaining": 1
+    },
+    "packages/core/src/pm/spawner.ts": {
+      "lint/complexity/useOptionalChain": 1
+    },
+    "packages/core/src/projects/routes.test.ts": {
+      "lint/style/noNonNullAssertion": 2
+    },
+    "packages/core/src/prompt/sanitize.test.ts": {
+      "lint/suspicious/noTemplateCurlyInString": 1
+    },
+    "packages/core/src/runners/adapters/claude-code.test.ts": {
+      "lint/correctness/noUnsafeOptionalChaining": 7
+    },
+    "packages/core/src/runners/event-normalizer.test.ts": {
+      "lint/correctness/noUnsafeOptionalChaining": 3
+    },
+    "packages/core/src/runners/heartbeat-ws.ts": {
+      "lint/complexity/useOptionalChain": 2
+    },
+    "packages/core/src/runners/limit-detect.test.ts": {
+      "lint/style/noNonNullAssertion": 22
+    },
+    "packages/core/src/runners/limit-detect.ts": {
+      "lint/complexity/noUselessStringRaw": 1,
+      "lint/style/noNonNullAssertion": 2
+    },
+    "packages/core/src/runners/routes.ts": {
+      "lint/complexity/useOptionalChain": 1
+    },
+    "packages/core/src/runners/stale-detector.ts": {
+      "lint/suspicious/noExplicitAny": 3
+    },
+    "packages/core/src/schedules/messages/registry.test.ts": {
+      "lint/style/noNonNullAssertion": 20
+    },
+    "packages/core/src/schedules/messages/skill-improve-prompt.test.ts": {
+      "lint/style/noNonNullAssertion": 30
+    },
+    "packages/core/src/skills/builtin-seed.test.ts": {
+      "lint/style/noNonNullAssertion": 10
+    },
+    "packages/core/src/skills/divergence-charters.ts": {
+      "lint/style/noNonNullAssertion": 1
+    },
+    "packages/core/src/skills/effective.test.ts": {
+      "lint/style/noNonNullAssertion": 3
+    },
+    "packages/core/src/skills/lock-context.ts": {
+      "lint/complexity/useLiteralKeys": 3
+    },
+    "packages/core/src/skills/lock.ts": {
+      "lint/complexity/useLiteralKeys": 1
+    },
+    "packages/core/src/skills/reconcile-service.ts": {
+      "lint/style/noNonNullAssertion": 1
+    },
+    "packages/core/src/skills/service.test.ts": {
+      "lint/style/noNonNullAssertion": 4
+    },
+    "packages/core/src/skills/service.ts": {
+      "lint/complexity/useOptionalChain": 1
+    },
+    "packages/core/src/skills/studio-routes.test.ts": {
+      "lint/style/noNonNullAssertion": 3
+    },
+    "packages/core/src/update-packets/routes.ts": {
+      "lint/correctness/noUnusedFunctionParameters": 1
+    },
+    "packages/core/src/webhooks/outbound.ts": {
+      "lint/complexity/useOptionalChain": 1
+    },
+    "packages/core/src/ws/broadcast-subscribers.test.ts": {
+      "lint/correctness/noUnsafeOptionalChaining": 1
+    },
+    "packages/core/tests/integration/builtin-seed.test.ts": {
+      "lint/style/noNonNullAssertion": 2
+    },
+    "packages/core/tests/integration/capacity-defer-e2e.test.ts": {
+      "lint/correctness/noUnsafeOptionalChaining": 1
+    },
+    "packages/core/tests/integration/coolify-e2e.test.ts": {
+      "lint/style/noNonNullAssertion": 5
+    },
+    "packages/core/tests/integration/dispatcher-prompt-snapshot.test.ts": {
+      "lint/style/noNonNullAssertion": 7
+    },
+    "packages/core/tests/integration/issues-job-history-route.test.ts": {
+      "lint/style/noNonNullAssertion": 14
+    },
+    "packages/core/tests/integration/jobs-prompt-route.test.ts": {
+      "lint/style/noNonNullAssertion": 1
+    },
+    "packages/core/tests/integration/mcp-tools.test.ts": {
+      "lint/complexity/useOptionalChain": 1
+    },
+    "packages/core/tests/integration/per-state-override-e2e.test.ts": {
+      "suppressions/unused": 1
+    },
+    "packages/core/tests/integration/phase-journal-e2e.test.ts": {
+      "lint/complexity/useLiteralKeys": 4
+    },
+    "packages/core/tests/integration/pipeline-health-e2e.test.ts": {
+      "lint/style/noNonNullAssertion": 1
+    },
+    "packages/core/tests/integration/runners-active-route.test.ts": {
+      "lint/suspicious/noExplicitAny": 3
+    },
+    "packages/core/tests/integration/session-group-resume-e2e.test.ts": {
+      "suppressions/unused": 1
+    },
     "packages/web-v2/src/app/(workspace)/layout.tsx": {
       "lint/correctness/useExhaustiveDependencies": 2
     },
@@ -23,9 +274,6 @@
     },
     "packages/web-v2/src/design/patterns/highlight.tsx": {
       "lint/correctness/useExhaustiveDependencies": 1
-    },
-    "packages/web-v2/src/design/patterns/knowledge-markdown.tsx": {
-      "lint/performance/noImgElement": 1
     },
     "packages/web-v2/src/design/patterns/markdown.tsx": {
       "lint/performance/noImgElement": 1
@@ -145,10 +393,6 @@
       "lint/a11y/useKeyWithClickEvents": 3,
       "lint/performance/noImgElement": 2
     },
-    "packages/web-v2/src/features/issues/components/issue-detail-screen.tsx": {
-      "lint/correctness/useExhaustiveDependencies": 2,
-      "lint/suspicious/noArrayIndexKey": 1
-    },
     "packages/web-v2/src/features/issues/components/issue-row-actions.tsx": {
       "lint/a11y/noStaticElementInteractions": 1,
       "lint/correctness/noUnusedImports": 1
@@ -170,10 +414,6 @@
     },
     "packages/web-v2/src/features/issues/components/properties-rail.tsx": {
       "lint/style/noNonNullAssertion": 1
-    },
-    "packages/web-v2/src/features/issues/components/step-artifact-card.tsx": {
-      "lint/complexity/useOptionalChain": 1,
-      "lint/suspicious/noArrayIndexKey": 1
     },
     "packages/web-v2/src/features/knowledge/components/graph-tab.tsx": {
       "lint/suspicious/noArrayIndexKey": 1

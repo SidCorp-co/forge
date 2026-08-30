@@ -13,7 +13,7 @@
 // therefore is not a violation — the same property that lets codemap's baseline
 // survive a refactor.
 //
-// Modes: --all (CI) · --staged (pre-commit) · --update-baseline
+// Modes: --all (CI) · --staged (freeze-only; no hook runs it today) · --update-baseline
 // Exit: 0 clean · 1 a file got longer or a new one is over budget · 2 could not run.
 
 import { execFileSync } from 'node:child_process';
@@ -29,16 +29,30 @@ const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
 const FILE_RULE = 'lint/style/noExcessiveLinesPerFile';
 const FN_RULE = 'lint/complexity/noExcessiveLinesPerFunction';
 
-const DEFAULT_SCOPES = [{ cwd: 'packages/core', args: ['check', 'src', 'tests'] }];
-
+// cm:guard fails closed on an absent registry exactly like check-lint-budget.mjs, and the two must not drift. A built-in fallback here meant the same missing .forge/conformance.json made one checker exit 2 and its sibling quietly measure a hardcoded scope and report a result — the softer answer to the more complete failure, in the same CI job. It also matters to conformance-audit R9, which reads THIS checker's scope list out of the manifest to decide who owns the two length rules: a fallback the manifest never declared makes the audit and the checker disagree about what is covered.
 function config() {
-  if (!existsSync(CONFIG_PATH)) return { scopes: DEFAULT_SCOPES };
+  let raw;
   try {
-    const raw = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'));
-    return { scopes: raw?.checkers?.['size-budget']?.scopes ?? DEFAULT_SCOPES };
-  } catch {
-    return null;
+    raw = readFileSync(CONFIG_PATH, 'utf8');
+  } catch (err) {
+    return { error: `${CONFIG_PATH} could not be read: ${err.code ?? err.message}` };
   }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return { error: `${CONFIG_PATH} is not valid JSON: ${err.message}` };
+  }
+  const scopes = parsed?.checkers?.['size-budget']?.scopes;
+  if (!Array.isArray(scopes)) {
+    return { error: `${CONFIG_PATH} declares no checkers['size-budget'].scopes array` };
+  }
+  if (scopes.length === 0) {
+    return {
+      error: `${CONFIG_PATH} declares an empty size-budget scope list — nothing would be measured`,
+    };
+  }
+  return { scopes };
 }
 
 // cm:edge contract -> packages/core/biome.json — reads the two rule categories declared there. Turning either rule off, or renaming it, empties this checker's input and it reports clean; the zero-diagnostics guard below is what turns that into an exit 2 instead of a false pass.
@@ -119,8 +133,8 @@ if (!['--all', '--staged', '--update-baseline'].includes(mode)) {
 }
 
 const cfg = config();
-if (!cfg) {
-  console.error(`check-size-budget: ${CONFIG_PATH} is unreadable`);
+if (cfg.error) {
+  console.error(`check-size-budget: ${cfg.error}`);
   process.exit(2);
 }
 

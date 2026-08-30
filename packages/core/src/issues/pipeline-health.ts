@@ -211,17 +211,12 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     (s) => (s.status === 'running' || s.status === 'queued') && s.id !== candidate.agentSessionId,
   );
   const blockingJob = activeJobs.find((j) => j.id !== candidate.id);
-  if (blockingSession || blockingJob) {
-    out.waitingOn = {
-      reason: 'issue_busy',
-      since: sinceIso,
-      details: blockingSession
-        ? { blockingSessionId: blockingSession.id }
-        : {
-            blockingJobId: blockingJob!.id,
-            blockingJobType: blockingJob!.type,
-          },
-    };
+  // cm:guard the session arm stays FIRST — with both present this reason reports the session and never the job, which is what the `if (blockingSession || blockingJob)` guard plus a ternary meant. Narrowing `blockingJob` with `&&` rather than asserting it with `!` is not style: TypeScript cannot narrow across that guard, so the two assertions were the compiler's blindness written as a claim, and `a!.b` is the one thing biome's autofix turns into `a?.b` — "throw when the invariant is violated" becoming "silently undefined".
+  const busy = blockingSession
+    ? { blockingSessionId: blockingSession.id }
+    : blockingJob && { blockingJobId: blockingJob.id, blockingJobType: blockingJob.type };
+  if (busy) {
+    out.waitingOn = { reason: 'issue_busy', since: sinceIso, details: busy };
     return out;
   }
 

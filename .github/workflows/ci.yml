@@ -124,6 +124,14 @@ jobs:
       # violations. This freezes today's 103 offenders (.forge/size-baseline.json)
       # and fails only when a file gets longer or a new one lands over budget.
       - run: node scripts/check-size-budget.mjs --all
+      # Lint budget: the same freeze one package over, for the biome rules set
+      # to `warn` — biome exits 0 on a warning, so the blocking `core` lint step
+      # passed over 280 uncounted diagnostics and web-v2's 215 were checked only
+      # by the `web` job, which paths-filter gates on packages/web-v2/** while
+      # .forge/lint-baseline.json sits in no filter at all: a baseline-only edit
+      # never re-ran its own gate. Here it is always-on, and fetch-depth: 0 above
+      # is what lets the drain half resolve a merge-base (ISS-833).
+      - run: node scripts/check-lint-budget.mjs --all
       # Conformance levels: runs each axis's checker and fails when what it
       # actually does disagrees with the level .forge/conformance.json claims
       # for it. Every gate this repo lost was lost by staying documented while
