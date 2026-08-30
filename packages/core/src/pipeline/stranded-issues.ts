@@ -52,7 +52,6 @@ export function strandedResolutionKey(issueId: string): string {
  * abort the sweep.
  */
 // cm:guard the age is measured from `merged_at` on staged and from `updated_at` on autonomous, and the two are NOT interchangeable: an autonomous park has no merge to date it from, and dating a staged one by `updated_at` would restart the clock every time a comment or a label touched the row.
-
 export async function detectStrandedIssues(
   now: Date = new Date(),
   scope: { projectId?: string } = {},
@@ -78,6 +77,7 @@ export async function detectStrandedIssues(
           or(
             and(isNotNull(issues.mergedAt), lt(issues.mergedAt, cutoff)),
             and(
+              // cm:edge contract -> packages/core/src/pipeline/autonomous-project.ts — the SAME mode question that `isAutonomousProject` answers, asked in SQL because this pass is one set-based scan over every project and an async per-row helper cannot appear in a `WHERE`. Read as jsonb the shape must match `pipelineConfigSchema.mode`; the two disagreeing means a park is surfaced on one mode and not the other, silently, and only this arm decides who gets told.
               sql`${projects.agentConfig}->'pipelineConfig'->>'mode' = 'autonomous'`,
               lt(issues.updatedAt, cutoff),
             ),
