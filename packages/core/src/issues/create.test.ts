@@ -43,6 +43,22 @@ vi.mock('../comments/routes.js', () => ({
   registerIssueCommentRoutes: () => {},
 }));
 
+const applyRelations = vi.fn(async () => [
+  {
+    edgeId: 'edge-1',
+    kind: 'blocks' as const,
+    fromIssueId: BLOCKER_ID,
+    toIssueId: ISSUE_ID,
+    created: true,
+    updated: false,
+  },
+]);
+// cm:guard keep `issueRelationInputSchema` REAL here — it is the create route's own request schema, so stubbing it would make every assertion below pass against a shape the route never validates
+vi.mock('./relations-service.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./relations-service.js')>()),
+  applyIssueRelations: (...args: unknown[]) => applyRelations(...(args as [])),
+}));
+
 const { issueProjectRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
@@ -58,6 +74,7 @@ function buildApp() {
 
 const ISSUE_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
+const BLOCKER_ID = '44444444-4444-4444-8444-444444444444';
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 
 beforeEach(() => {
@@ -70,6 +87,7 @@ beforeEach(() => {
   selectLimit.mockResolvedValue([]);
   insertReturning.mockReset();
   projectAccess.mockReset();
+  applyRelations.mockClear();
 });
 
 function authVerified() {
@@ -170,4 +188,68 @@ describe('POST /api/projects/:id/issues — quick-capture intake', () => {
       expect(transaction).not.toHaveBeenCalled();
     });
   }
+});
+
+describe('POST /api/projects/:id/issues — relations declared at create (ISS-889)', () => {
+  it('commits the declared edge and echoes it back', async () => {
+    authVerified();
+    memberAccess();
+    insertReturning.mockResolvedValueOnce([insertedRow()]);
+
+    const res = await postIssue({
+      title: 'quick capture',
+      relations: [{ kind: 'blocks', dependsOnId: BLOCKER_ID }],
+    });
+
+    expect(res.status).toBe(201);
+    expect(applyRelations).toHaveBeenCalledWith(
+      expect.objectContaining({ createdById: USER_ID }),
+      PROJECT_ID,
+      ISSUE_ID,
+      [expect.objectContaining({ kind: 'blocks', dependsOnId: BLOCKER_ID })],
+    );
+
+    const body = (await res.json()) as { relations?: { edgeId: string }[] };
+    expect(body.relations).toEqual([expect.objectContaining({ edgeId: 'edge-1' })]);
+  });
+
+  it('commits the edge BEFORE issueCreated, which is what closes the open-then-block race', async () => {
+    authVerified();
+    memberAccess();
+    insertReturning.mockResolvedValueOnce([insertedRow()]);
+
+    await postIssue({
+      title: 'quick capture',
+      relations: [{ kind: 'blocks', dependsOnId: BLOCKER_ID }],
+    });
+
+    expect(applyRelations.mock.invocationCallOrder[0]).toBeLessThan(
+      hooksEmit.mock.invocationCallOrder[0] as number,
+    );
+  });
+
+  it('400 when a relation names both sides, with no issue written', async () => {
+    authVerified();
+
+    const res = await postIssue({
+      title: 'quick capture',
+      relations: [{ kind: 'blocks', dependsOnId: BLOCKER_ID, blocksId: ISSUE_ID }],
+    });
+
+    expect(res.status).toBe(400);
+    expect(transaction).not.toHaveBeenCalled();
+    expect(applyRelations).not.toHaveBeenCalled();
+  });
+
+  it('400 past the 20-relation ceiling, with no issue written', async () => {
+    authVerified();
+
+    const res = await postIssue({
+      title: 'quick capture',
+      relations: Array.from({ length: 21 }, () => ({ kind: 'blocks', dependsOnId: BLOCKER_ID })),
+    });
+
+    expect(res.status).toBe(400);
+    expect(transaction).not.toHaveBeenCalled();
+  });
 });

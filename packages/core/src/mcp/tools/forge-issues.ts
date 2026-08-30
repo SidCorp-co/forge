@@ -15,29 +15,27 @@ import {
   waitingKinds,
 } from '../../db/schema.js';
 import { transitionIssueStatus } from '../../issues/apply-transition.js';
-import {
-  AttachmentError,
-  type DecodedAttachment,
-  decodeAndValidateAttachments,
-  listIssueAttachments,
-  persistDecodedIssueAttachments,
-} from '../../issues/attachment-service.js';
+import { AttachmentError, listIssueAttachments } from '../../issues/attachment-service.js';
+import { createIssue, IssueCreateError } from '../../issues/create-service.js';
 import { loadIssueRelations } from '../../issues/dependency-read.js';
-import { claimDetectorKey, isValidDetectorKey } from '../../issues/detector-key.js';
-import { applyIntakeGate, finalizeIntake } from '../../issues/intake-gate.js';
-import { listIssueLabels } from '../../issues/label-service.js';
+import { isValidDetectorKey } from '../../issues/detector-key.js';
+import {
+  LabelResolutionError,
+  listIssueLabels,
+  resolveLabelIdsForWrite,
+} from '../../issues/label-service.js';
 import {
   collectIssueFieldUpdates,
   MCP_ONLY_ISSUE_PATCH_FIELDS,
   SHARED_ISSUE_PATCH_FIELDS,
 } from '../../issues/patch-fields.js';
+import { applyIssueRelations, issueRelationInputSchema } from '../../issues/relations-service.js';
 import { type ReleaseNotes, ReleaseNotesSchema } from '../../issues/release-notes.js';
 import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
 import { recordActivityTx } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { findMissingWorkEvidence } from '../../pipeline/work-evidence.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
-import { applyIssueRelations } from './issue-relations.js';
 import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
@@ -50,8 +48,26 @@ import {
 } from './lib.js';
 import { buildListEnvelope, overfetch } from './list-envelope.js';
 
-// cm:guard NEVER widen this to `decomposes` — that kind runs decomposeParent, which creates an integration branch and parks the parent, and this list is the PAT-reachable write path (ISS-868), so adding it would put runner-shaped side effects behind a credential class the device gate exists to keep out of them. `duplicates`/`parent` are excluded only because they carry no side effect worth an atomic write; route both through forge_project_pm set_dependency.
-const relationKinds = ['blocks', 'relates'] as const;
+// cm:edge lockstep -> packages/core/src/issues/create-service.ts — every error the create service can raise needs a case here; the agent-facing contract is the `CODE: message` prefix, and the UPDATE path routes its label resolution through this same mapper
+function toMcpIssueError(err: unknown): unknown {
+  if (err instanceof LabelResolutionError) {
+    return new Error(
+      `BAD_REQUEST: one or more labels do not exist in this project (no auto-create): ${err.missing.join(', ')}`,
+    );
+  }
+  if (err instanceof AttachmentError) return new Error(`${err.code}: ${err.message}`);
+  if (err instanceof IssueCreateError) {
+    if (err.code === 'INVALID_DETECTOR_KEY') {
+      return new Error(
+        `BAD_REQUEST: data.detectorKey must be lowercase slash-separated slugs, max 120 chars (got '${err.value}')`,
+      );
+    }
+    return new Error(
+      `BAD_REQUEST: status at create must be 'open', 'on_hold', or 'draft' (got '${err.value}'); use the transition action for other statuses`,
+    );
+  }
+  return err;
+}
 
 /**
  * Action-based parity port of the legacy Strapi MCP `forge_issues` tool. The
@@ -230,23 +246,7 @@ const dataObject = z
     taskPriority: z.enum(issuePriorities).optional(),
     isAgentTask: z.boolean().optional(),
     taskAcceptanceCriteria: z.array(z.string()).nullable().optional(),
-    relations: z
-      .array(
-        z
-          .object({
-            kind: z.enum(relationKinds).default('blocks'),
-            dependsOnId: z.uuid().optional(),
-            blocksId: z.uuid().optional(),
-            reason: z.string().max(2000).optional(),
-            validUntil: z.iso.datetime().optional(),
-          })
-          .strict()
-          .refine((r) => (r.dependsOnId == null) !== (r.blocksId == null), {
-            message: 'each relation must set exactly one of dependsOnId or blocksId',
-          }),
-      )
-      .max(20)
-      .optional(),
+    relations: z.array(issueRelationInputSchema).max(20).optional(),
     // cm:guard REQUIRED on any status write that enters `reopen` (RFC 0002 INV-8) — it is posted as a comment before the flip and is what the fix step scopes its patch against; `note` is accepted as a fallback so a caller that already explains itself there is not rejected
     reason: z.string().trim().min(1).max(10_000).optional(),
     // cm:guard say WHICH kind whenever you write `waiting` (RFC 0002 INV-5) — core never derives it, so an omitted kind leaves the board rendering "a human is needed" with no hint of what is being asked; it is cleared automatically on any exit
@@ -474,42 +474,6 @@ async function resolveLabelIdsTolerant(projectId: string, rawValues: string[]): 
 }
 
 /**
- * ISS-633 — strict name/uuid -> id resolver for `forge_issues.update`/`create`
- * `data.labels` writes. Mirrors REST's `assertLabelsInProject` (issues/routes.ts)
- * but also resolves names. Every supplied value MUST resolve to a label that
- * belongs to `projectId` — an unknown name, an unknown uuid, or a uuid
- * belonging to another project all throw BAD_REQUEST. No auto-create.
- */
-async function resolveLabelIdsForWrite(projectId: string, rawValues: string[]): Promise<string[]> {
-  const uuidValues = [...new Set(rawValues.filter((v) => LABEL_UUID_PATTERN.test(v)))];
-  const nameValues = [...new Set(rawValues.filter((v) => !LABEL_UUID_PATTERN.test(v)))];
-  if (uuidValues.length === 0 && nameValues.length === 0) return [];
-
-  const matchConds = [];
-  if (uuidValues.length > 0) matchConds.push(inArray(labels.id, uuidValues));
-  if (nameValues.length > 0) matchConds.push(inArray(labels.name, nameValues));
-
-  const rows = await db
-    .select({ id: labels.id, name: labels.name })
-    .from(labels)
-    .where(and(eq(labels.projectId, projectId), or(...matchConds)))
-    .limit(uuidValues.length + nameValues.length + 1);
-
-  const foundIds = new Set(rows.map((r) => r.id));
-  const foundNames = new Set(rows.map((r) => r.name));
-  const missing = [
-    ...uuidValues.filter((v) => !foundIds.has(v)),
-    ...nameValues.filter((v) => !foundNames.has(v)),
-  ];
-  if (missing.length > 0) {
-    throw new Error(
-      `BAD_REQUEST: one or more labels do not exist in this project (no auto-create): ${missing.join(', ')}`,
-    );
-  }
-  return [...foundIds];
-}
-
-/**
  * `serialize` + the issue's attachment metadata (`attachments[]`). Used by the
  * focused single-issue surfaces an agent acts on — `get`, the write-returns,
  * and `forge_step_start` (under-threshold path) — so the agent always sees
@@ -723,6 +687,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Relations (ISS-571, ISS-868): data.relations (optional array, max 20) is applied by ' +
     'BOTH create and update, and works with a personal access token — unlike ' +
     'forge_project_pm set_dependency, which needs a paired device. Edges commit before ' +
+    // cm:edge naming -> packages/core/src/issues/relations-service.ts — this prose spells the kind vocabulary out for the agent, so it is a second copy of RELATION_KINDS that no type checks; the guard there forbids widening, and if that ever changes this sentence is the other half
     'the dispatch trigger (issueCreated on create, the status transition on update), so ' +
     'the dispatcher cannot pick the issue up ahead of its blocker. Each entry takes kind ' +
     '(blocks|relates, default blocks) and exactly one of dependsOnId (THIS issue is ' +
@@ -876,142 +841,42 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const projectId = await resolveProjectId(input, ctx);
         await assertPrincipalIsWriter(principal, projectId);
 
-        // ISS-130 — narrow allow-list for entry status. `open` is the normal
-        // triage entry, `on_hold` is the decomposition parking state, and
-        // ISS-236 adds `draft` for AI-generated proposals that wait for human
-        // promote/discard before entering the pipeline. Anything else must go
-        // through the transition action so the state machine + activity log run.
-        const requestedStatus: IssueStatus = input.data.status ?? 'open';
-        if (
-          requestedStatus !== 'open' &&
-          requestedStatus !== 'on_hold' &&
-          requestedStatus !== 'draft'
-        ) {
-          throw new Error(
-            `BAD_REQUEST: status at create must be 'open', 'on_hold', or 'draft' (got '${requestedStatus}'); use the transition action for other statuses`,
+        let result: Awaited<ReturnType<typeof createIssue>>;
+        try {
+          result = await createIssue(
+            { ...input.data, projectId, title: input.data.title },
+            {
+              createdById: device.ownerId,
+              createdVia: 'mcp',
+              actor: principalHookActor(principal, device),
+            },
           );
+        } catch (err) {
+          throw toMcpIssueError(err);
         }
 
-        // ISS-606: a gated project parks every would-be `open` create at draft.
-        const intake = await applyIntakeGate(projectId, requestedStatus);
-        const createStatus = intake.status;
-
-        // Decode + size-cap attachments BEFORE insert so a bad payload doesn't
-        // leave a half-created issue with no files.
-        let decodedAttachments: DecodedAttachment[] = [];
-        if (input.data.attachments && input.data.attachments.length > 0) {
-          try {
-            decodedAttachments = decodeAndValidateAttachments(input.data.attachments);
-          } catch (err) {
-            if (err instanceof AttachmentError) {
-              throw new Error(`${err.code}: ${err.message}`);
-            }
-            throw err;
-          }
+        if (result.deduped) {
+          return {
+            created: false,
+            deduped: true,
+            detectorKey: result.detectorKey,
+            existingIssueId: result.existingIssueId,
+            existingIssueDisplayId: result.existingIssueDisplayId,
+            existingIssueStatus: result.existingIssueStatus,
+            message:
+              'A live issue already tracks this detectorKey. Nothing was created — add your finding as a comment on existingIssueId (forge_comments action=create), or extend it via forge_issues action=update.',
+          } as Record<string, unknown>;
         }
 
-        // ISS-633 — resolve + strictly validate label names/uuids BEFORE
-        // insert (same "fail before half-created" discipline as attachments).
-        let labelIds: string[] = [];
-        if (input.data.labels && input.data.labels.length > 0) {
-          labelIds = await resolveLabelIdsForWrite(projectId, input.data.labels);
+        const out: Record<string, unknown> = serialize(result.issue as IssueRow);
+        out.labels = result.labelIds.length > 0 ? await listIssueLabels(result.issue.id) : [];
+        if (result.relations.length > 0) out.relations = result.relations;
+        if (result.attachments.length > 0 || result.attachmentErrors.length > 0) {
+          out.attachments = result.attachments;
+          if (result.attachmentErrors.length > 0) out.attachmentErrors = result.attachmentErrors;
         }
-
-        // cm:guard one live issue per detector — a recurring finding must land on the issue already tracking it, never as issue N+1
-        const detectorKey = input.data.detectorKey ?? null;
-        if (detectorKey) {
-          if (!isValidDetectorKey(detectorKey)) {
-            throw new Error(
-              `BAD_REQUEST: data.detectorKey must be lowercase slash-separated slugs, max 120 chars (got '${detectorKey}')`,
-            );
-          }
-          const { existingIssueId } = await claimDetectorKey(projectId, detectorKey);
-          if (existingIssueId) {
-            const [live] = await db
-              .select({ issSeq: issues.issSeq, status: issues.status })
-              .from(issues)
-              .where(eq(issues.id, existingIssueId))
-              .limit(1);
-            return {
-              created: false,
-              deduped: true,
-              detectorKey,
-              existingIssueId,
-              existingIssueDisplayId: live ? `ISS-${live.issSeq}` : null,
-              existingIssueStatus: live?.status ?? null,
-              message:
-                'A live issue already tracks this detectorKey. Nothing was created — add your finding as a comment on existingIssueId (forge_comments action=create), or extend it via forge_issues action=update.',
-            } as Record<string, unknown>;
-          }
-        }
-
-        const [inserted] = await db
-          .insert(issues)
-          .values({
-            projectId,
-            title: input.data.title,
-            description: input.data.description ?? null,
-            status: createStatus,
-            priority: input.data.priority ?? 'medium',
-            category: input.data.category ?? null,
-            complexity: input.data.complexity ?? null,
-            createdById: device.ownerId,
-            createdVia: 'mcp',
-            detectorKey,
-            plan: input.data.plan ?? null,
-            acceptanceCriteria: input.data.acceptanceCriteria ?? null,
-            sessionContext: input.data.sessionContext ?? null,
-            releaseNotes: input.data.releaseNotes ?? null,
-          })
-          .returning();
-        if (!inserted) throw new Error('issues: insert returned no row');
-
-        const created = inserted as IssueRow;
-
-        // ISS-633 — attach labels (REST parity: issues/routes.ts ~284-288).
-        if (labelIds.length > 0) {
-          await db
-            .insert(issueLabels)
-            .values(labelIds.map((labelId) => ({ issueId: created.id, labelId })));
-        }
-
-        // ISS-606: label + owner notification for a gated (parked) create.
-        if (intake.gated) await finalizeIntake(projectId, { id: created.id, title: created.title });
-
-        // cm:edge ordering -> packages/core/src/jobs/dispatch-gates.ts — the edges MUST commit before the issueCreated emit below, which synchronously triggers considerEnqueue→dispatch; an edge written after it is invisible to the L2 blocks-gate on the first tick and the dependent ships ahead of its blocker
-        const r = await applyIssueRelations(ctx, projectId, created.id, input.data.relations);
-
-        await hooks.emit('issueCreated', {
-          issueId: created.id,
-          projectId: created.projectId,
-          actor: { type: 'device' as const, id: device.id },
-          status: created.status,
-          snapshot: {
-            title: created.title,
-            description: created.description,
-            priority: created.priority,
-            category: created.category,
-            reportedBy: created.reportedBy,
-            assigneeId: created.assigneeId,
-            labels: labelIds,
-          },
-        });
-
-        const result: Record<string, unknown> = serialize(created);
-        result.labels = labelIds.length > 0 ? await listIssueLabels(created.id) : [];
-        if (r.length > 0) result.relations = r;
-        if (decodedAttachments.length > 0) {
-          const { persisted, errors } = await persistDecodedIssueAttachments(
-            created.id,
-            decodedAttachments,
-            device.ownerId,
-          );
-          result.attachments = persisted;
-          if (errors.length > 0) result.attachmentErrors = errors;
-        }
-        return result;
+        return out;
       }
-
       case 'update': {
         if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for update');
         if (!input.data) throw new Error('BAD_REQUEST: data is required for update');
@@ -1021,10 +886,14 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         // ISS-633 — resolve + strictly validate label names/uuids BEFORE the
         // tx (mirrors REST PATCH's assertLabelsInProject running before its
         // own tx). `undefined` means "no change"; `[]` clears every label.
-        const labelIds =
-          input.data.labels !== undefined
-            ? await resolveLabelIdsForWrite(issue.projectId, input.data.labels)
-            : undefined;
+        let labelIds: string[] | undefined;
+        if (input.data.labels !== undefined) {
+          try {
+            labelIds = await resolveLabelIdsForWrite(issue.projectId, input.data.labels);
+          } catch (err) {
+            throw toMcpIssueError(err);
+          }
+        }
 
         if (input.data.detectorKey !== undefined && !isValidDetectorKey(input.data.detectorKey)) {
           throw new Error(
@@ -1089,7 +958,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
 
         // cm:edge ordering -> packages/core/src/jobs/dispatch-gates.ts — relations commit BEFORE the transition below, for the same reason create commits them before issueCreated: the transition is what wakes considerEnqueue→dispatch, so a blocks edge written after it misses the first tick and the dependent ships ahead of its blocker. This order is also the SAFE side of a partial failure, which is why the two writes are deliberately not one transaction: edges landed + transition failed leaves an extra `blocks` edge holding a job, which a human can retract, where the reverse ships a dependent ahead of its blocker and cannot be undone.
-        const r = await applyIssueRelations(ctx, issue.projectId, issue.id, input.data.relations);
+        const r = await applyIssueRelations(
+          { actor: principalHookActor(principal, device), createdById: device.ownerId },
+          issue.projectId,
+          issue.id,
+          input.data.relations,
+        );
 
         if (input.data.status && input.data.status !== issue.status) {
           await transitionIssueStatus(issue, input.data.status, principalActor(principal, device), {

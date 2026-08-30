@@ -1,12 +1,15 @@
 /**
- * ISS-40 PR-E — HTTP CRUD for issue_dependencies edges. Mirrors the writes
- * already covered by `forge_pm.set_dependency` MCP, but exposed to non-PM
- * clients (web UI). Cycle detection runs DFS on `kind='blocks'` edges before
- * insert so the dispatcher's Layer 2 cannot deadlock on a cyclic graph.
+ * ISS-40 PR-E — HTTP CRUD for issue_dependencies edges, exposed to non-PM
+ * clients (web UI).
+ *
+ * ISS-889 — the edge write itself lives in `dependency-service.ts`, shared
+ * with MCP. What stays here is transport: authz against the project role, and
+ * the mapping from the service's neutral error codes to this surface's
+ * status codes and wording.
  */
 
 import { zValidator } from '@hono/zod-validator';
-import { and, eq, inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -17,6 +20,11 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { loadIssueDependencyEdges } from './dependency-read.js';
+import {
+  IssueDependencyError,
+  type SetIssueDependencyInput,
+  setIssueDependency,
+} from './dependency-service.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 const edgeParamSchema = z.object({ id: z.uuid(), edgeId: z.uuid() });
@@ -41,37 +49,6 @@ const forbidden = (message: string) =>
 
 const conflict = (message: string, code: string, details?: unknown) =>
   new HTTPException(409, { message, cause: { code, details } });
-
-const CYCLE_DEPTH_CAP = 100;
-
-/**
- * DFS forward from `start` following only `kind='blocks'` edges. If we reach
- * `target`, returns `'cycle'`. Caps depth defensively.
- */
-async function detectCycle(
-  start: string,
-  target: string,
-): Promise<'cycle' | 'depth_exceeded' | null> {
-  if (start === target) return 'cycle';
-  const visited = new Set<string>();
-  const stack: Array<{ node: string; depth: number }> = [{ node: start, depth: 0 }];
-  while (stack.length > 0) {
-    // biome-ignore lint/style/noNonNullAssertion: length checked
-    const { node, depth } = stack.pop()!;
-    if (depth > CYCLE_DEPTH_CAP) return 'depth_exceeded';
-    if (visited.has(node)) continue;
-    visited.add(node);
-    const children = await db
-      .select({ to: issueDependencies.toIssueId })
-      .from(issueDependencies)
-      .where(and(eq(issueDependencies.fromIssueId, node), eq(issueDependencies.kind, 'blocks')));
-    for (const c of children) {
-      if (c.to === target) return 'cycle';
-      if (!visited.has(c.to)) stack.push({ node: c.to, depth: depth + 1 });
-    }
-  }
-  return null;
-}
 
 export const issueDependencyRoutes = new Hono<{ Variables: AuthVars }>();
 issueDependencyRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -126,6 +103,7 @@ issueDependencyRoutes.post(
     const { dependsOnId: fromIssueId, kind, reason, validUntil } = c.req.valid('json');
     const userId = c.get('userId');
 
+    // cm:guard reject the self-edge BEFORE the sides lookup — `inArray` de-duplicates the two ids, so a self-edge comes back as ONE row and the length check below answers 404 instead of 400 SELF_DEP (caught by dependency-routes-e2e)
     if (fromIssueId === toIssueId) {
       throw badRequest({ message: 'self-edge not allowed' }, 'SELF_DEP');
     }
@@ -137,11 +115,8 @@ issueDependencyRoutes.post(
     if (sides.length !== 2) throw notFound('one or both issues not found');
     const [a, b] = sides;
     if (!a || !b) throw notFound('one or both issues not found');
+    // cm:why both sides must share a project so membership can be checked ONCE, against `a` — the service refuses a mismatch as well, but only against the projectId it is handed, and this route has to choose that value before it can authorize anything
     if (a.projectId !== b.projectId) {
-      // Project membership is checked against the `to` issue's project below.
-      // We allow cross-project edges in principle (PM may model org-wide
-      // blockers), but for the user-facing route we require both sides in
-      // the same project to keep the auth model simple.
       throw badRequest(
         { message: 'cross-project edges not supported via this route' },
         'CROSS_PROJECT',
@@ -151,91 +126,51 @@ issueDependencyRoutes.post(
     const access = await loadProjectAccess(a.projectId, userId);
     assertProjectRole(access, 'member', 'not a project member');
 
-    if (kind === 'blocks') {
-      const cycle = await detectCycle(toIssueId, fromIssueId);
-      if (cycle === 'cycle') {
-        throw conflict('cycle detected — adding this edge would form a loop', 'CYCLE_DETECTED', {
-          fromIssueId,
-          toIssueId,
-        });
-      }
-      if (cycle === 'depth_exceeded') {
-        throw conflict('cycle detection depth exceeded', 'CYCLE_DEPTH_EXCEEDED');
-      }
-    }
-
-    const inserted = await db
-      .insert(issueDependencies)
-      .values({
-        projectId: a.projectId,
-        fromIssueId,
-        toIssueId,
-        kind,
-        reason: reason ?? null,
+    const input: SetIssueDependencyInput = {
+      projectId: a.projectId,
+      fromIssueId,
+      toIssueId,
+      kind,
+      reason,
+      validUntil,
+    };
+    try {
+      const result = await setIssueDependency(input, {
+        actor: { type: 'user', id: userId },
         createdById: userId,
-        validUntil: validUntil ? new Date(validUntil) : null,
-      })
-      .onConflictDoNothing({
-        target: [
-          issueDependencies.projectId,
-          issueDependencies.fromIssueId,
-          issueDependencies.toIssueId,
-          issueDependencies.kind,
-        ],
-      })
-      .returning({ id: issueDependencies.id });
-
-    if (inserted.length > 0) {
-      const edgeId = inserted[0]?.id;
-      if (!edgeId) throw new HTTPException(500, { message: 'insert returned no row' });
-      await hooks.emit('dependencyChanged', {
-        projectId: a.projectId,
-        edgeId,
-        fromIssueId,
-        toIssueId,
-        kind,
       });
-      const dependencyPayload: Record<string, unknown> = {
-        edgeId,
-        fromIssueId,
-        toIssueId,
-        kind,
-        ...(reason ? { reason } : {}),
-      };
-      const actor = { type: 'user' as const, id: userId };
-      await Promise.all([
-        safeRecordActivity({
-          issueId: fromIssueId,
-          actor,
-          action: 'issue.dependency.added',
-          payload: dependencyPayload,
-        }),
-        safeRecordActivity({
-          issueId: toIssueId,
-          actor,
-          action: 'issue.dependency.added',
-          payload: dependencyPayload,
-        }),
-      ]);
-      return c.json({ id: edgeId, created: true }, 201);
+      return c.json(result, result.created ? 201 : 200);
+    } catch (err) {
+      throw toHttpDependencyError(err, input);
     }
-
-    const [existing] = await db
-      .select({ id: issueDependencies.id })
-      .from(issueDependencies)
-      .where(
-        and(
-          eq(issueDependencies.projectId, a.projectId),
-          eq(issueDependencies.fromIssueId, fromIssueId),
-          eq(issueDependencies.toIssueId, toIssueId),
-          eq(issueDependencies.kind, kind),
-        ),
-      )
-      .limit(1);
-    if (!existing) throw new HTTPException(500, { message: 'conflict but no existing row found' });
-    return c.json({ id: existing.id, created: false });
   },
 );
+
+// cm:edge lockstep -> packages/core/src/issues/dependency-service.ts — every IssueDependencyErrorCode needs a case here; an unmapped one falls through as a 500 with the raw code as its message
+function toHttpDependencyError(err: unknown, input: SetIssueDependencyInput): unknown {
+  if (!(err instanceof IssueDependencyError)) return err;
+  const { fromIssueId, toIssueId } = input;
+  switch (err.code) {
+    case 'SELF_DEP':
+      return badRequest({ message: 'self-edge not allowed' }, 'SELF_DEP');
+    case 'NOT_FOUND':
+      return notFound('one or both issues not found');
+    case 'CROSS_PROJECT':
+      return badRequest(
+        { message: 'cross-project edges not supported via this route' },
+        'CROSS_PROJECT',
+      );
+    case 'CYCLE_DETECTED':
+      return conflict('cycle detected — adding this edge would form a loop', 'CYCLE_DETECTED', {
+        fromIssueId,
+        toIssueId,
+      });
+    case 'CYCLE_DEPTH_EXCEEDED':
+      return conflict('cycle detection depth exceeded', 'CYCLE_DEPTH_EXCEEDED');
+    default:
+      return new HTTPException(500, { message: err.code });
+  }
+}
 
 /**
  * DELETE /api/issues/:id/dependencies/:edgeId — remove an edge. The `:id`
@@ -303,6 +238,3 @@ issueDependencyRoutes.delete(
     return c.json({ deleted: true });
   },
 );
-
-/** Exported for reuse by the MCP `forge_pm.set_dependency` tool. */
-export { detectCycle };

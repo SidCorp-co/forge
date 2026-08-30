@@ -80,13 +80,13 @@ vi.mock('../../issues/dependency-read.js', () => ({
   loadIssueRelations: (id: string, projectId: string) => loadIssueRelationsMock(id, projectId),
 }));
 
-// cm:guard `applyIssueRelations` lives in issue-relations.ts and reaches this handler across a module boundary, which is the only reason overriding the EXPORT works — move it back inside forge-pm-set-dependency.ts and the internal call bypasses this mock, so every relation test starts hitting the real DB chain and passes for the wrong reason
-const pmSetDependencyMock = vi.fn(async () => ({ id: 'dep-id-1', created: true }));
-vi.mock('./forge-pm-set-dependency.js', async (importActual) => {
-  const actual = await importActual<typeof import('./forge-pm-set-dependency.js')>();
+// cm:guard `applyIssueRelations` (issues/relations-service.ts) reaches `setIssueDependency` across a module boundary, which is the only reason overriding the EXPORT works — inline that call into relations-service.ts and it bypasses this mock, so every relation test starts hitting the real DB chain and passes for the wrong reason
+const setEdgeMock = vi.fn(async () => ({ id: 'dep-id-1', created: true }));
+vi.mock('../../issues/dependency-service.js', async (importActual) => {
+  const actual = await importActual<typeof import('../../issues/dependency-service.js')>();
   return {
     ...actual,
-    pmSetDependencyHandler: pmSetDependencyMock as unknown as typeof actual.pmSetDependencyHandler,
+    setIssueDependency: setEdgeMock as unknown as typeof actual.setIssueDependency,
   };
 });
 
@@ -157,7 +157,7 @@ const stageUpdate = (issueRow: Record<string, unknown> = baseIssueRow) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  pmSetDependencyMock.mockResolvedValue({ id: 'dep-id-1', created: true });
+  setEdgeMock.mockResolvedValue({ id: 'dep-id-1', created: true });
 });
 
 it('update writes the edge with dependsOnId on the from side and reports it back', async () => {
@@ -169,15 +169,14 @@ it('update writes the edge with dependsOnId on the from side and reports it back
     data: { relations: [{ dependsOnId: BLOCKER_ID, kind: 'blocks' }] },
   })) as { relations?: Array<Record<string, unknown>> };
 
-  expect(pmSetDependencyMock).toHaveBeenCalledWith(
-    fakeDevice,
+  expect(setEdgeMock).toHaveBeenCalledWith(
     expect.objectContaining({
       projectId: PROJECT_ID,
       fromIssueId: BLOCKER_ID,
       toIssueId: ISSUE_ID,
       kind: 'blocks',
     }),
-    { type: 'device', id: fakeDevice.id },
+    { actor: { type: 'device', id: fakeDevice.id }, createdById: OWNER_ID },
     { deferHealthPublish: true },
   );
   expect(result.relations).toEqual([
@@ -201,17 +200,16 @@ it('update writes the edge with blocksId on the to side', async () => {
     data: { relations: [{ blocksId: BLOCKED_ID, kind: 'blocks' }] },
   });
 
-  expect(pmSetDependencyMock).toHaveBeenCalledWith(
-    fakeDevice,
+  expect(setEdgeMock).toHaveBeenCalledWith(
     expect.objectContaining({ fromIssueId: ISSUE_ID, toIssueId: BLOCKED_ID }),
-    { type: 'device', id: fakeDevice.id },
+    { actor: { type: 'device', id: fakeDevice.id }, createdById: OWNER_ID },
     { deferHealthPublish: true },
   );
 });
 
 it('update passes validUntil through so an existing edge can be retracted', async () => {
   stageUpdate();
-  pmSetDependencyMock.mockResolvedValueOnce({
+  setEdgeMock.mockResolvedValueOnce({
     id: 'dep-id-1',
     created: false,
     updated: true,
@@ -227,10 +225,9 @@ it('update passes validUntil through so an existing edge can be retracted', asyn
     },
   })) as { relations?: Array<Record<string, unknown>> };
 
-  expect(pmSetDependencyMock).toHaveBeenCalledWith(
-    fakeDevice,
+  expect(setEdgeMock).toHaveBeenCalledWith(
     expect.objectContaining({ validUntil: '2020-01-01T00:00:00.000Z' }),
-    { type: 'device', id: fakeDevice.id },
+    { actor: { type: 'device', id: fakeDevice.id }, createdById: OWNER_ID },
     { deferHealthPublish: true },
   );
   expect(result.relations?.[0]).toMatchObject({ created: false, updated: true });
@@ -246,7 +243,7 @@ it('update commits the edge BEFORE the status transition that wakes the dispatch
     data: { status: 'open', relations: [{ dependsOnId: BLOCKER_ID, kind: 'blocks' }] },
   });
 
-  const edgeAt = pmSetDependencyMock.mock.invocationCallOrder[0];
+  const edgeAt = setEdgeMock.mock.invocationCallOrder[0];
   const transitionAt = updateReturning.mock.invocationCallOrder[0];
   expect(edgeAt).toBeDefined();
   expect(transitionAt).toBeDefined();
@@ -275,7 +272,7 @@ it('update without relations does not touch the dependency graph', async () => {
     data: { plan: 'new plan' },
   })) as { relations?: unknown };
 
-  expect(pmSetDependencyMock).not.toHaveBeenCalled();
+  expect(setEdgeMock).not.toHaveBeenCalled();
   expect(result.relations).toBeUndefined();
 });
 
@@ -321,10 +318,9 @@ it('attributes the edge to the PAT user, not to the synthetic device standing in
     data: { relations: [{ dependsOnId: BLOCKER_ID, kind: 'blocks' }] },
   });
 
-  expect(pmSetDependencyMock).toHaveBeenCalledWith(
+  expect(setEdgeMock).toHaveBeenCalledWith(
     expect.anything(),
-    expect.anything(),
-    { type: 'user', id: PAT_USER },
+    expect.objectContaining({ actor: { type: 'user', id: PAT_USER } }),
     { deferHealthPublish: true },
   );
 });

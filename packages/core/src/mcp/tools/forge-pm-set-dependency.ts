@@ -18,17 +18,11 @@
  * deprecation window closes.
  */
 
-import { and, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
-import { db } from '../../db/client.js';
-import { issueDependencies, issueDependencyKinds, issues } from '../../db/schema.js';
-import { decomposeParent } from '../../issues/decompose.js';
-import { detectCycle } from '../../issues/dependency-routes.js';
-import { publishPipelineHealthChanged } from '../../issues/pipeline-health.js';
-import { logger } from '../../logger.js';
-import { type Actor, safeRecordActivity } from '../../pipeline/activity.js';
-import { hooks } from '../../pipeline/hooks.js';
+import { issueDependencyKinds } from '../../db/schema.js';
+import { IssueDependencyError, setIssueDependency } from '../../issues/dependency-service.js';
+import type { Actor } from '../../pipeline/activity.js';
 import { deprecationFor } from '../deprecation.js';
 import {
   assertDeviceOwnerIsMember,
@@ -52,209 +46,45 @@ export const pmSetDependencyInputSchema = z
   .strict();
 
 // cm:guard pass `actor` whenever the caller knows its principal — a PAT reaches here behind a SYNTHETIC device (mcp/handler.ts stubDeviceForPat) whose id is an api_tokens row, so the default writes an activity_log actor_id that matches no `devices` row while the same request's status transition is attributed correctly through principalActor()
-// cm:guard `deferHealthPublish` suppresses ONLY the WS refresh, never the edge write or the `dependencyChanged` hook — a caller that defers owes the batched `publishPipelineHealthChanged` itself, before whatever wakes the dispatcher (see issue-relations.ts), or the dependent's waiting banner goes stale until the next event.
 export async function pmSetDependencyHandler(
   device: Device,
   input: z.infer<typeof pmSetDependencyInputSchema>,
   actorOverride?: Actor,
   opts?: { deferHealthPublish?: boolean },
 ) {
-  // ISS-131 — was `assertPmActor`. Plan-pipeline agents legitimately need to
-  // declare `blocks`/`decomposes` edges as part of writing a plan, but they
-  // run on `claude-code` runners that do not carry the PM capability flag.
-  // The cycle guard below + the unique-index idempotency already cover the
-  // abuse surface; gate on plain project membership instead.
+  // cm:guard gate on plain project membership, NOT the PM capability flag (ISS-131, was `assertPmActor`) — plan-pipeline agents must declare blocks/decomposes edges while writing a plan and run on `claude-code` runners that carry no PM flag; the cycle guard and the unique-index idempotency already cover the abuse surface
   await assertDeviceOwnerIsMember(device, input.projectId);
 
-  if (input.fromIssueId === input.toIssueId) {
-    throw new Error('BAD_REQUEST: self-edge not allowed');
-  }
-
-  const sides = await db
-    .select({ id: issues.id, projectId: issues.projectId })
-    .from(issues)
-    .where(inArray(issues.id, [input.fromIssueId, input.toIssueId]));
-  if (sides.length !== 2) {
-    throw new Error('NOT_FOUND: one or both issues not found');
-  }
-  for (const s of sides) {
-    if (s.projectId !== input.projectId) {
-      throw new Error('BAD_REQUEST: both issues must belong to projectId');
-    }
-  }
-
-  // ISS-40 PR-E — only `blocks` edges gate dispatch, so they're the only
-  // ones that can deadlock the dispatcher. Cycle-check before insert.
-  if (input.kind === 'blocks') {
-    const cycle = await detectCycle(input.toIssueId, input.fromIssueId);
-    if (cycle === 'cycle') {
-      throw new Error('CYCLE_DETECTED: adding this blocks edge would form a loop');
-    }
-    if (cycle === 'depth_exceeded') {
-      throw new Error('CYCLE_DEPTH_EXCEEDED: dependency graph exceeds detection depth');
-    }
-  }
-
-  const inserted = await db
-    .insert(issueDependencies)
-    .values({
-      projectId: input.projectId,
-      fromIssueId: input.fromIssueId,
-      toIssueId: input.toIssueId,
-      kind: input.kind,
-      reason: input.reason ?? null,
-      createdById: device.ownerId,
-      validUntil: input.validUntil ? new Date(input.validUntil) : null,
-    })
-    .onConflictDoNothing({
-      target: [
-        issueDependencies.projectId,
-        issueDependencies.fromIssueId,
-        issueDependencies.toIssueId,
-        issueDependencies.kind,
-      ],
-    })
-    .returning({ id: issueDependencies.id });
-
-  if (inserted.length > 0) {
-    const id = inserted[0]?.id;
-    if (!id) throw new Error('forge_pm.set_dependency: insert returned no row');
-    await hooks.emit('dependencyChanged', {
-      projectId: input.projectId,
-      edgeId: id,
-      fromIssueId: input.fromIssueId,
-      toIssueId: input.toIssueId,
-      kind: input.kind,
-    });
-    const dependencyPayload: Record<string, unknown> = {
-      edgeId: id,
-      fromIssueId: input.fromIssueId,
-      toIssueId: input.toIssueId,
-      kind: input.kind,
-      ...(input.reason ? { reason: input.reason } : {}),
-    };
-    const actor = actorOverride ?? { type: 'device' as const, id: device.id };
-    await Promise.all([
-      safeRecordActivity({
-        issueId: input.fromIssueId,
-        actor,
-        action: 'issue.dependency.added',
-        payload: dependencyPayload,
-      }),
-      safeRecordActivity({
-        issueId: input.toIssueId,
-        actor,
-        action: 'issue.dependency.added',
-        payload: dependencyPayload,
-      }),
-    ]);
-    // ISS-138 (PR-D) — integration branch auto-fill on decomposes edges.
-    // The helper is idempotent: the edge we just inserted is detected as
-    // existing and skipped, but branch creation + metadata writes happen
-    // (or short-circuit if the parent already owns an integration branch).
-    await maybeRunDecomposeHelper(input, device.ownerId);
-    // ISS-164 — `blocks` / `decomposes` edges change the gated side's
-    // waiting reason; refresh pipelineHealth for the dependent (`to`) side.
-    if (!opts?.deferHealthPublish && (input.kind === 'blocks' || input.kind === 'decomposes')) {
-      await publishPipelineHealthChanged(input.projectId, [input.toIssueId]);
-    }
-    return { id, created: true };
-  }
-
-  const [existing] = await db
-    .select({ id: issueDependencies.id })
-    .from(issueDependencies)
-    .where(
-      and(
-        eq(issueDependencies.projectId, input.projectId),
-        eq(issueDependencies.fromIssueId, input.fromIssueId),
-        eq(issueDependencies.toIssueId, input.toIssueId),
-        eq(issueDependencies.kind, input.kind),
-      ),
-    )
-    .limit(1);
-  if (!existing) {
-    throw new Error('forge_pm.set_dependency: conflict but no existing row found');
-  }
-
-  // cm:guard apply `validUntil`/`reason` on the CONFLICT path too — the tool advertises both and the `onConflictDoNothing` above silently dropped them, which left a `blocks` edge retractable by no agent-reachable API at all (the DELETE route is JWT-only REST). It matters because a `dropped` blocker never stamps `merged_at`: on getcontent a consolidation dropped ISS-463 and its stale edge held ISS-455, and via ISS-455 held ISS-457, queued for 53h with nobody notified (measured 2026-08-22).
-  // cm:why only the fields the caller actually sent — a bare re-assert of an existing edge is the common idempotent call, and blanking someone's expiry or reason because they omitted it is a silent data loss
-  const patch: { validUntil?: Date; reason?: string } = {};
-  if (input.validUntil) patch.validUntil = new Date(input.validUntil);
-  if (input.reason) patch.reason = input.reason;
-  const updated = Object.keys(patch).length > 0;
-
-  if (updated) {
-    await db.update(issueDependencies).set(patch).where(eq(issueDependencies.id, existing.id));
-    // cm:guard emit `dependencyChanged` on an update, not just an insert — expiring an edge can make the gated side dispatchable THIS INSTANT, and without the emit the unblock waits for whatever else happens to wake the dispatcher
-    await hooks.emit('dependencyChanged', {
-      projectId: input.projectId,
-      edgeId: existing.id,
-      fromIssueId: input.fromIssueId,
-      toIssueId: input.toIssueId,
-      kind: input.kind,
-    });
-    const updatePayload: Record<string, unknown> = {
-      edgeId: existing.id,
-      fromIssueId: input.fromIssueId,
-      toIssueId: input.toIssueId,
-      kind: input.kind,
-      ...(input.validUntil ? { validUntil: input.validUntil } : {}),
-      ...(input.reason ? { reason: input.reason } : {}),
-    };
-    const actor = actorOverride ?? { type: 'device' as const, id: device.id };
-    await Promise.all([
-      safeRecordActivity({
-        issueId: input.fromIssueId,
-        actor,
-        action: 'issue.dependency.updated',
-        payload: updatePayload,
-      }),
-      safeRecordActivity({
-        issueId: input.toIssueId,
-        actor,
-        action: 'issue.dependency.updated',
-        payload: updatePayload,
-      }),
-    ]);
-    if (!opts?.deferHealthPublish && (input.kind === 'blocks' || input.kind === 'decomposes')) {
-      await publishPipelineHealthChanged(input.projectId, [input.toIssueId]);
-    }
-  }
-
-  // ISS-138 (PR-D) — even on conflict (edge was already there), run the
-  // helper so a parent whose first decompose call predated PR-D can still
-  // be brought up to date when a new edge is added later.
-  await maybeRunDecomposeHelper(input, device.ownerId);
-  return { id: existing.id, created: false, updated };
-}
-
-async function maybeRunDecomposeHelper(
-  input: z.infer<typeof pmSetDependencyInputSchema>,
-  ownerId: string,
-): Promise<void> {
-  if (input.kind !== 'decomposes') return;
-  if (input.decomposeOpts?.useIntegrationBranch === false) {
-    // Honour explicit opt-out without invoking the helper at all — this keeps
-    // the no-git-side-effect contract for callers that just want to model
-    // decomposition without a shared integration branch.
-    return;
-  }
   try {
-    await decomposeParent(
-      input.fromIssueId,
-      [{ existingIssueId: input.toIssueId }],
-      { userId: ownerId },
-      { useIntegrationBranch: input.decomposeOpts?.useIntegrationBranch },
+    return await setIssueDependency(
+      input,
+      {
+        actor: actorOverride ?? { type: 'device' as const, id: device.id },
+        createdById: device.ownerId,
+      },
+      opts,
     );
   } catch (err) {
-    // Do not fail the edge write if the integration branch could not be
-    // created — the agent's decomposition step still records the edge.
-    // PR-E will add an explicit reconciliation path.
-    logger.warn(
-      { err, parentId: input.fromIssueId, childId: input.toIssueId },
-      'forge_pm.set_dependency: decompose helper failed for decomposes edge',
-    );
+    throw toMcpDependencyError(err);
+  }
+}
+
+// cm:edge lockstep -> packages/core/src/issues/dependency-service.ts — every IssueDependencyErrorCode needs a case here; the agent-facing contract is the `CODE: message` prefix, which forge-pm-set-dependency.test.ts asserts by string
+function toMcpDependencyError(err: unknown): unknown {
+  if (!(err instanceof IssueDependencyError)) return err;
+  switch (err.code) {
+    case 'SELF_DEP':
+      return new Error('BAD_REQUEST: self-edge not allowed');
+    case 'NOT_FOUND':
+      return new Error('NOT_FOUND: one or both issues not found');
+    case 'CROSS_PROJECT':
+      return new Error('BAD_REQUEST: both issues must belong to projectId');
+    case 'CYCLE_DETECTED':
+      return new Error('CYCLE_DETECTED: adding this blocks edge would form a loop');
+    case 'CYCLE_DEPTH_EXCEEDED':
+      return new Error('CYCLE_DEPTH_EXCEEDED: dependency graph exceeds detection depth');
+    default:
+      return new Error(`forge_pm.set_dependency: ${err.code}`);
   }
 }
 
