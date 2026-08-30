@@ -56,8 +56,20 @@ export function reviewRoundsWedgeEntityId(runId: string): string {
 }
 
 /**
+ * Entity id for work frozen behind a paused run: the subject is the pause, not
+ * any one of the steps queued behind it.
+ */
+// cm:guard the `paused:` prefix is load-bearing for the same reason `rounds:` is — `wedgeResolutionKey` keys ONLY on entityId, and `alarmRejectionStreaks` already emits about a run id. A bare runId here would share a dedup key with it, so whichever fired first would silence the other and either one's resolve would clear both.
+// cm:edge lockstep -> packages/core/src/pipeline/paused-run-wedge-resolve.ts — that subscriber is the only caller that clears this key; a wedge emitted under a key nothing resolves is a permanent row in the owner's bell (721 of them, measured forge-beta 2026-08-14)
+export function pausedRunWedgeEntityId(runId: string): string {
+  return `paused:${runId}`;
+}
+
+/**
  * Clear the wedge notifications for `entityId` — the condition they reported is
- * gone. Call this from whatever observes the recovery, never on a timer.
+ * gone. Call it from whatever observes the recovery, or from a pass that
+ * RE-DERIVES the condition and finds it absent; never on a timer that clears
+ * blind, which is a bell emptied on a schedule rather than on a fact.
  */
 // cm:edge lockstep -> packages/core/src/pipeline/wedge.ts#emitPipelineWedge — the key both sides use comes from `wedgeResolutionKey`; a caller that hand-writes `wedge:<id>` here and the emitter drifting apart means a resolved wedge stays in the bell forever
 export async function resolvePipelineWedge(entityId: string): Promise<number> {

@@ -30,6 +30,7 @@ import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { hooks } from './hooks.js';
 import { pauseRun, resumeRun } from './run-pause.js';
 import { cascadeCancelChildJobs, type JobRow, requestKillsForCascade } from './runs-cascade.js';
 
@@ -233,6 +234,18 @@ export async function cancelPipelineRun(
   let issueParked = false;
   if (result.broadcast) {
     broadcastRunStatus(result.run);
+    // cm:guard `fromStatus: 'running'` is FALSE when the run was `paused`, and on this path that is a new false statement rather than an inherited one — before this call an operator cancel emitted nothing, so `sentry-breadcrumbs.ts` now renders "running -> cancelled" for a run that was paused, on the surface the maintainer uses to reconstruct a run's history without the DB. Priced, not free: THREE of the four subscribers DECIDE on `toStatus` and never read this field; the fourth, `sentry-breadcrumbs.ts`, decides on nothing and only RENDERS `fromStatus`, which is exactly where the cost lands. `emitCloseHook` in pipeline/runs.ts already records the same fixed value for the identical case. The exit condition is the honest value threaded through `applyKernelTransition`'s returning shape — NOT a pre-select here, which is a second round-trip and a second convention.
+    // cm:guard emit AFTER the transaction commits, and never skip it — an operator cancel is a terminal run transition, and three subscribers already assume every one of them reaches this hook: `release-batch/claim-subscriber.ts` names "operator cancelPipelineRun → runs-control.ts" in its own header (an assumption that was false until this call existed, which is why ISS-764 needed a sweeper backstop), `memory/candidates-observer.ts` mines terminal issue runs, and `pipeline/paused-run-wedge-resolve.ts` clears the frozen-queue notification whose ONLY other clearer is a resume.
+    await hooks.emit('pipelineRunStatusChanged', {
+      runId: result.run.id,
+      projectId: result.run.projectId,
+      issueId: result.run.issueId,
+      kind: result.run.kind,
+      fromStatus: 'running',
+      toStatus: 'cancelled',
+      currentStep: result.run.currentStep,
+      cascadedJobIds: result.cancelledJobIds,
+    });
     await requestKillsForCascade(result.killableJobs, FAILURE_REASON_PIPELINE_CANCELLED);
     if (opts.parkIssue ?? true) {
       issueParked = await parkIssueOnCancel(result.run, opts.actorUserId);

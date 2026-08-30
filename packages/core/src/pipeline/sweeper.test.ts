@@ -31,10 +31,12 @@ vi.mock('./wedge.js', () => ({
 const alarmAgedHoldsMock = vi.fn(async (_now?: Date) => ({ alerted: 0 }));
 const alarmChurningIssuesMock = vi.fn(async () => ({ alerted: 0 }));
 const alarmStalledQueuedJobsMock = vi.fn(async (_now?: Date) => ({ alerted: 0 }));
+const alarmPausedRunsWithQueuedWorkMock = vi.fn(async (_now?: Date) => ({ alerted: 0 }));
 const alarmRejectionStreaksMock = vi.fn(async () => ({ alerted: 0 }));
 vi.mock('./inv7-alarms.js', () => ({
   alarmAgedHolds: (now?: Date) => alarmAgedHoldsMock(now),
   alarmChurningIssues: () => alarmChurningIssuesMock(),
+  alarmPausedRunsWithQueuedWork: (now?: Date) => alarmPausedRunsWithQueuedWorkMock(now),
   alarmRejectionStreaks: () => alarmRejectionStreaksMock(),
   alarmStalledQueuedJobs: (now?: Date) => alarmStalledQueuedJobsMock(now),
 }));
@@ -213,6 +215,7 @@ describe('runPipelineSweep — watch-only alarm passes', () => {
       [alarmChurningIssuesMock, 'churningIssues', 1],
       [alarmStalledQueuedJobsMock, 'stalledQueuedJobs', 3],
       [alarmRejectionStreaksMock, 'rejectionStreaks', 4],
+      [alarmPausedRunsWithQueuedWorkMock, 'pausedRunsWithQueuedWork', 5],
     ] as const;
     for (const [mock, , alerted] of passes) mock.mockResolvedValueOnce({ alerted });
 
@@ -542,7 +545,8 @@ describe('reapOrphanedIssueRuns (ISS-461 — issue runs leaked past a terminal i
     const text = sqlText(dbExecute.mock.calls[0]?.[0]);
     expect(text).toMatch(/r\.kind\s*=\s*'issue'/);
     expect(text).toMatch(/r\.status\s+IN\s*\(\s*'running'\s*,\s*'paused'\s*\)/);
-    expect(text).toMatch(/i\.status\s*=\s*'closed'/);
+    // cm:guard the status list here IS `RUN_CLOSING_STATUSES` in issues/apply-transition.ts — assert every member, because this pass is that block's only backstop and a member missing here leaks its runs forever with no reaper on any axis (`dropped` was exactly that drift until 2026-08-30)
+    expect(text).toMatch(/i\.status\s+IN\s*\(\s*'closed'\s*,\s*'dropped'\s*\)/);
     expect(text).not.toMatch(/released/);
     expect(text).toMatch(/JOIN\s+issues\s+i/);
     expect(text).toMatch(/started_at\s*</);
@@ -550,11 +554,7 @@ describe('reapOrphanedIssueRuns (ISS-461 — issue runs leaked past a terminal i
   });
 
   it('does not reap a run whose issue is `released` (ISS-669 — release runs inside the open run)', async () => {
-    // The candidate SELECT itself filters on i.status = 'closed', so a
-    // `released` issue's run is never returned as a candidate in the first
-    // place — assert the mocked query result reflects that (an integration
-    // test against real SQL would additionally confirm the WHERE clause
-    // excludes it, covered by the SQL-shape assertion above).
+    // cm:guard `released` must never join the status list above — the release step runs INSIDE the still-open run (ISS-669), so reaping there would cancel the very job doing the release; the SQL-shape assertion above is what actually holds it, this asserts the behaviour that follows
     dbExecute.mockResolvedValueOnce([]);
     const result = await reapOrphanedIssueRuns(new Date('2026-06-12T00:00:00Z'));
 

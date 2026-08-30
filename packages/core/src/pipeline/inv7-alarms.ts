@@ -8,7 +8,9 @@
 // is wrong with the row, so there is nothing to reap. The fourth watches the
 // same churn as the second on the axis autonomous mode actually moves: a review
 // loop going round without landing, counted from the reviewer's own verdicts
-// rather than from a status the driver never writes.
+// rather than from a status the driver never writes. The fifth is the third's
+// blind spot: work queued behind a run that is PAUSED, which the third cannot
+// see because such a job has a gate reason and the third tests for having none.
 //
 // Every pass here emits a wedge notification and touches no state at all.
 
@@ -19,7 +21,13 @@ import { HOLD_PAYLOAD_KEY, holdResumesItself } from '../jobs/hold.js';
 import { RESULT_QUIET_MINUTES } from '../jobs/loop-monitor.js';
 import { logger } from '../logger.js';
 import { DEFAULT_NO_PROGRESS_ROUNDS } from './reopen-policy.js';
-import { emitPipelineWedge, reviewRoundsWedgeEntityId } from './wedge.js';
+import { pauseResumesItself } from './run-pause.js';
+import {
+  emitPipelineWedge,
+  pausedRunWedgeEntityId,
+  resolvePipelineWedge,
+  reviewRoundsWedgeEntityId,
+} from './wedge.js';
 
 export interface Inv7AlarmResult {
   alerted: number;
@@ -164,6 +172,107 @@ export async function alarmStalledQueuedJobs(now: Date = new Date()): Promise<In
 
   if (alerted > 0) {
     logger.info({ alerted, candidates: rows.length }, 'inv7: stalled queued jobs surfaced');
+  }
+  return { alerted };
+}
+
+interface PausedRunRow extends Record<string, unknown> {
+  run_id: string;
+  project_id: string;
+  issue_id: string | null;
+  pause_reason: string | null;
+  paused_since: string;
+  queued_jobs: number;
+  queued_types: string;
+  iss_seq: number | null;
+}
+
+/**
+ * Rows one sweep will look at.
+ */
+// cm:guard the ORDER BY is what makes this cap safe, and it is NOT decoration — this pass writes no run state, so a row it processes does NOT leave the candidate set the way `reapOrphanedIssueRuns`' terminal rows do. Copy that pass's bare `LIMIT 200` without ordering frozen-work first and the cleanup arm eats the whole budget forever: measured against real Postgres, 200 zero-queue paused runs (which need nothing, and sort first under `updated_at ASC` alone) plus one run with a genuinely queued step gave alerted=0, resolves=200, and the one run that needed a human was never alarmed — every minute, permanently, with `alerted` reading 0 exactly as it does when all is well.
+export const PAUSED_RUN_SCAN_LIMIT = 200;
+
+/** How long a pause may hold work back before it is worth a human's attention. */
+export const PAUSED_RUN_ALARM_MS = (() => {
+  const raw = Number(process.env.FORGE_PAUSED_RUN_ALARM_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : HOLD_AGE_ALARM_MS;
+})();
+
+/**
+ * Steps queued behind a pause nobody is being told about.
+ */
+// cm:guard scoped to `paused` runs and nothing else — a `queued` job under a RUNNING run is either explained by a gate that already has an owner (`detectStalledDependencies`, `alarmAgedHolds`, `alarmUnrunnableBlockedDependents`) or by none, which is `alarmStalledQueuedJobs`. Widening this to `running` would double-notify all of them, and would re-open the age-based-reaper shape a human rejected on ISS-765 (2026-08-11) because a job legitimately queued behind the project cap is byte-identical to an orphan. Under a paused run there is no such reading: the picker requires `r.status='running'`, so nothing behind the pause can start, whatever its age.
+// cm:guard alarm ONLY (RFC 0002 INV-7) — never resume the run, cancel the job or re-dispatch. `missing_skill` resumes itself the moment the skill is registered and `reEnqueueForIssue` re-fires the work, so cancelling here would destroy exactly what the resume exists to rescue; `stage_stalled` and an operator pause are decisions only a person can revisit.
+// cm:edge lockstep -> packages/core/src/pipeline/paused-run-wedge-resolve.ts — that subscriber clears what this emits; the pair is what stops the daily re-notify outliving the pause
+export async function alarmPausedRunsWithQueuedWork(
+  now: Date = new Date(),
+): Promise<Inv7AlarmResult> {
+  const cutoffIso = new Date(now.getTime() - PAUSED_RUN_ALARM_MS).toISOString();
+  // cm:guard `updated_at` is a PROXY for "paused since" and a LOSSY one — nothing stores the pause timestamp, and `setCurrentStepForOpenIssueRun` (issues/apply-transition.ts) stamps it on a `paused` run at EVERY issue transition. So an operator repeatedly clicking "open" on a wedged issue — the exact behaviour in the ISS-576/652 incident — pushes this clock forward each time and can defer the alarm indefinitely. Do not read the delay as harmless; the honest fix is a stored `pausedAt` on the run, and this predicate should move to it rather than be tightened.
+  // cm:guard write `metadata` LITERALLY, never as a Drizzle column reference — inside a raw `sql` template Drizzle renders the reference unqualified, which collides across the joined tables and fails at parse time
+  const rows = await db.execute<PausedRunRow>(sql`
+    SELECT r.id AS run_id,
+           r.project_id,
+           r.issue_id,
+           r.metadata ->> 'pauseReason' AS pause_reason,
+           r.updated_at AS paused_since,
+           count(j.id)::int AS queued_jobs,
+           string_agg(DISTINCT j.type, ', ') AS queued_types,
+           i.iss_seq
+    FROM pipeline_runs r
+    LEFT JOIN jobs j ON j.pipeline_run_id = r.id AND j.status = 'queued'
+    LEFT JOIN issues i ON i.id = r.issue_id
+    WHERE r.status = 'paused'
+      AND r.updated_at < ${cutoffIso}
+    GROUP BY r.id, i.iss_seq
+    ORDER BY (count(j.id) = 0) ASC, r.updated_at ASC
+    LIMIT ${PAUSED_RUN_SCAN_LIMIT}
+  `);
+
+  const hours = Math.round(PAUSED_RUN_ALARM_MS / 3_600_000);
+  let alerted = 0;
+  for (const row of rows) {
+    const label = row.iss_seq ? `ISS-${row.iss_seq}` : 'A pipeline run';
+    const steps = Number(row.queued_jobs);
+    // cm:guard the LEFT JOIN returns paused runs with ZERO queued jobs on purpose, so this pass clears its own notification when the queue behind the pause empties. The run leaving `paused` is not the only way the condition ends — an operator can cancel the queued steps and leave the pause standing — and the subscriber only watches the run. Without this arm the bell keeps a row asserting N frozen steps when there are none.
+    if (steps === 0) {
+      await resolvePipelineWedge(pausedRunWedgeEntityId(row.run_id));
+      continue;
+    }
+    alerted++;
+    // cm:guard ask `pauseResumesItself`, never assume from the reason string — only `missing_skill` has a resume path (`missing-skill-resume.ts`), `stage_stalled` has none anywhere in the repo, and an operator pause is a human's decision. This wedge is the operator's only recurring notification for a frozen queue; telling them "it resumes on its own" about a pause that never will is the aged-hold failure repeated on the run axis.
+    const selfResuming = pauseResumesItself(row.pause_reason);
+    const cause = row.pause_reason ?? 'an operator pause (no machine reason recorded)';
+    await emitPipelineWedge({
+      projectId: row.project_id,
+      issueId: row.issue_id,
+      hop: 'dispatch',
+      entity: 'run',
+      entityId: pausedRunWedgeEntityId(row.run_id),
+      reason: `paused_over_${hours}h:${row.pause_reason ?? 'operator'}`,
+      title: `${label} has ${steps} step${steps === 1 ? '' : 's'} frozen behind a paused run`,
+      summary: `The pipeline run for ${label} has been paused since ${row.paused_since} (${cause}) and ${steps} step${steps === 1 ? '' : 's'} (${row.queued_types}) ${steps === 1 ? 'is' : 'are'} queued behind it. Queued work under a paused run cannot start — the picker only offers jobs whose run is \`running\` — and while it waits nothing can queue a replacement for the same step either.`,
+      nextStep: selfResuming
+        ? 'Fix the condition named above (register the missing skill, or turn the stage off) and the run resumes on its own, re-firing the queued work.'
+        : 'This pause will NOT resume by itself. Decide what the run should do, then resume or cancel it from the run view — until one of those, the steps behind it stay frozen.',
+      action: selfResuming
+        ? 'Clear the named condition; the run restarts itself.'
+        : 'The run is waiting on you, not on a machine.',
+    });
+  }
+
+  if (alerted > 0) {
+    logger.info({ alerted, paused: rows.length }, 'inv7: paused runs with frozen work surfaced');
+  }
+  // cm:guard say it when the scan is truncated — a capped sweep and a quiet one both report `alerted: 0` for the rows they never read, and a silent alarm is the failure this pass exists to end
+  // cm:guard trigger on `alerted`, NEVER on `rows.length` — with frozen-work rows sorted first, a full page whose alarms fit inside it PROVES nothing was missed, and the zero-queue population never shrinks, so a full page is the steady state on an old fleet. Warning on it would fire every minute forever about a benign condition and be tuned out exactly before a real truncation arrived.
+  // cm:why a log and not a wedge, which is a real weakness in a pass whose whole premise is that logs were not enough: the cap is GLOBAL and this query takes no project scope, so the unexamined tail belongs to projects the sweep never read and there is no owner to notify. If it ever fires in production the answer is a wedge about the cap itself, not a bigger number.
+  if (alerted >= PAUSED_RUN_SCAN_LIMIT) {
+    logger.warn(
+      { limit: PAUSED_RUN_SCAN_LIMIT, alerted },
+      'inv7: paused-run scan filled its cap with frozen work — runs beyond it were not examined',
+    );
   }
   return { alerted };
 }

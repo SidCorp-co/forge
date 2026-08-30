@@ -9,6 +9,19 @@
 
 ### Added
 
+- Work queued behind a paused pipeline run is now reported instead of sitting silently. Of every
+  gate that can hold a `queued` job, `pipeline_run_not_running` was the only one with neither a
+  reaper nor an alarm behind it: the picker only offers jobs whose run is `running`, so nothing
+  behind a pause can start, and because the active-job index covers `queued`, nothing can queue a
+  replacement step for that issue either — the issue is dead, not slow. Measured on the fleet
+  2026-08-30, four triage jobs had been in that state for 38 days with no surface anywhere able to
+  say so. A new sweeper pass notifies the project owner once per paused run past the threshold,
+  naming what paused it, how many steps are frozen behind it, and — read from the pause kind, not
+  guessed — whether it will resume by itself. The notification clears as soon as the run leaves
+  `paused`, whether it resumed or was closed. Nothing is cancelled, re-queued or re-dispatched: a
+  pause is either a machine condition that clears itself or a decision only a person can revisit,
+  and a job killed here is work the resume existed to rescue. (ISS-879)
+
 - A plan now records the branches that were weighed and dropped, not only the one that was taken.
   Forge keeps the issue rather than the conversation, so a rejected branch that is not in the plan is
   gone — and a plan without it reads exactly like one where nothing else was ever considered. Both
@@ -33,6 +46,24 @@
   real total shown; one human comment clears a row for good. (ISS-881)
 
 ### Fixed
+
+- A pipeline run under an issue that was DROPPED is now closed, and its queued steps with
+  it. The backstop that closes runs whose issue has already finished matched only `closed`,
+  while the set of statuses that close a run has been `{closed, dropped}` — so an issue
+  abandoned rather than completed left its run open forever with its queued steps orphaned
+  underneath, and nothing on any axis reaped them. `dropped` is one of the five statuses the
+  autonomous driver may write, so this was reachable on every autonomous project. (ISS-879)
+
+- Cancelling a pipeline run from the run view now announces itself. Cancel flipped the run
+  and told the browser, but never emitted the lifecycle event three other things listen for,
+  so an operator cancel silently skipped them: release-batch claims were left for a
+  once-a-minute sweeper to find, the new frozen-queue notification was never cleared, and
+  memory candidates were never mined from a cancelled issue run at all. (ISS-879)
+
+- Clearing a notification is now a single locked statement instead of a read followed by a
+  write. With one clearer per notification that pair was safe; the frozen-queue notification
+  above is the first with two, and both could see the same row unread before either wrote,
+  decrementing the reader's unread count twice for one notification. (ISS-879)
 
 - `noProgressRounds` now reaches the mode the pipeline actually runs in. The knob had two readers and
   only one worked: the prompt printed it to every agent, while the alarm compared it to an issue's

@@ -1,6 +1,5 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { notifications } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
 
@@ -23,27 +22,25 @@ import { hooks } from '../pipeline/hooks.js';
 export async function resolveNotifications(resolutionKey: string): Promise<number> {
   if (!resolutionKey) return 0;
   try {
-    // cm:guard read this BEFORE the update — RETURNING yields the NEW row, so `read` there is always true and could not tell an unread row from one the operator had already opened. The hook decrements a client-side unread count, so emitting it for an already-read row double-counts.
-    const wasUnread = await db
-      .select({ id: notifications.id, userId: notifications.userId })
-      .from(notifications)
-      .where(
-        and(
-          eq(notifications.resolutionKey, resolutionKey),
-          isNull(notifications.resolvedAt),
-          eq(notifications.read, false),
-        ),
-      );
+    // cm:guard take the pre-update `read` from a LOCKED pre-image in the SAME statement, never from a separate earlier SELECT — RETURNING yields the NEW row, where `read` is always true and cannot tell an unread row from one the operator had already opened, and the hook decrements a client-side unread count so emitting it twice for one row double-counts. A prior read-then-update pair was safe only while each resolution key had exactly ONE clearer; `paused:<runId>` (ISS-879) has two — the run-left-paused subscriber and the empty-queue sweep — and they can both see the row unread before either commits. The sub-SELECT's `FOR UPDATE` is the ONLY re-check of `resolved_at IS NULL` before the write — the UPDATE's own WHERE is just the `n.id = prev.id` join — so removing it lets both callers claim the same row and emit. Witnessed, not merely argued: `tests/integration/auto-resolve-concurrent-e2e.test.ts` forces the interleaving with a second connection holding the row lock, and without this clause the double-emit happens.
+    // cm:guard match the UPDATE on `resolved_at IS NULL`, NOT on `read = false` — the two answer different questions ("has the condition cleared" vs "has a human looked") and this filter was once the second. A row the operator had already opened could never be stamped, so `resolved_at` stayed NULL forever on exactly the notifications someone was paying attention to; emitPipelineWedge's dedupe reads that column, so a read-then-fixed wedge would be suppressed permanently.
+    // cm:why `ORDER BY id` on the locking sub-select — two concurrent clearers of the same key take the row locks in the same order, so they queue instead of deadlocking
+    const cleared = await db.execute<{ id: string; user_id: string; was_unread: boolean }>(sql`
+      UPDATE notifications n
+      SET read = true, resolved_at = now()
+      FROM (
+        SELECT id, read FROM notifications
+        WHERE resolution_key = ${resolutionKey} AND resolved_at IS NULL
+        ORDER BY id
+        FOR UPDATE
+      ) prev
+      WHERE n.id = prev.id
+      RETURNING n.id, n.user_id, (NOT prev.read) AS was_unread
+    `);
 
-    // cm:guard match on `resolvedAt IS NULL`, NOT `read = false` — the two answer different questions ("has the condition cleared" vs "has a human looked") and this filter was the second. A row the operator had already opened could never be stamped, so `resolvedAt` stayed NULL forever on exactly the notifications someone was paying attention to; emitPipelineWedge's dedupe reads that column, so a read-then-fixed wedge would be suppressed permanently.
-    const cleared = await db
-      .update(notifications)
-      .set({ read: true, resolvedAt: new Date() })
-      .where(and(eq(notifications.resolutionKey, resolutionKey), isNull(notifications.resolvedAt)))
-      .returning({ id: notifications.id });
-
-    for (const row of wasUnread) {
-      await hooks.emit('notificationRead', { notificationId: row.id, userId: row.userId });
+    for (const row of cleared) {
+      if (!row.was_unread) continue;
+      await hooks.emit('notificationRead', { notificationId: row.id, userId: row.user_id });
     }
     return cleared.length;
   } catch (err) {
