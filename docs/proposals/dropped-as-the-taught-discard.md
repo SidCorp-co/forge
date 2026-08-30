@@ -47,3 +47,15 @@ checked against the dependency reader before it is taught, not after.
    an issue is exactly the class of defect ISS-787 was filed about.
 3. Keep `closed` + `unmark` documented as the repair for an issue **already** closed by mistake.
    That path stays correct; it just stops being the recommended one.
+
+## Honest costs
+
+- **It edits what every agent on the fleet is told.** Two of the four surfaces are injected into
+  every prompt on every project, so the change lands everywhere at once and cannot be rolled out to
+  one project first.
+- **Byte-pinned tests must be re-pinned in the same commit.** `rule-parity.test.ts` and
+  `registry.test.ts` hold the current wording exactly; the pin is what makes the guidance
+  non-drifting, and it is also what makes changing it a coordinated edit rather than a doc fix.
+- **Two taught paths coexist while prompts propagate.** Sessions already running, and any surface not
+  in the commit, keep teaching `closed` + `unmark`. That path stays documented as the repair, so a
+  reader carries two statuses for one intent for as long as both are true.

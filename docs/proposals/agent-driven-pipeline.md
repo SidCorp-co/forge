@@ -749,3 +749,21 @@ ship*, driven entirely by getcontent, whose autonomous numbers carry the cost of
 the driver itself — six of the nine defects found in this whole effort were found on it.
 The next measurement worth taking is apiflow at n≥30, on a project the driver did not have
 to be built on.
+
+## Honest costs
+
+The mode is better on the axes it was built for. It is not free on the others:
+
+- **Observability becomes self-reported.** The dispatcher no longer knows where an issue is; the
+  phase journal does, and only for phases the agent declared. A session that dies before declaring
+  one is invisible in a way seven jobs never were, which is why the watchdog counts a commit *or* a
+  journal phase and why `held` exists.
+- **A slot is held per issue, not per stage.** One long-lived session occupies its runner for the
+  whole issue including the parts that used to release it between stages, so a project's concurrency
+  cap now bounds issues in flight rather than steps in flight.
+- **Review independence rests on a fork, not on a dispatch.** The reviewer is clean-context because
+  the driver forks it that way and passes `FORGE_VERDICT_FILE` through. That is a discipline inside
+  one session, where the staged pipeline got it from the process boundary for free.
+- **Two modes must stay true until `staged` is sunset.** Every kernel change is checked against both,
+  and the sunset condition is deferred until phase 5 has evidence — so the doubled surface is the
+  standing cost of not having decided yet.

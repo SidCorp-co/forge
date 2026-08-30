@@ -187,3 +187,22 @@ repositories.
 **Direction, not yet reached.** Routing by expertise and authority is the destination this document
 describes, and `route-judgment-not-bottlenecks` is the commitment to it. What is built today, and
 what is next, belong to the [roadmap](../README.md#roadmap) and the issue tracker — never here.
+
+---
+
+## 6. Honest costs
+
+Boundaries says what Forge will not become. This says what it takes from a team that chooses it —
+the price of the commitments above, named by the principle that sets each one. A trade-off is priced or it is
+not taken, and a document that prices everything except itself has taken one unpriced.
+
+| The commitment | What it costs you |
+|---|---|
+| `server-never-holds-credentials` | you bring and pay for the model accounts, and you keep a runner alive on infrastructure you own. There is no sign-in-and-go path, and when execution capacity runs out it is your fleet that is short |
+| One instance, one tenant | you install, upgrade, back up and monitor it, once per team. No shared plane absorbs an outage on your behalf, and nobody else's upgrade fixes your instance |
+| `issue-is-the-currency` | work that would have been a message becomes an issue with a state and an audit trail. On the day you only wanted a quick fix, that discipline is friction — and it is the product, not an accident of it |
+| `kernel-hard-policy-soft` | the policy is yours to write. Pipelines, skills, gates and routing are configuration, so a project nobody has configured runs a default that fits nobody exactly. The kernel will not guess on your behalf |
+| `state-never-lies` | evidence takes time, and a step that cannot show any is stopped rather than waved through. You will watch work park where a more agreeable system would have reported success |
+| `route-judgment-not-bottlenecks` | someone still has to answer. The loop halts at a routed decision, and a question nobody picks up is work that does not continue — fewer bottlenecks, not none |
+| `trust-gates-capability` | capability whose value is obvious to you waits behind kernel work you did not ask for. Reach is earned rather than scheduled, which means asking for it does not move it |
+| Apache-2.0 core | nobody is contractually on the hook for it. No warranty, no support you have not arranged, and a fork you diverge is a fork you maintain — the licence that makes it yours to run is the licence that makes it yours to carry |

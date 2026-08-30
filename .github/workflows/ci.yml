@@ -64,6 +64,12 @@ jobs:
       # declaration-restating or mock-only assertions than its frozen baseline
       # (.forge/test-signal-baseline.json). Same contract as the codemap baseline.
       - run: node scripts/check-test-signal.mjs --all
+      # Honest costs: docs/VISION.md and every proposal must say what adopting
+      # them takes from whoever adopts it. The convention existed nowhere and
+      # was kept nowhere — CLAUDE.md published "a trade-off is priced or it is
+      # not taken" while the constitution took its own unpriced. Reads markdown
+      # only, so it lives in this install-free job.
+      - run: node scripts/check-honest-costs.mjs
       # CI-parity: proves every step in this file is either run by `pnpm verify`
       # or declared as covered by another root script. Without it the local
       # command and this workflow drift, and a green `pnpm verify` stops meaning
@@ -181,6 +187,7 @@ jobs:
       core: ${{ steps.filter.outputs.core }}
       runner: ${{ steps.filter.outputs.runner }}
       docs: ${{ steps.filter.outputs.docs }}
+      scripts: ${{ steps.filter.outputs.scripts }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -208,6 +215,14 @@ jobs:
             docs:
               - 'docs/**'
               - '**.md'
+            # scripts/**/*.test.mjs is collected by packages/core/vitest.config.ts and by
+            # nothing else, so those tests run only when the `core` job does — a
+            # scripts-only PR skipped them, and a skipped job passes `ci-passed`. Its own
+            # output rather than a line under `core:`, because `core` also gates
+            # core-integration, and making every checker edit pay a Testcontainers run is a
+            # cost with no test in it.
+            scripts:
+              - 'scripts/**'
 
   web:
     needs: changes
@@ -224,7 +239,7 @@ jobs:
 
   core:
     needs: changes
-    if: needs.changes.outputs.core == 'true'
+    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.scripts == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

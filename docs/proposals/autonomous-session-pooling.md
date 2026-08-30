@@ -128,3 +128,16 @@ exist for this status.
 
 Over 90 days, **84 of 195 drive jobs failed (43%)**, dominated by `transient-cc` (48). That is a much
 larger problem than the park and is not addressed anywhere here.
+
+## Honest costs
+
+What withdrawing costs, since the withdrawal is this document's recommendation:
+
+- **The cold start stays.** ~25,700 tokens are re-created per drive job, and the 1-hour cache TTL
+  keeps expiring against a 67-minute p50. Nothing here reduces that; the four recommended items make
+  a cold start cheap and correct rather than unnecessary.
+- **A withdrawn proposal still costs attention.** It stays in the tree only as the record of what was
+  measured, and every reader of the index pays a moment deciding it is not open work.
+- **The measured defect it uncovered is someone else's issue.** The notification inversion and the
+  43% drive-job failure rate are named here and fixed nowhere here — a finding recorded is not a
+  finding closed.

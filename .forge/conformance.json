@@ -21,8 +21,8 @@
     },
     "knowledge": {
       "level": 2,
-      "gate": "cm verify + check-autonomous-transitions",
-      "owns": "cm: couplings, prose discipline, module headers",
+      "gate": "cm verify + check-autonomous-transitions + check-honest-costs",
+      "owns": "cm: couplings, prose discipline, module headers; whether a document asking to be adopted prices what adopting it costs",
       "baseline": {
         "path": ".forge/codemap-baseline.json",
         "keyBy": "content",
