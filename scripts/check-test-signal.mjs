@@ -13,19 +13,27 @@
 //   2. mock-interaction assertions — only that a mock was called.
 //
 // Baselined like codemap: today's offenders are frozen, a file fails only
-// when it gets worse or a new one appears.
+// when it gets worse or a new one appears. The ratchet around that is
+// lib/debt-ratchet.mjs; what stays here is the analyzer.
 //
 // Modes: --all (CI) · --staged (pre-commit) · --update-baseline
 // Exit: 0 clean, 1 violations, 2 invalid invocation.
 
-import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  freezeFaults,
+  loadBaseline,
+  parseMode,
+  sortDeep,
+  stagedFiles,
+  tunedConfig,
+  writeBaseline,
+} from './lib/debt-ratchet.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE_PATH = join(ROOT, '.forge', 'test-signal-baseline.json');
-const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
 
 // cm:why `.onDelete` is deliberately absent from declarationPattern — cascade-vs-restrict decides whether deleting a parent destroys child rows, which the declaration does not make obvious and a bug here loses data
 const DEFAULTS = {
@@ -47,19 +55,12 @@ const DEFAULTS = {
   assertPattern: 'expect\\(',
 };
 
-// cm:guard an unreadable config must abort, never fall back to DEFAULTS. Silently reverting to this repo's own layout is how a consuming repo gets a green run over a scope that does not exist there.
-function loadConfig() {
-  if (!existsSync(CONFIG_PATH)) return { ...DEFAULTS };
-  try {
-    const raw = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'));
-    return { ...DEFAULTS, ...(raw?.checkers?.['test-signal'] ?? {}) };
-  } catch (err) {
-    console.error(`check-test-signal: ${CONFIG_PATH} is unreadable — ${err.message}`);
-    process.exit(2);
-  }
+const tuned = tunedConfig(ROOT, 'test-signal', DEFAULTS);
+if (tuned.error) {
+  console.error(`check-test-signal: ${tuned.error}`);
+  process.exit(2);
 }
-
-const CFG = loadConfig();
+const CFG = tuned.config;
 const DECLARATION_RE = new RegExp(CFG.declarationPattern, 'g');
 const MOCK_RE = new RegExp(CFG.mockPattern, 'g');
 const ASSERT_RE = new RegExp(CFG.assertPattern, 'g');
@@ -120,31 +121,27 @@ function collectAll() {
 }
 
 function collectStaged() {
-  const out = execFileSync('git', ['diff', '--cached', '--name-only', '--diff-filter=ACM'], {
-    cwd: ROOT,
-    encoding: 'utf8',
-  });
-  return out
-    .split('\n')
+  const staged = stagedFiles(ROOT);
+  if (staged.error) {
+    console.error(`check-test-signal: ${staged.error}`);
+    process.exit(2);
+  }
+  return [...staged.files]
     .filter(isTestFile)
     .map((f) => join(ROOT, f))
     .filter((f) => existsSync(f));
 }
 
-function loadBaseline() {
-  if (!existsSync(BASELINE_PATH)) return {};
-  try {
-    return JSON.parse(readFileSync(BASELINE_PATH, 'utf8')).files ?? {};
-  } catch {
-    return {};
-  }
-}
-
-const mode = process.argv[2] ?? '--all';
-if (!['--all', '--staged', '--update-baseline'].includes(mode)) {
-  console.error('usage: check-test-signal.mjs [--all|--staged|--update-baseline]');
+const parsed = parseMode(
+  process.argv,
+  ['--all', '--staged', '--update-baseline'],
+  'check-test-signal.mjs',
+);
+if (parsed.error) {
+  console.error(parsed.error);
   process.exit(2);
 }
+const mode = parsed.mode;
 
 const files = mode === '--staged' ? collectStaged() : collectAll();
 // cm:guard `--all` finding zero test files means scanRoots point nowhere, not that the repo has no tests. Reporting clean there is the fail-open shape every checker in this repo exits 2 on; `--staged` may legitimately be empty.
@@ -155,45 +152,52 @@ if (mode !== '--staged' && files.length === 0) {
   );
   process.exit(2);
 }
-const baseline = loadBaseline();
-const current = {};
-const failures = [];
 
+// cm:guard an unreadable baseline REFUSES, and does not fall through to an empty one. Read as `{}` this checker still exits 1 — every frozen file reads as new — but --update-baseline overwrites the damaged file without ever having read it, which turns a corrupt baseline into a silently re-frozen one. Same refusal as check-lint-budget.mjs, which the shared module exists to keep in step.
+const doc = loadBaseline(BASELINE_PATH);
+if (doc === null) {
+  console.error(
+    `check-test-signal: ${BASELINE_PATH} is unreadable — fix or delete it. This will not\n` +
+      'guess what was frozen, and --update-baseline will not overwrite what it could not read.',
+  );
+  process.exit(2);
+}
+const baseline = doc.files ?? {};
+
+// cm:guard a file is RECORDED only when a ratio trips, which is what separates this checker from the biome budgets: they freeze every diagnostic, this freezes only files already over the line. So the baseline holds offenders, not measurements, and a file that drops below the ratio leaves the baseline entirely rather than being frozen at a lower number.
+const current = {};
 for (const file of files) {
   const rel = relative(ROOT, file);
   const score = scoreFile(readFileSync(file, 'utf8'));
-  const reasons = violationsFor(score);
-  if (reasons.length === 0) continue;
-
+  if (violationsFor(score).length === 0) continue;
   current[rel] = { declaration: score.declaration, mock: score.mock };
-
-  const was = baseline[rel];
-  // cm:guard a baselined file may only IMPROVE — equal counts pass, higher counts fail.
-  const worse = !was || score.declaration > was.declaration || score.mock > was.mock;
-  if (worse) failures.push({ rel, reasons, was, score });
 }
 
 if (mode === '--update-baseline') {
-  writeFileSync(
-    BASELINE_PATH,
-    `${JSON.stringify({ generatedAt: new Date().toISOString(), files: current }, null, 2)}\n`,
-  );
+  writeBaseline(BASELINE_PATH, {
+    generatedAt: new Date().toISOString(),
+    files: sortDeep(current),
+  });
   console.log(`test-signal baseline written: ${Object.keys(current).length} file(s) frozen`);
   process.exit(0);
 }
+
+const failures = freezeFaults(current, baseline);
 
 if (failures.length === 0) {
   console.log(`test-signal: ${files.length} test file(s) checked, no new low-signal tests`);
   process.exit(0);
 }
 
-for (const f of failures) {
-  console.error(`\n${f.rel}`);
-  for (const r of f.reasons) console.error(`  ${r}`);
-  if (f.was) {
+for (const { file } of failures) {
+  console.error(`\n${file}`);
+  const score = scoreFile(readFileSync(join(ROOT, file), 'utf8'));
+  for (const r of violationsFor(score)) console.error(`  ${r}`);
+  const was = baseline[file];
+  if (was) {
     console.error(
-      `  baseline allowed declaration=${f.was.declaration} mock=${f.was.mock}; ` +
-        `now declaration=${f.score.declaration} mock=${f.score.mock} — it got worse`,
+      `  baseline allowed declaration=${was.declaration} mock=${was.mock}; ` +
+        `now declaration=${score.declaration} mock=${score.mock} — it got worse`,
     );
   }
 }

@@ -18,49 +18,30 @@
 // Exit: 0 clean · 1 a file gained a violation or skipped its payment · 2 could not run.
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  freezeFaults,
+  loadBaseline,
+  parseMode,
+  scopeConfig,
+  sortDeep,
+  stagedFiles,
+  total,
+  writeBaseline,
+} from './lib/debt-ratchet.mjs';
 import {
   drainedLine,
   drainFaults,
   drainMatcher,
   emptiedScopes,
-  freezeFaults,
   mergeOriginal,
   SIZE_RULES,
-  total,
 } from './lib/lint-budget.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE_PATH = join(ROOT, '.forge', 'lint-baseline.json');
-const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
-
-// cm:guard an ABSENT registry is not a default, it is a broken checkout. Falling back to a built-in scope list made a missing .forge/conformance.json quietly demote this to web-v2-only — core uncounted, drain gone, exit 0 — while an unreadable one exited 2, so the more complete failure got the softer answer. The file is committed; every spelling of "cannot read it" now fails closed, and each says WHICH — one message for four conditions sent a reader to check permissions on a file that parses fine.
-function config() {
-  let raw;
-  try {
-    raw = readFileSync(CONFIG_PATH, 'utf8');
-  } catch (err) {
-    return { error: `${CONFIG_PATH} could not be read: ${err.code ?? err.message}` };
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (err) {
-    return { error: `${CONFIG_PATH} is not valid JSON: ${err.message}` };
-  }
-  const scopes = parsed?.checkers?.['lint-budget']?.scopes;
-  if (!Array.isArray(scopes)) {
-    return { error: `${CONFIG_PATH} declares no checkers['lint-budget'].scopes array` };
-  }
-  if (scopes.length === 0) {
-    return {
-      error: `${CONFIG_PATH} declares an empty lint-budget scope list — nothing would be measured`,
-    };
-  }
-  return { scopes };
-}
 
 // cm:guard ORTHOGONAL to the files-scanned guard, and both must stay. A disabled linter scans every file and reports nothing, so it passes a scanned-count check while emptying this checker's input — measured 2026-08-27: flipping `linter.enabled` to false in packages/web-v2/biome.json made --all exit 0 at "0 / 226 original (100% drained)" and made --update-baseline DELETE 95 files and 210 frozen diagnostics at exit 0, which compareDown accepts because it only faults on a rise. Counting diagnostics cannot tell that from a scope legitimately drained to zero; only the config can, which is why this reads the config instead.
 // cm:guard follow `extends`, and REFUSE what cannot be followed. Reading only the scope's own biome.json left the identical hole one file away: a base config carrying `linter.enabled: false` and an `extends` pointing at it reproduced the whole failure — --all exit 0 at "100% drained", --update-baseline deleting all 95 web-v2 entries. A partial read of a config chain is not a weaker check, it is the same absent one wearing the previous fix's name.
@@ -186,13 +167,6 @@ function git(args) {
   }
 }
 
-// cm:guard a failed `git diff --cached` must NOT become an empty staged set. freezeFaults skips every file outside the set, so null-to-empty makes --staged print a clean report and exit 0 over nothing — the same null-reads-as-clean shape branchDelta guards against, and the reason this returns an error instead of a Set.
-function stagedFiles() {
-  const out = git(['diff', '--cached', '--name-only', '--diff-filter=ACM']);
-  if (out === null) return { error: 'git diff --cached failed — cannot tell what is staged' };
-  return { files: new Set(out.split('\n').filter(Boolean)) };
-}
-
 // cm:guard drain needs a base that is not HEAD, and a push to `main` has none — origin/main IS HEAD there, so the delta is empty and every drainable file would look untouched. Freeze still runs; drain is skipped and the skip is PRINTED, because an unprinted skip reads exactly like a pass and that is how the prose gate ran over zero files while printing success.
 function branchDelta() {
   const head = git(['rev-parse', 'HEAD']);
@@ -215,16 +189,6 @@ function branchDelta() {
   return { base, changed, renamed };
 }
 
-function loadBaseline() {
-  if (!existsSync(BASELINE_PATH)) return { files: {}, original: {} };
-  try {
-    const raw = JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
-    return { files: raw.files ?? {}, original: raw.original ?? {} };
-  } catch {
-    return null;
-  }
-}
-
 function totalsByScope(files, scopeOf, scopes) {
   const out = new Map(scopes.map((s) => [s.cwd, 0]));
   for (const [file, rules] of Object.entries(files)) {
@@ -235,24 +199,18 @@ function totalsByScope(files, scopeOf, scopes) {
   return out;
 }
 
-function sortDeep(files) {
-  return Object.fromEntries(
-    Object.entries(files)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([file, rules]) => [
-        file,
-        Object.fromEntries(Object.entries(rules).sort(([a], [b]) => a.localeCompare(b))),
-      ]),
-  );
-}
-
-const mode = process.argv[2] ?? '--all';
-if (!['--all', '--staged', '--update-baseline'].includes(mode)) {
-  console.error('usage: check-lint-budget.mjs [--all|--staged|--update-baseline]');
+const parsed = parseMode(
+  process.argv,
+  ['--all', '--staged', '--update-baseline'],
+  'check-lint-budget.mjs',
+);
+if (parsed.error) {
+  console.error(parsed.error);
   process.exit(2);
 }
+const mode = parsed.mode;
 
-const cfg = config();
+const cfg = scopeConfig(ROOT, 'lint-budget');
 if (cfg.error) {
   console.error(`check-lint-budget: ${cfg.error}`);
   process.exit(2);
@@ -267,12 +225,13 @@ if (error) {
 const currentByScope = totalsByScope(measured, scopeOf, cfg.scopes);
 
 if (mode === '--update-baseline') {
-  const previous = loadBaseline();
-  if (previous === null) {
+  const previousDoc = loadBaseline(BASELINE_PATH);
+  if (previousDoc === null) {
     console.error(`check-lint-budget: ${BASELINE_PATH} is unreadable — refusing to overwrite it`);
     process.exit(2);
   }
   // cm:guard a re-freeze that DELETES a scope's whole debt needs saying out loud, because that is what every bypass found in review looked like from here: 95 files and 210 frozen diagnostics gone at exit 0, accepted by `improves: down` since it only faults on a rise. Draining a scope to zero is a real achievement and must stay recordable, so this is a confirmation rather than a refusal — but never the default, and never silent.
+  const previous = { files: previousDoc.files ?? {}, original: previousDoc.original ?? {} };
   const emptied = emptiedScopes(
     currentByScope,
     totalsByScope(previous.files, new Map(), cfg.scopes),
@@ -297,10 +256,7 @@ if (mode === '--update-baseline') {
   }
   const files = sortDeep(measured);
   const original = mergeOriginal(previous.original, currentByScope);
-  writeFileSync(
-    BASELINE_PATH,
-    `${JSON.stringify({ generatedAt: new Date().toISOString(), original, files }, null, 2)}\n`,
-  );
+  writeBaseline(BASELINE_PATH, { generatedAt: new Date().toISOString(), original, files });
   console.log(
     `lint-budget baseline written: ${Object.keys(files).length} file(s), ${total(files)} violation(s) frozen`,
   );
@@ -308,11 +264,12 @@ if (mode === '--update-baseline') {
   process.exit(0);
 }
 
-const baseline = loadBaseline();
-if (baseline === null) {
+const baselineDoc = loadBaseline(BASELINE_PATH);
+if (baselineDoc === null) {
   console.error(`check-lint-budget: ${BASELINE_PATH} is unreadable — refusing to report clean`);
   process.exit(2);
 }
+const baseline = { files: baselineDoc.files ?? {}, original: baselineDoc.original ?? {} };
 
 // cm:guard this is the guard that does NOT enumerate, and it is why the two config-reading guards above are a second opinion rather than the defence. Whatever stops biome linting a scope — a rule set emptied, an `overrides` block, an ignore file, something biome ships next year — ends here, because a baseline holding debt against a measurement of zero is the one observable every version of the bypass shares. AC 8 word for word: zero diagnostics from a scope that should have some is an exit 2, never a clean report.
 const emptied = emptiedScopes(currentByScope, totalsByScope(baseline.files, new Map(), cfg.scopes));
@@ -328,7 +285,7 @@ if (emptied.length > 0) {
 
 let staged = null;
 if (mode === '--staged') {
-  staged = stagedFiles();
+  staged = stagedFiles(ROOT);
   if (staged.error) {
     console.error(`check-lint-budget: ${staged.error}`);
     process.exit(2);

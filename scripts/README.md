@@ -399,6 +399,40 @@ so can only fail on an intended change. FK `.onDelete` is deliberately not flagg
 Baseline-frozen in `.forge/test-signal-baseline.json`, same contract as the codemap
 baseline. Wired into the commit path.
 
+The freeze comparison, the registry read, the baseline I/O and the staged-file collection are
+`lib/debt-ratchet.mjs`, shared with the two biome budgets; what lives in this script is the
+analyzer — which files to read and what to count in them. Thresholds and regexes are
+`checkers.test-signal` in `.forge/conformance.json`, and deleting that block degrades to the
+built-in defaults rather than to an empty scope.
+
+## lib/debt-ratchet.mjs — the ratchet the three baselined checkers share
+
+`check-test-signal`, `check-lint-budget` and `check-size-budget` all freeze `{path: {metric: n}}`
+and fail when a metric rises, and each carried its own copy of that until ISS-848. The copies did
+not agree, which is the point: `check-size-budget`'s own guard named `check-lint-budget` as the
+version it must not drift from with nothing enforcing it, while `check-test-signal` fell back to
+built-in defaults on an absent registry and read a failed `git diff --cached` as an empty stage —
+a hook reporting clean because git broke.
+
+What is shared is `freezeFaults` (a metric absent from the baseline reads as 0, so a new offender
+fails), `readManifest` / `scopeConfig` / `tunedConfig`, `loadBaseline` / `writeBaseline`
+(`null` for unreadable, `{}` for absent — a caller must be able to refuse rather than report
+clean), `parseMode`, `stagedFiles` and `sortDeep`. What is not shared is the analyzer: biome for
+the two budgets, regex scoring for test-signal, and `drain` stays in `lib/lint-budget.mjs` because
+only a biome scope declares one.
+
+`scopeConfig` refuses an absent manifest and `tunedConfig` degrades to defaults, which is not an
+inconsistency: a scope list has no meaningful default, so inventing one measures directories the
+manifest never declared, while `.forge/conformance.json`'s own `$comment` promises that deleting a
+threshold block degrades to built-in behaviour. Both are pinned in `lib/debt-ratchet.test.mjs`.
+
+`scripts/**/*.test.mjs` is collected by `packages/core/vitest.config.ts` and by nothing else, so
+these run under the `core` job — which `ci.yml`'s `changes` filter triggers on `scripts` as well as
+on `packages/core`. Locally they need `turbo.json`'s `test.inputs`: without
+`$TURBO_ROOT$/scripts/**` a scripts-only change is outside `packages/core`, so `pnpm test` replays
+a cached log and reports green over tests it never ran. Measured 2026-08-30 on the same touched
+tree: cache HIT without that input, cache MISS with it.
+
 ## check-flow-coverage.mjs — every declared flow step must be walked
 
 The join between the knowledge axis and the behaviour axis. codemap says *"this line is step 4 of
