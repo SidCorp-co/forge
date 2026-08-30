@@ -20,6 +20,7 @@ import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { nextAttempt, recordVerdict, startPhase } from './phase-journal.js';
+import { resolvePipelineWedge, reviewRoundsWedgeEntityId } from './wedge.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -98,6 +99,12 @@ verdictRoutes.post(
         ...(body.findings ? { findings: body.findings } : {}),
       },
     });
+
+    // cm:guard resolve on approve, and ONLY here — this route is the one place that observes the rejection streak `alarmRejectionStreaks` reports actually ending, and `wedge.ts` keys its dedupe on `resolvedAt IS NULL`, so an unresolved key leaves the bell red about a loop that has since landed
+    // cm:edge lockstep -> packages/core/src/pipeline/inv7-alarms.ts — that pass is the only emitter under `reviewRoundsWedgeEntityId`; if it ever keys on something else (the job, the issue), this call must follow it
+    if (body.decision === 'approve') {
+      await resolvePipelineWedge(reviewRoundsWedgeEntityId(job.pipelineRunId));
+    }
 
     return c.json({ jobId: id, phase: body.phase, attempt, decision: body.decision });
   },

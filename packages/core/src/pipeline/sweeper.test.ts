@@ -31,9 +31,11 @@ vi.mock('./wedge.js', () => ({
 const alarmAgedHoldsMock = vi.fn(async (_now?: Date) => ({ alerted: 0 }));
 const alarmChurningIssuesMock = vi.fn(async () => ({ alerted: 0 }));
 const alarmStalledQueuedJobsMock = vi.fn(async (_now?: Date) => ({ alerted: 0 }));
+const alarmRejectionStreaksMock = vi.fn(async () => ({ alerted: 0 }));
 vi.mock('./inv7-alarms.js', () => ({
   alarmAgedHolds: (now?: Date) => alarmAgedHoldsMock(now),
   alarmChurningIssues: () => alarmChurningIssuesMock(),
+  alarmRejectionStreaks: () => alarmRejectionStreaksMock(),
   alarmStalledQueuedJobs: (now?: Date) => alarmStalledQueuedJobsMock(now),
 }));
 
@@ -66,11 +68,7 @@ const dbInsertValues = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../db/client.js', () => ({
   db: {
     execute: (...args: unknown[]) => dbExecute(...(args as [])),
-    update: () => ({
-      set: () => ({
-        where: () => ({ returning: () => sessionsWhere() }),
-      }),
-    }),
+    update: () => ({ set: () => ({ where: () => ({ returning: () => sessionsWhere() }) }) }),
     // ISS-447 — applyKernelTransition writes the kernel_transitions audit row
     // on the same db handle after each terminal flip (one-shot run pass).
     insert: () => ({ values: (...args: unknown[]) => dbInsertValues(...args) }),
@@ -210,18 +208,20 @@ describe('runPipelineSweep — retry rescue thresholds', () => {
 describe('runPipelineSweep — watch-only alarm passes', () => {
   // cm:guard every pass here must stay in the sweep AND in SweepResult — a pass wired into the driver but dropped from the result is invisible to every caller, which is how a defence stops being noticed before it stops working
   it('runs each alarm pass and exposes its count', async () => {
-    alarmAgedHoldsMock.mockResolvedValueOnce({ alerted: 2 });
-    alarmChurningIssuesMock.mockResolvedValueOnce({ alerted: 1 });
-    alarmStalledQueuedJobsMock.mockResolvedValueOnce({ alerted: 3 });
+    const passes = [
+      [alarmAgedHoldsMock, 'agedHolds', 2],
+      [alarmChurningIssuesMock, 'churningIssues', 1],
+      [alarmStalledQueuedJobsMock, 'stalledQueuedJobs', 3],
+      [alarmRejectionStreaksMock, 'rejectionStreaks', 4],
+    ] as const;
+    for (const [mock, , alerted] of passes) mock.mockResolvedValueOnce({ alerted });
 
     const result = await runPipelineSweep();
 
-    expect(alarmAgedHoldsMock).toHaveBeenCalledTimes(1);
-    expect(alarmChurningIssuesMock).toHaveBeenCalledTimes(1);
-    expect(alarmStalledQueuedJobsMock).toHaveBeenCalledTimes(1);
-    expect(result.agedHolds).toEqual({ alerted: 2 });
-    expect(result.churningIssues).toEqual({ alerted: 1 });
-    expect(result.stalledQueuedJobs).toEqual({ alerted: 3 });
+    for (const [mock, key, alerted] of passes) {
+      expect(mock).toHaveBeenCalledTimes(1);
+      expect(result[key]).toEqual({ alerted });
+    }
   });
 
   // cm:guard this pass must stay in the sweep AND in SweepResult — it is the only thing that frees a run paused by a mechanism a later build deleted, and the reopen_cap residue it exists for produced no alarm anywhere for 3 days

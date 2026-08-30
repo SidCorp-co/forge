@@ -5,7 +5,10 @@
 // mechanical park told a human "your turn" when nothing was being asked, and the
 // reopen cap parked issues that were making progress. The third, a job queued
 // with every gate passing, is the same shape from the other direction: nothing
-// is wrong with the row, so there is nothing to reap.
+// is wrong with the row, so there is nothing to reap. The fourth watches the
+// same churn as the second on the axis autonomous mode actually moves: a review
+// loop going round without landing, counted from the reviewer's own verdicts
+// rather than from a status the driver never writes.
 //
 // Every pass here emits a wedge notification and touches no state at all.
 
@@ -16,7 +19,7 @@ import { HOLD_PAYLOAD_KEY, holdResumesItself } from '../jobs/hold.js';
 import { RESULT_QUIET_MINUTES } from '../jobs/loop-monitor.js';
 import { logger } from '../logger.js';
 import { DEFAULT_NO_PROGRESS_ROUNDS } from './reopen-policy.js';
-import { emitPipelineWedge } from './wedge.js';
+import { emitPipelineWedge, reviewRoundsWedgeEntityId } from './wedge.js';
 
 export interface Inv7AlarmResult {
   alerted: number;
@@ -177,7 +180,8 @@ interface ChurnRow extends Record<string, unknown> {
 /**
  * Issues whose `reopenCount` has reached the project's `noProgressRounds`.
  */
-// cm:guard the notification must NOT claim the rounds were wasted (RFC 0002 INV-8) — the count alone cannot tell "five rounds, five different blockers fixed" (ISS-801) from "five rounds, nothing changed", and a wedge that asserts the second is the cap's judgement smuggled back in as copy
+// cm:guard the notification must NOT claim the rounds were wasted (RFC 0002 INV-8) — a TOTAL of reopens cannot tell "five rounds, five different blockers fixed" (ISS-801) from "five rounds, nothing changed", and a wedge that asserts the second is the cap's judgement smuggled back in as copy
+// cm:guard this pass sees STAGED projects only, and must not be "fixed" by widening the column — `reopen_count` moves solely on entry into `reopen` (issues/apply-transition.ts), a transition autonomous mode never performs, so on an autonomous project it is frozen at whatever staged mode left. Measured 2026-08-30: of 19 runs that went 5+ code rounds inside ONE autonomous run, 18 have reopen_count 0. `alarmRejectionStreaks` is that half; the two are complements, not duplicates.
 export async function alarmChurningIssues(): Promise<Inv7AlarmResult> {
   const rows = await db.execute<ChurnRow>(sql`
     SELECT i.id AS issue_id,
@@ -207,7 +211,7 @@ export async function alarmChurningIssues(): Promise<Inv7AlarmResult> {
       entityId: row.issue_id,
       reason: `reopen_rounds:${row.reopen_count}/${row.threshold}`,
       title: `ISS-${row.iss_seq} has been reopened ${row.reopen_count} times`,
-      summary: `"${row.title}" has reached this project's \`noProgressRounds\` (${row.threshold}). That is a number to look at, not a verdict: rounds that each fixed a different blocker are normal work. Read the issue's \`sessionContext.churn\` ledger to see what each round changed.`,
+      summary: `"${row.title}" has reached this project's \`noProgressRounds\` (${row.threshold}) counted as TOTAL reopens. That is a number to look at, not a verdict: rounds that each fixed a different blocker are normal work. Read the issue's \`sessionContext.churn\` ledger — written by the agent — to see what each round changed.`,
       nextStep:
         'If the rounds are repeating the same failure with nothing new, park it at `waiting` with what has been tried. If they are progressing, no action.',
       action: 'Read the churn ledger and decide; nothing is blocked.',
@@ -216,6 +220,85 @@ export async function alarmChurningIssues(): Promise<Inv7AlarmResult> {
 
   if (rows.length > 0) {
     logger.info({ alerted: rows.length }, 'inv7: churning issues surfaced');
+  }
+  return { alerted: rows.length };
+}
+
+interface RejectionStreakRow extends Record<string, unknown> {
+  run_id: string;
+  project_id: string;
+  issue_id: string;
+  iss_seq: number | null;
+  title: string | null;
+  streak: number;
+  threshold: number;
+}
+
+/**
+ * Runs whose review loop has gone round `noProgressRounds` times without landing.
+ */
+// cm:guard scoped to a run still `running` — the alarm says a loop is going round RIGHT NOW, and `emitPipelineWedge` re-notifies every 24h on an unresolved key, so without this an issue parked after a streak would nag daily forever about a loop that ended. That shape put 721 unresolved wedges in the owner's bell on forge-beta 2026-08-14.
+// cm:guard the streak is TRAILING — only rejections after the run's last `approve` count, and one approve resets it to zero. A longest-streak-anywhere variant alarms about churn that already ended, and the sweeper runs every minute, so the trailing form still reaches the threshold while it is happening.
+// cm:guard `source = 'runner'` is what makes this a system record and is NOT an optimisation — the CHECK `phase_journal_verdict_is_runner_written` is the only thing stopping the driver authoring its own verdicts, so dropping this predicate would let the agent decide whether it is churning. `sessionContext.churn` is agent-written and is deliberately absent from the query; it is reading material for the human, named in the copy.
+// cm:guard alarm ONLY (RFC 0002 INV-7/INV-8) — never park, cancel or cap. Nothing limits how many rounds an issue may take, and the round count is advice the reader judges; the deleted reopen cap is exactly what a status write here would rebuild.
+// cm:edge contract -> packages/core/src/db/schema-journal.ts — reads `phase_journal.source`/`artifact->>'kind'`/`artifact->>'decision'` by name in raw SQL, so renaming a column or changing the verdict artifact shape silently empties this alarm instead of failing to compile
+export async function alarmRejectionStreaks(): Promise<Inv7AlarmResult> {
+  // cm:guard write `artifact` LITERALLY, never as a Drizzle column reference — inside a raw `sql` template Drizzle renders the reference unqualified, which collides across the joined tables and fails at parse time
+  const rows = await db.execute<RejectionStreakRow>(sql`
+    WITH verdicts AS (
+      SELECT pj.run_id, pj.issue_id, pj.started_at, pj.artifact ->> 'decision' AS decision
+      FROM phase_journal pj
+      WHERE pj.source = 'runner' AND pj.artifact ->> 'kind' = 'verdict'
+    ),
+    last_approve AS (
+      SELECT run_id, max(started_at) AS at FROM verdicts WHERE decision = 'approve' GROUP BY run_id
+    )
+    SELECT v.run_id,
+           i.project_id,
+           i.id AS issue_id,
+           i.iss_seq,
+           i.title,
+           count(*)::int AS streak,
+           COALESCE(
+             (p.agent_config -> 'pipelineConfig' -> 'reopenPolicy' ->> 'noProgressRounds')::int,
+             ${DEFAULT_NO_PROGRESS_ROUNDS}
+           ) AS threshold
+    FROM verdicts v
+    LEFT JOIN last_approve la ON la.run_id = v.run_id
+    JOIN pipeline_runs pr ON pr.id = v.run_id
+    JOIN issues i ON i.id = v.issue_id
+    JOIN projects p ON p.id = i.project_id
+    WHERE v.decision = 'request_changes'
+      AND (la.at IS NULL OR v.started_at > la.at)
+      AND pr.status = 'running'
+      AND i.status NOT IN ('closed', 'released', 'draft')
+    GROUP BY v.run_id, i.project_id, i.id, i.iss_seq, i.title, p.id
+    HAVING count(*) >= COALESCE(
+             (p.agent_config -> 'pipelineConfig' -> 'reopenPolicy' ->> 'noProgressRounds')::int,
+             ${DEFAULT_NO_PROGRESS_ROUNDS}
+           )
+  `);
+
+  for (const row of rows) {
+    const label = row.iss_seq ? `ISS-${row.iss_seq}` : 'An issue';
+    await emitPipelineWedge({
+      projectId: row.project_id,
+      issueId: row.issue_id,
+      hop: 'result',
+      entity: 'run',
+      entityId: reviewRoundsWedgeEntityId(row.run_id),
+      reason: `rejection_streak:${row.streak}/${row.threshold}`,
+      title: `${label} has been sent back by review ${row.streak} times in a row`,
+      // cm:guard name the COUNT, not just the number — `noProgressRounds` backs two different counts (total reopens in `alarmChurningIssues`, consecutive rejections here), and a reader who cannot tell which one fired cannot tell whether the rounds were wasted
+      summary: `"${row.title ?? label}" has reached this project's \`noProgressRounds\` (${row.threshold}) counted as CONSECUTIVE review rejections — ${row.streak} rounds since the last approval, from the reviewer's own verdicts rather than anything the driver reported about itself. Rounds that each fix a different blocker are normal work, and an approval resets this to zero; ${row.streak} in a row without one is the stop signal the number exists for.`,
+      nextStep:
+        "Read the findings on the last few `request_changes` verdicts. If they keep naming the same defect, park the issue at `waiting` with what has been tried; if each round names something new, no action. The agent's own `sessionContext.churn` ledger says what it believes changed each round.",
+      action: 'Read the last rejections and decide; nothing is blocked.',
+    });
+  }
+
+  if (rows.length > 0) {
+    logger.info({ alerted: rows.length }, 'inv7: review rejection streaks surfaced');
   }
   return { alerted: rows.length };
 }
