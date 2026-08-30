@@ -77,19 +77,8 @@ const forbidden = (message: string) =>
 export const issueExtrasRoutes = new Hono<{ Variables: AuthVars }>();
 issueExtrasRoutes.use('*', requireAuth(), assertEmailVerified());
 
-type BatchSkipReason =
-  | 'forbidden'
-  | 'not_found'
-  | 'illegal_transition'
-  | 'no_op'
-  | 'transition_reason_required'
-  | 'waiting_kind_required'
-  | 'stale'
-  | 'plan_required'
-  | 'no_work_evidence'
-  | 'release_record_required';
-
-const BATCH_SKIP_BY_CODE: Record<TransitionErrorCode, BatchSkipReason> = {
+// cm:guard `satisfies Record<TransitionErrorCode, string>` is what makes a new transition code a COMPILE error here rather than a runtime `undefined` reason on a skipped issue — and the union below is DERIVED from this map on purpose: it used to restate all eight snake_case names, so the two could disagree and only the map was checked
+const BATCH_SKIP_BY_CODE = {
   NO_OP: 'no_op',
   ILLEGAL_TRANSITION: 'illegal_transition',
   TRANSITION_REASON_REQUIRED: 'transition_reason_required',
@@ -98,7 +87,9 @@ const BATCH_SKIP_BY_CODE: Record<TransitionErrorCode, BatchSkipReason> = {
   PLAN_REQUIRED: 'plan_required',
   NO_WORK_EVIDENCE: 'no_work_evidence',
   RELEASE_RECORD_REQUIRED: 'release_record_required',
-};
+} as const satisfies Record<TransitionErrorCode, string>;
+
+type BatchSkipReason = 'forbidden' | 'not_found' | (typeof BATCH_SKIP_BY_CODE)[TransitionErrorCode];
 
 type BatchResult = {
   updated: Array<{

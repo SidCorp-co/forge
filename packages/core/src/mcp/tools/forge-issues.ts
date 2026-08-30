@@ -524,8 +524,6 @@ export async function serializeWithAttachments(row: IssueRow): Promise<Record<st
   return { ...serialize(row), attachments, labels: issueLabelsList };
 }
 
-// ── Lean manifest serializer for forge_step_start over-threshold path ──────
-
 /** Sum of char lengths across all non-null heavy fields for threshold gating. */
 export function heavyFieldChars(row: IssueRow): number {
   let total = 0;

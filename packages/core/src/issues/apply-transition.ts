@@ -365,13 +365,7 @@ export async function transitionIssueStatus(
   }
 
   // cm:guard reads `toStatus`, never `requestedStatus` — an agent close that resolveAgentCloseTarget rewrote to the release gate is not making the shipped claim, and refusing it there would park the session at a status it cannot leave
-  const unrecorded = await refuseUnrecordedClose({
-    issueId: issue.id,
-    toStatus,
-    actorType: actor.type,
-    viaReleasePath: options.viaReleasePath === true,
-    skip: options.skip === true,
-  });
+  const unrecorded = await refuseUnrecordedClose(issue.id, toStatus, actor, options);
   if (unrecorded) {
     throw new TransitionError('RELEASE_RECORD_REQUIRED', unrecorded.detail, unrecorded.details);
   }

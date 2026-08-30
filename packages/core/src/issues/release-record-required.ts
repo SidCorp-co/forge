@@ -21,25 +21,25 @@ export interface ReleaseRecordRefusal {
   details: Record<string, unknown>;
 }
 
-// cm:guard the three exemptions are the WHOLE rule and there is no fourth. `actorType === 'device'` keeps a human's close working — an operator closing by hand makes the shipped claim deliberately and owns it, the same carve-out release-gate-hold.ts states for the sibling rule. `viaReleasePath` is exempt because finishReleaseBatch refuses to close anything until verifyDeployed says the release happened.
+// cm:guard the three exemptions are the WHOLE rule and there is no fourth. `actor.type === 'device'` keeps a human's close working — an operator closing by hand makes the shipped claim deliberately and owns it, the same carve-out release-gate-hold.ts states for the sibling rule. `viaReleasePath` is exempt because finishReleaseBatch refuses to close anything until verifyDeployed says the release happened.
 // cm:guard do NOT re-add a `merged_at IS NULL` condition to bound the blast radius. It was tried and the integration suite falsified it: mergeStates.baseBranch defaults to `released`, so the canonical staged close IS the hop out of the base state, markMergedIfLeavingBase stamps INSIDE the transaction this check runs before, and the column reads NULL for exactly the path the condition was meant to exempt.
 // cm:guard `skip` is exempt for the same reason the two refusals above this one in transitionIssueStatus exempt it: those are system chains, not an agent's claim. The decompose close cascade closes a parent's children with a device actor AND swallows the error (decomposition-subscribers.ts logs and moves on), so refusing there would not surface as a failure — it would leave the children open and say nothing, which is the shape this rule exists to remove.
-export async function refuseUnrecordedClose(args: {
-  issueId: string;
-  toStatus: IssueStatus;
-  actorType: 'user' | 'device';
-  viaReleasePath: boolean;
-  skip: boolean;
-}): Promise<ReleaseRecordRefusal | null> {
-  if (args.toStatus !== 'closed') return null;
-  if (args.actorType !== 'device') return null;
-  if (args.viaReleasePath) return null;
-  if (args.skip) return null;
+// cm:why the actor and options params are structural rather than the imported `Actor` / `ApplyStatusTransitionOptions` — apply-transition.ts imports THIS module, so naming its types here would close a module cycle for no gain
+export async function refuseUnrecordedClose(
+  issueId: string,
+  toStatus: IssueStatus,
+  actor: { type: 'user' | 'device' },
+  options: { viaReleasePath?: boolean; skip?: boolean },
+): Promise<ReleaseRecordRefusal | null> {
+  if (toStatus !== 'closed') return null;
+  if (actor.type !== 'device') return null;
+  if (options.viaReleasePath === true) return null;
+  if (options.skip === true) return null;
 
   const [row] = await db
     .select({ releaseNotes: issues.releaseNotes })
     .from(issues)
-    .where(eq(issues.id, args.issueId))
+    .where(eq(issues.id, issueId))
     .limit(1);
   if (!row) return null;
   if (row.releaseNotes) return null;
