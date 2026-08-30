@@ -1,0 +1,219 @@
+<title>Forge sau CLI</title>
+<style>
+  :root {
+    --bg: #f7f6f3; --panel: #fff; --ink: #14161a; --muted: #5d6570;
+    --line: #d8d5cf; --accent: #2f6f4f; --warn: #a8501e; --dead: #a02c2c;
+    --dead-bg: #fdf0ef; --live-bg: #eef5f1; --neutral-bg: #f1f0ed;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink);
+    font: 15px/1.6 -apple-system, "Segoe UI", Roboto, sans-serif; padding: 40px 24px 80px; }
+  .wrap { max-width: 1120px; margin: 0 auto; }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.02em; }
+  .sub { color: var(--muted); margin: 0 0 40px; font-size: 15px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .09em;
+    color: var(--muted); margin: 48px 0 14px; font-weight: 600; }
+  .panel { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 26px; margin-bottom: 14px; overflow-x: auto; }
+  .cap { font-size: 14px; color: var(--muted); margin: 10px 2px 0; }
+  .cap b { color: var(--ink); font-weight: 600; }
+
+  .row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .box { border: 1.5px solid var(--line); border-radius: 8px; padding: 11px 15px;
+    background: var(--neutral-bg); min-width: 132px; text-align: center; }
+  .box .t { font-weight: 650; font-size: 14px; }
+  .box .d { font-family: var(--mono); font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+  .box.live { background: var(--live-bg); border-color: var(--accent); }
+  .box.dead { background: var(--dead-bg); border-color: var(--dead); }
+  .box.dead .t { color: var(--dead); text-decoration: line-through; }
+  .box.wide { min-width: 300px; }
+  .box.full { width: 100%; max-width: 640px; }
+
+  .arrows { text-align: center; color: var(--muted); font-size: 20px;
+    line-height: 1; margin: 9px 0; letter-spacing: 26px; padding-left: 26px; }
+  .arrow1 { text-align: center; color: var(--muted); font-size: 20px; margin: 9px 0; }
+  .tag { display: inline-block; font-family: var(--mono); font-size: 10.5px;
+    padding: 1px 7px; border-radius: 20px; margin-top: 6px; }
+  .tag.dup { background: #fdf0ef; color: var(--dead); border: 1px solid #e8c4c0; }
+  .tag.one { background: var(--live-bg); color: var(--accent); border: 1px solid #b9d4c6; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 4px; }
+  th { text-align: left; font-size: 11.5px; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--muted); padding: 9px 12px;
+    border-bottom: 1.5px solid var(--line); font-weight: 600; }
+  td { padding: 11px 12px; border-bottom: 1px solid #eceae6; vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  code { font-family: var(--mono); font-size: 12.5px; background: #efedea;
+    padding: 1.5px 5px; border-radius: 4px; }
+  .x { color: var(--dead); font-weight: 700; }
+  .k { color: var(--accent); font-weight: 700; }
+  .note { border-left: 3px solid var(--warn); background: #fdf7f2;
+    padding: 13px 17px; border-radius: 0 7px 7px 0; margin: 14px 0; font-size: 14px; }
+  .note b { color: var(--warn); }
+  .legend { display: flex; gap: 20px; font-size: 12.5px; color: var(--muted);
+    margin: 10px 2px 0; flex-wrap: wrap; }
+  .sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px;
+    vertical-align: -1px; margin-right: 5px; border: 1.5px solid; }
+</style>
+
+<div class="wrap">
+
+<h1>Forge sau khi có CLI</h1>
+<p class="sub">Kiến trúc đích, và danh sách cái phải chết để chỉ còn <b>một</b> đường logic.</p>
+
+<h2>① Hôm nay — hai caller, hai bản cài đặt nửa-trùng</h2>
+<div class="panel">
+  <div class="row">
+    <div class="box"><div class="t">Agent</div><div class="d">pipeline · CLI session</div></div>
+    <div class="box"><div class="t">web-v2</div><div class="d">Next.js</div></div>
+  </div>
+  <div class="arrows">↓ ↓</div>
+  <div class="row">
+    <div class="box wide dead">
+      <div class="t">mcp/tools/ — 45 module</div>
+      <div class="d">forge-issues.ts · 1.359 dòng</div>
+      <div class="tag dup">chạm drizzle TRỰC TIẾP</div>
+    </div>
+    <div class="box wide">
+      <div class="t">REST /api/…</div>
+      <div class="d">issues/routes.ts · 783 dòng</div>
+      <div class="tag dup">bản cài đặt thứ hai</div>
+    </div>
+  </div>
+  <div class="arrow1">↓ &nbsp; chung đúng 4 module &nbsp; ↓</div>
+  <div class="row">
+    <div class="box full"><div class="t">intake-gate · patch-fields · attachment-service · release-notes</div></div>
+  </div>
+  <div class="arrow1">↓</div>
+  <div class="row"><div class="box full"><div class="t">Postgres</div></div></div>
+  <p class="cap"><b>Đo được:</b> hai file cùng lo domain issue, chung 4 module, mỗi bên ôm riêng ~6 module nữa.
+  Tỉ lệ 1.359 / 783 chính là khoản nợ.</p>
+</div>
+
+<h2>② Cái bẫy — thêm CLI thành anh em thứ ba</h2>
+<div class="panel">
+  <div class="row">
+    <div class="box dead"><div class="t">CLI</div><div class="d">bản cài đặt #3</div></div>
+    <div class="box dead"><div class="t">MCP</div><div class="d">#1</div></div>
+    <div class="box dead"><div class="t">REST</div><div class="d">#2</div></div>
+  </div>
+  <div class="arrows">↓ ↓ ↓</div>
+  <div class="row"><div class="box full"><div class="t">Postgres</div></div></div>
+  <p class="cap">Nếu CLI cũng tự query, mỗi luật nghiệp vụ mới phải viết <b>ba lần</b>,
+  và bug chỉ xuất hiện ở đường không ai test. Đây là hình dạng phải tránh.</p>
+</div>
+
+<h2>③ Đích — REST là mặt phẳng duy nhất</h2>
+<div class="panel">
+  <div class="row">
+    <div class="box live"><div class="t">forge CLI</div><div class="d">agent-first · JSON</div></div>
+    <div class="box live"><div class="t">MCP — còn ~6 tool</div><div class="d">chỉ cái CLI không làm được</div></div>
+    <div class="box live"><div class="t">web-v2</div><div class="d">người dùng</div></div>
+  </div>
+  <div class="arrows">↓ ↓ ↓</div>
+  <div class="row">
+    <div class="box full live">
+      <div class="t">REST /api/… — mặt phẳng DUY NHẤT</div>
+      <div class="d">authz · list-envelope · exit-code taxonomy · retryable</div>
+      <div class="tag one">một chỗ để đúng</div>
+    </div>
+  </div>
+  <div class="arrow1">↓</div>
+  <div class="row">
+    <div class="box full">
+      <div class="t">issue service — MỘT bộ module</div>
+      <div class="d">creator · intake-gate · patch-fields · relations · labels · transition</div>
+    </div>
+  </div>
+  <div class="arrow1">↓</div>
+  <div class="row"><div class="box full"><div class="t">Postgres</div></div></div>
+  <div class="legend">
+    <span><span class="sw" style="border-color:var(--accent);background:var(--live-bg)"></span>giữ / mới</span>
+    <span><span class="sw" style="border-color:var(--dead);background:var(--dead-bg)"></span>chết</span>
+    <span><span class="sw" style="border-color:var(--line);background:var(--neutral-bg)"></span>không đổi</span>
+  </div>
+</div>
+
+<h2>Cái gì chết, cái gì hấp thụ</h2>
+<div class="panel">
+<table>
+  <tr><th style="width:29%">Chết</th><th style="width:29%">Bị hấp thụ vào</th><th>Vì sao mạnh tay</th></tr>
+  <tr>
+    <td><span class="x">✕</span> <code>mcp/tools/forge-issues.ts</code><br><span class="d" style="color:var(--muted);font-size:12.5px">+ comments, memory, jobs, runners, projects, config, knowledge, metrics…</span></td>
+    <td><span class="k">→</span> adapter mỏng gọi REST, hoặc xoá hẳn khi CLI đã phủ</td>
+    <td>Đang chạm drizzle trực tiếp. Chừng nào còn thế, mọi luật issue có hai nơi để sai.</td>
+  </tr>
+  <tr>
+    <td><span class="x">✕</span> Đường <code>create</code> thứ hai</td>
+    <td><span class="k">→</span> <code>issues/creator.ts</code>, dùng chung</td>
+    <td>MCP tự dựng create, <b>không</b> gọi <code>creator.ts</code> mà REST dùng. Đây là gốc của bug "create mặc định <code>open</code>, không lùi về <code>draft</code> được".</td>
+  </tr>
+  <tr>
+    <td><span class="x">✕</span> <code>X-Total-Count</code> header</td>
+    <td><span class="k">→</span> <code>buildListEnvelope</code> cho mọi caller</td>
+    <td>Hai hợp đồng "đã đủ chưa" khác nhau: REST trả header, MCP trả <code>{returned, hasMore, truncated}</code>. CLI dùng REST sẽ thừa hưởng cái <b>yếu hơn</b> — trừ khi REST lên envelope trước.</td>
+  </tr>
+  <tr>
+    <td><span class="x">✕</span> Năng lực chỉ-MCP</td>
+    <td><span class="k">→</span> đẩy xuống REST: <code>dependency-read</code>, <code>detector-key</code>, <code>label-service</code>, <code>work-evidence</code>, <code>issue-relations</code></td>
+    <td>Hôm nay chỉ MCP đặt được quan hệ <code>blocks</code>. CLI trên REST sẽ <b>mất tính năng</b> nếu không nâng REST trước.</td>
+  </tr>
+  <tr>
+    <td><span class="x">✕</span> Không có hợp đồng lỗi</td>
+    <td><span class="k">→</span> taxonomy → exit code, in trong <code>--help</code>, <code>retryable</code> trong JSON stderr</td>
+    <td>Forge <b>đã</b> phân loại server-side (<code>failureKind</code>/<code>failureAction</code>). CLI chỉ phơi ra, không phát minh lại.</td>
+  </tr>
+</table>
+</div>
+
+<h2>MCP giữ lại cái gì</h2>
+<div class="panel">
+<table>
+  <tr><th style="width:34%">Tool</th><th>Vì sao CLI không thay được</th></tr>
+  <tr><td><code>forge_uploads</code></td><td>Trả image content block cho model đa phương thức — CLI không trả được. Cùng vị trí <code>view_image</code> của Buzz.</td></tr>
+  <tr><td><code>forge_step_start</code> · <code>forge_phase</code></td><td>Hook vòng đời phiên pipeline. Cùng vị trí <code>_Stop</code> / <code>_PostCompact</code> của Buzz.</td></tr>
+  <tr><td><code>forge_step_handoff_*</code></td><td>Gắn với vòng đời phiên, không phải truy vấn dữ liệu.</td></tr>
+</table>
+<p class="cap">Buzz giữ <b>đúng 5</b> MCP tool bên cạnh một CLI 22k dòng. Con số tương ứng của Forge là <b>~6</b>, không phải 45.</p>
+</div>
+
+<div class="note">
+<b>Đã kiểm và BỎ</b> — ba chỗ trông như lệch nhưng không phải, đừng vẽ thành mũi tên:<br>
+· <b>sanitize chỉ ở MCP</b> → là thiết kế. <code>forge-issues.ts:365</code> có <code>cm:guard</code>: <i>"REST/web-v2 serialize separately, so the human UI never shows the framing."</i><br>
+· <b>apply-transition chỉ ở MCP</b> → chỉ là bố cục file; REST chạm nó qua <code>issues/transition.ts</code> mount riêng.<br>
+· <b>dispatch-tick chỉ ở MCP</b> → cả hai đều bắn hook <code>issueCreated</code>; MCP chỉ tick thêm trực tiếp.
+</div>
+
+<h2>Thứ tự làm — REST phải lên trước</h2>
+<div class="panel">
+<table>
+  <tr><th style="width:8%"></th><th style="width:38%">Bước</th><th>Ràng buộc</th></tr>
+  <tr><td><b>0</b></td><td>Nâng REST lên ngang MCP</td><td>list-envelope, relations, labels, detector-key. <b>Chưa xong bước này thì CLI là bản thụt lùi.</b></td></tr>
+  <tr><td><b>1</b></td><td>MCP tool → adapter mỏng trên REST</td><td>Xoá drizzle khỏi <code>mcp/tools/</code>. Hành vi không đổi ⇒ test hiện có là lưới an toàn.</td></tr>
+  <tr><td><b>2</b></td><td>CLI trên cùng REST đó</td><td>Mỏng. Chuẩn hoá ở tầng transport, subcommand chỉ in — như <code>buzz</code>.</td></tr>
+  <tr><td><b>3</b></td><td><code>forge api &lt;path&gt;</code></td><td>Escape hatch kiểu <code>gh api</code>. Endpoint mới không cần chờ CLI.</td></tr>
+  <tr><td><b>4</b></td><td>Xoá MCP tool đã được CLI phủ</td><td>Xoá thật, không deprecate. Còn hai đường là còn hai đường.</td></tr>
+</table>
+<p class="cap">Bước 0 là chỗ dễ bỏ qua nhất và là chỗ hỏng đắt nhất: làm CLI trước rồi mới nâng REST
+nghĩa là agent mất khả năng đặt <code>blocks</code> trong suốt thời gian đó.</p>
+</div>
+
+<h2>Honest costs</h2>
+<div class="panel">
+<table>
+  <tr><th style="width:32%">Trả bằng gì</th><th>Cụ thể</th></tr>
+  <tr><td>Một client thứ hai phải giữ đồng bộ</td>
+      <td>Buzz gánh nổi 22k dòng CLI vì relay nói một giao thức event <b>ổn định</b>. Bề mặt REST của Forge đổi nhanh hơn. <code>forge api</code> giảm chứ không xoá được khoản này.</td></tr>
+  <tr><td>Một giai đoạn hồi quy có thật</td>
+      <td>Giữa bước 1 và bước 4 tồn tại cả MCP adapter lẫn CLI. Đúng cái "hai đường sống" mà đề xuất này nói là phải diệt — chỉ chấp nhận được vì nó <b>có hạn</b>, và hạn đó là bước 4.</td></tr>
+  <tr><td>Viết lại test, không phải chỉ chuyển code</td>
+      <td>Test của <code>mcp/tools/*.test.ts</code> đang test drizzle-qua-tool. Khi tool thành adapter, chúng test nhầm tầng và phải viết lại — 35 file test cạnh 45 module.</td></tr>
+  <tr><td>Bước 0 không sinh ra giá trị nhìn thấy được</td>
+      <td>Nâng REST lên ngang MCP không cho người dùng thêm thứ gì. Nó là điều kiện cần thuần tuý, và vì thế là bước dễ bị cắt nhất khi hết kiên nhẫn.</td></tr>
+  <tr><td>Mất tính năng nếu làm sai thứ tự</td>
+      <td>REST hôm nay không đặt được <code>blocks</code>. Đảo thứ tự ⇒ agent mất dependency edge — thứ duy nhất chặn dispatch.</td></tr>
+</table>
+</div>
+
+</div>
