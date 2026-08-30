@@ -237,6 +237,7 @@ interface RejectionStreakRow extends Record<string, unknown> {
 /**
  * Runs whose review loop has gone round `noProgressRounds` times without landing.
  */
+// cm:guard scoped to a run still `running` — the alarm says a loop is going round RIGHT NOW, and `emitPipelineWedge` re-notifies every 24h on an unresolved key, so without this an issue parked after a streak would nag daily forever about a loop that ended. That shape put 721 unresolved wedges in the owner's bell on forge-beta 2026-08-14.
 // cm:guard the streak is TRAILING — only rejections after the run's last `approve` count, and one approve resets it to zero. A longest-streak-anywhere variant alarms about churn that already ended, and the sweeper runs every minute, so the trailing form still reaches the threshold while it is happening.
 // cm:guard `source = 'runner'` is what makes this a system record and is NOT an optimisation — the CHECK `phase_journal_verdict_is_runner_written` is the only thing stopping the driver authoring its own verdicts, so dropping this predicate would let the agent decide whether it is churning. `sessionContext.churn` is agent-written and is deliberately absent from the query; it is reading material for the human, named in the copy.
 // cm:guard alarm ONLY (RFC 0002 INV-7/INV-8) — never park, cancel or cap. Nothing limits how many rounds an issue may take, and the round count is advice the reader judges; the deleted reopen cap is exactly what a status write here would rebuild.
@@ -264,12 +265,14 @@ export async function alarmRejectionStreaks(): Promise<Inv7AlarmResult> {
            ) AS threshold
     FROM verdicts v
     LEFT JOIN last_approve la ON la.run_id = v.run_id
+    JOIN pipeline_runs pr ON pr.id = v.run_id
     JOIN issues i ON i.id = v.issue_id
     JOIN projects p ON p.id = i.project_id
     WHERE v.decision = 'request_changes'
       AND (la.at IS NULL OR v.started_at > la.at)
+      AND pr.status = 'running'
       AND i.status NOT IN ('closed', 'released', 'draft')
-    GROUP BY v.run_id, i.project_id, i.id, i.iss_seq, i.title, p.agent_config
+    GROUP BY v.run_id, i.project_id, i.id, i.iss_seq, i.title, p.id
     HAVING count(*) >= COALESCE(
              (p.agent_config -> 'pipelineConfig' -> 'reopenPolicy' ->> 'noProgressRounds')::int,
              ${DEFAULT_NO_PROGRESS_ROUNDS}
