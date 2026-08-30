@@ -72,7 +72,16 @@ export interface PipelineRunAttempt {
   retryOf: string | null;
   deviceId: string | null;
   deviceName: string | null;
+  /** The classifier's free-text sentence off the job row — jargon, and the same
+   *  string for whole families of deaths. Read `failureCause` first. */
   failureReason: string | null;
+  /** ISS-877 cause token, joined from the attempt's `agent_sessions` row.
+   *  `failureReasonLabel` in `features/sessions/types` turns it into English. */
+  failureCause: string | null;
+  /** ISS-877 operator sentence for that cause. */
+  failureDetail: string | null;
+  failureKind: "code" | "infra" | "transient-cc" | "timeout" | null;
+  failureAction: "terminal" | "quarantine" | "failover" | "retry" | null;
   queuedAt: string | null;
   startedAt: string | null;
   finishedAt: string | null;

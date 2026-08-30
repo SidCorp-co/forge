@@ -62,6 +62,16 @@ export interface PipelineRunAttempt {
   /** Friendly device name (`devices.name`), null when the device is gone. */
   deviceName: string | null;
   failureReason: string | null;
+  /** ISS-877 cause token off the linked `agent_sessions` row; null when the
+   *  attempt never reached a session, or died before one was classified. */
+  failureCause: string | null;
+  /** ISS-877 operator sentence that goes with the cause. */
+  failureDetail: string | null;
+  /** Retry-policy axis off the job row — a runner that went offline (`infra`)
+   *  is not the same failure as a step that broke the build (`code`). */
+  failureKind: 'code' | 'infra' | 'transient-cc' | 'timeout' | null;
+  /** What the retry engine did with this failure. */
+  failureAction: 'terminal' | 'quarantine' | 'failover' | 'retry' | null;
   queuedAt: string | null;
   startedAt: string | null;
   finishedAt: string | null;
@@ -234,6 +244,10 @@ async function loadAttemptsForRun(runId: string): Promise<{
       deviceId: jobs.deviceId,
       deviceName: devices.name,
       failureReason: jobs.failureReason,
+      failureKind: jobs.failureKind,
+      failureAction: jobs.failureAction,
+      failureCause: agentSessions.failureReason,
+      failureDetail: agentSessions.failureDetail,
       queuedAt: jobs.queuedAt,
       startedAt: jobs.dispatchedAt,
       finishedAt: jobs.finishedAt,
@@ -241,6 +255,8 @@ async function loadAttemptsForRun(runId: string): Promise<{
     })
     .from(jobs)
     .leftJoin(devices, eq(devices.id, jobs.deviceId))
+    // cm:edge contract -> packages/core/src/db/schema.ts — the ISS-877 cause token is on `agent_sessions.failure_reason`, NOT on the job row: `jobs.failure_reason` is the classifier's free-text sentence and `jobs.failure_kind` is the four-value retry axis, so a reader that wants to tell a spend cap from a disk-full MUST come through this join or it is back to rendering one label for every death.
+    .leftJoin(agentSessions, eq(agentSessions.id, jobs.agentSessionId))
     .where(eq(jobs.pipelineRunId, runId))
     .orderBy(asc(jobs.queuedAt));
 
@@ -268,6 +284,10 @@ async function loadAttemptsForRun(runId: string): Promise<{
       deviceId: r.deviceId ?? null,
       deviceName: r.deviceName ?? null,
       failureReason: r.failureReason ?? null,
+      failureCause: r.failureCause ?? null,
+      failureDetail: r.failureDetail ?? null,
+      failureKind: r.failureKind ?? null,
+      failureAction: r.failureAction ?? null,
       queuedAt: toIso(r.queuedAt),
       startedAt: toIso(r.startedAt),
       finishedAt: toIso(r.finishedAt),

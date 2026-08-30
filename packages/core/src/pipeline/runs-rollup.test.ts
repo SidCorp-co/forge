@@ -14,6 +14,7 @@ const runRowQueue: SelectQueue = [];
 const bulkCostQueue: SelectQueue = [];
 const issueQueue: SelectQueue = [];
 const liveJobsQueue: SelectQueue = [];
+const attemptsQueue: SelectQueue = [];
 
 let nextSelectKind: 'steps' | 'cost' | 'runRow' | 'bulkCost' = 'steps';
 
@@ -57,6 +58,8 @@ vi.mock('../db/schema.js', () => ({
     createdAt: 'agent_sessions.created_at',
     updatedAt: 'agent_sessions.updated_at',
     status: 'agent_sessions.status',
+    failureReason: 'agent_sessions.failure_reason',
+    failureDetail: 'agent_sessions.failure_detail',
   },
   jobs: {
     id: 'jobs.id',
@@ -67,6 +70,9 @@ vi.mock('../db/schema.js', () => ({
     retryOf: 'jobs.retry_of',
     deviceId: 'jobs.device_id',
     failureReason: 'jobs.failure_reason',
+    failureKind: 'jobs.failure_kind',
+    failureAction: 'jobs.failure_action',
+    agentSessionId: 'jobs.agent_session_id',
     queuedAt: 'jobs.queued_at',
     dispatchedAt: 'jobs.dispatched_at',
     finishedAt: 'jobs.finished_at',
@@ -99,6 +105,8 @@ vi.mock('../db/client.js', () => ({
         const isIssues = String(tableKey).startsWith('issues');
         const isLiveJobCount =
           String(tableKey).startsWith('jobs.') && !!projection && 'n' in projection;
+        const isAttempts =
+          String(tableKey).startsWith('jobs.') && !!projection && !('n' in projection);
 
         const result = isAgentSessions
           ? stepsQueue.shift()
@@ -108,11 +116,13 @@ vi.mock('../db/client.js', () => ({
               ? issueQueue.shift()
               : isLiveJobCount
                 ? liveJobsQueue.shift()
-                : isUsageRecords
-                  ? nextSelectKind === 'bulkCost'
-                    ? bulkCostQueue.shift()
-                    : costQueue.shift()
-                  : [];
+                : isAttempts
+                  ? attemptsQueue.shift()
+                  : isUsageRecords
+                    ? nextSelectKind === 'bulkCost'
+                      ? bulkCostQueue.shift()
+                      : costQueue.shift()
+                    : [];
 
         return makeChain(Promise.resolve(result ?? []));
       },
@@ -143,6 +153,7 @@ beforeEach(() => {
   bulkCostQueue.length = 0;
   issueQueue.length = 0;
   liveJobsQueue.length = 0;
+  attemptsQueue.length = 0;
   nextSelectKind = 'steps';
 });
 
@@ -347,5 +358,74 @@ describe('listItemsFromRows', () => {
 
     const items = await listItemsFromRows([runRow]);
     expect(items[0]!.liveJobs).toBe(3);
+  });
+});
+
+// cm:guard these two assert the agent_sessions JOIN, not the projection — drop the join and `failureCause`/`failureDetail` go null while every other assertion in this file stays green, which is exactly the ISS-885 defect (every failed attempt rendering one free-text sentence) reaching the UI unnoticed
+describe('ISS-885: the attempt timeline carries the classified cause', () => {
+  it('joins the session cause + detail onto the attempt, not just the job free text', async () => {
+    runRowQueue.push([runRow]);
+    stepsQueue.push([]);
+    costQueue.push([]);
+    liveJobsQueue.push([{ n: 0 }]);
+    attemptsQueue.push([
+      {
+        jobId: 'job-1',
+        jobType: 'code',
+        status: 'failed',
+        attempts: 1,
+        retryOf: null,
+        deviceId: 'dev-1',
+        deviceName: 'ubuntu5',
+        failureReason: 'usage/session limit -> cross-device failover',
+        failureKind: 'transient-cc',
+        failureAction: 'failover',
+        failureCause: 'provider_spend_cap',
+        failureDetail: 'org monthly cap reached',
+        queuedAt: new Date('2026-05-12T00:00:00.000Z'),
+        dispatchedAt: null,
+        finishedAt: new Date('2026-05-12T00:01:00.000Z'),
+        payload: {},
+      },
+    ]);
+
+    const summary = await loadPipelineRunSummary(RUN_ID);
+
+    expect(summary?.attempts[0]?.failureCause).toBe('provider_spend_cap');
+    expect(summary?.attempts[0]?.failureDetail).toBe('org monthly cap reached');
+    expect(summary?.attempts[0]?.failureKind).toBe('transient-cc');
+    expect(summary?.attempts[0]?.failureAction).toBe('failover');
+  });
+
+  it('leaves the cause null when the attempt never reached a session, keeping the row', async () => {
+    runRowQueue.push([runRow]);
+    stepsQueue.push([]);
+    costQueue.push([]);
+    liveJobsQueue.push([{ n: 0 }]);
+    attemptsQueue.push([
+      {
+        jobId: 'job-2',
+        jobType: 'code',
+        status: 'failed',
+        attempts: 1,
+        retryOf: null,
+        deviceId: null,
+        deviceName: null,
+        failureReason: null,
+        failureKind: null,
+        failureAction: null,
+        failureCause: null,
+        failureDetail: null,
+        queuedAt: new Date('2026-05-12T00:00:00.000Z'),
+        dispatchedAt: null,
+        finishedAt: null,
+        payload: {},
+      },
+    ]);
+
+    const summary = await loadPipelineRunSummary(RUN_ID);
+
+    expect(summary?.attempts).toHaveLength(1);
+    expect(summary?.attempts[0]?.failureCause).toBeNull();
   });
 });
