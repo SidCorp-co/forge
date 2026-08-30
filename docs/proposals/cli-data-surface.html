@@ -145,9 +145,9 @@
     <td>Đang chạm drizzle trực tiếp. Chừng nào còn thế, mọi luật issue có hai nơi để sai.</td>
   </tr>
   <tr>
-    <td><span class="x">✕</span> Đường <code>create</code> thứ hai</td>
-    <td><span class="k">→</span> <code>issues/creator.ts</code>, dùng chung</td>
-    <td>MCP tự dựng create, <b>không</b> gọi <code>creator.ts</code> mà REST dùng. Đây là gốc của bug "create mặc định <code>open</code>, không lùi về <code>draft</code> được".</td>
+    <td><span class="x">✕</span> Hai đường <code>create</code> viết tay</td>
+    <td><span class="k">→</span> một create service <b>phải trích ra</b> — chưa tồn tại</td>
+    <td>Cả hai bên đều <code>insert(issues)</code> nội tuyến: REST ở <code>issues/routes.ts</code> trong một <code>db.transaction</code>, MCP ở <code>mcp/tools/forge-issues.ts</code>. <code>issues/creator.ts</code> <b>không phải</b> đường create — nó là attribution (<code>hydrateCreatorsForIssues</code>, <code>buildOriginCondition</code>, <code>isAgentChannel</code>), không có hàm create nào. Là gốc của bug "create mặc định <code>open</code>, không lùi về <code>draft</code>".</td>
   </tr>
   <tr>
     <td><span class="x">✕</span> <code>X-Total-Count</code> header</td>
@@ -155,9 +155,9 @@
     <td>Hai hợp đồng "đã đủ chưa" khác nhau: REST trả header, MCP trả <code>{returned, hasMore, truncated}</code>. CLI dùng REST sẽ thừa hưởng cái <b>yếu hơn</b> — trừ khi REST lên envelope trước.</td>
   </tr>
   <tr>
-    <td><span class="x">✕</span> Năng lực chỉ-MCP</td>
-    <td><span class="k">→</span> đẩy xuống REST: <code>dependency-read</code>, <code>detector-key</code>, <code>label-service</code>, <code>work-evidence</code>, <code>issue-relations</code></td>
-    <td>Hôm nay chỉ MCP đặt được quan hệ <code>blocks</code>. CLI trên REST sẽ <b>mất tính năng</b> nếu không nâng REST trước.</td>
+    <td><span class="x">✕</span> Quan hệ <code>blocks</code> <b>nguyên tử</b> chỉ có ở MCP</td>
+    <td><span class="k">→</span> REST nhận <code>relations</code> ngay trong transaction của create/update</td>
+    <td>REST <b>đã</b> đặt được <code>blocks</code> — <code>issues/dependency-routes.ts</code> có GET/POST/DELETE <code>/api/issues/:id/dependencies</code>, và <code>mcp/tools/issue-relations.ts</code> có <code>cm:edge contract</code> trỏ về nó. Khoảng trống thật hẹp hơn: chỉ MCP commit được edge <b>trước</b> khi <code>issueCreated</code> phát ra. Đó đúng là race mà red flag <code>open-then-block</code> nói tới.</td>
   </tr>
   <tr>
     <td><span class="x">✕</span> Không có hợp đồng lỗi</td>
@@ -189,14 +189,15 @@
 <div class="panel">
 <table>
   <tr><th style="width:8%"></th><th style="width:38%">Bước</th><th>Ràng buộc</th></tr>
-  <tr><td><b>0</b></td><td>Nâng REST lên ngang MCP</td><td>list-envelope, relations, labels, detector-key. <b>Chưa xong bước này thì CLI là bản thụt lùi.</b></td></tr>
+  <tr><td><b>0</b></td><td>Nâng REST lên ngang MCP</td><td>Trích một create service dùng chung (chưa tồn tại), relations <b>nguyên tử</b> trong transaction, list-envelope, labels, detector-key. <b>Chưa xong bước này thì CLI là bản thụt lùi.</b></td></tr>
   <tr><td><b>1</b></td><td>MCP tool → adapter mỏng trên REST</td><td>Xoá drizzle khỏi <code>mcp/tools/</code>. Hành vi không đổi ⇒ test hiện có là lưới an toàn.</td></tr>
   <tr><td><b>2</b></td><td>CLI trên cùng REST đó</td><td>Mỏng. Chuẩn hoá ở tầng transport, subcommand chỉ in — như <code>buzz</code>.</td></tr>
   <tr><td><b>3</b></td><td><code>forge api &lt;path&gt;</code></td><td>Escape hatch kiểu <code>gh api</code>. Endpoint mới không cần chờ CLI.</td></tr>
   <tr><td><b>4</b></td><td>Xoá MCP tool đã được CLI phủ</td><td>Xoá thật, không deprecate. Còn hai đường là còn hai đường.</td></tr>
 </table>
-<p class="cap">Bước 0 là chỗ dễ bỏ qua nhất và là chỗ hỏng đắt nhất: làm CLI trước rồi mới nâng REST
-nghĩa là agent mất khả năng đặt <code>blocks</code> trong suốt thời gian đó.</p>
+<p class="cap">Bước 0 là chỗ dễ bỏ qua nhất và là chỗ hỏng đắt nhất. Không phải vì REST thiếu
+<code>blocks</code> — nó có endpoint rồi — mà vì REST chưa đặt được edge <b>trong cùng transaction</b>
+với create, nên một CLI dựng trên nó chỉ tái hiện được đúng cái race <code>open-then-block</code>.</p>
 </div>
 
 <h2>Honest costs</h2>
@@ -212,7 +213,7 @@ nghĩa là agent mất khả năng đặt <code>blocks</code> trong suốt thờ
   <tr><td>Bước 0 không sinh ra giá trị nhìn thấy được</td>
       <td>Nâng REST lên ngang MCP không cho người dùng thêm thứ gì. Nó là điều kiện cần thuần tuý, và vì thế là bước dễ bị cắt nhất khi hết kiên nhẫn.</td></tr>
   <tr><td>Mất tính năng nếu làm sai thứ tự</td>
-      <td>REST hôm nay không đặt được <code>blocks</code>. Đảo thứ tự ⇒ agent mất dependency edge — thứ duy nhất chặn dispatch.</td></tr>
+      <td>REST đặt được <code>blocks</code> qua endpoint riêng, nhưng chưa nguyên tử với create. Đảo thứ tự ⇒ CLI đẻ ra đúng race <code>open-then-block</code>, mà <code>blocks</code> là thứ duy nhất chặn dispatch.</td></tr>
 </table>
 </div>
 
