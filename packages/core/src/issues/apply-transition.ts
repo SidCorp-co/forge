@@ -21,6 +21,7 @@ import { recordDropUnblock } from './drop-unblock.js';
 import { markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { resolveAgentCloseTarget } from './release-gate-hold.js';
+import { refuseUnrecordedClose } from './release-record-required.js';
 import { checkTransitionEvidence } from './transition-evidence.js';
 import { postTransitionReasonComment, requiresAuthoredReason } from './transition-reason.js';
 
@@ -64,7 +65,8 @@ export type TransitionErrorCode =
   | 'WAITING_KIND_REQUIRED'
   | 'STALE_TRANSITION'
   | 'PLAN_REQUIRED'
-  | 'NO_WORK_EVIDENCE';
+  | 'NO_WORK_EVIDENCE'
+  | 'RELEASE_RECORD_REQUIRED';
 
 /**
  * Typed transition failure. `message` keeps the legacy `CODE: detail` shape
@@ -360,6 +362,18 @@ export async function transitionIssueStatus(
       status: fromStatus,
       requested: requestedStatus,
     });
+  }
+
+  // cm:guard reads `toStatus`, never `requestedStatus` — an agent close that resolveAgentCloseTarget rewrote to the release gate is not making the shipped claim, and refusing it there would park the session at a status it cannot leave
+  const unrecorded = await refuseUnrecordedClose({
+    issueId: issue.id,
+    toStatus,
+    actorType: actor.type,
+    viaReleasePath: options.viaReleasePath === true,
+    skip: options.skip === true,
+  });
+  if (unrecorded) {
+    throw new TransitionError('RELEASE_RECORD_REQUIRED', unrecorded.detail, unrecorded.details);
   }
 
   const txResult = await executeTransitionWrite({

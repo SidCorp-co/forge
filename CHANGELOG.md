@@ -2,8 +2,10 @@
 
 > **The entries before 2026-08-28 are missing, not absent.** All 1,034 lines of this file were
 > removed by an undeclared deletion inside a docs-pointer commit, and no gate objected. ISS-872
-> records the loss; ISS-880 owns restoring the record and making it unlosable. Do not read the short
-> list below as the project's release history.
+> records the loss. ISS-880 made a second one impossible — nothing may leave this file now without
+> saying so — but restoring the old text is an owner decision and has not been taken; it survives at
+> `git show 3df9a8e9^:CHANGELOG.md`. Do not read the short list below as the project's release
+> history.
 
 ## [Unreleased]
 
@@ -64,6 +66,21 @@
   their pause is theirs to end, and the parks already sitting there are now surfaced to a human
   instead of waiting unannounced. Staged projects are unchanged, deliberately: one project's
   driver must never change another's vocabulary. (ISS-886)
+
+- The record of what shipped can no longer be lost quietly, and an issue can no longer be marked
+  shipped with nothing written about it. Two separate holes, found together. The changelog was
+  owned by no check at all: 1,034 lines of it were deleted inside a commit about documentation
+  pointers, twelve gates ran on that change and every one passed, and because the in-app What's New
+  feed reads the file and shows an empty list when it cannot parse one, it went blank for everybody
+  signed in without anything failing. A new check now holds the file — the heading its five readers
+  need has to stay, and an entry published there cannot disappear unless the change says which entry
+  and why, in a ledger that shows up in the diff. Entries are matched by their words rather than
+  their position, so re-wrapping a line or cutting a release moves them all without complaint.
+  Separately, an automated close that would mark an issue as shipped is now refused while nothing
+  has been written about what shipped: four issues closed that way in one day in August, their
+  release notes never written and the omission found by a sweep days later. Writing "no user-facing
+  change" is a complete answer and always was — what is refused is saying nothing. Closing an issue
+  by hand is untouched, and so is discarding one as not-work. (ISS-880)
 
 - A pipeline run under an issue that was DROPPED is now closed, and its queued steps with
   it. The backstop that closes runs whose issue has already finished matched only `closed`,

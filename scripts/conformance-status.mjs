@@ -65,6 +65,11 @@ const PROBES = {
     gate: 'check-source-language',
     probe: ['node', 'scripts/check-source-language.mjs', '--all'],
   },
+  // cm:guard the probe must run with a base revision available or it exits 2 and this axis reads as level 0. That is the honest answer, not a bug to work around: the rule compares the record against its base, and the `lang-check` job carries `fetch-depth: 0` for exactly this.
+  record: {
+    gate: 'check-release-record',
+    probe: ['node', 'scripts/check-release-record.mjs'],
+  },
 };
 
 const IMPROVES = ['down', 'shrink', 'tighten'];

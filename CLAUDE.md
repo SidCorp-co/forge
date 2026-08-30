@@ -41,14 +41,16 @@ DB (in `packages/core`): `pnpm db:generate` · `pnpm db:migrate` · `pnpm db:stu
 
 
 
-## Twelve gates, five axes
+## Thirteen gates, six axes
 
 Each gate sits in `ci-passed`'s `needs` **and** is named in its result loop, so a violation blocks
-the merge. **That, not this file, is why they hold.** All twelve run from `pnpm verify`, and
+the merge. **That, not this file, is why they hold.** All thirteen run from `pnpm verify`, and
 `verify --ci-parity` is itself a CI step: a `- run:` in `ci.yml` that `verify` neither runs nor
 declares fails the build, so the local command and the workflow cannot drift apart.
 
-Five axes — form (gated 4×), knowledge (gated 3×), relations, behaviour (gated 3×), language. An axis measures
+Six axes — form (gated 4×), knowledge (gated 3×), relations, behaviour (gated 3×), language, record.
+Five of them own a property of the code; `record` owns `CHANGELOG.md`, the external record of what
+shipped, which was nobody's until 1,034 lines of it left in silence. An axis measures
 at its weakest gate. `.forge/conformance.json` declares each axis's level and the repo's profile
 (today: hardened); `conformance-status.mjs` **runs** every checker and fails when what it does
 disagrees with what the manifest claims.

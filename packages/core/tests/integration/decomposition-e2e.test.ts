@@ -47,11 +47,12 @@ async function insertIssue(
   const id = randomUUID();
   const status = overrides.status ?? 'open';
   const issSeq = overrides.issSeq ?? Math.floor(Math.random() * 100000);
+  // cm:edge contract -> packages/core/src/issues/release-record-required.ts — every issue here carries a release note because these fixtures close as a DEVICE, and a device close with none is refused; the cascade test would otherwise fail at the parent's own close and never reach the children it is about
   await harness.db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
+    INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id, release_notes)
     VALUES (
       ${id}, ${projectId}, ${issSeq}, ${`Issue ${issSeq}`}, ${status},
-      'medium', ${ownerId}
+      'medium', ${ownerId}, jsonb_build_object('section', 'Skip', 'userFacing', '-')
     )
   `);
   return id;

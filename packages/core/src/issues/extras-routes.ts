@@ -86,7 +86,8 @@ type BatchSkipReason =
   | 'waiting_kind_required'
   | 'stale'
   | 'plan_required'
-  | 'no_work_evidence';
+  | 'no_work_evidence'
+  | 'release_record_required';
 
 const BATCH_SKIP_BY_CODE: Record<TransitionErrorCode, BatchSkipReason> = {
   NO_OP: 'no_op',
@@ -96,6 +97,7 @@ const BATCH_SKIP_BY_CODE: Record<TransitionErrorCode, BatchSkipReason> = {
   STALE_TRANSITION: 'stale',
   PLAN_REQUIRED: 'plan_required',
   NO_WORK_EVIDENCE: 'no_work_evidence',
+  RELEASE_RECORD_REQUIRED: 'release_record_required',
 };
 
 type BatchResult = {

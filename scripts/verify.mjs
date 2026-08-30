@@ -35,6 +35,15 @@ const CHECKS = [
     // cm:edge naming -> scripts/check-source-language.mjs — parses that script's success line; reword it there and the fail-closed count silently stops matching
     scanned: /across (\d+) files/,
   },
+  // cm:guard the `scanned` count here is the number of entries the record still holds, not a file count, and that is deliberate: an emptied CHANGELOG scans zero and the fail-closed contract turns it into exit 2. The record losing every entry and the checker being unable to see the record are both things this script refuses to forward as a pass.
+  {
+    axis: 'record',
+    label: 'release-record',
+    // cm:edge naming -> scripts/check-release-record.mjs — parses that script's success line
+    cmd: ['node', 'scripts/check-release-record.mjs'],
+    scanned: /^release-record: (\d+) entr/m,
+    unit: 'release entries',
+  },
   {
     axis: 'behaviour',
     label: 'test-signal',
@@ -174,6 +183,7 @@ const CHECKS = [
 const CI_COVERAGE = {
   'node scripts/check-autonomous-transitions.mjs': 'verify',
   'node scripts/check-honest-costs.mjs': 'verify',
+  'node scripts/check-release-record.mjs': 'verify',
   'node scripts/check-source-language.mjs --all': 'verify',
   'node scripts/check-test-signal.mjs --all': 'verify',
   'node scripts/check-size-budget.mjs --all': 'verify',

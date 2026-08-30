@@ -143,13 +143,15 @@ async function seedProject(
   return { owner, project, skillIdByName };
 }
 
+// cm:edge contract -> packages/core/src/issues/release-record-required.ts — the release note is this fixture's precondition, not scenery: `drive` walks every hop as a DEVICE, and a device close with none is refused
 async function insertOpenIssue(projectId: string, createdById: string): Promise<IssueRow> {
   const id = randomUUID();
   await harness.db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id, reopen_count)
+    INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id, reopen_count, release_notes)
     VALUES (
       ${id}, ${projectId}, ${Math.floor(Math.random() * 1_000_000)},
-      'epic integration', 'open', 'medium', ${createdById}, 0
+      'epic integration', 'open', 'medium', ${createdById}, 0,
+      jsonb_build_object('section', 'Skip', 'userFacing', '-')
     )
   `);
   return { id, projectId, status: 'open', reopenCount: 0 };
