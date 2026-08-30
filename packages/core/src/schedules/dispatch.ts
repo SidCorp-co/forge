@@ -7,7 +7,6 @@ import {
 import { db } from '../db/client.js';
 import type { ScheduleMode } from '../db/schema.js';
 import { agentSessions, projects, scheduleRuns, schedules } from '../db/schema.js';
-import { findAvailableDeviceForProject } from '../lib/device-pool.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
@@ -432,142 +431,11 @@ async function dispatchScheduleScriptRun(
   return { ok: true, sessionId: run.id, status: 'success', resolvedProjectId };
 }
 
-// ── ISS-584 (B): schedule cross-runner failover ────────────────────────────
-// Async, sweeper-driven (mirrors the pipeline job reaper→retry model). When the
-// loop-monitor fails a schedule session with `no_client_ack` (the runner it was
-// sent to never attached → claudeSessionId still NULL → ZERO side effects ran),
-// re-dispatch the SAME prompt to a DIFFERENT online runner, excluding every
-// device already tried. Bounded by MAX_SCHEDULE_FAILOVERS so a project with no
-// healthy runner converges to a plain `failed` instead of looping.
-//
-// Safety boundary: ONLY no_client_ack (never attached) is retried. A
-// `heartbeat_timeout` schedule session DID attach and may have run side effects
-// (created issues, applied skills) before dying — re-running it is unsafe, so it
-// is left failed (the next cron firing is the recovery there).
-
-const MAX_SCHEDULE_FAILOVERS = 2; // total devices tried across a chain = 3
-
-interface ScheduleFailoverState {
-  attempt: number;
-  triedDeviceIds: string[];
-}
-
-export type ScheduleFailoverResult =
-  | { ok: true; status: 'redispatched'; sessionId: string; deviceId: string }
-  | { ok: false; status: 'not-schedule' | 'exhausted' | 'no-device' | 'no-prompt' | 'error' };
-
-/**
- * Re-dispatch a schedule session that the loop-monitor just failed with
- * `no_client_ack`, onto another runner. Idempotent-safe: it reads the prompt
- * already materialized on the failed session (no prompt re-build) and creates a
- * fresh `system` session for the retry, carrying an incremented failover chain
- * in metadata. Returns a discriminated result for the caller to log.
- */
-export async function redispatchScheduleSessionOnFailover(
-  sessionId: string,
-): Promise<ScheduleFailoverResult> {
-  const [failed] = await db
-    .select({
-      id: agentSessions.id,
-      projectId: agentSessions.projectId,
-      userId: agentSessions.userId,
-      deviceId: agentSessions.deviceId,
-      title: agentSessions.title,
-      messages: agentSessions.messages,
-      metadata: agentSessions.metadata,
-    })
-    .from(agentSessions)
-    .where(eq(agentSessions.id, sessionId))
-    .limit(1);
-  if (!failed) return { ok: false, status: 'error' };
-
-  const meta = (failed.metadata ?? {}) as Record<string, unknown>;
-  if (meta.source !== 'schedule.run' || typeof meta.scheduleId !== 'string') {
-    return { ok: false, status: 'not-schedule' };
-  }
-
-  const prior = (meta.failover as ScheduleFailoverState | undefined) ?? {
-    attempt: 0,
-    triedDeviceIds: [],
-  };
-  const tried = Array.from(
-    new Set([...(prior.triedDeviceIds ?? []), failed.deviceId].filter((d): d is string => !!d)),
-  );
-  const attempt = (prior.attempt ?? 0) + 1;
-  if (attempt > MAX_SCHEDULE_FAILOVERS) return { ok: false, status: 'exhausted' };
-
-  // Reuse the prompt already on the failed session — never re-build (a one-shot
-  // skill-improve template would re-trip its idempotency gate; the stored text
-  // is the exact prompt that was meant to run).
-  const messages = Array.isArray(failed.messages) ? failed.messages : [];
-  const firstUser = messages.find(
-    (m): m is { role: string; content: string } =>
-      !!m &&
-      (m as { role?: string }).role === 'user' &&
-      typeof (m as { content?: unknown }).content === 'string',
-  );
-  if (!firstUser) return { ok: false, status: 'no-prompt' };
-
-  const deviceId = await findAvailableDeviceForProject(failed.projectId, {
-    excludeDeviceIds: tried,
-  });
-  if (!deviceId) return { ok: false, status: 'no-device' };
-
-  const [project] = await db
-    .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
-    .from(projects)
-    .where(eq(projects.id, failed.projectId))
-    .limit(1);
-  if (!project) return { ok: false, status: 'error' };
-
-  // Carry forward the original schedule metadata flags + the bumped failover chain.
-  const nextMeta: Record<string, unknown> = {
-    source: 'schedule.run',
-    scheduleId: meta.scheduleId,
-    failover: { attempt, triedDeviceIds: tried } satisfies ScheduleFailoverState,
-  };
-  if (meta.tick) nextMeta.tick = true;
-  if (typeof meta.templateKey === 'string') nextMeta.templateKey = meta.templateKey;
-  if (meta.steward) nextMeta.steward = true;
-
-  try {
-    const session = await createChatSessionRow({
-      projectId: failed.projectId,
-      userId: failed.userId,
-      title: failed.title ?? 'Scheduled run',
-      runKind: 'system',
-      runMetadata: { source: 'schedule.run', scheduleId: meta.scheduleId },
-      metadata: nextMeta,
-    });
-    const dispatched = await dispatchChatTurn({
-      session,
-      project,
-      client: { deviceId, isLocal: false, migrated: false },
-      message: firstUser.content,
-      broadcastEvent: 'agent-session.created',
-    });
-    // cm:why lastStatus:'running' — a failover is a fresh dispatch too; without this the prior 'failed' write lingers as the reported outcome for the whole failover attempt
-    try {
-      await db
-        .update(schedules)
-        .set({ lastSessionId: dispatched.id, lastStatus: 'running' })
-        .where(eq(schedules.id, meta.scheduleId as string));
-    } catch {
-      // ignore
-    }
-    return { ok: true, status: 'redispatched', sessionId: dispatched.id, deviceId };
-  } catch (err) {
-    logger.error(
-      { err, failedSessionId: sessionId, scheduleId: meta.scheduleId, attempt },
-      'schedule.failover: re-dispatch failed',
-    );
-    return { ok: false, status: 'error' };
-  }
-}
-
 // cm:edge naming -> packages/core/src/schedules/dispatch-types.ts — every caller imports these from this module; they live next door so the runner-less branches can use them without an import cycle, and re-exporting keeps that a file layout rather than an API change
 export type {
   DispatchScheduleInput,
   DispatchScheduleResult,
   ScheduleRowForDispatch,
 } from './dispatch-types.js';
+// cm:edge protocol -> packages/core/src/jobs/loop-monitor.ts — it reaches the failover through a dynamic import('../schedules/dispatch.js'), so this re-export is load-bearing: move the symbol and that call resolves to undefined at runtime with nothing failing to compile.
+export { redispatchScheduleSessionOnFailover } from './failover.js';

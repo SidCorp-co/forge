@@ -7,20 +7,23 @@ vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
 
-const redispatchScheduleSessionOnFailoverMock = vi.fn(async (_sessionId: string) => ({
-  ok: true as const,
-  status: 'redispatched' as const,
-  sessionId: 'retry-sess',
-  deviceId: 'device-2',
-}));
+const redispatchScheduleSessionOnFailoverMock = vi.fn(
+  async (_sessionId: string, _opts?: { failureClass?: string | null }) => ({
+    ok: true as const,
+    status: 'redispatched' as const,
+    sessionId: 'retry-sess',
+    deviceId: 'device-2',
+  }),
+);
 vi.mock('../schedules/dispatch.js', () => ({
-  redispatchScheduleSessionOnFailover: (sessionId: string) =>
-    redispatchScheduleSessionOnFailoverMock(sessionId),
+  redispatchScheduleSessionOnFailover: (
+    sessionId: string,
+    opts?: { failureClass?: string | null },
+  ) => redispatchScheduleSessionOnFailoverMock(sessionId, opts),
 }));
 
-const { detectUnexpandedSkillFailure, finalizeScheduleSessionFailure } = await import(
-  './session-failure.js'
-);
+const { detectUnexpandedSkillFailure, failureClassOf, finalizeScheduleSessionFailure } =
+  await import('./session-failure.js');
 const { FAILURE_CAUSES } = await import('../pipeline/failure-causes.js');
 
 // ISS-733 fix — the sync-then-dispatch race: a chat-runs-skill cold start can
@@ -176,7 +179,9 @@ describe('finalizeScheduleSessionFailure', () => {
     expect((set.metadata as Record<string, unknown>)?.scheduleId).toBe('sched-1');
 
     await result.recoverAfterWrite({ source: 'schedule.run', scheduleId: 'sched-1' });
-    expect(redispatchScheduleSessionOnFailoverMock).toHaveBeenCalledWith('sess-1');
+    expect(redispatchScheduleSessionOnFailoverMock).toHaveBeenCalledWith('sess-1', {
+      failureClass: 'usage/session limit',
+    });
   });
 
   it('does not fail over a non-schedule (plain chat) session even on a failover-classified hit', async () => {
@@ -214,6 +219,60 @@ describe('finalizeScheduleSessionFailure', () => {
     });
     expect(set.failureReason).toBe('provider_usage_limit');
     expect(FAILURE_CAUSES).toContain(set.failureReason);
+    expect(String(set.failureDetail)).toContain('cross-device failover');
+  });
+
+  describe('failureClassOf', () => {
+    it('keeps the class and drops the predicted disposition', () => {
+      expect(failureClassOf('usage/session limit → cross-device failover')).toBe(
+        'usage/session limit',
+      );
+      expect(
+        failureClassOf('org/account spend limit → per-account failover with exhaustion memory'),
+      ).toBe('org/account spend limit');
+    });
+
+    it('returns a reason that carries no disposition unchanged', () => {
+      expect(failureClassOf('cc-startup-death (≤3 msgs, no tool use)')).toBe(
+        'cc-startup-death (≤3 msgs, no tool use)',
+      );
+    });
+  });
+
+  it('a plain chat session records that no failover exists, not the predicted one', async () => {
+    const set: Record<string, unknown> = {};
+    await finalizeScheduleSessionFailure({
+      sessionId: 'sess-1',
+      messages: [
+        {
+          role: 'assistant',
+          content:
+            "[RESULT_ERROR] You've hit your weekly limit \u00b7 resets 11am (Asia/Ho_Chi_Minh)",
+        },
+      ],
+      note: null,
+      baseMetadata: { source: 'chat' },
+      set,
+    });
+    expect(set.failureReason).toBe('provider_usage_limit');
+    expect(set.failureDetail).toBe('usage/session limit → no failover (plain chat session)');
+  });
+
+  it("leaves an agent-chat session's detail to its own failover path", async () => {
+    const set: Record<string, unknown> = {};
+    await finalizeScheduleSessionFailure({
+      sessionId: 'sess-1',
+      messages: [
+        {
+          role: 'assistant',
+          content:
+            "[RESULT_ERROR] You've hit your weekly limit \u00b7 resets 11am (Asia/Ho_Chi_Minh)",
+        },
+      ],
+      note: null,
+      baseMetadata: { source: 'rocketchat.agent-chat', agentChat: { rid: 'r1' } },
+      set,
+    });
     expect(String(set.failureDetail)).toContain('cross-device failover');
   });
 
