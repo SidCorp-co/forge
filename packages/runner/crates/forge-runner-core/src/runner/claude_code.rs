@@ -161,6 +161,15 @@ struct TurnLoop<'a> {
     residency: Duration,
 }
 
+/// Await the stdout reader for at most `within`, unless it has already finished.
+// cm:guard the `is_finished` check is the whole function. A `JoinHandle` yields its output ONCE; polling it after that panics `JoinHandle polled after completion`, which aborts the process rather than the task. Measured on dev1: 8 core-dumps in the 17 hours after duplex shipped, first 2026-08-29 23:55 and none before, each killing the pipeline job in flight — ISS-880 and ISS-886 both died `session_lost` this way. The path was `duplex_turns` returning through its reader arm (a cancel or the idle ceiling ends the CLI), which spends the handle, and then the caller awaiting it again.
+async fn join_reader(reader: &mut tokio::task::JoinHandle<()>, within: Duration) {
+    if reader.is_finished() {
+        return;
+    }
+    let _ = tokio::time::timeout(within, reader).await;
+}
+
 /// Tell core the idle ceiling ended this session.
 // cm:guard the two paths report by DIFFERENT doors and neither one serves both: an issue job's session key is a `job_id`, which the session-keyed PATCH 404s on, and chat has no job to post an event against. Sending an issue job's state over the PATCH is the bug that left `runtime_state` NULL for every duplex pipeline session while three hops read the column — the quiet-clock exemption, the residency deadline and the result guard.
 async fn report_session_closed(
@@ -240,6 +249,7 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
                     return reported;
                 }
             }
+            // cm:guard returning through THIS arm consumes the handle's output, so `reader` is spent for every caller after it — which is why the process-level select in `consume`'s spawn is guarded by `is_finished()` and its grace waits go through `join_reader`. Polling it again panics `JoinHandle polled after completion` and aborts the daemon, not the turn.
             _ = &mut *reader => return reported,
         }
         tokio::select! {
@@ -1105,18 +1115,21 @@ impl Runner for ClaudeCodeRunner {
                 async move { result_notify.notified().await }
             };
 
-            match timeout {
-                Some(d) => tokio::select! {
-                    _ = &mut reader => {}
-                    _ = exit_poll => { let _ = tokio::time::timeout(Duration::from_secs(2), &mut reader).await; }
-                    _ = on_result => { let _ = tokio::time::timeout(RESULT_EXIT_GRACE, &mut reader).await; }
-                    _ = tokio::time::sleep(d) => { tracing::warn!("[claude] job={job_id} timed out"); }
-                },
-                None => tokio::select! {
-                    _ = &mut reader => {}
-                    _ = exit_poll => { let _ = tokio::time::timeout(Duration::from_secs(2), &mut reader).await; }
-                    _ = on_result => { let _ = tokio::time::timeout(RESULT_EXIT_GRACE, &mut reader).await; }
-                },
+            // cm:guard skipped ENTIRELY when the reader is spent, because `duplex_turns` returns through its own reader arm and that consumes the output — the `_ = &mut reader` branch here would then panic on its first poll. The grace waits inside the other two arms go through `join_reader` for the same reason, one level down.
+            if !reader.is_finished() {
+                match timeout {
+                    Some(d) => tokio::select! {
+                        _ = &mut reader => {}
+                        _ = exit_poll => { join_reader(&mut reader, Duration::from_secs(2)).await; }
+                        _ = on_result => { join_reader(&mut reader, RESULT_EXIT_GRACE).await; }
+                        _ = tokio::time::sleep(d) => { tracing::warn!("[claude] job={job_id} timed out"); }
+                    },
+                    None => tokio::select! {
+                        _ = &mut reader => {}
+                        _ = exit_poll => { join_reader(&mut reader, Duration::from_secs(2)).await; }
+                        _ = on_result => { join_reader(&mut reader, RESULT_EXIT_GRACE).await; }
+                    },
+                }
             }
             reader.abort();
             if let Some(handle) = verdict_poller {
@@ -1424,6 +1437,61 @@ mod tests {
 
     async fn never_ending() -> tokio::task::JoinHandle<()> {
         tokio::spawn(async { std::future::pending::<()>().await })
+    }
+
+    /// A reader whose task is already complete — `is_finished()` is true and the
+    /// next poll of it panics.
+    async fn already_finished() -> tokio::task::JoinHandle<()> {
+        let h = tokio::spawn(async {});
+        while !h.is_finished() {
+            tokio::task::yield_now().await;
+        }
+        h
+    }
+
+    // cm:guard this reproduces the PRODUCTION sequence in order, and the order is the defect: the turn loop returns through its reader arm — which is what a cancel or the idle ceiling does to a live duplex session — and only THEN does the caller await the same handle. Split into two tests and each half passes on the broken code, because neither poll is wrong on its own; it is the second one that aborts the daemon. 8 core-dumps on dev1 in the 17 hours after duplex shipped, first 2026-08-29 23:55 and none before.
+    #[tokio::test]
+    async fn the_caller_may_not_await_a_reader_the_turn_loop_already_consumed() {
+        let Harness {
+            sessions,
+            outcome,
+            result_notify,
+            turn_tx,
+            turn_started,
+            turn_done,
+            rx: _rx,
+        } = resident_harness();
+        let mut reader = already_finished().await;
+        let reported = duplex_turns(
+            TurnLoop {
+                sessions: &sessions,
+                job_id: "job-1",
+                core: None,
+                outcome: &outcome,
+                result_notify: &result_notify,
+                turn_tx: &turn_tx,
+                turn_started: &turn_started,
+                turn_done: &turn_done,
+                is_issue_job: false,
+                residency: SESSION_IDLE_TIMEOUT,
+            },
+            &mut reader,
+        )
+        .await;
+        assert!(!reported, "no turn ran, so nothing was reported");
+        // What `consume`'s spawn does next, and the only thing that makes it safe.
+        assert!(reader.is_finished(), "the loop left the handle spent");
+        join_reader(&mut reader, Duration::from_secs(2)).await;
+    }
+
+    #[tokio::test]
+    async fn join_reader_waits_on_a_live_reader_and_gives_up_at_the_ceiling() {
+        let mut live = never_ending().await;
+        let start = tokio::time::Instant::now();
+        join_reader(&mut live, Duration::from_millis(50)).await;
+        assert!(start.elapsed() >= Duration::from_millis(50), "it waited");
+        assert!(!live.is_finished(), "and left the reader running");
+        live.abort();
     }
 
     #[tokio::test(start_paused = true)]
