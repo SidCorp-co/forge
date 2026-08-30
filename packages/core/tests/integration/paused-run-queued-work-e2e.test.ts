@@ -45,6 +45,8 @@ type Mods = {
   PAUSED_RUN_ALARM_MS: typeof import('../../src/pipeline/inv7-alarms.js').PAUSED_RUN_ALARM_MS;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   cancelPipelineRun: typeof import('../../src/pipeline/runs-control.js').cancelPipelineRun;
+  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
+  PAUSED_RUN_SCAN_LIMIT: typeof import('../../src/pipeline/inv7-alarms.js').PAUSED_RUN_SCAN_LIMIT;
 };
 
 let harness: TestDatabase;
@@ -200,6 +202,35 @@ describe('alarmPausedRunsWithQueuedWork E2E (ISS-879) — what it reports', () =
     const res = await mods.alarmPausedRunsWithQueuedWork(new Date());
 
     expect(res.alerted).toBe(0);
+  });
+});
+
+describe('alarmPausedRunsWithQueuedWork E2E (ISS-879) — the scan cap cannot starve the alarm', () => {
+  // cm:guard the row cap is only safe because frozen-work rows sort FIRST — this pass writes no run state, so a processed row never leaves the candidate set, and a bare `updated_at ASC` cap lets zero-queue runs (which need nothing, and are older) consume the whole budget every minute, forever. Reproduced at exactly this shape: 200 zero-queue paused runs + one run with a queued step gave alerted=0 and the one run that needed a human was never alarmed.
+  it('alarms the run with frozen work even when the cap is filled with older runs that need nothing', async () => {
+    const filler = Array.from({ length: mods.PAUSED_RUN_SCAN_LIMIT }, (_, n) => n);
+    for (const n of filler) {
+      const quiet = await insertIssue();
+      await insertRun({
+        issueId: quiet.id,
+        status: 'paused',
+        pauseReason: 'missing_skill:open',
+        ageHours: 1000 + n,
+      });
+    }
+    const victim = await insertIssue();
+    const victimRun = await insertRun({
+      issueId: victim.id,
+      status: 'paused',
+      pauseReason: 'stage_stalled:testing',
+      ageHours: 48,
+    });
+    await insertQueuedJob(victim.id, victimRun);
+
+    const res = await mods.alarmPausedRunsWithQueuedWork(new Date());
+
+    expect(res.alerted).toBe(1);
+    expect(wedgeAt().entityId).toBe(`paused:${victimRun}`);
   });
 });
 

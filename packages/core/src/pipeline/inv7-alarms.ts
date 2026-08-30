@@ -187,6 +187,12 @@ interface PausedRunRow extends Record<string, unknown> {
   iss_seq: number | null;
 }
 
+/**
+ * Rows one sweep will look at.
+ */
+// cm:guard the ORDER BY is what makes this cap safe, and it is NOT decoration — this pass writes no run state, so a row it processes does NOT leave the candidate set the way `reapOrphanedIssueRuns`' terminal rows do. Copy that pass's bare `LIMIT 200` without ordering frozen-work first and the cleanup arm eats the whole budget forever: measured against real Postgres, 200 zero-queue paused runs (which need nothing, and sort first under `updated_at ASC` alone) plus one run with a genuinely queued step gave alerted=0, resolves=200, and the one run that needed a human was never alarmed — every minute, permanently, with `alerted` reading 0 exactly as it does when all is well.
+export const PAUSED_RUN_SCAN_LIMIT = 200;
+
 /** How long a pause may hold work back before it is worth a human's attention. */
 export const PAUSED_RUN_ALARM_MS = (() => {
   const raw = Number(process.env.FORGE_PAUSED_RUN_ALARM_MS);
@@ -220,8 +226,8 @@ export async function alarmPausedRunsWithQueuedWork(
     WHERE r.status = 'paused'
       AND r.updated_at < ${cutoffIso}
     GROUP BY r.id, i.iss_seq
-    ORDER BY r.updated_at ASC
-    LIMIT 200
+    ORDER BY (count(j.id) = 0) ASC, r.updated_at ASC
+    LIMIT ${PAUSED_RUN_SCAN_LIMIT}
   `);
 
   const hours = Math.round(PAUSED_RUN_ALARM_MS / 3_600_000);
@@ -258,6 +264,13 @@ export async function alarmPausedRunsWithQueuedWork(
 
   if (alerted > 0) {
     logger.info({ alerted, paused: rows.length }, 'inv7: paused runs with frozen work surfaced');
+  }
+  // cm:guard say it when the scan is truncated — a capped sweep and a quiet one both report `alerted: 0` for the rows they never read, and a silent alarm is the failure this pass exists to end
+  if (rows.length >= PAUSED_RUN_SCAN_LIMIT) {
+    logger.warn(
+      { limit: PAUSED_RUN_SCAN_LIMIT, alerted },
+      'inv7: paused-run scan hit its row cap — runs beyond it were not examined this sweep',
+    );
   }
   return { alerted };
 }
