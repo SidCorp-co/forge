@@ -22,7 +22,12 @@ import { RESULT_QUIET_MINUTES } from '../jobs/loop-monitor.js';
 import { logger } from '../logger.js';
 import { DEFAULT_NO_PROGRESS_ROUNDS } from './reopen-policy.js';
 import { pauseResumesItself } from './run-pause.js';
-import { emitPipelineWedge, pausedRunWedgeEntityId, reviewRoundsWedgeEntityId } from './wedge.js';
+import {
+  emitPipelineWedge,
+  pausedRunWedgeEntityId,
+  resolvePipelineWedge,
+  reviewRoundsWedgeEntityId,
+} from './wedge.js';
 
 export interface Inv7AlarmResult {
   alerted: number;
@@ -198,7 +203,7 @@ export async function alarmPausedRunsWithQueuedWork(
   now: Date = new Date(),
 ): Promise<Inv7AlarmResult> {
   const cutoffIso = new Date(now.getTime() - PAUSED_RUN_ALARM_MS).toISOString();
-  // cm:guard `updated_at` is a PROXY for "paused since" — nothing stores the pause timestamp, and `setCurrentStep`/`setCurrentStepForOpenIssueRun` also stamp it on a `paused` run, so an issue whose status keeps moving pushes this clock forward and delays the alarm. That is the safe direction (something IS touching the run) and it is why the threshold is generous; if a stored `pausedAt` ever lands, read it here instead of tightening this.
+  // cm:guard `updated_at` is a PROXY for "paused since" and a LOSSY one — nothing stores the pause timestamp, and `setCurrentStepForOpenIssueRun` (issues/apply-transition.ts) stamps it on a `paused` run at EVERY issue transition. So an operator repeatedly clicking "open" on a wedged issue — the exact behaviour in the ISS-576/652 incident — pushes this clock forward each time and can defer the alarm indefinitely. Do not read the delay as harmless; the honest fix is a stored `pausedAt` on the run, and this predicate should move to it rather than be tightened.
   // cm:guard write `metadata` LITERALLY, never as a Drizzle column reference — inside a raw `sql` template Drizzle renders the reference unqualified, which collides across the joined tables and fails at parse time
   const rows = await db.execute<PausedRunRow>(sql`
     SELECT r.id AS run_id,
@@ -210,7 +215,7 @@ export async function alarmPausedRunsWithQueuedWork(
            string_agg(DISTINCT j.type, ', ') AS queued_types,
            i.iss_seq
     FROM pipeline_runs r
-    JOIN jobs j ON j.pipeline_run_id = r.id AND j.status = 'queued'
+    LEFT JOIN jobs j ON j.pipeline_run_id = r.id AND j.status = 'queued'
     LEFT JOIN issues i ON i.id = r.issue_id
     WHERE r.status = 'paused'
       AND r.updated_at < ${cutoffIso}
@@ -218,9 +223,16 @@ export async function alarmPausedRunsWithQueuedWork(
   `);
 
   const hours = Math.round(PAUSED_RUN_ALARM_MS / 3_600_000);
+  let alerted = 0;
   for (const row of rows) {
     const label = row.iss_seq ? `ISS-${row.iss_seq}` : 'A pipeline run';
     const steps = Number(row.queued_jobs);
+    // cm:guard the LEFT JOIN returns paused runs with ZERO queued jobs on purpose, so this pass clears its own notification when the queue behind the pause empties. The run leaving `paused` is not the only way the condition ends — an operator can cancel the queued steps and leave the pause standing — and the subscriber only watches the run. Without this arm the bell keeps a row asserting N frozen steps when there are none.
+    if (steps === 0) {
+      await resolvePipelineWedge(pausedRunWedgeEntityId(row.run_id));
+      continue;
+    }
+    alerted++;
     // cm:guard ask `pauseResumesItself`, never assume from the reason string — only `missing_skill` has a resume path (`missing-skill-resume.ts`), `stage_stalled` has none anywhere in the repo, and an operator pause is a human's decision. This wedge is the operator's only recurring notification for a frozen queue; telling them "it resumes on its own" about a pause that never will is the aged-hold failure repeated on the run axis.
     const selfResuming = pauseResumesItself(row.pause_reason);
     const cause = row.pause_reason ?? 'an operator pause (no machine reason recorded)';
@@ -242,10 +254,10 @@ export async function alarmPausedRunsWithQueuedWork(
     });
   }
 
-  if (rows.length > 0) {
-    logger.info({ alerted: rows.length }, 'inv7: paused runs with frozen work surfaced');
+  if (alerted > 0) {
+    logger.info({ alerted, paused: rows.length }, 'inv7: paused runs with frozen work surfaced');
   }
-  return { alerted: rows.length };
+  return { alerted };
 }
 
 interface ChurnRow extends Record<string, unknown> {

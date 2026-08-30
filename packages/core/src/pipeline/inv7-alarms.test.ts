@@ -6,8 +6,10 @@ vi.mock('../db/client.js', () => ({
 }));
 
 const emitWedgeMock = vi.fn(async (..._args: unknown[]) => undefined);
+const resolveWedgeMock = vi.fn(async (_id: string) => 0);
 vi.mock('./wedge.js', () => ({
   emitPipelineWedge: (...args: unknown[]) => emitWedgeMock(...(args as [])),
+  resolvePipelineWedge: (id: string) => resolveWedgeMock(id),
   reviewRoundsWedgeEntityId: (runId: string) => `rounds:${runId}`,
   pausedRunWedgeEntityId: (runId: string) => `paused:${runId}`,
 }));
@@ -58,6 +60,7 @@ beforeEach(() => {
   dbExecute.mockReset();
   dbExecute.mockResolvedValue([]);
   emitWedgeMock.mockClear();
+  resolveWedgeMock.mockClear();
   gateReasons.mockReset();
   gateReasons.mockResolvedValue(new Map());
 });
@@ -379,5 +382,51 @@ describe('alarmPausedRunsWithQueuedWork (ISS-879)', () => {
 
   it('defaults its threshold to the aged-hold scale — the same judgement about the same wait', () => {
     expect(PAUSED_RUN_ALARM_MS).toBe(HOLD_AGE_ALARM_MS);
+  });
+});
+
+describe('alarmPausedRunsWithQueuedWork — clearing its own claim (ISS-879)', () => {
+  const base = {
+    run_id: 'run-9',
+    project_id: 'proj-1',
+    issue_id: 'iss-9',
+    pause_reason: 'stage_stalled:testing',
+    paused_since: '2026-08-12T01:15:00.000Z',
+    queued_types: null,
+    iss_seq: 91,
+  };
+
+  // cm:guard the run leaving `paused` is NOT the only way the condition ends — an operator can cancel the queued steps and leave the pause standing, and the resolve subscriber only watches the run. A notification asserting "3 steps frozen" with zero frozen steps is the stranded row this arm exists to stop.
+  it('resolves the wedge for a paused run whose queue has emptied', async () => {
+    dbExecute.mockResolvedValueOnce([{ ...base, queued_jobs: 0 }]);
+
+    const res = await alarmPausedRunsWithQueuedWork(NOW);
+
+    expect(res.alerted).toBe(0);
+    expect(emitWedgeMock).not.toHaveBeenCalled();
+    expect(resolveWedgeMock).toHaveBeenCalledWith('paused:run-9');
+  });
+
+  it('does not resolve while steps are still frozen', async () => {
+    dbExecute.mockResolvedValueOnce([{ ...base, queued_jobs: 2, queued_types: 'code, review' }]);
+
+    const res = await alarmPausedRunsWithQueuedWork(NOW);
+
+    expect(res.alerted).toBe(1);
+    expect(resolveWedgeMock).not.toHaveBeenCalled();
+  });
+
+  it('counts only the runs it alarmed, not every paused run it looked at', async () => {
+    dbExecute.mockResolvedValueOnce([
+      { ...base, run_id: 'run-a', queued_jobs: 0 },
+      { ...base, run_id: 'run-b', queued_jobs: 1, queued_types: 'plan' },
+      { ...base, run_id: 'run-c', queued_jobs: 0 },
+    ]);
+
+    const res = await alarmPausedRunsWithQueuedWork(NOW);
+
+    expect(res.alerted).toBe(1);
+    expect(emitWedgeMock).toHaveBeenCalledTimes(1);
+    expect(resolveWedgeMock).toHaveBeenCalledTimes(2);
   });
 });

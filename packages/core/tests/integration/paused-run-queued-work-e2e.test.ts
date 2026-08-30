@@ -28,12 +28,13 @@ import {
 } from '../helpers/index.js';
 
 const emitWedgeMock = vi.fn(async (..._args: unknown[]) => undefined);
+const resolveWedgeMock = vi.fn(async (_entityId: string) => 0);
 vi.mock('../../src/pipeline/wedge.js', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   return {
     ...actual,
     emitPipelineWedge: (...args: unknown[]) => emitWedgeMock(...args),
-    resolvePipelineWedge: async () => 0,
+    resolvePipelineWedge: (id: string) => resolveWedgeMock(id),
   };
 });
 
@@ -42,87 +43,98 @@ type Mods = {
   alarmPausedRunsWithQueuedWork: typeof import('../../src/pipeline/inv7-alarms.js').alarmPausedRunsWithQueuedWork;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   PAUSED_RUN_ALARM_MS: typeof import('../../src/pipeline/inv7-alarms.js').PAUSED_RUN_ALARM_MS;
+  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
+  cancelPipelineRun: typeof import('../../src/pipeline/runs-control.js').cancelPipelineRun;
 };
 
-describe('alarmPausedRunsWithQueuedWork E2E (ISS-879)', () => {
-  let harness: TestDatabase;
-  let mods: Mods;
-  let projectId: string;
-  let ownerId: string;
+let harness: TestDatabase;
+let mods: Mods;
+let projectId: string;
+let ownerId: string;
 
-  beforeAll(async () => {
-    harness = await setupTestDatabase();
-    process.env.DATABASE_URL = harness.url;
-    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
-    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-    process.env.SMTP_HOST ??= 'localhost';
-    process.env.SMTP_PORT ??= '1025';
-    process.env.SMTP_USER ??= 'test';
-    process.env.SMTP_PASS ??= 'test';
-    process.env.SMTP_FROM ??= 'test@example.com';
-    process.env.APP_BASE_URL ??= 'http://localhost:3000';
-    process.env.CORS_ORIGINS ??= 'http://localhost:3000';
-    process.env.NODE_ENV ??= 'test';
+beforeAll(async () => {
+  harness = await setupTestDatabase();
+  process.env.DATABASE_URL = harness.url;
+  process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+  process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+  process.env.SMTP_HOST ??= 'localhost';
+  process.env.SMTP_PORT ??= '1025';
+  process.env.SMTP_USER ??= 'test';
+  process.env.SMTP_PASS ??= 'test';
+  process.env.SMTP_FROM ??= 'test@example.com';
+  process.env.APP_BASE_URL ??= 'http://localhost:3000';
+  process.env.CORS_ORIGINS ??= 'http://localhost:3000';
+  process.env.NODE_ENV ??= 'test';
 
-    mods = (await import('../../src/pipeline/inv7-alarms.js')) as unknown as Mods;
-  }, 60_000);
+  mods = {
+    ...((await import('../../src/pipeline/inv7-alarms.js')) as unknown as Mods),
+    ...((await import('../../src/pipeline/runs-control.js')) as unknown as Mods),
+  };
+  const { registerPausedRunWedgeResolve } = await import(
+    '../../src/pipeline/paused-run-wedge-resolve.js'
+  );
+  const { hooks } = await import('../../src/pipeline/hooks.js');
+  registerPausedRunWedgeResolve(hooks);
+}, 60_000);
 
-  afterAll(async () => {
-    if (harness) await harness.cleanup();
-  });
+afterAll(async () => {
+  if (harness) await harness.cleanup();
+});
 
-  beforeEach(async () => {
-    await truncateAll(harness.db);
-    emitWedgeMock.mockClear();
-    const owner = await createTestUser(harness.db);
-    ownerId = owner.id;
-    const project = await createTestProject(harness.db, owner.id);
-    projectId = project.id;
-  });
+beforeEach(async () => {
+  await truncateAll(harness.db);
+  emitWedgeMock.mockClear();
+  resolveWedgeMock.mockClear();
+  const owner = await createTestUser(harness.db);
+  ownerId = owner.id;
+  const project = await createTestProject(harness.db, owner.id);
+  projectId = project.id;
+});
 
-  let seq = 500;
-  async function insertIssue(status = 'open'): Promise<{ id: string; seq: number }> {
-    const id = randomUUID();
-    const s = seq++;
-    await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
-      VALUES (${id}, ${projectId}, ${s}, 'a queued step', ${status}, 'medium', ${ownerId})
-    `);
-    return { id, seq: s };
-  }
+let seq = 500;
+async function insertIssue(status = 'open'): Promise<{ id: string; seq: number }> {
+  const id = randomUUID();
+  const s = seq++;
+  await harness.db.execute(sql`
+    INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
+    VALUES (${id}, ${projectId}, ${s}, 'a queued step', ${status}, 'medium', ${ownerId})
+  `);
+  return { id, seq: s };
+}
 
-  async function insertRun(args: {
-    issueId: string;
-    status: 'running' | 'paused';
-    pauseReason?: string | null;
-    ageHours: number;
-  }): Promise<string> {
-    const runId = randomUUID();
-    const metadata = args.pauseReason
-      ? JSON.stringify({ pauseReason: args.pauseReason })
-      : JSON.stringify({});
-    await harness.db.execute(sql`
-      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, current_step, metadata, started_at, updated_at)
-      VALUES (${runId}, ${projectId}, ${args.issueId}, 'issue', ${args.status}, 'triage', ${metadata}::jsonb,
-              now() - (${args.ageHours} || ' hours')::interval,
-              now() - (${args.ageHours} || ' hours')::interval)
-    `);
-    return runId;
-  }
+async function insertRun(args: {
+  issueId: string;
+  status: 'running' | 'paused';
+  pauseReason?: string | null;
+  ageHours: number;
+}): Promise<string> {
+  const runId = randomUUID();
+  const metadata = args.pauseReason
+    ? JSON.stringify({ pauseReason: args.pauseReason })
+    : JSON.stringify({});
+  await harness.db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, current_step, metadata, started_at, updated_at)
+    VALUES (${runId}, ${projectId}, ${args.issueId}, 'issue', ${args.status}, 'triage', ${metadata}::jsonb,
+            now() - (${args.ageHours} || ' hours')::interval,
+            now() - (${args.ageHours} || ' hours')::interval)
+  `);
+  return runId;
+}
 
-  async function insertQueuedJob(issueId: string, runId: string, type = 'triage'): Promise<string> {
-    const jobId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, created_by, type, status, payload, queued_at)
-      VALUES (${jobId}, ${projectId}, ${issueId}, ${runId}, ${ownerId}, ${type}, 'queued', '{}'::jsonb, now())
-    `);
-    return jobId;
-  }
+async function insertQueuedJob(issueId: string, runId: string, type = 'triage'): Promise<string> {
+  const jobId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, created_by, type, status, payload, queued_at)
+    VALUES (${jobId}, ${projectId}, ${issueId}, ${runId}, ${ownerId}, ${type}, 'queued', '{}'::jsonb, now())
+  `);
+  return jobId;
+}
 
-  function wedgeAt(i = 0): Record<string, string> {
-    return emitWedgeMock.mock.calls[i]?.[0] as unknown as Record<string, string>;
-  }
+function wedgeAt(i = 0): Record<string, string> {
+  return emitWedgeMock.mock.calls[i]?.[0] as unknown as Record<string, string>;
+}
 
+describe('alarmPausedRunsWithQueuedWork E2E (ISS-879) — what it reports', () => {
   it('alarms a queued job frozen under a paused run, naming the pause reason', async () => {
     const issue = await insertIssue();
     const runId = await insertRun({
@@ -186,7 +198,9 @@ describe('alarmPausedRunsWithQueuedWork E2E (ISS-879)', () => {
 
     expect(res.alerted).toBe(0);
   });
+});
 
+describe('alarmPausedRunsWithQueuedWork E2E (ISS-879) — when it stays quiet and when it clears', () => {
   it('emits ONE wedge per run, not one per frozen job', async () => {
     const issue = await insertIssue();
     const runId = await insertRun({
@@ -236,6 +250,26 @@ describe('alarmPausedRunsWithQueuedWork E2E (ISS-879)', () => {
 
     await mods.alarmPausedRunsWithQueuedWork(new Date());
     expect(wedgeAt().nextStep).toContain('will NOT resume');
+  });
+
+  // cm:guard the operator cancel path must reach `pipelineRunStatusChanged` — `cancelPipelineRun` only WS-broadcast for its whole life, so the wedge's ONLY clearer never fired and the notification the alarm had just written stayed unresolved forever. That is the 721-row bell the wedge module's own guard is about, and the wedge copy tells the operator to cancel, so this is the path it steers them onto.
+  it('clears the notification when the operator cancels the paused run', async () => {
+    const issue = await insertIssue();
+    const runId = await insertRun({
+      issueId: issue.id,
+      status: 'paused',
+      pauseReason: 'stage_stalled:testing',
+      ageHours: 48,
+    });
+    await insertQueuedJob(issue.id, runId);
+
+    await mods.alarmPausedRunsWithQueuedWork(new Date());
+    expect(emitWedgeMock).toHaveBeenCalledTimes(1);
+    resolveWedgeMock.mockClear();
+
+    await mods.cancelPipelineRun(runId, { parkIssue: false });
+
+    expect(resolveWedgeMock).toHaveBeenCalledWith(`paused:${runId}`);
   });
 
   it('names an operator pause as a human decision, not a machine fault', async () => {
