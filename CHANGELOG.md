@@ -47,7 +47,34 @@
   who signs in. They now reach the project's admins, ordered by priority, capped at 20 rows with the
   real total shown; one human comment clears a row for good. (ISS-881)
 
+### Changed
+
+- The three gates that freeze a per-file number — test-signal, the lint budget and the size budget —
+  now run one shared ratchet instead of three copies of it. Each carried its own registry read,
+  baseline I/O, freeze comparison and staged-file collection, and the copies had drifted apart:
+  `check-size-budget`'s own comment named `check-lint-budget` as the version it must not drift from
+  with nothing enforcing that, while `check-test-signal` fell back to built-in defaults when the
+  registry was missing, read a failed `git diff --cached` as an empty stage — a commit hook
+  reporting clean because git broke — and overwrote a baseline it could not parse. All three now
+  fail closed the same way, and each keeps its own entry point, its own baseline file and its own
+  conformance axis. Detection policy is unchanged: old and new were run against each other over the
+  frozen records, both ratio rules seeded separately, the assertion-count boundary either side, a
+  regression on a frozen file, the staged path and the re-freeze, with identical output and exit
+  codes throughout. (ISS-848)
+
+- The test-signal baseline had drifted since it was frozen and is re-cut at the measured numbers:
+  one file had left the low-signal ratio entirely while two others sat under ceilings up to 32
+  above their real counts. Every ceiling moved down and a dead record left. (ISS-848)
+
 ### Fixed
+
+- `pnpm test` could report green over tests it never ran. `scripts/**/*.test.mjs` — which covers the
+  gate scripts, where this repo's rules live — is collected only by `packages/core`'s test config,
+  but `scripts/` sits outside that package, so a change to a checker did not invalidate the cached
+  result and turbo replayed an older run's log instead. Measured on one touched tree: a cache hit
+  before the fix, a cache miss after it. CI was never affected, since its path filter already runs
+  the core job on `scripts/` changes; the hole was in the local command contributors are told to
+  trust. (ISS-848)
 
 - On an autonomous project, splitting an issue into children now works end to end, and a park
   always has a way out. Two paths could put an issue on a status no dispatcher reads and no
