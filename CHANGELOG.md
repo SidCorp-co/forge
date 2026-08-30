@@ -68,6 +68,31 @@
 
 ### Fixed
 
+- A UX Contract written from the Settings preset button reached no agent. Applying a preset compiled
+  the rules into `projectFacts['ux-contract']` and stopped there: the flag that decides whether a
+  fact is injected into every agent prompt or merely fetchable on demand was read by that code path
+  and never written, so an absent key left the contract dark while `forge-code` and `forge-clarify`
+  both tell the agent it arrives "injected in your preamble". The QA project is the measure — 22
+  active rules compiled to 2,925 characters on 2026-08-11, and zero findings in the nineteen days
+  since; the two projects where the loop did work had the flag set by hand. A recompile now turns
+  injection on when nobody has decided, and leaves an explicit off alone, because that is a person's
+  decision rather than a default. Ten frontend repos that had no contract at all now carry a
+  hand-written one. (ISS-576)
+
+- `core`'s lint could report a failure while naming only files that were clean. Biome prints twenty
+  diagnostics by default and orders them by path rather than by severity, so on a tree with several
+  hundred standing warnings a single new error could fall outside the window: a planted error in one
+  source file produced a two-error summary with no mention of that file anywhere in the output, and
+  every visible diagnostic pointed at an untouched test. The lint budget checker in this same repo
+  had already defended against exactly that by raising the cap; the package script now agrees with
+  it, and prints every diagnostic it counts.
+
+- The UX Contract settings tab no longer offers a Re-scan control. Nothing has ever detected a
+  project's stack — the values shown come from the profile that applying a preset writes — and the
+  button had been disabled since it was added, with a tooltip naming the issue that was going to
+  make it work. That issue and its four children are dropped, so the control was promising work
+  nobody is doing. The panel now reads as what it is: a read-back of the recorded profile.
+
 - `pnpm test` could report green over tests it never ran. `scripts/**/*.test.mjs` — which covers the
   gate scripts, where this repo's rules live — is collected only by `packages/core`'s test config,
   but `scripts/` sits outside that package, so a change to a checker did not invalidate the cached
