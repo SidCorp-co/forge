@@ -29,7 +29,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:integration:ci": "TEST_DB_MODE=container vitest run --config vitest.integration.config.ts",
     "test:integration:coverage": "vitest run --config vitest.integration.config.ts --coverage --coverage.reporter=json --coverage.reportsDirectory=coverage/integration",
-    "lint": "biome check src tests",
+    "lint": "biome check src tests --max-diagnostics=none",
     "lint:fix": "biome check --write src tests",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",

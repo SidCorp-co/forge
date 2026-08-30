@@ -76,15 +76,43 @@ describe('recompileAndPersistUxContract — knowledge_entries write-through pari
     expect(call.body).toContain('UX Completeness Contract');
   });
 
-  it('flag ON + no alwaysInject config: injection=on_demand', async () => {
+  it('an undecided project gets alwaysInject persisted and injection=always', async () => {
     envMock.KNOWLEDGE_INJECTION_ENABLED = true;
     projectRows = [{ agentConfig: {} }];
 
     await recompileAndPersistUxContract(PROJECT_ID);
 
-    expect(upsertMock).toHaveBeenCalledOnce();
-    const call = upsertMock.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(call.injection).toBe('on_demand');
+    const written = updateSetMock.mock.calls[0]?.[0]?.agentConfig as Record<string, unknown>;
+    expect(written.projectFactsConfig).toEqual({ 'ux-contract': { alwaysInject: true } });
+    expect(upsertMock.mock.calls[0]?.[0]?.injection).toBe('always');
+  });
+
+  it('an explicit alwaysInject:false is a human decision and survives a recompile', async () => {
+    envMock.KNOWLEDGE_INJECTION_ENABLED = true;
+    projectRows = [
+      { agentConfig: { projectFactsConfig: { 'ux-contract': { alwaysInject: false } } } },
+    ];
+
+    await recompileAndPersistUxContract(PROJECT_ID);
+
+    const written = updateSetMock.mock.calls[0]?.[0]?.agentConfig as Record<string, unknown>;
+    expect(written.projectFactsConfig).toEqual({ 'ux-contract': { alwaysInject: false } });
+    expect(upsertMock.mock.calls[0]?.[0]?.injection).toBe('on_demand');
+  });
+
+  it('a sibling fact config is preserved, not clobbered', async () => {
+    envMock.KNOWLEDGE_INJECTION_ENABLED = false;
+    projectRows = [
+      { agentConfig: { projectFactsConfig: { 'done-means': { alwaysInject: true } } } },
+    ];
+
+    await recompileAndPersistUxContract(PROJECT_ID);
+
+    const written = updateSetMock.mock.calls[0]?.[0]?.agentConfig as Record<string, unknown>;
+    expect(written.projectFactsConfig).toEqual({
+      'done-means': { alwaysInject: true },
+      'ux-contract': { alwaysInject: true },
+    });
   });
 
   it('write-through failure does not throw and does not block the agentConfig write', async () => {

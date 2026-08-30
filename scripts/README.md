@@ -27,7 +27,7 @@ passed, because the external record of what shipped belonged to none of them.
 
 | Axis | Gate (CI job) | Owns | Must not touch |
 |---|---|---|---|
-| format + lint | `biome check` — `core` | whitespace, import order, recommended rules | comment content |
+| format + lint | `biome check … --max-diagnostics=none` — `core` | whitespace, import order, recommended rules | comment content |
 | size | `check-size-budget` — `conformance` | file & function length, frozen per file | which rules exist — biome declares them |
 | lint debt | `check-lint-budget` — `conformance` | per (file, rule) biome violations in `web-v2` and `core`, frozen; drained on touch where a scope asks for it | which rules exist — each package's `biome.json` declares them |
 | checkers | `biome check scripts` — `conformance` | the files in `scripts/` that implement every other gate | anything under `packages/` |
@@ -41,6 +41,19 @@ passed, because the external record of what shipped belonged to none of them.
 | flows | `check-flow-coverage` — `core-integration` | whether every declared `cm:flow` step is executed end-to-end | which flows exist — codemap declares them |
 | language | `check-source-language` — `lang-check` | English-only source policy | everything else |
 | record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, and whether a published entry can leave without a declared reason | whether an entry is TRUE, or whether a change deserved one — that is review's |
+
+### Why `core` lint prints every diagnostic
+
+`--max-diagnostics=none` is not verbosity, it is the difference between a gate that names its
+failure and one that names a bystander. biome truncates at 20 by default and orders by path, not by
+severity, so with 399 baselined warnings in `packages/core` the one ERROR that fails the build is
+simply not printed. Measured 2026-08-31: a planted format error in `src/ws/server.ts` produced
+`Found 2 errors.` and **zero** mentions of that file, while the visible diagnostics all pointed at
+`src/agent-sessions/chat-turn.test.ts`, which was clean and untouched.
+
+`check-lint-budget` already defended against exactly this — it invokes biome with
+`--max-diagnostics=5000` because truncation would silently empty its input. The blocking lint step
+had no such guard. The two now agree.
 
 ### Conformance levels
 

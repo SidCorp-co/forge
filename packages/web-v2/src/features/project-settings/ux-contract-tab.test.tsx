@@ -234,7 +234,7 @@ describe("UxContractTab", () => {
     expect(screen.getAllByText(/requires an org owner\/admin/i).length).toBeGreaterThan(0);
   });
 
-  it("shows the detected stack panel read-only with Re-scan disabled", () => {
+  it("shows the stack profile read-only, and offers no Re-scan control at all", () => {
     mockDefaults();
     useUxContractRules.mockReturnValue({ isLoading: false, isError: false, data: [], refetch: vi.fn() });
     render(
@@ -244,7 +244,8 @@ describe("UxContractTab", () => {
       />,
     );
     expect(screen.getByText("web-v2 DS")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /re-scan/i })).toBeDisabled();
+    expect(screen.getByText("Stack profile")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /re-scan/i })).not.toBeInTheDocument();
   });
 
   it("renders the compiled prose preview read-only from projectFacts['ux-contract']", () => {
