@@ -415,7 +415,7 @@ async function dispatchViaRunner(
       deviceId: runner.deviceId,
       dispatchedAt,
     },
-    { repoPath },
+    { repoPath, resume: resume.record },
   );
 
   const runnerPayload = (job.payload ?? {}) as { promptString?: unknown } & Record<string, unknown>;
@@ -566,7 +566,7 @@ async function dispatchViaRunner(
         failureKind: 'infra',
         failureReason: errorReason,
         failureMeta: { needsReview: true } as never,
-        classifierVersion: 3,
+        classifierVersion: CLASSIFIER_VERSION,
       },
       where: and(eq(jobs.id, job.id), eq(jobs.status, 'dispatched'), eq(jobs.runnerId, runner.id)),
       fromStatus: 'dispatched',

@@ -3,12 +3,16 @@
 // which devices to exclude. They are coupled because dropping a resume must also drop the pin
 // that only existed to reach that session's file — three call sites got that pairing right
 // inline, and a fourth would eventually not.
+//
+// ISS-887 — every path that declines a resume names itself in one vocabulary (`ResumeDropReason`),
+// and the answer travels out on `ResumePolicy.record` so the attempt's own `agent_sessions` row
+// can say whether it continued the prior transcript and, when it did not, why.
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, issues, jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { recordResumeBoundFresh } from '../observability/hold-metrics.js';
+import { recordResumeDrop } from '../observability/hold-metrics.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { AUTONOMOUS_JOB_TYPE } from '../pipeline/autonomous-mode.js';
 import { getTrippedDeviceIds } from '../runners/select.js';
@@ -20,28 +24,61 @@ import {
 } from './session-resume.js';
 import { extractStageStatus, type StageOverrides } from './stage-overrides.js';
 
+/**
+ * Why a dispatch that HAD a prior session to continue started from an empty transcript instead.
+ *
+ * "No prior session existed" is not a member: it is the normal shape of a first attempt and
+ * counting it would drown the losses that matter. `ResumeRecord.dropReason === null` with
+ * `priorClaudeSessionId === null` is that case.
+ */
+export type ResumeDropReason =
+  | 'stage_pool'
+  | 'resume_bound_tokens'
+  | 'resume_bound_reopen_cycles'
+  | 'device_tripped'
+  | 'rotation'
+  | 'failure_action';
+
+/** What this attempt did with the prior session, durable on `agent_sessions.metadata.resume`. */
+export interface ResumeRecord {
+  resumed: boolean;
+  dropReason: ResumeDropReason | null;
+  /** The session this attempt was OFFERED — present whether it was taken or dropped. */
+  priorClaudeSessionId: string | null;
+  /** The box holding that session's CLI file; `null` when the prior session recorded no device. */
+  priorDeviceId: string | null;
+  pinDeviceId: string | null;
+  /** The PARENT attempt's classified action on a retry (`failover` is the common loser). */
+  failureAction: string | null;
+}
+
 export interface ResumePolicy {
   priorClaudeSessionId: string | null;
   pinDeviceId: string | null;
   excludeDeviceIds: string[];
   skipPrimary: boolean;
   isRetry: boolean;
+  record: ResumeRecord;
 }
 
 /**
- * The parent attempt's Claude session, for a retry that is staying on the SAME box.
+ * The parent attempt a retry could continue: its CLI session, the box holding that session's
+ * file, and the action the classifier gave the failure.
  *
  * `findPriorSessionInGroup` cannot answer this: it filters `status='completed'`, and a retry's
- * parent is `failed` by definition. So the id comes off the parent session row directly, reached
- * through the retry chain rather than through the session group.
+ * parent is `failed` by definition. So this reaches the parent through the retry chain rather
+ * than through the session group.
  */
-async function findParentAttemptSession(
-  job: typeof jobs.$inferSelect,
-): Promise<{ claudeSessionId: string; deviceId: string | null } | null> {
+// cm:guard `deviceId` and `failureAction` must come off the PARENT rows this reads, never off the `job` argument: `retry.ts` clones neither column and `claimRunnerSlot` stamps `device_id` only at dispatch — AFTER this runs — so both are NULL on every queued retry, and the same-box resume window below was unreachable in production until 2026-08-30 because it compared them against the child.
+async function loadParentAttempt(job: typeof jobs.$inferSelect): Promise<{
+  claudeSessionId: string;
+  deviceId: string | null;
+  failureAction: string | null;
+} | null> {
   if (!job.retryOf) return null;
   try {
     const [parentJob] = await db
-      .select({ agentSessionId: jobs.agentSessionId })
+      .select({ agentSessionId: jobs.agentSessionId, failureAction: jobs.failureAction })
       .from(jobs)
       .where(eq(jobs.id, job.retryOf))
       .limit(1);
@@ -55,7 +92,11 @@ async function findParentAttemptSession(
       .where(eq(agentSessions.id, parentJob.agentSessionId))
       .limit(1);
     if (!row?.claudeSessionId) return null;
-    return { claudeSessionId: row.claudeSessionId, deviceId: row.deviceId };
+    return {
+      claudeSessionId: row.claudeSessionId,
+      deviceId: row.deviceId,
+      failureAction: parentJob.failureAction ?? null,
+    };
   } catch (err) {
     logger.warn(
       { err, jobId: job.id, retryOf: job.retryOf },
@@ -66,13 +107,13 @@ async function findParentAttemptSession(
 }
 
 /** ISS-580 — drop the resume when the group's accumulated context or the issue's reopen count
- *  has outgrown its configured bound. Returns true when the resume must be dropped. */
+ *  has outgrown its configured bound. Returns the drop reason, or null when both bounds hold. */
 async function exceedsResumeBounds(args: {
   job: typeof jobs.$inferSelect;
   issueId: string;
   sessionGroup: string;
   agentConfig: Record<string, unknown> | undefined;
-}): Promise<boolean> {
+}): Promise<ResumeDropReason | null> {
   const bounds = await loadResumeBounds(args.job.projectId, args.agentConfig);
   const estTokens = await estimateGroupContextTokens({
     issueId: args.issueId,
@@ -94,8 +135,10 @@ async function exceedsResumeBounds(args: {
   }
   const overTokens = bounds.maxResumeTokens > 0 && estTokens > bounds.maxResumeTokens;
   const overCycles = bounds.maxResumeReopenCycles > 0 && reopenCount > bounds.maxResumeReopenCycles;
-  if (!overTokens && !overCycles) return false;
-  const reason = overTokens ? ('tokens' as const) : ('reopen_cycles' as const);
+  if (!overTokens && !overCycles) return null;
+  const reason: ResumeDropReason = overTokens
+    ? 'resume_bound_tokens'
+    : 'resume_bound_reopen_cycles';
   logger.info(
     {
       jobId: args.job.id,
@@ -109,14 +152,13 @@ async function exceedsResumeBounds(args: {
     },
     'resume-policy: sessionGroup resume bound exceeded — dispatching fresh session',
   );
-  recordResumeBoundFresh(reason);
   if (isSentryEnabled()) {
     Sentry.addBreadcrumb({
       category: 'pipeline.resume_bound',
       data: { reason, estTokens, reopenCount },
     });
   }
-  return true;
+  return reason;
 }
 
 /**
@@ -138,7 +180,10 @@ export async function resolveResumePolicy(args: {
 }): Promise<ResumePolicy> {
   const { job, overrides } = args;
   const stagePool = overrides.deviceIds;
-  let priorClaudeSessionId: string | null = null;
+  let offeredClaudeSessionId: string | null = null;
+  let offeredDeviceId: string | null = null;
+  let parentFailureAction: string | null = null;
+  let dropReason: ResumeDropReason | null = null;
   let pinDeviceId: string | null = null;
 
   // cm:guard a drive job must never inherit a staged step's CLI session: it resumes through `forge_phase` action `resume_point`, and --resume onto a stale triage session would hand the driver another step's transcript as its own history
@@ -148,7 +193,8 @@ export async function resolveResumePolicy(args: {
       sessionGroup: overrides.sessionGroup,
     });
     if (prior) {
-      priorClaudeSessionId = prior.claudeSessionId;
+      offeredClaudeSessionId = prior.claudeSessionId;
+      offeredDeviceId = prior.deviceId;
       pinDeviceId = prior.deviceId;
     }
   }
@@ -160,26 +206,20 @@ export async function resolveResumePolicy(args: {
       'resume-policy: session-group resume pin is outside the stage runner pool — dispatching fresh inside the pool',
     );
     pinDeviceId = null;
-    priorClaudeSessionId = null;
+    dropReason = 'stage_pool';
   }
 
   const isRetry = job.retryOf != null;
 
-  // cm:why gated on `!isRetry` because the retry branch below decides its own resume — running the 3-query bound check here would spend three queries and emit a resume_bound_fresh metric plus a Sentry breadcrumb describing a resume that was never on the table
-  if (
-    !isRetry &&
-    priorClaudeSessionId &&
-    overrides.sessionGroup &&
-    job.issueId &&
-    (await exceedsResumeBounds({
+  // cm:why gated on `!isRetry` because the retry branch below decides its own resume — running the 3-query bound check here would spend three queries and emit a resume-drop count plus a Sentry breadcrumb describing a resume that was never on the table
+  if (!isRetry && !dropReason && offeredClaudeSessionId && overrides.sessionGroup && job.issueId) {
+    dropReason = await exceedsResumeBounds({
       job,
       issueId: job.issueId,
       sessionGroup: overrides.sessionGroup,
       agentConfig: args.agentConfig,
-    }))
-  ) {
-    priorClaudeSessionId = null;
-    pinDeviceId = null;
+    });
+    if (dropReason) pinDeviceId = null;
   }
 
   const autoRetry = readAutoRetryPayload(job.payload);
@@ -191,12 +231,23 @@ export async function resolveResumePolicy(args: {
     excludeDeviceIds = autoRetry.done;
     pinDeviceId = autoRetry.target;
     // cm:why a rotation target computed before the pool was configured (or from a wider fleet) is dropped rather than honoured — selection then picks a standby INSIDE the pool instead of returning null and stalling the retry chain
-    if (stagePool && pinDeviceId && !stagePool.includes(pinDeviceId)) pinDeviceId = null;
-    // cm:guard a retry may resume ONLY when the rotation kept the same box AND the failure was classified `retry`. `nextRotation` rule 1 stays on one device for RETRY_TRIES_PER_DEVICE tries, and the CLI session file lives on that box — so this is the one case where the file is still reachable. A rotation to a different device must null the resume: the file is not there, and `--resume` onto a missing id costs a whole attempt. `failover`/`quarantine`/`terminal` never resume — failover exists to leave the box, and quarantine to condemn it.
-    priorClaudeSessionId =
-      pinDeviceId !== null && pinDeviceId === job.deviceId && job.failureAction === 'retry'
-        ? ((await findParentAttemptSession(job))?.claudeSessionId ?? null)
-        : null;
+    let targetOutOfPool = false;
+    if (stagePool && pinDeviceId && !stagePool.includes(pinDeviceId)) {
+      pinDeviceId = null;
+      targetOutOfPool = true;
+    }
+    // cm:why the session-group offer resolved above is discarded here rather than merged: the guard below lets a retry continue only its OWN parent attempt, so the group's candidate decided nothing and recording ITS drop reason would name a loss that never bore on this dispatch
+    const parent = await loadParentAttempt(job);
+    offeredClaudeSessionId = parent?.claudeSessionId ?? null;
+    offeredDeviceId = parent?.deviceId ?? null;
+    parentFailureAction = parent?.failureAction ?? null;
+    dropReason = null;
+    // cm:guard a retry may resume ONLY when the rotation kept it on the parent attempt's box AND the parent's failure was classified `retry`. `nextRotation` rule 1 stays on one device for RETRY_TRIES_PER_DEVICE tries, and the CLI session file lives on that box — so this is the one case where the file is still reachable. A target elsewhere, or a parent that recorded no box at all, must drop the resume: the file is not there, and `--resume` onto a missing id costs a whole attempt. `failover`/`quarantine`/`terminal` never resume — failover exists to leave the box, and quarantine to condemn it.
+    if (parent) {
+      if (targetOutOfPool) dropReason = 'stage_pool';
+      else if (pinDeviceId === null || pinDeviceId !== parent.deviceId) dropReason = 'rotation';
+      else if (parent.failureAction !== 'retry') dropReason = 'failure_action';
+    }
   } else {
     skipPrimary = false;
     const trippedDeviceIds = await getTrippedDeviceIds(job.projectId);
@@ -209,9 +260,27 @@ export async function resolveResumePolicy(args: {
     }
     if (pinDeviceId && excludeDeviceIds.includes(pinDeviceId)) {
       pinDeviceId = null;
-      priorClaudeSessionId = null;
+      if (offeredClaudeSessionId) dropReason = 'device_tripped';
     }
   }
 
-  return { priorClaudeSessionId, pinDeviceId, excludeDeviceIds, skipPrimary, isRetry };
+  const priorClaudeSessionId = dropReason === null ? offeredClaudeSessionId : null;
+  // cm:guard the counter and the durable record are derived from ONE `dropReason` here, at the single exit — a second increment beside any of the drop sites above is how a rate and an attempt's own row come to disagree about the same dispatch (`measured-together-never-apart`).
+  if (dropReason) recordResumeDrop(dropReason);
+
+  return {
+    priorClaudeSessionId,
+    pinDeviceId,
+    excludeDeviceIds,
+    skipPrimary,
+    isRetry,
+    record: {
+      resumed: priorClaudeSessionId !== null,
+      dropReason,
+      priorClaudeSessionId: offeredClaudeSessionId,
+      priorDeviceId: offeredDeviceId,
+      pinDeviceId,
+      failureAction: parentFailureAction,
+    },
+  };
 }

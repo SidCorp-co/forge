@@ -102,6 +102,16 @@ const baseJob = {
   pipelineRunId: 'run-1',
 };
 
+/** A dispatch with nothing to continue — the attempt-1 shape of `ResumeRecord`. */
+const FRESH_RESUME = {
+  resumed: false,
+  dropReason: null,
+  priorClaudeSessionId: null,
+  priorDeviceId: null,
+  pinDeviceId: null,
+  failureAction: null,
+} as const;
+
 describe('jobs/agent-session-link', () => {
   beforeEach(() => {
     selectQueue.length = 0;
@@ -115,7 +125,7 @@ describe('jobs/agent-session-link', () => {
     it('returns the existing session id when the job already has one (no-op)', async () => {
       const result = await ensureAgentSessionForJob(
         { ...baseJob, agentSessionId: 'sess-existing' } as never,
-        { repoPath: '/r' },
+        { repoPath: '/r', resume: FRESH_RESUME },
       );
       expect(result).toBe('sess-existing');
       expect(insertCalls).toHaveLength(0);
@@ -132,7 +142,7 @@ describe('jobs/agent-session-link', () => {
 
       const result = await ensureAgentSessionForJob(
         { ...baseJob, retryOf: 'job-0', attempts: 2 } as never,
-        { repoPath: '/r' },
+        { repoPath: '/r', resume: FRESH_RESUME },
       );
 
       expect(result).toBe('sess-new');
@@ -154,7 +164,7 @@ describe('jobs/agent-session-link', () => {
 
       const result = await ensureAgentSessionForJob(
         { ...baseJob, retryOf: 'job-prev', attempts: 3 } as never,
-        { repoPath: '/r' },
+        { repoPath: '/r', resume: FRESH_RESUME },
       );
 
       expect(result).toBe('sess-new');
@@ -172,6 +182,7 @@ describe('jobs/agent-session-link', () => {
       pushSelect({ title: 'Fix login bug', createdById: 'user-1' });
       const result = await ensureAgentSessionForJob({ ...baseJob, issueId: 'iss-1' } as never, {
         repoPath: '/r',
+        resume: FRESH_RESUME,
       });
       expect(result).toBe('sess-new');
       expect(insertCalls).toHaveLength(1);
@@ -202,7 +213,7 @@ describe('jobs/agent-session-link', () => {
       // No issue lookup for project-scoped pm jobs (issueId stays null).
       const result = await ensureAgentSessionForJob(
         { ...baseJob, type: 'pm', payload: {}, issueId: null } as never,
-        { repoPath: '/r' },
+        { repoPath: '/r', resume: FRESH_RESUME },
       );
       expect(result).toBe('sess-new');
       expect(insertCalls).toHaveLength(1);
@@ -211,10 +222,35 @@ describe('jobs/agent-session-link', () => {
       expect(meta.jobType).toBe('pm');
     });
 
+    it('ISS-887 — stamps the resume verdict on the row, so a start-from-scratch and a continue are told apart later', async () => {
+      pushSelect({ title: 'Bug', createdById: 'user-1' });
+      await ensureAgentSessionForJob({ ...baseJob, issueId: 'iss-9' } as never, {
+        repoPath: '/r',
+        resume: {
+          resumed: false,
+          dropReason: 'rotation',
+          priorClaudeSessionId: 'claude-abc',
+          priorDeviceId: 'dev-a',
+          pinDeviceId: 'dev-b',
+          failureAction: 'failover',
+        },
+      });
+      const meta = insertCalls[0]?.values.metadata as Record<string, unknown>;
+      expect(meta.resume).toEqual({
+        resumed: false,
+        dropReason: 'rotation',
+        priorClaudeSessionId: 'claude-abc',
+        priorDeviceId: 'dev-a',
+        pinDeviceId: 'dev-b',
+        failureAction: 'failover',
+      });
+    });
+
     it("keeps metadata.type='pipeline' for non-pm job types", async () => {
       pushSelect({ title: 'Bug', createdById: 'user-1' });
       await ensureAgentSessionForJob({ ...baseJob, type: 'code', issueId: 'iss-2' } as never, {
         repoPath: '/r',
+        resume: FRESH_RESUME,
       });
       const meta = insertCalls[0]?.values.metadata as Record<string, unknown>;
       expect(meta.type).toBe('pipeline');
