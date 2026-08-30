@@ -34,45 +34,177 @@ type Mods = {
   drainOutboxOnce: typeof import('../../src/pipeline/outbox-worker.js').drainOutboxOnce;
 };
 
+let harness: TestDatabase;
+let mods: Mods;
+
+// ---------- helpers ---------------------------------------------------
+
+async function insertIssue(
+  projectId: string,
+  ownerId: string,
+  overrides: { status?: string; issSeq?: number } = {},
+): Promise<string> {
+  const id = randomUUID();
+  const status = overrides.status ?? 'open';
+  const issSeq = overrides.issSeq ?? Math.floor(Math.random() * 100000);
+  await harness.db.execute(sql`
+    INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
+    VALUES (
+      ${id}, ${projectId}, ${issSeq}, ${`Issue ${issSeq}`}, ${status},
+      'medium', ${ownerId}
+    )
+  `);
+  return id;
+}
+
+async function insertDecomposesEdge(
+  projectId: string,
+  parentId: string,
+  childId: string,
+): Promise<string> {
+  const id = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO issue_dependencies (id, project_id, from_issue_id, to_issue_id, kind)
+    VALUES (${id}, ${projectId}, ${parentId}, ${childId}, 'decomposes')
+  `);
+  return id;
+}
+
+async function insertReleaseJob(
+  projectId: string,
+  issueId: string,
+  ownerId: string,
+): Promise<string> {
+  const runId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status)
+    VALUES (${runId}, ${projectId}, ${issueId}, 'issue', 'running')
+  `);
+  const id = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, payload, queued_at, created_by)
+    VALUES (
+      ${id}, ${projectId}, ${issueId}, ${runId}, 'release', 'queued',
+      '{}'::jsonb, now(), ${ownerId}
+    )
+  `);
+  return id;
+}
+
+// ISS-131 — generic queued-job factory so sibling-chain tests can enqueue
+// a non-release job (e.g. `triage`) and assert the picker parks it.
+async function insertQueuedJob(
+  projectId: string,
+  issueId: string,
+  ownerId: string,
+  type: string,
+): Promise<string> {
+  const runId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status)
+    VALUES (${runId}, ${projectId}, ${issueId}, 'issue', 'running')
+  `);
+  const id = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, payload, queued_at, created_by)
+    VALUES (
+      ${id}, ${projectId}, ${issueId}, ${runId}, ${type}, 'queued',
+      '{}'::jsonb, now(), ${ownerId}
+    )
+  `);
+  return id;
+}
+
+// The picker's `fresh_capable_runners` CTE now requires at least one online,
+// fresh runner before any job (release/triage) is dispatchable — otherwise
+// the EXISTS gate parks every job with `runner_stale`. Seed a fresh online
+// claude-code runner bound to a device so the picker tests assert their
+// decomposition-specific gating, not the runner-presence gate.
+async function seedFreshRunner(projectId: string, ownerId: string): Promise<string> {
+  const deviceId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO devices (id, owner_id, name, platform, token_hash, token_prefix, status)
+    VALUES (
+      ${deviceId}, ${ownerId}, ${`device-${deviceId.slice(0, 8)}`}, 'linux',
+      ${`!test-device-hash-${deviceId}`}, ${deviceId.slice(0, 8)}, 'online'
+    )
+  `);
+  const runnerId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
+    VALUES (
+      ${runnerId}, ${projectId}, 'claude-code', 'device', ${deviceId},
+      ${`runner-${runnerId.slice(0, 8)}`}, '{}'::jsonb, 'online', now()
+    )
+  `);
+  return runnerId;
+}
+
+async function insertBlocksEdge(
+  projectId: string,
+  fromIssueId: string,
+  toIssueId: string,
+): Promise<string> {
+  const id = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO issue_dependencies (id, project_id, from_issue_id, to_issue_id, kind)
+    VALUES (${id}, ${projectId}, ${fromIssueId}, ${toIssueId}, 'blocks')
+  `);
+  return id;
+}
+
+async function readIssueStatus(id: string): Promise<string> {
+  const rows = await harness.db.execute<{ status: string }>(sql`
+    SELECT status FROM issues WHERE id = ${id}
+  `);
+  return rows[0]?.status ?? '';
+}
+
+async function readCommentCount(issueId: string): Promise<number> {
+  const rows = await harness.db.execute<{ count: string }>(sql`
+    SELECT COUNT(*)::text AS count FROM comments WHERE issue_id = ${issueId}
+  `);
+  return Number(rows[0]?.count ?? '0');
+}
+
+async function bootstrap(): Promise<void> {
+  harness = await setupTestDatabase();
+  process.env.DATABASE_URL = harness.url;
+  process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+  process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+  process.env.SMTP_HOST ??= 'localhost';
+  process.env.SMTP_PORT ??= '1025';
+  process.env.SMTP_USER ??= 'test';
+  process.env.SMTP_PASS ??= 'test';
+  process.env.SMTP_FROM ??= 'test@example.com';
+  process.env.APP_BASE_URL ??= 'http://localhost:3000';
+  process.env.CORS_ORIGINS ??= 'http://localhost:3000';
+  process.env.NODE_ENV ??= 'test';
+
+  const [decompMod, gatesMod, subsMod, applyMod, hooksMod, outboxMod] = await Promise.all([
+    import('../../src/pipeline/decomposition.js'),
+    import('../../src/jobs/dispatch-gates.js'),
+    import('../../src/pipeline/decomposition-subscribers.js'),
+    import('../../src/issues/apply-transition.js'),
+    import('../../src/pipeline/hooks.js'),
+    import('../../src/pipeline/outbox-worker.js'),
+  ]);
+  mods = {
+    findDecompositionChildren: decompMod.findDecompositionChildren,
+    findDecompositionParent: decompMod.findDecompositionParent,
+    pickNextDispatchableJobForProject: gatesMod.pickNextDispatchableJobForProject,
+    registerDecompositionSubscribers: subsMod.registerDecompositionSubscribers,
+    applyStatusTransition: applyMod.applyStatusTransition,
+    hooks: hooksMod.hooks,
+    drainOutboxOnce: outboxMod.drainOutboxOnce,
+  };
+  // Register subscribers ONCE for this suite — the bus is a module-level
+  // singleton so duplicate registration would multiply handler firings.
+  mods.registerDecompositionSubscribers(mods.hooks);
+}
+
 describe('ISS-119 decomposition lifecycle E2E', () => {
-  let harness: TestDatabase;
-  let mods: Mods;
-
-  beforeAll(async () => {
-    harness = await setupTestDatabase();
-    process.env.DATABASE_URL = harness.url;
-    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
-    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-    process.env.SMTP_HOST ??= 'localhost';
-    process.env.SMTP_PORT ??= '1025';
-    process.env.SMTP_USER ??= 'test';
-    process.env.SMTP_PASS ??= 'test';
-    process.env.SMTP_FROM ??= 'test@example.com';
-    process.env.APP_BASE_URL ??= 'http://localhost:3000';
-    process.env.CORS_ORIGINS ??= 'http://localhost:3000';
-    process.env.NODE_ENV ??= 'test';
-
-    const [decompMod, gatesMod, subsMod, applyMod, hooksMod, outboxMod] = await Promise.all([
-      import('../../src/pipeline/decomposition.js'),
-      import('../../src/jobs/dispatch-gates.js'),
-      import('../../src/pipeline/decomposition-subscribers.js'),
-      import('../../src/issues/apply-transition.js'),
-      import('../../src/pipeline/hooks.js'),
-      import('../../src/pipeline/outbox-worker.js'),
-    ]);
-    mods = {
-      findDecompositionChildren: decompMod.findDecompositionChildren,
-      findDecompositionParent: decompMod.findDecompositionParent,
-      pickNextDispatchableJobForProject: gatesMod.pickNextDispatchableJobForProject,
-      registerDecompositionSubscribers: subsMod.registerDecompositionSubscribers,
-      applyStatusTransition: applyMod.applyStatusTransition,
-      hooks: hooksMod.hooks,
-      drainOutboxOnce: outboxMod.drainOutboxOnce,
-    };
-    // Register subscribers ONCE for this suite — the bus is a module-level
-    // singleton so duplicate registration would multiply handler firings.
-    mods.registerDecompositionSubscribers(mods.hooks);
-  }, 60_000);
+  beforeAll(bootstrap, 60_000);
 
   afterAll(async () => {
     if (harness) await harness.cleanup();
@@ -81,136 +213,6 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
   beforeEach(async () => {
     await truncateAll(harness.db);
   });
-
-  // ---------- helpers ---------------------------------------------------
-
-  async function insertIssue(
-    projectId: string,
-    ownerId: string,
-    overrides: { status?: string; issSeq?: number } = {},
-  ): Promise<string> {
-    const id = randomUUID();
-    const status = overrides.status ?? 'open';
-    const issSeq = overrides.issSeq ?? Math.floor(Math.random() * 100000);
-    await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
-      VALUES (
-        ${id}, ${projectId}, ${issSeq}, ${`Issue ${issSeq}`}, ${status},
-        'medium', ${ownerId}
-      )
-    `);
-    return id;
-  }
-
-  async function insertDecomposesEdge(
-    projectId: string,
-    parentId: string,
-    childId: string,
-  ): Promise<string> {
-    const id = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO issue_dependencies (id, project_id, from_issue_id, to_issue_id, kind)
-      VALUES (${id}, ${projectId}, ${parentId}, ${childId}, 'decomposes')
-    `);
-    return id;
-  }
-
-  async function insertReleaseJob(
-    projectId: string,
-    issueId: string,
-    ownerId: string,
-  ): Promise<string> {
-    const runId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status)
-      VALUES (${runId}, ${projectId}, ${issueId}, 'issue', 'running')
-    `);
-    const id = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, payload, queued_at, created_by)
-      VALUES (
-        ${id}, ${projectId}, ${issueId}, ${runId}, 'release', 'queued',
-        '{}'::jsonb, now(), ${ownerId}
-      )
-    `);
-    return id;
-  }
-
-  // ISS-131 — generic queued-job factory so sibling-chain tests can enqueue
-  // a non-release job (e.g. `triage`) and assert the picker parks it.
-  async function insertQueuedJob(
-    projectId: string,
-    issueId: string,
-    ownerId: string,
-    type: string,
-  ): Promise<string> {
-    const runId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status)
-      VALUES (${runId}, ${projectId}, ${issueId}, 'issue', 'running')
-    `);
-    const id = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, payload, queued_at, created_by)
-      VALUES (
-        ${id}, ${projectId}, ${issueId}, ${runId}, ${type}, 'queued',
-        '{}'::jsonb, now(), ${ownerId}
-      )
-    `);
-    return id;
-  }
-
-  // The picker's `fresh_capable_runners` CTE now requires at least one online,
-  // fresh runner before any job (release/triage) is dispatchable — otherwise
-  // the EXISTS gate parks every job with `runner_stale`. Seed a fresh online
-  // claude-code runner bound to a device so the picker tests assert their
-  // decomposition-specific gating, not the runner-presence gate.
-  async function seedFreshRunner(projectId: string, ownerId: string): Promise<string> {
-    const deviceId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO devices (id, owner_id, name, platform, token_hash, token_prefix, status)
-      VALUES (
-        ${deviceId}, ${ownerId}, ${`device-${deviceId.slice(0, 8)}`}, 'linux',
-        ${`!test-device-hash-${deviceId}`}, ${deviceId.slice(0, 8)}, 'online'
-      )
-    `);
-    const runnerId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
-      VALUES (
-        ${runnerId}, ${projectId}, 'claude-code', 'device', ${deviceId},
-        ${`runner-${runnerId.slice(0, 8)}`}, '{}'::jsonb, 'online', now()
-      )
-    `);
-    return runnerId;
-  }
-
-  async function insertBlocksEdge(
-    projectId: string,
-    fromIssueId: string,
-    toIssueId: string,
-  ): Promise<string> {
-    const id = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO issue_dependencies (id, project_id, from_issue_id, to_issue_id, kind)
-      VALUES (${id}, ${projectId}, ${fromIssueId}, ${toIssueId}, 'blocks')
-    `);
-    return id;
-  }
-
-  async function readIssueStatus(id: string): Promise<string> {
-    const rows = await harness.db.execute<{ status: string }>(sql`
-      SELECT status FROM issues WHERE id = ${id}
-    `);
-    return rows[0]?.status ?? '';
-  }
-
-  async function readCommentCount(issueId: string): Promise<number> {
-    const rows = await harness.db.execute<{ count: string }>(sql`
-      SELECT COUNT(*)::text AS count FROM comments WHERE issue_id = ${issueId}
-    `);
-    return Number(rows[0]?.count ?? '0');
-  }
 
   // ---------- helpers: queries ------------------------------------------
 

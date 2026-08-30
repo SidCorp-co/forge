@@ -324,10 +324,11 @@ export async function detectStalledDependencies(
       FROM jobs j
       JOIN pipeline_runs r ON r.id = j.pipeline_run_id
       JOIN issues wi ON wi.id = j.issue_id
+      -- cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — this job-type list must equal the one in the decomposeChildrenPending gate: that predicate decides which jobs a pending child HOLDS, this one decides which of those the operator is ever told about. A type gated there and missing here is a job queued forever with no alarm, which is what drive was until ISS-886.
       JOIN issue_dependencies d ON (
             (d.kind = 'blocks' AND d.to_issue_id = j.issue_id AND j.type <> 'pm')
          OR (d.kind = 'decomposes' AND d.from_issue_id = j.issue_id
-             AND j.type IN ('code','review','test','fix'))
+             AND j.type IN ('code','review','test','fix','drive'))
       )
       JOIN issues p ON p.id = (CASE WHEN d.kind = 'blocks' THEN d.from_issue_id ELSE d.to_issue_id END)
       WHERE j.status = 'queued'
@@ -438,10 +439,11 @@ export async function alarmClosedUnmergedBlockedDependents(
       JOIN pipeline_runs r ON r.id = j.pipeline_run_id
       JOIN issues wi ON wi.id = j.issue_id
       JOIN projects pr ON pr.id = j.project_id
+      -- cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — this job-type list must equal the one in the decomposeChildrenPending gate: that predicate decides which jobs a pending child HOLDS, this one decides which of those the operator is ever told about. A type gated there and missing here is a job queued forever with no alarm, which is what drive was until ISS-886.
       JOIN issue_dependencies d ON (
             (d.kind = 'blocks' AND d.to_issue_id = j.issue_id AND j.type <> 'pm')
          OR (d.kind = 'decomposes' AND d.from_issue_id = j.issue_id
-             AND j.type IN ('code','review','test','fix'))
+             AND j.type IN ('code','review','test','fix','drive'))
       )
       JOIN issues p ON p.id = (CASE WHEN d.kind = 'blocks' THEN d.from_issue_id ELSE d.to_issue_id END)
       WHERE j.status = 'queued'

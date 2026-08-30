@@ -81,6 +81,7 @@ function questionResolutionKey(issueId: string): string {
  * The auto-resolve key a notification for `to` carries, or `null` when the
  * ping is informational (`tested` / `closed`) and nothing later clears it.
  */
+// cm:edge contract -> packages/core/src/pipeline/answer-resume.ts — the question key is only auto-resolvable because that module restarts THIS status on a human comment; point one of them at a different status and the notification carries a key nothing ever clears. Since the outbox hook carries the REWRITTEN status (ISS-886), an agent's `waiting` on an autonomous project now arrives here as `needs_info` and takes the question key rather than the `PROBLEM_STATUSES` one — correct, because that park is answerable, and the reason this branch must be read before the set below.
 function resolutionKeyForStatus(to: IssueStatus, issueId: string): string | null {
   if (to === AUTONOMOUS_QUESTION_STATUS) return questionResolutionKey(issueId);
   return PROBLEM_STATUSES.has(to) ? statusResolutionKey(issueId) : null;

@@ -52,7 +52,6 @@ function selectChainOnce(rows: unknown[]): void {
   }));
 }
 
-
 // cm:guard anchored on `j.issue_id IS NOT NULL`, the first line of the staleTrigger arm and the only place that literal appears — a looser anchor would capture `decomposeChildrenPending`'s `j.type IN (...)` instead and the exclusion this file exists to pin would silently assert nothing
 function staleTriggerJobTypes(text: string): string[] {
   const m = text.match(/j\.issue_id IS NOT NULL\s+AND\s+j\.type IN \(([^)]*)\)/);

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-30T08:23:30.605Z",
+  "generatedAt": "2026-08-30T08:58:32.842Z",
   "files": {
     "packages/core/src/agent-sessions/chat-turn.test.ts": {
       "fileLines": 590,
@@ -307,7 +307,7 @@
     },
     "packages/core/tests/integration/decomposition-e2e.test.ts": {
       "fileLines": 0,
-      "maxFunctionLines": 299
+      "maxFunctionLines": 209
     },
     "packages/core/tests/integration/dependency-routes-e2e.test.ts": {
       "fileLines": 0,
@@ -323,7 +323,7 @@
     },
     "packages/core/tests/integration/dispatcher-gates-e2e.test.ts": {
       "fileLines": 0,
-      "maxFunctionLines": 303
+      "maxFunctionLines": 211
     },
     "packages/core/tests/integration/dispatcher-iss40-pipeline.test.ts": {
       "fileLines": 0,
@@ -372,10 +372,6 @@
     "packages/core/tests/integration/pipeline-health-e2e.test.ts": {
       "fileLines": 0,
       "maxFunctionLines": 237
-    },
-    "packages/core/tests/integration/pipeline-per-project-config.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 234
     },
     "packages/core/tests/integration/runner-last-error-clear-e2e.test.ts": {
       "fileLines": 0,

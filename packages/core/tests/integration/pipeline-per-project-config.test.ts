@@ -65,10 +65,214 @@ const DEFAULT_SKILL_NAMES = [
   'forge-release',
 ] as const;
 
-describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
-  let harness: TestDatabase;
-  let mods: Mods;
+let harness: TestDatabase;
+let mods: Mods;
 
+async function insertGlobalSkill(name: string): Promise<string> {
+  const id = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO skills (id, name, description, scope, prompt, source, content_hash)
+    VALUES (${id}, ${name}, ${`integration: ${name}`}, 'global', 'noop', 'builtin', ${`hash-${id}`})
+  `);
+  return id;
+}
+
+async function seedProject(
+  args: {
+    statesOverride?: Record<string, { enabled?: boolean; mode?: 'auto' | 'manual' }>;
+    mode?: 'autonomous';
+  } = {},
+) {
+  const owner = await createTestUser(harness.db);
+  const project = await createTestProject(harness.db, owner.id);
+  await createTestProjectMember(harness.db, {
+    userId: owner.id,
+    projectId: project.id,
+    role: 'admin',
+  });
+
+  const skillIdByName = new Map<string, string>();
+  for (const name of DEFAULT_SKILL_NAMES) {
+    skillIdByName.set(name, await insertGlobalSkill(name));
+  }
+
+  // Bootstrap-equivalent: one registration per mapped stage pointing at the
+  // default `forge-<type>` global skill.
+  // Stage→skill map mirrors the current PIPELINE_STEPS (registry.ts):
+  // open→triage, confirmed→clarify, clarified→plan, approved→code,
+  // developed→review, testing→test, reopen→fix, released→release.
+  const stagePairs: Array<[string, string]> = [
+    ['open', 'forge-triage'],
+    ['confirmed', 'forge-clarify'],
+    ['clarified', 'forge-plan'],
+    ['approved', 'forge-code'],
+    ['developed', 'forge-review'],
+    ['testing', 'forge-test'],
+    ['reopen', 'forge-fix'],
+    ['released', 'forge-release'],
+  ];
+  for (const [stage, skillName] of stagePairs) {
+    const skillId = skillIdByName.get(skillName);
+    if (!skillId) throw new Error(`missing seeded skill ${skillName}`);
+    await harness.db.execute(sql`
+      INSERT INTO skill_registrations (project_id, skill_id, stage, registered_by)
+      VALUES (${project.id}, ${skillId}, ${stage}, ${owner.id})
+    `);
+  }
+
+  const states = { ...mods.defaultStatesConfig(), ...(args.statesOverride ?? {}) };
+  const pipelineConfig = {
+    ...(args.mode ? { mode: args.mode } : {}),
+    enabled: true,
+    autoTriage: true,
+    autoClarify: true,
+    autoPlan: true,
+    autoCode: true,
+    autoReview: true,
+    autoTest: true,
+    autoFix: true,
+    autoRelease: true,
+    states,
+  };
+  await harness.db.execute(sql`
+    UPDATE projects
+    SET agent_config = jsonb_build_object('pipelineConfig', ${JSON.stringify(pipelineConfig)}::jsonb)
+    WHERE id = ${project.id}
+  `);
+
+  return { owner, project, skillIdByName };
+}
+
+async function insertOpenIssue(projectId: string, createdById: string): Promise<IssueRow> {
+  const id = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id, reopen_count)
+    VALUES (
+      ${id}, ${projectId}, ${Math.floor(Math.random() * 1_000_000)},
+      'epic integration', 'open', 'medium', ${createdById}, 0
+    )
+  `);
+  return { id, projectId, status: 'open', reopenCount: 0 };
+}
+
+async function readIssue(issueId: string): Promise<IssueRow> {
+  const rows = await harness.db.execute<IssueRow>(sql`
+    SELECT id, project_id AS "projectId", status, reopen_count AS "reopenCount"
+    FROM issues WHERE id = ${issueId}
+  `);
+  const row = rows[0];
+  if (!row) throw new Error(`issue ${issueId} not found`);
+  return row;
+}
+
+async function jobsFor(issueId: string): Promise<JobSnapshot[]> {
+  const rows = await harness.db.execute<JobSnapshot>(sql`
+    SELECT type, payload FROM jobs
+    WHERE issue_id = ${issueId}
+    ORDER BY created_at ASC, type ASC
+  `);
+  return rows as unknown as JobSnapshot[];
+}
+
+async function activityFor(issueId: string): Promise<ActivityRow[]> {
+  const rows = await harness.db.execute<ActivityRow>(sql`
+    SELECT action, payload FROM activity_log
+    WHERE issue_id = ${issueId}
+    ORDER BY created_at ASC
+  `);
+  return rows as unknown as ActivityRow[];
+}
+
+/**
+ * Drive one transition through the real orchestrator. Re-reads the issue
+ * after each call because `autoSkipDisabledStages` may have advanced it past
+ * `to` already. The orchestrator catches pg-boss errors so the test does not
+ * need a running queue.
+ */
+// Forward order of the happy-path lifecycle, used so `drive` can tell whether
+// the orchestrator's eager soft-skip already carried the issue to OR PAST a
+// target stage (and the explicit drive should be a no-op rather than a
+// backward transition).
+const PIPELINE_ORDER: import('../../src/db/schema.js').IssueStatus[] = [
+  'open',
+  'confirmed',
+  'clarified',
+  'approved',
+  'in_progress',
+  'developed',
+  'testing',
+  'tested',
+  'released',
+  'closed',
+];
+const orderOf = (s: import('../../src/db/schema.js').IssueStatus): number => {
+  const i = PIPELINE_ORDER.indexOf(s);
+  return i === -1 ? Number.POSITIVE_INFINITY : i;
+};
+
+async function drive(
+  issue: IssueRow,
+  to: import('../../src/db/schema.js').IssueStatus,
+  ownerId: string,
+): Promise<IssueRow> {
+  // Re-read the live status: a prior drive's outbox drain may have auto-skip
+  // advanced the issue TO or PAST `to` already (e.g. unmapped/no-skill stages
+  // like `deploying`/`pass`/`staging` collapse forward through the chain). If
+  // the issue is already at-or-beyond the target, this drive is a no-op —
+  // driving it would either throw NO_OP or move the issue BACKWARD. Skip
+  // cleanly so the test's explicit walk tolerates the eager soft-skip.
+  const live = await readIssue(issue.id);
+  if (orderOf(live.status) >= orderOf(to)) return live;
+  // cm:why this file drives the FULL status walk as a device actor, so it trips both transition-evidence rules in turn: planRequiredRule at `approved`, noWorkEvidenceRule at `developed`/`testing`. Neither plan text nor branch name is under test here — per-stage skill routing is — so each hop's precondition is seeded just before it.
+  // cm:edge contract -> packages/core/src/issues/transition-evidence.ts — the trigger statuses ('approved' for plan, NO_WORK_EVIDENCE_STATUSES for branch) and the accepted evidence shapes live there; widen that set without widening this and all three fixtures fail at a hop instead of at their assertion
+  if (to === 'approved') {
+    await harness.db.execute(sql`
+      UPDATE issues
+      SET plan = COALESCE(NULLIF(TRIM(plan), ''), 'fixture plan — see cm:why above')
+      WHERE id = ${live.id}
+    `);
+  }
+  if (to === 'developed' || to === 'testing') {
+    await harness.db.execute(sql`
+      UPDATE issues
+      SET session_context =
+        COALESCE(session_context, '{}'::jsonb) || jsonb_build_object('branch', 'ISS-fixture-' || ${live.id}::text)
+      WHERE id = ${live.id}
+    `);
+  }
+  await mods.applyStatusTransition(live, to, { id: ownerId, ownerId });
+  // ISS-196 — applyStatusTransition no longer emits `transition` inline; it
+  // writes a pipeline_outbox row via the AFTER UPDATE trigger. Drain it so
+  // the orchestrator subscriber fires and enqueues the stage's job. Drain in
+  // a loop because each enqueue/skip may chain (auto-skip re-emits a
+  // transition, producing more outbox rows) until the queue settles.
+  let guard = 0;
+  while ((await mods.drainOutboxOnce()).processed > 0 && guard++ < 20) {
+    /* keep draining until no rows remain */
+  }
+  return await readIssue(issue.id);
+}
+
+async function emitIssueCreated(issue: IssueRow, ownerId: string): Promise<void> {
+  await mods.hooks.emit('issueCreated', {
+    issueId: issue.id,
+    projectId: issue.projectId,
+    actor: { type: 'user', id: ownerId },
+    // ISS-130 — issueCreated payload now requires the inserted row's status.
+    status: 'open',
+    snapshot: {
+      title: 'epic integration',
+      description: null,
+      priority: 'medium',
+      category: null,
+      reportedBy: ownerId,
+      assigneeId: null,
+      labels: [],
+    },
+  });
+}
+
+describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
   beforeAll(async () => {
     harness = await setupTestDatabase();
     process.env.DATABASE_URL = harness.url;
@@ -114,210 +318,6 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     mods.registerPipelineOrchestrator(mods.hooks);
     mods.registerActivitySubscribers(mods.hooks);
   });
-
-  async function insertGlobalSkill(name: string): Promise<string> {
-    const id = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO skills (id, name, description, scope, prompt, source, content_hash)
-      VALUES (${id}, ${name}, ${`integration: ${name}`}, 'global', 'noop', 'builtin', ${`hash-${id}`})
-    `);
-    return id;
-  }
-
-  async function seedProject(
-    args: {
-      statesOverride?: Record<string, { enabled?: boolean; mode?: 'auto' | 'manual' }>;
-      mode?: 'autonomous';
-    } = {},
-  ) {
-    const owner = await createTestUser(harness.db);
-    const project = await createTestProject(harness.db, owner.id);
-    await createTestProjectMember(harness.db, {
-      userId: owner.id,
-      projectId: project.id,
-      role: 'admin',
-    });
-
-    const skillIdByName = new Map<string, string>();
-    for (const name of DEFAULT_SKILL_NAMES) {
-      skillIdByName.set(name, await insertGlobalSkill(name));
-    }
-
-    // Bootstrap-equivalent: one registration per mapped stage pointing at the
-    // default `forge-<type>` global skill.
-    // Stage→skill map mirrors the current PIPELINE_STEPS (registry.ts):
-    // open→triage, confirmed→clarify, clarified→plan, approved→code,
-    // developed→review, testing→test, reopen→fix, released→release.
-    const stagePairs: Array<[string, string]> = [
-      ['open', 'forge-triage'],
-      ['confirmed', 'forge-clarify'],
-      ['clarified', 'forge-plan'],
-      ['approved', 'forge-code'],
-      ['developed', 'forge-review'],
-      ['testing', 'forge-test'],
-      ['reopen', 'forge-fix'],
-      ['released', 'forge-release'],
-    ];
-    for (const [stage, skillName] of stagePairs) {
-      const skillId = skillIdByName.get(skillName);
-      if (!skillId) throw new Error(`missing seeded skill ${skillName}`);
-      await harness.db.execute(sql`
-        INSERT INTO skill_registrations (project_id, skill_id, stage, registered_by)
-        VALUES (${project.id}, ${skillId}, ${stage}, ${owner.id})
-      `);
-    }
-
-    const states = { ...mods.defaultStatesConfig(), ...(args.statesOverride ?? {}) };
-    const pipelineConfig = {
-      ...(args.mode ? { mode: args.mode } : {}),
-      enabled: true,
-      autoTriage: true,
-      autoClarify: true,
-      autoPlan: true,
-      autoCode: true,
-      autoReview: true,
-      autoTest: true,
-      autoFix: true,
-      autoRelease: true,
-      states,
-    };
-    await harness.db.execute(sql`
-      UPDATE projects
-      SET agent_config = jsonb_build_object('pipelineConfig', ${JSON.stringify(pipelineConfig)}::jsonb)
-      WHERE id = ${project.id}
-    `);
-
-    return { owner, project, skillIdByName };
-  }
-
-  async function insertOpenIssue(projectId: string, createdById: string): Promise<IssueRow> {
-    const id = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id, reopen_count)
-      VALUES (
-        ${id}, ${projectId}, ${Math.floor(Math.random() * 1_000_000)},
-        'epic integration', 'open', 'medium', ${createdById}, 0
-      )
-    `);
-    return { id, projectId, status: 'open', reopenCount: 0 };
-  }
-
-  async function readIssue(issueId: string): Promise<IssueRow> {
-    const rows = await harness.db.execute<IssueRow>(sql`
-      SELECT id, project_id AS "projectId", status, reopen_count AS "reopenCount"
-      FROM issues WHERE id = ${issueId}
-    `);
-    const row = rows[0];
-    if (!row) throw new Error(`issue ${issueId} not found`);
-    return row;
-  }
-
-  async function jobsFor(issueId: string): Promise<JobSnapshot[]> {
-    const rows = await harness.db.execute<JobSnapshot>(sql`
-      SELECT type, payload FROM jobs
-      WHERE issue_id = ${issueId}
-      ORDER BY created_at ASC, type ASC
-    `);
-    return rows as unknown as JobSnapshot[];
-  }
-
-  async function activityFor(issueId: string): Promise<ActivityRow[]> {
-    const rows = await harness.db.execute<ActivityRow>(sql`
-      SELECT action, payload FROM activity_log
-      WHERE issue_id = ${issueId}
-      ORDER BY created_at ASC
-    `);
-    return rows as unknown as ActivityRow[];
-  }
-
-  /**
-   * Drive one transition through the real orchestrator. Re-reads the issue
-   * after each call because `autoSkipDisabledStages` may have advanced it past
-   * `to` already. The orchestrator catches pg-boss errors so the test does not
-   * need a running queue.
-   */
-  // Forward order of the happy-path lifecycle, used so `drive` can tell whether
-  // the orchestrator's eager soft-skip already carried the issue to OR PAST a
-  // target stage (and the explicit drive should be a no-op rather than a
-  // backward transition).
-  const PIPELINE_ORDER: import('../../src/db/schema.js').IssueStatus[] = [
-    'open',
-    'confirmed',
-    'clarified',
-    'approved',
-    'in_progress',
-    'developed',
-    'testing',
-    'tested',
-    'released',
-    'closed',
-  ];
-  const orderOf = (s: import('../../src/db/schema.js').IssueStatus): number => {
-    const i = PIPELINE_ORDER.indexOf(s);
-    return i === -1 ? Number.POSITIVE_INFINITY : i;
-  };
-
-  async function drive(
-    issue: IssueRow,
-    to: import('../../src/db/schema.js').IssueStatus,
-    ownerId: string,
-  ): Promise<IssueRow> {
-    // Re-read the live status: a prior drive's outbox drain may have auto-skip
-    // advanced the issue TO or PAST `to` already (e.g. unmapped/no-skill stages
-    // like `deploying`/`pass`/`staging` collapse forward through the chain). If
-    // the issue is already at-or-beyond the target, this drive is a no-op —
-    // driving it would either throw NO_OP or move the issue BACKWARD. Skip
-    // cleanly so the test's explicit walk tolerates the eager soft-skip.
-    const live = await readIssue(issue.id);
-    if (orderOf(live.status) >= orderOf(to)) return live;
-    // cm:why this file drives the FULL status walk as a device actor, so it trips both transition-evidence rules in turn: planRequiredRule at `approved`, noWorkEvidenceRule at `developed`/`testing`. Neither plan text nor branch name is under test here — per-stage skill routing is — so each hop's precondition is seeded just before it.
-    // cm:edge contract -> packages/core/src/issues/transition-evidence.ts — the trigger statuses ('approved' for plan, NO_WORK_EVIDENCE_STATUSES for branch) and the accepted evidence shapes live there; widen that set without widening this and all three fixtures fail at a hop instead of at their assertion
-    if (to === 'approved') {
-      await harness.db.execute(sql`
-        UPDATE issues
-        SET plan = COALESCE(NULLIF(TRIM(plan), ''), 'fixture plan — see cm:why above')
-        WHERE id = ${live.id}
-      `);
-    }
-    if (to === 'developed' || to === 'testing') {
-      await harness.db.execute(sql`
-        UPDATE issues
-        SET session_context =
-          COALESCE(session_context, '{}'::jsonb) || jsonb_build_object('branch', 'ISS-fixture-' || ${live.id}::text)
-        WHERE id = ${live.id}
-      `);
-    }
-    await mods.applyStatusTransition(live, to, { id: ownerId, ownerId });
-    // ISS-196 — applyStatusTransition no longer emits `transition` inline; it
-    // writes a pipeline_outbox row via the AFTER UPDATE trigger. Drain it so
-    // the orchestrator subscriber fires and enqueues the stage's job. Drain in
-    // a loop because each enqueue/skip may chain (auto-skip re-emits a
-    // transition, producing more outbox rows) until the queue settles.
-    let guard = 0;
-    while ((await mods.drainOutboxOnce()).processed > 0 && guard++ < 20) {
-      /* keep draining until no rows remain */
-    }
-    return await readIssue(issue.id);
-  }
-
-  async function emitIssueCreated(issue: IssueRow, ownerId: string): Promise<void> {
-    await mods.hooks.emit('issueCreated', {
-      issueId: issue.id,
-      projectId: issue.projectId,
-      actor: { type: 'user', id: ownerId },
-      // ISS-130 — issueCreated payload now requires the inserted row's status.
-      status: 'open',
-      snapshot: {
-        title: 'epic integration',
-        description: null,
-        priority: 'medium',
-        category: null,
-        reportedBy: ownerId,
-        assigneeId: null,
-        labels: [],
-      },
-    });
-  }
 
   it('fixture 1 — default seed: every stage uses the bootstrapped forge-* skill', async () => {
     const { owner, project } = await seedProject();

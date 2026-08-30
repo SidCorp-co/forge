@@ -173,8 +173,8 @@ describe('every other transition is untouched', () => {
     expect(result.status).toBe('reopen');
   });
 
-  // cm:guard the resolver must stay behind the `reopen` check: this runs on EVERY transition from every surface, and a project read here would add a query per status write
-  it('reads no project row for a target that is not `reopen`', async () => {
+  // cm:guard the resolver must stay behind the cheap `isRewritablePark` status test — it runs on EVERY transition from every surface, and moving the project read in front of that test adds a query to every status write in the product for the two targets that can use it
+  it('reads no project row for a target that is neither `reopen` nor `waiting`', async () => {
     queueUpdate('in_progress');
 
     await transitionIssueStatus(
