@@ -111,7 +111,7 @@ describe('runMemoryWrite', () => {
         text: 'handoff text',
         metadata: { run_id: 'run-1', step: 'plan', attempt: 1 },
       },
-      { semanticDedup: true },
+      { nearDuplicateProbe: true },
     );
   });
 
@@ -129,7 +129,9 @@ describe('runMemoryWrite', () => {
       sourceRef: 'k-1',
       textContent: 'a convention',
     });
-    expect(indexMemoryMock).toHaveBeenLastCalledWith(expect.anything(), { semanticDedup: true });
+    expect(indexMemoryMock).toHaveBeenLastCalledWith(expect.anything(), {
+      nearDuplicateProbe: true,
+    });
 
     await runMemoryWrite({
       projectId: PROJECT_ID,
@@ -137,7 +139,9 @@ describe('runMemoryWrite', () => {
       sourceRef: 'd-1',
       textContent: 'a pm decision mirror',
     });
-    expect(indexMemoryMock).toHaveBeenLastCalledWith(expect.anything(), { semanticDedup: false });
+    expect(indexMemoryMock).toHaveBeenLastCalledWith(expect.anything(), {
+      nearDuplicateProbe: false,
+    });
   });
 
   it('omits metadata key entirely when input.metadata is undefined', async () => {

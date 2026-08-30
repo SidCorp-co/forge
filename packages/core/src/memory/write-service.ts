@@ -32,11 +32,11 @@ export type WriteMemoryInput = z.infer<typeof writeMemoryInputSchema>;
 export type WriteMemoryResult = IndexResult;
 
 /**
- * Sources where agents author free-form content and near-duplicates
- * accumulate without semantic dedup. Lifecycle mirrors (issue/decision/
- * policy) track their source records 1:1 and must never be merged.
+ * Sources where agents author free-form content, so a near-duplicate is worth
+ * reporting back to the caller. Lifecycle mirrors (issue/decision/policy)
+ * track their source records 1:1 — a near-duplicate there is expected.
  */
-const SEMANTIC_DEDUP_SOURCES = new Set<string>(['note', 'knowledge']);
+const NEAR_DUPLICATE_PROBE_SOURCES = new Set<string>(['note', 'knowledge']);
 
 export class MemoryWriteValidationError extends Error {}
 
@@ -115,6 +115,6 @@ export async function runMemoryWrite(input: WriteMemoryInput): Promise<WriteMemo
       text: input.textContent,
       ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
     },
-    { semanticDedup: SEMANTIC_DEDUP_SOURCES.has(input.source) },
+    { nearDuplicateProbe: NEAR_DUPLICATE_PROBE_SOURCES.has(input.source) },
   );
 }

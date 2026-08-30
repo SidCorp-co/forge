@@ -13,6 +13,11 @@ import { runMemoryGet } from './get-service.js';
 const listQuerySchema = paginationSchema.extend({
   projectId: z.uuid(),
   source: z.enum(memorySources).optional(),
+  // cm:guard a query string carries no boolean — the literal must be parsed here, or `?includeArchived=true` arrives as the truthy string "true" on every request and the archived rows leak into the default read
+  includeArchived: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => v === 'true'),
 });
 
 const deleteQuerySchema = z.object({
@@ -33,13 +38,14 @@ memoryListRoutes.get(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const { projectId, source, limit, offset } = c.req.valid('query');
+    const { projectId, source, limit, offset, includeArchived } = c.req.valid('query');
     const userId = c.get('userId');
     await assertProjectAccess(projectId, userId, 'viewer');
 
     const { rows, total } = await runMemoryGet({
       projectId,
       ...(source ? { source } : {}),
+      includeArchived,
       limit,
       offset,
       orderBy: 'createdAt',

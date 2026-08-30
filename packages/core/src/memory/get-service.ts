@@ -22,6 +22,14 @@ export const getMemoryInputSchema = z.object({
    * lookup: `{ run_id: "<uuid>", step: "plan", attempt: 1 }`.
    */
   metadataFilter: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+  /**
+   * Include soft-deleted rows (decay, consolidation, `feedback verdict=
+   * outdated`, and the pre-ISS-876 `<ref>__superseded-<ts>` dedup snapshots).
+   * Off by default: an archived row is not current project memory. Turn it on
+   * to recover text that only survives in an archived row — every returned
+   * row carries `archivedAt` so a recovered one can never be read as live.
+   */
+  includeArchived: z.boolean().optional(),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
   orderBy: z.enum(['createdAt', 'updatedAt', 'embeddedAt']).default('createdAt'),
@@ -40,6 +48,8 @@ export interface MemoryRow {
   embeddedAt: Date;
   createdAt: Date;
   updatedAt: Date;
+  /** Non-null on a soft-deleted row; only ever non-null under `includeArchived`. */
+  archivedAt: Date | null;
 }
 
 export interface GetMemoryResult {
@@ -48,8 +58,8 @@ export interface GetMemoryResult {
 }
 
 export async function runMemoryGet(input: GetMemoryInput): Promise<GetMemoryResult> {
-  // Archived rows (decay/consolidation soft delete) are invisible to reads.
-  const conditions: SQL[] = [eq(memories.projectId, input.projectId), isNull(memories.archivedAt)];
+  const conditions: SQL[] = [eq(memories.projectId, input.projectId)];
+  if (!input.includeArchived) conditions.push(isNull(memories.archivedAt));
   if (input.source) conditions.push(eq(memories.source, input.source));
   if (input.sourceRef) conditions.push(eq(memories.sourceRef, input.sourceRef));
   if (input.metadataFilter && Object.keys(input.metadataFilter).length > 0) {
@@ -81,6 +91,7 @@ export async function runMemoryGet(input: GetMemoryInput): Promise<GetMemoryResu
       embeddedAt: memories.embeddedAt,
       createdAt: memories.createdAt,
       updatedAt: memories.updatedAt,
+      archivedAt: memories.archivedAt,
     })
     .from(memories)
     .where(where)

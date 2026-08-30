@@ -69,7 +69,7 @@ export const forgeMemorySearchTool: DeviceScopedMcpToolFactory = (device) => ({
 export const forgeMemoryGetTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_memory.get',
   description:
-    'List memory rows for a project, filtered by source / sourceRef / metadata containment. Returns rows sorted by createdAt|updatedAt|embeddedAt + a total count. Does NOT embed — use for natural-key lookups (e.g. step handoff by run_id+step+attempt). Requires the device owner to be a project member.',
+    'List memory rows for a project, filtered by source / sourceRef / metadata containment. Returns rows sorted by createdAt|updatedAt|embeddedAt + a total count. Does NOT embed — use for natural-key lookups (e.g. step handoff by run_id+step+attempt). Live rows only unless includeArchived:true, which also returns soft-deleted rows (decay, consolidation, feedback verdict=outdated, and pre-ISS-876 `<ref>__superseded-<timestamp>` dedup snapshots) — every row carries archivedAt so an archived one is never mistaken for current memory. Requires the device owner to be a project member.',
   inputSchema: zodToMcpSchema(getMemoryInputSchema),
   handler: async (args) => {
     const input = getMemoryInputSchema.parse(args);
@@ -129,7 +129,7 @@ export const forgeMemoryFeedbackTool: DeviceScopedMcpToolFactory = (device) => (
 export const forgeMemoryWriteTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_memory.write',
   description:
-    'Write (upsert) a memory row for a project. Embeds textContent via the configured embedding model and stores under the unique key (projectId, source, sourceRef). Returns {id, embeddedAt, truncated, degraded, dedupedInto?}. For note/knowledge a semantically near-identical existing row absorbs the write instead of duplicating — dedupedInto then holds the absorbing sourceRef; reuse it for future refinements. degraded:true means embeddings were down and the row is keyword-searchable only until the backfill re-embeds it. Agent-authored sources (note/knowledge/policy) are quality-gated: textContent ≤8192 chars (the embedding window) and no fenced code block >5 lines — write the invariant + a file:line/SHA pointer instead of code; one-line runnable commands are fine. Requires the device owner to be a project member.',
+    'Write (upsert) a memory row for a project. Embeds textContent via the configured embedding model and stores under the unique key (projectId, source, sourceRef) — the ref you name is ALWAYS the ref that is written, and no other row is ever modified. Returns {id, embeddedAt, truncated, degraded, nearDuplicateOf?, dedupeScore?}. nearDuplicateOf is advisory: for note/knowledge, an existing row whose text is near-identical to yours, reported so you can decide to refine THAT record instead — to do so, re-issue the write under that exact sourceRef. degraded:true means embeddings were down and the row is keyword-searchable only until the backfill re-embeds it. Agent-authored sources (note/knowledge/policy) are quality-gated: textContent ≤8192 chars (the embedding window) and no fenced code block >5 lines — write the invariant + a file:line/SHA pointer instead of code; one-line runnable commands are fine. Requires the device owner to be a project member.',
   inputSchema: zodToMcpSchema(writeMemoryInputSchema),
   handler: async (args) => {
     const input = writeMemoryInputSchema.parse(args);
