@@ -26,22 +26,17 @@ import {
   comments,
   issues,
   jobs,
-  projects,
   terminalAgentSessionStatuses,
 } from '../db/schema.js';
 import { sessionInbox } from '../db/schema-session-inbox.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
 import type { LoopScope } from '../jobs/loop-monitor.js';
 import { logger } from '../logger.js';
-import { AUTONOMOUS_ENTRY_STATUS, isAutonomous } from './autonomous-dispatch.js';
+import { AUTONOMOUS_ENTRY_STATUS, AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
+import { isAutonomousProject } from './autonomous-project.js';
 import type { HooksBus } from './hooks.js';
-import { pipelineConfigSchema } from './pipeline-config-schema.js';
 
-/** The park the driver enters to ask a question. */
-// cm:edge lockstep -> packages/core/src/jobs/turn-verdict-routes.ts — the turn verdict asks the SAME question from the other end (may this session stay resident?), and the two answers must name one status: a verdict that parked on `waiting` too would hold a runner slot for a pause a human chose, and a resume that did would take that pause away from them.
-export const QUESTION_STATUS = 'needs_info';
-
-// cm:guard `needs_info` ONLY, never the other two parks the autonomous vocabulary also renders as needs_human — `waiting` and `on_hold` are stopped by a person, and a comment on one is discussion, not permission to restart. Resuming those would take the pause away from the human who chose it.
+// cm:guard `needs_info` ONLY, never the other two parks the autonomous vocabulary also renders as needs_human — `waiting` and `on_hold` are stopped by a PERSON, and a comment on one is discussion, not permission to restart. Since ISS-886 that is true by construction rather than by convention: an agent can no longer reach `waiting` on this mode (issues/autonomous-park.ts rewrites it here), so the only ones left are a human's own pause and the decompose review gate — and waking the gate would approve a split nobody reviewed.
 async function resumableIssue(issueId: string) {
   const [issue] = await db
     .select({
@@ -53,15 +48,8 @@ async function resumableIssue(issueId: string) {
     .from(issues)
     .where(eq(issues.id, issueId))
     .limit(1);
-  if (!issue || issue.status !== QUESTION_STATUS) return null;
-  const [project] = await db
-    .select({ agentConfig: projects.agentConfig })
-    .from(projects)
-    .where(eq(projects.id, issue.projectId))
-    .limit(1);
-  const ac = (project?.agentConfig as { pipelineConfig?: unknown } | null) ?? {};
-  const parsed = pipelineConfigSchema.safeParse(ac.pipelineConfig ?? {});
-  if (!parsed.success || !isAutonomous(parsed.data)) return null;
+  if (!issue || issue.status !== AUTONOMOUS_QUESTION_STATUS) return null;
+  if (!(await isAutonomousProject(issue.projectId))) return null;
   return issue;
 }
 
@@ -174,7 +162,7 @@ export async function resumeLapsedAnswers(
         eq(sessionInbox.kind, 'answer'),
         // cm:guard an APPLIED message was read by the model, and it is excluded HERE rather than in the loop below: a second check there would be a line no assertion could turn red, since a row this predicate drops never reaches it. Re-dispatching one would answer the same question twice — once in the session that consumed it, once in a fresh job that has no idea it happened.
         isNull(sessionInbox.appliedAt),
-        eq(issues.status, QUESTION_STATUS),
+        eq(issues.status, AUTONOMOUS_QUESTION_STATUS),
         scope.projectId ? eq(issues.projectId, scope.projectId) : sql`true`,
       ),
     );

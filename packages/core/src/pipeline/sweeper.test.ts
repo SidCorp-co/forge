@@ -58,8 +58,6 @@ vi.mock('../admin/alert-sweeper.js', () => ({ runAlertSweep: (now?: Date) => ale
 
 const dbExecute = vi.fn(async (..._args: unknown[]) => [] as Array<Record<string, unknown>>);
 const sessionsWhere = vi.fn();
-// ISS-445 — db.select(...).from(...).where(...) result, used by
-// reapOrphanedOneShotRuns to read a run's session statuses for outcome.
 const selectWhere = vi.fn(async () => [] as Array<{ status: string }>);
 const queuedProjectsRows: Array<{ projectId: string }> = [];
 // ISS-639 — db.insert(comments).values(...) call sites (park-comment pass).
@@ -71,8 +69,6 @@ vi.mock('../db/client.js', () => ({
   db: {
     execute: (...args: unknown[]) => dbExecute(...(args as [])),
     update: () => ({ set: () => ({ where: () => ({ returning: () => sessionsWhere() }) }) }),
-    // ISS-447 — applyKernelTransition writes the kernel_transitions audit row
-    // on the same db handle after each terminal flip (one-shot run pass).
     insert: () => ({ values: (...args: unknown[]) => dbInsertValues(...args) }),
     select: () => ({
       from: () => ({
@@ -154,6 +150,8 @@ const {
   alarmClosedUnmergedBlockedDependents,
 } = await import('./sweeper.js');
 
+const DECOMPOSE_SCOPE =
+  /d\.kind = 'decomposes'[\s\S]*?j\.type IN \('code','review','test','fix','drive'\)/;
 /** Flatten a drizzle `sql` template into its raw text for fragment assertions. */
 function sqlText(arg: unknown): string {
   const out: string[] = [];
@@ -265,7 +263,6 @@ describe('runPipelineSweep — loop-first ordering (ISS-449)', () => {
       sessionLostJobs,
       resultMisses: zeroAxis,
     });
-    // The loop ran before the alarm SELECTs hit the db (call order).
     const firstAlarmCall = dbExecute.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
     const loopCall = runLoopMonitorMock.mock.invocationCallOrder[0] ?? Number.NaN;
     expect(loopCall).toBeLessThan(firstAlarmCall);
@@ -648,6 +645,7 @@ describe('detectStalledDependencies — never-clearing gate (ISS-442)', () => {
   it('emits a deduped dispatch-hop wedge per parked-blocker deadlock', async () => {
     dbExecute.mockResolvedValueOnce([stalledRow]);
     const res = await detectStalledDependencies(new Date());
+    expect(sqlText(dbExecute.mock.calls[0]?.[0])).toMatch(DECOMPOSE_SCOPE);
     expect(res.detected).toBe(1);
     expect(emitWedgeMock).toHaveBeenCalledTimes(1);
     expect(emitWedgeMock).toHaveBeenCalledWith(
@@ -790,6 +788,8 @@ describe('alarmClosedUnmergedBlockedDependents — alarm only (ISS-639, demoted 
     expect(text).toMatch(/j\.status\s*=\s*'queued'/);
     expect(text).toMatch(/j\.queued_at\s*<\s*/);
     expect(text).toMatch(/r\.status\s*=\s*'running'/);
+    // cm:guard ISS-886 — `drive` must sit in the decomposes arm of BOTH alarm passes (the twin assertion is in the `detectStalledDependencies` suite) or an autonomous decompose parent queues forever with nobody notified: `decomposeChildrenPending` holds a `drive` job on a pending child exactly as it holds `code`, and these two passes are the only things that ever tell an operator a held job exists.
+    expect(text).toMatch(DECOMPOSE_SCOPE);
   });
 
   it('runs as part of runPipelineSweep and reports the count', async () => {

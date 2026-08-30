@@ -553,16 +553,11 @@ export function buildBarrierFragments(args: {
         AND (d.valid_until IS NULL OR d.valid_until > now())
         AND (p.merged_at IS NULL${blockReopenArm})${blockClosedArm}
     )`,
-    // Decompose redesign — the PARENT runs its integration LAST. A decompose
-    // parent's forward jobs (code/review/test/fix) stay queued until every
-    // `kind='decomposes'` child is satisfied — `merged_at` stamped OR (ONLY
-    // under a structurally-unstampable base) `closed` — same satisfaction
-    // rule as `blockedBy` above.
-    // Children are NOT gated on the parent: the old `releaseDecomposePending`
-    // gate (child release waited for `parent.merged_at`) deadlocked umbrella
-    // epics that never code-merge themselves, so it was removed. The
-    // dependency is now one-directional: parent waits for children.
-    decomposeChildrenPending: sql`j.type IN ('code','review','test','fix') AND EXISTS (
+    // cm:why the PARENT runs its integration LAST: its forward jobs stay queued until every `kind='decomposes'` child is satisfied — `merged_at` stamped, or `closed` ONLY under a structurally-unstampable base, the same satisfaction rule as `blockedBy` above
+    // cm:guard the dependency is one-directional and must stay that way — children are NOT gated on the parent. The inverse gate (`releaseDecomposePending`, child release waiting on `parent.merged_at`) deadlocked umbrella epics that never code-merge themselves, and was removed for it.
+    // cm:guard `drive` is the autonomous mode's whole pipeline in one job, so listing it here is safe ONLY because the EXISTS is anchored on `d2.from_issue_id = j.issue_id` — the parent side. A child is only ever `to_issue_id`, so its own drive job finds no edge and runs free; loosening that anchor would hold both sides and deadlock the epic against itself, silently, reporting `decompose_children_pending` on each.
+    // cm:guard the parent's held job sits `queued` for as long as the children take, and three passes must keep tolerating that: `inv7-alarms` third pass fires only on a queued job with NO gate reason, its fifth wants a PAUSED run, and `running_ids` above counts only `dispatched`/`running` plus retry-cooldown — so this neither alarms, nor is reaped, nor burns the project cap. A pass that started reaping on queue age alone would strand exactly the parents this gate exists to hold.
+    decomposeChildrenPending: sql`j.type IN ('code','review','test','fix','drive') AND EXISTS (
       SELECT 1 FROM issue_dependencies d2
       JOIN issues c2 ON c2.id = d2.to_issue_id
       WHERE d2.from_issue_id = j.issue_id

@@ -50,6 +50,7 @@ interface FakeState {
     baseBranch: string | null;
     productionBranch: string | null;
     repoPath: string | null;
+    agentConfig?: Record<string, unknown>;
   };
   edges: Array<{
     id: string;
@@ -399,6 +400,36 @@ describe('decomposeParent — parent status guard', () => {
     await expect(
       decomposeParent(PARENT_ID, [{ title: 'Child A' }], { userId: USER_ID }),
     ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+  });
+
+  // cm:why ISS-886 — an autonomous project never holds `confirmed`/`clarified`, so the staged set refused every parent its driver could present and decompose was unreachable in that mode
+  it('accepts an autonomous parent at the statuses its driver actually holds', async () => {
+    state.project.agentConfig = { pipelineConfig: { mode: 'autonomous' } };
+    for (const status of ['open', 'in_progress'] as const) {
+      seedParent({ status });
+      const out = await decomposeParent(PARENT_ID, [{ title: `Child ${status}` }], {
+        userId: USER_ID,
+      });
+      expect(out.childIds).toHaveLength(1);
+    }
+  });
+
+  // cm:guard the two sets are per-mode, not a union: ~20 tenants are staged, and admitting `in_progress` there would let a step decompose an issue mid-run. This is the same fixture as the reject test above with only the mode flipped, so a merged set fails exactly one of the pair.
+  it('still refuses those same statuses on a staged project', async () => {
+    for (const status of ['open', 'in_progress'] as const) {
+      seedParent({ status });
+      await expect(
+        decomposeParent(PARENT_ID, [{ title: 'Child A' }], { userId: USER_ID }),
+      ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    }
+  });
+
+  it('names the statuses THIS project accepts when it refuses', async () => {
+    state.project.agentConfig = { pipelineConfig: { mode: 'autonomous' } };
+    seedParent({ status: 'confirmed' });
+    await expect(
+      decomposeParent(PARENT_ID, [{ title: 'Child A' }], { userId: USER_ID }),
+    ).rejects.toThrow(/open, in_progress, waiting/);
   });
 
   it('allows further decomposition when the parent already owns an integration branch', async () => {

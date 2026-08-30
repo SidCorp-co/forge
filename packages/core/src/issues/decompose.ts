@@ -1,30 +1,22 @@
 /**
  * ISS-138 (PR-D) — atomic decomposition helper.
  *
- * Single entry point used by both the REST route (`POST /api/issues/:id/decompose`)
- * and the MCP `forge_pm.set_dependency` tool. Does five things in one transaction:
+ * Single entry point for the REST route (`POST /api/issues/:id/decompose`) and
+ * the MCP `forge_pm.set_dependency` tool. In one transaction it locks the
+ * parent, validates its status on the FIRST decomposition only (see
+ * {@link allowedParentStatuses}; later calls are allowed from any status so
+ * agents can add children incrementally), creates the children at `draft`,
+ * inserts the `kind='decomposes'` edges, and writes the `branchConfig`
+ * metadata that points parent and children at the shared integration branch.
  *
- *   1. Loads + locks the parent row, validates status the FIRST time a parent
- *      is decomposed (`confirmed` | `waiting`). Subsequent calls on a parent
- *      that already owns an integration branch are allowed in any status, so
- *      agents can incrementally add children after the parent has progressed.
- *   2. (Unless opted out, and only on the first call) creates + pushes a
- *      shared integration branch on the project's git remote, branched off
- *      the project's `baseBranch`. Subsequent calls reuse the existing
- *      branch recorded on the parent's metadata.
- *   3. Creates new child issues at `draft` (postgres trigger allocates issSeq).
- *      `draft` is the inert proposal state — it has no STATUS_TO_JOB_TYPE entry
- *      so the orchestrator never auto-dispatches a child. Children stay `draft`
- *      until a human approves the parent (the cascade promotes them).
- *   4. Inserts `kind='decomposes'` edges (idempotent on the unique edge index).
- *   5. Writes `branchConfig` metadata onto parent (first call) + every child
- *      so PR-A's resolver returns the integration branch for child base/target.
+ * `draft` has no STATUS_TO_JOB_TYPE entry, so a child is inert until the
+ * cascade promotes it — `pipeline/decomposition-subscribers.ts` owns that, and
+ * owns which status it promotes to, which differs per mode.
  *
- * Post-commit: emits `issueCreated` for new children and `dependencyChanged`
- * for new edges, plus activity-log entries. Git side effects happen INSIDE
- * the transaction so a git failure rolls back the DB writes; a git success
- * followed by a commit failure leaks the remote branch (acceptable for v1,
- * PR-E adds cleanup).
+ * Git runs INSIDE the transaction so a git failure rolls the DB writes back; a
+ * git success followed by a commit failure leaks the remote branch (v1).
+ * Post-commit: `issueCreated` per child, `dependencyChanged` per edge, then the
+ * review-gate park.
  */
 import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -43,18 +35,30 @@ import {
 } from '../git/branches.js';
 import { logger } from '../logger.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
+import { isAutonomousProject } from '../pipeline/autonomous-project.js';
 import { hooks } from '../pipeline/hooks.js';
-import { applyStatusTransition } from './apply-transition.js';
+import { parkParentAtReviewGate } from './decompose-review-gate.js';
 
 const MAX_BRANCH_SUFFIX = 10;
 // Plan (the step that decides to decompose) runs at `clarified`; `confirmed`
 // is tolerated for manual decompose before clarify, `waiting` for re-splits
 // from the review gate.
-const ALLOWED_PARENT_STATUSES: ReadonlySet<IssueStatus> = new Set([
+const STAGED_PARENT_STATUSES: ReadonlySet<IssueStatus> = new Set([
   'confirmed',
   'clarified',
   'waiting',
 ]);
+
+// cm:guard the two sets are disjoint on purpose and MUST stay per-mode rather than merged into one permissive set — an autonomous project has no `confirmed`/`clarified`, and a staged project that accepted `in_progress` would let a step decompose an issue mid-run, which is neither mode's contract. The staged half is frozen: ISS-886 widened decompose to autonomous, and one project's driver must never change another's vocabulary.
+const AUTONOMOUS_PARENT_STATUSES: ReadonlySet<IssueStatus> = new Set([
+  'open',
+  'in_progress',
+  'waiting',
+]);
+
+function allowedParentStatuses(autonomous: boolean): ReadonlySet<IssueStatus> {
+  return autonomous ? AUTONOMOUS_PARENT_STATUSES : STAGED_PARENT_STATUSES;
+}
 
 export interface DecomposeChildSpec {
   title?: string | undefined;
@@ -167,10 +171,12 @@ export async function decomposeParent(
   const existingBranch = pickBranch(preParent.metadata?.branchConfig?.baseBranch ?? null);
   const parentAlreadyDecomposed = existingBranch != null;
 
-  if (!parentAlreadyDecomposed && !ALLOWED_PARENT_STATUSES.has(preParent.status)) {
+  const autonomous = await isAutonomousProject(preParent.projectId);
+  const allowed = allowedParentStatuses(autonomous);
+  if (!parentAlreadyDecomposed && !allowed.has(preParent.status)) {
     throw new DecomposeError(
       'BAD_REQUEST',
-      `parent status must be confirmed, clarified, or waiting (got ${preParent.status})`,
+      `parent status must be ${[...allowed].join(', ')} (got ${preParent.status})`,
     );
   }
 
@@ -454,47 +460,14 @@ export async function decomposeParent(
     }
   }
 
-  // Core owns the parent's review-gate transition (decompose redesign). On the
-  // FIRST decomposition, park the parent at `waiting` so a human reviews the
-  // split before the cascade fires. This is system logic — it is NOT left to
-  // the skill (which historically drifted, e.g. setting `on_hold` instead of
-  // `waiting`, breaking the kickoff). The cascade still flips children
-  // `draft → approved` when the human approves the parent. Idempotent: skipped
-  // if the parent is already `waiting` (avoids a NO_OP transition error) and on
-  // subsequent (incremental) decompositions.
-  if (!parentAlreadyDecomposed && result.createdEdges > 0 && preParent.status !== 'waiting') {
-    try {
-      // Attribution only — `projects.createdBy` is the audit column standing
-      // in as the system actor for this core-owned transition (no authz here).
-      const [project] = await db
-        .select({ createdBy: projects.createdBy })
-        .from(projects)
-        .where(eq(projects.id, preParent.projectId))
-        .limit(1);
-      if (project?.createdBy) {
-        await applyStatusTransition(
-          {
-            id: result.parentId,
-            projectId: preParent.projectId,
-            status: preParent.status,
-            reopenCount: 0,
-          },
-          'waiting',
-          { id: project.createdBy, ownerId: project.createdBy },
-          // cm:guard the ONLY `waiting` write left in core, and it MUST carry BOTH a kind and a reason (RFC 0002 INV-5/INV-8) — core is held to the same bar as an agent here, and dropping either argument makes this transition throw, which the catch below would swallow into a warn log and leave the parent un-parked with its children already created
-          {
-            waitingKind: 'needs_decision',
-            transitionReason: `Decomposed into ${result.createdEdges} child issue${result.createdEdges === 1 ? '' : 's'}. Review the split, then approve this parent to promote every child from \`draft\` to \`approved\`. The parent's own integration work runs LAST, after every child's code has merged.`,
-          },
-        );
-      }
-    } catch (err) {
-      logger.warn(
-        { err, parentId: result.parentId, from: preParent.status },
-        'decompose: parent → waiting review-gate transition failed',
-      );
-    }
-  }
+  await parkParentAtReviewGate({
+    parentId: result.parentId,
+    projectId: preParent.projectId,
+    fromStatus: preParent.status,
+    createdEdges: result.createdEdges,
+    skip: parentAlreadyDecomposed || preParent.status === 'waiting',
+    autonomous,
+  });
 
   return {
     parentId: result.parentId,

@@ -15,7 +15,7 @@ import { canTransitionFree, DRAFT_EXIT_TARGETS, isReopenEntry } from '../pipelin
 import { collectWorkEvidence, hasCodeEvidence } from '../pipeline/work-evidence.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
-import { resolveAutonomousReopenTarget } from './autonomous-reopen.js';
+import { resolveAutonomousParkTarget } from './autonomous-park.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { recordDropUnblock } from './drop-unblock.js';
 import { markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
@@ -131,6 +131,12 @@ export interface ApplyStatusTransitionOptions {
    */
   // cm:guard `release_batch finish` is the ONLY caller entitled to set this, and it must never be plumbed through a route parameter or an MCP argument — the flag IS the gate, and anything that can ask for it can close an unshipped issue
   viaReleasePath?: boolean;
+  /**
+   * This `waiting` is core's decompose review gate, so it survives the
+   * autonomous park rewrite.
+   */
+  // cm:guard `issues/decompose.ts` is the ONLY caller entitled to set this, and like `viaReleasePath` it must never be plumbed through a route parameter or an MCP argument — an agent that could ask for it could park itself where no comment of a human's will ever reach it, which is the whole defect the rewrite removes. It is exempt because a comment on a decomposed parent is discussion of the split, not approval of it: waking that park would dispatch the parent's integration before its children exist.
+  viaDecomposeGate?: boolean;
 }
 
 export interface StatusTransitionResult {
@@ -336,11 +342,16 @@ export async function transitionIssueStatus(
 
   const reopening = isReopenEntry(fromStatus, requestedStatus);
 
-  // cm:guard everything ABOVE this line reads `requestedStatus` (what the caller asked for) and everything BELOW writes `toStatus` (what the kernel will store); mixing the two either drops the reopen reason and counter or drops the rewrite, and each failure is silent
-  const reopenTarget = await resolveAutonomousReopenTarget(issue.projectId, requestedStatus);
+  // cm:guard everything ABOVE this line reads `requestedStatus` (what the caller asked for) and everything BELOW writes `toStatus` (what the kernel will store); mixing the two either drops the park's reason, kind and counter or drops the rewrite, and each failure is silent
+  const parkTarget = await resolveAutonomousParkTarget({
+    projectId: issue.projectId,
+    requested: requestedStatus,
+    actorType: actor.type,
+    viaDecomposeGate: options.viaDecomposeGate === true,
+  });
   const { status: toStatus, held } = await resolveAgentCloseTarget({
     projectId: issue.projectId,
-    requested: reopenTarget,
+    requested: parkTarget,
     actorType: actor.type,
     viaReleasePath: options.viaReleasePath === true,
   });

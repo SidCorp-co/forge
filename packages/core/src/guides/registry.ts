@@ -61,8 +61,8 @@ The same shape costs tokens rather than a stall: a stage lands in a checkout who
     slug: 'issue-dependencies-and-decompose',
     title: 'Issue dependencies & decompose',
     summary:
-      'How blocks edges gate dispatch, the merged_at unblock signal, why decompose lifecycle is system-owned, and the one decompose action that IS yours.',
-    version: 4,
+      'How blocks edges gate dispatch, the merged_at unblock signal, why decompose lifecycle is system-owned, and the one decompose action that IS yours — which differs by pipeline mode.',
+    version: 5,
     body: `## Issue dependencies & decompose
 
 ### Relation kinds
@@ -81,11 +81,20 @@ Edges are directional \`fromIssue --kind--> toIssue\`:
 A dependent dispatches the moment its blocker's \`merged_at\` is stamped, not when the blocker reaches \`released\`. \`merged_at\` auto-stamps only when a project's pipeline actually walks through the base-merge state. If you merge an issue's branch to the base branch and then **park** at that state manually (a gate the system doesn't auto-advance through), nothing stamps it and every downstream dependent stalls silently — stamp it yourself right after the merge lands.
 
 ### Decompose is system-owned
-Decomposing is part of **writing a plan** — the plan step declares the \`decomposes\` edges. It is not something to do by hand while working an issue directly.
+Decomposing is part of deciding HOW an issue gets built — on a staged project the plan step declares the \`decomposes\` edges; on an autonomous project the driver declares them from its planning phase. Either way it is not something to do by hand while working an unrelated issue.
 
-The flow: write each child's plan, create the children (they land at \`draft\`), link each with a \`decomposes\` edge, then the parent is automatically parked at \`waiting\` — a human review gate. Approving the parent auto-cascades approval to the children. The parent's own integration work is held until every child has \`merged_at\` set (or is \`closed\`), then runs last.
+The flow: write each child's plan, create the children (they land at \`draft\`), link each with a \`decomposes\` edge, then the parent is automatically parked at \`waiting\` — a human review gate. Approving the parent auto-cascades the children to whichever status **this project's driver dispatches**. The parent's own integration work is held until every child has \`merged_at\` set (or is \`closed\`), then runs last.
 
-**The human has exactly one action here: approve the split, by moving the PARENT \`waiting → approved\`.** That single transition is what promotes every child. Nothing else about decompose status is yours to set.
+**The human has exactly one action here: approve the split, and the status you write depends on the project's mode.**
+
+| Project mode | Statuses the parent may be decomposed FROM | Approve by moving the PARENT |
+|---|---|---|
+| staged (the default) | \`confirmed\`, \`clarified\`, \`waiting\` | \`waiting → approved\` |
+| \`autonomous\` | \`open\`, \`in_progress\`, \`waiting\` | \`waiting → open\` |
+
+That single transition is what promotes every child. Nothing else about decompose status is yours to set.
+
+On an autonomous project \`approved\` is not a status the driver reads and the board does not offer it, so the children are promoted to \`open\` instead — writing \`approved\` on the parent still works (it is forwarded to \`open\`), but \`open\` is the one to reach for. The park itself is exempt from that mode's rule that an agent's \`waiting\` becomes \`needs_info\`: a comment on a decomposed parent is discussion of the split, not approval of it, so answering it does not release the gate — only the transition does.
 
 Do not hand-set parent or child status. Two failure modes, both observed:
 - Moving children forward yourself skips the cascade, so they arrive without the parent's plan behind them and each burns a full triage/clarify/plan cycle rediscovering it.

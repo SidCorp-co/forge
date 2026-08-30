@@ -12,6 +12,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import type { SQL } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -29,7 +30,23 @@ type Mods = {
   detectStrandedIssues: typeof import('../../src/pipeline/stranded-issues.js').detectStrandedIssues;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   STRANDED_GRACE_MS: typeof import('../../src/pipeline/stranded-issues.js').STRANDED_GRACE_MS;
+  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
+  STRANDED_RENOTIFY_MS: typeof import('../../src/pipeline/stranded-issues.js').STRANDED_RENOTIFY_MS;
 };
+
+type NotifRow = { user_id: string; type: string; resolution_key: string; read: boolean };
+
+async function readNotifs(harness: TestDatabase, issueId: string): Promise<NotifRow[]> {
+  const r = await harness.db.execute(sql`
+    SELECT user_id, type, resolution_key, read FROM notifications WHERE issue_id = ${issueId}
+  `);
+  return r as unknown as NotifRow[];
+}
+
+// cm:why the re-notify cases drive the dedupe by editing the alarm row rather than by waiting — `read`, `resolved_at` and `created_at` are the exact three columns that predicate reads, and one helper keeps the column a case is ABOUT on its own line
+async function patchAlarm(harness: TestDatabase, issueId: string, set: SQL): Promise<void> {
+  await harness.db.execute(sql`UPDATE notifications SET ${set} WHERE issue_id = ${issueId}`);
+}
 
 describe('detectStrandedIssues E2E (ISS-762)', () => {
   let harness: TestDatabase;
@@ -62,10 +79,22 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
 
   const HOUR = 60 * 60 * 1000;
 
-  async function seed(opts: { status?: string; mergedAgoMs?: number | null } = {}) {
+  async function seed(
+    opts: {
+      status?: string;
+      mergedAgoMs?: number | null;
+      autonomous?: boolean;
+      updatedAgoMs?: number;
+    } = {},
+  ) {
     const owner = await createTestUser(harness.db);
     const org = await seedOrg(harness.db, owner.id);
     const project = await createTestProject(harness.db, owner.id, { orgId: org.id });
+    if (opts.autonomous) {
+      await harness.db.execute(
+        sql`UPDATE projects SET agent_config = ${JSON.stringify({ pipelineConfig: { mode: 'autonomous' } })}::jsonb WHERE id = ${project.id}`,
+      );
+    }
 
     // cm:why two distinct routes to admin — explicit project_members admin AND the org owner seedOrg registers — because projectAdminUserIds unions both and a regression could drop either
     const projAdmin = await createTestUser(harness.db);
@@ -91,19 +120,13 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
       VALUES (${issueId}, ${project.id}, 'stranded probe', ${opts.status ?? 'waiting'},
               ${owner.id}, ${mergedAt}, 762)
     `);
+    if (opts.updatedAgoMs !== undefined) {
+      const updatedAt = new Date(Date.now() - opts.updatedAgoMs).toISOString();
+      await harness.db.execute(
+        sql`UPDATE issues SET updated_at = ${updatedAt} WHERE id = ${issueId}`,
+      );
+    }
     return { issueId, projectId: project.id, owner, projAdmin, plain };
-  }
-
-  async function notifRows(issueId: string) {
-    const r = await harness.db.execute(sql`
-      SELECT user_id, type, resolution_key, read FROM notifications WHERE issue_id = ${issueId}
-    `);
-    return r as unknown as {
-      user_id: string;
-      type: string;
-      resolution_key: string;
-      read: boolean;
-    }[];
   }
 
   it('surfaces an issue parked at waiting whose code already merged', async () => {
@@ -111,7 +134,7 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     const res = await mods.detectStrandedIssues();
     expect(res.detected).toBe(1);
 
-    const rows = await notifRows(s.issueId);
+    const rows = await readNotifs(harness, s.issueId);
     expect(rows.every((r) => r.type === 'issue_stranded')).toBe(true);
     expect(rows.every((r) => r.resolution_key === `issue:${s.issueId}:stranded`)).toBe(true);
   });
@@ -119,7 +142,7 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
   it('reaches every admin who can act, and nobody who cannot', async () => {
     const s = await seed();
     await mods.detectStrandedIssues();
-    const notified = new Set((await notifRows(s.issueId)).map((r) => r.user_id));
+    const notified = new Set((await readNotifs(harness, s.issueId)).map((r) => r.user_id));
     expect(notified.has(s.owner.id)).toBe(true);
     expect(notified.has(s.projAdmin.id)).toBe(true);
     expect(notified.has(s.plain.id)).toBe(false);
@@ -136,15 +159,41 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
       expect(again.detected).toBe(1);
       expect(again.notified).toBe(0);
     }
-    expect((await notifRows(s.issueId)).length).toBe(first.notified);
+    expect((await readNotifs(harness, s.issueId)).length).toBe(first.notified);
   });
 
-  it('re-notifies once the human has read (and thus dismissed) the previous alarm', async () => {
+  // cm:guard reading the alarm must NOT re-arm it on the next 60s tick — since ISS-886 the autonomous arm matches every `waiting` park past the grace window rather than the rare merged-and-parked contradiction, so an unread-only dedupe turns one read into a ping every minute for the life of the park, including the decompose review gate, which is SUPPOSED to sit there.
+  it('stays quiet after a read while the re-notify window is still open', async () => {
     const s = await seed();
     const first = await mods.detectStrandedIssues();
-    await harness.db.execute(
-      sql`UPDATE notifications SET read = true WHERE issue_id = ${s.issueId}`,
-    );
+    expect(first.notified).toBeGreaterThan(0);
+    await patchAlarm(harness, s.issueId, sql`read = true`);
+
+    const second = await mods.detectStrandedIssues();
+    expect(second.detected).toBe(1);
+    expect(second.notified).toBe(0);
+    expect((await readNotifs(harness, s.issueId)).length).toBe(first.notified);
+  });
+
+  // cm:guard the cooldown must suppress only while the alarm is UNRESOLVED. A resolved row is a strand that ENDED — the human moved the issue off `waiting` and auto-resolve stamped it — so a later re-strand is a NEW one and is owed its own alarm on time. Dedupe on `read`/`created_at` alone and it is muted for the rest of the window, which is silence a caller cannot tell from "nothing is wrong".
+  it('re-notifies a RESOLVED strand that recurred, without waiting out the window', async () => {
+    const s = await seed();
+    const first = await mods.detectStrandedIssues();
+    expect(first.notified).toBeGreaterThan(0);
+
+    await patchAlarm(harness, s.issueId, sql`read = true, resolved_at = now()`);
+
+    const second = await mods.detectStrandedIssues();
+    expect(second.detected).toBe(1);
+    expect(second.notified).toBe(first.notified);
+  });
+
+  it('re-notifies once the read alarm is older than the re-notify window', async () => {
+    const s = await seed();
+    const first = await mods.detectStrandedIssues();
+    const stale = new Date(Date.now() - mods.STRANDED_RENOTIFY_MS - HOUR).toISOString();
+    await patchAlarm(harness, s.issueId, sql`read = true, created_at = ${stale}`);
+
     const second = await mods.detectStrandedIssues();
     expect(second.notified).toBe(first.notified);
   });
@@ -172,8 +221,34 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     const theirs = await seed();
     const res = await mods.detectStrandedIssues(new Date(), { projectId: mine.projectId });
     expect(res.detected).toBe(1);
-    expect((await notifRows(theirs.issueId)).length).toBe(0);
+    expect((await readNotifs(harness, theirs.issueId)).length).toBe(0);
   });
+
+  // cm:why ISS-886 — on autonomous the park itself is the signal: no next step notices it and `answer-resume` restarts `needs_info` only, so a `waiting` issue stops dead until a human acts. kinetrak ISS-4's split had sat 11 days on 2026-08-30 with nobody told.
+  it('surfaces an UNMERGED autonomous park, which on a staged project it ignores', async () => {
+    const auto = await seed({ mergedAgoMs: null, autonomous: true, updatedAgoMs: 48 * HOUR });
+    const staged = await seed({ mergedAgoMs: null, updatedAgoMs: 48 * HOUR });
+
+    const res = await mods.detectStrandedIssues();
+
+    expect(res.detected).toBe(1);
+    expect((await readNotifs(harness, auto.issueId)).length).toBeGreaterThan(0);
+    expect((await readNotifs(harness, staged.issueId)).length).toBe(0);
+  });
+
+  // cm:guard the autonomous arm dates from `updated_at`, and it must still respect the grace window — a park is only stranded once it has outlasted a legitimate merge-verify-close pass, or every fresh question would alarm the owner within the minute.
+  it('stays silent inside the grace window on an autonomous project too', async () => {
+    await seed({ mergedAgoMs: null, autonomous: true, updatedAgoMs: 1 * HOUR });
+    await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 0 });
+  });
+
+  it.each(['needs_info', 'on_hold', 'open'])(
+    'stays silent for an aged autonomous issue in status %s — only `waiting` is a silent park',
+    async (status) => {
+      await seed({ status, mergedAgoMs: null, autonomous: true, updatedAgoMs: 48 * HOUR });
+      await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 0 });
+    },
+  );
 
   it('never moves the issue — waiting is a human park', async () => {
     const s = await seed();
