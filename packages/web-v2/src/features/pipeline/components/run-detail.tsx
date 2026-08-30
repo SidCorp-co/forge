@@ -43,9 +43,9 @@ import {
   statusToStage,
 } from "../derive";
 import { useCancelRun, useIssueTasks, usePauseRun, useResumeRun, useRun } from "../hooks";
+import { ActivityTab } from "./activity-feed";
 import type {
   PipelineIssueRow,
-  PipelineRunAttempt,
   PipelineRunStepSummary,
   PipelineRunSummary,
 } from "../types";
@@ -67,6 +67,7 @@ interface RunDetailProps {
 }
 
 const TABS = [
+  { value: "activity", label: "Activity" },
   { value: "timeline", label: "Timeline" },
   { value: "tasks", label: "Tasks" },
   { value: "cost", label: "Cost" },
@@ -82,7 +83,7 @@ const PRIORITY_TONE: Record<string, "red" | "amber" | "neutral"> = {
 };
 
 export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }: RunDetailProps) {
-  const [tab, setTab] = useState("timeline");
+  const [tab, setTab] = useState("activity");
   const { toast } = useToast();
   const router = useRouter();
   const { push: pushRecent } = useRecents();
@@ -312,7 +313,14 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
           <div>
             <Tabs tabs={TABS} value={tab} onChange={setTab} />
             <div className="pt-4">
-              {runQ.isError ? (
+              {tab === "activity" ? (
+                <ActivityTab
+                  run={run}
+                  loading={runQ.isLoading}
+                  error={runQ.isError ? runQ.error : null}
+                  onRetry={() => runQ.refetch()}
+                />
+              ) : runQ.isError ? (
                 <ErrorState message={formatApiError(runQ.error)} onRetry={() => runQ.refetch()} />
               ) : tab === "timeline" ? (
                 <TimelineTab run={run} loading={runQ.isLoading} />
@@ -348,76 +356,6 @@ const DOT_COLOR: Record<DotState, string> = {
   todo: "var(--border-strong)",
 };
 
-/* ── Retry history (ISS-411) ──────────────────────────────────────────── */
-
-// Surface WHERE a run retried and HOW MUCH: the round-robin headline
-// (`round N/max → targeting <device>`) + a per-attempt list (attempt → device
-// → outcome) from real `jobs` data. Renders nothing when the run never retried.
-function RetrySection({ run }: { run: PipelineRunSummary }) {
-  const rs = run.retrySummary;
-  const attempts = run.attempts ?? [];
-  const hasRetries = !!rs || attempts.some((a) => a.retryOf != null || a.attempts > 1);
-  if (!hasRetries) return null;
-
-  const deviceLabel = (a: PipelineRunAttempt) =>
-    a.deviceName ?? (a.deviceId ? a.deviceId.slice(0, 8) : "unassigned");
-
-  return (
-    <div className="mb-5 rounded-lg border border-line-subtle bg-sunken p-4">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <p className="fg-overline">Retry history</p>
-        {rs && (
-          <>
-            <span
-              className="rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold"
-              style={{ background: "var(--amber-tint, var(--bg-app))", color: "var(--amber-600)" }}
-            >
-              round {rs.round}/{rs.maxRounds}
-            </span>
-            {rs.targetDeviceName || rs.targetDeviceId ? (
-              <span className="fg-caption inline-flex items-center gap-1 text-muted">
-                <Icon name="server" size={11} className="align-[-1px]" />
-                targeting {rs.targetDeviceName ?? rs.targetDeviceId?.slice(0, 8)}
-              </span>
-            ) : null}
-            <span className="fg-caption ml-auto text-subtle">{rs.totalAttempts} attempts</span>
-          </>
-        )}
-      </div>
-      <div className="flex flex-col gap-1.5">
-        {attempts.map((a, i) => {
-          const dot = stepDot(a.status as PipelineRunStepSummary["status"]);
-          return (
-            <div key={a.jobId} className="flex items-center gap-2.5">
-              <span className="w-5 flex-none text-right font-mono text-[11px] text-subtle">
-                {i + 1}
-              </span>
-              <span
-                className="size-2 flex-none rounded-full"
-                style={{ background: DOT_COLOR[dot] }}
-                aria-hidden
-              />
-              <span className="w-14 flex-none font-mono text-[12px] text-muted">{a.jobType}</span>
-              <span className="fg-caption inline-flex min-w-0 items-center gap-1 text-muted">
-                <Icon name="server" size={11} className="flex-none align-[-1px]" />
-                <span className="truncate">{deviceLabel(a)}</span>
-              </span>
-              <span className="fg-caption ml-auto flex-none capitalize text-subtle">{a.status}</span>
-              {a.failureReason && (
-                <Tooltip label={a.failureReason}>
-                  <span className="max-w-[120px] flex-none truncate font-mono text-[11px] text-red-600">
-                    {a.failureReason}
-                  </span>
-                </Tooltip>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; loading: boolean }) {
   if (loading) return <PanelSpinner />;
   if (!run || run.steps.length === 0) {
@@ -425,7 +363,6 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
   }
   return (
     <div>
-      <RetrySection run={run} />
       <p className="fg-overline mb-4">Agent handoffs</p>
       {run.steps.map((step, i) => {
         const state = stepDot(step.status);
