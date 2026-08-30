@@ -9,6 +9,15 @@
 
 ### Added
 
+- A plan now records the branches that were weighed and dropped, not only the one that was taken.
+  Forge keeps the issue rather than the conversation, so a rejected branch that is not in the plan is
+  gone — and a plan without it reads exactly like one where nothing else was ever considered. Both
+  plan-writing skills (the autonomous driver and the staged planner) ask for a `Rejected
+  alternatives` section naming each branch and the fact that killed it, say that a forced choice is
+  written as forced, and say that an empty heading is worse than none. What is checked is that the
+  shipped bodies still ask; whether a given plan's rejected branches are real is prose no test can
+  read. (ISS-883)
+
 - `docs/VISION.md` and every proposal now say what adopting them costs the reader, and a gate keeps
   it that way. The constitution had a Boundaries section — what Forge will not become — and nothing
   pricing what choosing Forge takes from a team that chooses it, while the repo's own rule reads "a

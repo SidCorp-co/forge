@@ -31,10 +31,21 @@ left behind.
 | Files | each path, and one line on what changes in it |
 | Order | what must land before what, and why — not a numbered list of everything |
 | Blast radius | what else reads this, from `cm impact` plus references |
+| Rejected alternatives | each branch you weighed and dropped, and the fact that killed it |
 | Not doing | the adjacent thing you deliberately left alone |
 
-The `Not doing` line is load-bearing. Without it, phase 5 cannot tell a deliberate boundary from an
-oversight, and neither can you on the next round.
+The last two rows are load-bearing. Without `Not doing`, phase 5 cannot tell a deliberate boundary
+from an oversight, and neither can you on the next round. Without `Rejected alternatives`, nobody can
+tell a branch you rejected from one you never thought of — and Forge keeps the issue rather than the
+conversation, so a dropped branch that is not in the plan is gone.
+
+An entry that names a branch without the fact that killed it is the same absence in a longer
+sentence. When the choice was genuinely forced — one way to do it, or a constraint the issue already
+settled — say so and name what forced it. An empty heading, or an invented loser padded in to fill
+one, is worse than no section at all: it reads as consideration that never happened.
+
+It goes in the issue's `plan` field, not only in a comment. A plan that lived in the session ends
+with the session, which is the whole failure this section exists to close.
 
 ## Size it honestly
 

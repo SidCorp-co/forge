@@ -323,6 +323,29 @@ mod tests {
         }
     }
 
+    /// A plan records the branch that was taken; the branches weighed and
+    /// dropped survive only if the plan carries them, because Forge keeps the
+    /// issue rather than the conversation (ISS-883). This holds the
+    /// SPECIFICATION only — that the shipped bodies still ask for the section.
+    /// Whether a given plan's rejected branches are real is prose, and nothing
+    /// here can read it.
+    // cm:edge contract -> packages/runner/skills/forge-plan/SKILL.md — that body publishes this heading to whoever writes the next plan; a reword there with none here leaves the rule enforced under a name no plan uses
+    // cm:edge contract -> packages/runner/skills/forge-drive/SKILL.md — the driver is the only body guaranteed to be read, so the requirement dropping out of it is the rule reaching nobody, whatever forge-plan still says
+    #[test]
+    fn the_plan_bodies_still_ask_for_the_rejected_branches() {
+        for name in ["forge-plan", "forge-drive"] {
+            let body = BUNDLED_FILES
+                .iter()
+                .find(|(rel, _)| *rel == format!("{name}/SKILL.md"))
+                .expect("the skill is embedded")
+                .1;
+            assert!(
+                body.contains("Rejected alternatives"),
+                "{name} no longer names the section that keeps a rejected branch"
+            );
+        }
+    }
+
     #[test]
     fn the_driver_and_the_reviewer_survive_the_kill_switch() {
         let (on, off) = enabled(&cfg(true, &[]));

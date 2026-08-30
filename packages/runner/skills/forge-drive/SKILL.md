@@ -19,7 +19,7 @@ things: deploy and close. Everything else is yours.
 | Phase | You produce | Declared before starting |
 |---|---|---|
 | 1 · understand | a statement of what is wrong and how you reproduced it | `understand` |
-| 2 · plan | the files you will touch and why | `plan` |
+| 2 · plan | the files you will touch and why, and the branches you rejected | `plan` |
 | 3 · code | a working branch, build green, tests green | `code` |
 | 4 · self-review | your own diff read back against the acceptance criteria | `self-review` |
 | 5 · review | an independent verdict | `review` |
@@ -55,6 +55,20 @@ rest may be absent, which means the project has no rule and the ordinary answer 
 
 If a fact is wrong or missing something you needed, say so in the close comment. Do not work
 around it silently — the next session reads the same map.
+
+## What phase 2 leaves behind
+
+A plan that records only the branch you took reads exactly like one where nothing else was ever
+considered. Forge keeps the issue rather than the conversation, so a branch you weighed and dropped
+survives only if the plan carries it — everywhere else it dies with the session that thought of it.
+
+So the plan carries a **`Rejected alternatives`** section, and each entry names the branch and the
+fact that killed it. Without that fact it is the same absence in a longer sentence.
+
+When the choice was genuinely forced — one way to do it, or a constraint the issue already settled —
+say so and name what forced it. That is a finding a later reader can check. An empty heading, or an
+invented loser padded in to fill one, is worse than no section at all: it reads as consideration that
+never happened.
 
 ## Phase 5 is not yours
 
