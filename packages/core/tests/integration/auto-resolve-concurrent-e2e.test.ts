@@ -16,6 +16,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
+import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestProject,
@@ -109,7 +110,7 @@ describe('resolveNotifications E2E (ISS-879)', () => {
     expect(await row(id)).toEqual({ read: true, resolved: true });
   });
 
-  // cm:guard this case does NOT reproduce the defect and must not be read as proof of it — measured 2026-08-30, it passes against the pre-fix two-statement shape and against the fixed one with `FOR UPDATE` removed, because `Promise.all` over this pool does not interleave a SELECT between another call's SELECT and UPDATE. It holds the observable contract (two clearers, one clear, one emit) and nothing more. What the fix rests on is construction: the sub-SELECT's `FOR UPDATE` is the only thing re-checking `resolved_at IS NULL` before the write, since the UPDATE's own WHERE is just the `n.id = prev.id` join — drop the lock and both callers claim the same row.
+  // cm:guard `Promise.all` over this pool does NOT interleave a SELECT between another call's SELECT and UPDATE, so this case alone passes against the pre-fix shape too — it holds the observable contract and nothing more. The case BELOW is the one that witnesses the defect; do not delete it as a duplicate of this one.
   it('yields exactly one clear and one emit when two clearers run together', async () => {
     const id = await insertNotification('wedge:paused:run-3', false);
 
@@ -121,6 +122,32 @@ describe('resolveNotifications E2E (ISS-879)', () => {
     expect(a + b).toBe(1);
     expect(emitted).toEqual([id]);
     expect(await row(id)).toEqual({ read: true, resolved: true });
+  });
+
+  // cm:why holding the row lock from a third connection is what opens the window a single pooled `Promise.all` never opens — both clearers reach their write while the row is held, so neither can see the other's outcome before starting
+  // cm:guard this is the interleaving itself, and it exists because a guard here once claimed the defect could not be witnessed — which is self-fulfilling, since nobody tries again. Forcing it needs two real connections and no new dependency: A holds a row lock, both clearers then race for it. Measured 2026-08-30 without `FOR UPDATE` on the sub-SELECT: both callers claim the row and `notificationRead` fires TWICE for one notification, which is the client-side unread count decremented twice. `paused:<runId>` (ISS-879) is the first resolution key with two independent clearers, which is what made this reachable at all.
+  it('emits once, not twice, when two clearers genuinely interleave on one row', async () => {
+    const id = await insertNotification('wedge:paused:run-5', false);
+
+    const blocker = new pg.Client({ connectionString: harness.url });
+    await blocker.connect();
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('SELECT id FROM notifications WHERE id = $1 FOR UPDATE', [id]);
+
+      const racing = Promise.all([
+        mods.resolveNotifications('wedge:paused:run-5'),
+        mods.resolveNotifications('wedge:paused:run-5'),
+      ]);
+      await new Promise((r) => setTimeout(r, 300));
+      await blocker.query('COMMIT');
+
+      const [a, b] = await racing;
+      expect(a + b).toBe(1);
+      expect(emitted).toEqual([id]);
+    } finally {
+      await blocker.end();
+    }
   });
 
   it('clears nothing and emits nothing when the key has no unresolved rows', async () => {
