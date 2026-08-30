@@ -23,7 +23,11 @@ import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { cancelJob, JobCancelError } from './cancel-job.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
 import { finalizeFailedJob } from './finalize-failure.js';
-import { handleResumeFailed, isResumeFailedError } from './handle-resume-failed.js';
+import {
+  handleResumeFailed,
+  isResumeFailedError,
+  reclassifyAbortedResume,
+} from './handle-resume-failed.js';
 import { salvageSchema, salvageSet } from './prior-attempts.js';
 import { JobResumeError, resumeHeldJob } from './resume-job.js';
 import type { RetryOutcome } from './retry.js';
@@ -361,12 +365,7 @@ jobLifecycleDeviceRoutes.post(
       }
       let precomputedRetry: RetryOutcome | undefined;
       if (resumePolicy === 'abort') {
-        const [reclassified] = await db
-          .update(jobs)
-          .set({ failureReason: 'resume_failed', failureKind: 'code', classifierVersion: 3 })
-          .where(eq(jobs.id, updated.id))
-          .returning();
-        if (reclassified) updated = reclassified;
+        updated = await reclassifyAbortedResume(updated);
         precomputedRetry = { scheduled: false };
       }
       // ISS-280 / ISS-393 — shared finalize path: auto-retry → revert to
@@ -486,12 +485,7 @@ jobLifecycleDeviceRoutes.post(
     }
     let precomputedRetry: RetryOutcome | undefined;
     if (resumePolicy === 'abort') {
-      const [reclassified] = await db
-        .update(jobs)
-        .set({ failureReason: 'resume_failed', failureKind: 'code', classifierVersion: 3 })
-        .where(eq(jobs.id, updated.id))
-        .returning();
-      if (reclassified) updated = reclassified;
+      updated = await reclassifyAbortedResume(updated);
       precomputedRetry = { scheduled: false };
     }
 

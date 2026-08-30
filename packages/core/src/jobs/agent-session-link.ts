@@ -8,6 +8,7 @@ import { classifyFailure } from '../pipeline/failure-classifier.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import type { ResumeRecord } from './resume-policy.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -59,7 +60,7 @@ function buildTitle(skillName: string | null, jobType: string, issueTitle: strin
  */
 export async function ensureAgentSessionForJob(
   job: JobRow,
-  context: { repoPath: string | null },
+  context: { repoPath: string | null; resume: ResumeRecord },
 ): Promise<string | null> {
   try {
     if (job.agentSessionId) return job.agentSessionId;
@@ -125,6 +126,8 @@ export async function ensureAgentSessionForJob(
     if (issueIssSeq !== null) metadata.issSeq = issueIssSeq;
     if (skillName) metadata.skillName = skillName;
     if (job.deviceId) metadata.deviceId = job.deviceId;
+    // cm:guard ISS-887 — the ONLY durable answer to "did this attempt continue the prior transcript, and if not why not". It belongs on this row because the row is the attempt (a retry clone never carries `agentSessionId`, so every attempt mints its own) and it joins the linkage cluster below. Do NOT move it to a `job_events` row: `NOT EXISTS (SELECT 1 FROM job_events WHERE job_id = j.id)` is the never-claimed predicate in loop-monitor.ts#reapAckMisses and sweeper.ts#alarmNeverClaimedDispatches, so a dispatch-time server row silences the ack-miss reaper fleet-wide.
+    metadata.resume = context.resume;
     // PR-5 — session-group membership. The orchestrator stamped this on
     // job.payload.sessionGroup at enqueue time (resolved from
     // pipelineConfig.states[stage].sessionGroup); we propagate it here so

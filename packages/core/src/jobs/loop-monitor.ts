@@ -20,6 +20,7 @@ import { agentSessions, jobs, pipelineRuns } from '../db/schema.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { resumeLapsedAnswers } from '../pipeline/answer-resume.js';
+import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
 import { emitPipelineWedge, type WedgeHop } from '../pipeline/wedge.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { finalizeFailedJob } from './finalize-failure.js';
@@ -245,24 +246,17 @@ async function resolveKillGateDecision(
     return { phase: 'awaiting_kill' };
   }
 
-  let confirmed: boolean;
-  let outcome: JobRow['killOutcome'];
-  if (cfg.forceConfirmAfterGrace) {
-    confirmed = true;
-    // cm:guard record never_claimed, NOT not_found — no runner answered, and an audit column that invents an answer is the state-never-lies violation (`VISION: state-never-lies`) this gate exists to prevent
-    outcome = ref.killOutcome ?? 'never_claimed';
-  } else {
-    const resolution = await resolveKillConfirmation(ref);
-    confirmed = resolution.confirmed;
-    outcome = resolution.outcome;
-  }
+  // cm:guard record never_claimed, NOT not_found — no runner answered, and an audit column that invents an answer is the state-never-lies violation (`VISION: state-never-lies`) this gate exists to prevent
+  const { confirmed, outcome } = cfg.forceConfirmAfterGrace
+    ? { confirmed: true, outcome: ref.killOutcome ?? ('never_claimed' as const) }
+    : await resolveKillConfirmation(ref);
 
   const set: Partial<Omit<JobRow, 'id' | 'status'>> = {
     error: cfg.error,
     finishedAt: new Date(),
     failureKind: cfg.failureKind,
     failureReason: cfg.failureReason,
-    classifierVersion: 3,
+    classifierVersion: CLASSIFIER_VERSION,
   };
   if (confirmed) set.killConfirmedAt = new Date();
   if (outcome) set.killOutcome = outcome;

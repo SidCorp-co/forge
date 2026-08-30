@@ -109,7 +109,7 @@ vi.mock('../observability/hold-metrics.js', () => ({
   // metrics-state reset between cases.
   recordDispatchBarrierSkip: vi.fn(),
   // ISS-580 — counter for fresh-instead-of-resume decisions.
-  recordResumeBoundFresh: vi.fn(),
+  recordResumeDrop: vi.fn(),
 }));
 
 // ISS-336 / ISS-581 — mock all three integration resolvers so dispatcher tests
@@ -167,7 +167,7 @@ const { applySentryMcpServers } = await import('../integrations/sentry/resolver.
 const { findPriorSessionInGroup, loadResumeBounds, estimateGroupContextTokens } = await import(
   './session-resume.js'
 );
-const { recordResumeBoundFresh } = await import('../observability/hold-metrics.js');
+const { recordResumeDrop } = await import('../observability/hold-metrics.js');
 
 type Row = Record<string, unknown>;
 
@@ -690,7 +690,7 @@ describe('jobs/dispatcher', () => {
 
     const result = await handleDispatch({ jobId: 'j-resume' });
     expect(result).toBe('dispatched');
-    expect(recordResumeBoundFresh).not.toHaveBeenCalled();
+    expect(recordResumeDrop).not.toHaveBeenCalled();
     // resume proceeds — adapter is called with the prior session's device
     expect(dispatchSpy).toHaveBeenCalledTimes(1);
   });
@@ -723,7 +723,7 @@ describe('jobs/dispatcher', () => {
     const result = await handleDispatch({ jobId: 'j-over-tokens' });
     expect(result).toBe('dispatched');
     // Counter incremented with reason 'tokens'.
-    expect(recordResumeBoundFresh).toHaveBeenCalledWith('tokens');
+    expect(recordResumeDrop).toHaveBeenCalledWith('resume_bound_tokens');
     // resume dropped — job dispatched to a freely-selected device (not pinned).
     expect(dispatchSpy).toHaveBeenCalledTimes(1);
   });
@@ -755,7 +755,7 @@ describe('jobs/dispatcher', () => {
 
     const result = await handleDispatch({ jobId: 'j-over-cycles' });
     expect(result).toBe('dispatched');
-    expect(recordResumeBoundFresh).toHaveBeenCalledWith('reopen_cycles');
+    expect(recordResumeDrop).toHaveBeenCalledWith('resume_bound_reopen_cycles');
     expect(dispatchSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -790,7 +790,7 @@ describe('jobs/dispatcher', () => {
 
     const result = await handleDispatch({ jobId: 'j-gate-off' });
     expect(result).toBe('dispatched');
-    expect(recordResumeBoundFresh).not.toHaveBeenCalled();
+    expect(recordResumeDrop).not.toHaveBeenCalled();
     expect(dispatchSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -885,7 +885,7 @@ describe('jobs/dispatcher', () => {
     const result = await handleDispatch({ jobId: 'j-no-group' });
     expect(result).toBe('dispatched');
     expect(findPriorSessionInGroup).not.toHaveBeenCalled();
-    expect(recordResumeBoundFresh).not.toHaveBeenCalled();
+    expect(recordResumeDrop).not.toHaveBeenCalled();
     expect(dispatchSpy).toHaveBeenCalledTimes(1);
   });
 

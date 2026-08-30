@@ -23,8 +23,7 @@
  */
 
 import type { GateSkipReason } from '../jobs/dispatch-gates.js';
-
-export type ResumeBoundReason = 'tokens' | 'reopen_cycles';
+import type { ResumeDropReason } from '../jobs/resume-policy.js';
 
 const RUNNER_DEATH_BUCKETS_SECONDS = [10, 20, 30, 45, 60, 90, 120, 300] as const;
 
@@ -39,15 +38,15 @@ interface DispatchBarrierCounters {
   count: number;
 }
 
-interface ResumeBoundFreshCounters {
-  reason: ResumeBoundReason;
+interface ResumeDropCounters {
+  reason: ResumeDropReason;
   count: number;
 }
 
 interface HoldMetricsState {
   runnerDeath: RunnerDeathHistogram;
   dispatchBarrierSkips: Map<GateSkipReason, DispatchBarrierCounters>;
-  resumeBoundFresh: Map<ResumeBoundReason, ResumeBoundFreshCounters>;
+  resumeDrops: Map<ResumeDropReason, ResumeDropCounters>;
   reopenCapEscalated: number;
 }
 
@@ -61,7 +60,7 @@ function makeState(): HoldMetricsState {
   return {
     runnerDeath: histogram,
     dispatchBarrierSkips: new Map(),
-    resumeBoundFresh: new Map(),
+    resumeDrops: new Map(),
     reopenCapEscalated: 0,
   };
 }
@@ -83,14 +82,13 @@ export function recordDispatchBarrierSkip(reason: GateSkipReason): void {
   }
 }
 
-// ISS-580 — increment resume_bound_fresh_total{reason} when the dispatcher
-// decides to dispatch fresh instead of resuming a prior session.
-export function recordResumeBoundFresh(reason: ResumeBoundReason): void {
-  const existing = state.resumeBoundFresh.get(reason);
+// cm:guard ISS-887 — `resolveResumePolicy` is the ONLY caller, and it must increment from the same `dropReason` it stamps on the attempt's `agent_sessions.metadata.resume`; a second call site, or one deriving its own reason, is how this rate and the per-attempt rows come to disagree about the same dispatch (`measured-together-never-apart`).
+export function recordResumeDrop(reason: ResumeDropReason): void {
+  const existing = state.resumeDrops.get(reason);
   if (existing) {
     existing.count += 1;
   } else {
-    state.resumeBoundFresh.set(reason, { reason, count: 1 });
+    state.resumeDrops.set(reason, { reason, count: 1 });
   }
 }
 
@@ -116,7 +114,7 @@ export interface HoldMetricsSnapshot {
     buckets: Array<{ leSeconds: number; count: number }>;
   };
   dispatchBarrierSkips: DispatchBarrierCounters[];
-  resumeBoundFresh: ResumeBoundFreshCounters[];
+  resumeDrops: ResumeDropCounters[];
   reopenCapEscalated: number;
 }
 
@@ -131,7 +129,7 @@ export function getHoldMetricsSnapshot(): HoldMetricsSnapshot {
       })),
     },
     dispatchBarrierSkips: [...state.dispatchBarrierSkips.values()],
-    resumeBoundFresh: [...state.resumeBoundFresh.values()],
+    resumeDrops: [...state.resumeDrops.values()],
     reopenCapEscalated: state.reopenCapEscalated,
   };
 }
