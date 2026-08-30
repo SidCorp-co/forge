@@ -38,12 +38,13 @@ const PROBES = {
     also: [{ from: 'alsoBaseline', probe: ['node', 'scripts/check-lint-budget.mjs', '--all'] }],
   },
   knowledge: {
-    gate: 'cm verify + check-autonomous-transitions + check-honest-costs',
+    gate: 'cm verify + check-autonomous-transitions + check-honest-costs + check-injected-doc-modes',
     probe: ['.forge/codemap/cm', 'verify', '--tier', 'referential'],
     // cm:why `from: 'none'` for the same reason test-reachability uses it — this checker has no baseline and must not borrow codemap's, which would report it as debt-frozen when it is at zero
     also: [
       { from: 'none', probe: ['node', 'scripts/check-autonomous-transitions.mjs'] },
       { from: 'none', probe: ['node', 'scripts/check-honest-costs.mjs'] },
+      { from: 'none', probe: ['node', 'scripts/check-injected-doc-modes.mjs'] },
     ],
   },
   relations: {

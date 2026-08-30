@@ -21,8 +21,8 @@
     },
     "knowledge": {
       "level": 2,
-      "gate": "cm verify + check-autonomous-transitions + check-honest-costs",
-      "owns": "cm: couplings, prose discipline, module headers; whether a document asking to be adopted prices what adopting it costs",
+      "gate": "cm verify + check-autonomous-transitions + check-honest-costs + check-injected-doc-modes",
+      "owns": "cm: couplings, prose discipline, module headers; whether a document asking to be adopted prices what adopting it costs; whether a doc injected into every session names the pipeline mode its status transitions belong to",
       "baseline": {
         "path": ".forge/codemap-baseline.json",
         "keyBy": "content",

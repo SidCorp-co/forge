@@ -172,6 +172,13 @@ jobs:
       # see what an agent wrote at runtime — that lives in activity_log and this job has no
       # database.
       - run: node scripts/check-autonomous-transitions.mjs
+      # Rides this job for the same reason as the check above: knowledge axis, node and nothing else.
+      # That checker holds the SKILL surfaces; this one holds the DOC surfaces injected beside them —
+      # guide bodies and the mandatory facts, which reach every project whatever its pipeline mode.
+      # It asks only whether a status transition names the mode it belongs to. It cannot tell whether
+      # the prose around a qualified transition is true, and it never sees a project's own
+      # `projectFacts`, which live in the database.
+      - run: node scripts/check-injected-doc-modes.mjs
 
   archmap:
     runs-on: ubuntu-latest
