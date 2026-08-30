@@ -3,10 +3,10 @@
  *
  * Three handlers ride the `transition` topic:
  *
- *  1. cascade approve   — parent enters `approved` (from the review gate
- *                         `waiting`, or tolerantly `on_hold`/`confirmed`) and
- *                         flips all parked children (`draft` or `on_hold`) →
- *                         `approved`.
+ *  1. cascade approve   — parent leaves the review gate (`waiting`, or
+ *                         tolerantly `on_hold`/`confirmed`/`clarified`) and
+ *                         flips all parked children (`draft` or `on_hold`) to
+ *                         the status THIS project's driver dispatches.
  *  2. watcher           — when the LAST sibling reaches
  *                         {staging, released, closed}, post a system comment
  *                         on the parent and re-fire the parent's pipeline so
@@ -30,6 +30,8 @@ import { comments, type IssueStatus, projects } from '../db/schema.js';
 import { applyStatusTransition, type DeviceLite } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { AUTONOMOUS_ENTRY_STATUS } from './autonomous-mode.js';
+import { isAutonomousProject } from './autonomous-project.js';
 import {
   allChildrenReady,
   DECOMP_CHILD_READY_STATUSES,
@@ -87,10 +89,29 @@ const CASCADE_APPROVE_PARENT_FROM: ReadonlySet<IssueStatus> = new Set([
   'clarified',
 ]);
 
+/**
+ * The status the human's approval writes, and the one children are promoted
+ * to. They are the same status by construction: an approved child must be
+ * dispatchable by the driver its project actually runs.
+ */
+// cm:guard on autonomous this MUST be the driver's entry status, never `approved` — `autonomousStepFor` answers for `open` and nothing else, so children cascaded to `approved` are queued for a driver that will never look at them while the board renders them `running` (packages/contracts/src/issue-vocabulary.ts maps approved -> running). Measured 2026-08-30: 8 children across forge-dev ISS-576 and kinetrak ISS-4 sat in exactly that state, one set for 11 days.
+function cascadeTargetStatus(autonomous: boolean): IssueStatus {
+  return autonomous ? AUTONOMOUS_ENTRY_STATUS : 'approved';
+}
+
+// cm:guard an autonomous project accepts `approved` as the approval gesture TOO, and dropping that arm reopens the stall from the other side: the guide told humans for months to move the parent `waiting -> approved`, so a reader with a stale copy writes a status their own board cannot render honestly. The arm below follows such a parent through to `open` rather than leaving it there, which is the whole requirement — no path may end on a status nothing picks up.
+function cascadeFires(to: IssueStatus, autonomous: boolean): boolean {
+  return autonomous ? to === AUTONOMOUS_ENTRY_STATUS || to === 'approved' : to === 'approved';
+}
+
+// cm:guard the mode read sits AFTER the two cheap checks and the children query, and must stay there — this handler runs on EVERY status change in the system, and hoisting a `projects` select above them puts one extra query on every transition of every project to answer a question only a decompose parent's approval ever asks.
 async function handleCascadeApprove(payload: HookPayloads['transition']): Promise<void> {
-  if (!(payload.to === 'approved' && CASCADE_APPROVE_PARENT_FROM.has(payload.from))) return;
+  if (!CASCADE_APPROVE_PARENT_FROM.has(payload.from)) return;
+  if (payload.to !== 'approved' && payload.to !== AUTONOMOUS_ENTRY_STATUS) return;
   const children = await findDecompositionChildren(payload.issueId);
   if (children.length === 0) return;
+  const autonomous = await isAutonomousProject(payload.projectId);
+  if (!cascadeFires(payload.to, autonomous)) return;
   const device = await resolveDeviceForProject(payload.projectId);
   if (!device) {
     logger.warn(
@@ -100,6 +121,7 @@ async function handleCascadeApprove(payload: HookPayloads['transition']): Promis
     return;
   }
 
+  const target = cascadeTargetStatus(autonomous);
   let cascaded = 0;
   for (const child of children) {
     if (!CASCADE_APPROVE_FROM_STATUSES.has(child.status)) continue;
@@ -111,7 +133,7 @@ async function handleCascadeApprove(payload: HookPayloads['transition']): Promis
           status: child.status,
           reopenCount: 0,
         },
-        'approved',
+        target,
         device,
         { skip: true },
       );
@@ -123,6 +145,8 @@ async function handleCascadeApprove(payload: HookPayloads['transition']): Promis
       );
     }
   }
+
+  await followParentToEntryStatus(payload, autonomous, device);
 
   if (isSentryEnabled()) {
     Sentry.addBreadcrumb({
@@ -136,6 +160,39 @@ async function handleCascadeApprove(payload: HookPayloads['transition']): Promis
         cascaded,
       },
     });
+  }
+}
+
+/**
+ * An autonomous parent approved onto `approved` is moved on to the driver's
+ * entry status. Its drive job is then held by `decomposeChildrenPending` until
+ * every child has merged, so this dispatches nothing early — it only stops the
+ * parent resting where nothing would ever pick it up.
+ */
+// cm:guard re-entry is bounded by `CASCADE_APPROVE_PARENT_FROM`, which does NOT contain `approved` — this write emits its own `transition`, and the day `approved` joins that set this recurses until the transition guard rejects a NO_OP
+async function followParentToEntryStatus(
+  payload: HookPayloads['transition'],
+  autonomous: boolean,
+  device: DeviceLite,
+): Promise<void> {
+  if (!autonomous || payload.to !== 'approved') return;
+  try {
+    await applyStatusTransition(
+      {
+        id: payload.issueId,
+        projectId: payload.projectId,
+        status: 'approved',
+        reopenCount: 0,
+      },
+      AUTONOMOUS_ENTRY_STATUS,
+      device,
+      { skip: true },
+    );
+  } catch (err) {
+    logger.warn(
+      { err, parentId: payload.issueId },
+      'decomposition: parent follow-through to the driver entry status failed',
+    );
   }
 }
 

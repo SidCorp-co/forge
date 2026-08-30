@@ -12,7 +12,11 @@ import type { PipelineConfig } from './pipeline-config-schema.js';
 /** The status at which the driver is handed the issue. */
 export const AUTONOMOUS_ENTRY_STATUS: IssueStatus = 'open';
 
-// cm:guard S1 of the published standard, and the ONLY declaration of it. The driver writes a KERNEL status; `needs_human` / `done` / `running` are render labels from packages/contracts/src/issue-vocabulary.ts, nothing on the write path translates them, and a skill that names one hands the agent a value `forge_issues` rejects — which is how 27 parks landed on `waiting`, a status answer-resume.ts never wakes.
+/** The one park the driver may enter, and the only one a human answer restarts. */
+// cm:edge lockstep -> packages/core/src/jobs/turn-verdict-routes.ts — the turn verdict asks the SAME question from the other end (may this session stay resident?), and the two answers must name one status: a verdict that parked elsewhere would hold a runner slot for a pause a human chose, and a resume that did would take that pause away from them.
+export const AUTONOMOUS_QUESTION_STATUS: IssueStatus = 'needs_info';
+
+// cm:guard S1 of the published standard, and the ONLY declaration of it. The driver writes a KERNEL status; `needs_human` / `done` / `running` are render labels from packages/contracts/src/issue-vocabulary.ts, nothing on the write path translates them, and a skill that names one hands the agent a value `forge_issues` rejects — which is how 27 parks landed on `waiting`, a status answer-resume.ts never wakes. Since ISS-886 an agent's `waiting` is rewritten to `needs_info` (issues/autonomous-park.ts) so those 27 are no longer reachable, but the rewrite is a net under this list, NOT a licence to widen it: it catches one status, and a skill naming any of the other labels still hands over a value the kernel rejects outright.
 // cm:edge lockstep -> packages/runner/skills/forge-drive/SKILL.md — the skill's "Statuses you may write" table must list exactly these; check-autonomous-transitions.mjs fails the build when they diverge
 export const AUTONOMOUS_DRIVER_STATUSES: readonly IssueStatus[] = [
   'open',

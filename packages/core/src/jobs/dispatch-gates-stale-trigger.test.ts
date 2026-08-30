@@ -52,6 +52,14 @@ function selectChainOnce(rows: unknown[]): void {
   }));
 }
 
+
+// cm:guard anchored on `j.issue_id IS NOT NULL`, the first line of the staleTrigger arm and the only place that literal appears — a looser anchor would capture `decomposeChildrenPending`'s `j.type IN (...)` instead and the exclusion this file exists to pin would silently assert nothing
+function staleTriggerJobTypes(text: string): string[] {
+  const m = text.match(/j\.issue_id IS NOT NULL\s+AND\s+j\.type IN \(([^)]*)\)/);
+  if (!m?.[1]) throw new Error('staleTrigger job-type scope not found in the picker SQL');
+  return [...m[1].matchAll(/'?([a-z_]+)'?/g)].map((x) => x[1] as string);
+}
+
 /** The picker's one `projects.agent_config` read (cap + baseStampable). */
 function mockProjectAgentConfigOnce(value: Record<string, unknown> | null): void {
   selectChainOnce(value ? [{ agentConfig: value }] : []);
@@ -110,6 +118,7 @@ describe('L1b stale_trigger gate (ISS-789)', () => {
   });
 
   // cm:guard `drive` MUST be outside the scope, and this test is the only thing that says so — the autonomous driver is stamped `stageStatus:'open'` yet moves the issue anywhere, and `dispatchAutonomous` enqueues at the entry status ONLY, so a discarded drive retry leaves the issue permanently dead with zero jobs. `pipeline/recovery-verifier.ts` keeps `JOB_TYPE_EXPECTED_EXIT_STATUS.drive` empty for the same reason.
+  // cm:why the absence is asserted against THIS arm's own `j.type IN (...)` list, not against the whole picker SQL — `drive` is legitimately inside `decomposeChildrenPending` since ISS-886 (a decompose parent's drive job waits for its children), and a whole-text `not.toMatch(/drive/)` reads that unrelated arm as a violation of this one
   it('is scoped to the staged pipeline step types, and excludes drive', async () => {
     const text = await pickerSql();
     for (const jobType of Object.keys(TRIGGER_STATUS_BY_JOB_TYPE)) {
@@ -117,7 +126,10 @@ describe('L1b stale_trigger gate (ISS-789)', () => {
     }
     expect(Object.keys(TRIGGER_STATUS_BY_JOB_TYPE)).not.toContain('drive');
     expect(text).toMatch(/j\.type IN \(/);
-    expect(text).not.toMatch(/drive/);
+    expect(staleTriggerJobTypes(text)).not.toContain('drive');
+    for (const jobType of Object.keys(TRIGGER_STATUS_BY_JOB_TYPE)) {
+      expect(staleTriggerJobTypes(text)).toContain(jobType);
+    }
   });
 
   // cm:guard this ordering assertion is the whole safety property — read before issue_busy, the gate would call a job stale during the one window where a non-trigger status is legitimate (a sibling step mid-flight flipped it), and discard the step queued behind the one doing the work

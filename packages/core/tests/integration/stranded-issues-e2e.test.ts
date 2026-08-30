@@ -62,10 +62,22 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
 
   const HOUR = 60 * 60 * 1000;
 
-  async function seed(opts: { status?: string; mergedAgoMs?: number | null } = {}) {
+  async function seed(
+    opts: {
+      status?: string;
+      mergedAgoMs?: number | null;
+      autonomous?: boolean;
+      updatedAgoMs?: number;
+    } = {},
+  ) {
     const owner = await createTestUser(harness.db);
     const org = await seedOrg(harness.db, owner.id);
     const project = await createTestProject(harness.db, owner.id, { orgId: org.id });
+    if (opts.autonomous) {
+      await harness.db.execute(
+        sql`UPDATE projects SET agent_config = ${JSON.stringify({ pipelineConfig: { mode: 'autonomous' } })}::jsonb WHERE id = ${project.id}`,
+      );
+    }
 
     // cm:why two distinct routes to admin — explicit project_members admin AND the org owner seedOrg registers — because projectAdminUserIds unions both and a regression could drop either
     const projAdmin = await createTestUser(harness.db);
@@ -91,6 +103,12 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
       VALUES (${issueId}, ${project.id}, 'stranded probe', ${opts.status ?? 'waiting'},
               ${owner.id}, ${mergedAt}, 762)
     `);
+    if (opts.updatedAgoMs !== undefined) {
+      const updatedAt = new Date(Date.now() - opts.updatedAgoMs).toISOString();
+      await harness.db.execute(
+        sql`UPDATE issues SET updated_at = ${updatedAt} WHERE id = ${issueId}`,
+      );
+    }
     return { issueId, projectId: project.id, owner, projAdmin, plain };
   }
 
@@ -174,6 +192,32 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     expect(res.detected).toBe(1);
     expect((await notifRows(theirs.issueId)).length).toBe(0);
   });
+
+  // cm:why ISS-886 — on autonomous the park itself is the signal: no next step notices it and `answer-resume` restarts `needs_info` only, so a `waiting` issue stops dead until a human acts. kinetrak ISS-4's split had sat 11 days on 2026-08-30 with nobody told.
+  it('surfaces an UNMERGED autonomous park, which on a staged project it ignores', async () => {
+    const auto = await seed({ mergedAgoMs: null, autonomous: true, updatedAgoMs: 48 * HOUR });
+    const staged = await seed({ mergedAgoMs: null, updatedAgoMs: 48 * HOUR });
+
+    const res = await mods.detectStrandedIssues();
+
+    expect(res.detected).toBe(1);
+    expect((await notifRows(auto.issueId)).length).toBeGreaterThan(0);
+    expect((await notifRows(staged.issueId)).length).toBe(0);
+  });
+
+  // cm:guard the autonomous arm dates from `updated_at`, and it must still respect the grace window — a park is only stranded once it has outlasted a legitimate merge-verify-close pass, or every fresh question would alarm the owner within the minute.
+  it('stays silent inside the grace window on an autonomous project too', async () => {
+    await seed({ mergedAgoMs: null, autonomous: true, updatedAgoMs: 1 * HOUR });
+    await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 0 });
+  });
+
+  it.each(['needs_info', 'on_hold', 'open'])(
+    'stays silent for an aged autonomous issue in status %s — only `waiting` is a silent park',
+    async (status) => {
+      await seed({ status, mergedAgoMs: null, autonomous: true, updatedAgoMs: 48 * HOUR });
+      await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 0 });
+    },
+  );
 
   it('never moves the issue — waiting is a human park', async () => {
     const s = await seed();

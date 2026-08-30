@@ -414,6 +414,39 @@ describe('ISS-162 stateless-gates picker E2E', () => {
       expect(result?.id).toBe(parentCode);
     });
 
+    // cm:why ISS-886 — the autonomous half of the same gate: `drive` is that mode's whole pipeline in one job, so an ungated parent ran its integration before a single child had merged
+    it("holds a decompose PARENT's `drive` job until its children merge", async () => {
+      const { owner, project } = await seedProject({ maxConcurrentIssues: 10 });
+      await seedFreshRunner(project.id, owner.id);
+      const parent = await insertIssue(project.id, { status: 'open', issSeq: 191 });
+      const child = await insertIssue(project.id, { status: 'open', issSeq: 192 });
+      await insertBlocksEdge(project.id, parent, child, { kind: 'decomposes' });
+      const parentDrive = await insertJob(project.id, { issueId: parent, type: 'drive' });
+
+      let result = await mods.pickNextDispatchableJobForProject(project.id);
+      expect(result).toBeNull();
+      const reason = await mods.assertDispatchable(parentDrive);
+      expect(reason).toMatchObject({ ok: false, reason: 'decompose_children_pending' });
+
+      await harness.db.execute(sql`UPDATE issues SET merged_at=now() WHERE id=${child}`);
+      result = await mods.pickNextDispatchableJobForProject(project.id);
+      expect(result?.id).toBe(parentDrive);
+    });
+
+    // cm:guard the deadlock this gate is one predicate away from: a CHILD's own drive job must dispatch freely, because the epic only makes progress through the children. It is safe solely because the EXISTS is anchored on `d2.from_issue_id = j.issue_id`, and a widening of that anchor would hold both sides and freeze the epic against itself while reporting the same gate reason on each.
+    it("does NOT hold a decompose CHILD's own `drive` job", async () => {
+      const { owner, project } = await seedProject({ maxConcurrentIssues: 10 });
+      await seedFreshRunner(project.id, owner.id);
+      const parent = await insertIssue(project.id, { status: 'waiting', issSeq: 193 });
+      const child = await insertIssue(project.id, { status: 'open', issSeq: 194 });
+      await insertBlocksEdge(project.id, parent, child, { kind: 'decomposes' });
+      const childDrive = await insertJob(project.id, { issueId: child, type: 'drive' });
+
+      const result = await mods.pickNextDispatchableJobForProject(project.id);
+      expect(result?.id).toBe(childDrive);
+      await expect(mods.assertDispatchable(childDrive)).resolves.toMatchObject({ ok: true });
+    });
+
     // ISS-639 — primary bug fix: a `blocks` blocker that is `closed` but
     // never merged must NOT satisfy the gate when the project's baseBranch
     // is stampable (devbox ISS-2/ISS-4 failure mode).

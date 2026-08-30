@@ -54,6 +54,10 @@ flowchart LR
 - **A stop must say why.** `reopen`, `waiting` and `needs_info` are rejected without a `reason`;
   `waiting` additionally requires `waitingKind`. A stopped pipeline that does not say what it waits
   for is a question nobody can answer.
+- **A park no dispatcher picks up is not representable.** Under `mode: 'autonomous'` an agent's
+  `reopen` and `waiting` are rewritten at write time — `core/src/issues/autonomous-park.ts` — to
+  `open` and `needs_info`, the only two statuses that driver reads. A human's `waiting`/`on_hold`
+  and the decompose review gate pass through; staged projects are untouched.
 
 ## Boundaries
 

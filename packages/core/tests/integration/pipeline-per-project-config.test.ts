@@ -125,7 +125,10 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
   }
 
   async function seedProject(
-    args: { statesOverride?: Record<string, { enabled?: boolean; mode?: 'auto' | 'manual' }> } = {},
+    args: {
+      statesOverride?: Record<string, { enabled?: boolean; mode?: 'auto' | 'manual' }>;
+      mode?: 'autonomous';
+    } = {},
   ) {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
@@ -166,6 +169,7 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
 
     const states = { ...mods.defaultStatesConfig(), ...(args.statesOverride ?? {}) };
     const pipelineConfig = {
+      ...(args.mode ? { mode: args.mode } : {}),
       enabled: true,
       autoTriage: true,
       autoClarify: true,
@@ -344,6 +348,31 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
       { type: 'test', skillName: 'forge-test' },
       { type: 'release', skillName: 'forge-release' },
     ]);
+  });
+
+  // cm:why ISS-886 — the way out for parks already sitting there: six issues were at `waiting` on autonomous projects on 2026-08-30, and the write-time rewrite does nothing for those, so their exit (a human moving the issue to `open`) is asserted rather than assumed
+  // cm:guard the orchestrator has an explicit guard against re-adding an actor gate on a park EXIT (ISS-163 refused four legitimate resumes and produced no work) — this asserts the autonomous half of that from the outside, so a re-added gate fails here rather than silently freezing every parked issue on five projects.
+  it('a human moving an autonomous park `waiting` → `open` hands the issue back to the driver', async () => {
+    const { owner, project } = await seedProject({ mode: 'autonomous' });
+    const issue = await insertOpenIssue(project.id, owner.id);
+    await harness.db.execute(
+      sql`UPDATE issues SET status='waiting', waiting_kind='needs_decision' WHERE id=${issue.id}`,
+    );
+
+    // cm:why the `drive` helper is deliberately bypassed — it short-circuits when the live status is not in PIPELINE_ORDER, and `waiting` is a park that sits outside that walk, so routing through it would silently assert nothing
+    const parked = await readIssue(issue.id);
+    await mods.applyStatusTransition(parked, 'open', { id: owner.id, ownerId: owner.id });
+    let guard = 0;
+    while ((await mods.drainOutboxOnce()).processed > 0 && guard++ < 20) {
+      /* keep draining until no rows remain */
+    }
+
+    expect((await readIssue(issue.id)).status).toBe('open');
+    const summary = (await jobsFor(issue.id)).map((j) => ({
+      type: j.type,
+      skillName: j.payload.skillName,
+    }));
+    expect(summary).toEqual([{ type: 'drive', skillName: 'forge-drive' }]);
   });
 
   it('fixture 2 — custom skill override at the plan stage (`clarified`) runs the custom skill there; defaults elsewhere', async () => {

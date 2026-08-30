@@ -396,6 +396,112 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
     });
   });
 
+  // cm:why ISS-886 — the cascade must promote children to a status THIS project's driver dispatches; on autonomous that is `open`, while `approved` is a dead status there (`autonomousStepFor` answers for `open` alone) that the board still renders as `running`
+  describe('cascade approve on an autonomous project', () => {
+    async function autonomousProject(ownerId: string) {
+      const project = await createTestProject(harness.db, ownerId);
+      await harness.db.execute(
+        sql`UPDATE projects SET agent_config = ${JSON.stringify({ pipelineConfig: { mode: 'autonomous' } })}::jsonb WHERE id = ${project.id}`,
+      );
+      return project;
+    }
+
+    it('promotes draft children to `open`, not `approved`, when the parent leaves the gate', async () => {
+      const owner = await createTestUser(harness.db);
+      const project = await autonomousProject(owner.id);
+      const parent = await insertIssue(project.id, owner.id, { status: 'waiting', issSeq: 181 });
+      const childA = await insertIssue(project.id, owner.id, { status: 'draft', issSeq: 182 });
+      const childB = await insertIssue(project.id, owner.id, { status: 'draft', issSeq: 183 });
+      await insertDecomposesEdge(project.id, parent, childA);
+      await insertDecomposesEdge(project.id, parent, childB);
+
+      await mods.applyStatusTransition(
+        { id: parent, projectId: project.id, status: 'waiting', reopenCount: 0 },
+        'open',
+        { id: owner.id, ownerId: owner.id },
+      );
+      await mods.drainOutboxOnce();
+
+      expect(await readIssueStatus(childA)).toBe('open');
+      expect(await readIssueStatus(childB)).toBe('open');
+    });
+
+    // cm:guard the stale-guide gesture. `issue-dependencies-and-decompose` told humans for months to move the parent `waiting -> approved`, and a reader with a cached copy still writes it — so `approved` must both fire the cascade AND not be where the parent is left, or the epic stalls exactly as it did before with the parent rendering as `running`.
+    it('follows a parent approved onto `approved` through to the driver entry status', async () => {
+      const owner = await createTestUser(harness.db);
+      const project = await autonomousProject(owner.id);
+      const parent = await insertIssue(project.id, owner.id, { status: 'waiting', issSeq: 184 });
+      const child = await insertIssue(project.id, owner.id, { status: 'draft', issSeq: 185 });
+      await insertDecomposesEdge(project.id, parent, child);
+
+      await mods.applyStatusTransition(
+        { id: parent, projectId: project.id, status: 'waiting', reopenCount: 0 },
+        'approved',
+        { id: owner.id, ownerId: owner.id },
+      );
+      await mods.drainOutboxOnce();
+
+      expect(await readIssueStatus(child)).toBe('open');
+      expect(await readIssueStatus(parent)).toBe('open');
+    });
+
+    // cm:guard the widened trigger fires on entering `open`, and `open` is also where answer-resume returns an answered question — so a decompose parent that merely asked something must NOT have its split approved by the reply. `needs_info` is absent from CASCADE_APPROVE_PARENT_FROM and that is the whole of the protection.
+    it('does not promote children when the parent reaches `open` from `needs_info`', async () => {
+      const owner = await createTestUser(harness.db);
+      const project = await autonomousProject(owner.id);
+      const parent = await insertIssue(project.id, owner.id, { status: 'needs_info', issSeq: 186 });
+      const child = await insertIssue(project.id, owner.id, { status: 'draft', issSeq: 187 });
+      await insertDecomposesEdge(project.id, parent, child);
+
+      await mods.applyStatusTransition(
+        { id: parent, projectId: project.id, status: 'needs_info', reopenCount: 0 },
+        'open',
+        { id: owner.id, ownerId: owner.id },
+      );
+      await mods.drainOutboxOnce();
+
+      expect(await readIssueStatus(child)).toBe('draft');
+    });
+
+    // cm:guard the fleet constraint, asserted rather than assumed: ~20 tenants are staged and one project's driver must never change another's vocabulary. A staged parent moved to `open` promotes nothing, and its children still wait for `approved`.
+    it('leaves a STAGED project promoting on `approved` only', async () => {
+      const owner = await createTestUser(harness.db);
+      const project = await createTestProject(harness.db, owner.id);
+      const openParent = await insertIssue(project.id, owner.id, {
+        status: 'waiting',
+        issSeq: 188,
+      });
+      const openChild = await insertIssue(project.id, owner.id, { status: 'draft', issSeq: 189 });
+      await insertDecomposesEdge(project.id, openParent, openChild);
+      const approvedParent = await insertIssue(project.id, owner.id, {
+        status: 'waiting',
+        issSeq: 190,
+      });
+      const approvedChild = await insertIssue(project.id, owner.id, {
+        status: 'draft',
+        issSeq: 191,
+      });
+      await insertDecomposesEdge(project.id, approvedParent, approvedChild);
+
+      await mods.applyStatusTransition(
+        { id: openParent, projectId: project.id, status: 'waiting', reopenCount: 0 },
+        'open',
+        { id: owner.id, ownerId: owner.id },
+      );
+      await mods.applyStatusTransition(
+        { id: approvedParent, projectId: project.id, status: 'waiting', reopenCount: 0 },
+        'approved',
+        { id: owner.id, ownerId: owner.id },
+      );
+      await mods.drainOutboxOnce();
+
+      expect(await readIssueStatus(openChild)).toBe('draft');
+      expect(await readIssueStatus(openParent)).toBe('open');
+      expect(await readIssueStatus(approvedChild)).toBe('approved');
+      expect(await readIssueStatus(approvedParent)).toBe('approved');
+    });
+  });
+
   describe('close cascade', () => {
     it('forces non-closed children to closed when parent → closed', async () => {
       const owner = await createTestUser(harness.db);

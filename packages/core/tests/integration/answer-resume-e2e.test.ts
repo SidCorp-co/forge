@@ -117,7 +117,7 @@ describe('answer-resume E2E', () => {
     expect(await statusOf(id)).toBe('needs_info');
   });
 
-  // cm:guard the autonomous board renders waiting/on_hold/needs_info alike as needs_human, but only needs_info was entered by the AGENT asking — resuming the other two takes a pause away from the person who chose it
+  // cm:guard the autonomous board renders waiting/on_hold/needs_info alike as needs_human, but only needs_info was entered by the AGENT asking — resuming the other two takes a pause away from the person who chose it. ISS-886 made an agent's `waiting` unreachable on this mode, which narrows what these two rows represent (a human's pause, and the decompose review gate) without changing the rule: still not resumable by comment.
   it('never resumes the two parks a person entered deliberately', async () => {
     await setMode('autonomous');
     const waiting = await insertIssue('waiting');

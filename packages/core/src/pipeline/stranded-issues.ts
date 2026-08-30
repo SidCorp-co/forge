@@ -1,14 +1,24 @@
-// An issue whose code is already on the base branch but which is still parked
-// at `waiting` is asserting two contradictory things at once: the work shipped,
-// and the work is not done. That contradiction is the signal — nothing else
-// distinguishes "parked on purpose, nothing at stake" from "parked on a question
-// nobody was told about" (ISS-762).
+// Two signals, one notification, because they mean the same thing: a `waiting`
+// park nobody was told about.
+//
+// On a STAGED project the signal is a contradiction — the code is on the base
+// branch and the issue still says it is not done (ISS-762). Nothing weaker
+// separates "parked on purpose, nothing at stake" from "parked on a question
+// nobody heard", so the merge is required there.
+//
+// On an AUTONOMOUS project the park itself is the signal and no merge is
+// needed. There is no next step to notice: `answer-resume.ts` restarts
+// `needs_info` and nothing else, so a human must act or the issue stops
+// forever. ISS-886 rewrote an AGENT's `waiting` away, which leaves exactly the
+// two kinds this pass now has to surface — a person's own park, and the
+// decompose review gate. Measured 2026-08-30: kinetrak ISS-4's split had been
+// waiting 11 days with nobody told.
 //
 // Detection + notify only. This pass never moves an issue: `waiting` is a
 // deliberate human park and only a human may leave it. The whole point is to
 // tell that human a decision is owed.
 
-import { and, eq, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, notifications, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -37,9 +47,12 @@ export function strandedResolutionKey(issueId: string): string {
 }
 
 /**
- * Surface every issue parked at `waiting` whose code already reached the base
- * branch. Best-effort: never throws — a failure here must not abort the sweep.
+ * Surface every `waiting` park that is past {@link STRANDED_GRACE_MS} and has
+ * nothing coming for it. Best-effort: never throws — a failure here must not
+ * abort the sweep.
  */
+// cm:guard the age is measured from `merged_at` on staged and from `updated_at` on autonomous, and the two are NOT interchangeable: an autonomous park has no merge to date it from, and dating a staged one by `updated_at` would restart the clock every time a comment or a label touched the row.
+
 export async function detectStrandedIssues(
   now: Date = new Date(),
   scope: { projectId?: string } = {},
@@ -54,6 +67,7 @@ export async function detectStrandedIssues(
         issSeq: issues.issSeq,
         title: issues.title,
         mergedAt: issues.mergedAt,
+        updatedAt: issues.updatedAt,
         projectName: projects.name,
       })
       .from(issues)
@@ -61,8 +75,13 @@ export async function detectStrandedIssues(
       .where(
         and(
           eq(issues.status, 'waiting'),
-          isNotNull(issues.mergedAt),
-          lt(issues.mergedAt, cutoff),
+          or(
+            and(isNotNull(issues.mergedAt), lt(issues.mergedAt, cutoff)),
+            and(
+              sql`${projects.agentConfig}->'pipelineConfig'->>'mode' = 'autonomous'`,
+              lt(issues.updatedAt, cutoff),
+            ),
+          ),
           ...(scope.projectId ? [eq(issues.projectId, scope.projectId)] : []),
         ),
       );
@@ -86,8 +105,12 @@ export async function detectStrandedIssues(
       if (existing) continue;
 
       const ref = row.issSeq !== null ? `ISS-${row.issSeq}` : 'An issue';
-      const days = Math.floor((now.getTime() - (row.mergedAt?.getTime() ?? 0)) / 86_400_000);
+      const since = row.mergedAt ?? row.updatedAt;
+      const days = Math.floor((now.getTime() - since.getTime()) / 86_400_000);
       const age = days >= 1 ? `${days} day${days === 1 ? '' : 's'}` : 'hours';
+      const lead = row.mergedAt
+        ? `Its code merged ${age} ago but the issue is still parked`
+        : `It has been parked ${age}`;
 
       const adminIds = await projectAdminUserIds(row.projectId);
       for (const userId of adminIds) {
@@ -97,7 +120,7 @@ export async function detectStrandedIssues(
           issueId: row.id,
           type: 'issue_stranded',
           title: `${ref} is waiting on you — ${row.projectName}`,
-          body: `Its code merged ${age} ago but the issue is still parked, so nothing will move it forward until you decide. Open it and read the last comment: a step that could not finish its checks leaves the decision here.`,
+          body: `${lead}, so nothing will move it forward until you decide. Open it and read the last comment: a step that could not finish its checks leaves the decision here.`,
           resolutionKey,
         });
         notified += 1;
@@ -107,7 +130,7 @@ export async function detectStrandedIssues(
     if (rows.length > 0) {
       logger.warn(
         { detected: rows.length, notified, issueIds: rows.map((r) => r.id) },
-        'stranded-issues: parked with merged code',
+        'stranded-issues: a waiting park with nothing coming for it',
       );
     }
 

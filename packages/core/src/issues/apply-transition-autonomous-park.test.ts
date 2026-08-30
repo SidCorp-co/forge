@@ -1,8 +1,10 @@
-// ISS-141 — an autonomous project has no step that answers for `reopen`, so a
-// reopened issue was queued for a driver that would never look at it. These
-// tests assert the rewrite lands it on `open` WITHOUT dropping what a reopen
-// means: the authored reason still fires against `reopen`, and the reopen
-// counter still increments.
+// ISS-141 / ISS-886 — an autonomous project has no step that answers for
+// `reopen` and no resume that answers for `waiting`, so an issue landed on
+// either was queued for a driver that would never look at it. These tests
+// assert each rewrite lands on a status the driver DOES read, without dropping
+// what the park meant: the authored reason still fires against the requested
+// status, the reopen counter still increments, and the `waitingKind` is still
+// demanded.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { issues } from '../db/schema.js';
@@ -66,6 +68,7 @@ const { transitionIssueStatus } = await import('./apply-transition.js');
 const ISSUE_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const ACTOR_ID = '33333333-3333-4333-8333-333333333333';
+const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
 
 function projectMode(mode: string | undefined) {
   projectSelectLimit.mockResolvedValueOnce([
@@ -182,5 +185,131 @@ describe('every other transition is untouched', () => {
 
     expect(dbSelect).not.toHaveBeenCalled();
     expect(updateSet.mock.calls[0]?.[0]?.reopenCount).toBe(issues.reopenCount);
+  });
+});
+
+const WAITING_OPTS = {
+  transitionReason: 'the fixture needs a real runner in an auth-dead state',
+  waitingKind: 'needs_resource' as const,
+};
+
+describe('waiting on an autonomous project', () => {
+  it("writes `needs_info` for an AGENT's park, the one park a human answer restarts", async () => {
+    projectMode('autonomous');
+    queueUpdate('needs_info');
+
+    const result = await transitionIssueStatus(
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'in_progress', reopenCount: 0 },
+      'waiting',
+      { type: 'device', id: DEVICE_ID, ownerId: ACTOR_ID },
+      WAITING_OPTS,
+    );
+
+    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({ status: 'needs_info' });
+    expect(result.status).toBe('needs_info');
+    expect(setCurrentStepMock).toHaveBeenCalledWith(ISSUE_ID, 'needs_info');
+  });
+
+  // cm:guard the kind is cleared BECAUSE the row no longer says `waiting`, and leaving it set would render a "a human is needed" banner keyed to a status the issue is not in — the exact stale-kind failure the CLEAR arm in apply-transition.ts exists for
+  it('clears waitingKind on the rewritten row while still demanding it up front', async () => {
+    projectMode('autonomous');
+    queueUpdate('needs_info');
+
+    await transitionIssueStatus(
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'in_progress', reopenCount: 0 },
+      'waiting',
+      { type: 'device', id: DEVICE_ID, ownerId: ACTOR_ID },
+      WAITING_OPTS,
+    );
+
+    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({ waitingKind: null });
+    expect(postReasonMock).toHaveBeenCalledWith(
+      expect.objectContaining({ toStatus: 'waiting', waitingKind: 'needs_resource' }),
+      expect.anything(),
+    );
+  });
+
+  it('refuses an agent `waiting` with no kind, exactly as it does on a staged project', async () => {
+    projectMode('autonomous');
+
+    await expect(
+      transitionIssueStatus(
+        { id: ISSUE_ID, projectId: PROJECT_ID, status: 'in_progress', reopenCount: 0 },
+        'waiting',
+        { type: 'device', id: DEVICE_ID, ownerId: ACTOR_ID },
+        { transitionReason: 'blocked on a decision' },
+      ),
+    ).rejects.toThrow('WAITING_KIND_REQUIRED');
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  // cm:guard a person parking work owns their own resume; rewriting theirs to a comment-wakeable status would take the pause away from the human who chose it
+  it("leaves a HUMAN's park at `waiting`", async () => {
+    projectMode('autonomous');
+    queueUpdate('waiting');
+
+    const result = await transitionIssueStatus(
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'in_progress', reopenCount: 0 },
+      'waiting',
+      { type: 'user', id: ACTOR_ID },
+      WAITING_OPTS,
+    );
+
+    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({
+      status: 'waiting',
+      waitingKind: 'needs_resource',
+    });
+    expect(result.status).toBe('waiting');
+  });
+
+  it("leaves core's decompose review gate at `waiting`", async () => {
+    projectMode('autonomous');
+    queueUpdate('waiting');
+
+    const result = await transitionIssueStatus(
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'in_progress', reopenCount: 0 },
+      'waiting',
+      { type: 'device', id: DEVICE_ID, ownerId: ACTOR_ID },
+      { ...WAITING_OPTS, waitingKind: 'needs_decision', viaDecomposeGate: true },
+    );
+
+    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({
+      status: 'waiting',
+      waitingKind: 'needs_decision',
+    });
+    expect(result.status).toBe('waiting');
+  });
+
+  it('leaves an agent `waiting` alone on a staged project', async () => {
+    projectMode(undefined);
+    queueUpdate('waiting');
+
+    const result = await transitionIssueStatus(
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'developed', reopenCount: 0 },
+      'waiting',
+      { type: 'device', id: DEVICE_ID, ownerId: ACTOR_ID },
+      WAITING_OPTS,
+    );
+
+    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({
+      status: 'waiting',
+      waitingKind: 'needs_resource',
+    });
+    expect(result.status).toBe('waiting');
+  });
+
+  // cm:guard `on_hold` is a human's deliberate pause and the ISS-411 operator cancel writes it with a DEVICE actor — rewriting it here would undo the authoritative cancel, so this asserts the rewrite stops at `waiting`
+  it('leaves `on_hold` alone even from a device actor', async () => {
+    projectMode('autonomous');
+    queueUpdate('on_hold');
+
+    const result = await transitionIssueStatus(
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'in_progress', reopenCount: 0 },
+      'on_hold',
+      { type: 'device', id: DEVICE_ID, ownerId: ACTOR_ID },
+    );
+
+    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({ status: 'on_hold' });
+    expect(result.status).toBe('on_hold');
   });
 });

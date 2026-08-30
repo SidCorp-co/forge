@@ -17,7 +17,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issues, jobs } from '../db/schema.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { QUESTION_STATUS } from '../pipeline/answer-resume.js';
+import { AUTONOMOUS_QUESTION_STATUS } from '../pipeline/autonomous-mode.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -57,6 +57,6 @@ jobTurnVerdictRoutes.get(
       .where(eq(issues.id, job.issueId))
       .limit(1);
     // cm:guard a DELETED issue is done for the same reason — the park cannot be answered, so holding the session open only costs the slot.
-    return c.json({ done: issue?.status !== QUESTION_STATUS });
+    return c.json({ done: issue?.status !== AUTONOMOUS_QUESTION_STATUS });
   },
 );
