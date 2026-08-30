@@ -18,7 +18,7 @@
 // deliberate human park and only a human may leave it. The whole point is to
 // tell that human a decision is owed.
 
-import { and, eq, gte, isNotNull, lt, or, sql } from 'drizzle-orm';
+import { and, eq, gte, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, notifications, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -99,10 +99,12 @@ export async function detectStrandedIssues(
       );
 
     let notified = 0;
+    let unreachable = 0;
     for (const row of rows) {
       const resolutionKey = strandedResolutionKey(row.id);
 
-      // cm:guard dedupe on UNREAD **or** recently sent, never on existence alone — existence alone would surface a park once and never again, and unread alone would re-ping every 60s tick from the moment a human reads it. Reading is the human saying "seen", so the row stops suppressing; {@link STRANDED_RENOTIFY_MS} is what stops "seen" meaning "tell me again this minute".
+      // cm:guard `resolved_at IS NULL` is the OUTER condition and must stay outside the `or` — it is what "this strand is still the one we alarmed about" means (db/schema.ts says every reader owes this column, never `read`). A resolved row is a strand that ENDED: the human moved the issue off `waiting` and `notifications/auto-resolve.ts` stamped it. Suppressing on that row would mute a genuine RE-strand for the rest of the window — ~16h of silence indistinguishable from no strand, in the module whose whole job is breaking silence.
+      // cm:guard inside the `or`, unread **or** recently sent, never existence alone — existence alone surfaces a park once and never again, and unread alone re-pings every 60s tick from the moment a human reads it. Reading means "seen", not "resolved", so it stops suppressing; {@link STRANDED_RENOTIFY_MS} is what stops "seen" meaning "tell me again this minute".
       const [existing] = await db
         .select({ id: notifications.id })
         .from(notifications)
@@ -110,6 +112,7 @@ export async function detectStrandedIssues(
           and(
             eq(notifications.type, 'issue_stranded'),
             eq(notifications.resolutionKey, resolutionKey),
+            isNull(notifications.resolvedAt),
             or(
               eq(notifications.read, false),
               gte(notifications.createdAt, new Date(now.getTime() - STRANDED_RENOTIFY_MS)),
@@ -128,6 +131,7 @@ export async function detectStrandedIssues(
         : `It has been parked ${age}`;
 
       const adminIds = await projectAdminUserIds(row.projectId);
+      if (adminIds.length === 0) unreachable += 1;
       for (const userId of adminIds) {
         await emitNotification({
           userId,
@@ -142,10 +146,11 @@ export async function detectStrandedIssues(
       }
     }
 
-    // cm:guard gated on `notified`, NOT on `detected` — a park already surfaced is not news, and this runs every 60s against a predicate that now matches every parked issue on an autonomous project. Logging the detection instead reprints the same issue ids each minute for as long as the park lasts, which is the shape that buries the tick where something actually changed.
-    if (notified > 0) {
+    // cm:guard gated on `notified`, NOT on `detected` — a park already surfaced is not news, and this runs every 60s against a predicate that matches every parked issue on an autonomous project. Logging the detection instead reprints the same issue ids each minute for as long as the park lasts, which buries the tick where something actually changed.
+    // cm:guard `unreachable` is the second arm and is NOT redundant: a project with no admin at all (`projectAdminUserIds` returns none) notifies nobody, so gating on `notified` alone would make the one case where the alarm reaches NO human the one case that also prints nothing.
+    if (notified > 0 || unreachable > 0) {
       logger.warn(
-        { detected: rows.length, notified, issueIds: rows.map((r) => r.id) },
+        { detected: rows.length, notified, unreachable, issueIds: rows.map((r) => r.id) },
         'stranded-issues: a waiting park with nothing coming for it',
       );
     }
