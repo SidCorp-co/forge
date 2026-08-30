@@ -53,6 +53,20 @@ costs one human decision and keeps the failure honest. This is the smaller chang
 degrades better: a wrong notification is noise, a wrong retry is spent capacity plus a
 misleading history.
 
+## Honest costs
+
+Priced for **B**, the recommendation — a notice, no retry. A's row is here because the decision is
+open and a price nobody wrote down is how the cheaper-looking option wins.
+
+| Cost | Paid by | Detail |
+|---|---|---|
+| A new alerting surface to maintain | whoever owns release duty | A deploy failure has no notification path today. Adding one means choosing a destination, an owner, and a de-duplication rule — a notice that fires on every retry of an already-known failure is the noise that trains people to ignore the channel. |
+| One more thing that can be wrong and silent | this repo | The notice itself has no gate. If it stops firing, the failure mode is exactly the 90 minutes this proposal exists to remove, and nothing goes red — the same shape as a check at level 1. |
+| The 90 minutes are not recovered, only shortened | whoever is waiting on the deploy | B trades automation for legibility. It costs a human decision every time, and it cannot help when nobody is looking. |
+| Adopting **A** instead: a classifier nobody has built | this repo | A transient build failure and a broken diff produce the same signal — a non-zero exit. The retry is a few lines; the rule that decides when to fire it is the whole design, and a wrong one spends builder capacity on builds that cannot succeed. |
+| Adopting **A** instead: reconciling with the circuit breaker | `integrations/coolify/` | The breaker suppresses dispatch after 3 failures in 5 minutes. A retry is the opposite intent against the same counter, and two mechanisms disagreeing about one number is worse than either alone. |
+| Deciding neither | everyone | Manual re-dispatch stays the behaviour by absence rather than by choice, which is the state this file was written to end. |
+
 ## Recommendation, not a decision
 
 B, and specifically the notice half of B rather than any retry work. Recorded here by the

@@ -38,7 +38,6 @@ async function seedQueueAndRunner(
 
 /** Issue A running on `runnerId`, issue B queued behind it. */
 async function seedTwoIssuesOneBusyRunner(
-  ctx: AlertApp,
   fx: AlertFixtures,
   projectId: string,
   ownerId: string,
@@ -222,7 +221,7 @@ describe('A3 runner starvation (ISS-652)', () => {
       WHERE id = ${project.id}
     `);
     const runnerId = await fx.insertRunner({ projectId: project.id, status: 'online' });
-    await seedTwoIssuesOneBusyRunner(ctx, fx, project.id, owner.id, runnerId);
+    await seedTwoIssuesOneBusyRunner(fx, project.id, owner.id, runnerId);
 
     const token = await ctx.adminToken();
     const { body } = await getAlerts(ctx, token);
@@ -240,7 +239,7 @@ describe('A3 runner starvation (ISS-652)', () => {
     const owner = await createTestUser(ctx.harness.db);
     const project = await createTestProject(ctx.harness.db, owner.id);
     const runnerId = await fx.insertRunner({ projectId: project.id, status: 'online' });
-    await seedTwoIssuesOneBusyRunner(ctx, fx, project.id, owner.id, runnerId);
+    await seedTwoIssuesOneBusyRunner(fx, project.id, owner.id, runnerId);
 
     const { body } = await getAlerts(ctx, await ctx.adminToken());
     expect(findAlert(body, 'A3')?.status).toBe('ok');
