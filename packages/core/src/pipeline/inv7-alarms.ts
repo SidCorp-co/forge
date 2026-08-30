@@ -220,6 +220,8 @@ export async function alarmPausedRunsWithQueuedWork(
     WHERE r.status = 'paused'
       AND r.updated_at < ${cutoffIso}
     GROUP BY r.id, i.iss_seq
+    ORDER BY r.updated_at ASC
+    LIMIT 200
   `);
 
   const hours = Math.round(PAUSED_RUN_ALARM_MS / 3_600_000);

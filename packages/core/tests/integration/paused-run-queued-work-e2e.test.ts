@@ -170,9 +170,10 @@ describe('alarmPausedRunsWithQueuedWork E2E (ISS-879) — what it reports', () =
     expect(emitWedgeMock).not.toHaveBeenCalled();
   });
 
-  it('stays silent on a paused run with nothing queued behind it', async () => {
+  // cm:guard assert the RESOLVE, not just the silence — `alerted === 0` is equally true of an inner JOIN, which never returns a zero-queue run at all, so silence alone cannot tell "cleared its own claim" from "never looked". This assertion is the only thing holding the LEFT JOIN in place.
+  it('clears its own notification once the queue behind the pause has emptied', async () => {
     const issue = await insertIssue();
-    await insertRun({
+    const runId = await insertRun({
       issueId: issue.id,
       status: 'paused',
       pauseReason: 'stage_stalled:released',
@@ -182,6 +183,8 @@ describe('alarmPausedRunsWithQueuedWork E2E (ISS-879) — what it reports', () =
     const res = await mods.alarmPausedRunsWithQueuedWork(new Date());
 
     expect(res.alerted).toBe(0);
+    expect(emitWedgeMock).not.toHaveBeenCalled();
+    expect(resolveWedgeMock).toHaveBeenCalledWith(`paused:${runId}`);
   });
 
   it('stays silent while the pause is younger than the threshold', async () => {

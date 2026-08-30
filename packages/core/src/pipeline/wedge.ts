@@ -67,7 +67,9 @@ export function pausedRunWedgeEntityId(runId: string): string {
 
 /**
  * Clear the wedge notifications for `entityId` — the condition they reported is
- * gone. Call this from whatever observes the recovery, never on a timer.
+ * gone. Call it from whatever observes the recovery, or from a pass that
+ * RE-DERIVES the condition and finds it absent; never on a timer that clears
+ * blind, which is a bell emptied on a schedule rather than on a fact.
  */
 // cm:edge lockstep -> packages/core/src/pipeline/wedge.ts#emitPipelineWedge — the key both sides use comes from `wedgeResolutionKey`; a caller that hand-writes `wedge:<id>` here and the emitter drifting apart means a resolved wedge stays in the bell forever
 export async function resolvePipelineWedge(entityId: string): Promise<number> {

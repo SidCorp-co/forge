@@ -340,6 +340,8 @@ describe('alarmPausedRunsWithQueuedWork (ISS-879)', () => {
     expect(text).toMatch(/r\.status\s*=\s*'paused'/);
     expect(text).not.toMatch(/'running'/);
     expect(text).toMatch(/j\.status\s*=\s*'queued'/);
+    // cm:guard the join MUST stay LEFT — an inner join never returns a paused run whose queue has emptied, which silently deletes the resolve arm while every "stays silent" assertion keeps passing
+    expect(text).toMatch(/LEFT JOIN jobs j/);
     expect(text).toMatch(/r\.updated_at\s*</);
     expect(emitWedgeMock).not.toHaveBeenCalled();
   });

@@ -5,8 +5,11 @@
  * `paused`, and that alone would leave its notification unresolved forever: the
  * emitter's dedupe requires `resolvedAt IS NULL` AND an age under
  * `WEDGE_RENOTIFY_MS`, so a key nobody resolves stays in the owner's bell and
- * re-arms daily. `wedge.ts` says it outright — call this from whatever observes
- * the recovery, never on a timer.
+ * re-arms daily.
+ *
+ * This is the run half. The queue half — an operator cancelling the steps and
+ * leaving the pause standing — is resolved by `alarmPausedRunsWithQueuedWork`
+ * itself, which re-derives the condition each sweep; neither is a blind timer.
  */
 
 import { logger } from '../logger.js';
