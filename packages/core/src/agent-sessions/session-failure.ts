@@ -85,7 +85,7 @@ export function detectUnexpandedSkillFailure(
  */
 export function failureClassOf(reason: string): string {
   const [head] = reason.split(' → ');
-  return (head ?? reason).trim() || reason;
+  return (head as string).trim() || reason;
 }
 
 /**

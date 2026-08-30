@@ -28,7 +28,8 @@ export class LabelResolutionError extends Error {
   }
 }
 
-const LABEL_UUID_PATTERN =
+// cm:guard the write path (`resolveLabelIdsForWrite` below) and the tolerant read path (`resolveLabelIdsTolerant`, mcp/tools/forge-issues.ts) MUST split their input on THIS regex — they differ only in throw-vs-drop, so a second copy lets one treat a value as an id while the other treats it as a label name, silently creating a label nobody asked for. ISS-889 forked it once already.
+export const LABEL_UUID_PATTERN =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 /**

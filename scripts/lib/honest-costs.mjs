@@ -10,6 +10,7 @@
 // prose for sincerity, which is the kind of claim this repo refuses to make.
 
 import { readdirSync } from 'node:fs';
+import { withoutComments, withoutFences } from './markdown.mjs';
 
 // cm:guard `\s+` after the hashes, never `\s*`, and it must match `headingLevel`'s. CommonMark renders `##Honest costs` as a paragraph, so `\s*` both accepted a heading no reader sees and left the section unable to be closed by the next such line.
 // cm:edge contract -> docs/proposals/README.md — that file publishes this heading to whoever writes the next proposal; the two are agreed by nothing a compiler checks, so a reword here with none there leaves authors following a rule the gate no longer enforces
@@ -36,33 +37,6 @@ const MIN_WORDS = 12;
 const PLACEHOLDER_RE = /^(tbd|todo|t\.b\.d\.?|n\/a|none|nothing|unknown|\?+)\.?$/i;
 
 const ROW_RE = /^\s*(\||[-*+]\s|\d+\.\s)/;
-
-// cm:guard a fenced block is not content. `## Honest costs` inside a ```md example satisfied the heading match while the document itself priced nothing — the published rule refuses an absent section, and a section that exists only as an illustration of the rule is absent.
-// cm:guard close on the OPENING marker's char and length, per CommonMark — a toggle that flips on any fence line reopens the block at the inner ````` of a nested example, and the illustrated section reads as a real one again. An unclosed fence swallowing the rest of the document is not a bug here: that is what a renderer shows the reader, and the gate must agree with the page rather than with the source.
-function withoutFences(text) {
-  let open = null;
-  return text
-    .split('\n')
-    .map((line) => {
-      const fence = /^ {0,3}(`{3,}|~{3,})/.exec(line);
-      if (fence) {
-        const [char, len] = [fence[1][0], fence[1].length];
-        if (open === null) {
-          open = { char, len };
-          return '';
-        }
-        if (char === open.char && len >= open.len) open = null;
-        return '';
-      }
-      return open ? '' : line;
-    })
-    .join('\n');
-}
-
-// cm:why a commented-out heading is not on the page either, and `<!-- ## Honest costs -->` satisfied the match — same false green as the fenced example, one syntax over
-function withoutComments(text) {
-  return text.replace(/<!--[\s\S]*?-->/g, '');
-}
 
 function headingLevel(line) {
   return /^(#{1,6})\s/.exec(line)?.[1].length ?? 0;

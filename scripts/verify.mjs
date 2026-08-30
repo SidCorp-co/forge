@@ -85,7 +85,6 @@ const CHECKS = [
     // cm:edge naming -> scripts/check-autonomous-transitions.mjs — parses that script's success line
     scanned: /agree across (\d+) files/,
   },
-  // cm:guard scoped to docs/VISION.md + every .md under docs/proposals/, subdirectories included, and it must stay that narrow at the TOP: the rule is that a document ASKING to be adopted prices what adoption costs, and widened to every .md in the repo it would demand a price from a module doc that proposes nothing, which earns the checker an ignore list — where the next real violation hides.
   {
     axis: 'knowledge',
     label: 'injected-doc-modes',
@@ -94,6 +93,7 @@ const CHECKS = [
     scanned: /^injected-doc-modes: (\d+) transition/m,
     unit: 'transitions',
   },
+  // cm:guard scoped to docs/VISION.md + every .md under docs/proposals/, subdirectories included, and it must stay that narrow at the TOP: the rule is that a document ASKING to be adopted prices what adoption costs, and widened to every .md in the repo it would demand a price from a module doc that proposes nothing, which earns the checker an ignore list — where the next real violation hides.
   {
     axis: 'knowledge',
     label: 'honest-costs',

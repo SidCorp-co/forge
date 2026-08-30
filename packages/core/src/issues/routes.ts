@@ -239,7 +239,7 @@ function toHttpCreateError(err: unknown): unknown {
     return new HTTPException(400, { message: err.message, cause: { code: err.code } });
   }
   if (err instanceof IssueCreateError) {
-    const code = err.code === 'INVALID_STATUS' ? 'INVALID_STATUS' : 'INVALID_DETECTOR_KEY';
+    const code = err.code;
     return new HTTPException(400, { message: `${code}: ${err.value}`, cause: { code } });
   }
   return err;

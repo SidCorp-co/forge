@@ -20,6 +20,7 @@ import { createIssue, IssueCreateError } from '../../issues/create-service.js';
 import { loadIssueRelations } from '../../issues/dependency-read.js';
 import { isValidDetectorKey } from '../../issues/detector-key.js';
 import {
+  LABEL_UUID_PATTERN,
   LabelResolutionError,
   listIssueLabels,
   resolveLabelIdsForWrite,
@@ -448,9 +449,6 @@ export async function loadIssue(documentId: string): Promise<IssueRow> {
   if (!row) throw new Error('NOT_FOUND: issue not found');
   return row as IssueRow;
 }
-
-const LABEL_UUID_PATTERN =
-  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 /**
  * ISS-633 — tolerant name/uuid -> id resolver for the `list` filters.label

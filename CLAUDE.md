@@ -44,7 +44,7 @@ DB (in `packages/core`): `pnpm db:generate` · `pnpm db:migrate` · `pnpm db:stu
 ## Fourteen gates, six axes
 
 Each gate sits in `ci-passed`'s `needs` **and** is named in its result loop, so a violation blocks
-the merge. **That, not this file, is why they hold.** All thirteen run from `pnpm verify`, and
+the merge. **That, not this file, is why they hold.** All fourteen run from `pnpm verify`, and
 `verify --ci-parity` is itself a CI step: a `- run:` in `ci.yml` that `verify` neither runs nor
 declares fails the build, so the local command and the workflow cannot drift apart.
 

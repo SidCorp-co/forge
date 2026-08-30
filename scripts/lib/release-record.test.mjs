@@ -49,6 +49,12 @@ describe('parseRecord', () => {
     expect(entriesOf(fenced)).toEqual(['an actual entry']);
   });
 
+  it('takes nothing from a commented-out entry, which is not on the rendered page', () => {
+    const commented =
+      '## [Unreleased]\n\n- a published entry\n\n<!--\n- ISS-000 an entry someone hid\n-->\n';
+    expect(entriesOf(commented)).toEqual(['a published entry']);
+  });
+
   it('is empty for the stub 3df9a8e9 left behind', () => {
     expect(entriesOf('# Changelog\n')).toEqual([]);
   });

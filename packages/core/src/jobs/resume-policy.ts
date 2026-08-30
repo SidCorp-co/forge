@@ -186,8 +186,11 @@ export async function resolveResumePolicy(args: {
   let dropReason: ResumeDropReason | null = null;
   let pinDeviceId: string | null = null;
 
+  const isRetry = job.retryOf != null;
+
   // cm:guard a drive job must never inherit a staged step's CLI session: it resumes through `forge_phase` action `resume_point`, and --resume onto a stale triage session would hand the driver another step's transcript as its own history
-  if (overrides.sessionGroup && job.issueId && job.type !== AUTONOMOUS_JOB_TYPE) {
+  // cm:why gated on `!isRetry` alongside the bound check below: the retry branch replaces every value this block produces (`offeredClaudeSessionId`, `offeredDeviceId`, `pinDeviceId`) and resets `dropReason` to null before any of them is observed, so on a retry the group lookup is a DB query whose entire result is discarded — and its log line asserts a resume decision that never bore on the dispatch
+  if (!isRetry && overrides.sessionGroup && job.issueId && job.type !== AUTONOMOUS_JOB_TYPE) {
     const prior = await findPriorSessionInGroup({
       issueId: job.issueId,
       sessionGroup: overrides.sessionGroup,
@@ -208,8 +211,6 @@ export async function resolveResumePolicy(args: {
     pinDeviceId = null;
     dropReason = 'stage_pool';
   }
-
-  const isRetry = job.retryOf != null;
 
   // cm:why gated on `!isRetry` because the retry branch below decides its own resume — running the 3-query bound check here would spend three queries and emit a resume-drop count plus a Sentry breadcrumb describing a resume that was never on the table
   if (!isRetry && !dropReason && offeredClaudeSessionId && overrides.sessionGroup && job.issueId) {
