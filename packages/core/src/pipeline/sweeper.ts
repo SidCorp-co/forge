@@ -46,6 +46,7 @@ import {
 import {
   alarmAgedHolds,
   alarmChurningIssues,
+  alarmPausedRunsWithQueuedWork,
   alarmRejectionStreaks,
   alarmStalledQueuedJobs,
   type Inv7AlarmResult,
@@ -129,6 +130,8 @@ export interface SweepResult {
   /** RFC 0002 INV-7 — holds that outlived their threshold (alarm only). */
   agedHolds: Inv7AlarmResult;
   stalledQueuedJobs: Inv7AlarmResult;
+  /** ISS-879 — steps queued behind a run that is paused (alarm only). */
+  pausedRunsWithQueuedWork: Inv7AlarmResult;
   /** RFC 0002 INV-7 — issues at or past `noProgressRounds` in TOTAL reopens (alarm only). */
   churningIssues: Inv7AlarmResult;
   /** Runs at or past `noProgressRounds` in CONSECUTIVE review rejections (alarm only). */
@@ -214,6 +217,10 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const stalledQueuedJobs = await runPass('alarmStalledQueuedJobs', () =>
     alarmStalledQueuedJobs(now),
   );
+  // cm:why the pass above cannot cover this and widening it would not help: a job under a paused run reports gate `pipeline_run_not_running`, so it is excluded by the `gated.has()` test, not by that pass's `pr.status='running'` filter. Measured 2026-08-30, that left four triage jobs queued 38 days on qa-project with no surface anywhere able to say so.
+  const pausedRunsWithQueuedWork = await runPass('alarmPausedRunsWithQueuedWork', () =>
+    alarmPausedRunsWithQueuedWork(now),
+  );
   // cm:why an ACTIVE reaper, not an alarm: a run paused by a mechanism this build no longer has is not a state anyone can act on — there is nothing left to clear the reason, so surfacing it would ask a human to do the resume every time
   const orphanedPauses = await runPass('resumeOrphanedPauses', () => resumeOrphanedPauses());
   const churningIssues = await runPass('alarmChurningIssues', () => alarmChurningIssues());
@@ -261,6 +268,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     draftBlockedAlarms: draftBlockedAlarms as BlockedDependentAlarmResult,
     agedHolds: agedHolds as Inv7AlarmResult,
     stalledQueuedJobs: stalledQueuedJobs as Inv7AlarmResult,
+    pausedRunsWithQueuedWork: pausedRunsWithQueuedWork as Inv7AlarmResult,
     churningIssues: churningIssues as Inv7AlarmResult,
     rejectionStreaks: rejectionStreaks as Inv7AlarmResult,
     staleReleaseBatchClaims: staleReleaseBatchClaims as StaleReleaseBatchClaimsResult,
@@ -928,8 +936,8 @@ export async function closeIdleChatSessions(
 
 /**
  * ISS-461 — close `issue`-kind runs left `running`/`paused` after their backing
- * issue already reached `closed` (the run-closing status; ISS-669 removed
- * `released` from this set — the release step runs inside the still-open run).
+ * issue already reached a run-closing status (ISS-669 removed `released` from
+ * that set — the release step runs inside the still-open run).
  *
  * `closeOpenRunForIssue` is wired in exactly one place — `apply-transition.ts`'s
  * `RUN_CLOSING_STATUSES` block — so a close-status write that bypasses
@@ -952,6 +960,7 @@ export async function closeIdleChatSessions(
  * Best-effort per row: one failure is logged and skipped, never aborting the
  * pass — same convention as `reapOrphanedOneShotRuns`.
  */
+// cm:edge lockstep -> packages/core/src/issues/apply-transition.ts — the status list in this query IS `RUN_CLOSING_STATUSES`, and this pass is that block's only backstop; a status added there and not here leaks its runs forever with no reaper on any axis. `dropped` was exactly that drift (2026-08-30), and it is not hypothetical on an autonomous project — `dropped` is one of the five statuses the driver may write.
 export async function reapOrphanedIssueRuns(
   now: Date = new Date(),
   scope: SweepScope = {},
@@ -967,7 +976,7 @@ export async function reapOrphanedIssueRuns(
     JOIN issues i ON i.id = r.issue_id
     WHERE r.kind = 'issue'
       AND r.status IN ('running', 'paused')
-      AND i.status = 'closed'
+      AND i.status IN ('closed', 'dropped')
       AND r.started_at < ${cutoffIso}
       ${projectClause}
     ORDER BY r.started_at ASC

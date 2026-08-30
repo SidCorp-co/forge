@@ -9,6 +9,19 @@
 
 ### Added
 
+- Work queued behind a paused pipeline run is now reported instead of sitting silently. Of every
+  gate that can hold a `queued` job, `pipeline_run_not_running` was the only one with neither a
+  reaper nor an alarm behind it: the picker only offers jobs whose run is `running`, so nothing
+  behind a pause can start, and because the active-job index covers `queued`, nothing can queue a
+  replacement step for that issue either — the issue is dead, not slow. Measured on the fleet
+  2026-08-30, four triage jobs had been in that state for 38 days with no surface anywhere able to
+  say so. A new sweeper pass notifies the project owner once per paused run past the threshold,
+  naming what paused it, how many steps are frozen behind it, and — read from the pause kind, not
+  guessed — whether it will resume by itself. The notification clears as soon as the run leaves
+  `paused`, whether it resumed or was closed. Nothing is cancelled, re-queued or re-dispatched: a
+  pause is either a machine condition that clears itself or a decision only a person can revisit,
+  and a job killed here is work the resume existed to rescue. (ISS-879)
+
 - A plan now records the branches that were weighed and dropped, not only the one that was taken.
   Forge keeps the issue rather than the conversation, so a rejected branch that is not in the plan is
   gone — and a plan without it reads exactly like one where nothing else was ever considered. Both

@@ -131,6 +131,7 @@ import { runMissingSkillPauseBackfillIfRequested } from './pipeline/missing-skil
 import { registerMissingSkillResume } from './pipeline/missing-skill-resume.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
 import { registerOutboxWorker, stopOutboxWorker } from './pipeline/outbox-worker.js';
+import { registerPausedRunWedgeResolve } from './pipeline/paused-run-wedge-resolve.js';
 import { registerPhaseJournalBackfill } from './pipeline/phase-journal-backfill.js';
 import { registerPhaseJournalClose } from './pipeline/phase-journal-close.js';
 import { registerReconciler } from './pipeline/reconciler.js';
@@ -518,10 +519,9 @@ if (isMain) {
   registerDecompositionSubscribers(hooks);
   registerAnswerResume(hooks);
   registerPhaseJournalClose(hooks);
-  // ISS-238 — resume paused runs whose missing skill was just registered.
-  // Subscriber must register AFTER registerPipelineOrchestrator so the
-  // re-enqueue path it triggers walks through the orchestrator's hooks.
+  // cm:guard ISS-238 — register AFTER registerPipelineOrchestrator: this subscriber resumes a run whose missing skill was just registered and then re-enqueues, and that re-enqueue must walk through the orchestrator's own hooks, which are not on the bus yet if it is wired first
   registerMissingSkillResume(hooks);
+  registerPausedRunWedgeResolve(hooks);
 
   await runMissingSkillPauseBackfillIfRequested();
 

@@ -23,8 +23,11 @@ vi.mock('./hooks.js', () => ({
 }));
 
 const {
+  HUMAN_RESUMED_PAUSE_KINDS,
   isLivePauseReason,
   LIVE_PAUSE_REASON_KINDS,
+  MACHINE_RESUMED_PAUSE_KINDS,
+  pauseResumesItself,
   pauseReasonFor,
   pauseRun,
   resumeOrphanedPauses,
@@ -194,5 +197,31 @@ describe('resumeOrphanedPauses', () => {
 
     expect(res).toEqual({ detected: 0, resumed: 0 });
     expect(updateSet).not.toHaveBeenCalled();
+  });
+});
+
+describe('pauseResumesItself (ISS-879)', () => {
+  it('is true only for a kind with a resume path in this build', () => {
+    expect(pauseResumesItself('missing_skill:open')).toBe(true);
+    expect(pauseResumesItself('stage_stalled:released')).toBe(false);
+    expect(pauseResumesItself('reopen_cap:3')).toBe(false);
+  });
+
+  // cm:guard an operator pause carries NO reason, and reporting it as self-resuming would tell a human "nothing to do" about the one pause that is entirely theirs
+  it('is false for an operator pause, which has no reason at all', () => {
+    expect(pauseResumesItself(null)).toBe(false);
+    expect(pauseResumesItself(undefined)).toBe(false);
+    expect(pauseResumesItself('')).toBe(false);
+  });
+
+  // cm:guard splitting the list must not change which kinds `resumeOrphanedPauses` frees — it frees every kind ABSENT from LIVE_PAUSE_REASON_KINDS, so this asserts the union is still exactly the two, in both directions
+  it('leaves LIVE_PAUSE_REASON_KINDS the exact union of the two halves', () => {
+    expect([...LIVE_PAUSE_REASON_KINDS]).toEqual([
+      ...MACHINE_RESUMED_PAUSE_KINDS,
+      ...HUMAN_RESUMED_PAUSE_KINDS,
+    ]);
+    expect([...LIVE_PAUSE_REASON_KINDS].sort()).toEqual(['missing_skill', 'stage_stalled']);
+    expect(isLivePauseReason('stage_stalled:released')).toBe(true);
+    expect(isLivePauseReason('missing_skill:open')).toBe(true);
   });
 });

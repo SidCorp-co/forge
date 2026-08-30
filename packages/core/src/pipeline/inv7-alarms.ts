@@ -8,7 +8,9 @@
 // is wrong with the row, so there is nothing to reap. The fourth watches the
 // same churn as the second on the axis autonomous mode actually moves: a review
 // loop going round without landing, counted from the reviewer's own verdicts
-// rather than from a status the driver never writes.
+// rather than from a status the driver never writes. The fifth is the third's
+// blind spot: work queued behind a run that is PAUSED, which the third cannot
+// see because such a job has a gate reason and the third tests for having none.
 //
 // Every pass here emits a wedge notification and touches no state at all.
 
@@ -19,7 +21,8 @@ import { HOLD_PAYLOAD_KEY, holdResumesItself } from '../jobs/hold.js';
 import { RESULT_QUIET_MINUTES } from '../jobs/loop-monitor.js';
 import { logger } from '../logger.js';
 import { DEFAULT_NO_PROGRESS_ROUNDS } from './reopen-policy.js';
-import { emitPipelineWedge, reviewRoundsWedgeEntityId } from './wedge.js';
+import { pauseResumesItself } from './run-pause.js';
+import { emitPipelineWedge, pausedRunWedgeEntityId, reviewRoundsWedgeEntityId } from './wedge.js';
 
 export interface Inv7AlarmResult {
   alerted: number;
@@ -166,6 +169,82 @@ export async function alarmStalledQueuedJobs(now: Date = new Date()): Promise<In
     logger.info({ alerted, candidates: rows.length }, 'inv7: stalled queued jobs surfaced');
   }
   return { alerted };
+}
+
+interface PausedRunRow extends Record<string, unknown> {
+  run_id: string;
+  project_id: string;
+  issue_id: string | null;
+  pause_reason: string | null;
+  paused_since: string;
+  queued_jobs: number;
+  queued_types: string;
+  iss_seq: number | null;
+}
+
+/** How long a pause may hold work back before it is worth a human's attention. */
+export const PAUSED_RUN_ALARM_MS = (() => {
+  const raw = Number(process.env.FORGE_PAUSED_RUN_ALARM_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : HOLD_AGE_ALARM_MS;
+})();
+
+/**
+ * Steps queued behind a pause nobody is being told about.
+ */
+// cm:guard scoped to `paused` runs and nothing else — a `queued` job under a RUNNING run is either explained by a gate that already has an owner (`detectStalledDependencies`, `alarmAgedHolds`, `alarmUnrunnableBlockedDependents`) or by none, which is `alarmStalledQueuedJobs`. Widening this to `running` would double-notify all of them, and would re-open the age-based-reaper shape a human rejected on ISS-765 (2026-08-11) because a job legitimately queued behind the project cap is byte-identical to an orphan. Under a paused run there is no such reading: the picker requires `r.status='running'`, so nothing behind the pause can start, whatever its age.
+// cm:guard alarm ONLY (RFC 0002 INV-7) — never resume the run, cancel the job or re-dispatch. `missing_skill` resumes itself the moment the skill is registered and `reEnqueueForIssue` re-fires the work, so cancelling here would destroy exactly what the resume exists to rescue; `stage_stalled` and an operator pause are decisions only a person can revisit.
+// cm:edge lockstep -> packages/core/src/pipeline/paused-run-wedge-resolve.ts — that subscriber clears what this emits; the pair is what stops the daily re-notify outliving the pause
+export async function alarmPausedRunsWithQueuedWork(
+  now: Date = new Date(),
+): Promise<Inv7AlarmResult> {
+  const cutoffIso = new Date(now.getTime() - PAUSED_RUN_ALARM_MS).toISOString();
+  // cm:guard write `metadata` LITERALLY, never as a Drizzle column reference — inside a raw `sql` template Drizzle renders the reference unqualified, which collides across the joined tables and fails at parse time
+  const rows = await db.execute<PausedRunRow>(sql`
+    SELECT r.id AS run_id,
+           r.project_id,
+           r.issue_id,
+           r.metadata ->> 'pauseReason' AS pause_reason,
+           r.updated_at AS paused_since,
+           count(j.id)::int AS queued_jobs,
+           string_agg(DISTINCT j.type, ', ') AS queued_types,
+           i.iss_seq
+    FROM pipeline_runs r
+    JOIN jobs j ON j.pipeline_run_id = r.id AND j.status = 'queued'
+    LEFT JOIN issues i ON i.id = r.issue_id
+    WHERE r.status = 'paused'
+      AND r.updated_at < ${cutoffIso}
+    GROUP BY r.id, i.iss_seq
+  `);
+
+  const hours = Math.round(PAUSED_RUN_ALARM_MS / 3_600_000);
+  for (const row of rows) {
+    const label = row.iss_seq ? `ISS-${row.iss_seq}` : 'A pipeline run';
+    const steps = Number(row.queued_jobs);
+    // cm:guard ask `pauseResumesItself`, never assume from the reason string — only `missing_skill` has a resume path (`missing-skill-resume.ts`), `stage_stalled` has none anywhere in the repo, and an operator pause is a human's decision. This wedge is the operator's only recurring notification for a frozen queue; telling them "it resumes on its own" about a pause that never will is the aged-hold failure repeated on the run axis.
+    const selfResuming = pauseResumesItself(row.pause_reason);
+    const cause = row.pause_reason ?? 'an operator pause (no machine reason recorded)';
+    await emitPipelineWedge({
+      projectId: row.project_id,
+      issueId: row.issue_id,
+      hop: 'dispatch',
+      entity: 'run',
+      entityId: pausedRunWedgeEntityId(row.run_id),
+      reason: `paused_over_${hours}h:${row.pause_reason ?? 'operator'}`,
+      title: `${label} has ${steps} step${steps === 1 ? '' : 's'} frozen behind a paused run`,
+      summary: `The pipeline run for ${label} has been paused since ${row.paused_since} (${cause}) and ${steps} step${steps === 1 ? '' : 's'} (${row.queued_types}) ${steps === 1 ? 'is' : 'are'} queued behind it. Queued work under a paused run cannot start — the picker only offers jobs whose run is \`running\` — and while it waits nothing can queue a replacement for the same step either.`,
+      nextStep: selfResuming
+        ? 'Fix the condition named above (register the missing skill, or turn the stage off) and the run resumes on its own, re-firing the queued work.'
+        : 'This pause will NOT resume by itself. Decide what the run should do, then resume or cancel it from the run view — until one of those, the steps behind it stay frozen.',
+      action: selfResuming
+        ? 'Clear the named condition; the run restarts itself.'
+        : 'The run is waiting on you, not on a machine.',
+    });
+  }
+
+  if (rows.length > 0) {
+    logger.info({ alerted: rows.length }, 'inv7: paused runs with frozen work surfaced');
+  }
+  return { alerted: rows.length };
 }
 
 interface ChurnRow extends Record<string, unknown> {
