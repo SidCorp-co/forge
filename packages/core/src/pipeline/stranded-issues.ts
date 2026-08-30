@@ -18,7 +18,7 @@
 // deliberate human park and only a human may leave it. The whole point is to
 // tell that human a decision is owed.
 
-import { and, eq, isNotNull, lt, or, sql } from 'drizzle-orm';
+import { and, eq, gte, isNotNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, notifications, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -34,6 +34,18 @@ import { projectAdminUserIds } from '../notifications/project-admins.js';
  * actually sat.
  */
 export const STRANDED_GRACE_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * How long a surfaced park stays surfaced before it may ping again.
+ *
+ * The dedupe below keys on an UNREAD notification, so reading one re-arms it —
+ * intended, because a park still unresolved a day later is still owed a
+ * decision. What makes that safe is this window: the sweep runs every 60s, so
+ * without it "read" means "pinged again within the minute", every minute, for
+ * the life of the park.
+ */
+// cm:guard this MUST stay wider than the sweep interval (`pipeline/sweeper.ts`, 60s) by a large margin, and it is what bounds the autonomous arm below: that arm matches EVERY `waiting` park past the grace window rather than the rare merged-and-parked contradiction the staged arm needs, so the population this pass notifies about grew by roughly the number of parked issues on the fleet. A cooldown at or below the sweep interval reintroduces exactly the per-tick storm.
+export const STRANDED_RENOTIFY_MS = 24 * 60 * 60 * 1000;
 
 export interface StrandedIssuesResult {
   /** Issues matching the stranded predicate this tick. */
@@ -90,15 +102,18 @@ export async function detectStrandedIssues(
     for (const row of rows) {
       const resolutionKey = strandedResolutionKey(row.id);
 
-      // cm:guard dedupe on the UNREAD row, not on existence — the sweep runs every tick, and without this each stranded issue would re-notify forever. Reading the notification is the human saying "seen"; a re-strand after that legitimately pings again.
+      // cm:guard dedupe on UNREAD **or** recently sent, never on existence alone — existence alone would surface a park once and never again, and unread alone would re-ping every 60s tick from the moment a human reads it. Reading is the human saying "seen", so the row stops suppressing; {@link STRANDED_RENOTIFY_MS} is what stops "seen" meaning "tell me again this minute".
       const [existing] = await db
         .select({ id: notifications.id })
         .from(notifications)
         .where(
           and(
             eq(notifications.type, 'issue_stranded'),
-            eq(notifications.read, false),
             eq(notifications.resolutionKey, resolutionKey),
+            or(
+              eq(notifications.read, false),
+              gte(notifications.createdAt, new Date(now.getTime() - STRANDED_RENOTIFY_MS)),
+            ),
           ),
         )
         .limit(1);
@@ -127,7 +142,8 @@ export async function detectStrandedIssues(
       }
     }
 
-    if (rows.length > 0) {
+    // cm:guard gated on `notified`, NOT on `detected` — a park already surfaced is not news, and this runs every 60s against a predicate that now matches every parked issue on an autonomous project. Logging the detection instead reprints the same issue ids each minute for as long as the park lasts, which is the shape that buries the tick where something actually changed.
+    if (notified > 0) {
       logger.warn(
         { detected: rows.length, notified, issueIds: rows.map((r) => r.id) },
         'stranded-issues: a waiting park with nothing coming for it',
@@ -139,19 +155,4 @@ export async function detectStrandedIssues(
     logger.error({ err }, 'stranded-issues: detection failed');
     return { detected: 0, notified: 0 };
   }
-}
-
-/** Rows matching the stranded predicate, for the ops/health surface. */
-export async function countStrandedIssues(projectId: string): Promise<number> {
-  const [row] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(issues)
-    .where(
-      and(
-        eq(issues.status, 'waiting'),
-        isNotNull(issues.mergedAt),
-        eq(issues.projectId, projectId),
-      ),
-    );
-  return Number(row?.n ?? 0);
 }

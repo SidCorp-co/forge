@@ -26,20 +26,15 @@ import {
   comments,
   issues,
   jobs,
-  projects,
   terminalAgentSessionStatuses,
 } from '../db/schema.js';
 import { sessionInbox } from '../db/schema-session-inbox.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
 import type { LoopScope } from '../jobs/loop-monitor.js';
 import { logger } from '../logger.js';
-import {
-  AUTONOMOUS_ENTRY_STATUS,
-  AUTONOMOUS_QUESTION_STATUS,
-  isAutonomous,
-} from './autonomous-mode.js';
+import { AUTONOMOUS_ENTRY_STATUS, AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
+import { isAutonomousProject } from './autonomous-project.js';
 import type { HooksBus } from './hooks.js';
-import { pipelineConfigSchema } from './pipeline-config-schema.js';
 
 // cm:guard `needs_info` ONLY, never the other two parks the autonomous vocabulary also renders as needs_human — `waiting` and `on_hold` are stopped by a PERSON, and a comment on one is discussion, not permission to restart. Since ISS-886 that is true by construction rather than by convention: an agent can no longer reach `waiting` on this mode (issues/autonomous-park.ts rewrites it here), so the only ones left are a human's own pause and the decompose review gate — and waking the gate would approve a split nobody reviewed.
 async function resumableIssue(issueId: string) {
@@ -54,14 +49,7 @@ async function resumableIssue(issueId: string) {
     .where(eq(issues.id, issueId))
     .limit(1);
   if (!issue || issue.status !== AUTONOMOUS_QUESTION_STATUS) return null;
-  const [project] = await db
-    .select({ agentConfig: projects.agentConfig })
-    .from(projects)
-    .where(eq(projects.id, issue.projectId))
-    .limit(1);
-  const ac = (project?.agentConfig as { pipelineConfig?: unknown } | null) ?? {};
-  const parsed = pipelineConfigSchema.safeParse(ac.pipelineConfig ?? {});
-  if (!parsed.success || !isAutonomous(parsed.data)) return null;
+  if (!(await isAutonomousProject(issue.projectId))) return null;
   return issue;
 }
 

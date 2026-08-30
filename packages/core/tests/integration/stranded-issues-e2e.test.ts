@@ -29,6 +29,8 @@ type Mods = {
   detectStrandedIssues: typeof import('../../src/pipeline/stranded-issues.js').detectStrandedIssues;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   STRANDED_GRACE_MS: typeof import('../../src/pipeline/stranded-issues.js').STRANDED_GRACE_MS;
+  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
+  STRANDED_RENOTIFY_MS: typeof import('../../src/pipeline/stranded-issues.js').STRANDED_RENOTIFY_MS;
 };
 
 describe('detectStrandedIssues E2E (ISS-762)', () => {
@@ -157,12 +159,29 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     expect((await notifRows(s.issueId)).length).toBe(first.notified);
   });
 
-  it('re-notifies once the human has read (and thus dismissed) the previous alarm', async () => {
+  // cm:guard reading the alarm must NOT re-arm it on the next 60s tick — since ISS-886 the autonomous arm matches every `waiting` park past the grace window rather than the rare merged-and-parked contradiction, so an unread-only dedupe turns one read into a ping every minute for the life of the park, including the decompose review gate, which is SUPPOSED to sit there.
+  it('stays quiet after a read while the re-notify window is still open', async () => {
     const s = await seed();
     const first = await mods.detectStrandedIssues();
+    expect(first.notified).toBeGreaterThan(0);
     await harness.db.execute(
       sql`UPDATE notifications SET read = true WHERE issue_id = ${s.issueId}`,
     );
+
+    const second = await mods.detectStrandedIssues();
+    expect(second.detected).toBe(1);
+    expect(second.notified).toBe(0);
+    expect((await notifRows(s.issueId)).length).toBe(first.notified);
+  });
+
+  it('re-notifies once the read alarm is older than the re-notify window', async () => {
+    const s = await seed();
+    const first = await mods.detectStrandedIssues();
+    const stale = new Date(Date.now() - mods.STRANDED_RENOTIFY_MS - HOUR).toISOString();
+    await harness.db.execute(
+      sql`UPDATE notifications SET read = true, created_at = ${stale} WHERE issue_id = ${s.issueId}`,
+    );
+
     const second = await mods.detectStrandedIssues();
     expect(second.notified).toBe(first.notified);
   });

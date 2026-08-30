@@ -16,12 +16,9 @@
 // `dropped` is untouched on purpose: it means "this was not work", and holding
 // a non-issue for a release it will never be part of parks it forever.
 
-import { eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { type IssueStatus, projects } from '../db/schema.js';
+import type { IssueStatus } from '../db/schema.js';
 import { isAutonomous } from '../pipeline/autonomous-mode.js';
-import type { PipelineConfig } from '../pipeline/pipeline-config-schema.js';
-import { pipelineConfigSchema } from '../pipeline/pipeline-config-schema.js';
+import { readPipelineConfig } from '../pipeline/autonomous-project.js';
 import { resolveReleaseGateStatus } from '../release-batch/gate.js';
 
 export interface CloseTargetDecision {
@@ -46,14 +43,7 @@ export async function resolveAgentCloseTarget(args: {
   if (args.actorType !== 'device') return pass;
   if (args.viaReleasePath) return pass;
 
-  const [row] = await db
-    .select({ agentConfig: projects.agentConfig })
-    .from(projects)
-    .where(eq(projects.id, args.projectId))
-    .limit(1);
-  const ac = (row?.agentConfig ?? {}) as { pipelineConfig?: unknown };
-  const parsed = pipelineConfigSchema.safeParse(ac.pipelineConfig ?? {});
-  const cfg: PipelineConfig | null = parsed.success ? parsed.data : null;
+  const cfg = await readPipelineConfig(args.projectId);
 
   // cm:guard staged projects are excluded deliberately — their release job closes the issue with a device actor and no bypass, so holding it there would rewrite the release's own close back to the gate and loop forever
   if (!isAutonomous(cfg)) return pass;
