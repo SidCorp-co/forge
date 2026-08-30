@@ -127,6 +127,8 @@ Write the implementation plan following the format in `references/plan-format.md
 forge_issues → update → { documentId: "<id>", data: { plan: "<markdown plan>" } }
 ```
 
+The plan carries a **`Rejected alternatives`** section whatever its tier: each branch you weighed and dropped, and the fact that killed it. A forced choice is written as forced, naming what forced it — an empty heading, or an invented loser padded in to fill one, is worse than no section at all. Without it nobody can tell a branch you rejected from one you never thought of, and the issue is the only place that record survives.
+
 **For lightweight plans:** Focus on the **what** — which files, what changes, what approach. The coding agent will figure out the **how** when it reads the code. Reference project-knowledge recipes when applicable.
 
 **For deep plans:** Be concrete about both **what** and **how** — file paths, function names, pattern references. The coding agent should be able to follow the plan step-by-step without re-exploring.

@@ -11,7 +11,10 @@ Write it so all three audiences can use it without needing additional context.
 
 ```markdown
 ## Approach
-<1-3 sentences: what's the solution strategy and why this approach over alternatives>
+<1-3 sentences: what's the solution strategy>
+
+## Rejected alternatives
+- <branch you weighed and dropped> — <the fact that killed it>
 
 ## Affected Files
 - `path/to/file.ts` — <what changes and why>
@@ -46,7 +49,9 @@ Each scenario = Setup → Action → Verify → Contrast (optional).>
 
 ## Writing Good Plans
 
-**Approach section** — explain the *why*, not just the *what*. "Add a `maxEntries` parameter to the log hook and evict oldest entries when exceeded" is better than "fix the memory issue". If you considered alternatives, briefly note why you chose this one.
+**Approach section** — explain the *why*, not just the *what*. "Add a `maxEntries` parameter to the log hook and evict oldest entries when exceeded" is better than "fix the memory issue".
+
+**Rejected alternatives** — required, not optional. Each entry names a branch you weighed and the fact that killed it; a branch named without that fact is the same absence in a longer sentence. When the choice was genuinely forced — one way to do it, or a constraint the issue already settled — say so and name what forced it. An empty heading, or an invented loser padded in to fill one, is worse than no section at all: it reads as consideration that never happened. Without this section a reader cannot tell a branch you rejected from one you never thought of, and the issue is the only place that record survives.
 
 **Affected Files** — list every file that needs modification. Missing a file here means the coding agent won't know to touch it. Include files for types, tests, and any re-exports. Order them by implementation sequence when possible.
 
