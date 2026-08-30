@@ -198,6 +198,7 @@ export async function alarmPausedRunsWithQueuedWork(
   now: Date = new Date(),
 ): Promise<Inv7AlarmResult> {
   const cutoffIso = new Date(now.getTime() - PAUSED_RUN_ALARM_MS).toISOString();
+  // cm:guard `updated_at` is a PROXY for "paused since" — nothing stores the pause timestamp, and `setCurrentStep`/`setCurrentStepForOpenIssueRun` also stamp it on a `paused` run, so an issue whose status keeps moving pushes this clock forward and delays the alarm. That is the safe direction (something IS touching the run) and it is why the threshold is generous; if a stored `pausedAt` ever lands, read it here instead of tightening this.
   // cm:guard write `metadata` LITERALLY, never as a Drizzle column reference — inside a raw `sql` template Drizzle renders the reference unqualified, which collides across the joined tables and fails at parse time
   const rows = await db.execute<PausedRunRow>(sql`
     SELECT r.id AS run_id,

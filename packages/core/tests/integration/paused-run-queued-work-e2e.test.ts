@@ -142,6 +142,8 @@ describe('alarmPausedRunsWithQueuedWork E2E (ISS-879)', () => {
     expect(w.reason).toContain('missing_skill:open');
     expect(w.summary).toContain(`ISS-${issue.seq}`);
     expect(w.summary).toContain('triage');
+    // cm:guard the copy must name WHEN the pause started — 38 days and 38 minutes need the same wedge to read differently, and the row carries no duration, only this timestamp
+    expect(w.summary).toMatch(/paused since \d{4}-\d{2}-\d{2} /);
   });
 
   // cm:guard the specimen that must stay SILENT — the 2026-08-11 comment on ISS-765 (human-authored) rejected an age-based reaper precisely because a job legitimately queued behind the project cap is byte-identical to an orphan. This pass never looks at a `running` run, and this assertion is what proves it rather than asserting it in prose.
