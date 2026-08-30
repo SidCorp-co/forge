@@ -31,3 +31,19 @@
   them across 16 projects, all addressed to the account that paired the runner rather than to anyone
   who signs in. They now reach the project's admins, ordered by priority, capped at 20 rows with the
   real total shown; one human comment clears a row for good. (ISS-881)
+
+### Fixed
+
+- `noProgressRounds` now reaches the mode the pipeline actually runs in. The knob had two readers and
+  only one worked: the prompt printed it to every agent, while the alarm compared it to an issue's
+  total reopen count — a number that moves only on a `reopen` transition, which autonomous mode never
+  performs, because the driver holds the issue in progress from claim to close and the review loop is
+  a phase re-entry. Measured 2026-08-30: of 19 runs that went five or more coding rounds inside ONE
+  autonomous run, 18 had a reopen count of zero, and the one exception was alarming on reopens from
+  its earlier staged life, days before the churn nobody was told about. A second pass counts the
+  thing that does move — consecutive review rejections in one running run, with no approval in
+  between — and notifies when it reaches the same number. It counts rejections the reviewer wrote,
+  not the agent's own account of its progress, so an agent cannot decide whether it is churning; the
+  agent's `churn` ledger stays as the human's reading material and is named as such. Rounds that each
+  fix a different blocker still do not alarm, and one approval resets the count. Nothing is capped,
+  parked or blocked — there is still no limit on how many rounds an issue may take. (ISS-878)
