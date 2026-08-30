@@ -663,13 +663,7 @@ issueRoutes.patch(
   },
 );
 
-// ISS-138 (PR-D) — POST /api/issues/:id/decompose
-//
-// Creates N children, wires `decomposes` edges, and (unless opted out)
-// creates a shared integration branch on the project's git remote. All
-// done atomically via `decomposeParent`. Children land at `on_hold` so the
-// existing ISS-130 cascade-approve hook flips them to `approved` when the
-// parent moves `waiting → approved`.
+// cm:edge contract -> packages/core/src/pipeline/decomposition-subscribers.ts — children land at `draft`, and which status the human's approval gesture promotes them to is that file's answer and differs per mode; a second statement of it here goes stale silently, as this block did until ISS-886
 const decomposeChildNewSchema = z
   .object({
     title: z.string().trim().min(1).max(500),

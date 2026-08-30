@@ -47,6 +47,24 @@
 
 ### Fixed
 
+- On an autonomous project, splitting an issue into children now works end to end, and a park
+  always has a way out. Two paths could put an issue on a status no dispatcher reads and no
+  person could wake, which is the state-never-lies principle breached in the one place nothing
+  else watches. Decompose promoted its children to `approved`, a status the autonomous
+  dispatcher never looks at — it reads `open` and nothing else — so the children sat untouched
+  while the board rendered them as *running*; ten issues across two projects were frozen this
+  way when the fix landed, one of them for eleven days. Separately, an agent asking a human a
+  question could land the issue on `waiting`, which the comment-answer path deliberately never
+  restarts, so the question could never be answered. Now the cascade targets whichever status
+  that project's driver actually dispatches, a parent moved to `approved` by a human following
+  an older guide is carried on rather than left there, the parent's own work is held until every
+  child's code has merged, and an agent's `waiting` is rewritten at write time to the one park a
+  comment does restart — after the guards run, so the reason it must give and the kind it must
+  declare are still demanded and still posted. A person's own `waiting` is left alone, because
+  their pause is theirs to end, and the parks already sitting there are now surfaced to a human
+  instead of waiting unannounced. Staged projects are unchanged, deliberately: one project's
+  driver must never change another's vocabulary. (ISS-886)
+
 - A pipeline run under an issue that was DROPPED is now closed, and its queued steps with
   it. The backstop that closes runs whose issue has already finished matched only `closed`,
   while the set of statuses that close a run has been `{closed, dropped}` — so an issue
