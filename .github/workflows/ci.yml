@@ -183,9 +183,11 @@ jobs:
       # Rides this job for the same reason as the check above: knowledge axis, node and nothing else.
       # That checker holds the SKILL surfaces; this one holds the DOC surfaces injected beside them —
       # guide bodies and the mandatory facts, which reach every project whatever its pipeline mode.
-      # It asks only whether a status transition names the mode it belongs to. It cannot tell whether
-      # the prose around a qualified transition is true, and it never sees a project's own
-      # `projectFacts`, which live in the database.
+      # Two rules: a status transition names the mode it belongs to, and a pipeline STEP named as the
+      # actor of something the reader is told about does too — staged and autonomous share no step.
+      # It cannot tell whether the prose around a qualified claim is true, and it never sees a
+      # project's own `projectFacts`: those live in the database, and "node and nothing else" is
+      # precisely why they are out of reach here rather than merely unwritten.
       - run: node scripts/check-injected-doc-modes.mjs
 
   archmap:

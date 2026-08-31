@@ -309,7 +309,7 @@ A description is the one context channel every downstream step trusts without re
 
 **Belongs** — the stable half, owned by the requester: the outcome and who it serves; business and domain rules; invariants stated as behaviour; what the user must see when it fails; explicit out-of-scope; acceptance criteria as observable outcomes; external-system facts the repo cannot know (a vendor API's required call order) — labelled as unverified reference material, not as instructions.
 
-**Does not belong** — the volatile half, owned by plan and code reading the live repo: which files or components to touch; endpoint-by-endpoint call scripts and internal sequencing; "follow the pattern at <path>"; assertions about the current implementation state (these go stale fastest and do the most damage); anything that pre-decides a design the plan step exists to decide.
+**Does not belong** — the volatile half, owned by plan and code reading the live repo: which files or components to touch; endpoint-by-endpoint call scripts and internal sequencing; "follow the pattern at <path>"; assertions about the current implementation state (these go stale fastest and do the most damage); anything that pre-decides a design that the plan step exists to decide on a staged project, and the driver's planning phase on an autonomous one.
 
 Two rules follow, both enforced at triage:
 - **Never promote a description's implementation claim to a verified fact.** Either check it against the live repo in this run and say you did, or record it as "claimed by author, unverified". Writing "(verified: …)" without checking costs a whole downstream run.
@@ -426,8 +426,9 @@ dispatches. So:
 - **prose-deps** — describing an ordering in text instead of setting a \`blocks\` edge. Only the edge
   gates dispatch; prose gates nothing.
 - **open-as-note** / **draft-as-note** — filing a note as an issue.
-- **plan-by-hand** — pre-filling \`plan\` or \`acceptanceCriteria\` on create. Those are written by the
-  clarify and plan steps; filling them deletes those steps' reason to exist.
+- **plan-by-hand** — pre-filling \`plan\` or \`acceptanceCriteria\` on create. On a staged project
+  those are written by the clarify and plan steps, on an autonomous one by the driver's own
+  clarifying and planning phases; filling them deletes that work's reason to exist.
 - **wholesale-config-clobber** — patching a nested map (\`pipelineConfig.states\`, \`projectFacts\`)
   without reading it first. These are replace-not-merge; send a complete entry.
 - **skip-recall** — see above.

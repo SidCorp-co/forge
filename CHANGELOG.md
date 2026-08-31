@@ -10,6 +10,14 @@
 
 ### Fixed
 
+- The instructions every agent is handed no longer describe steps its own project does not run.
+  Three of them said `plan` and `acceptanceCriteria` are written by the clarify and plan steps —
+  true on a staged project, and false on an autonomous one, which has neither step and one driver
+  instead. One of the three was in the block injected into every job on every project. Four
+  sessions had already stalled at that gap. All three now name the mode they mean, and a build
+  check refuses a new one: a step named as the actor of something the reader is told about has to
+  say which kind of project it belongs to, the same way a status transition already did.
+
 - Listing chat and agent sessions no longer ships every word of every transcript. The web list
   selected the whole row, transcript column included, so a page of twenty conversations carried
   twenty full histories to render a title and a status — while the agent-facing list had projected

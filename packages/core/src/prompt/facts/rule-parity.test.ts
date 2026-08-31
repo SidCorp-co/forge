@@ -85,8 +85,8 @@ const SHARED_AFFORDANCE_RULES: ReadonlyArray<{ rule: string; must: RegExp }> = [
     must: /To report an issue \| fill `title`, `description`, `priority`, `category`/,
   },
   {
-    rule: 'plan/acceptanceCriteria belong to the clarify/plan steps',
-    must: /Pre-filling `plan`\/`acceptanceCriteria` — those are written by the clarify\/plan steps/,
+    rule: 'plan/acceptanceCriteria belong to whichever mode writes them',
+    must: /those are written by the clarify\/plan steps, on an autonomous one by the driver's own phases/,
   },
   {
     rule: 'an issue is work with a deliverable and an owner, verifiable by someone else',
