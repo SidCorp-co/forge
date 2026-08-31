@@ -29,19 +29,45 @@ export interface RocketChatRestMessage {
 
 const FETCH_TIMEOUT_MS = 8000;
 
+interface RawRestFile {
+  _id?: string;
+  name?: string;
+  type?: string;
+}
+
 interface RawRestMessage {
   _id?: string;
   msg?: string;
   ts?: string;
   t?: string;
   u?: { _id?: string; username?: string };
+  file?: RawRestFile;
+  files?: RawRestFile[];
   attachments?: Array<{
     title?: string;
     text?: string;
     description?: string;
     title_link?: string;
     message_link?: string;
+    image_url?: string;
+    image_type?: string;
   }>;
+}
+
+/** An image uploaded to a room, addressed by an absolute, credentialed URL. */
+export interface RocketChatImageRef {
+  name: string;
+  mime: string;
+  /** `<serverUrl>/file-upload/<id>/<name>` — reachable only with the bot's
+   *  `X-Auth-Token`/`X-User-Id`, and only by following one redirect. */
+  ref: string;
+}
+
+const IMAGE_MIME_RE = /^image\/(png|jpe?g|gif|webp)$/i;
+
+function absolutize(link: string, baseUrl: string | undefined): string {
+  if (!link.startsWith('/') || !baseUrl) return link;
+  return `${baseUrl.replace(/\/+$/, '')}${link}`;
 }
 
 /**
@@ -52,25 +78,59 @@ interface RawRestMessage {
  * link is kept inline — a webhook card's URL is often the ONLY place the
  * source entity's id appears (e.g. `…/tasks?projectId=53&task=12608`).
  */
-export function extractMessageText(raw: Pick<RawRestMessage, 'msg' | 'attachments'>): string {
+// cm:guard pass `baseUrl` from every call site — RC emits attachment links ROOT-RELATIVE (`/file-upload/…`), and a relative link that reaches an issue description or a chat answer is dead the moment it leaves the room; there is no second place that repairs it
+export function extractMessageText(
+  raw: Pick<RawRestMessage, 'msg' | 'attachments'>,
+  baseUrl?: string,
+): string {
   const parts: string[] = [];
   if (typeof raw.msg === 'string' && raw.msg.length > 0) parts.push(raw.msg);
   for (const a of raw.attachments ?? []) {
-    const title = [a.title, a.title_link ? `(${a.title_link})` : null]
+    const title = [a.title, a.title_link ? `(${absolutize(a.title_link, baseUrl)})` : null]
       .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
       .join(' ');
     for (const field of [title, a.text, a.description, a.message_link]) {
-      if (typeof field === 'string' && field.trim().length > 0) parts.push(field);
+      if (typeof field === 'string' && field.trim().length > 0) {
+        parts.push(field === a.message_link ? absolutize(field, baseUrl) : field);
+      }
     }
   }
   return parts.join('\n');
 }
 
-function mapMessage(raw: RawRestMessage): RocketChatRestMessage | null {
+/**
+ * The images a message carries, as absolute refs. RC describes an upload in
+ * two places — the top-level `file`/`files[]` (id + name + mime) and a
+ * matching `attachments[]` entry (`image_url`/`image_type`) — and neither is
+ * present on every server version, so both are read and deduplicated by ref.
+ * Non-image uploads (PDFs, videos) are skipped: nothing downstream can use
+ * them, and fetching one only spends the budget an image needed.
+ */
+export function extractMessageImages(
+  raw: Pick<RawRestMessage, 'file' | 'files' | 'attachments'>,
+  baseUrl: string,
+): RocketChatImageRef[] {
+  const out = new Map<string, RocketChatImageRef>();
+  for (const f of [raw.file, ...(raw.files ?? [])]) {
+    if (!f?._id || typeof f.name !== 'string' || !IMAGE_MIME_RE.test(f.type ?? '')) continue;
+    const ref = absolutize(`/file-upload/${f._id}/${encodeURIComponent(f.name)}`, baseUrl);
+    out.set(ref, { name: f.name, mime: (f.type as string).toLowerCase(), ref });
+  }
+  for (const a of raw.attachments ?? []) {
+    if (typeof a.image_url !== 'string' || !IMAGE_MIME_RE.test(a.image_type ?? '')) continue;
+    const ref = absolutize(a.image_url, baseUrl);
+    if (out.has(ref)) continue;
+    const name = a.title ?? ref.split('/').pop() ?? 'image';
+    out.set(ref, { name, mime: (a.image_type as string).toLowerCase(), ref });
+  }
+  return [...out.values()];
+}
+
+function mapMessage(raw: RawRestMessage, baseUrl?: string): RocketChatRestMessage | null {
   if (!raw || typeof raw._id !== 'string' || !raw.u?._id) return null;
   return {
     id: raw._id,
-    text: extractMessageText(raw),
+    text: extractMessageText(raw, baseUrl),
     userId: raw.u._id,
     username: raw.u.username ?? raw.u._id,
     ts: typeof raw.ts === 'string' ? raw.ts : '',
@@ -136,7 +196,7 @@ export async function fetchRoomHistory(
     if (Array.isArray(raw)) {
       endpointByRoom.set(rid, endpoint);
       const mapped = raw
-        .map((m) => mapMessage(m as RawRestMessage))
+        .map((m) => mapMessage(m as RawRestMessage, auth.serverUrl))
         .filter((m): m is RocketChatRestMessage => m !== null);
       // History endpoints return newest-first; flip to chronological.
       return mapped.sort((a, b) => a.ts.localeCompare(b.ts));
@@ -219,7 +279,7 @@ export async function fetchMessage(
 ): Promise<RocketChatRestMessage | null> {
   const body = await rcGet(auth, 'chat.getMessage', { msgId });
   const raw = (body as { message?: RawRestMessage } | null)?.message;
-  return raw ? mapMessage(raw) : null;
+  return raw ? mapMessage(raw, auth.serverUrl) : null;
 }
 
 /** Fetch a thread's messages (oldest-first). Empty array on any failure. */
@@ -232,7 +292,7 @@ export async function fetchThreadMessages(
   const raw = body?.messages;
   if (!Array.isArray(raw)) return [];
   return raw
-    .map((m) => mapMessage(m as RawRestMessage))
+    .map((m) => mapMessage(m as RawRestMessage, auth.serverUrl))
     .filter((m): m is RocketChatRestMessage => m !== null)
     .sort((a, b) => a.ts.localeCompare(b.ts));
 }
@@ -272,6 +332,43 @@ export async function postRoomMessage(
     if (body?.success === false) {
       throw new Error(`chat.postMessage rejected: ${body.error ?? 'unknown error'}`);
     }
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Uploads are big and slow next to a JSON read; give them their own budget. */
+const FILE_FETCH_TIMEOUT_MS = 20_000;
+
+/**
+ * Download an uploaded file's bytes with the bot credential.
+ *
+ * `maxBytes` is enforced against `content-length` BEFORE the body is read, so
+ * an oversized upload costs a HEAD-shaped round-trip rather than a buffer the
+ * process then throws away. Null on any failure — a picture the bot cannot
+ * fetch degrades the answer, it never fails the turn.
+ */
+// cm:guard `redirect: 'follow'` is load-bearing — `/file-upload/…` answers 302 to the storage backend, and the default-followed fetch is what makes this a 200; a `redirect: 'manual'` here returns a 302 whose empty body reads as a zero-byte image
+export async function fetchAttachmentBytes(
+  auth: RocketChatRestAuth,
+  ref: string,
+  maxBytes: number,
+): Promise<Buffer | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FILE_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(ref, {
+      headers: { 'X-Auth-Token': auth.authToken, 'X-User-Id': auth.userId },
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const declared = Number(res.headers.get('content-length') ?? Number.NaN);
+    if (Number.isFinite(declared) && declared > maxBytes) return null;
+    const bytes = Buffer.from(await res.arrayBuffer());
+    return bytes.byteLength > 0 && bytes.byteLength <= maxBytes ? bytes : null;
+  } catch {
+    return null;
   } finally {
     clearTimeout(timer);
   }

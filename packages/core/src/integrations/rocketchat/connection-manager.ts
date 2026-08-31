@@ -13,14 +13,11 @@
 import { and, eq, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { runExternalChatTurn } from '../../chat/external-chat.js';
-import { buildEscalationToolset, ESCALATE_TOOL_NAME } from '../../chat/tools/escalate.js';
+import { ESCALATE_TOOL_NAME } from '../../chat/tools/escalate.js';
 import {
   buildExternalMcpToolsets,
   type ExternalMcpToolsets,
 } from '../../chat/tools/external-mcp.js';
-import { mergeToolsets } from '../../chat/tools/mcp-adapter.js';
-import { buildChatToolContext } from '../../chat/tools/principal.js';
-import { buildProjectToolset } from '../../chat/tools/registry.js';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { integrationConnections, organizations, projects } from '../../db/schema.js';
@@ -33,7 +30,7 @@ import {
   startAgentChat,
 } from './agent-chat.js';
 import { readRocketChatAnswerMode } from './answer-mode.js';
-import { buildConversationContext, buildRocketChatHistoryToolset } from './context.js';
+import { buildConversationContext } from './context.js';
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
 import {
   ESCALATION_ACK,
@@ -41,6 +38,7 @@ import {
   ESCALATION_NO_DEVICE_REPLY,
   startEscalation,
 } from './escalation.js';
+import { prepareFastTurn } from './images.js';
 import { createSeenTracker, decideHandling } from './inbound-gate.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
 import { screenStakeholderReply } from './reply-screen.js';
@@ -602,28 +600,26 @@ class RocketChatConnectionManager {
 
           phase = 'mcp';
           external = await buildExternalMcpToolsets(projectRow[0]?.agentConfig);
-          const tools = mergeToolsets(
-            buildProjectToolset(
-              buildChatToolContext({
-                userId: route.principalUserId,
-                projectId: route.projectId,
-                projectSlug: route.projectSlug,
-              }),
-            ),
-            buildRocketChatHistoryToolset(restAuth, m.rid),
-            buildEscalationToolset(),
-            ...external.toolsets,
-          );
+          phase = 'images';
+          const fast = await prepareFastTurn({
+            route,
+            restAuth,
+            rid: m.rid,
+            images: m.images,
+            externalToolsets: external.toolsets,
+          });
           phase = 'turn';
           let result = await runExternalChatTurn({
             projectId: route.projectId,
             source: 'rocketchat',
             sessionId: this.sessionByRid.get(m.rid),
             message: m.text,
-            tools,
+            tools: fast.tools,
             userKey: m.userId,
             persona,
             conversationContext,
+            images: fast.images,
+            resolveImage: fast.resolveImage,
             signal: abort.signal,
           });
           this.sessionByRid.set(m.rid, result.sessionId);
@@ -698,10 +694,11 @@ class RocketChatConnectionManager {
               source: 'rocketchat',
               sessionId: result.sessionId,
               message: correctiveMessage(verdict.problems),
-              tools,
+              tools: fast.tools,
               userKey: m.userId,
               persona,
               conversationContext,
+              resolveImage: fast.resolveImage,
               signal: abort.signal,
             });
             this.sessionByRid.set(m.rid, result.sessionId);

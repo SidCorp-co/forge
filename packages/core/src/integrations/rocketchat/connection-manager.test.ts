@@ -62,6 +62,12 @@ vi.mock('./agent-chat.js', () => ({
   startAgentChat: (...args: unknown[]) => startAgentChat(...args),
 }));
 
+const fetchAttachmentBytes = vi.fn();
+vi.mock('./rest-client.js', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  fetchAttachmentBytes: (...args: unknown[]) => fetchAttachmentBytes(...args),
+}));
+
 vi.mock('../store.js', () => ({
   decryptConnectionSecrets: vi.fn(),
   listBindingsForConnection: vi.fn(async () => []),
@@ -106,6 +112,7 @@ const MESSAGE = {
   isSystem: false,
   isEdited: false,
   mentions: ['bot-1'],
+  images: [],
 };
 
 describe('connection-manager escalation wiring', () => {
@@ -329,5 +336,82 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
 
     expect(startAgentChat).not.toHaveBeenCalled();
     expect(runExternalChatTurn).toHaveBeenCalled();
+  });
+});
+
+describe('connection-manager image handling', () => {
+  const IMAGE = {
+    name: 'shot.png',
+    mime: 'image/png',
+    ref: 'https://chat.example.co/file-upload/a/shot.png',
+  };
+
+  interface TurnArgs {
+    images: Array<{ name: string; mime: string; ref: string; dataBase64: string }>;
+    resolveImage: (i: { ref: string }) => Promise<string | null>;
+  }
+  const turnArgs = () => runExternalChatTurn.mock.calls[0]?.[0] as TurnArgs;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
+    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
+    runExternalChatTurn.mockResolvedValue({
+      sessionId: 's1',
+      reply: 'that toggle reads the wrong tier',
+      terminal: 'done',
+      error: null,
+      iterations: 1,
+      toolCalls: [],
+      progress: null,
+    });
+  });
+
+  it('shows the model the bytes of the image posted in the room', async () => {
+    fetchAttachmentBytes.mockResolvedValue(Buffer.from('PNG'));
+    await handle(makeAc(), ROUTE, { ...MESSAGE, images: [IMAGE] }, 'conn-1');
+
+    expect(turnArgs().images).toEqual([{ ...IMAGE, dataBase64: 'UE5H' }]);
+    expect(Buffer.from(turnArgs().images[0]?.dataBase64 ?? '', 'base64').toString()).toBe('PNG');
+  });
+
+  it('fetches the image with the bot credential, not anonymously', async () => {
+    fetchAttachmentBytes.mockResolvedValue(Buffer.from('PNG'));
+    await handle(makeAc(), ROUTE, { ...MESSAGE, images: [IMAGE] }, 'conn-1');
+
+    const [auth, ref, cap] = fetchAttachmentBytes.mock.calls[0] as [
+      { authToken: string; userId: string; serverUrl: string },
+      string,
+      number,
+    ];
+    expect(auth.authToken).toBe('bot-token');
+    expect(auth.serverUrl).toBe('https://chat.example.co');
+    expect(ref).toBe(IMAGE.ref);
+    expect(cap).toBeGreaterThan(0);
+  });
+
+  it('still answers the question when the image cannot be fetched', async () => {
+    fetchAttachmentBytes.mockResolvedValue(null);
+    const ac = makeAc();
+    await handle(ac, ROUTE, { ...MESSAGE, images: [IMAGE] }, 'conn-1');
+
+    expect(turnArgs().images).toEqual([]);
+    const [rid, text] = ac.client.sendMessage.mock.calls[0] as [string, string];
+    expect(rid).toBe('room-1');
+    expect(text).toBe('that toggle reads the wrong tier');
+  });
+
+  it('offers a resolver that re-reads an image from an earlier turn', async () => {
+    fetchAttachmentBytes.mockResolvedValue(Buffer.from('OLD'));
+    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1');
+
+    expect(await turnArgs().resolveImage(IMAGE)).toBe('T0xE');
+  });
+
+  it('downloads nothing for a plain message with no images', async () => {
+    await handle(makeAc(), ROUTE, MESSAGE, 'conn-1');
+
+    expect(fetchAttachmentBytes.mock.calls).toEqual([]);
+    expect(turnArgs().images).toEqual([]);
   });
 });

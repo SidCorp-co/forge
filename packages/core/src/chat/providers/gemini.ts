@@ -38,9 +38,11 @@ export interface GeminiClient {
   };
 }
 
+export type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
+
 export interface GeminiContent {
   role: 'user' | 'model';
-  parts: Array<{ text: string }>;
+  parts: GeminiPart[];
 }
 
 export interface GeminiStreamChunk {
@@ -126,20 +128,39 @@ function mapMessages(messages: ChatMessage[]): {
   const systemParts: string[] = [];
   const contents: GeminiContent[] = [];
   for (const m of messages) {
-    const text = m.content ?? '';
+    const parts = toGeminiParts(m.content);
     if (m.role === 'system') {
-      systemParts.push(text);
+      systemParts.push(parts.map((p) => ('text' in p ? p.text : '')).join(''));
       continue;
     }
     // Gemini's simple adapter has no tool-calling path (only LiteLLM is wired
     // for tools in ISS-604); fold any tool/assistant text in as plain turns.
     contents.push({
       role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text }],
+      parts,
     });
   }
   if (systemParts.length === 0) return { contents };
   return { systemInstruction: systemParts.join('\n\n'), contents };
+}
+
+const DATA_URI_RE = /^data:([^;,]+);base64,(.*)$/s;
+
+// cm:edge contract -> packages/core/src/chat/providers/types.ts — ChatContentPart is the OpenAI wire shape; this is the ONLY place it is translated into Gemini's native `inlineData`, and nothing type-checks the two spellings against each other
+function toGeminiParts(content: ChatMessage['content']): GeminiPart[] {
+  if (content === null) return [{ text: '' }];
+  if (typeof content === 'string') return [{ text: content }];
+  const parts: GeminiPart[] = [];
+  for (const part of content) {
+    if (part.type === 'text') {
+      parts.push({ text: part.text });
+      continue;
+    }
+    const match = DATA_URI_RE.exec(part.image_url.url);
+    // cm:why a non-`data:` URI is dropped rather than forwarded — Gemini would have to fetch it itself, and every image Forge carries sits behind a credential the model host does not have, so the remote read 403s and the model reports "no image" instead of an error anyone can see
+    if (match?.[1] && match[2]) parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
+  }
+  return parts.length > 0 ? parts : [{ text: '' }];
 }
 
 function errorMessage(err: unknown): string {

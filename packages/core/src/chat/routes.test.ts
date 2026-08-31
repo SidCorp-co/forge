@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ChatMessage } from './providers/types.js';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
@@ -279,11 +280,11 @@ describe('POST /api/chat (mounted)', () => {
   });
 
   it('second turn with same sessionId includes prior turn in provider call', async () => {
-    let captured: Array<{ role: string; content: string | null }> = [];
+    let captured: ChatMessage[] = [];
     register('mock', () => ({
       id: 'mock',
       defaultModel: 'mock-default',
-      async *stream(req: { messages: Array<{ role: string; content: string | null }> }) {
+      async *stream(req: { messages: ChatMessage[] }) {
         captured = req.messages;
         yield { type: 'chunk' as const, text: 'po' };
         yield { type: 'chunk' as const, text: 'ng' };

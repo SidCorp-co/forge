@@ -13,7 +13,11 @@
 
 import { randomUUID } from 'node:crypto';
 import { WebSocket } from 'ws';
-import { extractMessageText } from './rest-client.js';
+import {
+  extractMessageImages,
+  extractMessageText,
+  type RocketChatImageRef,
+} from './rest-client.js';
 
 export interface RocketChatIncomingMessage {
   id: string;
@@ -30,6 +34,8 @@ export interface RocketChatIncomingMessage {
   mentions: string[];
   /** Parent thread message id when the message was posted inside a thread. */
   tmid?: string | undefined;
+  /** Images uploaded with the message, as absolute credentialed refs. */
+  images: RocketChatImageRef[];
 }
 
 export type DdpClientState =
@@ -66,7 +72,7 @@ export function ddpUrl(serverUrl: string): string {
 }
 
 /** Map a raw `stream-room-messages` arg to our shape, or null if unusable. */
-export function parseStreamMessage(arg: unknown): RocketChatIncomingMessage | null {
+export function parseStreamMessage(arg: unknown, serverUrl = ''): RocketChatIncomingMessage | null {
   if (!arg || typeof arg !== 'object') return null;
   const m = arg as Record<string, unknown>;
   const rid = m.rid;
@@ -80,7 +86,7 @@ export function parseStreamMessage(arg: unknown): RocketChatIncomingMessage | nu
     rid,
     // Includes attachment text — a reply-quote's quoted content (and a webhook
     // bot's entire body) lives in attachments, not msg.
-    text: extractMessageText(m as Parameters<typeof extractMessageText>[0]),
+    text: extractMessageText(m as Parameters<typeof extractMessageText>[0], serverUrl),
     userId: u._id,
     username: u.username,
     ts: typeof m.ts === 'string' ? m.ts : undefined,
@@ -88,6 +94,7 @@ export function parseStreamMessage(arg: unknown): RocketChatIncomingMessage | nu
     isEdited: m.editedAt != null,
     mentions,
     tmid: typeof m.tmid === 'string' ? m.tmid : undefined,
+    images: extractMessageImages(m as Parameters<typeof extractMessageImages>[0], serverUrl),
   };
 }
 
@@ -309,7 +316,7 @@ export class RocketChatDdpClient {
   private onChanged(frame: DdpFrame): void {
     if (frame.collection !== 'stream-room-messages') return;
     for (const arg of frame.fields?.args ?? []) {
-      const m = parseStreamMessage(arg);
+      const m = parseStreamMessage(arg, this.opts.serverUrl);
       if (m) this.opts.onMessage(m);
     }
   }

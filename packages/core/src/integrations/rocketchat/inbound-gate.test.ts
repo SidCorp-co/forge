@@ -12,6 +12,7 @@ function msg(over: Partial<RocketChatIncomingMessage>): RocketChatIncomingMessag
     isSystem: false,
     isEdited: false,
     mentions: [BOT],
+    images: [],
     ...over,
   };
 }

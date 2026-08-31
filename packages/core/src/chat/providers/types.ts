@@ -25,10 +25,22 @@ export interface ChatToolCall {
   function: { name: string; arguments: string };
 }
 
+/**
+ * A slice of a multimodal user message (OpenAI Chat Completions shape). An
+ * `image_url.url` is a self-contained `data:<mime>;base64,<bytes>` URI — never
+ * a remote link: the model host would have to fetch it, and every image Forge
+ * carries comes from a source (a Rocket.Chat upload) that needs a credential.
+ */
+export type ChatContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
 export interface ChatMessage {
   role: ChatRole;
-  /** `null` on an assistant message that only carries `tool_calls`. */
-  content: string | null;
+  // cm:guard a provider adapter MUST handle the parts-array form of `content`, not just the string — LiteLLM passes `messages` through to an OpenAI-wire proxy so parts map 1:1, but an adapter that builds its own body (gemini.ts) silently drops every image when it does `m.content ?? ''`, and a dropped image looks exactly like a model that answered without looking
+  /** `null` on an assistant message that only carries `tool_calls`. A parts
+   *  array carries a multimodal user turn (text + images). */
+  content: string | ChatContentPart[] | null;
   /** Assistant-only: tool invocations requested this turn. */
   tool_calls?: ChatToolCall[];
   /** `tool`-role only: the id of the `ChatToolCall` this result answers. */

@@ -33,6 +33,7 @@ describe('parseStreamMessage', () => {
       isSystem: false,
       isEdited: false,
       mentions: [],
+      images: [],
     });
   });
 

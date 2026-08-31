@@ -32,6 +32,7 @@ import {
 } from './session.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
+import { type ImageResolver, resolveVisionImages, type TurnImage } from './vision.js';
 
 export interface ExternalChatTurnArgs {
   projectId: string;
@@ -49,6 +50,12 @@ export interface ExternalChatTurnArgs {
   persona?: string | null;
   /** Seeded recent-conversation block for the system prompt (ISS-609). */
   conversationContext?: string | null;
+  /** Images that arrived WITH this message, bytes already in hand. Stored on
+   *  the turn by reference and sent to the model as content parts. */
+  images?: readonly TurnImage[] | undefined;
+  /** Re-fetch bytes for an image from an EARLIER turn still inside the vision
+   *  lookback; omit to let older images fall out of the model's view. */
+  resolveImage?: ImageResolver | undefined;
   /** Aborts the turn (provider fetch + SSE read) so a hung upstream terminates
    *  as an error instead of wedging the caller forever. */
   signal?: AbortSignal | undefined;
@@ -118,7 +125,8 @@ export async function runExternalChatTurn(
     db: dbi,
   });
 
-  appendUserMessage(session, args.message);
+  const images = args.images ?? [];
+  appendUserMessage(session, args.message, images);
 
   const systemPrompt = buildSystemPrompt({
     project: { name: project.name, agentConfig: project.agentConfig },
@@ -128,9 +136,11 @@ export async function runExternalChatTurn(
     conversationContext: args.conversationContext ?? null,
     progressFacts: progress ? buildProgressFactsBlock(progress) : null,
   });
+  const historyWindow = session.messages.slice(-PROVIDER_HISTORY_WINDOW);
+  const resolvedImages = await resolveVisionImages(historyWindow, images, args.resolveImage);
   const providerMessages = [
     { role: 'system' as const, content: systemPrompt },
-    ...toProviderMessages(session).slice(-PROVIDER_HISTORY_WINDOW),
+    ...toProviderMessages(session, resolvedImages).slice(-PROVIDER_HISTORY_WINDOW),
   ];
 
   const startedAt = Date.now();

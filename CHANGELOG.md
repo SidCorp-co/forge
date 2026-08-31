@@ -10,6 +10,20 @@
 
 ### Added
 
+- The Rocket.Chat bot can now see the pictures posted to it. Screenshots are how a room reports a
+  bug, and until now every one of them was invisible: the bot read the filename, answered from the
+  words around it, and gave no sign that it had not looked. An image attached to a message the bot
+  is mentioned in is fetched with the bot's own credential and shown to the model, and it stays
+  visible across the next couple of questions, so a conversation about one screenshot works and not
+  only the first question about it. Pictures are held by reference rather than copied into the
+  conversation history, and a single request carries at most ~6 MB of them; an image too large, or
+  one the bot cannot fetch, is left out and the question is still answered rather than failing.
+
+- An issue the Rocket.Chat bot files from a message carrying a screenshot now arrives with that
+  screenshot attached. Whoever picks the issue up sees what the reporter saw, instead of a
+  description of it. The image is attached by the server on the way through, so the bot cannot file
+  the report and forget the picture, and cannot invent an attachment that was never posted.
+
 - Each issue's pipeline work now runs in its own git checkout instead of sharing the project's one
   working copy. Before this, every stage of every issue ran in the same directory, so two jobs on a
   machine could only ever be kept apart by refusing to run a second one — which is what the

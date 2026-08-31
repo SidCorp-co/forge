@@ -11,14 +11,29 @@ vi.mock('./session.js', () => ({
     source: o.source,
     messages: [] as unknown[],
   }),
-  appendUserMessage: (s: { messages: unknown[] }, c: string) =>
-    s.messages.push({ role: 'user', content: c }),
+  appendUserMessage: (s: { messages: unknown[] }, c: string, images: unknown[] = []) =>
+    s.messages.push({ role: 'user', content: c, ...(images.length > 0 ? { images } : {}) }),
   appendAssistantMessage: (s: { messages: unknown[] }, c: string) => {
     appended.push(c);
     s.messages.push({ role: 'assistant', content: c });
   },
   persistMessages: async () => undefined,
-  toProviderMessages: (s: { messages: Array<{ role: string; content: string }> }) => s.messages,
+  toProviderMessages: (
+    s: { messages: Array<{ role: string; content: string; images?: Array<{ ref: string }> }> },
+    resolved?: Map<string, string>,
+  ) =>
+    s.messages.map((m) => {
+      const url = m.images?.[0] ? resolved?.get(m.images[0].ref) : undefined;
+      return url
+        ? {
+            role: m.role,
+            content: [
+              { type: 'text', text: m.content },
+              { type: 'image_url', image_url: { url } },
+            ],
+          }
+        : { role: m.role, content: m.content };
+    }),
 }));
 
 vi.mock('./providers/bootstrap.js', () => ({ defaultChatProviderId: () => 'mock' }));
@@ -43,10 +58,12 @@ vi.mock('../issues/progress.js', () => ({
   buildProgressFactsBlock: () => 'PROGRESS FACTS BLOCK',
 }));
 
+const seenRequests: Array<{ messages: unknown[] }> = [];
 const mockProvider = {
   id: 'mock',
   defaultModel: 'm',
-  async *stream() {
+  async *stream(req: { messages: unknown[] }) {
+    seenRequests.push({ messages: req.messages });
     yield { type: 'chunk' as const, text: 'The answer is 42.' };
     yield { type: 'done' as const };
   },
@@ -104,5 +121,48 @@ describe('runExternalChatTurn', () => {
     });
     expect(buildSystemPromptCalls[0]?.progressFacts).toBe('PROGRESS FACTS BLOCK');
     expect(out.progress).toEqual(fakeProgress);
+  });
+});
+
+describe('runExternalChatTurn — images', () => {
+  const IMAGE = {
+    name: 's.png',
+    mime: 'image/png',
+    ref: 'https://chat.example.com/file-upload/a/s.png',
+    dataBase64: 'QUJD',
+  };
+
+  it("sends this turn's image to the model as a content part", async () => {
+    seenRequests.length = 0;
+    selectCall = 0;
+    await runExternalChatTurn({
+      projectId: 'p1',
+      source: 'rocketchat',
+      message: 'what is wrong here?',
+      images: [IMAGE],
+      userId: null,
+    });
+    expect(seenRequests[0]?.messages).toContainEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'what is wrong here?' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,QUJD' } },
+      ],
+    });
+  });
+
+  it('sends a plain string turn when the message carried no image', async () => {
+    seenRequests.length = 0;
+    selectCall = 0;
+    await runExternalChatTurn({
+      projectId: 'p1',
+      source: 'rocketchat',
+      message: 'plain question',
+      userId: null,
+    });
+    expect(seenRequests[0]?.messages).toContainEqual({
+      role: 'user',
+      content: 'plain question',
+    });
   });
 });
