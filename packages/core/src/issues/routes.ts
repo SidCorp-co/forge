@@ -22,7 +22,6 @@ import { paginationSchema, setTotalCount } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { recordActivityTx } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { AttachmentError } from './attachment-service.js';
@@ -31,7 +30,9 @@ import { hydrateCreatorsForIssues } from './creator.js';
 import { LabelResolutionError, resolveLabelIdsForWrite } from './label-service.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { hydratePipelineHealthForIssues, type PipelineHealth } from './pipeline-health.js';
+import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
 import { issueRelationInputSchema } from './relations-service.js';
+import { IssueUpdateNotFound, updateIssueFields } from './update-service.js';
 
 // Defence against partial drizzle mocks in unit tests + transient DB blips:
 // pipelineHealth is derived; the list/single endpoints must not 500 if the
@@ -51,7 +52,6 @@ async function safeHydratePipelineHealth(
   }
 }
 
-import type { IssueBranchOverride } from '../branches/resolve.js';
 import { DecomposeError, decomposeParent, IntegrationBranchError } from './decompose.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
@@ -72,7 +72,7 @@ export {
   issueMetadataSchema,
 } from './metadata.js';
 
-import { type ReleaseNotes, ReleaseNotesSchema } from './release-notes.js';
+import { ReleaseNotesSchema } from './release-notes.js';
 
 export const issueCreateSchema = z
   .object({
@@ -144,28 +144,6 @@ const notFound = (message: string) =>
 
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-type IssueRow = {
-  id: string;
-  projectId: string;
-  issSeq: number;
-  title: string;
-  description: string | null;
-  status: string;
-  priority: string;
-  category: string | null;
-  reportedBy: string | null;
-  complexity: string | null;
-  plan: string | null;
-  acceptanceCriteria: string | null;
-  assigneeId: string | null;
-  createdById: string;
-  createdVia: string | null;
-  metadata: ({ branchConfig?: IssueBranchOverride | null } & Record<string, unknown>) | null;
-  releaseNotes: ReleaseNotes | null;
-  createdAt: Date;
-  updatedAt: Date;
-};
 
 function serializeIssue<T extends { issSeq: number }>(row: T): T & { displayId: string } {
   return { ...row, displayId: `ISS-${row.issSeq}` };
@@ -263,14 +241,8 @@ issueProjectRoutes.get(
     if (!access.role) throw forbidden('not a project member');
 
     const issSeq = Number(displayId.slice(4));
-    const [row] = await db
-      .select()
-      .from(issues)
-      .where(and(eq(issues.projectId, projectId), eq(issues.issSeq, issSeq)))
-      .limit(1);
-    if (!row) throw notFound('issue not found');
-
-    const issue = row as IssueRow;
+    const issue = await findIssueByDisplaySeq(projectId, issSeq);
+    if (!issue) throw notFound('issue not found');
 
     const labelRows = await db
       .select({ id: labels.id, name: labels.name, color: labels.color })
@@ -381,9 +353,9 @@ registerIssueCommentRoutes(issueRoutes);
 // can accept PAT + device auth. Mounted directly at /api/issues in index.ts.
 
 async function loadIssue(issueId: string): Promise<IssueRow> {
-  const [row] = await db.select().from(issues).where(eq(issues.id, issueId)).limit(1);
+  const row = await findIssueById(issueId);
   if (!row) throw notFound('issue not found');
-  return row as IssueRow;
+  return row;
 }
 
 issueRoutes.get(
@@ -538,50 +510,18 @@ issueRoutes.patch(
 
     const actor = { type: 'user' as const, id: userId };
 
-    const updated = await db.transaction(async (tx) => {
-      const [row] = await tx.update(issues).set(updates).where(eq(issues.id, id)).returning();
-      if (!row) throw notFound('issue not found');
-
-      // Label add/remove activity is emitted INSIDE the transaction so it
-      // rolls back with the label delta on failure. Non-label activity is
-      // emitted post-commit via the hooks bus (see after this block).
-      if (resolvedLabelIds !== undefined) {
-        const existing = await tx
-          .select({ labelId: issueLabels.labelId })
-          .from(issueLabels)
-          .where(eq(issueLabels.issueId, id));
-        const oldSet = new Set(existing.map((r) => r.labelId));
-        const newSet = new Set(resolvedLabelIds);
-        const labelsAdded = [...newSet].filter((l) => !oldSet.has(l));
-        const labelsRemoved = [...oldSet].filter((l) => !newSet.has(l));
-
-        await tx.delete(issueLabels).where(eq(issueLabels.issueId, id));
-        if (resolvedLabelIds.length > 0) {
-          await tx
-            .insert(issueLabels)
-            .values(resolvedLabelIds.map((labelId) => ({ issueId: id, labelId })));
-        }
-
-        for (const labelId of labelsAdded) {
-          await recordActivityTx(tx, {
-            issueId: id,
-            actor,
-            action: 'issue.labeled',
-            payload: { labelId },
-          });
-        }
-        for (const labelId of labelsRemoved) {
-          await recordActivityTx(tx, {
-            issueId: id,
-            actor,
-            action: 'issue.unlabeled',
-            payload: { labelId },
-          });
-        }
-      }
-
-      return row as IssueRow;
-    });
+    let updated: IssueRow;
+    try {
+      updated = await updateIssueFields({
+        issueId: id,
+        updates,
+        labelIds: resolvedLabelIds,
+        actor,
+      });
+    } catch (err) {
+      if (err instanceof IssueUpdateNotFound) throw notFound('issue not found');
+      throw err;
+    }
 
     if (changedFields.length > 0) {
       await hooks.emit('issueUpdated', {

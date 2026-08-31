@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { issueLabels } from '../../db/schema.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -83,6 +82,32 @@ const transactionMock = vi.fn(async (cb: (tx: typeof txProxy) => Promise<unknown
 
 const deleteWhere = vi.fn(async () => undefined);
 const deleteFrom = vi.fn(() => ({ where: deleteWhere }));
+
+// cm:why ISS-889 — `update` and the four task actions are adapters now, so this file asserts only what the TOOL owns (argument mapping, authorization, error vocabulary, response shape); the writes themselves are covered in issues/update-service.test.ts and tasks/task-service.test.ts, at the layer that still builds the drizzle chain
+type UpdateIssueFieldsInput = {
+  issueId: string;
+  updates: Record<string, unknown>;
+  labelIds?: string[];
+  actor: { type: string; id: string };
+};
+const updateIssueFieldsMock = vi.fn(async (_input: UpdateIssueFieldsInput) => ({}) as never);
+vi.mock('../../issues/update-service.js', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  updateIssueFields: (input: UpdateIssueFieldsInput) => updateIssueFieldsMock(input),
+}));
+
+const createTaskMock = vi.fn();
+const updateTaskMock = vi.fn();
+const deleteTaskMock = vi.fn(async () => undefined);
+const findTaskByIdMock = vi.fn();
+const listTasksForIssueMock = vi.fn(async () => [] as never[]);
+vi.mock('../../tasks/task-service.js', () => ({
+  createTask: (...a: unknown[]) => createTaskMock(...(a as [])),
+  updateTask: (...a: unknown[]) => updateTaskMock(...(a as [])),
+  deleteTask: (...a: unknown[]) => deleteTaskMock(...(a as [])),
+  findTaskById: (...a: unknown[]) => findTaskByIdMock(...(a as [])),
+  listTasksForIssue: (...a: unknown[]) => listTasksForIssueMock(...(a as [])),
+}));
 
 vi.mock('../../db/client.js', () => ({
   db: {
@@ -1129,8 +1154,11 @@ describe('forge_issues tool', () => {
     })) as { plan: string | null; status: string };
 
     expect(result.plan).toBe('new plan');
-    expect(txUpdateSet).toHaveBeenCalledWith(
-      expect.objectContaining({ plan: 'new plan', updatedAt: expect.anything() }),
+    expect(updateIssueFieldsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        issueId: ISSUE_ID,
+        updates: expect.objectContaining({ plan: 'new plan', updatedAt: expect.anything() }),
+      }),
     );
   });
 
@@ -1326,7 +1354,9 @@ describe('forge_issues tool', () => {
     })) as { releaseNotes: typeof rn | null };
 
     expect(result.releaseNotes).toEqual(rn);
-    expect(txUpdateSet).toHaveBeenCalledWith(expect.objectContaining({ releaseNotes: rn }));
+    expect(updateIssueFieldsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ updates: expect.objectContaining({ releaseNotes: rn }) }),
+    );
   });
 
   it('update rejects releaseNotes with an invalid section enum', async () => {
@@ -1714,25 +1744,20 @@ describe('forge_issues tool', () => {
   describe('data.labels attach/detach (ISS-633)', () => {
     const OTHER_LABEL_ID = 'aaaaaaaa-1111-4111-8111-111111111111';
 
-    it('update attaches labels by NAME and by UUID (replace-set) and records issue.labeled/unlabeled activity in-tx', async () => {
+    it('update resolves labels by NAME and by UUID and hands the ids to the update service', async () => {
       const tool = forgeIssuesTool({
         principal: { kind: 'device', device: fakeDevice },
         device: fakeDevice,
         projectSlug: PROJECT_SLUG,
       });
-      // 1. loadIssue
+      // cm:guard these four stagings pop off ONE shared queue in call order — loadIssue, membership, the single resolveLabelIdsForWrite query that answers both the uuid and the name, then the re-read; insert or drop a query anywhere in the handler and every later test in this file reads someone else's row
       selectLimit.mockResolvedValueOnce([baseIssueRow]);
-      // 2. membership
       selectLimit.mockResolvedValueOnce([memberAccessRow]);
-      // 3. resolveLabelIdsForWrite — one query resolves both the uuid and the name
       selectLimit.mockResolvedValueOnce([
         { id: LABEL_ID, name: 'bug' },
         { id: LABEL_ID_2, name: 'area:mobile' },
       ]);
-      // 4. re-load fresh after the tx
       selectLimit.mockResolvedValueOnce([baseIssueRow]);
-      // tx: existing issueLabels has ONE prior label not in the new set
-      txSelectLimit.mockResolvedValueOnce([{ labelId: OTHER_LABEL_ID }]);
       listIssueLabelsMock.mockResolvedValueOnce([
         { id: LABEL_ID, name: 'bug', color: '#fff' },
         { id: LABEL_ID_2, name: 'area:mobile', color: '#000' },
@@ -1745,32 +1770,13 @@ describe('forge_issues tool', () => {
       })) as { labels: Array<{ id: string }> };
 
       expect(result.labels).toHaveLength(2);
-
-      // replace-set: old label deleted, new set inserted
-      expect(txDelete).toHaveBeenCalledWith(issueLabels);
-      const insertCalls = txInsertValues.mock.calls.map((c) => c[0]);
-      const labelInsertCall = insertCalls.find(
-        (c) => Array.isArray(c) && c.some((row: { labelId?: string }) => row.labelId === LABEL_ID),
-      ) as Array<{ issueId: string; labelId: string }> | undefined;
-      expect(labelInsertCall).toEqual(
-        expect.arrayContaining([
-          { issueId: ISSUE_ID, labelId: LABEL_ID },
-          { issueId: ISSUE_ID, labelId: LABEL_ID_2 },
-        ]),
-      );
-
-      // activity: two added (issue.labeled), one removed (issue.unlabeled)
-      const activityCalls = insertCalls.filter(
-        (c) => c && typeof c === 'object' && !Array.isArray(c) && 'action' in c,
-      ) as Array<{ action: string; payload: { labelId: string } }>;
-      const labeled = activityCalls.filter((c) => c.action === 'issue.labeled');
-      const unlabeled = activityCalls.filter((c) => c.action === 'issue.unlabeled');
-      expect(labeled.map((c) => c.payload.labelId).sort()).toEqual([LABEL_ID, LABEL_ID_2].sort());
-      expect(unlabeled).toHaveLength(1);
-      expect(unlabeled[0]?.payload.labelId).toBe(OTHER_LABEL_ID);
+      // cm:edge contract -> packages/core/src/issues/update-service.ts — the replace-set delta (which ids are added, which removed, and the activity rows for both) is asserted there; this side asserts only that the resolved ids arrive
+      const call = updateIssueFieldsMock.mock.lastCall?.[0];
+      expect([...(call?.labelIds ?? [])].sort()).toEqual([LABEL_ID, LABEL_ID_2].sort());
+      expect(call?.actor).toEqual({ type: 'device', id: fakeDevice.id });
     });
 
-    it('update with labels:[] clears every existing label (replace-set)', async () => {
+    it('update with labels:[] passes an empty id set through as the clear-all request', async () => {
       const tool = forgeIssuesTool({
         principal: { kind: 'device', device: fakeDevice },
         device: fakeDevice,
@@ -1780,7 +1786,6 @@ describe('forge_issues tool', () => {
       selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
       // labels:[] short-circuits resolveLabelIdsForWrite — no label-name query
       selectLimit.mockResolvedValueOnce([baseIssueRow]); // re-load fresh
-      txSelectLimit.mockResolvedValueOnce([{ labelId: LABEL_ID }, { labelId: LABEL_ID_2 }]);
       listIssueLabelsMock.mockResolvedValueOnce([]);
 
       const result = (await tool.handler({
@@ -1790,18 +1795,8 @@ describe('forge_issues tool', () => {
       })) as { labels: unknown[] };
 
       expect(result.labels).toEqual([]);
-      expect(txDelete).toHaveBeenCalled();
-      // no label-set insert (empty set) — only the two unlabeled activity rows
-      const insertCalls = txInsertValues.mock.calls.map((c) => c[0]);
-      expect(insertCalls.some((c) => Array.isArray(c))).toBe(false);
-      const unlabeledCount = insertCalls.filter(
-        (c) =>
-          c &&
-          typeof c === 'object' &&
-          !Array.isArray(c) &&
-          (c as { action?: string }).action === 'issue.unlabeled',
-      ).length;
-      expect(unlabeledCount).toBe(2);
+      // cm:guard `[]` must survive as `[]` and never collapse to `undefined` — the service reads undefined as "leave labels alone", which is the opposite of the clear-all this asserts
+      expect(updateIssueFieldsMock.mock.lastCall?.[0]).toMatchObject({ labelIds: [] });
     });
 
     it('update rejects an unknown label name with BAD_REQUEST and performs no writes', async () => {
@@ -1966,8 +1961,7 @@ describe('forge_issues tool', () => {
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
       // assertPrincipalIsMember → project owner row
       selectLimit.mockResolvedValueOnce([memberAccessRow]);
-      // insert returns task row
-      insertReturning.mockResolvedValueOnce([baseTaskRow]);
+      createTaskMock.mockResolvedValueOnce(baseTaskRow);
 
       const result = (await tool.handler({
         action: 'createTask',
@@ -1976,14 +1970,13 @@ describe('forge_issues tool', () => {
 
       expect(result.task.documentId).toBe(TASK_ID);
       expect(result.task.title).toBe('Sub-task');
-      expect(insertValues).toHaveBeenCalledWith(
+      // cm:edge contract -> packages/core/src/tasks/task-service.ts — sortOrder and the taskCreated emit are asserted there; the tool owns resolving the project from the parent issue rather than trusting the caller for it
+      expect(createTaskMock).toHaveBeenCalledWith(
         expect.objectContaining({
           issueId: ISSUE_ID,
           projectId: PROJECT_ID,
           title: 'Sub-task',
-          status: 'backlog',
-          priority: 'none',
-          isAgentTask: false,
+          actor: { type: 'device', id: fakeDevice.id },
         }),
       );
     });
@@ -2020,8 +2013,7 @@ describe('forge_issues tool', () => {
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
       // membership
       selectLimit.mockResolvedValueOnce([memberAccessRow]);
-      // list query
-      selectLimit.mockResolvedValueOnce([baseTaskRow]);
+      listTasksForIssueMock.mockResolvedValueOnce([baseTaskRow] as never);
 
       const result = (await tool.handler({
         action: 'listTasks',
@@ -2040,13 +2032,19 @@ describe('forge_issues tool', () => {
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
       selectLimit.mockResolvedValueOnce([memberAccessRow]);
-      selectLimit.mockResolvedValueOnce([{ ...baseTaskRow, status: 'in_progress' }]);
+      listTasksForIssueMock.mockResolvedValueOnce([
+        { ...baseTaskRow, status: 'in_progress' },
+      ] as never);
 
       const result = (await tool.handler({
         action: 'listTasks',
         filters: { issue: ISSUE_ID, taskStatus: 'in_progress' },
       })) as { tasks: Array<{ status: string }> };
       expect(result.tasks[0]?.status).toBe('in_progress');
+      expect(listTasksForIssueMock).toHaveBeenCalledWith(
+        ISSUE_ID,
+        expect.objectContaining({ status: 'in_progress' }),
+      );
     });
 
     it('listTasks: requires filters.issue', async () => {
@@ -2058,45 +2056,6 @@ describe('forge_issues tool', () => {
       await expect(tool.handler({ action: 'listTasks' })).rejects.toThrow(/BAD_REQUEST/);
     });
 
-    // ISS-562 — SQL-level projection: assert db.select() is called without the
-    // description column. A returned-row assertion won't catch this because the
-    // unit-test mock bypasses drizzle column selection.
-    it('listTasks: calls db.select with projection that omits description (ISS-562)', async () => {
-      const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
-        projectSlug: PROJECT_SLUG,
-      });
-      selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
-      selectLimit.mockResolvedValueOnce([memberAccessRow]);
-      selectLimit.mockResolvedValueOnce([baseTaskRow]);
-
-      await tool.handler({ action: 'listTasks', filters: { issue: ISSUE_ID } });
-
-      const selectSpy = vi.mocked(mockDb.select);
-      const callArg = selectSpy.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined;
-      expect(callArg).toBeDefined();
-      // Light task fields present
-      for (const light of [
-        'id',
-        'issueId',
-        'projectId',
-        'title',
-        'status',
-        'priority',
-        'assigneeId',
-        'isAgentTask',
-        'agentStatus',
-        'acceptanceCriteria',
-        'createdAt',
-        'updatedAt',
-      ]) {
-        expect(callArg).toHaveProperty(light);
-      }
-      // description is absent from the projection
-      expect(callArg).not.toHaveProperty('description');
-    });
-
     it('listTasks: returned rows omit description field in serialization (ISS-562)', async () => {
       const tool = forgeIssuesTool({
         principal: { kind: 'device', device: fakeDevice },
@@ -2105,7 +2064,9 @@ describe('forge_issues tool', () => {
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
       selectLimit.mockResolvedValueOnce([memberAccessRow]);
-      selectLimit.mockResolvedValueOnce([{ ...baseTaskRow, description: 'd'.repeat(1_000) }]);
+      listTasksForIssueMock.mockResolvedValueOnce([
+        { ...baseTaskRow, description: 'd'.repeat(1_000) },
+      ] as never);
 
       const result = (await tool.handler({
         action: 'listTasks',
@@ -2129,7 +2090,7 @@ describe('forge_issues tool', () => {
         id: `66666666-6666-4666-8666-66666666666${(i % 10).toString()}`,
         title: 't'.repeat(2_000),
       }));
-      selectLimit.mockResolvedValueOnce(fatTaskRows);
+      listTasksForIssueMock.mockResolvedValueOnce(fatTaskRows as never);
 
       const result = (await tool.handler({
         action: 'listTasks',
@@ -2157,12 +2118,10 @@ describe('forge_issues tool', () => {
         device: fakeDevice,
         projectSlug: PROJECT_SLUG,
       });
-      // loadTaskForAccess
-      selectLimit.mockResolvedValueOnce([baseTaskRow]);
+      findTaskByIdMock.mockResolvedValueOnce(baseTaskRow);
       // membership
       selectLimit.mockResolvedValueOnce([memberAccessRow]);
-      // update returns row
-      updateReturning.mockResolvedValueOnce([{ ...baseTaskRow, status: 'done' }]);
+      updateTaskMock.mockResolvedValueOnce({ ...baseTaskRow, status: 'done' });
 
       const result = (await tool.handler({
         action: 'updateTask',
@@ -2171,7 +2130,13 @@ describe('forge_issues tool', () => {
       })) as { task: { status: string } };
 
       expect(result.task.status).toBe('done');
-      expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ status: 'done' }));
+      // cm:edge contract -> packages/core/src/tasks/task-service.ts — the change diff and the taskUpdated emit are asserted there; this side asserts the agent-facing `taskStatus` maps onto the column name
+      expect(updateTaskMock).toHaveBeenCalledWith(
+        baseTaskRow,
+        { status: 'done' },
+        { type: 'device', id: fakeDevice.id },
+        ['acceptanceCriteria'],
+      );
     });
 
     it('deleteTask: runs db.delete after membership check', async () => {
@@ -2180,7 +2145,7 @@ describe('forge_issues tool', () => {
         device: fakeDevice,
         projectSlug: PROJECT_SLUG,
       });
-      selectLimit.mockResolvedValueOnce([baseTaskRow]);
+      findTaskByIdMock.mockResolvedValueOnce(baseTaskRow);
       selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
       const result = (await tool.handler({
@@ -2190,7 +2155,10 @@ describe('forge_issues tool', () => {
 
       expect(result.deleted).toBe(true);
       expect(result.documentId).toBe(TASK_ID);
-      expect(deleteWhere).toHaveBeenCalled();
+      expect(deleteTaskMock).toHaveBeenCalledWith(baseTaskRow, {
+        type: 'device',
+        id: fakeDevice.id,
+      });
     });
   });
 });

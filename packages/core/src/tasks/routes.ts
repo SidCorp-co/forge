@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -15,6 +15,7 @@ import {
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
+import { createTask, deleteTask, findTaskById, updateTask } from './task-service.js';
 
 const issueIdParamSchema = z.object({ id: z.uuid() });
 const taskIdParamSchema = z.object({ taskId: z.uuid() });
@@ -49,6 +50,22 @@ const taskPatchSchema = z
   })
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
+
+const TASK_PATCH_FIELDS = [
+  'title',
+  'description',
+  'status',
+  'priority',
+  'assigneeId',
+  'isAgentTask',
+  'agentStatus',
+  'agentLog',
+  'acceptanceCriteria',
+  'sortOrder',
+] as const satisfies readonly (keyof z.infer<typeof taskPatchSchema>)[];
+
+// cm:why jsonb columns are reported changed on any explicit set — their object identity differs on every load, so a value comparison would call every write a change and never call one unchanged
+const TASK_JSONB_FIELDS = ['agentLog', 'acceptanceCriteria'] as const;
 
 const taskReorderSchema = z.object({ taskIds: z.array(z.uuid()).min(1) }).strict();
 
@@ -101,39 +118,19 @@ taskIssueRoutes.post(
 
     if (input.assigneeId) await assertAssigneeIsMember(issue.projectId, input.assigneeId);
 
-    let sortOrder = input.sortOrder;
-    if (sortOrder === undefined) {
-      const [maxRow] = await db
-        .select({ max: sql<number | null>`max(${tasks.sortOrder})` })
-        .from(tasks)
-        .where(eq(tasks.issueId, issue.id))
-        .limit(1);
-      sortOrder = (maxRow?.max ?? -1) + 1;
-    }
-
-    const [inserted] = await db
-      .insert(tasks)
-      .values({
-        issueId: issue.id,
-        projectId: issue.projectId,
-        title: input.title,
-        description: input.description ?? null,
-        status: input.status ?? 'backlog',
-        priority: input.priority ?? 'none',
-        assigneeId: input.assigneeId ?? null,
-        isAgentTask: input.isAgentTask ?? false,
-        agentStatus: input.agentStatus ?? null,
-        agentLog: (input.agentLog as never) ?? null,
-        acceptanceCriteria: (input.acceptanceCriteria as never) ?? null,
-        sortOrder,
-      })
-      .returning();
-    if (!inserted) throw new Error('tasks: insert returned no row');
-
-    await hooks.emit('taskCreated', {
-      taskId: inserted.id,
+    const inserted = await createTask({
       issueId: issue.id,
       projectId: issue.projectId,
+      title: input.title,
+      description: input.description ?? null,
+      status: input.status,
+      priority: input.priority,
+      assigneeId: input.assigneeId ?? null,
+      isAgentTask: input.isAgentTask,
+      agentStatus: input.agentStatus,
+      agentLog: (input.agentLog as never) ?? null,
+      acceptanceCriteria: (input.acceptanceCriteria as never) ?? null,
+      sortOrder: input.sortOrder,
       actor: { type: 'user', id: userId },
     });
 
@@ -251,7 +248,7 @@ export const taskRoutes = new Hono<{ Variables: AuthVars }>();
 taskRoutes.use('*', requireAuth(), assertEmailVerified());
 
 async function loadTask(taskId: string) {
-  const [row] = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+  const row = await findTaskById(taskId);
   if (!row) throw notFound('task not found');
   return row;
 }
@@ -292,66 +289,19 @@ taskRoutes.patch(
 
     if (patch.assigneeId) await assertAssigneeIsMember(task.projectId, patch.assigneeId);
 
-    const updates: Record<string, unknown> = { updatedAt: new Date() };
-    const fields: string[] = [];
-    const track = (field: string, prev: unknown, next: unknown) => {
-      if (prev !== next) fields.push(field);
-    };
-    if (patch.title !== undefined) {
-      updates.title = patch.title;
-      track('title', task.title, patch.title);
-    }
-    if (patch.description !== undefined) {
-      updates.description = patch.description;
-      track('description', task.description, patch.description);
-    }
-    if (patch.status !== undefined) {
-      updates.status = patch.status;
-      track('status', task.status, patch.status);
-    }
-    if (patch.priority !== undefined) {
-      updates.priority = patch.priority;
-      track('priority', task.priority, patch.priority);
-    }
-    if (patch.assigneeId !== undefined) {
-      updates.assigneeId = patch.assigneeId;
-      track('assigneeId', task.assigneeId, patch.assigneeId);
-    }
-    if (patch.isAgentTask !== undefined) {
-      updates.isAgentTask = patch.isAgentTask;
-      track('isAgentTask', task.isAgentTask, patch.isAgentTask);
-    }
-    if (patch.agentStatus !== undefined) {
-      updates.agentStatus = patch.agentStatus;
-      track('agentStatus', task.agentStatus, patch.agentStatus);
-    }
-    if (patch.agentLog !== undefined) {
-      updates.agentLog = patch.agentLog;
-      // jsonb: object identity differs each load, so any explicit set counts as a change.
-      fields.push('agentLog');
-    }
-    if (patch.acceptanceCriteria !== undefined) {
-      updates.acceptanceCriteria = patch.acceptanceCriteria;
-      // jsonb: object identity differs each load, so any explicit set counts as a change.
-      fields.push('acceptanceCriteria');
-    }
-    if (patch.sortOrder !== undefined) {
-      updates.sortOrder = patch.sortOrder;
-      track('sortOrder', task.sortOrder, patch.sortOrder);
+    const updates: Record<string, unknown> = {};
+    for (const field of TASK_PATCH_FIELDS) {
+      const next = (patch as Record<string, unknown>)[field];
+      if (next !== undefined) updates[field] = next;
     }
 
-    const [updated] = await db.update(tasks).set(updates).where(eq(tasks.id, taskId)).returning();
+    const updated = await updateTask(
+      task,
+      updates,
+      { type: 'user', id: userId },
+      TASK_JSONB_FIELDS,
+    );
     if (!updated) throw notFound('task not found');
-
-    if (fields.length > 0) {
-      await hooks.emit('taskUpdated', {
-        taskId: updated.id,
-        issueId: task.issueId,
-        projectId: task.projectId,
-        actor: { type: 'user', id: userId },
-        fields,
-      });
-    }
 
     return c.json(updated);
   },
@@ -370,14 +320,7 @@ taskRoutes.delete(
     const access = await loadProjectAccess(task.projectId, userId);
     assertProjectRole(access, 'member', 'not a project member');
 
-    await db.delete(tasks).where(eq(tasks.id, taskId));
-
-    await hooks.emit('taskDeleted', {
-      taskId,
-      issueId: task.issueId,
-      projectId: task.projectId,
-      actor: { type: 'user', id: userId },
-    });
+    await deleteTask(task, { type: 'user', id: userId });
 
     return c.body(null, 204);
   },

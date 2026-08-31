@@ -28,7 +28,7 @@ export class LabelResolutionError extends Error {
   }
 }
 
-// cm:guard the write path (`resolveLabelIdsForWrite` below) and the tolerant read path (`resolveLabelIdsTolerant`, mcp/tools/forge-issues.ts) MUST split their input on THIS regex — they differ only in throw-vs-drop, so a second copy lets one treat a value as an id while the other treats it as a label name, silently creating a label nobody asked for. ISS-889 forked it once already.
+// cm:guard the write path (`resolveLabelIdsForWrite`) and the tolerant read path (`resolveLabelIdsTolerant`) MUST split their input on THIS regex — they differ only in throw-vs-drop, so a second copy lets one treat a value as an id while the other treats it as a label name, silently creating a label nobody asked for. ISS-889 forked it once already; both now live in this file so the fork cannot recur across a module boundary.
 export const LABEL_UUID_PATTERN =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -65,4 +65,29 @@ export async function resolveLabelIdsForWrite(
   ];
   if (missing.length > 0) throw new LabelResolutionError(missing);
   return [...foundIds];
+}
+
+/**
+ * ISS-633 — tolerant name/uuid -> id resolver for the `list` filters.label
+ * READ path. An unknown name is silently dropped (the caller treats a
+ * fully-empty result as "no issues match" rather than an error). NOT for
+ * writes: `resolveLabelIdsForWrite` above throws on the same input.
+ */
+export async function resolveLabelIdsTolerant(
+  projectId: string,
+  rawValues: readonly string[],
+): Promise<string[]> {
+  const uuidValues = rawValues.filter((v) => LABEL_UUID_PATTERN.test(v));
+  const nameValues = rawValues.filter((v) => !LABEL_UUID_PATTERN.test(v));
+
+  let resolvedIds = [...uuidValues];
+  if (nameValues.length > 0) {
+    const nameRows = await db
+      .select({ id: labels.id })
+      .from(labels)
+      .where(and(eq(labels.projectId, projectId), inArray(labels.name, nameValues)))
+      .limit(nameValues.length + 1);
+    resolvedIds = [...new Set([...resolvedIds, ...nameRows.map((r) => r.id)])];
+  }
+  return resolvedIds;
 }

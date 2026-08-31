@@ -1,17 +1,10 @@
-import { and, asc, desc, eq, exists, gte, ilike, inArray, lt, ne, or, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
 import {
-  comments,
-  type IssueStatus,
   issueComplexities,
-  issueLabels,
   issuePriorities,
   issueStatuses,
-  issues,
-  labels,
   taskStatuses,
-  tasks,
   waitingKinds,
 } from '../../db/schema.js';
 import { transitionIssueStatus } from '../../issues/apply-transition.js';
@@ -20,23 +13,38 @@ import { createIssue, IssueCreateError } from '../../issues/create-service.js';
 import { loadIssueRelations } from '../../issues/dependency-read.js';
 import { isValidDetectorKey } from '../../issues/detector-key.js';
 import {
-  LABEL_UUID_PATTERN,
   LabelResolutionError,
   listIssueLabels,
   resolveLabelIdsForWrite,
 } from '../../issues/label-service.js';
+import { type IssueListRow, listIssueRows } from '../../issues/list-service.js';
+import {
+  clearIssueMergedAt,
+  stampIssueMergedAt,
+  writeAuditComment,
+} from '../../issues/merge-marker.js';
 import {
   collectIssueFieldUpdates,
   MCP_ONLY_ISSUE_PATCH_FIELDS,
   SHARED_ISSUE_PATCH_FIELDS,
 } from '../../issues/patch-fields.js';
+import { findIssueById, findIssueProjectId, type IssueRow } from '../../issues/read-service.js';
 import { applyIssueRelations, issueRelationInputSchema } from '../../issues/relations-service.js';
-import { type ReleaseNotes, ReleaseNotesSchema } from '../../issues/release-notes.js';
+import { ReleaseNotesSchema } from '../../issues/release-notes.js';
+import { updateIssueFields } from '../../issues/update-service.js';
 import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
-import { recordActivityTx } from '../../pipeline/activity.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { findMissingWorkEvidence } from '../../pipeline/work-evidence.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
+import {
+  createTask as createTaskRow,
+  deleteTask as deleteTaskRow,
+  findTaskById,
+  listTasksForIssue,
+  type TaskListRow,
+  type TaskRow,
+  updateTask as updateTaskRow,
+} from '../../tasks/task-service.js';
 import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
@@ -321,30 +329,7 @@ const inputSchema = z
 
 type Input = z.infer<typeof inputSchema>;
 
-export type IssueRow = {
-  id: string;
-  projectId: string;
-  issSeq: number;
-  title: string;
-  description: string | null;
-  status: IssueStatus;
-  priority: string;
-  category: string | null;
-  reportedBy: string | null;
-  complexity: string | null;
-  assigneeId: string | null;
-  createdById: string;
-  reopenCount: number;
-  source: string;
-  externalId: string | null;
-  plan: string | null;
-  acceptanceCriteria: string | null;
-  sessionContext: unknown;
-  releaseNotes: ReleaseNotes | null;
-  mergedAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-};
+export type { IssueRow };
 
 /**
  * ISS-532 — recursively char-strip control/invisible chars from every string
@@ -393,28 +378,6 @@ export function serialize(row: IssueRow): Record<string, unknown> {
 }
 
 /**
- * Light projection type for the `list` surface — only the scalar fields that
- * `serializeListRow` actually reads. Using this instead of `IssueRow` lets the
- * SQL-level projection (db.select({...})) return a properly-typed result without
- * needing to load heavy TOAST columns from disk.
- */
-type IssueListProjection = Pick<
-  IssueRow,
-  | 'id'
-  | 'issSeq'
-  | 'title'
-  | 'status'
-  | 'priority'
-  | 'category'
-  | 'complexity'
-  | 'assigneeId'
-  | 'reopenCount'
-  | 'mergedAt'
-  | 'createdAt'
-  | 'updatedAt'
->;
-
-/**
  * ISS-428 — body-free projection for the `list` (browse) surface. Returns only
  * light scalar fields and OMITS the heavy bodies (`description`, `plan`,
  * `acceptanceCriteria`, `sessionContext`, `releaseNotes`) so a list over many
@@ -423,7 +386,7 @@ type IssueListProjection = Pick<
  * widen this back to `serialize()`.
  */
 
-function serializeListRow(row: IssueListProjection): Record<string, unknown> {
+function serializeListRow(row: IssueListRow): Record<string, unknown> {
   return {
     documentId: row.id,
     issueId: `ISS-${row.issSeq}`,
@@ -445,30 +408,9 @@ function serializeListRow(row: IssueListProjection): Record<string, unknown> {
 }
 
 export async function loadIssue(documentId: string): Promise<IssueRow> {
-  const [row] = await db.select().from(issues).where(eq(issues.id, documentId)).limit(1);
+  const row = await findIssueById(documentId);
   if (!row) throw new Error('NOT_FOUND: issue not found');
-  return row as IssueRow;
-}
-
-/**
- * ISS-633 — tolerant name/uuid -> id resolver for the `list` filters.label
- * READ path. An unknown name is silently dropped (caller treats a fully-empty
- * result as "no issues match" rather than an error). NOT used for writes.
- */
-async function resolveLabelIdsTolerant(projectId: string, rawValues: string[]): Promise<string[]> {
-  const uuidValues = rawValues.filter((v) => LABEL_UUID_PATTERN.test(v));
-  const nameValues = rawValues.filter((v) => !LABEL_UUID_PATTERN.test(v));
-
-  let resolvedIds = [...uuidValues];
-  if (nameValues.length > 0) {
-    const nameRows = await db
-      .select({ id: labels.id })
-      .from(labels)
-      .where(and(eq(labels.projectId, projectId), inArray(labels.name, nameValues)))
-      .limit(nameValues.length + 1);
-    resolvedIds = [...new Set([...resolvedIds, ...nameRows.map((r) => r.id)])];
-  }
-  return resolvedIds;
+  return row;
 }
 
 /**
@@ -544,22 +486,6 @@ export async function serializeManifestWithAttachments(
   return { ...serializeManifest(row), attachments, labels: issueLabelsList };
 }
 
-type TaskRow = {
-  id: string;
-  issueId: string;
-  projectId: string;
-  title: string;
-  description: string | null;
-  status: string;
-  priority: string;
-  assigneeId: string | null;
-  isAgentTask: boolean;
-  agentStatus: string | null;
-  acceptanceCriteria: unknown;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
 function serializeTask(row: TaskRow): Record<string, unknown> {
   return {
     documentId: row.id,
@@ -584,7 +510,7 @@ function serializeTask(row: TaskRow): Record<string, unknown> {
  * cap. Full task body stays reachable via `action=updateTask` / `getTask`.
  * Do NOT widen this back to `serializeTask()` for the list path.
  */
-function serializeTaskListRow(row: Omit<TaskRow, 'description'>): Record<string, unknown> {
+function serializeTaskListRow(row: TaskListRow): Record<string, unknown> {
   return {
     documentId: row.id,
     issueId: row.issueId,
@@ -602,19 +528,15 @@ function serializeTaskListRow(row: Omit<TaskRow, 'description'>): Record<string,
 }
 
 async function loadIssueProjectId(issueId: string): Promise<string> {
-  const [row] = await db
-    .select({ projectId: issues.projectId })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
-  if (!row) throw new Error('NOT_FOUND: issue not found');
-  return row.projectId;
+  const projectId = await findIssueProjectId(issueId);
+  if (!projectId) throw new Error('NOT_FOUND: issue not found');
+  return projectId;
 }
 
 async function loadTaskForAccess(taskId: string): Promise<TaskRow> {
-  const [row] = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+  const row = await findTaskById(taskId);
   if (!row) throw new Error('NOT_FOUND: task not found');
-  return row as TaskRow;
+  return row;
 }
 
 async function resolveProjectId(input: Input, ctx: McpContext): Promise<string> {
@@ -724,84 +646,34 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         await assertPrincipalIsMember(principal, projectId);
 
         const issuesLimit = input.limit ?? 25;
-        const issuesEnvelope = {
-          key: 'issues' as const,
-          limit: issuesLimit,
-          hint: 'add status/priority/category/label filters',
-        };
-        const conds = [eq(issues.projectId, projectId)];
         const f = input.filters;
-        if (f?.status) conds.push(eq(issues.status, f.status));
-        if (f?.statusNot) conds.push(ne(issues.status, f.statusNot));
-        if (f?.priority) conds.push(eq(issues.priority, f.priority));
-        if (f?.category) conds.push(eq(issues.category, f.category));
-        if (f?.createdAfter) {
-          conds.push(gte(issues.createdAt, parseDate(f.createdAfter, 'createdAfter')));
-        }
-        if (f?.createdBefore) {
-          conds.push(lt(issues.createdAt, parseDate(f.createdBefore, 'createdBefore')));
-        }
-        if (f?.updatedAfter) {
-          conds.push(gte(issues.updatedAt, parseDate(f.updatedAfter, 'updatedAfter')));
-        }
-        if (f?.search) {
-          const q = `%${f.search}%`;
-          const titleMatch = ilike(issues.title, q);
-          const descMatch = ilike(issues.description, q);
-          const orExpr = or(titleMatch, descMatch);
-          if (orExpr) conds.push(orExpr);
-        }
-
-        if (f?.label !== undefined && f.label !== null) {
-          const rawValues = Array.isArray(f.label) ? f.label : [f.label];
-          const resolvedIds = await resolveLabelIdsTolerant(projectId, rawValues);
-
-          if (resolvedIds.length === 0) {
-            return buildListEnvelope({ ...issuesEnvelope, items: [] });
-          }
-
-          conds.push(
-            exists(
-              db
-                .select({ one: sql`1` })
-                .from(issueLabels)
-                .where(
-                  and(
-                    eq(issueLabels.issueId, issues.id),
-                    inArray(issueLabels.labelId, resolvedIds),
-                  ),
-                ),
-            ),
-          );
-        }
-
-        // ISS-562 — SQL-level light-column projection: never load heavy TOAST
-        // columns (description/plan/acceptanceCriteria/sessionContext/ai*/
-        // releaseNotes) from disk. serializeListRow already omits them at the
-        // JS layer (ISS-428), but a bare db.select() still reads them from
-        // Postgres. This aligns the DB query with the serializer projection.
-        const rows = await db
-          .select({
-            id: issues.id,
-            issSeq: issues.issSeq,
-            title: issues.title,
-            status: issues.status,
-            priority: issues.priority,
-            category: issues.category,
-            complexity: issues.complexity,
-            assigneeId: issues.assigneeId,
-            reopenCount: issues.reopenCount,
-            mergedAt: issues.mergedAt,
-            createdAt: issues.createdAt,
-            updatedAt: issues.updatedAt,
-          })
-          .from(issues)
-          .where(and(...conds))
-          .orderBy(desc(issues.updatedAt))
-          .limit(overfetch(issuesLimit));
+        const rows = await listIssueRows(
+          projectId,
+          {
+            status: f?.status,
+            statusNot: f?.statusNot,
+            priority: f?.priority,
+            category: f?.category,
+            createdAfter: f?.createdAfter ? parseDate(f.createdAfter, 'createdAfter') : undefined,
+            createdBefore: f?.createdBefore
+              ? parseDate(f.createdBefore, 'createdBefore')
+              : undefined,
+            updatedAfter: f?.updatedAfter ? parseDate(f.updatedAfter, 'updatedAfter') : undefined,
+            search: f?.search,
+            label:
+              f?.label === undefined || f.label === null
+                ? undefined
+                : Array.isArray(f.label)
+                  ? f.label
+                  : [f.label],
+          },
+          overfetch(issuesLimit),
+        );
 
         return buildListEnvelope({
-          ...issuesEnvelope,
+          key: 'issues',
+          limit: issuesLimit,
+          hint: 'add status/priority/category/label filters',
           items: rows.map((r) => serializeListRow(r)),
         });
       }
@@ -909,48 +781,11 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (Object.keys(updates).length > 0 || labelIds !== undefined) {
           // cm:why sql`now()`, matching transitionIssueStatus below — a combined status+fields update needs one canonical timestamp source, not a mix of JS Date and DB now()
           updates.updatedAt = sql`now()`;
-          const actor = { type: 'device' as const, id: device.id };
-          await db.transaction(async (tx) => {
-            await tx.update(issues).set(updates).where(eq(issues.id, issue.id));
-
-            // ISS-633 — replace-set label delta, in-tx (rolls back together
-            // with the field update on failure) with issue.labeled/unlabeled
-            // activity, matching REST PATCH (issues/routes.ts ~609-645).
-            if (labelIds !== undefined) {
-              const existing = await tx
-                .select({ labelId: issueLabels.labelId })
-                .from(issueLabels)
-                .where(eq(issueLabels.issueId, issue.id))
-                .limit(500);
-              const oldSet = new Set(existing.map((r) => r.labelId));
-              const newSet = new Set(labelIds);
-              const labelsAdded = [...newSet].filter((l) => !oldSet.has(l));
-              const labelsRemoved = [...oldSet].filter((l) => !newSet.has(l));
-
-              await tx.delete(issueLabels).where(eq(issueLabels.issueId, issue.id));
-              if (labelIds.length > 0) {
-                await tx
-                  .insert(issueLabels)
-                  .values(labelIds.map((labelId) => ({ issueId: issue.id, labelId })));
-              }
-
-              for (const labelId of labelsAdded) {
-                await recordActivityTx(tx, {
-                  issueId: issue.id,
-                  actor,
-                  action: 'issue.labeled',
-                  payload: { labelId },
-                });
-              }
-              for (const labelId of labelsRemoved) {
-                await recordActivityTx(tx, {
-                  issueId: issue.id,
-                  actor,
-                  action: 'issue.unlabeled',
-                  payload: { labelId },
-                });
-              }
-            }
+          await updateIssueFields({
+            issueId: issue.id,
+            updates,
+            labelIds,
+            actor: { type: 'device', id: device.id },
           });
         }
 
@@ -1030,23 +865,10 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         // server `now()`. `target` is an audit label only — trunk-based v2 has
         // a single merge column (no `merged_to_prod_at` until v3).
         const stamp = input.data?.mergedAt ? parseDate(input.data.mergedAt, 'mergedAt') : null;
-        // Bind the explicit stamp as an ISO string with a `::timestamptz`
-        // cast. A bare `sql`${date}`` binds an untyped parameter, and Postgres
-        // cannot infer its type inside COALESCE("merged_at", $1) — it errors
-        // "could not determine data type of parameter" (live 500 on forge-beta
-        // for the mergedAt-supplied path). The cast pins the type.
-        const stampExpr = stamp ? sql`${stamp.toISOString()}::timestamptz` : sql`now()`;
-        await db
-          .update(issues)
-          .set({ mergedAt: sql`COALESCE(${issues.mergedAt}, ${stampExpr})`, updatedAt: sql`now()` })
-          .where(eq(issues.id, issueId));
+        await stampIssueMergedAt(issueId, stamp);
 
         const body = `mark_merged target=${target}${input.data?.note ? ` — ${input.data.note}` : ''}`;
-        // cm:guard ISS-820 — this is an automated MCP-surface audit comment; isAi:true or it reads as a human answer and can release a needs_info bounce
-        const [auditComment] = await db
-          .insert(comments)
-          .values({ issueId, authorId: device.ownerId, body, parentId: null, isAi: true })
-          .returning({ id: comments.id, body: comments.body, parentId: comments.parentId });
+        const auditComment = await writeAuditComment(issueId, device.ownerId, body);
         if (auditComment) {
           await hooks.emit('commentCreated', {
             issueId,
@@ -1086,17 +908,10 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         // Clearing `merged_at` re-blocks downstream children (AC4 — supports
         // rolling back an epic whose merge was reverted).
-        await db
-          .update(issues)
-          .set({ mergedAt: null, updatedAt: sql`now()` })
-          .where(eq(issues.id, issueId));
+        await clearIssueMergedAt(issueId);
 
         const body = `unmark${input.data?.note ? ` — ${input.data.note}` : ''}`;
-        // cm:guard ISS-820 — automated MCP-surface audit comment; isAi:true so it can't release a needs_info bounce
-        const [auditComment] = await db
-          .insert(comments)
-          .values({ issueId, authorId: device.ownerId, body, parentId: null, isAi: true })
-          .returning({ id: comments.id, body: comments.body, parentId: comments.parentId });
+        const auditComment = await writeAuditComment(issueId, device.ownerId, body);
         if (auditComment) {
           await hooks.emit('commentCreated', {
             issueId,
@@ -1128,33 +943,11 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const projectId = await loadIssueProjectId(issueId);
         await assertPrincipalIsMember(principal, projectId);
 
-        const where = input.filters?.taskStatus
-          ? and(eq(tasks.issueId, issueId), eq(tasks.status, input.filters.taskStatus))
-          : eq(tasks.issueId, issueId);
-
         const tasksLimit = input.limit ?? 25;
-        // ISS-562 — SQL-level projection: omit description (up to 50KB each)
-        // so the list query never loads heavy TOAST content from disk. Default
-        // limit lowered 100→25 (100 tasks × 50KB = 5MB theoretical max).
-        const rows = await db
-          .select({
-            id: tasks.id,
-            issueId: tasks.issueId,
-            projectId: tasks.projectId,
-            title: tasks.title,
-            status: tasks.status,
-            priority: tasks.priority,
-            assigneeId: tasks.assigneeId,
-            isAgentTask: tasks.isAgentTask,
-            agentStatus: tasks.agentStatus,
-            acceptanceCriteria: tasks.acceptanceCriteria,
-            createdAt: tasks.createdAt,
-            updatedAt: tasks.updatedAt,
-          })
-          .from(tasks)
-          .where(where)
-          .orderBy(asc(tasks.createdAt))
-          .limit(overfetch(tasksLimit));
+        const rows = await listTasksForIssue(issueId, {
+          status: input.filters?.taskStatus,
+          limit: overfetch(tasksLimit),
+        });
 
         return buildListEnvelope({
           key: 'tasks',
@@ -1172,21 +965,19 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const projectId = await loadIssueProjectId(data.issueId);
         await assertPrincipalIsWriter(principal, projectId);
 
-        const [created] = await db
-          .insert(tasks)
-          .values({
-            issueId: data.issueId,
-            projectId,
-            title: data.taskTitle,
-            description: data.taskDescription ?? null,
-            status: data.taskStatus ?? 'backlog',
-            priority: data.taskPriority ?? 'none',
-            isAgentTask: data.isAgentTask ?? false,
-            acceptanceCriteria: data.taskAcceptanceCriteria ?? null,
-          })
-          .returning();
+        const created = await createTaskRow({
+          issueId: data.issueId,
+          projectId,
+          title: data.taskTitle,
+          description: data.taskDescription ?? null,
+          status: data.taskStatus,
+          priority: data.taskPriority,
+          isAgentTask: data.isAgentTask,
+          acceptanceCriteria: data.taskAcceptanceCriteria ?? null,
+          actor: { type: 'device', id: device.id },
+        });
 
-        return { task: serializeTask(created as TaskRow) };
+        return { task: serializeTask(created) };
       }
 
       case 'updateTask': {
@@ -1197,7 +988,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         await assertPrincipalIsWriter(principal, row.projectId);
 
         const data = input.data ?? {};
-        const updates: Record<string, unknown> = { updatedAt: new Date() };
+        const updates: Record<string, unknown> = {};
         if (data.taskTitle !== undefined) updates.title = data.taskTitle;
         if (data.taskDescription !== undefined) updates.description = data.taskDescription;
         if (data.taskStatus !== undefined) updates.status = data.taskStatus;
@@ -1207,13 +998,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           updates.acceptanceCriteria = data.taskAcceptanceCriteria;
         }
 
-        const [updated] = await db
-          .update(tasks)
-          .set(updates)
-          .where(eq(tasks.id, input.documentId))
-          .returning();
+        const updated = await updateTaskRow(row, updates, { type: 'device', id: device.id }, [
+          'acceptanceCriteria',
+        ]);
+        if (!updated) throw new Error('NOT_FOUND: task not found');
 
-        return { task: serializeTask(updated as TaskRow) };
+        return { task: serializeTask(updated) };
       }
 
       case 'deleteTask': {
@@ -1222,7 +1012,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
         const row = await loadTaskForAccess(input.documentId);
         await assertPrincipalIsWriter(principal, row.projectId);
-        await db.delete(tasks).where(eq(tasks.id, input.documentId));
+        await deleteTaskRow(row, { type: 'device', id: device.id });
         return { deleted: true, documentId: input.documentId };
       }
     }
