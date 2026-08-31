@@ -22,7 +22,10 @@ EXIT CODES
   6   client error (400/409/422)  not retryable — the request is wrong
   7   TOO_MANY_REQUESTS (429)     RETRYABLE after a wait
   8   server error (5xx)          RETRYABLE
-  9   transport — DNS, connect, TLS, timeout   RETRYABLE
+  9   transport on an idempotent method        RETRYABLE
+ 10   DELIVERY_UNKNOWN — the connection dropped on a POST or PATCH.
+      NOT retryable: the write may already have landed. Read the state back
+      before deciding.
   1   anything else
 
 `retryable` is repeated as JSON on stderr, so a caller can parse the reason
@@ -90,16 +93,27 @@ pub fn is_json(body: &str) -> bool {
     serde_json::from_str::<serde_json::Value>(body).is_ok()
 }
 
-/// A request that never reached core: DNS, connect, TLS, timeout.
-pub fn transport_failure(message: impl Into<String>) -> (Outcome, String) {
-    (
+/// A request that did not come back: DNS, connect, TLS, timeout.
+// cm:guard the METHOD decides, and it is not a detail: a dropped connection says nothing about whether core processed the request, so "retry" is only safe where a second identical call cannot change the outcome. GET/HEAD/PUT/DELETE/OPTIONS/TRACE are idempotent per RFC 9110 §9.2.2; POST and PATCH are not, and telling a caller to retry one of those is how a skill files the same issue twice. Buzz calls this DeliveryUnknown; Forge had it collapsed into "retryable" until 2026-08-31.
+pub fn transport_failure(method: &str, message: impl Into<String>) -> (Outcome, String) {
+    let idempotent = matches!(
+        method.to_uppercase().as_str(),
+        "GET" | "HEAD" | "PUT" | "DELETE" | "OPTIONS" | "TRACE"
+    );
+    let outcome = if idempotent {
         Outcome {
             exit_code: 9,
             retryable: true,
             code: "TRANSPORT".to_string(),
-        },
-        message.into(),
-    )
+        }
+    } else {
+        Outcome {
+            exit_code: 10,
+            retryable: false,
+            code: "DELIVERY_UNKNOWN".to_string(),
+        }
+    };
+    (outcome, message.into())
 }
 
 #[cfg(test)]
@@ -138,6 +152,36 @@ mod tests {
         assert_eq!(classify(404, None).code, "NOT_FOUND");
     }
 
+    // cm:guard a dropped connection on a POST must NOT say retryable. The request may have been processed and only the response lost, so a caller that retries on this creates the row twice — which is invisible until someone reads the list. Make `transport_failure` ignore the method and only this pair goes red.
+    #[test]
+    fn a_lost_connection_is_retryable_only_where_a_second_call_is_free() {
+        for m in ["GET", "head", "PUT", "DELETE", "OPTIONS", "TRACE"] {
+            let (o, _) = transport_failure(m, "x");
+            assert!(o.retryable, "{m} is idempotent — a retry costs nothing");
+            assert_eq!(o.exit_code, 9, "{m}");
+            assert_eq!(o.code, "TRANSPORT", "{m}");
+        }
+        for m in ["POST", "patch"] {
+            let (o, _) = transport_failure(m, "x");
+            assert!(
+                !o.retryable,
+                "{m} may have landed — retrying can double-write"
+            );
+            assert_eq!(o.exit_code, 10, "{m}");
+            assert_eq!(o.code, "DELIVERY_UNKNOWN", "{m}");
+        }
+    }
+
+    #[test]
+    fn an_unknown_method_is_treated_as_unsafe_to_repeat() {
+        let (o, _) = transport_failure("FROBNICATE", "x");
+        assert!(
+            !o.retryable,
+            "an unrecognised method must fail closed, not open"
+        );
+        assert_eq!(o.code, "DELIVERY_UNKNOWN");
+    }
+
     #[test]
     fn a_usage_failure_is_two_and_never_retryable() {
         let (o, line) = usage_failure("--data is not valid JSON");
@@ -161,22 +205,35 @@ mod tests {
             [200u16, 401, 403, 404, 400, 409, 422, 429, 500, 418]
                 .into_iter()
                 .map(|s| classify(s, None).exit_code)
-                .chain(std::iter::once(transport_failure("x").0.exit_code))
+                .chain([
+                    transport_failure("GET", "x").0.exit_code,
+                    transport_failure("POST", "x").0.exit_code,
+                ])
                 .collect();
         assert_eq!(
             reachable,
-            [0, 1, 3, 4, 5, 6, 7, 8, 9].into_iter().collect(),
+            [0, 1, 3, 4, 5, 6, 7, 8, 9, 10].into_iter().collect(),
             "a documented row nothing can produce is a lie in --help"
         );
     }
 
-    // cm:guard the help text and the match arms are one contract read by a human under time pressure; a row that names a code the code never returns is worse than no table.
+    // cm:guard DERIVE the codes from what the matcher actually returns, never retype them — a hand-written list passes while the row it forgot is missing, which is exactly how exit 10 shipped undocumented for the length of one commit. The help text and the match arms are one contract, read by a human under time pressure.
     #[test]
     fn the_help_table_lists_the_codes_the_matcher_produces() {
-        for line_code in [0, 2, 3, 4, 5, 6, 7, 8, 9, 1] {
+        let produced: std::collections::BTreeSet<i32> =
+            [200u16, 401, 403, 404, 400, 409, 422, 429, 500, 418]
+                .into_iter()
+                .map(|s| classify(s, None).exit_code)
+                .chain([
+                    transport_failure("GET", "x").0.exit_code,
+                    transport_failure("POST", "x").0.exit_code,
+                    usage_failure("x").0.exit_code,
+                ])
+                .collect();
+        for code in produced {
             assert!(
-                EXIT_TAXONOMY.contains(&format!("  {line_code}   ")),
-                "exit code {line_code} is produced but absent from EXIT_TAXONOMY"
+                EXIT_TAXONOMY.contains(&format!("{code}   ")),
+                "exit code {code} is produced but absent from EXIT_TAXONOMY"
             );
         }
     }

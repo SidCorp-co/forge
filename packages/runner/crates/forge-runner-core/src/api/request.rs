@@ -102,7 +102,7 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
     let resp = match rb.send().await {
         Ok(r) => r,
         Err(e) => {
-            let (outcome, msg) = transport_failure(format!("{url}: {e}"));
+            let (outcome, msg) = transport_failure(&req.method, format!("{url}: {e}"));
             return Response {
                 stdout: String::new(),
                 stderr: failure_json(&outcome, None, &msg),
@@ -246,6 +246,23 @@ mod tests {
         assert_eq!(r.outcome.exit_code, 8);
         assert_eq!(r.outcome.code, "INTERNAL_ERROR");
         assert!(r.outcome.retryable);
+    }
+
+    // cm:guard the END-TO-END half of the DELIVERY_UNKNOWN rule: `run` must pass the request's own method into `transport_failure`. Hard-code a method there and this stays green in `exit.rs` while the real command still tells a caller to retry a POST that may have landed.
+    #[tokio::test]
+    async fn a_dropped_post_reports_delivery_unknown_not_a_retry() {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        drop(l);
+        let c = CoreClient::new(format!("http://{addr}"), "tok".to_string());
+        let mut r = req("issues");
+        r.method = "POST".into();
+        r.body = Some("{}".into());
+        let out = run(&c, &r).await;
+        assert_eq!(out.outcome.exit_code, 10);
+        assert!(!out.outcome.retryable);
+        assert!(out.stderr.contains("DELIVERY_UNKNOWN"));
+        assert_eq!(out.stdout, "");
     }
 
     #[tokio::test]
