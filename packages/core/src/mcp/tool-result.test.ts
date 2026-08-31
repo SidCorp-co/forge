@@ -29,7 +29,6 @@ describe('toToolCallContent', () => {
       { type: 'text', text: 'Attachment "shot.png":' },
       { type: 'image', data: 'AAAA', mimeType: 'image/png' },
     ]);
-    // The non-_mcpContent keys still ride along as structuredContent.
     expect(out.structuredContent).toEqual({ attachmentId: 'a-1', inlined: true });
   });
 
@@ -41,7 +40,6 @@ describe('toToolCallContent', () => {
 
   it('does NOT treat a non-array _mcpContent as content blocks', () => {
     const out = toToolCallContent({ _mcpContent: 'oops' });
-    // Falls through to the JSON wrapper.
     expect(out.content[0]?.type).toBe('text');
     expect(out.structuredContent).toEqual({ _mcpContent: 'oops' });
   });

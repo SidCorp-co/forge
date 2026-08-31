@@ -160,9 +160,7 @@ const DEVICE_REQUIRED: ReadonlyMap<string, ReadonlySet<string> | true> = new Map
   ReadonlySet<string> | true
 >([
   ['forge_project_pm', new Set(['dispatch', 'set_dependency', 'write_decision'])],
-  // ISS-483 §E#3 retired the other forge_pm.* shims; forge_pm.set_dependency
-  // is the lone survivor and keeps its per-tool gate (byte-identical to the
-  // pre-consolidation behaviour).
+  // cm:guard `true` gates the WHOLE tool, and that is right here only because this standalone name has no action argument to gate per-action — it maps onto the dispatcher's `set_dependency`, which is gated in the entry above. Loosening it to a Set would gate nothing at all, since there is no action to match.
   ['forge_pm.set_dependency', true],
 ]);
 
@@ -259,9 +257,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeJobsCancelTool(ctx),
     forgeAgentSessionsListTool(ctx.device),
     forgeAgentSessionsGetTool(ctx),
-    // ISS-145 — consolidated dispatchers first; legacy shims registered
-    // immediately after so `tools/list` order remains stable for callers
-    // that pin to the existing position.
+    // cm:guard a surviving shim is registered IMMEDIATELY after the dispatcher that supersedes it — `tools/list` order is positional for callers that pin to it, so inserting elsewhere silently moves every tool after it (ISS-145)
     forgeProjectPipelineRunsTool(ctx),
     forgePipelineRunsGetTool(ctx),
     forgeProjectsListTool(ctx),
@@ -290,13 +286,7 @@ export function createMcpServer(ctx: McpContext): Server {
     { capabilities: { tools: {}, prompts: {} }, instructions: FORGE_MCP_INSTRUCTIONS },
   );
 
-  // Managed META skills (forge-skills …) served live as MCP prompts — the
-  // always-latest, zero-disk-sync channel. Any session connected to Forge MCP
-  // sees the current meta guidance; no install, no shadow-freeze. Project-scoped
-  // by the X-Forge-Project-Slug header (falls back to the global bodies).
-  // ISS-497 — a project-level PAT (boundProjectId) resolves to its bound
-  // project with no header, so a bound token sees its project's meta prompts;
-  // same precedence (slug > boundProjectId) as the tool resolver.
+  // cm:guard precedence is slug > boundProjectId, the SAME order the tool resolver uses — meta skills are served live as prompts rather than synced to disk, so the two resolvers disagreeing means a session reads one project's tools and another project's guidance in the same breath, with nothing on disk to compare against (ISS-497)
   const metaProjectId = async (): Promise<string | null> => {
     if (ctx.projectSlug) {
       try {
@@ -356,9 +346,7 @@ export function createMcpServer(ctx: McpContext): Server {
       };
     }
 
-    // PAT principals can't run device-only tools or device-only actions on
-    // a consolidated dispatcher. Surface a stable error code so callers
-    // (Cursor/Cline) can present a clear message.
+    // cm:guard this refusal runs BEFORE the tool, so a PAT never reaches a device-only action and no DB call is made with the stub device id standing in for a real one — that stub would otherwise flow into an FK lookup and fail as something unrelated
     if (principal.kind === 'pat') {
       const gate = DEVICE_REQUIRED.get(name);
       const action = typeof args.action === 'string' ? args.action : null;
@@ -372,11 +360,7 @@ export function createMcpServer(ctx: McpContext): Server {
       }
     }
 
-    // PAT effective-allowlist — enforce before the tool runs so we 404
-    // (NOT 403) when the caller probes a project outside their scope. For a
-    // project-level token (boundProjectId) this fences the explicit-arg path
-    // to the bound project; the slug-resolved path is fenced inside the
-    // assertPrincipalIs* helpers (ISS-497).
+    // cm:guard 404 and NOT 403 when a PAT probes a project outside its scope — 403 confirms the project exists, which turns this tool into an existence oracle for every project the caller cannot see. This fences the explicit-arg path only; the slug-resolved path is fenced inside the assertPrincipalIs* helpers (ISS-497).
     if (principal.kind === 'pat') {
       const allow = patEffectiveProjectIds(principal);
       const target = auditBase.projectId;
@@ -396,8 +380,7 @@ export function createMcpServer(ctx: McpContext): Server {
     } catch (err) {
       const { code, message } = classifyError(err);
       writeMcpAudit({ ...auditBase, resultCode: code });
-      // Strip any FORBIDDEN/NOT_FOUND prefix that exists only for the
-      // server-side mapper — surface the human message to the caller.
+      // cm:edge contract -> packages/core/src/mcp/tools/lib.ts — the prefix is how a thrown error carries its class to `classifyError`; it is consumed HERE and must not reach the caller, who would read `FORBIDDEN: ...` as part of the message
       const text = message.replace(/^(?:FORBIDDEN|NOT_FOUND|BAD_REQUEST):\s*/, '');
       return {
         content: [{ type: 'text', text: `Error: ${text}` }],

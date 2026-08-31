@@ -41,18 +41,14 @@ export async function mcpHandler(c: Context<{ Variables: PrincipalVars }>): Prom
       ? principal.device
       : stubDeviceForPat(principal.userId, principal.tokenId);
   const projectSlug = c.req.header('x-forge-project-slug') ?? null;
-  // ISS-497 — a project-level PAT carries its bound project; thread it so the
-  // effective-project resolver and metaProjectId() share one answer.
+  // cm:why threaded so the effective-project resolver and metaProjectId() share one answer — a project-level PAT carries its bound project, and resolving it twice is how the two disagree (ISS-497)
   const boundProjectId = principal.kind === 'pat' ? principal.boundProjectId : null;
   const requestId = c.req.header('x-request-id') ?? c.req.header('cf-ray') ?? crypto.randomUUID();
   const ip =
     c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? c.req.header('x-real-ip') ?? null;
   const userAgent = c.req.header('user-agent') ?? null;
 
-  // ISS-145 — per-request collector for deprecated legacy tool names. Shim
-  // factories push the legacy name they implement; after the transport
-  // returns its `Response` we attach an `X-MCP-Deprecation` header so
-  // callers can migrate before the shims are removed.
+  // cm:edge protocol -> packages/core/src/mcp/deprecation.ts — a shim factory pushes its own legacy name here DURING the call, and this set is only read after the transport has produced its `Response`; attaching `X-MCP-Deprecation` any earlier means attaching it before the handler that would populate it has run (ISS-145)
   const deprecations = new Set<string>();
   const server = createMcpServer({
     principal,
