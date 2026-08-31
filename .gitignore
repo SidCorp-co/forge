@@ -26,6 +26,11 @@ playwright/.cache
 /iss-*.png
 /iss[0-9]*.png
 
+# Core-driven per-issue checkouts (`<repo>/.worktrees/<ISS-n>`). Committed rather than left to
+# the runner: it appends this line itself when it is missing, which would dirty the repo root on
+# the first worktree job and make the next refresh read a tracked edit as someone's uncommitted work.
+.worktrees
+
 # OS
 .DS_Store
 Thumbs.db
