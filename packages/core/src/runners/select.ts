@@ -310,10 +310,7 @@ async function pickRunner(
     allowDeviceIds: string[] | null;
   },
 ): Promise<Runner | null> {
-  // Step 1 — pin. For a session-group resume this is the prior device; for a
-  // retry rotation it is the round-robin `target`. The exclusion overrides the
-  // pin so a done/tripped device is never re-picked (caller drops
-  // `priorClaudeSessionId` when the pin is skipped — see dispatcher.ts).
+  // cm:edge protocol -> packages/core/src/jobs/resume-policy.ts — falling through this pin STRANDS the caller's `--resume`: the CLI session file is on the pinned box and step 2/3 return a different one. `finalizeResumeForDevice` compares the returned device against the pin and drops the resume as `pin_stale`; a caller that skips it dispatches an unreachable session id and records the attempt as having continued the transcript.
   if (opts.pinDeviceId && !opts.excludeDeviceIds.includes(opts.pinDeviceId)) {
     const pinned = await findHealthyByDevice(
       projectId,

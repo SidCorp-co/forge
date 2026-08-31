@@ -76,7 +76,7 @@ function assertAutonomousReady(
   currentAgentConfig: Record<string, unknown>,
 ): void {
   if ((patch as { mode?: string }).mode !== 'autonomous') return;
-  const missing = missingAutonomousFacts(currentAgentConfig['projectFacts']);
+  const missing = missingAutonomousFacts(currentAgentConfig.projectFacts);
   if (missing.length === 0) return;
   const detail = missing.map((f) => `${f.key} (${f.role})`).join('; ');
   throw new PipelineConfigError(

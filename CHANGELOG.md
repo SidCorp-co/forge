@@ -68,6 +68,23 @@
 
 ### Fixed
 
+- A retry that started from an empty transcript now says so, says which of seven reasons took the
+  prior session away, and the rate is readable beside the failures it explains. Forge cannot promise
+  a resume across a forced box change — a different-device failover exists because the account on
+  the old box is exhausted — but a start-from-scratch and a continue were indistinguishable in the
+  record, and 26 of this project's last 35 failed `drive` jobs took exactly that path. Every path
+  that declines a resume now names itself in one vocabulary, on the attempt's own `agent_sessions`
+  row; "no prior session to continue" stays uncounted, because attempt 1 is the normal shape of a
+  first try and folding it in would make the number shrink as the project does more fresh work.
+  A fourth path was found while enumerating the three the issue named, and it was worse than
+  silence: the resume was decided BEFORE a runner was picked, and the selector falls through a
+  stale pin to another box without telling anyone, so the unreachable session id was dispatched
+  anyway and the attempt recorded itself as having continued a transcript it never saw. It is now
+  settled after selection, as `pin_stale`. The count reads inside `forge_metrics.session_failures`
+  — same project, same window, its own denominator — so the question that could not be answered
+  from the outside ("did attempt 2 resume, or start cold?") is answered next to what killed
+  attempt 1, rather than as a rate standing on its own saying nothing. (ISS-887)
+
 - A UX Contract written from the Settings preset button reached no agent. Applying a preset compiled
   the rules into `projectFacts['ux-contract']` and stopped there: the flag that decides whether a
   fact is injected into every agent prompt or merely fetchable on demand was read by that code path

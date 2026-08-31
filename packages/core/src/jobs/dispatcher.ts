@@ -32,7 +32,7 @@ import { loadPriorAttempts, renderPriorAttemptsBlock } from './prior-attempts.js
 import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { JOB_QUEUE_NAME, PM_QUEUE_NAME, RECONCILE_QUEUE_NAME } from './queue-name.js';
 import { resolveJobMcpServers } from './resolve-job-mcp-servers.js';
-import { resolveResumePolicy } from './resume-policy.js';
+import { finalizeResumeForDevice, resolveResumePolicy } from './resume-policy.js';
 import {
   applySkillMaintenanceCarveout,
   resolveStageOverrides,
@@ -295,13 +295,12 @@ async function dispatchViaRunner(
   }
 
   const preDispatchOverrides = await resolveStageOverrides(job.projectId, job.payload);
-  const resume = await resolveResumePolicy({
+  const proposedResume = await resolveResumePolicy({
     job,
     overrides: preDispatchOverrides,
     agentConfig: cachedAgentConfig,
   });
-  const priorClaudeSessionId = resume.priorClaudeSessionId;
-  const { pinDeviceId, excludeDeviceIds, skipPrimary } = resume;
+  const { pinDeviceId, excludeDeviceIds, skipPrimary } = proposedResume;
   const stagePool = preDispatchOverrides.deviceIds;
 
   // ISS-232 Phase 2 — `selectRunnerForJob` no longer takes `fallbackChain`.
@@ -373,16 +372,8 @@ async function dispatchViaRunner(
     return 'skipped';
   }
 
-  // AUTHORITATIVE per-runner cap gate (the picker's L4 EXISTS is pool-coarse —
-  // it only proves SOME runner is free, not that THIS selected runner is). When
-  // maxConcurrentIssues>1 the load-aware selector usually avoids a full runner,
-  // but a resume-pin to a busy host, or two ticks racing on the same free
-  // runner, can still target one at capacity. Enforce it atomically: lock the
-  // runner row (FOR UPDATE serializes concurrent dispatches to the same host),
-  // recount orphan-aware in-flight under the lock, and only then claim the job.
-  // This makes it IMPOSSIBLE to exceed RUNNER_CAP_PER_RUNNER regardless of race.
-  // Mirror runner→deviceId for backwards-compat with consumers reading the
-  // legacy column (antigravity-remote runners have deviceId=null → stays null).
+  // cm:guard this is the AUTHORITATIVE per-runner cap gate and it must stay atomic — lock the runner row (FOR UPDATE serializes concurrent dispatches to the same host), recount orphan-aware in-flight under that lock, and only then claim. The picker's L4 EXISTS is pool-coarse: it proves SOME runner is free, never that THIS selected one is, and at maxConcurrentIssues>1 a resume-pin to a busy host or two ticks racing on the same free runner still targets one at capacity. Checking outside the lock makes exceeding RUNNER_CAP_PER_RUNNER a race away.
+  // cm:why `deviceId` mirrors the runner for consumers still reading the legacy column; antigravity-remote runners have none, so it stays null rather than being invented
   const dispatchedAt = new Date();
   const claim = await claimRunnerSlot({
     jobId: job.id,
@@ -392,9 +383,7 @@ async function dispatchViaRunner(
   });
 
   if (claim === 'runner_full') {
-    // Selected runner filled up between pick and claim. Leave queued; the tick
-    // excludes this job and tries the next candidate (no head-of-line block),
-    // and a freed slot re-picks it on a later tick.
+    // cm:why left queued rather than failed: the tick excludes this job and tries the next candidate, so a runner that filled up between pick and claim never head-of-line-blocks, and a freed slot re-picks it on a later tick
     logger.debug(
       { jobId: job.id, runnerId: runner.id },
       'dispatcher: selected runner at per-runner cap, leaving queued',
@@ -406,6 +395,8 @@ async function dispatchViaRunner(
     return 'skipped';
   }
 
+  // cm:edge ordering -> packages/core/src/jobs/resume-policy.ts — the resume is provisional until a device is picked; `selectRunnerForJob` silently falls through a stale pin, so this must sit between selection and the session row that records the answer
+  const resume = finalizeResumeForDevice(proposedResume, runner.deviceId);
   const repoPath = await loadRepoPath(job.projectId);
   const agentSessionId = await ensureAgentSessionForJob(
     {
@@ -504,7 +495,7 @@ async function dispatchViaRunner(
 
   // cm:why on --resume the Claude CLI may ignore --append-system-prompt (undocumented), so the state's system prompt is embedded redundantly at the head of the user prompt; a fresh dispatch gets it through the flag and needs no copy
   const resumedPromptString =
-    priorClaudeSessionId && runnerBasePromptString
+    resume.priorClaudeSessionId && runnerBasePromptString
       ? injectTurnLevelRules(runnerBasePromptString, runnerSystemPrompt)
       : runnerBasePromptString;
 
@@ -536,7 +527,7 @@ async function dispatchViaRunner(
       payload: {
         ...(job.payload ?? {}),
         ...buildOverridesPayload(runnerStageOverrides),
-        ...(priorClaudeSessionId ? { claudeSessionId: priorClaudeSessionId } : {}),
+        ...(resume.priorClaudeSessionId ? { claudeSessionId: resume.priorClaudeSessionId } : {}),
       },
       promptString: runnerPromptString,
       systemPrompt: runnerSystemPrompt,
