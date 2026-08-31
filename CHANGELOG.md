@@ -110,9 +110,12 @@
   by more than one had work from somewhere else. When the allowance is spent the **issue** moves to
   `needs_info`, not just the run to `paused`: a paused run leaves the issue at its in-flight status,
   which the board still renders as running, and `needs_info` is the one park a human's answer
-  restarts. **The trade-off:** a cap that has never fired is now live on three projects at once. It
-  can pause work that was progressing if the reset condition is wrong, and the reset condition is the
-  only thing standing between it and a healthy long-running issue. (ISS-890)
+  restarts. **The trade-off:** a cap that has never fired is now live on three projects at once, and if
+  its reset condition is wrong it pauses work that was progressing. What bounds the day-one exposure
+  is that the allowance is stored per run under a key no existing run carries, and an absent key
+  reads as a full allowance — so no run in flight today can be parked until this code has itself
+  observed three rescues on it, and the worst first-day behaviour is three extra drive sessions on a
+  run that is already wedged. (ISS-890)
 
 - A UX Contract written from the Settings preset button reached no agent. Applying a preset compiled
   the rules into `projectFacts['ux-contract']` and stopped there: the flag that decides whether a

@@ -97,7 +97,7 @@ export async function checkAutonomousRescueCap(args: {
     if (doneDriveJobs - state.doneDriveJobs > 1) return { capped: false, runId: run.id };
     if (state.count < AUTONOMOUS_RESCUE_CAP) return { capped: false, runId: run.id };
 
-    await parkForHuman({ ...args, runId: run.id });
+    await parkForHuman({ ...args, runId: run.id, doneDriveJobs });
     return { capped: true, runId: run.id };
   } catch (err) {
     // cm:guard FAIL-OPEN, matching stage-stall-guard: a cap that throws must let the rescue through. A wedged issue nobody rescues is the defect this whole pass exists to remove, and it is worse than one extra drive session.
@@ -109,12 +109,14 @@ export async function checkAutonomousRescueCap(args: {
   }
 }
 
+// cm:guard this park must NOT advance the run's rescue watermark. The reset after a human answers works precisely because the stored `doneDriveJobs` stays at the value the third rescue wrote: the answer's own drive job then makes growth read 2, `> 1` trips, and the count restarts at 1. Recording state here — the obvious tidy-up — freezes the count at the cap forever, and the comment's closing promise that a resumed issue gets a full allowance becomes a lie the code tells.
 async function parkForHuman(args: {
   projectId: string;
   issueId: string;
   runId: string;
   status: IssueStatus;
   reopenCount: number;
+  doneDriveJobs: number;
 }): Promise<void> {
   const [row] = await db
     .select({ createdBy: projects.createdBy })
@@ -150,6 +152,7 @@ async function parkForHuman(args: {
     authorId: actorId,
     fromStatus: args.status,
     cap: AUTONOMOUS_RESCUE_CAP,
+    driveSessions: args.doneDriveJobs,
   });
 
   logger.warn(

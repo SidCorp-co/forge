@@ -218,6 +218,35 @@ describe('ISS-890 autonomous driver wedge (real Postgres)', () => {
       expect((await rescueState(runId)).count).toBe(1);
     });
 
+    it('speaks again on a SECOND park, after a human answered the first', async () => {
+      const { projectId, issueId, runId } = await seed({});
+      const { resetAutonomousWedgesOnce } = await import('../../src/pipeline/reconciler.js');
+      const { AUTONOMOUS_RESCUE_CAP } = await import('../../src/pipeline/autonomous-rescue-cap.js');
+
+      // cm:guard exactly AUTONOMOUS_RESCUE_CAP rollbacks, counting the one that detects progress. A resumed run does not get a fresh allowance ON TOP of the rescue that noticed the human's answer — that rescue IS the first of the new allowance, and a helper assuming otherwise walks into the cap one cycle early and fails on the rollback, never reaching the comment this test is about.
+      const burnToPark = async (): Promise<void> => {
+        for (let i = 0; i < AUTONOMOUS_RESCUE_CAP; i++) {
+          expect(await resetAutonomousWedgesOnce()).toBe(1);
+          await rewedge(issueId, projectId, runId);
+        }
+        expect(await resetAutonomousWedgesOnce()).toBe(0);
+        expect(await statusOf(issueId)).toBe('needs_info');
+      };
+
+      await burnToPark();
+
+      // cm:guard ONE job models the human's answer, never two. The resume mints exactly one drive job; growth reads 2 only because the pre-park job counts against a watermark the park did NOT advance. Seed a second job here and growth is 2 either way, so the test passes with `recordAutonomousRescue` wrongly added to `parkForHuman` — measured, it did.
+      await rewedge(issueId, projectId, runId);
+
+      await burnToPark();
+
+      const bodies = await harness.db.execute<{ body: string }>(
+        sql`SELECT body FROM comments WHERE issue_id = ${issueId}`,
+      );
+      expect(bodies).toHaveLength(2);
+      expect(new Set(bodies.map((b) => b.body)).size).toBe(2);
+    });
+
     it('does not merge-clobber a sibling metadata key the pause writer owns', async () => {
       const { runId } = await seed({});
       await harness.db.execute(sql`
