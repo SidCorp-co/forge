@@ -31,8 +31,10 @@ import { applyIntakeGate, finalizeIntake } from './intake-gate.js';
 import { resolveLabelIdsForWrite } from './label-service.js';
 import {
   type AppliedIssueRelation,
-  applyIssueRelations,
+  flushIssueRelationEffects,
   type IssueRelationInput,
+  type PendingIssueRelation,
+  writeIssueRelations,
 } from './relations-service.js';
 
 export type IssueCreateErrorCode = 'INVALID_STATUS' | 'INVALID_DETECTOR_KEY';
@@ -159,7 +161,8 @@ export async function createIssue(
     }
   }
 
-  const created = await db.transaction(async (tx) => {
+  // cm:guard the `blocks` edges land INSIDE this transaction with the issue row. Committing the issue first and writing edges after leaves a crash window in which the issue exists at its intake status carrying no blocker: `issueCreated` never fires, so nothing dispatches immediately, but the dispatcher also POLLS — the next tick picks up an `open` issue that looks unblocked and runs it ahead of the thing that was supposed to gate it. The record would say "not blocked" while the intent was blocked, which is exactly what VISION: state-never-lies forbids.
+  const { created, pendingRelations } = await db.transaction(async (tx) => {
     const [inserted] = await tx
       .insert(issues)
       .values({
@@ -188,7 +191,14 @@ export async function createIssue(
         .insert(issueLabels)
         .values(labelIds.map((labelId) => ({ issueId: inserted.id, labelId })));
     }
-    return inserted;
+    const pendingRelations = await writeIssueRelations(
+      { actor: writer.actor, createdById: writer.createdById },
+      input.projectId,
+      inserted.id,
+      input.relations,
+      tx,
+    );
+    return { created: inserted, pendingRelations };
   });
 
   let attachments: PersistedIssueAttachment[] = [];
@@ -206,12 +216,13 @@ export async function createIssue(
   // cm:guard finalizeIntake runs ONLY when the gate actually parked the issue — it labels and notifies the owner that something is waiting, and firing it on an ungated create pages them for nothing
   if (intake.gated) await finalizeIntake(input.projectId, { id: created.id, title: created.title });
 
-  const relations = await applyIssueRelations(
+  // cm:guard the effects still run BEFORE `issueCreated`, unchanged: that hook is what wakes dispatch, and the dependent's health must already be published when it does.
+  await flushIssueRelationEffects(
     { actor: writer.actor, createdById: writer.createdById },
     input.projectId,
-    created.id,
-    input.relations,
+    pendingRelations,
   );
+  const relations = pendingRelations.map((p: PendingIssueRelation) => p.applied);
 
   await hooks.emit('issueCreated', {
     issueId: created.id,

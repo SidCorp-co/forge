@@ -10,6 +10,14 @@
 
 ### Fixed
 
+- An issue created with a blocker now records both, or neither. The blocking relation was written
+  after the issue row had already been committed, so a failure in between — a rejected cycle, a
+  dropped connection, a process restart — left the issue durable and its blocker missing. Nothing
+  announced it, because the announcement had not run either; but the dispatcher does not only listen,
+  it also polls, and the next sweep would pick that issue up as unblocked and run it ahead of the work
+  that was meant to gate it. The relation is now written inside the same transaction as the issue, and
+  the announcements that wake the pipeline still follow the commit, in the order they had before.
+
 - A pipeline job no longer parks your uncommitted work. When a runner picks up a repository that
   already holds changes which are not the pipeline's, the workspace check leaves them alone and says
   so to the agent, instead of reporting the tree as broken and handing it to a repair step whose

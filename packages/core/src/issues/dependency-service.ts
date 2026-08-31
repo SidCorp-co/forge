@@ -22,6 +22,7 @@ import { type Actor, safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { detectCycle } from './cycle-detect.js';
 import { decomposeParent } from './decompose.js';
+import type { IssueDependencyExecutor } from './dependency-executor.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 
 export type IssueDependencyKind = (typeof issueDependencyKinds)[number];
@@ -68,6 +69,15 @@ export type SetIssueDependencyResult = {
   updated?: boolean;
 };
 
+/** What the durable half landed, and which announcement it owes. */
+export type IssueDependencyWrite = {
+  id: string;
+  created: boolean;
+  updated: boolean;
+  /** `null` when a bare re-assert changed nothing — there is nothing to announce. */
+  effect: 'added' | 'updated' | null;
+};
+
 /**
  * Idempotent on the unique edge `(project_id, from_issue_id, to_issue_id, kind)`.
  * A duplicate returns `created:false` and applies whichever of `validUntil` /
@@ -81,11 +91,27 @@ export async function setIssueDependency(
   writer: IssueDependencyWriter,
   opts?: { deferHealthPublish?: boolean },
 ): Promise<SetIssueDependencyResult> {
+  const written = await writeIssueDependency(input, writer);
+  await emitIssueDependencyEffects(input, written, writer, opts);
+  if (written.created) return { id: written.id, created: true };
+  return { id: written.id, created: false, updated: written.updated };
+}
+
+/**
+ * The DURABLE half: validate, detect a cycle, and land the row. Runs on the
+ * caller's executor so a create can commit the issue and its edge together.
+ */
+// cm:guard nothing here may emit, publish or touch git. The whole point of the split is that this half can run inside someone else's transaction — a hook fired from in here announces an edge a rollback can still take away, and `decomposeParent` would create a branch for an issue that never existed. Effects belong to `emitIssueDependencyEffects`, which the caller runs AFTER its commit.
+export async function writeIssueDependency(
+  input: SetIssueDependencyInput,
+  writer: IssueDependencyWriter,
+  ex: IssueDependencyExecutor = db,
+): Promise<IssueDependencyWrite> {
   if (input.fromIssueId === input.toIssueId) {
     throw new IssueDependencyError('SELF_DEP');
   }
 
-  const sides = await db
+  const sides = await ex
     .select({ id: issues.id, projectId: issues.projectId })
     .from(issues)
     .where(inArray(issues.id, [input.fromIssueId, input.toIssueId]));
@@ -96,12 +122,12 @@ export async function setIssueDependency(
 
   // cm:why only kind='blocks' gates dispatch (ISS-40 PR-E), so it is the only kind whose cycle can deadlock the dispatcher — hence the check is not run for the others
   if (input.kind === 'blocks') {
-    const cycle = await detectCycle(input.toIssueId, input.fromIssueId);
+    const cycle = await detectCycle(input.toIssueId, input.fromIssueId, ex);
     if (cycle === 'cycle') throw new IssueDependencyError('CYCLE_DETECTED');
     if (cycle === 'depth_exceeded') throw new IssueDependencyError('CYCLE_DEPTH_EXCEEDED');
   }
 
-  const inserted = await db
+  const inserted = await ex
     .insert(issueDependencies)
     .values({
       projectId: input.projectId,
@@ -125,16 +151,10 @@ export async function setIssueDependency(
   if (inserted.length > 0) {
     const id = inserted[0]?.id;
     if (!id) throw new IssueDependencyError('INTERNAL');
-    await emitEdgeChanged(input, id);
-    await recordOnBothSides(input, id, writer.actor, 'issue.dependency.added', {
-      ...(input.reason ? { reason: input.reason } : {}),
-    });
-    await maybeRunDecomposeHelper(input, writer.createdById);
-    await refreshDependentHealth(input, opts);
-    return { id, created: true };
+    return { id, created: true, updated: false, effect: 'added' };
   }
 
-  const [existing] = await db
+  const [existing] = await ex
     .select({ id: issueDependencies.id })
     .from(issueDependencies)
     .where(
@@ -156,10 +176,37 @@ export async function setIssueDependency(
   const updated = Object.keys(patch).length > 0;
 
   if (updated) {
-    await db.update(issueDependencies).set(patch).where(eq(issueDependencies.id, existing.id));
-    // cm:guard emit `dependencyChanged` on an update, not just an insert — expiring an edge can make the gated side dispatchable THIS INSTANT, and without the emit the unblock waits for whatever else happens to wake the dispatcher
-    await emitEdgeChanged(input, existing.id);
-    await recordOnBothSides(input, existing.id, writer.actor, 'issue.dependency.updated', {
+    await ex.update(issueDependencies).set(patch).where(eq(issueDependencies.id, existing.id));
+  }
+
+  return { id: existing.id, created: false, updated, effect: updated ? 'updated' : null };
+}
+
+/**
+ * The EFFECTS half: announce the edge, refresh the dependent's health, and run
+ * the decompose helper. Runs after the write has committed.
+ */
+// cm:guard `dependencyChanged` fires on an UPDATE too, not only an insert — expiring an edge can make the gated side dispatchable THIS INSTANT, and without the emit the unblock waits for whatever else happens to wake the dispatcher.
+// cm:edge ordering -> packages/core/src/issues/create-service.ts — the create path runs this BEFORE its `issueCreated` emit, because that hook is what wakes dispatch and the edge's health must already be published when it does
+export async function emitIssueDependencyEffects(
+  input: SetIssueDependencyInput,
+  written: IssueDependencyWrite,
+  writer: IssueDependencyWriter,
+  opts?: { deferHealthPublish?: boolean },
+): Promise<void> {
+  if (written.effect === 'added') {
+    await emitEdgeChanged(input, written.id);
+    await recordOnBothSides(input, written.id, writer.actor, 'issue.dependency.added', {
+      ...(input.reason ? { reason: input.reason } : {}),
+    });
+    await maybeRunDecomposeHelper(input, writer.createdById);
+    await refreshDependentHealth(input, opts);
+    return;
+  }
+
+  if (written.effect === 'updated') {
+    await emitEdgeChanged(input, written.id);
+    await recordOnBothSides(input, written.id, writer.actor, 'issue.dependency.updated', {
       ...(input.validUntil ? { validUntil: input.validUntil } : {}),
       ...(input.reason ? { reason: input.reason } : {}),
     });
@@ -168,7 +215,6 @@ export async function setIssueDependency(
 
   // cm:why run the helper on the conflict path too — a parent whose first decompose edge predated ISS-138 PR-D owns no integration branch, and a later duplicate edge is the only occasion left to fill it
   await maybeRunDecomposeHelper(input, writer.createdById);
-  return { id: existing.id, created: false, updated };
 }
 
 async function emitEdgeChanged(input: SetIssueDependencyInput, edgeId: string): Promise<void> {

@@ -20,9 +20,13 @@ const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
 const txInsert = vi.fn(() => ({ values: insertValues }));
-const transaction = vi.fn(async (fn: (tx: { insert: typeof txInsert }) => Promise<unknown>) =>
-  fn({ insert: txInsert }),
-);
+// cm:guard `transaction` records when the tx OPENS; `txCommit` is the only witness of when it closes. An ordering assertion against `transaction` alone cannot fail — the tx opens first in both the fixed and the broken arrangement — so the edge-inside-the-transaction rule needs this second marker to mean anything.
+const txCommit = vi.fn();
+const transaction = vi.fn(async (fn: (tx: { insert: typeof txInsert }) => Promise<unknown>) => {
+  const result = await fn({ insert: txInsert });
+  txCommit();
+  return result;
+});
 
 vi.mock('../db/client.js', () => ({
   db: { select: vi.fn(() => ({ from: selectFrom })), transaction },
@@ -45,18 +49,24 @@ vi.mock('../comments/routes.js', () => ({
 
 const applyRelations = vi.fn(async () => [
   {
-    edgeId: 'edge-1',
-    kind: 'blocks' as const,
-    fromIssueId: BLOCKER_ID,
-    toIssueId: ISSUE_ID,
-    created: true,
-    updated: false,
+    applied: {
+      edgeId: 'edge-1',
+      kind: 'blocks' as const,
+      fromIssueId: BLOCKER_ID,
+      toIssueId: ISSUE_ID,
+      created: true,
+      updated: false,
+    },
+    input: { projectId: PROJECT_ID, fromIssueId: BLOCKER_ID, toIssueId: ISSUE_ID, kind: 'blocks' },
+    written: { id: 'edge-1', created: true, updated: false, effect: 'added' },
   },
 ]);
+const flushRelations = vi.fn(async () => undefined);
 // cm:guard keep `issueRelationInputSchema` REAL here — it is the create route's own request schema, so stubbing it would make every assertion below pass against a shape the route never validates
 vi.mock('./relations-service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./relations-service.js')>()),
-  applyIssueRelations: (...args: unknown[]) => applyRelations(...(args as [])),
+  writeIssueRelations: (...args: unknown[]) => applyRelations(...(args as [])),
+  flushIssueRelationEffects: (...args: unknown[]) => flushRelations(...(args as [])),
 }));
 
 const { issueProjectRoutes } = await import('./routes.js');
@@ -88,6 +98,8 @@ beforeEach(() => {
   insertReturning.mockReset();
   projectAccess.mockReset();
   applyRelations.mockClear();
+  flushRelations.mockClear();
+  txCommit.mockClear();
 });
 
 function authVerified() {
@@ -207,6 +219,7 @@ describe('POST /api/projects/:id/issues — relations declared at create (ISS-88
       PROJECT_ID,
       ISSUE_ID,
       [expect.objectContaining({ kind: 'blocks', dependsOnId: BLOCKER_ID })],
+      expect.anything(),
     );
 
     const body = (await res.json()) as { relations?: { edgeId: string }[] };
@@ -223,7 +236,14 @@ describe('POST /api/projects/:id/issues — relations declared at create (ISS-88
       relations: [{ kind: 'blocks', dependsOnId: BLOCKER_ID }],
     });
 
+    // cm:guard the WRITE goes inside the create transaction and the ANNOUNCE comes after it — `transaction` is the only witness that separates the two. Asserting the announce lands before `issueCreated` was already true when the edge itself was written after the commit, which is the crash window ISS-889 closed.
     expect(applyRelations.mock.invocationCallOrder[0]).toBeLessThan(
+      txCommit.mock.invocationCallOrder[0] as number,
+    );
+    expect(flushRelations.mock.invocationCallOrder[0]).toBeGreaterThan(
+      applyRelations.mock.invocationCallOrder[0] as number,
+    );
+    expect(flushRelations.mock.invocationCallOrder[0]).toBeLessThan(
       hooksEmit.mock.invocationCallOrder[0] as number,
     );
   });

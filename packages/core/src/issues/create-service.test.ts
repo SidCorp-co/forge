@@ -37,8 +37,12 @@ const selectLimit = vi.fn(async () => [] as unknown[]);
 vi.mock('../db/client.js', () => ({
   db: {
     select: vi.fn(() => ({ from: () => ({ where: () => ({ limit: selectLimit }) }) })),
-    transaction: (cb: (tx: { insert: typeof txInsert }) => Promise<unknown>) =>
-      cb({ insert: txInsert }),
+    transaction: async (cb: (tx: { insert: typeof txInsert }) => Promise<unknown>) => {
+      calls.push('tx:begin');
+      const result = await cb({ insert: txInsert });
+      calls.push('tx:commit');
+      return result;
+    },
   },
 }));
 
@@ -76,21 +80,29 @@ vi.mock('./label-service.js', () => ({
   resolveLabelIdsForWrite: () => resolveLabelsMock(),
 }));
 
-const applyRelationsMock = vi.fn(async () => {
-  calls.push('relations');
+const writeRelationsMock = vi.fn(async () => {
+  calls.push('relations:write');
   return [
     {
-      edgeId: 'e1',
-      kind: 'blocks',
-      fromIssueId: 'a',
-      toIssueId: 'b',
-      created: true,
-      updated: false,
+      applied: {
+        edgeId: 'e1',
+        kind: 'blocks',
+        fromIssueId: 'a',
+        toIssueId: 'b',
+        created: true,
+        updated: false,
+      },
+      input: { projectId: PROJECT_ID, fromIssueId: 'a', toIssueId: 'b', kind: 'blocks' },
+      written: { id: 'e1', created: true, updated: false, effect: 'added' },
     },
   ];
 });
+const flushRelationsMock = vi.fn(async () => {
+  calls.push('relations:flush');
+});
 vi.mock('./relations-service.js', () => ({
-  applyIssueRelations: () => applyRelationsMock(),
+  writeIssueRelations: () => writeRelationsMock(),
+  flushIssueRelationEffects: () => flushRelationsMock(),
 }));
 
 const emitMock = vi.fn(async () => {
@@ -135,7 +147,25 @@ describe('createIssue — the ordering the dispatcher depends on', () => {
       { projectId: PROJECT_ID, title: 'New', relations: [{ kind: 'blocks', dependsOnId: 'x' }] },
       writer,
     );
-    expect(calls.indexOf('relations')).toBeLessThan(calls.indexOf('issueCreated'));
+    expect(calls.indexOf('relations:flush')).toBeLessThan(calls.indexOf('issueCreated'));
+  });
+
+  // cm:guard assert the edge write sits between BEGIN and COMMIT, not merely before `issueCreated`. Ordering alone was already true when the edge was written after the commit — and that is the arrangement ISS-889 found: the issue is durable, the blocker is not, and a crash in between leaves a row the dispatcher's POLL picks up as unblocked. Only the transaction boundary can witness that difference.
+  it('writes the edge INSIDE the create transaction, not after it commits', async () => {
+    await createIssue(
+      { projectId: PROJECT_ID, title: 'New', relations: [{ kind: 'blocks', dependsOnId: 'x' }] },
+      writer,
+    );
+    expect(calls.indexOf('relations:write')).toBeGreaterThan(calls.indexOf('tx:begin'));
+    expect(calls.indexOf('relations:write')).toBeLessThan(calls.indexOf('tx:commit'));
+  });
+
+  it('announces the edge only AFTER the transaction commits', async () => {
+    await createIssue(
+      { projectId: PROJECT_ID, title: 'New', relations: [{ kind: 'blocks', dependsOnId: 'x' }] },
+      writer,
+    );
+    expect(calls.indexOf('relations:flush')).toBeGreaterThan(calls.indexOf('tx:commit'));
   });
 
   it('persists attachments BEFORE issueCreated, so an agent woken by it sees them', async () => {

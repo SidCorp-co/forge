@@ -177,11 +177,18 @@ vi.mock('../../issues/dependency-read.js', () => ({
   loadIssueRelations: vi.fn(async () => ({ blocks: [], blockedBy: [] })),
 }));
 // cm:why stubbing the shared edge write keeps create-with-relations tests off the full DB chain the real one walks; the ordering they assert is the tool's, not the edge write's
-const setEdgeMock = vi.fn(async () => ({ id: 'dep-id-1', created: true }));
+const setEdgeMock = vi.fn(async () => ({
+  id: 'dep-id-1',
+  created: true,
+  updated: false,
+  effect: 'added' as const,
+}));
+const emitEdgeMock = vi.fn(async () => undefined);
 type DepService = typeof import('../../issues/dependency-service.js');
 vi.mock('../../issues/dependency-service.js', async (importActual) => ({
   ...(await importActual<DepService>()),
-  setIssueDependency: setEdgeMock as unknown as DepService['setIssueDependency'],
+  writeIssueDependency: setEdgeMock as unknown as DepService['writeIssueDependency'],
+  emitIssueDependencyEffects: emitEdgeMock as unknown as DepService['emitIssueDependencyEffects'],
 }));
 
 const { forgeIssuesTool, findVerifiedClaimViolation } = await import('./forge-issues.js');
@@ -852,7 +859,7 @@ describe('forge_issues tool', () => {
       const callOrder: string[] = [];
       setEdgeMock.mockImplementationOnce(async () => {
         callOrder.push('setDep');
-        return { id: 'dep-id-1', created: true };
+        return { id: 'dep-id-1', created: true, updated: false, effect: 'added' as const };
       });
       vi.mocked(hooks.emit).mockImplementationOnce(async (topic) => {
         callOrder.push('issueCreated');
@@ -877,7 +884,7 @@ describe('forge_issues tool', () => {
           kind: 'blocks',
         }),
         { actor: { type: 'device', id: fakeDevice.id }, createdById: OWNER_ID },
-        { deferHealthPublish: true },
+        expect.anything(),
       );
     });
 
@@ -907,7 +914,7 @@ describe('forge_issues tool', () => {
           kind: 'blocks',
         }),
         { actor: { type: 'device', id: fakeDevice.id }, createdById: OWNER_ID },
-        { deferHealthPublish: true },
+        expect.anything(),
       );
     });
 

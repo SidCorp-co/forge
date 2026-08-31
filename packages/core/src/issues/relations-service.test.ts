@@ -1,7 +1,8 @@
 /**
  * ISS-889 — moved from `mcp/tools/issue-relations.test.ts` with the module it
- * covers. The spy is now `setIssueDependency`, the one edge write, rather than
- * the MCP handler that used to own it.
+ * covers. The spies are now the two halves of the edge write — the durable
+ * `writeIssueDependency` and the post-commit `emitIssueDependencyEffects` —
+ * rather than the MCP handler that used to own them.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,27 +22,31 @@ vi.mock('./pipeline-health.js', () => ({
 
 let inFlight = 0;
 let sawOverlap = false;
-const setEdgeSpy = vi.fn(
+const setEdgeSpy = vi.fn(async (input: { toIssueId: string }, _writer: unknown, _ex?: unknown) => {
+  if (inFlight > 0) sawOverlap = true;
+  inFlight++;
+  // cm:guard the suspension here must be a REAL one (a timer, not `await Promise.resolve()`) — a microtask-only await resolves before any sibling iteration can start, so `sawOverlap` stays false even under `Promise.all` and the test green-lights the exact refactor the guard in relations-service.ts forbids
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  inFlight--;
+  return { id: `edge-${input.toIssueId}`, created: true, updated: false, effect: 'added' };
+});
+const emitEdgeSpy = vi.fn(
   async (
-    input: { toIssueId: string },
+    _input: unknown,
+    _written: unknown,
     _writer: unknown,
-    opts?: { deferHealthPublish?: boolean },
-  ) => {
-    if (inFlight > 0) sawOverlap = true;
-    inFlight++;
-    // cm:guard the suspension here must be a REAL one (a timer, not `await Promise.resolve()`) — a microtask-only await resolves before any sibling iteration can start, so `sawOverlap` stays false even under `Promise.all` and the test green-lights the exact refactor the guard in relations-service.ts forbids
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    inFlight--;
-    void opts;
-    return { id: `edge-${input.toIssueId}`, created: true, updated: false };
-  },
+    _opts?: { deferHealthPublish?: boolean },
+  ) => undefined,
 );
 vi.mock('./dependency-service.js', () => ({
-  setIssueDependency: (
-    input: { toIssueId: string },
+  writeIssueDependency: (input: { toIssueId: string }, writer: unknown, ex?: unknown) =>
+    setEdgeSpy(input, writer, ex),
+  emitIssueDependencyEffects: (
+    input: unknown,
+    written: unknown,
     writer: unknown,
     opts?: { deferHealthPublish?: boolean },
-  ) => setEdgeSpy(input, writer, opts),
+  ) => emitEdgeSpy(input, written, writer, opts),
 }));
 
 const { applyIssueRelations } = await import('./relations-service.js');
@@ -60,6 +65,7 @@ const writer = {
 beforeEach(() => {
   publishSpy.mockClear();
   setEdgeSpy.mockClear();
+  emitEdgeSpy.mockClear();
   inFlight = 0;
   sawOverlap = false;
 });
@@ -74,8 +80,9 @@ describe('applyIssueRelations — health publish is batched, never per edge', ()
 
     expect(applied).toHaveLength(3);
     expect(setEdgeSpy).toHaveBeenCalledTimes(3);
-    for (const call of setEdgeSpy.mock.calls) {
-      expect(call[2]).toEqual({ deferHealthPublish: true });
+    expect(emitEdgeSpy).toHaveBeenCalledTimes(3);
+    for (const call of emitEdgeSpy.mock.calls) {
+      expect(call[3]).toEqual({ deferHealthPublish: true });
     }
     expect(publishSpy).toHaveBeenCalledTimes(1);
     const [projectId, ids] = publishSpy.mock.calls[0] as unknown as [string, string[]];

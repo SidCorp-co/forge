@@ -80,13 +80,21 @@ vi.mock('../../issues/dependency-read.js', () => ({
   loadIssueRelations: (id: string, projectId: string) => loadIssueRelationsMock(id, projectId),
 }));
 
-// cm:guard `applyIssueRelations` (issues/relations-service.ts) reaches `setIssueDependency` across a module boundary, which is the only reason overriding the EXPORT works — inline that call into relations-service.ts and it bypasses this mock, so every relation test starts hitting the real DB chain and passes for the wrong reason
-const setEdgeMock = vi.fn(async () => ({ id: 'dep-id-1', created: true }));
+// cm:guard `writeIssueRelations` (issues/relations-service.ts) reaches `writeIssueDependency` across a module boundary, which is the only reason overriding the EXPORT works — inline that call into relations-service.ts and it bypasses this mock, so every relation test starts hitting the real DB chain and passes for the wrong reason
+// cm:guard stub BOTH halves. `writeIssueDependency` alone leaves the real `emitIssueDependencyEffects` running against a mocked db, and the failure surfaces as an unrelated hook error rather than the edge assertion under test.
+const setEdgeMock = vi.fn(async () => ({
+  id: 'dep-id-1',
+  created: true,
+  updated: false,
+  effect: 'added' as const,
+}));
+const emitEdgeMock = vi.fn(async () => undefined);
 vi.mock('../../issues/dependency-service.js', async (importActual) => {
   const actual = await importActual<typeof import('../../issues/dependency-service.js')>();
   return {
     ...actual,
-    setIssueDependency: setEdgeMock as unknown as typeof actual.setIssueDependency,
+    writeIssueDependency: setEdgeMock as unknown as typeof actual.writeIssueDependency,
+    emitIssueDependencyEffects: emitEdgeMock as unknown as typeof actual.emitIssueDependencyEffects,
   };
 });
 
@@ -157,7 +165,12 @@ const stageUpdate = (issueRow: Record<string, unknown> = baseIssueRow) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  setEdgeMock.mockResolvedValue({ id: 'dep-id-1', created: true });
+  setEdgeMock.mockResolvedValue({
+    id: 'dep-id-1',
+    created: true,
+    updated: false,
+    effect: 'added',
+  } as never);
 });
 
 it('update writes the edge with dependsOnId on the from side and reports it back', async () => {
@@ -177,6 +190,13 @@ it('update writes the edge with dependsOnId on the from side and reports it back
       kind: 'blocks',
     }),
     { actor: { type: 'device', id: fakeDevice.id }, createdById: OWNER_ID },
+    expect.anything(),
+  );
+  // cm:guard the deferral moved with the announcement: `deferHealthPublish` is an EFFECTS option now, and asserting it on the write spy would silently pass against the executor argument that took its place.
+  expect(emitEdgeMock).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
     { deferHealthPublish: true },
   );
   expect(result.relations).toEqual([
@@ -203,6 +223,13 @@ it('update writes the edge with blocksId on the to side', async () => {
   expect(setEdgeMock).toHaveBeenCalledWith(
     expect.objectContaining({ fromIssueId: ISSUE_ID, toIssueId: BLOCKED_ID }),
     { actor: { type: 'device', id: fakeDevice.id }, createdById: OWNER_ID },
+    expect.anything(),
+  );
+  // cm:guard the deferral moved with the announcement: `deferHealthPublish` is an EFFECTS option now, and asserting it on the write spy would silently pass against the executor argument that took its place.
+  expect(emitEdgeMock).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
     { deferHealthPublish: true },
   );
 });
@@ -213,6 +240,7 @@ it('update passes validUntil through so an existing edge can be retracted', asyn
     id: 'dep-id-1',
     created: false,
     updated: true,
+    effect: 'updated' as const,
   } as never);
 
   const result = (await tool().handler({
@@ -228,6 +256,13 @@ it('update passes validUntil through so an existing edge can be retracted', asyn
   expect(setEdgeMock).toHaveBeenCalledWith(
     expect.objectContaining({ validUntil: '2020-01-01T00:00:00.000Z' }),
     { actor: { type: 'device', id: fakeDevice.id }, createdById: OWNER_ID },
+    expect.anything(),
+  );
+  // cm:guard the deferral moved with the announcement: `deferHealthPublish` is an EFFECTS option now, and asserting it on the write spy would silently pass against the executor argument that took its place.
+  expect(emitEdgeMock).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
     { deferHealthPublish: true },
   );
   expect(result.relations?.[0]).toMatchObject({ created: false, updated: true });
@@ -321,6 +356,6 @@ it('attributes the edge to the PAT user, not to the synthetic device standing in
   expect(setEdgeMock).toHaveBeenCalledWith(
     expect.anything(),
     expect.objectContaining({ actor: { type: 'user', id: PAT_USER } }),
-    { deferHealthPublish: true },
+    expect.anything(),
   );
 });
