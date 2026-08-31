@@ -97,6 +97,7 @@ beforeEach(() => {
   selectDistinctImpl.mockReset();
   selectImpl.mockReset();
   executeImpl.mockReset();
+  executeImpl.mockResolvedValue([]);
 });
 
 describe('forge_metrics.step_durations', () => {
@@ -373,5 +374,79 @@ describe('forge_metrics.session_failures (ISS-877)', () => {
       nonFailedWithFailureReason: number;
     };
     expect(res.nonFailedWithFailureReason).toBe(0);
+  });
+});
+
+describe('forge_metrics.session_failures — resumeContinuity (ISS-887)', () => {
+  function mockMembership() {
+    selectImpl.mockImplementationOnce(() => ({
+      from: () => ({
+        leftJoin: () => ({
+          leftJoin: () => ({
+            where: () => ({
+              limit: () =>
+                Promise.resolve([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]),
+            }),
+          }),
+        }),
+      }),
+    }));
+  }
+
+  async function run(resumeRows: Array<{ drop_reason: string | null; sessions: string }>) {
+    mockMembership();
+    executeImpl.mockResolvedValueOnce([]);
+    executeImpl.mockResolvedValueOnce(resumeRows);
+    const tool = forgeMetricsSessionFailuresTool(buildCtx());
+    const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
+      resumeContinuity: {
+        offered: number;
+        resumed: number;
+        dropped: number;
+        dropRate: number;
+        rows: Array<{ reason: string; sessions: number }>;
+      };
+    };
+    return res.resumeContinuity;
+  }
+
+  it('counts a continued attempt and a dropped one against the same denominator', async () => {
+    const out = await run([
+      { drop_reason: null, sessions: '3' },
+      { drop_reason: 'failure_action', sessions: '9' },
+      { drop_reason: 'pin_stale', sessions: '1' },
+    ]);
+    expect(out.offered).toBe(13);
+    expect(out.resumed).toBe(3);
+    expect(out.dropped).toBe(10);
+    expect(out.dropRate).toBeCloseTo(10 / 13);
+    expect(out.rows).toEqual([
+      { reason: 'failure_action', sessions: 9 },
+      { reason: 'pin_stale', sessions: 1 },
+    ]);
+  });
+
+  it('names every reason it was given rather than folding the small ones together', async () => {
+    const out = await run([
+      { drop_reason: 'rotation', sessions: '4' },
+      { drop_reason: 'stage_pool', sessions: '1' },
+      { drop_reason: 'device_tripped', sessions: '1' },
+    ]);
+    expect(out.rows.map((r) => r.reason)).toEqual(['rotation', 'device_tripped', 'stage_pool']);
+    expect(out.dropped).toBe(6);
+  });
+
+  it('reads an empty window as nothing offered, not as a perfect score', async () => {
+    const out = await run([]);
+    expect(out).toEqual({ offered: 0, resumed: 0, dropped: 0, dropRate: 0, rows: [] });
+  });
+
+  // cm:edge contract -> packages/core/tests/integration/resume-continuity-e2e.test.ts — `db.execute` is mocked here, so this can only assert the query TEXT and the SQL never executes; the real predicate, JSON path and GROUP BY are exercised there. Assert the POLARITY, never just that `priorClaudeSessionId` is mentioned: `IS NULL` mentions it too, counts attempt 1 and excludes every real offer, and an earlier version of this test stayed green through exactly that inversion.
+  it('asks for rows that HAVE a prior session, and does not inherit the failure filter', async () => {
+    await run([{ drop_reason: 'rotation', sessions: '2' }]);
+    const sqlText = JSON.stringify(executeImpl.mock.calls.at(-1));
+    expect(sqlText).toContain("priorClaudeSessionId' IS NOT NULL");
+    expect(sqlText).not.toContain("priorClaudeSessionId' IS NULL");
+    expect(sqlText).not.toContain('cancelled_stale');
   });
 });

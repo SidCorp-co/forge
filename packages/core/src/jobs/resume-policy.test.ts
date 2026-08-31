@@ -27,13 +27,26 @@ vi.mock('../observability/sentry.js', () => ({
   Sentry: { addBreadcrumb: vi.fn() },
 }));
 
-const { resolveResumePolicy } = await import('./resume-policy.js');
+const { resolveResumePolicy, finalizeResumeForDevice } = await import('./resume-policy.js');
 const { recordResumeDrop } = await import('../observability/hold-metrics.js');
 const { findPriorSessionInGroup, estimateGroupContextTokens, loadResumeBounds } = await import(
   './session-resume.js'
 );
 
 type Job = Parameters<typeof resolveResumePolicy>[0]['job'];
+
+/**
+ * The dispatcher's real sequence: propose a policy, then settle it against the device selection
+ * actually returned. `selected` defaults to the proposed pin — the selector honoured it — so a
+ * test that says nothing about selection is asserting the honoured-pin path on purpose.
+ */
+async function resolve(args: Parameters<typeof resolveResumePolicy>[0], selected?: string | null) {
+  const proposed = await resolveResumePolicy(args);
+  return finalizeResumeForDevice(
+    proposed,
+    selected === undefined ? proposed.pinDeviceId : selected,
+  );
+}
 
 /**
  * A queued retry clone, shaped the way `retry.ts` actually writes one: `deviceId` is NULL
@@ -87,7 +100,7 @@ beforeEach(() => {
 describe('resolveResumePolicy — retry resume window', () => {
   it('resumes the parent attempt when the rotation kept it on the parent box', async () => {
     parentAttempt({});
-    const out = await resolveResumePolicy({
+    const out = await resolve({
       job: retryJob({ target: 'dev-a' }),
       overrides: NO_OVERRIDES,
       agentConfig: undefined,
@@ -102,7 +115,7 @@ describe('resolveResumePolicy — retry resume window', () => {
 
   it('does not resume when the rotation moved to another box', async () => {
     parentAttempt({});
-    const out = await resolveResumePolicy({
+    const out = await resolve({
       job: retryJob({ target: 'dev-b' }),
       overrides: NO_OVERRIDES,
       agentConfig: undefined,
@@ -115,7 +128,7 @@ describe('resolveResumePolicy — retry resume window', () => {
     'does not resume a same-box retry when the parent failure action is %s',
     async (action) => {
       parentAttempt({ failureAction: action });
-      const out = await resolveResumePolicy({
+      const out = await resolve({
         job: retryJob({ target: 'dev-a' }),
         overrides: NO_OVERRIDES,
         agentConfig: undefined,
@@ -126,7 +139,7 @@ describe('resolveResumePolicy — retry resume window', () => {
 
   it('does not resume when the parent attempt recorded no CLI session', async () => {
     parentAttempt({ claudeSessionId: null });
-    const out = await resolveResumePolicy({
+    const out = await resolve({
       job: retryJob({ target: 'dev-a' }),
       overrides: NO_OVERRIDES,
       agentConfig: undefined,
@@ -136,7 +149,7 @@ describe('resolveResumePolicy — retry resume window', () => {
 
   it('drops a rotation target that falls outside the stage pool, and the resume with it', async () => {
     parentAttempt({});
-    const out = await resolveResumePolicy({
+    const out = await resolve({
       job: retryJob({ target: 'dev-a' }),
       overrides: { sessionGroup: null, deviceIds: ['dev-pool'] } as never,
       agentConfig: undefined,
@@ -151,7 +164,7 @@ describe('resolveResumePolicy — retry resume window', () => {
       _autoRetry: { round: 1, target: 'dev-b', tries: 1, done: ['dev-a'] },
     };
     parentAttempt({});
-    const out = await resolveResumePolicy({
+    const out = await resolve({
       job,
       overrides: NO_OVERRIDES,
       agentConfig: undefined,
@@ -164,7 +177,7 @@ describe('resolveResumePolicy — retry resume window', () => {
 describe('ISS-887 resolveResumePolicy — a start-from-scratch says so, and says why', () => {
   it('names `rotation` when a failover moves the retry off the parent box, and counts it once', async () => {
     parentAttempt({ ranOn: 'dev-a', failureAction: 'failover' });
-    const out = await resolveResumePolicy({
+    const out = await resolve({
       job: retryJob({ target: 'dev-b' }),
       overrides: NO_OVERRIDES,
       agentConfig: undefined,
@@ -183,7 +196,7 @@ describe('ISS-887 resolveResumePolicy — a start-from-scratch says so, and says
 
   it('names `failure_action`, not `rotation`, when the box was kept but the action forbids resuming', async () => {
     parentAttempt({ ranOn: 'dev-a', failureAction: 'failover' });
-    const out = await resolveResumePolicy({
+    const out = await resolve({
       job: retryJob({ target: 'dev-a' }),
       overrides: NO_OVERRIDES,
       agentConfig: undefined,
@@ -193,7 +206,7 @@ describe('ISS-887 resolveResumePolicy — a start-from-scratch says so, and says
   });
 
   it('records NOTHING when there was no prior session to continue — attempt 1 is not a loss', async () => {
-    const out = await resolveResumePolicy({
+    const out = await resolve({
       job: { id: 'j1', projectId: 'p1', issueId: 'iss-1', type: 'code', retryOf: null } as Job,
       overrides: NO_OVERRIDES,
       agentConfig: undefined,
@@ -211,7 +224,7 @@ describe('ISS-887 resolveResumePolicy — a start-from-scratch says so, and says
 
   it('records NOTHING when a retry parent held no CLI session — nothing was dropped', async () => {
     parentAttempt({ claudeSessionId: null });
-    const out = await resolveResumePolicy({
+    const out = await resolve({
       job: retryJob({ target: 'dev-b' }),
       overrides: NO_OVERRIDES,
       agentConfig: undefined,
@@ -223,7 +236,7 @@ describe('ISS-887 resolveResumePolicy — a start-from-scratch says so, and says
 
   it('names `stage_pool` when the retry target is out of pool, outranking the rotation reason', async () => {
     parentAttempt({ ranOn: 'dev-a' });
-    const out = await resolveResumePolicy({
+    const out = await resolve({
       job: retryJob({ target: 'dev-a' }),
       overrides: { sessionGroup: null, deviceIds: ['dev-pool'] } as never,
       agentConfig: undefined,
@@ -239,7 +252,7 @@ describe('ISS-887 resolveResumePolicy — first-dispatch drops name their own ca
       claudeSessionId: 'cli-old',
       deviceId: 'dev-a',
     });
-    const out = await resolveResumePolicy({
+    const out = await resolve({
       job: {
         id: 'j1',
         projectId: 'p1',
@@ -263,7 +276,7 @@ describe('ISS-887 resolveResumePolicy — first-dispatch drops name their own ca
       deviceId: 'dev-a',
     });
     trippedDeviceIds.mockResolvedValue(['dev-a']);
-    const out = await resolveResumePolicy({
+    const out = await resolve({
       job: {
         id: 'j1',
         projectId: 'p1',
@@ -281,7 +294,7 @@ describe('ISS-887 resolveResumePolicy — first-dispatch drops name their own ca
 
   it('records NOTHING when the breaker trips a device no prior session was pinned to', async () => {
     trippedDeviceIds.mockResolvedValue(['dev-x']);
-    const out = await resolveResumePolicy({
+    const out = await resolve({
       job: {
         id: 'j1',
         projectId: 'p1',
@@ -308,7 +321,7 @@ describe('ISS-887 resolveResumePolicy — first-dispatch drops name their own ca
     });
     vi.mocked(estimateGroupContextTokens).mockResolvedValue(363_000);
     selectQueue.push([{ reopenCount: 0 }]);
-    const out = await resolveResumePolicy({
+    const out = await resolve({
       job: {
         id: 'j1',
         projectId: 'p1',
@@ -336,7 +349,7 @@ describe('ISS-887 resolveResumePolicy — first-dispatch drops name their own ca
     });
     vi.mocked(estimateGroupContextTokens).mockResolvedValue(150_000);
     selectQueue.push([{ reopenCount: 3 }]);
-    const out = await resolveResumePolicy({
+    const out = await resolve({
       job: {
         id: 'j1',
         projectId: 'p1',
@@ -359,7 +372,7 @@ describe('ISS-887 resolveResumePolicy — first-dispatch drops name their own ca
       deviceId: 'dev-pool',
     });
     parentAttempt({ ranOn: 'dev-a' });
-    const out = await resolveResumePolicy({
+    const out = await resolve({
       job: retryJob({ target: 'dev-a' }),
       overrides: { sessionGroup: 'build', deviceIds: null } as never,
       agentConfig: undefined,
@@ -367,5 +380,113 @@ describe('ISS-887 resolveResumePolicy — first-dispatch drops name their own ca
     expect(out.record.priorClaudeSessionId).toBe('claude-abc');
     expect(out.record.resumed).toBe(true);
     expect(recordResumeDrop).not.toHaveBeenCalled();
+  });
+});
+
+describe('ISS-887 finalizeResumeForDevice — a pin the selector did not honour', () => {
+  it('drops the resume as `pin_stale` when selection landed on a different box', async () => {
+    parentAttempt({ ranOn: 'dev-a' });
+    const out = await resolve(
+      { job: retryJob({ target: 'dev-a' }), overrides: NO_OVERRIDES, agentConfig: undefined },
+      'dev-b',
+    );
+    expect(out.priorClaudeSessionId).toBeNull();
+    expect(out.record.resumed).toBe(false);
+    expect(out.record.dropReason).toBe('pin_stale');
+    expect(recordResumeDrop).toHaveBeenCalledTimes(1);
+    expect(recordResumeDrop).toHaveBeenCalledWith('pin_stale');
+  });
+
+  it('still reports the session it was offered, so the loss is readable', async () => {
+    parentAttempt({ ranOn: 'dev-a' });
+    const out = await resolve(
+      { job: retryJob({ target: 'dev-a' }), overrides: NO_OVERRIDES, agentConfig: undefined },
+      'dev-b',
+    );
+    expect(out.record.priorClaudeSessionId).toBe('claude-abc');
+    expect(out.record.priorDeviceId).toBe('dev-a');
+  });
+
+  it('keeps the resume when selection honoured the pin', async () => {
+    parentAttempt({ ranOn: 'dev-a' });
+    const out = await resolve(
+      { job: retryJob({ target: 'dev-a' }), overrides: NO_OVERRIDES, agentConfig: undefined },
+      'dev-a',
+    );
+    expect(out.priorClaudeSessionId).toBe('claude-abc');
+    expect(out.record.dropReason).toBeNull();
+    expect(recordResumeDrop).not.toHaveBeenCalled();
+  });
+
+  it('does not relabel an EARLIER drop as `pin_stale` — the first reason is the true one', async () => {
+    parentAttempt({ ranOn: 'dev-a', failureAction: 'failover' });
+    const out = await resolve(
+      { job: retryJob({ target: 'dev-a' }), overrides: NO_OVERRIDES, agentConfig: undefined },
+      'dev-b',
+    );
+    expect(out.record.dropReason).toBe('failure_action');
+    expect(recordResumeDrop).toHaveBeenCalledTimes(1);
+    expect(recordResumeDrop).toHaveBeenCalledWith('failure_action');
+  });
+
+  it('counts nothing when there was no prior session, however the selection landed', async () => {
+    parentAttempt({ claudeSessionId: null });
+    const out = await resolve(
+      { job: retryJob({ target: 'dev-a' }), overrides: NO_OVERRIDES, agentConfig: undefined },
+      'dev-b',
+    );
+    expect(out.record.dropReason).toBeNull();
+    expect(out.record.priorClaudeSessionId).toBeNull();
+    expect(recordResumeDrop).not.toHaveBeenCalled();
+  });
+});
+
+describe('ISS-887 finalizeResumeForDevice — an offer with no pin is not a reachable session', () => {
+  it('drops a group resume whose prior session recorded no box', async () => {
+    vi.mocked(findPriorSessionInGroup).mockResolvedValue({
+      claudeSessionId: 'cli-group',
+      deviceId: null,
+    });
+    const out = await resolve(
+      {
+        job: { id: 'j1', projectId: 'p1', issueId: 'iss-1', type: 'code', retryOf: null } as Job,
+        overrides: { sessionGroup: 'build', deviceIds: null } as never,
+        agentConfig: undefined,
+      },
+      'dev-anywhere',
+    );
+    expect(out.priorClaudeSessionId).toBeNull();
+    expect(out.record.dropReason).toBe('pin_stale');
+    expect(recordResumeDrop).toHaveBeenCalledWith('pin_stale');
+  });
+
+  it('does not count an attempt that was never offered a session, pin or no pin', async () => {
+    const out = await resolve(
+      {
+        job: { id: 'j1', projectId: 'p1', issueId: 'iss-1', type: 'code', retryOf: null } as Job,
+        overrides: { sessionGroup: 'build', deviceIds: null } as never,
+        agentConfig: undefined,
+      },
+      'dev-anywhere',
+    );
+    expect(out.record.dropReason).toBeNull();
+    expect(recordResumeDrop).not.toHaveBeenCalled();
+  });
+
+  it('drops it when NEITHER side names a box — two unknowns are not a match', async () => {
+    vi.mocked(findPriorSessionInGroup).mockResolvedValue({
+      claudeSessionId: 'cli-group',
+      deviceId: null,
+    });
+    const out = await resolve(
+      {
+        job: { id: 'j1', projectId: 'p1', issueId: 'iss-1', type: 'code', retryOf: null } as Job,
+        overrides: { sessionGroup: 'build', deviceIds: null } as never,
+        agentConfig: undefined,
+      },
+      null,
+    );
+    expect(out.priorClaudeSessionId).toBeNull();
+    expect(out.record.dropReason).toBe('pin_stale');
   });
 });

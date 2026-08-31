@@ -164,6 +164,63 @@ export const forgeMetricsProjectRetryRescuesTool: ContextScopedMcpToolFactory = 
 // cm:guard the two statuses that mean the session itself ended badly. `completed` and `completed_via_recovery` are deliberately absent even when they carry a `failure_reason` — a recovered session succeeded, and counting its old reason would report a rescue as a death.
 const FAILED_SESSION_STATUSES: ReadonlySet<string> = new Set(['failed', 'cancelled_stale']);
 
+export interface ResumeContinuityRow {
+  reason: string;
+  sessions: number;
+}
+
+export interface ResumeContinuity {
+  offered: number;
+  resumed: number;
+  dropped: number;
+  dropRate: number;
+  rows: ResumeContinuityRow[];
+}
+
+/**
+ * ISS-887 — of the attempts that HAD a prior transcript to continue, how many continued it and,
+ * for the rest, which of the seven `ResumeDropReason` paths took it away.
+ *
+ * Reads the durable record `resolveResumePolicy`/`finalizeResumeForDevice` stamp on
+ * `agent_sessions.metadata.resume`, over the same project and window as the failure histogram
+ * beside it — which is the whole point of it living here. A drop rate on its own says nothing:
+ * the question it answers ("did attempt 2 resume, or start cold?") is only meaningful next to
+ * what killed attempt 1.
+ */
+// cm:guard `offered` is the denominator and it is defined by `priorClaudeSessionId IS NOT NULL`, never by counting rows. That predicate is what keeps attempt 1 out: an attempt with no prior session to continue is the normal shape of a first try, and folding those into the denominator would make the rate shrink as the project does MORE fresh work.
+// cm:guard this must NOT inherit the failure histogram's status filter. A resume is dropped on healthy dispatches too — restricting it to `failed`/`cancelled_stale` rows would measure the drop rate of attempts that later died, report it as the drop rate, and leave both numbers wrong.
+async function loadResumeContinuity(projectId: string, days: number): Promise<ResumeContinuity> {
+  const result = await db.execute(sql`
+    SELECT metadata->'resume'->>'dropReason' AS drop_reason, count(*)::int AS sessions
+    FROM agent_sessions
+    WHERE project_id = ${projectId}
+      AND created_at >= now() - (${days}::int * interval '1 day')
+      AND metadata->'resume'->>'priorClaudeSessionId' IS NOT NULL
+    GROUP BY 1
+  `);
+  let offered = 0;
+  let dropped = 0;
+  const rows: ResumeContinuityRow[] = [];
+  for (const row of result as unknown as Array<{
+    drop_reason: string | null;
+    sessions: number | string;
+  }>) {
+    const sessions = num(row.sessions);
+    offered += sessions;
+    if (row.drop_reason === null) continue;
+    dropped += sessions;
+    rows.push({ reason: row.drop_reason, sessions });
+  }
+  rows.sort((a, b) => b.sessions - a.sessions || a.reason.localeCompare(b.reason));
+  return {
+    offered,
+    resumed: offered - dropped,
+    dropped,
+    dropRate: offered === 0 ? 0 : dropped / offered,
+    rows,
+  };
+}
+
 export interface SessionFailureRow {
   cause: FailureCause;
   origin: string;
@@ -208,7 +265,7 @@ export interface SessionFailureRow {
 export const forgeMetricsSessionFailuresTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_metrics.session_failures',
   description:
-    'Failed agent sessions grouped by ISS-877 failure cause. Requires project membership. Params: `projectId` and `days` (1..90, default 30). Counts sessions whose STATUS is `failed` or `cancelled_stale`. Returns `{ rows: [{ cause, origin, sessions, isRealFailure, lastAt }], total, unclassified, unclassifiedRate, nonFailedWithFailureReason, windowDays, projectId }`. `nonFailedWithFailureReason` counts sessions at any other status that still carry a reason — `completed` (the ISS-759 completed-yet-failed shape) and live `running`/`queued` rows the I1 trigger stamped — reported rather than silently dropped. Legacy rows (`job_failed`, free text) resolve to `unclassified` at read time — a high historical rate is the honest measurement of the era before causes were recorded, not a bug.',
+    'Failed agent sessions grouped by ISS-877 failure cause. Requires project membership. Params: `projectId` and `days` (1..90, default 30). Counts sessions whose STATUS is `failed` or `cancelled_stale`. Returns `{ rows: [{ cause, origin, sessions, isRealFailure, lastAt }], total, unclassified, unclassifiedRate, nonFailedWithFailureReason, resumeContinuity, windowDays, projectId }`. `resumeContinuity` (ISS-887) answers, over the SAME project and window, whether each attempt continued the prior attempt CLI transcript: `{ offered, resumed, dropped, dropRate, rows: [{ reason, sessions }] }`, where `reason` is one of the seven `ResumeDropReason` values (`failure_action` on a cross-box failover, `rotation`, `stage_pool`, `pin_stale`, `device_tripped`, `resume_bound_tokens`, `resume_bound_reopen_cycles`). `offered` counts only attempts that HAD a prior session — a first attempt has nothing to continue and is excluded, so the rate never dilutes as the project starts more fresh work. It carries its own denominator and its own filter, and is deliberately NOT restricted to failed sessions: a resume is dropped on healthy dispatches too. An empty block means no attempt in the window was offered a prior session, not a broken query. `nonFailedWithFailureReason` counts sessions at any other status that still carry a reason — `completed` (the ISS-759 completed-yet-failed shape) and live `running`/`queued` rows the I1 trigger stamped — reported rather than silently dropped. Legacy rows (`job_failed`, free text) resolve to `unclassified` at read time — a high historical rate is the honest measurement of the era before causes were recorded, not a bug.',
   inputSchema: zodToMcpSchema(sessionFailuresInputSchema),
   handler: async (args) => {
     const input = sessionFailuresInputSchema.parse(args);
@@ -267,6 +324,7 @@ export const forgeMetricsSessionFailuresTool: ContextScopedMcpToolFactory = (ctx
       unclassified,
       unclassifiedRate: total === 0 ? 0 : unclassified / total,
       nonFailedWithFailureReason,
+      resumeContinuity: await loadResumeContinuity(input.projectId, input.days),
       windowDays: input.days,
       projectId: input.projectId,
     };

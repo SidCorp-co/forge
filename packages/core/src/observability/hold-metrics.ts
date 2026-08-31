@@ -82,7 +82,7 @@ export function recordDispatchBarrierSkip(reason: GateSkipReason): void {
   }
 }
 
-// cm:guard ISS-887 — `resolveResumePolicy` is the ONLY caller, and it must increment from the same `dropReason` it stamps on the attempt's `agent_sessions.metadata.resume`; a second call site, or one deriving its own reason, is how this rate and the per-attempt rows come to disagree about the same dispatch (`measured-together-never-apart`).
+// cm:guard ISS-887 — `finalizeResumeForDevice` is the ONLY caller, and it must increment from the same `dropReason` it stamps on the attempt's `agent_sessions.metadata.resume`. NOT `resolveResumePolicy`, which deliberately increments nothing: its answer is provisional until a device is picked, and it once held this call, so a reader who moves it back re-opens the stale-pin drop it cannot see. A second call site, or one deriving its own reason, is how this rate and the per-attempt rows come to disagree about the same dispatch (`measured-together-never-apart`).
 export function recordResumeDrop(reason: ResumeDropReason): void {
   const existing = state.resumeDrops.get(reason);
   if (existing) {
