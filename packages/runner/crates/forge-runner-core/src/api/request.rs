@@ -7,6 +7,7 @@ use super::exit::{classify, transport_failure, Outcome};
 use crate::transport::CoreClient;
 
 /// One `forge-runner api` invocation, already parsed.
+#[derive(Debug, PartialEq, Eq)]
 pub struct Request {
     pub method: String,
     pub path: String,

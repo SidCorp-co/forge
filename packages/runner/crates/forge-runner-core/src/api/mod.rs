@@ -12,8 +12,10 @@
 //! again. Both leave as an exit code AND as JSON on stderr, so a skill can
 //! branch on `$?` and a program can parse the reason.
 
+mod build;
 mod exit;
 mod request;
 
+pub use build::{build, RequestSpec, SlugSources};
 pub use exit::{classify, is_json, usage_failure, Outcome, EXIT_TAXONOMY};
 pub use request::{run, Request, Response};

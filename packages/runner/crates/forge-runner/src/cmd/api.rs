@@ -1,7 +1,9 @@
 use std::io::Read;
 
 use clap::Args as ClapArgs;
-use forge_runner_core::api::{is_json, run as run_api, usage_failure, Request, EXIT_TAXONOMY};
+use forge_runner_core::api::{
+    build, run as run_api, usage_failure, RequestSpec, SlugSources, EXIT_TAXONOMY,
+};
 use forge_runner_core::auth::cred_store;
 use forge_runner_core::config::Config;
 use forge_runner_core::transport::CoreClient;
@@ -47,42 +49,36 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         return usage("not logged in — run `forge-runner login`");
     };
 
-    let body = match args.data.as_deref() {
-        None => None,
+    let stdin_body = match args.data.as_deref() {
         Some("-") => {
             let mut s = String::new();
             std::io::stdin().read_to_string(&mut s)?;
             Some(s)
         }
-        Some(d) => Some(d.to_string()),
+        _ => None,
     };
-    // cm:guard --data is validated HERE, before the request. A body core would reject with a 400 costs a round trip and reports the server's parse error, not the caller's typo; and on a POST that half-succeeded elsewhere, "it was never sent" is the only cheap answer.
-    if let Some(b) = &body {
-        if !is_json(b) {
-            return usage("--data is not valid JSON");
-        }
-    }
+    let data = match (&stdin_body, args.data.as_deref()) {
+        (Some(s), _) => Some(s.as_str()),
+        (None, d) => d,
+    };
 
-    let mut headers = Vec::new();
-    for h in &args.headers {
-        let Some((k, v)) = h.split_once(':') else {
-            return usage(&format!("header must be `Name: value`, got `{h}`"));
-        };
-        headers.push((k.trim().to_string(), v.trim().to_string()));
-    }
-
-    let method = args
-        .method
-        .clone()
-        .unwrap_or_else(|| if body.is_some() { "POST" } else { "GET" }.to_string());
-
-    let req = Request {
-        method,
-        path: args.path.clone(),
-        body,
-        project_slug: args.project.clone().or_else(|| default_slug(&cfg)),
-        headers,
-        include_headers: args.include,
+    let env_slug = std::env::var("FORGE_PROJECT_SLUG").ok();
+    let bindings: Vec<String> = cfg.bindings.keys().cloned().collect();
+    let spec = RequestSpec {
+        path: &args.path,
+        method: args.method.as_deref(),
+        data,
+        project: args.project.as_deref(),
+        headers: &args.headers,
+        include: args.include,
+    };
+    let sources = SlugSources {
+        env: env_slug.as_deref(),
+        bindings: &bindings,
+    };
+    let req = match build(&spec, &sources) {
+        Ok(r) => r,
+        Err(message) => return usage(&message),
     };
 
     let client = CoreClient::new(core_url, token);
@@ -95,20 +91,6 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     }
     // cm:guard `std::process::exit` and NOT an `Err` return — the taxonomy is the product here, and anyhow's bubbling would collapse every row onto 1. Nothing above this line holds a buffer that needs flushing: both streams were written with the line macros.
     std::process::exit(resp.outcome.exit_code);
-}
-
-/// `$FORGE_PROJECT_SLUG`, then the sole binding — ambiguity is left to `--project`.
-// cm:why guessing among several bindings would send a call to the wrong project with a token that is valid for both, which reads as a Forge bug rather than a missing flag
-fn default_slug(cfg: &Config) -> Option<String> {
-    if let Ok(s) = std::env::var("FORGE_PROJECT_SLUG") {
-        if !s.trim().is_empty() {
-            return Some(s);
-        }
-    }
-    match cfg.bindings.len() {
-        1 => cfg.bindings.keys().next().cloned(),
-        _ => None,
-    }
 }
 
 fn usage(message: &str) -> anyhow::Result<()> {

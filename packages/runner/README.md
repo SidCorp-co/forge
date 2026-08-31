@@ -33,6 +33,7 @@ lines below. They were listed here as deferred long after they landed.)
 
 | Command | What |
 |---|---|
+| `api` | Call any Forge REST endpoint with this device's credentials (`gh api` shaped) |
 | `login` | Pair this device via browser approval (OAuth device flow) |
 | `bind` | Bind a project slug to a local repo path |
 | `start` | Run the daemon — connect, register, accept jobs |
@@ -44,6 +45,32 @@ lines below. They were listed here as deferred long after they landed.)
 | `runners` | List runners registered for this device |
 | `sync` | Pull the latest skills for bound projects now (one-shot) |
 | `update` | Self-update from the release manifest |
+
+### `api` — the REST surface from a shell
+
+```
+forge-runner api issues                        # GET  /api/issues
+forge-runner api /api/issues -X POST -d '{…}'  # or `-d -` to read stdin
+forge-runner api projects -H 'X-Trace: abc' -i # extra header, show response headers
+```
+
+`issues`, `/issues` and `/api/issues` all mean the same endpoint. The project
+slug comes from `--project`, else `$FORGE_PROJECT_SLUG`, else the sole bound
+project — with two or more bindings it resolves to **nothing** rather than
+guessing, so an ambiguous call is refused instead of hitting the wrong project.
+
+A failure is reported twice: as an exit code (`--help` prints the table) and as
+JSON on stderr carrying `retryable`, which is true only where the identical
+request could later succeed — a 429, a 5xx, or a connection that never landed.
+A conflict or a rejected body is never retryable. The response body of a failed
+call goes to stderr and never stdout, so `… > out.json` leaves that file empty
+on failure rather than filling it with an error shaped like an answer.
+
+**Reach today:** a device token authenticates the device-auth routes
+(`/api/devices/**`, `/api/jobs/**`, `/api/agent-sessions/**`). Most of the REST
+surface is behind `requireAuth`, which verifies a *user JWT* only, so those
+paths answer 401 to a device token or a PAT — see
+`docs/proposals/cli-data-surface.html` step 0b.
 
 ### Skill delivery
 
