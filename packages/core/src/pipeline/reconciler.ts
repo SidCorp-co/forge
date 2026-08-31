@@ -4,6 +4,12 @@ import type { IssueStatus, JobType } from '../db/schema.js';
 import { applyStatusTransition } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import {
+  AUTONOMOUS_ENTRY_STATUS,
+  AUTONOMOUS_INFLIGHT_STATUSES,
+  AUTONOMOUS_JOB_TYPE,
+} from './autonomous-mode.js';
+import { checkAutonomousRescueCap, recordAutonomousRescue } from './autonomous-rescue-cap.js';
 import { reEnqueueForIssue } from './orchestrator.js';
 import {
   AUTO_DISPATCH_STATUSES,
@@ -87,10 +93,12 @@ export async function runReconcilerOnce(): Promise<{
   rescued: number;
   stale: number;
   reset: number;
+  autonomousReset: number;
 }> {
   let rescued = 0;
   let stale = 0;
   let reset = 0;
+  let autonomousReset = 0;
 
   // Embed AUTO_DISPATCH_STATUSES as a parenthesised list of parameters via
   // sql.join — passing the JS array directly into the template expands it as
@@ -106,8 +114,11 @@ export async function runReconcilerOnce(): Promise<{
     project_id: string;
     status: string;
     created_by: string | null;
+    mode: string | null;
+    reopen_count: number;
   }>(sql`
-    SELECT i.id, i.project_id, i.status, p.created_by
+    SELECT i.id, i.project_id, i.status, i.reopen_count, p.created_by,
+           p.agent_config -> 'pipelineConfig' ->> 'mode' AS mode
     FROM issues i
     INNER JOIN projects p ON p.id = i.project_id
     WHERE i.status IN (${statusList})
@@ -133,6 +144,20 @@ export async function runReconcilerOnce(): Promise<{
       });
       if (stalled) continue;
 
+      // cm:guard the guard above cannot bound an autonomous project: it resolves the stage's job type through `resolveJobTypeForStatus`, and `drive` has no `PIPELINE_STEPS` entry, so it counts a type that never exists and has never once fired here. Removing this second check restores an unbounded re-dispatch loop on every autonomous project, which is the ISS-626 incident with a different job type.
+      const autonomous = row.mode === 'autonomous';
+      let autonomousRunId: string | null = null;
+      if (autonomous) {
+        const cap = await checkAutonomousRescueCap({
+          projectId: row.project_id,
+          issueId: row.id,
+          status: row.status as IssueStatus,
+          reopenCount: row.reopen_count,
+        });
+        if (cap.capped) continue;
+        autonomousRunId = cap.runId;
+      }
+
       const actorId = row.created_by ?? '<reconciler>';
       await reEnqueueForIssue({
         projectId: row.project_id,
@@ -146,6 +171,8 @@ export async function runReconcilerOnce(): Promise<{
 
       // cm:guard count the OUTCOME, never the attempt. `considerEnqueue` has a dozen paths that enqueue nothing — a disabled stage, a human-gated one, a race, a missing skill — and an issue parked on any of them is re-read every 60s forever. Counting the attempt made that loop indistinguishable from productive work, and the breadcrumb fired every minute for it.
       if (!(await hasActiveJob(row.id))) continue;
+
+      if (autonomousRunId) await recordAutonomousRescue(autonomousRunId);
 
       rescued++;
       if (isSentryEnabled()) {
@@ -190,7 +217,120 @@ export async function runReconcilerOnce(): Promise<{
     logger.error({ err }, 'reconciler: in-flight wedge pass failed');
   }
 
-  return { rescued, stale, reset };
+  try {
+    autonomousReset = await resetAutonomousWedgesOnce();
+  } catch (err) {
+    logger.error({ err }, 'reconciler: autonomous wedge pass failed');
+  }
+
+  return { rescued, stale, reset, autonomousReset };
+}
+
+/**
+ * ISS-890 — the autonomous driver's own wedge. The staged pipeline has two nets
+ * for "an issue is actionable and nothing is working on it", and the driver
+ * inherits neither: the rescue above selects on `AUTO_DISPATCH_STATUSES`
+ * (`PIPELINE_STEPS` trigger statuses, which do not include `in_progress`), and
+ * the reset below it filters on `WEDGE_JOB_TYPES` (`code`/`fix`, because
+ * `drive` has no `PIPELINE_STEPS` entry at all). So an agent that ends its
+ * session having moved its own issue to `in_progress` leaves it there under a
+ * live run with no job — measured on ISS-880 as 2h15m ending in a hand-close.
+ *
+ * Same remedy as ISS-598 and for the same reason: roll the issue BACK to the
+ * entry status and let the ONE dispatch path re-enter it. Nothing here mints a
+ * job, so there is no second way for a drive job to be born.
+ */
+export async function resetAutonomousWedgesOnce(): Promise<number> {
+  if (AUTONOMOUS_INFLIGHT_STATUSES.length === 0) return 0;
+  let reset = 0;
+
+  const inflightList = sql.join(
+    AUTONOMOUS_INFLIGHT_STATUSES.map((s) => sql`${s}`),
+    sql`, `,
+  );
+
+  // cm:guard the autonomy test reads the STORED mode and nothing else. `loadPipelineConfig` would default a missing mode to staged, so a raw read can only ever select FEWER projects than the dispatcher calls autonomous — the conservative direction. Inferring autonomy from "the last job was a drive job" instead would sweep in a project mid-migration whose staged steps still own the issue.
+  const wedged = await db.execute<{
+    id: string;
+    project_id: string;
+    status: string;
+    reopen_count: number;
+    created_by: string | null;
+  }>(sql`
+    SELECT i.id, i.project_id, i.status, i.reopen_count, p.created_by
+    FROM issues i
+    INNER JOIN projects p ON p.id = i.project_id
+    CROSS JOIN LATERAL (
+      SELECT j.type, j.status
+      FROM jobs j
+      WHERE j.issue_id = i.id
+      ORDER BY j.created_at DESC
+      LIMIT 1
+    ) lj
+    WHERE p.agent_config -> 'pipelineConfig' ->> 'mode' = 'autonomous'
+      AND i.status IN (${inflightList})
+      AND i.updated_at < now() - interval '${sql.raw(WEDGE_GRACE)}'
+      AND lj.status = 'done'
+      AND lj.type = ${AUTONOMOUS_JOB_TYPE}
+      AND EXISTS (
+        SELECT 1 FROM pipeline_runs r
+        WHERE r.issue_id = i.id AND r.kind = 'issue' AND r.status = 'running'
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM jobs j2
+        WHERE j2.issue_id = i.id
+          AND j2.status IN ('queued', 'dispatched', 'running')
+      )
+    LIMIT ${WEDGE_RESET_LIMIT}
+  `);
+
+  for (const row of wedged) {
+    const actorId = row.created_by ?? '<reconciler>';
+    try {
+      const { capped, runId } = await checkAutonomousRescueCap({
+        projectId: row.project_id,
+        issueId: row.id,
+        status: row.status as IssueStatus,
+        reopenCount: row.reopen_count,
+      });
+      if (capped) continue;
+
+      await applyStatusTransition(
+        {
+          id: row.id,
+          projectId: row.project_id,
+          status: row.status as IssueStatus,
+          reopenCount: row.reopen_count,
+        },
+        AUTONOMOUS_ENTRY_STATUS,
+        { id: actorId, ownerId: actorId },
+        { reason: 'reconciler_autonomous_wedge_reset', skip: true },
+      );
+
+      // cm:guard charge the rescue only AFTER the rollback lands. This pass fires only when the previous cycle's drive job is already `done`, so every charge is an observed outcome, never an attempt — and a throwing transition must not spend an allowance the issue never got.
+      if (runId) await recordAutonomousRescue(runId);
+
+      reset++;
+      logger.warn(
+        { issueId: row.id, from: row.status, to: AUTONOMOUS_ENTRY_STATUS },
+        'reconciler: reset autonomous driver wedge to the entry status',
+      );
+      if (isSentryEnabled()) {
+        Sentry.addBreadcrumb({
+          category: 'pipeline.reconciler.autonomous_wedge_reset',
+          level: 'warning',
+          data: { issueId: row.id, from: row.status },
+        });
+      }
+    } catch (err) {
+      logger.error(
+        { err, issueId: row.id, status: row.status },
+        'reconciler: autonomous wedge reset failed',
+      );
+    }
+  }
+
+  return reset;
 }
 
 /**

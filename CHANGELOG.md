@@ -84,6 +84,35 @@
   — same project, same window, its own denominator — so the question that could not be answered
   from the outside ("did attempt 2 resume, or start cold?") is answered next to what killed
   attempt 1, rather than as a rate standing on its own saying nothing. (ISS-887)
+- An autonomous issue no longer stops dead when its agent ends a session without finishing. The
+  staged pipeline has two nets for "this issue is actionable and nothing is working on it", and the
+  driver inherited neither: the reconciler's rescue selects on the trigger statuses of
+  `PIPELINE_STEPS`, which do not include `in_progress`, and its in-flight reset filters on the job
+  types of steps that have a working status — `code` and `fix` — while `drive` has no entry in that
+  registry at all. So an agent that moved its own issue to `in_progress` and then stopped left it
+  there under a live run with no job, and nothing in core could see it. Measured on ISS-880: the
+  drive job finished at 13:12, the issue was closed by hand at 15:28, and the comment on it says
+  the run was wedged so the pipeline could not close it itself. A new reconciler pass rolls that
+  issue back to the entry status and lets the one existing dispatch path re-enter it — nothing here
+  mints a job, so there is still only one way a drive job is born. The re-entered session continues
+  rather than restarts: the drive prompt tells the agent to ask for its resume point first, and the
+  run it belongs to is reused, so a branch and PR already pushed are still there. (ISS-890)
+
+- The no-op loop cap now works on autonomous projects, where it had never once fired. It resolves a
+  stage's job type through the staged registry, so on a project whose every job is a `drive` job it
+  counted a type that does not exist and returned zero forever — the ISS-626 incident's own defence,
+  absent on `forge-dev`, `getcontent` and `kinetrak` alike. Fixing it by counting `drive` instead
+  would have replaced one defect with another: the staged count is bounded by "a done job of another
+  type in between proves the issue advanced", and on a single-job-type pipeline nothing ever cuts
+  that tail, so three legitimate human-answer cycles would have paused a healthy run. What is
+  counted here is instead the rescues themselves, held on the run that owns them, and reset on the
+  same kind of evidence — a rescue mints exactly one drive job, so a run whose done-drive count grew
+  by more than one had work from somewhere else. When the allowance is spent the **issue** moves to
+  `needs_info`, not just the run to `paused`: a paused run leaves the issue at its in-flight status,
+  which the board still renders as running, and `needs_info` is the one park a human's answer
+  restarts. **The trade-off:** a cap that has never fired is now live on three projects at once. It
+  can pause work that was progressing if the reset condition is wrong, and the reset condition is the
+  only thing standing between it and a healthy long-running issue. (ISS-890)
 
 - A UX Contract written from the Settings preset button reached no agent. Applying a preset compiled
   the rules into `projectFacts['ux-contract']` and stopped there: the flag that decides whether a

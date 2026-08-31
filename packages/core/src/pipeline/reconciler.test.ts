@@ -17,6 +17,16 @@ const wedgeQueue: Array<
 
 const jobsQueue: Array<Array<{ one: number }>> = [];
 
+const autonomousWedgeQueue: Array<
+  Array<{
+    id: string;
+    project_id: string;
+    status: string;
+    reopen_count: number;
+    created_by: string | null;
+  }>
+> = [];
+
 const dbExecute = vi.fn(async (q: unknown) => {
   const chunks = (q as { queryChunks?: unknown[] }).queryChunks ?? [];
   // StringChunk.value is string[]; concatenate all template fragments.
@@ -30,6 +40,10 @@ const dbExecute = vi.fn(async (q: unknown) => {
         firstSql += v;
       }
     }
+  }
+  // cm:guard match on agent_config AND lateral together, never either alone: the stuck-issue query reads `agent_config` too (it carries the project's mode) and the ISS-598 wedge query has its own LATERAL, so a single-key router swallows one of the three and its tests then assert on rows the pass never saw. Only the ISS-890 query has both.
+  if (/agent_config/i.test(firstSql) && /lateral/i.test(firstSql)) {
+    return autonomousWedgeQueue.shift() ?? [];
   }
   // The in-flight wedge query also selects FROM issues, so route it FIRST off
   // its distinctive pipeline_runs / LATERAL join before the generic check.
@@ -65,6 +79,13 @@ vi.mock('./stage-stall-guard.js', () => ({
   checkStageStallAndPause: (...a: unknown[]) => stallGuardMock(...(a as [])),
 }));
 
+const capMock = vi.fn(async () => ({ capped: false, runId: 'run-a1' as string | null }));
+const recordRescueMock = vi.fn(async () => undefined);
+vi.mock('./autonomous-rescue-cap.js', () => ({
+  checkAutonomousRescueCap: (...a: unknown[]) => capMock(...(a as [])),
+  recordAutonomousRescue: (...a: unknown[]) => recordRescueMock(...(a as [])),
+}));
+
 const applyStatusTransitionMock = vi.fn(async () => undefined);
 vi.mock('../issues/apply-transition.js', () => ({
   applyStatusTransition: (...a: unknown[]) => applyStatusTransitionMock(...(a as [])),
@@ -95,6 +116,11 @@ beforeEach(() => {
   applyStatusTransitionMock.mockReset();
   applyStatusTransitionMock.mockResolvedValue(undefined);
   sentryAddBreadcrumb.mockClear();
+  autonomousWedgeQueue.length = 0;
+  capMock.mockReset();
+  capMock.mockResolvedValue({ capped: false, runId: 'run-a1' });
+  recordRescueMock.mockReset();
+  recordRescueMock.mockResolvedValue(undefined);
 });
 
 describe('rescue accounting', () => {
@@ -320,5 +346,128 @@ describe('reconciler', () => {
       expect(result.reset).toBe(1);
       expect(applyStatusTransitionMock).toHaveBeenCalledTimes(2);
     });
+  });
+});
+
+describe('autonomous driver wedge reset (ISS-890)', () => {
+  function seedIdle(): void {
+    stuckQueue.push([]);
+    staleCountQueue.push([{ count: 0 }]);
+    wedgeQueue.push([]);
+  }
+
+  it('rolls a driver wedge at in_progress back to the entry status', async () => {
+    seedIdle();
+    autonomousWedgeQueue.push([
+      {
+        id: 'iss-a1',
+        project_id: 'proj-a',
+        status: 'in_progress',
+        reopen_count: 2,
+        created_by: 'owner-a',
+      },
+    ]);
+
+    const result = await runReconcilerOnce();
+
+    expect(result.autonomousReset).toBe(1);
+    expect(applyStatusTransitionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'iss-a1', status: 'in_progress', reopenCount: 2 }),
+      'open',
+      expect.objectContaining({ id: 'owner-a', ownerId: 'owner-a' }),
+      expect.objectContaining({ reason: 'reconciler_autonomous_wedge_reset', skip: true }),
+    );
+    expect(sentryAddBreadcrumb).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: 'pipeline.reconciler.autonomous_wedge_reset',
+        data: expect.objectContaining({ from: 'in_progress' }),
+      }),
+    );
+  });
+
+  it('does not roll back, and does not charge a rescue, when the run has spent its cap', async () => {
+    seedIdle();
+    autonomousWedgeQueue.push([
+      {
+        id: 'iss-a1',
+        project_id: 'proj-a',
+        status: 'in_progress',
+        reopen_count: 2,
+        created_by: 'owner-a',
+      },
+    ]);
+    capMock.mockResolvedValue({ capped: true, runId: 'run-a1' });
+
+    const result = await runReconcilerOnce();
+
+    expect(result.autonomousReset).toBe(0);
+    expect(applyStatusTransitionMock).not.toHaveBeenCalled();
+    expect(recordRescueMock).not.toHaveBeenCalled();
+  });
+
+  it('charges the rescue only after the rollback lands, never on a throwing transition', async () => {
+    seedIdle();
+    autonomousWedgeQueue.push([
+      {
+        id: 'iss-a1',
+        project_id: 'proj-a',
+        status: 'in_progress',
+        reopen_count: 2,
+        created_by: 'owner-a',
+      },
+    ]);
+    applyStatusTransitionMock.mockRejectedValueOnce(new Error('STALE_TRANSITION'));
+
+    const result = await runReconcilerOnce();
+
+    expect(result.autonomousReset).toBe(0);
+    expect(recordRescueMock).not.toHaveBeenCalled();
+  });
+
+  it('charges the run exactly one rescue on a successful rollback', async () => {
+    seedIdle();
+    autonomousWedgeQueue.push([
+      {
+        id: 'iss-a1',
+        project_id: 'proj-a',
+        status: 'in_progress',
+        reopen_count: 2,
+        created_by: 'owner-a',
+      },
+    ]);
+
+    await runReconcilerOnce();
+
+    expect(recordRescueMock).toHaveBeenCalledTimes(1);
+    expect(recordRescueMock).toHaveBeenCalledWith('run-a1');
+  });
+
+  it('keeps the ISS-598 and ISS-890 wedge counts apart', async () => {
+    stuckQueue.push([]);
+    staleCountQueue.push([{ count: 0 }]);
+    wedgeQueue.push([
+      {
+        id: 'iss-w9',
+        project_id: 'proj-w',
+        status: 'in_progress',
+        reopen_count: 0,
+        created_by: 'owner-w',
+        job_type: 'code',
+      },
+    ]);
+    autonomousWedgeQueue.push([
+      {
+        id: 'iss-a1',
+        project_id: 'proj-a',
+        status: 'in_progress',
+        reopen_count: 2,
+        created_by: 'owner-a',
+      },
+    ]);
+
+    const result = await runReconcilerOnce();
+
+    expect(result.reset).toBe(1);
+    expect(result.autonomousReset).toBe(1);
   });
 });

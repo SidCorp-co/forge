@@ -34,3 +34,16 @@ export const AUTONOMOUS_SKILL_NAME = 'forge-drive';
 export function isAutonomous(cfg: PipelineConfig | null): boolean {
   return cfg?.mode === 'autonomous';
 }
+
+/** Where the driver's work ends and the issue run closes with it. */
+export const AUTONOMOUS_TERMINAL_STATUSES: readonly IssueStatus[] = ['closed', 'dropped'] as const;
+
+// cm:guard derived from the list above, never written by hand: a driver status that is not the entry, not the park and not terminal is one NO job is ever dispatched AT (`autonomousStepFor` returns a step only at the entry status), so an agent that stops there leaves the issue with no work behind it and nothing in core to re-enter — the ISS-890 wedge, measured on ISS-880 as 2h15m between a `done` drive job and a hand-close. Classifying a NEW driver status is therefore mandatory: leave it unclassified and it falls into this set, which is the safe direction — it gets watched rather than silently stranded.
+// cm:edge lockstep -> packages/core/src/pipeline/reconciler.ts — `resetAutonomousWedgesOnce` selects on exactly these statuses; a status that belongs here but is excluded is a wedge no pass can see
+export const AUTONOMOUS_INFLIGHT_STATUSES: readonly IssueStatus[] =
+  AUTONOMOUS_DRIVER_STATUSES.filter(
+    (s) =>
+      s !== AUTONOMOUS_ENTRY_STATUS &&
+      s !== AUTONOMOUS_QUESTION_STATUS &&
+      !AUTONOMOUS_TERMINAL_STATUSES.includes(s),
+  );

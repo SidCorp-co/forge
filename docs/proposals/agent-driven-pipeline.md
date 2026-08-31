@@ -410,12 +410,14 @@ run somewhere other than a test:
 | bundled skills reach the box | runner log: `bundled set ready at .../bundled-skills/0.7.8 — 5 installed` |
 | `drive` dispatches | job reached the runner with a session, after the capability gate was fixed |
 | the session declares its phases | `phase_journal` row `understand / attempt 1 / source 'agent'` — written by the agent over MCP, not by the backfill |
-| orphan hygiene covers the new type | a drive job stranded by a core restart was reaped in ~4 min as `infra` / *"agent session terminated without job completion"*, and the reconciler then re-dispatched on its own |
+| orphan hygiene covers the new type | a drive job stranded by a core restart was reaped in ~4 min as `infra` / *"agent session terminated without job completion"*, and the reconciler then re-dispatched on its own. This covers a job that gets **reaped**; a job that exits `done` leaving the issue at `in_progress` is a different shape, uncovered until ISS-890 added `resetAutonomousWedgesOnce` |
 
 The one thing that broke was self-inflicted and worth writing down: the first drive job dispatched
 during a core deploy, so the runner's websocket was down and the session timed out. **Deploy before
 flipping a project, or flip it back to `staged` first** — while a project is autonomous the
-reconciler re-dispatches every minute, so a restart window is nearly certain to catch one.
+reconciler re-dispatches every minute, so a restart window is nearly certain to catch one. Since
+ISS-890 that re-dispatch is bounded: after `AUTONOMOUS_RESCUE_CAP` rescues of one run without the
+issue advancing, the issue is parked at `needs_info` instead.
 
 #### Switching a live project over
 
