@@ -44,6 +44,12 @@
 
 ### Fixed
 
+- Opening any issue now works again. Every issue's detail page answered "This page couldn't load" —
+  not one issue, all of them, on every project — after the list endpoints started stating their own
+  size in the response body. The comment thread was still read as a plain list, so the page threw
+  before it drew anything. The Comments tab count also now comes from the server's own count, which
+  stays right on an issue with more comments than one response carries.
+
 - An integration whose shared credential was disabled can now be turned back on from the project's
   own settings. Two things gate an integration — the project's opt-in and the org-shared
   credential — and the API reported only whether both were on. Every provider card bound its

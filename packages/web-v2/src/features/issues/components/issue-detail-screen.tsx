@@ -211,7 +211,7 @@ export function IssueDetailScreen({
   // comment tree oldest-first, so the triggering question is the last top-level
   // node, not index 0). ISS-377 review fix.
   const needsInfoQuestion =
-    issue.status === "needs_info" ? commentsQ.data?.at(-1)?.body : undefined;
+    issue.status === "needs_info" ? commentsQ.data?.items.at(-1)?.body : undefined;
   const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data, {
     ...(needsInfoQuestion ? { needsInfoQuestion } : {}),
   });
@@ -287,7 +287,7 @@ export function IssueDetailScreen({
     {
       value: "comments",
       label: "Comments",
-      count: countComments(commentsQ.data),
+      count: commentsQ.data?.totalCount,
     },
     {
       value: "activity",
@@ -552,7 +552,7 @@ export function IssueDetailScreen({
                   ) : (
                     <CommentThread
                       issueId={id}
-                      comments={commentsQ.data ?? []}
+                      comments={commentsQ.data?.items ?? []}
                       members={membersQ.data}
                       readOnly={!canWrite}
                     />
@@ -664,19 +664,4 @@ function pickActiveSession(
     sessions.find((s) => s.status === "queued") ??
     null
   );
-}
-
-function countComments(
-  nodes: { replies: unknown[] }[] | undefined,
-): number | undefined {
-  if (!nodes) return undefined;
-  let n = 0;
-  const walk = (list: { replies: unknown[] }[]) => {
-    for (const c of list) {
-      n += 1;
-      walk((c.replies as { replies: unknown[] }[]) ?? []);
-    }
-  };
-  walk(nodes);
-  return n;
 }
