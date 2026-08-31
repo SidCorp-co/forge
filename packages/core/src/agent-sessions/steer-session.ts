@@ -112,10 +112,11 @@ export async function steerIssue(
   if (!session) {
     throw new SteerError('NO_LIVE_SESSION', 'no live agent session is working this issue');
   }
+  // cm:guard the message says "on an autonomous project" because on a STAGED one it would be a promise nothing keeps: `pipeline/answer-resume.ts` early-returns on `isAutonomousProject`, so a staged duplex session that parks has no answer door at all and a comment reaches nobody. Naming a mechanism that exists in one mode as though it existed in both is the exact defect `scripts/check-injected-doc-modes.mjs` was built to catch one surface earlier — and an error string is not a surface that gate can see, so this comment is the only thing holding it.
   if (session.runtimeState === 'awaiting_input') {
     throw new SteerError(
       'SESSION_PARKED',
-      'the session is waiting on an answer, not running — comment on the issue to answer it',
+      'the session is waiting on an answer, not running — on an autonomous project a comment on the issue delivers it',
     );
   }
 
