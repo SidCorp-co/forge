@@ -18,6 +18,12 @@ function inner(): ChatToolset & { execute: ReturnType<typeof vi.fn> } {
   return { tools: [], execute };
 }
 
+function attachmentsOf(spy: ReturnType<typeof vi.fn>): Array<{ name: string }> {
+  const attachments = parsed(spy).data?.attachments;
+  if (!Array.isArray(attachments)) throw new Error('the create call carried no attachments[]');
+  return attachments as Array<{ name: string }>;
+}
+
 const parsed = (spy: ReturnType<typeof vi.fn>) =>
   JSON.parse(spy.mock.calls[0]?.[1] as string) as {
     action: string;
@@ -88,16 +94,13 @@ describe('withTurnImages', () => {
       'forge_issues',
       JSON.stringify({ action: 'create' }),
     );
-    const names = (parsed(set.execute).data?.attachments as Array<{ name: string }>).map(
-      (a) => a.name,
-    );
-    expect(names).toEqual(['big.png', 'shot.png']);
+    expect(attachmentsOf(set.execute).map((a) => a.name)).toEqual(['big.png', 'shot.png']);
   });
 
   it('caps at the ten attachments forge_issues accepts', async () => {
     const set = inner();
     const many = Array.from({ length: 14 }, (_, i) => ({ ...IMAGE, name: `s${i}.png` }));
     await withTurnImages(set, many).execute('forge_issues', JSON.stringify({ action: 'create' }));
-    expect(parsed(set.execute).data?.attachments).toHaveLength(10);
+    expect(attachmentsOf(set.execute)).toHaveLength(10);
   });
 });

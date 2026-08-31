@@ -92,6 +92,14 @@ manifest exists to catch.
 
 ### Why lint debt and size are their own rows
 
+**The drain half does not arm on a direct-to-`main` commit.** A touched file in a draining scope must
+come back strictly under its baseline — but the scope is computed from the branch delta, and on
+`main` the merge-base IS `HEAD`, so the run prints `drain skipped — no branch delta; freeze-only`
+and only growth is checked. A change that lands straight on `main` (the owner lane) therefore never
+sees a tier of this gate that a PR would fail on. `--update-baseline` cannot pay a drain either — it
+re-measures and writes the same count back. Run `node scripts/check-lint-budget.mjs` from a branch,
+or read the touched file's row in `.forge/lint-baseline.json`, before pushing to `main`.
+
 `web-v2` had no biome config at all until 2026-08-23; measured on the day it got one, 748
 diagnostics — 409 formatter, 185 import order, 151 real lint errors. `error` would have been 151 red
 builds; `warn` would have held nothing. `check-lint-budget.mjs` freezes today's 216 violations

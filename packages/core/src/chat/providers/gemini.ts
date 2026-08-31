@@ -144,7 +144,8 @@ function mapMessages(messages: ChatMessage[]): {
   return { systemInstruction: systemParts.join('\n\n'), contents };
 }
 
-const DATA_URI_RE = /^data:([^;,]+);base64,(.*)$/s;
+// cm:guard no regex FLAGS newer than es2017 in packages/core — `pnpm --filter web-v2 build` type-checks core's SOURCES against web-v2's own lower target, so a flag core's tsconfig accepts (here `/s`) compiles clean in core and fails the WEB build; `[\s\S]` carries dotAll's meaning with no flag. Broke the Coolify deploy of 2a1e19c0, 2026-08-31.
+const DATA_URI_RE = /^data:([^;,]+);base64,([\s\S]*)$/;
 
 // cm:edge contract -> packages/core/src/chat/providers/types.ts — ChatContentPart is the OpenAI wire shape; this is the ONLY place it is translated into Gemini's native `inlineData`, and nothing type-checks the two spellings against each other
 function toGeminiParts(content: ChatMessage['content']): GeminiPart[] {
