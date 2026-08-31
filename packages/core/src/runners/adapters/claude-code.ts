@@ -20,9 +20,7 @@ import type {
  *  salvage", which is the safe direction. */
 // cm:guard defaults to `print` for an absent project, an absent config or an absent key — duplex is opt-in per project (ISS-873 phase 3) and a read that failed must never be the thing that flips a project's process model. `pipelineConfig` is not parsed through its Zod schema here on purpose: this runs on every dispatch, and a config that fails validation for an unrelated key must not stop the job going out.
 // cm:guard ONE read for both fields. Two calls would let the mode and the residency come from different snapshots of the same row — a job spawned duplex with the residency of a config that no longer says duplex.
-async function sessionSettingsOf(
-  projectId: string,
-): Promise<{
+async function sessionSettingsOf(projectId: string): Promise<{
   agentConfig: unknown;
   settings: { sessionMode: 'print' | 'duplex'; sessionResidencySeconds?: number };
 }> {
@@ -39,7 +37,7 @@ async function sessionSettingsOf(
     agentConfig: row?.agentConfig ?? null,
     settings: {
       sessionMode: cfg.pipelineConfig?.sessionMode === 'duplex' ? 'duplex' : 'print',
-    // cm:guard a positive number ONLY. The key defaults to 0 and no project has set it, so forwarding 0 would be indistinguishable on the wire from a project asking for no residency at all — the runner resolves absent and 0 to the same default for exactly that reason, and sending nothing keeps the two sides agreeing by construction.
+      // cm:guard a positive number ONLY. The key defaults to 0 and no project has set it, so forwarding 0 would be indistinguishable on the wire from a project asking for no residency at all — the runner resolves absent and 0 to the same default for exactly that reason, and sending nothing keeps the two sides agreeing by construction.
       ...(typeof secs === 'number' && secs > 0 ? { sessionResidencySeconds: secs } : {}),
     },
   };

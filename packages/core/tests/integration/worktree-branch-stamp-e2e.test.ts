@@ -121,11 +121,10 @@ describe('core stamps the issue feature branch onto the job payload', () => {
       },
       runner: { id: randomUUID(), type: 'claude-code', deviceId },
     } as never);
-    return (
-      roomManager.publish.mock.calls[0]?.[1] as {
-        data: { issueKey?: string; payload: Record<string, unknown> };
-      }
-    ).data;
+    // cm:guard narrowed, NEVER `?.` — no call means the adapter never dispatched, and optional chaining would turn that into an `undefined` flowing into a `not.toHaveProperty('worktreeBranch')` that passes for the wrong reason. Three of the five cases here assert an ABSENCE, so a silent undefined makes exactly those unfalsifiable; `check-lint-budget` warns off `--write` on this rule for the same reason.
+    const [call] = roomManager.publish.mock.calls;
+    if (!call) throw new Error('the adapter published no job.assigned frame');
+    return (call[1] as { data: { issueKey?: string; payload: Record<string, unknown> } }).data;
   }
 
   async function enqueue(status: string, stage: string) {
