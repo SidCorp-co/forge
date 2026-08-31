@@ -22,7 +22,7 @@ chain.groupBy = () => chain;
 chain.then = (resolve: any, reject: any) => Promise.resolve(queue.shift()).then(resolve, reject);
 
 vi.mock('../../db/client.js', () => ({
-  db: { select: vi.fn(() => chain) },
+  db: { select: vi.fn(() => chain), execute: () => Promise.resolve(queue.shift()) },
 }));
 
 const { forgePmRunnerLoadTool } = await import('./forge-pm-runner-load.js');
@@ -92,7 +92,7 @@ describe('forge_pm.runner_load', () => {
           lastSeenAt: null,
         },
       ],
-      [{ runnerId: 'r1', n: 1 }],
+      [{ runner_id: 'r1', n: 1 }],
     );
 
     const result = (await tool.handler({ projectId: PROJECT_ID })) as {

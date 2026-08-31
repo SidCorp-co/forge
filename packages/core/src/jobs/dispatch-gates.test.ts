@@ -161,13 +161,13 @@ describe('countInFlightForRunner', () => {
     dbExecute.mockResolvedValueOnce([{ count: '0' }]);
     expect(await countInFlightForRunner('r1')).toBe(0);
   });
-  it('coerces text count to number', async () => {
-    dbExecute.mockResolvedValueOnce([{ count: '7' }]);
+  it('coerces the count to a number', async () => {
+    dbExecute.mockResolvedValueOnce([{ n: '7' }]);
     expect(await countInFlightForRunner('r1')).toBe(7);
   });
   // ISS-258 — orphans (parent pipeline_run terminal) must not count.
   it('joins pipeline_runs and filters to running|paused parents', async () => {
-    dbExecute.mockResolvedValueOnce([{ count: '0' }]);
+    dbExecute.mockResolvedValueOnce([{ n: '0' }]);
     await countInFlightForRunner('r1');
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
     expect(text).toMatch(/LEFT\s+JOIN\s+pipeline_runs\s+pr\s+ON\s+pr\.id\s*=\s*j\.pipeline_run_id/);

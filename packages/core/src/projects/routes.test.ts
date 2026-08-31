@@ -251,16 +251,16 @@ describe('POST /api/projects', () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
-  it('409 SLUG_TAKEN on unique violation', async () => {
+  // cm:guard a 23505 is not automatically a slug collision. Three unique indexes can raise on this insert, and the route reported EVERY one of them as SLUG_TAKEN until both transports came through `createProject` — which sent a caller off to rename a slug that was never the problem, on an apiKey collision they could not see.
+  it.each([
+    ['projects_slug_unique', 409],
+    ['projects_api_key_unique', 500],
+  ])('maps a %s violation to %i', async (constraint_name, status) => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    const pgErr = Object.assign(new Error('duplicate key'), { code: '23505' });
-    txInsertProjectReturning.mockRejectedValueOnce(pgErr);
-
-    const res = await post({ slug: 'taken', name: 'X' }, token);
-    expect(res.status).toBe(409);
-    const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('SLUG_TAKEN');
+    const err = Object.assign(new Error('dup'), { code: '23505', constraint_name });
+    txInsertProjectReturning.mockRejectedValueOnce(err);
+    expect((await post({ slug: 'taken', name: 'X' }, token)).status).toBe(status);
   });
 });
 

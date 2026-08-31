@@ -455,7 +455,7 @@ export function computeRunnerUptime(
 
     for (let i = 0; i < events.length; i++) {
       const ev = events[i];
-      if (!ev || ev.status !== 'online') continue;
+      if (ev?.status !== 'online') continue;
       const segStart = ev.ts;
       const next = events[i + 1];
       const segEnd = next ? next.ts : nowMs;
@@ -481,4 +481,141 @@ export function computeRunnerUptime(
   }
 
   return out;
+}
+
+export type StepDurationAggRow = {
+  project_id: string;
+  project_slug: string | null;
+  step: string;
+  p50_s: number | string | null;
+  p95_s: number | string | null;
+  avg_s: number | string | null;
+  total_cost: number | string | null;
+  n: number | string | null;
+};
+
+// cm:guard build the id list as a parenthesised parameter list via `sql.join` and use `IN (...)`. Drizzle expands an interpolated JS array as a ROW CONSTRUCTOR ($1,$2,...), so `= ANY(${ids}::uuid[])` is a malformed array literal that throws at query time — the same idiom projects/health-routes.ts and runners/select.ts carry, for the same reason.
+export async function stepDurationsAcrossProjects(
+  projectIds: string[],
+  days: number,
+  step?: string,
+): Promise<StepDurationAggRow[]> {
+  const projectIdList = sql.join(
+    projectIds.map((id) => sql`${id}`),
+    sql`, `,
+  );
+  const stepFilter = step ? sql`AND v.step = ${step}` : sql``;
+  const result = await db.execute(sql`
+    SELECT v.project_id,
+           p.slug AS project_slug,
+           v.step,
+           percentile_disc(0.5) WITHIN GROUP (ORDER BY v.duration_seconds) AS p50_s,
+           percentile_disc(0.95) WITHIN GROUP (ORDER BY v.duration_seconds) AS p95_s,
+           avg(v.duration_seconds)::float AS avg_s,
+           sum(v.cost_usd)::float AS total_cost,
+           count(v.duration_seconds)::int AS n
+    FROM pipeline_run_step_durations v
+    LEFT JOIN projects p ON p.id = v.project_id
+    WHERE v.project_id IN (${projectIdList})
+      AND v.started_at >= now() - (${days}::int * interval '1 day')
+      ${stepFilter}
+    GROUP BY v.project_id, p.slug, v.step
+    ORDER BY v.project_id, v.step
+  `);
+  return result as unknown as StepDurationAggRow[];
+}
+
+export type ProjectStepDurationRow = Omit<StepDurationAggRow, 'project_id' | 'project_slug'> & {
+  breakdown_key?: string | null;
+};
+
+export async function stepDurationsForProject(
+  projectId: string,
+  days: number,
+  step?: string,
+  breakdown?: 'device' | 'model',
+): Promise<ProjectStepDurationRow[]> {
+  const stepFilter = step ? sql`AND step = ${step}` : sql``;
+  const breakdownCol =
+    breakdown === 'device' ? sql`device_id` : breakdown === 'model' ? sql`model_used` : null;
+  const breakdownSelect = breakdownCol ? sql`${breakdownCol} AS breakdown_key,` : sql``;
+  const breakdownGroup = breakdownCol ? sql`, ${breakdownCol}` : sql``;
+  const result = await db.execute(sql`
+    SELECT step,
+           ${breakdownSelect}
+           percentile_disc(0.5) WITHIN GROUP (ORDER BY duration_seconds) AS p50_s,
+           percentile_disc(0.95) WITHIN GROUP (ORDER BY duration_seconds) AS p95_s,
+           avg(duration_seconds)::float AS avg_s,
+           sum(cost_usd)::float AS total_cost,
+           count(duration_seconds)::int AS n
+    FROM pipeline_run_step_durations
+    WHERE project_id = ${projectId}
+      AND started_at >= now() - (${days}::int * interval '1 day')
+      ${stepFilter}
+    GROUP BY step${breakdownGroup}
+    ORDER BY step
+  `);
+  return result as unknown as ProjectStepDurationRow[];
+}
+
+export type RetryRescueRow = {
+  failure_kind: string | null;
+  failure_reason: string;
+  rescues: number | string;
+  last_rescued_at: string | Date;
+};
+
+export async function retryRescues(projectId: string, days: number): Promise<RetryRescueRow[]> {
+  const result = await db.execute(sql`
+    SELECT failure_kind, failure_reason, count(*)::int AS rescues,
+           max(rescued_at) AS last_rescued_at
+    FROM retry_rescues
+    WHERE project_id = ${projectId}
+      AND rescued_at >= now() - (${days}::int * interval '1 day')
+    GROUP BY failure_kind, failure_reason
+    ORDER BY rescues DESC, last_rescued_at DESC
+  `);
+  return result as unknown as RetryRescueRow[];
+}
+
+export type SessionFailureAggRow = {
+  status: string | null;
+  failure_reason: string | null;
+  sessions: number | string;
+  last_at: string | Date | null;
+};
+
+// cm:guard the OR is load-bearing: a session at any other status that still carries a `failure_reason` must come back too, so the caller can report it instead of dropping it. That is the ISS-759 completed-yet-failed shape plus the live rows the I1 trigger stamped, and narrowing this to the two failed statuses makes them invisible rather than absent.
+export async function sessionFailures(
+  projectId: string,
+  days: number,
+): Promise<SessionFailureAggRow[]> {
+  const result = await db.execute(sql`
+    SELECT status, failure_reason, count(*)::int AS sessions, max(updated_at) AS last_at
+    FROM agent_sessions
+    WHERE project_id = ${projectId}
+      AND updated_at >= now() - (${days}::int * interval '1 day')
+      AND (status IN ('failed', 'cancelled_stale') OR failure_reason IS NOT NULL)
+    GROUP BY status, failure_reason
+  `);
+  return result as unknown as SessionFailureAggRow[];
+}
+
+export type ResumeDropRow = { drop_reason: string | null; sessions: number | string };
+
+// cm:guard `priorClaudeSessionId IS NOT NULL` is what defines the denominator, and it must stay in the WHERE rather than move to the caller. It is what keeps attempt 1 out: an attempt with no prior session to continue is the normal shape of a first try, and folding those in makes the drop rate shrink as the project does MORE fresh work.
+// cm:guard this must NOT inherit the failure histogram's status filter. A resume is dropped on healthy dispatches too — restricting it to `failed`/`cancelled_stale` would measure the drop rate of attempts that later died, report it as the drop rate, and leave both numbers wrong.
+export async function resumeDropsForProject(
+  projectId: string,
+  days: number,
+): Promise<ResumeDropRow[]> {
+  const result = await db.execute(sql`
+    SELECT metadata->'resume'->>'dropReason' AS drop_reason, count(*)::int AS sessions
+    FROM agent_sessions
+    WHERE project_id = ${projectId}
+      AND created_at >= now() - (${days}::int * interval '1 day')
+      AND metadata->'resume'->>'priorClaudeSessionId' IS NOT NULL
+    GROUP BY 1
+  `);
+  return result as unknown as ResumeDropRow[];
 }

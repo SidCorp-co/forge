@@ -6,7 +6,7 @@
  *
  * A behaviour test can show REST and MCP agree on the rows they return today.
  * Only a source scan shows that the next action added to a tool cannot quietly
- * open its own query beside the service the other eleven call.
+ * open its own query beside the service the other transport calls.
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -14,20 +14,6 @@ import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const TOOLS = resolve(import.meta.dirname);
-
-/**
- * Tools still holding their own `db` handle. ISS-889 empties this list one
- * domain at a time; `forge-issues.ts` was the first out. Removing a name is the
- * deliverable — never add one back, and never add a NEW tool to it.
- */
-const PENDING_TOOLS = [
-  'forge-config.ts',
-  'forge-feedback.ts',
-  'forge-metrics.ts',
-  'forge-projects.ts',
-  'forge-runners.ts',
-  'forge-uploads.ts',
-];
 
 function toolSources(): string[] {
   const out: string[] = [];
@@ -48,32 +34,22 @@ function toolsImportingDb(): string[] {
 }
 
 describe('MCP tools reach the database through services (ISS-889)', () => {
-  it('forge-issues holds no database handle', () => {
+  // cm:guard this list was 28 tools when ISS-889 opened and is empty because every one of them moved its queries into a service under its own domain. It is NOT an allowlist with nothing in it yet — there is no admission process for adding a name back. A tool that needs data needs a service, and the service is where the REST side finds it too.
+  it('no MCP tool holds a database handle', () => {
     expect(
       toolsImportingDb(),
-      'forge-issues.ts imports db/client.js again. Every one of its twelve actions goes ' +
-        'through issues/*-service.ts or tasks/task-service.ts; a new action that opens its own ' +
-        'query is the second data plane ISS-889 exists to remove.',
-    ).not.toContain('forge-issues.ts');
-  });
-
-  it('no tool outside the declared backlog holds one', () => {
-    const unexpected = toolsImportingDb().filter((f) => !PENDING_TOOLS.includes(f));
-    expect(
-      unexpected,
-      'these MCP tools query the database directly and are not on the ISS-889 backlog. ' +
-        'Route the write through a service under its domain directory, the way ' +
-        `issues/create-service.ts serves both transports: ${unexpected.join(', ')}`,
+      'these MCP tools import db/client.js. Route the query through a service under its ' +
+        'domain directory, the way issues/create-service.ts serves both transports — a query ' +
+        'that lives in a tool is a second data plane the REST side cannot reach, and it drifts ' +
+        'silently: measured on this repo, the two sides had already parted on which columns a ' +
+        'session list returns, which statuses occupy a runner, and whether an apiKey collision ' +
+        'is a taken slug.',
     ).toEqual([]);
   });
 
-  it('the backlog names only tools that still hold one', () => {
-    const importing = new Set(toolsImportingDb());
-    const stale = PENDING_TOOLS.filter((f) => !importing.has(f));
-    expect(
-      stale,
-      'these tools no longer import db/client.js — take them off PENDING_TOOLS so the list ' +
-        `keeps measuring the real remaining work: ${stale.join(', ')}`,
-    ).toEqual([]);
+  it('finds the tools it claims to scan', () => {
+    const sources = toolSources().map((f) => relative(TOOLS, f));
+    expect(sources).toContain('forge-issues.ts');
+    expect(sources.length).toBeGreaterThan(30);
   });
 });

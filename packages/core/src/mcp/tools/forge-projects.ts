@@ -1,21 +1,21 @@
-import { randomBytes } from 'node:crypto';
-import { and, count, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
-import {
-  agentSessions,
-  type ProjectMemberRole,
-  projectKinds,
-  projectMembers,
-  projects,
-} from '../../db/schema.js';
+import { type ProjectMemberRole, projectKinds } from '../../db/schema.js';
 import {
   effectiveProjectRole,
   loadOrgRole,
   loadPersonalOrgId,
   orgRoleAtLeast,
 } from '../../lib/authz.js';
-import { isUniqueViolation, uniqueViolationConstraint } from '../../lib/db-errors.js';
+import {
+  countActiveSessions,
+  createProject,
+  deleteProject,
+  listProjectsByIds,
+  ProjectSlugTakenError,
+  readPreviewDeploy,
+  readProjectSummary,
+  updateProject,
+} from '../../projects/service.js';
 import {
   assertPrincipalIsAdmin,
   type ContextScopedMcpToolFactory,
@@ -54,15 +54,7 @@ export const forgeProjectsListTool: ContextScopedMcpToolFactory = (ctx) => ({
     const visibleIds = await loadVisibleProjectIdsForPrincipal(principal);
     if (visibleIds.length === 0) return { projects: [] };
 
-    const rows = await db
-      .select({
-        id: projects.id,
-        slug: projects.slug,
-        name: projects.name,
-        orgId: projects.orgId,
-      })
-      .from(projects)
-      .where(inArray(projects.id, visibleIds));
+    const rows = await listProjectsByIds(visibleIds);
 
     const listed: ListedProject[] = [];
     for (const r of rows) {
@@ -72,16 +64,6 @@ export const forgeProjectsListTool: ContextScopedMcpToolFactory = (ctx) => ({
     return { projects: listed };
   },
 });
-
-/**
- * Mirrors `generateApiKey` in `projects/routes.ts` — kept local because the
- * REST helper is private and lifting it into a shared module is out of scope.
- * Same `fk_` prefix + 192 bits of entropy so the existing key validators
- * (widget install, MCP device pairing) accept the value unchanged.
- */
-function generateApiKey(): string {
-  return `fk_${randomBytes(24).toString('hex')}`;
-}
 
 const slugField = z
   .string()
@@ -164,54 +146,20 @@ export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
       orgId = personal;
     }
     try {
-      const created = await db.transaction(async (tx) => {
-        const inserted = await tx
-          .insert(projects)
-          .values({
-            slug: input.slug,
-            name: input.name,
-            orgId,
-            createdBy: creatorId,
-            description: input.description ?? null,
-            repoPath: input.repoPath ?? null,
-            // ISS-274 — default to 'main' when the caller omits the branch so a
-            // new project never surfaces a null-base misconfig at pipeline time
-            // (resolveIssueBranches has no 'main' fallback). An explicitly
-            // provided value is preserved (the `?? 'main'` only fires on omit).
-            baseBranch: input.baseBranch ?? 'main',
-            productionBranch: input.productionBranch ?? 'main',
-            apiKey: generateApiKey(),
-          })
-          .returning({
-            id: projects.id,
-            slug: projects.slug,
-            name: projects.name,
-            orgId: projects.orgId,
-            createdBy: projects.createdBy,
-            apiKey: projects.apiKey,
-            createdAt: projects.createdAt,
-          });
-        const project = inserted[0];
-        if (!project) throw new Error('projects: insert returned no row');
-        await tx.insert(projectMembers).values({
-          userId: creatorId,
-          projectId: project.id,
-          role: 'admin',
-        });
-        return project;
+      const created = await createProject({
+        slug: input.slug,
+        name: input.name,
+        orgId,
+        createdBy: creatorId,
+        description: input.description,
+        repoPath: input.repoPath,
+        baseBranch: input.baseBranch,
+        productionBranch: input.productionBranch,
       });
       return { project: created };
     } catch (err) {
-      // `isUniqueViolation` matches any SQLSTATE 23505 across the projects /
-      // projectMembers / api_key constraints; disambiguate by constraint name
-      // so an apiKey collision (or any future unique index on `projects`)
-      // isn't misreported as SLUG_TAKEN. With drizzle-orm/postgres-js the
-      // constraint name lives on `err.cause.constraint_name` (the helper
-      // walks the wrapper for us).
-      if (isUniqueViolation(err)) {
-        if (uniqueViolationConstraint(err) === 'projects_slug_unique') {
-          throw new Error('BAD_REQUEST: SLUG_TAKEN: slug already in use');
-        }
+      if (err instanceof ProjectSlugTakenError) {
+        throw new Error('BAD_REQUEST: SLUG_TAKEN: slug already in use');
       }
       throw err;
     }
@@ -290,7 +238,7 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
     const access = await effectiveProjectRole(userId, input.projectId);
     // Non-member returns NOT_FOUND (not FORBIDDEN) to avoid leaking
     // existence; a member below the org-admin bar gets the truthful FORBIDDEN.
-    if (!access || !access.role) {
+    if (!access?.role) {
       throw new Error('NOT_FOUND: project not found or not accessible');
     }
     if (!orgRoleAtLeast(access.orgRole, 'admin')) {
@@ -310,33 +258,11 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
       updates.workspaceSetup = input.patch.workspaceSetup;
     }
     if (input.patch.previewDeployNotes !== undefined) {
-      const [row] = await db
-        .select({ previewDeploy: projects.previewDeploy })
-        .from(projects)
-        .where(eq(projects.id, input.projectId))
-        .limit(1);
-      const current = (row?.previewDeploy ?? {}) as Record<string, unknown>;
+      const current = await readPreviewDeploy(input.projectId);
       updates.previewDeploy = { ...current, notes: input.patch.previewDeployNotes };
     }
 
-    const updated = await db
-      .update(projects)
-      .set(updates)
-      .where(eq(projects.id, input.projectId))
-      .returning({
-        id: projects.id,
-        slug: projects.slug,
-        name: projects.name,
-        orgId: projects.orgId,
-        description: projects.description,
-        repoPath: projects.repoPath,
-        workspaceSetup: projects.workspaceSetup,
-        baseBranch: projects.baseBranch,
-        productionBranch: projects.productionBranch,
-        kind: projects.kind,
-      });
-
-    const project = updated[0];
+    const project = await updateProject(input.projectId, updates);
     if (!project) throw new Error('NOT_FOUND: project not found');
     return { project };
   },
@@ -380,31 +306,13 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
 
     const userId = principalUserId(principal);
 
-    const [proj] = await db
-      .select({
-        id: projects.id,
-        slug: projects.slug,
-        name: projects.name,
-        description: projects.description,
-        orgId: projects.orgId,
-        createdBy: projects.createdBy,
-        repoPath: projects.repoPath,
-        workspaceSetup: projects.workspaceSetup,
-        baseBranch: projects.baseBranch,
-        productionBranch: projects.productionBranch,
-        defaultDeviceId: projects.defaultDeviceId,
-        previewDeploy: projects.previewDeploy,
-        createdAt: projects.createdAt,
-      })
-      .from(projects)
-      .where(eq(projects.id, input.projectId))
-      .limit(1);
+    const proj = await readProjectSummary(input.projectId);
     if (!proj) throw new Error('NOT_FOUND: project not found or not accessible');
 
     // Resolve the effective caller role; a non-member surfaces NOT_FOUND so
     // the namespace stays non-enumerable.
     const access = await effectiveProjectRole(userId, input.projectId);
-    if (!access || !access.role) {
+    if (!access?.role) {
       throw new Error('NOT_FOUND: project not found or not accessible');
     }
     const role: ProjectMemberRole = access.role;
@@ -481,26 +389,13 @@ export const forgeProjectsArchiveTool: ContextScopedMcpToolFactory = (ctx) => ({
     if (!access || !orgRoleAtLeast(access.orgRole, 'admin')) {
       throw new Error('FORBIDDEN: requires org admin on the project');
     }
-    const activeRows = await db
-      .select({ active: count() })
-      .from(agentSessions)
-      .where(
-        and(
-          eq(agentSessions.projectId, projectId),
-          inArray(agentSessions.status, ['queued', 'running']),
-        ),
-      );
-    const activeCount = Number(activeRows[0]?.active ?? 0);
+    const activeCount = await countActiveSessions(projectId);
     if (activeCount > 0) {
       throw new Error(
         `BAD_REQUEST: PROJECT_BUSY: project has ${activeCount} in-flight agent session(s)`,
       );
     }
-    const deleted = await db
-      .delete(projects)
-      .where(eq(projects.id, projectId))
-      .returning({ id: projects.id });
-    if (deleted.length === 0) {
+    if (!(await deleteProject(projectId))) {
       throw new Error('NOT_FOUND: project not found');
     }
     return {

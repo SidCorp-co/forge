@@ -1,37 +1,51 @@
 /**
  * How many jobs are occupying a runner right now.
  *
- * Three places counted this independently — the PM's runner-load report, the
- * digest it primes a decision turn with, and the ops health snapshot — and
- * they had begun to disagree about which statuses count.
+ * Four places counted this independently — the PM's runner-load report, the
+ * digest it primes a decision turn with, the ops health snapshot and the
+ * runner list — and a fifth, `countInFlightForRunner` in `dispatch-gates.ts`,
+ * answered it for the dispatcher with a filter none of the other four had.
  */
 
-import { and, count, inArray, isNotNull } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { jobs } from '../db/schema.js';
 
-// cm:guard `held` is deliberately absent, and `queued` too. Both are live jobs (RFC 0002) but neither holds a runner slot while it waits, so counting them makes a free runner read as full and dispatch rotates away from a box that could take work. `health/service.ts` uses a WIDER set on purpose — there the question is "what is in flight for an operator", not "what is this runner carrying".
+// cm:guard `held` is deliberately absent, and `queued` too. Both are live jobs (RFC 0002) but neither holds a runner slot while it waits, so counting them makes a free runner read as full and dispatch rotates away from a box that could take work. `health/service.ts` counts a WIDER set on purpose — there the question is "what is in flight for an operator", not "what is this runner carrying".
 export const OCCUPYING_JOB_STATUSES = ['dispatched', 'running'] as const;
+
+// cm:guard the parent-run filter is NOT optional and NOT a reporting nicety: ISS-258. A job whose `pipeline_run` is already terminal is an orphan that holds no cap slot, and `countInFlightForRunner` — the gate that actually allocates the slot — has excluded them since the Forge Dev 2026-05-27 stall. A report that counts them says a runner is full that the dispatcher will happily fill, and the PM then routes work away from a healthy box on the strength of a job nobody is running. `pr.id IS NULL` keeps jobs with no parent counted.
+// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — `countInFlightForRunner` answers this same question for one runner and MUST keep the same predicate; a clause here and not there puts the number an operator reads back out of step with the number that decides dispatch
+const OCCUPYING_JOBS_FOR = (runnerFilter: ReturnType<typeof sql>) => sql`
+  SELECT j.runner_id, COUNT(*)::int AS n
+  FROM jobs j
+  LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
+  WHERE ${runnerFilter}
+    AND j.status IN ('dispatched', 'running')
+    AND (pr.id IS NULL OR pr.status IN ('running', 'paused'))
+  GROUP BY j.runner_id
+`;
 
 /** Occupying-job counts keyed by runner id; a runner with none is absent. */
 export async function countInFlightByRunner(runnerIds: string[]): Promise<Map<string, number>> {
   if (runnerIds.length === 0) return new Map();
 
-  const rows = await db
-    .select({ runnerId: jobs.runnerId, n: count() })
-    .from(jobs)
-    .where(
-      and(
-        inArray(jobs.runnerId, runnerIds),
-        inArray(jobs.status, [...OCCUPYING_JOB_STATUSES]),
-        isNotNull(jobs.runnerId),
-      ),
-    )
-    .groupBy(jobs.runnerId);
+  const idList = sql.join(
+    runnerIds.map((id) => sql`${id}`),
+    sql`, `,
+  );
+  const rows = await db.execute<{ runner_id: string | null; n: number | string }>(
+    OCCUPYING_JOBS_FOR(sql`j.runner_id IN (${idList})`),
+  );
 
   return new Map(
-    rows
-      .filter((r): r is { runnerId: string; n: number } => r.runnerId !== null)
-      .map((r) => [r.runnerId, Number(r.n)]),
+    rows.filter((r) => r.runner_id !== null).map((r) => [r.runner_id as string, Number(r.n)]),
   );
+}
+
+/** The same count for a single runner. */
+export async function countInFlightForOneRunner(runnerId: string): Promise<number> {
+  const rows = await db.execute<{ n: number | string }>(
+    OCCUPYING_JOBS_FOR(sql`j.runner_id = ${runnerId}`),
+  );
+  return Number(rows[0]?.n ?? 0);
 }

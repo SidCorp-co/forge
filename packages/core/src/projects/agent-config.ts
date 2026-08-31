@@ -49,3 +49,19 @@ export async function mergeAgentConfig(
   await writeAgentConfig(projectId, merged);
   return merged;
 }
+
+// cm:guard the key is DELETED when `mutate` answers null, never written as `key: null`. Every reader here treats an absent key and a null one differently — `stateContext` null means "no override", a null-valued key means "an override that is null" — and the four settings surfaces that used to inline this dance each got that right by hand, which is exactly the arrangement that stops being true on the fifth.
+export async function patchAgentConfigKey(
+  projectId: string,
+  key: string,
+  mutate: (current: AgentConfig) => unknown,
+): Promise<void> {
+  const merged = await mergeAgentConfig(projectId, (current) => {
+    const next = mutate(current);
+    if (next === null) {
+      return Object.fromEntries(Object.entries(current).filter(([k]) => k !== key));
+    }
+    return { ...current, [key]: next };
+  });
+  if (merged === null) throw new Error('NOT_FOUND: project not found');
+}

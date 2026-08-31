@@ -1,16 +1,20 @@
-import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
 import {
-  jobs,
   type RunnerStatus,
   type RunnerType,
   runnerHosts,
   runnerStatuses,
-  runners,
+  type runners,
   runnerTypes,
 } from '../../db/schema.js';
-import { countInFlightForRunner } from '../../jobs/dispatch-gates.js';
+import { countInFlightByRunner, countInFlightForOneRunner } from '../../jobs/in-flight.js';
+import {
+  findRunnerProjectId,
+  insertRunner,
+  listRunners,
+  setRunnerCapabilities,
+  setRunnerStatus,
+} from '../../runners/service.js';
 import { runnerCapabilitiesSchema } from '../../runners/types.js';
 import {
   assertPrincipalIsAdmin,
@@ -94,30 +98,15 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
     if (input.action === 'list') {
       const visibleIds = await loadVisibleProjectIdsForPrincipal(ctx.principal);
       if (visibleIds.length === 0) return { runners: [] };
-      const filters: SQL[] = [inArray(runners.projectId, visibleIds)];
-      if (input.projectId) filters.push(eq(runners.projectId, input.projectId));
-      if (input.status) filters.push(eq(runners.status, input.status as RunnerStatus));
-      if (input.type) filters.push(eq(runners.type, input.type as RunnerType));
-      const rows = await db
-        .select()
-        .from(runners)
-        .where(and(...filters));
+      const rows = await listRunners({
+        visibleProjectIds: visibleIds,
+        projectId: input.projectId,
+        status: input.status as RunnerStatus | undefined,
+        type: input.type as RunnerType | undefined,
+      });
       if (rows.length === 0) return { runners: [] };
 
-      const inFlightRows = await db
-        .select({ runnerId: jobs.runnerId, n: sql<number>`count(*)::int` })
-        .from(jobs)
-        .where(
-          and(
-            inArray(
-              jobs.runnerId,
-              rows.map((r) => r.id),
-            ),
-            inArray(jobs.status, ['dispatched', 'running']),
-          ),
-        )
-        .groupBy(jobs.runnerId);
-      const inFlightMap = new Map(inFlightRows.map((r) => [r.runnerId ?? '', Number(r.n ?? 0)]));
+      const inFlightMap = await countInFlightByRunner(rows.map((r) => r.id));
       return {
         runners: rows.map((r) => ({
           ...publicRunnerRow(r),
@@ -132,21 +121,16 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
       await assertPrincipalIsAdmin(ctx.principal, input.data.projectId);
       const caps = parseCapabilitiesOrThrow(input.data.capabilities);
-      const [row] = await db
-        .insert(runners)
-        .values({
-          projectId: input.data.projectId,
-          type: input.data.type,
-          host: input.data.host,
-          deviceId: input.data.deviceId ?? null,
-          name: input.data.name,
-          labels: input.data.labels ?? [],
-          capabilities: caps,
-          config: input.data.config ?? {},
-          status: 'offline',
-        })
-        .returning();
-      if (!row) throw new Error('runners: insert returned no row');
+      const row = await insertRunner({
+        projectId: input.data.projectId,
+        type: input.data.type,
+        host: input.data.host,
+        deviceId: input.data.deviceId ?? null,
+        name: input.data.name,
+        labels: input.data.labels ?? [],
+        capabilities: caps,
+        config: input.data.config ?? {},
+      });
       return { runner: publicRunnerRow(row) };
     }
 
@@ -155,31 +139,20 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
         throw new Error('BAD_REQUEST: runnerId is required for action=retire');
       }
       const runnerId = input.runnerId;
-      const [target] = await db
-        .select({ projectId: runners.projectId })
-        .from(runners)
-        .where(eq(runners.id, runnerId))
-        .limit(1);
-      if (!target) throw new Error('NOT_FOUND: runner not found');
-      await assertPrincipalIsAdmin(ctx.principal, target.projectId);
+      const ownerProjectId = await findRunnerProjectId(runnerId);
+      if (!ownerProjectId) throw new Error('NOT_FOUND: runner not found');
+      await assertPrincipalIsAdmin(ctx.principal, ownerProjectId);
       const force = input.force ?? false;
-      const inFlight = await countInFlightForRunner(runnerId);
+      const inFlight = await countInFlightForOneRunner(runnerId);
       if (inFlight > 0 && !force) {
         throw new Error(
           `BAD_REQUEST: RUNNER_BUSY: runner has ${inFlight} in-flight job(s); pass force:true to override`,
         );
       }
       if (force && inFlight > 0) {
-        await db
-          .update(runners)
-          .set({ status: 'draining', updatedAt: new Date() })
-          .where(eq(runners.id, runnerId));
+        await setRunnerStatus(runnerId, 'draining');
       }
-      const [row] = await db
-        .update(runners)
-        .set({ status: 'disabled', updatedAt: new Date() })
-        .where(eq(runners.id, runnerId))
-        .returning();
+      const row = await setRunnerStatus(runnerId, 'disabled');
       if (!row) throw new Error('NOT_FOUND: runner not found');
       return { runner: publicRunnerRow(row) };
     }
@@ -191,19 +164,11 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
     if (input.capabilities === undefined) {
       throw new Error('BAD_REQUEST: capabilities is required for action=update_capabilities');
     }
-    const [target] = await db
-      .select({ projectId: runners.projectId })
-      .from(runners)
-      .where(eq(runners.id, input.runnerId))
-      .limit(1);
-    if (!target) throw new Error('NOT_FOUND: runner not found');
-    await assertPrincipalIsAdmin(ctx.principal, target.projectId);
+    const ownerProjectId = await findRunnerProjectId(input.runnerId);
+    if (!ownerProjectId) throw new Error('NOT_FOUND: runner not found');
+    await assertPrincipalIsAdmin(ctx.principal, ownerProjectId);
     const caps = parseCapabilitiesOrThrow(input.capabilities);
-    const [row] = await db
-      .update(runners)
-      .set({ capabilities: caps, updatedAt: new Date() })
-      .where(eq(runners.id, input.runnerId))
-      .returning();
+    const row = await setRunnerCapabilities(input.runnerId, caps);
     if (!row) throw new Error('NOT_FOUND: runner not found');
     return { runner: publicRunnerRow(row) };
   },

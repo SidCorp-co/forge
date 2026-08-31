@@ -131,16 +131,7 @@ describe('forge_ops_health', () => {
           ]),
       }),
     }));
-    // in-flight aggregation: capture the where() predicate so we can assert the
-    // job-status filter is applied (without it, terminal jobs would count).
-    const inFlightWhere = vi.fn((..._args: unknown[]) => ({
-      groupBy: () => Promise.resolve([{ runnerId: RUNNER_ID, n: 3 }]),
-    }));
-    selectImpl.mockImplementationOnce(() => ({
-      from: () => ({
-        where: inFlightWhere,
-      }),
-    }));
+    executeImpl.mockResolvedValueOnce([{ runner_id: RUNNER_ID, n: 3 }]);
     // projects aggregation (scoped: leftJoin().where().groupBy().orderBy().limit())
     selectImpl.mockImplementationOnce(() => ({
       from: () => ({
@@ -182,20 +173,18 @@ describe('forge_ops_health', () => {
     expect(res.projects[0]?.activeJobCount).toBe(5);
     expect(res.stuckJobs[0]?.ageSeconds).toBe(1200);
 
-    // The in-flight aggregation must filter jobs by status so that done /
-    // failed / cancelled jobs are excluded from inFlightCount.
-    expect(inFlightWhere).toHaveBeenCalledTimes(1);
-    const wherePredicate = inFlightWhere.mock.calls[0]?.[0];
-    const sqlText = collectSqlFragments(wherePredicate);
-    expect(sqlText).toContain('dispatched');
-    expect(sqlText).toContain('running');
+    // cm:guard the aggregation must filter BOTH ways or `inFlightCount` lies: by job status, so a done/failed/cancelled job stops counting, and by parent-run status, so an orphan under a terminal run does not — the same pair `countInFlightForRunner` applies before it hands out a cap slot.
+    const inFlightSql = collectSqlFragments(executeImpl.mock.calls[1]?.[0]);
+    expect(inFlightSql).toContain('dispatched');
+    expect(inFlightSql).toContain('running');
+    expect(inFlightSql).toContain('paused');
 
     // Regression: the stuckJobs scope filter must use `IN (...)` over a
     // sql.join'd param list — NOT `= ANY(${visibleIds}::uuid[])`. Embedding a
     // JS array in the drizzle template expands it as a record tuple
     // ($1,$2,...), so ANY(tuple::uuid[]) is a malformed array literal that
     // 500s at query time (the mock can't bind Postgres, so assert the SQL).
-    const stuckSql = collectSqlFragments(executeImpl.mock.calls[1]?.[0]);
+    const stuckSql = collectSqlFragments(executeImpl.mock.calls[2]?.[0]);
     expect(stuckSql).toContain('IN (');
     expect(stuckSql).not.toContain('ANY(');
     expect(stuckSql).not.toContain('::uuid[]');

@@ -1,9 +1,6 @@
-import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { type IssueBranchOverride, resolveIssueBranches } from '../../branches/resolve.js';
 import { env } from '../../config/env.js';
-import { db } from '../../db/client.js';
-import { issues, projects } from '../../db/schema.js';
 import { deleteKnowledgeEntry, upsertKnowledgeEntry } from '../../knowledge/service.js';
 import { logger } from '../../logger.js';
 import { pipelineConfigPatchSchema } from '../../pipeline/pipeline-config-schema.js';
@@ -16,6 +13,7 @@ import {
   pluginDesignationsPatchSchema,
   readPluginDesignations,
 } from '../../plugins/designation.js';
+import { patchAgentConfigKey, readAgentConfig } from '../../projects/agent-config.js';
 import {
   mergeProjectFacts,
   mergeProjectFactsConfig,
@@ -23,6 +21,7 @@ import {
   projectFactsPatchSchema,
   RESERVED_PROJECT_FACT_KEYS,
 } from '../../projects/project-facts.js';
+import { readIssueSessionContext, readProjectWithConfig } from '../../projects/service.js';
 import { mergeStateContext, stateContextSchema } from '../../projects/state-context.js';
 import {
   assertPrincipalIsAdmin,
@@ -46,19 +45,7 @@ const inputSchema = z
   .strict();
 
 async function readProjectConfig(projectId: string) {
-  const [row] = await db
-    .select({
-      id: projects.id,
-      slug: projects.slug,
-      name: projects.name,
-      repoPath: projects.repoPath,
-      baseBranch: projects.baseBranch,
-      productionBranch: projects.productionBranch,
-      agentConfig: projects.agentConfig,
-    })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
+  const row = await readProjectWithConfig(projectId);
   if (!row) throw new Error('NOT_FOUND: project not found');
   return row;
 }
@@ -121,58 +108,20 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
       }
       if (input.stateContext !== undefined) {
-        const [row] = await db
-          .select({ agentConfig: projects.agentConfig })
-          .from(projects)
-          .where(eq(projects.id, input.projectId))
-          .limit(1);
-        if (!row) throw new Error('NOT_FOUND: project not found');
-        const currentAc = (row.agentConfig ?? {}) as Record<string, unknown>;
-        const mergedSc = mergeStateContext(currentAc.stateContext, input.stateContext);
-        const nextAc: Record<string, unknown> =
-          mergedSc === null
-            ? Object.fromEntries(Object.entries(currentAc).filter(([k]) => k !== 'stateContext'))
-            : { ...currentAc, stateContext: mergedSc };
-        await db
-          .update(projects)
-          .set({ agentConfig: nextAc })
-          .where(eq(projects.id, input.projectId));
+        await patchAgentConfigKey(input.projectId, 'stateContext', (current) =>
+          mergeStateContext(current.stateContext, input.stateContext),
+        );
       }
       if (input.projectFacts !== undefined) {
-        const [row] = await db
-          .select({ agentConfig: projects.agentConfig })
-          .from(projects)
-          .where(eq(projects.id, input.projectId))
-          .limit(1);
-        if (!row) throw new Error('NOT_FOUND: project not found');
-        const currentAc = (row.agentConfig ?? {}) as Record<string, unknown>;
-        const mergedFacts = mergeProjectFacts(currentAc.projectFacts, input.projectFacts);
-        const nextAc: Record<string, unknown> =
-          mergedFacts === null
-            ? Object.fromEntries(Object.entries(currentAc).filter(([k]) => k !== 'projectFacts'))
-            : { ...currentAc, projectFacts: mergedFacts };
-        await db
-          .update(projects)
-          .set({ agentConfig: nextAc })
-          .where(eq(projects.id, input.projectId));
+        await patchAgentConfigKey(input.projectId, 'projectFacts', (current) =>
+          mergeProjectFacts(current.projectFacts, input.projectFacts),
+        );
       }
       if (input.plugins !== undefined) {
-        const [row] = await db
-          .select({ agentConfig: projects.agentConfig })
-          .from(projects)
-          .where(eq(projects.id, input.projectId))
-          .limit(1);
-        if (!row) throw new Error('NOT_FOUND: project not found');
-        const currentAc = (row.agentConfig ?? {}) as Record<string, unknown>;
-        const merged = mergePluginDesignations(input.plugins);
-        const nextAc: Record<string, unknown> =
-          merged === null
-            ? Object.fromEntries(Object.entries(currentAc).filter(([k]) => k !== 'plugins'))
-            : { ...currentAc, plugins: merged };
-        await db
-          .update(projects)
-          .set({ agentConfig: nextAc })
-          .where(eq(projects.id, input.projectId));
+        const plugins = input.plugins;
+        await patchAgentConfigKey(input.projectId, 'plugins', () =>
+          mergePluginDesignations(plugins),
+        );
       }
       // AC6: write-through to knowledge_entries when the flag is ON.
       if (
@@ -184,12 +133,7 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
           { projectId: input.projectId },
           'forge_config projectFacts is deprecated; writing through to knowledge_entries',
         );
-        const [factsRow] = await db
-          .select({ agentConfig: projects.agentConfig })
-          .from(projects)
-          .where(eq(projects.id, input.projectId))
-          .limit(1);
-        const factsAc = (factsRow?.agentConfig ?? {}) as Record<string, unknown>;
+        const factsAc = (await readAgentConfig(input.projectId)) ?? {};
         const factsConfig =
           (factsAc.projectFactsConfig as Record<string, { alwaysInject?: boolean }> | undefined) ??
           {};
@@ -223,27 +167,9 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
       }
       if (input.projectFactsConfig !== undefined) {
-        const [row] = await db
-          .select({ agentConfig: projects.agentConfig })
-          .from(projects)
-          .where(eq(projects.id, input.projectId))
-          .limit(1);
-        if (!row) throw new Error('NOT_FOUND: project not found');
-        const currentAc = (row.agentConfig ?? {}) as Record<string, unknown>;
-        const mergedConfig = mergeProjectFactsConfig(
-          currentAc.projectFactsConfig,
-          input.projectFactsConfig,
+        await patchAgentConfigKey(input.projectId, 'projectFactsConfig', (current) =>
+          mergeProjectFactsConfig(current.projectFactsConfig, input.projectFactsConfig),
         );
-        const nextAc: Record<string, unknown> =
-          mergedConfig === null
-            ? Object.fromEntries(
-                Object.entries(currentAc).filter(([k]) => k !== 'projectFactsConfig'),
-              )
-            : { ...currentAc, projectFactsConfig: mergedConfig };
-        await db
-          .update(projects)
-          .set({ agentConfig: nextAc })
-          .where(eq(projects.id, input.projectId));
       }
       const row = await readProjectConfig(input.projectId);
       return formatBaseResponse(row);
@@ -257,14 +183,7 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
 
     if (!input.issueId) return baseResponse;
 
-    const [issueRow] = await db
-      .select({
-        id: issues.id,
-        sessionContext: issues.sessionContext,
-      })
-      .from(issues)
-      .where(and(eq(issues.id, input.issueId), eq(issues.projectId, projectId)))
-      .limit(1);
+    const issueRow = await readIssueSessionContext(input.issueId, projectId);
     if (!issueRow) throw new Error('NOT_FOUND: issue not found in project');
 
     // PR-C will add a real `issues.metadata` jsonb column; until then, accept

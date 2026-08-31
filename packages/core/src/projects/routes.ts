@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -41,12 +40,9 @@ import { projectOnboardRoutes } from './onboard-routes.js';
 import { pipelineConfigHttpError } from './pipeline-config-http.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
 import { projectRunnerRoutes } from './runners-routes.js';
+import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
 import { skillsBootstrapRoutes } from './skills-bootstrap-routes.js';
 import { mergeStateContext, stateContextSchema } from './state-context.js';
-
-function generateApiKey(): string {
-  return `fk_${randomBytes(24).toString('hex')}`;
-}
 
 export const createProjectSchema = z.object({
   slug: z
@@ -181,51 +177,18 @@ projectRoutes.post(
     }
 
     try {
-      const created = await db.transaction(async (tx) => {
-        const inserted = await tx
-          .insert(projects)
-          .values({
-            slug,
-            name,
-            orgId,
-            createdBy: userId,
-            apiKey: generateApiKey(),
-            // ISS-274 — default the branch columns at create time so a new
-            // project never resolves a null base/prod branch at pipeline time
-            // (resolveIssueBranches deliberately has no 'main' fallback — see
-            // branches/resolve.ts). createProjectSchema doesn't accept these
-            // fields, so there is no explicit value to preserve here.
-            baseBranch: 'main',
-            productionBranch: 'main',
-            ...(description !== undefined ? { description } : {}),
-            ...(kind !== undefined ? { kind } : {}),
-          })
-          .returning({
-            id: projects.id,
-            slug: projects.slug,
-            name: projects.name,
-            orgId: projects.orgId,
-            createdBy: projects.createdBy,
-            apiKey: projects.apiKey,
-            createdAt: projects.createdAt,
-          });
-        const project = inserted[0];
-        if (!project) {
-          throw new Error('projects: insert returned no row');
-        }
-
-        await tx.insert(projectMembers).values({
-          userId,
-          projectId: project.id,
-          role: 'admin',
-        });
-
-        return project;
+      const created = await createProject({
+        slug,
+        name,
+        orgId,
+        createdBy: userId,
+        description,
+        kind,
       });
 
       return c.json(created, 201);
     } catch (err: unknown) {
-      if (isUniqueViolation(err)) {
+      if (err instanceof ProjectSlugTakenError) {
         throw new HTTPException(409, {
           message: 'slug already taken',
           cause: { code: 'SLUG_TAKEN' },

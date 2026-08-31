@@ -1,8 +1,15 @@
-import { sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
 import { jobTypes } from '../../db/schema.js';
-import { BUCKETS, METRICS, runTimeseries } from '../../metrics/queries.js';
+import {
+  BUCKETS,
+  METRICS,
+  resumeDropsForProject,
+  retryRescues,
+  runTimeseries,
+  sessionFailures,
+  stepDurationsAcrossProjects,
+  stepDurationsForProject,
+} from '../../metrics/queries.js';
 import {
   FAILURE_CAUSE_ORIGIN,
   type FailureCause,
@@ -49,17 +56,6 @@ const sessionFailuresInputSchema = z
   })
   .strict();
 
-type AggRow = {
-  project_id: string;
-  project_slug: string | null;
-  step: string;
-  p50_s: number | string | null;
-  p95_s: number | string | null;
-  avg_s: number | string | null;
-  total_cost: number | string | null;
-  n: number | string | null;
-};
-
 function num(x: number | string | null | undefined): number {
   if (x === null || x === undefined) return 0;
   return typeof x === 'number' ? x : Number(x);
@@ -77,34 +73,8 @@ export const forgeMetricsStepDurationsTool: ContextScopedMcpToolFactory = (ctx) 
       return { rows: [], windowDays: input.days };
     }
 
-    // Build the id list as a parenthesised parameter list via `sql.join` and
-    // use `IN (...)`. Embedding a JS array directly (`= ANY(${visibleIds}::uuid[])`)
-    // expands it as a record tuple ($1,$2,...), so `ANY(tuple::uuid[])` is a
-    // malformed array literal that throws at query time. Same idiom as
-    // projects/health-routes.ts.
-    const projectIdList = sql.join(
-      visibleIds.map((id) => sql`${id}`),
-      sql`, `,
-    );
-    const stepFilter = input.step ? sql`AND v.step = ${input.step}` : sql``;
-    const result = await db.execute(sql`
-      SELECT v.project_id,
-             p.slug AS project_slug,
-             v.step,
-             percentile_disc(0.5) WITHIN GROUP (ORDER BY v.duration_seconds) AS p50_s,
-             percentile_disc(0.95) WITHIN GROUP (ORDER BY v.duration_seconds) AS p95_s,
-             avg(v.duration_seconds)::float AS avg_s,
-             sum(v.cost_usd)::float AS total_cost,
-             count(v.duration_seconds)::int AS n
-      FROM pipeline_run_step_durations v
-      LEFT JOIN projects p ON p.id = v.project_id
-      WHERE v.project_id IN (${projectIdList})
-        AND v.started_at >= now() - (${input.days}::int * interval '1 day')
-        ${stepFilter}
-      GROUP BY v.project_id, p.slug, v.step
-      ORDER BY v.project_id, v.step
-    `);
-    const rows = (result as unknown as AggRow[]).map((r) => ({
+    const result = await stepDurationsAcrossProjects(visibleIds, input.days, input.step);
+    const rows = result.map((r) => ({
       projectId: r.project_id,
       projectSlug: r.project_slug,
       step: r.step,
@@ -127,23 +97,8 @@ export const forgeMetricsProjectRetryRescuesTool: ContextScopedMcpToolFactory = 
     const input = retryRescuesInputSchema.parse(args);
     await assertPrincipalIsMember(ctx.principal, input.projectId);
 
-    const result = await db.execute(sql`
-      SELECT failure_kind, failure_reason, count(*)::int AS rescues,
-             max(rescued_at) AS last_rescued_at
-      FROM retry_rescues
-      WHERE project_id = ${input.projectId}
-        AND rescued_at >= now() - (${input.days}::int * interval '1 day')
-      GROUP BY failure_kind, failure_reason
-      ORDER BY rescues DESC, last_rescued_at DESC
-    `);
-    const rows = (
-      result as unknown as Array<{
-        failure_kind: string | null;
-        failure_reason: string;
-        rescues: number | string;
-        last_rescued_at: string | Date;
-      }>
-    ).map((row) => ({
+    const result = await retryRescues(input.projectId, input.days);
+    const rows = result.map((row) => ({
       failureKind: row.failure_kind,
       failureReason: row.failure_reason,
       rescues: num(row.rescues),
@@ -190,21 +145,11 @@ export interface ResumeContinuity {
 // cm:guard `offered` is the denominator and it is defined by `priorClaudeSessionId IS NOT NULL`, never by counting rows. That predicate is what keeps attempt 1 out: an attempt with no prior session to continue is the normal shape of a first try, and folding those into the denominator would make the rate shrink as the project does MORE fresh work.
 // cm:guard this must NOT inherit the failure histogram's status filter. A resume is dropped on healthy dispatches too — restricting it to `failed`/`cancelled_stale` rows would measure the drop rate of attempts that later died, report it as the drop rate, and leave both numbers wrong.
 async function loadResumeContinuity(projectId: string, days: number): Promise<ResumeContinuity> {
-  const result = await db.execute(sql`
-    SELECT metadata->'resume'->>'dropReason' AS drop_reason, count(*)::int AS sessions
-    FROM agent_sessions
-    WHERE project_id = ${projectId}
-      AND created_at >= now() - (${days}::int * interval '1 day')
-      AND metadata->'resume'->>'priorClaudeSessionId' IS NOT NULL
-    GROUP BY 1
-  `);
+  const result = await resumeDropsForProject(projectId, days);
   let offered = 0;
   let dropped = 0;
   const rows: ResumeContinuityRow[] = [];
-  for (const row of result as unknown as Array<{
-    drop_reason: string | null;
-    sessions: number | string;
-  }>) {
+  for (const row of result) {
     const sessions = num(row.sessions);
     offered += sessions;
     if (row.drop_reason === null) continue;
@@ -271,23 +216,11 @@ export const forgeMetricsSessionFailuresTool: ContextScopedMcpToolFactory = (ctx
     const input = sessionFailuresInputSchema.parse(args);
     await assertPrincipalIsMember(ctx.principal, input.projectId);
 
-    const result = await db.execute(sql`
-      SELECT status, failure_reason, count(*)::int AS sessions, max(updated_at) AS last_at
-      FROM agent_sessions
-      WHERE project_id = ${input.projectId}
-        AND updated_at >= now() - (${input.days}::int * interval '1 day')
-        AND (status IN ('failed', 'cancelled_stale') OR failure_reason IS NOT NULL)
-      GROUP BY status, failure_reason
-    `);
+    const result = await sessionFailures(input.projectId, input.days);
 
     const byCause = new Map<FailureCause, { sessions: number; lastAt: Date | null }>();
     let nonFailedWithFailureReason = 0;
-    for (const row of result as unknown as Array<{
-      status: string | null;
-      failure_reason: string | null;
-      sessions: number | string;
-      last_at: string | Date | null;
-    }>) {
+    for (const row of result) {
       if (!FAILED_SESSION_STATUSES.has(row.status ?? '')) {
         nonFailedWithFailureReason += num(row.sessions);
         continue;
@@ -340,35 +273,13 @@ export const forgeMetricsProjectStepDurationsTool: ContextScopedMcpToolFactory =
     const input = projectInputSchema.parse(args);
     await assertPrincipalIsMember(ctx.principal, input.projectId);
 
-    const stepFilter = input.step ? sql`AND step = ${input.step}` : sql``;
-    const breakdownCol =
-      input.breakdown === 'device'
-        ? sql`device_id`
-        : input.breakdown === 'model'
-          ? sql`model_used`
-          : null;
-    const breakdownSelect = breakdownCol ? sql`${breakdownCol} AS breakdown_key,` : sql``;
-    const breakdownGroup = breakdownCol ? sql`, ${breakdownCol}` : sql``;
-    const result = await db.execute(sql`
-      SELECT step,
-             ${breakdownSelect}
-             percentile_disc(0.5) WITHIN GROUP (ORDER BY duration_seconds) AS p50_s,
-             percentile_disc(0.95) WITHIN GROUP (ORDER BY duration_seconds) AS p95_s,
-             avg(duration_seconds)::float AS avg_s,
-             sum(cost_usd)::float AS total_cost,
-             count(duration_seconds)::int AS n
-      FROM pipeline_run_step_durations
-      WHERE project_id = ${input.projectId}
-        AND started_at >= now() - (${input.days}::int * interval '1 day')
-        ${stepFilter}
-      GROUP BY step${breakdownGroup}
-      ORDER BY step
-    `);
-    const rows = (
-      result as unknown as Array<
-        Omit<AggRow, 'project_id' | 'project_slug'> & { breakdown_key?: string | null }
-      >
-    ).map((r) => ({
+    const result = await stepDurationsForProject(
+      input.projectId,
+      input.days,
+      input.step,
+      input.breakdown,
+    );
+    const rows = result.map((r) => ({
       step: r.step,
       ...(input.breakdown === 'device' ? { deviceId: r.breakdown_key ?? null } : {}),
       ...(input.breakdown === 'model' ? { modelUsed: r.breakdown_key ?? null } : {}),

@@ -136,14 +136,7 @@ describe('forge_runners', () => {
           ]),
       }),
     }));
-    // in-flight aggregation
-    selectImpl.mockImplementationOnce(() => ({
-      from: () => ({
-        where: () => ({
-          groupBy: () => Promise.resolve([{ runnerId: RUNNER_ID, n: 2 }]),
-        }),
-      }),
-    }));
+    executeImpl.mockResolvedValueOnce([{ runner_id: RUNNER_ID, n: 2 }]);
     const tool = forgeRunnersTool(buildCtx());
     const res = (await tool.handler({ action: 'list' })) as {
       runners: Array<{ inFlightCount: number; config: { apiKey: string } }>;
@@ -228,7 +221,7 @@ describe('forge_runners', () => {
   it('retire with in-flight jobs and no force throws RUNNER_BUSY', async () => {
     mockLimitOnce([{ projectId: PROJECT_ID }]); // runner project lookup
     mockLimitOnce([adminAccessRow]); // assertPrincipalIsAdmin → effective admin
-    executeImpl.mockResolvedValueOnce([{ count: '2' }]); // countInFlightForRunner
+    executeImpl.mockResolvedValueOnce([{ n: '2' }]);
     const tool = forgeRunnersTool(buildCtx());
     await expect(tool.handler({ action: 'retire', runnerId: RUNNER_ID })).rejects.toThrow(
       /RUNNER_BUSY/,
@@ -238,10 +231,11 @@ describe('forge_runners', () => {
   it('retire with force:true transitions through draining → disabled', async () => {
     mockLimitOnce([{ projectId: PROJECT_ID }]);
     mockLimitOnce([adminAccessRow]);
-    executeImpl.mockResolvedValueOnce([{ count: '1' }]);
-    // draining update (no returning needed)
+    executeImpl.mockResolvedValueOnce([{ n: '1' }]);
     updateImpl.mockImplementationOnce(() => ({
-      set: () => ({ where: () => Promise.resolve(undefined) }),
+      set: () => ({
+        where: () => ({ returning: () => Promise.resolve([runnerRow]) }),
+      }),
     }));
     // disabled update with returning
     updateImpl.mockImplementationOnce(() => ({

@@ -49,7 +49,7 @@ describe('readRunnerLoad', () => {
 
   let issSeq = 0;
 
-  async function insertRun(projectId: string): Promise<string> {
+  async function insertRun(projectId: string, status = 'running'): Promise<string> {
     const issueId = randomUUID();
     issSeq += 1;
     await harness.db.execute(sql`
@@ -60,13 +60,18 @@ describe('readRunnerLoad', () => {
     const runId = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
-      VALUES (${runId}, ${projectId}, ${issueId}, 'issue', 'running', now())
+      VALUES (${runId}, ${projectId}, ${issueId}, 'issue', ${status}, now())
     `);
     return runId;
   }
 
-  async function insertJob(projectId: string, runnerId: string, status: string) {
-    const runId = await insertRun(projectId);
+  async function insertJob(
+    projectId: string,
+    runnerId: string,
+    status: string,
+    runStatus = 'running',
+  ) {
+    const runId = await insertRun(projectId, runStatus);
     await harness.db.execute(sql`
       INSERT INTO jobs (id, project_id, type, status, runner_id, pipeline_run_id, payload, queued_at, created_by)
       VALUES (${randomUUID()}, ${projectId}, 'code', ${status}, ${runnerId}, ${runId}, '{}'::jsonb, now(),
@@ -123,6 +128,31 @@ describe('readRunnerLoad', () => {
 
     const load = await readRunnerLoad(mine.id);
     expect(load.map((r) => r.id)).toEqual([ours]);
+  });
+
+  // cm:guard ISS-258 — an orphan under a terminal run holds no cap slot, and `countInFlightForRunner` (the gate that actually allocates one) has excluded it since the 2026-05-27 stall. Drop this filter from the reporting side and the PM reads a runner as full that the dispatcher will happily fill, then routes work away from a healthy box on the strength of a job nobody is running.
+  // cm:guard the I1 trigger (migration 0113) is DISABLED for this case on purpose, and re-enabled after. It cancels an active job the moment its run goes terminal, so with it on the orphan cannot be written at all and the assertion below passes whether the WHERE filter is there or not — measured 2026-08-31: removing the filter left the test green. The filter is the safety net for drift the trigger normally prevents, and this is the only way to witness it doing its job.
+  it('does not count a job whose pipeline run has already gone terminal', async () => {
+    const project = await seedProject();
+    const runner = await insertRunner(project.id, 'r');
+
+    await insertJob(project.id, runner, 'running', 'running');
+    await insertJob(project.id, runner, 'running', 'paused');
+
+    await harness.db.execute(
+      sql`ALTER TABLE jobs DISABLE TRIGGER trg_jobs_no_active_under_terminal_run`,
+    );
+    try {
+      await insertJob(project.id, runner, 'running', 'completed');
+      await insertJob(project.id, runner, 'dispatched', 'failed');
+    } finally {
+      await harness.db.execute(
+        sql`ALTER TABLE jobs ENABLE TRIGGER trg_jobs_no_active_under_terminal_run`,
+      );
+    }
+
+    const [row] = await readRunnerLoad(project.id);
+    expect(row?.inFlight).toBe(2);
   });
 
   it('answers an empty project without touching jobs', async () => {

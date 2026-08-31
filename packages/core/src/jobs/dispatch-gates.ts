@@ -34,6 +34,7 @@ import {
   TRIGGER_STATUS_BY_JOB_TYPE,
   WORKING_STATUS_BY_JOB_TYPE,
 } from '../pipeline/registry.js';
+import { countInFlightForOneRunner } from './in-flight.js';
 
 export type GateSkipReason =
   | 'not_found'
@@ -193,15 +194,7 @@ export async function hasNonTerminalPriorSession(
 // cm:guard every dispatch gate must require pr.status IN ('running','paused') or a terminal-parent orphan wedges the runner cap
 // cm:edge sideeffect -> packages/core/drizzle/migrations/0113_i1_orphan_trigger.sql — a DB trigger also cancels active jobs under terminal runs
 export async function countInFlightForRunner(runnerId: string): Promise<number> {
-  const rows = await db.execute<{ count: string }>(sql`
-    SELECT COUNT(*)::text AS count
-    FROM jobs j
-    LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
-    WHERE j.runner_id = ${runnerId}
-      AND j.status IN ('dispatched', 'running')
-      AND (pr.id IS NULL OR pr.status IN ('running', 'paused'))
-  `);
-  return Number(rows[0]?.count ?? '0');
+  return countInFlightForOneRunner(runnerId);
 }
 
 /**

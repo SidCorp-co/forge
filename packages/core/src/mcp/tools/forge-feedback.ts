@@ -1,16 +1,21 @@
-import { and, count, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { env } from '../../config/env.js';
-import { db } from '../../db/client.js';
 import {
-  agentSessions,
   feedbackKinds,
   feedbackReports,
   feedbackSeverities,
   feedbackTargets,
-  issues,
-  projects,
 } from '../../db/schema.js';
+import {
+  countReportsForJob,
+  insertReport,
+  issueVisibleIn,
+  listReports,
+  readReport,
+  resolveActiveSessionId,
+  stampReviewed,
+} from '../../feedback/service.js';
 import { resolveActiveJobContext } from '../../jobs/active-job-context.js';
 import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../../prompt/sanitize.js';
 import {
@@ -81,28 +86,6 @@ function frameReport<T extends ReportRow>(r: T): T {
   };
 }
 
-const reportColumns = {
-  id: feedbackReports.id,
-  projectId: feedbackReports.projectId,
-  projectSlug: projects.slug,
-  issueId: feedbackReports.issueId,
-  runId: feedbackReports.runId,
-  jobId: feedbackReports.jobId,
-  stage: feedbackReports.stage,
-  kind: feedbackReports.kind,
-  severity: feedbackReports.severity,
-  target: feedbackReports.target,
-  targetRef: feedbackReports.targetRef,
-  summary: feedbackReports.summary,
-  detail: feedbackReports.detail,
-  suggestion: feedbackReports.suggestion,
-  signalKey: feedbackReports.signalKey,
-  sessionId: feedbackReports.sessionId,
-  reviewedAt: feedbackReports.reviewedAt,
-  linkedIssueId: feedbackReports.linkedIssueId,
-  createdAt: feedbackReports.createdAt,
-} as const;
-
 function buildSignalKey(
   target: string,
   targetRef: string | null | undefined,
@@ -110,18 +93,6 @@ function buildSignalKey(
 ): string {
   const safeRef = targetRef ? stripFrameTokens(sanitizeUntrusted(targetRef)) : '-';
   return `self_report:${target}:${safeRef}:${kind}`;
-}
-
-// ISS-557 — steward runs are schedule sessions with no job row, so the job-join
-// above resolves null. This session-level lookup covers both pipeline + schedule sessions.
-async function resolveActiveSessionId(deviceId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ id: agentSessions.id })
-    .from(agentSessions)
-    .where(and(eq(agentSessions.deviceId, deviceId), eq(agentSessions.status, 'running')))
-    .orderBy(desc(agentSessions.updatedAt))
-    .limit(1);
-  return row?.id ?? null;
 }
 
 export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
@@ -180,12 +151,7 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
         // have no pipeline run to cap by; skip the check.
         if (jobId) {
           const limit = env.FEEDBACK_MAX_PER_JOB;
-          const [countRow] = await db
-            .select({ n: count() })
-            .from(feedbackReports)
-            .where(eq(feedbackReports.jobId, jobId))
-            .limit(1);
-          const existing = Number(countRow?.n ?? 0);
+          const existing = await countReportsForJob(jobId);
           if (existing >= limit) {
             return { ok: false, reason: 'rate_limited', limit };
           }
@@ -193,28 +159,25 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         const signalKey = buildSignalKey(input.target, input.targetRef, input.kind);
 
-        const [inserted] = await db
-          .insert(feedbackReports)
-          .values({
-            projectId,
-            issueId: issueId ?? undefined,
-            runId: runId ?? undefined,
-            jobId: jobId ?? undefined,
-            stage: stage ?? undefined,
-            kind: input.kind,
-            severity: input.severity ?? 'low',
-            target: input.target,
-            targetRef: input.targetRef ?? undefined,
-            summary: input.summary,
-            detail: input.detail ?? undefined,
-            suggestion: input.suggestion ?? undefined,
-            signalKey,
-            sessionId: sessionId ?? undefined,
-          })
-          .returning({ id: feedbackReports.id, signalKey: feedbackReports.signalKey });
+        const insertedId = await insertReport({
+          projectId,
+          issueId: issueId ?? undefined,
+          runId: runId ?? undefined,
+          jobId: jobId ?? undefined,
+          stage: stage ?? undefined,
+          kind: input.kind,
+          severity: input.severity ?? 'low',
+          target: input.target,
+          targetRef: input.targetRef ?? undefined,
+          summary: input.summary,
+          detail: input.detail ?? undefined,
+          suggestion: input.suggestion ?? undefined,
+          signalKey,
+          sessionId: sessionId ?? undefined,
+        });
 
-        if (!inserted) throw new Error('forge_feedback: insert returned no row');
-        return { ok: true, id: inserted.id, signalKey: inserted.signalKey };
+        if (!insertedId) throw new Error('forge_feedback: insert returned no row');
+        return { ok: true, id: insertedId, signalKey };
       }
 
       case 'list': {
@@ -248,21 +211,10 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
           limit = input.limit ?? 25;
         }
 
-        const rows = await db
-          .select(reportColumns)
-          .from(feedbackReports)
-          .leftJoin(projects, eq(projects.id, feedbackReports.projectId))
-          .where(
-            and(
-              scopeCondition,
-              kindCondition,
-              targetCondition,
-              severityCondition,
-              reviewedCondition,
-            ),
-          )
-          .orderBy(desc(feedbackReports.createdAt))
-          .limit(overfetch(limit));
+        const rows = await listReports(
+          [scopeCondition, kindCondition, targetCondition, severityCondition, reviewedCondition],
+          overfetch(limit),
+        );
 
         return buildListEnvelope({
           key: 'reports',
@@ -275,13 +227,7 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'get': {
         if (!input.reportId) throw new Error('BAD_REQUEST: reportId is required for get');
 
-        const [row] = await db
-          .select(reportColumns)
-          .from(feedbackReports)
-          .leftJoin(projects, eq(projects.id, feedbackReports.projectId))
-          .where(eq(feedbackReports.id, input.reportId))
-          .limit(1);
-
+        const row = await readReport(input.reportId);
         if (!row) throw new Error('NOT_FOUND: feedback report not found');
 
         // No caller-supplied project here — membership is checked against the
@@ -300,15 +246,10 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
           if (visibleIds.length === 0) {
             throw new Error('NOT_FOUND: linkedIssueId not found in any project you can see');
           }
-          const [issueRow] = await db
-            .select({ id: issues.id })
-            .from(issues)
-            .where(and(eq(issues.id, linkedIssueId), inArray(issues.projectId, visibleIds)))
-            .limit(1);
-          if (!issueRow) {
+          if (!(await issueVisibleIn(linkedIssueId, visibleIds))) {
             throw new Error('NOT_FOUND: linkedIssueId not found in any project you can see');
           }
-          return issueRow.id;
+          return linkedIssueId;
         };
         // cm:why bulk and single share this so a signalKey fold and a one-off fold can never drift on what a valid link is
         const linkPatch = async (): Promise<{ linkedIssueId?: string | null }> => {
@@ -324,16 +265,13 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
             if (visibleIds.length === 0) {
               return { ok: true, count: 0, scope: 'all', linkedIssueId: null };
             }
-            const updated = await db
-              .update(feedbackReports)
-              .set({ reviewedAt: reviewed ? new Date() : null, ...(await linkPatch()) })
-              .where(
-                and(
-                  inArray(feedbackReports.projectId, visibleIds),
-                  eq(feedbackReports.signalKey, input.signalKey),
-                ),
-              )
-              .returning({ id: feedbackReports.id });
+            const updated = await stampReviewed(
+              [
+                inArray(feedbackReports.projectId, visibleIds),
+                eq(feedbackReports.signalKey, input.signalKey),
+              ],
+              { reviewedAt: reviewed ? new Date() : null, ...(await linkPatch()) },
+            );
             return {
               ok: true,
               count: updated.length,
@@ -344,16 +282,13 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
 
           const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
           await assertPrincipalIsMember(principal, projectId);
-          const updated = await db
-            .update(feedbackReports)
-            .set({ reviewedAt: reviewed ? new Date() : null, ...(await linkPatch()) })
-            .where(
-              and(
-                eq(feedbackReports.projectId, projectId),
-                eq(feedbackReports.signalKey, input.signalKey),
-              ),
-            )
-            .returning({ id: feedbackReports.id });
+          const updated = await stampReviewed(
+            [
+              eq(feedbackReports.projectId, projectId),
+              eq(feedbackReports.signalKey, input.signalKey),
+            ],
+            { reviewedAt: reviewed ? new Date() : null, ...(await linkPatch()) },
+          );
           return {
             ok: true,
             count: updated.length,
@@ -376,21 +311,11 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
         // cm:why ISS-712 — linking is explicit only; nothing here auto-stamps a link by heuristic
         const patch = await linkPatch();
 
-        const [updated] = await db
-          .update(feedbackReports)
-          .set({
-            reviewedAt: reviewed ? new Date() : null,
-            // cm:why omitting the field leaves an existing link untouched (back-compat); only reviewed:false clears it
-            ...patch,
-          })
-          .where(
-            and(eq(feedbackReports.id, input.reportId), eq(feedbackReports.projectId, projectId)),
-          )
-          .returning({
-            id: feedbackReports.id,
-            reviewedAt: feedbackReports.reviewedAt,
-            linkedIssueId: feedbackReports.linkedIssueId,
-          });
+        // cm:why omitting the field leaves an existing link untouched (back-compat); only reviewed:false clears it
+        const [updated] = await stampReviewed(
+          [eq(feedbackReports.id, input.reportId), eq(feedbackReports.projectId, projectId)],
+          { reviewedAt: reviewed ? new Date() : null, ...patch },
+        );
 
         if (!updated) throw new Error('NOT_FOUND: feedback report not found in this project');
         return {

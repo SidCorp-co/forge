@@ -17,6 +17,19 @@
   without its transcript, and the list reports the message count in its place. The same was true of
   schedules, whose prompt runs to twenty thousand characters a row.
 
+- Creating a project no longer blames the slug for a collision it did not cause. Both the web and
+  the agent path told you the slug was taken whenever the database refused the row for uniqueness —
+  and three different things on that row are unique, so a caller could be sent off renaming a slug
+  that was never the problem. The two paths were separate copies of the same insert; they are one
+  now, and only a slug conflict reports a slug conflict.
+
+- Reports of how busy a runner is now agree with the decision that actually places work on it.
+  Four surfaces counted the jobs a runner is carrying, and none of them applied the rule the
+  dispatcher has applied since a stall in May: a job whose pipeline run has already finished is not
+  occupying anything. They counted it, so a runner could read as full to the project manager while
+  the dispatcher considered it free — and work was routed away from a healthy machine on the
+  strength of a job nobody was running.
+
 - The project manager's two views of runner load no longer disagree. Its per-runner report and the
   digest it primes each decision turn with each ran their own copy of "how many jobs is this runner
   carrying", and the copies had already parted: one counted a queued job as occupying a runner and

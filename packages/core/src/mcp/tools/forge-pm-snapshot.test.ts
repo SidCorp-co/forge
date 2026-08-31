@@ -24,6 +24,7 @@ chain.then = (resolve: any, reject: any) => Promise.resolve(queue.shift()).then(
 vi.mock('../../db/client.js', () => ({
   db: {
     select: vi.fn(() => chain),
+    execute: () => Promise.resolve(queue.shift()),
   },
 }));
 
@@ -123,7 +124,7 @@ describe('forge_pm.snapshot', () => {
           lastSeenAt: new Date('2026-05-01T00:00:00Z'),
         },
       ],
-      [{ runnerId: 'r1', n: 2 }],
+      [{ runner_id: 'r1', n: 2 }],
     );
 
     const result = (await tool.handler({ projectId: PROJECT_ID })) as {
