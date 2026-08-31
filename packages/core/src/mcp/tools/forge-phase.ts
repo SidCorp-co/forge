@@ -11,12 +11,10 @@
 //
 // Design: docs/proposals/agent-driven-pipeline.md
 
-import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
-import { pipelineRuns } from '../../db/schema.js';
 import { phaseJournalOutcomes } from '../../db/schema-journal.js';
 import { endPhase, resumePoint, startPhase } from '../../pipeline/phase-journal.js';
+import { findRunProjectId } from '../../pipeline/runs.js';
 import type { ContextScopedMcpToolFactory } from './lib.js';
 import { assertPrincipalIsWriter, zodToMcpSchema } from './lib.js';
 
@@ -35,13 +33,9 @@ const inputSchema = z.object({
 
 // cm:guard the run must belong to the project the principal was authorised against — assertPrincipalIsWriter checks the PROJECT, so without this a writer on any project could append phases to any run in the fleet
 async function assertRunInProject(runId: string, projectId: string): Promise<void> {
-  const [row] = await db
-    .select({ projectId: pipelineRuns.projectId })
-    .from(pipelineRuns)
-    .where(eq(pipelineRuns.id, runId))
-    .limit(1);
-  if (!row) throw new Error('NOT_FOUND: pipeline run not found');
-  if (row.projectId !== projectId) throw new Error('NOT_FOUND: pipeline run not found in project');
+  const owner = await findRunProjectId(runId);
+  if (!owner) throw new Error('NOT_FOUND: pipeline run not found');
+  if (owner !== projectId) throw new Error('NOT_FOUND: pipeline run not found in project');
 }
 
 export const forgePhaseTool: ContextScopedMcpToolFactory = (ctx) => ({

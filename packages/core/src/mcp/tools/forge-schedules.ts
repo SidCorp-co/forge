@@ -1,13 +1,12 @@
-import { and, asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
-import { schedules } from '../../db/schema.js';
 import { listImprovementMessages } from '../../schedules/messages/registry.js';
 import {
   createSchedule,
   deleteSchedule,
   getSchedule,
   listScheduleRuns,
+  listSchedulesForMcp,
+  readScheduleProjectId,
   runScheduleNow,
   updateSchedule,
 } from '../../schedules/service.js';
@@ -52,18 +51,6 @@ const inputSchema = z
   })
   .strict();
 
-// Fetch only the projectId from a schedule row. Throws 'NOT_FOUND: schedule not found'
-// when missing so the MCP gate can fire 'not_found' before any data is returned.
-async function fetchScheduleProjectId(scheduleId: string): Promise<string> {
-  const [row] = await db
-    .select({ projectId: schedules.projectId })
-    .from(schedules)
-    .where(eq(schedules.id, scheduleId))
-    .limit(1);
-  if (!row) throw new Error('NOT_FOUND: schedule not found');
-  return row.projectId;
-}
-
 export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_schedules',
   description:
@@ -84,37 +71,14 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'list': {
         if (!input.projectId) throw new Error('BAD_REQUEST: projectId is required for action=list');
         await assertPrincipalIsMember(principal, input.projectId);
-        // Explicit projection — omit `prompt` (up to 20k chars per row).
-        const conditions = [eq(schedules.projectId, input.projectId)];
-        if (input.enabled !== undefined) conditions.push(eq(schedules.enabled, input.enabled));
-        const rows = await db
-          .select({
-            id: schedules.id,
-            projectId: schedules.projectId,
-            name: schedules.name,
-            cron: schedules.cron,
-            runner: schedules.runner,
-            enabled: schedules.enabled,
-            targetProjectSlug: schedules.targetProjectSlug,
-            lastRunAt: schedules.lastRunAt,
-            nextRunAt: schedules.nextRunAt,
-            lastStatus: schedules.lastStatus,
-            templateKey: schedules.templateKey,
-            mode: schedules.mode,
-            kind: schedules.kind,
-            createdAt: schedules.createdAt,
-            updatedAt: schedules.updatedAt,
-          })
-          .from(schedules)
-          .where(and(...conditions))
-          .orderBy(asc(schedules.createdAt));
+        const rows = await listSchedulesForMcp(input.projectId, input.enabled);
         return { schedules: rows };
       }
 
       case 'get': {
         if (!input.scheduleId)
           throw new Error('BAD_REQUEST: scheduleId is required for action=get');
-        const projectId = await fetchScheduleProjectId(input.scheduleId);
+        const projectId = await readScheduleProjectId(input.scheduleId);
         await assertPrincipalIsMember(principal, projectId);
         const row = await getSchedule(input.scheduleId, userId);
         return { schedule: row };
@@ -123,7 +87,7 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'runs': {
         if (!input.scheduleId)
           throw new Error('BAD_REQUEST: scheduleId is required for action=runs');
-        const projectId = await fetchScheduleProjectId(input.scheduleId);
+        const projectId = await readScheduleProjectId(input.scheduleId);
         await assertPrincipalIsMember(principal, projectId);
         return listScheduleRuns(input.scheduleId, userId, input.limit);
       }
@@ -165,7 +129,7 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'update': {
         if (!input.scheduleId)
           throw new Error('BAD_REQUEST: scheduleId is required for action=update');
-        const projectId = await fetchScheduleProjectId(input.scheduleId);
+        const projectId = await readScheduleProjectId(input.scheduleId);
         await assertPrincipalIsAdmin(principal, projectId);
         const updated = await updateSchedule(
           input.scheduleId,
@@ -191,7 +155,7 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'delete': {
         if (!input.scheduleId)
           throw new Error('BAD_REQUEST: scheduleId is required for action=delete');
-        const projectId = await fetchScheduleProjectId(input.scheduleId);
+        const projectId = await readScheduleProjectId(input.scheduleId);
         await assertPrincipalIsAdmin(principal, projectId);
         await deleteSchedule(input.scheduleId, userId);
         return { deleted: true };
@@ -200,7 +164,7 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
       case 'run': {
         if (!input.scheduleId)
           throw new Error('BAD_REQUEST: scheduleId is required for action=run');
-        const projectId = await fetchScheduleProjectId(input.scheduleId);
+        const projectId = await readScheduleProjectId(input.scheduleId);
         await assertPrincipalIsWriter(principal, projectId);
         return runScheduleNow(input.scheduleId, userId);
       }

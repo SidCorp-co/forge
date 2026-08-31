@@ -31,6 +31,7 @@ import { agentSessionInboxRoutes } from './inbox-routes.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
 import { agentSessionPipelineControlRoutes } from './pipeline-control-routes.js';
 import { BLIND_SCHEDULE_RUN_REASON, isBlindScheduleRun } from './schedule-evidence.js';
+import { agentSessionListColumns } from './service.js';
 import {
   assertAgentChatOwner,
   assertDeviceOwnsSession,
@@ -378,7 +379,7 @@ agentSessionRoutes.get(
       .from(agentSessions)
       .where(where ?? undefined);
     const rows = await db
-      .select()
+      .select(agentSessionListColumns)
       .from(agentSessions)
       .where(where ?? undefined)
       .orderBy(desc(agentSessions.updatedAt))

@@ -1,9 +1,9 @@
-import { asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { extractIssueBranchOverride, resolveIssueBranches } from '../../branches/resolve.js';
 import { listCommentAttachmentsForIssue } from '../../comments/attachment-service.js';
-import { db } from '../../db/client.js';
-import { comments, type IssueStatus, type JobType, jobTypes, projects } from '../../db/schema.js';
+import { listIssueComments } from '../../comments/service.js';
+import type { IssueStatus, JobType } from '../../db/schema.js';
+import { jobTypes } from '../../db/schema.js';
 import { applyStatusTransition } from '../../issues/apply-transition.js';
 import { getIssueContexts } from '../../pipeline/issue-context-store.js';
 import {
@@ -11,6 +11,7 @@ import {
   TRIGGER_STATUS_BY_JOB_TYPE,
   WORKING_STATUS_BY_JOB_TYPE,
 } from '../../pipeline/registry.js';
+import { readProjectBranches } from '../../projects/service.js';
 import {
   heavyFieldChars,
   type IssueRow,
@@ -108,19 +109,8 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
       statusNote = `not flipped: issue is at '${issue.status}', not the '${stage}' trigger '${triggerStatus}'`;
     }
 
-    const [commentRows, commentAttachmentsByCommentId, handoffs, [projectRow]] = await Promise.all([
-      db
-        .select({
-          documentId: comments.id,
-          authorId: comments.authorId,
-          body: comments.body,
-          parentId: comments.parentId,
-          createdAt: comments.createdAt,
-          isAi: comments.isAi,
-        })
-        .from(comments)
-        .where(eq(comments.issueId, input.issueId))
-        .orderBy(asc(comments.createdAt)),
+    const [commentRows, commentAttachmentsByCommentId, handoffs, projectRow] = await Promise.all([
+      listIssueComments(input.issueId),
       listCommentAttachmentsForIssue(input.issueId),
       getIssueContexts({
         projectId: input.projectId,
@@ -129,14 +119,7 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
         limit: 5,
         orderDir: 'desc',
       }),
-      db
-        .select({
-          baseBranch: projects.baseBranch,
-          productionBranch: projects.productionBranch,
-        })
-        .from(projects)
-        .where(eq(projects.id, input.projectId))
-        .limit(1),
+      readProjectBranches(input.projectId),
     ]);
 
     // Mirror forge_config's issue-aware branch resolution (metadata override,
@@ -153,10 +136,13 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
       },
     );
 
-    const allComments = commentRows.map((c) => ({
-      ...c,
-      attachments: commentAttachmentsByCommentId.get(c.documentId) ?? [],
-    }));
+    const allComments = commentRows.map(
+      ({ id, issueId: _issueId, updatedAt: _updatedAt, ...c }) => ({
+        documentId: id,
+        ...c,
+        attachments: commentAttachmentsByCommentId.get(id) ?? [],
+      }),
+    );
     const commentsTotal = allComments.length;
     // Keep the most-recent N, then trim oldest-first until the serialized
     // comments fit the char budget — always keep ≥1 when any exist.

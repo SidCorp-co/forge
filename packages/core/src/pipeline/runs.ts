@@ -331,3 +331,13 @@ async function emitCloseHookPerRow(
     });
   }
 }
+
+/** The project a pipeline run belongs to, or `null` when there is no such run. */
+export async function findRunProjectId(runId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ projectId: pipelineRuns.projectId })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  return row?.projectId ?? null;
+}

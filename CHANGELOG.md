@@ -10,6 +10,13 @@
 
 ### Fixed
 
+- Listing chat and agent sessions no longer ships every word of every transcript. The web list
+  selected the whole row, transcript column included, so a page of twenty conversations carried
+  twenty full histories to render a title and a status — while the agent-facing list had projected
+  around exactly that, and left a note saying why. Both now read one definition of a session row
+  without its transcript, and the list reports the message count in its place. The same was true of
+  schedules, whose prompt runs to twenty thousand characters a row.
+
 - The project manager's two views of runner load no longer disagree. Its per-runner report and the
   digest it primes each decision turn with each ran their own copy of "how many jobs is this runner
   carrying", and the copies had already parted: one counted a queued job as occupying a runner and

@@ -1,7 +1,6 @@
-import { and, desc, eq, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
-import { agentSessionStatuses, agentSessions } from '../../db/schema.js';
+import { listAgentSessionsForMcp, readAgentSession } from '../../agent-sessions/service.js';
+import { agentSessionStatuses } from '../../db/schema.js';
 import {
   assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,
@@ -41,39 +40,12 @@ export const forgeAgentSessionsListTool: DeviceScopedMcpToolFactory = (device) =
     await assertDeviceOwnerIsMember(device, projectId);
 
     const sessionsLimit = limit ?? 50;
-    const conds: SQL[] = [eq(agentSessions.projectId, projectId)];
-    if (status) conds.push(eq(agentSessions.status, status));
-    if (issueId) {
-      conds.push(sql`${agentSessions.metadata}->>'issueId' = ${issueId}`);
-    }
-
-    // ISS-428 — explicit body-free projection. NEVER `db.select()` here: the
-    // `messages` jsonb is a full transcript (multi-MB) that overflows the MCP
-    // token cap and crashes fragile agents. Heavy jsonb stays in `.get`.
-    const rows = await db
-      .select({
-        id: agentSessions.id,
-        projectId: agentSessions.projectId,
-        userId: agentSessions.userId,
-        deviceId: agentSessions.deviceId,
-        pipelineRunId: agentSessions.pipelineRunId,
-        title: agentSessions.title,
-        status: agentSessions.status,
-        claudeSessionId: agentSessions.claudeSessionId,
-        repoPath: agentSessions.repoPath,
-        metadata: agentSessions.metadata,
-        messageCount: sql<number>`coalesce(jsonb_array_length(${agentSessions.messages}), 0)`,
-        failureReason: agentSessions.failureReason,
-        dispatchedAt: agentSessions.dispatchedAt,
-        startedAt: agentSessions.startedAt,
-        lastHeartbeatAt: agentSessions.lastHeartbeatAt,
-        createdAt: agentSessions.createdAt,
-        updatedAt: agentSessions.updatedAt,
-      })
-      .from(agentSessions)
-      .where(and(...conds))
-      .orderBy(desc(agentSessions.updatedAt))
-      .limit(overfetch(sessionsLimit));
+    const rows = await listAgentSessionsForMcp({
+      projectId,
+      status,
+      issueId,
+      limit: overfetch(sessionsLimit),
+    });
 
     return buildListEnvelope({
       key: 'sessions',
@@ -91,11 +63,7 @@ export const forgeAgentSessionsGetTool: ContextScopedMcpToolFactory = ({ princip
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const { sessionId } = getInputSchema.parse(args);
-    const [row] = await db
-      .select()
-      .from(agentSessions)
-      .where(eq(agentSessions.id, sessionId))
-      .limit(1);
+    const row = await readAgentSession(sessionId);
     if (!row) throw new Error('NOT_FOUND: agent session not found');
     await assertPrincipalIsMember(principal, row.projectId);
 

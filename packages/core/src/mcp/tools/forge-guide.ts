@@ -1,7 +1,4 @@
-import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
-import { projects } from '../../db/schema.js';
 import {
   deleteIntegrationGuide,
   integrationGuideSlug,
@@ -12,6 +9,7 @@ import {
 } from '../../guides/integration-guides.js';
 import { INTEGRATION_PROVIDERS } from '../../integrations/types.js';
 import { loadOrgRole, orgRoleAtLeast } from '../../lib/authz.js';
+import { findProjectOrgId } from '../../projects/service.js';
 import {
   type ContextScopedMcpToolFactory,
   type McpContext,
@@ -36,12 +34,7 @@ const inputSchema = z
 async function resolveOrgId(ctx: McpContext, projectIdArg?: string): Promise<string | null> {
   try {
     const projectId = await resolveEffectiveProjectId(ctx, projectIdArg);
-    const [row] = await db
-      .select({ orgId: projects.orgId })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    return row?.orgId ?? null;
+    return findProjectOrgId(projectId);
   } catch {
     // cm:why no project context is legitimate (a user-level PAT with no header) — the caller simply sees the code tier, exactly like the public REST surface
     return null;

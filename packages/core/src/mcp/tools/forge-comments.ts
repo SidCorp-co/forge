@@ -1,4 +1,3 @@
-import { asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   AttachmentError,
@@ -7,10 +6,15 @@ import {
   persistCommentAttachment,
 } from '../../comments/attachment-service.js';
 import { pgConstraintName, pgErrorCode } from '../../comments/error-mapping.js';
+import {
+  deleteComment,
+  insertComment,
+  listIssueComments,
+  loadCommentForAccess,
+  loadIssueProjectId,
+} from '../../comments/service.js';
 import type { CommentAttachmentLite } from '../../comments/tree.js';
 import { env } from '../../config/env.js';
-import { db } from '../../db/client.js';
-import { comments, issues } from '../../db/schema.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
@@ -97,34 +101,6 @@ function serialize(
   };
 }
 
-async function loadIssueProjectId(issueId: string): Promise<string> {
-  const [row] = await db
-    .select({ projectId: issues.projectId })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
-  if (!row) throw new Error('NOT_FOUND: issue not found');
-  return row.projectId;
-}
-
-async function loadCommentForAccess(
-  commentId: string,
-): Promise<{ id: string; issueId: string; authorId: string; projectId: string }> {
-  const [row] = await db
-    .select({
-      id: comments.id,
-      issueId: comments.issueId,
-      authorId: comments.authorId,
-      projectId: issues.projectId,
-    })
-    .from(comments)
-    .innerJoin(issues, eq(comments.issueId, issues.id))
-    .where(eq(comments.id, commentId))
-    .limit(1);
-  if (!row) throw new Error('NOT_FOUND: comment not found');
-  return row;
-}
-
 // Strict base64 charset check. Buffer.from('xx', 'base64') silently drops
 // invalid characters, so we validate the input string first to surface a
 // useful BAD_REQUEST instead of writing a truncated blob to disk.
@@ -164,21 +140,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
         await assertPrincipalIsWriter(principal, projectId);
 
         const commentsLimit = input.limit ?? 50;
-        const rows = await db
-          .select({
-            id: comments.id,
-            issueId: comments.issueId,
-            authorId: comments.authorId,
-            isAi: comments.isAi,
-            body: comments.body,
-            parentId: comments.parentId,
-            createdAt: comments.createdAt,
-            updatedAt: comments.updatedAt,
-          })
-          .from(comments)
-          .where(eq(comments.issueId, issueId))
-          .orderBy(asc(comments.createdAt))
-          .limit(overfetch(commentsLimit));
+        const rows = await listIssueComments(issueId, overfetch(commentsLimit));
 
         const attachmentsByCommentId = await listCommentAttachmentsForIssue(issueId);
         const serialized = rows.map((r) =>
@@ -209,8 +171,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
         const rawAttachments = input.data?.attachments ?? [];
         const decoded: Array<{ name: string; mime: string; bytes: Buffer }> = [];
         if (rawAttachments.length > 0) {
-          for (let i = 0; i < rawAttachments.length; i++) {
-            const a = rawAttachments[i]!;
+          for (const [i, a] of rawAttachments.entries()) {
             const buf = decodeBase64Strict(a.dataBase64);
             if (!buf) {
               throw new Error(`BAD_REQUEST: data.attachments[${i}].dataBase64 is not valid base64`);
@@ -233,26 +194,14 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
         // cm:guard ISS-820 — every MCP comment is isAi:true regardless of principal kind, INCLUDING owner-lane PAT comments; that is honest labeling of an automated write path, not a misclassification
         let inserted: CommentRow | undefined;
         try {
-          [inserted] = await db
-            .insert(comments)
-            .values({
-              issueId,
-              authorId: device.ownerId,
-              authorDeviceId: principal.kind === 'device' ? device.id : null,
-              isAi: true,
-              body,
-              parentId: input.data?.parentId ?? null,
-            })
-            .returning({
-              id: comments.id,
-              issueId: comments.issueId,
-              authorId: comments.authorId,
-              isAi: comments.isAi,
-              body: comments.body,
-              parentId: comments.parentId,
-              createdAt: comments.createdAt,
-              updatedAt: comments.updatedAt,
-            });
+          inserted = await insertComment({
+            issueId,
+            authorId: device.ownerId,
+            authorDeviceId: principal.kind === 'device' ? device.id : null,
+            isAi: true,
+            body,
+            parentId: input.data?.parentId ?? null,
+          });
         } catch (err) {
           // 23503: FK violated. The branch above should make an author_device_id
           // violation unreachable, but guard defensively (e.g. a stale device
@@ -283,8 +232,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
           code: string;
           message: string;
         }> = [];
-        for (let i = 0; i < decoded.length; i++) {
-          const d = decoded[i]!;
+        for (const [i, d] of decoded.entries()) {
           try {
             const row = await persistCommentAttachment({
               commentId: inserted.id,
@@ -339,7 +287,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
           await assertCommentDeletePermission(device.ownerId, comment.projectId);
         }
 
-        await db.delete(comments).where(eq(comments.id, input.documentId));
+        await deleteComment(input.documentId);
         await hooks.emit('commentDeleted', {
           issueId: comment.issueId,
           projectId: comment.projectId,

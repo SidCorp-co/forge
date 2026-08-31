@@ -24,6 +24,8 @@ vi.mock('../../db/client.js', () => ({
 
 // Mock the service so tests cover only the MCP gate + projection layer.
 const listSchedulesMock = vi.fn();
+const listSchedulesForMcpMock = vi.fn();
+const readScheduleProjectIdMock = vi.fn();
 const getScheduleMock = vi.fn();
 const listScheduleRunsMock = vi.fn();
 const createScheduleMock = vi.fn();
@@ -33,6 +35,8 @@ const runScheduleNowMock = vi.fn();
 
 vi.mock('../../schedules/service.js', () => ({
   listSchedules: (...a: unknown[]) => listSchedulesMock(...a),
+  listSchedulesForMcp: (...a: unknown[]) => listSchedulesForMcpMock(...a),
+  readScheduleProjectId: (...a: unknown[]) => readScheduleProjectIdMock(...a),
   getSchedule: (...a: unknown[]) => getScheduleMock(...a),
   listScheduleRuns: (...a: unknown[]) => listScheduleRunsMock(...a),
   createSchedule: (...a: unknown[]) => createScheduleMock(...a),
@@ -125,9 +129,8 @@ function mockMemberRole(role: 'viewer' | 'member' | 'admin' | null) {
   );
 }
 
-// Mock the mini-fetch in fetchScheduleProjectId.
 function mockScheduleProjectId(projectId = PROJECT_ID) {
-  selectLimit.mockResolvedValueOnce([{ projectId }]);
+  readScheduleProjectIdMock.mockResolvedValueOnce(projectId);
 }
 
 beforeEach(() => {
@@ -147,7 +150,7 @@ beforeEach(() => {
 describe('forge_schedules action=list', () => {
   it('returns body-free projection for a member caller', async () => {
     mockMemberRole('member');
-    selectOrderBy.mockResolvedValueOnce([fakeScheduleRow]);
+    listSchedulesForMcpMock.mockResolvedValueOnce([fakeScheduleRow]);
 
     const tool = forgeSchedulesTool(buildDeviceCtx());
     const result = (await tool.handler({ action: 'list', projectId: PROJECT_ID })) as {
@@ -156,26 +159,6 @@ describe('forge_schedules action=list', () => {
 
     expect(result.schedules).toHaveLength(1);
     expect(result.schedules[0]?.id).toBe(SCHEDULE_ID);
-  });
-
-  it('projection does not include prompt field (body-free)', async () => {
-    mockMemberRole('member');
-    selectOrderBy.mockResolvedValueOnce([fakeScheduleRow]);
-
-    const tool = forgeSchedulesTool(buildDeviceCtx());
-    await tool.handler({ action: 'list', projectId: PROJECT_ID });
-
-    // The last db.select() call is the list projection — assert no prompt key.
-    const lastCall = selectSpy.mock.calls.at(-1) as unknown[] | undefined;
-    const projectionArg = lastCall?.[0] as Record<string, unknown> | undefined;
-    expect(projectionArg).toBeDefined();
-    const keys = Object.keys(projectionArg ?? {});
-    expect(keys).not.toContain('prompt');
-    expect(keys).toContain('id');
-    expect(keys).toContain('name');
-    expect(keys).toContain('cron');
-    expect(keys).toContain('enabled');
-    expect(keys).toContain('templateKey');
   });
 
   it('non-member device principal gets NOT_FOUND', async () => {
@@ -197,7 +180,7 @@ describe('forge_schedules action=list', () => {
 
   it('PAT in allowlist with member role gets the list', async () => {
     mockMemberRole('member');
-    selectOrderBy.mockResolvedValueOnce([fakeScheduleRow]);
+    listSchedulesForMcpMock.mockResolvedValueOnce([fakeScheduleRow]);
 
     const tool = forgeSchedulesTool(buildPatCtx(['read'], [PROJECT_ID]));
     const result = (await tool.handler({ action: 'list', projectId: PROJECT_ID })) as {
@@ -230,7 +213,7 @@ describe('forge_schedules action=get', () => {
   });
 
   it('throws NOT_FOUND when schedule does not exist', async () => {
-    selectLimit.mockResolvedValueOnce([]); // fetchScheduleProjectId returns empty
+    readScheduleProjectIdMock.mockRejectedValueOnce(new Error('NOT_FOUND: schedule not found'));
 
     const tool = forgeSchedulesTool(buildDeviceCtx());
     await expect(tool.handler({ action: 'get', scheduleId: SCHEDULE_ID })).rejects.toThrow(

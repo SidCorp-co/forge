@@ -1,7 +1,5 @@
-import { and, count, eq, ilike, inArray } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
-import { projectMembers, projects, users } from '../../db/schema.js';
+import { listCollaborators } from '../../projects/collaborators-service.js';
 import {
   type ContextScopedMcpToolFactory,
   loadVisibleProjectIdsForPrincipal,
@@ -27,81 +25,7 @@ export const forgeCollaboratorsTool: ContextScopedMcpToolFactory = (ctx) => ({
     const limit = input.limit ?? 50;
     const offset = input.offset ?? 0;
 
-    const visibleIds = await loadVisibleProjectIdsForPrincipal(ctx.principal);
-    if (visibleIds.length === 0) {
-      return { users: [], total: 0 };
-    }
-
-    // Candidate users = explicit members of the caller's visible projects
-    // (post-0106 every creator holds an explicit admin row, so nobody is lost).
-    const memberUserRows = await db
-      .selectDistinct({ id: projectMembers.userId })
-      .from(projectMembers)
-      .where(inArray(projectMembers.projectId, visibleIds));
-    const candidateIds = [...new Set(memberUserRows.map((r) => r.id))];
-    if (candidateIds.length === 0) {
-      return { users: [], total: 0 };
-    }
-
-    const searchClause = input.search
-      ? ilike(users.email, `${input.search.replace(/[%_]/g, '\\$&')}%`)
-      : undefined;
-    const whereClause = searchClause
-      ? and(inArray(users.id, candidateIds), searchClause)
-      : inArray(users.id, candidateIds);
-
-    const [totalRow] = await db.select({ total: count() }).from(users).where(whereClause);
-    const total = Number(totalRow?.total ?? 0);
-
-    const userRows = await db
-      .select({
-        id: users.id,
-        email: users.email,
-        emailVerifiedAt: users.emailVerifiedAt,
-        createdAt: users.createdAt,
-      })
-      .from(users)
-      .where(whereClause)
-      .orderBy(users.createdAt, users.id)
-      .limit(limit)
-      .offset(offset);
-
-    if (userRows.length === 0) {
-      return { users: [], total };
-    }
-
-    const ids = userRows.map((u) => u.id);
-    const memberRows = await db
-      .select({
-        userId: projectMembers.userId,
-        projectId: projectMembers.projectId,
-        projectSlug: projects.slug,
-        role: projectMembers.role,
-      })
-      .from(projectMembers)
-      .innerJoin(projects, eq(projects.id, projectMembers.projectId))
-      .where(
-        and(inArray(projectMembers.userId, ids), inArray(projectMembers.projectId, visibleIds)),
-      );
-
-    const byUser = new Map<
-      string,
-      Array<{ projectId: string; projectSlug: string; role: string }>
-    >();
-    for (const m of memberRows) {
-      const list = byUser.get(m.userId) ?? [];
-      list.push({ projectId: m.projectId, projectSlug: m.projectSlug, role: m.role });
-      byUser.set(m.userId, list);
-    }
-
-    const out = userRows.map((u) => ({
-      id: u.id,
-      email: u.email,
-      emailVerifiedAt: u.emailVerifiedAt,
-      createdAt: u.createdAt,
-      memberships: byUser.get(u.id) ?? [],
-    }));
-
-    return { users: out, total };
+    const visibleProjectIds = await loadVisibleProjectIdsForPrincipal(ctx.principal);
+    return listCollaborators({ visibleProjectIds, limit, offset, search: input.search });
   },
 });
