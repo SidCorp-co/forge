@@ -181,6 +181,7 @@ export const userPromptPolicySchema = z
               'stage',
               'release',
               'fix',
+              'drive',
             ]),
           )
           .default([]),

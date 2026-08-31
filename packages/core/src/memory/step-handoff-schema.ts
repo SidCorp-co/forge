@@ -5,7 +5,7 @@ import { type JobType, testResults } from '../db/schema.js';
  * Step-handoff payload schema.
  *
  * Each pipeline state that emits a handoff (triage/clarify/plan/code/review/
- * test/fix) has a discriminator branch below. The same schema is:
+ * test/fix/drive) has a discriminator branch below. The same schema is:
  *   1. Embedded into the user prompt as prose (see `renderHandoffSchemaPrompt`)
  *      so the agent knows the exact shape to send to `forge_memory.write`.
  *   2. Used to validate the payload at the MCP boundary — if the agent emits
@@ -116,6 +116,17 @@ const fixHandoff = z.object({
   knownLimitations: z.array(z.string().min(1)).max(5),
 });
 
+// cm:why `drive` is the AUTONOMOUS driver's whole turn, not a stage of a ladder — it has no successor to brief, so this payload exists to be the turn's own record that it ran to completion, which `jobs/finalize-done.ts` reads to tell a lost result event apart from a dead agent.
+const driveHandoff = z.object({
+  step: z.literal('drive'),
+  schema_version: z.literal(1),
+  outcome: z.enum(['advanced', 'parked', 'blocked', 'no_change']),
+  summary: z.string().min(1).max(2000),
+  workDone: z.array(z.string().min(1)).max(15),
+  openQuestions: z.array(z.string().min(1)).max(10),
+  commitSha: z.string().optional(),
+});
+
 export const stepHandoffSchema = z.discriminatedUnion('step', [
   triageHandoff,
   clarifyHandoff,
@@ -124,6 +135,7 @@ export const stepHandoffSchema = z.discriminatedUnion('step', [
   reviewHandoff,
   testHandoff,
   fixHandoff,
+  driveHandoff,
 ]);
 export type StepHandoffPayload = z.infer<typeof stepHandoffSchema>;
 
@@ -135,6 +147,7 @@ export const HANDOFF_STEPS = [
   'review',
   'test',
   'fix',
+  'drive',
 ] as const satisfies ReadonlyArray<JobType>;
 export type HandoffStep = (typeof HANDOFF_STEPS)[number];
 
@@ -252,6 +265,18 @@ export function renderHandoffSchemaPrompt(step: HandoffStep): string {
         '  ],',
         '  "reviewItemsResolved": [<string>, ...]    // max 20',
         '  "knownLimitations": [<string>, ...]       // max 5',
+        '}',
+      ].join('\n');
+    case 'drive':
+      return [
+        '{',
+        '  "step": "drive",',
+        '  "schema_version": 1,',
+        '  "outcome": <"advanced" | "parked" | "blocked" | "no_change">,',
+        '  "summary": <string, 1-2000 chars \u2014 what you did this turn>,',
+        '  "workDone": [<string>, ...]               // max 15',
+        '  "openQuestions": [<string>, ...]          // max 10',
+        '  "commitSha": <string, optional>',
         '}',
       ].join('\n');
   }

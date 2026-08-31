@@ -40,6 +40,8 @@ const DEFAULT_INJECT_BY_STEP: Record<HandoffStep, HandoffStep[]> = {
   review: ['triage', 'plan', 'code'],
   test: ['triage', 'plan', 'code'],
   fix: ['triage', 'plan', 'code', 'review'],
+  // cm:why empty deliberately — `drive` is a whole autonomous turn, so the only handoff worth inheriting is a PRIOR drive attempt's, and carrying context across attempts is the resume axis (ISS-887/ISS-873), not this one. Filling this in here would put a second, silently-different context path beside theirs.
+  drive: [],
 };
 
 function defaultInjectFromSteps(jobType: JobType): HandoffStep[] {

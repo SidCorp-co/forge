@@ -8,6 +8,24 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- An autonomous turn that finished its work no longer gets recorded as a failure and run again from
+  the start. Core already knew how to tell a lost report apart from a dead agent: when the runner
+  misses the Claude CLI's terminal `result` event it reports the job failed, and `finalizeFailedJob`
+  overrides that with `done` if the agent left a terminal step-handoff — a near-terminal write, so it
+  is a signal from the turn itself rather than a side effect an agent killed mid-work would also
+  leave behind. That rescue was unreachable for `drive`, the single turn that *is* the whole job on an
+  autonomous project: the prompt only asks for a handoff on stages that have a payload schema, and
+  `drive` had none, so it could never write the one signal the finalizer reads. The two halves were
+  each correct and nothing joined them. Measured on ISS-874: two `[NO_RESULT_CLEAN_EXIT]` failures
+  inside one hour, both after the issue had already moved to `needs_info` and a comment had already
+  posted, each answered with a full re-run; six of the thirty-five most recent failed `drive` jobs
+  carry that class of marker. `drive` now has a handoff schema and gets the termination protocol, so
+  a completed turn is recorded as completed. A turn that died before writing its handoff still
+  retries — that case is genuinely indistinguishable from one that finished, and re-running work is
+  the safe side of it. (ISS-888)
+
 ### Added
 
 - Work queued behind a paused pipeline run is now reported instead of sitting silently. Of every

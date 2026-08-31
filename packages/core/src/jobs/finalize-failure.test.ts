@@ -47,12 +47,18 @@ vi.mock('../skills/reconcile-service.js', () => ({
 const issueRowMock = vi.fn<() => unknown[]>(() => [
   { id: 'i1', projectId: 'p1', status: 'in_progress', reopenCount: 0, projectCreatedBy: 'owner1' },
 ]);
+// cm:guard the issue lookup INNER JOINs and the step-handoff probe does not, so `joined` is the only thing separating two reads that share this mock — a chain that answers both with the same rows makes `hasTerminalHandoffForAttempt` true for every job and silently disarms every retry assertion in this file.
+const handoffRowMock = vi.fn<() => unknown[]>(() => []);
 function selectChain() {
+  let joined = false;
   const chain = {
     from: () => chain,
-    innerJoin: () => chain,
+    innerJoin: () => {
+      joined = true;
+      return chain;
+    },
     where: () => chain,
-    limit: async () => issueRowMock(),
+    limit: async () => (joined ? issueRowMock() : handoffRowMock()),
   };
   return chain;
 }
@@ -166,6 +172,14 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+// cm:why finalize-done.js is deliberately left UNMOCKED — it is one half of the seam these tests exist to join, and mocking it would assert the mock; only its three leaf side-effects are stubbed below.
+const kernelTransitionMock = vi.fn(async (..._args: unknown[]) => [] as unknown[]);
+vi.mock('../lifecycle/transition.js', () => ({
+  applyKernelTransition: (...args: unknown[]) => kernelTransitionMock(...args),
+}));
+vi.mock('../usage-records/materialize.js', () => ({ materializeJobUsage: vi.fn() }));
+vi.mock('./session-transcript.js', () => ({ deriveSessionFinal: vi.fn() }));
+
 const { finalizeFailedJob } = await import('./finalize-failure.js');
 
 // Minimal JobRow stand-in — finalizeFailedJob only reads a handful of fields.
@@ -190,6 +204,8 @@ function makeJob(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   callOrder = [];
+  handoffRowMock.mockReturnValue([]);
+  kernelTransitionMock.mockResolvedValue([]);
   scheduleRetryMock.mockImplementation(async () => {
     callOrder.push('scheduleAutoRetryWithVerify');
     return { scheduled: false };
@@ -397,5 +413,57 @@ describe('finalizeFailedJob', () => {
 
     const call = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
     expect(call.title).toBe('Step held: non-retryable failure');
+  });
+});
+
+/**
+ * ISS-888 item 1 — a turn that finished must not be recorded as failed.
+ *
+ * The two halves are both correct in isolation and were never joined:
+ * `finalize-done.ts` trusts a terminal step-handoff over the runner's exit
+ * detection, and `prompt/facts/registry.ts` only asks for a handoff on the
+ * stages that have a schema. `drive` — the whole autonomous driver turn — had
+ * no schema, so it could not produce the one signal core accepts, and every
+ * lost result event on an autonomous project became a full re-run. Measured on
+ * ISS-874: two `[NO_RESULT_CLEAN_EXIT]` failures inside one hour, both after
+ * the issue had already moved and a comment had already posted.
+ */
+describe('ISS-888 — a completed drive turn is not retried', () => {
+  const driveJob = () =>
+    makeJob({
+      type: 'drive',
+      pipelineRunId: 'run1',
+      dispatchedAt: new Date('2026-08-29T15:00:00Z'),
+      error: '[NO_RESULT_CLEAN_EXIT] claude exited 0 before emitting a result event',
+      failureKind: 'transient-cc',
+    });
+
+  it('a drive turn that wrote its handoff is marked done, and NO retry is scheduled', async () => {
+    handoffRowMock.mockReturnValue([{ id: 'h1' }]);
+    kernelTransitionMock.mockResolvedValue([
+      { ...driveJob(), status: 'done', exitCode: 0, error: null },
+    ]);
+
+    const retry = await finalizeFailedJob(driveJob(), {
+      error: '[NO_RESULT_CLEAN_EXIT] claude exited 0 before emitting a result event',
+    });
+
+    expect(retry).toEqual({ scheduled: false, reason: 'completed_via_handoff' });
+    expect(scheduleRetryMock).not.toHaveBeenCalled();
+    expect(kernelTransitionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ to: 'done', reason: 'completed_via_handoff' }),
+    );
+  });
+
+  // cm:guard ISS-888 folds case (c) — died part-way, wrote something — into (b), NOT into (a): the handoff is the LAST thing a turn writes, so a turn killed mid-work has none and correctly retries, and a comment or a status move on its own is a side effect an agent killed mid-work leaves too. What this signal genuinely cannot see is the inverse — a turn that wrote its handoff and then died — which is recorded finished; recovery is the driver's next dispatch reading live issue status, and the amnesty ends when a turn-level completion receipt exists (ISS-873).
+  it('a drive turn that died before writing its handoff still retries', async () => {
+    handoffRowMock.mockReturnValue([]);
+    scheduleRetryMock.mockResolvedValueOnce({ scheduled: true });
+
+    const retry = await finalizeFailedJob(driveJob(), { error: '[NO_RESULT_CLEAN_EXIT] x' });
+
+    expect(retry.scheduled).toBe(true);
+    expect(scheduleRetryMock).toHaveBeenCalled();
   });
 });

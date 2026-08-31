@@ -177,6 +177,7 @@ const HANDOFF_KEYS: Partial<Record<JobType, string>> = {
   review: 'verdict, findings[], reviewedDiffSha',
   test: 'result, resultReason, failures[], flakyTests[]',
   fix: 'filesModified[], decisions[], reviewItemsResolved[], knownLimitations[]',
+  drive: 'outcome, summary, workDone[], openQuestions[], commitSha',
 };
 
 export const FORGE_FACTS: readonly ForgeFact[] = [
