@@ -140,10 +140,27 @@ async fn measure(
 ) -> std::result::Result<(Vec<String>, refresh::WorkspaceGit), String> {
     let mut findings = preflight::preflight(repo_path).await?.lines;
     let git_state = refresh::refresh(repo_path, base_branch).await;
-    if !git_state.refreshed && owns_root {
+    if refresh_is_repairable(&git_state, owns_root) {
         findings.push(refresh::describe(&git_state));
     }
     Ok((findings, git_state))
+}
+
+/// Is an unrefreshed workspace something the setup agent should be asked to fix?
+// cm:guard a tree holding someone else's uncommitted work is NEVER a repairable finding. A finding is what summons the setup agent, and its rules say to `git stash push -u -m forge-setup` whatever blocks it — so reporting the one back-off that exists to PRESERVE that work is what destroys it. Measured 2026-08-31 on this repo: refresh left an interactive session's 9 files alone, said so, and the saying stashed them. The agent is told instead, through the workspace notice.
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/setup_agent.rs — that agent's RULES grant the stash; this predicate is what keeps it away from a tree it must not touch
+fn refresh_is_repairable(git: &refresh::WorkspaceGit, owns_root: bool) -> bool {
+    !git.refreshed && owns_root && !git.foreign_work
+}
+
+/// What a stage is told about a root carrying work that is not the pipeline's.
+fn foreign_work_text(detail: &str) -> String {
+    format!(
+        "The repo root holds uncommitted work that is not this job's: {detail}. It was left \
+         alone on purpose. Do NOT `git stash`, `git checkout --`, `git reset` or `git clean` it \
+         — someone is using this tree. Work on your own branch; if you cannot proceed without a \
+         clean root, stop and say so rather than clearing it."
+    )
 }
 
 /// What a stage is told about the workspace it is about to work in.
@@ -438,12 +455,19 @@ pub async fn handle(
             }
         }
 
-        let root_warning = (!owns_root && !git_state.refreshed).then(|| {
-            root_warning_text(
-                &refresh::describe(&git_state),
-                git_state.base_branch.as_deref(),
-            )
-        });
+        // cm:guard the foreign-work branch wins over the worktree warning, and it fires whether or not this lane owns the root. Suppressing the finding without saying anything leaves a stage reading a tree it cannot explain; the point is to move the fact from a repair queue to a sentence, not to delete it.
+        let root_warning = if git_state.foreign_work {
+            Some(foreign_work_text(
+                git_state.detail.as_deref().unwrap_or("uncommitted changes"),
+            ))
+        } else {
+            (!owns_root && !git_state.refreshed).then(|| {
+                root_warning_text(
+                    &refresh::describe(&git_state),
+                    git_state.base_branch.as_deref(),
+                )
+            })
+        };
         if !findings.is_empty() || root_warning.is_some() || setup_summary.is_some() {
             workspace_notice = Some(workspace_notice_text(
                 &findings,
@@ -706,6 +730,58 @@ mod tests {
         .expect("job.assigned must parse")
     }
 
+    fn unrefreshed(foreign_work: bool) -> refresh::WorkspaceGit {
+        refresh::WorkspaceGit {
+            head_sha: Some("aaaaaaaa".into()),
+            base_branch: Some("main".into()),
+            base_sha: Some("bbbbbbbb".into()),
+            refreshed: false,
+            detail: Some(
+                "tree has uncommitted changes outside the Forge-owned paths (a.ts) — left alone"
+                    .into(),
+            ),
+            foreign_work,
+        }
+    }
+
+    // cm:guard this is the assertion that keeps the setup agent off a tree someone is using. A finding is what runs that agent, and its rules permit `git stash push -u -m forge-setup` on whatever blocks it. Delete the `!git.foreign_work` term and this goes red.
+    #[test]
+    fn someone_elses_uncommitted_work_is_never_handed_to_the_repair_agent() {
+        for owns_root in [true, false] {
+            assert!(
+                !refresh_is_repairable(&unrefreshed(true), owns_root),
+                "owns_root={owns_root}: a tree holding foreign work must not become a finding"
+            );
+        }
+    }
+
+    #[test]
+    fn an_ordinary_stale_root_is_still_repairable_when_this_lane_owns_it() {
+        assert!(
+            refresh_is_repairable(&unrefreshed(false), true),
+            "suppressing every unrefreshed root would leave a stale checkout unrepaired — the defect refresh.rs exists for"
+        );
+        assert!(
+            !refresh_is_repairable(&unrefreshed(false), false),
+            "a lane that does not own the root never had this finding"
+        );
+    }
+
+    #[test]
+    fn the_notice_forbids_every_verb_that_would_clear_the_tree() {
+        let text = foreign_work_text("(a.ts) — left alone");
+        for verb in ["git stash", "git checkout --", "git reset", "git clean"] {
+            assert!(
+                text.contains(verb),
+                "the notice must name `{verb}` as forbidden"
+            );
+        }
+        assert!(
+            text.contains("stop and say so"),
+            "the alternative to clearing must be stated"
+        );
+    }
+
     // cm:guard opt-in, and the DEFAULT direction is the safety. A core that does not send the field, a project that never set it, and a value nobody recognises must all stay print — the fleet-wide flip is phase 5 and is bounded by a measured release.
     #[test]
     fn only_the_literal_duplex_opts_a_job_in() {
@@ -866,6 +942,7 @@ mod tests {
             base_sha: Some("cafe1234".into()),
             refreshed: false,
             detail: Some("checked out main , not the base branch release/stg — left alone".into()),
+            foreign_work: false,
         };
         assert_eq!(
             start_point_for(&state).as_deref(),

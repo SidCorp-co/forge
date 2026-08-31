@@ -38,6 +38,10 @@ pub struct WorkspaceGit {
     pub refreshed: bool,
     /// Why the refresh did not happen. `None` when it did.
     pub detail: Option<String>,
+    /// The refresh backed off because the tree carried uncommitted work that is
+    /// not Forge's. Distinct from every other `!refreshed` reason: nothing is
+    /// broken here and there is nothing to repair.
+    pub foreign_work: bool,
 }
 
 impl WorkspaceGit {
@@ -179,6 +183,8 @@ pub async fn refresh(repo_path: &Path, base_branch: Option<&str>) -> WorkspaceGi
     // cm:guard restore the Forge-owned paths BEFORE the fast-forward and never merge over them. Provision rewrites `.forge/orientation.md` in full, so on a project that COMMITS `.forge/` the tree is permanently dirty on a Forge-authored file; without this every refresh on such a project fails with "local changes would be overwritten" — which is this repo itself. Forge owns those files, so the incoming version wins.
     let foreign = foreign_dirty_paths(repo_path).await;
     if !foreign.is_empty() {
+        // cm:guard record WHY this refresh stopped, not just that it did. Every other `!refreshed` reason is a fault a repair agent should fix; this one is someone else's work, and the repair agent's only tool for an obstacle is `git stash`. Flattening the two into one boolean is what let a setup agent stash an interactive session's uncommitted files on 2026-08-31 — the careful branch reported backing off, and the report summoned the branch that does not back off.
+        state.foreign_work = true;
         state.detail = Some(format!(
             "tree has uncommitted changes outside the Forge-owned paths ({}) — left alone",
             foreign.join(", ").chars().take(200).collect::<String>()
@@ -240,6 +246,73 @@ mod tests {
         assert!(!FORGE_OWNED_PATHS.contains(&"packages/core/src/index.ts"));
     }
 
+    /// Unique temp dir per test (no tempfile dep in this crate).
+    fn temp_path(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("forge-refresh-{name}-{}", std::process::id()))
+    }
+
+    fn git_ok(dir: &Path, args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .status()
+            .expect("git");
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    // cm:guard this test owns the SETTER, and nothing else does. `refresh_is_repairable` in dispatch.rs reads the flag, so a unit test of the predicate stays green while the flag is never written — the branch that suppresses the finding would then be unreachable and the stash would come back with every gate still passing.
+    #[tokio::test]
+    async fn a_tree_holding_someone_elses_work_reports_it_and_refuses_to_move() {
+        let root = temp_path("foreign");
+        let origin = root.join("origin");
+        let work = root.join("work");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&origin).expect("mkdir");
+        std::fs::create_dir_all(&work).expect("mkdir");
+
+        git_ok(&origin, &["init", "-q", "--bare"]);
+        git_ok(&work, &["init", "-q", "-b", "main"]);
+        git_ok(&work, &["config", "user.email", "t@t"]);
+        git_ok(&work, &["config", "user.name", "t"]);
+        std::fs::write(work.join("a.txt"), "one\n").expect("write");
+        git_ok(&work, &["add", "-A"]);
+        git_ok(&work, &["commit", "-qm", "init"]);
+        git_ok(
+            &work,
+            &["remote", "add", "origin", origin.to_str().expect("utf8")],
+        );
+        git_ok(&work, &["push", "-q", "-u", "origin", "main"]);
+
+        std::fs::write(work.join("a.txt"), "someone is editing this\n").expect("write");
+        let state = refresh(&work, Some("main")).await;
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(
+            state.foreign_work,
+            "an uncommitted change to a non-Forge file must be reported as foreign work, or the finding is never suppressed"
+        );
+        assert!(!state.refreshed, "the tree must be left where it is");
+        assert!(
+            state.detail.as_deref().unwrap_or("").contains("a.txt"),
+            "the notice has to name the file so a human can tell whose work it is: {:?}",
+            state.detail
+        );
+        assert_eq!(
+            std::fs::read_to_string(work.join("a.txt")).ok().as_deref(),
+            None,
+            "the temp tree should be gone; this asserts cleanup, not content"
+        );
+    }
+
+    #[test]
+    fn foreign_work_is_off_until_the_refresh_says_otherwise() {
+        assert!(
+            !WorkspaceGit::default().foreign_work,
+            "the default must not claim someone else's work is present — that claim suppresses a repairable finding"
+        );
+    }
+
     #[test]
     fn stale_only_when_both_shas_known_and_differ() {
         let mut s = WorkspaceGit::default();
@@ -260,6 +333,7 @@ mod tests {
             base_sha: Some("abcdef1234".into()),
             refreshed: false,
             detail: Some("fetch failed: boom".into()),
+            foreign_work: false,
         };
         let line = describe(&s);
         assert!(line.contains("NOT refreshed"));

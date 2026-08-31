@@ -10,6 +10,13 @@
 
 ### Fixed
 
+- A pipeline job no longer parks your uncommitted work. When a runner picks up a repository that
+  already holds changes which are not the pipeline's, the workspace check leaves them alone and says
+  so to the agent, instead of reporting the tree as broken and handing it to a repair step whose
+  only remedy is to stash whatever is in the way. The two halves had been at odds: the check backs
+  off from a person's edits on purpose, and the act of reporting that back-off is what summoned the
+  step that cleared them.
+
 - An autonomous turn that finished its work no longer gets recorded as a failure and run again from
   the start. Core already knew how to tell a lost report apart from a dead agent: when the runner
   misses the Claude CLI's terminal `result` event it reports the job failed, and `finalizeFailedJob`
