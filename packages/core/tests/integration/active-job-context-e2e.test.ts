@@ -25,7 +25,7 @@ import {
 
 type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  resolveActiveJobContext: typeof import('../../src/mcp/tools/active-job-context.js').resolveActiveJobContext;
+  resolveActiveJobContext: typeof import('../../src/jobs/active-job-context.js').resolveActiveJobContext;
 };
 
 describe('resolveActiveJobContext E2E (ISS-573)', () => {
@@ -46,7 +46,7 @@ describe('resolveActiveJobContext E2E (ISS-573)', () => {
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
 
-    mods = (await import('../../src/mcp/tools/active-job-context.js')) as unknown as Mods;
+    mods = (await import('../../src/jobs/active-job-context.js')) as unknown as Mods;
   }, 60_000);
 
   afterAll(async () => {

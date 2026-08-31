@@ -9,8 +9,8 @@ import {
   uxFindings,
   uxRuleSeverities,
 } from '../../db/schema.js';
+import { resolveActiveJobContext } from '../../jobs/active-job-context.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
-import { resolveActiveJobContext } from './active-job-context.js';
 import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,

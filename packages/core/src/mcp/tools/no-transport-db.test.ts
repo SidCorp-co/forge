@@ -21,19 +21,15 @@ const TOOLS = resolve(import.meta.dirname);
  * deliverable — never add one back, and never add a NEW tool to it.
  */
 const PENDING_TOOLS = [
-  'active-job-context.ts',
   'forge-agent-sessions.ts',
   'forge-collaborators.ts',
   'forge-comments.ts',
   'forge-config.ts',
-  'forge-divergence-charters.ts',
   'forge-feedback.ts',
   'forge-guide.ts',
-  'forge-health.ts',
   'forge-jobs.ts',
   'forge-metrics.ts',
   'forge-ops-health.ts',
-  'forge-orgs.ts',
   'forge-phase.ts',
   'forge-pipeline-runs.ts',
   'forge-pm-dispatch.ts',

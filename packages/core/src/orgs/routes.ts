@@ -20,6 +20,7 @@ import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { sendOrgInvitationEmail } from '../projects/invitation-email.js';
 import { issueOrgInvitationToken } from './invitations.js';
+import { listOrgMembers, listOrgsForUser } from './service.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -75,19 +76,7 @@ orgRoutes.use('*', requireAuth(), assertEmailVerified());
 // UI pin/sort it).
 orgRoutes.get('/', async (c) => {
   const userId = c.get('userId');
-  const rows = await db
-    .select({
-      id: organizations.id,
-      slug: organizations.slug,
-      name: organizations.name,
-      isPersonal: organizations.isPersonal,
-      role: organizationMembers.role,
-      createdAt: organizations.createdAt,
-    })
-    .from(organizationMembers)
-    .innerJoin(organizations, eq(organizations.id, organizationMembers.orgId))
-    .where(eq(organizationMembers.userId, userId));
-  return c.json(rows);
+  return c.json(await listOrgsForUser(userId));
 });
 
 orgRoutes.post(
@@ -226,18 +215,7 @@ orgRoutes.get(
 
     await assertOrgAccess(orgId, userId, 'member');
 
-    const rows = await db
-      .select({
-        userId: organizationMembers.userId,
-        email: users.email,
-        role: organizationMembers.role,
-        lenses: organizationMembers.lenses,
-        createdAt: organizationMembers.createdAt,
-      })
-      .from(organizationMembers)
-      .innerJoin(users, eq(users.id, organizationMembers.userId))
-      .where(eq(organizationMembers.orgId, orgId));
-    return c.json(rows);
+    return c.json(await listOrgMembers(orgId));
   },
 );
 

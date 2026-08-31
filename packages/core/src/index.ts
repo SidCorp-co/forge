@@ -6,7 +6,6 @@
 import './observability/sentry-init.js';
 import type { Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
-import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { adminAggregateRoutes } from './admin/aggregate-routes.js';
@@ -51,6 +50,7 @@ import { seedDomainTemplates } from './domain-templates/seed.js';
 import { registerEagerSubscribers } from './eager-subscribers.js';
 import { feedbackReportRoutes } from './feedback/routes.js';
 import { guideRoutes } from './guides/routes.js';
+import { readLiveness } from './health/service.js';
 import { improvementMessageRoutes } from './improvement-messages/routes.js';
 import { registerRunnerReleaseRefetch } from './install/fetch-release.js';
 import { installRoutes } from './install/routes.js';
@@ -156,7 +156,7 @@ import { memberRoutes } from './projects/members-routes.js';
 import { projectRoutes } from './projects/routes.js';
 import { uxContractProjectRoutes, uxContractRuleRoutes } from './projects/ux-contract-routes.js';
 import { promptRoutes } from './prompt/routes.js';
-import { isBossStarted, startBoss, stopBoss } from './queue/boss.js';
+import { startBoss, stopBoss } from './queue/boss.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
 import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
 import { runnerCallbackRoutes, runnerRoutes } from './runners/routes.js';
@@ -179,7 +179,7 @@ import { usageRecordRoutes } from './usage-records/routes.js';
 import { webhookInboundRoutes } from './webhooks/inbound-routes.js';
 import { registerOutboundDeliveryWorker } from './webhooks/outbound.js';
 import { registerWebhookSubscribers } from './webhooks/subscribers.js';
-import { attachWs, closeWs, isWsListening } from './ws/server.js';
+import { attachWs, closeWs } from './ws/server.js';
 
 export const app = new Hono<{ Variables: RequestIdVars }>();
 
@@ -207,26 +207,15 @@ app.use('/api/*', corsMiddleware);
 app.use('/mcp', corsMiddleware);
 
 app.get('/health', async (c) => {
-  let dbOk = false;
-  try {
-    await db.execute(sql`select 1`);
-    dbOk = true;
-  } catch {
-    dbOk = false;
-  }
-
-  const queueOk = isBossStarted();
-  const wsOk = isWsListening();
-  const allOk = dbOk && queueOk && wsOk;
-
+  const live = await readLiveness();
   return c.json(
     {
-      ok: allOk,
-      db: { ok: dbOk },
-      queue: { ok: queueOk },
-      ws: { ok: wsOk },
+      ok: live.ok,
+      db: { ok: live.dbOk },
+      queue: { ok: live.queueOk },
+      ws: { ok: live.wsOk },
     },
-    allOk ? 200 : 503,
+    live.ok ? 200 : 503,
   );
 });
 

@@ -11,8 +11,8 @@ import {
   issues,
   projects,
 } from '../../db/schema.js';
+import { resolveActiveJobContext } from '../../jobs/active-job-context.js';
 import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../../prompt/sanitize.js';
-import { resolveActiveJobContext } from './active-job-context.js';
 import {
   assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,

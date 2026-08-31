@@ -1,10 +1,6 @@
 import { z } from 'zod';
-import { db } from '../../db/client.js';
-import {
-  divergenceCharterEntrySchema,
-  getCharterByProject,
-  upsertCharter,
-} from '../../skills/divergence-charters.js';
+import { divergenceCharterEntrySchema } from '../../skills/divergence-charters.js';
+import { readCharter, upsertCharterAtomic } from '../../skills/divergence-charters-service.js';
 import {
   assertPrincipalIsAdmin,
   assertPrincipalIsMember,
@@ -36,25 +32,24 @@ export const forgeDivergenceChartersTool: ContextScopedMcpToolFactory = (ctx) =>
 
     if (input.action === 'get') {
       await assertPrincipalIsMember(ctx.principal, projectId);
-      const charter = await getCharterByProject(db, projectId);
+      const charter = await readCharter(projectId);
       return { charter };
     }
 
     await assertPrincipalIsAdmin(ctx.principal, projectId);
 
-    if (!input.entries) {
+    const entries = input.entries;
+    if (!entries) {
       throw new Error('BAD_REQUEST: entries is required for action=upsert');
     }
 
     const actor = `human:${principalUserId(ctx.principal)}`;
 
-    const charter = await db.transaction(async (tx) => {
-      return upsertCharter(tx, {
-        projectId,
-        entries: input.entries!,
-        actor,
-        ...(input.reason !== undefined ? { reason: input.reason } : {}),
-      });
+    const charter = await upsertCharterAtomic({
+      projectId,
+      entries,
+      actor,
+      ...(input.reason !== undefined ? { reason: input.reason } : {}),
     });
 
     return { charter };

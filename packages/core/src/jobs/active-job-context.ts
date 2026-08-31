@@ -7,8 +7,8 @@
 // session, join to the job it backs, and take the most recently dispatched one.
 
 import { and, desc, eq, inArray } from 'drizzle-orm';
-import { db } from '../../db/client.js';
-import { agentSessions, jobs } from '../../db/schema.js';
+import { db } from '../db/client.js';
+import { agentSessions, jobs } from '../db/schema.js';
 
 // cm:guard NEVER narrow this to `= 'running'` — nothing in core ever writes that job status (queued → dispatched → terminal), so an equality test matches zero rows forever and every caller silently degrades. That was the whole of ISS-573/ISS-787: forge_ux_findings answered `no_active_issue` 100% of the time (zero rows on every project since the feature shipped) and forge_feedback recorded all 8 of its reports with null issueId/runId/jobId/stage.
 // cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — "in flight" must match `runner_load` there, NOT the wider `issueBusyJob` set: `held` is deliberately absent from both, because a held job has no live agent to attribute a tool call to (RFC 0002)

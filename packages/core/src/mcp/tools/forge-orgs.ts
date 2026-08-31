@@ -1,8 +1,6 @@
-import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
-import { organizationMembers, organizations, users } from '../../db/schema.js';
 import { loadOrgRole } from '../../lib/authz.js';
+import { listOrgMembers, listOrgsForUser } from '../../orgs/service.js';
 import { type ContextScopedMcpToolFactory, principalUserId, zodToMcpSchema } from './lib.js';
 
 /**
@@ -23,19 +21,7 @@ export const forgeOrgsListTool: ContextScopedMcpToolFactory = (ctx) => ({
   handler: async (args) => {
     listInputSchema.parse(args);
     const userId = principalUserId(ctx.principal);
-    const rows = await db
-      .select({
-        id: organizations.id,
-        slug: organizations.slug,
-        name: organizations.name,
-        isPersonal: organizations.isPersonal,
-        role: organizationMembers.role,
-        createdAt: organizations.createdAt,
-      })
-      .from(organizationMembers)
-      .innerJoin(organizations, eq(organizations.id, organizationMembers.orgId))
-      .where(eq(organizationMembers.userId, userId));
-    return { orgs: rows };
+    return { orgs: await listOrgsForUser(userId) };
   },
 });
 
@@ -51,16 +37,6 @@ export const forgeOrgsMembersTool: ContextScopedMcpToolFactory = (ctx) => ({
     const userId = principalUserId(ctx.principal);
     const role = await loadOrgRole(input.orgId, userId);
     if (!role) throw new Error('NOT_FOUND: org not found or not accessible');
-    const rows = await db
-      .select({
-        userId: organizationMembers.userId,
-        email: users.email,
-        role: organizationMembers.role,
-        createdAt: organizationMembers.createdAt,
-      })
-      .from(organizationMembers)
-      .innerJoin(users, eq(users.id, organizationMembers.userId))
-      .where(eq(organizationMembers.orgId, input.orgId));
-    return { members: rows };
+    return { members: await listOrgMembers(input.orgId) };
   },
 });

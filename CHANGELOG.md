@@ -10,6 +10,11 @@
 
 ### Fixed
 
+- Listing an organisation's members now returns the same record whether the caller is the web UI or
+  an agent. The two had drifted: one of them reported each member's lenses and the other quietly
+  left that field out, because each transport carried its own copy of the query. Both now read
+  through one, and the health snapshot the two surfaces report was de-duplicated the same way.
+
 - A truncated list in the web UI no longer reports itself as the whole list. Every paginated
   endpoint states its true total in a response header, and the client used to fall back to counting
   the rows in front of it whenever that header was absent — so a page of 50 out of 900 read as

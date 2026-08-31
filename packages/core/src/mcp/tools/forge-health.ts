@@ -1,11 +1,7 @@
-import { count, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import pkg from '../../../package.json' with { type: 'json' };
-import { db } from '../../db/client.js';
-import { jobs } from '../../db/schema.js';
-import { isBossStarted } from '../../queue/boss.js';
+import { countActiveJobs, readLiveness } from '../../health/service.js';
 import { getLastSeedResult } from '../../skills/builtin-seed.js';
-import { isWsListening } from '../../ws/server.js';
 import { type DeviceScopedMcpToolFactory, zodToMcpSchema } from './lib.js';
 
 /**
@@ -18,9 +14,6 @@ import { type DeviceScopedMcpToolFactory, zodToMcpSchema } from './lib.js';
 
 const inputSchema = z.object({}).strict();
 
-// cm:why `held` counts as active here (RFC 0002) — it is a live job that runs once its mechanical condition clears, so an operator asking "what is in flight" must see it; the stuck-job scan keys on dispatchedAt age instead and so can never flag one
-const ACTIVE_JOB_STATUSES = ['queued', 'dispatched', 'running', 'held'] as const;
-
 export const forgeHealthTool: DeviceScopedMcpToolFactory = (_device) => ({
   name: 'forge_health',
   description:
@@ -29,26 +22,9 @@ export const forgeHealthTool: DeviceScopedMcpToolFactory = (_device) => ({
   handler: async (args) => {
     inputSchema.parse(args);
 
-    let dbOk = false;
-    try {
-      await db.execute(sql`select 1`);
-      dbOk = true;
-    } catch {
-      dbOk = false;
-    }
-
-    let jobsActive = 0;
-    if (dbOk) {
-      try {
-        const [row] = await db
-          .select({ n: count() })
-          .from(jobs)
-          .where(inArray(jobs.status, [...ACTIVE_JOB_STATUSES]));
-        jobsActive = Number(row?.n ?? 0);
-      } catch {
-        jobsActive = 0;
-      }
-    }
+    const live = await readLiveness();
+    const dbOk = live.dbOk;
+    const jobsActive = dbOk ? await countActiveJobs() : 0;
 
     const seed = getLastSeedResult();
     const lastSeed = seed
@@ -67,8 +43,8 @@ export const forgeHealthTool: DeviceScopedMcpToolFactory = (_device) => ({
       version: pkg.version,
       uptimeSeconds: Math.floor(process.uptime()),
       db: dbOk ? 'ok' : 'down',
-      queue: isBossStarted() ? 'ok' : 'down',
-      ws: isWsListening() ? 'ok' : 'down',
+      queue: live.queueOk ? 'ok' : 'down',
+      ws: live.wsOk ? 'ok' : 'down',
       lastSeed,
       jobsActive,
     };
