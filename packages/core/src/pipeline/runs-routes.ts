@@ -8,14 +8,12 @@
  */
 
 import { zValidator } from '@hono/zod-validator';
-import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { pipelineRuns } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { readPipelineRun } from './runs.js';
 import {
   cancelPipelineRun,
   type PipelineRunRow,
@@ -38,7 +36,7 @@ const runConflict = (message: string) =>
   new HTTPException(409, { message, cause: { code: 'run_terminal' } });
 
 async function loadRunWithAccess(runId: string, userId: string): Promise<PipelineRunRow> {
-  const [row] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1);
+  const row = await readPipelineRun(runId);
   if (!row) throw notFound('pipeline run not found');
   // pause/resume/cancel are mutations — viewers are read-only.
   const access = await loadProjectAccess(row.projectId, userId);

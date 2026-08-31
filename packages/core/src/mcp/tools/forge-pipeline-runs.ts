@@ -15,12 +15,11 @@
  * closes (≥ 1 release after v0.1.x consolidates).
  */
 
-import { and, desc, eq, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
-import { db } from '../../db/client.js';
-import { jobs, pipelineRunStatuses, pipelineRuns } from '../../db/schema.js';
+import { pipelineRunStatuses } from '../../db/schema.js';
 import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
+import { countRunJobsByStatus, listPipelineRuns, readPipelineRun } from '../../pipeline/runs.js';
 import {
   cancelPipelineRun,
   pausePipelineRun,
@@ -54,7 +53,7 @@ export const pipelineRunsCancelInputSchema = z
   .strict();
 
 async function loadRunForPrincipal(principal: McpPrincipal, runId: string) {
-  const [row] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1);
+  const row = await readPipelineRun(runId);
   if (!row) throw new Error('NOT_FOUND: pipeline run not found');
   await assertPrincipalIsMember(principal, row.projectId);
   return row;
@@ -67,36 +66,12 @@ export async function pipelineRunsListHandler(
   await assertDeviceOwnerIsMember(device, input.projectId);
 
   const runsLimit = input.limit ?? 50;
-  const conds: SQL[] = [eq(pipelineRuns.projectId, input.projectId)];
-  if (input.issueId) conds.push(eq(pipelineRuns.issueId, input.issueId));
-  if (input.status) conds.push(eq(pipelineRuns.status, input.status));
-
-  // ISS-428 — scalar projection; OMIT the `metadata` jsonb (unbounded) so a
-  // large list stays under the MCP response token cap. Full row via `get`.
-  const rows = await db
-    .select({
-      id: pipelineRuns.id,
-      projectId: pipelineRuns.projectId,
-      issueId: pipelineRuns.issueId,
-      kind: pipelineRuns.kind,
-      status: pipelineRuns.status,
-      currentStep: pipelineRuns.currentStep,
-      startedAt: pipelineRuns.startedAt,
-      finishedAt: pipelineRuns.finishedAt,
-      createdAt: pipelineRuns.createdAt,
-      updatedAt: pipelineRuns.updatedAt,
-      // cm:why ISS-789 — `status` alone cannot say whether anything is still working on a run; a correlated count keeps that answer in the same round-trip as the row it describes
-      // cm:guard write the identifiers LITERALLY here — do NOT interpolate `${jobs.pipelineRunId}` / `${pipelineRuns.id}`. Drizzle renders a column reference inside a raw sql template UNQUALIFIED (`"id"`, not `"pipeline_runs"."id"`), so inside this subquery the bare `"id"` binds to jobs.id and the correlation becomes `jobs.pipeline_run_id = jobs.id` — always false, count always 0. It compiles, typechecks, and is wrong; it shipped in 65bb8a0b and only real data caught it.
-      liveJobs: sql<number>`(
-        SELECT count(*)::int FROM jobs lj
-        WHERE lj.pipeline_run_id = pipeline_runs.id
-          AND lj.status IN ('queued','dispatched','running')
-      )`.mapWith(Number),
-    })
-    .from(pipelineRuns)
-    .where(and(...conds))
-    .orderBy(desc(pipelineRuns.startedAt))
-    .limit(overfetch(runsLimit));
+  const rows = await listPipelineRuns({
+    projectId: input.projectId,
+    issueId: input.issueId,
+    status: input.status,
+    limit: overfetch(runsLimit),
+  });
 
   return buildListEnvelope({
     key: 'runs',
@@ -112,15 +87,7 @@ export async function pipelineRunsGetHandler(
 ) {
   const run = await loadRunForPrincipal(principal, input.runId);
 
-  const counts = await db
-    .select({ status: jobs.status, count: sql<number>`count(*)::int` })
-    .from(jobs)
-    .where(eq(jobs.pipelineRunId, input.runId))
-    .groupBy(jobs.status);
-
-  const jobCounts: Record<string, number> = {};
-  for (const r of counts) jobCounts[r.status] = Number(r.count);
-
+  const jobCounts = await countRunJobsByStatus(input.runId);
   return { run, jobCounts };
 }
 

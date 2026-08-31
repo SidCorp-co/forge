@@ -28,6 +28,7 @@ import {
   isResumeFailedError,
   reclassifyAbortedResume,
 } from './handle-resume-failed.js';
+import { readJob } from './job-queries.js';
 import { salvageSchema, salvageSet } from './prior-attempts.js';
 import { JobResumeError, resumeHeldJob } from './resume-job.js';
 import type { RetryOutcome } from './retry.js';
@@ -91,7 +92,7 @@ const RUNNABLE_STATUSES = new Set(['dispatched', 'running']);
 const SYNTHETIC_REAP_ERRORS = new Set(['session_lost', 'dispatch_unclaimed', 'stale']);
 
 async function loadJob(jobId: string) {
-  const [row] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  const row = await readJob(jobId);
   if (!row) throw notFound('job not found');
   return row;
 }

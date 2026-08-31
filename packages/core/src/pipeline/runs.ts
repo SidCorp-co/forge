@@ -7,9 +7,9 @@
  * the run on terminal transitions.
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type PipelineRunKind, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
+import { jobs, type PipelineRunKind, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { hooks } from './hooks.js';
 import {
@@ -340,4 +340,62 @@ export async function findRunProjectId(runId: string): Promise<string | null> {
     .where(eq(pipelineRuns.id, runId))
     .limit(1);
   return row?.projectId ?? null;
+}
+
+/** One run, whole. Authorisation belongs to the caller, which knows the credential. */
+export async function readPipelineRun(runId: string) {
+  const [row] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1);
+  return row ?? null;
+}
+
+export type PipelineRunQuery = {
+  projectId: string;
+  issueId?: string | undefined;
+  status?: PipelineRunStatus | undefined;
+  limit: number;
+};
+
+// cm:guard the projection OMITS the `metadata` jsonb, and must keep omitting it (ISS-428): it is unbounded, and a list of fifty runs carrying fifty of them overflows the MCP response cap. `readPipelineRun` is where a caller that needs it goes.
+export async function listPipelineRuns(q: PipelineRunQuery) {
+  const conds: SQL[] = [eq(pipelineRuns.projectId, q.projectId)];
+  if (q.issueId) conds.push(eq(pipelineRuns.issueId, q.issueId));
+  if (q.status) conds.push(eq(pipelineRuns.status, q.status));
+
+  return db
+    .select({
+      id: pipelineRuns.id,
+      projectId: pipelineRuns.projectId,
+      issueId: pipelineRuns.issueId,
+      kind: pipelineRuns.kind,
+      status: pipelineRuns.status,
+      currentStep: pipelineRuns.currentStep,
+      startedAt: pipelineRuns.startedAt,
+      finishedAt: pipelineRuns.finishedAt,
+      createdAt: pipelineRuns.createdAt,
+      updatedAt: pipelineRuns.updatedAt,
+      // cm:why ISS-789 — `status` alone cannot say whether anything is still working on a run; a correlated count keeps that answer in the same round-trip as the row it describes
+      // cm:guard write the identifiers LITERALLY here — do NOT interpolate `${jobs.pipelineRunId}` / `${pipelineRuns.id}`. Drizzle renders a column reference inside a raw sql template UNQUALIFIED (`"id"`, not `"pipeline_runs"."id"`), so inside this subquery the bare `"id"` binds to jobs.id and the correlation becomes `jobs.pipeline_run_id = jobs.id` — always false, count always 0. It compiles, typechecks, and is wrong; it shipped in 65bb8a0b and only real data caught it.
+      liveJobs: sql<number>`(
+        SELECT count(*)::int FROM jobs lj
+        WHERE lj.pipeline_run_id = pipeline_runs.id
+          AND lj.status IN ('queued','dispatched','running')
+      )`.mapWith(Number),
+    })
+    .from(pipelineRuns)
+    .where(and(...conds))
+    .orderBy(desc(pipelineRuns.startedAt))
+    .limit(q.limit);
+}
+
+/** How many jobs a run holds, by status. */
+export async function countRunJobsByStatus(runId: string): Promise<Record<string, number>> {
+  const rows = await db
+    .select({ status: jobs.status, count: sql<number>`count(*)::int` })
+    .from(jobs)
+    .where(eq(jobs.pipelineRunId, runId))
+    .groupBy(jobs.status);
+
+  const out: Record<string, number> = {};
+  for (const r of rows) out[r.status] = Number(r.count);
+  return out;
 }

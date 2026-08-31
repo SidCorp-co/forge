@@ -20,6 +20,7 @@ import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { openIssueRun, openOneShotRun } from '../pipeline/runs.js';
 import { enqueueJob } from './enqueue.js';
+import { readJob } from './job-queries.js';
 import {
   type ActualUsage,
   extractPayloadExtras,
@@ -75,7 +76,7 @@ async function assertIssueInProject(projectId: string, issueId: string): Promise
 }
 
 async function loadJob(jobId: string) {
-  const [row] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  const row = await readJob(jobId);
   if (!row) throw notFound('job not found');
   return row;
 }

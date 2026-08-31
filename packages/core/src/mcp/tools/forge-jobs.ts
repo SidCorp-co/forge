@@ -1,9 +1,8 @@
-import { and, asc, desc, eq, gt, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
-import { jobEvents, jobStatuses, jobs, jobTypes } from '../../db/schema.js';
+import { jobStatuses, jobTypes } from '../../db/schema.js';
 import { cancelJob, JobCancelError } from '../../jobs/cancel-job.js';
 import { assertDispatchable, gateReasonsForQueuedJobs } from '../../jobs/dispatch-gates.js';
+import { listJobEvents, listJobs, readJob } from '../../jobs/job-queries.js';
 import { JobResumeError, resumeHeldJob } from '../../jobs/resume-job.js';
 import {
   assertPrincipalIsMember,
@@ -72,52 +71,7 @@ export const forgeJobsListTool: DeviceScopedMcpToolFactory = (device) => ({
     await assertDeviceOwnerIsMember(device, projectId);
 
     const jobsLimit = limit ?? DEFAULT_LIST_LIMIT;
-    const conds: SQL[] = [eq(jobs.projectId, projectId)];
-    if (status) conds.push(eq(jobs.status, status));
-    if (type) conds.push(eq(jobs.type, type));
-    if (issueId) conds.push(eq(jobs.issueId, issueId));
-
-    // ISS-478 (sibling of ISS-428) — explicit body-free projection. NEVER
-    // `db.select()` here: the `payload`/`promptBlocks`/`failureMeta` jsonb plus
-    // the unbounded `userPromptSnapshot`/`error` text overflow the MCP token cap
-    // (~862K chars observed live) and crash fragile agents. Heavy fields stay in
-    // `.get`.
-    const rows = await db
-      .select({
-        id: jobs.id,
-        projectId: jobs.projectId,
-        issueId: jobs.issueId,
-        pipelineRunId: jobs.pipelineRunId,
-        deviceId: jobs.deviceId,
-        runnerId: jobs.runnerId,
-        createdBy: jobs.createdBy,
-        type: jobs.type,
-        status: jobs.status,
-        queuedAt: jobs.queuedAt,
-        dispatchedAt: jobs.dispatchedAt,
-        ackedAt: jobs.ackedAt,
-        finishedAt: jobs.finishedAt,
-        exitCode: jobs.exitCode,
-        modelTier: jobs.modelTier,
-        attempts: jobs.attempts,
-        cancellationRequested: jobs.cancellationRequested,
-        retryOf: jobs.retryOf,
-        retryAfterAt: jobs.retryAfterAt,
-        agentSessionId: jobs.agentSessionId,
-        failureKind: jobs.failureKind,
-        failureAction: jobs.failureAction,
-        failureReason: jobs.failureReason,
-        classifierVersion: jobs.classifierVersion,
-        systemPromptHash: jobs.systemPromptHash,
-        promptInputTokenEst: jobs.promptInputTokenEst,
-        modelUsed: jobs.modelUsed,
-        archivePath: jobs.archivePath,
-        createdAt: jobs.createdAt,
-      })
-      .from(jobs)
-      .where(and(...conds))
-      .orderBy(desc(jobs.queuedAt))
-      .limit(overfetch(jobsLimit));
+    const rows = await listJobs({ projectId, status, type, issueId, limit: overfetch(jobsLimit) });
 
     // cm:why one extra project-scoped query, not one per row — the gate is stateless, so `queued` alone cannot say whether a job is about to run or blocked forever, and without this the only way to find out is a hand-written script against the database (which is how 11 jobs came to sit queued for 6-22 days unnoticed)
     const gates = rows.some((r) => r.status === 'queued')
@@ -144,7 +98,7 @@ export const forgeJobsGetTool: ContextScopedMcpToolFactory = ({ principal }) => 
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const { jobId } = getInputSchema.parse(args);
-    const [row] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+    const row = await readJob(jobId);
     if (!row) throw new Error('NOT_FOUND: job not found');
     await assertPrincipalIsMember(principal, row.projectId);
     if (row.status !== 'queued') return { job: row };
@@ -180,21 +134,12 @@ export const forgeJobsEventsTool: ContextScopedMcpToolFactory = ({ principal }) 
   inputSchema: zodToMcpSchema(eventsInputSchema),
   handler: async (args) => {
     const { jobId, sinceSeq, limit } = eventsInputSchema.parse(args);
-    const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+    const job = await readJob(jobId);
     if (!job) throw new Error('NOT_FOUND: job not found');
     await assertPrincipalIsMember(principal, job.projectId);
 
-    const whereClauses: SQL[] = [eq(jobEvents.jobId, jobId)];
-    if (sinceSeq !== undefined) whereClauses.push(gt(jobEvents.seq, sinceSeq));
-    const where = whereClauses.length === 1 ? whereClauses[0] : and(...whereClauses);
-
     const eventsLimit = limit ?? 200;
-    const fetched = await db
-      .select()
-      .from(jobEvents)
-      .where(where)
-      .orderBy(asc(jobEvents.seq))
-      .limit(overfetch(eventsLimit));
+    const fetched = await listJobEvents(jobId, overfetch(eventsLimit), sinceSeq);
 
     const bounded = fetched.map(boundEventData);
     // cm:guard events are CURSOR-paginated, so the size trim must shed the NEWEST rows — shedding the oldest would move lastSeq past events the caller never received, and nothing replays them
@@ -239,7 +184,7 @@ export const forgeJobsCancelTool: ContextScopedMcpToolFactory = ({ principal }) 
   inputSchema: zodToMcpSchema(cancelInputSchema),
   handler: async (args) => {
     const { jobId, reason } = cancelInputSchema.parse(args);
-    const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+    const job = await readJob(jobId);
     if (!job) throw new Error('NOT_FOUND: job not found');
     await assertPrincipalIsWriter(principal, job.projectId);
 
@@ -267,7 +212,7 @@ export const forgeJobsResumeTool: ContextScopedMcpToolFactory = ({ principal }) 
   inputSchema: zodToMcpSchema(cancelInputSchema),
   handler: async (args) => {
     const { jobId, reason } = cancelInputSchema.parse(args);
-    const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+    const job = await readJob(jobId);
     if (!job) throw new Error('NOT_FOUND: job not found');
     await assertPrincipalIsWriter(principal, job.projectId);
 

@@ -20,6 +20,7 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
+import { readJob } from './job-queries.js';
 import { maybeDeriveIncremental } from './session-transcript.js';
 
 const badRequest = (details: unknown) =>
@@ -80,7 +81,7 @@ jobEventsListRoutes.get(
     const { sinceSeq, limit } = c.req.valid('query');
     const userId = c.get('userId');
 
-    const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+    const job = await readJob(jobId);
     if (!job) throw notFound('job not found');
 
     const access = await loadProjectAccess(job.projectId, userId);
@@ -131,7 +132,7 @@ jobEventsRoutes.post(
     const { events } = c.req.valid('json');
     const device = c.get('device');
 
-    const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+    const job = await readJob(jobId);
     if (!job) throw notFound('job not found');
     if (job.deviceId !== device.id) {
       throw forbidden('job is not dispatched to this device');

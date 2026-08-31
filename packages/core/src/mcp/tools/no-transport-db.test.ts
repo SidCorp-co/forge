@@ -23,14 +23,10 @@ const TOOLS = resolve(import.meta.dirname);
 const PENDING_TOOLS = [
   'forge-config.ts',
   'forge-feedback.ts',
-  'forge-jobs.ts',
   'forge-metrics.ts',
-  'forge-ops-health.ts',
-  'forge-pipeline-runs.ts',
   'forge-projects.ts',
   'forge-runners.ts',
   'forge-uploads.ts',
-  'forge-ux-findings.ts',
 ];
 
 function toolSources(): string[] {

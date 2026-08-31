@@ -1,16 +1,14 @@
-import { and, count, desc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
-import {
-  issues,
-  uxContractRules,
-  uxFindingKinds,
-  uxFindingStages,
-  uxFindings,
-  uxRuleSeverities,
-} from '../../db/schema.js';
+import { uxFindingKinds, uxFindingStages, uxRuleSeverities } from '../../db/schema.js';
 import { resolveActiveJobContext } from '../../jobs/active-job-context.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
+import {
+  countFindingsFor,
+  insertUxFinding,
+  issueBelongsToProject,
+  listUxFindings,
+  resolveProjectRuleId,
+} from '../../ux-findings/service.js';
 import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
@@ -94,12 +92,7 @@ async function resolveTargetFromActiveJob(
 }
 
 async function resolveExplicitTarget(issueId: string, projectId: string): Promise<FindingTarget> {
-  const [row] = await db
-    .select({ id: issues.id })
-    .from(issues)
-    .where(and(eq(issues.id, issueId), eq(issues.projectId, projectId)))
-    .limit(1);
-  if (!row) {
+  if (!(await issueBelongsToProject(issueId, projectId))) {
     return {
       ok: false,
       reason: 'issue_not_in_project',
@@ -107,7 +100,7 @@ async function resolveExplicitTarget(issueId: string, projectId: string): Promis
     };
   }
   // cm:guard runId stays null here — an explicitly-targeted finding is by definition not attributable to a run, and borrowing the device's current one would credit the wrong pass
-  return { ok: true, issueId: row.id, runId: null };
+  return { ok: true, issueId, runId: null };
 }
 
 export const forgeUxFindingsTool: ContextScopedMcpToolFactory = (ctx) => ({
@@ -142,51 +135,25 @@ export const forgeUxFindingsTool: ContextScopedMcpToolFactory = (ctx) => ({
           : await resolveTargetFromActiveJob(principal.kind, device.id);
         if (!target.ok) return target;
 
-        // cm:guard runId is NULL on the explicit-issueId path, and `eq(col, null)` is SQL NULL — never true — so the cap would silently stop capping. Match with isNull, or an agent looping on the escape hatch writes unbounded rows.
-        const [countRow] = await db
-          .select({ n: count() })
-          .from(uxFindings)
-          .where(
-            and(
-              eq(uxFindings.issueId, target.issueId),
-              target.runId === null ? isNull(uxFindings.runId) : eq(uxFindings.runId, target.runId),
-            ),
-          )
-          .limit(1);
-        if (Number(countRow?.n ?? 0) >= MAX_FINDINGS_PER_JOB) {
+        const written = await countFindingsFor(target.issueId, target.runId);
+        if (written >= MAX_FINDINGS_PER_JOB) {
           return { ok: false, reason: 'rate_limited', limit: MAX_FINDINGS_PER_JOB };
         }
 
-        // Only accept a ruleId that actually belongs to this project; otherwise
-        // drop it to null so a stale/foreign id can't FK-fail the insert.
-        let ruleId: string | null = null;
-        if (input.ruleId) {
-          const [rule] = await db
-            .select({ id: uxContractRules.id })
-            .from(uxContractRules)
-            .where(
-              and(eq(uxContractRules.id, input.ruleId), eq(uxContractRules.projectId, projectId)),
-            )
-            .limit(1);
-          ruleId = rule?.id ?? null;
-        }
+        // cm:guard a ruleId from another project is dropped to null, NOT refused: it would FK-fail the insert and lose a real finding over a stale id the agent had no way to check. The finding is the thing worth keeping; the rule link is not.
+        const ruleId = input.ruleId ? await resolveProjectRuleId(input.ruleId, projectId) : null;
 
-        const [inserted] = await db
-          .insert(uxFindings)
-          .values({
-            projectId,
-            issueId: target.issueId,
-            runId: target.runId ?? undefined,
-            stage: input.stage,
-            ruleId: ruleId ?? undefined,
-            kind: input.kind,
-            detail: input.detail,
-            severity: input.severity ?? 'must',
-          })
-          .returning({ id: uxFindings.id });
-
-        if (!inserted) throw new Error('forge_ux_findings: insert returned no row');
-        return { ok: true, id: inserted.id };
+        const id = await insertUxFinding({
+          projectId,
+          issueId: target.issueId,
+          runId: target.runId,
+          stage: input.stage,
+          ruleId,
+          kind: input.kind,
+          detail: input.detail,
+          severity: input.severity ?? 'must',
+        });
+        return { ok: true, id };
       }
 
       case 'list': {
@@ -194,27 +161,13 @@ export const forgeUxFindingsTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         const findingsLimit = input.limit ?? 25;
         const filters = input.filters ?? {};
-        const conditions = [eq(uxFindings.projectId, projectId)];
-        if (filters.issueId) conditions.push(eq(uxFindings.issueId, filters.issueId));
-        if (filters.stage) conditions.push(eq(uxFindings.stage, filters.stage));
-        if (filters.kind) conditions.push(eq(uxFindings.kind, filters.kind));
-
-        const rows = await db
-          .select({
-            id: uxFindings.id,
-            issueId: uxFindings.issueId,
-            runId: uxFindings.runId,
-            stage: uxFindings.stage,
-            ruleId: uxFindings.ruleId,
-            kind: uxFindings.kind,
-            detail: uxFindings.detail,
-            severity: uxFindings.severity,
-            createdAt: uxFindings.createdAt,
-          })
-          .from(uxFindings)
-          .where(and(...conditions))
-          .orderBy(desc(uxFindings.createdAt))
-          .limit(overfetch(findingsLimit));
+        const rows = await listUxFindings({
+          projectId,
+          issueId: filters.issueId,
+          stage: filters.stage,
+          kind: filters.kind,
+          limit: overfetch(findingsLimit),
+        });
 
         const serialized = rows.map((r) => ({
           ...r,
