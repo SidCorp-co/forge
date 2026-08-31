@@ -11,7 +11,6 @@ import {
   Field,
   Input,
   SegmentedControl,
-  Toggle,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useMemo, useState } from "react";
@@ -31,6 +30,7 @@ import type {
   PostmanRegion,
 } from "../types";
 import { ConnectionOwnerField } from "./connection-owner-field";
+import { IntegrationEnabledControl } from "./integration-enabled-control";
 
 const DEFAULT_WORKSPACE = "Forge Integration";
 
@@ -152,10 +152,6 @@ export function PostmanSection({ projectId }: { projectId: string }) {
     }
   }
 
-  async function handleToggleActive(active: boolean) {
-    if (!existing) return;
-    await update.mutateAsync({ id: existing.id, body: { active } });
-  }
 
   const testUser = testResult?.diagnostics?.user;
 
@@ -302,14 +298,10 @@ export function PostmanSection({ projectId }: { projectId: string }) {
             </div>
             {existing && (
               <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2">
-                  <span className="fg-body-sm text-muted">Enabled</span>
-                  <Toggle
-                    checked={existing.active}
-                    onChange={handleToggleActive}
-                    disabled={orgLocked}
-                  />
-                </label>
+                <IntegrationEnabledControl
+                  projectId={projectId}
+                  binding={existing}
+                />
                 <Button
                   variant="danger"
                   icon="trash"

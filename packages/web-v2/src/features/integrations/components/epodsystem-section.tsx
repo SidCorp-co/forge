@@ -11,7 +11,6 @@ import {
   CardTitle,
   Field,
   Input,
-  Toggle,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useMemo, useState } from "react";
@@ -29,6 +28,7 @@ import type {
   ProviderConfig,
 } from "../types";
 import { ConnectionOwnerField } from "./connection-owner-field";
+import { IntegrationEnabledControl } from "./integration-enabled-control";
 
 // Scopes a website build needs to publish themes + toggle commerce/cache.
 const REQUIRED_SCOPES = ["products:write", "webstore:write", "settings:write"];
@@ -197,14 +197,6 @@ function EpodsystemBindingRow({
     }
   }
 
-  async function handleToggleActive(active: boolean) {
-    setError(null);
-    try {
-      await update.mutateAsync({ id: binding.id, body: { active } });
-    } catch (err) {
-      setError(formatApiError(err));
-    }
-  }
 
   function handleDelete() {
     const label = bindingLabel || "default";
@@ -300,14 +292,7 @@ function EpodsystemBindingRow({
         >
           Test
         </Button>
-        <label className="flex items-center gap-2">
-          <span className="fg-body-sm text-muted">Enabled</span>
-          <Toggle
-            checked={binding.active}
-            onChange={handleToggleActive}
-            disabled={orgLocked}
-          />
-        </label>
+        <IntegrationEnabledControl projectId={projectId} binding={binding} />
         <Button
           variant="danger"
           icon="trash"

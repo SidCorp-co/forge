@@ -15,7 +15,6 @@ import {
   Input,
   Select,
   Textarea,
-  Toggle,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useUpdateProject } from "@/features/project-settings/hooks";
@@ -38,6 +37,7 @@ import type {
   RocketchatRoom,
 } from "../types";
 import { ConnectionOwnerField } from "./connection-owner-field";
+import { IntegrationEnabledControl } from "./integration-enabled-control";
 
 interface BadgeView {
   label: string;
@@ -387,14 +387,7 @@ function RocketchatBindingPanel({
         <Button variant="secondary" onClick={handleTest} loading={test.isPending}>
           Test
         </Button>
-        <label className="flex items-center gap-2">
-          <span className="fg-body-sm text-muted">Enabled</span>
-          <Toggle
-            checked={binding.active}
-            onChange={(active) => update.mutate({ id: binding.id, body: { active } })}
-            disabled={orgLocked}
-          />
-        </label>
+        <IntegrationEnabledControl projectId={projectId} binding={binding} />
         <Button
           variant="danger"
           icon="trash"

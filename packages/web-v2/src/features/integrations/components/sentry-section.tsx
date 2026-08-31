@@ -11,7 +11,6 @@ import {
   Field,
   Input,
   Textarea,
-  Toggle,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useMemo, useState } from "react";
@@ -30,6 +29,7 @@ import type {
   SentryTarget,
 } from "../types";
 import { ConnectionOwnerField } from "./connection-owner-field";
+import { IntegrationEnabledControl } from "./integration-enabled-control";
 
 /** Editable Sentry target row — strings only so inputs stay controlled. */
 interface TargetRow {
@@ -224,10 +224,6 @@ export function SentrySection({ projectId }: { projectId: string }) {
     }
   }
 
-  async function handleToggleActive(active: boolean) {
-    if (!existing) return;
-    await update.mutateAsync({ id: existing.id, body: { active } });
-  }
 
   return (
     <Card>
@@ -436,14 +432,10 @@ export function SentrySection({ projectId }: { projectId: string }) {
             </div>
             {existing && (
               <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2">
-                  <span className="fg-body-sm text-muted">Enabled</span>
-                  <Toggle
-                    checked={existing.active}
-                    onChange={handleToggleActive}
-                    disabled={orgLocked}
-                  />
-                </label>
+                <IntegrationEnabledControl
+                  projectId={projectId}
+                  binding={existing}
+                />
                 <Button
                   variant="danger"
                   icon="trash"

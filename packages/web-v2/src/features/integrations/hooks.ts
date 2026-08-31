@@ -8,7 +8,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { integrationConnectionsApi, integrationsApi } from "./api";
 import type {
   BindExistingConnectionRequest,
-  ConnectionCreateInput,
   ConnectionUpdateInput,
   CreateIntegrationInput,
   UpdateIntegrationInput,
@@ -267,7 +266,7 @@ export function useOrgConnectionLocked(
   const connection = connectionsQ.data?.items.find(
     (c) => c.id === connectionId,
   );
-  if (!connection || connection.ownerType !== "org") return false;
+  if (connection?.ownerType !== "org") return false;
   const orgRole =
     projectsQ.data?.find((p) => p.id === projectId)?.orgRole ?? null;
   return orgRole !== "owner" && orgRole !== "admin";
@@ -293,7 +292,11 @@ export function useCanManageConnection(
 
 function useInvalidateConnections() {
   const qc = useQueryClient();
-  return () => qc.invalidateQueries({ queryKey: ["integration-connections"] });
+  // cm:edge protocol -> packages/core/src/integrations/connection-routes.ts — the connection router emits NO project-room broadcast (only the project router calls broadcastIntegrationChanged), so a connection write reaches project-scoped views ONLY through this second key
+  return () => {
+    qc.invalidateQueries({ queryKey: ["integration-connections"] });
+    qc.invalidateQueries({ queryKey: ["integrations"] });
+  };
 }
 
 /** Patch a connection (displayName/config/secrets/active). */
@@ -317,18 +320,14 @@ export function useUpdateConnection() {
 }
 
 /** Connection-scoped Test at the directory (ISS-435). No toast — the caller
- *  renders the result inline (mirrors `useTestIntegration`). Settled-time
- *  invalidation refreshes the directory card AND every project-scoped
- *  integrations view (the adapter persisted fresh health onto the shared
- *  connection, and connection mutations have no project-room broadcast). */
+ *  renders the result inline (mirrors `useTestIntegration`). Invalidates at
+ *  settled rather than success: the adapter persists fresh health onto the
+ *  shared connection even when the probe comes back unhealthy. */
 export function useTestConnection() {
-  const qc = useQueryClient();
+  const invalidate = useInvalidateConnections();
   return useMutation({
     mutationFn: (id: string) => integrationConnectionsApi.test(id),
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["integration-connections"] });
-      qc.invalidateQueries({ queryKey: ["integrations"] });
-    },
+    onSettled: invalidate,
   });
 }
 

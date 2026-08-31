@@ -23,6 +23,17 @@
 
 ### Fixed
 
+- An integration whose shared credential was disabled can now be turned back on from the project's
+  own settings. Two things gate an integration — the project's opt-in and the org-shared
+  credential — and the API reported only whether both were on. Every provider card bound its
+  Enabled switch to that single answer while its save could write the project's half alone, so with
+  the credential disabled the switch reported success and snapped back, over and over, with nothing
+  on screen saying which half was the problem. The switch now reads and writes the same half, and
+  when the credential is the one that is off the card says so and offers to enable it, still gated
+  on org owner or admin because that credential is shared by every project bound to it. Enabling it
+  also refreshes the project views, which a credential change never used to reach. Found on
+  forge-dev, whose Rocket.Chat bot had been unreachable from the UI since 2026-07-03.
+
 - The instructions every agent is handed no longer describe steps its own project does not run.
   Three of them said `plan` and `acceptanceCriteria` are written by the clarify and plan steps —
   true on a staged project, and false on an autonomous one, which has neither step and one driver
