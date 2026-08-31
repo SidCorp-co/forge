@@ -37,6 +37,8 @@
     padding: 1px 7px; border-radius: 20px; margin-top: 6px; }
   .tag.dup { background: #fdf0ef; color: var(--dead); border: 1px solid #e8c4c0; }
   .tag.one { background: var(--live-bg); color: var(--accent); border: 1px solid #b9d4c6; }
+  .shipped { color: var(--accent); font-weight: 600; }
+  tr.done td { background: var(--live-bg); }
 
   table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 4px; }
   th { text-align: left; font-size: 11.5px; text-transform: uppercase;
@@ -73,7 +75,7 @@
     <div class="box wide dead">
       <div class="t">mcp/tools/ — 45 module</div>
       <div class="d">forge-issues.ts · 1.359 dòng</div>
-      <div class="tag dup">chạm drizzle TRỰC TIẾP</div>
+      <div class="tag one">không còn chạm drizzle — ISS-889 §3, 2026-08-31</div>
     </div>
     <div class="box wide">
       <div class="t">REST /api/…</div>
@@ -139,19 +141,19 @@
 <div class="panel">
 <table>
   <tr><th style="width:29%">Chết</th><th style="width:29%">Bị hấp thụ vào</th><th>Vì sao mạnh tay</th></tr>
-  <tr>
+  <tr class="done">
     <td><span class="x">✕</span> <code>mcp/tools/forge-issues.ts</code><br><span class="d" style="color:var(--muted);font-size:12.5px">+ comments, memory, jobs, runners, projects, config, knowledge, metrics…</span></td>
     <td><span class="k">→</span> adapter mỏng gọi REST, hoặc xoá hẳn khi CLI đã phủ</td>
-    <td>Đang chạm drizzle trực tiếp. Chừng nào còn thế, mọi luật issue có hai nơi để sai.</td>
+    <td><span class="shipped">Xong — ISS-889 §3, 2026-08-31:</span> không tool nào trong <code>mcp/tools/</code> còn giữ handle DB; mỗi truy vấn đã về một service dưới domain của nó, và <code>no-transport-db.test.ts</code> giữ bất biến đó. Việc trích ra làm lộ bốn chỗ hai transport đã lệch nhau: cột list của agent-session, tập status chiếm slot runner, filter orphan, và 23505 slug-hay-apiKey. Còn lại: ~12 tool chưa có đối tác REST — service của chúng mới có một caller, là adapter chứ chưa phải data plane dùng chung.</td>
   </tr>
   <tr>
     <td><span class="x">✕</span> Hai đường <code>create</code> viết tay</td>
-    <td><span class="k">→</span> một create service <b>phải trích ra</b> — chưa tồn tại</td>
+    <td><span class="k">→</span> <code>issues/create-service.ts</code> — <span class="shipped">đã trích, cả hai transport dùng chung</span></td>
     <td>Cả hai bên đều <code>insert(issues)</code> nội tuyến: REST ở <code>issues/routes.ts</code> trong một <code>db.transaction</code>, MCP ở <code>mcp/tools/forge-issues.ts</code>. <code>issues/creator.ts</code> <b>không phải</b> đường create — nó là attribution (<code>hydrateCreatorsForIssues</code>, <code>buildOriginCondition</code>, <code>isAgentChannel</code>), không có hàm create nào. Là gốc của bug "create mặc định <code>open</code>, không lùi về <code>draft</code>".</td>
   </tr>
   <tr>
     <td><span class="x">✕</span> <code>X-Total-Count</code> header</td>
-    <td><span class="k">→</span> <code>buildListEnvelope</code> cho mọi caller</td>
+    <td><span class="k">→</span> <code>lib/pagination.ts</code> — <span class="shipped">envelope đã lên, header còn lại là bản sao tương thích</span></td>
     <td>Hai hợp đồng "đã đủ chưa" khác nhau: REST trả header, MCP trả <code>{returned, hasMore, truncated}</code>. CLI dùng REST sẽ thừa hưởng cái <b>yếu hơn</b> — trừ khi REST lên envelope trước.</td>
   </tr>
   <tr>
@@ -189,8 +191,8 @@
 <div class="panel">
 <table>
   <tr><th style="width:8%"></th><th style="width:38%">Bước</th><th>Ràng buộc</th></tr>
-  <tr><td><b>0</b></td><td>Nâng REST lên ngang MCP</td><td>Trích một create service dùng chung (chưa tồn tại), relations <b>nguyên tử</b> trong transaction, list-envelope, labels, detector-key. <b>Chưa xong bước này thì CLI là bản thụt lùi.</b></td></tr>
-  <tr><td><b>1</b></td><td>MCP tool → adapter mỏng trên REST</td><td>Xoá drizzle khỏi <code>mcp/tools/</code>. Hành vi không đổi ⇒ test hiện có là lưới an toàn.</td></tr>
+  <tr class="done"><td><b>0</b></td><td>Nâng REST lên ngang MCP</td><td><span class="shipped">Xong (ISS-889 §1–§2):</span> <code>issues/create-service.ts</code> dùng chung, relations <b>nguyên tử</b> cùng transaction với create, và <code>lib/pagination.ts</code> trả envelope trong body.</td></tr>
+  <tr class="done"><td><b>1</b></td><td>MCP tool → adapter mỏng trên REST</td><td><span class="shipped">Xong (ISS-889 §3):</span> drizzle đã ra khỏi <code>mcp/tools/</code> — nhưng thành adapter trên <b>service dùng chung</b>, không phải gọi REST qua HTTP. Test cũ là lưới an toàn đúng như dự đoán; chỗ nào assertion chỉ còn soi mock thì bị thay bằng integration test trên Postgres thật.</td></tr>
   <tr><td><b>2</b></td><td>CLI trên cùng REST đó</td><td>Mỏng. Chuẩn hoá ở tầng transport, subcommand chỉ in — như <code>buzz</code>.</td></tr>
   <tr><td><b>3</b></td><td><code>forge api &lt;path&gt;</code></td><td>Escape hatch kiểu <code>gh api</code>. Endpoint mới không cần chờ CLI.</td></tr>
   <tr><td><b>4</b></td><td>Xoá MCP tool đã được CLI phủ</td><td>Xoá thật, không deprecate. Còn hai đường là còn hai đường.</td></tr>
@@ -209,7 +211,7 @@ với create, nên một CLI dựng trên nó chỉ tái hiện được đúng 
   <tr><td>Một giai đoạn hồi quy có thật</td>
       <td>Giữa bước 1 và bước 4 tồn tại cả MCP adapter lẫn CLI. Đúng cái "hai đường sống" mà đề xuất này nói là phải diệt — chỉ chấp nhận được vì nó <b>có hạn</b>, và hạn đó là bước 4.</td></tr>
   <tr><td>Viết lại test, không phải chỉ chuyển code</td>
-      <td>Test của <code>mcp/tools/*.test.ts</code> đang test drizzle-qua-tool. Khi tool thành adapter, chúng test nhầm tầng và phải viết lại — 35 file test cạnh 45 module.</td></tr>
+      <td><span class="shipped">Đã trả (ISS-889 §3):</span> test của <code>mcp/tools/*.test.ts</code> test drizzle-qua-tool, nên khi tool thành adapter chúng test nhầm tầng. Chỗ nào chỉ cần đổi hình mock thì đổi; chỗ nào assertion đã thôi đo gì (soi một truy vấn đã chuyển đi) thì <b>xoá</b> và dựng lại thành integration test trên Postgres thật.</td></tr>
   <tr><td>Bước 0 không sinh ra giá trị nhìn thấy được</td>
       <td>Nâng REST lên ngang MCP không cho người dùng thêm thứ gì. Nó là điều kiện cần thuần tuý, và vì thế là bước dễ bị cắt nhất khi hết kiên nhẫn.</td></tr>
   <tr><td>Mất tính năng nếu làm sai thứ tự</td>
