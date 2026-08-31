@@ -2,7 +2,7 @@
 // against core: `issues/routes.ts` (GET /:id), `comments/routes.ts`,
 // `issues/activity-routes.ts`, `tasks/routes.ts`, `issues/attachment-routes.ts`.
 
-import { apiClient, apiMultipart } from "@/lib/api/client";
+import { apiClient, apiClientList, apiMultipart } from "@/lib/api/client";
 import type {
   ActivityItem,
   AttachmentRow,
@@ -23,8 +23,10 @@ export const issueDetailApi = {
   /** `GET /api/issues/:id` — full row incl. pipelineHealth, labels, metadata. */
   get: (id: string) => apiClient<IssueDetail>(`/issues/${id}`),
 
-  /** `GET /api/issues/:id/comments` — comment TREE (nested via `replies`). */
-  listComments: (id: string) => apiClient<CommentNode[]>(`/issues/${id}/comments`),
+  /** `GET /api/issues/:id/comments` — comment TREE (nested via `replies`),
+   *  with `totalCount` = every comment on the issue, replies included. */
+  // cm:edge contract -> packages/core/src/comments/routes.ts — the route answers `wholeList`, so the body is `{ items, total, … }` and `items` is the TREE while `total` counts every comment flat. Read as a bare array it is an object that passes every truthiness guard and throws `is not iterable` in the first walk of it (ISS-893: every issue-detail page on the deploy). `apiClientList` is the one place that knows both shapes — do not hand-unwrap `{ items }` here.
+  listComments: (id: string) => apiClientList<CommentNode>(`/issues/${id}/comments`),
 
   /** `POST /api/issues/:id/comments` — create (optional `parentId`). */
   createComment: (id: string, body: string, parentId?: string) =>
