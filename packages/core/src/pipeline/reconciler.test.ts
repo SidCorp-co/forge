@@ -1,7 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// cm:guard this shape must mirror the stuck-issue SELECT column for column. It did not carry `mode`, so `row.mode` was undefined in every test, the autonomous branch never once executed, and deleting it whole left the suite green — while the CHANGELOG claimed the cap worked. A key the query selects and this type omits is a branch nothing covers.
 const stuckQueue: Array<
-  Array<{ id: string; project_id: string; status: string; created_by: string | null }>
+  Array<{
+    id: string;
+    project_id: string;
+    status: string;
+    created_by: string | null;
+    mode: string | null;
+    reopen_count: number;
+  }>
 > = [];
 const staleCountQueue: Array<Array<{ count: string | number }>> = [];
 const wedgeQueue: Array<
@@ -126,7 +134,16 @@ beforeEach(() => {
 describe('rescue accounting', () => {
   // cm:guard L0.7 — `rescued` used to count the ATTEMPT. `considerEnqueue` has a dozen paths that enqueue nothing (a disabled stage, a human gate, a race, a missing skill), and an issue parked on any of them is re-read every 60s forever: the counter and the warning breadcrumb both fired every minute for a loop that did nothing, which is how it stayed invisible.
   it('does not count a rescue when the re-enqueue produced no job', async () => {
-    stuckQueue.push([{ id: 'iss-1', project_id: 'proj-1', status: 'confirmed', created_by: 'o' }]);
+    stuckQueue.push([
+      {
+        id: 'iss-1',
+        project_id: 'proj-1',
+        status: 'confirmed',
+        created_by: 'o',
+        mode: 'staged',
+        reopen_count: 0,
+      },
+    ]);
     jobsQueue.push([]);
     staleCountQueue.push([{ count: 0 }]);
 
@@ -143,8 +160,22 @@ describe('rescue accounting', () => {
 describe('reconciler', () => {
   it('re-enqueues each stuck issue and emits a Sentry breadcrumb', async () => {
     stuckQueue.push([
-      { id: 'iss-1', project_id: 'proj-1', status: 'confirmed', created_by: 'owner-1' },
-      { id: 'iss-2', project_id: 'proj-1', status: 'approved', created_by: 'owner-1' },
+      {
+        id: 'iss-1',
+        project_id: 'proj-1',
+        status: 'confirmed',
+        created_by: 'owner-1',
+        mode: 'staged',
+        reopen_count: 0,
+      },
+      {
+        id: 'iss-2',
+        project_id: 'proj-1',
+        status: 'approved',
+        created_by: 'owner-1',
+        mode: 'staged',
+        reopen_count: 0,
+      },
     ]);
     staleCountQueue.push([{ count: 0 }]);
 
@@ -166,7 +197,16 @@ describe('reconciler', () => {
   });
 
   it('falls back to the <reconciler> sentinel id when project has no owner', async () => {
-    stuckQueue.push([{ id: 'iss-3', project_id: 'proj-2', status: 'reopen', created_by: null }]);
+    stuckQueue.push([
+      {
+        id: 'iss-3',
+        project_id: 'proj-2',
+        status: 'reopen',
+        created_by: null,
+        mode: 'staged',
+        reopen_count: 0,
+      },
+    ]);
     staleCountQueue.push([{ count: 0 }]);
 
     await runReconcilerOnce();
@@ -195,8 +235,22 @@ describe('reconciler', () => {
 
   it('does not throw when reEnqueueForIssue throws — continues with the next row', async () => {
     stuckQueue.push([
-      { id: 'iss-4', project_id: 'proj-3', status: 'confirmed', created_by: 'o' },
-      { id: 'iss-5', project_id: 'proj-3', status: 'confirmed', created_by: 'o' },
+      {
+        id: 'iss-4',
+        project_id: 'proj-3',
+        status: 'confirmed',
+        created_by: 'o',
+        mode: 'staged',
+        reopen_count: 0,
+      },
+      {
+        id: 'iss-5',
+        project_id: 'proj-3',
+        status: 'confirmed',
+        created_by: 'o',
+        mode: 'staged',
+        reopen_count: 0,
+      },
     ]);
     staleCountQueue.push([{ count: 0 }]);
     reEnqueueMock.mockRejectedValueOnce(new Error('boom'));
@@ -210,8 +264,22 @@ describe('reconciler', () => {
 
   it('ISS-626 — skips re-enqueue and does not count a rescue when the stage stall guard trips', async () => {
     stuckQueue.push([
-      { id: 'iss-stall', project_id: 'proj-s', status: 'clarified', created_by: 'owner-s' },
-      { id: 'iss-ok', project_id: 'proj-s', status: 'clarified', created_by: 'owner-s' },
+      {
+        id: 'iss-stall',
+        project_id: 'proj-s',
+        status: 'clarified',
+        created_by: 'owner-s',
+        mode: 'staged',
+        reopen_count: 0,
+      },
+      {
+        id: 'iss-ok',
+        project_id: 'proj-s',
+        status: 'clarified',
+        created_by: 'owner-s',
+        mode: 'staged',
+        reopen_count: 0,
+      },
     ]);
     staleCountQueue.push([{ count: 0 }]);
     // First issue is stalled (capped) → skipped; second proceeds normally.
@@ -469,5 +537,97 @@ describe('autonomous driver wedge reset (ISS-890)', () => {
 
     expect(result.reset).toBe(1);
     expect(result.autonomousReset).toBe(1);
+  });
+});
+
+describe('the rescue cap on the open path (ISS-890 extra fix)', () => {
+  function seedAutonomousStuck(): void {
+    stuckQueue.push([
+      {
+        id: 'iss-o1',
+        project_id: 'proj-o',
+        status: 'open',
+        created_by: 'owner-o',
+        mode: 'autonomous',
+        reopen_count: 1,
+      },
+    ]);
+    staleCountQueue.push([{ count: 0 }]);
+    wedgeQueue.push([]);
+    autonomousWedgeQueue.push([]);
+  }
+
+  it('asks the cap before re-enqueueing, carrying the issue’s real reopen count', async () => {
+    seedAutonomousStuck();
+
+    await runReconcilerOnce();
+
+    expect(capMock).toHaveBeenCalledWith(
+      expect.objectContaining({ issueId: 'iss-o1', status: 'open', reopenCount: 1 }),
+    );
+  });
+
+  it('refuses to re-enqueue once the run has spent its rescues', async () => {
+    seedAutonomousStuck();
+    capMock.mockResolvedValue({ capped: true, runId: 'run-o1' });
+
+    const result = await runReconcilerOnce();
+
+    expect(reEnqueueMock).not.toHaveBeenCalled();
+    expect(recordRescueMock).not.toHaveBeenCalled();
+    expect(result.rescued).toBe(0);
+  });
+
+  it('charges the run only once a job actually appeared', async () => {
+    seedAutonomousStuck();
+    capMock.mockResolvedValue({ capped: false, runId: 'run-o1' });
+
+    await runReconcilerOnce();
+
+    expect(reEnqueueMock).toHaveBeenCalledTimes(1);
+    expect(recordRescueMock).toHaveBeenCalledWith('run-o1');
+  });
+
+  it('charges nothing when the re-enqueue produced no job', async () => {
+    seedAutonomousStuck();
+    jobsQueue.push([]);
+
+    const result = await runReconcilerOnce();
+
+    expect(recordRescueMock).not.toHaveBeenCalled();
+    expect(result.rescued).toBe(0);
+  });
+
+  it('charges nothing when the project has no open run to charge', async () => {
+    seedAutonomousStuck();
+    capMock.mockResolvedValue({ capped: false, runId: null });
+
+    await runReconcilerOnce();
+
+    expect(reEnqueueMock).toHaveBeenCalledTimes(1);
+    expect(recordRescueMock).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the staged control is what keeps this cap off the pipeline it was never built for: `checkStageStallAndPause` already owns that path, and consulting both would cap a staged run twice on different evidence.
+  it('never consults the autonomous cap on a staged project', async () => {
+    stuckQueue.push([
+      {
+        id: 'iss-s1',
+        project_id: 'proj-s',
+        status: 'approved',
+        created_by: 'owner-s',
+        mode: 'staged',
+        reopen_count: 0,
+      },
+    ]);
+    staleCountQueue.push([{ count: 0 }]);
+    wedgeQueue.push([]);
+    autonomousWedgeQueue.push([]);
+
+    await runReconcilerOnce();
+
+    expect(capMock).not.toHaveBeenCalled();
+    expect(recordRescueMock).not.toHaveBeenCalled();
+    expect(reEnqueueMock).toHaveBeenCalledTimes(1);
   });
 });

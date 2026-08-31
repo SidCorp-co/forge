@@ -155,6 +155,7 @@ export async function runReconcilerOnce(): Promise<{
           reopenCount: row.reopen_count,
         });
         if (cap.capped) continue;
+        // cm:guard a null runId here is CORRECT, not a miss: on this path `openIssueRun` runs inside `dispatchAutonomous`, i.e. after the check, so a fresh issue has no run yet and its first rescue charges nothing. The loop this cap exists to bound starts at cycle two, where the run exists — charging cycle one would only shorten the allowance by one for every issue that ever entered normally.
         autonomousRunId = cap.runId;
       }
 
