@@ -1,11 +1,10 @@
 # Changelog
 
-> **The entries before 2026-08-28 are missing, not absent.** All 1,034 lines of this file were
-> removed by an undeclared deletion inside a docs-pointer commit, and no gate objected. ISS-872
-> records the loss. ISS-880 made a second one impossible — nothing may leave this file now without
-> saying so — but restoring the old text is an owner decision and has not been taken; it survives at
-> `git show 3df9a8e9^:CHANGELOG.md`. Do not read the short list below as the project's release
-> history.
+> **Cutoff: 2026-08-28.** Nothing before that date is carried here. 1,034 lines were removed in
+> `3df9a8e9`; the owner decided on 2026-08-31 not to restore them, and that decision stands rather
+> than being revisited each time someone notices the gap. They are readable at
+> `git show 3df9a8e9^:CHANGELOG.md`. Later cuts trim the same way: git is the record of what
+> shipped, and this file is the short reader-facing view of the recent end of it.
 
 ## [Unreleased]
 
