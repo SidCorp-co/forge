@@ -85,9 +85,12 @@ async fn reusable(repo: &str, abs: &Path, branch: &str) -> Option<PathBuf> {
     if !abs.is_dir() {
         return None;
     }
-    let out = git(&abs.to_string_lossy(), &["rev-parse", "--abbrev-ref", "HEAD"])
-        .await
-        .ok()?;
+    let out = git(
+        &abs.to_string_lossy(),
+        &["rev-parse", "--abbrev-ref", "HEAD"],
+    )
+    .await
+    .ok()?;
     if !out.status.success() || String::from_utf8_lossy(&out.stdout).trim() != branch {
         return None;
     }
@@ -234,7 +237,10 @@ mod tests {
         let r = root.to_string_lossy().to_string();
         let wt = create(&r, "ISS-1", None).await.unwrap();
         assert_eq!(wt, path(&r, "ISS-1"));
-        assert!(wt.join("f.txt").is_file(), "worktree has the repo's content");
+        assert!(
+            wt.join("f.txt").is_file(),
+            "worktree has the repo's content"
+        );
         assert_eq!(branch_of(&wt).await, "ISS-1");
         assert_eq!(branch_of(&root).await, "main", "the root did not move");
         let _ = std::fs::remove_dir_all(&root);
@@ -280,7 +286,11 @@ mod tests {
         let r = root.to_string_lossy().to_string();
         let wt = create(&r, "feat/ISS-5", None).await.unwrap();
         assert!(wt.ends_with(".worktrees/feat-ISS-5"));
-        assert_eq!(branch_of(&wt).await, "feat/ISS-5", "the BRANCH keeps its slash");
+        assert_eq!(
+            branch_of(&wt).await,
+            "feat/ISS-5",
+            "the BRANCH keeps its slash"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
