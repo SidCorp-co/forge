@@ -228,9 +228,19 @@ jobs:
           # filter match any non-MD file in the diff. Don't use negations
           # here — keep filters as plain positive include lists.
           filters: |
+            # `packages/core/**` is here because `pnpm --filter web-v2 build` type-checks
+            # core's SOURCES, not a built .d.ts — so a core-only change can break the web
+            # build while the job that would catch it is skipped, and a skipped job passes
+            # `ci-passed`. That is not hypothetical: `39431309` added a regex `s` flag in
+            # `chat/providers/gemini.ts`, `web` was skipped on every run that carried it,
+            # and the first thing to notice was a production deploy failing on TS1501.
+            # The cost is a ~1m40s web build on every core PR, and it is the honest price
+            # of the dependency being real.
             web:
               - 'packages/web-v2/**'
               - 'packages/contracts/**'
+              - 'packages/core/**'
+              - '.github/workflows/ci.yml'
             core:
               - 'packages/core/**'
               - 'pnpm-workspace.yaml'
