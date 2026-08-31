@@ -24,12 +24,8 @@ import { issueDependencyKinds } from '../../db/schema.js';
 import { IssueDependencyError, setIssueDependency } from '../../issues/dependency-service.js';
 import type { Actor } from '../../pipeline/activity.js';
 import { deprecationFor } from '../deprecation.js';
-import {
-  assertDeviceOwnerIsMember,
-  type ContextScopedMcpToolFactory,
-  type McpContext,
-  zodToMcpSchema,
-} from './lib.js';
+import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from './lib.js';
+import { assertDeviceOwnerIsMember } from './project-authz.js';
 
 export const pmSetDependencyInputSchema = z
   .object({

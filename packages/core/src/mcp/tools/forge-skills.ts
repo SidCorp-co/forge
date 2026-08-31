@@ -24,13 +24,12 @@ import {
 } from '../../skills/service.js';
 import type { ContextScopedMcpToolFactory, DeviceScopedMcpToolFactory } from './lib.js';
 import {
-  assertDeviceOwnerIsAdmin,
-  assertDeviceOwnerIsMember,
   assertPrincipalIsAdmin,
   assertPrincipalIsMember,
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
+import { assertDeviceOwnerIsAdmin, assertDeviceOwnerIsMember } from './project-authz.js';
 
 const listInputSchema = z.object({ projectId: z.uuid() });
 const getInputSchema = z.object({ projectId: z.uuid(), skillId: z.uuid() });

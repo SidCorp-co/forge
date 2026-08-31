@@ -1,6 +1,6 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { projects, type RunnerType } from '../db/schema.js';
+import { projects, type RunnerType, runners } from '../db/schema.js';
 import { RUNNER_CAP_PER_RUNNER } from '../jobs/dispatch-gates.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import type { RequiredCapabilities, Runner } from './types.js';
@@ -67,6 +67,26 @@ export function defaultRunnerCapabilities(
     return { pm: true };
   }
   return {};
+}
+
+/**
+ * The `capabilities` jsonb of the device's `claude-code` runner, or `null`
+ * when the device has none registered.
+ *
+ * `runners_device_type_uq` pins at most one `claude-code` runner per device, so
+ * this row is the single place `capabilities.pm` — the PM opt-in written by
+ * {@link defaultRunnerCapabilities} — can be read from.
+ */
+export async function readDeviceClaudeCodeCapabilities(
+  deviceId: string,
+): Promise<Record<string, unknown> | null> {
+  const [runner] = await db
+    .select({ capabilities: runners.capabilities })
+    .from(runners)
+    .where(and(eq(runners.deviceId, deviceId), eq(runners.type, 'claude-code')))
+    .limit(1);
+  if (!runner) return null;
+  return (runner.capabilities ?? {}) as Record<string, unknown>;
 }
 
 /**

@@ -34,12 +34,8 @@ import {
   STATUS_TO_JOB_TYPE,
 } from '../../pipeline/skill-mapping.js';
 import { deprecationFor } from '../deprecation.js';
-import {
-  assertPmActor,
-  type ContextScopedMcpToolFactory,
-  type McpContext,
-  zodToMcpSchema,
-} from './lib.js';
+import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from './lib.js';
+import { assertPmActor } from './project-authz.js';
 
 const DISPATCHABLE_TYPES = new Set(
   Object.values(STATUS_TO_JOB_TYPE)

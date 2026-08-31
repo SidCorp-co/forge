@@ -3,13 +3,13 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { agentSessionStatuses, agentSessions } from '../../db/schema.js';
 import {
-  assertDeviceOwnerIsMember,
   assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,
   type DeviceScopedMcpToolFactory,
   zodToMcpSchema,
 } from './lib.js';
 import { buildListEnvelope, overfetch } from './list-envelope.js';
+import { assertDeviceOwnerIsMember } from './project-authz.js';
 
 /**
  * MCP Phase 1 (ISS-7) — read-only access to the agent_sessions table.

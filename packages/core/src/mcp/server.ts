@@ -98,7 +98,7 @@ import { forgeUxFindingsTool } from './tools/forge-ux-findings.js';
 import { forgeUxImproverTool } from './tools/forge-ux-improver.js';
 import { forgeVersionTool, type McpTool } from './tools/forge-version.js';
 import type { McpContext } from './tools/lib.js';
-import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/lib.js';
+import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/project-scope.js';
 
 /**
  * Build an MCP server wired to the per-request {@link McpContext}. Tool

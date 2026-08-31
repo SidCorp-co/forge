@@ -33,9 +33,6 @@ const PENDING_TOOLS = [
   'forge-phase.ts',
   'forge-pipeline-runs.ts',
   'forge-pm-dispatch.ts',
-  'forge-pm-graph.ts',
-  'forge-pm-runner-load.ts',
-  'forge-pm-snapshot.ts',
   'forge-pm-write-decision.ts',
   'forge-projects.ts',
   'forge-runners.ts',
@@ -43,7 +40,6 @@ const PENDING_TOOLS = [
   'forge-step-start.ts',
   'forge-uploads.ts',
   'forge-ux-findings.ts',
-  'lib.ts',
 ];
 
 function toolSources(): string[] {

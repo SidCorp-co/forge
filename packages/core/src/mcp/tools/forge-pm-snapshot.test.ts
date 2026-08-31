@@ -123,7 +123,7 @@ describe('forge_pm.snapshot', () => {
           lastSeenAt: new Date('2026-05-01T00:00:00Z'),
         },
       ],
-      [{ n: 2 }], // per-runner inFlight
+      [{ runnerId: 'r1', n: 2 }],
     );
 
     const result = (await tool.handler({ projectId: PROJECT_ID })) as {

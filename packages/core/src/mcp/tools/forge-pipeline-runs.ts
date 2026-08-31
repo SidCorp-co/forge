@@ -28,7 +28,6 @@ import {
 } from '../../pipeline/runs-control.js';
 import { deprecationFor } from '../deprecation.js';
 import {
-  assertDeviceOwnerIsMember,
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
@@ -37,6 +36,7 @@ import {
   zodToMcpSchema,
 } from './lib.js';
 import { buildListEnvelope, overfetch } from './list-envelope.js';
+import { assertDeviceOwnerIsMember } from './project-authz.js';
 
 export const pipelineRunsListInputSchema = z
   .object({

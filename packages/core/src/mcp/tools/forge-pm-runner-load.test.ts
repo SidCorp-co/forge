@@ -92,8 +92,7 @@ describe('forge_pm.runner_load', () => {
           lastSeenAt: null,
         },
       ],
-      [{ n: 1 }], // r1 inFlight
-      [{ n: 0 }], // r2 inFlight
+      [{ runnerId: 'r1', n: 1 }],
     );
 
     const result = (await tool.handler({ projectId: PROJECT_ID })) as {

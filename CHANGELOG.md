@@ -10,6 +10,12 @@
 
 ### Fixed
 
+- The project manager's two views of runner load no longer disagree. Its per-runner report and the
+  digest it primes each decision turn with each ran their own copy of "how many jobs is this runner
+  carrying", and the copies had already parted: one counted a queued job as occupying a runner and
+  the other did not, so the same fleet read as busy through one door and idle through the other.
+  There is one count now, and it no longer asks the database once per runner.
+
 - Listing an organisation's members now returns the same record whether the caller is the web UI or
   an agent. The two had drifted: one of them reported each member's lenses and the other quietly
   left that field out, because each transport carried its own copy of the query. Both now read

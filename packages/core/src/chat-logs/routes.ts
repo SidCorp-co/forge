@@ -8,6 +8,7 @@ import { chatLogs, type ProjectMemberRole, projects, qaRatings } from '../db/sch
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { findProjectIdBySlug } from '../projects/service.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -52,21 +53,12 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-async function resolveProjectIdBySlug(slug: string): Promise<string | null> {
-  const [row] = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(eq(projects.slug, slug))
-    .limit(1);
-  return row?.id ?? null;
-}
-
 async function assertChatLogAccess(
   projectSlug: string,
   userId: string,
   minRole: ProjectMemberRole = 'viewer',
 ): Promise<void> {
-  const projectId = await resolveProjectIdBySlug(projectSlug);
+  const projectId = await findProjectIdBySlug(projectSlug);
   if (!projectId) throw notFound('project not found');
   const access = await loadProjectAccess(projectId, userId);
   assertProjectRole(access, minRole, 'not a project member');

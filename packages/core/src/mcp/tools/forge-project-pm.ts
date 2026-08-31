@@ -16,8 +16,9 @@
 
 import { z } from 'zod';
 import { issueDependencyKinds, jobTypes, modelTiers } from '../../db/schema.js';
+import { PM_GRAPH_MAX_DEPTH } from '../../pm/graph-service.js';
 import { pmDispatchHandler } from './forge-pm-dispatch.js';
-import { PM_GRAPH_MAX_DEPTH, pmGraphHandler } from './forge-pm-graph.js';
+import { pmGraphHandler } from './forge-pm-graph.js';
 import { pmRunnerLoadHandler } from './forge-pm-runner-load.js';
 import { pmSetDependencyHandler } from './forge-pm-set-dependency.js';
 import { pmSnapshotHandler } from './forge-pm-snapshot.js';

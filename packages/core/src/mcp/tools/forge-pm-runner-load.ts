@@ -1,12 +1,7 @@
 /**
- * `forge_pm.runner_load` (Epic 3, ISS-19) — per-runner status + in-flight
- * counter so the PM agent can decide where (or whether) to dispatch work.
- *
- * ISS-232 Phase 4 — runner cap is fixed at 1 across all types. The PM
- * tool surfaces `capacity: 1` for every row regardless of the legacy
- * `capabilities.maxConcurrent` field (which the dispatcher no longer
- * consults). Existing rows in the wild keep their stored value untouched
- * but the field is ignored end-to-end.
+ * `forge_pm.runner_load` (Epic 3, ISS-19) — the MCP face of
+ * `pm/runner-load-service.ts`: per-runner status + in-flight counter, so the
+ * PM agent can decide where (or whether) to dispatch work.
  *
  * ISS-145: handler body extracted into `pmRunnerLoadHandler` and consumed
  * by both the legacy shim factory below and the consolidated
@@ -16,23 +11,14 @@
  * deprecation window closes.
  */
 
-import { and, asc, count, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
-import { db } from '../../db/client.js';
-import { jobs, runners } from '../../db/schema.js';
-import { RUNNER_CAP_PER_RUNNER } from '../../jobs/dispatch-gates.js';
+import { readRunnerLoad } from '../../pm/runner-load-service.js';
 import { deprecationFor } from '../deprecation.js';
-import {
-  assertDeviceOwnerIsMember,
-  type ContextScopedMcpToolFactory,
-  type McpContext,
-  zodToMcpSchema,
-} from './lib.js';
+import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from './lib.js';
+import { assertDeviceOwnerIsMember } from './project-authz.js';
 
 export const pmRunnerLoadInputSchema = z.object({ projectId: z.uuid() }).strict();
-
-const ACTIVE_JOB_STATUSES = ['dispatched', 'running'] as const;
 
 export async function pmRunnerLoadHandler(
   device: Device,
@@ -40,36 +26,7 @@ export async function pmRunnerLoadHandler(
 ) {
   await assertDeviceOwnerIsMember(device, input.projectId);
 
-  const runnerRows = await db
-    .select({
-      id: runners.id,
-      type: runners.type,
-      host: runners.host,
-      status: runners.status,
-      lastSeenAt: runners.lastSeenAt,
-    })
-    .from(runners)
-    .where(eq(runners.projectId, input.projectId))
-    .orderBy(asc(runners.type), asc(runners.name));
-
-  const out = await Promise.all(
-    runnerRows.map(async (r) => {
-      const [row] = await db
-        .select({ n: count() })
-        .from(jobs)
-        .where(and(eq(jobs.runnerId, r.id), inArray(jobs.status, [...ACTIVE_JOB_STATUSES])));
-      return {
-        id: r.id,
-        type: r.type,
-        host: r.host,
-        status: r.status,
-        lastSeenAt: r.lastSeenAt,
-        // ISS-232 Phase 4 — cap is uniform across runner types.
-        capacity: RUNNER_CAP_PER_RUNNER,
-        inFlight: Number(row?.n ?? 0),
-      };
-    }),
-  );
+  const out = await readRunnerLoad(input.projectId);
 
   return { runners: out };
 }

@@ -18,177 +18,24 @@
  * deprecation window closes.
  */
 
-import { and, count, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
-import { db } from '../../db/client.js';
-import { type IssueDependencyKind, issueDependencies, issues } from '../../db/schema.js';
+import { PM_GRAPH_DEFAULT_DEPTH, PM_GRAPH_MAX_DEPTH, readPmGraph } from '../../pm/graph-service.js';
 import { deprecationFor } from '../deprecation.js';
-import {
-  assertDeviceOwnerIsMember,
-  type ContextScopedMcpToolFactory,
-  type McpContext,
-  zodToMcpSchema,
-} from './lib.js';
-
-export const PM_GRAPH_MAX_NODES = 200;
-export const PM_GRAPH_MAX_DEPTH = 5;
-const DEFAULT_DEPTH = 2;
+import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from './lib.js';
+import { assertDeviceOwnerIsMember } from './project-authz.js';
 
 export const pmGraphInputSchema = z
   .object({
     projectId: z.uuid(),
     rootIssueId: z.uuid().optional(),
-    depth: z.number().int().min(1).max(PM_GRAPH_MAX_DEPTH).default(DEFAULT_DEPTH),
+    depth: z.number().int().min(1).max(PM_GRAPH_MAX_DEPTH).default(PM_GRAPH_DEFAULT_DEPTH),
   })
   .strict();
 
-type GraphEdge = {
-  from: string;
-  to: string;
-  kind: IssueDependencyKind;
-};
-
-type GraphNode = {
-  id: string;
-  status: string;
-  priority: string;
-  assigneeId: string | null;
-};
-
 export async function pmGraphHandler(device: Device, input: z.infer<typeof pmGraphInputSchema>) {
   await assertDeviceOwnerIsMember(device, input.projectId);
-
-  if (!input.rootIssueId) {
-    const [countRow] = (await db
-      .select({ total: count() })
-      .from(issues)
-      .where(eq(issues.projectId, input.projectId))) as Array<{ total: number } | undefined>;
-
-    const totalNodes = Number(countRow?.total ?? 0);
-    const truncated = totalNodes > PM_GRAPH_MAX_NODES;
-    const remainingNodes = truncated ? totalNodes - PM_GRAPH_MAX_NODES : 0;
-
-    const nodes = await db
-      .select({
-        id: issues.id,
-        status: issues.status,
-        priority: issues.priority,
-        assigneeId: issues.assigneeId,
-      })
-      .from(issues)
-      .where(eq(issues.projectId, input.projectId))
-      .limit(PM_GRAPH_MAX_NODES);
-
-    const nodeIds = new Set(nodes.map((n) => n.id));
-
-    const depEdges = await db
-      .select({
-        from: issueDependencies.fromIssueId,
-        to: issueDependencies.toIssueId,
-        kind: issueDependencies.kind,
-      })
-      .from(issueDependencies)
-      .where(eq(issueDependencies.projectId, input.projectId));
-
-    const edges: GraphEdge[] = depEdges
-      .filter((e) => nodeIds.has(e.from) && nodeIds.has(e.to))
-      .map((e) => ({ from: e.from, to: e.to, kind: e.kind }));
-
-    return {
-      nodes: nodes.map((n) => ({
-        id: n.id,
-        status: n.status,
-        priority: n.priority,
-        assigneeId: n.assigneeId,
-      })),
-      edges,
-      rootIssueId: null,
-      depth: input.depth,
-      truncated,
-      remainingNodes,
-    };
-  }
-
-  // BFS from rootIssueId, undirected, depth-limited.
-  const visited = new Set<string>([input.rootIssueId]);
-  let frontier = new Set<string>([input.rootIssueId]);
-  const allEdges: GraphEdge[] = [];
-
-  for (let d = 0; d < input.depth && frontier.size > 0; d++) {
-    const frontierIds = [...frontier];
-    const nextFrontier = new Set<string>();
-
-    const dependencyEdges = await db
-      .select({
-        from: issueDependencies.fromIssueId,
-        to: issueDependencies.toIssueId,
-        kind: issueDependencies.kind,
-      })
-      .from(issueDependencies)
-      .where(
-        and(
-          eq(issueDependencies.projectId, input.projectId),
-          // Either side of the edge touches the frontier — drizzle has no
-          // native `OR(IN, IN)` helper here; emit two queries via inArray.
-          inArray(issueDependencies.fromIssueId, frontierIds),
-        ),
-      );
-    const dependencyEdgesReverse = await db
-      .select({
-        from: issueDependencies.fromIssueId,
-        to: issueDependencies.toIssueId,
-        kind: issueDependencies.kind,
-      })
-      .from(issueDependencies)
-      .where(
-        and(
-          eq(issueDependencies.projectId, input.projectId),
-          inArray(issueDependencies.toIssueId, frontierIds),
-        ),
-      );
-    for (const e of [...dependencyEdges, ...dependencyEdgesReverse]) {
-      allEdges.push(e);
-      for (const id of [e.from, e.to]) {
-        if (!visited.has(id)) {
-          visited.add(id);
-          nextFrontier.add(id);
-        }
-      }
-    }
-
-    frontier = nextFrontier;
-  }
-
-  // Dedupe edges (BFS may collect the same edge from both directions).
-  const edgeKey = (e: GraphEdge) => `${e.from}:${e.to}:${e.kind}`;
-  const dedupedEdges = Array.from(new Map(allEdges.map((e) => [edgeKey(e), e])).values());
-
-  const nodeRows = await db
-    .select({
-      id: issues.id,
-      status: issues.status,
-      priority: issues.priority,
-      assigneeId: issues.assigneeId,
-    })
-    .from(issues)
-    .where(and(eq(issues.projectId, input.projectId), inArray(issues.id, [...visited])));
-
-  const nodes: GraphNode[] = nodeRows.map((r) => ({
-    id: r.id,
-    status: r.status,
-    priority: r.priority,
-    assigneeId: r.assigneeId,
-  }));
-
-  return {
-    nodes,
-    edges: dedupedEdges,
-    rootIssueId: input.rootIssueId,
-    depth: input.depth,
-    truncated: false,
-    remainingNodes: 0,
-  };
+  return readPmGraph(input);
 }
 
 function recordDeprecation(ctx: McpContext, toolName: string) {

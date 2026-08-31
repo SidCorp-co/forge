@@ -24,12 +24,8 @@ import { logger } from '../../logger.js';
 import { indexMemory } from '../../memory/indexer.js';
 import { emitNotification } from '../../notifications/emit.js';
 import { deprecationFor } from '../deprecation.js';
-import {
-  assertPmActor,
-  type ContextScopedMcpToolFactory,
-  type McpContext,
-  zodToMcpSchema,
-} from './lib.js';
+import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from './lib.js';
+import { assertPmActor } from './project-authz.js';
 
 const ESCALATION_TITLE_MAX = 255;
 

@@ -6,7 +6,6 @@ import { cancelJob, JobCancelError } from '../../jobs/cancel-job.js';
 import { assertDispatchable, gateReasonsForQueuedJobs } from '../../jobs/dispatch-gates.js';
 import { JobResumeError, resumeHeldJob } from '../../jobs/resume-job.js';
 import {
-  assertDeviceOwnerIsMember,
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
@@ -15,6 +14,7 @@ import {
   zodToMcpSchema,
 } from './lib.js';
 import { buildListEnvelope, overfetch } from './list-envelope.js';
+import { assertDeviceOwnerIsMember } from './project-authz.js';
 
 /**
  * MCP Phase 1 (ISS-7) — read-only diagnostic surfaces over the jobs/events

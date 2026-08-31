@@ -1,17 +1,17 @@
-import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
-import { db } from '../../db/client.js';
-import { projects, runners } from '../../db/schema.js';
 import type { DeviceLite, TransitionActor } from '../../issues/apply-transition.js';
-import {
-  effectiveProjectRole,
-  loadVisibleProjectIds,
-  projectRoleAtLeast,
-} from '../../lib/authz.js';
+import { loadVisibleProjectIds } from '../../lib/authz.js';
 import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
 import type { Actor } from '../../pipeline/activity.js';
 import type { McpTool } from './forge-version.js';
+import {
+  assertDeviceOwnerIsAdmin,
+  assertDeviceOwnerIsMember,
+  assertDeviceOwnerIsWriter,
+  loadUserProjectRoleFlags,
+} from './project-authz.js';
+import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './project-scope.js';
 
 /**
  * Per-request context passed to tool factories.
@@ -83,107 +83,6 @@ export function zodToMcpSchema(schema: z.ZodTypeAny): Record<string, unknown> {
 }
 
 /**
- * Effective-role lookup shared by the device and PAT paths. Returns `null`
- * when the project does not exist. `isMember` = any effective role (viewer
- * counts — use for READ tools); `isWriter` = member or admin (use for
- * mutating tools — viewer is read-only); `isAdmin` = effective project admin
- * (explicit row OR org owner/admin — lib/authz.ts).
- */
-async function loadUserProjectRoleFlags(
-  userId: string,
-  projectId: string,
-): Promise<{ isMember: boolean; isWriter: boolean; isAdmin: boolean } | null> {
-  const access = await effectiveProjectRole(userId, projectId);
-  if (!access) return null;
-  return {
-    isMember: access.role !== null,
-    isWriter: projectRoleAtLeast(access.role, 'member'),
-    isAdmin: projectRoleAtLeast(access.role, 'admin'),
-  };
-}
-
-/**
- * Throw if the device's owner is not a member (or owner) of the project.
- * Surfaced to the MCP caller as an `isError: true` tool result — see the
- * `server.ts` error path.
- */
-export async function assertDeviceOwnerIsMember(device: Device, projectId: string): Promise<void> {
-  const role = await loadUserProjectRoleFlags(device.ownerId, projectId);
-  if (!role) throw new Error('FORBIDDEN: project not found or not accessible');
-  if (!role.isMember) {
-    throw new Error('FORBIDDEN: device owner is not a member of this project');
-  }
-}
-
-/**
- * Throw if the device's owner cannot WRITE (effective role below `member` —
- * viewer is read-only across the MCP surface too).
- */
-export async function assertDeviceOwnerIsWriter(device: Device, projectId: string): Promise<void> {
-  const role = await loadUserProjectRoleFlags(device.ownerId, projectId);
-  if (!role) throw new Error('FORBIDDEN: project not found or not accessible');
-  if (!role.isWriter) {
-    throw new Error('FORBIDDEN: requires project member access (viewer is read-only)');
-  }
-}
-
-/**
- * Throw if the device's owner is not an effective project admin.
- */
-export async function assertDeviceOwnerIsAdmin(device: Device, projectId: string): Promise<void> {
-  const role = await loadUserProjectRoleFlags(device.ownerId, projectId);
-  if (!role) throw new Error('FORBIDDEN: project not found or not accessible');
-  if (!role.isAdmin) {
-    throw new Error('FORBIDDEN: requires project admin access');
-  }
-}
-
-/**
- * Gate for `forge_pm.*` write tools (Epic 3, ISS-19). Caller must:
- *   1. be a member of the project, AND
- *   2. own a `claude-code` runner whose `capabilities.pm` is `true`.
- *
- * The `capabilities.pm` flag is the explicit opt-in that lets a single
- * `claude-code` runner act as the PM agent for the project. The
- * `runners_device_type_uq` partial unique index pins at most one
- * `claude-code` runner per device, so toggling the flag on that row is the
- * only path to enable PM tools for the device.
- */
-export async function assertPmActor(device: Device, projectId: string): Promise<void> {
-  await assertDeviceOwnerIsWriter(device, projectId);
-  const [runner] = await db
-    .select({ capabilities: runners.capabilities })
-    .from(runners)
-    .where(and(eq(runners.deviceId, device.id), eq(runners.type, 'claude-code')))
-    .limit(1);
-  if (!runner) {
-    throw new Error('FORBIDDEN: device has no claude-code runner registered');
-  }
-  const caps = (runner.capabilities ?? {}) as Record<string, unknown>;
-  if (caps.pm !== true) {
-    throw new Error('FORBIDDEN: PM tools require runner capabilities.pm=true');
-  }
-}
-
-/**
- * ISS-497 — the effective project allowlist for a principal. A project-level
- * PAT (`boundProjectId` set) is fenced to exactly its bound project, as if
- * `projectIds` contained only `[boundProjectId]`; binding and a multi-project
- * `projectIds` are mutually exclusive at mint. A user-level PAT keeps its
- * `projectIds` allowlist (NULL = inherit all the user's memberships). Device
- * principals have no PAT allowlist → `null` (unrestricted, gated by role).
- *
- * Folding the binding in here is what makes the cross-project conflict rule
- * (explicit arg/slug ≠ bound → NOT_FOUND) fall out of the existing fence
- * checks with no bespoke branch.
- */
-export function patEffectiveProjectIds(principal: McpPrincipal): readonly string[] | null {
-  if (principal.kind !== 'pat') return null;
-  if (principal.boundProjectId) return [principal.boundProjectId];
-  return principal.projectIds;
-}
-
-/**
  * Principal-aware membership check (ISS-150). Wraps the device-scoped
  * helper above and adds the PAT path:
  *   - device principal → existing assertDeviceOwnerIsMember
@@ -209,7 +108,7 @@ export async function assertPrincipalIsMember(
     throw new Error('NOT_FOUND: project not found or not accessible');
   }
   const role = await loadUserProjectRoleFlags(principal.userId, projectId);
-  if (!role || !role.isMember) {
+  if (!role?.isMember) {
     throw new Error('NOT_FOUND: project not found or not accessible');
   }
 }
@@ -233,7 +132,7 @@ export async function assertPrincipalIsWriter(
     throw new Error('NOT_FOUND: project not found or not accessible');
   }
   const role = await loadUserProjectRoleFlags(principal.userId, projectId);
-  if (!role || !role.isMember) {
+  if (!role?.isMember) {
     throw new Error('NOT_FOUND: project not found or not accessible');
   }
   if (!role.isWriter) {
@@ -321,27 +220,6 @@ export async function loadVisibleProjectIdsForPrincipal(
     ids = ids.filter((id) => allowSet.has(id));
   }
   return ids;
-}
-
-/**
- * Resolve a project slug (typically from `X-Forge-Project-Slug`) to its UUID.
- * Throws BAD_REQUEST when the slug is missing and NOT_FOUND when no project
- * matches. Tools that use slug-based scoping call this before
- * {@link assertDeviceOwnerIsMember}.
- */
-export async function resolveProjectIdFromSlug(slug: string | null): Promise<string> {
-  if (!slug) {
-    throw new Error(
-      'BAD_REQUEST: project context missing — set X-Forge-Project-Slug header or pass projectId',
-    );
-  }
-  const [row] = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(eq(projects.slug, slug))
-    .limit(1);
-  if (!row) throw new Error(`NOT_FOUND: project not found for slug "${slug}"`);
-  return row.id;
 }
 
 /**
