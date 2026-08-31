@@ -1,18 +1,13 @@
 /**
- * ISS-102 / ISS-145 — Pure handlers + deprecation shims for the legacy
- * `forge_pipeline_runs.<action>` tool family.
+ * ISS-102 / ISS-145 — the pipeline-run actions, and the one legacy tool name
+ * still answering for them.
  *
- * The five action functions exported below (list/get/pause/resume/cancel)
- * carry the actual business logic — auth check, db read, control call —
- * and are consumed by both:
- *   1. The consolidated `forge_project_pipeline_runs` dispatcher
- *      (`./forge-project-pipeline-runs.ts`).
- *   2. The legacy shim factories in this file, kept registered for at least
- *      one release so the existing tool names keep working with an
- *      `X-MCP-Deprecation` warning header emitted by `handler.ts`.
- *
- * TODO ISS-145-followup: remove shim factories after the deprecation window
- * closes (≥ 1 release after v0.1.x consolidates).
+ * The five action functions (list/get/pause/resume/cancel) carry the logic —
+ * auth check, db read, control call — and `forge_project_pipeline_runs`
+ * dispatches into all five. Only `forge_pipeline_runs.get` is still
+ * registered under its own name, because `forge-skill-audit` calls it that
+ * way; it emits `X-MCP-Deprecation` via `handler.ts`. The other four shim
+ * factories were deleted once nothing named them.
  */
 
 import { z } from 'zod';
@@ -127,20 +122,6 @@ function recordDeprecation(ctx: McpContext | { deprecations?: Set<string> }, too
   if (deprecationFor(toolName) && ctx.deprecations) ctx.deprecations.add(toolName);
 }
 
-export const forgePipelineRunsListTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_pipeline_runs.list',
-  description:
-    '[DEPRECATED — use forge_project_pipeline_runs (action=list)] List pipeline runs scoped to a project. Optional issueId/status filters. Ordered newest-first by started_at. ' +
-    'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. ' +
-    'Requires device owner to be a project member.',
-  inputSchema: zodToMcpSchema(pipelineRunsListInputSchema),
-  handler: async (args) => {
-    recordDeprecation(ctx, 'forge_pipeline_runs.list');
-    const input = pipelineRunsListInputSchema.parse(args);
-    return pipelineRunsListHandler(ctx.device, input);
-  },
-});
-
 export const forgePipelineRunsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_pipeline_runs.get',
   description:
@@ -150,41 +131,5 @@ export const forgePipelineRunsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
     recordDeprecation(ctx, 'forge_pipeline_runs.get');
     const input = pipelineRunsRunIdInputSchema.parse(args);
     return pipelineRunsGetHandler(ctx.principal, input);
-  },
-});
-
-export const forgePipelineRunsPauseTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_pipeline_runs.pause',
-  description:
-    '[DEPRECATED — use forge_project_pipeline_runs (action=pause)] Pause a running pipeline run. Idempotent on paused runs. Throws CONFLICT on terminal runs (completed/failed/cancelled). Requires project membership; PAT principals must additionally have the run’s project in their allowlist.',
-  inputSchema: zodToMcpSchema(pipelineRunsRunIdInputSchema),
-  handler: async (args) => {
-    recordDeprecation(ctx, 'forge_pipeline_runs.pause');
-    const input = pipelineRunsRunIdInputSchema.parse(args);
-    return pipelineRunsPauseHandler(ctx.principal, input);
-  },
-});
-
-export const forgePipelineRunsResumeTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_pipeline_runs.resume',
-  description:
-    '[DEPRECATED — use forge_project_pipeline_runs (action=resume)] Resume a paused pipeline run. Idempotent on already-running runs. Throws CONFLICT on terminal runs. Requires project membership; PAT principals must additionally have the run’s project in their allowlist.',
-  inputSchema: zodToMcpSchema(pipelineRunsRunIdInputSchema),
-  handler: async (args) => {
-    recordDeprecation(ctx, 'forge_pipeline_runs.resume');
-    const input = pipelineRunsRunIdInputSchema.parse(args);
-    return pipelineRunsResumeHandler(ctx.principal, input);
-  },
-});
-
-export const forgePipelineRunsCancelTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_pipeline_runs.cancel',
-  description:
-    '[DEPRECATED — use forge_project_pipeline_runs (action=cancel)] Cancel a pipeline run. Marks the run cancelled, cancels queued+dispatched jobs of the run, transitions linked agent_sessions to failed with reason=pipeline_cancelled, and broadcasts agent:abort to each affected device. Idempotent on already-cancelled runs. Throws CONFLICT on completed/failed. PAT principals must have the run’s project in their allowlist.',
-  inputSchema: zodToMcpSchema(pipelineRunsCancelInputSchema),
-  handler: async (args) => {
-    recordDeprecation(ctx, 'forge_pipeline_runs.cancel');
-    const input = pipelineRunsCancelInputSchema.parse(args);
-    return pipelineRunsCancelHandler(ctx.principal, input);
   },
 });

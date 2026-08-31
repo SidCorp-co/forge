@@ -13,16 +13,11 @@
  * ISS-145: handler body extracted into `pmGraphHandler` and consumed by
  * both the legacy shim factory below and the consolidated
  * `forge_project_pm` dispatcher.
- *
- * TODO ISS-145-followup: remove the legacy shim factory after the
- * deprecation window closes.
  */
 
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
 import { PM_GRAPH_DEFAULT_DEPTH, PM_GRAPH_MAX_DEPTH, readPmGraph } from '../../pm/graph-service.js';
-import { deprecationFor } from '../deprecation.js';
-import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from './lib.js';
 import { assertDeviceOwnerIsMember } from './project-authz.js';
 
 export const pmGraphInputSchema = z
@@ -37,19 +32,3 @@ export async function pmGraphHandler(device: Device, input: z.infer<typeof pmGra
   await assertDeviceOwnerIsMember(device, input.projectId);
   return readPmGraph(input);
 }
-
-function recordDeprecation(ctx: McpContext, toolName: string) {
-  if (deprecationFor(toolName) && ctx.deprecations) ctx.deprecations.add(toolName);
-}
-
-export const forgePmGraphTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_pm.graph',
-  description:
-    '[DEPRECATED — use forge_project_pm (action=graph)] Dependency + parent graph for a project. Without rootIssueId returns the full graph (capped at 200 nodes; `truncated:true` + `remainingNodes:N` when the project exceeds the cap). With rootIssueId runs BFS to `depth` (default 2, max 5). Read-only; requires project membership.',
-  inputSchema: zodToMcpSchema(pmGraphInputSchema),
-  handler: async (args) => {
-    recordDeprecation(ctx, 'forge_pm.graph');
-    const input = pmGraphInputSchema.parse(args);
-    return pmGraphHandler(ctx.device, input);
-  },
-});

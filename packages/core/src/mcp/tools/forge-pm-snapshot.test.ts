@@ -28,7 +28,12 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
-const { forgePmSnapshotTool } = await import('./forge-pm-snapshot.js');
+const { pmSnapshotHandler, pmSnapshotInputSchema } = await import('./forge-pm-snapshot.js');
+
+// cm:why these cases used to run through the deprecated `forge_pm.<action>` shim factory, which was deleted once nothing named it; the handler and its schema are what `forge_project_pm` actually dispatches into, so the coverage moves down one layer instead of leaving with the shim — for runner_load, dispatch and write_decision this file is still the only place that behaviour is tested
+const forgePmSnapshotTool = (c: typeof ctx) => ({
+  handler: async (args: unknown) => pmSnapshotHandler(c.device, pmSnapshotInputSchema.parse(args)),
+});
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const OWNER_ID = '44444444-4444-4444-8444-444444444444';

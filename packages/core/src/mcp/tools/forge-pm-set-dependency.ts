@@ -10,12 +10,10 @@
  * Epic 4 (ISS-20) wires the `dependencyChanged` hook emit on first insert so
  * PM spawn triggers react to graph mutations.
  *
- * ISS-145: handler body extracted into `pmSetDependencyHandler` and
- * consumed by both the legacy shim factory below and the consolidated
- * `forge_project_pm` dispatcher.
- *
- * TODO ISS-145-followup: remove the legacy shim factory after the
- * deprecation window closes.
+ * ISS-145: the handler body is `pmSetDependencyHandler`, called both by the
+ * `forge_project_pm` dispatcher and by the shim factory below, which stays
+ * registered because forge-plan, forge-triage and forge-build call
+ * `forge_pm.set_dependency` by name.
  */
 
 import { z } from 'zod';

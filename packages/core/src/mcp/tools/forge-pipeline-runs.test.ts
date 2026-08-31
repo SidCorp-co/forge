@@ -45,12 +45,41 @@ vi.mock('../../pipeline/runs-control.js', () => ({
 }));
 
 const {
-  forgePipelineRunsListTool,
   forgePipelineRunsGetTool,
-  forgePipelineRunsPauseTool,
-  forgePipelineRunsResumeTool,
-  forgePipelineRunsCancelTool,
+  pipelineRunsListHandler,
+  pipelineRunsListInputSchema,
+  pipelineRunsPauseHandler,
+  pipelineRunsResumeHandler,
+  pipelineRunsCancelHandler,
+  pipelineRunsRunIdInputSchema,
+  pipelineRunsCancelInputSchema,
 } = await import('./forge-pipeline-runs.js');
+
+// cm:why only `forge_pipeline_runs.get` is still registered — forge-skill-audit calls it by that name. The other four shim factories were deleted once nothing named them, so these cases run the handlers the `forge_project_pipeline_runs` dispatcher calls, one layer down.
+const forgePipelineRunsListTool = (c: {
+  device: Parameters<typeof pipelineRunsListHandler>[0];
+}) => ({
+  handler: async (args: unknown) =>
+    pipelineRunsListHandler(c.device, pipelineRunsListInputSchema.parse(args)),
+});
+const forgePipelineRunsPauseTool = (c: {
+  principal: Parameters<typeof pipelineRunsPauseHandler>[0];
+}) => ({
+  handler: async (args: unknown) =>
+    pipelineRunsPauseHandler(c.principal, pipelineRunsRunIdInputSchema.parse(args)),
+});
+const forgePipelineRunsResumeTool = (c: {
+  principal: Parameters<typeof pipelineRunsResumeHandler>[0];
+}) => ({
+  handler: async (args: unknown) =>
+    pipelineRunsResumeHandler(c.principal, pipelineRunsRunIdInputSchema.parse(args)),
+});
+const forgePipelineRunsCancelTool = (c: {
+  principal: Parameters<typeof pipelineRunsCancelHandler>[0];
+}) => ({
+  handler: async (args: unknown) =>
+    pipelineRunsCancelHandler(c.principal, pipelineRunsCancelInputSchema.parse(args)),
+});
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const RUN_ID = '22222222-2222-4222-8222-222222222222';
@@ -159,17 +188,6 @@ describe('forge_pipeline_runs.list', () => {
     const tool = forgePipelineRunsListTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
-  });
-
-  // ISS-145 — shim records the deprecated tool name on ctx.deprecations
-  // so the HTTP handler can emit `X-MCP-Deprecation`.
-  it('records deprecation on ctx.deprecations when invoked', async () => {
-    const deprecations = new Set<string>();
-    const tool = forgePipelineRunsListTool({ ...makeDeviceCtx(), deprecations });
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
-    selectLimit.mockResolvedValueOnce([]);
-    await tool.handler({ projectId: PROJECT_ID });
-    expect(deprecations.has('forge_pipeline_runs.list')).toBe(true);
   });
 });
 

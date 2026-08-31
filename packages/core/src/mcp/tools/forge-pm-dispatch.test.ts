@@ -52,7 +52,12 @@ vi.mock('../../pipeline/runs.js', () => ({
   setCurrentStepForOpenIssueRun: vi.fn().mockResolvedValue(undefined),
 }));
 
-const { forgePmDispatchTool } = await import('./forge-pm-dispatch.js');
+const { pmDispatchHandler, pmDispatchInputSchema } = await import('./forge-pm-dispatch.js');
+
+// cm:why these cases used to run through the deprecated `forge_pm.<action>` shim factory, which was deleted once nothing named it; the handler and its schema are what `forge_project_pm` actually dispatches into, so the coverage moves down one layer instead of leaving with the shim — for runner_load, dispatch and write_decision this file is still the only place that behaviour is tested
+const forgePmDispatchTool = (c: typeof ctx) => ({
+  handler: async (args: unknown) => pmDispatchHandler(c.device, pmDispatchInputSchema.parse(args)),
+});
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_PROJECT_ID = '99999999-9999-4999-8999-999999999999';

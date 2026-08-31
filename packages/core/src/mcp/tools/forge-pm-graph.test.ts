@@ -25,7 +25,12 @@ vi.mock('../../db/client.js', () => ({
   db: { select: vi.fn(() => chain) },
 }));
 
-const { forgePmGraphTool } = await import('./forge-pm-graph.js');
+const { pmGraphHandler, pmGraphInputSchema } = await import('./forge-pm-graph.js');
+
+// cm:why these cases used to run through the deprecated `forge_pm.<action>` shim factory, which was deleted once nothing named it; the handler and its schema are what `forge_project_pm` actually dispatches into, so the coverage moves down one layer instead of leaving with the shim — for runner_load, dispatch and write_decision this file is still the only place that behaviour is tested
+const forgePmGraphTool = (c: typeof ctx) => ({
+  handler: async (args: unknown) => pmGraphHandler(c.device, pmGraphInputSchema.parse(args)),
+});
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const ROOT_ID = '22222222-2222-4222-8222-222222222222';

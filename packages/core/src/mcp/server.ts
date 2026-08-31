@@ -48,13 +48,7 @@ import {
 import { forgeOpsHealthTool } from './tools/forge-ops-health.js';
 import { forgeOrgsListTool, forgeOrgsMembersTool } from './tools/forge-orgs.js';
 import { forgePhaseTool } from './tools/forge-phase.js';
-// ISS-483 §E#3: the forge_pipeline_runs_* / forge_pm_* standalone shims are
-// superseded by the forge_project_pipeline_runs / forge_project_pm action
-// dispatchers. Removed the 9 shims with zero references (repo + every project's
-// skills audited). Two are retained because skills/recipes still call them by
-// name: forge_pipeline_runs_get (forge-skill-audit) + forge_pm_set_dependency
-// (forge-plan + forge_knowledge). The per-action HANDLERS still live in
-// their files and are reused by the dispatchers.
+// cm:guard ISS-483 §E#3 unregistered the 9 zero-reference `forge_pipeline_runs.*` / `forge_pm.*` shims and 2026-08-31 deleted their factories and deprecation notices, but the per-action HANDLERS in those same files are NOT shims — `forge_project_pm` and `forge_project_pipeline_runs` dispatch into every one of them, so deleting a `forge-pm-*.ts` file along with its retired factory breaks the dispatcher, and those five test files remain the only coverage runner_load, dispatch and write_decision have. Only `forge_pipeline_runs.get` (forge-skill-audit) and `forge_pm.set_dependency` (forge-plan, forge-triage, forge-build) are still registered, each because a live skill calls it by name.
 import { forgePipelineRunsGetTool } from './tools/forge-pipeline-runs.js';
 import { forgePmSetDependencyTool } from './tools/forge-pm-set-dependency.js';
 import { forgePostmanTargetTool } from './tools/forge-postman-target.js';

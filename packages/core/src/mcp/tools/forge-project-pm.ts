@@ -1,9 +1,9 @@
 /**
- * ISS-145 — Action-dispatcher consolidating six of the eight
- * `forge_pm.<action>` tools into a single `forge_project_pm` tool, mirroring
- * the shape of `forge_issues` / `forge_comments`. The two omitted actions
- * (`flag_blocker`, `escalate`) stay as standalone tools per the issue's
- * acceptance criterion which only lists six actions in scope.
+ * ISS-145 — Action-dispatcher consolidating the `forge_pm.<action>` family
+ * into a single `forge_project_pm` tool, mirroring the shape of
+ * `forge_issues` / `forge_comments`. `flag_blocker` and the standalone
+ * `escalate` tool were removed in ISS-146; escalation now lives on
+ * `write_decision.escalate`, so six actions is the whole surface.
  *
  * Implementation lives in the per-action pure handlers exported by each
  * `./forge-pm-*.ts` file. This dispatcher owns input validation,
