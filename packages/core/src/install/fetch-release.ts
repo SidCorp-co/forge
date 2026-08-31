@@ -5,10 +5,13 @@
  * assets to a GitHub Release but nothing copied them onto the core host, so the
  * `/install/*` endpoints 501'd and `forge-runner update` had nothing to pull.
  *
- * This script runs once before the server starts (see the Dockerfile CMD). It
- * is BEST-EFFORT: any failure (no network, rate-limit, no release) logs and
- * exits 0 so it can never block core boot. Idempotent: skips the download when
- * the local `VERSION` already matches the latest published tag.
+ * It runs once before the server starts (see the Dockerfile CMD) AND every 30
+ * minutes after it, via `registerRunnerReleaseRefetch` — so a tag cut after
+ * core booted reaches the channel without a redeploy, which is what the fleet's
+ * auto-update polls. It is BEST-EFFORT: any failure (no network, rate-limit, no
+ * release) logs and exits 0 so it can never block core boot. Idempotent: skips
+ * the download when the local `VERSION` already matches the latest published
+ * tag.
  *
  * Repo `SidCorp-co/forge` is public, so the GitHub API + asset downloads work
  * unauthenticated; a token only raises the rate limit.
