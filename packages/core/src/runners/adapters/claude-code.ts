@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { issues, projects } from '../../db/schema.js';
+import { issueBranchName } from '../../issues/issue-branch.js';
 import { logger } from '../../logger.js';
 import { deviceRoom } from '../../ws/rooms.js';
 import { roomManager } from '../../ws/server.js';
@@ -45,7 +46,7 @@ async function issueKeyOf(issueId: string | null): Promise<string | null> {
       .from(issues)
       .where(eq(issues.id, issueId))
       .limit(1);
-    return row ? `ISS-${row.issSeq}` : null;
+    return row ? issueBranchName(row.issSeq) : null;
   } catch (err) {
     logger.warn({ err, issueId }, 'claude-code adapter: issue key lookup failed');
     return null;

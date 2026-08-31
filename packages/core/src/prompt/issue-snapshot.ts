@@ -6,9 +6,14 @@ import {
 } from '../branches/resolve.js';
 import { db } from '../db/client.js';
 import { issues, jobs, projects } from '../db/schema.js';
+import { issueBranchName } from '../issues/issue-branch.js';
 import type { IssueSnapshot, SessionContextSnapshot } from './user.js';
 
-export type LoadedIssueSnapshot = IssueSnapshot & { branchConfig: BranchConfig };
+export type LoadedIssueSnapshot = IssueSnapshot & {
+  branchConfig: BranchConfig;
+  /** `ISS-<seq>` — the branch this issue's work belongs on. */
+  featureBranch: string;
+};
 
 /**
  * Pre-load issue fields used by `buildJobPromptString` to inline an
@@ -28,6 +33,7 @@ export async function loadIssueSnapshot(
 ): Promise<LoadedIssueSnapshot | null> {
   const [row] = await db
     .select({
+      issSeq: issues.issSeq,
       title: issues.title,
       status: issues.status,
       priority: issues.priority,
@@ -63,6 +69,7 @@ export async function loadIssueSnapshot(
   );
   return {
     branchConfig,
+    featureBranch: issueBranchName(row.issSeq),
     supersededBy: await countStepsSince(issueId, ctx?.lastUpdated ?? null),
     title: row.title,
     status: row.status,

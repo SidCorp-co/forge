@@ -10,6 +10,13 @@
 
 ### Added
 
+- Each issue's pipeline work now runs in its own git checkout instead of sharing the project's one
+  working copy. Before this, every stage of every issue ran in the same directory, so two jobs on a
+  machine could only ever be kept apart by refusing to run a second one — which is what the
+  one-job-per-runner limit has really been doing. Stages of the same issue land in the same
+  checkout, so what the coding stage wrote is what the testing stage sees. The stage that merges
+  still runs in the shared copy, because merging needs the branch being merged into.
+
 - A job that is going the wrong way can now be told so while it runs, instead of being cancelled or
   waited out. Until now there were two moments to give an agent direction — before it started and
   after it finished — and none at all across the one to three hours in between, so a run seen going

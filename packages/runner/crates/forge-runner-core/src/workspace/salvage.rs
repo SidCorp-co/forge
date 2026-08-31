@@ -11,10 +11,12 @@
 //! The dirty checkout is FOUND, never assumed. Measured on dev1 2026-08-26:
 //! `<repo>/.worktrees/` — the directory `worktree::create` owns — did not exist
 //! at all, while six agent worktrees sat under `.claude/worktrees/`, one of them
-//! the very job this work came from. Core has never sent `worktreeBranch`, so
-//! every job runs in the repo root and the agent cuts its own checkout. A
-//! salvage that derived a path from a branch name would have been a silent
-//! no-op on the whole fleet.
+//! the very job this work came from — core sent no `worktreeBranch` then, so
+//! every job ran in the repo root and the agent cut its own checkout wherever it
+//! liked. A salvage that derived a path from a branch name would have been a
+//! silent no-op on the whole fleet. Core drives `.worktrees/` now, but the
+//! finding stays: both conventions can be live on one box at once, and only
+//! `git worktree list` sees both.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -271,7 +273,7 @@ async fn pick_target(input: &SalvageInput<'_>) -> std::result::Result<Target, Sa
         None => return Err(Salvage::failed("git worktree list could not be spawned")),
     };
     let root = input.repo_root.canonicalize();
-    // cm:guard the repo ROOT is excluded unconditionally, and that is the whole safety of this: with core never sending `worktreeBranch`, the root sits on the project's BASE branch, so committing its leftovers would put unreviewed WIP straight onto `main`. Excluding the base branch by name as well covers a second worktree someone attached to it.
+    // cm:guard the repo ROOT is excluded unconditionally, and that is the whole safety of this: the root sits on the project's BASE branch, so committing its leftovers would put unreviewed WIP straight onto `main`. Excluding the base branch by name as well covers a second worktree someone attached to it. This held when core sent no `worktreeBranch` and the root was the only checkout a job ever had; it holds for the same reason now that core sends one, because the worktree lane moves the job OFF the root rather than putting an ISS-* branch on it.
     let candidates: Vec<Target> = parse_worktrees(&listing)
         .into_iter()
         .filter(|t| {

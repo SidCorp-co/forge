@@ -159,3 +159,22 @@ export async function markMergedOnClose(
       .returning({ id: issues.id })) ?? [];
   return { stamped: updated.length > 0 };
 }
+
+/**
+ * The `worktreeBranch` payload fragment for a job, or nothing.
+ *
+ * Nothing has two causes and they are different facts: the job serves no issue
+ * (no branch to cut), or the stage is where the project merges.
+ */
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — the runner reads `payload.worktreeBranch` and cuts `<repo>/.worktrees/<branch>`; absent, it runs in the repo root, so a runner predating this ignores it and behaves exactly as before
+// cm:guard a merge stage gets NOTHING, and that exclusion is what keeps merging alive while `prompt/merge-required.ts` still tells the agent to `git checkout <base>` — git REFUSES a branch already checked out in the main worktree, so stamping here would break the merge step on every project at once, at the last stage of the pipeline where the cost is a whole issue's work. It goes away in the change that makes the merge a merge request, and not before.
+export function worktreeBranchPayload(
+  status: IssueStatus,
+  cfg: unknown,
+  featureBranch: string | null | undefined,
+): { worktreeBranch?: string } {
+  if (!featureBranch) return {};
+  const merge = resolveMergeStates(cfg);
+  if (status === merge.baseBranch || status === merge.productionBranch) return {};
+  return { worktreeBranch: featureBranch };
+}
