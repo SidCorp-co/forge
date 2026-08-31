@@ -441,10 +441,12 @@ describe('forge_metrics.session_failures — resumeContinuity (ISS-887)', () => 
     expect(out).toEqual({ offered: 0, resumed: 0, dropped: 0, dropRate: 0, rows: [] });
   });
 
-  it('excludes attempt 1 from the denominator — the SQL never offers it', async () => {
+  // cm:edge contract -> packages/core/tests/integration/resume-continuity-e2e.test.ts — `db.execute` is mocked here, so this can only assert the query TEXT and the SQL never executes; the real predicate, JSON path and GROUP BY are exercised there. Assert the POLARITY, never just that `priorClaudeSessionId` is mentioned: `IS NULL` mentions it too, counts attempt 1 and excludes every real offer, and an earlier version of this test stayed green through exactly that inversion.
+  it('asks for rows that HAVE a prior session, and does not inherit the failure filter', async () => {
     await run([{ drop_reason: 'rotation', sessions: '2' }]);
     const sqlText = JSON.stringify(executeImpl.mock.calls.at(-1));
-    expect(sqlText).toContain('priorClaudeSessionId');
+    expect(sqlText).toContain("priorClaudeSessionId' IS NOT NULL");
+    expect(sqlText).not.toContain("priorClaudeSessionId' IS NULL");
     expect(sqlText).not.toContain('cancelled_stale');
   });
 });
