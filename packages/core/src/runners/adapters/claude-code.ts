@@ -1,8 +1,9 @@
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
-import { issues, projects } from '../../db/schema.js';
+import { devices, issues, projects } from '../../db/schema.js';
 import { issueBranchName } from '../../issues/issue-branch.js';
+import { worktreeBranchPayload } from '../../issues/merged-at.js';
 import { logger } from '../../logger.js';
 import { deviceRoom } from '../../ws/rooms.js';
 import { roomManager } from '../../ws/server.js';
@@ -21,7 +22,10 @@ import type {
 // cm:guard ONE read for both fields. Two calls would let the mode and the residency come from different snapshots of the same row — a job spawned duplex with the residency of a config that no longer says duplex.
 async function sessionSettingsOf(
   projectId: string,
-): Promise<{ sessionMode: 'print' | 'duplex'; sessionResidencySeconds?: number }> {
+): Promise<{
+  agentConfig: unknown;
+  settings: { sessionMode: 'print' | 'duplex'; sessionResidencySeconds?: number };
+}> {
   const [row] = await db
     .select({ agentConfig: projects.agentConfig })
     .from(projects)
@@ -32,10 +36,23 @@ async function sessionSettingsOf(
   };
   const secs = cfg.pipelineConfig?.sessionResidencySeconds;
   return {
-    sessionMode: cfg.pipelineConfig?.sessionMode === 'duplex' ? 'duplex' : 'print',
+    agentConfig: row?.agentConfig ?? null,
+    settings: {
+      sessionMode: cfg.pipelineConfig?.sessionMode === 'duplex' ? 'duplex' : 'print',
     // cm:guard a positive number ONLY. The key defaults to 0 and no project has set it, so forwarding 0 would be indistinguishable on the wire from a project asking for no residency at all — the runner resolves absent and 0 to the same default for exactly that reason, and sending nothing keeps the two sides agreeing by construction.
-    ...(typeof secs === 'number' && secs > 0 ? { sessionResidencySeconds: secs } : {}),
+      ...(typeof secs === 'number' && secs > 0 ? { sessionResidencySeconds: secs } : {}),
+    },
   };
+}
+
+/** Runner build on the device about to take the job — the worktree lane's floor. */
+async function agentVersionOf(deviceId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ v: devices.agentVersion })
+    .from(devices)
+    .where(eq(devices.id, deviceId))
+    .limit(1);
+  return row?.v ?? null;
 }
 
 async function issueKeyOf(issueId: string | null): Promise<string | null> {
@@ -96,8 +113,17 @@ export const claudeCodeAdapter: RunnerAdapter = {
       if (key in payload) overrideForwards[key] = payload[key];
     }
 
-    const issueKey = await issueKeyOf(job.issueId);
-    const sessionSettings = await sessionSettingsOf(job.projectId);
+    const [issueKey, project, runnerVersion] = await Promise.all([
+      issueKeyOf(job.issueId),
+      sessionSettingsOf(job.projectId),
+      agentVersionOf(runner.deviceId),
+    ]);
+    const worktree = worktreeBranchPayload({
+      status: (payload.stageStatus ?? null) as never,
+      agentConfig: project.agentConfig,
+      featureBranch: issueKey,
+      runnerVersion,
+    });
 
     const delivered = roomManager.publish(deviceRoom(runner.deviceId), {
       event: 'job.assigned',
@@ -106,7 +132,7 @@ export const claudeCodeAdapter: RunnerAdapter = {
         projectId: job.projectId,
         issueId: job.issueId,
         type: job.type,
-        payload: job.payload,
+        payload: { ...(job.payload ?? {}), ...worktree },
         promptString: job.promptString ?? null,
         systemPrompt: job.systemPrompt ?? null,
         ...overrideForwards,
@@ -120,7 +146,7 @@ export const claudeCodeAdapter: RunnerAdapter = {
         ...(job.agentSessionId ? { agentSessionId: job.agentSessionId } : {}),
         // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — the runner reads `sessionMode` to decide `Stdio::piped()` vs `-p`, and an older runner ignores it entirely and stays print. That is the whole opt-in: dropping this field does not break a job, it silently pins every project back to print and the phase-3 rollout reads as "no project ever opted in".
         // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — `sessionResidencySeconds` rides alongside and is resolved there by `resolve_residency`, which must agree with `jobs/park-deadline.ts`'s COALESCE: core's backstop fires at this value plus a grace, so a runner reading it differently gets its park reaped while it still considers the session live.
-        ...sessionSettings,
+        ...project.settings,
       },
     });
     // cm:guard `publish` returns the number of OPEN sockets it wrote to, and a job.assigned frame is the ONLY delivery — the runner has no catch-up fetch, so 0 means this job will never be claimed. Reporting `dispatched` anyway is what made a WS-dead / HTTP-heartbeat-alive device produce `dispatch_unclaimed` 4.5 minutes later, and since ISS-862 taught quarantine to count those, a core-side WS fault would have set aside every runner on the project at once. Never drop this return value again.

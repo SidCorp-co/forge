@@ -1,5 +1,5 @@
 /**
- * Core owns the issue's feature branch and hands it to the runner.
+ * Core owns the issue's feature branch and hands it to a runner that can use it.
  *
  * The runner has carried a complete worktree lane since it was ported from the
  * Tauri app, and nothing ever reached it: `daemon/dispatch.rs` reads
@@ -8,9 +8,14 @@
  * on dev1 2026-08-26 and recorded in `workspace/salvage.rs`: `<repo>/.worktrees/`
  * did not exist while six agent worktrees sat under `.claude/worktrees/`.
  *
- * Real Postgres, because the claim is about a COLUMN — the payload is stamped
- * at job creation so a retry resolves the same checkout, and the unit lane
- * mocks `db.insert()` into a chain that never renders the row it wrote.
+ * Resolved at DISPATCH, not at job creation: core deploys in one step while the
+ * fleet updates on its own clock, and a runner below 0.9.3 could only ever
+ * CREATE a worktree — `git worktree add` refuses an existing path, so the second
+ * stage of an issue died on `fatal: already exists`. The floor is the difference
+ * between reuse and a failed job.
+ *
+ * Real Postgres, because every input is a row: the issue's seq, the project's
+ * merge states, and the device's reported build.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -84,70 +89,30 @@ describe('core stamps the issue feature branch onto the job payload', () => {
     return rows[0]?.payload ?? {};
   }
 
-  it('stamps worktreeBranch on a working stage so the runner cuts its own checkout', async () => {
-    const s = await seed('approved');
-    const { jobId } = await triggerPipelineStepManual({
-      projectId: s.projectId,
-      issueId: s.issueId,
-      status: 'approved',
-      stage: 'code',
-      actor: { type: 'user', id: s.ownerId },
-      reason: { trigger: 'test' },
-    });
-
-    expect(await payloadOf(jobId)).toMatchObject({
-      worktreeBranch: issueBranchName(s.issSeq),
-      stageStatus: 'approved',
-    });
-  });
-
-  // cm:guard THIS is the assertion that keeps merging alive, and the happy-path test above cannot stand in for it. `prompt/merge-required.ts` still tells the agent to `git checkout <base>`, and git REFUSES a branch already checked out in the main worktree — so a stamp here would break the merge step on every project at once, and it would break it at the last stage of the pipeline where the cost is a whole issue's work. Drop the `!isMergeStage` condition in `pipeline/orchestrator.ts` and only this goes red.
-  it('leaves a merge stage in the repo root, because a worktree cannot check out the base branch', async () => {
-    const s = await seed('released');
-    const { jobId } = await triggerPipelineStepManual({
-      projectId: s.projectId,
-      issueId: s.issueId,
-      status: 'released',
-      stage: 'release',
-      actor: { type: 'user', id: s.ownerId },
-      reason: { trigger: 'test' },
-    });
-
-    const payload = await payloadOf(jobId);
-    expect(payload.stageStatus).toBe('released');
-    expect(payload).not.toHaveProperty('worktreeBranch');
-  });
-
-  // cm:guard the two sides must derive the branch from ONE function. `salvage.rs#belongs_to_issue` matches a dirty worktree's branch against the `issueKey` the adapter sends, so a second spelling would make salvage refuse — "no dirty worktree matches ISS-n" — on a checkout core itself asked for, and the failed attempt's diff would be thrown away. Change the format in `issues/issue-branch.ts` alone and this stays green; change it in one CALLER and it goes red.
-  it('sends the runner the same name for the checkout and for salvage', async () => {
-    const s = await seed('approved');
-    const { jobId } = await triggerPipelineStepManual({
-      projectId: s.projectId,
-      issueId: s.issueId,
-      status: 'approved',
-      stage: 'code',
-      actor: { type: 'user', id: s.ownerId },
-      reason: { trigger: 'test' },
-    });
-
+  async function dispatchAndCaptureFrame(args: {
+    jobId: string;
+    projectId: string;
+    issueId: string;
+    ownerId: string;
+    agentVersion: string | null;
+  }): Promise<{ issueKey?: string; payload: Record<string, unknown> }> {
     const { claudeCodeAdapter } = await import('../../src/runners/adapters/claude-code.js');
     const { roomManager } = (await import('../../src/ws/server.js')) as unknown as {
       roomManager: { publish: ReturnType<typeof vi.fn> };
     };
     roomManager.publish.mockClear();
-
     const deviceId = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO devices (id, owner_id, name, platform, token_hash, token_prefix, status)
-      VALUES (${deviceId}, ${s.ownerId}, 'd', 'linux', 'h', 'p', 'online')
+      INSERT INTO devices (id, owner_id, name, platform, token_hash, token_prefix, status, agent_version)
+      VALUES (${deviceId}, ${args.ownerId}, 'd', 'linux', ${randomUUID()}, ${deviceId.slice(0, 8)}, 'online', ${args.agentVersion})
     `);
     await claudeCodeAdapter.dispatch({
       job: {
-        id: jobId,
-        projectId: s.projectId,
-        issueId: s.issueId,
+        id: args.jobId,
+        projectId: args.projectId,
+        issueId: args.issueId,
         type: 'code',
-        payload: await payloadOf(jobId),
+        payload: await payloadOf(args.jobId),
         promptString: '',
         systemPrompt: null,
         dispatchedAt: new Date(),
@@ -156,11 +121,58 @@ describe('core stamps the issue feature branch onto the job payload', () => {
       },
       runner: { id: randomUUID(), type: 'claude-code', deviceId },
     } as never);
+    return (
+      roomManager.publish.mock.calls[0]?.[1] as {
+        data: { issueKey?: string; payload: Record<string, unknown> };
+      }
+    ).data;
+  }
 
-    const frame = roomManager.publish.mock.calls[0]?.[1] as {
-      data: { issueKey?: string; payload: Record<string, unknown> };
-    };
-    expect(frame.data.issueKey).toBe(issueBranchName(s.issSeq));
-    expect(frame.data.payload.worktreeBranch).toBe(frame.data.issueKey);
+  async function enqueue(status: string, stage: string) {
+    const s = await seed(status);
+    const { jobId } = await triggerPipelineStepManual({
+      projectId: s.projectId,
+      issueId: s.issueId,
+      status: status as never,
+      stage: stage as never,
+      actor: { type: 'user', id: s.ownerId },
+      reason: { trigger: 'test' },
+    });
+    return { ...s, jobId };
+  }
+
+  it('sends the branch to a runner that can reuse a checkout', async () => {
+    const s = await enqueue('approved', 'code');
+    const frame = await dispatchAndCaptureFrame({ ...s, agentVersion: '0.9.3' });
+    expect(frame.payload.worktreeBranch).toBe(issueBranchName(s.issSeq));
+  });
+
+  // cm:guard THIS is the assertion that stops a job from dying on a box that cannot reuse. Before 0.9.3 `worktree::create` had only a create path, so `git worktree add` hit `fatal: '.worktrees/ISS-n' already exists` on an issue's SECOND stage and the job failed before the agent started — and nothing reaps `.worktrees/` (`worktree_reap` owns `.claude/worktrees` and spares anything under 14 days), so the directory is still there every time. Lower or drop the floor in `issues/merged-at.ts` and only this goes red.
+  it('sends nothing to an older runner, which could only ever create', async () => {
+    const s = await enqueue('approved', 'code');
+    const frame = await dispatchAndCaptureFrame({ ...s, agentVersion: '0.9.2' });
+    expect(frame.payload).not.toHaveProperty('worktreeBranch');
+    expect(frame.issueKey).toBe(issueBranchName(s.issSeq));
+  });
+
+  it('sends nothing to a runner whose build it cannot read', async () => {
+    const s = await enqueue('approved', 'code');
+    const frame = await dispatchAndCaptureFrame({ ...s, agentVersion: null });
+    expect(frame.payload).not.toHaveProperty('worktreeBranch');
+  });
+
+  // cm:guard a merge stage stays in the repo ROOT however new the runner is. `prompt/merge-required.ts` still tells the agent to `git checkout <base>`, and git REFUSES a branch already checked out in the main worktree — so stamping here breaks the merge step on every project at once, at the last stage, where the cost is a whole issue's work. Drop the merge-state exclusion in `issues/merged-at.ts` and only this goes red.
+  it('leaves a merge stage in the repo root, because a worktree cannot check out the base branch', async () => {
+    const s = await enqueue('released', 'release');
+    const frame = await dispatchAndCaptureFrame({ ...s, agentVersion: '0.9.3' });
+    expect(frame.payload.stageStatus).toBe('released');
+    expect(frame.payload).not.toHaveProperty('worktreeBranch');
+  });
+
+  // cm:guard the checkout and salvage must be named by ONE function. `salvage.rs#belongs_to_issue` matches a dirty worktree's branch against `issueKey`, so a second spelling would make salvage refuse — "no dirty worktree matches ISS-n" — on a checkout core itself asked for, and the failed attempt's diff would be thrown away. Change the format in `issues/issue-branch.ts` alone and this stays green; change it in one CALLER and it goes red.
+  it('names the checkout and the salvage target identically', async () => {
+    const s = await enqueue('approved', 'code');
+    const frame = await dispatchAndCaptureFrame({ ...s, agentVersion: '0.9.3' });
+    expect(frame.payload.worktreeBranch).toBe(frame.issueKey);
   });
 });

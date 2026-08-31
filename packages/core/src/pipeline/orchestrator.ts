@@ -10,7 +10,7 @@ import {
   projects,
 } from '../db/schema.js';
 import { applyStatusTransition, type DeviceLite } from '../issues/apply-transition.js';
-import { resolveMergeStates, worktreeBranchPayload } from '../issues/merged-at.js';
+import { resolveMergeStates } from '../issues/merged-at.js';
 import { isBlankPlan, isPlanStageLive } from '../issues/transition-evidence.js';
 import { buildJobPromptString } from '../jobs/prompt-string.js';
 import { logger } from '../logger.js';
@@ -374,7 +374,6 @@ async function buildAndEnqueueStepJob(args: {
             preventiveContext,
             // cm:why stamped so the dispatcher re-resolves per-state overrides without a second pipelineConfig load
             stageStatus: args.status,
-            ...worktreeBranchPayload(args.status, args.cfg, issueSnapshot?.featureBranch),
             // PR-5 — stamp session group membership so the dispatcher's
             // runner-framework path + agent-session-link can find the prior
             // session of the same (issue, group) without a second config load.

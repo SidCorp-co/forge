@@ -160,21 +160,39 @@ export async function markMergedOnClose(
   return { stamped: updated.length > 0 };
 }
 
+/** First runner release whose `worktree::create` reuses an existing checkout. */
+export const WORKTREE_LANE_MIN_RUNNER = '0.9.3';
+
+function atLeast(version: string | null | undefined, min: string): boolean {
+  if (!version) return false;
+  const a = version.split('.').map(Number);
+  const b = min.split('.').map(Number);
+  if (a.length !== 3 || a.some(Number.isNaN)) return false;
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] as number) !== (b[i] as number)) return (a[i] as number) > (b[i] as number);
+  }
+  return true;
+}
+
 /**
  * The `worktreeBranch` payload fragment for a job, or nothing.
  *
- * Nothing has two causes and they are different facts: the job serves no issue
- * (no branch to cut), or the stage is where the project merges.
+ * Nothing has three causes and they are different facts: the job serves no
+ * issue, the stage is where the project merges, or the runner about to take it
+ * predates the lane being usable.
  */
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — the runner reads `payload.worktreeBranch` and cuts `<repo>/.worktrees/<branch>`; absent, it runs in the repo root, so a runner predating this ignores it and behaves exactly as before
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/workspace/worktree.rs — `create` is what this field switches on, and BEFORE 0.9.3 it could only ever create: `git worktree add` refuses an existing path with or without `-b`, so the second stage of an issue died with `fatal: '.worktrees/ISS-n' already exists`. The version floor is not caution, it is the difference between reuse and a failed job, and it may only be lowered if that arm is proven present.
+// cm:guard resolved per RUNNER, at dispatch, never at job creation — core deploys in one step and the fleet updates on its own clock, so the only place the answer is knowable is where the box that will run it is already chosen. A retry that rotates onto an older box re-resolves and correctly sends nothing.
 // cm:guard a merge stage gets NOTHING, and that exclusion is what keeps merging alive while `prompt/merge-required.ts` still tells the agent to `git checkout <base>` — git REFUSES a branch already checked out in the main worktree, so stamping here would break the merge step on every project at once, at the last stage of the pipeline where the cost is a whole issue's work. It goes away in the change that makes the merge a merge request, and not before.
-export function worktreeBranchPayload(
-  status: IssueStatus,
-  cfg: unknown,
-  featureBranch: string | null | undefined,
-): { worktreeBranch?: string } {
-  if (!featureBranch) return {};
-  const merge = resolveMergeStates(cfg);
-  if (status === merge.baseBranch || status === merge.productionBranch) return {};
-  return { worktreeBranch: featureBranch };
+export function worktreeBranchPayload(args: {
+  status: IssueStatus | null | undefined;
+  agentConfig: unknown;
+  featureBranch: string | null | undefined;
+  runnerVersion: string | null | undefined;
+}): { worktreeBranch?: string } {
+  if (!args.featureBranch || !args.status) return {};
+  if (!atLeast(args.runnerVersion, WORKTREE_LANE_MIN_RUNNER)) return {};
+  const merge = resolveMergeStates(args.agentConfig);
+  if (args.status === merge.baseBranch || args.status === merge.productionBranch) return {};
+  return { worktreeBranch: args.featureBranch };
 }
