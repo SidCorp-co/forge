@@ -111,7 +111,11 @@ export function summarizeBinding(pair: BindingWithConnection) {
     bindingConfig: (binding.config ?? {}) as Record<string, unknown>,
     // ISS-558 — empty string = default/unlabeled; non-empty = named store.
     label: binding.label ?? '',
+    // cm:edge contract -> packages/contracts/src/integrations.ts — BindingSummary is the shape this returns; nothing type-checks the two against each other
+    // cm:why all three flags rather than just the AND: a project admin's binding PATCH can only write `bindingActive`, so a UI toggle bound to the AND writes one tier and reads another — it reports success and snaps back, which is how forge-dev's Rocket.Chat sat unbootable from the UI for two months
     active: binding.active && connection.active,
+    bindingActive: binding.active,
+    connectionActive: connection.active,
     lastHealthStatus: connection.lastHealthStatus,
     lastHealthAt: connection.lastHealthAt,
     breakerOpenedAt: connection.breakerOpenedAt,

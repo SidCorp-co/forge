@@ -73,6 +73,7 @@ import { issueDependencyRoutes } from './issues/dependency-routes.js';
 import { issueExtrasRoutes } from './issues/extras-routes.js';
 import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
 import { searchRoutes } from './issues/search.js';
+import { issueSteerRoutes } from './issues/steer-routes.js';
 import { transitionRoutes } from './issues/transition.js';
 import { registerDispatchSubscribers } from './jobs/dispatch-subscribers.js';
 import {
@@ -365,6 +366,7 @@ app.route('/api/issues', issueRoutes);
 app.route('/api/issues', transitionRoutes);
 app.route('/api/issues', issueActivityRoutes);
 app.route('/api/issues', issueDependencyRoutes);
+app.route('/api/issues', issueSteerRoutes);
 app.route('/api/issues', taskIssueRoutes);
 app.route('/api/tasks', taskRoutes);
 app.route('/api/comments', commentRoutes);

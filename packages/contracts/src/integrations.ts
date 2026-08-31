@@ -75,7 +75,17 @@ export interface BindingSummary {
   /** ISS-558 — binding label. Empty string = default/unlabeled; non-empty = named
    *  extra storefront (epodsystem only). Always '' for non-epodsystem providers. */
   label: string;
+  /** Both tiers must be on for the integration to resolve. Kept as the AND so
+   *  every existing reader ("is this live?") is unchanged; the two flags below
+   *  say WHICH tier is off, which a single collapsed boolean cannot. */
   active: boolean;
+  /** Project tier — does THIS project opt in. The only tier a project admin's
+   *  binding PATCH can write. */
+  bindingActive: boolean;
+  /** Credential tier — is the org-shared connection enabled at all. False here
+   *  means no project can use it, and only an org owner/admin can flip it (via
+   *  the connection route, not a binding PATCH). */
+  connectionActive: boolean;
   lastHealthStatus: string | null;
   lastHealthAt: string | null;
   breakerOpenedAt: string | null;

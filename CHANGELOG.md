@@ -8,6 +8,19 @@
 
 ## [Unreleased]
 
+### Added
+
+- A job that is going the wrong way can now be told so while it runs, instead of being cancelled or
+  waited out. Until now there were two moments to give an agent direction — before it started and
+  after it finished — and none at all across the one to three hours in between, so a run seen going
+  astray in its second hour cost that hour and a whole re-run. The instruction is posted as a
+  comment on the issue and becomes the running agent's next turn. Available from the API
+  (`POST /api/issues/:id/steer`) and to other agents (`forge_steer`), so an agent watching a run
+  can redirect it without a person in the loop. An agent that has stopped to ask a question is
+  answered by commenting, as before; steering is for one that is still working, and it says so
+  rather than doing something surprising. Every steer is recorded as an intervention, because a
+  person reaching into a running agent is exactly what that count is for.
+
 ### Fixed
 
 - The instructions every agent is handed no longer describe steps its own project does not run.

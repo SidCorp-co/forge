@@ -86,6 +86,7 @@ import {
   forgeSkillsSyncStatusTool,
   forgeSkillsUpdateTool,
 } from './tools/forge-skills.js';
+import { forgeSteerTool } from './tools/forge-steer.js';
 import {
   forgeStepHandoffDeleteTool,
   forgeStepHandoffGetTool,
@@ -283,6 +284,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeReconcileTool(ctx),
     // cm:guard append new tools HERE, immediately above the last one — every position shifts the indices below it, so the tail is the only insertion point that leaves all existing tools where callers pinned them
     forgeJobsResumeTool(ctx),
+    forgeSteerTool(ctx),
     forgeMetricsSessionFailuresTool(ctx),
     // cm:guard keep this registration LAST — callers pin to `tools/list` ordering, so inserting above it shifts every index they rely on
     forgeGuideTool(ctx),
