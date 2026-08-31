@@ -289,11 +289,7 @@ export const STEP_START_HEAVY_FIELDS = [
   'sessionContext',
 ] as const;
 
-export type StepStartHeavyField = (typeof STEP_START_HEAVY_FIELDS)[number];
-
-// Fields allowed in the get action's selective-projection param.
-// Mirrors STEP_START_HEAVY_FIELDS (the body fields omitted in lean step_start)
-// plus releaseNotes (small structured value sometimes worth fetching alone).
+// cm:why derived from STEP_START_HEAVY_FIELDS rather than listed again, so the fields lean `step_start` omits are exactly the ones `get` can ask back for; `releaseNotes` is the one addition — small enough to be worth fetching alone
 const GET_SELECTABLE_FIELDS = [...STEP_START_HEAVY_FIELDS, 'releaseNotes'] as const;
 
 const inputSchema = z
