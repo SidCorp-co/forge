@@ -15,12 +15,12 @@
   left that field out, because each transport carried its own copy of the query. Both now read
   through one, and the health snapshot the two surfaces report was de-duplicated the same way.
 
-- A truncated list in the web UI no longer reports itself as the whole list. Every paginated
-  endpoint states its true total in a response header, and the client used to fall back to counting
-  the rows in front of it whenever that header was absent — so a page of 50 out of 900 read as
-  "900 of 900", and anything deciding whether to fetch more stopped. A missing total is now an
-  error rather than a guess, which also makes the one configuration that can strip the header in a
-  browser fail loudly instead of quietly shrinking every list.
+- Every list the API returns now says how many rows exist in total and whether more are waiting,
+  in the response itself. It used to say so only in a response header, which a route could forget to
+  send and a browser could be configured not to read — and the client, finding nothing, counted the
+  rows in front of it instead. A page of 50 out of 900 therefore reported "900 of 900", and anything
+  deciding whether to fetch more simply stopped. Lists that cannot be paged through say that too,
+  rather than leaving the caller to guess from the row count.
 
 - An issue created with a blocker now records both, or neither. The blocking relation was written
   after the issue row had already been committed, so a failure in between — a rejected cycle, a

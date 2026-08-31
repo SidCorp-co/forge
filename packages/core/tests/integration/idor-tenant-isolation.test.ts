@@ -164,7 +164,7 @@ describe('ISS-492 — cross-tenant IDOR isolation', () => {
     // userA probing project B's device → no rows, no canary leak.
     const foreign = await req(`/api/agent-sessions?deviceId=${deviceB.id}`, userA.id);
     expect(foreign.status).toBe(200);
-    const foreignBody = (await foreign.json()) as unknown[];
+    const foreignBody = ((await foreign.json()) as { items: unknown[] }).items;
     expect(foreignBody).toHaveLength(0);
     const foreignRaw = JSON.stringify(foreignBody);
     expect(foreignRaw).not.toContain('SECRET-LEAK-CANARY');
@@ -173,7 +173,7 @@ describe('ISS-492 — cross-tenant IDOR isolation', () => {
     // userA listing their own device → their session is returned.
     const own = await req(`/api/agent-sessions?deviceId=${deviceA.id}`, userA.id);
     expect(own.status).toBe(200);
-    const ownBody = (await own.json()) as Array<{ title: string }>;
+    const ownBody = ((await own.json()) as { items: Array<{ title: string }> }).items;
     expect(ownBody.map((s) => s.title)).toContain('A session');
   });
 

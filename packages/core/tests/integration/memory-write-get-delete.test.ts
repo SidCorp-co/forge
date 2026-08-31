@@ -413,7 +413,7 @@ describe('memory write/get/delete integration (Phase 0)', () => {
       });
       expect(res.status).toBe(200);
       expect(res.headers.get('X-Total-Count')).toBe('3');
-      const rows = (await res.json()) as Array<{ sourceRef: string }>;
+      const rows = ((await res.json()) as { items: Array<{ sourceRef: string }> }).items;
       expect(rows.length).toBe(3);
       // Newest first.
       expect(rows[0]?.sourceRef).toBe('n-3');
@@ -445,7 +445,7 @@ describe('memory write/get/delete integration (Phase 0)', () => {
       const res = await app.request(`/api/memory?projectId=${projectId}&source=knowledge`, {
         headers: { authorization: `Bearer ${token}` },
       });
-      const rows = (await res.json()) as Array<{ source: string }>;
+      const rows = ((await res.json()) as { items: Array<{ source: string }> }).items;
       expect(rows.length).toBe(1);
       expect(rows[0]?.source).toBe('knowledge');
     });

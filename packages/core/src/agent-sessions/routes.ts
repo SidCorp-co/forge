@@ -14,7 +14,7 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
-import { setTotalCount } from '../lib/pagination.js';
+import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
 import { writeBackScheduleLastStatus } from '../schedules/service.js';
@@ -332,8 +332,7 @@ agentSessionRoutes.get(
       // scopes the rows.
       const visible = await loadVisibleProjectIds(userId);
       if (visible.length === 0) {
-        setTotalCount(c, 0);
-        return c.json([]);
+        return c.json(listResponse(c, [], 0, fromPage(page, pageSize)));
       }
       conditions.push(eq(agentSessions.deviceId, deviceId));
       conditions.push(inArray(agentSessions.projectId, visible));
@@ -343,8 +342,7 @@ agentSessionRoutes.get(
       const visible = await loadVisibleProjectIds(userId);
 
       if (visible.length === 0) {
-        setTotalCount(c, 0);
-        return c.json([]);
+        return c.json(listResponse(c, [], 0, fromPage(page, pageSize)));
       }
 
       conditions.push(inArray(agentSessions.projectId, visible));
@@ -379,8 +377,6 @@ agentSessionRoutes.get(
       .select({ n: count() })
       .from(agentSessions)
       .where(where ?? undefined);
-    setTotalCount(c, totalRow?.n ?? 0);
-
     const rows = await db
       .select()
       .from(agentSessions)
@@ -443,13 +439,12 @@ agentSessionRoutes.get(
       }
     }
 
-    return c.json(
-      rows.map((r) => ({
-        ...r,
-        estimatedCost: costById.get(r.id) ?? 0,
-        lastMessagePreview: previewById.get(r.id) ?? null,
-      })),
-    );
+    const items = rows.map((r) => ({
+      ...r,
+      estimatedCost: costById.get(r.id) ?? 0,
+      lastMessagePreview: previewById.get(r.id) ?? null,
+    }));
+    return c.json(listResponse(c, items, totalRow?.n ?? 0, fromPage(page, pageSize)));
   },
 );
 

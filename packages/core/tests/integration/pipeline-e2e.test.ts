@@ -279,7 +279,7 @@ describe('F6 pipeline E2E', () => {
 
       const res = await authedGet(`/api/projects/${project.id}/issues/search?q=login`, user.id);
       expect(res.status).toBe(200);
-      const list = (await res.json()) as Array<{ title: string }>;
+      const list = ((await res.json()) as { items: Array<{ title: string }> }).items;
       expect(list.length).toBe(2);
     });
 
@@ -294,7 +294,7 @@ describe('F6 pipeline E2E', () => {
         user.id,
       );
       expect(res.status).toBe(200);
-      const list = (await res.json()) as Array<{ title: string }>;
+      const list = ((await res.json()) as { items: Array<{ title: string }> }).items;
       expect(list.length).toBe(1);
       expect(list[0]?.title).toBe('100% done');
     });
@@ -310,7 +310,7 @@ describe('F6 pipeline E2E', () => {
         user.id,
       );
       expect(res.status).toBe(200);
-      const list = (await res.json()) as Array<{ status: string }>;
+      const list = ((await res.json()) as { items: Array<{ status: string }> }).items;
       expect(list.length).toBe(2);
       expect(list.map((i) => i.status).sort()).toEqual(['confirmed', 'open']);
     });
@@ -332,7 +332,7 @@ describe('F6 pipeline E2E', () => {
         user.id,
       );
       expect(res.status).toBe(200);
-      const list = (await res.json()) as Array<{ title: string }>;
+      const list = ((await res.json()) as { items: Array<{ title: string }> }).items;
       expect(list.length).toBe(1);
       expect(list[0]?.title).toBe('A');
 
@@ -341,7 +341,7 @@ describe('F6 pipeline E2E', () => {
         `/api/projects/${project.id}/issues/search?label=${bugLabel}&label=${otherLabel}`,
         user.id,
       );
-      const list2 = (await res2.json()) as Array<{ title: string }>;
+      const list2 = ((await res2.json()) as { items: Array<{ title: string }> }).items;
       expect(list2.length).toBe(2);
       expect(list2.map((i) => i.title).sort()).toEqual(['A', 'B']);
     });
@@ -365,7 +365,7 @@ describe('F6 pipeline E2E', () => {
         user.id,
       );
       expect(res.status).toBe(200);
-      const list = (await res.json()) as Array<{ title: string }>;
+      const list = ((await res.json()) as { items: Array<{ title: string }> }).items;
       expect(list.length).toBe(1);
       expect(list[0]?.title).toBe('Login bug');
     });
@@ -381,7 +381,7 @@ describe('F6 pipeline E2E', () => {
       );
       expect(res.status).toBe(200);
       expect(res.headers.get('X-Total-Count')).toBe('5');
-      const list = (await res.json()) as Array<unknown>;
+      const list = ((await res.json()) as { items: Array<unknown> }).items;
       expect(list.length).toBe(2);
     });
 

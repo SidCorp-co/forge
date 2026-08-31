@@ -11,6 +11,8 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
+type MemoryList = { items: Array<{ metadata: Record<string, unknown> }> };
+
 // Live E2E coverage — exercises the REAL embedding provider (LiteLLM proxy).
 // Skipped automatically when EMBEDDINGS_BASE_URL/EMBEDDINGS_API_KEY are not
 // set, so this file is safe to leave in the suite. Run via:
@@ -299,7 +301,7 @@ describeIfLive('memory live E2E (real embeddings)', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(getRes.status).toBe(200);
-    const rows = (await getRes.json()) as Array<{ metadata: Record<string, unknown> }>;
+    const rows = ((await getRes.json()) as MemoryList).items;
     expect(rows.length).toBe(1);
     expect(rows[0]?.metadata).toMatchObject({ run_id: 'abc', step: 'plan', attempt: 1 });
 

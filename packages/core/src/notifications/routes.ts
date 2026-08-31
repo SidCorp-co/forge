@@ -6,7 +6,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { notifications, userPreferences } from '../db/schema.js';
-import { setTotalCount } from '../lib/pagination.js';
+import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 
@@ -106,7 +106,6 @@ notificationRoutes.get(
     const where = and(...conditions);
 
     const [totalRow] = await db.select({ n: count() }).from(notifications).where(where);
-    setTotalCount(c, totalRow?.n ?? 0);
 
     const rows = await db
       .select()
@@ -116,7 +115,7 @@ notificationRoutes.get(
       .limit(pageSize)
       .offset((page - 1) * pageSize);
 
-    return c.json(rows);
+    return c.json(listResponse(c, rows, totalRow?.n ?? 0, fromPage(page, pageSize)));
   },
 );
 

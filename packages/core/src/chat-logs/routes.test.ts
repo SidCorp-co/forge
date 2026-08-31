@@ -95,7 +95,7 @@ describe('GET /api/chat-logs', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('X-Total-Count')).toBe('0');
     const body = (await res.json()) as unknown[];
-    expect(body).toEqual([]);
+    expect(body).toMatchObject({ items: [], returned: 0, total: 0, hasMore: false });
   });
 
   it('200 across visible projects when projectSlug omitted', async () => {
@@ -110,7 +110,7 @@ describe('GET /api/chat-logs', () => {
     });
     expect(res.status).toBe(200);
     expect(res.headers.get('X-Total-Count')).toBe('1');
-    const body = (await res.json()) as Array<{ id: string }>;
+    const body = ((await res.json()) as { items: Array<{ id: string }> }).items;
     expect(body).toHaveLength(1);
   });
 

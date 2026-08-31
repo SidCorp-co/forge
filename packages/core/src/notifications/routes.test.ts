@@ -112,7 +112,7 @@ describe('GET /api/notifications', () => {
     });
     expect(res.status).toBe(200);
     expect(res.headers.get('X-Total-Count')).toBe('2');
-    expect(await res.json()).toHaveLength(1);
+    expect(await res.json()).toMatchObject({ returned: 1, total: 2, hasMore: true });
   });
 
   it('rejects bad projectId', async () => {

@@ -226,12 +226,16 @@ describe('GET /api/projects/:id/pipeline-runs', () => {
     );
     expect(res.status).toBe(200);
     expect(res.headers.get('X-Total-Count')).toBe('7');
-    const body = (await res.json()) as Array<{
-      id: string;
-      issueRef: string | null;
-      issueTitle: string | null;
-      cost: { estimatedCost: number };
-    }>;
+    const body = (
+      (await res.json()) as {
+        items: Array<{
+          id: string;
+          issueRef: string | null;
+          issueTitle: string | null;
+          cost: { estimatedCost: number };
+        }>;
+      }
+    ).items;
     expect(body).toHaveLength(1);
     expect(body[0]!.cost.estimatedCost).toBe(1.23);
     expect(body[0]!.issueRef).toBe('ISS-460');

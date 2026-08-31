@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { usageRecords, usageSources } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { setTotalCount } from '../lib/pagination.js';
+import { listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { estimateCost } from './pricing.js';
 
@@ -103,8 +103,7 @@ usageRecordRoutes.get(
         .where(and(...conditions)),
     ]);
 
-    setTotalCount(c, totalRow?.n ?? 0);
-    return c.json(rows);
+    return c.json(listResponse(c, rows, totalRow?.n ?? 0, { limit: pageSize, offset }));
   },
 );
 

@@ -39,9 +39,9 @@ describe('admin alert routes (ISS-652)', () => {
     it('403s ADMIN_ONLY for a non-admin authenticated user', async () => {
       const user = await ctx.verifiedUser('nobody@test.forge.local');
       const { signUserToken } = await import('../../src/auth/jwt.js');
-      const { res, body } = await getAlerts(ctx, await signUserToken(user.id));
+      const { res, error } = await getAlerts(ctx, await signUserToken(user.id));
       expect(res.status).toBe(403);
-      expect((body as unknown as { code?: string }).code).toBe('ADMIN_ONLY');
+      expect(error.code).toBe('ADMIN_ONLY');
     });
   });
 

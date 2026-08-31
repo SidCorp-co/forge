@@ -237,8 +237,8 @@ describe('GET /api/agent-sessions', () => {
       headers: { authorization: `Bearer ${await token()}` },
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Array<{ id: string; lastMessagePreview: string | null }>;
-    expect(body[0]?.lastMessagePreview).toBe('Hello there');
+    const body = (await res.json()) as { items: Array<{ lastMessagePreview: string | null }> };
+    expect(body.items[0]?.lastMessagePreview).toBe('Hello there');
   });
 });
 

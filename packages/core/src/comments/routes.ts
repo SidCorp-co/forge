@@ -10,7 +10,7 @@ import { commentAttachments, commentMentions, comments, issues } from '../db/sch
 import { type ActorRef, actorKey, resolveActors } from '../issues/actor-resolution.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
-import { paginationSchema, setTotalCount } from '../lib/pagination.js';
+import { listResponse, paginationSchema, wholeList } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAnyAuth } from '../middleware/require-any-auth.js';
@@ -294,10 +294,8 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         node.author = resolved.get(key) ?? null;
       });
 
-      // Report the true total so paginating clients see the real comment
-      // count even when the response payload was truncated to the cap.
-      setTotalCount(c, Number(total));
-      return c.json(tree);
+      // cm:guard this list is capped, NOT paginated — there is no limit/offset to page with, so it answers the header form and `total` is the real comment count rather than the capped tree's size. Handing it `listResponse` would state an `offset` and a `hasMore` that no caller can act on.
+      return c.json(wholeList(c, tree, Number(total)));
     },
   );
 }
@@ -372,8 +370,7 @@ commentRoutes.get(
       .limit(limit)
       .offset(offset);
 
-    setTotalCount(c, Number(n));
-    return c.json(rows);
+    return c.json(listResponse(c, rows, Number(n), { limit, offset }));
   },
 );
 

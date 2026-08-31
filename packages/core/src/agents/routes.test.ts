@@ -112,7 +112,7 @@ describe('GET /api/agents', () => {
     });
     expect(res.status).toBe(200);
     expect(res.headers.get('X-Total-Count')).toBe('1');
-    expect(await res.json()).toHaveLength(1);
+    expect(await res.json()).toMatchObject({ returned: 1, total: 1, hasMore: false });
   });
 
   it('403 when not a member and not owner', async () => {

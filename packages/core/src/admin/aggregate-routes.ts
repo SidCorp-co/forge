@@ -25,7 +25,7 @@ import {
   usageRecords,
   users,
 } from '../db/schema.js';
-import { setTotalCount } from '../lib/pagination.js';
+import { listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
 
@@ -564,7 +564,6 @@ adminAggregateRoutes.get(
     };
     rows.sort((a, b) => sortKey[sort](b) - sortKey[sort](a));
 
-    setTotalCount(c, allProjects.length);
-    return c.json(rows.slice(0, limit));
+    return c.json(listResponse(c, rows.slice(0, limit), allProjects.length, { limit, offset: 0 }));
   },
 );

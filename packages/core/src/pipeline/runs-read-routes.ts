@@ -22,7 +22,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { pipelineRunStatuses, pipelineRuns } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { paginationSchema, setTotalCount } from '../lib/pagination.js';
+import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { listItemsFromRows, loadPipelineRunSummary } from './runs-rollup.js';
 
@@ -107,7 +107,6 @@ pipelineRunProjectRoutes.get(
       .offset(q.offset);
 
     const items = await listItemsFromRows(rows);
-    setTotalCount(c, Number(n));
-    return c.json(items);
+    return c.json(listResponse(c, items, Number(n), q));
   },
 );

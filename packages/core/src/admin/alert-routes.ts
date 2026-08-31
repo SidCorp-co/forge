@@ -10,7 +10,7 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { setTotalCount } from '../lib/pagination.js';
+import { listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
 import { computeAlerts, DEFAULT_STALE_SECONDS } from './alert-queries.js';
@@ -33,7 +33,6 @@ adminAlertRoutes.get(
   async (c) => {
     const { staleSeconds } = c.req.valid('query');
     const alerts = await computeAlerts({ staleSeconds });
-    setTotalCount(c, alerts.length);
-    return c.json(alerts);
+    return c.json(listResponse(c, alerts, alerts.length, { limit: alerts.length, offset: 0 }));
   },
 );

@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { memories, memorySources } from '../db/schema.js';
 import { assertProjectAccess } from '../lib/authz.js';
-import { paginationSchema, setTotalCount } from '../lib/pagination.js';
+import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { runMemoryGet } from './get-service.js';
 
@@ -52,8 +52,7 @@ memoryListRoutes.get(
       orderDir: 'desc',
     });
 
-    setTotalCount(c, total);
-    return c.json(rows);
+    return c.json(listResponse(c, rows, total, { limit, offset }));
   },
 );
 

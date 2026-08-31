@@ -1,12 +1,12 @@
 /**
- * ISS-889 §2 — "is this list complete?" must be answerable on every REST list.
+ * ISS-889 §2 — the REST list contract, enforced where the compiler cannot see.
  *
- * MCP carries the answer in the body, where it cannot go missing without the
- * parse failing. REST carries it in a header, which a handler can simply forget
- * to set — and the response still parses, still renders, and reports a
- * truncated page as a complete list. `apiClientList` now throws on the missing
- * header, so the failure is loud; this scan is what stops it being written in
- * the first place.
+ * `setTotalCount` is module-private, so no route can hand-roll the header: that
+ * half is the type checker's. What it cannot see is WHICH helper a handler
+ * chose. `wholeList` on a paginated route states `offset: 0` and a `hasMore`
+ * computed against a page rather than the query — the envelope's own shape,
+ * telling the caller a truncated page is the whole list. That is the failure
+ * ISS-889 was filed about, and this scan is what keeps it out.
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -29,24 +29,8 @@ function sourceFiles(dir: string): string[] {
   return out;
 }
 
-/**
- * A handler body, sliced from one `c.req` route registration to the next. Crude
- * on purpose: the question is only whether a pagination parse and a header
- * write live in the same handler, and a slice that is too wide can only make
- * the test more forgiving, never wrongly red.
- */
-function handlerBodies(source: string): string[] {
-  return executableLines(source)
-    .split(/\.(?:get|post|put|patch|delete)\(/)
-    .slice(1);
-}
-
-/**
- * The source with comments removed. A commented-out `setTotalCount` is exactly
- * the shape a regression takes, and a substring search would read it as present.
- */
-// cm:guard strip comments BEFORE searching. Measured 2026-08-31: commenting out the only `setTotalCount` in `issues/routes.ts` left this gate green, because the call still appeared in the text — the scan proved nothing until this ran first.
-function executableLines(source: string): string {
+// cm:guard strip comments BEFORE searching. Measured 2026-08-31: commenting out the only `setTotalCount` in `issues/routes.ts` left an earlier version of this gate green, because the call still appeared in the text — the scan proved nothing until this ran first.
+function executable(source: string): string {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .split('\n')
@@ -54,29 +38,56 @@ function executableLines(source: string): string {
     .join('\n');
 }
 
-describe('every paginated REST list states its own total', () => {
-  it('never parses pagination in a handler that returns rows without setTotalCount', () => {
+/** One route registration body, from `.get(` / `.post(` to the next. */
+function handlerBodies(source: string): string[] {
+  return executable(source)
+    .split(/\.(?:get|post|put|patch|delete)\(/)
+    .slice(1);
+}
+
+function pages(body: string): boolean {
+  return /\.limit\(/.test(body) && /\.offset\(/.test(body);
+}
+
+describe('the REST list contract', () => {
+  it('answers a pageable list with listResponse, never wholeList', () => {
     const offenders: string[] = [];
 
     for (const file of sourceFiles(SRC)) {
+      if (file.endsWith('lib/pagination.ts')) continue;
       const source = readFileSync(file, 'utf8');
-      if (!source.includes('paginationSchema')) continue;
+      if (!source.includes('wholeList(')) continue;
 
       for (const body of handlerBodies(source)) {
-        const paginates = /\blimit\b/.test(body) && /\boffset\b/.test(body);
-        if (!paginates) continue;
-        // cm:why a handler that never answers with rows is not a list route — DELETE and POST parse the same schema shape without returning a page to count
-        if (!/c\.json\(/.test(body)) continue;
-        if (body.includes('setTotalCount')) continue;
-        if (body.includes('buildListEnvelope')) continue;
-        offenders.push(`${relative(SRC, file)} — a paginated handler with no setTotalCount`);
+        if (!body.includes('wholeList(')) continue;
+        if (!pages(body)) continue;
+        offenders.push(`${relative(SRC, file)} — wholeList in a handler that pages`);
       }
     }
 
     expect(offenders).toEqual([]);
   });
 
-  // cm:guard the header only reaches a browser while its name is in the CORS allow-list; drop it there and every list in web-v2 starts throwing, because `apiClientList` refuses to guess. That is the intended failure — loud beats a silently truncated page — but the pairing is invisible from either file, so it is asserted here.
+  it('answers every paginated handler through the envelope', () => {
+    const offenders: string[] = [];
+
+    for (const file of sourceFiles(SRC)) {
+      if (file.endsWith('lib/pagination.ts')) continue;
+      const source = readFileSync(file, 'utf8');
+      if (!source.includes('.offset(')) continue;
+
+      for (const body of handlerBodies(source)) {
+        if (!pages(body)) continue;
+        if (!/c\.json\(/.test(body)) continue;
+        if (body.includes('listResponse(')) continue;
+        offenders.push(`${relative(SRC, file)} — a paginated handler with no listResponse`);
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  // cm:guard the header only reaches a browser while its name is in the CORS allow-list. The body now carries the same number, so losing it DEGRADES rather than breaks — but a caller still on the header form would silently read every list as short, so the pairing is asserted here rather than left to whoever edits the CORS block.
   it('keeps X-Total-Count exposed through CORS', () => {
     const index = readFileSync(join(SRC, 'index.ts'), 'utf8');
     expect(index).toMatch(/exposeHeaders:\s*\[[^\]]*'X-Total-Count'/);

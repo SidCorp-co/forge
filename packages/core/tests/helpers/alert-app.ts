@@ -79,11 +79,14 @@ export async function getAlerts(
   ctx: Pick<AlertApp, 'app'>,
   token: string,
   query = '',
-): Promise<{ res: Response; body: AlertRow[] }> {
+): Promise<{ res: Response; body: AlertRow[]; error: { code?: string } }> {
   const res = await ctx.app.request(`/api/admin/alerts${query}`, {
     headers: { authorization: `Bearer ${token}` },
   });
-  return { res, body: (await res.json()) as AlertRow[] };
+  // cm:guard unwrap `items` here, in the ONE helper — three suites read alerts through this, and the envelope is what `wholeList` answers with (ISS-889). Reading the body as a bare array again makes every `body.map`/`body.find` below fail as a type error rather than as the assertion under test.
+  // cm:guard keep the raw payload reachable as `error`: a 403 answers `{code}`, NOT an envelope, and an unwrap that returns only `items` silently turns the auth-gate assertion into `expected undefined to be 'ADMIN_ONLY'` — a real gate failing for a reason that has nothing to do with auth.
+  const payload = (await res.json()) as { items?: AlertRow[]; code?: string };
+  return { res, body: payload.items ?? [], error: payload };
 }
 
 export const findAlert = (body: AlertRow[], id: string) => body.find((a) => a.id === id);

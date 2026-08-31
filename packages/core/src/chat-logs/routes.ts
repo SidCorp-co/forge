@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { chatLogs, type ProjectMemberRole, projects, qaRatings } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
-import { setTotalCount } from '../lib/pagination.js';
+import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -96,8 +96,7 @@ chatLogRoutes.get(
       // resolver.
       const visibleIds = await loadVisibleProjectIds(userId);
       if (visibleIds.length === 0) {
-        setTotalCount(c, 0);
-        return c.json([]);
+        return c.json(listResponse(c, [], 0, fromPage(page, pageSize)));
       }
 
       const visible = await db
@@ -106,8 +105,7 @@ chatLogRoutes.get(
         .where(inArray(projects.id, visibleIds));
 
       if (visible.length === 0) {
-        setTotalCount(c, 0);
-        return c.json([]);
+        return c.json(listResponse(c, [], 0, fromPage(page, pageSize)));
       }
 
       conditions.push(
@@ -140,8 +138,7 @@ chatLogRoutes.get(
         .where(and(...conditions)),
     ]);
 
-    setTotalCount(c, totalRow?.n ?? 0);
-    return c.json(rows);
+    return c.json(listResponse(c, rows, totalRow?.n ?? 0, { limit: pageSize, offset }));
   },
 );
 

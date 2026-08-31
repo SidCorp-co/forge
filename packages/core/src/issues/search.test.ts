@@ -216,7 +216,7 @@ describe('withCost (ISS-437)', () => {
     const t = await token();
     const res = await req('', t);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Record<string, unknown>[];
+    const body = ((await res.json()) as { items: Record<string, unknown>[] }).items;
     expect(body).toHaveLength(2);
     expect(body[0]).toMatchObject({ id: ISSUE_A, displayId: 'ISS-1' });
     expect(body[0]).not.toHaveProperty('estimatedCost');
@@ -231,7 +231,7 @@ describe('withCost (ISS-437)', () => {
     const t = await token();
     const res = await req('?withCost=1', t);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Record<string, unknown>[];
+    const body = ((await res.json()) as { items: Record<string, unknown>[] }).items;
     expect(body[0]).toMatchObject({ id: ISSUE_A, displayId: 'ISS-1', estimatedCost: 1.23 });
     expect(body[1]).toMatchObject({ id: ISSUE_B, estimatedCost: 0 });
     // Exactly ONE extra query regardless of page size (the grouped rollup).
@@ -249,7 +249,7 @@ describe('withCost (ISS-437)', () => {
     const t = await token();
     const res = await req('?withCost=1&withAgentSessions=1', t);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Record<string, unknown>[];
+    const body = ((await res.json()) as { items: Record<string, unknown>[] }).items;
     expect(body[0]).toMatchObject({ id: ISSUE_A, estimatedCost: 0.5, agentStatus: 'running' });
     expect(body[1]).toMatchObject({ id: ISSUE_B, estimatedCost: 0, agentStatus: null });
   });
@@ -275,7 +275,7 @@ describe('withFailureInfo (ISS-700)', () => {
     const t = await token();
     const res = await req('', t);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Record<string, unknown>[];
+    const body = ((await res.json()) as { items: Record<string, unknown>[] }).items;
     expect(body[0]).not.toHaveProperty('failureInfo');
     expect(dbSelectDistinctOn).not.toHaveBeenCalled();
   });
@@ -297,7 +297,7 @@ describe('withFailureInfo (ISS-700)', () => {
     const t = await token();
     const res = await req('?withFailureInfo=1', t);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Record<string, unknown>[];
+    const body = ((await res.json()) as { items: Record<string, unknown>[] }).items;
     expect(body[0]).toMatchObject({
       id: ISSUE_A,
       failureInfo: {
@@ -329,7 +329,7 @@ describe('withFailureInfo (ISS-700)', () => {
     const t = await token();
     const res = await req('?withCost=1&withFailureInfo=1', t);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Record<string, unknown>[];
+    const body = ((await res.json()) as { items: Record<string, unknown>[] }).items;
     expect(body[0]).toMatchObject({ id: ISSUE_A, estimatedCost: 0.5, failureInfo: null });
     expect(body[1]).toMatchObject({
       id: ISSUE_B,
@@ -403,7 +403,7 @@ describe('createdBy filter + creator hydration (ISS-756)', () => {
     const t = await token();
     const res = await req('', t);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Record<string, unknown>[];
+    const body = ((await res.json()) as { items: Record<string, unknown>[] }).items;
     expect(body[0]).toMatchObject({
       id: ISSUE_A,
       creatorLabel: 'owner@example.com',

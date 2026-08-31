@@ -13,7 +13,7 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { setTotalCount } from '../lib/pagination.js';
+import { listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import {
@@ -241,7 +241,7 @@ searchRoutes.get(
       .limit(q.limit)
       .offset(q.offset);
 
-    setTotalCount(c, Number(n));
+    const total = Number(n);
 
     let serialized: Record<string, unknown>[] = rows.map((r) => ({
       ...r,
@@ -287,7 +287,7 @@ searchRoutes.get(
     }
 
     if (!q.withAgentSessions || serialized.length === 0) {
-      return c.json(serialized);
+      return c.json(listResponse(c, serialized, total, q));
     }
 
     const map = await hydrateAgentSessionsForIssues(
@@ -295,14 +295,19 @@ searchRoutes.get(
       serialized.map((r) => r.id as string),
     );
     return c.json(
-      serialized.map((r) => {
-        const bucket = map.get(r.id as string);
-        return {
-          ...r,
-          agentSessions: bucket?.agentSessions ?? [],
-          agentStatus: bucket?.agentStatus ?? null,
-        };
-      }),
+      listResponse(
+        c,
+        serialized.map((r) => {
+          const bucket = map.get(r.id as string);
+          return {
+            ...r,
+            agentSessions: bucket?.agentSessions ?? [],
+            agentStatus: bucket?.agentStatus ?? null,
+          };
+        }),
+        total,
+        q,
+      ),
     );
   },
 );

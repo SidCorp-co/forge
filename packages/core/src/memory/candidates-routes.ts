@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { createImprovementMessageDraft } from '../improvement-messages/drafts-service.js';
 import { assertProjectAccess } from '../lib/authz.js';
-import { paginationSchema, setTotalCount } from '../lib/pagination.js';
+import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   acceptCandidate,
@@ -35,8 +35,7 @@ memoryCandidatesRoutes.get(
     await assertProjectAccess(projectId, userId, 'viewer');
 
     const { items, totalCount } = await listGraduatedCandidates(projectId, limit, offset);
-    setTotalCount(c, totalCount);
-    return c.json(items);
+    return c.json(listResponse(c, items, totalCount, { limit, offset }));
   },
 );
 

@@ -125,7 +125,9 @@ describe('memory near-duplicate writes (ISS-876)', () => {
       `/api/memory?projectId=${projectId}&source=note&limit=50&offset=0`,
       { headers: { authorization: `Bearer ${token}` } },
     );
-    const rows = (await listed.json()) as Array<{ sourceRef: string; textContent: string }>;
+    const rows = (
+      (await listed.json()) as { items: Array<{ sourceRef: string; textContent: string }> }
+    ).items;
     const byRef = new Map(rows.map((r) => [r.sourceRef, r.textContent]));
 
     expect(byRef.get('dream-daily-review-2026-08-29')).toBe(newer);
@@ -151,18 +153,22 @@ describe('memory near-duplicate writes (ISS-876)', () => {
       `/api/memory?projectId=${projectId}&source=note&limit=50&offset=0`,
       { headers: { authorization: `Bearer ${token}` } },
     );
-    const liveRows = (await hidden.json()) as Array<{ sourceRef: string }>;
+    const liveRows = ((await hidden.json()) as { items: Array<{ sourceRef: string }> }).items;
     expect(liveRows.map((r) => r.sourceRef)).toEqual(['live-note']);
 
     const recovered = await app.request(
       `/api/memory?projectId=${projectId}&source=note&limit=50&offset=0&includeArchived=true`,
       { headers: { authorization: `Bearer ${token}` } },
     );
-    const allRows = (await recovered.json()) as Array<{
-      sourceRef: string;
-      textContent: string;
-      archivedAt: string | null;
-    }>;
+    const allRows = (
+      (await recovered.json()) as {
+        items: Array<{
+          sourceRef: string;
+          textContent: string;
+          archivedAt: string | null;
+        }>;
+      }
+    ).items;
     const snapshot = allRows.find((r) => r.sourceRef.includes('__superseded-'));
     expect(snapshot?.textContent).toBe(lost);
     expect(snapshot?.archivedAt).not.toBeNull();

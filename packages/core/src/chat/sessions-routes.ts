@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { chatSessionSources, chatSessions } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { setTotalCount } from '../lib/pagination.js';
+import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -71,7 +71,6 @@ chatSessionRoutes.get(
     const where = and(eq(chatSessions.projectId, projectId), eq(chatSessions.userId, userId));
 
     const [totalRow] = await db.select({ n: count() }).from(chatSessions).where(where);
-    setTotalCount(c, totalRow?.n ?? 0);
 
     const rows = await db
       .select()
@@ -81,7 +80,7 @@ chatSessionRoutes.get(
       .limit(pageSize)
       .offset((page - 1) * pageSize);
 
-    return c.json(rows);
+    return c.json(listResponse(c, rows, totalRow?.n ?? 0, fromPage(page, pageSize)));
   },
 );
 

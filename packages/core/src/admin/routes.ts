@@ -14,7 +14,7 @@ import {
   users,
 } from '../db/schema.js';
 import { buildIlikePattern } from '../issues/search.js';
-import { paginationSchema, setTotalCount } from '../lib/pagination.js';
+import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
 
@@ -67,8 +67,7 @@ adminProtected.get(
       .limit(limit)
       .offset(offset);
 
-    setTotalCount(c, Number(n));
-    return c.json(rows);
+    return c.json(listResponse(c, rows, Number(n), { limit, offset }));
   },
 );
 
@@ -113,12 +112,16 @@ adminProtected.get(
       .limit(limit)
       .offset(offset);
 
-    setTotalCount(c, Number(n));
     return c.json(
-      rows.map((r) => ({
-        ...r,
-        memberCount: Number(r.memberCount ?? 0),
-      })),
+      listResponse(
+        c,
+        rows.map((r) => ({
+          ...r,
+          memberCount: Number(r.memberCount ?? 0),
+        })),
+        Number(n),
+        { limit, offset },
+      ),
     );
   },
 );
@@ -141,8 +144,7 @@ adminProtected.get(
       .limit(limit)
       .offset(offset);
 
-    setTotalCount(c, Number(n));
-    return c.json(rows);
+    return c.json(listResponse(c, rows, Number(n), { limit, offset }));
   },
 );
 
@@ -170,8 +172,7 @@ adminProtected.get(
       .limit(limit)
       .offset(offset);
 
-    setTotalCount(c, Number(n));
-    return c.json(rows);
+    return c.json(listResponse(c, rows, Number(n), { limit, offset }));
   },
 );
 

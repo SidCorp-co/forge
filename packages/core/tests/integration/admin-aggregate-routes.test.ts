@@ -16,6 +16,16 @@ import {
 // admin/aggregate-routes.ts (activity_log joins, date_trunc bucketing,
 // percentile_disc) is actually exercised, matching the ISS-267 precedent in
 // health-routes.test.ts.
+type WorkspaceRow = {
+  projectId: string;
+  slug: string;
+  runs: number;
+  spendUsd: number;
+  medianLeadTimeMin: number | null;
+  openIssues: number;
+};
+type WorkspaceList = { items: WorkspaceRow[] };
+
 describe('admin aggregate routes (ISS-651)', () => {
   let harness: TestDatabase;
   let app: Hono<{ Variables: RequestIdVars }>;
@@ -261,14 +271,7 @@ describe('admin aggregate routes (ISS-651)', () => {
       });
       expect(res.status).toBe(200);
       expect(res.headers.get('X-Total-Count')).toBeDefined();
-      const body = (await res.json()) as Array<{
-        projectId: string;
-        slug: string;
-        runs: number;
-        spendUsd: number;
-        medianLeadTimeMin: number | null;
-        openIssues: number;
-      }>;
+      const body = ((await res.json()) as WorkspaceList).items;
       expect(Array.isArray(body)).toBe(true);
 
       const rowA = body.find((r) => r.projectId === projectA.id);
@@ -291,10 +294,11 @@ describe('admin aggregate routes (ISS-651)', () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.status).toBe(200);
-      const body = (await res.json()) as Array<{
-        projectId: string;
-        medianLeadTimeMin: number | null;
-      }>;
+      const body = (
+        (await res.json()) as {
+          items: Array<{ projectId: string; medianLeadTimeMin: number | null }>;
+        }
+      ).items;
       const row = body.find((r) => r.projectId === project.id);
       expect(row?.medianLeadTimeMin).toBeNull();
     });
@@ -316,10 +320,11 @@ describe('admin aggregate routes (ISS-651)', () => {
         headers: { authorization: `Bearer ${token}` },
       });
       expect(res.status).toBe(200);
-      const body = (await res.json()) as Array<{
-        projectId: string;
-        medianLeadTimeMin: number | null;
-      }>;
+      const body = (
+        (await res.json()) as {
+          items: Array<{ projectId: string; medianLeadTimeMin: number | null }>;
+        }
+      ).items;
       const row = body.find((r) => r.projectId === project.id);
       expect(row?.medianLeadTimeMin).not.toBeNull();
       expect(row?.medianLeadTimeMin).toBeGreaterThanOrEqual(0);

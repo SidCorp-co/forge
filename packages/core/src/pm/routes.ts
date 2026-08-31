@@ -13,7 +13,7 @@ import {
   pmPolicies,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { setTotalCount } from '../lib/pagination.js';
+import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { deleteMemory, indexMemoryBestEffort } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -488,7 +488,6 @@ pmRoutes.get(
     const where = and(...conditions);
 
     const [totalRow] = await db.select({ n: count() }).from(pmDecisions).where(where);
-    setTotalCount(c, totalRow?.n ?? 0);
 
     const rows = await db
       .select({
@@ -508,7 +507,7 @@ pmRoutes.get(
       .limit(pageSize)
       .offset((page - 1) * pageSize);
 
-    return c.json(rows);
+    return c.json(listResponse(c, rows, totalRow?.n ?? 0, fromPage(page, pageSize)));
   },
 );
 

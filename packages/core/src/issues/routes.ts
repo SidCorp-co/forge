@@ -18,7 +18,7 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { paginationSchema, setTotalCount } from '../lib/pagination.js';
+import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -301,11 +301,11 @@ issueProjectRoutes.get(
       .limit(q.limit)
       .offset(q.offset);
 
-    setTotalCount(c, Number(n));
+    const total = Number(n);
 
     const serialized = rows.map((r) => serializeIssue(r as IssueRow));
     if (serialized.length === 0) {
-      return c.json(serialized);
+      return c.json(listResponse(c, serialized, total, q));
     }
 
     // ISS-164 — always hydrate pipelineHealth on the list payload. Cheap
@@ -320,26 +320,36 @@ issueProjectRoutes.get(
 
     if (!q.withAgentSessions) {
       return c.json(
-        serialized.map((r) => ({
-          ...r,
-          ...creatorMap.get(r.id),
-          pipelineHealth: healthMap.get(r.id) ?? { stage: r.status },
-        })),
+        listResponse(
+          c,
+          serialized.map((r) => ({
+            ...r,
+            ...creatorMap.get(r.id),
+            pipelineHealth: healthMap.get(r.id) ?? { stage: r.status },
+          })),
+          total,
+          q,
+        ),
       );
     }
 
     const map = await hydrateAgentSessionsForIssues(projectId, ids);
     return c.json(
-      serialized.map((r) => {
-        const bucket = map.get(r.id);
-        return {
-          ...r,
-          ...creatorMap.get(r.id),
-          agentSessions: bucket?.agentSessions ?? [],
-          agentStatus: bucket?.agentStatus ?? null,
-          pipelineHealth: healthMap.get(r.id) ?? { stage: r.status },
-        };
-      }),
+      listResponse(
+        c,
+        serialized.map((r) => {
+          const bucket = map.get(r.id);
+          return {
+            ...r,
+            ...creatorMap.get(r.id),
+            agentSessions: bucket?.agentSessions ?? [],
+            agentStatus: bucket?.agentStatus ?? null,
+            pipelineHealth: healthMap.get(r.id) ?? { stage: r.status },
+          };
+        }),
+        total,
+        q,
+      ),
     );
   },
 );

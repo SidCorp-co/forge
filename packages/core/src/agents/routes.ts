@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentApprovalModes, agentSchedules, agents } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { setTotalCount } from '../lib/pagination.js';
+import { wholeList } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -93,10 +93,9 @@ agentRoutes.get(
     const where = and(...conditions);
 
     const [totalRow] = await db.select({ n: count() }).from(agents).where(where);
-    setTotalCount(c, totalRow?.n ?? 0);
-
+    // cm:guard this list is NOT paginated — the query takes no limit or offset, so `total` and the row count are always equal and the header form is the honest answer. `listResponse` here would state a `hasMore` that can never be true.
     const rows = await db.select().from(agents).where(where).orderBy(asc(agents.createdAt));
-    return c.json(rows);
+    return c.json(wholeList(c, rows, totalRow?.n ?? 0));
   },
 );
 

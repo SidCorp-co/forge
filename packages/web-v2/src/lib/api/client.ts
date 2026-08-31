@@ -100,23 +100,32 @@ export async function apiMultipart<T>(endpoint: string, formData: FormData): Pro
   return (await res.json()) as T;
 }
 
-/** List-returning client. Core returns `T[]` with `X-Total-Count` header. */
-// cm:guard a MISSING header is an error, never `items.length`. That fallback made a truncated page indistinguishable from a complete list, silently: 50 of 900 rows read as "900 of 900", and every caller comparing the two to decide whether to fetch more stopped. Absence has two live causes — a handler that skipped `setTotalCount`, and `X-Total-Count` dropping out of the CORS `exposeHeaders` list — and both must be loud rather than shrink every list in the app.
-// cm:edge contract -> packages/core/src/lib/pagination.ts — `setTotalCount` is the only writer of this header; a paginated route that returns rows without calling it now throws here instead of under-reporting its own size
-// cm:edge contract -> packages/core/src/index.ts — `exposeHeaders: ['X-Total-Count']` is what lets a browser read it at all; drop it and every list throws rather than quietly truncating
+/**
+ * List-returning client. Core answers a paginated list with a
+ * `{ items, total, hasMore, … }` envelope; routes that do not paginate still
+ * answer with a bare array.
+ */
+// cm:guard a paginated response must carry its own total — in the BODY, or in `X-Total-Count` for the routes still on the array shape. Neither present is an ERROR, never `items.length`: that fallback made a truncated page indistinguishable from a complete list, silently, and 50 of 900 rows read as "900 of 900" while every caller comparing the two to decide whether to fetch more simply stopped.
+// cm:edge contract -> packages/core/src/lib/pagination.ts — `listResponse` builds the envelope this reads, and `setTotalCount` writes the header form; a paginated route that emits neither fails here rather than under-reporting its own size
+// cm:edge contract -> packages/core/src/index.ts — `exposeHeaders: ['X-Total-Count']` is what lets a browser read the header form at all; drop it and every array-shaped list throws rather than quietly truncating
 export async function apiClientList<T>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<{ items: T[]; totalCount: number }> {
   const res = await fetchRaw(endpoint, options);
-  const items = (res.status === 204 ? [] : ((await res.json()) as T[])) ?? [];
-  // cm:why 204 carries no body and no header by design — an empty list is complete at zero, and
-  // demanding the header here would fail every route that answers "nothing" without a count
-  if (res.status === 204) return { items, totalCount: 0 };
+  // cm:why 204 carries no body and no header by design — an empty list is complete at zero, and demanding a total here would fail every route that answers "nothing" without one
+  if (res.status === 204) return { items: [], totalCount: 0 };
+
+  const body = (await res.json()) as T[] | { items: T[]; total: number };
+  if (!Array.isArray(body)) {
+    return { items: body.items ?? [], totalCount: body.total };
+  }
+
+  const items = body ?? [];
   const header = res.headers.get('X-Total-Count');
   if (header === null) {
     throw new Error(
-      `${endpoint}: list response carries no X-Total-Count — cannot tell a full list from a truncated page`,
+      `${endpoint}: list response states no total — cannot tell a full list from a truncated page`,
     );
   }
   const totalCount = Number(header);

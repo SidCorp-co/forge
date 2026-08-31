@@ -15,7 +15,7 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { paginationSchema, setTotalCount } from '../lib/pagination.js';
+import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { openIssueRun, openOneShotRun } from '../pipeline/runs.js';
@@ -203,8 +203,7 @@ jobProjectRoutes.get(
       .limit(q.limit)
       .offset(q.offset);
 
-    setTotalCount(c, Number(n));
-    return c.json(rows);
+    return c.json(listResponse(c, rows, Number(n), q));
   },
 );
 
