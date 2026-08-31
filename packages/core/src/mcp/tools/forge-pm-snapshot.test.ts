@@ -71,8 +71,9 @@ beforeEach(() => {
 describe('forge_pm.snapshot', () => {
   it('rejects non-member with FORBIDDEN', async () => {
     const tool = forgePmSnapshotTool(ctx);
-    queue.push([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // project lookup
-    queue.push([]); // no member row
+    const projectLookup = [{ orgId: 'org-1', memberRole: null, orgRole: null }];
+    const noMemberRow: unknown[] = [];
+    queue.push(projectLookup, noMemberRow);
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
@@ -83,45 +84,47 @@ describe('forge_pm.snapshot', () => {
 
   it('returns digest with expected shape under 2KB', async () => {
     const tool = forgePmSnapshotTool(ctx);
+    const memberCheck = [{ orgId: 'org-1', memberRole: 'member', orgRole: null }];
+    const countsByStatus = [
+      { status: 'open', n: 3 },
+      { status: 'in_progress', n: 1 },
+    ];
+    const activeJobs = [
+      {
+        id: 'j1',
+        type: 'code',
+        status: 'running',
+        issueId: 'i1',
+        queuedAt: new Date('2026-05-01T00:00:00Z'),
+      },
+    ];
+    const stalledIssues = [
+      {
+        id: 'i9',
+        issueId: 9,
+        status: 'in_progress',
+        updatedAt: new Date('2026-04-01T00:00:00Z'),
+      },
+    ];
+    const queuedCount = [{ n: 4 }];
+    const recentFailures = [
+      {
+        id: 'j2',
+        type: 'review',
+        failureKind: 'transient',
+        failureReason: 'x'.repeat(500),
+        finishedAt: new Date('2026-05-01T00:00:00Z'),
+      },
+    ];
+    // cm:guard the queue is POSITIONAL — each entry answers the next query `readPmSnapshot` runs, in its order. Reorder these bindings without reordering the service and every assertion still runs, against the wrong rows.
     queue.push(
-      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assertDeviceOwnerIsMember: project (owner match)
+      memberCheck,
+      countsByStatus,
+      activeJobs,
+      stalledIssues,
+      queuedCount,
+      recentFailures,
       [
-        // countsByStatus
-        { status: 'open', n: 3 },
-        { status: 'in_progress', n: 1 },
-      ],
-      [
-        // activeJobs
-        {
-          id: 'j1',
-          type: 'code',
-          status: 'running',
-          issueId: 'i1',
-          queuedAt: new Date('2026-05-01T00:00:00Z'),
-        },
-      ],
-      [
-        // stalledIssues
-        {
-          id: 'i9',
-          issueId: 9,
-          status: 'in_progress',
-          updatedAt: new Date('2026-04-01T00:00:00Z'),
-        },
-      ],
-      [{ n: 4 }], // queuedCount
-      [
-        // recentFailures
-        {
-          id: 'j2',
-          type: 'review',
-          failureKind: 'transient',
-          failureReason: 'x'.repeat(500),
-          finishedAt: new Date('2026-05-01T00:00:00Z'),
-        },
-      ],
-      [
-        // runners list
         {
           id: 'r1',
           type: 'claude-code',

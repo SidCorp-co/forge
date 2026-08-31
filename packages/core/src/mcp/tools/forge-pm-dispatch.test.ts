@@ -40,8 +40,7 @@ vi.mock('../../jobs/enqueue.js', () => ({
   enqueueJob: enqueueJobSpy,
 }));
 
-// ISS-101 — pipeline_run lookups are stubbed so the chainable db mock above
-// doesn't need to know about the SELECT/INSERT pair on `pipeline_runs`.
+// cm:why stubbed rather than modelled: `pipeline_runs` is a SELECT/INSERT pair, and teaching the positional queue about it would make every case below depend on how many statements that helper happens to issue (ISS-101)
 vi.mock('../../pipeline/runs.js', () => ({
   openIssueRun: vi.fn().mockResolvedValue({ id: 'run-1', startedAt: new Date() }),
   openOneShotRun: vi.fn().mockResolvedValue({ id: 'run-1' }),
@@ -91,8 +90,9 @@ const ctx = {
 };
 
 function pushPmActorOk() {
-  queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // assertDeviceOwnerIsMember: project (owner)
-  queue.push([{ capabilities: { pm: true } }]); // runner row
+  const memberCheck = [{ orgId: 'org-1', memberRole: 'member', orgRole: null }];
+  const pmCapableRunner = [{ capabilities: { pm: true } }];
+  queue.push(memberCheck, pmCapableRunner);
 }
 
 beforeEach(() => {
@@ -104,8 +104,9 @@ beforeEach(() => {
 describe('forge_pm.dispatch', () => {
   it('rejects when device has no claude-code runner', async () => {
     const tool = forgePmDispatchTool(ctx);
-    queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // assertMember
-    queue.push([]); // no runner
+    const memberCheck = [{ orgId: 'org-1', memberRole: 'member', orgRole: null }];
+    const noRunner: unknown[] = [];
+    queue.push(memberCheck, noRunner);
     await expect(
       tool.handler({
         projectId: PROJECT_ID,
@@ -146,7 +147,7 @@ describe('forge_pm.dispatch', () => {
   it('rejects cross-project issue', async () => {
     const tool = forgePmDispatchTool(ctx);
     pushPmActorOk();
-    queue.push([{ projectId: OTHER_PROJECT_ID }]); // issue
+    queue.push([{ projectId: OTHER_PROJECT_ID }]);
     await expect(
       tool.handler({
         projectId: PROJECT_ID,
@@ -160,11 +161,13 @@ describe('forge_pm.dispatch', () => {
   it('happy path inserts a job + enqueues', async () => {
     const tool = forgePmDispatchTool(ctx);
     pushPmActorOk();
-    queue.push([{ projectId: PROJECT_ID }]); // issue
-    queue.push([{ agentConfig: { pipelineConfig: { states: {} } } }]); // states lookup
-    queue.push([{ stage: 'approved', name: 'forge-code', scope: 'project' }]); // skill resolver rows
-    queue.push([{ id: JOB_ID }]); // jobs insert returning
-    queue.push([{ id: 'run-1', status: 'running' }]); // ISS-102 pipeline_run lookup
+    const issue = [{ projectId: PROJECT_ID }];
+    const statesLookup = [{ agentConfig: { pipelineConfig: { states: {} } } }];
+    const skillResolverRows = [{ stage: 'approved', name: 'forge-code', scope: 'project' }];
+    const jobsInsertReturning = [{ id: JOB_ID }];
+    const pipelineRunLookup = [{ id: 'run-1', status: 'running' }];
+    // cm:guard the queue is POSITIONAL — each entry answers the next statement the handler runs, in its order. Reorder these bindings without reordering the handler and every assertion still runs, against the wrong rows.
+    queue.push(issue, statesLookup, skillResolverRows, jobsInsertReturning, pipelineRunLookup);
 
     const result = (await tool.handler({
       projectId: PROJECT_ID,
@@ -188,7 +191,7 @@ describe('forge_pm.dispatch', () => {
   it('rejects when the stage is configured as manual-only (ISS-108)', async () => {
     const tool = forgePmDispatchTool(ctx);
     pushPmActorOk();
-    queue.push([{ projectId: PROJECT_ID }]); // issue
+    queue.push([{ projectId: PROJECT_ID }]);
     queue.push([
       {
         agentConfig: {
@@ -210,9 +213,9 @@ describe('forge_pm.dispatch', () => {
   it('rejects when no skill_registration exists for the project (ISS-108)', async () => {
     const tool = forgePmDispatchTool(ctx);
     pushPmActorOk();
-    queue.push([{ projectId: PROJECT_ID }]); // issue
+    queue.push([{ projectId: PROJECT_ID }]);
     queue.push([{ agentConfig: { pipelineConfig: { states: {} } } }]);
-    queue.push([]); // no registrations
+    queue.push([]);
 
     await expect(
       tool.handler({
@@ -231,7 +234,8 @@ describe('forge_pm.dispatch', () => {
     queue.push([{ agentConfig: { pipelineConfig: { states: {} } } }]);
     queue.push([{ stage: 'approved', name: 'forge-code', scope: 'project' }]);
     queue.push([{ id: JOB_ID }]);
-    queue.push([]); // pipeline_runs lookup returns nothing — defensive path
+    // cm:guard an empty `pipeline_runs` lookup is the DEFENSIVE path and must not throw: the job row already inserted, so failing here would report a dispatch that did happen as one that did not
+    queue.push([]);
 
     const result = (await tool.handler({
       projectId: PROJECT_ID,
@@ -247,17 +251,17 @@ describe('forge_pm.dispatch', () => {
   it('returns already_active on unique-violation', async () => {
     const tool = forgePmDispatchTool(ctx);
     pushPmActorOk();
-    queue.push([{ projectId: PROJECT_ID }]); // issue
+    queue.push([{ projectId: PROJECT_ID }]);
     queue.push([{ agentConfig: { pipelineConfig: { states: {} } } }]);
     queue.push([{ stage: 'approved', name: 'forge-code', scope: 'project' }]);
-    // jobs insert throws 23505
+    // cm:why 23505 is the unique violation Postgres raises when the same job is dispatched twice; the handler must fall through to the existing-job lookup below rather than surfacing a raw pg error
     insertSpy.mockReturnValueOnce({
       values: () => ({
         returning: () => Promise.reject(Object.assign(new Error('dup'), { code: '23505' })),
       }),
       // biome-ignore lint/suspicious/noExplicitAny: partial chain
     } as any);
-    queue.push([{ id: JOB_ID }]); // existing-job lookup
+    queue.push([{ id: JOB_ID }]);
 
     const result = (await tool.handler({
       projectId: PROJECT_ID,

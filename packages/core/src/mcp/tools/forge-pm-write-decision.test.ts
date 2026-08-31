@@ -104,7 +104,8 @@ describe('forge_pm.write_decision', () => {
   it('inserts decision + queues memory indexer', async () => {
     const tool = forgePmWriteDecisionTool(ctx);
     pushPmActorOk();
-    queue.push([{ id: DECISION_ID }]); // decision insert
+    const decisionInsert = [{ id: DECISION_ID }];
+    queue.push(decisionInsert);
 
     const result = (await tool.handler({
       projectId: PROJECT_ID,
@@ -116,7 +117,7 @@ describe('forge_pm.write_decision', () => {
     expect(result.decisionId).toBe(DECISION_ID);
     expect(result.indexed).toBe('queued');
 
-    // queueMicrotask schedules; flush microtasks
+    // cm:guard the indexer is scheduled on a microtask, NOT awaited by the handler — drop this flush and the assertion below runs before the call it is looking for, passing or failing on timing rather than behaviour
     await new Promise<void>((r) => queueMicrotask(() => r()));
 
     expect(indexMemorySpy).toHaveBeenCalledWith(
@@ -131,7 +132,8 @@ describe('forge_pm.write_decision', () => {
   it('rejects non-pm-actor', async () => {
     const tool = forgePmWriteDecisionTool(ctx);
     queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
-    queue.push([{ capabilities: {} }]); // pm flag missing
+    const pmFlagMissing = [{ capabilities: {} }];
+    queue.push(pmFlagMissing);
     await expect(
       tool.handler({
         projectId: PROJECT_ID,
@@ -144,9 +146,10 @@ describe('forge_pm.write_decision', () => {
   it('with escalate: inserts notification + emits hook + returns escalation', async () => {
     const tool = forgePmWriteDecisionTool(ctx);
     pushPmActorOk();
-    queue.push([{ id: DECISION_ID }]); // decision insert
-    queue.push([{ createdBy: OWNER_ID }]); // escalation project lookup (audit creator)
-    queue.push([{ id: NOTIFICATION_ID }]); // notification insert
+    const decisionInsert = [{ id: DECISION_ID }];
+    const escalationProjectLookup = [{ createdBy: OWNER_ID }];
+    const notificationInsert = [{ id: NOTIFICATION_ID }];
+    queue.push(decisionInsert, escalationProjectLookup, notificationInsert);
 
     const result = (await tool.handler({
       projectId: PROJECT_ID,
@@ -186,8 +189,9 @@ describe('forge_pm.write_decision', () => {
   it('with escalate but missing project: throws NOT_FOUND', async () => {
     const tool = forgePmWriteDecisionTool(ctx);
     pushPmActorOk();
-    queue.push([{ id: DECISION_ID }]); // decision insert
-    queue.push([]); // project lookup empty
+    const decisionInsert = [{ id: DECISION_ID }];
+    const projectLookupEmpty: unknown[] = [];
+    queue.push(decisionInsert, projectLookupEmpty);
 
     await expect(
       tool.handler({

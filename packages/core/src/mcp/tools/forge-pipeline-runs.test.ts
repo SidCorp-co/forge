@@ -24,7 +24,7 @@ const selectWhere = vi.fn(() => ({
   orderBy: selectOrderBy,
   groupBy: selectGroupBy,
 }));
-// lib/authz.ts effectiveProjectRole chains TWO leftJoins before where().limit(1).
+// cm:edge contract -> packages/core/src/lib/authz.ts — `effectiveProjectRole` chains TWO leftJoins before `where().limit(1)`, and this mock must offer the same depth: drop one and the builder returns undefined mid-chain, which reads as an authz failure rather than a broken stub
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
@@ -139,8 +139,9 @@ function makeDeviceCtx() {
 describe('forge_pipeline_runs.list', () => {
   it('returns runs filtered by issueId/status when device owner is member', async () => {
     const tool = forgePipelineRunsListTool(makeDeviceCtx());
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
-    selectLimit.mockResolvedValueOnce([baseRun]); // runs query
+    // cm:guard the member check is resolved BEFORE the runs query, matching the handler's order — swap these two and the authz row is read as the run list, so the test asserts a shape the handler never produced
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    selectLimit.mockResolvedValueOnce([baseRun]);
 
     const result = (await tool.handler({
       projectId: PROJECT_ID,
@@ -210,8 +211,9 @@ function makePatCtx(projectIds: string[] | null) {
 describe('forge_pipeline_runs.get', () => {
   it('returns the run plus a per-status jobCounts breakdown', async () => {
     const tool = forgePipelineRunsGetTool(makeDeviceCtx());
-    selectLimit.mockResolvedValueOnce([baseRun]); // run lookup
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
+    // cm:guard `get` looks the RUN up first and only then checks membership — the reverse of `list`, because the run is what names the project to check against
+    selectLimit.mockResolvedValueOnce([baseRun]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     selectGroupBy.mockResolvedValueOnce([
       { status: 'queued', count: 1 },
       { status: 'dispatched', count: 1 },
@@ -241,8 +243,7 @@ describe('forge_pipeline_runs.get', () => {
     await expect(tool.handler({ runId: RUN_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
-  // ISS-150 review #1 re-review — PAT projectIds allowlist regression on
-  // runId-resolved access.
+  // cm:guard the allowlist must be enforced on the project the RUN resolves to, not only on an explicit projectId argument — ISS-150 review #1 found exactly that hole, where a PAT reached any run by id because nothing re-checked the project the lookup landed on
   it('returns NOT_FOUND for a PAT when the run’s project is outside the allowlist', async () => {
     const tool = forgePipelineRunsGetTool(makePatCtx(['99999999-9999-4999-8999-999999999999']));
     selectLimit.mockResolvedValueOnce([baseRun]);
@@ -252,8 +253,8 @@ describe('forge_pipeline_runs.get', () => {
 
 describe('forge_pipeline_runs.pause/.resume/.cancel', () => {
   function memberRunLookup() {
-    selectLimit.mockResolvedValueOnce([baseRun]); // run lookup
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
+    selectLimit.mockResolvedValueOnce([baseRun]);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
   }
 
   /** pause/resume/cancel re-check WRITER access on the run's project. */
@@ -303,7 +304,7 @@ describe('forge_pipeline_runs.pause/.resume/.cancel', () => {
 
   it('cancel rejects a non-member device with FORBIDDEN', async () => {
     const tool = forgePipelineRunsCancelTool(makeDeviceCtx());
-    selectLimit.mockResolvedValueOnce([baseRun]); // run lookup
+    selectLimit.mockResolvedValueOnce([baseRun]);
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
     await expect(tool.handler({ runId: RUN_ID })).rejects.toThrow(/FORBIDDEN/);
     expect(cancelSpy).not.toHaveBeenCalled();

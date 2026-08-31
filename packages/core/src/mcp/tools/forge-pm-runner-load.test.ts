@@ -73,16 +73,13 @@ describe('forge_pm.runner_load', () => {
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
-  // ISS-232 Phase 4 — `capacity` is the uniform `RUNNER_CAP_PER_RUNNER`
-  // (= 1) regardless of any legacy `capabilities.maxConcurrent` field. The
-  // dispatcher no longer reads that override; surfacing the live value
-  // from the PM tool would mislead operators about effective parallelism.
+  // cm:edge contract -> packages/core/src/jobs/dispatch-gates.ts — `capacity` must report the uniform RUNNER_CAP_PER_RUNNER and NEVER a row's legacy `capabilities.maxConcurrent`: the dispatcher stopped reading that override in ISS-232 Phase 4, so surfacing it here would tell an operator this runner takes N jobs at once while dispatch still gives it one.
   it('returns runner list with capacity=1 + inFlight', async () => {
     const tool = forgePmRunnerLoadTool(ctx);
+    const memberCheck = [{ orgId: 'org-1', memberRole: 'member', orgRole: null }];
     queue.push(
-      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assert
+      memberCheck,
       [
-        // runner rows
         {
           id: 'r1',
           type: 'claude-code',

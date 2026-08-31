@@ -77,15 +77,15 @@ beforeEach(() => {
 describe('forge_project_pm (action=snapshot)', () => {
   it('routes to the pmSnapshot handler when device owner is project member', async () => {
     const tool = forgeProjectPmTool(makeDeviceCtx());
-    queue.push(
-      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assertDeviceOwnerIsMember
-      [], // counts
-      [], // activeJobs
-      [], // stalled
-      [{ n: 0 }], // queuedCount
-      [], // recentFailures
-      [], // runners
-    );
+    const memberCheck = [{ orgId: 'org-1', memberRole: 'member', orgRole: null }];
+    const counts: unknown[] = [];
+    const activeJobs: unknown[] = [];
+    const stalled: unknown[] = [];
+    const queuedCount = [{ n: 0 }];
+    const recentFailures: unknown[] = [];
+    const runners: unknown[] = [];
+    // cm:guard the queue is POSITIONAL — each entry answers the next query `readPmSnapshot` runs, in its order. Reorder these bindings without reordering the service and every assertion still runs, against the wrong rows.
+    queue.push(memberCheck, counts, activeJobs, stalled, queuedCount, recentFailures, runners);
 
     const result = (await tool.handler({ action: 'snapshot', projectId: PROJECT_ID })) as {
       queuedCount: number;
@@ -95,7 +95,7 @@ describe('forge_project_pm (action=snapshot)', () => {
 
   it('re-applies project-member auth — non-member is rejected with FORBIDDEN', async () => {
     const tool = forgeProjectPmTool(makeDeviceCtx());
-    queue.push([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // project lookup + no member row
+    queue.push([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
     await expect(tool.handler({ action: 'snapshot', projectId: PROJECT_ID })).rejects.toThrow(
       /FORBIDDEN/,
     );
@@ -103,8 +103,7 @@ describe('forge_project_pm (action=snapshot)', () => {
 });
 
 describe('forge_project_pm (action=graph)', () => {
-  // ISS-145 — project-wide branch returns truncated:true + remainingNodes>0
-  // when the project exceeds the 200-node cap.
+  // cm:guard `truncated` and `remainingNodes` are a CONTRACT, not a hint: the project-wide branch caps at 200 nodes, and a caller that reads a capped graph as complete draws a dependency conclusion from a subset it cannot tell is a subset (ISS-145)
   it('returns truncated:true + remainingNodes when count exceeds the cap', async () => {
     const tool = forgeProjectPmTool(makeDeviceCtx());
     const stubNodes = Array.from({ length: 200 }, (_, i) => ({
@@ -114,12 +113,10 @@ describe('forge_project_pm (action=graph)', () => {
       assigneeId: null,
       parentIssueId: null,
     }));
-    queue.push(
-      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assert
-      [{ total: 250 }], // count() → 50 over cap
-      stubNodes,
-      [], // dep edges
-    );
+    const memberCheck = [{ orgId: 'org-1', memberRole: 'member', orgRole: null }];
+    const totalFiftyOverTheCap = [{ total: 250 }];
+    const noDepEdges: unknown[] = [];
+    queue.push(memberCheck, totalFiftyOverTheCap, stubNodes, noDepEdges);
     const result = (await tool.handler({ action: 'graph', projectId: PROJECT_ID })) as {
       truncated: boolean;
       remainingNodes: number;
@@ -130,12 +127,12 @@ describe('forge_project_pm (action=graph)', () => {
     expect(result.nodes).toHaveLength(200);
   });
 
-  // ISS-145 — depth=5 must validate at the input boundary (previous cap 4).
+  // cm:guard depth=5 must PARSE — the cap was raised from 4 in ISS-145, and a schema that still rejects 5 fails as a validation error the caller reads as their own mistake
   it('accepts depth=5 at the input boundary', async () => {
     const tool = forgeProjectPmTool(makeDeviceCtx());
     queue.push(
-      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assert
-      // 5 BFS iterations × 4 queries (deps fwd/rev + children/parents)
+      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }],
+      // cm:guard five BFS iterations ask FOUR queries each — deps forward, deps reverse, children, parents — so the twenty empty entries below are one per query, not padding. Change the walk's query count without changing this many and the final nodeRows entry is read as an edge list.
       [],
       [],
       [],
@@ -156,7 +153,7 @@ describe('forge_project_pm (action=graph)', () => {
       [],
       [],
       [],
-      [], // final nodeRows
+      [],
     );
     const result = (await tool.handler({
       action: 'graph',
@@ -212,23 +209,10 @@ describe('forge_project_pm — required-field validation', () => {
   });
 });
 
-// Acceptance criterion 8 — PAT for project A cannot run a pm action against
-// project B. Two layers of defence:
-//   (1) `server.ts` gates the consolidated dispatcher (per-action via
-//       DEVICE_REQUIRED) AND a PAT allowlist check.
-//   (2) Bypassing the server (calling the factory directly with a PAT
-//       principal) still fails because the dispatcher uses the stub
-//       device's `ownerId` — set to the PAT user — and the project
-//       membership check resolves on that user. We assert the FORBIDDEN
-//       surface here so a future regression that removes the action-level
-//       auth is caught even if the server gate is intact.
+// cm:guard these cases deliberately BYPASS the server-level gate by calling the factory directly, because the dispatcher must refuse a cross-project PAT on its own. The two gates are defence in depth, and a suite that only ever goes through the outer one cannot tell you the inner one still exists.
 describe('forge_project_pm — action-level auth (cross-tenant)', () => {
   it('snapshot re-applies project-member auth so cross-tenant PAT is rejected', async () => {
-    // PAT principals reach the dispatcher with a stub device whose ownerId
-    // is the PAT user. If the PAT user is NOT a member of the project,
-    // assertDeviceOwnerIsMember throws FORBIDDEN — exactly the surface a
-    // real cross-tenant call would hit when the server-level allowlist
-    // gate is somehow bypassed (defence in depth).
+    // cm:why a PAT reaches the dispatcher carrying a stub device whose ownerId IS the PAT user, so the ordinary membership check resolves on that user and FORBIDDEN is the surface a real cross-tenant call would hit
     const tool = forgeProjectPmTool({
       principal: {
         kind: 'pat' as const,
@@ -242,7 +226,7 @@ describe('forge_project_pm — action-level auth (cross-tenant)', () => {
       device: fakeDevice,
       projectSlug: null,
     });
-    queue.push([{ ownerId: 'other-owner' }], []); // project + no member row
+    queue.push([{ ownerId: 'other-owner' }], []);
     await expect(tool.handler({ action: 'snapshot', projectId: PROJECT_ID })).rejects.toThrow(
       /FORBIDDEN/,
     );

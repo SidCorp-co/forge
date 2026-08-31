@@ -37,9 +37,7 @@ vi.mock('../../issues/cycle-detect.js', () => ({
   detectCycle: vi.fn(async () => null),
 }));
 
-// ISS-138 (PR-D) — the tool now calls `decomposeParent` after a successful
-// `decomposes` edge insert. The helper has its own DB shape so we mock it
-// at the module boundary; the helper's own tests cover its internals.
+// cm:why mocked at the MODULE boundary, not modelled in the positional queue: `decomposeParent` issues its own statements, so letting it through would make every case here depend on how many, and its internals already have their own tests (ISS-138 PR-D)
 const decomposeSpy = vi.fn(async () => ({
   parentId: 'parent',
   childIds: ['child'],
@@ -92,10 +90,7 @@ const ctx = {
   projectSlug: null,
 };
 
-// ISS-131 — gate relaxed from `assertPmActor` to `assertDeviceOwnerIsMember`.
-// The member-only check does ONE select on `projects.ownerId`; when the device
-// owns the project that short-circuits as both member + admin without a
-// `projectMembers` lookup.
+// cm:guard ONE queued row, not two: `assertDeviceOwnerIsMember` selects `projects.ownerId` and short-circuits as member+admin when the device owns the project, never reaching `projectMembers`. Queue a second row here and every later case reads the queue off by one (ISS-131 relaxed this from `assertPmActor`).
 function pushMemberOk() {
   queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 }
@@ -145,9 +140,8 @@ describe('forge_pm.set_dependency', () => {
       { id: FROM_ID, projectId: PROJECT_ID },
       { id: TO_ID, projectId: PROJECT_ID },
     ]);
-    // detectCycle is module-mocked to return null — does NOT consume the
-    // queue, so we go straight to insert.
-    queue.push([{ id: EDGE_ID }]); // insert returning
+    // cm:guard `detectCycle` is module-mocked and consumes NOTHING from the queue, so the next entry is the insert. Un-mock it and every position below shifts, which shows up as unrelated cases failing on shapes they never asked for.
+    queue.push([{ id: EDGE_ID }]);
 
     hooks.reset();
     const depSpy = vi.fn();
@@ -178,9 +172,8 @@ describe('forge_pm.set_dependency', () => {
       { id: FROM_ID, projectId: PROJECT_ID },
       { id: TO_ID, projectId: PROJECT_ID },
     ]);
-    // detectCycle is module-mocked to return null — does NOT consume the queue.
-    queue.push([]); // insert returns no row (conflict)
-    queue.push([{ id: EDGE_ID }]); // existing row lookup
+    queue.push([]);
+    queue.push([{ id: EDGE_ID }]);
 
     hooks.reset();
     const depSpy = vi.fn();
@@ -198,16 +191,9 @@ describe('forge_pm.set_dependency', () => {
     expect(depSpy).not.toHaveBeenCalled();
   });
 
-  // ISS-131 — explicit guardrail. Before the gate relaxation the tool also
-  // required `runners.capabilities.pm=true` which a plan-pipeline agent
-  // (claude-code runner without the PM flag) never has. Now the tool runs
-  // for any device whose owner is a member of the project: the projects
-  // lookup hits the device's `ownerId` and short-circuits as member+admin
-  // without ever inspecting the `runners` table.
+  // cm:guard the `runners` table must NOT be consulted here. Re-adding a `capabilities.pm` requirement locks out exactly the caller this tool exists for — a plan-pipeline agent on a claude-code runner, which never carries the PM flag — and it fails as FORBIDDEN, which reads as a permissions problem rather than a gate that should not be there (ISS-131).
   it('admits a non-PM device that owns the project (ISS-131 gate relaxation)', async () => {
     const tool = forgePmSetDependencyTool(ctx);
-    // Queue ONLY the project-owner lookup — no runner-capabilities row, which
-    // would have been needed under the old `assertPmActor` path.
     pushMemberOk();
     queue.push([
       { id: FROM_ID, projectId: PROJECT_ID },
@@ -226,8 +212,7 @@ describe('forge_pm.set_dependency', () => {
     expect(result.id).toBe(EDGE_ID);
   });
 
-  // ISS-138 (PR-D) — decomposes-edge inserts trigger the integration-branch
-  // helper. Blocks edges and opt-out callers must not.
+  // cm:guard only a `decomposes` edge may trigger the integration-branch helper — a `blocks` edge or an opt-out caller that reaches it creates a branch for a relationship that is not a decomposition (ISS-138 PR-D)
   it('calls decomposeParent after a fresh decomposes edge insert', async () => {
     const tool = forgePmSetDependencyTool(ctx);
     pushMemberOk();
@@ -292,14 +277,11 @@ describe('forge_pm.set_dependency', () => {
     expect(decomposeSpy).not.toHaveBeenCalled();
   });
 
-  // Sanity check: a device whose owner is neither the project owner nor a
-  // member row must still be rejected. This is the FORBIDDEN branch in
-  // `loadDeviceProjectRole` → `assertDeviceOwnerIsMember`.
+  // cm:guard the relaxed gate still REFUSES a stranger — this is the FORBIDDEN branch of `loadDeviceProjectRole`, and it is the assertion that stops "relaxed from assertPmActor" from quietly meaning "open to any device"
   it('rejects a device whose owner is not a project member', async () => {
     const tool = forgePmSetDependencyTool(ctx);
-    // Project exists but is owned by a stranger; no projectMembers row.
     queue.push([{ ownerId: 'ffffffff-ffff-4fff-8fff-ffffffffffff' }]);
-    queue.push([]); // projectMembers lookup returns nothing
+    queue.push([]);
 
     await expect(
       tool.handler({

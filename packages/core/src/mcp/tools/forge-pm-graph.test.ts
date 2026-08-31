@@ -70,20 +70,20 @@ beforeEach(() => {
 describe('forge_pm.graph', () => {
   it('rejects non-member', async () => {
     const tool = forgePmGraphTool(ctx);
-    queue.push([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // assertDeviceOwnerIsMember
+    queue.push([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
   it('returns whole-project graph when rootIssueId omitted', async () => {
     const tool = forgePmGraphTool(ctx);
     queue.push(
-      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assert
-      [{ total: 2 }], // count() for totalNodes
+      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }],
+      [{ total: 2 }],
       [
         { id: ROOT_ID, status: 'open', priority: 'medium', assigneeId: null },
         { id: CHILD_ID, status: 'open', priority: 'low', assigneeId: null },
       ],
-      [{ from: ROOT_ID, to: CHILD_ID, kind: 'blocks' }], // dep edges
+      [{ from: ROOT_ID, to: CHILD_ID, kind: 'blocks' }],
     );
 
     const result = (await tool.handler({ projectId: PROJECT_ID })) as {
@@ -100,7 +100,7 @@ describe('forge_pm.graph', () => {
     expect(result.remainingNodes).toBe(0);
   });
 
-  // ISS-145 — explicit truncation contract for the project-wide branch.
+  // cm:guard `truncated` and `remainingNodes` are a CONTRACT, not a hint: the project-wide branch caps at 200 nodes, and a caller that reads a capped graph as complete draws a dependency conclusion from a subset it cannot tell is a subset (ISS-145)
   it('returns truncated:true + remainingNodes when project exceeds the 200-node cap', async () => {
     const tool = forgePmGraphTool(ctx);
     const stubNodes = Array.from({ length: 200 }, (_, i) => ({
@@ -110,12 +110,10 @@ describe('forge_pm.graph', () => {
       assigneeId: null,
       parentIssueId: null,
     }));
-    queue.push(
-      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assert
-      [{ total: 215 }], // count() — 15 more than the cap
-      stubNodes, // capped nodes
-      [], // no edges
-    );
+    const memberCheck = [{ orgId: 'org-1', memberRole: 'member', orgRole: null }];
+    const totalFifteenOverTheCap = [{ total: 215 }];
+    const noEdges: unknown[] = [];
+    queue.push(memberCheck, totalFifteenOverTheCap, stubNodes, noEdges);
     const result = (await tool.handler({ projectId: PROJECT_ID })) as {
       truncated: boolean;
       remainingNodes: number;
@@ -128,17 +126,18 @@ describe('forge_pm.graph', () => {
 
   it('BFS expands to depth and dedupes edges with cycle', async () => {
     const tool = forgePmGraphTool(ctx);
+    const memberCheck = [{ orgId: 'org-1', memberRole: 'member', orgRole: null }];
+    const depth1Forward = [{ from: ROOT_ID, to: CHILD_ID, kind: 'blocks' }];
+    const depth1ReverseCycle = [{ from: CHILD_ID, to: ROOT_ID, kind: 'blocks' }];
+    const depth2ForwardAlreadySeen = [{ from: ROOT_ID, to: CHILD_ID, kind: 'blocks' }];
+    const depth2Reverse: unknown[] = [];
+    // cm:guard the BFS asks forward-then-reverse at EACH depth, and this queue answers in that order — the cycle case only proves dedupe because `depth2ForwardAlreadySeen` repeats an edge the walk has already taken; reorder these and the test still passes while testing nothing
     queue.push(
-      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assert
-      // depth 1: forward deps from ROOT
-      [{ from: ROOT_ID, to: CHILD_ID, kind: 'blocks' }],
-      // depth 1: reverse deps to ROOT (cycle: CHILD also blocks ROOT)
-      [{ from: CHILD_ID, to: ROOT_ID, kind: 'blocks' }],
-      // depth 2: forward deps from CHILD
-      [{ from: ROOT_ID, to: CHILD_ID, kind: 'blocks' }], // already seen
-      // depth 2: reverse deps to CHILD
-      [],
-      // final: nodeRows for visited set
+      memberCheck,
+      depth1Forward,
+      depth1ReverseCycle,
+      depth2ForwardAlreadySeen,
+      depth2Reverse,
       [
         { id: ROOT_ID, status: 'open', priority: 'medium', assigneeId: null },
         { id: CHILD_ID, status: 'open', priority: 'low', assigneeId: null },
@@ -151,7 +150,7 @@ describe('forge_pm.graph', () => {
       rootIssueId: string;
     };
     expect(result.nodes).toHaveLength(2);
-    // 2 distinct edges (cycle: ROOT→CHILD and CHILD→ROOT both blocks)
+
     expect(result.edges).toHaveLength(2);
     expect(result.rootIssueId).toBe(ROOT_ID);
   });
@@ -163,11 +162,11 @@ describe('forge_pm.graph', () => {
     ).rejects.toThrow();
   });
 
-  // ISS-145 — input parse must accept depth=5 (raised from previous cap of 4).
+  // cm:guard depth=5 must PARSE — the cap was raised from 4 in ISS-145, and a schema that still rejects 5 fails as a validation error the caller reads as their own mistake
   it('accepts depth=5 at the input boundary', async () => {
     const tool = forgePmGraphTool(ctx);
     queue.push(
-      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }], // assert
+      [{ orgId: 'org-1', memberRole: 'member', orgRole: null }],
       [],
       [],
       [],
@@ -188,7 +187,7 @@ describe('forge_pm.graph', () => {
       [],
       [],
       [],
-      [], // final nodeRows
+      [],
     );
     const result = (await tool.handler({
       projectId: PROJECT_ID,
