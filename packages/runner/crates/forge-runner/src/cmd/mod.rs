@@ -1,3 +1,4 @@
+pub mod api;
 pub mod bind;
 pub mod config;
 pub mod doctor;

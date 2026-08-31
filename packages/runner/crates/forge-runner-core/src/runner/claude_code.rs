@@ -847,12 +847,13 @@ impl Runner for ClaudeCodeRunner {
         // claude default is tight. Caller-set env wins (don't clobber an override).
         if std::env::var_os("MCP_TIMEOUT").is_none() {
             cmd.env("MCP_TIMEOUT", "15000");
-            // cm:guard the reviewer is told the ABSOLUTE file, never a relative one — `forge-drive` works in a per-issue worktree it creates itself, so "the worktree root" means a different directory to the skill and to this poller, and for the whole of phase 3 it did (KineTrak ISS-1, 2026-08-20: three verdicts written, none posted, no error anywhere)
-            cmd.env(
-                crate::workspace::verdict::VERDICT_FILE_ENV,
-                crate::workspace::verdict::path(Path::new(&effective_repo)),
-            );
         }
+
+        // cm:guard the reviewer is told the ABSOLUTE file, never a relative one — `forge-drive` works in a per-issue worktree it creates itself, so "the worktree root" means a different directory to the skill and to this poller, and for the whole of phase 3 it did (KineTrak ISS-1, 2026-08-20: three verdicts written, none posted, no error anywhere). Unconditional, and NOT nested under the MCP_TIMEOUT probe it sat inside until 2026-09-01: a box that exports MCP_TIMEOUT then loses the verdict path entirely, which is the same silent shape all over again.
+        cmd.env(
+            crate::workspace::verdict::VERDICT_FILE_ENV,
+            crate::workspace::verdict::path(Path::new(&effective_repo)),
+        );
 
         // New process group so we can kill the whole tree.
         #[cfg(unix)]

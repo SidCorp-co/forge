@@ -10,6 +10,20 @@
 
 ### Added
 
+- The whole Forge REST API is now callable from a shell: `forge-runner api <path>`, shaped after
+  `gh api`. `issues`, `/issues` and `/api/issues` all mean the same endpoint; `-X` picks a method,
+  `-d` sends a JSON body (`-` reads stdin, and a body that is not JSON is refused before anything
+  is sent rather than after a round trip), `-H` adds a header, `-i` shows the response headers.
+  It uses the credentials the runner already holds, so there is nothing new to install or
+  configure. Failures are told twice, once for a person and once for a program: the HTTP outcome
+  becomes an exit code that `--help` prints in full, and the same reason leaves on stderr as JSON
+  carrying `retryable` — true only where trying the identical request again could actually
+  succeed, which is a 429, a 5xx, or a connection that never landed. A conflict or a rejected
+  request is never marked retryable, so a script that loops on it stops instead of spinning. The
+  response body of a failed call goes to stderr and never to stdout, so redirecting output to a
+  file leaves that file empty on failure rather than filling it with an error object shaped like
+  an answer.
+
 - The Rocket.Chat bot can now see the pictures posted to it. Screenshots are how a room reports a
   bug, and until now every one of them was invisible: the bot read the filename, answered from the
   words around it, and gave no sign that it had not looked. An image attached to a message the bot
@@ -49,6 +63,13 @@
   size in the response body. The comment thread was still read as a plain list, so the page threw
   before it drew anything. The Comments tab count also now comes from the server's own count, which
   stays right on an issue with more comments than one response carries.
+
+- A pipeline reviewer on a machine with `MCP_TIMEOUT` set in its environment could write verdicts
+  that were never posted, silently. The path the reviewer writes its verdict to was only handed to
+  the session when Forge was also choosing the MCP timeout for it, so exporting that one unrelated
+  variable removed the verdict path entirely — the same "written, never posted, no error anywhere"
+  failure that the surrounding note already records from an earlier occurrence. The verdict path is
+  now always passed.
 
 - An integration whose shared credential was disabled can now be turned back on from the project's
   own settings. Two things gate an integration — the project's opt-in and the org-shared

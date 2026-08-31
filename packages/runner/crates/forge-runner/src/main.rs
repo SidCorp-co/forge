@@ -22,6 +22,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Call any Forge REST endpoint with this device's credentials (`gh api` shaped).
+    Api(cmd::api::Args),
     /// Pair this device with Forge via browser approval (OAuth device flow).
     Login(cmd::login::Args),
     /// Bind a project slug to a local repo path.
@@ -61,6 +63,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     match cli.command {
+        Command::Api(a) => cmd::api::run(ctx, a).await,
         Command::Login(a) => cmd::login::run(ctx, a).await,
         Command::Bind(a) => cmd::bind::run(ctx, a).await,
         Command::Start(a) => cmd::start::run(ctx, a).await,

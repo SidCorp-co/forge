@@ -3,6 +3,7 @@
 //! Holds everything the daemon does, with zero CLI/GUI coupling so a thin
 //! GUI/tray frontend can later drive the same logic over a local socket.
 
+pub mod api;
 pub mod auth;
 pub mod config;
 pub mod daemon;
