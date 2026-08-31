@@ -440,3 +440,53 @@ describe('ISS-887 finalizeResumeForDevice — a pin the selector did not honour'
     expect(recordResumeDrop).not.toHaveBeenCalled();
   });
 });
+
+describe('ISS-887 finalizeResumeForDevice — an offer with no pin is not a reachable session', () => {
+  it('drops a group resume whose prior session recorded no box', async () => {
+    vi.mocked(findPriorSessionInGroup).mockResolvedValue({
+      claudeSessionId: 'cli-group',
+      deviceId: null,
+    });
+    const out = await resolve(
+      {
+        job: { id: 'j1', projectId: 'p1', issueId: 'iss-1', type: 'code', retryOf: null } as Job,
+        overrides: { sessionGroup: 'build', deviceIds: null } as never,
+        agentConfig: undefined,
+      },
+      'dev-anywhere',
+    );
+    expect(out.priorClaudeSessionId).toBeNull();
+    expect(out.record.dropReason).toBe('pin_stale');
+    expect(recordResumeDrop).toHaveBeenCalledWith('pin_stale');
+  });
+
+  it('does not count an attempt that was never offered a session, pin or no pin', async () => {
+    const out = await resolve(
+      {
+        job: { id: 'j1', projectId: 'p1', issueId: 'iss-1', type: 'code', retryOf: null } as Job,
+        overrides: { sessionGroup: 'build', deviceIds: null } as never,
+        agentConfig: undefined,
+      },
+      'dev-anywhere',
+    );
+    expect(out.record.dropReason).toBeNull();
+    expect(recordResumeDrop).not.toHaveBeenCalled();
+  });
+
+  it('drops it when NEITHER side names a box — two unknowns are not a match', async () => {
+    vi.mocked(findPriorSessionInGroup).mockResolvedValue({
+      claudeSessionId: 'cli-group',
+      deviceId: null,
+    });
+    const out = await resolve(
+      {
+        job: { id: 'j1', projectId: 'p1', issueId: 'iss-1', type: 'code', retryOf: null } as Job,
+        overrides: { sessionGroup: 'build', deviceIds: null } as never,
+        agentConfig: undefined,
+      },
+      null,
+    );
+    expect(out.priorClaudeSessionId).toBeNull();
+    expect(out.record.dropReason).toBe('pin_stale');
+  });
+});

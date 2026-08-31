@@ -298,15 +298,14 @@ export async function resolveResumePolicy(args: {
  * caught at dispatch time was the one that claimed a continuation instead of reporting a loss.
  */
 // cm:guard the counter and the durable record are derived from ONE `dropReason`, at this single exit — `resolveResumePolicy` deliberately increments nothing, because its answer is provisional until the device is known. A second increment beside any drop site, or a caller that stamps `policy.record` without coming through here, is how a rate and an attempt's own row come to disagree about the same dispatch (`measured-together-never-apart`).
+// cm:guard `reachable` demands PROOF, not the absence of a mismatch: both ids non-null AND equal. An offer carried on a null pin is the same unreachable file as a mismatched one — `findPriorSessionInGroup` does not filter `device_id IS NOT NULL`, so a prior session that recorded no box would otherwise be dispatched unpinned, land anywhere, and record `resumed: true`. Measured 2026-08-31: 0 of 5,210 such rows and 0 of 64 runners carry a null device, so this costs nothing today and is the only thing standing between that column going null and a silent lie.
 // cm:edge ordering -> packages/core/src/jobs/dispatcher.ts — must run AFTER `selectRunnerForJob` and BEFORE `ensureAgentSessionForJob`: earlier and the stale-pin fall-through has not happened yet, later and the session row is already stamped with a resume that was never possible.
 export function finalizeResumeForDevice(
   policy: ResumePolicy,
   selectedDeviceId: string | null,
 ): ResumePolicy {
-  const pinMissed =
-    policy.priorClaudeSessionId !== null &&
-    policy.pinDeviceId !== null &&
-    selectedDeviceId !== policy.pinDeviceId;
+  const reachable = policy.pinDeviceId !== null && selectedDeviceId === policy.pinDeviceId;
+  const pinMissed = policy.priorClaudeSessionId !== null && !reachable;
   const dropReason: ResumeDropReason | null = pinMissed ? 'pin_stale' : policy.record.dropReason;
   if (dropReason) recordResumeDrop(dropReason);
   if (!pinMissed) return policy;
