@@ -549,6 +549,8 @@ export function IssueDetailScreen({
                 {tab === "comments" &&
                   (commentsQ.isLoading ? (
                     <TabLoading />
+                  ) : commentsQ.isError ? (
+                    <TabError query={commentsQ} what="comments" />
                   ) : (
                     <CommentThread
                       issueId={id}
@@ -560,12 +562,16 @@ export function IssueDetailScreen({
                 {tab === "activity" &&
                   (activityQ.isLoading ? (
                     <TabLoading />
+                  ) : activityQ.isError ? (
+                    <TabError query={activityQ} what="activity" />
                   ) : (
                     <ActivityFeed items={activityQ.data?.items ?? []} />
                   ))}
                 {tab === "tasks" &&
                   (tasksQ.isLoading ? (
                     <TabLoading />
+                  ) : tasksQ.isError ? (
+                    <TabError query={tasksQ} what="tasks" />
                   ) : (tasksQ.data?.length ?? 0) === 0 ? (
                     <EmptyState
                       title="No tasks"
@@ -650,6 +656,25 @@ function TabLoading() {
         </div>
       ))}
     </div>
+  );
+}
+
+/** Error body for a detail tab whose query failed, with the retry that gets the
+ *  reader out of it. */
+// cm:guard a failed tab query must render THIS, never fall through to the empty render — a thread that renders "no comments yet" on a 500 states as fact the very thing it does not know, and that is how ISS-893's dead page read to the reporter until the error boundary caught it
+function TabError({
+  query,
+  what,
+}: {
+  query: { error: unknown; refetch: () => unknown };
+  what: string;
+}) {
+  return (
+    <ErrorState
+      title={`Couldn't load ${what}`}
+      message={formatApiError(query.error)}
+      onRetry={() => query.refetch()}
+    />
   );
 }
 
