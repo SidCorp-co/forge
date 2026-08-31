@@ -274,3 +274,31 @@ describe('litellm provider', () => {
     expect(events.at(-1)).toEqual({ type: 'done' });
   });
 });
+
+describe('litellm provider — multimodal content', () => {
+  it('puts a multimodal user turn on the wire unchanged — the proxy is OpenAI-shaped', async () => {
+    const fetchImpl = vi.fn(
+      async (..._args: unknown[]) =>
+        new Response(sseBody(['data: [DONE]\n\n']), {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        }),
+    );
+    const provider = createLiteLLMProvider({
+      baseUrl: 'http://lite/',
+      apiKey: 'k',
+      defaultModel: 'm',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const content = [
+      { type: 'text' as const, text: 'what is wrong with this screen?' },
+      { type: 'image_url' as const, image_url: { url: 'data:image/png;base64,QUJD' } },
+    ];
+    await collect(provider.stream({ model: 'm', messages: [{ role: 'user', content }] }));
+
+    const init = fetchImpl.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(init.body as string) as { messages: unknown[] };
+    expect(body.messages).toEqual([{ role: 'user', content }]);
+  });
+});

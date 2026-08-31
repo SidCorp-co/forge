@@ -245,7 +245,7 @@ class RocketChatConnectionManager {
       .from(integrationConnections)
       .where(eq(integrationConnections.id, connectionId))
       .limit(1);
-    if (!conn || !conn.active) return;
+    if (!conn?.active) return;
 
     // Single-owner: hold a session advisory lock on a dedicated connection.
     const lockClient = new pg.Client({ connectionString: env.DATABASE_URL });

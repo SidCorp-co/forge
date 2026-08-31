@@ -9,7 +9,8 @@
  * partial-failure reporting — as the single implementation.
  */
 
-import type { TurnImage } from '../vision.js';
+import { env } from '../../config/env.js';
+import { base64Bytes, type TurnImage } from '../vision.js';
 import type { ChatToolset } from './mcp-adapter.js';
 
 const ISSUES_TOOL = 'forge_issues';
@@ -19,6 +20,23 @@ const ISSUES_TOOL = 'forge_issues';
 const MAX_ATTACHED = 10;
 
 /**
+ * Trim the set to what the persist layer will actually take, newest-first.
+ */
+// cm:guard the TOTAL must stay under UPLOADS_MAX_BYTES — `decodeAndValidateAttachments` THROWS PAYLOAD_TOO_LARGE on the total (it collects per-file failures, but not this one) and `issues/create-service.ts` does not catch it, so one oversized set fails the whole create and the bug report is never filed at all: strictly worse than filing it with no picture
+function withinPersistLimits(images: readonly TurnImage[]): TurnImage[] {
+  const out: TurnImage[] = [];
+  let budget = env.UPLOADS_MAX_BYTES;
+  for (const image of images) {
+    if (out.length >= MAX_ATTACHED) break;
+    const size = base64Bytes(image.dataBase64);
+    if (size > budget) continue;
+    budget -= size;
+    out.push(image);
+  }
+  return out;
+}
+
+/**
  * Wrap `inner` so a `forge_issues` **create** in this turn is filed with the
  * turn's images attached. Every other call, and every turn with no images, is
  * passed through untouched.
@@ -26,12 +44,12 @@ const MAX_ATTACHED = 10;
 // cm:why base64-inline rather than the `forge_uploads` presigned PUT the tool description prefers: that warning is about a MODEL emitting bytes (they land in the transcript and in chat_logs.toolCalls, costing context every later turn). Here the bytes are injected server-side AFTER the model emitted its arguments — run-turn-core replays the model's own `tc.arguments`, never these — so the transcript cost is zero and a presigned round-trip would only add a ticket to something already in memory.
 // cm:edge contract -> packages/core/src/chat/tools/guards.ts — `attachments` must stay in CHAT_TOLERATED_DATA_KEYS for this injection to survive the guard; moving it to CHAT_REFUSED_DATA_KEYS silently drops every image the bot files
 export function withTurnImages(inner: ChatToolset, images: readonly TurnImage[]): ChatToolset {
-  if (images.length === 0) return inner;
-  const attachments = images.slice(0, MAX_ATTACHED).map((i) => ({
+  const attachments = withinPersistLimits(images).map((i) => ({
     name: i.name,
     mime: i.mime,
     dataBase64: i.dataBase64,
   }));
+  if (attachments.length === 0) return inner;
   return {
     tools: inner.tools,
     execute(name, argsJson) {

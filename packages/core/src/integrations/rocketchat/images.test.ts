@@ -62,6 +62,14 @@ describe('extractMessageImages', () => {
     expect(images).toHaveLength(1);
   });
 
+  it('normalizes image/jpg to the image/jpeg the attachment layer allows', () => {
+    const images = extractMessageImages(
+      { file: { _id: 'a', name: 'photo.jpg', type: 'image/JPG' } },
+      BASE,
+    );
+    expect(images[0]?.mime).toBe('image/jpeg');
+  });
+
   it('skips a non-image upload nothing downstream can use', () => {
     expect(
       extractMessageImages({ file: { _id: 'a', name: 'spec.pdf', type: 'application/pdf' } }, BASE),

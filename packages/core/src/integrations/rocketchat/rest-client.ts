@@ -65,6 +65,12 @@ export interface RocketChatImageRef {
 
 const IMAGE_MIME_RE = /^image\/(png|jpe?g|gif|webp)$/i;
 
+// cm:guard normalize to the spelling `issues/attachment-service.ts` ALLOWED_MIMES lists — RC forwards whatever the client claimed, and `image/jpg` (which browsers do send) is not in that set, so an un-normalized jpeg is downloaded, spends the budget, and is then rejected at persist time, filing the issue without its picture
+function normalizeMime(raw: string): string {
+  const mime = raw.toLowerCase();
+  return mime === 'image/jpg' ? 'image/jpeg' : mime;
+}
+
 function absolutize(link: string, baseUrl: string | undefined): string {
   if (!link.startsWith('/') || !baseUrl) return link;
   return `${baseUrl.replace(/\/+$/, '')}${link}`;
@@ -114,14 +120,14 @@ export function extractMessageImages(
   for (const f of [raw.file, ...(raw.files ?? [])]) {
     if (!f?._id || typeof f.name !== 'string' || !IMAGE_MIME_RE.test(f.type ?? '')) continue;
     const ref = absolutize(`/file-upload/${f._id}/${encodeURIComponent(f.name)}`, baseUrl);
-    out.set(ref, { name: f.name, mime: (f.type as string).toLowerCase(), ref });
+    out.set(ref, { name: f.name, mime: normalizeMime(f.type as string), ref });
   }
   for (const a of raw.attachments ?? []) {
     if (typeof a.image_url !== 'string' || !IMAGE_MIME_RE.test(a.image_type ?? '')) continue;
     const ref = absolutize(a.image_url, baseUrl);
     if (out.has(ref)) continue;
     const name = a.title ?? ref.split('/').pop() ?? 'image';
-    out.set(ref, { name, mime: (a.image_type as string).toLowerCase(), ref });
+    out.set(ref, { name, mime: normalizeMime(a.image_type as string), ref });
   }
   return [...out.values()];
 }

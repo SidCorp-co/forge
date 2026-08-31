@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('../../config/env.js', () => ({ env: { UPLOADS_MAX_BYTES: 10 * 1024 * 1024 } }));
+
 import type { TurnImage } from '../vision.js';
 import type { ChatToolset } from './mcp-adapter.js';
 import { withTurnImages } from './turn-images.js';
@@ -71,6 +74,24 @@ describe('withTurnImages', () => {
     const set = inner();
     await withTurnImages(set, [IMAGE]).execute('forge_issues', '{not json');
     expect(set.execute).toHaveBeenCalledWith('forge_issues', '{not json');
+  });
+
+  it('drops what would exceed UPLOADS_MAX_BYTES rather than failing the whole create', async () => {
+    const set = inner();
+    const big = {
+      ...IMAGE,
+      name: 'big.png',
+      dataBase64: 'A'.repeat(Math.ceil((6 * 1024 * 1024 * 4) / 3)),
+    };
+    const second = { ...big, name: 'second.png' };
+    await withTurnImages(set, [big, second, IMAGE]).execute(
+      'forge_issues',
+      JSON.stringify({ action: 'create' }),
+    );
+    const names = (parsed(set.execute).data?.attachments as Array<{ name: string }>).map(
+      (a) => a.name,
+    );
+    expect(names).toEqual(['big.png', 'shot.png']);
   });
 
   it('caps at the ten attachments forge_issues accepts', async () => {
