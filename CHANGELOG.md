@@ -10,6 +10,14 @@
 
 ### Added
 
+- `PATCH /api/issues/:id` accepts `sessionContext` and `detectorKey`. They were MCP-only, which
+  left an agent on the CLI unable to record `sessionContext.branch` — the direct-ship marker
+  `pipeline/work-evidence.ts` reads as proof that work exists, and therefore the evidence the
+  merge gate now demands. The ISS-820 verified-claim walk moved to `issues/session-context.ts`
+  and both surfaces validate through it, so a `verified*` key with no evidence is refused on
+  REST exactly as on MCP. `MCP_ONLY_ISSUE_PATCH_FIELDS` is gone rather than left empty. This does
+  widen what a browser session may write; that is deliberate, and the same walk applies to it.
+
 - `POST /api/issues/:id/merge` and `DELETE /api/issues/:id/merge` — the merge claim over REST, so
   the CLI can make it without `forge_issues.mark_merged`. `merged_at` is what the feature-branch
   barrier reads to release every `blocks` dependent, so this is a claim that work shipped rather

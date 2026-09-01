@@ -32,6 +32,7 @@ import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fie
 import { hydratePipelineHealthForIssues, type PipelineHealth } from './pipeline-health.js';
 import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
 import { issueRelationInputSchema } from './relations-service.js';
+import { sessionContextSchema } from './session-context.js';
 import { IssueUpdateNotFound, updateIssueFields } from './update-service.js';
 
 // Defence against partial drizzle mocks in unit tests + transient DB blips:
@@ -114,6 +115,9 @@ export const issuePatchSchema = z
     labels: z.array(z.string().trim().min(1)).max(100).optional(),
     metadata: issueMetadataSchema.optional(),
     releaseNotes: ReleaseNotesSchema.nullable().optional(),
+    // cm:guard these two were MCP-only until the CLI needed them, and they are the reason `sessionContextSchema` is imported rather than re-declared: `sessionContext.branch` is what `pipeline/work-evidence.ts` reads as proof that work exists, so an agent that cannot write it here cannot satisfy the very evidence gate this surface now enforces. Widening it to REST also hands it to a browser session, which is deliberate — a person may edit it, and the ISS-820 verified-claim walk still applies to them.
+    sessionContext: sessionContextSchema,
+    detectorKey: z.string().trim().min(1).max(120).optional(),
   })
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });

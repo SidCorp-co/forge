@@ -5,10 +5,14 @@
  * hand-maintained their own `if (x !== undefined)` ladders, so adding an
  * issue column meant editing ≥2 whitelists or silently diverging.
  *
- * Fields with per-surface guards/side effects stay OUT of these lists and
+ * Fields with per-surface guards/side effects stay OUT of this list and
  * live at their call site: REST-only `assigneeId` (member check),
  * `metadata` (branch self-reference guard), `labels` (label tx +
  * activity); MCP `status` (routes through the transition state machine).
+ *
+ * There is no MCP-only set any more. `sessionContext` and `detectorKey` were
+ * in one until the CLI had to write them over REST; both surfaces now validate
+ * them the same way (`issues/session-context.ts`, `issues/detector-key.ts`).
  *
  * Known intentional drift (do NOT "fix" casually): REST emits the
  * `issueUpdated` hook with before/after tracking; MCP update does not.
@@ -23,10 +27,6 @@ export const SHARED_ISSUE_PATCH_FIELDS = [
   'plan',
   'acceptanceCriteria',
   'releaseNotes',
-] as const;
-
-/** Agent-facing fields accepted only by the MCP update surface. */
-export const MCP_ONLY_ISSUE_PATCH_FIELDS = [
   'sessionContext',
   // cm:why lets an existing issue adopt a detector's key so the next run lands on it instead of opening a rival; the partial unique index rejects the write if another live issue already holds that key
   'detectorKey',

@@ -191,7 +191,8 @@ vi.mock('../../issues/dependency-service.js', async (importActual) => ({
   emitIssueDependencyEffects: emitEdgeMock as unknown as DepService['emitIssueDependencyEffects'],
 }));
 
-const { forgeIssuesTool, findVerifiedClaimViolation } = await import('./forge-issues.js');
+const { forgeIssuesTool } = await import('./forge-issues.js');
+const { findVerifiedClaimViolation } = await import('../../issues/session-context.js');
 const { db: mockDb } = await import('../../db/client.js');
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
