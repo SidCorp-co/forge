@@ -28,7 +28,12 @@
   had device callers, and the fleet hit a deleted tool at 09:07 UTC on 2026-09-01 and read
   `not_found`. `/api/skill-facts` is `requireAuth()`, which answers a device token 401, so the
   route was never a replacement for the callers that existed. The registered tool set is 59.
-  The four tools removed before them stay removed: their device count really is zero.
+  The four tools removed before them stay removed, but not for the reason first given here: split
+  the same way, `forge_metrics.step_durations` shows three device calls, not zero. All three are
+  from June, nothing has called it in ten weeks, and the replacement a runner would reach for is
+  `forge_metrics.project_step_durations` — still registered, device-reachable, and the name the
+  one skill that mentions this metric actually tells an agent to call. `forge_skills.pin` and
+  `forge_ux_improver` are at zero device calls; `forge_steer` never appears in the table at all.
   The extraction that commit also did is kept — `metrics/session-failures-report.ts` remains the
   one place the report is shaped, and the restored tools delegate to it instead of shaping it again.
 
