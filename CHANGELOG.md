@@ -10,6 +10,17 @@
 
 ### Added
 
+- The Coolify deploy commands over REST: `GET /api/projects/:id/integrations/coolify`,
+  `.../coolify/status` and `POST .../coolify/deploy`. `/api/projects` is on the PAT allowlist, so
+  `forge-runner api` reaches them with a job token; before this an agent on the CLI could not
+  deploy at all. The branch rules moved to `integrations/coolify/commands.ts` first and both
+  surfaces call them, because `deploy` is what decides whether a PROD binding may dispatch — a
+  bare `pipelineRunId` earns it only once proven to be this project's open release-batch run, an
+  `issueId` only by having reached the release stage, and the run-less path never asks for it.
+  That decision must not exist twice. `forge_coolify_deploy` drops from 444 lines to 240 and its
+  four actions now dispatch to the shared commands. `confirm-prod-deploy` moved to the Coolify
+  route module with them; it had been living in the provider-agnostic integrations file.
+
 - `PATCH /api/issues/:id` accepts `sessionContext` and `detectorKey`. They were MCP-only, which
   left an agent on the CLI unable to record `sessionContext.branch` — the direct-ship marker
   `pipeline/work-evidence.ts` reads as proof that work exists, and therefore the evidence the

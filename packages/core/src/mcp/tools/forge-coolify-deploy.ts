@@ -26,19 +26,19 @@
 import { z } from 'zod';
 import { CoolifyApiError } from '../../integrations/coolify/client.js';
 import {
+  activeCoolifyIntegrations,
+  CoolifyCommandError,
+  coolifyDeliveryStatus,
+  listCoolifyIntegrations,
+  resolveIntegrationRow,
+  runCoolifyDeploy,
+} from '../../integrations/coolify/commands.js';
+import {
   fetchCoolifyDeploymentLogs,
   fetchCoolifyRuntimeLogs,
 } from '../../integrations/coolify/log-fetch.js';
 import type { CoolifyConfig } from '../../integrations/coolify/types.js';
-import { findLastOutbound, findLastOutboundForTarget } from '../../integrations/deliveries.js';
-import { effectiveConfig, listActiveBindingsForProjectProvider } from '../../integrations/store.js';
-import {
-  dispatchCoolifyDeployDirect,
-  isIssueAtReleaseStage,
-  resolveLatestIssueRunId,
-  tryDispatchCoolifyRelease,
-} from '../../pipeline/release-coolify.js';
-import { isOpenReleaseBatchRun } from '../../release-batch/service.js';
+import { findLastOutbound } from '../../integrations/deliveries.js';
 import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
@@ -74,48 +74,6 @@ type Input = z.infer<typeof inputSchema>;
 
 async function resolveProjectId(input: Input, ctx: McpContext): Promise<string> {
   return resolveEffectiveProjectId(ctx, input.projectId);
-}
-
-/**
- * Active Coolify bindings for a project, flattened to the shape the tool's
- * actions consume. `id` is the BINDING id (== old project_integration id for
- * backfilled rows, so the runner-facing `integrationId` values are stable).
- * Health/breaker come from the owning connection; config is the effective
- * connection⊕binding overlay. `pair` is retained for the `logs` action.
- */
-async function activeCoolifyIntegrations(projectId: string) {
-  const pairs = await listActiveBindingsForProjectProvider(projectId, 'coolify');
-  return pairs.map((pair) => ({
-    id: pair.binding.id,
-    environment: pair.binding.environment,
-    config: effectiveConfig<CoolifyConfig>(pair),
-    lastHealthStatus: pair.connection.lastHealthStatus,
-    breakerOpenedAt: pair.connection.breakerOpenedAt,
-    pair,
-  }));
-}
-
-/**
- * Pick the one integration the caller means: an explicit `integrationId`, else
- * the project's sole active integration. Returns null when the project has
- * none — the only case the caller must shape itself, because each action's
- * "nothing configured" payload names different fields.
- */
-function resolveIntegrationRow<T extends { id: string }>(
-  rows: T[],
-  input: { integrationId?: string | undefined },
-): T | null {
-  const row = input.integrationId
-    ? rows.find((r) => r.id === input.integrationId)
-    : rows.length === 1
-      ? rows[0]
-      : undefined;
-  if (row) return row;
-  if (input.integrationId) {
-    throw new Error('BAD_REQUEST: no active Coolify integration with that integrationId');
-  }
-  if (rows.length === 0) return null;
-  throw new Error('BAD_REQUEST: multiple active Coolify integrations — pass integrationId');
 }
 
 export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
@@ -186,259 +144,139 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     const input = inputSchema.parse(args);
     const { principal } = ctx;
 
-    switch (input.action) {
-      case 'list': {
-        const projectId = await resolveProjectId(input, ctx);
-        await assertPrincipalIsMember(principal, projectId);
-        const rows = await activeCoolifyIntegrations(projectId);
-        return {
-          integrations: rows.map((row) => ({
-            id: row.id,
-            environment: row.environment,
-            targets: ((row.config as CoolifyConfig | null)?.targets ?? []).map((t) => ({
-              id: t.id,
-              label: t.label,
-              resourceUuid: t.resourceUuid,
-            })),
-            lastHealthStatus: row.lastHealthStatus,
-            breakerOpen: row.breakerOpenedAt !== null,
-          })),
-        };
-      }
-
-      case 'deploy': {
-        const projectId = await resolveProjectId(input, ctx);
-        await assertPrincipalIsWriter(principal, projectId);
-
-        // cm:guard allowProd:true here is only safe once the run is proven to be this project's open release-batch run — never widen this to accept an arbitrary pipelineRunId
-        if (input.pipelineRunId && !input.issueId) {
-          if (!(await isOpenReleaseBatchRun(projectId, input.pipelineRunId))) {
-            throw new Error(
-              'BAD_REQUEST: pipelineRunId is not an open release-batch run for this project',
-            );
-          }
-          const outcome = await tryDispatchCoolifyRelease({
-            projectId,
-            issueId: null,
-            runId: input.pipelineRunId,
-            integrationId: input.integrationId ?? null,
-            allowProd: true,
-          });
-          return {
-            dispatched: outcome.dispatched,
-            pendingHumanConfirm: outcome.pendingHumanConfirm,
-            integrationIds: outcome.integrationIds,
-            ...(outcome.reason ? { reason: outcome.reason } : {}),
-          };
-        }
-
-        // issueId present → run-tracked deploy (unchanged): resolve the issue's
-        // latest run and dispatch via the shared release path.
-        if (input.issueId) {
-          const runId = await resolveLatestIssueRunId(input.issueId);
-          if (!runId) {
-            return {
-              dispatched: false,
-              pendingHumanConfirm: false,
-              integrationIds: [],
-              reason: 'no-run',
-            };
-          }
-
-          const allowProd = await isIssueAtReleaseStage(input.issueId);
-          const outcome = await tryDispatchCoolifyRelease({
-            projectId,
-            issueId: input.issueId,
-            runId,
-            integrationId: input.integrationId ?? null,
-            allowProd,
-          });
-          return {
-            dispatched: outcome.dispatched,
-            pendingHumanConfirm: outcome.pendingHumanConfirm,
-            integrationIds: outcome.integrationIds,
-            ...(outcome.reason ? { reason: outcome.reason } : {}),
-          };
-        }
-
-        // No issueId → run-less resource redeploy (ISS-312). Resolve the target
-        // integration the same way the `logs` action does: explicit
-        // integrationId wins; else the single active Coolify integration; else
-        // ambiguous BAD_REQUEST.
-        const rows = await activeCoolifyIntegrations(projectId);
-        const row = input.integrationId
-          ? rows.find((r) => r.id === input.integrationId)
-          : rows.length === 1
-            ? rows[0]
-            : undefined;
-        if (!row) {
-          if (input.integrationId) {
-            throw new Error('BAD_REQUEST: no active Coolify integration with that integrationId');
-          }
-          if (rows.length === 0) {
-            return {
-              dispatched: false,
-              pendingHumanConfirm: false,
-              integrationIds: [],
-              reason: 'no-integration',
-            };
-          }
-          throw new Error('BAD_REQUEST: multiple active Coolify integrations — pass integrationId');
-        }
-
-        const outcome = await dispatchCoolifyDeployDirect({ projectId, integrationId: row.id });
-        return {
-          dispatched: outcome.dispatched,
-          pendingHumanConfirm: outcome.pendingHumanConfirm,
-          integrationIds: outcome.integrationIds,
-          ...(outcome.reason ? { reason: outcome.reason } : {}),
-        };
-      }
-
-      case 'status': {
-        const projectId = await resolveProjectId(input, ctx);
-        await assertPrincipalIsMember(principal, projectId);
-        const rows = await activeCoolifyIntegrations(projectId);
-        const scoped = input.integrationId
-          ? rows.filter((r) => r.id === input.integrationId)
-          : rows;
-        // One row PER TARGET (backend / frontend / …) so an operator can see
-        // each app of a multi-target integration independently. Legacy/empty
-        // targets fall back to a single integration-level row.
-        const deliveries = (
-          await Promise.all(
-            scoped.map(async (row) => {
-              const targets = (row.config as CoolifyConfig | null)?.targets ?? [];
-              if (targets.length === 0) {
-                const last = await findLastOutbound(row.id);
-                const response = (last?.response ?? null) as { deployment_uuid?: string } | null;
-                return [
-                  {
-                    integrationId: row.id,
-                    environment: row.environment,
-                    targetId: null,
-                    targetLabel: null,
-                    deploymentUuid: response?.deployment_uuid ?? null,
-                    status: last?.status ?? null,
-                    breakerOpen: row.breakerOpenedAt !== null,
-                    createdAt: last?.createdAt ?? null,
-                  },
-                ];
-              }
-              return Promise.all(
-                targets.map(async (t) => {
-                  const last = await findLastOutboundForTarget(row.id, t.id);
-                  const response = (last?.response ?? null) as { deployment_uuid?: string } | null;
-                  return {
-                    integrationId: row.id,
-                    environment: row.environment,
-                    targetId: t.id,
-                    targetLabel: t.label,
-                    deploymentUuid: response?.deployment_uuid ?? null,
-                    status: last?.status ?? null,
-                    breakerOpen: row.breakerOpenedAt !== null,
-                    createdAt: last?.createdAt ?? null,
-                  };
-                }),
-              );
-            }),
-          )
-        ).flat();
-        return { deliveries };
-      }
-
-      case 'logs': {
-        const projectId = await resolveProjectId(input, ctx);
-        await assertPrincipalIsMember(principal, projectId);
-
-        // Resolve the integration row. Explicit integrationId wins; otherwise
-        // require exactly one active Coolify integration (multiple is ambiguous).
-        const row = resolveIntegrationRow(await activeCoolifyIntegrations(projectId), input);
-        if (!row) {
-          return {
-            integrationId: null,
-            deploymentUuid: null,
-            logs: null,
-            reason: 'no-integration',
-          };
-        }
-
-        // Resolve the deploymentUuid: explicit param, else the integration's
-        // last outbound delivery (its Coolify response carries deployment_uuid).
-        let deploymentUuid = input.deploymentUuid ?? null;
-        if (!deploymentUuid) {
-          const last = await findLastOutbound(row.id);
-          const response = (last?.response ?? null) as { deployment_uuid?: string } | null;
-          deploymentUuid = response?.deployment_uuid ?? null;
-        }
-        if (!deploymentUuid) {
-          return {
-            integrationId: row.id,
-            deploymentUuid: null,
-            logs: null,
-            reason: 'no-deployment',
-          };
-        }
-
-        try {
-          const result = await fetchCoolifyDeploymentLogs(row.pair, deploymentUuid, input.lines);
-          return { integrationId: row.id, ...result };
-        } catch (err) {
-          // Surface a clear message; NEVER echo the raw Coolify body (may leak).
-          if (err instanceof CoolifyApiError) {
-            return {
-              integrationId: row.id,
-              deploymentUuid,
-              logs: null,
-              error: 'coolify API error',
-              httpStatus: err.status,
-            };
-          }
-          throw err;
-        }
-      }
-
-      case 'runtime-logs': {
-        const projectId = await resolveProjectId(input, ctx);
-        await assertPrincipalIsMember(principal, projectId);
-
-        const row = resolveIntegrationRow(await activeCoolifyIntegrations(projectId), input);
-        if (!row) {
-          return { integrationId: null, resourceUuid: null, logs: null, reason: 'no-integration' };
-        }
-
-        // Resolve the target application to tail: explicit resourceUuid wins;
-        // else the integration's sole target. Multiple targets is ambiguous —
-        // require the caller to name one (and the compose caveat means even the
-        // named target may only expose a single container's logs).
-        const targets = (row.config as CoolifyConfig | null)?.targets ?? [];
-        const resourceUuid =
-          input.resourceUuid ?? (targets.length === 1 ? targets[0]?.resourceUuid : undefined);
-        if (!resourceUuid) {
-          if (targets.length === 0) {
-            return { integrationId: row.id, resourceUuid: null, logs: null, reason: 'no-target' };
-          }
-          throw new Error(
-            'BAD_REQUEST: integration has multiple targets — pass resourceUuid (see list action)',
-          );
-        }
-
-        try {
-          const result = await fetchCoolifyRuntimeLogs(row.pair, resourceUuid, input.lines);
-          return { integrationId: row.id, ...result };
-        } catch (err) {
-          if (err instanceof CoolifyApiError) {
-            return {
-              integrationId: row.id,
-              resourceUuid,
-              logs: null,
-              error: 'coolify API error',
-              httpStatus: err.status,
-            };
-          }
-          throw err;
-        }
-      }
+    try {
+      return await dispatchAction(input, ctx, principal);
+    } catch (err) {
+      // cm:edge contract -> packages/core/src/integrations/coolify/commands.ts — that module throws `CoolifyCommandError` with a bare sentence because REST turns it into a 400 body; the MCP contract is a `CODE: message` string, so the prefix is added HERE and must not be baked into the shared message.
+      if (err instanceof CoolifyCommandError) throw new Error(`BAD_REQUEST: ${err.message}`);
+      throw err;
     }
   },
 });
+
+async function dispatchAction(
+  input: z.infer<typeof inputSchema>,
+  ctx: McpContext,
+  principal: McpContext['principal'],
+): Promise<unknown> {
+  switch (input.action) {
+    case 'list': {
+      const projectId = await resolveProjectId(input, ctx);
+      await assertPrincipalIsMember(principal, projectId);
+      return listCoolifyIntegrations(projectId);
+    }
+
+    case 'deploy': {
+      const projectId = await resolveProjectId(input, ctx);
+      await assertPrincipalIsWriter(principal, projectId);
+      return runCoolifyDeploy({
+        projectId,
+        ...(input.issueId ? { issueId: input.issueId } : {}),
+        ...(input.pipelineRunId ? { pipelineRunId: input.pipelineRunId } : {}),
+        ...(input.integrationId ? { integrationId: input.integrationId } : {}),
+      });
+    }
+
+    case 'status': {
+      const projectId = await resolveProjectId(input, ctx);
+      await assertPrincipalIsMember(principal, projectId);
+      return coolifyDeliveryStatus({
+        projectId,
+        ...(input.integrationId ? { integrationId: input.integrationId } : {}),
+      });
+    }
+
+    case 'logs': {
+      const projectId = await resolveProjectId(input, ctx);
+      await assertPrincipalIsMember(principal, projectId);
+
+      // Resolve the integration row. Explicit integrationId wins; otherwise
+      // require exactly one active Coolify integration (multiple is ambiguous).
+      const row = resolveIntegrationRow(await activeCoolifyIntegrations(projectId), input);
+      if (!row) {
+        return {
+          integrationId: null,
+          deploymentUuid: null,
+          logs: null,
+          reason: 'no-integration',
+        };
+      }
+
+      // Resolve the deploymentUuid: explicit param, else the integration's
+      // last outbound delivery (its Coolify response carries deployment_uuid).
+      let deploymentUuid = input.deploymentUuid ?? null;
+      if (!deploymentUuid) {
+        const last = await findLastOutbound(row.id);
+        const response = (last?.response ?? null) as { deployment_uuid?: string } | null;
+        deploymentUuid = response?.deployment_uuid ?? null;
+      }
+      if (!deploymentUuid) {
+        return {
+          integrationId: row.id,
+          deploymentUuid: null,
+          logs: null,
+          reason: 'no-deployment',
+        };
+      }
+
+      try {
+        const result = await fetchCoolifyDeploymentLogs(row.pair, deploymentUuid, input.lines);
+        return { integrationId: row.id, ...result };
+      } catch (err) {
+        // Surface a clear message; NEVER echo the raw Coolify body (may leak).
+        if (err instanceof CoolifyApiError) {
+          return {
+            integrationId: row.id,
+            deploymentUuid,
+            logs: null,
+            error: 'coolify API error',
+            httpStatus: err.status,
+          };
+        }
+        throw err;
+      }
+    }
+
+    case 'runtime-logs': {
+      const projectId = await resolveProjectId(input, ctx);
+      await assertPrincipalIsMember(principal, projectId);
+
+      const row = resolveIntegrationRow(await activeCoolifyIntegrations(projectId), input);
+      if (!row) {
+        return { integrationId: null, resourceUuid: null, logs: null, reason: 'no-integration' };
+      }
+
+      // Resolve the target application to tail: explicit resourceUuid wins;
+      // else the integration's sole target. Multiple targets is ambiguous —
+      // require the caller to name one (and the compose caveat means even the
+      // named target may only expose a single container's logs).
+      const targets = (row.config as CoolifyConfig | null)?.targets ?? [];
+      const resourceUuid =
+        input.resourceUuid ?? (targets.length === 1 ? targets[0]?.resourceUuid : undefined);
+      if (!resourceUuid) {
+        if (targets.length === 0) {
+          return { integrationId: row.id, resourceUuid: null, logs: null, reason: 'no-target' };
+        }
+        throw new Error(
+          'BAD_REQUEST: integration has multiple targets — pass resourceUuid (see list action)',
+        );
+      }
+
+      try {
+        const result = await fetchCoolifyRuntimeLogs(row.pair, resourceUuid, input.lines);
+        return { integrationId: row.id, ...result };
+      } catch (err) {
+        if (err instanceof CoolifyApiError) {
+          return {
+            integrationId: row.id,
+            resourceUuid,
+            logs: null,
+            error: 'coolify API error',
+            httpStatus: err.status,
+          };
+        }
+        throw err;
+      }
+    }
+  }
+}

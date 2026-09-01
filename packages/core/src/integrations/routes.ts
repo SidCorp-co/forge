@@ -19,6 +19,7 @@ import { integrationDeliveries } from '../db/schema.js';
 import { effectiveProjectRole, orgRoleAtLeast } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { registerCoolifyDeployRoutes } from './coolify-routes.js';
 import { findDeliveryById } from './deliveries.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
 import {
@@ -65,6 +66,8 @@ export { integrationConnectionsRoutes } from './connection-routes.js';
 
 export const integrationsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationsRoutes.use('*', requireAuth(), assertEmailVerified());
+
+registerCoolifyDeployRoutes(integrationsRoutes);
 
 integrationsRoutes.get('/:projectId/integrations', async (c) => {
   const projectId = c.req.param('projectId');
@@ -395,32 +398,6 @@ integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', async (c) 
     connectionId: existing.connection.id,
   });
   return c.json({ integration: summarizeBinding(refreshed), integrationSecret: newSecret });
-});
-
-integrationsRoutes.post('/:projectId/integrations/:id/confirm-prod-deploy', async (c) => {
-  const projectId = c.req.param('projectId');
-  const id = c.req.param('id');
-  const userId = c.get('userId');
-  const role = await assertProjectMember(projectId, userId);
-  assertAdmin(role);
-
-  const existing = await findBindingWithConnectionById(id);
-  if (!existing || existing.binding.projectId !== projectId) throw notFound();
-  if (existing.binding.environment !== 'prod') {
-    throw new HTTPException(400, {
-      message: 'confirm-prod-deploy is only valid on prod-environment integrations',
-      cause: { code: 'NOT_PROD_ENV' },
-    });
-  }
-  // Lazy import to avoid an import cycle (release-coolify imports the
-  // adapter, which would transitively import these routes).
-  const { confirmPendingProdDeploy } = await import('../pipeline/release-coolify.js');
-  const result = await confirmPendingProdDeploy(id);
-  broadcastIntegrationChanged(projectId, {
-    bindingId: id,
-    connectionId: existing.connection.id,
-  });
-  return c.json(result);
 });
 
 integrationsRoutes.get('/:projectId/integrations/:id/deliveries', async (c) => {
