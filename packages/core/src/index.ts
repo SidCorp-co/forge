@@ -13,6 +13,7 @@ import { adminAlertRoutes } from './admin/alert-routes.js';
 import { pipelineHealthAdminRoutes } from './admin/pipeline-health-routes.js';
 import { adminRoutes } from './admin/routes.js';
 import { agentSessionAttachmentRoutes } from './agent-sessions/attachment-routes.js';
+import { agentSessionProjectReadRoutes } from './agent-sessions/project-read-routes.js';
 import { agentSessionRoutes } from './agent-sessions/routes.js';
 import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cron.js';
 import { agentRoutes } from './agents/routes.js';
@@ -443,6 +444,7 @@ if (isEnabled('pmAgent')) {
   app.route('/api/projects', pmRoutes);
 }
 app.route('/api/projects', pmReadRoutes);
+app.route('/api/projects', agentSessionProjectReadRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 

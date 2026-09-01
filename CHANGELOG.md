@@ -8,6 +8,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- `GET /api/projects/:id/agent-sessions` and `.../agent-sessions/:sessionId` — the project-scoped
+  half of the session reads. The existing `/api/agent-sessions` cannot serve a project-scoped
+  token, because its list fans out across every project the caller can see; these name their
+  project in the path, so the fence has something to check. The session read authorises on the
+  row's project, not the path's, and answers 404 rather than 403 on a mismatch so it does not
+  confirm the session exists.
+
 ### Fixed
 
 - `/api/agent-sessions` is off the PAT allowlist. It granted nothing — the middleware guarding it
