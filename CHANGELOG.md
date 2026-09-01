@@ -19,6 +19,13 @@
 
 ### Fixed
 
+- The MCP fence that keeps a project-bound access token inside its project is now tested. It had
+  no coverage at all: every existing test built an unbound token, so the branch had never executed
+  once. It is the only thing stopping fourteen tools — a token reaches them with a synthesized
+  device identity, and their handlers read only the owner, never the token's binding. Removing the
+  fence now turns four tests red, and one of them shows the query reaching the database on a
+  project the token was never granted.
+
 - `/api/agent-sessions` is off the PAT allowlist. It granted nothing — the middleware guarding it
   has no PAT branch — but its list route fans out across every project the caller can see,
   `messages[]` included, so the entry pre-approved that reach for whoever added a PAT branch
