@@ -7,6 +7,7 @@ import {
   taskStatuses,
   waitingKinds,
 } from '../../db/schema.js';
+import { actorAgency } from '../../issues/actor-agency.js';
 import { transitionIssueStatus } from '../../issues/apply-transition.js';
 import { AttachmentError, listIssueAttachments } from '../../issues/attachment-service.js';
 import { createIssue, IssueCreateError } from '../../issues/create-service.js';
@@ -18,11 +19,7 @@ import {
   resolveLabelIdsForWrite,
 } from '../../issues/label-service.js';
 import { type IssueListRow, listIssueRows } from '../../issues/list-service.js';
-import {
-  clearIssueMergedAt,
-  stampIssueMergedAt,
-  writeAuditComment,
-} from '../../issues/merge-marker.js';
+import { applyMergeMarker, MergeMarkerError } from '../../issues/merge-marker.js';
 import {
   collectIssueFieldUpdates,
   MCP_ONLY_ISSUE_PATCH_FIELDS,
@@ -32,9 +29,6 @@ import { findIssueById, findIssueProjectId, type IssueRow } from '../../issues/r
 import { applyIssueRelations, issueRelationInputSchema } from '../../issues/relations-service.js';
 import { ReleaseNotesSchema } from '../../issues/release-notes.js';
 import { updateIssueFields } from '../../issues/update-service.js';
-import { dispatchTickForProject } from '../../jobs/dispatch-tick.js';
-import { hooks } from '../../pipeline/hooks.js';
-import { findMissingWorkEvidence } from '../../pipeline/work-evidence.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
 import {
   createTask as createTaskRow,
@@ -832,101 +826,40 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       // a skill can stamp the merge directly after verifying a push (epic /
       // feature-branch barrier: a `blocks` parent is gated on every child's
       // `merged_at IS NOT NULL` — see jobs/dispatch-gates.ts blockedBy).
-      case 'mark_merged': {
+      case 'mark_merged':
+      case 'unmark': {
         const issueId = input.data?.issueId;
         if (!issueId) {
-          throw new Error('BAD_REQUEST: data.issueId is required for mark_merged');
+          throw new Error(`BAD_REQUEST: data.issueId is required for ${input.action}`);
         }
-        const target = input.data?.target;
-        if (!target) {
+        const marking = input.action === 'mark_merged';
+        if (marking && !input.data?.target) {
           throw new Error('BAD_REQUEST: data.target is required for mark_merged');
         }
         const issue = await loadIssue(issueId);
         await assertPrincipalIsWriter(principal, issue.projectId);
 
-        // cm:guard scope this the way `checkTransitionEvidence` does — off `principalActor`, NEVER off `principal.kind`. This is the ISS-786 evidence gate on a claim that "this is merged", and `mark_merged` is the one write in this file that read `kind` while its two neighbours (797, 821) already went through the actor. `kind === 'device'` exempts every agent holding a PAT: the agent-driven chat surface, and a `job:` token, which is the credential the runner actually hands the agent. Fails OPEN on any internal error.
-        if (principalActor(principal, device).type === 'device') {
-          const missingEvidence = await findMissingWorkEvidence(issueId);
-          if (missingEvidence) {
-            throw new Error(`NO_WORK_EVIDENCE: ${missingEvidence}`);
-          }
-        }
-
-        // COALESCE keeps the first stamp: a second mark_merged call is a no-op
-        // on the timestamp (AC2 idempotency). `mergedAt` overrides the default
-        // server `now()`. `target` is an audit label only — trunk-based v2 has
-        // a single merge column (no `merged_to_prod_at` until v3).
-        const stamp = input.data?.mergedAt ? parseDate(input.data.mergedAt, 'mergedAt') : null;
-        await stampIssueMergedAt(issueId, stamp);
-
-        const body = `mark_merged target=${target}${input.data?.note ? ` — ${input.data.note}` : ''}`;
-        const auditComment = await writeAuditComment(issueId, device.ownerId, body);
-        if (auditComment) {
-          await hooks.emit('commentCreated', {
+        try {
+          const { action } = await applyMergeMarker({
             issueId,
-            projectId: issue.projectId,
-            actor: principalHookActor(principal, device),
-            commentId: auditComment.id,
-            body: auditComment.body,
-            parentId: auditComment.parentId,
+            op: marking ? 'mark' : 'unmark',
+            ...(input.data?.target ? { target: input.data.target } : {}),
+            ...(input.data?.note ? { note: input.data.note } : {}),
+            ...(input.data?.mergedAt
+              ? { mergedAt: parseDate(input.data.mergedAt, 'mergedAt') }
+              : {}),
+            actor: {
+              agency: actorAgency(principalActor(principal, device)),
+              commentAuthorId: device.ownerId,
+              hookActor: principalHookActor(principal, device),
+            },
           });
+          // cm:guard report the ACTION under `action`, never by overwriting `status` — `merged`/`unmarked` are not `issueStatuses` members, so a caller read a lifecycle value that cannot exist (§10)
+          return { ...(await serializeWithAttachments(await loadIssue(issueId))), action };
+        } catch (err) {
+          if (err instanceof MergeMarkerError) throw new Error(`${err.code}: ${err.message}`);
+          throw err;
         }
-
-        const fresh = await loadIssue(issueId);
-        await hooks.emit('issueUpdated', {
-          issueId,
-          projectId: issue.projectId,
-          actor: principalHookActor(principal, device),
-          fields: ['mergedAt'],
-          before: { mergedAt: issue.mergedAt },
-          after: { mergedAt: fresh.mergedAt },
-        });
-        // Wake the dispatcher so a now-unblocked parent dispatches within ~1s
-        // instead of waiting for the 60s pg-boss backstop (AC3).
-        void dispatchTickForProject(issue.projectId);
-
-        // cm:guard report the ACTION under `action`, never by overwriting `status` — `merged`/`unmarked`
-        //   are not `issueStatuses` members, so a caller read a lifecycle value that cannot exist (§10)
-        return { ...(await serializeWithAttachments(fresh)), action: 'merged' };
-      }
-
-      case 'unmark': {
-        const issueId = input.data?.issueId;
-        if (!issueId) {
-          throw new Error('BAD_REQUEST: data.issueId is required for unmark');
-        }
-        const issue = await loadIssue(issueId);
-        await assertPrincipalIsWriter(principal, issue.projectId);
-
-        // Clearing `merged_at` re-blocks downstream children (AC4 — supports
-        // rolling back an epic whose merge was reverted).
-        await clearIssueMergedAt(issueId);
-
-        const body = `unmark${input.data?.note ? ` — ${input.data.note}` : ''}`;
-        const auditComment = await writeAuditComment(issueId, device.ownerId, body);
-        if (auditComment) {
-          await hooks.emit('commentCreated', {
-            issueId,
-            projectId: issue.projectId,
-            actor: principalHookActor(principal, device),
-            commentId: auditComment.id,
-            body: auditComment.body,
-            parentId: auditComment.parentId,
-          });
-        }
-
-        const fresh = await loadIssue(issueId);
-        await hooks.emit('issueUpdated', {
-          issueId,
-          projectId: issue.projectId,
-          actor: principalHookActor(principal, device),
-          fields: ['mergedAt'],
-          before: { mergedAt: issue.mergedAt },
-          after: { mergedAt: null },
-        });
-        // No dispatcher tick: clearing only adds a block, never unblocks.
-
-        return { ...(await serializeWithAttachments(fresh)), action: 'unmarked' };
       }
 
       case 'listTasks': {

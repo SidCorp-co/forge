@@ -73,6 +73,7 @@ import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-ro
 import { attachmentRoutes, issueAttachmentRoutes } from './issues/attachment-routes.js';
 import { issueDependencyRoutes } from './issues/dependency-routes.js';
 import { issueExtrasRoutes } from './issues/extras-routes.js';
+import { issueMergeRoutes } from './issues/merge-routes.js';
 import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
 import { searchRoutes } from './issues/search.js';
 import { issueSteerRoutes } from './issues/steer-routes.js';
@@ -360,6 +361,7 @@ app.route('/api/issues', issueAttachmentRoutes);
 // issueRoutes which has GET /:id with a z.uuid() validator that would
 // 400-reject the literal "pipeline-timing" segment.
 app.route('/api/issues', issueExtrasRoutes);
+app.route('/api/issues', issueMergeRoutes);
 // Capability-authenticated attachment upload (presigned-URL pattern). On its own
 // /api/uploads prefix with NO auth middleware — the ticket id minted by
 // forge_uploads is the bearer-free capability. Kept off /api/issues so it is not

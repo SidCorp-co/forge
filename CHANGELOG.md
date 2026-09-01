@@ -10,6 +10,15 @@
 
 ### Added
 
+- `POST /api/issues/:id/merge` and `DELETE /api/issues/:id/merge` — the merge claim over REST, so
+  the CLI can make it without `forge_issues.mark_merged`. `merged_at` is what the feature-branch
+  barrier reads to release every `blocks` dependent, so this is a claim that work shipped rather
+  than a field edit, and it carries the same ISS-786 evidence gate the MCP action does. The whole
+  write moved into `issues/merge-marker.ts` first: it lived inside the MCP tool, so a REST route
+  could only have been a second copy, and a second copy is where the evidence check gets left out.
+  `mark_merged` and `unmark` in `forge_issues` now call that one implementation and keep their
+  responses unchanged.
+
 - `GET /api/projects/:id/agent-sessions` and `.../agent-sessions/:sessionId` — the project-scoped
   half of the session reads. The existing `/api/agent-sessions` cannot serve a project-scoped
   token, because its list fans out across every project the caller can see; these name their

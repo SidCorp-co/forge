@@ -44,8 +44,9 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
-  const [extras, errMod, reqIdMod, tok, pat] = await Promise.all([
+  const [extras, mergeMod, errMod, reqIdMod, tok, pat] = await Promise.all([
     import('../../src/issues/extras-routes.js'),
+    import('../../src/issues/merge-routes.js'),
     import('../../src/middleware/error.js'),
     import('../../src/middleware/request-id.js'),
     import('../../src/jobs/job-token.js'),
@@ -57,6 +58,7 @@ beforeAll(async () => {
   app = new Hono<{ Variables: RequestIdVars }>();
   app.use('*', reqIdMod.requestId());
   app.route('/api/issues', extras.issueExtrasRoutes);
+  app.route('/api/issues', mergeMod.issueMergeRoutes);
   app.onError(errMod.errorHandler);
 });
 
@@ -132,5 +134,57 @@ describe('PATCH /api/issues/batch honours agency, not just device-ness', () => {
       sql`SELECT status FROM issues WHERE id = ${issueId}::uuid`,
     );
     expect(row?.status).toBe('developed');
+  });
+});
+
+describe('POST/DELETE /api/issues/:id/merge — the CLI route for a merge claim', () => {
+  const merge = (token: string, issueId: string, method: 'POST' | 'DELETE', body: unknown = {}) =>
+    app.request(`/api/issues/${issueId}/merge`, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  const mergedAtOf = async (issueId: string) => {
+    const [row] = await harness.db.execute<{ merged_at: string | null }>(
+      sql`SELECT merged_at FROM issues WHERE id = ${issueId}::uuid`,
+    );
+    return row?.merged_at ?? null;
+  };
+
+  it('refuses an agent the claim when no work evidence exists', async () => {
+    const { user, project, issueId } = await seedEvidenceLessIssue();
+    const res = await merge(await jobPatFor(user, project), issueId, 'POST', { target: 'main' });
+
+    expect(res.status).toBe(422);
+    expect(JSON.stringify(await res.json())).toContain('NO_WORK_EVIDENCE');
+    expect(await mergedAtOf(issueId)).toBeNull();
+  });
+
+  it('lets a person make the same claim, and take it back', async () => {
+    const { user, project, issueId } = await seedEvidenceLessIssue();
+    const { plaintext } = await mintPat({
+      userId: user.id,
+      name: 'my laptop',
+      boundProjectId: project.id,
+    });
+
+    expect((await merge(plaintext, issueId, 'POST', { target: 'main' })).status).toBe(200);
+    expect(await mergedAtOf(issueId)).not.toBeNull();
+
+    expect((await merge(plaintext, issueId, 'DELETE')).status).toBe(200);
+    expect(await mergedAtOf(issueId)).toBeNull();
+  });
+
+  // cm:guard `target` is the audit label the claim is recorded under, so a POST without one records "merged" with no statement of where — refuse it here rather than defaulting, because a default is indistinguishable in the audit trail from a caller who meant it.
+  it('refuses a claim that does not say where it merged', async () => {
+    const { user, project, issueId } = await seedEvidenceLessIssue();
+    const { plaintext } = await mintPat({
+      userId: user.id,
+      name: 'my laptop',
+      boundProjectId: project.id,
+    });
+    expect((await merge(plaintext, issueId, 'POST')).status).toBe(400);
+    expect(await mergedAtOf(issueId)).toBeNull();
   });
 });
