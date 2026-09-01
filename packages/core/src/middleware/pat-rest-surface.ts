@@ -20,7 +20,6 @@ import { authenticatePat, type PatPrincipal } from './require-pat-or-device.js';
  */
 // cm:guard an ALLOWLIST, and it must stay one — a forgotten entry costs a caller a 403 they will report, while a forgotten entry on a deny-list is a silent leak nobody reports. Never invert this to "everything except", however much shorter that list looks: the routes that would need excluding are exactly the ones (`/api/pat`, `/api/orgs`, `/api/admin`, `/api/me`) where being wrong once ends the fence for good.
 export const PAT_ALLOWED_PREFIXES: readonly string[] = [
-  '/api/agent-sessions',
   '/api/attachments',
   '/api/comments',
   '/api/issue-step-contexts',
@@ -38,6 +37,8 @@ export const PAT_ALLOWED_PREFIXES: readonly string[] = [
   '/api/skills',
   '/api/tasks',
 ];
+
+// cm:edge contract -> packages/core/src/agent-sessions/routes.ts — `/api/agent-sessions` is deliberately NOT here and must not be added while its list route keeps a cross-project branch: `GET /api/agent-sessions` with no `projectId` returns every session of every project the caller can see, `messages[]` included. It was listed until 2026-09-01, inert only because `requireUserOrDevice` has no PAT branch — so the entry pre-approved that fan-out for whoever added one, and adding one is the next step of the device-token unification. A PAT belongs on a project-scoped twin under `/api/projects/:id`, never on the fan-out.
 
 // cm:edge contract -> packages/core/src/uploads/routes.ts — `/api/uploads` is deliberately NOT here and must not be added: both its routes are mounted with no auth middleware at all (the ticket id IS the credential), so the entry would grant nothing today while pre-approving PAT reach the day someone bolts a gate on. It was listed until 2026-09-01 on the assumption that an allowlisted prefix is inert where no PAT branch runs; inert is exactly the problem — nobody would be making that decision when it stopped being inert.
 

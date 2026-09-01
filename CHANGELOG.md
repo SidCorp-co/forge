@@ -8,6 +8,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `/api/agent-sessions` is off the PAT allowlist. It granted nothing — the middleware guarding it
+  has no PAT branch — but its list route fans out across every project the caller can see,
+  `messages[]` included, so the entry pre-approved that reach for whoever added a PAT branch
+  later. A test now fails if any allowlisted prefix is unreachable by a PAT, which forces the
+  grant to be made by someone looking at the route.
+
 ### Changed
 
 - All five middlewares that authenticate a bearer token now read it through one pair of
