@@ -23,11 +23,15 @@ import {
  * bound to project A cannot see project B, including where the project is
  * resolved indirectly from an issue id the caller supplies.
  *
- * What the sweeps do NOT cover, so a green run is not read as wider than it
- * is: both walk GET routes only, and the inside half further takes only
- * routes with exactly one path param. Every write route and every
- * multi-param route is out of their reach — the write surface is covered by
- * the two named scope cases below and by nothing else.
+ * Both halves now walk WRITE routes too, and the inside half substitutes every
+ * path param rather than only routes that have exactly one.
+ *
+ * What a green run still does NOT prove, so it is not read as wider than it
+ * is: a write probe sends an EMPTY body, so a route whose body validator runs
+ * before its project lookup answers 400 — the fence question is undecided
+ * there, and those routes are counted and named rather than scored clean. The
+ * count is asserted to be less than the whole set, because a sweep where every
+ * write is undecided has stopped measuring and would otherwise stay green.
  */
 
 type AppVars = { Variables: import('../../src/middleware/request-id.js').RequestIdVars };
@@ -44,6 +48,7 @@ let listScopedToA: string;
 let unscoped: string;
 let readOnlyBoundToA: string;
 let patAllowedFor: (path: string) => boolean;
+let resetRateLimitStore: () => void;
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -96,6 +101,9 @@ beforeAll(async () => {
 
   ({ app } = await import('../../src/index.js'));
   ({ patAllowedFor } = await import('../../src/middleware/pat-rest-surface.js'));
+  ({ __resetRateLimitStore: resetRateLimitStore } = await import(
+    '../../src/middleware/rate-limit.js'
+  ));
 });
 
 afterAll(async () => {
@@ -111,25 +119,46 @@ async function seedIssue(projectId: string, createdBy: string): Promise<string> 
   return id;
 }
 
-// cm:guard the rate-limit bucket is cleared before EVERY request, because a PAT is capped at 60/minute and the two sweeps below fire several hundred on one token — so without this most of the sweep answers 429, the loops read every 429 as "the route refused me", and the assertion that made the allowlist trustworthy quietly stops touching the routes it names. Worse, three breaches in an hour auto-revoke the token, after which the rest of the file passes on 401s. Nothing here tests rate limiting; the limiter is pure noise in this file and is switched off at its one entry point.
+const WRITE_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const;
+
 async function get(path: string, token?: string) {
+  return send('GET', path, token);
+}
+
+// cm:guard a 429 must never reach a sweep loop, which would score it as a refusal and skip the route. Throwing here is what turns "the limiter ate the sweep" from a silent green into a named failure — RATE_LIMIT_PAT_MAX and the store reset in `sweep` are what keep it from firing, and this is what happens when they stop working.
+async function send(method: string, path: string, token?: string) {
   const res = await app.request(path, {
-    headers: token ? { authorization: `Bearer ${token}` } : {},
+    method,
+    headers: {
+      'content-type': 'application/json',
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    ...(method === 'GET' ? {} : { body: '{}' }),
   });
-  // cm:guard a 429 must never reach a sweep loop, which would score it as a refusal and skip the route. Throwing here is what turns "the limiter ate the sweep" from a silent green into a named failure.
-  if (res.status === 429) throw new Error(`rate-limited on ${path} — the sweep proves nothing`);
+  if (res.status === 429)
+    throw new Error(`rate-limited on ${method} ${path} — the sweep proves nothing`);
   return res;
 }
 
-// cm:guard the probes run CONCURRENTLY and that is a correctness property, not a speed one: serially the two sweeps take ~14s on their own and blow the 30s timeout once the rest of the integration suite is competing for the same Postgres, and a sweep that dies half-way has asserted nothing about the routes it never reached.
+// cm:guard the probes run CONCURRENTLY and that is a correctness property, not a speed one: serially the sweeps take ~14s on their own and blow the 30s timeout once the rest of the integration suite is competing for the same Postgres, and a sweep that dies half-way has asserted nothing about the routes it never reached. The store reset per batch is the other half: RATE_LIMIT_PAT_MAX lifts `patPerToken` only, so the IP-keyed limiters — `authRegister` at 3/hour among them, which the write sweep now walks into — would otherwise accumulate across batches and 429 the run.
 async function sweep<T>(paths: Iterable<string>, probe: (path: string) => Promise<T | null>) {
   const all = [...paths];
   const hits: T[] = [];
   for (let i = 0; i < all.length; i += 20) {
+    resetRateLimitStore();
     const batch = await Promise.all(all.slice(i, i + 20).map(probe));
     for (const hit of batch) if (hit !== null) hits.push(hit);
   }
   return hits;
+}
+
+/** Substitute every path param: project-ish → B, issue-ish → B's issue, else a nil uuid. */
+function foreignise(path: string): string {
+  return path.replace(/:[A-Za-z0-9_]+/g, (m) => {
+    if (/project/i.test(m)) return projectB;
+    if (/issue/i.test(m)) return issueB;
+    return '00000000-0000-4000-8000-000000000000';
+  });
 }
 
 describe('PAT fence — which projects a token may name', () => {
@@ -224,10 +253,14 @@ describe('PAT fence — the surface a token may reach', () => {
       if (!route.path.startsWith('/api/')) continue;
       if (route.path.includes('*')) continue;
       if (!patAllowedFor(route.path)) continue;
+      if (!route.path.includes(':')) continue;
+      attempts.push(foreignise(route.path));
+      // cm:guard a single-param route is probed with BOTH a project id and an issue id, because which entity the id names decides which lookup the handler takes to a project — an issue-shaped route handed a project id 404s on the lookup and would score clean without ever reaching the fence.
       const params = route.path.match(/:[A-Za-z0-9_]+/g) ?? [];
-      if (params.length !== 1) continue;
-      for (const foreign of [projectB, issueB]) {
-        attempts.push(route.path.replace(/:[A-Za-z0-9_]+/, foreign));
+      if (params.length === 1) {
+        for (const foreign of [projectB, issueB]) {
+          attempts.push(route.path.replace(/:[A-Za-z0-9_]+/, foreign));
+        }
       }
     }
     expect(attempts.length).toBeGreaterThan(10);
@@ -282,5 +315,110 @@ describe('PAT fence — the surface a token may reach', () => {
         'case a PAT there is an account-scoped credential wearing a project-scoped label, and ' +
         'the fence in lib/authz.ts has nothing to bite on.',
     ).toEqual([]);
+  });
+
+  /**
+   * The write half of the outside sweep. A PAT reaching a non-allowlisted
+   * WRITE route is the shape of the `requireAnyAuth` hole: the GET sweep saw
+   * `GET /api/issues/:id/attachments` leak and could not reach the POST twin,
+   * so the leak that mattered most was the one it could not look at.
+   *
+   * "Refused" here is 401/403, not "did not answer 2xx" — a write that reaches
+   * body validation has already passed the fence, and an empty body would
+   * otherwise let every unfenced write hide behind a 400.
+   */
+  it('no registered WRITE route outside the allowlist lets a PAT past the fence', async () => {
+    const probes: string[] = [];
+    for (const route of app.routes) {
+      if (!(WRITE_METHODS as readonly string[]).includes(route.method)) continue;
+      if (!route.path.startsWith('/api/')) continue;
+      if (route.path.includes('*')) continue;
+      if (patAllowedFor(route.path)) continue;
+      probes.push(`${route.method} ${foreignise(route.path)}`);
+    }
+    expect(probes.length).toBeGreaterThan(20);
+
+    const past = await sweep(new Set(probes), async (probe) => {
+      const [method, path] = probe.split(' ') as [string, string];
+      const withPat = await send(method, path, boundToA);
+      if (withPat.status === 401 || withPat.status === 403) return null;
+      // cm:guard a route that answers an ANONYMOUS caller the same way is public, and a public route has no fence to fail — deciding that by asking the route rather than by a hand-kept exemption list is what keeps this sweep from drifting as routes are added.
+      const anonymous = await send(method, path);
+      if (anonymous.status !== 401 && anonymous.status !== 403) return null;
+      return `${probe} → ${withPat.status}`;
+    });
+
+    expect(
+      past,
+      'these WRITE routes are NOT on PAT_ALLOWED_PREFIXES and did not refuse a project-scoped ' +
+        'PAT with 401/403 — they let it reach the handler. Either the route resolves a project ' +
+        'and belongs on the allowlist, or a PAT must not reach it at all.',
+    ).toEqual([]);
+  });
+
+  /**
+   * The write half of the inside sweep: an allowlisted write route handed an
+   * id from project B must not serve a token fenced to A.
+   */
+  it('no allowlisted WRITE route serves a foreign id to a fenced token', async () => {
+    const probes: string[] = [];
+    for (const route of app.routes) {
+      if (!(WRITE_METHODS as readonly string[]).includes(route.method)) continue;
+      if (!route.path.startsWith('/api/')) continue;
+      if (route.path.includes('*')) continue;
+      if (!patAllowedFor(route.path)) continue;
+      if (!route.path.includes(':')) continue;
+      probes.push(`${route.method} ${foreignise(route.path)}`);
+    }
+    expect(probes.length).toBeGreaterThan(10);
+
+    const undecided: string[] = [];
+    const served = await sweep(new Set(probes), async (probe) => {
+      const [method, path] = probe.split(' ') as [string, string];
+      const res = await send(method, path, boundToA);
+      // cm:guard 204 is UNDECIDED, not served: a no-content response carries no evidence either way, and at least one route answers it deliberately for a caller it refuses — `DELETE /api/memory/:id` returns 204 for every unauthorised (id, caller) pair so that a 404 cannot be used to probe which ids exist. Scoring that as a leak would push someone to weaken the existence-hiding contract to make a sweep green; the named case below decides it properly instead, by seeding a row and checking it survived.
+      if (res.status !== 204 && res.status >= 200 && res.status < 300) {
+        return `${probe} → ${res.status}`;
+      }
+      if (res.status === 204 || res.status === 400 || res.status === 422) undecided.push(probe);
+      return null;
+    });
+
+    expect(
+      served,
+      'these allowlisted WRITE routes accepted an id belonging to project B from a token fenced ' +
+        'to project A. The handler either resolves its project without effectiveProjectRole, or ' +
+        'does not resolve one at all.',
+    ).toEqual([]);
+
+    // cm:guard the empty body makes a 400 mean "the fence question never got asked", so those routes are counted rather than scored clean — and if EVERY probe lands there the sweep has stopped measuring while staying green, which is exactly what this comparison catches.
+    expect(
+      undecided.length,
+      `every write probe was undecided (400/422/204) — the body validator now runs before the ` +
+        `project lookup everywhere, so this sweep proves nothing: ${undecided.join(', ')}`,
+    ).toBeLessThan(new Set(probes).size);
+  });
+
+  /**
+   * The one route the sweep above cannot decide, decided by hand: seed a real
+   * memory in project B, delete it with a token fenced to A, and look at the
+   * row rather than at the status.
+   */
+  it('a 204 from the memory delete is a refusal, not a silent delete', async () => {
+    const memoryId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO memories (id, project_id, source, source_ref, text_content)
+      VALUES (${memoryId}, ${projectB}, 'note', 'fence-probe', 'survives a fenced delete')
+    `);
+
+    const res = await send('DELETE', `/api/memory/${memoryId}`, boundToA);
+    expect(res.status).toBe(204);
+
+    const rows = await harness.db.execute(sql`SELECT id FROM memories WHERE id = ${memoryId}`);
+    expect(
+      rows.length,
+      'a token fenced to project A deleted a memory that lives in project B — the 204 the sweep ' +
+        'reads as "no evidence" was a real delete all along.',
+    ).toBe(1);
   });
 });
