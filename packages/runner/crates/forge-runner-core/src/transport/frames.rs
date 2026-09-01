@@ -118,6 +118,13 @@ mod tests {
         assert!(frame("").pat_token.is_none());
     }
 
+    // cm:guard a frame from a NEWER core must still parse, which is why `JobAssigned` must never gain `#[serde(deny_unknown_fields)]` — core ships fields before the fleet is on the version that reads them (`patToken` did exactly that), and denying unknowns would turn the next such field into every older box failing every job frame at once, with the error inside serde rather than anywhere an operator would look. Verified against runner-v0.9.5: the attribute appears nowhere in that tree, which is the only reason core could start minting today.
+    #[test]
+    fn a_field_from_a_newer_core_does_not_break_the_frame() {
+        let ja = frame(r#","somethingCoreAddedLater":{"a":1}"#);
+        assert_eq!(ja.job_id, "j1");
+    }
+
     #[test]
     fn debug_never_prints_the_token() {
         let ja = frame(r#","patToken":"forge_pat_live_secret""#);
