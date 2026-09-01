@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DispatchInput } from '../types.js';
 
+const mintJobToken = vi.fn(async () => 'forge_pat_dev_tok' as string | null);
+vi.mock('../../jobs/job-token.js', () => ({
+  mintJobToken: (...a: unknown[]) => mintJobToken(...(a as [])),
+}));
+
 const publish = vi.fn((..._args: unknown[]) => 1);
 
 vi.mock('../../ws/server.js', () => ({
@@ -45,6 +50,13 @@ function runner(over: Partial<Runner> = {}): Runner {
   };
 }
 
+// cm:guard narrow the published frame HERE, once, instead of `calls[0]?.[1] as …` at each site — every one of those was an unsafe optional chain that read `.data` off a possibly-undefined value, so a test whose dispatch never published died on a TypeError instead of failing on the assertion it was written for.
+function publishedData(): Record<string, unknown> {
+  const call = publish.mock.calls[0];
+  expect(call).toBeDefined();
+  return (call?.[1] as { data: Record<string, unknown> }).data;
+}
+
 async function dispatchWith(agentConfig: unknown): Promise<Record<string, unknown>> {
   // cm:guard `issueId: null` so `issueKeyOf` returns without selecting — this fixture then queues exactly ONE row and it is unambiguously the config read. With an issue id the two selects are told apart only by call order, which is a test that breaks on a refactor rather than on the rule.
   selectLimit.mockResolvedValueOnce([{ agentConfig }] as never);
@@ -54,15 +66,14 @@ async function dispatchWith(agentConfig: unknown): Promise<Record<string, unknow
       projectId: 'p-1',
       issueId: null,
       attempts: 0,
+      createdBy: 'u1',
       type: 'code',
       payload: {},
       dispatchedAt: new Date('2026-08-29T00:00:00.000Z'),
     } as never,
     runner: runner(),
   });
-  const payload = publish.mock.calls[0]?.[1];
-  expect(payload).toBeDefined();
-  return (payload as { data: Record<string, unknown> }).data;
+  return publishedData();
 }
 
 describe('claude-code adapter', () => {
@@ -118,13 +129,14 @@ describe('claude-code adapter', () => {
         projectId: 'p-1',
         issueId: 'i-1',
         attempts: 3,
+        createdBy: 'u1',
         type: 'code',
         payload: {},
         dispatchedAt: new Date('2026-04-26T00:00:00.000Z'),
       },
       runner: runner(),
     });
-    const data = (publish.mock.calls[0]?.[1] as { data: Record<string, unknown> }).data;
+    const data = publishedData();
     expect(data.issueKey).toBe('ISS-862');
     expect(data.attempts).toBe(3);
   });
@@ -137,6 +149,7 @@ describe('claude-code adapter', () => {
         projectId: 'p-1',
         issueId: 'i-1',
         attempts: 1,
+        createdBy: 'u1',
         type: 'code',
         payload: {},
         dispatchedAt: new Date('2026-04-26T00:00:00.000Z'),
@@ -144,7 +157,7 @@ describe('claude-code adapter', () => {
       runner: runner(),
     });
     expect(result.status).toBe('dispatched');
-    const data = (publish.mock.calls[0]?.[1] as { data: Record<string, unknown> }).data;
+    const data = publishedData();
     expect(data.issueKey).toBeUndefined();
   });
 
@@ -155,6 +168,7 @@ describe('claude-code adapter', () => {
         projectId: 'p-1',
         issueId: null,
         attempts: 1,
+        createdBy: 'u1',
         type: 'code',
         payload: { prompt: 'hi' },
         dispatchedAt: new Date('2026-04-26T00:00:00.000Z'),
@@ -175,6 +189,7 @@ describe('claude-code adapter', () => {
         projectId: 'p-1',
         issueId: null,
         attempts: 1,
+        createdBy: 'u1',
         type: 'code',
         payload: {},
         dispatchedAt: new Date(),
@@ -195,6 +210,7 @@ describe('claude-code adapter', () => {
         projectId: 'p-1',
         issueId: null,
         attempts: 1,
+        createdBy: 'u1',
         type: 'code',
         payload: {},
         promptString: '/forge-code iss-1',
@@ -203,7 +219,7 @@ describe('claude-code adapter', () => {
       },
       runner: runner(),
     });
-    const data = (publish.mock.calls[0]?.[1] as { data: { systemPrompt?: string } }).data;
+    const data = publishedData();
     expect(data.systemPrompt).toBe(sp);
   });
 
@@ -214,13 +230,14 @@ describe('claude-code adapter', () => {
         projectId: 'p-1',
         issueId: null,
         attempts: 1,
+        createdBy: 'u1',
         type: 'code',
         payload: {},
         dispatchedAt: new Date(),
       },
       runner: runner(),
     });
-    const data = (publish.mock.calls[0]?.[1] as { data: { systemPrompt?: unknown } }).data;
+    const data = publishedData();
     expect(data.systemPrompt).toBeNull();
   });
 
@@ -231,6 +248,7 @@ describe('claude-code adapter', () => {
         projectId: 'p-1',
         issueId: null,
         attempts: 1,
+        createdBy: 'u1',
         type: 'code',
         payload: {},
         dispatchedAt: new Date(),
@@ -251,6 +269,7 @@ describe('claude-code adapter', () => {
         projectId: 'p-1',
         issueId: null,
         attempts: 1,
+        createdBy: 'u1',
         type: 'code',
         payload: {},
         dispatchedAt: new Date(),
@@ -270,6 +289,7 @@ describe('claude-code adapter', () => {
         projectId: 'p-1',
         issueId: null,
         attempts: 1,
+        createdBy: 'u1',
         type: 'code',
         payload: {},
         dispatchedAt: new Date(),
@@ -286,6 +306,7 @@ describe('claude-code adapter', () => {
         projectId: 'p-1',
         issueId: null,
         attempts: 1,
+        createdBy: 'u1',
         type: 'code',
         payload: {},
         dispatchedAt: new Date(),
@@ -307,5 +328,58 @@ describe('claude-code adapter', () => {
       runner: runner({ id: 'r-3', name: 'old', lastSeenAt: new Date(Date.now() - 200_000) }),
     });
     expect(r.ok).toBe(false);
+  });
+});
+
+describe('the job token on the dispatch frame', () => {
+  beforeEach(() => {
+    publish.mockClear();
+    publish.mockReturnValue(1);
+    selectLimit.mockReset();
+    selectLimit.mockResolvedValue([] as never);
+    mintJobToken.mockReset();
+    mintJobToken.mockResolvedValue('forge_pat_dev_tok');
+  });
+
+  it('puts the minted job token on the frame, scoped to the job it dispatched', async () => {
+    await claudeCodeAdapter.dispatch({
+      job: {
+        id: 'job-1',
+        projectId: 'p-1',
+        issueId: null,
+        attempts: 1,
+        createdBy: 'u1',
+        type: 'code',
+        payload: {},
+        dispatchedAt: new Date(),
+      },
+      runner: runner(),
+    });
+    expect(mintJobToken).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'job-1', projectId: 'p-1', createdBy: 'u1' }),
+    );
+    const data = publishedData();
+    expect(data.patToken).toBe('forge_pat_dev_tok');
+  });
+
+  // cm:guard the mint must never be able to fail a dispatch — a box provisioned by hand still works without a token, so degrading to "no field" is strictly better than a job that does not run. Assert the ABSENCE of the key, not a null: the runner reads `Option<JobToken>` and an explicit null would deserialise the same, but only an omitted field leaves an older core's frame shape unchanged.
+  it('dispatches without the field when the mint fails', async () => {
+    mintJobToken.mockResolvedValueOnce(null);
+    const result = await claudeCodeAdapter.dispatch({
+      job: {
+        id: 'job-1',
+        projectId: 'p-1',
+        issueId: null,
+        attempts: 1,
+        createdBy: 'u1',
+        type: 'code',
+        payload: {},
+        dispatchedAt: new Date(),
+      },
+      runner: runner(),
+    });
+    expect(result.status).toBe('dispatched');
+    const data = publishedData();
+    expect('patToken' in data).toBe(false);
   });
 });

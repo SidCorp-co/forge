@@ -10,6 +10,15 @@
 
 ### Added
 
+- A job now carries its own credential. When core dispatches a job it mints an access token scoped
+  to that job's project, hands it to the runner on the dispatch frame, and the agent gets it as
+  `$FORGE_PAT` — so `forge-runner api` works on a box nobody provisioned by hand. The token is
+  minted as the person who queued the job, so it can do what they could and nothing more, and it is
+  revoked the moment the job ends, by any route it can end: a normal finish, a cancel, a run
+  closing around it, or a sweeper reaping it. Nothing to install and nothing to rotate: a token
+  that outlives its job does not exist. Boxes with a hand-provisioned token keep working unchanged,
+  and a runner too old to read the field simply uses whatever it already had.
+
 - The whole Forge REST API is now callable from a shell: `forge-runner api <path>`, shaped after
   `gh api`. `issues`, `/issues` and `/api/issues` all mean the same endpoint; `-X` picks a method,
   `-d` sends a JSON body (`-` reads stdin, and a body that is not JSON is refused before anything

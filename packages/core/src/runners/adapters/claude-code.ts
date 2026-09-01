@@ -111,10 +111,20 @@ export const claudeCodeAdapter: RunnerAdapter = {
       if (key in payload) overrideForwards[key] = payload[key];
     }
 
-    const [issueKey, project, runnerVersion] = await Promise.all([
+    const [issueKey, project, runnerVersion, patToken] = await Promise.all([
       issueKeyOf(job.issueId),
       sessionSettingsOf(job.projectId),
       agentVersionOf(runner.deviceId),
+      // cm:guard imported lazily so the adapter's static graph stays free of argon2 and the env schema — the mint reaches both, and pulling them in at module load turned this file into one that cannot be imported without DATABASE_URL. Same reason `lifecycle/transition.ts` lazy-loads its bridges.
+      import('../../jobs/job-token.js')
+        .then((mod) => mod.mintJobToken(job))
+        .catch((err) => {
+          logger.error(
+            { err, jobId: job.id },
+            'claude-code adapter: job-token module failed to load',
+          );
+          return null;
+        }),
     ]);
     const worktree = worktreeBranchPayload({
       status: (payload.stageStatus ?? null) as never,
@@ -142,6 +152,8 @@ export const claudeCodeAdapter: RunnerAdapter = {
         attempts: job.attempts,
         // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — the runner keys its local session by `jobId`, so this field is its only route back to the agent_sessions row; drop it and the transcript, claudeSessionId and diff are never written.
         ...(job.agentSessionId ? { agentSessionId: job.agentSessionId } : {}),
+        // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/frames.rs — the runner exports this as `$FORGE_PAT` on the agent process, which is the ONLY way a box reaches REST without a hand-provisioned credential. Omitted when the mint failed, and an older runner ignores it, so both halves degrade to "whatever the operator set by hand" rather than to a broken job.
+        ...(patToken ? { patToken } : {}),
         // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — the runner reads `sessionMode` to decide `Stdio::piped()` vs `-p`, and an older runner ignores it entirely and stays print. That is the whole opt-in: dropping this field does not break a job, it silently pins every project back to print and the phase-3 rollout reads as "no project ever opted in".
         // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — `sessionResidencySeconds` rides alongside and is resolved there by `resolve_residency`, which must agree with `jobs/park-deadline.ts`'s COALESCE: core's backstop fires at this value plus a grace, so a runner reading it differently gets its park reaped while it still considers the session live.
         ...project.settings,

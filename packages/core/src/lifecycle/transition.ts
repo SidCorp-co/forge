@@ -187,6 +187,10 @@ export async function applyKernelTransition(
         fireAgentChatBridge(row);
       }
     }
+    // cm:guard revoke rides on THIS chokepoint and nowhere else, because this module is the only writer of a terminal job status — the `lifecycle.transition` guard test fails the build on a terminal `.update(jobs)` anywhere outside it. That is what makes the token's lifetime provably the job's: cancel, cascade, loop-monitor reap, park reap and the happy finish all land here, so no new terminal path can ship a token that outlives its job without first breaking a gate.
+    if (args.entity === 'job') {
+      for (const row of updated as JobRow[]) fireJobTokenRevoke(row);
+    }
   }
 
   return updated as JobRow[] | SessionRow[] | RunRow[];
@@ -200,6 +204,14 @@ export async function applyKernelTransition(
  * Errors are swallowed here (logged only): a bridge failure must never break
  * the kernel transition it rides on.
  */
+function fireJobTokenRevoke(row: JobRow): void {
+  void import('../jobs/job-token.js')
+    .then((mod) => mod.revokeJobToken(row.id))
+    .catch((err) => {
+      logger.error({ err, jobId: row.id }, 'lifecycle.transition: job-token revoke failed');
+    });
+}
+
 function fireEscalationBridge(row: SessionRow): void {
   const metadata = row.metadata as { escalation?: unknown } | null;
   if (!metadata?.escalation) return;

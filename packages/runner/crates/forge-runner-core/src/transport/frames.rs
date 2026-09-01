@@ -103,9 +103,7 @@ mod tests {
     use super::*;
 
     fn frame(extra: &str) -> JobAssigned {
-        let json = format!(
-            r#"{{"jobId":"j1","projectId":"p1","type":"code"{extra}}}"#
-        );
+        let json = format!(r#"{{"jobId":"j1","projectId":"p1","type":"code"{extra}}}"#);
         serde_json::from_str(&json).expect("job.assigned must parse")
     }
 

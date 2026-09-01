@@ -266,6 +266,18 @@ async function loadRepoPath(projectId: string): Promise<string | null> {
  * chain off the job/project; the PM path passes `forcedCapabilities` and
  * `forcedChain` to lock the filter regardless of payload.
  */
+function buildDispatchPayload(
+  payload: unknown,
+  overrides: Parameters<typeof buildOverridesPayload>[0],
+  priorClaudeSessionId: string | null | undefined,
+): Record<string, unknown> {
+  return {
+    ...((payload ?? {}) as Record<string, unknown>),
+    ...buildOverridesPayload(overrides),
+    ...(priorClaudeSessionId ? { claudeSessionId: priorClaudeSessionId } : {}),
+  };
+}
+
 async function dispatchViaRunner(
   job: typeof jobs.$inferSelect,
   forcedCapabilities?: RequiredCapabilities,
@@ -520,15 +532,10 @@ async function dispatchViaRunner(
       id: job.id,
       projectId: job.projectId,
       issueId: job.issueId,
+      createdBy: job.createdBy,
       type: job.type,
-      // Surface stage overrides + claudeSessionId (PR-5 resume) on payload so
-      // adapters that forward `payload` verbatim (claude-code) propagate them
-      // to the runner.
-      payload: {
-        ...(job.payload ?? {}),
-        ...buildOverridesPayload(runnerStageOverrides),
-        ...(resume.priorClaudeSessionId ? { claudeSessionId: resume.priorClaudeSessionId } : {}),
-      },
+      // cm:why the overrides and the resume id ride on `payload` rather than as top-level fields because the claude-code adapter forwards `payload` verbatim; a top-level field would need lifting on the adapter side to reach the runner at all.
+      payload: buildDispatchPayload(job.payload, runnerStageOverrides, resume.priorClaudeSessionId),
       promptString: runnerPromptString,
       systemPrompt: runnerSystemPrompt,
       dispatchedAt,

@@ -402,9 +402,13 @@ describe('POST /:id/fail — salvage (ISS-862 L1)', () => {
     return postAsDevice('fail', body);
   }
 
+  // cm:guard find the update that CARRIES failureMeta rather than reading `.at(-1)` — the fail route is no longer the last writer on this mock: the kernel chokepoint now also revokes the job's token, whose own `.set()` lands after it. `.at(-1)` read that one and reported the route had written nothing, which is a test that breaks on an unrelated write instead of on its own rule.
   function lastFailureMeta() {
-    const args = updateSet.mock.calls.at(-1) as unknown[] | undefined;
-    return (args?.[0] as Record<string, unknown> | undefined)?.failureMeta;
+    for (const args of [...updateSet.mock.calls].reverse() as unknown[][]) {
+      const set = args[0] as Record<string, unknown> | undefined;
+      if (set && 'failureMeta' in set) return set.failureMeta;
+    }
+    return undefined;
   }
 
   it('accepts the exact object the runner emits and merges it into failure_meta', async () => {
