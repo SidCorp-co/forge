@@ -53,7 +53,7 @@ beforeAll(async () => {
   process.env.APP_BASE_URL ??= 'http://localhost:3000';
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV = 'test';
-  // cm:guard the PAT rate limit is lifted for this file, and a 429 is asserted against below rather than tolerated. At the stock 60/minute the two sweeps — 205 probes on one token — spend most of their run being refused by the limiter, and both loops read a 429 as "the route refused me": the assertion that makes the allowlist trustworthy quietly stops touching the routes it names. Three breaches in an hour also auto-revoke the token, after which the rest of the file passes on 401s. Set BEFORE `src/index.js` is imported, because `config/env.ts` reads it once at module load.
+  // cm:guard this raises `patPerToken` ONLY, and it is not the whole defence — the IP-keyed limiters are untouched, `authRegister` at 3/hour among them, so a second probe of an IP-limited route still 429s and it is the throw in `get()` that catches it rather than this line. What it does buy: at the stock 60/minute the two sweeps — 205 probes on one token — spend most of their run refused, and both loops read a 429 as "the route refused me", so the assertion that makes the allowlist trustworthy quietly stops touching the routes it names (measured 2026-09-01: 3.1s and 96 rate-limited log lines, against 8.4s and none, on the same route set). Three breaches in an hour also auto-revoke the token, after which the rest of the file passes on 401s. Set BEFORE `src/index.js` is imported, because `config/env.ts` reads it once at module load.
   process.env.RATE_LIMIT_PAT_MAX = '100000';
 
   await truncateAll(harness.db);
