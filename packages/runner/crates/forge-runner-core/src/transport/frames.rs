@@ -2,6 +2,24 @@
 
 use serde::Deserialize;
 
+/// A job-scoped PAT minted by core for the life of one job.
+// cm:guard the redacting `Debug` is the whole point of the newtype — `JobAssigned` and `JobSpec` both derive `Debug`, so the day someone adds a `tracing::debug!("{ja:?}")` a plain `String` here writes a live credential into the daemon log and into Sentry. Keep the manual impl; deriving `Debug` on this type silently undoes it.
+#[derive(Clone, Deserialize)]
+#[serde(transparent)]
+pub struct JobToken(String);
+
+impl JobToken {
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for JobToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("JobToken(redacted)")
+    }
+}
+
 /// Envelope core wraps every broadcast in: `{ event, data, timestamp }`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Frame {
@@ -61,6 +79,9 @@ pub struct JobAssigned {
     /// trailer rather than guessing a number.
     #[serde(default)]
     pub attempts: Option<u32>,
+    // cm:edge contract -> packages/core/src/jobs/job-token.ts — core mints this per job and revokes it the moment the job goes terminal, so it is useless to cache and wrong to persist. A runner that predates the field simply gets `None` and the agent keeps whatever `$FORGE_PAT` the operator set by hand, which is exactly the behaviour that lets core start sending it before the whole fleet is on this version.
+    #[serde(default)]
+    pub pat_token: Option<JobToken>,
 }
 
 /// Extract a `jobId` from a `job.cancel` / `job.cancelRequested` frame.
@@ -75,4 +96,38 @@ pub fn session_id_of(data: &serde_json::Value) -> Option<String> {
     data.get("sessionId")
         .and_then(|v| v.as_str())
         .map(str::to_string)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn frame(extra: &str) -> JobAssigned {
+        let json = format!(
+            r#"{{"jobId":"j1","projectId":"p1","type":"code"{extra}}}"#
+        );
+        serde_json::from_str(&json).expect("job.assigned must parse")
+    }
+
+    #[test]
+    fn reads_the_job_token_off_the_frame() {
+        let ja = frame(r#","patToken":"forge_pat_live_abc""#);
+        assert_eq!(ja.pat_token.expect("token").expose(), "forge_pat_live_abc");
+    }
+
+    #[test]
+    fn a_frame_without_a_token_parses_and_carries_none() {
+        assert!(frame("").pat_token.is_none());
+    }
+
+    #[test]
+    fn debug_never_prints_the_token() {
+        let ja = frame(r#","patToken":"forge_pat_live_secret""#);
+        let rendered = format!("{ja:?}");
+        assert!(
+            !rendered.contains("forge_pat_live_secret"),
+            "the token reached a Debug rendering: {rendered}"
+        );
+        assert!(rendered.contains("JobToken(redacted)"));
+    }
 }

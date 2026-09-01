@@ -394,7 +394,9 @@ async fn run_turn(
         duplex: true,
         // cm:guard chat takes the DEFAULT and no project value, because the field is `pipelineConfig.sessionResidencySeconds` and chat has no pipeline behind it. A chat session's residency is bounded by the same const it always was; giving it a pipeline project's number would make a project setting silently change how long an unrelated chat window stays warm.
         session_residency_seconds: None,
-    };
+            // cm:guard chat gets NO job token, and that is not an omission: the mint is keyed on a `jobs` row's `created_by`, and a chat session has no job. Handing chat a token would need its own principal and its own revoke trigger, neither of which exists — so chat keeps using whatever `$FORGE_PAT` the operator provisioned.
+        pat_token: None,
+};
 
     let (tx, rx) = mpsc::channel::<RunnerEvent>(200);
     // cm:guard `send` failing must fall back to a spawn, never fail the turn. The resident session can go away between the `resident()` check and the write — the idle ceiling, an abort, a crash — and a user whose message is refused because a process died in that window has lost the turn for a reason that has nothing to do with them.

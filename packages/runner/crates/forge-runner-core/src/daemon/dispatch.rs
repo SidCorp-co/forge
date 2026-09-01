@@ -537,6 +537,7 @@ pub async fn handle(
         session_residency_seconds: ja.session_residency_seconds,
         resume_id: ja.claude_session_id.clone(),
         agent_session_id: ja.agent_session_id.clone(),
+        pat_token: ja.pat_token.clone(),
     };
 
     let (tx, rx) = mpsc::channel::<RunnerEvent>(200);

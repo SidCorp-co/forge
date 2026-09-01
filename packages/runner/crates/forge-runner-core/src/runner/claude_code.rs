@@ -833,6 +833,10 @@ impl Runner for ClaudeCodeRunner {
         let residency_secs = spec.session_residency_seconds;
 
         let mut cmd = build_command(&args, &effective_repo);
+        // cm:guard set it ONLY when core sent one, and never clear it otherwise — a box whose operator ran `forge-runner login --pat` keeps working against a core that does not mint yet, which is the property that lets the fleet upgrade in either order. Overwriting with an empty string here would break every already-provisioned box the moment one job frame arrived without the field.
+        if let Some(tok) = spec.pat_token.as_ref() {
+            cmd.env("FORGE_PAT", tok.expose());
+        }
         let stdin_mode = if spec.duplex {
             std::process::Stdio::piped()
         } else {
@@ -1370,6 +1374,7 @@ mod tests {
             agent_session_id: None,
             duplex,
             session_residency_seconds: None,
+            pat_token: None,
         }
     }
 
