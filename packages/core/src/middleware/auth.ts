@@ -1,13 +1,12 @@
 import { eq } from 'drizzle-orm';
 import type { MiddlewareHandler } from 'hono';
-import { getCookie } from 'hono/cookie';
 import { HTTPException } from 'hono/http-exception';
-import { AUTH_COOKIE_NAME } from '../auth/cookie.js';
 import { verifyDeviceToken } from '../auth/deviceToken.js';
 import { verifyUserToken } from '../auth/jwt.js';
 import { isPatLike } from '../auth/pat-format.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
+import { readBearerToken } from './bearer.js';
 import { beginPatRequest, withPatScope } from './pat-rest-surface.js';
 
 export type AuthVars = {
@@ -31,21 +30,7 @@ export type AuthVars = {
  */
 export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
   return async (c, next) => {
-    let token: string | undefined;
-    const header = c.req.header('authorization') ?? c.req.header('Authorization');
-    if (header) {
-      const match = /^Bearer\s+(.+)$/i.exec(header);
-      if (match?.[1]) token = match[1].trim();
-    }
-    if (!token) {
-      token = getCookie(c, AUTH_COOKIE_NAME);
-    }
-    if (!token) {
-      throw new HTTPException(401, {
-        message: 'authentication required',
-        cause: { code: 'UNAUTHENTICATED' },
-      });
-    }
+    const token = readBearerToken(c);
 
     if (isPatLike(token)) {
       const { principal, scope } = await beginPatRequest(c, token);
@@ -70,7 +55,7 @@ export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
   };
 }
 
-// cm:guard THREE device-token policies exist and they DISAGREE — pick deliberately, never by picking a middleware. `/mcp` treats a device as its owner (`assertDeviceOwnerIsMember` reads `device.ownerId`); `requireAnyAuth` does the same by setting `userId = device.ownerId`; `requireUserOrDevice` deliberately does NOT, leaving `userId` unset so `loadProjectAccess` fails closed. Measured 2026-09-01 while asking why a runner box cannot reach REST: the answer was this disagreement, not the fleet's version. Choosing a middleware for a new route therefore chooses a security policy, so say which one you meant.
+// cm:guard FIVE middlewares verify a device token and exactly ONE of them — `requireAnyAuth` — hands the device its owner's account authority by setting `userId = device.ownerId`; `requireAuth` rejects devices outright and `requireUserOrDevice`, `requireDevice` and `requirePatOrDevice` (`/mcp`) all make the device its own principal with `userId` left unset so `loadProjectAccess` fails closed. Measured 2026-09-01: that one exception is the whole disagreement, so choosing a middleware for a new route chooses whether the caller gets ambient owner authority. Pick `requireAnyAuth` only if you mean that, and say so.
 /**
  * Accept EITHER a user JWT (web/desktop) OR a device token (a CLI runner).
  *
@@ -85,21 +70,7 @@ export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
  */
 export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }> {
   return async (c, next) => {
-    let token: string | undefined;
-    const header = c.req.header('authorization') ?? c.req.header('Authorization');
-    if (header) {
-      const match = /^Bearer\s+(.+)$/i.exec(header);
-      if (match?.[1]) token = match[1].trim();
-    }
-    if (!token) {
-      token = getCookie(c, AUTH_COOKIE_NAME);
-    }
-    if (!token) {
-      throw new HTTPException(401, {
-        message: 'authentication required',
-        cause: { code: 'UNAUTHENTICATED' },
-      });
-    }
+    const token = readBearerToken(c);
 
     try {
       const claims = await verifyUserToken(token);

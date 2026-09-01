@@ -17,13 +17,13 @@
  * user-JWT caller needing strict semantics adds a second middleware.
  */
 
-import type { MiddlewareHandler } from 'hono';
-import { getCookie } from 'hono/cookie';
+import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { AUTH_COOKIE_NAME } from '../auth/cookie.js';
 import { verifyDeviceToken } from '../auth/deviceToken.js';
 import { verifyUserToken } from '../auth/jwt.js';
 import { isPatLike } from '../auth/pat-format.js';
+import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { readBearerToken } from './bearer.js';
 import { beginPatRequest, withPatScope } from './pat-rest-surface.js';
 
 export type AnyAuthVars = { userId: string };
@@ -31,22 +31,20 @@ export type AnyAuthVars = { userId: string };
 const unauth = (message: string) =>
   new HTTPException(401, { message, cause: { code: 'UNAUTHENTICATED' } });
 
-// cm:guard THREE device-token policies exist and they DISAGREE — pick deliberately, never by picking a middleware. `/mcp` treats a device as its owner (`assertDeviceOwnerIsMember` reads `device.ownerId`); `requireAnyAuth` does the same by setting `userId = device.ownerId`; `requireUserOrDevice` deliberately does NOT, leaving `userId` unset so `loadProjectAccess` fails closed. Measured 2026-09-01 while asking why a runner box cannot reach REST: the answer was this disagreement, not the fleet's version. Choosing a middleware for a new route therefore chooses a security policy, so say which one you meant.
+// cm:guard FIVE middlewares verify a device token and exactly ONE of them — `requireAnyAuth` — hands the device its owner's account authority by setting `userId = device.ownerId`; `requireAuth` rejects devices outright and `requireUserOrDevice`, `requireDevice` and `requirePatOrDevice` (`/mcp`) all make the device its own principal with `userId` left unset so `loadProjectAccess` fails closed. Measured 2026-09-01: that one exception is the whole disagreement, so choosing a middleware for a new route chooses whether the caller gets ambient owner authority. Pick `requireAnyAuth` only if you mean that, and say so.
+// cm:guard this probe is the EVIDENCE that lets the branch below be deleted, so do not remove it before the branch it measures. Reading the runner in Rust found no caller — it downloads only session attachments, which go to `requireUserOrDevice` — but a negative established by grepping one repo is not a fact: the agent's MCP config carries a device token in plaintext, so a skill, an operator script or the desktop app can be a caller that no Rust grep can see. Delete the branch when this has been silent across real jobs and chat turns, never on the strength of the source read alone.
+function reportDeviceOnDataPlane(c: Context, deviceId: string): void {
+  if (!isSentryEnabled()) return;
+  Sentry.captureMessage('auth.device_token_on_data_plane', {
+    level: 'warning',
+    tags: { path: c.req.routePath, method: c.req.method },
+    extra: { deviceId },
+  });
+}
+
 export function requireAnyAuth(): MiddlewareHandler<{ Variables: AnyAuthVars }> {
   return async (c, next) => {
-    let token: string | undefined;
-
-    const header = c.req.header('authorization') ?? c.req.header('Authorization');
-    if (header) {
-      const match = /^Bearer\s+(.+)$/i.exec(header);
-      if (match?.[1]) token = match[1].trim();
-    }
-
-    if (!token) {
-      token = getCookie(c, AUTH_COOKIE_NAME);
-    }
-
-    if (!token) throw unauth('authentication required');
+    const token = readBearerToken(c);
 
     // cm:guard the PAT branch goes through `beginPatRequest`, the SAME call `requireAuth` makes, and setting `userId` from the token row is not on its own enough. Until 2026-09-01 it was exactly that and nothing else: no allowlist, no project scope — so a token bound to one project listed and downloaded attachments, and posted comments, on every project its owner could reach. The handlers behind here call `loadProjectAccess` and looked right; the fence they consult is established up here or not at all.
     if (isPatLike(token)) {
@@ -65,9 +63,9 @@ export function requireAnyAuth(): MiddlewareHandler<{ Variables: AnyAuthVars }> 
       // fall through to device-token path
     }
 
-    // Device-token path (legacy desktop runners)
     const device = await verifyDeviceToken(token);
     if (!device) throw unauth('invalid token');
+    reportDeviceOnDataPlane(c, device.id);
     c.set('userId', device.ownerId);
     await next();
   };

@@ -1,6 +1,7 @@
 import type { MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { type Device, verifyDeviceToken } from '../auth/deviceToken.js';
+import { parseBearerHeader } from './bearer.js';
 
 export type AuthedDevice = Device;
 
@@ -26,11 +27,11 @@ const unauth = (code: UnauthCode, message: string) =>
  */
 export const requireDevice = (): MiddlewareHandler<{ Variables: DeviceVars }> => {
   return async (c, next) => {
-    const header = c.req.header('authorization');
-    if (!header) throw unauth('UNAUTHENTICATED', 'authentication required');
-    const match = /^Bearer\s+(.+)$/i.exec(header);
-    const token = match?.[1]?.trim();
-    if (!token) throw unauth('UNAUTHENTICATED', 'invalid authorization header');
+    const parsed = parseBearerHeader(c);
+    if (parsed.kind === 'absent') throw unauth('UNAUTHENTICATED', 'authentication required');
+    if (parsed.kind === 'malformed')
+      throw unauth('UNAUTHENTICATED', 'invalid authorization header');
+    const token = parsed.token;
 
     const device = await verifyDeviceToken(token);
     if (!device) throw unauth('UNAUTHENTICATED', 'invalid device token');

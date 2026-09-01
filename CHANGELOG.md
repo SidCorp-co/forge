@@ -8,6 +8,20 @@
 
 ## [Unreleased]
 
+### Changed
+
+- All five middlewares that authenticate a bearer token now read it through one pair of
+  functions instead of five copies of the same regex. No route changed what it accepts. The two
+  differences that were real are kept and named: whether the `forge_auth` cookie may stand in for
+  a missing header, and whether "no header" and "malformed header" get the same 401 — `/mcp`
+  answers those differently, and collapsing them would have downgraded its challenge.
+- Corrected the record of how device tokens are authorised. It said three middlewares disagreed;
+  there are five, and four of them already agree — a device is its own principal, with no access
+  to its owner's account. `requireAnyAuth` is the single exception, and it is now instrumented:
+  when a device token reaches it, core reports `auth.device_token_on_data_plane` with the route
+  it hit, so the branch can be removed on evidence rather than on a source read that found no
+  caller.
+
 ### Removed
 
 - Six more MCP tools, each replaced by a route a token can actually reach:

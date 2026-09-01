@@ -23,6 +23,7 @@ import { isPatLike } from '../auth/pat-format.js';
 import { RULES } from '../config/rate-limits.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { parseBearerHeader } from './bearer.js';
 import { getClientIp } from './rate-limit.js';
 
 export type PatPrincipal = {
@@ -233,11 +234,11 @@ export async function authenticatePat(c: Context, token: string): Promise<PatPri
 
 export const requirePatOrDevice = (): MiddlewareHandler<{ Variables: PrincipalVars }> => {
   return async (c, next) => {
-    const header = c.req.header('authorization');
-    if (!header) throw unauth('authentication required');
-    const match = /^Bearer\s+(.+)$/i.exec(header);
-    const token = match?.[1]?.trim();
-    if (!token) throw unauth('invalid authorization header', { invalidRequest: true });
+    const parsed = parseBearerHeader(c);
+    if (parsed.kind === 'absent') throw unauth('authentication required');
+    if (parsed.kind === 'malformed')
+      throw unauth('invalid authorization header', { invalidRequest: true });
+    const token = parsed.token;
 
     if (isPatLike(token)) {
       const principal = await authenticatePat(c, token);

@@ -1,17 +1,12 @@
 import type { Context } from 'hono';
 import { deleteCookie, setCookie } from 'hono/cookie';
 import { env } from '../config/env.js';
+import { AUTH_COOKIE_NAME, REFRESH_COOKIE_NAME } from './cookie-names.js';
 import { USER_JWT_TTL_SECONDS } from './jwt.js';
 import { REFRESH_TOKEN_TTL_SECONDS } from './refresh-token.js';
 
-export const AUTH_COOKIE_NAME = 'forge_auth';
-/**
- * Refresh cookie scoped narrowly to /api/auth so other routes never see
- * (and therefore never log) the long-lived rotation token. Browsers
- * still send it on the cross-origin POST /auth/refresh path because
- * SameSite=Lax permits same-site cross-origin requests.
- */
-export const REFRESH_COOKIE_NAME = 'forge_refresh';
+export { AUTH_COOKIE_NAME, REFRESH_COOKIE_NAME };
+
 const REFRESH_COOKIE_PATH = '/api/auth';
 
 export function setAuthCookie(c: Context, token: string): void {

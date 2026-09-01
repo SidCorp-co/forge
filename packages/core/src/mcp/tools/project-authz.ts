@@ -32,7 +32,7 @@ export async function loadUserProjectRoleFlags(
   };
 }
 
-// cm:guard THREE device-token policies exist and they DISAGREE — pick deliberately, never by picking a middleware. `/mcp` treats a device as its owner (`assertDeviceOwnerIsMember` reads `device.ownerId`); `requireAnyAuth` does the same by setting `userId = device.ownerId`; `requireUserOrDevice` deliberately does NOT, leaving `userId` unset so `loadProjectAccess` fails closed. Measured 2026-09-01 while asking why a runner box cannot reach REST: the answer was this disagreement, not the fleet's version. Choosing a middleware for a new route therefore chooses a security policy, so say which one you meant.
+// cm:guard FIVE middlewares verify a device token and exactly ONE of them — `requireAnyAuth` — hands the device its owner's account authority by setting `userId = device.ownerId`; `requireAuth` rejects devices outright and `requireUserOrDevice`, `requireDevice` and `requirePatOrDevice` (`/mcp`) all make the device its own principal with `userId` left unset so `loadProjectAccess` fails closed. Measured 2026-09-01: that one exception is the whole disagreement, so choosing a middleware for a new route chooses whether the caller gets ambient owner authority. Pick `requireAnyAuth` only if you mean that, and say so.
 /**
  * Throw if the device's owner is not a member (or owner) of the project.
  * Surfaced to the MCP caller as an `isError: true` tool result — see the
