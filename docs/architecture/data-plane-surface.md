@@ -1,8 +1,8 @@
 # The data plane: which MCP tool, which REST route
 
 **Most MCP tools that read or write data have a REST twin the CLI reaches.** This table is what an
-agent or a skill author calls instead. Six tools stay on MCP by design; four have a REST route the
-CLI cannot reach yet, and one has no route at all.
+agent or a skill author calls instead. Six tools stay on MCP by design, three sit behind a fence
+that is deliberate and permanent, two are open questions, and one has no route at all.
 
 Verified 2026-09-01 against `registered-tools.ts`, the mounts in `index.ts`, and
 `PAT_ALLOWED_PREFIXES` in `middleware/pat-rest-surface.ts`. Where a route is listed, it was checked
@@ -65,23 +65,35 @@ cannot satisfy the evidence gate on `developed`, `testing` or a merge claim.
 | `forge_step_start` · `forge_phase` | session lifecycle hooks, not data queries |
 | `forge_step_handoff.write` / `.get` / `.delete` | same — the handoff is session state |
 
-## Not reachable from the CLI
+## Fenced on purpose — do not "fix" these by adding a prefix
 
-| Tool | REST route | Why not |
+`PAT_ALLOWED_PREFIXES` names four prefixes as the ones *"where being wrong once ends the fence for
+good"*: `/api/pat`, `/api/orgs`, `/api/admin`, `/api/me`. None of them resolves a project, so a
+project-scoped token there is an account-scoped credential wearing a project-scoped label.
+
+| Tool | REST route | Why it stays out |
 |---|---|---|
-| `forge_orgs.list` · `forge_orgs.members` | `/api/orgs` | prefix not on the allowlist |
-| `forge_runners` | `/api/runners` | prefix not on the allowlist |
-| `forge_feedback` | `/api/feedback-reports` | prefix not on the allowlist |
-| `forge_collaborators` | `/api/me/collaborators` | `/api/me` resolves no project, so a project-scoped token has nothing to be fenced on |
-| `forge_storefront_target` | — | no REST route exists |
+| `forge_orgs.list` · `forge_orgs.members` | `/api/orgs` | org-wide by definition; a token bound to one project has no business enumerating the org |
+| `forge_collaborators` | `/api/me/collaborators` | `/api/me` is caller-scoped, not project-scoped |
+| — | `/api/pat` | a scoped token that can mint an unscoped one has no scope. This is the entry whose absence collapses every other one |
 
-Two exclusions are permanent and must not be "fixed" by adding a prefix:
+Two more are fenced for the same reason even though their prefix IS allowlisted:
 
-- **`/api/me/ops-health`** fans out across every project the caller can see. A token locked to one
-  project that could read it would be outside its own fence. The per-project twin
+- **`/api/me/ops-health`** fans out across every project the caller can see. The per-project twin
   (`/api/projects/:id/ops-health`) is the one a PAT reaches.
 - **`/api/agent-sessions`** (the unscoped list) returns every session of every visible project,
   `messages[]` included. The project-scoped twin under `/api/projects/:id` is the PAT surface.
+
+A caller that genuinely needs one of these uses a session (browser/desktop login), or gets a
+project-scoped twin built for it — not a widened fence.
+
+## Open — no PAT route yet, and no decision recorded either way
+
+| Tool | REST route | State |
+|---|---|---|
+| `forge_runners` | `/api/runners` | fleet-wide, but a project-scoped twin is plausible; nothing decided |
+| `forge_feedback` | `/api/feedback-reports` | project-scoped in practice; nothing decided |
+| `forge_storefront_target` | — | no REST route exists at all |
 
 ## Calling it
 
