@@ -17,6 +17,9 @@
 
 ### Added
 
+- A UX finding can now be recorded over REST: `POST /api/projects/:id/ux-findings`. Reading them
+  was already a route; writing one was only possible through a tool, which is why the highest-
+  traffic tool of its group could not be retired.
 - Per-step pipeline durations for one project: `GET /api/projects/:id/metrics/step-durations`.
   The cross-project view already existed but deliberately refuses access tokens, since it reads
   across every project you can see — so this is the half a token can reach.
