@@ -37,8 +37,8 @@ function reportDeviceOnDataPlane(c: Context, deviceId: string): void {
   if (!isSentryEnabled()) return;
   Sentry.captureMessage('auth.device_token_on_data_plane', {
     level: 'warning',
-    tags: { path: c.req.routePath, method: c.req.method },
-    extra: { deviceId },
+    tags: { route: c.req.routePath, method: c.req.method },
+    extra: { deviceId, path: c.req.path },
   });
 }
 
