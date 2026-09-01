@@ -70,7 +70,7 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/issues/attachment-routes.test.ts": {
-      "fileLines": 536,
+      "fileLines": 535,
       "maxFunctionLines": 0
     },
     "packages/core/src/issues/decompose.ts": {

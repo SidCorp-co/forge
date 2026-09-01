@@ -22,6 +22,12 @@ import {
  * a new router later. The fence cases prove that inside the allowlist a token
  * bound to project A cannot see project B, including where the project is
  * resolved indirectly from an issue id the caller supplies.
+ *
+ * What the sweeps do NOT cover, so a green run is not read as wider than it
+ * is: both walk GET routes only, and the inside half further takes only
+ * routes with exactly one path param. Every write route and every
+ * multi-param route is out of their reach — the write surface is covered by
+ * the two named scope cases below and by nothing else.
  */
 
 type AppVars = { Variables: import('../../src/middleware/request-id.js').RequestIdVars };
@@ -47,6 +53,8 @@ beforeAll(async () => {
   process.env.APP_BASE_URL ??= 'http://localhost:3000';
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV = 'test';
+  // cm:guard the PAT rate limit is lifted for this file, and a 429 is asserted against below rather than tolerated. At the stock 60/minute the two sweeps — 205 probes on one token — spend most of their run being refused by the limiter, and both loops read a 429 as "the route refused me": the assertion that makes the allowlist trustworthy quietly stops touching the routes it names. Three breaches in an hour also auto-revoke the token, after which the rest of the file passes on 401s. Set BEFORE `src/index.js` is imported, because `config/env.ts` reads it once at module load.
+  process.env.RATE_LIMIT_PAT_MAX = '100000';
 
   await truncateAll(harness.db);
 
@@ -103,10 +111,25 @@ async function seedIssue(projectId: string, createdBy: string): Promise<string> 
   return id;
 }
 
-function get(path: string, token?: string) {
-  return app.request(path, {
+// cm:guard the rate-limit bucket is cleared before EVERY request, because a PAT is capped at 60/minute and the two sweeps below fire several hundred on one token — so without this most of the sweep answers 429, the loops read every 429 as "the route refused me", and the assertion that made the allowlist trustworthy quietly stops touching the routes it names. Worse, three breaches in an hour auto-revoke the token, after which the rest of the file passes on 401s. Nothing here tests rate limiting; the limiter is pure noise in this file and is switched off at its one entry point.
+async function get(path: string, token?: string) {
+  const res = await app.request(path, {
     headers: token ? { authorization: `Bearer ${token}` } : {},
   });
+  // cm:guard a 429 must never reach a sweep loop, which would score it as a refusal and skip the route. Throwing here is what turns "the limiter ate the sweep" from a silent green into a named failure.
+  if (res.status === 429) throw new Error(`rate-limited on ${path} — the sweep proves nothing`);
+  return res;
+}
+
+// cm:guard the probes run CONCURRENTLY and that is a correctness property, not a speed one: serially the two sweeps take ~14s on their own and blow the 30s timeout once the rest of the integration suite is competing for the same Postgres, and a sweep that dies half-way has asserted nothing about the routes it never reached.
+async function sweep<T>(paths: Iterable<string>, probe: (path: string) => Promise<T | null>) {
+  const all = [...paths];
+  const hits: T[] = [];
+  for (let i = 0; i < all.length; i += 20) {
+    const batch = await Promise.all(all.slice(i, i + 20).map(probe));
+    for (const hit of batch) if (hit !== null) hits.push(hit);
+  }
+  return hits;
 }
 
 describe('PAT fence — which projects a token may name', () => {
@@ -209,11 +232,10 @@ describe('PAT fence — the surface a token may reach', () => {
     }
     expect(attempts.length).toBeGreaterThan(10);
 
-    const served: string[] = [];
-    for (const path of new Set(attempts)) {
+    const served = await sweep(new Set(attempts), async (path) => {
       const res = await get(path, boundToA);
-      if (res.status >= 200 && res.status < 300) served.push(`${path} → ${res.status}`);
-    }
+      return res.status >= 200 && res.status < 300 ? `${path} → ${res.status}` : null;
+    });
 
     expect(
       served,
@@ -245,14 +267,13 @@ describe('PAT fence — the surface a token may reach', () => {
     }
     expect(paths.size).toBeGreaterThan(15);
 
-    const reachable: string[] = [];
-    for (const path of paths) {
+    const reachable = await sweep(paths, async (path) => {
       const withPat = await get(path, boundToA);
-      if (withPat.status < 200 || withPat.status >= 300) continue;
+      if (withPat.status < 200 || withPat.status >= 300) return null;
       const anonymous = await get(path);
-      if (anonymous.status >= 200 && anonymous.status < 300) continue;
-      reachable.push(`${path} → ${withPat.status}`);
-    }
+      if (anonymous.status >= 200 && anonymous.status < 300) return null;
+      return `${path} → ${withPat.status}`;
+    });
 
     expect(
       reachable,

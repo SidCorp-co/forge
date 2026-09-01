@@ -73,11 +73,10 @@ vi.mock('../auth/pat.js', async () => {
   // cm:guard `touchPatUsage` is stubbed OUT, not left real: it fires a `db.update` the moment a PAT verifies, and this file's db mock serves one shared queue, so the real one steals the row the handler was about to read and the failure lands on the handler as a 500. Its own error handling is irrelevant here — the theft happens before anything throws.
   return { ...actual, verifyPat: verifyPatMock, touchPatUsage: () => {} };
 });
-vi.mock('../auth/deviceToken.js', async () => {
-  const actual =
-    await vi.importActual<typeof import('../auth/deviceToken.js')>('../auth/deviceToken.js');
-  return { ...actual, verifyDeviceToken: (...args: unknown[]) => verifyDeviceTokenMock(...args) };
-});
+vi.mock('../auth/deviceToken.js', async () => ({
+  ...(await vi.importActual<typeof import('../auth/deviceToken.js')>('../auth/deviceToken.js')),
+  verifyDeviceToken: verifyDeviceTokenMock,
+}));
 
 const { issueAttachmentRoutes, attachmentRoutes } = await import('./attachment-routes.js');
 const { signUserToken } = await import('../auth/jwt.js');

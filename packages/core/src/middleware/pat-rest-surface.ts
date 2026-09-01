@@ -37,8 +37,9 @@ export const PAT_ALLOWED_PREFIXES: readonly string[] = [
   '/api/skill-facts',
   '/api/skills',
   '/api/tasks',
-  '/api/uploads',
 ];
+
+// cm:edge contract -> packages/core/src/uploads/routes.ts — `/api/uploads` is deliberately NOT here and must not be added: both its routes are mounted with no auth middleware at all (the ticket id IS the credential), so the entry would grant nothing today while pre-approving PAT reach the day someone bolts a gate on. It was listed until 2026-09-01 on the assumption that an allowlisted prefix is inert where no PAT branch runs; inert is exactly the problem — nobody would be making that decision when it stopped being inert.
 
 /**
  * `/api/pat` must never be reachable: a scoped token that can mint an
