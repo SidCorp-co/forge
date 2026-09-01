@@ -1,8 +1,8 @@
 # The data plane: which MCP tool, which REST route
 
-**Every MCP tool that reads or writes data has a REST twin, and the CLI reaches it.** This table is
-what an agent or a skill author calls instead. Six tools stay on MCP; five have a REST route the CLI
-cannot reach yet.
+**Most MCP tools that read or write data have a REST twin the CLI reaches.** This table is what an
+agent or a skill author calls instead. Six tools stay on MCP by design; four have a REST route the
+CLI cannot reach yet, and one has no route at all.
 
 Verified 2026-09-01 against `registered-tools.ts`, the mounts in `index.ts`, and
 `PAT_ALLOWED_PREFIXES` in `middleware/pat-rest-surface.ts`. Where a route is listed, it was checked
@@ -21,6 +21,10 @@ flowchart LR
 The fence is an allowlist, not a deny-list: **a new REST route is 403 to every PAT until its prefix
 is added.** That is deliberate — a forgotten entry costs a caller an error they report, where a
 forgotten deny-list entry is a silent leak nobody reports.
+
+**The allowlist only governs routes that authenticate.** A router mounted with no auth middleware
+never reaches `beginPatRequest`, so the fence never runs and the prefix is irrelevant — `/api/guides`
+is the live example. Read the mount and its middleware, not the prefix alone.
 
 ## Reachable from the CLI today
 
@@ -46,6 +50,7 @@ forgotten deny-list entry is a silent leak nobody reports.
 | `forge_ux_findings` | `/api/projects/:id/ux-findings` |
 | `forge_schedules` | `/api/schedules` |
 | `forge_health` | `/health` (public), `/api/projects/health` |
+| `forge_guide` | `/api/guides`, `/api/guides/:slug` — unauthenticated by design, so the fence does not apply |
 
 Two fields were MCP-only until 2026-09-01 and are now on `PATCH /api/issues/:id`:
 `sessionContext` and `detectorKey`. `sessionContext.branch` is the direct-ship marker
@@ -66,7 +71,6 @@ cannot satisfy the evidence gate on `developed`, `testing` or a merge claim.
 |---|---|---|
 | `forge_orgs.list` · `forge_orgs.members` | `/api/orgs` | prefix not on the allowlist |
 | `forge_runners` | `/api/runners` | prefix not on the allowlist |
-| `forge_guide` | `/api/guides`, `/guides` | prefix not on the allowlist |
 | `forge_feedback` | `/api/feedback-reports` | prefix not on the allowlist |
 | `forge_collaborators` | `/api/me/collaborators` | `/api/me` resolves no project, so a project-scoped token has nothing to be fenced on |
 | `forge_storefront_target` | — | no REST route exists |
