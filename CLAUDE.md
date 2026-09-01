@@ -22,11 +22,18 @@ number.
 
 ## Commands
 
-**`pnpm verify` when you finish coding, before you push** — the conformance entrypoint. It runs
-every check CI runs, reports all of them in one pass instead of stopping at the first, and prints
-the `cm:guard` / `cm:edge` / `cm:flow` declared on the files you touched. Exit `0` clean · `1`
-violations · `2` a check could not run. Hooks only make it arrive sooner; a contributor with no
-plugin installed is held to exactly the same bar.
+**`pnpm verify` when you finish coding, before you push** — the conformance entrypoint. It reports
+every check it runs in one pass instead of stopping at the first, and prints the `cm:guard` /
+`cm:edge` / `cm:flow` declared on the files you touched. Exit `0` clean · `1` violations · `2` a
+check could not run. Hooks only make it arrive sooner; a contributor with no plugin installed is
+held to exactly the same bar.
+
+**A green `verify` is not a green CI.** It does not run the test suites or the build — it declares
+them instead, and prints them under *"CI runs these too — verify does NOT"* at the end of every
+run. Run `pnpm test`, `pnpm --filter @forge/core test:integration` and `pnpm build` yourself before
+you push, and read that block rather than grepping the `ok`/`red` lines past it. This paragraph
+used to say verify "runs every check CI runs"; that sentence put a red commit on `main` on
+2026-09-01 — refactoring a mocked call path passed all 21 checks and failed `pnpm test` on CI.
 
 From the repo root, turbo fans out: `pnpm dev` / `pnpm build` / `pnpm test` / `pnpm typecheck` /
 `pnpm lint`. Per package (from inside `packages/<pkg>/`):
