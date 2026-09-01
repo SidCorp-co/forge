@@ -24,6 +24,7 @@ import {
   loadProjectAccess,
   maxProjectRole,
   orgDerivedProjectRole,
+  visibleProjectsWhere,
 } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { isEnabled } from '../lib/feature-flags.js';
@@ -235,10 +236,7 @@ projectRoutes.get('/', async (c) => {
       and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
     )
     .where(
-      and(
-        sql`${projectMembers.userId} IS NOT NULL OR ${organizationMembers.role} IN ('owner', 'admin')`,
-        ...(includeArchived ? [] : [isNull(projects.archivedAt)]),
-      ),
+      and(...visibleProjectsWhere(), ...(includeArchived ? [] : [isNull(projects.archivedAt)])),
     )
     // DISTINCT ON requires its leading ORDER BY expression to match the
     // distinct column. Without this the list order was arbitrary/run-varying,

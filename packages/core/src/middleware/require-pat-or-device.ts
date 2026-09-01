@@ -15,7 +15,7 @@
  *   - records last-used timestamp + IP asynchronously
  */
 
-import type { MiddlewareHandler } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { type Device, verifyDeviceToken } from '../auth/deviceToken.js';
 import { forceRevokePat, touchPatUsage, verifyPat } from '../auth/pat.js';
@@ -187,6 +187,50 @@ function maybeEmitPatUsed(tokenId: string, userId: string): void {
   });
 }
 
+/**
+ * Verify a `forge_pat_*` token and charge it against its rate limit, or
+ * return null when the token does not resolve. Throws 429 when the token is
+ * over its ceiling.
+ *
+ * Shared with `requireAuth()` in `middleware/auth.ts`, which authenticates the
+ * same tokens on the REST data plane. Extracted rather than copied because the
+ * three-breaches-an-hour auto-revoke only works while every surface that
+ * accepts a PAT charges the SAME bucket.
+ */
+export async function authenticatePat(c: Context, token: string): Promise<PatPrincipal | null> {
+  const verified = await verifyPat(token);
+  if (!verified) return null;
+  const { row } = verified;
+
+  const outcome = checkPatRateLimit(row.id, row.rateLimitMax);
+  c.header('X-RateLimit-Limit', String(row.rateLimitMax ?? RULES.patPerToken.max));
+  c.header('X-RateLimit-Remaining', String(outcome.remaining));
+  if (!outcome.allowed) {
+    if (outcome.breachedThreshold) {
+      // Sustained abuse — burn the token. Fire-and-forget so the 429 is fast.
+      void forceRevokePat(row.id);
+    }
+    const retryAfterSeconds = Math.max(1, Math.ceil(outcome.resetMs / 1000));
+    c.header('Retry-After', String(retryAfterSeconds));
+    throw new HTTPException(429, {
+      message: 'rate limit exceeded',
+      cause: { code: 'RATE_LIMITED', details: { retryAfterSeconds } },
+    });
+  }
+
+  touchPatUsage(row.id, getClientIp(c));
+  maybeEmitPatUsed(row.id, row.userId);
+  return {
+    kind: 'pat',
+    agency: 'human',
+    userId: row.userId,
+    tokenId: row.id,
+    scopes: row.scopes,
+    projectIds: row.projectIds ?? null,
+    boundProjectId: row.boundProjectId ?? null,
+  };
+}
+
 export const requirePatOrDevice = (): MiddlewareHandler<{ Variables: PrincipalVars }> => {
   return async (c, next) => {
     const header = c.req.header('authorization');
@@ -196,38 +240,10 @@ export const requirePatOrDevice = (): MiddlewareHandler<{ Variables: PrincipalVa
     if (!token) throw unauth('invalid authorization header', { invalidRequest: true });
 
     if (isPatLike(token)) {
-      const verified = await verifyPat(token);
-      if (!verified) throw unauth('invalid personal access token', { invalidToken: true });
-      const { row } = verified;
-
-      const outcome = checkPatRateLimit(row.id, row.rateLimitMax);
-      c.header('X-RateLimit-Limit', String(row.rateLimitMax ?? RULES.patPerToken.max));
-      c.header('X-RateLimit-Remaining', String(outcome.remaining));
-      if (!outcome.allowed) {
-        if (outcome.breachedThreshold) {
-          // Sustained abuse — burn the token. Fire-and-forget so the 429 is fast.
-          void forceRevokePat(row.id);
-        }
-        const retryAfterSeconds = Math.max(1, Math.ceil(outcome.resetMs / 1000));
-        c.header('Retry-After', String(retryAfterSeconds));
-        throw new HTTPException(429, {
-          message: 'rate limit exceeded',
-          cause: { code: 'RATE_LIMITED', details: { retryAfterSeconds } },
-        });
-      }
-
-      touchPatUsage(row.id, getClientIp(c));
-      maybeEmitPatUsed(row.id, row.userId);
-      c.set('patTokenId', row.id);
-      c.set('principal', {
-        kind: 'pat',
-        agency: 'human',
-        userId: row.userId,
-        tokenId: row.id,
-        scopes: row.scopes,
-        projectIds: row.projectIds ?? null,
-        boundProjectId: row.boundProjectId ?? null,
-      });
+      const principal = await authenticatePat(c, token);
+      if (!principal) throw unauth('invalid personal access token', { invalidToken: true });
+      c.set('patTokenId', principal.tokenId);
+      c.set('principal', principal);
       await next();
       return;
     }
