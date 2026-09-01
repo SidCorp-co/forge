@@ -69,35 +69,35 @@ export type MergeMarkerActor = {
  */
 // cm:guard ONE implementation, and the reason is the whole ISS-786 gate: this lived inside the MCP tool, so `POST /api/issues/:id/merge` could only have been a second copy — and a second copy is where the evidence check gets left out, exactly as it was left out of the batch route's actor. The gate reads `agency`, never device-ness, because a job token is an agent writing as the person who queued it.
 export async function applyMergeMarker(args: {
-  issueId: string;
+  /** Already loaded AND authorised by the caller — this function does neither. */
+  issue: { id: string; projectId: string; mergedAt: Date | null };
   op: 'mark' | 'unmark';
   target?: string;
   note?: string | undefined;
   mergedAt?: Date | null;
   actor: MergeMarkerActor;
 }): Promise<{ issue: IssueRow; action: 'merged' | 'unmarked' }> {
-  const before = await findIssueById(args.issueId);
-  if (!before) throw new MergeMarkerError('ISSUE_NOT_FOUND', 'issue not found');
+  const before = args.issue;
 
   if (args.op === 'mark') {
     if (args.actor.agency === 'agent') {
-      const missing = await findMissingWorkEvidence(args.issueId);
+      const missing = await findMissingWorkEvidence(before.id);
       if (missing) throw new MergeMarkerError('NO_WORK_EVIDENCE', missing);
     }
-    await stampIssueMergedAt(args.issueId, args.mergedAt ?? null);
+    await stampIssueMergedAt(before.id, args.mergedAt ?? null);
   } else {
-    await clearIssueMergedAt(args.issueId);
+    await clearIssueMergedAt(before.id);
   }
 
   const label = args.op === 'mark' ? `mark_merged target=${args.target ?? '<unset>'}` : 'unmark';
   const auditComment = await writeAuditComment(
-    args.issueId,
+    before.id,
     args.actor.commentAuthorId,
     `${label}${args.note ? ` — ${args.note}` : ''}`,
   );
   if (auditComment) {
     await hooks.emit('commentCreated', {
-      issueId: args.issueId,
+      issueId: before.id,
       projectId: before.projectId,
       actor: args.actor.hookActor,
       commentId: auditComment.id,
@@ -106,10 +106,10 @@ export async function applyMergeMarker(args: {
     });
   }
 
-  const issue = await findIssueById(args.issueId);
+  const issue = await findIssueById(before.id);
   if (!issue) throw new MergeMarkerError('ISSUE_NOT_FOUND', 'issue not found');
   await hooks.emit('issueUpdated', {
-    issueId: args.issueId,
+    issueId: before.id,
     projectId: before.projectId,
     actor: args.actor.hookActor,
     fields: ['mergedAt'],

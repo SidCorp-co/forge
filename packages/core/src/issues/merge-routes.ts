@@ -49,7 +49,7 @@ async function runMergeMarker(
   const userId = c.get('userId');
 
   const [issue] = await db
-    .select({ id: issues.id, projectId: issues.projectId })
+    .select({ id: issues.id, projectId: issues.projectId, mergedAt: issues.mergedAt })
     .from(issues)
     .where(eq(issues.id, issueId))
     .limit(1);
@@ -65,7 +65,7 @@ async function runMergeMarker(
   const actor = restActor(c);
   try {
     const { action } = await applyMergeMarker({
-      issueId,
+      issue,
       op,
       ...(body.target ? { target: body.target } : {}),
       ...(body.note ? { note: body.note } : {}),
