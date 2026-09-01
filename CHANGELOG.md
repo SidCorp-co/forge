@@ -62,6 +62,17 @@
   rather than doing something surprising. Every steer is recorded as an intervention, because a
   person reaching into a running agent is exactly what that count is for.
 
+- Six things that were only reachable by an agent holding an MCP connection are now ordinary HTTP
+  endpoints, so a shell, a script or a browser can do them too: the server's version and uptime
+  (`GET /version`), an ops snapshot for one project or for every project you can see, a project's
+  Divergence Charter (read and replace), a project's Postman write-target, and the three moves a
+  batch release needs — read the batch, finish it, abort it. The MCP tools that used to be the only
+  way in are gone in the same change rather than left beside the new routes, because two live paths
+  to one rule is how the two stop agreeing. The release-batch endpoints name the project and the run
+  separately, so they check the run belongs to the project before doing anything — a token fenced to
+  one project cannot finish another's release, and it gets the same "not found" a missing batch
+  gives rather than being told the run exists somewhere else.
+
 ### Fixed
 
 - Opening any issue now works again. Every issue's detail page answered "This page couldn't load" —
