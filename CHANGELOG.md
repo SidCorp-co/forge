@@ -17,6 +17,9 @@
 
 ### Added
 
+- Three PM reads that were only ever reachable through a tool now have routes:
+  `GET /api/projects/:id/pm/{snapshot,graph,runner-load}` — the state of a project's work, its
+  dependency graph, and what each runner is carrying.
 - A UX finding can now be recorded over REST: `POST /api/projects/:id/ux-findings`. Reading them
   was already a route; writing one was only possible through a tool, which is why the highest-
   traffic tool of its group could not be retired.

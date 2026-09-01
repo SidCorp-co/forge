@@ -150,6 +150,7 @@ import {
   unregisterPmEscalationSweeper,
 } from './pm/escalation-sweeper.js';
 import { registerPmQueuePressureSweeper } from './pm/queue-pressure.js';
+import { pmReadRoutes } from './pm/read-routes.js';
 import { pmRoutes } from './pm/routes.js';
 import { collaboratorsMeRoutes } from './projects/collaborators-routes.js';
 import { gitCredentialRoutes } from './projects/git-credential-routes.js';
@@ -441,6 +442,7 @@ if (isEnabled('chatProvider')) {
 if (isEnabled('pmAgent')) {
   app.route('/api/projects', pmRoutes);
 }
+app.route('/api/projects', pmReadRoutes);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
