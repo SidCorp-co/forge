@@ -22,7 +22,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Call any Forge REST endpoint with this device's credentials (`gh api` shaped).
+    /// Call any Forge REST endpoint with a personal access token (`gh api` shaped).
     Api(cmd::api::Args),
     /// Pair this device with Forge via browser approval (OAuth device flow).
     Login(cmd::login::Args),
