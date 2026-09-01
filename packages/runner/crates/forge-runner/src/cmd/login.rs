@@ -19,9 +19,28 @@ pub struct Args {
     /// Skip opening the browser; print the approval URL instead.
     #[arg(long)]
     pub no_browser: bool,
+    /// Store a Personal Access Token for `forge-runner api`. Used alone, this
+    /// stores the token and does not pair a device.
+    #[arg(long)]
+    pub pat: Option<String>,
 }
 
 pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
+    // cm:guard storing a PAT returns EARLY and pairs nothing. The two credentials answer different questions — a device token says which machine this is, a PAT says which projects a caller may speak for — and folding the PAT into the pairing flow would make `--pat` mean "pair this box too", which is not what someone reaching for a REST token asked for.
+    if let Some(pat) = args.pat.as_deref() {
+        let pat = pat.trim();
+        if pat.is_empty() {
+            anyhow::bail!("--pat was empty");
+        }
+        cred_store::store_pat(pat)?;
+        println!(
+            "✔ stored personal access token (store: {})",
+            cred_store::active_backend()
+        );
+        println!("  next: forge-runner api issues");
+        return Ok(());
+    }
+
     let mut cfg = Config::load()?;
     let core_url = ctx
         .resolve_core_url(&cfg)

@@ -90,6 +90,14 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         _ => println!("✔ cred store   {backend}"),
     }
 
+    // cm:guard report the PAT's ABSENCE, never its value or a prefix of it. `doctor` output is what people paste into a bug report, and a token fragment there is a token disclosed — the only fact worth printing is whether `forge-runner api` has a credential at all.
+    match cred_store::load_pat() {
+        Ok(Some(_)) => println!("✔ rest token   personal access token present (`forge-runner api`)"),
+        _ => println!(
+            "• rest token   none — `forge-runner api` needs one (`forge-runner login --pat <token>` or $FORGE_PAT)"
+        ),
+    }
+
     // Best-effort update check (3s budget — never blocks doctor).
     if let Some(url) = update::manifest_url(
         cfg.update.manifest_url.as_deref(),

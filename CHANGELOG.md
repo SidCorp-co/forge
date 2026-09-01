@@ -14,8 +14,14 @@
   `gh api`. `issues`, `/issues` and `/api/issues` all mean the same endpoint; `-X` picks a method,
   `-d` sends a JSON body (`-` reads stdin, and a body that is not JSON is refused before anything
   is sent rather than after a round trip), `-H` adds a header, `-i` shows the response headers.
-  It uses the credentials the runner already holds, so there is nothing new to install or
-  configure. Failures are told twice, once for a person and once for a program: the HTTP outcome
+  It speaks with a personal access token — `forge-runner login --pat <token>` stores one, or
+  `$FORGE_PAT` supplies it per-shell, and `doctor` says whether one is present. A token bound to a
+  project reaches that project and answers 404 on every other, which is the same answer a project
+  that does not exist gives, so a token cannot be used to find out which project ids are real. The
+  handful of routes that resolve no project at all — access tokens, organisations, admin, and the
+  personal inbox — refuse it outright rather than quietly serving the whole account, and a token
+  minted read-only is refused on anything that writes. Failures are told twice, once for a person
+  and once for a program: the HTTP outcome
   becomes an exit code that `--help` prints in full, and the same reason leaves on stderr as JSON
   carrying `retryable` — true only where trying the identical request again could actually
   succeed, which is a 429, a 5xx, or a connection that never landed. A conflict or a rejected

@@ -1,4 +1,5 @@
-//! Credential store for the device token.
+//! Credential store for this machine's Forge credentials: the device token a
+//! runner pairs with, and optionally a Personal Access Token.
 //!
 //! Order of preference:
 //!   1. OS keychain via `keyring` (macOS/Windows/Linux secret-service)
@@ -22,6 +23,8 @@ const SERVICE: &str = "forge-runner";
 const LEGACY_SERVICE: &str = "forge-beta";
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const DEVICE_ACCOUNT: &str = "device-token";
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const PAT_ACCOUNT: &str = "pat";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
@@ -129,6 +132,61 @@ pub fn clear_device_token() -> Result<()> {
     Ok(())
 }
 
+/// The Personal Access Token this machine holds, if any.
+///
+/// `$FORGE_PAT` wins over anything stored, so a CI job or a one-off shell can
+/// speak as a different principal without touching the store.
+// cm:guard the env var is read HERE and not at the call site, so every consumer of a PAT resolves it the same way. A second resolution order elsewhere is how one command honours `$FORGE_PAT` and the next quietly ignores it.
+pub fn load_pat() -> Result<Option<String>> {
+    if let Ok(tok) = std::env::var("FORGE_PAT") {
+        let tok = tok.trim();
+        if !tok.is_empty() {
+            return Ok(Some(tok.to_string()));
+        }
+    }
+    if matches!(forced_backend(), Some(Backend::File)) {
+        return file_load_pat();
+    }
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        if let Ok(tok) = keyring::Entry::new(SERVICE, PAT_ACCOUNT).and_then(|e| e.get_password()) {
+            return Ok(Some(tok));
+        }
+    }
+    file_load_pat()
+}
+
+pub fn store_pat(token: &str) -> Result<()> {
+    if matches!(forced_backend(), Some(Backend::File)) {
+        return file_store_pat(token);
+    }
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        match keyring::Entry::new(SERVICE, PAT_ACCOUNT).and_then(|e| e.set_password(token)) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                tracing::warn!("keychain unavailable ({e}); using 0600 file credential store")
+            }
+        }
+    }
+    file_store_pat(token)
+}
+
+pub fn clear_pat() -> Result<()> {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        if let Ok(entry) = keyring::Entry::new(SERVICE, PAT_ACCOUNT) {
+            let _ = entry.delete_credential();
+        }
+    }
+    let mut cred = read_cred_file()?;
+    if cred.pat.is_some() {
+        cred.pat = None;
+        write_cred_file(&cred)?;
+    }
+    Ok(())
+}
+
 /// Load from the keychain, treating any error as "absent" so the caller falls
 /// through to the file store. (macOS/Windows only.)
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -141,6 +199,8 @@ fn keychain_load(service: &str) -> Option<String> {
 #[derive(Serialize, Deserialize, Default)]
 struct CredFile {
     device_token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pat: Option<String>,
 }
 
 fn file_path() -> Result<PathBuf> {
@@ -149,16 +209,23 @@ fn file_path() -> Result<PathBuf> {
     Ok(dir.join("forge-runner").join("credentials.json"))
 }
 
-fn file_store(token: &str) -> Result<()> {
+fn read_cred_file() -> Result<CredFile> {
+    let p = file_path()?;
+    if !p.exists() {
+        return Ok(CredFile::default());
+    }
+    let raw = std::fs::read_to_string(p)?;
+    serde_json::from_str(&raw).map_err(|e| Error::Other(e.to_string()))
+}
+
+// cm:guard READ-MODIFY-WRITE, never a fresh CredFile — the file holds two independent credentials now, so serialising one field's value into a default struct silently deletes the other. `forge-runner login` would log the machine out of the REST API it never touched.
+fn write_cred_file(cred: &CredFile) -> Result<()> {
     let p = file_path()?;
     if let Some(parent) = p.parent() {
         std::fs::create_dir_all(parent)?;
         restrict_dir(parent);
     }
-    let body = serde_json::to_string(&CredFile {
-        device_token: Some(token.to_string()),
-    })
-    .map_err(|e| Error::Other(e.to_string()))?;
+    let body = serde_json::to_string(cred).map_err(|e| Error::Other(e.to_string()))?;
     let tmp = p.with_extension("json.tmp");
     std::fs::write(&tmp, body)?;
     restrict_file(&tmp);
@@ -166,14 +233,24 @@ fn file_store(token: &str) -> Result<()> {
     Ok(())
 }
 
+fn file_store(token: &str) -> Result<()> {
+    let mut cred = read_cred_file()?;
+    cred.device_token = Some(token.to_string());
+    write_cred_file(&cred)
+}
+
 fn file_load() -> Result<Option<String>> {
-    let p = file_path()?;
-    if !p.exists() {
-        return Ok(None);
-    }
-    let raw = std::fs::read_to_string(p)?;
-    let parsed: CredFile = serde_json::from_str(&raw).map_err(|e| Error::Other(e.to_string()))?;
-    Ok(parsed.device_token)
+    Ok(read_cred_file()?.device_token)
+}
+
+fn file_store_pat(token: &str) -> Result<()> {
+    let mut cred = read_cred_file()?;
+    cred.pat = Some(token.to_string());
+    write_cred_file(&cred)
+}
+
+fn file_load_pat() -> Result<Option<String>> {
+    Ok(read_cred_file()?.pat)
 }
 
 #[cfg(unix)]
@@ -190,3 +267,60 @@ fn restrict_dir(p: &std::path::Path) {
 fn restrict_file(_p: &std::path::Path) {}
 #[cfg(not(unix))]
 fn restrict_dir(_p: &std::path::Path) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One test, not four: the store reads process-wide env (`XDG_CONFIG_HOME`,
+    /// `FORGE_RUNNER_CRED_STORE`) and cargo runs tests in threads, so separate
+    /// cases would race each other's config dir.
+    #[test]
+    fn the_two_credentials_do_not_evict_each_other() {
+        let dir = std::env::temp_dir().join(format!("forge-cred-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", &dir);
+        std::env::set_var("FORGE_RUNNER_CRED_STORE", "file");
+        std::env::remove_var("FORGE_PAT");
+        let _ = clear_device_token();
+        let _ = clear_pat();
+
+        store_device_token("device-abc").unwrap();
+        store_pat("forge_pat_xyz").unwrap();
+        assert_eq!(load_device_token().unwrap().as_deref(), Some("device-abc"));
+        assert_eq!(load_pat().unwrap().as_deref(), Some("forge_pat_xyz"));
+
+        // The regression: a re-login used to serialise a fresh CredFile and
+        // take the PAT with it.
+        store_device_token("device-def").unwrap();
+        assert_eq!(load_device_token().unwrap().as_deref(), Some("device-def"));
+        assert_eq!(
+            load_pat().unwrap().as_deref(),
+            Some("forge_pat_xyz"),
+            "re-pairing the device wiped the REST token it never touched"
+        );
+
+        store_pat("forge_pat_second").unwrap();
+        assert_eq!(load_device_token().unwrap().as_deref(), Some("device-def"));
+
+        std::env::set_var("FORGE_PAT", "forge_pat_from_env");
+        assert_eq!(load_pat().unwrap().as_deref(), Some("forge_pat_from_env"));
+        std::env::set_var("FORGE_PAT", "   ");
+        assert_eq!(
+            load_pat().unwrap().as_deref(),
+            Some("forge_pat_second"),
+            "a blank FORGE_PAT must fall through to the store, not authenticate as empty"
+        );
+        std::env::remove_var("FORGE_PAT");
+
+        clear_pat().unwrap();
+        assert_eq!(load_pat().unwrap(), None);
+        assert_eq!(
+            load_device_token().unwrap().as_deref(),
+            Some("device-def"),
+            "clearing the REST token logged the device out"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

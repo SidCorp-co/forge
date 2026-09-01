@@ -33,8 +33,8 @@ lines below. They were listed here as deferred long after they landed.)
 
 | Command | What |
 |---|---|
-| `api` | Call any Forge REST endpoint with this device's credentials (`gh api` shaped) |
-| `login` | Pair this device via browser approval (OAuth device flow) |
+| `api` | Call any Forge REST endpoint with a personal access token (`gh api` shaped) |
+| `login` | Pair this device via browser approval; `--pat` stores a REST token instead |
 | `bind` | Bind a project slug to a local repo path |
 | `start` | Run the daemon — connect, register, accept jobs |
 | `status` | Connection + runner status |
@@ -69,11 +69,25 @@ safe next move is to read the state back. The response body of a failed
 call goes to stderr and never stdout, so `… > out.json` leaves that file empty
 on failure rather than filling it with an error shaped like an answer.
 
-**Reach today:** a device token authenticates the device-auth routes
-(`/api/devices/**`, `/api/jobs/**`, `/api/agent-sessions/**`). Most of the REST
-surface is behind `requireAuth`, which verifies a *user JWT* only, so those
-paths answer 401 to a device token or a PAT — see
-`docs/proposals/cli-data-surface.html` step 0b.
+**Credential.** `api` speaks with a **personal access token**, not the device
+token — a device token names a machine, and REST fences a caller by the
+projects its credential may speak for. Mint one in the web UI under
+Settings → Access tokens, then either:
+
+```
+forge-runner login --pat forge_pat_…   # stored beside the device token
+export FORGE_PAT=forge_pat_…           # or per-shell, which wins over the store
+```
+
+`forge-runner doctor` reports whether one is present.
+
+**Reach.** A token bound to a project reaches that project and 404s on every
+other — the same answer a project that does not exist gives, so a token cannot
+be used to discover which project ids are real. Routes that resolve no project
+(`/api/pat`, `/api/orgs`, `/api/admin`, `/api/me`) refuse a PAT outright with
+`PAT_NOT_PERMITTED`: there is nothing there for the fence to bite on, and a
+token that could mint another token would have no scope at all. A token minted
+without the `write` scope gets `INSUFFICIENT_SCOPE` on anything but a read.
 
 ### Skill delivery
 
