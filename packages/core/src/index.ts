@@ -50,7 +50,7 @@ import { seedDomainTemplates } from './domain-templates/seed.js';
 import { registerEagerSubscribers } from './eager-subscribers.js';
 import { feedbackReportRoutes } from './feedback/routes.js';
 import { guideRoutes } from './guides/routes.js';
-import { readLiveness } from './health/service.js';
+import { opsHealthMeRoutes, opsHealthProjectRoutes, publicHealthRoutes } from './health/routes.js';
 import { improvementMessageRoutes } from './improvement-messages/routes.js';
 import { registerRunnerReleaseRefetch } from './install/fetch-release.js';
 import { installRoutes } from './install/routes.js';
@@ -66,6 +66,7 @@ import {
 } from './integrations/rocketchat/connection-manager.js';
 import { integrationConnectionsRoutes, integrationsRoutes } from './integrations/routes.js';
 import { registerSentryAdapter } from './integrations/sentry/adapter.js';
+import { integrationTargetRoutes } from './integrations/target-routes.js';
 import { assertVaultBootSafety } from './integrations/vault.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
 import { attachmentRoutes, issueAttachmentRoutes } from './issues/attachment-routes.js';
@@ -168,6 +169,7 @@ import { skillFactsRoutes } from './skill-facts/routes.js';
 import { skillActivityRoutes } from './skills/activity-routes.js';
 import { seedBuiltinSkills } from './skills/builtin-seed.js';
 import { skillCrudRoutes } from './skills/crud-routes.js';
+import { divergenceCharterRoutes } from './skills/divergence-charter-routes.js';
 import { sweepPolicyLanded } from './skills/policy-landed.js';
 import { reconcileRoutes } from './skills/reconcile-routes.js';
 import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
@@ -207,18 +209,7 @@ const corsMiddleware = cors({
 app.use('/api/*', corsMiddleware);
 app.use('/mcp', corsMiddleware);
 
-app.get('/health', async (c) => {
-  const live = await readLiveness();
-  return c.json(
-    {
-      ok: live.ok,
-      db: { ok: live.dbOk },
-      queue: { ok: live.queueOk },
-      ws: { ok: live.wsOk },
-    },
-    live.ok ? 200 : 503,
-  );
-});
+app.route('/', publicHealthRoutes);
 
 app.notFound(notFoundHandler);
 app.onError(errorHandler);
@@ -321,6 +312,8 @@ app.route('/api/auth', oauthRoutes);
 // projectRoutes which has GET /:id with a z.uuid() validator that would
 // 400-reject the literal "health" segment.
 app.route('/api/projects', projectHealthRoutes);
+app.route('/api/projects', opsHealthProjectRoutes);
+app.route('/api/me', opsHealthMeRoutes);
 // ISS-380 — project time-series metrics. The deep `/:id/metrics/*` path does
 // not collide with projectRoutes' `GET /:id`, but mount before it to mirror the
 // health-routes precedent and keep the static-before-param ordering intent.
@@ -337,8 +330,10 @@ app.route('/api/orgs', orgRoutes);
 app.route('/api/orgs', sshKeyRoutes);
 app.route('/api/org-invitations', orgInvitationRoutes);
 app.route('/api/projects', integrationsRoutes);
+app.route('/api/projects', integrationTargetRoutes);
 app.route('/api/integration-connections', integrationConnectionsRoutes);
 app.route('/api/projects', memberRoutes);
+app.route('/api/projects', divergenceCharterRoutes);
 app.route('/api/projects', skillSyncRoutes);
 app.route('/api/projects', skillRegisterRoutes);
 app.route('/api/projects', skillStudioRoutes);
