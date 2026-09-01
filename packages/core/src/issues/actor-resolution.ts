@@ -13,6 +13,7 @@ import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './a
 
 const UNKNOWN_LABEL = 'Unknown';
 
+// cm:guard derive `isAgent` from the actor TYPE; do NOT read `activity_log.actor_agency` here yet — every row written before 2026-09-02 carries that column's `human` DEFAULT, runner writes included, so a feed wired to it would drop the agent marker across all of history. It becomes readable once the owner's agent-identification change decides what the pre-column rows mean. The writing rules are on `pipeline/activity.ts`.
 function unknownActor(type: ActorType, id: string): ResolvedActor {
   return {
     type,
