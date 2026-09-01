@@ -28,6 +28,7 @@ If a doc disagrees with the code, trust the code, then propose a doc fix in the 
 |-----------|---------|
 | Run Forge for the first time | [quickstart.md](quickstart.md) |
 | Understand the overall system | [architecture/](architecture/) |
+| Know what to call instead of an MCP tool | [architecture/data-plane-surface.md](architecture/data-plane-surface.md) |
 | Know why a mechanism was decided this way | [decisions/](decisions/) |
 | Understand a specific feature | [modules/](modules/) — seven domains, mapped in its README |
 | Propose a significant change | [rfcs/](rfcs/) |
