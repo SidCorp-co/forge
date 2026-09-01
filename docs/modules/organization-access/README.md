@@ -13,7 +13,7 @@ flowchart LR
   U --> OM[organization_members<br/>owner · admin · member] --> ORG
   U --> PM[project_members<br/>admin · member · viewer] --> PRJ
   D --> PRJ
-  P --> ORG
+  P -->|allowlisted routes only,<br/>fenced to its projects| PRJ
   OM -.folds into.-> PM
 ```
 
@@ -25,6 +25,7 @@ flowchart LR
 | Projects and their kind | `core/src/projects/`, `schema.ts:projects`, `schema.ts:projectKinds` |
 | Role resolution across the two scopes | `core/src/lib/authz.ts:effectiveProjectRole` |
 | Dual-principal auth (user vs device) | `core/src/auth/`, `core/src/security/` |
+| Which routes a PAT may reach, and which projects | `core/src/middleware/pat-rest-surface.ts:PAT_ALLOWED_PREFIXES`, `core/src/auth/pat-scope.ts` |
 | Personal access tokens, scoped | `core/src/pat/`, `schema.ts:personalAccessTokens` |
 | Org-scoped SSH key pool | `schema.ts:workspaceSshKeys`, web `features/resources/` |
 | UI | web `features/orgs/`, `projects/`, `project-settings/`, `settings/` |
@@ -45,5 +46,11 @@ flowchart LR
 - **A private key never leaves the vault as plaintext.** `workspaceSshKeys.privateKeyEnc` is
   decrypted only at provision dispatch; `publicKey` and `fingerprint` are the non-secret display
   halves.
+- **A PAT is fenced, not merely authenticated.** `requireAuth` accepts one only on
+  `PAT_ALLOWED_PREFIXES`; a route that resolves no project refuses it (`PAT_NOT_PERMITTED`),
+  because there is nothing there to fence against. Inside, the request carries the token's
+  effective project ids and `effectiveProjectRole` answers `null` for anything outside them — the
+  same answer a project that does not exist gives, so a token cannot be used to discover project
+  ids. Method decides scope: reads need `read`, everything else `write`.
 - Routing work to a participant is [human-routing](../human-routing/), not this domain. This one
   answers *may they*, not *should they*.

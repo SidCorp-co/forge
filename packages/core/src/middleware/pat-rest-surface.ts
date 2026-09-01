@@ -8,7 +8,11 @@
  * account-scoped credential wearing a project-scoped label.
  */
 
-import type { PatPrincipal } from './require-pat-or-device.js';
+import type { Context } from 'hono';
+import { HTTPException } from 'hono/http-exception';
+import { type PatScope, runWithPatScope } from '../auth/pat-scope.js';
+import { patEffectiveProjectIds } from '../mcp/tools/project-scope.js';
+import { authenticatePat, type PatPrincipal } from './require-pat-or-device.js';
 
 /**
  * The project data plane, and nothing else. Matched as a path prefix against
@@ -55,4 +59,50 @@ export function scopeForMethod(method: string): 'read' | 'write' {
 
 export function patHasScopeForMethod(principal: PatPrincipal, method: string): boolean {
   return principal.scopes.includes(scopeForMethod(method));
+}
+
+/**
+ * Everything that must be true before a PAT-authenticated request runs, and
+ * the scope it must run inside.
+ *
+ * Both REST auth entrypoints call this: `requireAuth` (the data plane) and
+ * `requireAnyAuth` (attachments and the two comment routes automation posts
+ * to). Neither may reimplement it.
+ */
+// cm:guard ONE decision point for what a PAT may do, and `requireAnyAuth` is why it is a function rather than four lines copied twice. That middleware accepted PATs from the day it was written and fenced NOTHING — no allowlist, no project scope, `c.set('userId', verified.row.userId)` and straight through — so a token bound to one project read attachments and comments across every project its owner could see. It went unnoticed because the handlers behind it DO call loadProjectAccess and looked correct; what was missing was upstream of them. A second copy of this logic is how that returns.
+export async function beginPatRequest(
+  c: Context,
+  token: string,
+): Promise<{ principal: PatPrincipal; scope: PatScope }> {
+  const principal = await authenticatePat(c, token);
+  if (!principal) {
+    throw new HTTPException(401, {
+      message: 'invalid token',
+      cause: { code: 'INVALID_TOKEN' },
+    });
+  }
+  // cm:guard verify the token BEFORE consulting the allowlist. Reversed, an unauthenticated caller reads the shape of the PAT surface off the status code — 403 where a route is allowlisted, 401 where it is not — which is a map of the fence handed out for free to anyone who can spell a path.
+  if (!patAllowedFor(c.req.path)) {
+    throw new HTTPException(403, {
+      message:
+        'this route is not reachable with a personal access token — it resolves no project, ' +
+        'so a project-scoped token cannot be fenced on it. Use a session (browser/desktop login).',
+      cause: { code: 'PAT_NOT_PERMITTED' },
+    });
+  }
+  if (!patHasScopeForMethod(principal, c.req.method)) {
+    throw new HTTPException(403, {
+      message: `this token lacks the '${scopeForMethod(c.req.method)}' scope`,
+      cause: { code: 'INSUFFICIENT_SCOPE' },
+    });
+  }
+  return {
+    principal,
+    scope: { projectIds: patEffectiveProjectIds(principal), tokenId: principal.tokenId },
+  };
+}
+
+/** Run `next()` inside the request's PAT scope. */
+export function withPatScope<T>(scope: PatScope, next: () => T): T {
+  return runWithPatScope(scope, next);
 }

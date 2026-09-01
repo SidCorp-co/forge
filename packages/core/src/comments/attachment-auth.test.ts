@@ -98,7 +98,12 @@ const verifyPatMock = vi.fn();
 const verifyDeviceTokenMock = vi.fn();
 vi.mock('../auth/pat.js', async () => {
   const actual = await vi.importActual<typeof import('../auth/pat.js')>('../auth/pat.js');
-  return { ...actual, verifyPat: (...args: unknown[]) => verifyPatMock(...args) };
+  // cm:guard `touchPatUsage` is stubbed OUT, not left real: it fires a `db.update` the moment a PAT verifies, and this file's db mock serves one shared queue, so the real one steals the row the handler was about to read and the failure lands on the handler as a 500. Its own error handling is irrelevant here — the theft happens before anything throws.
+  return {
+    ...actual,
+    verifyPat: (...args: unknown[]) => verifyPatMock(...args),
+    touchPatUsage: () => {},
+  };
 });
 vi.mock('../auth/deviceToken.js', async () => {
   const actual =
@@ -178,7 +183,13 @@ describe('GET /api/comments/attachments/:id — auth paths (AC-A)', () => {
 
   it('200 with bytes via PAT', async () => {
     verifyPatMock.mockResolvedValueOnce({
-      row: { id: 'pat-1', userId: USER_ID, scopes: [], projectIds: null, rateLimitMax: null },
+      row: {
+        id: 'pat-1',
+        userId: USER_ID,
+        scopes: ['read', 'write'],
+        projectIds: null,
+        rateLimitMax: null,
+      },
     });
     queueResult([
       { id: ATT_ID, path: '/tmp/x.png', mime: 'image/png', name: 'a.png', projectId: PROJECT_ID },
@@ -300,7 +311,13 @@ describe('POST /api/comments/:commentId/attachments — auth paths', () => {
 
   it('201 via PAT', async () => {
     verifyPatMock.mockResolvedValueOnce({
-      row: { id: 'pat-1', userId: USER_ID, scopes: [], projectIds: null, rateLimitMax: null },
+      row: {
+        id: 'pat-1',
+        userId: USER_ID,
+        scopes: ['read', 'write'],
+        projectIds: null,
+        rateLimitMax: null,
+      },
     });
     queueResult([{ id: COMMENT_ID, issueId: ISSUE_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce(memberAccess());

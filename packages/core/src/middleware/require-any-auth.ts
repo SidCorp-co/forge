@@ -4,20 +4,17 @@
  *
  * Accepts a Bearer token that may be:
  *   - a user JWT (web session)
- *   - a Personal Access Token (`forge_pat_*`)
+ *   - a Personal Access Token (`forge_pat_*`), fenced exactly as `requireAuth`
+ *     fences one — see `beginPatRequest`
  *   - a legacy device token
  *
  * Falls back to the `forge_auth` cookie when no Bearer header is present so
  * browser uploads continue to work without code changes.
  *
- * Sets `c.set('userId')` to the resolved user ID regardless of which auth
- * path matched, so existing handlers that use `c.get('userId')` continue to
- * work unchanged.
- *
- * NOTE: this does NOT call `assertEmailVerified()` — PAT and device tokens
- * are issued AFTER email verification, so the check is implicit. For user
- * JWT path, callers that need strict email-verified semantics should add a
- * second middleware or migrate to PAT.
+ * Sets `c.set('userId')` regardless of which path matched, so handlers using
+ * `c.get('userId')` work unchanged. Does NOT call `assertEmailVerified()` —
+ * PAT and device tokens are issued after verification, so it is implicit; a
+ * user-JWT caller needing strict semantics adds a second middleware.
  */
 
 import type { MiddlewareHandler } from 'hono';
@@ -26,8 +23,8 @@ import { HTTPException } from 'hono/http-exception';
 import { AUTH_COOKIE_NAME } from '../auth/cookie.js';
 import { verifyDeviceToken } from '../auth/deviceToken.js';
 import { verifyUserToken } from '../auth/jwt.js';
-import { verifyPat } from '../auth/pat.js';
 import { isPatLike } from '../auth/pat-format.js';
+import { beginPatRequest, withPatScope } from './pat-rest-surface.js';
 
 export type AnyAuthVars = { userId: string };
 
@@ -50,13 +47,11 @@ export function requireAnyAuth(): MiddlewareHandler<{ Variables: AnyAuthVars }> 
 
     if (!token) throw unauth('authentication required');
 
-    // PAT path — recognized by `forge_pat_*` prefix
+    // cm:guard the PAT branch goes through `beginPatRequest`, the SAME call `requireAuth` makes, and setting `userId` from the token row is not on its own enough. Until 2026-09-01 it was exactly that and nothing else: no allowlist, no project scope — so a token bound to one project listed and downloaded attachments, and posted comments, on every project its owner could reach. The handlers behind here call `loadProjectAccess` and looked right; the fence they consult is established up here or not at all.
     if (isPatLike(token)) {
-      const verified = await verifyPat(token);
-      if (!verified) throw unauth('invalid personal access token');
-      c.set('userId', verified.row.userId);
-      await next();
-      return;
+      const { principal, scope } = await beginPatRequest(c, token);
+      c.set('userId', principal.userId);
+      return withPatScope(scope, () => next());
     }
 
     // User JWT path — try first since web uploads are the most common case

@@ -6,12 +6,9 @@ import { AUTH_COOKIE_NAME } from '../auth/cookie.js';
 import { verifyDeviceToken } from '../auth/deviceToken.js';
 import { verifyUserToken } from '../auth/jwt.js';
 import { isPatLike } from '../auth/pat-format.js';
-import { runWithPatScope } from '../auth/pat-scope.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
-import { patEffectiveProjectIds } from '../mcp/tools/project-scope.js';
-import { patAllowedFor, patHasScopeForMethod, scopeForMethod } from './pat-rest-surface.js';
-import { authenticatePat } from './require-pat-or-device.js';
+import { beginPatRequest, withPatScope } from './pat-rest-surface.js';
 
 export type AuthVars = {
   userId: string;
@@ -29,10 +26,8 @@ export type AuthVars = {
  * Token (the `forge-runner api` CLI, and any agent holding one).
  *
  * A PAT resolves to its owner's `userId`, which on its own would widen a
- * project-scoped token into an account-scoped one. Two things stop that, and
- * both must hold for the PAT branch to be safe: the path is on the
- * {@link patAllowedFor} allowlist, and the rest of the request runs inside
- * {@link runWithPatScope} so `lib/authz.ts` fences every project it names.
+ * project-scoped token into an account-scoped one. {@link beginPatRequest} is
+ * what stops that, and `requireAnyAuth` calls the same function.
  */
 export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
   return async (c, next) => {
@@ -53,35 +48,11 @@ export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
     }
 
     if (isPatLike(token)) {
-      const principal = await authenticatePat(c, token);
-      if (!principal) {
-        throw new HTTPException(401, {
-          message: 'invalid token',
-          cause: { code: 'INVALID_TOKEN' },
-        });
-      }
-      // cm:guard verify the token BEFORE consulting the allowlist. Reversed, an unauthenticated caller reads the shape of the PAT surface off the status code — 403 where a route is allowlisted, 401 where it is not — which is a map of the fence handed out for free to anyone who can spell a path.
-      if (!patAllowedFor(c.req.path)) {
-        throw new HTTPException(403, {
-          message:
-            'this route is not reachable with a personal access token — it resolves no project, ' +
-            'so a project-scoped token cannot be fenced on it. Use a session (browser/desktop login).',
-          cause: { code: 'PAT_NOT_PERMITTED' },
-        });
-      }
-      if (!patHasScopeForMethod(principal, c.req.method)) {
-        throw new HTTPException(403, {
-          message: `this token lacks the '${scopeForMethod(c.req.method)}' scope`,
-          cause: { code: 'INSUFFICIENT_SCOPE' },
-        });
-      }
+      const { principal, scope } = await beginPatRequest(c, token);
       c.set('userId', principal.userId);
       c.set('principal', 'pat');
       c.set('patTokenId', principal.tokenId);
-      return runWithPatScope(
-        { projectIds: patEffectiveProjectIds(principal), tokenId: principal.tokenId },
-        () => next(),
-      );
+      return withPatScope(scope, () => next());
     }
 
     try {

@@ -70,7 +70,8 @@ const verifyPatMock = vi.fn();
 const verifyDeviceTokenMock = vi.fn();
 vi.mock('../auth/pat.js', async () => {
   const actual = await vi.importActual<typeof import('../auth/pat.js')>('../auth/pat.js');
-  return { ...actual, verifyPat: (...args: unknown[]) => verifyPatMock(...args) };
+  // cm:guard `touchPatUsage` is stubbed OUT, not left real: it fires a `db.update` the moment a PAT verifies, and this file's db mock serves one shared queue, so the real one steals the row the handler was about to read and the failure lands on the handler as a 500. Its own error handling is irrelevant here — the theft happens before anything throws.
+  return { ...actual, verifyPat: verifyPatMock, touchPatUsage: () => {} };
 });
 vi.mock('../auth/deviceToken.js', async () => {
   const actual =
@@ -236,9 +237,9 @@ describe('POST /api/issues/:id/attachments', () => {
   });
 
   it('201 via PAT: requireAnyAuth resolves userId from PAT.userId', async () => {
-    verifyPatMock.mockResolvedValueOnce({
-      row: { id: 'pat-1', userId: USER_ID, scopes: [], projectIds: null, rateLimitMax: null },
-    });
+    // cm:guard `scopes` carries BOTH, because that is what `mintPat` defaults to and `requireAnyAuth` now gates the method on it — the `scopes: []` this used to pass 403s every write, which reads as a broken route rather than as a token nobody would ever mint.
+    const row = { id: 'pat-1', userId: USER_ID, scopes: ['read', 'write'] };
+    verifyPatMock.mockResolvedValueOnce({ row });
     selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,

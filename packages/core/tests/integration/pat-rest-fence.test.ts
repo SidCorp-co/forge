@@ -26,90 +26,90 @@ import {
 
 type AppVars = { Variables: import('../../src/middleware/request-id.js').RequestIdVars };
 
-describe('PAT fence on the REST data plane', () => {
-  let harness: TestDatabase;
-  let app: Hono<AppVars>;
-  let projectA: string;
-  let projectB: string;
-  let projectArchived: string;
-  let issueA: string;
-  let issueB: string;
-  let boundToA: string;
-  let listScopedToA: string;
-  let unscoped: string;
-  let readOnlyBoundToA: string;
-  let patAllowedFor: (path: string) => boolean;
+let harness: TestDatabase;
+let app: Hono<AppVars>;
+let projectA: string;
+let projectB: string;
+let projectArchived: string;
+let issueA: string;
+let issueB: string;
+let boundToA: string;
+let listScopedToA: string;
+let unscoped: string;
+let readOnlyBoundToA: string;
+let patAllowedFor: (path: string) => boolean;
 
-  beforeAll(async () => {
-    harness = await setupTestDatabase();
-    process.env.DATABASE_URL = harness.url;
-    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
-    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-    process.env.APP_BASE_URL ??= 'http://localhost:3000';
-    process.env.CORS_ORIGINS ??= 'http://localhost:3000';
-    process.env.NODE_ENV = 'test';
+beforeAll(async () => {
+  harness = await setupTestDatabase();
+  process.env.DATABASE_URL = harness.url;
+  process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+  process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+  process.env.APP_BASE_URL ??= 'http://localhost:3000';
+  process.env.CORS_ORIGINS ??= 'http://localhost:3000';
+  process.env.NODE_ENV = 'test';
 
-    await truncateAll(harness.db);
+  await truncateAll(harness.db);
 
-    const user = await createTestUser(harness.db);
-    await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
-    const org = await seedOrg(harness.db, user.id);
+  const user = await createTestUser(harness.db);
+  await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
+  const org = await seedOrg(harness.db, user.id);
 
-    const a = await createTestProject(harness.db, user.id, { orgId: org.id });
-    const b = await createTestProject(harness.db, user.id, { orgId: org.id });
-    projectA = a.id;
-    projectB = b.id;
-    await createTestProjectMember(harness.db, { projectId: projectA, userId: user.id });
-    await createTestProjectMember(harness.db, { projectId: projectB, userId: user.id });
+  const a = await createTestProject(harness.db, user.id, { orgId: org.id });
+  const b = await createTestProject(harness.db, user.id, { orgId: org.id });
+  projectA = a.id;
+  projectB = b.id;
+  await createTestProjectMember(harness.db, { projectId: projectA, userId: user.id });
+  await createTestProjectMember(harness.db, { projectId: projectB, userId: user.id });
 
-    const archived = await createTestProject(harness.db, user.id, { orgId: org.id });
-    projectArchived = archived.id;
-    await createTestProjectMember(harness.db, { projectId: projectArchived, userId: user.id });
-    await harness.db.execute(
-      sql`UPDATE projects SET archived_at = now() WHERE id = ${projectArchived}`,
-    );
+  const archived = await createTestProject(harness.db, user.id, { orgId: org.id });
+  projectArchived = archived.id;
+  await createTestProjectMember(harness.db, { projectId: projectArchived, userId: user.id });
+  await harness.db.execute(
+    sql`UPDATE projects SET archived_at = now() WHERE id = ${projectArchived}`,
+  );
 
-    issueA = await seedIssue(projectA, user.id);
-    issueB = await seedIssue(projectB, user.id);
+  issueA = await seedIssue(projectA, user.id);
+  issueB = await seedIssue(projectB, user.id);
 
-    const { mintPat } = await import('../../src/auth/pat.js');
-    boundToA = (await mintPat({ userId: user.id, name: 'bound-a', boundProjectId: projectA }))
-      .plaintext;
-    listScopedToA = (await mintPat({ userId: user.id, name: 'list-a', projectIds: [projectA] }))
-      .plaintext;
-    unscoped = (await mintPat({ userId: user.id, name: 'unscoped' })).plaintext;
-    readOnlyBoundToA = (
-      await mintPat({
-        userId: user.id,
-        name: 'ro-a',
-        boundProjectId: projectA,
-        scopes: ['read'],
-      })
-    ).plaintext;
+  const { mintPat } = await import('../../src/auth/pat.js');
+  boundToA = (await mintPat({ userId: user.id, name: 'bound-a', boundProjectId: projectA }))
+    .plaintext;
+  listScopedToA = (await mintPat({ userId: user.id, name: 'list-a', projectIds: [projectA] }))
+    .plaintext;
+  unscoped = (await mintPat({ userId: user.id, name: 'unscoped' })).plaintext;
+  readOnlyBoundToA = (
+    await mintPat({
+      userId: user.id,
+      name: 'ro-a',
+      boundProjectId: projectA,
+      scopes: ['read'],
+    })
+  ).plaintext;
 
-    ({ app } = await import('../../src/index.js'));
-    ({ patAllowedFor } = await import('../../src/middleware/pat-rest-surface.js'));
+  ({ app } = await import('../../src/index.js'));
+  ({ patAllowedFor } = await import('../../src/middleware/pat-rest-surface.js'));
+});
+
+afterAll(async () => {
+  await harness.cleanup();
+});
+
+async function seedIssue(projectId: string, createdBy: string): Promise<string> {
+  const id = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO issues (id, project_id, title, status, created_by_id)
+    VALUES (${id}, ${projectId}, 'fence probe', 'open', ${createdBy})
+  `);
+  return id;
+}
+
+function get(path: string, token?: string) {
+  return app.request(path, {
+    headers: token ? { authorization: `Bearer ${token}` } : {},
   });
+}
 
-  afterAll(async () => {
-    await harness.cleanup();
-  });
-
-  async function seedIssue(projectId: string, createdBy: string): Promise<string> {
-    const id = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, title, status, created_by_id)
-      VALUES (${id}, ${projectId}, 'fence probe', 'open', ${createdBy})
-    `);
-    return id;
-  }
-
-  function get(path: string, token?: string) {
-    return app.request(path, {
-      headers: token ? { authorization: `Bearer ${token}` } : {},
-    });
-  }
-
+describe('PAT fence — which projects a token may name', () => {
   it('a token bound to A cannot read project B', async () => {
     expect((await get(`/api/projects/${projectA}`, boundToA)).status).toBe(200);
     expect((await get(`/api/projects/${projectB}`, boundToA)).status).toBe(404);
@@ -150,7 +150,9 @@ describe('PAT fence on the REST data plane', () => {
     const rows = Array.isArray(body) ? body : (body.projects ?? []);
     expect(rows.map((p) => p.id)).not.toContain(projectArchived);
   });
+});
 
+describe('PAT fence — the surface a token may reach', () => {
   // cm:guard named explicitly rather than left to the sweep: a scoped token that can mint an unscoped one has no scope, so this is the single refusal whose absence collapses every other assertion in this file
   it('no PAT can reach the PAT-minting surface', async () => {
     for (const token of [boundToA, unscoped]) {
@@ -163,11 +165,63 @@ describe('PAT fence on the REST data plane', () => {
   it('a read-scoped token cannot write', async () => {
     const res = await app.request(`/api/projects/${projectA}`, {
       method: 'PATCH',
-      headers: { authorization: `Bearer ${readOnlyBoundToA}`, 'content-type': 'application/json' },
+      headers: {
+        authorization: `Bearer ${readOnlyBoundToA}`,
+        'content-type': 'application/json',
+      },
       body: JSON.stringify({ name: 'renamed by a read-only token' }),
     });
     expect(res.status).toBe(403);
     expect(((await res.json()) as { code?: string }).code).toBe('INSUFFICIENT_SCOPE');
+  });
+
+  // cm:guard `requireAnyAuth` is a SECOND auth entrypoint, and this case exists because it fenced nothing until 2026-09-01 — it read `userId` off the token row and went straight through, so a token bound to one project reached attachments and comments across every project its owner could see. The unit tests behind that router mock the middleware away; only a request through the real one shows the gate.
+  it('a read-scoped token cannot write through requireAnyAuth either', async () => {
+    const form = new FormData();
+    form.append('file', new File(['x'], 'pic.png', { type: 'image/png' }));
+    const res = await app.request(`/api/issues/${issueA}/attachments`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${readOnlyBoundToA}` },
+      body: form,
+    });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code?: string }).code).toBe('INSUFFICIENT_SCOPE');
+  });
+
+  /**
+   * The inside half. The sweep below proves nothing OUTSIDE the allowlist
+   * answers a PAT; this proves that inside it, a route handed an id belonging
+   * to project B refuses — whichever entity the id names and whichever path
+   * the handler takes to resolve its project.
+   */
+  it('no allowlisted route serves a foreign id to a fenced token', async () => {
+    const attempts: string[] = [];
+    for (const route of app.routes) {
+      if (route.method !== 'GET') continue;
+      if (!route.path.startsWith('/api/')) continue;
+      if (route.path.includes('*')) continue;
+      if (!patAllowedFor(route.path)) continue;
+      const params = route.path.match(/:[A-Za-z0-9_]+/g) ?? [];
+      if (params.length !== 1) continue;
+      for (const foreign of [projectB, issueB]) {
+        attempts.push(route.path.replace(/:[A-Za-z0-9_]+/, foreign));
+      }
+    }
+    expect(attempts.length).toBeGreaterThan(10);
+
+    const served: string[] = [];
+    for (const path of new Set(attempts)) {
+      const res = await get(path, boundToA);
+      if (res.status >= 200 && res.status < 300) served.push(`${path} → ${res.status}`);
+    }
+
+    expect(
+      served,
+      'these allowlisted routes answered 2xx for an id that belongs to project B, with a token ' +
+        'fenced to project A. Either the handler resolves its project without going through ' +
+        'effectiveProjectRole, or it does not resolve one at all — and the second case means the ' +
+        'prefix does not belong on PAT_ALLOWED_PREFIXES.',
+    ).toEqual([]);
   });
 
   /**
