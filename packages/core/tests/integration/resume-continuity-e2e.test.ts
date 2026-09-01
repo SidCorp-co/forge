@@ -6,7 +6,7 @@
  * and all 16 unit tests stayed green. A green that survives its own rule being inverted is not
  * evidence of anything.
  *
- * So this drives the real tool handler against a real database, over rows shaped the way
+ * So this drives the real report builder against a real database, over rows shaped the way
  * `ensureAgentSessionForJob` writes them, and asserts the three things only Postgres can answer:
  * that an attempt with no prior session is outside the denominator, that a dropped one is inside
  * it and named, and that a healthy dispatch is counted rather than filtered away with the failures.
@@ -28,7 +28,7 @@ describe('ISS-887 resumeContinuity over real Postgres', () => {
   let projectId: string;
   let ownerId: string;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  let sessionFailuresTool: typeof import('../../src/mcp/tools/forge-metrics.js').forgeMetricsSessionFailuresTool;
+  let buildReport: typeof import('../../src/metrics/session-failures-report.js').buildSessionFailuresReport;
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
@@ -43,8 +43,8 @@ describe('ISS-887 resumeContinuity over real Postgres', () => {
     process.env.APP_BASE_URL ??= 'http://localhost:3000';
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
-    const mcp = await import('../../src/mcp/tools/forge-metrics.js');
-    sessionFailuresTool = mcp.forgeMetricsSessionFailuresTool;
+    const report = await import('../../src/metrics/session-failures-report.js');
+    buildReport = report.buildSessionFailuresReport;
   }, 60_000);
 
   afterAll(async () => {
@@ -97,20 +97,9 @@ describe('ISS-887 resumeContinuity over real Postgres', () => {
     `);
   }
 
+  // cm:guard reads the SERVICE, not the MCP tool it used to go through — `buildSessionFailuresReport` is where the rule lives since ISS-894, and the tool and `GET /api/projects/:id/metrics/session-failures` are both thin callers of it. Asserting through a transport would make this test fail for reasons that have nothing to do with resume continuity, and would have died with the tool.
   async function readContinuity() {
-    const tool = sessionFailuresTool({
-      principal: { kind: 'user', userId: ownerId },
-    } as never);
-    const res = (await tool.handler({ projectId, days: 30 })) as {
-      resumeContinuity: {
-        offered: number;
-        resumed: number;
-        dropped: number;
-        dropRate: number;
-        rows: Array<{ reason: string; sessions: number }>;
-      };
-    };
-    return res.resumeContinuity;
+    return (await buildReport(projectId, 30)).resumeContinuity;
   }
 
   it('leaves attempt 1 outside the denominator — it had nothing to continue', async () => {

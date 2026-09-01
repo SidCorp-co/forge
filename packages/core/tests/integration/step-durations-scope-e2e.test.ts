@@ -137,3 +137,31 @@ describe('GET /api/projects/:id/metrics/step-durations', () => {
     expect(denied.status).toBe(403);
   });
 });
+
+// cm:guard both of these had ONLY a `/api/pipeline/*` fan-out route, which is off the PAT allowlist — so retiring their tools without this project-scoped half would leave a token-holding caller with no path at all, which is exactly what briefly happened to step-durations live on 2026-09-01. Assert the member/non-member pair, not just a 200: the fan-out is fenced by prefix, but THIS half is fenced only by the role check below it.
+describe('project-scoped metrics a token can reach', () => {
+  it.each([['retry-rescues'], ['session-failures']])(
+    'serves %s to a member and refuses a stranger',
+    async (leaf) => {
+      const mine = await seedProjectWithOneStep('code');
+      const stranger = await createTestUser(harness.db);
+      await harness.db.execute(
+        sql`UPDATE users SET email_verified_at = now() WHERE id = ${stranger.id}`,
+      );
+
+      const ok = await app.request(`/api/projects/${mine.project.id}/metrics/${leaf}?days=30`, {
+        headers: { authorization: `Bearer ${mine.token}` },
+      });
+      expect(ok.status).toBe(200);
+      expect((await ok.json()) as { projectId: string }).toMatchObject({
+        projectId: mine.project.id,
+        windowDays: 30,
+      });
+
+      const denied = await app.request(`/api/projects/${mine.project.id}/metrics/${leaf}?days=30`, {
+        headers: { authorization: `Bearer ${await signUserToken(stranger.id)}` },
+      });
+      expect(denied.status).toBe(403);
+    },
+  );
+});

@@ -1,6 +1,19 @@
+/**
+ * The failure histogram's shaping, in isolation.
+ *
+ * `db.execute` is mocked, so what this covers is the mapping — cause
+ * resolution, the status filter, the unclassified rate, the continuity block —
+ * not the SQL. `tests/integration/resume-continuity-e2e.test.ts` runs the
+ * query for real, because the predicate this cannot see is where ISS-887 was
+ * inverted while all 16 of these stayed green.
+ *
+ * Lived at `mcp/tools/forge-metrics.test.ts` until ISS-894 wave 3, when the
+ * shaping moved out of the tool handler and the tool was deleted.
+ */
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../config/env.js', () => ({
+vi.mock('../config/env.js', () => ({
   env: {
     JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
     NODE_ENV: 'test',
@@ -12,7 +25,7 @@ const selectDistinctImpl = vi.fn();
 const selectImpl = vi.fn();
 const executeImpl = vi.fn();
 
-vi.mock('../../db/client.js', () => ({
+vi.mock('../db/client.js', () => ({
   db: {
     select: (...a: unknown[]) => selectImpl(...a),
     selectDistinct: (...a: unknown[]) => selectDistinctImpl(...a),
@@ -20,39 +33,9 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
-const { forgeMetricsProjectRetryRescuesTool, forgeMetricsSessionFailuresTool } = await import(
-  './forge-metrics.js'
-);
+const { buildSessionFailuresReport } = await import('./session-failures-report.js');
 
-const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
-const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
-
-const fakeDevice = {
-  id: DEVICE_ID,
-  ownerId: OWNER_ID,
-  name: 'fake',
-  platform: 'linux' as const,
-  agentVersion: null,
-  machineId: null,
-  gitCredentialRef: null,
-  tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
-  tokenPrefix: 'fake0001',
-  disabledAt: null,
-  status: 'online' as const,
-  lastSeenAt: null,
-  pairedAt: new Date(),
-  capabilities: null,
-  createdAt: new Date(),
-};
-
-function buildCtx() {
-  return {
-    principal: { kind: 'device' as const, device: fakeDevice },
-    device: fakeDevice,
-    projectSlug: null,
-  };
-}
 
 function _mockVisible(ids: string[]) {
   selectDistinctImpl.mockImplementationOnce(() => ({
@@ -66,30 +49,6 @@ function _mockVisible(ids: string[]) {
   }));
 }
 
-// Flatten a drizzle `sql` template into its literal text chunks.
-function _collectSqlFragments(sqlArg: unknown): string {
-  const fragments: string[] = [];
-  const visit = (node: unknown): void => {
-    if (typeof node === 'string') {
-      fragments.push(node);
-      return;
-    }
-    if (Array.isArray(node)) {
-      for (const child of node) visit(child);
-      return;
-    }
-    if (node && typeof node === 'object') {
-      const value = (node as { value?: unknown }).value;
-      if (typeof value === 'string') fragments.push(value);
-      else if (Array.isArray(value)) visit(value);
-      const chunks = (node as { queryChunks?: unknown }).queryChunks;
-      if (chunks) visit(chunks);
-    }
-  };
-  visit(sqlArg);
-  return fragments.join(' ');
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
   selectDistinctImpl.mockReset();
@@ -98,48 +57,7 @@ beforeEach(() => {
   executeImpl.mockResolvedValue([]);
 });
 
-describe('forge_metrics.project_retry_rescues', () => {
-  it('returns per-reason rescues for a project member', async () => {
-    selectImpl.mockImplementationOnce(() => ({
-      from: () => ({
-        leftJoin: () => ({
-          leftJoin: () => ({
-            where: () => ({
-              limit: () =>
-                Promise.resolve([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]),
-            }),
-          }),
-        }),
-      }),
-    }));
-    executeImpl.mockResolvedValueOnce([
-      {
-        failure_kind: 'infra',
-        failure_reason: 'hooks_path',
-        rescues: '46',
-        last_rescued_at: '2026-08-12T09:00:00Z',
-      },
-    ]);
-
-    const tool = forgeMetricsProjectRetryRescuesTool(buildCtx());
-    const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
-      total: number;
-      rows: Array<{ failureReason: string; rescues: number }>;
-    };
-
-    expect(res.total).toBe(46);
-    expect(res.rows).toEqual([
-      {
-        failureKind: 'infra',
-        failureReason: 'hooks_path',
-        rescues: 46,
-        lastRescuedAt: '2026-08-12T09:00:00Z',
-      },
-    ]);
-  });
-});
-
-describe('forge_metrics.session_failures (ISS-877)', () => {
+describe('buildSessionFailuresReport (ISS-877)', () => {
   function mockMembership() {
     selectImpl.mockImplementationOnce(() => ({
       from: () => ({
@@ -184,8 +102,7 @@ describe('forge_metrics.session_failures (ISS-877)', () => {
       },
     ]);
 
-    const tool = forgeMetricsSessionFailuresTool(buildCtx());
-    const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
+    const res = (await buildSessionFailuresReport(PROJECT_ID, 30)) as {
       total: number;
       unclassified: number;
       unclassifiedRate: number;
@@ -213,8 +130,7 @@ describe('forge_metrics.session_failures (ISS-877)', () => {
       { status: 'failed', failure_reason: 'provider_spend_cap', sessions: '3', last_at: null },
       { status: 'failed', failure_reason: 'job_failed', sessions: '1', last_at: null },
     ]);
-    const tool = forgeMetricsSessionFailuresTool(buildCtx());
-    const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
+    const res = (await buildSessionFailuresReport(PROJECT_ID, 30)) as {
       unclassifiedRate: number;
     };
     expect(res.unclassifiedRate).toBeCloseTo(0.25);
@@ -225,8 +141,7 @@ describe('forge_metrics.session_failures (ISS-877)', () => {
     executeImpl.mockResolvedValueOnce([
       { status: 'failed', failure_reason: 'job_failed', sessions: '5', last_at: null },
     ]);
-    const tool = forgeMetricsSessionFailuresTool(buildCtx());
-    const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
+    const res = (await buildSessionFailuresReport(PROJECT_ID, 30)) as {
       rows: Array<{ cause: string }>;
       unclassifiedRate: number;
     };
@@ -237,8 +152,7 @@ describe('forge_metrics.session_failures (ISS-877)', () => {
   it('returns a zero rate rather than NaN when the window is empty', async () => {
     mockMembership();
     executeImpl.mockResolvedValueOnce([]);
-    const tool = forgeMetricsSessionFailuresTool(buildCtx());
-    const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
+    const res = (await buildSessionFailuresReport(PROJECT_ID, 30)) as {
       rows: unknown[];
       total: number;
       unclassifiedRate: number;
@@ -271,8 +185,7 @@ describe('forge_metrics.session_failures (ISS-877)', () => {
         last_at: null,
       },
     ]);
-    const tool = forgeMetricsSessionFailuresTool(buildCtx());
-    const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
+    const res = (await buildSessionFailuresReport(PROJECT_ID, 30)) as {
       total: number;
       nonFailedWithFailureReason: number;
       rows: Array<{ cause: string }>;
@@ -293,8 +206,7 @@ describe('forge_metrics.session_failures (ISS-877)', () => {
       { status: 'failed', failure_reason: null, sessions: '9', last_at: null },
       { status: 'failed', failure_reason: 'provider_spend_cap', sessions: '1', last_at: null },
     ]);
-    const tool = forgeMetricsSessionFailuresTool(buildCtx());
-    const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
+    const res = (await buildSessionFailuresReport(PROJECT_ID, 30)) as {
       total: number;
       unclassified: number;
       unclassifiedRate: number;
@@ -309,8 +221,7 @@ describe('forge_metrics.session_failures (ISS-877)', () => {
     executeImpl.mockResolvedValueOnce([
       { status: 'failed', failure_reason: 'provider_spend_cap', sessions: '2', last_at: null },
     ]);
-    const tool = forgeMetricsSessionFailuresTool(buildCtx());
-    const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
+    const res = (await buildSessionFailuresReport(PROJECT_ID, 30)) as {
       total: number;
       nonFailedWithFailureReason: number;
     };
@@ -329,8 +240,7 @@ describe('forge_metrics.session_failures (ISS-877)', () => {
         last_at: null,
       },
     ]);
-    const tool = forgeMetricsSessionFailuresTool(buildCtx());
-    const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
+    const res = (await buildSessionFailuresReport(PROJECT_ID, 30)) as {
       total: number;
       nonFailedWithFailureReason: number;
     };
@@ -343,15 +253,14 @@ describe('forge_metrics.session_failures (ISS-877)', () => {
     executeImpl.mockResolvedValueOnce([
       { status: 'failed', failure_reason: 'provider_auth_expired', sessions: '3', last_at: null },
     ]);
-    const tool = forgeMetricsSessionFailuresTool(buildCtx());
-    const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
+    const res = (await buildSessionFailuresReport(PROJECT_ID, 30)) as {
       nonFailedWithFailureReason: number;
     };
     expect(res.nonFailedWithFailureReason).toBe(0);
   });
 });
 
-describe('forge_metrics.session_failures — resumeContinuity (ISS-887)', () => {
+describe('buildSessionFailuresReport — resumeContinuity (ISS-887)', () => {
   function mockMembership() {
     selectImpl.mockImplementationOnce(() => ({
       from: () => ({
@@ -371,8 +280,7 @@ describe('forge_metrics.session_failures — resumeContinuity (ISS-887)', () => 
     mockMembership();
     executeImpl.mockResolvedValueOnce([]);
     executeImpl.mockResolvedValueOnce(resumeRows);
-    const tool = forgeMetricsSessionFailuresTool(buildCtx());
-    const res = (await tool.handler({ projectId: PROJECT_ID, days: 30 })) as {
+    const res = (await buildSessionFailuresReport(PROJECT_ID, 30)) as {
       resumeContinuity: {
         offered: number;
         resumed: number;

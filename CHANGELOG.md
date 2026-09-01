@@ -10,6 +10,10 @@
 
 ### Removed
 
+- Six more MCP tools, each replaced by a route a token can actually reach:
+  `forge_orgs.list`, `forge_orgs.members`, `forge_skill_facts.list`, `forge_skill_facts.get`,
+  `forge_metrics.project_retry_rescues` and `forge_metrics.session_failures`. The registered
+  tool set is now 53, down from 69.
 - Four MCP tools whose work REST already does: `forge_steer`, `forge_ux_improver`,
   `forge_skills.pin` and `forge_metrics.step_durations`. Nothing that runs on a build box had
   called any of them, and every one has an endpoint that does the same job. The registered tool
@@ -17,6 +21,9 @@
 
 ### Added
 
+- Per-project retry rescues and session failures: `GET /api/projects/:id/metrics/retry-rescues`
+  and `.../session-failures`. Both existed only as a cross-project view that deliberately refuses
+  access tokens, so neither was reachable by an agent.
 - Three PM reads that were only ever reachable through a tool now have routes:
   `GET /api/projects/:id/pm/{snapshot,graph,runner-load}` — the state of a project's work, its
   dependency graph, and what each runner is carrying.

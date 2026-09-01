@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { BUCKETS, METRICS, runTimeseries, stepDurationsForProject } from './queries.js';
+import { buildRetryRescuesReport, buildSessionFailuresReport } from './session-failures-report.js';
 
 /**
  * Project-scoped time-series metrics for the v2 dashboard trend charts
@@ -85,5 +86,46 @@ projectMetricsRoutes.get(
       rows: await stepDurationsForProject(id, days, step, breakdown),
       windowDays: days,
     });
+  },
+);
+
+const daysQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(90).default(30),
+});
+
+// cm:guard the PROJECT-scoped half of each metric lives HERE and the cross-project fan-out lives under `/api/pipeline`, which is off PAT_ALLOWED_PREFIXES and must stay off — it reads across every project the caller can see. This is the pattern, not three coincidences: `step-durations`, `retry-rescues` and `session-failures` all had a fan-out route and no project-scoped one, so retiring their tools would have left a token-holding caller with nothing. Any new metric needs BOTH halves or neither.
+projectMetricsRoutes.get(
+  '/:id/metrics/retry-rescues',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('query', daysQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const access = await loadProjectAccess(id, c.get('userId'));
+    if (!access.role) throw forbidden('not a project member');
+
+    const { days } = c.req.valid('query');
+    return c.json(await buildRetryRescuesReport(id, days));
+  },
+);
+
+projectMetricsRoutes.get(
+  '/:id/metrics/session-failures',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('query', daysQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const access = await loadProjectAccess(id, c.get('userId'));
+    if (!access.role) throw forbidden('not a project member');
+
+    const { days } = c.req.valid('query');
+    return c.json(await buildSessionFailuresReport(id, days));
   },
 );

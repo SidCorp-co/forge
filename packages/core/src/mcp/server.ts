@@ -38,12 +38,9 @@ import {
   forgeMemoryWriteTool,
 } from './tools/forge-memory.js';
 import {
-  forgeMetricsProjectRetryRescuesTool,
   forgeMetricsProjectStepDurationsTool,
   forgeMetricsProjectTimeseriesTool,
-  forgeMetricsSessionFailuresTool,
 } from './tools/forge-metrics.js';
-import { forgeOrgsListTool, forgeOrgsMembersTool } from './tools/forge-orgs.js';
 import { forgePhaseTool } from './tools/forge-phase.js';
 // cm:guard ISS-483 §E#3 unregistered the 9 zero-reference `forge_pipeline_runs.*` / `forge_pm.*` shims and 2026-08-31 deleted their factories and deprecation notices, but the per-action HANDLERS in those same files are NOT shims — `forge_project_pm` and `forge_project_pipeline_runs` dispatch into every one of them, so deleting a `forge-pm-*.ts` file along with its retired factory breaks the dispatcher, and those five test files remain the only coverage runner_load, dispatch and write_decision have. Only `forge_pipeline_runs.get` (forge-skill-audit) and `forge_pm.set_dependency` (forge-plan, forge-triage, forge-build) are still registered, each because a live skill calls it by name.
 import { forgePipelineRunsGetTool } from './tools/forge-pipeline-runs.js';
@@ -59,7 +56,6 @@ import {
 import { forgeReconcileTool } from './tools/forge-reconcile.js';
 import { forgeRunnersTool } from './tools/forge-runners.js';
 import { forgeSchedulesTool } from './tools/forge-schedules.js';
-import { forgeSkillFactsGetTool, forgeSkillFactsListTool } from './tools/forge-skill-facts.js';
 import {
   forgeSkillsAdoptTool,
   forgeSkillsCreateTool,
@@ -214,9 +210,6 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeSkillsAdoptTool(ctx),
     forgeSkillsSyncStatusTool(ctx),
     forgeSkillsPushTool(ctx),
-    forgeSkillFactsListTool(ctx),
-    forgeSkillFactsGetTool(ctx),
-    forgeMetricsProjectRetryRescuesTool(ctx),
     forgeMetricsProjectStepDurationsTool(ctx),
     forgeMetricsProjectTimeseriesTool(ctx),
     forgeRunnersTool(ctx),
@@ -244,8 +237,6 @@ export function createMcpServer(ctx: McpContext): Server {
     forgePipelineRunsGetTool(ctx),
     forgeProjectsListTool(ctx),
     forgeProjectsCreateTool(ctx),
-    forgeOrgsListTool(ctx),
-    forgeOrgsMembersTool(ctx),
     forgeProjectsUpdateTool(ctx),
     forgeProjectsGetTool(ctx),
     forgeProjectPmTool(ctx),
@@ -254,7 +245,6 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeReconcileTool(ctx),
     // cm:guard append new tools HERE, immediately above the last one — every position shifts the indices below it, so the tail is the only insertion point that leaves all existing tools where callers pinned them
     forgeJobsResumeTool(ctx),
-    forgeMetricsSessionFailuresTool(ctx),
     // cm:guard keep this registration LAST — callers pin to `tools/list` ordering, so inserting above it shifts every index they rely on
     forgeGuideTool(ctx),
   ];
