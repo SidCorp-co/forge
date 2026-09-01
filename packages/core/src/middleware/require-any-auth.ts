@@ -31,6 +31,7 @@ export type AnyAuthVars = { userId: string };
 const unauth = (message: string) =>
   new HTTPException(401, { message, cause: { code: 'UNAUTHENTICATED' } });
 
+// cm:guard THREE device-token policies exist and they DISAGREE — pick deliberately, never by picking a middleware. `/mcp` treats a device as its owner (`assertDeviceOwnerIsMember` reads `device.ownerId`); `requireAnyAuth` does the same by setting `userId = device.ownerId`; `requireUserOrDevice` deliberately does NOT, leaving `userId` unset so `loadProjectAccess` fails closed. Measured 2026-09-01 while asking why a runner box cannot reach REST: the answer was this disagreement, not the fleet's version. Choosing a middleware for a new route therefore chooses a security policy, so say which one you meant.
 export function requireAnyAuth(): MiddlewareHandler<{ Variables: AnyAuthVars }> {
   return async (c, next) => {
     let token: string | undefined;
