@@ -383,3 +383,37 @@ describe('the job token on the dispatch frame', () => {
     expect('patToken' in data).toBe(false);
   });
 });
+
+describe('sessionMode is orthogonal to pipeline mode', () => {
+  beforeEach(() => {
+    publish.mockClear();
+    publish.mockReturnValue(1);
+    selectLimit.mockReset();
+    selectLimit.mockResolvedValue([] as never);
+  });
+
+  // cm:guard `sessionMode` and `mode` are ORTHOGONAL and this is the only thing asserting it. Every project running duplex today is also `autonomous`, so staged+duplex is a combination the fleet has never executed — which makes it exactly the combination a reader will assume is unsupported, and a dispatcher that started gating duplex on `mode` would break nothing any other test can see. This pins the dispatch contract only: core forwards what the project asked for. It says nothing about how a staged prompt behaves inside a resident session.
+  it.each([
+    ['staged', 'code'],
+    ['staged', 'review'],
+    ['autonomous', 'drive'],
+  ])('forwards duplex on a %s project dispatching a %s job', async (mode, type) => {
+    selectLimit.mockResolvedValueOnce([
+      { agentConfig: { pipelineConfig: { mode, sessionMode: 'duplex' } } },
+    ] as never);
+    await claudeCodeAdapter.dispatch({
+      job: {
+        id: 'job-orth',
+        projectId: 'p-1',
+        issueId: null,
+        attempts: 0,
+        createdBy: 'u1',
+        type,
+        payload: {},
+        dispatchedAt: new Date('2026-09-01T00:00:00.000Z'),
+      } as never,
+      runner: runner(),
+    });
+    expect(publishedData().sessionMode).toBe('duplex');
+  });
+});
