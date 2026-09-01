@@ -19,6 +19,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { countActivePatsForUser, mintPat, revokePat, rotatePat } from '../auth/pat.js';
+import { isJobTokenName } from '../auth/pat-format.js';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { mcpAuditLog, personalAccessTokens } from '../db/schema.js';
@@ -33,7 +34,14 @@ const SCOPES = ['read', 'write', 'admin'] as const;
 
 const createBodySchema = z
   .object({
-    name: z.string().min(1).max(80),
+    // cm:guard reserve the `job:` prefix on the ONLY route a person mints through — `mintPat` itself must keep accepting it, because that is how a dispatch mints a job's own token. A hand-made PAT wearing the prefix inherits all three things the prefix decides: it escapes the owner's PAT cap (`countActivePatsForUser` filters `job:%` out), a job's revoke sweep matches it and kills a credential no job owns, and `authenticatePat` stamps it `agency:'agent'` so it is held to the ISS-786/812 evidence gates a person is deliberately exempt from. Measured on production 2026-09-01: 0 tokens carry the prefix, so this fences a hole before anyone is standing in it.
+    name: z
+      .string()
+      .min(1)
+      .max(80)
+      .refine((n) => !isJobTokenName(n), {
+        message: "'job:' is reserved for tokens Forge mints for a dispatched job",
+      }),
     scopes: z.array(z.enum(SCOPES)).optional(),
     projectIds: z.array(z.uuid()).max(50).nullable().optional(),
     // ISS-497 — project-level token bound to exactly this project. Mutually

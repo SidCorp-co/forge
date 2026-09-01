@@ -19,6 +19,32 @@
 
 ### Fixed
 
+- A job's own access token authenticated as the human who owns it. Core mints one PAT per
+  dispatched job under `jobs.created_by`, hands it to the runner and exports it to the agent as
+  `$FORGE_PAT` — and `authenticatePat` stamped every PAT `agency: 'human'`, a constant. `agency` is
+  the field the ISS-786/812 evidence gates read: `principalActor` maps a human PAT to a `user`
+  actor, and both `checkTransitionEvidence` and `forge_issues.mark_merged` skip their evidence
+  check for one. So the credential built specifically for agents was the single class exempt from
+  the gates that exist because agents fabricate evidence. It is now derived from the `job:` name
+  prefix, in the one place a PAT principal is built — that function serves `/mcp` and REST alike,
+  since `beginPatRequest` calls into it, so the CLI surface is covered by the same line. Measured
+  on production the same day: no job token has ever been minted, so this changes the behaviour of
+  nothing that has run, and lands before the first one exists rather than after.
+
+- `forge_issues.mark_merged` gated its evidence check on `principal.kind === 'device'` while the
+  comment above it said it mirrored `checkTransitionEvidence`'s scope, which keys on the actor. The
+  two neighbouring writes in the same file already went through `principalActor`; this one did not,
+  so any agent holding a PAT — the agent-driven chat surface, and now a job token — could claim an
+  issue was merged without the in-DB evidence a device is required to show. `merged_at` is what the
+  feature-branch barrier reads to release every dependent, so the claim ships work ahead of its
+  blocker.
+
+- `POST /api/pat` accepted a hand-made token named `job:…`. The prefix is not cosmetic: it is how
+  a user's PAT cap is counted, how a job's revoke sweep finds its token, and now how agency is
+  decided. A token wearing it escaped its owner's cap, could be revoked by a job that never owned
+  it, and would authenticate as an agent. The name is now refused on that route only — `mintPat`
+  still accepts the prefix, because that is how a dispatch mints the real thing.
+
 - Six MCP tools are back after being deleted the same day: `forge_orgs.list`, `forge_orgs.members`,
   `forge_skill_facts.list`, `forge_skill_facts.get`, `forge_metrics.project_retry_rescues` and
   `forge_metrics.session_failures`. Their removal claimed an audit-log split had shown no runner

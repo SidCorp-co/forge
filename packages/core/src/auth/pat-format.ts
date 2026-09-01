@@ -50,3 +50,14 @@ export function isPatValid(token: string): boolean {
 export function patPrefixOf(token: string): string {
   return token.slice(0, PAT_PREFIX_LEN);
 }
+
+// cm:guard the `job:` name prefix is LOAD-BEARING, and it lives here for the same reason `forge_pat_` does: three modules decide real behaviour on it and none of them may spell it themselves. It is how `countActivePatsForUser` keeps a fleet's job tokens off the owner's cap, how a dispatch's revoke finds the row without storing a job id on the PAT table, and — since it is the only column separating an agent's credential from a person's — how `authenticatePat` decides `agency`, which is what the ISS-786/812 evidence gates read. A fourth copy of the literal is how one of those three goes quietly wrong.
+const JOB_TOKEN_NAME_PREFIX = 'job:';
+
+/** SQL `LIKE` pattern matching every job-minted token name. */
+export const jobTokenNameLike = `${JOB_TOKEN_NAME_PREFIX}%`;
+
+export const jobTokenNameFor = (jobId: string) => `${JOB_TOKEN_NAME_PREFIX}${jobId}`;
+
+export const isJobTokenName = (name: string | null | undefined): boolean =>
+  typeof name === 'string' && name.startsWith(JOB_TOKEN_NAME_PREFIX);

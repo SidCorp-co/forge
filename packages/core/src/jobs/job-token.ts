@@ -11,16 +11,10 @@
 
 import { and, eq, isNull, like, sql } from 'drizzle-orm';
 import { mintPat } from '../auth/pat.js';
+import { jobTokenNameFor, jobTokenNameLike } from '../auth/pat-format.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens } from '../db/schema.js';
 import { logger } from '../logger.js';
-
-// cm:guard the name prefix is LOAD-BEARING, not cosmetic: it is how `countActivePatsForUser` tells a job token from one the user made, and how revoke finds the row without storing a job id on the PAT table. Change it here and both of those go quietly wrong — a fleet running 10 jobs would eat the user's PAT cap, and every job token would leak because revoke matched nothing.
-const JOB_TOKEN_NAME_PREFIX = 'job:';
-
-export const jobTokenNameLike = `${JOB_TOKEN_NAME_PREFIX}%`;
-
-const nameFor = (jobId: string) => `${JOB_TOKEN_NAME_PREFIX}${jobId}`;
 
 // cm:guard NOT the `RULES.patPerToken` default of 60/min, and the gap is measured, not padded: over 30 days of `mcp_audit_log` a single project peaked at 108 calls in one minute (p50 2, p95 6, p99 10), so the default would 429 a busy job — and three breaches in an hour hand the token to `forceRevokePat`, which is permanent. A job mints its token once at dispatch and has no way to ask for another, so that burn does not degrade the job, it blinds it for the rest of its run. 600 is ~6x the observed peak and still a real ceiling on a credential that is bound to one project and dies with the job.
 const JOB_TOKEN_RATE_LIMIT_PER_MINUTE = 600;
@@ -44,12 +38,15 @@ export async function mintJobToken(job: {
         revokedAt: sql`now()`,
       })
       .where(
-        and(eq(personalAccessTokens.name, nameFor(job.id)), isNull(personalAccessTokens.revokedAt)),
+        and(
+          eq(personalAccessTokens.name, jobTokenNameFor(job.id)),
+          isNull(personalAccessTokens.revokedAt),
+        ),
       );
 
     const { plaintext } = await mintPat({
       userId: job.createdBy,
-      name: nameFor(job.id),
+      name: jobTokenNameFor(job.id),
       scopes: ['read', 'write'],
       boundProjectId: job.projectId,
       rateLimitMax: JOB_TOKEN_RATE_LIMIT_PER_MINUTE,
@@ -70,7 +67,10 @@ export async function revokeJobToken(jobId: string): Promise<void> {
     .update(personalAccessTokens)
     .set({ revokedAt: sql`now()` })
     .where(
-      and(eq(personalAccessTokens.name, nameFor(jobId)), isNull(personalAccessTokens.revokedAt)),
+      and(
+        eq(personalAccessTokens.name, jobTokenNameFor(jobId)),
+        isNull(personalAccessTokens.revokedAt),
+      ),
     );
 }
 

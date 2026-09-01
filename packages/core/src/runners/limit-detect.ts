@@ -61,7 +61,7 @@ export function isUsageLimitError(text: string): boolean {
   ) {
     return true;
   }
-  if (new RegExp(String.raw`out of extra usage.*${resetsValue}`, 'i').test(text)) return true;
+  if (new RegExp(`out of extra usage.*${resetsValue}`, 'i').test(text)) return true;
   // Fallback: short error-only text (not a full agent response) → loose match.
   if (
     text.length < 300 &&

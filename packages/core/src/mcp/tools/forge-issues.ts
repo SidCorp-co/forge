@@ -844,12 +844,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const issue = await loadIssue(issueId);
         await assertPrincipalIsWriter(principal, issue.projectId);
 
-        // ISS-786 child B (ISS-75/76/77/78 shape) — a device-principal claim
-        // of "this is merged" needs the same in-DB evidence `developed`/
-        // `testing` require. A `user`-driven PAT is a deliberate human
-        // action and is NOT gated (mirrors `checkTransitionEvidence`'s
-        // device-only scope). Fails OPEN on any internal error.
-        if (principal.kind === 'device') {
+        // cm:guard scope this the way `checkTransitionEvidence` does — off `principalActor`, NEVER off `principal.kind`. This is the ISS-786 evidence gate on a claim that "this is merged", and `mark_merged` is the one write in this file that read `kind` while its two neighbours (797, 821) already went through the actor. `kind === 'device'` exempts every agent holding a PAT: the agent-driven chat surface, and a `job:` token, which is the credential the runner actually hands the agent. Fails OPEN on any internal error.
+        if (principalActor(principal, device).type === 'device') {
           const missingEvidence = await findMissingWorkEvidence(issueId);
           if (missingEvidence) {
             throw new Error(`NO_WORK_EVIDENCE: ${missingEvidence}`);

@@ -19,7 +19,7 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { type Device, verifyDeviceToken } from '../auth/deviceToken.js';
 import { forceRevokePat, touchPatUsage, verifyPat } from '../auth/pat.js';
-import { isPatLike } from '../auth/pat-format.js';
+import { isJobTokenName, isPatLike } from '../auth/pat-format.js';
 import { RULES } from '../config/rate-limits.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -221,9 +221,10 @@ export async function authenticatePat(c: Context, token: string): Promise<PatPri
 
   touchPatUsage(row.id, getClientIp(c));
   maybeEmitPatUsed(row.id, row.userId);
+  // cm:guard derive `agency` from the token, never assume `human` — this is the ONE place a PAT principal is built, for `/mcp` AND for REST (`pat-rest-surface.ts:beginPatRequest` calls straight into here), so a wrong constant here is wrong on every surface at once. A `job:` token is minted for an agent, delivered to the runner on `job.assigned`, and exported as `$FORGE_PAT`; stamped `human` it makes `principalActor` return `{type:'user'}`, which is the exact input `checkTransitionEvidence` and `mark_merged` use to SKIP the ISS-786/812 evidence gates. The gates were added because agents fabricate evidence, so the credential built for agents was the one class exempt from them.
   return {
     kind: 'pat',
-    agency: 'human',
+    agency: isJobTokenName(row.name) ? 'agent' : 'human',
     userId: row.userId,
     tokenId: row.id,
     scopes: row.scopes,

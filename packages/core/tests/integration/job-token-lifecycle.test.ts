@@ -25,6 +25,8 @@ let applyKernelTransition: typeof import('../../src/lifecycle/transition.js').ap
 let verifyPat: typeof import('../../src/auth/pat.js').verifyPat;
 let countActivePatsForUser: typeof import('../../src/auth/pat.js').countActivePatsForUser;
 let mintPat: typeof import('../../src/auth/pat.js').mintPat;
+let authenticatePat: typeof import('../../src/middleware/require-pat-or-device.js').authenticatePat;
+let principalActor: typeof import('../../src/mcp/tools/lib.js').principalActor;
 let dbMod: typeof import('../../src/db/client.js');
 let schema: typeof import('../../src/db/schema.js');
 
@@ -43,13 +45,17 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
-  const [tok, trans, pat, client, sch] = await Promise.all([
+  const [tok, trans, pat, client, sch, mw, mcpLib] = await Promise.all([
     import('../../src/jobs/job-token.js'),
     import('../../src/lifecycle/transition.js'),
     import('../../src/auth/pat.js'),
     import('../../src/db/client.js'),
     import('../../src/db/schema.js'),
+    import('../../src/middleware/require-pat-or-device.js'),
+    import('../../src/mcp/tools/lib.js'),
   ]);
+  authenticatePat = mw.authenticatePat;
+  principalActor = mcpLib.principalActor;
   mintJobToken = tok.mintJobToken;
   applyKernelTransition = trans.applyKernelTransition;
   verifyPat = pat.verifyPat;
@@ -202,5 +208,57 @@ describe('the token dies with the job, by every route a job can end', () => {
 
     expect(await deadWithin(mine)).toBe(true);
     expect(await alive(theirs)).toBe(true);
+  });
+});
+
+describe('a job token authenticates as an agent, not as the human who owns it', () => {
+  // cm:guard assert through `principalActor`, not on `agency` — the field is not the gate. `mark_merged` and `checkTransitionEvidence` both branch on `principalActor(...).type === 'device'`, so that expression IS the ISS-786/812 scope decision and is the only thing worth pinning. A test that asserted `agency === 'agent'` would stay green through a `principalActor` that ignored the field entirely.
+  const gateApplies = (principal: unknown) =>
+    principalActor(principal as never, { id: randomUUID(), ownerId: randomUUID() } as never)
+      .type === 'device';
+
+  const ctx = () =>
+    ({ header: () => undefined, req: { header: () => undefined } }) as unknown as Parameters<
+      typeof authenticatePat
+    >[0];
+
+  it('puts a job token inside the evidence gate', async () => {
+    const { user, project, jobId } = await seedJob();
+    const plaintext = (await mintJobToken({
+      id: jobId,
+      projectId: project.id,
+      createdBy: user.id,
+    })) as string;
+
+    const principal = await authenticatePat(ctx(), plaintext);
+    expect(principal?.agency).toBe('agent');
+    expect(gateApplies(principal)).toBe(true);
+  });
+
+  it('leaves a hand-made PAT outside it, so a deliberate human merge stays ungated', async () => {
+    const user = await createTestUser(harness.db);
+    const { plaintext } = await mintPat({ userId: user.id, name: 'my laptop' });
+
+    const principal = await authenticatePat(ctx(), plaintext);
+    expect(principal?.agency).toBe('human');
+    expect(gateApplies(principal)).toBe(false);
+  });
+
+  // cm:guard this is the falsifying half and it must keep failing when the derivation is removed — the case above passes for any implementation that hardcodes `'agent'`, including one that ignores the token entirely. Stripping the marker off a row that is otherwise identical is what proves the prefix, and nothing else, is carrying the decision.
+  it('carries the decision on the job: prefix and nothing else', async () => {
+    const { user, project, jobId } = await seedJob();
+    const plaintext = (await mintJobToken({
+      id: jobId,
+      projectId: project.id,
+      createdBy: user.id,
+    })) as string;
+    expect(gateApplies(await authenticatePat(ctx(), plaintext))).toBe(true);
+
+    await harness.db.execute(sql`
+      UPDATE personal_access_tokens SET name = 'looks like a laptop'
+      WHERE name = ${`job:${jobId}`}
+    `);
+
+    expect(gateApplies(await authenticatePat(ctx(), plaintext))).toBe(false);
   });
 });

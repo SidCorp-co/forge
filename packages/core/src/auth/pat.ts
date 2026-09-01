@@ -16,10 +16,10 @@ import { and, eq, gt, type InferSelectModel, isNull, like, not, or, sql } from '
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens } from '../db/schema.js';
-import { jobTokenNameLike } from '../jobs/job-token.js';
 import {
   generatePatPlaintext,
   isPatValid,
+  jobTokenNameLike,
   PAT_PREFIX_LEN,
   patEnvForNodeEnv,
   patPrefixOf,
@@ -283,7 +283,7 @@ export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null
 }
 
 /** Count active PATs for a user. Used for the per-user cap. */
-// cm:edge contract -> packages/core/src/jobs/job-token.ts — job tokens are minted under the same user and MUST NOT count: a fleet running ten jobs would otherwise eat the cap and the user could no longer create a token of their own, with an error naming a limit they never approached. The `job:` prefix is the only thing separating the two populations.
+// cm:why job tokens are minted under the same user and MUST NOT count: a fleet running ten jobs would otherwise eat the cap and the user could no longer create a token of their own, with an error naming a limit they never approached.
 export async function countActivePatsForUser(userId: string): Promise<number> {
   const rows = await db
     .select({ id: personalAccessTokens.id })

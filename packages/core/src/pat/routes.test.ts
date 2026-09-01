@@ -132,6 +132,21 @@ describe('POST /api/pat — boundProjectId', () => {
   });
 });
 
+describe('POST /api/pat — the job: prefix is reserved', () => {
+  it('refuses a hand-made token wearing it, before mintPat is reached', async () => {
+    const res = await post({ name: 'job:5f2e' });
+    expect(res.status).toBe(400);
+    expect(mintPat).not.toHaveBeenCalled();
+  });
+
+  // cm:guard keep this case: the reservation is on a PREFIX, and a name that merely contains `job:` is an ordinary token. Widening the refusal to a substring match is the easy mistake here, and it would refuse names a person has every right to use while reading, in review, exactly like a tightening.
+  it('leaves a name that only mentions the word alone', async () => {
+    mintPat.mockResolvedValue({ row: mkRow(), plaintext: 'forge_pat_test_secret' });
+    const res = await post({ name: 'my job: laptop' });
+    expect(res.status).toBe(201);
+  });
+});
+
 describe('POST /api/pat/:id/rotate — preserves binding', () => {
   it('rotation returns a row carrying the original boundProjectId', async () => {
     rotatePat.mockResolvedValue({
