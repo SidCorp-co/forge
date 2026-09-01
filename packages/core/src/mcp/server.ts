@@ -18,7 +18,6 @@ import { forgeCollaboratorsTool } from './tools/forge-collaborators.js';
 import { forgeCommentsTool } from './tools/forge-comments.js';
 import { forgeConfigTool } from './tools/forge-config.js';
 import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
-import { forgeDivergenceChartersTool } from './tools/forge-divergence-charters.js';
 import { forgeFeedbackTool } from './tools/forge-feedback.js';
 import { forgeGuideTool } from './tools/forge-guide.js';
 import { forgeHealthTool } from './tools/forge-health.js';
@@ -45,24 +44,20 @@ import {
   forgeMetricsSessionFailuresTool,
   forgeMetricsStepDurationsTool,
 } from './tools/forge-metrics.js';
-import { forgeOpsHealthTool } from './tools/forge-ops-health.js';
 import { forgeOrgsListTool, forgeOrgsMembersTool } from './tools/forge-orgs.js';
 import { forgePhaseTool } from './tools/forge-phase.js';
 // cm:guard ISS-483 §E#3 unregistered the 9 zero-reference `forge_pipeline_runs.*` / `forge_pm.*` shims and 2026-08-31 deleted their factories and deprecation notices, but the per-action HANDLERS in those same files are NOT shims — `forge_project_pm` and `forge_project_pipeline_runs` dispatch into every one of them, so deleting a `forge-pm-*.ts` file along with its retired factory breaks the dispatcher, and those five test files remain the only coverage runner_load, dispatch and write_decision have. Only `forge_pipeline_runs.get` (forge-skill-audit) and `forge_pm.set_dependency` (forge-plan, forge-triage, forge-build) are still registered, each because a live skill calls it by name.
 import { forgePipelineRunsGetTool } from './tools/forge-pipeline-runs.js';
 import { forgePmSetDependencyTool } from './tools/forge-pm-set-dependency.js';
-import { forgePostmanTargetTool } from './tools/forge-postman-target.js';
 import { forgeProjectPipelineRunsTool } from './tools/forge-project-pipeline-runs.js';
 import { forgeProjectPmTool, PM_ACTIONS } from './tools/forge-project-pm.js';
 import {
-  forgeProjectsArchiveTool,
   forgeProjectsCreateTool,
   forgeProjectsGetTool,
   forgeProjectsListTool,
   forgeProjectsUpdateTool,
 } from './tools/forge-projects.js';
 import { forgeReconcileTool } from './tools/forge-reconcile.js';
-import { forgeReleaseBatchTool } from './tools/forge-release-batch.js';
 import { forgeRunnersTool } from './tools/forge-runners.js';
 import { forgeSchedulesTool } from './tools/forge-schedules.js';
 import { forgeSkillFactsGetTool, forgeSkillFactsListTool } from './tools/forge-skill-facts.js';
@@ -91,8 +86,7 @@ import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
 import { forgeUploadsTool } from './tools/forge-uploads.js';
 import { forgeUxFindingsTool } from './tools/forge-ux-findings.js';
 import { forgeUxImproverTool } from './tools/forge-ux-improver.js';
-import { forgeVersionTool, type McpTool } from './tools/forge-version.js';
-import type { McpContext } from './tools/lib.js';
+import type { McpContext, McpTool } from './tools/lib.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/project-scope.js';
 
 /**
@@ -101,7 +95,6 @@ import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/projec
  * enforce project-scope access.
  *
  * Tools:
- *  - `forge_version` — no context needed (uptime/version).
  *  - `forge_memory.search` — wraps `runMemorySearch` (ISS-198).
  *  - `forge_skills.list` / `.get` / `.register` — wrap ISS-196 REST logic.
  *  - `forge_issues` / `forge_comments` / `forge_config` — action-based parity
@@ -206,7 +199,6 @@ function projectIdFromArgs(args: Record<string, unknown>): string | null {
 export function createMcpServer(ctx: McpContext): Server {
   const { principal } = ctx;
   const tools: McpTool[] = [
-    forgeVersionTool,
     forgeMemorySearchTool(ctx.device),
     forgeMemoryWriteTool(ctx.device),
     forgeMemoryGetTool(ctx.device),
@@ -236,7 +228,6 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeRunnersTool(ctx),
     forgeSchedulesTool(ctx),
     forgeCollaboratorsTool(ctx),
-    forgeOpsHealthTool(ctx),
     forgeIssuesTool(ctx),
     forgePhaseTool(ctx),
     forgeStepStartTool(ctx),
@@ -248,8 +239,6 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeConfigTool(ctx),
     forgeKnowledgeTool(ctx),
     forgeCoolifyDeployTool(ctx),
-    forgeReleaseBatchTool(ctx),
-    forgePostmanTargetTool(ctx),
     forgeStorefrontTargetTool(ctx),
     forgeJobsListTool(ctx.device),
     forgeJobsGetTool(ctx),
@@ -266,11 +255,9 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeOrgsMembersTool(ctx),
     forgeProjectsUpdateTool(ctx),
     forgeProjectsGetTool(ctx),
-    forgeProjectsArchiveTool(ctx),
     forgeProjectPmTool(ctx),
     forgePmSetDependencyTool(ctx),
     forgeHealthTool(ctx.device),
-    forgeDivergenceChartersTool(ctx),
     forgeReconcileTool(ctx),
     // cm:guard append new tools HERE, immediately above the last one — every position shifts the indices below it, so the tail is the only insertion point that leaves all existing tools where callers pinned them
     forgeJobsResumeTool(ctx),

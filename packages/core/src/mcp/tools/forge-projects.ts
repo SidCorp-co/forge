@@ -7,9 +7,7 @@ import {
   orgRoleAtLeast,
 } from '../../lib/authz.js';
 import {
-  countActiveSessions,
   createProject,
-  deleteProject,
   listProjectsByIds,
   ProjectSlugTakenError,
   readPreviewDeploy,
@@ -17,7 +15,6 @@ import {
   updateProject,
 } from '../../projects/service.js';
 import {
-  assertPrincipalIsAdmin,
   type ContextScopedMcpToolFactory,
   loadVisibleProjectIdsForPrincipal,
   principalUserId,
@@ -346,62 +343,6 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
         previewDeploy,
         createdAt: proj.createdAt,
       },
-    };
-  },
-});
-
-const archiveInputSchema = z
-  .object({
-    projectId: z.uuid(),
-    confirm: z.boolean().optional(),
-  })
-  .strict();
-
-/**
- * Hard-delete a project. Authorization is owner/admin on the project (via
- * `assertPrincipalIsAdmin`), matching the gate the action carried while it
- * lived on the now-removed `forge_admin_projects` dispatcher. Requires
- * `confirm:true` and refuses with PROJECT_BUSY if any agent_sessions are
- * queued/running, so an archive can't strand in-flight work.
- */
-export const forgeProjectsArchiveTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_projects.archive',
-  description:
-    "Hard-delete a project. Requires org owner/admin on the project's org (and the `admin` scope for PAT principals) plus `confirm:true`. Refuses with PROJECT_BUSY if the project has any queued/running agent sessions. Returns `{ archived: true, projectId, actorUserId }`.",
-  inputSchema: zodToMcpSchema(archiveInputSchema),
-  handler: async (args) => {
-    const input = archiveInputSchema.parse(args);
-    // Hard-delete is a mutation — require the `write` scope for PAT principals,
-    // matching forge_projects.create/.update. Without this a read-only PAT that
-    // owns/admins a project could delete it while being unable to update it.
-    if (ctx.principal.kind === 'pat' && !ctx.principal.scopes.includes('write')) {
-      throw new Error('FORBIDDEN_SCOPE: requires write scope on the PAT');
-    }
-    if (!input.confirm) {
-      throw new Error('BAD_REQUEST: archive requires confirm:true');
-    }
-    const projectId = input.projectId;
-    // Destructive: requires effective project admin (assertPrincipalIsAdmin —
-    // also enforces the PAT `admin` scope) AND org owner/admin on the
-    // project's org, mirroring REST DELETE /api/projects/:id.
-    await assertPrincipalIsAdmin(ctx.principal, projectId);
-    const access = await effectiveProjectRole(principalUserId(ctx.principal), projectId);
-    if (!access || !orgRoleAtLeast(access.orgRole, 'admin')) {
-      throw new Error('FORBIDDEN: requires org admin on the project');
-    }
-    const activeCount = await countActiveSessions(projectId);
-    if (activeCount > 0) {
-      throw new Error(
-        `BAD_REQUEST: PROJECT_BUSY: project has ${activeCount} in-flight agent session(s)`,
-      );
-    }
-    if (!(await deleteProject(projectId))) {
-      throw new Error('NOT_FOUND: project not found');
-    }
-    return {
-      archived: true,
-      projectId,
-      actorUserId: principalUserId(ctx.principal),
     };
   },
 });

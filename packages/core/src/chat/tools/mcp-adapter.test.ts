@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { McpTool } from '../../mcp/tools/forge-version.js';
-import type { McpContext } from '../../mcp/tools/lib.js';
+import type { McpContext, McpTool } from '../../mcp/tools/lib.js';
 import { guardIssueWrites } from './guards.js';
 import { buildToolset, mergeToolsets } from './mcp-adapter.js';
 

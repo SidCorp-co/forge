@@ -1,3 +1,4 @@
+// cm:guard the LAST tool of ISS-894 wave 2 still registered, and it stays until a runner can reach REST: `GET/POST /api/projects/:id/ux-improver/{candidates,propose}` already does everything below, but the only caller is `schedules/messages/ux-improver-prompt.ts` running on a box with no PAT, so pointing that prompt at the route today breaks a schedule that ran on 2026-08-29. Delete this file the day wave 0 lands (`forge-runner api` working on the fleet), not before, and rewrite the prompt in the same change.
 // forge_ux_improver — ISS-579. The scheduled UX-improver agent's two moves:
 // read the deterministic candidate report, then commit the candidates it could
 // not refute. Splitting them is the point — the detector decides what recurs,

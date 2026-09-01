@@ -166,7 +166,7 @@ describe('F4 MCP tools integration', () => {
         'forge_skills.get',
         'forge_skills.list',
         'forge_skills.register',
-        'forge_version',
+        'forge_health',
         'forge_guide',
       ]) {
         expect(names.has(expected)).toBe(true);

@@ -4,7 +4,6 @@ import type { DeviceLite, TransitionActor } from '../../issues/apply-transition.
 import { loadVisibleProjectIds } from '../../lib/authz.js';
 import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
 import type { Actor } from '../../pipeline/activity.js';
-import type { McpTool } from './forge-version.js';
 import {
   assertDeviceOwnerIsAdmin,
   assertDeviceOwnerIsMember,
@@ -12,6 +11,14 @@ import {
   loadUserProjectRoleFlags,
 } from './project-authz.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './project-scope.js';
+
+/** The shape every registered MCP tool has, whatever produced it. */
+export interface McpTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  handler: (args: Record<string, unknown>) => Promise<unknown>;
+}
 
 /**
  * Per-request context passed to tool factories.
@@ -205,7 +212,7 @@ export function principalHookActor(principal: McpPrincipal, device: DeviceLite):
  * owns OR is a member of, intersected with the PAT's `projectIds` allowlist
  * when present. There is no cross-tenant bypass — every principal is scoped
  * to its own projects. Used by the project-scoped fleet tools (`forge_runners`,
- * `forge_collaborators`, `forge_ops_health`) and the cross-project metrics tool
+ * `forge_collaborators`) and the cross-project metrics tool
  * to bound their result sets to the caller.
  *
  * Mirrors the REST `loadVisibleProjectIds` (pipeline/analytics-routes.ts).

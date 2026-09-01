@@ -24,7 +24,8 @@ export const INTEGRATION_USAGE: Record<string, IntegrationUsage> = {
   },
   postman: {
     usage:
-      'Run API collections / target requests via `forge_postman_target` and the `mcp__postman__*` tools.',
+      'Run API collections / target requests: read the write-target from\n' +
+      '`GET /api/projects/:projectId/integrations/postman-target`, then use the `mcp__postman__*` tools.',
   },
   epodsystem: {
     usage:

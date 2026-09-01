@@ -27,7 +27,6 @@ vi.mock('../../db/client.js', () => ({
 }));
 
 const {
-  forgeProjectsArchiveTool,
   forgeProjectsCreateTool,
   forgeProjectsGetTool,
   forgeProjectsListTool,
@@ -816,86 +815,5 @@ describe('forge_projects.get', () => {
     const tool = forgeProjectsGetTool(deviceCtx());
     await expect(tool.handler({ projectId: 'not-a-uuid' })).rejects.toThrow();
     expect(selectImpl).not.toHaveBeenCalled();
-  });
-});
-
-describe('forge_projects.archive', () => {
-  // Query order on the happy path:
-  //   1. effectiveProjectRole via assertPrincipalIsAdmin (effective admin gate)
-  //   2. effectiveProjectRole again for the org-tier gate (org owner/admin)
-  //   3. agentSessions count
-  //   4. delete().where().returning()
-
-  it('without confirm:true throws BAD_REQUEST', async () => {
-    const tool = forgeProjectsArchiveTool(deviceCtx());
-    await expect(tool.handler({ projectId: PROJECT_A, confirm: false })).rejects.toThrow(
-      /BAD_REQUEST: archive requires confirm/,
-    );
-  });
-
-  it('a read-only PAT is refused with FORBIDDEN_SCOPE (parity with create/update)', async () => {
-    const tool = forgeProjectsArchiveTool(patCtx({ scopes: ['read'] }));
-    await expect(tool.handler({ projectId: PROJECT_A, confirm: true })).rejects.toThrow(
-      /FORBIDDEN_SCOPE: requires write scope/,
-    );
-    // refused before any DB access
-    expect(selectImpl).not.toHaveBeenCalled();
-  });
-
-  it('a PAT lacking the admin scope is refused with FORBIDDEN', async () => {
-    const tool = forgeProjectsArchiveTool(patCtx({ scopes: ['read', 'write'] }));
-    await expect(tool.handler({ projectId: PROJECT_A, confirm: true })).rejects.toThrow(
-      /FORBIDDEN: this token lacks the admin scope/,
-    );
-    // the scope gate fires before the role lookup
-    expect(selectImpl).not.toHaveBeenCalled();
-    expect(deleteImpl).not.toHaveBeenCalled();
-  });
-
-  it('by a non-admin member is refused', async () => {
-    // member-but-not-admin → assertPrincipalIsAdmin throws before any delete.
-    mockAccess({ memberRole: 'member', orgRole: null });
-    const tool = forgeProjectsArchiveTool(deviceCtx());
-    await expect(tool.handler({ projectId: PROJECT_A, confirm: true })).rejects.toThrow(
-      /FORBIDDEN: requires project admin access/,
-    );
-    expect(deleteImpl).not.toHaveBeenCalled();
-  });
-
-  it('project-admin without org admin is refused (org-tier gate)', async () => {
-    mockAccess({ memberRole: 'admin', orgRole: null }); // passes effective-admin gate
-    mockAccess({ memberRole: 'admin', orgRole: null }); // fails org gate
-    const tool = forgeProjectsArchiveTool(deviceCtx());
-    await expect(tool.handler({ projectId: PROJECT_A, confirm: true })).rejects.toThrow(
-      /FORBIDDEN: requires org admin on the project/,
-    );
-    expect(deleteImpl).not.toHaveBeenCalled();
-  });
-
-  it('with in-flight sessions throws PROJECT_BUSY', async () => {
-    mockAccess({ memberRole: null, orgRole: 'owner' }); // effective admin
-    mockAccess({ memberRole: null, orgRole: 'owner' }); // org gate
-    mockSelect([{ active: 2 }]);
-    const tool = forgeProjectsArchiveTool(deviceCtx());
-    await expect(tool.handler({ projectId: PROJECT_A, confirm: true })).rejects.toThrow(
-      /PROJECT_BUSY/,
-    );
-  });
-
-  it('happy path deletes and returns archived:true', async () => {
-    mockAccess({ memberRole: null, orgRole: 'admin' }); // effective admin
-    mockAccess({ memberRole: null, orgRole: 'admin' }); // org gate
-    mockSelect([{ active: 0 }]);
-    deleteImpl.mockImplementationOnce(() => ({
-      where: () => ({
-        returning: () => Promise.resolve([{ id: PROJECT_A }]),
-      }),
-    }));
-    const tool = forgeProjectsArchiveTool(deviceCtx());
-    const res = (await tool.handler({
-      projectId: PROJECT_A,
-      confirm: true,
-    })) as { archived: boolean };
-    expect(res.archived).toBe(true);
   });
 });

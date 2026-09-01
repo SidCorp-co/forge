@@ -13,7 +13,7 @@
  * `stores[]` lists all active bindings for discovery.
  *
  * Returns `{ configured: false }` when the project has no active Epodsystem
- * integration. Authorization is membership-level, like `forge_postman_target`.
+ * integration. Authorization is membership-level, like `forge_coolify_deploy`.
  */
 
 import { z } from 'zod';

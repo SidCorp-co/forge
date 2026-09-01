@@ -37,7 +37,7 @@ deploy channel: ${plan.provider ?? 'none — cut the version and stop; a human d
 ### Issues in this batch (${issues.length})
 ${roster}
 ${renderProcedure(plan)}
-Start by calling \`forge_release_batch get { runId: "${runId}" }\` to load the batch context.
+Start by reading the batch context: \`forge-runner api projects/${projectId}/release-batches/${runId}\`.
 `;
 }
 

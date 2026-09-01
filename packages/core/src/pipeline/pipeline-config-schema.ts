@@ -233,13 +233,7 @@ export const stageConfigSchema = z.object({
   skillName: z.string().min(1).max(128).optional(),
   model: z.string().min(1).max(64).optional(),
   allowedTools: z.array(z.string().min(1).max(128)).max(100).nullable().optional(),
-  // Capability denylist (ISS-531). Forwarded to the runner as Claude Code's
-  // `--disallowed-tools` (a real DENYLIST that removes a tool from the
-  // available SET even under `--permission-mode bypassPermissions`, verified
-  // on claude v2.1.185 — not just an auto-approval gate). Use for least-agency
-  // hard-deny of high-agency tools per stage (e.g. forge_projects_archive,
-  // forge_jobs_cancel, forge_memory_write). Independent of `allowedTools`;
-  // when both are set the CLI applies allow then deny.
+  // cm:guard ISS-531 — forwarded as Claude Code's `--disallowed-tools`, which is a real DENYLIST: it removes the tool from the available SET even under `--permission-mode bypassPermissions` (verified on claude v2.1.185), so this is the only knob that hard-denies rather than merely un-approving. It is independent of `allowedTools` and the CLI applies allow THEN deny, so a name in both is denied — putting a tool on the allow list does not rescue it from here.
   disallowedTools: z.array(z.string().min(1).max(128)).max(100).nullable().optional(),
   permissionMode: z.enum(['default', 'plan', 'acceptEdits', 'bypassPermissions']).optional(),
   timeoutSeconds: z.int().positive().max(86_400).optional(),

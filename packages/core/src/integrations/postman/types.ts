@@ -12,7 +12,8 @@ export type PostmanMode = 'minimal' | 'full';
 
 /**
  * Non-secret Postman target — stored in `project_integrations.config` (jsonb).
- * This is the "write here" context a skill reads via `forge_postman_target`;
+ * This is the "write here" context a skill reads via
+ * `GET /api/projects/:projectId/integrations/postman-target`;
  * it intentionally carries NO API key.
  */
 export interface PostmanConfig extends Record<string, unknown> {
