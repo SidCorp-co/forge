@@ -41,12 +41,13 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
-  const [health, charter, targets, batch, ux, jwt, err] = await Promise.all([
+  const [health, charter, targets, batch, ux, collab, jwt, err] = await Promise.all([
     import('../../src/health/routes.js'),
     import('../../src/skills/divergence-charter-routes.js'),
     import('../../src/integrations/target-routes.js'),
     import('../../src/release-batch/routes.js'),
     import('../../src/projects/ux-contract-routes.js'),
+    import('../../src/projects/collaborators-routes.js'),
     import('../../src/auth/jwt.js'),
     import('../../src/middleware/error.js'),
   ]);
@@ -56,6 +57,7 @@ beforeAll(async () => {
   app.route('/', health.publicHealthRoutes);
   app.route('/api/projects', health.opsHealthProjectRoutes);
   app.route('/api/me', health.opsHealthMeRoutes);
+  app.route('/api/me', collab.collaboratorsMeRoutes);
   app.route('/api/projects', charter.divergenceCharterRoutes);
   app.route('/api/projects', targets.integrationTargetRoutes);
   app.route('/api/projects', batch.releaseBatchRoutes);
@@ -329,5 +331,88 @@ describe('ux-improver — the REST route the deleted tool duplicated', () => {
     });
     expect(res.status).toBe(200);
     expect((await res.json()) as { outcomes: unknown[] }).toEqual({ outcomes: [] });
+  });
+});
+
+describe('GET /api/me/collaborators', () => {
+  it('returns the people a caller shares projects with, and their roles', async () => {
+    const owner = await verifiedUser();
+    const project = await createTestProject(harness.db, owner.user.id);
+    const mate = await verifiedUser();
+    await createTestOrgMember(harness.db, {
+      orgId: project.orgId,
+      userId: mate.user.id,
+      role: 'member',
+    });
+    await createTestProjectMember(harness.db, {
+      userId: mate.user.id,
+      projectId: project.id,
+      role: 'member',
+    });
+
+    const res = await app.request('/api/me/collaborators', {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      users: Array<{ email: string; memberships: Array<{ projectId: string; role: string }> }>;
+    };
+    const found = body.users.find((u) => u.email === mate.user.email);
+    expect(found?.memberships).toEqual([
+      expect.objectContaining({ projectId: project.id, role: 'member' }),
+    ]);
+  });
+
+  // cm:guard the whole surface of this route is OTHER PEOPLE's user rows, and `users` carries `passwordHash` on the same row — so a projection that ever became a `select()` would answer a people-search with credentials. Assert the absence by name rather than trusting the service's own guard, because this is the route that exposes it.
+  it('never returns an auth secret', async () => {
+    const owner = await verifiedUser();
+    const project = await createTestProject(harness.db, owner.user.id);
+    const mate = await verifiedUser();
+    await createTestOrgMember(harness.db, {
+      orgId: project.orgId,
+      userId: mate.user.id,
+      role: 'member',
+    });
+    await createTestProjectMember(harness.db, {
+      userId: mate.user.id,
+      projectId: project.id,
+      role: 'member',
+    });
+
+    const res = await app.request('/api/me/collaborators', {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    const raw = await res.text();
+    for (const secret of ['passwordHash', 'password_hash', 'tokenHash']) {
+      expect(raw).not.toContain(secret);
+    }
+  });
+
+  // cm:guard the seed is load-bearing: with no `project_members` row anywhere this route answers `{users:[],total:0}` however broken the scoping is, so an unseeded version of this case cannot fail. And `listCollaborators` guards a zero-visibility caller TWICE over — the early return and the `inArray` on the candidate query — each sufficient alone, so deleting either one changes nothing and this stays green. Measured both ways. That means a green here is NOT evidence a given line is dead; it takes both gone before the stranger is handed another account's row.
+  it('shows nobody to a caller who shares no project', async () => {
+    const owner = await verifiedUser();
+    const project = await createTestProject(harness.db, owner.user.id);
+    const mate = await verifiedUser();
+    await createTestOrgMember(harness.db, {
+      orgId: project.orgId,
+      userId: mate.user.id,
+      role: 'member',
+    });
+    await createTestProjectMember(harness.db, {
+      userId: mate.user.id,
+      projectId: project.id,
+      role: 'member',
+    });
+    const stranger = await verifiedUser();
+
+    const res = await app.request('/api/me/collaborators', {
+      headers: { authorization: `Bearer ${stranger.token}` },
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { users: unknown[] }).toEqual({ users: [], total: 0 });
+  });
+
+  it('refuses an unauthenticated caller', async () => {
+    expect((await app.request('/api/me/collaborators')).status).toBe(401);
   });
 });

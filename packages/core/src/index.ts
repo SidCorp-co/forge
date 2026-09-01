@@ -151,6 +151,7 @@ import {
 } from './pm/escalation-sweeper.js';
 import { registerPmQueuePressureSweeper } from './pm/queue-pressure.js';
 import { pmRoutes } from './pm/routes.js';
+import { collaboratorsMeRoutes } from './projects/collaborators-routes.js';
 import { gitCredentialRoutes } from './projects/git-credential-routes.js';
 import { projectHealthRoutes } from './projects/health-routes.js';
 import { invitationRoutes } from './projects/invitations-routes.js';
@@ -314,6 +315,7 @@ app.route('/api/auth', oauthRoutes);
 app.route('/api/projects', projectHealthRoutes);
 app.route('/api/projects', opsHealthProjectRoutes);
 app.route('/api/me', opsHealthMeRoutes);
+app.route('/api/me', collaboratorsMeRoutes);
 // ISS-380 — project time-series metrics. The deep `/:id/metrics/*` path does
 // not collide with projectRoutes' `GET /:id`, but mount before it to mirror the
 // health-routes precedent and keep the static-before-param ordering intent.

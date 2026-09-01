@@ -10,6 +10,10 @@
 
 ### Added
 
+- The people you share projects with are now readable over REST, at
+  `GET /api/me/collaborators` — who they are and what role they hold on each
+  project you can see. Per-project membership was already a route; the
+  cross-project view was the half that had none.
 - A job now carries its own credential. When core dispatches a job it mints an access token scoped
   to that job's project, hands it to the runner on the dispatch frame, and the agent gets it as
   `$FORGE_PAT` — so `forge-runner api` works on a box nobody provisioned by hand. The token is
