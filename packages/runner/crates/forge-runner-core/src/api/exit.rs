@@ -16,7 +16,8 @@ pub const EXIT_TAXONOMY: &str = "\
 EXIT CODES
   0   success (2xx)
   2   usage — bad arguments, or --data that is not JSON
-  3   UNAUTHORIZED (401)          not retryable — re-run `forge-runner login`
+  3   UNAUTHORIZED (401)          not retryable — the PAT is missing, revoked or
+      expired. `forge-runner login --pat <token>`, or export FORGE_PAT.
   4   FORBIDDEN (403)             not retryable
   5   NOT_FOUND (404)             not retryable
   6   client error (400/409/422)  not retryable — the request is wrong

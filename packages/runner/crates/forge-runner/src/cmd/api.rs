@@ -10,8 +10,9 @@ use forge_runner_core::transport::CoreClient;
 
 use super::Ctx;
 
-/// `forge-runner api <PATH>` — call any Forge REST endpoint with this
-/// device's credentials. Shaped after `gh api`.
+/// `forge-runner api <PATH>` — call any Forge REST endpoint with a personal
+/// access token, fenced to the projects that token may speak for. Shaped after
+/// `gh api`. The device token is a different credential and REST rejects it.
 #[derive(ClapArgs)]
 #[command(after_help = EXIT_TAXONOMY)]
 pub struct Args {
