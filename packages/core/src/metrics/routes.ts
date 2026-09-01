@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { BUCKETS, METRICS, runTimeseries } from './queries.js';
+import { BUCKETS, METRICS, runTimeseries, stepDurationsForProject } from './queries.js';
 
 /**
  * Project-scoped time-series metrics for the v2 dashboard trend charts
@@ -57,5 +57,33 @@ projectMetricsRoutes.get(
       groupByStep: groupBy === 'step',
     });
     return c.json(result);
+  },
+);
+
+const stepDurationsQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(90).default(30),
+  step: z.string().trim().min(1).max(64).optional(),
+  breakdown: z.enum(['device', 'model']).optional(),
+});
+
+// cm:guard the PROJECT-scoped half of step durations, and it exists because the cross-project one cannot serve a token: `GET /api/pipeline/step-durations` fans out over every project the caller can see when `projectId` is omitted, so `/api/pipeline` must stay off PAT_ALLOWED_PREFIXES exactly as `/api/me/ops-health` does. Deleting `forge_metrics.step_durations` (ISS-894 wave 3) left a PAT caller with no path at all until this landed — measured live on forge-beta 2026-09-01, the fan-out answered 403 and no project-scoped route existed.
+projectMetricsRoutes.get(
+  '/:id/metrics/step-durations',
+  zValidator('param', idParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  zValidator('query', stepDurationsQuerySchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const access = await loadProjectAccess(id, c.get('userId'));
+    if (!access.role) throw forbidden('not a project member');
+
+    const { days, step, breakdown } = c.req.valid('query');
+    return c.json({
+      rows: await stepDurationsForProject(id, days, step, breakdown),
+      windowDays: days,
+    });
   },
 );

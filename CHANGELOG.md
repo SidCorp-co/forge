@@ -17,6 +17,9 @@
 
 ### Added
 
+- Per-step pipeline durations for one project: `GET /api/projects/:id/metrics/step-durations`.
+  The cross-project view already existed but deliberately refuses access tokens, since it reads
+  across every project you can see — so this is the half a token can reach.
 - A project skill can be pinned over REST — `PUT /api/projects/:projectId/skills/:skillId/pin`
   marks it an intentional, permanent divergence from its template, with the reason recorded
   against whoever declared it. Pinning had no route before, only a tool.

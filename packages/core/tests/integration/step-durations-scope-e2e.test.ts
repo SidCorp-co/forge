@@ -41,14 +41,16 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
-  const [analytics, jwt, err] = await Promise.all([
+  const [analytics, metrics, jwt, err] = await Promise.all([
     import('../../src/pipeline/analytics-routes.js'),
+    import('../../src/metrics/routes.js'),
     import('../../src/auth/jwt.js'),
     import('../../src/middleware/error.js'),
   ]);
   signUserToken = jwt.signUserToken;
   app = new Hono();
   app.route('/api/pipeline', analytics.pipelineAnalyticsRoutes);
+  app.route('/api/projects', metrics.projectMetricsRoutes);
   app.onError(err.errorHandler);
 });
 
@@ -110,5 +112,28 @@ describe('GET /api/pipeline/step-durations', () => {
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([]);
+  });
+});
+
+// cm:guard this is the PAT-reachable half, and the pair is the point: `/api/pipeline/step-durations` fans out and must stay off the PAT allowlist, so a token-holding caller reaches durations ONLY here. Delete this route and `forge_metrics.step_durations`'s deletion becomes a capability loss rather than a move — which is what it briefly was, live, until 2026-09-01.
+describe('GET /api/projects/:id/metrics/step-durations', () => {
+  it('serves the caller own project and refuses one they are not a member of', async () => {
+    const mine = await seedProjectWithOneStep('code');
+    const theirs = await seedProjectWithOneStep('review');
+
+    const ok = await app.request(
+      `/api/projects/${mine.project.id}/metrics/step-durations?days=30`,
+      { headers: { authorization: `Bearer ${mine.token}` } },
+    );
+    expect(ok.status).toBe(200);
+    const body = (await ok.json()) as { rows: Array<{ step: string }>; windowDays: number };
+    expect(body.rows.map((r) => r.step)).toEqual(['code']);
+    expect(body.windowDays).toBe(30);
+
+    const denied = await app.request(
+      `/api/projects/${theirs.project.id}/metrics/step-durations?days=30`,
+      { headers: { authorization: `Bearer ${mine.token}` } },
+    );
+    expect(denied.status).toBe(403);
   });
 });
