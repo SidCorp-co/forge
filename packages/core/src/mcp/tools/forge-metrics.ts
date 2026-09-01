@@ -2,6 +2,10 @@ import { z } from 'zod';
 import { jobTypes } from '../../db/schema.js';
 import { BUCKETS, METRICS, runTimeseries, stepDurationsForProject } from '../../metrics/queries.js';
 import {
+  buildRetryRescuesReport,
+  buildSessionFailuresReport,
+} from '../../metrics/session-failures-report.js';
+import {
   assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,
   zodToMcpSchema,
@@ -26,14 +30,14 @@ const projectInputSchema = z
   })
   .strict();
 
-const _retryRescuesInputSchema = z
+const retryRescuesInputSchema = z
   .object({
     projectId: z.uuid(),
     days: z.number().int().min(1).max(90).optional().default(30),
   })
   .strict();
 
-const _sessionFailuresInputSchema = z
+const sessionFailuresInputSchema = z
   .object({
     projectId: z.uuid(),
     days: z.number().int().min(1).max(90).optional().default(30),
@@ -99,5 +103,33 @@ export const forgeMetricsProjectTimeseriesTool: ContextScopedMcpToolFactory = (c
       bucket: input.bucket,
       groupByStep: input.groupBy === 'step',
     });
+  },
+});
+
+const RETRY_RESCUES_DESCRIPTION =
+  'Retry failures later rescued by a successful retry, reconstructed from historical job chains. Requires project membership. Groups results by the original failure reason. Params: `projectId` and `days` (1..90, default 30). Returns `{ rows: [{ failureKind, failureReason, rescues, lastRescuedAt }], total, windowDays, projectId }`.';
+
+export const forgeMetricsProjectRetryRescuesTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'forge_metrics.project_retry_rescues',
+  description: RETRY_RESCUES_DESCRIPTION,
+  inputSchema: zodToMcpSchema(retryRescuesInputSchema),
+  handler: async (args) => {
+    const input = retryRescuesInputSchema.parse(args);
+    await assertPrincipalIsMember(ctx.principal, input.projectId);
+    return buildRetryRescuesReport(input.projectId, input.days);
+  },
+});
+
+const SESSION_FAILURES_DESCRIPTION =
+  'Failed agent sessions grouped by ISS-877 failure cause. Requires project membership. Params: `projectId` and `days` (1..90, default 30). Counts sessions whose STATUS is `failed` or `cancelled_stale`. Returns `{ rows: [{ cause, origin, sessions, isRealFailure, lastAt }], total, unclassified, unclassifiedRate, nonFailedWithFailureReason, resumeContinuity, windowDays, projectId }`. `resumeContinuity` (ISS-887) answers, over the SAME project and window, whether each attempt continued the prior attempt CLI transcript: `{ offered, resumed, dropped, dropRate, rows: [{ reason, sessions }] }`, where `reason` is one of the seven `ResumeDropReason` values (`failure_action` on a cross-box failover, `rotation`, `stage_pool`, `pin_stale`, `device_tripped`, `resume_bound_tokens`, `resume_bound_reopen_cycles`). `offered` counts only attempts that HAD a prior session — a first attempt has nothing to continue and is excluded, so the rate never dilutes as the project starts more fresh work. It carries its own denominator and its own filter, and is deliberately NOT restricted to failed sessions: a resume is dropped on healthy dispatches too. An empty block means no attempt in the window was offered a prior session, not a broken query. `nonFailedWithFailureReason` counts sessions at any other status that still carry a reason — `completed` (the ISS-759 completed-yet-failed shape) and live `running`/`queued` rows the I1 trigger stamped — reported rather than silently dropped. Legacy rows (`job_failed`, free text) resolve to `unclassified` at read time — a high historical rate is the honest measurement of the era before causes were recorded, not a bug.';
+
+export const forgeMetricsSessionFailuresTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'forge_metrics.session_failures',
+  description: SESSION_FAILURES_DESCRIPTION,
+  inputSchema: zodToMcpSchema(sessionFailuresInputSchema),
+  handler: async (args) => {
+    const input = sessionFailuresInputSchema.parse(args);
+    await assertPrincipalIsMember(ctx.principal, input.projectId);
+    return buildSessionFailuresReport(input.projectId, input.days);
   },
 });

@@ -19,6 +19,19 @@
 
 ### Fixed
 
+- Six MCP tools are back after being deleted the same day: `forge_orgs.list`, `forge_orgs.members`,
+  `forge_skill_facts.list`, `forge_skill_facts.get`, `forge_metrics.project_retry_rescues` and
+  `forge_metrics.session_failures`. Their removal claimed an audit-log split had shown no runner
+  called them; the split was wrong. `mcp_audit_log.user_id` is filled in for a device caller too —
+  it is stamped with the device's owner — so only `device_id` and `token_id` separate the two, and
+  a count that leans on `user_id` reads every device call as a human one. Split correctly, all six
+  had device callers, and the fleet hit a deleted tool at 09:07 UTC on 2026-09-01 and read
+  `not_found`. `/api/skill-facts` is `requireAuth()`, which answers a device token 401, so the
+  route was never a replacement for the callers that existed. The registered tool set is 59.
+  The four tools removed before them stay removed: their device count really is zero.
+  The extraction that commit also did is kept — `metrics/session-failures-report.ts` remains the
+  one place the report is shaped, and the restored tools delegate to it instead of shaping it again.
+
 - The MCP fence that keeps a project-bound access token inside its project is now tested. It had
   no coverage at all: every existing test built an unbound token, so the branch had never executed
   once. It is the only thing stopping fourteen tools — a token reaches them with a synthesized
@@ -48,10 +61,6 @@
 
 ### Removed
 
-- Six more MCP tools, each replaced by a route a token can actually reach:
-  `forge_orgs.list`, `forge_orgs.members`, `forge_skill_facts.list`, `forge_skill_facts.get`,
-  `forge_metrics.project_retry_rescues` and `forge_metrics.session_failures`. The registered
-  tool set is now 53, down from 69.
 - Four MCP tools whose work REST already does: `forge_steer`, `forge_ux_improver`,
   `forge_skills.pin` and `forge_metrics.step_durations`. Nothing that runs on a build box had
   called any of them, and every one has an endpoint that does the same job. The registered tool

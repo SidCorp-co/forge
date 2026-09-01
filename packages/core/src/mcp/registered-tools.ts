@@ -7,6 +7,7 @@
  */
 
 // cm:guard the registered surface is FROZEN here, and ISS-894 is why: the plan is to shrink it to the session-lifecycle group, and nothing went red when a tool was added or removed — so the list drifted in silence in both directions. Adding a tool is a decision; make it visible by editing this array in the same commit, and say in the message which wave it belongs to. A tool deleted without its callers moved is the other half, and `mcp_audit_log` is the authority on whether it had any.
+// cm:guard split `mcp_audit_log` by `device_id IS NOT NULL` / `token_id IS NOT NULL` and by NOTHING else — `user_id` is populated for a device caller too (it is stamped `device.ownerId`), so a split on it reads 100% user and 0 device for every tool in the table. Measured 2026-09-01: `has_user_id` equals `device + pat` exactly on all six tools `7f0c5a56` deleted after claiming an audit-log split had cleared them; the correct split shows `forge_skill_facts.get` at 23 device calls, and the fleet hit the deleted tool at 09:07 that same day and read `not_found`. A tool is clear only when its device count is 0 AND the replacement route accepts a device token — `/api/skill-facts` is `requireAuth()`, which answers a device 401, so it was never a replacement for the callers that existed.
 export const REGISTERED_TOOLS = [
   'forge_agent_sessions.get',
   'forge_agent_sessions.list',
@@ -29,8 +30,12 @@ export const REGISTERED_TOOLS = [
   'forge_memory.get',
   'forge_memory.search',
   'forge_memory.write',
+  'forge_metrics.project_retry_rescues',
   'forge_metrics.project_step_durations',
   'forge_metrics.project_timeseries',
+  'forge_metrics.session_failures',
+  'forge_orgs.list',
+  'forge_orgs.members',
   'forge_phase',
   'forge_pipeline_runs.get',
   'forge_pm.set_dependency',
@@ -43,6 +48,8 @@ export const REGISTERED_TOOLS = [
   'forge_reconcile',
   'forge_runners',
   'forge_schedules',
+  'forge_skill_facts.get',
+  'forge_skill_facts.list',
   'forge_skills.adopt',
   'forge_skills.create',
   'forge_skills.delete',
