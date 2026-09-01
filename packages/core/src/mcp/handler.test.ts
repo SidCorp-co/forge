@@ -18,6 +18,7 @@ vi.mock('../db/client.js', () => ({
 }));
 
 import type { Device } from '../auth/deviceToken.js';
+import { REGISTERED_TOOLS } from './registered-tools.js';
 import { createMcpServer } from './server.js';
 
 const fakeDevice: Device = {
@@ -48,73 +49,6 @@ const humanPat = (tokenId: string) =>
     projectIds: null,
     boundProjectId: null,
   }) as const;
-
-// cm:guard the registered surface is FROZEN here, and ISS-894 is why: the plan is to shrink it to the session-lifecycle group, and nothing went red when a tool was added or removed — so the list drifted in silence in both directions. Adding a tool is a decision; make it visible by editing this array in the same commit, and say in the message which wave it belongs to. A tool deleted without its callers moved is the other half, and `mcp_audit_log` is the authority on whether it had any.
-const REGISTERED_TOOLS = [
-  'forge_agent_sessions.get',
-  'forge_agent_sessions.list',
-  'forge_collaborators',
-  'forge_comments',
-  'forge_config',
-  'forge_coolify_deploy',
-  'forge_feedback',
-  'forge_guide',
-  'forge_health',
-  'forge_issues',
-  'forge_jobs.cancel',
-  'forge_jobs.events',
-  'forge_jobs.get',
-  'forge_jobs.list',
-  'forge_jobs.resume',
-  'forge_knowledge',
-  'forge_memory.delete',
-  'forge_memory.feedback',
-  'forge_memory.get',
-  'forge_memory.search',
-  'forge_memory.write',
-  'forge_metrics.project_retry_rescues',
-  'forge_metrics.project_step_durations',
-  'forge_metrics.project_timeseries',
-  'forge_metrics.session_failures',
-  'forge_metrics.step_durations',
-  'forge_orgs.list',
-  'forge_orgs.members',
-  'forge_phase',
-  'forge_pipeline_runs.get',
-  'forge_pm.set_dependency',
-  'forge_project_pipeline_runs',
-  'forge_project_pm',
-  'forge_projects.create',
-  'forge_projects.get',
-  'forge_projects.list',
-  'forge_projects.update',
-  'forge_reconcile',
-  'forge_runners',
-  'forge_schedules',
-  'forge_skill_facts.get',
-  'forge_skill_facts.list',
-  'forge_skills.adopt',
-  'forge_skills.create',
-  'forge_skills.delete',
-  'forge_skills.effective',
-  'forge_skills.get',
-  'forge_skills.list',
-  'forge_skills.list_registrations',
-  'forge_skills.pin',
-  'forge_skills.push',
-  'forge_skills.register',
-  'forge_skills.sync_status',
-  'forge_skills.update',
-  'forge_steer',
-  'forge_step_handoff.delete',
-  'forge_step_handoff.get',
-  'forge_step_handoff.write',
-  'forge_step_start',
-  'forge_storefront_target',
-  'forge_uploads',
-  'forge_ux_findings',
-  'forge_ux_improver',
-];
 
 describe('@forge/core MCP server', () => {
   async function connectClient() {
