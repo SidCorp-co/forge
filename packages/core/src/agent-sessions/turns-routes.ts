@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions, agentSessionTurns, projects } from '../db/schema.js';
 import { assertProjectRole } from '../lib/authz.js';
-import type { AuthVars } from '../middleware/auth.js';
+import { type AuthVars, restActor } from '../middleware/auth.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import {
   broadcastSession,
@@ -324,7 +324,7 @@ agentSessionTurnsRoutes.post(
 
     broadcastSession(inserted, 'agent-session.created');
 
-    await recordSessionCreatedActivity(inserted, userId);
+    await recordSessionCreatedActivity(inserted, restActor(c));
 
     return c.json(inserted, 201);
   },
@@ -386,7 +386,7 @@ agentSessionTurnsRoutes.post(
       broadcastEvent: 'agent-session.created',
     });
 
-    await recordSessionCreatedActivity(updated, userId);
+    await recordSessionCreatedActivity(updated, restActor(c));
 
     return c.json(updated, 201);
   },

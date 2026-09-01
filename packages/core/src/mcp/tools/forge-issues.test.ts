@@ -884,7 +884,7 @@ describe('forge_issues tool', () => {
           toIssueId: ISSUE_ID,
           kind: 'blocks',
         }),
-        { actor: { type: 'device', id: fakeDevice.id }, createdById: OWNER_ID },
+        { actor: { type: 'device', id: fakeDevice.id, agency: 'agent' }, createdById: OWNER_ID },
         expect.anything(),
       );
     });
@@ -914,7 +914,7 @@ describe('forge_issues tool', () => {
           toIssueId: BLOCKED_ID,
           kind: 'blocks',
         }),
-        { actor: { type: 'device', id: fakeDevice.id }, createdById: OWNER_ID },
+        { actor: { type: 'device', id: fakeDevice.id, agency: 'agent' }, createdById: OWNER_ID },
         expect.anything(),
       );
     });
@@ -1781,7 +1781,7 @@ describe('forge_issues tool', () => {
       // cm:edge contract -> packages/core/src/issues/update-service.ts — the replace-set delta (which ids are added, which removed, and the activity rows for both) is asserted there; this side asserts only that the resolved ids arrive
       const call = updateIssueFieldsMock.mock.lastCall?.[0];
       expect([...(call?.labelIds ?? [])].sort()).toEqual([LABEL_ID, LABEL_ID_2].sort());
-      expect(call?.actor).toEqual({ type: 'device', id: fakeDevice.id });
+      expect(call?.actor).toEqual({ type: 'device', id: fakeDevice.id, agency: 'agent' });
     });
 
     it('update with labels:[] passes an empty id set through as the clear-all request', async () => {
@@ -1984,7 +1984,7 @@ describe('forge_issues tool', () => {
           issueId: ISSUE_ID,
           projectId: PROJECT_ID,
           title: 'Sub-task',
-          actor: { type: 'device', id: fakeDevice.id },
+          actor: { type: 'device', id: fakeDevice.id, agency: 'agent' },
         }),
       );
     });
@@ -2142,7 +2142,7 @@ describe('forge_issues tool', () => {
       expect(updateTaskMock).toHaveBeenCalledWith(
         baseTaskRow,
         { status: 'done' },
-        { type: 'device', id: fakeDevice.id },
+        { type: 'device', id: fakeDevice.id, agency: 'agent' },
         ['acceptanceCriteria'],
       );
     });
@@ -2166,6 +2166,7 @@ describe('forge_issues tool', () => {
       expect(deleteTaskMock).toHaveBeenCalledWith(baseTaskRow, {
         type: 'device',
         id: fakeDevice.id,
+        agency: 'agent',
       });
     });
   });

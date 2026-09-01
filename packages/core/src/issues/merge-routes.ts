@@ -73,7 +73,7 @@ async function runMergeMarker(
       actor: {
         agency: actor.agency,
         commentAuthorId: userId,
-        hookActor: { type: actor.type, id: actor.id },
+        hookActor: { type: actor.type, id: actor.id, agency: actor.agency },
       },
     });
     return c.json({ id: issueId, action });

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
-import type { DeviceLite, TransitionActor } from '../../issues/actor-agency.js';
+import { actorAgency, type DeviceLite, type TransitionActor } from '../../issues/actor-agency.js';
 import { loadVisibleProjectIds } from '../../lib/authz.js';
 import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
 import type { Actor } from '../../pipeline/activity.js';
@@ -204,7 +204,8 @@ export function principalActor(principal: McpPrincipal, device: DeviceLite): Tra
 /** The same decision, in the shape the hooks bus and `activity_log` take. */
 export function principalHookActor(principal: McpPrincipal, device: DeviceLite): Actor {
   const actor = principalActor(principal, device);
-  return { type: actor.type, id: actor.id };
+  // cm:guard derive through `actorAgency`, not by re-testing `type === 'device'` here — that spelling is right ONLY because `principalActor` above already routes an agent-held PAT into the device branch. Loosen that mapping so an agent keeps `type:'user'` and a local test silently starts recording every agent write as a human, whereas this call follows it.
+  return { type: actor.type, id: actor.id, agency: actorAgency(actor) };
 }
 
 /**

@@ -189,7 +189,7 @@ it('update writes the edge with dependsOnId on the from side and reports it back
       toIssueId: ISSUE_ID,
       kind: 'blocks',
     }),
-    { actor: { type: 'device', id: fakeDevice.id }, createdById: OWNER_ID },
+    { actor: { type: 'device', id: fakeDevice.id, agency: 'agent' }, createdById: OWNER_ID },
     expect.anything(),
   );
   // cm:guard the deferral moved with the announcement: `deferHealthPublish` is an EFFECTS option now, and asserting it on the write spy would silently pass against the executor argument that took its place.
@@ -222,7 +222,7 @@ it('update writes the edge with blocksId on the to side', async () => {
 
   expect(setEdgeMock).toHaveBeenCalledWith(
     expect.objectContaining({ fromIssueId: ISSUE_ID, toIssueId: BLOCKED_ID }),
-    { actor: { type: 'device', id: fakeDevice.id }, createdById: OWNER_ID },
+    { actor: { type: 'device', id: fakeDevice.id, agency: 'agent' }, createdById: OWNER_ID },
     expect.anything(),
   );
   // cm:guard the deferral moved with the announcement: `deferHealthPublish` is an EFFECTS option now, and asserting it on the write spy would silently pass against the executor argument that took its place.
@@ -255,7 +255,7 @@ it('update passes validUntil through so an existing edge can be retracted', asyn
 
   expect(setEdgeMock).toHaveBeenCalledWith(
     expect.objectContaining({ validUntil: '2020-01-01T00:00:00.000Z' }),
-    { actor: { type: 'device', id: fakeDevice.id }, createdById: OWNER_ID },
+    { actor: { type: 'device', id: fakeDevice.id, agency: 'agent' }, createdById: OWNER_ID },
     expect.anything(),
   );
   // cm:guard the deferral moved with the announcement: `deferHealthPublish` is an EFFECTS option now, and asserting it on the write spy would silently pass against the executor argument that took its place.
@@ -355,7 +355,7 @@ it('attributes the edge to the PAT user, not to the synthetic device standing in
 
   expect(setEdgeMock).toHaveBeenCalledWith(
     expect.anything(),
-    expect.objectContaining({ actor: { type: 'user', id: PAT_USER } }),
+    expect.objectContaining({ actor: { type: 'user', id: PAT_USER, agency: 'human' } }),
     expect.anything(),
   );
 });

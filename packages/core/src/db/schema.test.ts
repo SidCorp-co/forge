@@ -1,8 +1,6 @@
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 import {
-  activityLog,
-  actorTypes,
   comments,
   devicePlatforms,
   deviceStatuses,
@@ -39,6 +37,7 @@ import {
   tasks,
   type users,
 } from './schema.js';
+import { activityLog, actorTypes } from './schema-activity.js';
 
 type AnyTable =
   | typeof users

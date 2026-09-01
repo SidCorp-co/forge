@@ -233,7 +233,7 @@ describe('forge_pm.set_dependency', () => {
     expect(decomposeSpy).toHaveBeenCalledWith(
       FROM_ID,
       [{ existingIssueId: TO_ID }],
-      { userId: OWNER_ID },
+      { userId: OWNER_ID, agency: 'agent' },
       { useIntegrationBranch: undefined },
     );
   });

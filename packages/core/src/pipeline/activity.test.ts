@@ -35,7 +35,7 @@ describe('recordActivity', () => {
   it('inserts row with merged payload (before/after/extra)', async () => {
     await recordActivity({
       issueId: ISSUE_ID,
-      actor: { type: 'user', id: USER_ID },
+      actor: { type: 'user', id: USER_ID, agency: 'human' },
       action: 'issue.updated',
       before: { title: 'old' },
       after: { title: 'new' },
@@ -46,6 +46,7 @@ describe('recordActivity', () => {
     expect(insertValues).toHaveBeenCalledWith({
       issueId: ISSUE_ID,
       actorType: 'user',
+      actorAgency: 'human',
       actorId: USER_ID,
       action: 'issue.updated',
       payload: { before: { title: 'old' }, after: { title: 'new' }, fields: ['title'] },
@@ -56,13 +57,14 @@ describe('recordActivity', () => {
   it('uses empty payload object when none supplied', async () => {
     await recordActivity({
       issueId: ISSUE_ID,
-      actor: { type: 'device', id: DEVICE_ID },
+      actor: { type: 'device', id: DEVICE_ID, agency: 'agent' },
       action: 'issue.created',
     });
 
     expect(insertValues).toHaveBeenCalledWith({
       issueId: ISSUE_ID,
       actorType: 'device',
+      actorAgency: 'agent',
       actorId: DEVICE_ID,
       action: 'issue.created',
       payload: {},
@@ -73,7 +75,7 @@ describe('recordActivity', () => {
   it('threads a caller-supplied dedupeKey through to the row', async () => {
     await recordActivity({
       issueId: ISSUE_ID,
-      actor: { type: 'user', id: USER_ID },
+      actor: { type: 'user', id: USER_ID, agency: 'human' },
       action: 'issue.statusChanged',
       dedupeKey: 'transition:outbox-1',
     });
@@ -92,7 +94,7 @@ describe('recordActivityTx', () => {
 
     await recordActivityTx(tx, {
       issueId: ISSUE_ID,
-      actor: { type: 'user', id: USER_ID },
+      actor: { type: 'user', id: USER_ID, agency: 'human' },
       action: 'issue.labeled',
       payload: { labelId: 'x' },
     });
@@ -113,7 +115,7 @@ describe('safeRecordActivity', () => {
     await expect(
       safeRecordActivity({
         issueId: ISSUE_ID,
-        actor: { type: 'user', id: USER_ID },
+        actor: { type: 'user', id: USER_ID, agency: 'human' },
         action: 'issue.created',
       }),
     ).resolves.toBeUndefined();
@@ -127,10 +129,34 @@ describe('safeRecordActivity', () => {
   it('returns without logging on success', async () => {
     await safeRecordActivity({
       issueId: ISSUE_ID,
-      actor: { type: 'user', id: USER_ID },
+      actor: { type: 'user', id: USER_ID, agency: 'human' },
       action: 'issue.created',
     });
     expect(loggerError).not.toHaveBeenCalled();
+  });
+});
+
+describe('actor_agency on the stored row', () => {
+  it('records what the actor carried, not what its type implies', async () => {
+    await recordActivity({
+      issueId: ISSUE_ID,
+      actor: { type: 'user', id: USER_ID, agency: 'agent' },
+      action: 'issue.updated',
+    });
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ actorType: 'user', actorAgency: 'agent' }),
+    );
+  });
+
+  it('keeps a hand-typed write human on the same actor type', async () => {
+    await recordActivity({
+      issueId: ISSUE_ID,
+      actor: { type: 'user', id: USER_ID, agency: 'human' },
+      action: 'issue.updated',
+    });
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ actorType: 'user', actorAgency: 'human' }),
+    );
   });
 });
 
@@ -140,13 +166,18 @@ describe('resolveActor', () => {
   }
 
   it('returns user principal when userId is set', () => {
-    expect(resolveActor(ctx({ userId: USER_ID }))).toEqual({ type: 'user', id: USER_ID });
+    expect(resolveActor(ctx({ userId: USER_ID }))).toEqual({
+      type: 'user',
+      id: USER_ID,
+      agency: 'human',
+    });
   });
 
   it('returns device principal when only device is set', () => {
     expect(resolveActor(ctx({ device: { id: DEVICE_ID } }))).toEqual({
       type: 'device',
       id: DEVICE_ID,
+      agency: 'agent',
     });
   });
 
@@ -154,6 +185,15 @@ describe('resolveActor', () => {
     expect(resolveActor(ctx({ userId: USER_ID, device: { id: DEVICE_ID } }))).toEqual({
       type: 'user',
       id: USER_ID,
+      agency: 'human',
+    });
+  });
+
+  it('reports a job token as an agent while attributing it to the owning user', () => {
+    expect(resolveActor(ctx({ userId: USER_ID, agency: 'agent' }))).toEqual({
+      type: 'user',
+      id: USER_ID,
+      agency: 'agent',
     });
   });
 

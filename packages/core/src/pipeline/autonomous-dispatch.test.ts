@@ -19,7 +19,7 @@ const { autonomousStepFor, dispatchAutonomous, dispatchDriveManual, isAutonomous
   './autonomous-dispatch.js'
 );
 
-const ACTOR = { type: 'user', id: 'user-1' } as const;
+const ACTOR = { type: 'user', id: 'user-1', agency: 'human' } as const;
 const BASE = {
   projectId: 'proj-1',
   issueId: 'issue-1',
@@ -148,7 +148,7 @@ describe('dispatchAutonomous', () => {
     expect(
       await dispatchAutonomous({
         ...BASE,
-        actor: { type: 'device', id: 'dev-1' },
+        actor: { type: 'device', id: 'dev-1', agency: 'agent' },
         projectCreatedBy: null,
         status: 'open',
         cfg: { mode: 'autonomous' },

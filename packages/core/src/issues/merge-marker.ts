@@ -2,6 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
+import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { findMissingWorkEvidence } from '../pipeline/work-evidence.js';
 import type { ActorAgency } from './actor-agency.js';
@@ -58,7 +59,7 @@ export type MergeMarkerActor = {
   agency: ActorAgency;
   /** Who the audit comment is attributed to. */
   commentAuthorId: string;
-  hookActor: { type: 'user' | 'device'; id: string };
+  hookActor: Actor;
 };
 
 /**

@@ -673,7 +673,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             issueId: issue.id,
             updates,
             labelIds,
-            actor: { type: 'device', id: device.id },
+            actor: { type: 'device', id: device.id, agency: 'agent' },
           });
         }
 
@@ -797,7 +797,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           priority: data.taskPriority,
           isAgentTask: data.isAgentTask,
           acceptanceCriteria: data.taskAcceptanceCriteria ?? null,
-          actor: { type: 'device', id: device.id },
+          actor: { type: 'device', id: device.id, agency: 'agent' },
         });
 
         return { task: serializeTask(created) };
@@ -821,9 +821,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           updates.acceptanceCriteria = data.taskAcceptanceCriteria;
         }
 
-        const updated = await updateTaskRow(row, updates, { type: 'device', id: device.id }, [
-          'acceptanceCriteria',
-        ]);
+        const updated = await updateTaskRow(
+          row,
+          updates,
+          { type: 'device', id: device.id, agency: 'agent' },
+          ['acceptanceCriteria'],
+        );
         if (!updated) throw new Error('NOT_FOUND: task not found');
 
         return { task: serializeTask(updated) };
@@ -835,7 +838,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
         const row = await loadTaskForAccess(input.documentId);
         await assertPrincipalIsWriter(principal, row.projectId);
-        await deleteTaskRow(row, { type: 'device', id: device.id });
+        await deleteTaskRow(row, { type: 'device', id: device.id, agency: 'agent' });
         return { deleted: true, documentId: input.documentId };
       }
     }

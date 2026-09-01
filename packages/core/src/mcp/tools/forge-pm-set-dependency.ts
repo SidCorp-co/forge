@@ -53,7 +53,11 @@ export async function pmSetDependencyHandler(
     return await setIssueDependency(
       input,
       {
-        actor: actorOverride ?? { type: 'device' as const, id: device.id },
+        actor: actorOverride ?? {
+          type: 'device' as const,
+          id: device.id,
+          agency: 'agent' as const,
+        },
         createdById: device.ownerId,
       },
       opts,

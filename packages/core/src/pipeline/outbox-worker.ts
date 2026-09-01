@@ -103,12 +103,11 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
 
   // cm:guard never await hooks.emit() while a transaction is open on this connection or any other — subscribers (e.g. the orchestrator) open their own tx and can block on an unbounded lock, pinning whatever tx is still around
   for (const row of rows) {
+    // cm:guard `agency` here is IMPLIED by `actor_type`, not carried — the outbox row records who owned the transition and nothing about who was at the keyboard, so the moment a job token drives one this rebuild will call it human. Carry agency on `kernel_transitions_outbox` and read it here; this branch is a stand-in that reproduces exactly what the row already meant, not an answer to the agency question.
     const actor: Actor =
-      row.actor_type === 'device'
-        ? { type: 'device', id: row.actor_id ?? '<system>' }
-        : row.actor_type === 'system'
-          ? { type: 'device', id: row.actor_id ?? '<system>' }
-          : { type: 'user', id: row.actor_id ?? '<system>' };
+      row.actor_type === 'device' || row.actor_type === 'system'
+        ? { type: 'device', id: row.actor_id ?? '<system>', agency: 'agent' }
+        : { type: 'user', id: row.actor_id ?? '<system>', agency: 'human' };
     try {
       const result = await hooks.emit('transition', {
         issueId: row.issue_id,

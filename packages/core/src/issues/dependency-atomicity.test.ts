@@ -48,7 +48,11 @@ vi.mock('./decompose.js', () => ({ decomposeParent: vi.fn(async () => undefined)
 const { IssueDependencyError, writeIssueDependency } = await import('./dependency-service.js');
 
 const writer = {
-  actor: { type: 'device' as const, id: '44444444-4444-4444-8444-444444444444' },
+  actor: {
+    type: 'device' as const,
+    id: '44444444-4444-4444-8444-444444444444',
+    agency: 'agent' as const,
+  },
   createdById: '55555555-5555-4555-8555-555555555555',
 };
 

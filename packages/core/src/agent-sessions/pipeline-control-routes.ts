@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
-import type { AuthVars } from '../middleware/auth.js';
+import { type AuthVars, restActor } from '../middleware/auth.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { broadcastSession } from './broadcast.js';
 import {
@@ -94,7 +94,7 @@ agentSessionPipelineControlRoutes.post(
     if (issueId) {
       await safeRecordActivity({
         issueId,
-        actor: { type: 'user', id: userId },
+        actor: restActor(c),
         action: 'agent-session.pipelineControl.changed',
         before: prev ?? undefined,
         after: merged,

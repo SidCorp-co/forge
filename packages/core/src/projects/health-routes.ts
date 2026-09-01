@@ -1,15 +1,8 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { db } from '../db/client.js';
-import {
-  activityLog,
-  issues,
-  pipelineRuns,
-  projectMembers,
-  projects,
-  runners,
-  users,
-} from '../db/schema.js';
+import { issues, pipelineRuns, projectMembers, projects, runners, users } from '../db/schema.js';
+import { activityLog } from '../db/schema-activity.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 

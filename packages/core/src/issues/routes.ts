@@ -192,7 +192,7 @@ issueProjectRoutes.post(
     try {
       result = await createIssue(
         { ...input, projectId },
-        { createdById: userId, createdVia: 'web', actor: { type: 'user', id: userId } },
+        { createdById: userId, createdVia: 'web', actor: restActor(c) },
       );
     } catch (err) {
       throw toHttpCreateError(err);
@@ -599,7 +599,7 @@ issueRoutes.post(
       const result = await decomposeParent(
         id,
         body.children,
-        { userId },
+        { userId, agency: restActor(c).agency },
         { useIntegrationBranch: body.useIntegrationBranch },
       );
       return c.json(result);

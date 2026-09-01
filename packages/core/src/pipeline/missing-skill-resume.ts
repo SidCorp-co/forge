@@ -51,7 +51,8 @@ export function registerMissingSkillResume(bus: HooksBus): void {
           projectId: payload.projectId,
           issueId: run.issueId,
           status: iss.status,
-          actor: { type: 'user', id: payload.actorUserId },
+          // cm:guard `'human'` reproduces the attribution this re-enqueue already carried and is NOT a claim about who typed — nothing triggered it but a skill landing, and the payload records only the user the paused run was filed under. When the resume payload starts carrying agency, read it here.
+          actor: { type: 'user', id: payload.actorUserId, agency: 'human' },
           reason: { autoResume: PAUSE_REASON_PREFIX.replace(':', ''), stage: payload.stage },
         });
       } catch (err) {

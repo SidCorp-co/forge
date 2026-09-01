@@ -1,4 +1,4 @@
-import { safeRecordActivity } from '../pipeline/activity.js';
+import { type Actor, safeRecordActivity } from '../pipeline/activity.js';
 
 export function extractIssueId(metadata: unknown): string | null {
   if (!metadata || typeof metadata !== 'object') return null;
@@ -18,13 +18,13 @@ export function extractIssueId(metadata: unknown): string | null {
  */
 export async function recordSessionCreatedActivity(
   session: { id: string; title: string | null; metadata: unknown },
-  userId: string,
+  actor: Actor,
 ): Promise<void> {
   const auditIssueId = extractIssueId(session.metadata);
   if (!auditIssueId) return;
   await safeRecordActivity({
     issueId: auditIssueId,
-    actor: { type: 'user', id: userId },
+    actor,
     action: 'agent-session.created',
     payload: { sessionId: session.id, title: session.title ?? null },
   });

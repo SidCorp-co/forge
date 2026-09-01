@@ -13,7 +13,7 @@ import {
   tasks,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { createTask, deleteTask, findTaskById, updateTask } from './task-service.js';
 
@@ -131,7 +131,7 @@ taskIssueRoutes.post(
       agentLog: (input.agentLog as never) ?? null,
       acceptanceCriteria: (input.acceptanceCriteria as never) ?? null,
       sortOrder: input.sortOrder,
-      actor: { type: 'user', id: userId },
+      actor: restActor(c),
     });
 
     return c.json(inserted, 201);
@@ -233,7 +233,7 @@ taskIssueRoutes.post(
           taskId: id,
           issueId: issue.id,
           projectId: issue.projectId,
-          actor: { type: 'user', id: userId },
+          actor: restActor(c),
           fields: ['sortOrder'],
         }),
       ),
@@ -295,12 +295,7 @@ taskRoutes.patch(
       if (next !== undefined) updates[field] = next;
     }
 
-    const updated = await updateTask(
-      task,
-      updates,
-      { type: 'user', id: userId },
-      TASK_JSONB_FIELDS,
-    );
+    const updated = await updateTask(task, updates, restActor(c), TASK_JSONB_FIELDS);
     if (!updated) throw notFound('task not found');
 
     return c.json(updated);
@@ -320,7 +315,7 @@ taskRoutes.delete(
     const access = await loadProjectAccess(task.projectId, userId);
     assertProjectRole(access, 'member', 'not a project member');
 
-    await deleteTask(task, { type: 'user', id: userId });
+    await deleteTask(task, restActor(c));
 
     return c.body(null, 204);
   },

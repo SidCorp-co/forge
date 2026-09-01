@@ -75,6 +75,8 @@ uploadRoutes.put(
           mime: ticket.mime,
           bytes,
           uploaderId: ticket.uploaderId,
+          // cm:guard `'human'` here is a PLACEHOLDER, not a measurement — this route authenticates by the upload ticket alone, and `upload_tickets` records who the uploader is but not whether an agent was driving. Carry agency on the ticket at mint time and read it here; until then an agent's upload is filed under its owner, which is what the row already said before this column existed.
+          uploaderAgency: 'human',
         });
       } else if (ticket.targetType === 'session') {
         persisted = await persistSessionAttachment({

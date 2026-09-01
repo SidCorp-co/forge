@@ -208,6 +208,7 @@ export async function createIssue(
       created.id,
       decodedAttachments,
       writer.createdById,
+      writer.actor.agency,
     );
     attachments = result.persisted;
     attachmentErrors = result.errors;

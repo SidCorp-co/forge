@@ -13,7 +13,7 @@ import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { listResponse, paginationSchema, wholeList } from '../lib/pagination.js';
 import { logger } from '../logger.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { requireAnyAuth } from '../middleware/require-any-auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { getStorage, isEnoent } from '../storage/index.js';
@@ -161,7 +161,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
       await hooks.emit('commentCreated', {
         issueId,
         projectId: issue.projectId,
-        actor: { type: 'user', id: userId },
+        actor: restActor(c),
         commentId: inserted.id,
         body: inserted.body,
         parentId: inserted.parentId,
@@ -186,7 +186,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
               issueId,
               projectId: issue.projectId,
               commentId: insertedId,
-              actor: { type: 'user', id: userId },
+              actor: restActor(c),
               mentionedUserIds: targets.map((t) => t.userId),
             });
           }
@@ -409,7 +409,7 @@ commentRoutes.patch(
     await hooks.emit('commentUpdated', {
       issueId: updated.issueId,
       projectId: comment.projectId,
-      actor: { type: 'user', id: userId },
+      actor: restActor(c),
       commentId: updated.id,
       before: comment.body ?? '',
       after: updated.body,
@@ -441,7 +441,7 @@ commentRoutes.delete(
     await hooks.emit('commentDeleted', {
       issueId: comment.issueId,
       projectId: comment.projectId,
-      actor: { type: 'user', id: userId },
+      actor: restActor(c),
       commentId: comment.id,
     });
     return c.body(null, 204);

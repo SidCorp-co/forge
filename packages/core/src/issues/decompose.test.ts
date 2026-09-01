@@ -347,7 +347,7 @@ describe('decomposeParent — happy path', () => {
     const out = await decomposeParent(
       PARENT_ID,
       [{ title: 'Child A' }, { title: 'Child B' }, { title: 'Child C' }],
-      { userId: USER_ID },
+      { userId: USER_ID, agency: 'human' },
     );
     expect(out.parentId).toBe(PARENT_ID);
     expect(out.childIds).toHaveLength(3);
@@ -373,7 +373,7 @@ describe('decomposeParent — opt-out', () => {
     const out = await decomposeParent(
       PARENT_ID,
       [{ title: 'Child A' }],
-      { userId: USER_ID },
+      { userId: USER_ID, agency: 'human' },
       { useIntegrationBranch: false },
     );
     expect(out.integrationBranch).toBeNull();
@@ -386,7 +386,10 @@ describe('decomposeParent — branch-name conflict resolution', () => {
   it('appends -2 when the base candidate already exists on the remote', async () => {
     seedParent();
     gitHasBranch.mockImplementation(async (_repo, branch) => branch === 'iss-7-pr-d-parent-epic');
-    const out = await decomposeParent(PARENT_ID, [{ title: 'Child A' }], { userId: USER_ID });
+    const out = await decomposeParent(PARENT_ID, [{ title: 'Child A' }], {
+      userId: USER_ID,
+      agency: 'human',
+    });
     expect(out.integrationBranch).toBe('iss-7-pr-d-parent-epic-2');
     expect(gitCreateBranch).toHaveBeenCalledWith(
       expect.objectContaining({ newBranch: 'iss-7-pr-d-parent-epic-2' }),
@@ -398,7 +401,7 @@ describe('decomposeParent — parent status guard', () => {
   it('rejects when parent status is not confirmed or waiting and parent has no prior decomposition', async () => {
     seedParent({ status: 'in_progress' });
     await expect(
-      decomposeParent(PARENT_ID, [{ title: 'Child A' }], { userId: USER_ID }),
+      decomposeParent(PARENT_ID, [{ title: 'Child A' }], { userId: USER_ID, agency: 'human' }),
     ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
   });
 
@@ -409,6 +412,7 @@ describe('decomposeParent — parent status guard', () => {
       seedParent({ status });
       const out = await decomposeParent(PARENT_ID, [{ title: `Child ${status}` }], {
         userId: USER_ID,
+        agency: 'human' as const,
       });
       expect(out.childIds).toHaveLength(1);
     }
@@ -419,7 +423,7 @@ describe('decomposeParent — parent status guard', () => {
     for (const status of ['open', 'in_progress'] as const) {
       seedParent({ status });
       await expect(
-        decomposeParent(PARENT_ID, [{ title: 'Child A' }], { userId: USER_ID }),
+        decomposeParent(PARENT_ID, [{ title: 'Child A' }], { userId: USER_ID, agency: 'human' }),
       ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
     }
   });
@@ -428,7 +432,7 @@ describe('decomposeParent — parent status guard', () => {
     state.project.agentConfig = { pipelineConfig: { mode: 'autonomous' } };
     seedParent({ status: 'confirmed' });
     await expect(
-      decomposeParent(PARENT_ID, [{ title: 'Child A' }], { userId: USER_ID }),
+      decomposeParent(PARENT_ID, [{ title: 'Child A' }], { userId: USER_ID, agency: 'human' }),
     ).rejects.toThrow(/open, in_progress, waiting/);
   });
 
@@ -440,7 +444,10 @@ describe('decomposeParent — parent status guard', () => {
         branchConfig: { baseBranch: 'main', targetBranch: 'main' },
       },
     });
-    const out = await decomposeParent(PARENT_ID, [{ title: 'Late Child' }], { userId: USER_ID });
+    const out = await decomposeParent(PARENT_ID, [{ title: 'Late Child' }], {
+      userId: USER_ID,
+      agency: 'human',
+    });
     // Reuses the existing branch name from metadata (which is 'main' in our
     // contrived fixture); the helper does not re-issue a git push.
     expect(out.integrationBranch).toBe('main');
@@ -451,15 +458,15 @@ describe('decomposeParent — parent status guard', () => {
 describe('decomposeParent — input validation', () => {
   it('throws when children is empty', async () => {
     seedParent();
-    await expect(decomposeParent(PARENT_ID, [], { userId: USER_ID })).rejects.toBeInstanceOf(
-      DecomposeError,
-    );
+    await expect(
+      decomposeParent(PARENT_ID, [], { userId: USER_ID, agency: 'human' }),
+    ).rejects.toBeInstanceOf(DecomposeError);
   });
 
   it('throws when a new child has no title', async () => {
     seedParent();
     await expect(
-      decomposeParent(PARENT_ID, [{ title: '   ' }], { userId: USER_ID }),
+      decomposeParent(PARENT_ID, [{ title: '   ' }], { userId: USER_ID, agency: 'human' }),
     ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
   });
 });

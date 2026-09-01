@@ -28,7 +28,7 @@ export type AuthVars = {
  * decide for themselves.
  */
 // cm:guard build the actor HERE, never as a `{ type: 'user' as const }` literal in a route — three route files each had their own copy and all three were wrong in the same way, which is what a second copy of an auth decision always costs. `id` stays the owning user (a job's write really is its creator's); `agency` is what the lifecycle gates read.
-export function restActor(c: Context<{ Variables: AuthVars }>): {
+export function restActor(c: Context<{ Variables: { userId: string; agency?: ActorAgency } }>): {
   type: 'user';
   id: string;
   agency: ActorAgency;

@@ -10,6 +10,26 @@
 
 ### Added
 
+- `activity_log.actor_agency` — the audit row now records whether an agent or a person was at the
+  keyboard, which `actor_type` cannot answer: a job token is held by an agent and owned by a
+  person, so it writes `actor_type = 'user'` truthfully while an agent is driving. `Actor` requires
+  `agency`, so the compiler names every writer rather than letting one omit it and record the
+  column's plausible-looking default. `requireAnyAuth` carries agency the way `requireAuth` does —
+  it had been handed a principal that knew the answer and kept only `userId`, so every attachment
+  upload and comment posted through it filed a job token's work under its owner acting by hand.
+
+  Per the owner's decision of 2026-09-02, existing rows are stamped `human` by the DEFAULT with no
+  inference from `actor_type`, and no read path uses the column yet: `isAgent` still derives from
+  `actor_type`, because a feed wired to this column today would lose the agent marker on every
+  runner write in history. `kernel_transitions` does not have the column, and three writers hand it
+  a placeholder they cannot justify — all four named, with what each needs, in
+  `docs/proposals/agency-is-not-persisted.md`.
+
+  `activity_log` moved to `db/schema-activity.ts` on the way, following
+  `schema-journal.ts`: `schema.ts` sits 6.7x over the file budget and is frozen at that size, so
+  the column could not land there without an amnesty. It is re-exported, so the table's ten
+  importers are unchanged, and `drizzle-kit` reports no schema drift across the move.
+
 - The Coolify deploy commands over REST: `GET /api/projects/:id/integrations/coolify`,
   `.../coolify/status` and `POST .../coolify/deploy`. `/api/projects` is on the PAT allowlist, so
   `forge-runner api` reaches them with a job token; before this an agent on the CLI could not

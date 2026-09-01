@@ -131,7 +131,11 @@ const { createIssue, IssueCreateError } = await import('./create-service.js');
 const writer = {
   createdById: '33333333-3333-4333-8333-333333333333',
   createdVia: 'mcp' as const,
-  actor: { type: 'device' as const, id: '44444444-4444-4444-8444-444444444444' },
+  actor: {
+    type: 'device' as const,
+    id: '44444444-4444-4444-8444-444444444444',
+    agency: 'agent' as const,
+  },
 };
 
 beforeEach(() => {

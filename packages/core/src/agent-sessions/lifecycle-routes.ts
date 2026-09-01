@@ -24,7 +24,7 @@ import {
 } from '../lib/device-pool.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import type { AuthVars } from '../middleware/auth.js';
+import { type AuthVars, restActor } from '../middleware/auth.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { extractReportFromMessages } from '../schedules/messages/skill-improve-prompt.js';
 import { extractStewardReportFromMessages } from '../schedules/messages/skill-steward-prompt.js';
@@ -174,7 +174,7 @@ agentSessionLifecycleRoutes.post(
       broadcastEvent: 'agent-session.created',
     });
 
-    await recordSessionCreatedActivity(updated, userId);
+    await recordSessionCreatedActivity(updated, restActor(c));
     return c.json(updated, 201);
   },
 );

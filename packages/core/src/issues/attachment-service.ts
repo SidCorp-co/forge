@@ -4,6 +4,7 @@ import { db } from '../db/client.js';
 import { issueAttachments } from '../db/schema.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { getStorage } from '../storage/index.js';
+import type { ActorAgency } from './actor-agency.js';
 
 export const ALLOWED_MIMES = new Set([
   'image/png',
@@ -52,6 +53,8 @@ export interface PersistIssueAttachmentInput {
   mime: string;
   bytes: Buffer;
   uploaderId: string;
+  // cm:guard required, not defaulted — `uploaderId` is the row's owner and stays the owner whoever uploaded, so it cannot answer the agency question, and a default here would record every agent upload as the person who holds the token.
+  uploaderAgency: ActorAgency;
 }
 
 export interface PersistedIssueAttachment {
@@ -103,7 +106,7 @@ export async function persistIssueAttachment(
 
   void safeRecordActivity({
     issueId,
-    actor: { type: 'user', id: uploaderId },
+    actor: { type: 'user', id: uploaderId, agency: input.uploaderAgency },
     action: 'issue.attachment.uploaded',
     payload: {
       attachmentId: inserted.id,
@@ -190,6 +193,7 @@ export async function persistDecodedIssueAttachments(
   issueId: string,
   decoded: readonly DecodedAttachment[],
   uploaderId: string,
+  uploaderAgency: ActorAgency,
 ): Promise<{ persisted: PersistedIssueAttachment[]; errors: AttachmentErrorEntry[] }> {
   const persisted: PersistedIssueAttachment[] = [];
   const errors: AttachmentErrorEntry[] = [];
@@ -202,6 +206,7 @@ export async function persistDecodedIssueAttachments(
           mime: d.mime,
           bytes: d.bytes,
           uploaderId,
+          uploaderAgency,
         }),
       );
     } catch (err) {
@@ -229,9 +234,10 @@ export async function persistIssueAttachmentsFromBase64(
   issueId: string,
   items: readonly Base64AttachmentInput[],
   uploaderId: string,
+  uploaderAgency: ActorAgency,
 ): Promise<{ persisted: PersistedIssueAttachment[]; errors: AttachmentErrorEntry[] }> {
   const decoded = decodeAndValidateAttachments(items);
-  return persistDecodedIssueAttachments(issueId, decoded, uploaderId);
+  return persistDecodedIssueAttachments(issueId, decoded, uploaderId, uploaderAgency);
 }
 
 /** Metadata view of an issue attachment (no bytes). Mirrors the comment

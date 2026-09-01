@@ -199,7 +199,7 @@ export async function emitIssueDependencyEffects(
     await recordOnBothSides(input, written.id, writer.actor, 'issue.dependency.added', {
       ...(input.reason ? { reason: input.reason } : {}),
     });
-    await maybeRunDecomposeHelper(input, writer.createdById);
+    await maybeRunDecomposeHelper(input, writer);
     await refreshDependentHealth(input, opts);
     return;
   }
@@ -214,7 +214,7 @@ export async function emitIssueDependencyEffects(
   }
 
   // cm:why run the helper on the conflict path too — a parent whose first decompose edge predated ISS-138 PR-D owns no integration branch, and a later duplicate edge is the only occasion left to fill it
-  await maybeRunDecomposeHelper(input, writer.createdById);
+  await maybeRunDecomposeHelper(input, writer);
 }
 
 async function emitEdgeChanged(input: SetIssueDependencyInput, edgeId: string): Promise<void> {
@@ -260,7 +260,7 @@ async function refreshDependentHealth(
 
 async function maybeRunDecomposeHelper(
   input: SetIssueDependencyInput,
-  ownerId: string,
+  writer: IssueDependencyWriter,
 ): Promise<void> {
   if (input.kind !== 'decomposes') return;
   // cm:guard an explicit `useIntegrationBranch:false` must skip the helper ENTIRELY, not pass the flag down — decomposeParent still creates branches for other reasons, and callers that only model decomposition rely on this call making no git side effect at all
@@ -269,7 +269,7 @@ async function maybeRunDecomposeHelper(
     await decomposeParent(
       input.fromIssueId,
       [{ existingIssueId: input.toIssueId }],
-      { userId: ownerId },
+      { userId: writer.createdById, agency: writer.actor.agency },
       { useIntegrationBranch: input.decomposeOpts?.useIntegrationBranch },
     );
   } catch (err) {

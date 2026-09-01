@@ -16,7 +16,7 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { deleteMemory, indexMemoryBestEffort } from '../memory/indexer.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { type SpawnPmSessionResult, spawnPmSession } from './spawner.js';
 
@@ -192,7 +192,7 @@ pmRoutes.post(
       await hooks.emit('commentCreated', {
         issueId,
         projectId,
-        actor: { type: 'user', id: userId },
+        actor: restActor(c),
         commentId: inserted.id,
         body: inserted.body,
         parentId: inserted.parentId,

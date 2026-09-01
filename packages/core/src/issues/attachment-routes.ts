@@ -9,6 +9,7 @@ import { db } from '../db/client.js';
 import { issueAttachments, issues } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { restActor } from '../middleware/auth.js';
 import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { getStorage, isEnoent } from '../storage/index.js';
@@ -76,6 +77,7 @@ issueAttachmentRoutes.post(
         mime: file.type || 'application/octet-stream',
         bytes: buffer,
         uploaderId: userId,
+        uploaderAgency: restActor(c).agency,
       });
       return c.json(row, 201);
     } catch (err) {
@@ -212,7 +214,7 @@ attachmentRoutes.delete(
 
     void safeRecordActivity({
       issueId: row.issueId,
-      actor: { type: 'user', id: userId },
+      actor: restActor(c),
       action: 'issue.attachment.deleted',
       payload: { attachmentId: row.id, name: row.name },
     });

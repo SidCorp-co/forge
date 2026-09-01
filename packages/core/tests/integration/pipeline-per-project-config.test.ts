@@ -259,7 +259,7 @@ async function emitIssueCreated(issue: IssueRow, ownerId: string): Promise<void>
   await mods.hooks.emit('issueCreated', {
     issueId: issue.id,
     projectId: issue.projectId,
-    actor: { type: 'user', id: ownerId },
+    actor: { type: 'user', id: ownerId, agency: 'human' },
     // ISS-130 — issueCreated payload now requires the inserted row's status.
     status: 'open',
     snapshot: {

@@ -22,11 +22,13 @@ import { HTTPException } from 'hono/http-exception';
 import { verifyDeviceToken } from '../auth/deviceToken.js';
 import { verifyUserToken } from '../auth/jwt.js';
 import { isPatLike } from '../auth/pat-format.js';
+import type { ActorAgency } from '../issues/actor-agency.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { readBearerToken } from './bearer.js';
 import { beginPatRequest, withPatScope } from './pat-rest-surface.js';
 
-export type AnyAuthVars = { userId: string };
+// cm:guard `agency` belongs on THIS shape too, not just `AuthVars` — until 2026-09-01 this middleware took a principal that already carried agency and kept only `userId`, so every write behind it (attachment upload, comment post) recorded a job token's work as its owner acting by hand. A second auth entrypoint that drops a field is how one gets fixed and the other stays wrong.
+export type AnyAuthVars = { userId: string; agency?: ActorAgency };
 
 const unauth = (message: string) =>
   new HTTPException(401, { message, cause: { code: 'UNAUTHENTICATED' } });
@@ -50,6 +52,7 @@ export function requireAnyAuth(): MiddlewareHandler<{ Variables: AnyAuthVars }> 
     if (isPatLike(token)) {
       const { principal, scope } = await beginPatRequest(c, token);
       c.set('userId', principal.userId);
+      c.set('agency', principal.agency);
       return withPatScope(scope, () => next());
     }
 
@@ -67,6 +70,7 @@ export function requireAnyAuth(): MiddlewareHandler<{ Variables: AnyAuthVars }> 
     if (!device) throw unauth('invalid token');
     reportDeviceOnDataPlane(c, device.id);
     c.set('userId', device.ownerId);
+    c.set('agency', 'agent');
     await next();
   };
 }

@@ -74,7 +74,7 @@ describe('answer-resume E2E', () => {
     await bus.emit('commentCreated', {
       issueId,
       projectId,
-      actor: { type: actorType, id: ownerId },
+      actor: { type: actorType, id: ownerId, agency: actorType === 'device' ? 'agent' : 'human' },
       commentId: randomUUID(),
       body: 'the answer',
     });

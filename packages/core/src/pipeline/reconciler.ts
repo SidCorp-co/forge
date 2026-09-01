@@ -166,7 +166,7 @@ export async function runReconcilerOnce(): Promise<{
         status: row.status as IssueStatus,
         // Synthesise a device principal from the project owner; matches the
         // pattern in orchestrator.resolveSkipDevice (no schema change needed).
-        actor: { type: 'device', id: actorId },
+        actor: { type: 'device', id: actorId, agency: 'agent' },
         reason: { reconciler: true, reason: 'enqueued_missing' },
       });
 

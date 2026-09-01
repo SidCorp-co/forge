@@ -37,6 +37,7 @@ import { logger } from '../logger.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
 import { isAutonomousProject } from '../pipeline/autonomous-project.js';
 import { hooks } from '../pipeline/hooks.js';
+import type { ActorAgency } from './actor-agency.js';
 import { parkParentAtReviewGate } from './decompose-review-gate.js';
 
 const MAX_BRANCH_SUFFIX = 10;
@@ -75,6 +76,8 @@ export interface DecomposeOptions {
 export interface DecomposeActor {
   userId: string;
   deviceId?: string | null | undefined;
+  // cm:guard required — `deviceId` does not answer this. A decompose driven by an agent on a job token has no device and would otherwise file every child it creates under the person who owns the token, acting by hand.
+  agency: ActorAgency;
 }
 
 export interface DecomposeResult {
@@ -157,7 +160,7 @@ export async function decomposeParent(
     throw new DecomposeError('BAD_REQUEST', 'at least one child spec is required');
   }
 
-  const actorRef: Actor = { type: 'user', id: actor.userId };
+  const actorRef: Actor = { type: 'user', id: actor.userId, agency: actor.agency };
 
   // Pre-flight: load parent + project, resolve the integration branch (or
   // reuse the existing one) BEFORE opening the transaction so we don't hold
@@ -530,19 +533,4 @@ async function resolveIntegrationBranchName(
     'INTEGRATION_BRANCH_CONFLICT',
     `cannot find an unused integration branch name for ${baseCandidate}`,
   );
-}
-
-// Exposed so call sites can decide whether to invoke the helper at all.
-export async function parentHasIntegrationBranch(
-  parentIssueId: string,
-): Promise<{ branch: string | null; useIntegrationBranch: boolean | null }> {
-  const row = await loadParentLite(parentIssueId);
-  if (!row) return { branch: null, useIntegrationBranch: null };
-  const meta = row.metadata ?? {};
-  const cfg = meta.branchConfig ?? null;
-  return {
-    branch: pickBranch(cfg?.baseBranch ?? null),
-    useIntegrationBranch:
-      typeof meta.useIntegrationBranch === 'boolean' ? meta.useIntegrationBranch : null,
-  };
 }

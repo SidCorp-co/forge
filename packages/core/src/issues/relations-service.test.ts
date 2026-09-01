@@ -58,7 +58,11 @@ const BLOCKER_B = '44444444-4444-4444-8444-444444444444';
 const BLOCKED_C = '55555555-5555-4555-8555-555555555555';
 
 const writer = {
-  actor: { type: 'device' as const, id: '66666666-6666-4666-8666-666666666666' },
+  actor: {
+    type: 'device' as const,
+    id: '66666666-6666-4666-8666-666666666666',
+    agency: 'agent' as const,
+  },
   createdById: '77777777-7777-4777-8777-777777777777',
 };
 

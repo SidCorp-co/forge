@@ -136,7 +136,7 @@ issueDependencyRoutes.post(
     };
     try {
       const result = await setIssueDependency(input, {
-        actor: { type: 'user', id: userId },
+        actor: restActor(c),
         createdById: userId,
       });
       return c.json(result, result.created ? 201 : 200);

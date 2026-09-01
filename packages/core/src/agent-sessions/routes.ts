@@ -16,7 +16,12 @@ import {
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
-import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
+import {
+  type AuthVars,
+  assertEmailVerified,
+  requireUserOrDevice,
+  restActor,
+} from '../middleware/auth.js';
 import { writeBackScheduleLastStatus } from '../schedules/service.js';
 import {
   EMPTY_USAGE_TOTALS,
@@ -55,12 +60,9 @@ const listQuerySchema = z
     projectId: z.uuid().optional(),
     deviceId: z.uuid().optional(),
     status: z.enum(agentSessionStatuses).optional(),
-    // Optional jsonb filter on `metadata.type` (e.g. ?metadataType=pipeline).
-    // Used by /pipeline page to restrict the cross-project list to
-    // pipeline-control sessions.
+    // cm:edge naming -> packages/web-v2/src/features/pipeline — a jsonb filter on `metadata.type`, whose values are bare strings nothing type-checks across the two packages: the /pipeline page sends `?metadataType=pipeline` to narrow the cross-project list to pipeline-control sessions, and a rename on either side silently returns everything instead of failing.
     metadataType: z.string().min(1).max(100).optional(),
-    // Optional jsonb filter on `metadata.issueId` — used by the issue detail
-    // "Agent Sessions" tab to scope the list to a single issue.
+    // cm:edge naming -> packages/web-v2/src/features/issues — same shape one level down: a jsonb filter on `metadata.issueId`, which the issue-detail "Agent Sessions" tab sends to scope the list to one issue.
     issueId: z.uuid().optional(),
     // ISS-465 archive filter. Default excludes metadata.archived='true' so
     // archived chats drop out of the active history without affecting
@@ -180,7 +182,7 @@ agentSessionRoutes.post(
       projectId: issue.projectId,
       issueId: issue.id,
       status: issue.status,
-      actor: { type: 'user', id: userId },
+      actor: restActor(c),
       reason: { manualRetry: { sessionId: id, prevFailureReason: session.failureReason } },
     });
 
@@ -476,7 +478,7 @@ agentSessionRoutes.post(
 
     broadcastSession(inserted, 'agent-session.created');
 
-    await recordSessionCreatedActivity(inserted, userId);
+    await recordSessionCreatedActivity(inserted, restActor(c));
 
     return c.json(inserted, 201);
   },

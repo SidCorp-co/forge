@@ -65,7 +65,7 @@ describe('ISS-868 issue relations writer', () => {
 
   // cm:guard a PAT reaches the write behind a SYNTHETIC device whose id is an api_tokens row, so the writer's actor MUST be the user — a device-shaped actor writes an activity_log actor_id matching no `devices` row
   function makePatWriter(): Parameters<WriteModule['applyIssueRelations']>[0] {
-    return { actor: { type: 'user', id: ownerId }, createdById: ownerId };
+    return { actor: { type: 'user', id: ownerId, agency: 'human' }, createdById: ownerId };
   }
 
   it('persists update-style direction mapping and retraction for a PAT principal', async () => {

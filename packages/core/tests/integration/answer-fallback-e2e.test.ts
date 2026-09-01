@@ -119,7 +119,7 @@ async function humanAnswers(body = 'yes, use postgres'): Promise<string> {
   await bus.emit('commentCreated', {
     issueId,
     projectId,
-    actor: { type: 'user', id: ownerId },
+    actor: { type: 'user', id: ownerId, agency: 'human' },
     commentId,
     body,
   });

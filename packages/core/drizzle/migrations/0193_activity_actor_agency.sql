@@ -1,0 +1,1 @@
+ALTER TABLE "activity_log" ADD COLUMN "actor_agency" text DEFAULT 'human' NOT NULL;

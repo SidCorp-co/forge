@@ -323,7 +323,7 @@ describe('F3 memory search + indexer integration', () => {
     await hooks.emit('issueCreated', {
       issueId,
       projectId,
-      actor: { type: 'user', id: randomUUID() },
+      actor: { type: 'user', id: randomUUID(), agency: 'human' },
       status: 'open',
       snapshot: {
         title: 'test issue',
@@ -364,7 +364,7 @@ describe('F3 memory search + indexer integration', () => {
     );
 
     const issueId = randomUUID();
-    const actor = { type: 'user' as const, id: randomUUID() };
+    const actor = { type: 'user' as const, id: randomUUID(), agency: 'human' as const };
 
     // Priority-only update should NOT re-embed.
     await hooks.emit('issueUpdated', {
@@ -412,14 +412,14 @@ describe('F3 memory search + indexer integration', () => {
     await hooks.emit('commentCreated', {
       issueId: randomUUID(),
       projectId,
-      actor: { type: 'user', id: randomUUID() },
+      actor: { type: 'user', id: randomUUID(), agency: 'human' },
       commentId,
       body: 'comment body',
     });
     await hooks.emit('commentUpdated', {
       issueId: randomUUID(),
       projectId,
-      actor: { type: 'user', id: randomUUID() },
+      actor: { type: 'user', id: randomUUID(), agency: 'human' },
       commentId,
       before: 'old text',
       after: 'new text',
@@ -460,7 +460,7 @@ describe('F3 memory search + indexer integration', () => {
     await hooks.emit('issueCreated', {
       issueId: randomUUID(),
       projectId,
-      actor: { type: 'user', id: randomUUID() },
+      actor: { type: 'user', id: randomUUID(), agency: 'human' },
       status: 'open',
       snapshot: {
         title: 'idempotent',

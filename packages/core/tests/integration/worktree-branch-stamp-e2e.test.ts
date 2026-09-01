@@ -134,7 +134,7 @@ describe('core stamps the issue feature branch onto the job payload', () => {
       issueId: s.issueId,
       status: status as never,
       stage: stage as never,
-      actor: { type: 'user', id: s.ownerId },
+      actor: { type: 'user', id: s.ownerId, agency: 'human' },
       reason: { trigger: 'test' },
     });
     return { ...s, jobId };

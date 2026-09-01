@@ -238,7 +238,7 @@ async function handleWatcherChildrenReady(payload: HookPayloads['transition']): 
       projectId: parent.projectId,
       issueId: parent.id,
       status: parent.status,
-      actor: { type: 'device', id: device.id },
+      actor: { type: 'device', id: device.id, agency: 'agent' },
       reason: {
         decomposition: 'children_ready',
         siblingCount: siblings.length,

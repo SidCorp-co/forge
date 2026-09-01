@@ -101,7 +101,7 @@ describe('cascade approve', () => {
     await bus.emit('transition', {
       issueId: PARENT_ID,
       projectId: PROJECT_ID,
-      actor: { type: 'device', id: DEVICE_ID },
+      actor: { type: 'device', id: DEVICE_ID, agency: 'agent' },
       from: 'waiting',
       to: 'approved',
       reopenCount: 0,
@@ -125,7 +125,7 @@ describe('cascade approve', () => {
     await bus.emit('transition', {
       issueId: PARENT_ID,
       projectId: PROJECT_ID,
-      actor: { type: 'device', id: DEVICE_ID },
+      actor: { type: 'device', id: DEVICE_ID, agency: 'agent' },
       from: 'waiting',
       to: 'approved',
       reopenCount: 0,
@@ -143,7 +143,7 @@ describe('cascade approve', () => {
     await bus.emit('transition', {
       issueId: PARENT_ID,
       projectId: PROJECT_ID,
-      actor: { type: 'device', id: DEVICE_ID },
+      actor: { type: 'device', id: DEVICE_ID, agency: 'agent' },
       from: 'open',
       to: 'confirmed',
       reopenCount: 0,
@@ -163,7 +163,7 @@ describe('cascade approve', () => {
     await bus.emit('transition', {
       issueId: PARENT_ID,
       projectId: PROJECT_ID,
-      actor: { type: 'device', id: DEVICE_ID },
+      actor: { type: 'device', id: DEVICE_ID, agency: 'agent' },
       from: 'on_hold',
       to: 'approved',
       reopenCount: 0,
@@ -185,7 +185,7 @@ describe('cascade approve', () => {
     await bus.emit('transition', {
       issueId: PARENT_ID,
       projectId: PROJECT_ID,
-      actor: { type: 'device', id: DEVICE_ID },
+      actor: { type: 'device', id: DEVICE_ID, agency: 'agent' },
       from: 'waiting',
       to: 'approved',
       reopenCount: 0,
@@ -212,7 +212,7 @@ describe('cascade approve', () => {
     await bus.emit('transition', {
       issueId: PARENT_ID,
       projectId: PROJECT_ID,
-      actor: { type: 'device', id: DEVICE_ID },
+      actor: { type: 'device', id: DEVICE_ID, agency: 'agent' },
       from: 'waiting',
       to: 'approved',
       reopenCount: 0,
@@ -243,7 +243,7 @@ describe('watcher children → tested', () => {
     await bus.emit('transition', {
       issueId: CHILD_A,
       projectId: PROJECT_ID,
-      actor: { type: 'device', id: DEVICE_ID },
+      actor: { type: 'device', id: DEVICE_ID, agency: 'agent' },
       from: 'developed',
       to: 'tested',
       reopenCount: 0,
@@ -280,7 +280,7 @@ describe('watcher children → tested', () => {
     await bus.emit('transition', {
       issueId: CHILD_C,
       projectId: PROJECT_ID,
-      actor: { type: 'device', id: DEVICE_ID },
+      actor: { type: 'device', id: DEVICE_ID, agency: 'agent' },
       from: 'developed',
       to: 'tested',
       reopenCount: 0,
@@ -301,7 +301,7 @@ describe('watcher children → tested', () => {
     await bus.emit('transition', {
       issueId: 'iss-loner',
       projectId: PROJECT_ID,
-      actor: { type: 'device', id: DEVICE_ID },
+      actor: { type: 'device', id: DEVICE_ID, agency: 'agent' },
       from: 'developed',
       to: 'tested',
       reopenCount: 0,
@@ -331,7 +331,7 @@ describe('watcher children → tested', () => {
     await bus.emit('transition', {
       issueId: CHILD_A,
       projectId: PROJECT_ID,
-      actor: { type: 'device', id: DEVICE_ID },
+      actor: { type: 'device', id: DEVICE_ID, agency: 'agent' },
       from: 'tested',
       to: 'released',
       reopenCount: 0,
@@ -361,7 +361,7 @@ describe('close cascade', () => {
     await bus.emit('transition', {
       issueId: PARENT_ID,
       projectId: PROJECT_ID,
-      actor: { type: 'device', id: DEVICE_ID },
+      actor: { type: 'device', id: DEVICE_ID, agency: 'agent' },
       from: 'released',
       to: 'closed',
       reopenCount: 0,

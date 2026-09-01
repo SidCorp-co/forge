@@ -54,6 +54,7 @@ function makeAttachmentRow(overrides: Record<string, unknown> = {}) {
     id: ATTACHMENT_ID,
     issueId: ISSUE_ID,
     uploaderId: UPLOADER_ID,
+    uploaderAgency: 'human',
     name: 'tiny.png',
     mime: 'image/png',
     size: TINY_BYTES.byteLength,
@@ -134,6 +135,7 @@ describe('persistIssueAttachment', () => {
       mime: 'image/png',
       bytes: TINY_BYTES,
       uploaderId: UPLOADER_ID,
+      uploaderAgency: 'human',
     });
 
     expect(result.id).toBe(ATTACHMENT_ID);
@@ -172,6 +174,7 @@ describe('persistIssueAttachment', () => {
         mime,
         bytes: TINY_BYTES,
         uploaderId: UPLOADER_ID,
+        uploaderAgency: 'human',
       });
       expect(result.mime).toBe(mime);
     }
@@ -186,6 +189,7 @@ describe('persistIssueAttachment', () => {
         mime: 'image/png',
         bytes: Buffer.alloc(0),
         uploaderId: UPLOADER_ID,
+        uploaderAgency: 'human',
       }),
     ).rejects.toMatchObject({ code: 'EMPTY_FILE' });
     expect(storagePut).not.toHaveBeenCalled();
@@ -199,6 +203,7 @@ describe('persistIssueAttachment', () => {
         mime: 'application/x-msdownload',
         bytes: TINY_BYTES,
         uploaderId: UPLOADER_ID,
+        uploaderAgency: 'human',
       }),
     ).rejects.toMatchObject({ code: 'MIME_NOT_ALLOWED' });
     expect(storagePut).not.toHaveBeenCalled();
@@ -213,6 +218,7 @@ describe('persistIssueAttachment', () => {
         mime: 'image/png',
         bytes: oversized,
         uploaderId: UPLOADER_ID,
+        uploaderAgency: 'human',
       }),
     ).rejects.toMatchObject({ code: 'FILE_TOO_LARGE' });
     expect(storagePut).not.toHaveBeenCalled();
@@ -230,6 +236,7 @@ describe('persistDecodedIssueAttachments', () => {
         { name: 'good.png', mime: 'image/png', bytes: TINY_BYTES },
       ],
       UPLOADER_ID,
+      'human',
     );
 
     expect(result.persisted).toHaveLength(1);
@@ -248,6 +255,7 @@ describe('persistIssueAttachmentsFromBase64', () => {
       ISSUE_ID,
       [{ name: 'tiny.png', mime: 'image/png', dataBase64: TINY_B64 }],
       UPLOADER_ID,
+      'human',
     );
 
     expect(result.persisted).toHaveLength(1);
@@ -260,6 +268,7 @@ describe('persistIssueAttachmentsFromBase64', () => {
         ISSUE_ID,
         [{ name: 'a.png', mime: 'image/png', dataBase64: '!!!bad!!!' }],
         UPLOADER_ID,
+        'human',
       ),
     ).rejects.toMatchObject({ code: 'INVALID_BASE64' });
     expect(storagePut).not.toHaveBeenCalled();

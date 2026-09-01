@@ -48,7 +48,11 @@ vi.mock('../pipeline/activity.js', () => ({
 const { IssueUpdateNotFound, updateIssueFields } = await import('./update-service.js');
 
 const ISSUE_ID = '11111111-1111-4111-8111-111111111111';
-const ACTOR = { type: 'device' as const, id: '22222222-2222-4222-8222-222222222222' };
+const ACTOR = {
+  type: 'device' as const,
+  id: '22222222-2222-4222-8222-222222222222',
+  agency: 'agent' as const,
+};
 const ROW = { id: ISSUE_ID, title: 'x' };
 
 function activityActions(): string[] {

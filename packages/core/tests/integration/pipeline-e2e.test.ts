@@ -165,7 +165,7 @@ describe('F6 pipeline E2E', () => {
       await bus.emit('issueCreated', {
         issueId,
         projectId: project.id,
-        actor: { type: 'user', id: user.id },
+        actor: { type: 'user', id: user.id, agency: 'human' },
         status: 'open',
         snapshot: {
           title: 't',
@@ -200,7 +200,7 @@ describe('F6 pipeline E2E', () => {
         await bus.emit('transition', {
           issueId,
           projectId: project.id,
-          actor: { type: 'user', id: user.id },
+          actor: { type: 'user', id: user.id, agency: 'human' },
           from,
           to,
           reopenCount: 0,
@@ -222,7 +222,7 @@ describe('F6 pipeline E2E', () => {
       const common = {
         issueId,
         projectId: project.id,
-        actor: { type: 'user' as const, id: user.id },
+        actor: { type: 'user' as const, id: user.id, agency: 'human' as const },
         commentId,
       };
       await bus.emit('commentCreated', { ...common, body: 'hello' });
@@ -246,7 +246,7 @@ describe('F6 pipeline E2E', () => {
       await bus.emit('issueCreated', {
         issueId,
         projectId: project.id,
-        actor: { type: 'user', id: user.id },
+        actor: { type: 'user', id: user.id, agency: 'human' },
         status: 'open',
         snapshot: {
           title: 't',

@@ -22,6 +22,16 @@ import {
 import type { IssueBranchOverride } from '../branches/resolve.js';
 import type { ReleaseNotes } from '../issues/release-notes.js';
 import { FAILURE_CAUSES, type FailureCause } from '../pipeline/failure-causes.js';
+import { activityLog } from './schema-activity.js';
+
+// cm:edge naming -> packages/core/src/db/schema-activity.ts — re-exported so that `activity_log` moving out of this file is invisible to its ten importers. Drop this line and every one of them breaks at once; that is the only reason it is here, not a licence to grow it into a barrel.
+export {
+  type ActorType,
+  activityLog,
+  activityLogRelations,
+  actorAgencies,
+  actorTypes,
+} from './schema-activity.js';
 
 /**
  * pgvector column type. Dimension is fixed per column — the `memories.embedding`
@@ -1194,35 +1204,6 @@ export const issueLabels = pgTable(
   }),
 );
 
-export const actorTypes = ['user', 'device'] as const;
-export type ActorType = (typeof actorTypes)[number];
-
-export const activityLog = pgTable(
-  'activity_log',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    issueId: uuid('issue_id')
-      .notNull()
-      .references(() => issues.id, { onDelete: 'cascade' }),
-    actorType: text('actor_type', { enum: actorTypes }).notNull(),
-    actorId: uuid('actor_id').notNull(),
-    action: text('action').notNull(),
-    payload: jsonb('payload').notNull().default({}),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    /**
-     * ISS-849 — redelivery-dedup key (e.g. `transition:<outboxId>`). Nullable:
-     * most rows have no natural redelivery source. Distinct from notifications'
-     * resolutionKey, which is a per-issue auto-resolve mechanism, not a
-     * per-delivery identity.
-     */
-    dedupeKey: text('dedupe_key'),
-  },
-  (t) => ({
-    issueCreatedIdx: index('activity_log_issue_created_idx').on(t.issueId, t.createdAt),
-    dedupeKeyIdx: index('activity_log_dedupe_key_idx').on(t.dedupeKey),
-  }),
-);
-
 export const issuesRelations = relations(issues, ({ one, many }) => ({
   project: one(projects, { fields: [issues.projectId], references: [projects.id] }),
   assignee: one(users, { fields: [issues.assigneeId], references: [users.id] }),
@@ -1339,10 +1320,6 @@ export const labelsRelations = relations(labels, ({ one, many }) => ({
 export const issueLabelsRelations = relations(issueLabels, ({ one }) => ({
   issue: one(issues, { fields: [issueLabels.issueId], references: [issues.id] }),
   label: one(labels, { fields: [issueLabels.labelId], references: [labels.id] }),
-}));
-
-export const activityLogRelations = relations(activityLog, ({ one }) => ({
-  issue: one(issues, { fields: [activityLog.issueId], references: [issues.id] }),
 }));
 
 export const skillScopes = ['global', 'project'] as const;
