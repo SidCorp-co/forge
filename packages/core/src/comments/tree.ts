@@ -1,4 +1,4 @@
-import type { ResolvedActor } from '../issues/actor-resolution.js';
+import { actorKey, type ResolvedActor } from '../issues/actor-identity.js';
 
 export interface CommentRow {
   id: string;
@@ -9,6 +9,8 @@ export interface CommentRow {
   // the device's human owner). Optional so flat-list/REST builders that don't
   // select it still satisfy the type.
   authorDeviceId?: string | null;
+  /** ISS-820 durable agent-authored marker; true for an agent write on ANY credential. */
+  isAi?: boolean;
   body: string;
   parentId: string | null;
   createdAt: Date;
@@ -27,15 +29,16 @@ export interface CommentAttachmentLite {
   createdAt: Date;
 }
 
-export interface CommentNode extends CommentRow {
-  replies: CommentNode[];
+// cm:guard generic over the ROW, not fixed to `CommentRow` — this is what makes `attachAuthors` reject a tree whose query forgot to select `is_ai`. Collapsing it back to `extends CommentRow` compiles fine and silently returns every agent comment labelled as a person.
+export type CommentNode<R extends CommentRow = CommentRow> = R & {
+  replies: CommentNode<R>[];
   attachments: CommentAttachmentLite[];
   // ISS-519 — resolved author identity (email for a human, device name + Agent
   // marker for an agent comment). Optional so existing builders/tests that
   // don't enrich the tree still compile; the comments route attaches it (null
   // when the actor could not be resolved).
   author?: ResolvedActor | null;
-}
+};
 
 // Assembles a flat list of comment rows into a parent → replies tree. A row
 // is a root only when its `parentId` is null; replies whose parent is missing
@@ -46,18 +49,18 @@ export interface CommentNode extends CommentRow {
 // `attachmentsByCommentId` maps a comment id to its attachments; nodes with no
 // entry get an empty array. Callers that don't care about attachments may omit
 // it entirely.
-export function buildCommentTree(
-  rows: CommentRow[],
+export function buildCommentTree<R extends CommentRow>(
+  rows: R[],
   attachmentsByCommentId?: Map<string, CommentAttachmentLite[]>,
-): CommentNode[] {
-  const byId = new Map<string, CommentNode>();
+): CommentNode<R>[] {
+  const byId = new Map<string, CommentNode<R>>();
   for (const r of rows)
     byId.set(r.id, {
       ...r,
       replies: [],
       attachments: attachmentsByCommentId?.get(r.id) ?? [],
     });
-  const roots: CommentNode[] = [];
+  const roots: CommentNode<R>[] = [];
   for (const r of rows) {
     const node = byId.get(r.id);
     if (!node) continue;
@@ -74,9 +77,28 @@ export function buildCommentTree(
 
 // Depth-first walk over a comment tree (roots, then each node's nested
 // replies). Used to attach resolved authors after the tree is built.
-export function walkCommentTree(nodes: CommentNode[], visit: (node: CommentNode) => void): void {
+export function walkCommentTree<R extends CommentRow>(
+  nodes: CommentNode<R>[],
+  visit: (node: CommentNode<R>) => void,
+): void {
   for (const node of nodes) {
     visit(node);
     if (node.replies.length > 0) walkCommentTree(node.replies, visit);
   }
+}
+
+// cm:guard COPY the resolved actor before writing `isAgent`, never mutate it — `resolved` is keyed by actor, so ONE object is shared by every comment that author wrote, and an agent write and a hand-typed comment from the SAME person are both in that set. Mutating it would relabel the human's comments too.
+// cm:guard OR `isAi` in, do not let it REPLACE the device test — `authorDeviceId` catches a device-token write and `isAi` catches an agent write on any credential, including the owner-lane PAT where `authorDeviceId` is NULL. Either test alone leaves one class of agent comment rendering as a person.
+export function attachAuthors(
+  nodes: CommentNode<CommentRow & { isAi: boolean }>[],
+  resolved: Map<string, ResolvedActor>,
+): void {
+  walkCommentTree(nodes, (node) => {
+    const actor = resolved.get(
+      node.authorDeviceId
+        ? actorKey('device', node.authorDeviceId)
+        : actorKey('user', node.authorId),
+    );
+    node.author = actor ? { ...actor, isAgent: actor.isAgent || node.isAi === true } : null;
+  });
 }

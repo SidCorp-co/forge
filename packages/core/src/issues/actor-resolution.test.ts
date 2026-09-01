@@ -9,7 +9,8 @@ vi.mock('../db/client.js', () => ({
   db: { select: () => ({ from: () => ({ where: whereMock }) }) },
 }));
 
-const { resolveActors, actorKey } = await import('./actor-resolution.js');
+const { resolveActors } = await import('./actor-resolution.js');
+const { actorKey } = await import('./actor-identity.js');
 
 const U1 = '11111111-1111-4111-8111-111111111111';
 const O1 = '22222222-2222-4222-8222-222222222222';

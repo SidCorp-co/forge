@@ -1,6 +1,7 @@
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, users } from '../db/schema.js';
+import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './actor-identity.js';
 
 // ISS-519 — shared actor resolution. Comments and activity_log both store an
 // actor as a `(type, id)` pair where type is 'user' (a human, id → users.id) or
@@ -9,31 +10,6 @@ import { devices, users } from '../db/schema.js';
 // actorType + raw UUID and the comment UI fell back to a truncated UUID. This
 // helper batch-resolves any set of actor refs to a display identity so both
 // surfaces (and any future caller) share one source of truth.
-
-export type ActorType = 'user' | 'device';
-
-export interface ActorRef {
-  type: ActorType;
-  id: string;
-}
-
-export interface ResolvedActor {
-  type: ActorType;
-  id: string;
-  /** Human-readable label: user → email; device → device name. */
-  displayName: string;
-  /** True for a device principal (an agent action), false for a human user. */
-  isAgent: boolean;
-  /** The device id when type==='device' (mirrors `id`); omitted for users. */
-  deviceId?: string;
-  /** Owning member's email for a device, when the owner resolves. */
-  ownerEmail?: string;
-}
-
-/** Stable map key for an actor ref. */
-export function actorKey(type: ActorType, id: string): string {
-  return `${type}:${id}`;
-}
 
 const UNKNOWN_LABEL = 'Unknown';
 

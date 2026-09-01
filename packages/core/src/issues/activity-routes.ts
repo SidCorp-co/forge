@@ -7,13 +7,8 @@ import { db } from '../db/client.js';
 import { activityLog, issues } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import {
-  type ActorRef,
-  type ActorType,
-  actorKey,
-  type ResolvedActor,
-  resolveActors,
-} from './actor-resolution.js';
+import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './actor-identity.js';
+import { resolveActors } from './actor-resolution.js';
 
 const ACTIVITY_TYPES = ['issue', 'comment', 'member'] as const;
 

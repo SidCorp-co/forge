@@ -47,6 +47,17 @@
 
 ### Fixed
 
+- An agent's comment rendered as the person who owns the credential. `comments.is_ai` has recorded
+  agent authorship on every write path since ISS-820, including the owner-lane PAT where
+  `author_device_id` is NULL, but the comment tree never selected the column: the read path keyed
+  the author off `author_device_id` alone, so `isAgent` only ever meant "came from a device token".
+  The tree is now generic over its row type and `attachAuthors` demands `isAi`, which makes a query
+  that forgets the column a compile error rather than a feed that quietly attributes agent writes
+  to a human. The attach step also copies the resolved actor before marking it — `resolveActors`
+  returns one object per actor, so the same person's hand-typed comments were one mutation away
+  from being relabelled too. The actor vocabulary (`ActorRef`, `ResolvedActor`, `actorKey`) split
+  into `issues/actor-identity.ts` so formatting a key no longer drags in the Postgres client.
+
 - REST decided every caller was a person, so the evidence gates ran on `/mcp` and not on the CLI's
   own surface. `requireAuth` reduces a PAT principal to `principal: 'pat'`, a string tag, and four
   separate route sites then built a `{ type: 'user' }` actor by hand. MCP was safe by accident — it

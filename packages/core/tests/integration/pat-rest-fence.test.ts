@@ -277,7 +277,8 @@ describe('PAT fence — the surface a token may reach', () => {
         'effectiveProjectRole, or it does not resolve one at all — and the second case means the ' +
         'prefix does not belong on PAT_ALLOWED_PREFIXES.',
     ).toEqual([]);
-  });
+    // cm:guard keep this timeout ABOVE the 30s config default and do not "tidy" it back — this sweep probes every allowlisted param route against two foreign ids, so its cost grows with the route table and it measured 22s alone / >30s under a full parallel run on 2026-09-01. At the default it reports a slow pass as a fence breach, which is the one failure nobody re-reads.
+  }, 90_000);
 
   /**
    * The sweep. Every GET route the app has registered outside the allowlist
@@ -397,7 +398,7 @@ describe('PAT fence — the surface a token may reach', () => {
       `every write probe was undecided (400/422/204) — the body validator now runs before the ` +
         `project lookup everywhere, so this sweep proves nothing: ${undecided.join(', ')}`,
     ).toBeLessThan(new Set(probes).size);
-  });
+  }, 90_000);
 
   /**
    * The one route the sweep above cannot decide, decided by hand: seed a real

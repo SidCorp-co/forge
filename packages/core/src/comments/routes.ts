@@ -7,7 +7,8 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { commentAttachments, commentMentions, comments, issues } from '../db/schema.js';
-import { type ActorRef, actorKey, resolveActors } from '../issues/actor-resolution.js';
+import type { ActorRef } from '../issues/actor-identity.js';
+import { resolveActors } from '../issues/actor-resolution.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { listResponse, paginationSchema, wholeList } from '../lib/pagination.js';
@@ -20,10 +21,10 @@ import { AttachmentError, persistCommentAttachment } from './attachment-service.
 import { pgConstraintName, pgErrorCode } from './error-mapping.js';
 import { parseMentions, resolveMentions } from './mentions.js';
 import {
+  attachAuthors,
   buildCommentTree,
   type CommentAttachmentLite,
   type CommentRow,
-  walkCommentTree,
 } from './tree.js';
 
 const commentCreateSchema = z
@@ -233,6 +234,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
           issueId: comments.issueId,
           authorId: comments.authorId,
           authorDeviceId: comments.authorDeviceId,
+          isAi: comments.isAi,
           body: comments.body,
           parentId: comments.parentId,
           createdAt: comments.createdAt,
@@ -286,13 +288,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
           ? { type: 'device', id: r.authorDeviceId }
           : { type: 'user', id: r.authorId },
       );
-      const resolved = await resolveActors(refs);
-      walkCommentTree(tree, (node) => {
-        const key = node.authorDeviceId
-          ? actorKey('device', node.authorDeviceId)
-          : actorKey('user', node.authorId);
-        node.author = resolved.get(key) ?? null;
-      });
+      attachAuthors(tree, await resolveActors(refs));
 
       // cm:guard this list is capped, NOT paginated — there is no limit/offset to page with, so it answers the header form and `total` is the real comment count rather than the capped tree's size. Handing it `listResponse` would state an `offset` and a `hasMore` that no caller can act on.
       return c.json(wholeList(c, tree, Number(total)));

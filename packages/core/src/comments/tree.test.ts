@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import type { ResolvedActor } from '../issues/actor-identity.js';
 import {
+  attachAuthors,
   buildCommentTree,
   type CommentAttachmentLite,
   type CommentRow,
@@ -9,11 +11,12 @@ import {
 const issueId = '00000000-0000-0000-0000-000000000001';
 const authorId = '00000000-0000-0000-0000-000000000002';
 
-function row(id: string, parentId: string | null, body = id): CommentRow {
+function row(id: string, parentId: string | null, body = id): CommentRow & { isAi: boolean } {
   return {
     id,
     issueId,
     authorId,
+    isAi: false,
     body,
     parentId,
     createdAt: new Date('2026-04-26T00:00:00Z'),
@@ -102,5 +105,64 @@ describe('walkCommentTree', () => {
     });
     expect(tree[0]?.author?.displayName).toBe('alice@example.com');
     expect(tree[0]?.replies[0]?.author?.isAgent).toBe(false);
+  });
+});
+
+describe('attachAuthors', () => {
+  const deviceId = '00000000-0000-0000-0000-000000000003';
+
+  function resolvedMap() {
+    return new Map<string, ResolvedActor>([
+      [
+        `user:${authorId}`,
+        { type: 'user', id: authorId, displayName: 'alice@example.com', isAgent: false },
+      ],
+      [
+        `device:${deviceId}`,
+        { type: 'device', id: deviceId, displayName: 'runner-1', isAgent: true, deviceId },
+      ],
+    ]);
+  }
+
+  it('marks an agent write on a human credential as an agent (is_ai, no device)', () => {
+    const tree = buildCommentTree([{ ...row('a', null), isAi: true, authorDeviceId: null }]);
+    attachAuthors(tree, resolvedMap());
+    expect(tree[0]?.author?.isAgent).toBe(true);
+    expect(tree[0]?.author?.displayName).toBe('alice@example.com');
+  });
+
+  it('leaves the SAME author’s hand-typed comment human when they also have an agent one', () => {
+    const tree = buildCommentTree([
+      { ...row('agent', null), isAi: true, authorDeviceId: null },
+      { ...row('human', null), isAi: false, authorDeviceId: null },
+    ]);
+    const resolved = resolvedMap();
+    attachAuthors(tree, resolved);
+    expect(tree[0]?.author?.isAgent).toBe(true);
+    expect(tree[1]?.author?.isAgent).toBe(false);
+    expect(resolved.get(`user:${authorId}`)?.isAgent).toBe(false);
+  });
+
+  it('still marks a device write as an agent when is_ai was never set', () => {
+    const tree = buildCommentTree([{ ...row('a', null), authorDeviceId: deviceId }]);
+    attachAuthors(tree, resolvedMap());
+    expect(tree[0]?.author?.isAgent).toBe(true);
+    expect(tree[0]?.author?.displayName).toBe('runner-1');
+  });
+
+  it('attaches through nested replies, not just roots', () => {
+    const tree = buildCommentTree([
+      row('a', null),
+      { ...row('a1', 'a'), isAi: true, authorDeviceId: null },
+    ]);
+    attachAuthors(tree, resolvedMap());
+    expect(tree[0]?.author?.isAgent).toBe(false);
+    expect(tree[0]?.replies[0]?.author?.isAgent).toBe(true);
+  });
+
+  it('sets author to null when the actor does not resolve', () => {
+    const tree = buildCommentTree([row('a', null)]);
+    attachAuthors(tree, new Map());
+    expect(tree[0]?.author).toBeNull();
   });
 });

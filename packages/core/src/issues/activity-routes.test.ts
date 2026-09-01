@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { actorKey } from './actor-identity.js';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
@@ -27,15 +28,13 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
 // Resolve actors deterministically without touching the (mocked) db: a user
 // ref → email, a device ref → name + agent marker. Keeps the db chain mock
 // scoped to the activity query itself.
-vi.mock('./actor-resolution.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./actor-resolution.js')>();
+vi.mock('./actor-resolution.js', () => {
   return {
-    ...actual,
     resolveActors: vi.fn(async (refs: { type: 'user' | 'device'; id: string }[]) => {
       const m = new Map();
       for (const r of refs) {
         m.set(
-          actual.actorKey(r.type, r.id),
+          actorKey(r.type, r.id),
           r.type === 'user'
             ? { type: 'user', id: r.id, displayName: 'member@example.com', isAgent: false }
             : {

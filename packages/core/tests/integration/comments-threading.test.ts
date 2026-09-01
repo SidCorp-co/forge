@@ -1,3 +1,11 @@
+/**
+ * Integration coverage for ISS-273 PR-A — comment threading.
+ *
+ * Verifies the depth-3 trigger and the parent_id self-FK end-to-end against
+ * real Postgres. The in-memory tree assembler and the author attachment on top
+ * of it are unit tested in `src/comments/tree.test.ts`.
+ */
+
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -8,11 +16,6 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-
-// Integration coverage for ISS-273 PR-A — comment threading.
-// Verifies the depth-3 trigger and the parent_id self-FK end-to-end against
-// real Postgres. Route-level tests exercise the in-memory tree assembler in
-// `src/comments/routes.test.ts`.
 
 describe('comments threading', () => {
   let harness: TestDatabase;
