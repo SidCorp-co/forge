@@ -62,10 +62,9 @@ vi.mock('../pipeline/hooks.js', () => ({
   hooks: { emit: hooksEmit },
 }));
 
+const { SkillDeleteBlockedError, SkillNotProjectScopedError, registerSkillForProject } =
+  await import('./registration-service.js');
 const {
-  SkillDeleteBlockedError,
-  SkillNotProjectScopedError,
-  registerSkillForProject,
   createProjectSkill,
   updateProjectSkill,
   resolveOrAdoptProjectSkill,

@@ -7,19 +7,20 @@ import {
 import { SkillLockedError } from '../../skills/lock.js';
 import { MetaSkillReservedError } from '../../skills/meta-skills.js';
 import {
+  listSkillRegistrations,
+  registerSkillForProject,
+  SkillDeleteBlockedError,
+  SkillNotProjectScopedError,
+} from '../../skills/registration-service.js';
+import {
   applyGlobalSkillDefault,
   createProjectSkill,
   deleteProjectSkill,
   getSkillForProject,
   listProjectSkills,
-  listSkillRegistrations,
-  registerSkillForProject,
   requestSkillSync,
   SkillAlreadyShadowedError,
-  SkillDeleteBlockedError,
-  SkillNotProjectScopedError,
   type SkillRow,
-  setSkillPinned,
   updateProjectSkill,
 } from '../../skills/service.js';
 import type { ContextScopedMcpToolFactory, DeviceScopedMcpToolFactory } from './lib.js';
@@ -78,7 +79,7 @@ const updateInputSchema = z
 
 const effectiveInputSchema = z.object({ projectId: z.uuid() }).strict();
 const adoptInputSchema = z.object({ projectId: z.uuid(), skillId: z.uuid() }).strict();
-const pinInputSchema = z
+const _pinInputSchema = z
   .object({
     projectId: z.uuid(),
     skillId: z.uuid(),
@@ -380,25 +381,6 @@ export const forgeSkillsAdoptTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
       throw err;
     }
-  },
-});
-
-export const forgeSkillsPinTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_skills.pin',
-  description:
-    'Mark (pinned:true) or clear (pinned:false) a project skill as an intentional, PERMANENT divergence from its template. A pinned skill NEVER reports behindTemplate, is excluded from the template-propagation drift sweep, and is never nagged — distinct from an ordinary behindTemplate lag, which a markRebased (forge_skills.update) or a template adopt can still clear. Pinning requires `reason` (recorded on the row and emitted as a `skill.pinned` activity event); unpinning clears pinnedReason/pinnedBy/pinnedAt. Requires owner/admin on the project. Global skills cannot be pinned (only project-scoped copies diverge).',
-  inputSchema: zodToMcpSchema(pinInputSchema),
-  handler: async (args) => {
-    const { projectId, skillId, pinned, reason } = pinInputSchema.parse(args);
-    await assertPrincipalIsAdmin(ctx.principal, projectId);
-    const skill = await setSkillPinned({
-      projectId,
-      skillId,
-      pinned,
-      reason,
-      actorUserId: principalUserId(ctx.principal),
-    });
-    return { skill };
   },
 });
 

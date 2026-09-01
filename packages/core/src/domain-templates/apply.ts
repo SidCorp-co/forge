@@ -2,7 +2,8 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agents, appConfig, domainTemplates, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { registerSkillForProject, resolveOrAdoptProjectSkill } from '../skills/service.js';
+import { registerSkillForProject } from '../skills/registration-service.js';
+import { resolveOrAdoptProjectSkill } from '../skills/service.js';
 import type { DomainTemplateManifest } from './manifest.js';
 import { domainTemplateManifestSchema } from './manifest.js';
 

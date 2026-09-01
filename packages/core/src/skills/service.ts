@@ -1,19 +1,10 @@
-import { and, eq, isNotNull, ne, or } from 'drizzle-orm';
+import { and, eq, isNotNull, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import {
-  type IssueStatus,
-  projects,
-  runners,
-  type SkillTarget,
-  skillRegistrations,
-  skills,
-} from '../db/schema.js';
+import { projects, runners, type SkillTarget, skills } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
-import { PIPELINE_STEPS } from '../pipeline/registry.js';
 import { SkillContentBlockedError } from '../security/findings.js';
 import { scanSkillContent } from '../security/skill-content-scanner.js';
-import { recordSkillActivityEvent } from './activity.js';
 import { hashSkillBody } from './hash.js';
 import { assertSkillNameWritable } from './lock-context.js';
 import { isMetaSkillName, MetaSkillReservedError } from './meta-skills.js';
@@ -67,14 +58,14 @@ export type SkillRow = {
   /** ISS-605 template lineage (null = not adopted from a template / pre-tracking). */
   basedOnGlobalSkillId?: string | null;
   basedOnGlobalVersion?: number | null;
-  /** ISS-802 — intentional, permanent divergence; see forge_skills.pin. */
+  /** ISS-802 — intentional, permanent divergence; see `PUT /api/projects/:projectId/skills/:skillId/pin`. */
   pinned?: boolean;
   pinnedReason?: string | null;
   pinnedBy?: string | null;
   pinnedAt?: Date | string | null;
 };
 
-const skillProjection = {
+export const skillProjection = {
   id: skills.id,
   name: skills.name,
   description: skills.description,
@@ -131,215 +122,6 @@ export async function getSkillForProject(
   if (!row) return null;
   if (row.scope === 'project' && row.projectId !== projectId) return null;
   return row;
-}
-
-/**
- * Bind (or clear) a skill to a pipeline stage for a project. Matches the F2
- * REST behaviour: atomic upsert on `(projectId, stage)` then remove any
- * other stage rows this skill previously held (one-stage-per-skill rule).
- *
- * Returns the resulting registration (or null stage when cleared).
- */
-export interface RegisterSkillInput {
-  projectId: string;
-  skillId: string;
-  stage: IssueStatus | null;
-  actorUserId: string;
-}
-
-export interface RegisterSkillResult {
-  projectId: string;
-  skillId: string;
-  stage: IssueStatus | null;
-}
-
-export class SkillDeleteBlockedError extends Error {
-  readonly code = 'SKILL_DELETE_BLOCKED_BY_AUTO_TOGGLE';
-  readonly stage: IssueStatus;
-  readonly toggle: string;
-  constructor(stage: IssueStatus, toggle: string) {
-    super(`SKILL_DELETE_BLOCKED_BY_AUTO_TOGGLE: stage '${stage}' has '${toggle}=true'`);
-    this.name = 'SkillDeleteBlockedError';
-    this.stage = stage;
-    this.toggle = toggle;
-  }
-}
-
-/**
- * Thrown when a stage registration targets a skill that is not a project skill
- * owned by this project. Only project skills are usable — adopt the global
- * template first (`applyGlobalSkillDefault`).
- */
-export class SkillNotProjectScopedError extends Error {
-  readonly code = 'SKILL_NOT_PROJECT_SCOPED';
-  constructor(skillId: string) {
-    super(
-      `SKILL_NOT_PROJECT_SCOPED: skill '${skillId}' is not a project skill for this project; adopt the global template into the project before registering it`,
-    );
-    this.name = 'SkillNotProjectScopedError';
-  }
-}
-
-export async function registerSkillForProject(
-  input: RegisterSkillInput,
-): Promise<RegisterSkillResult> {
-  const { projectId, skillId, stage, actorUserId } = input;
-
-  if (stage === null) {
-    // ISS-238 — block deletion when the corresponding `auto<Stage>` toggle is
-    // on. Silently unbinding would create the exact "enabled without skill"
-    // state the orchestrator guard pauses on; rejecting at the API surface
-    // forces the operator to flip the toggle first.
-    const [reg] = await db
-      .select({ stage: skillRegistrations.stage })
-      .from(skillRegistrations)
-      .where(
-        and(eq(skillRegistrations.projectId, projectId), eq(skillRegistrations.skillId, skillId)),
-      )
-      .limit(1);
-    if (reg) {
-      const step = PIPELINE_STEPS.find((s) => s.status === reg.stage);
-      if (step) {
-        const [project] = await db
-          .select({ agentConfig: projects.agentConfig })
-          .from(projects)
-          .where(eq(projects.id, projectId))
-          .limit(1);
-        const ac = (project?.agentConfig ?? {}) as { pipelineConfig?: Record<string, unknown> };
-        const pipeline = ac.pipelineConfig ?? {};
-        const v = (pipeline as Record<string, unknown>)[step.toggle];
-        const on =
-          v === true ||
-          (typeof v === 'object' && v !== null && (v as { enabled?: boolean }).enabled !== false);
-        if (on) {
-          throw new SkillDeleteBlockedError(reg.stage as IssueStatus, step.toggle);
-        }
-      }
-    }
-
-    await db.transaction(async (tx) => {
-      await tx
-        .delete(skillRegistrations)
-        .where(
-          and(eq(skillRegistrations.projectId, projectId), eq(skillRegistrations.skillId, skillId)),
-        );
-      if (reg) {
-        await recordSkillActivityEvent(tx, {
-          eventType: 'manifest.changed',
-          actor: `human:${actorUserId}`,
-          trigger: 'manual',
-          projectId,
-          skillId,
-          deltaSummary: `unregistered from ${reg.stage}`,
-        });
-      }
-    });
-    await hooks.emit('skillRegistered', { projectId, skillId, actorUserId, stage: null });
-    return { projectId, skillId, stage: null };
-  }
-
-  // cm:guard only a project skill owned by THIS project may be registered — a global is a template and must be adopted (cloned) first
-  const [target] = await db
-    .select({ scope: skills.scope, projectId: skills.projectId })
-    .from(skills)
-    .where(eq(skills.id, skillId))
-    .limit(1);
-  if (!target || target.scope !== 'project' || target.projectId !== projectId) {
-    throw new SkillNotProjectScopedError(skillId);
-  }
-
-  await db.transaction(async (tx) => {
-    await tx
-      .insert(skillRegistrations)
-      .values({ projectId, skillId, stage, registeredBy: actorUserId })
-      .onConflictDoUpdate({
-        target: [skillRegistrations.projectId, skillRegistrations.stage],
-        set: { skillId, registeredBy: actorUserId },
-      });
-    await tx
-      .delete(skillRegistrations)
-      .where(
-        and(
-          eq(skillRegistrations.projectId, projectId),
-          eq(skillRegistrations.skillId, skillId),
-          ne(skillRegistrations.stage, stage),
-        ),
-      );
-    await recordSkillActivityEvent(tx, {
-      eventType: 'manifest.changed',
-      actor: `human:${actorUserId}`,
-      trigger: 'manual',
-      projectId,
-      skillId,
-      deltaSummary: `registered at stage ${stage}`,
-    });
-  });
-
-  await hooks.emit('skillRegistered', { projectId, skillId, actorUserId, stage });
-  return { projectId, skillId, stage };
-}
-
-export interface SkillRegistrationView {
-  stage: IssueStatus;
-  skillId: string;
-  skillName: string;
-  scope: 'global' | 'project';
-  mode: 'auto' | 'manual';
-  enabled: boolean;
-  registeredBy: string | null;
-  registeredAt: string;
-}
-
-/**
- * List a project's stage→skill bindings overlaid with the per-stage
- * `mode`/`enabled` from `agentConfig.pipelineConfig.states`. Plan agents call
- * this to decide whether to dispatch into a stage that is registered but
- * configured `manual` or disabled.
- *
- * Stages with no skill registered are NOT returned — clients diff against
- * the canonical stage list (`STAGE_NAMES`) to surface gaps.
- */
-export async function listSkillRegistrations(projectId: string): Promise<SkillRegistrationView[]> {
-  const [project] = await db
-    .select({ agentConfig: projects.agentConfig })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) return [];
-  const ac = (project.agentConfig ?? {}) as Record<string, unknown>;
-  const pipeline = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
-  const states = (pipeline.states ?? {}) as Record<
-    string,
-    { enabled?: boolean; mode?: 'auto' | 'manual' } | undefined
-  >;
-
-  const rows = await db
-    .select({
-      stage: skillRegistrations.stage,
-      skillId: skillRegistrations.skillId,
-      skillName: skills.name,
-      scope: skills.scope,
-      registeredBy: skillRegistrations.registeredBy,
-      createdAt: skillRegistrations.createdAt,
-    })
-    .from(skillRegistrations)
-    .innerJoin(skills, eq(skills.id, skillRegistrations.skillId))
-    .where(eq(skillRegistrations.projectId, projectId))
-    .orderBy(skillRegistrations.stage);
-
-  return rows.map((r) => {
-    const stageCfg = states[r.stage];
-    return {
-      stage: r.stage as IssueStatus,
-      skillId: r.skillId,
-      skillName: r.skillName,
-      scope: r.scope as 'global' | 'project',
-      mode: stageCfg?.mode ?? 'auto',
-      enabled: stageCfg?.enabled !== false,
-      registeredBy: r.registeredBy,
-      registeredAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
-    };
-  });
 }
 
 /**
@@ -515,54 +297,6 @@ export async function updateProjectSkill(
 
 export async function deleteProjectSkill(skillId: string): Promise<void> {
   await db.delete(skills).where(eq(skills.id, skillId));
-}
-
-export interface SetSkillPinnedInput {
-  projectId: string;
-  skillId: string;
-  pinned: boolean;
-  /** Required when pinning; ignored when unpinning. */
-  reason?: string | undefined;
-  actorUserId: string;
-}
-
-/**
- * Mark (or clear) a project skill as `pinned` — intentional, permanent
- * divergence from its template that must never surface as `behindTemplate`
- * or drift-sweep noise (ISS-795 §10 / invariant 10). Writes the column and the
- * `skill.pinned` activity event in the SAME transaction (§9.11).
- */
-export async function setSkillPinned(input: SetSkillPinnedInput): Promise<SkillRow> {
-  if (input.pinned && !input.reason?.trim()) {
-    throw new Error('BAD_REQUEST: reason is required to pin a skill');
-  }
-  const updated = await db.transaction(async (tx) => {
-    const [row] = (await tx
-      .update(skills)
-      .set({
-        pinned: input.pinned,
-        pinnedReason: input.pinned ? (input.reason?.trim() ?? null) : null,
-        pinnedBy: input.pinned ? input.actorUserId : null,
-        pinnedAt: input.pinned ? new Date() : null,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(skills.id, input.skillId), eq(skills.projectId, input.projectId)))
-      .returning(skillProjection)) as SkillRow[];
-    if (!row) throw new Error('NOT_FOUND: skill not found');
-
-    const reason = input.pinned ? (input.reason?.trim() ?? '') : 'unpinned';
-    await recordSkillActivityEvent(tx, {
-      eventType: 'skill.pinned',
-      actor: `human:${input.actorUserId}`,
-      trigger: 'manual',
-      projectId: input.projectId,
-      skillId: input.skillId,
-      reason,
-      outcome: 'ok',
-    });
-    return row;
-  });
-  return updated;
 }
 
 /**

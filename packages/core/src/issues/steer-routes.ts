@@ -2,7 +2,7 @@
  * `POST /api/issues/:id/steer` — the human half of ISS-888 item 2.
  *
  * Transport only. The steer itself lives in
- * `agent-sessions/steer-session.ts`, shared with the `forge_steer` MCP tool —
+ * `agent-sessions/steer-session.ts` —
  * the ISS-889 rule that a query living in one transport is a second data plane
  * the other cannot reach.
  */
@@ -27,7 +27,7 @@ const steerBodySchema = z
   })
   .strict();
 
-// cm:edge contract -> packages/core/src/mcp/tools/forge-steer.ts — both surfaces map the SAME `SteerError.code`; a code added to the service without a row here answers 500 instead of saying what happened
+// cm:guard every `SteerError['code']` needs a row here: the map is exhaustive by TYPE, so a new code fails the build rather than reaching a caller — but only while this stays a `Record<SteerError['code'], …>` and not a partial. Widening it to `Partial<>` or `string` turns the next added code into a 500 that says nothing, which is what this route exists to avoid. This was a `cm:edge` to the `forge_steer` MCP tool until ISS-894 wave 3 deleted it; REST is now the only surface mapping these.
 const STATUS: Record<SteerError['code'], 404 | 409> = {
   NO_LIVE_SESSION: 404,
   SESSION_PARKED: 409,

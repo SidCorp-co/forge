@@ -34,7 +34,7 @@ projectId: ${projectId}
 
 ## STEP 1 — Read the candidates
 
-Call \`forge_ux_improver\` with \`action="candidates"\`, \`projectId="${projectId}"\`.
+Call \`GET /api/projects/${projectId}/ux-improver/candidates\` (\`forge-runner api\` reaches it with the job's own token).
 
 You get back:
 - \`candidates[]\` — recurring gap clusters that PASSED the deterministic bar. Each carries \`key\`, \`kind\` (\`add\` | \`strengthen\` | \`retire\`), \`group\`, \`text\`, \`severity\`, \`evidenceIssueIds\`, \`distinctIssueCount\`, \`occurrences\`, \`rationale\`.
@@ -60,7 +60,7 @@ Propose a candidate only if you tried to refute it and could not.
 
 ## STEP 3 — Propose the survivors
 
-Call \`forge_ux_improver\` with \`action="propose"\`, \`projectId="${projectId}"\`, and \`keys\` set to the surviving candidate keys — at most ${MAX_PROPOSALS_PER_RUN} per run. **Make this call even when nothing survived**, with \`keys: []\`: it also unions fresh evidence onto proposals already sitting in the inbox, and that is the only thing keeping their issue links current as a gap keeps recurring. If more than ${MAX_PROPOSALS_PER_RUN} survive, take the ones with the highest \`distinctIssueCount\` and name the ones you dropped in your report, so a reader can tell a cap from a judgment.
+Call \`POST /api/projects/${projectId}/ux-improver/propose\` with \`keys\` set to the surviving candidate keys — at most ${MAX_PROPOSALS_PER_RUN} per run. **Make this call even when nothing survived**, with \`keys: []\`: it also unions fresh evidence onto proposals already sitting in the inbox, and that is the only thing keeping their issue links current as a gap keeps recurring. If more than ${MAX_PROPOSALS_PER_RUN} survive, take the ones with the highest \`distinctIssueCount\` and name the ones you dropped in your report, so a reader can tell a cap from a judgment.
 
 Each returns an \`action\`: \`proposed\` (a new inbox row), \`evidence-refreshed\` (the gap was already proposed; its evidence grew), \`retired\`, or \`unmatched\` (the candidate set moved under you — re-read step 1).
 

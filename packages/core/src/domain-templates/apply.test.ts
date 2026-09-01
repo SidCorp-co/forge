@@ -38,8 +38,10 @@ const registerSkillForProjectMock = vi.fn(async () => ({
 const resolveOrAdoptProjectSkillMock = vi.fn(
   async (_projectId: string, _skillName: string): Promise<string | null> => null,
 );
-vi.mock('../skills/service.js', () => ({
+vi.mock('../skills/registration-service.js', () => ({
   registerSkillForProject: registerSkillForProjectMock,
+}));
+vi.mock('../skills/service.js', () => ({
   resolveOrAdoptProjectSkill: resolveOrAdoptProjectSkillMock,
 }));
 

@@ -20,11 +20,9 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
-const {
-  forgeMetricsProjectRetryRescuesTool,
-  forgeMetricsSessionFailuresTool,
-  forgeMetricsStepDurationsTool,
-} = await import('./forge-metrics.js');
+const { forgeMetricsProjectRetryRescuesTool, forgeMetricsSessionFailuresTool } = await import(
+  './forge-metrics.js'
+);
 
 const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
@@ -56,7 +54,7 @@ function buildCtx() {
   };
 }
 
-function mockVisible(ids: string[]) {
+function _mockVisible(ids: string[]) {
   selectDistinctImpl.mockImplementationOnce(() => ({
     from: () => ({
       leftJoin: () => ({
@@ -69,7 +67,7 @@ function mockVisible(ids: string[]) {
 }
 
 // Flatten a drizzle `sql` template into its literal text chunks.
-function collectSqlFragments(sqlArg: unknown): string {
+function _collectSqlFragments(sqlArg: unknown): string {
   const fragments: string[] = [];
   const visit = (node: unknown): void => {
     if (typeof node === 'string') {
@@ -98,30 +96,6 @@ beforeEach(() => {
   selectImpl.mockReset();
   executeImpl.mockReset();
   executeImpl.mockResolvedValue([]);
-});
-
-describe('forge_metrics.step_durations', () => {
-  it('returns empty without querying when caller has no visible projects', async () => {
-    mockVisible([]);
-    const tool = forgeMetricsStepDurationsTool(buildCtx());
-    const res = (await tool.handler({ days: 30 })) as { rows: unknown[]; windowDays: number };
-    expect(res.rows).toEqual([]);
-    expect(res.windowDays).toBe(30);
-    expect(executeImpl).not.toHaveBeenCalled();
-  });
-
-  it('scopes to visible projects with IN (...) — not ANY(::uuid[]) (array-binding regression)', async () => {
-    mockVisible([PROJECT_ID]);
-    executeImpl.mockResolvedValueOnce([]);
-    const tool = forgeMetricsStepDurationsTool(buildCtx());
-    await tool.handler({ days: 30 });
-
-    expect(executeImpl).toHaveBeenCalledTimes(1);
-    const sqlText = collectSqlFragments(executeImpl.mock.calls[0]?.[0]);
-    expect(sqlText).toContain('IN (');
-    expect(sqlText).not.toContain('ANY(');
-    expect(sqlText).not.toContain('::uuid[]');
-  });
 });
 
 describe('forge_metrics.project_retry_rescues', () => {

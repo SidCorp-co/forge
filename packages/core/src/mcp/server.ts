@@ -42,7 +42,6 @@ import {
   forgeMetricsProjectStepDurationsTool,
   forgeMetricsProjectTimeseriesTool,
   forgeMetricsSessionFailuresTool,
-  forgeMetricsStepDurationsTool,
 } from './tools/forge-metrics.js';
 import { forgeOrgsListTool, forgeOrgsMembersTool } from './tools/forge-orgs.js';
 import { forgePhaseTool } from './tools/forge-phase.js';
@@ -69,13 +68,11 @@ import {
   forgeSkillsGetTool,
   forgeSkillsListRegistrationsTool,
   forgeSkillsListTool,
-  forgeSkillsPinTool,
   forgeSkillsPushTool,
   forgeSkillsRegisterTool,
   forgeSkillsSyncStatusTool,
   forgeSkillsUpdateTool,
 } from './tools/forge-skills.js';
-import { forgeSteerTool } from './tools/forge-steer.js';
 import {
   forgeStepHandoffDeleteTool,
   forgeStepHandoffGetTool,
@@ -85,7 +82,6 @@ import { forgeStepStartTool } from './tools/forge-step-start.js';
 import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
 import { forgeUploadsTool } from './tools/forge-uploads.js';
 import { forgeUxFindingsTool } from './tools/forge-ux-findings.js';
-import { forgeUxImproverTool } from './tools/forge-ux-improver.js';
 import type { McpContext, McpTool } from './tools/lib.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/project-scope.js';
 
@@ -218,10 +214,8 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeSkillsAdoptTool(ctx),
     forgeSkillsSyncStatusTool(ctx),
     forgeSkillsPushTool(ctx),
-    forgeSkillsPinTool(ctx),
     forgeSkillFactsListTool(ctx),
     forgeSkillFactsGetTool(ctx),
-    forgeMetricsStepDurationsTool(ctx),
     forgeMetricsProjectRetryRescuesTool(ctx),
     forgeMetricsProjectStepDurationsTool(ctx),
     forgeMetricsProjectTimeseriesTool(ctx),
@@ -234,7 +228,6 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeCommentsTool(ctx),
     forgeFeedbackTool(ctx),
     forgeUxFindingsTool(ctx),
-    forgeUxImproverTool(ctx),
     forgeUploadsTool(ctx),
     forgeConfigTool(ctx),
     forgeKnowledgeTool(ctx),
@@ -261,7 +254,6 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeReconcileTool(ctx),
     // cm:guard append new tools HERE, immediately above the last one — every position shifts the indices below it, so the tail is the only insertion point that leaves all existing tools where callers pinned them
     forgeJobsResumeTool(ctx),
-    forgeSteerTool(ctx),
     forgeMetricsSessionFailuresTool(ctx),
     // cm:guard keep this registration LAST — callers pin to `tools/list` ordering, so inserting above it shifts every index they rely on
     forgeGuideTool(ctx),

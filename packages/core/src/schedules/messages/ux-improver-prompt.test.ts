@@ -11,11 +11,12 @@ describe('buildUxImproverPrompt', () => {
     expect(prompt).toContain(PROJECT_ID);
   });
 
-  it('routes the agent through both improver actions, read before write', () => {
-    expect(prompt.indexOf('action="candidates"')).toBeGreaterThan(-1);
-    expect(prompt.indexOf('action="propose"')).toBeGreaterThan(
-      prompt.indexOf('action="candidates"'),
-    );
+  // cm:guard the ORDER is the rule, not the two strings: propose acts on what candidates returned, so a prompt naming the write first sends the agent to commit before it has read. Asserted on the REST paths since ISS-894 wave 3 deleted `forge_ux_improver`; if this ever reads as one `indexOf` alone it has stopped checking the ordering and only checks that a route is mentioned.
+  it('routes the agent through both improver routes, read before write', () => {
+    const read = prompt.indexOf('/ux-improver/candidates');
+    const write = prompt.indexOf('/ux-improver/propose');
+    expect(read).toBeGreaterThan(-1);
+    expect(write).toBeGreaterThan(read);
   });
 
   it('caps how many candidates one run may commit, and states the cap in the prompt', () => {

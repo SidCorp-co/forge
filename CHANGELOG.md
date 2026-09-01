@@ -8,8 +8,18 @@
 
 ## [Unreleased]
 
+### Removed
+
+- Four MCP tools whose work REST already does: `forge_steer`, `forge_ux_improver`,
+  `forge_skills.pin` and `forge_metrics.step_durations`. Nothing that runs on a build box had
+  called any of them, and every one has an endpoint that does the same job. The registered tool
+  set is now 59.
+
 ### Added
 
+- A project skill can be pinned over REST — `PUT /api/projects/:projectId/skills/:skillId/pin`
+  marks it an intentional, permanent divergence from its template, with the reason recorded
+  against whoever declared it. Pinning had no route before, only a tool.
 - The people you share projects with are now readable over REST, at
   `GET /api/me/collaborators` — who they are and what role they hold on each
   project you can see. Per-project membership was already a route; the

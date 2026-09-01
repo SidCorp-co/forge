@@ -494,37 +494,6 @@ export type StepDurationAggRow = {
   n: number | string | null;
 };
 
-// cm:guard build the id list as a parenthesised parameter list via `sql.join` and use `IN (...)`. Drizzle expands an interpolated JS array as a ROW CONSTRUCTOR ($1,$2,...), so `= ANY(${ids}::uuid[])` is a malformed array literal that throws at query time — the same idiom projects/health-routes.ts and runners/select.ts carry, for the same reason.
-export async function stepDurationsAcrossProjects(
-  projectIds: string[],
-  days: number,
-  step?: string,
-): Promise<StepDurationAggRow[]> {
-  const projectIdList = sql.join(
-    projectIds.map((id) => sql`${id}`),
-    sql`, `,
-  );
-  const stepFilter = step ? sql`AND v.step = ${step}` : sql``;
-  const result = await db.execute(sql`
-    SELECT v.project_id,
-           p.slug AS project_slug,
-           v.step,
-           percentile_disc(0.5) WITHIN GROUP (ORDER BY v.duration_seconds) AS p50_s,
-           percentile_disc(0.95) WITHIN GROUP (ORDER BY v.duration_seconds) AS p95_s,
-           avg(v.duration_seconds)::float AS avg_s,
-           sum(v.cost_usd)::float AS total_cost,
-           count(v.duration_seconds)::int AS n
-    FROM pipeline_run_step_durations v
-    LEFT JOIN projects p ON p.id = v.project_id
-    WHERE v.project_id IN (${projectIdList})
-      AND v.started_at >= now() - (${days}::int * interval '1 day')
-      ${stepFilter}
-    GROUP BY v.project_id, p.slug, v.step
-    ORDER BY v.project_id, v.step
-  `);
-  return result as unknown as StepDurationAggRow[];
-}
-
 export type ProjectStepDurationRow = Omit<StepDurationAggRow, 'project_id' | 'project_slug'> & {
   breakdown_key?: string | null;
 };

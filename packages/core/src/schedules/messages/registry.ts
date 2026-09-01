@@ -253,11 +253,11 @@ export const improvementMessages: ImprovementMessage[] = [
     title: 'Standing UX-contract improver — learn contract rules from UX findings',
     message:
       'The UX improver agent reads the deterministic aggregation of this project’s ' +
-      'ux_findings (forge_ux_improver action=candidates): recurring gap clusters that span ' +
+      'ux_findings (GET /api/projects/:id/ux-improver/candidates): recurring gap clusters that span ' +
       'at least 3 distinct issues, each with the evidence issue ids that taught it, plus the ' +
       'clusters the detector refused and why. It adversarially reviews every candidate — ' +
       'trying to refute it as a one-off, as already covered by an active rule, or as too ' +
-      'vague to act on — and calls forge_ux_improver action=propose with only the survivors. ' +
+      'vague to act on — and POSTs /api/projects/:id/ux-improver/propose with only the survivors. ' +
       'Proposals land at status="proposed" for the project-settings inbox; the agent never ' +
       'activates a rule and never edits the compiled contract prose.',
     rationale:
