@@ -17,7 +17,7 @@
   surfaces call them, because `deploy` is what decides whether a PROD binding may dispatch — a
   bare `pipelineRunId` earns it only once proven to be this project's open release-batch run, an
   `issueId` only by having reached the release stage, and the run-less path never asks for it.
-  That decision must not exist twice. `forge_coolify_deploy` drops from 444 lines to 240 and its
+  That decision must not exist twice. `forge_coolify_deploy` drops from 444 lines to 282 and its
   four actions now dispatch to the shared commands. `confirm-prod-deploy` moved to the Coolify
   route module with them; it had been living in the provider-agnostic integrations file.
 
