@@ -2,7 +2,8 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
 import { logger } from '../logger.js';
-import type { TransitionActor, TransitionIssueRow } from './apply-transition.js';
+import type { TransitionActor } from './actor-agency.js';
+import type { TransitionIssueRow } from './apply-transition.js';
 import type { UnblockedDependent } from './drop-cascade.js';
 
 export async function recordDropUnblock(

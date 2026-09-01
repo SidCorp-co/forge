@@ -21,11 +21,8 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, type jobs, projects } from '../db/schema.js';
-import {
-  applyStatusTransition,
-  type DeviceLite,
-  type TransitionIssueRow,
-} from '../issues/apply-transition.js';
+import type { DeviceLite } from '../issues/actor-agency.js';
+import { applyStatusTransition, type TransitionIssueRow } from '../issues/apply-transition.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { logger } from '../logger.js';
 import { classifyFailure } from '../pipeline/failure-classifier.js';

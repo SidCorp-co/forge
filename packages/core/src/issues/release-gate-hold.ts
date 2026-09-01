@@ -20,6 +20,7 @@ import type { IssueStatus } from '../db/schema.js';
 import { isAutonomous } from '../pipeline/autonomous-mode.js';
 import { readPipelineConfig } from '../pipeline/autonomous-project.js';
 import { resolveReleaseGateStatus } from '../release-batch/gate.js';
+import type { ActorAgency } from './actor-agency.js';
 
 export interface CloseTargetDecision {
   status: IssueStatus;
@@ -31,16 +32,16 @@ export interface CloseTargetDecision {
  * Where an agent's `closed` actually lands. Every other target, every human
  * actor, every staged project and the release path itself pass through.
  */
-// cm:guard the `actorType === 'device'` check is what keeps a human's close working: an operator closing an issue by hand is making the shipped claim deliberately and owns it, while an agent has no way to know whether anything was released
+// cm:guard the agency check is what keeps a human's close working: an operator closing an issue by hand is making the shipped claim deliberately and owns it, while an agent has no way to know whether anything was released. It asks `agency`, NOT `actor.type` — this rule is about who is at the keyboard, and a job token is an agent writing as the person who queued it, so a device-ness test would let exactly that caller close unheld.
 export async function resolveAgentCloseTarget(args: {
   projectId: string;
   requested: IssueStatus;
-  actorType: 'user' | 'device';
+  agency: ActorAgency;
   viaReleasePath: boolean;
 }): Promise<CloseTargetDecision> {
   const pass = { status: args.requested, held: false };
   if (args.requested !== 'closed') return pass;
-  if (args.actorType !== 'device') return pass;
+  if (args.agency !== 'agent') return pass;
   if (args.viaReleasePath) return pass;
 
   const cfg = await readPipelineConfig(args.projectId);

@@ -1,11 +1,12 @@
 import { eq } from 'drizzle-orm';
-import type { MiddlewareHandler } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { verifyDeviceToken } from '../auth/deviceToken.js';
 import { verifyUserToken } from '../auth/jwt.js';
 import { isPatLike } from '../auth/pat-format.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
+import type { ActorAgency } from '../issues/actor-agency.js';
 import { readBearerToken } from './bearer.js';
 import { beginPatRequest, withPatScope } from './pat-rest-surface.js';
 
@@ -17,8 +18,23 @@ export type AuthVars = {
   // a device unless they explicitly honor the device principal.
   deviceId?: string;
   principal?: 'user' | 'device' | 'pat';
+  // cm:guard REST must carry this or the whole agency axis stops at the door: `requireAuth` reduces a rich principal to `principal:'pat'`, a string tag, and every route downstream then hardcodes a `user` actor. That is how an agent holding a PAT reached `PATCH /api/issues/batch` — which DOES transition, via transitionIssueStatus — and skipped the ISS-786/812 gates while `/mcp` enforced them, because MCP synthesizes a device for a PAT and REST has none to synthesize.
+  agency?: ActorAgency;
   patTokenId?: string;
 };
+
+/**
+ * The actor for a REST write, carrying the trust axis the routes must not
+ * decide for themselves.
+ */
+// cm:guard build the actor HERE, never as a `{ type: 'user' as const }` literal in a route — three route files each had their own copy and all three were wrong in the same way, which is what a second copy of an auth decision always costs. `id` stays the owning user (a job's write really is its creator's); `agency` is what the lifecycle gates read.
+export function restActor(c: Context<{ Variables: AuthVars }>): {
+  type: 'user';
+  id: string;
+  agency: ActorAgency;
+} {
+  return { type: 'user', id: c.get('userId'), agency: c.get('agency') ?? 'human' };
+}
 
 /**
  * The REST data plane's gate: a user JWT (web/desktop) or a Personal Access
@@ -36,6 +52,7 @@ export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
       const { principal, scope } = await beginPatRequest(c, token);
       c.set('userId', principal.userId);
       c.set('principal', 'pat');
+      c.set('agency', principal.agency);
       c.set('patTokenId', principal.tokenId);
       return withPatScope(scope, () => next());
     }

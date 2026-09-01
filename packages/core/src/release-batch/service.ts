@@ -9,11 +9,8 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
-import {
-  type TransitionActor,
-  TransitionError,
-  transitionIssueStatus,
-} from '../issues/apply-transition.js';
+import type { TransitionActor } from '../issues/actor-agency.js';
+import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
 import { logger } from '../logger.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';

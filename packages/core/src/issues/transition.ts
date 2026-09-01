@@ -13,7 +13,7 @@ import {
 } from '../db/schema.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import {
@@ -219,7 +219,7 @@ transitionRoutes.post(
           reopenCount: issue.reopenCount,
         },
         toStatus,
-        { type: 'user', id: userId },
+        restActor(c),
         { reason, transitionReason: reason, waitingKind },
       );
     } catch (err) {

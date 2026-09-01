@@ -16,7 +16,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issueDependencies, issueDependencyKinds, issues } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { loadIssueDependencyEdges } from './dependency-read.js';
@@ -219,7 +219,7 @@ issueDependencyRoutes.delete(
       toIssueId: edge.toIssueId,
       kind: edge.kind,
     };
-    const actor = { type: 'user' as const, id: userId };
+    const actor = restActor(c);
     await Promise.all([
       safeRecordActivity({
         issueId: edge.fromIssueId,

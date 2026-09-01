@@ -21,6 +21,7 @@
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
+import { type ActorAgency, actorAgency } from './actor-agency.js';
 
 export interface ReleaseRecordRefusal {
   detail: string;
@@ -53,11 +54,11 @@ export async function issuesMissingReleaseRecord(issueIds: string[]): Promise<st
 export async function refuseUnrecordedClose(
   issueId: string,
   toStatus: IssueStatus,
-  actor: { type: 'user' | 'device' },
+  actor: { type: 'user' | 'device'; agency?: ActorAgency },
   options: { viaReleasePath?: boolean; viaCloseCascade?: boolean },
 ): Promise<ReleaseRecordRefusal | null> {
   if (toStatus !== 'closed') return null;
-  if (actor.type !== 'device') return null;
+  if (actorAgency(actor) !== 'agent') return null;
   if (options.viaReleasePath === true) return null;
   if (options.viaCloseCascade === true) return null;
 

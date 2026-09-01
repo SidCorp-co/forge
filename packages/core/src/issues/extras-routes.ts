@@ -17,7 +17,7 @@ import { enqueueJob } from '../jobs/enqueue.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { ActiveJobConflictError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
 import { openIssueRun } from '../pipeline/runs.js';
@@ -114,7 +114,7 @@ issueExtrasRoutes.patch(
   async (c) => {
     const { ids, data } = c.req.valid('json');
     const userId = c.get('userId');
-    const actor = { type: 'user' as const, id: userId };
+    const actor = restActor(c);
 
     const result: BatchResult = { updated: [], skipped: [], failed: [] };
 
@@ -203,7 +203,7 @@ issueExtrasRoutes.patch(
                 reopenCount: row.reopenCount,
               },
               toStatus,
-              { type: 'user', id: userId },
+              actor,
             );
             touched = true;
             row.status = toStatus;
@@ -390,7 +390,7 @@ issueExtrasRoutes.post(
         issueId: issue.id,
         status: issue.status,
         ...(stage ? { stage } : {}),
-        actor: { type: 'user', id: userId },
+        actor: restActor(c),
         reason: { manual: true },
       });
       return c.json(

@@ -25,7 +25,8 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
-import { type TransitionActor, transitionIssueStatus } from '../issues/apply-transition.js';
+import type { TransitionActor } from '../issues/actor-agency.js';
+import { transitionIssueStatus } from '../issues/apply-transition.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';

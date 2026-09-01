@@ -9,7 +9,8 @@ import {
   jobs,
   projects,
 } from '../db/schema.js';
-import { applyStatusTransition, type DeviceLite } from '../issues/apply-transition.js';
+import type { DeviceLite } from '../issues/actor-agency.js';
+import { applyStatusTransition } from '../issues/apply-transition.js';
 import { resolveMergeStates } from '../issues/merged-at.js';
 import { isBlankPlan, isPlanStageLive } from '../issues/transition-evidence.js';
 import { buildJobPromptString } from '../jobs/prompt-string.js';

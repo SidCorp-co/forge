@@ -1,6 +1,6 @@
 /**
  * Content guards on THE state-machine writer (`transitionIssueStatus`).
- * Rules run for `actorType==='device'` only — a human hand-advance is a
+ * Rules run for an agent caller only — a human hand-advance is a
  * recorded human decision, not the fabrication class this guards against —
  * and are skipped entirely for `options.skip===true` (the orchestrator's
  * curated soft-skip/failover chain, which legitimately lands on gated
@@ -19,6 +19,7 @@ import {
   type ProjectSkillResolver,
 } from '../pipeline/skill-mapping.js';
 import { findMissingWorkEvidence } from '../pipeline/work-evidence.js';
+import type { ActorAgency } from './actor-agency.js';
 import type { TransitionErrorCode, TransitionIssueRow } from './apply-transition.js';
 
 export interface TransitionEvidenceViolation {
@@ -32,7 +33,7 @@ type EvidenceExecutor = Pick<Db, 'select'>;
 export interface TransitionEvidenceContext {
   issue: Pick<TransitionIssueRow, 'id' | 'projectId'>;
   toStatus: string;
-  actorType: 'user' | 'device';
+  agency: ActorAgency;
   skip: boolean;
   executor?: EvidenceExecutor;
 }
@@ -129,7 +130,7 @@ const RULES: readonly EvidenceRule[] = [planRequiredRule, noWorkEvidenceRule];
 export async function checkTransitionEvidence(
   ctx: TransitionEvidenceContext,
 ): Promise<TransitionEvidenceViolation | null> {
-  if (ctx.actorType !== 'device' || ctx.skip) return null;
+  if (ctx.agency !== 'agent' || ctx.skip) return null;
   try {
     for (const rule of RULES) {
       const violation = await rule(ctx);

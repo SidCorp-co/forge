@@ -22,11 +22,12 @@ import {
   AUTONOMOUS_QUESTION_STATUS,
 } from '../pipeline/autonomous-mode.js';
 import { isAutonomousProject } from '../pipeline/autonomous-project.js';
+import type { ActorAgency } from './actor-agency.js';
 
 export interface AutonomousParkInput {
   projectId: string;
   requested: IssueStatus;
-  actorType: 'user' | 'device';
+  agency: ActorAgency;
   /** This `waiting` is core's decompose review gate, not an agent asking. */
   viaDecomposeGate: boolean;
 }
@@ -50,5 +51,5 @@ export async function resolveAutonomousParkTarget(
 function isRewritablePark(input: AutonomousParkInput): boolean {
   if (input.requested === 'reopen') return true;
   if (input.requested !== 'waiting') return false;
-  return input.actorType === 'device' && !input.viaDecomposeGate;
+  return input.agency === 'agent' && !input.viaDecomposeGate;
 }

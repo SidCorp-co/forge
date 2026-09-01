@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
-import type { DeviceLite, TransitionActor } from '../../issues/apply-transition.js';
+import type { DeviceLite, TransitionActor } from '../../issues/actor-agency.js';
 import { loadVisibleProjectIds } from '../../lib/authz.js';
 import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
 import type { Actor } from '../../pipeline/activity.js';

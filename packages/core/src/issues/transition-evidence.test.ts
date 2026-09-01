@@ -68,7 +68,7 @@ describe('checkTransitionEvidence — plan_required rule', () => {
     const violation = await checkTransitionEvidence({
       issue: ISSUE,
       toStatus: 'approved',
-      actorType: 'device',
+      agency: 'agent',
       skip: false,
     });
     expect(violation).toEqual({
@@ -82,7 +82,7 @@ describe('checkTransitionEvidence — plan_required rule', () => {
     const violation = await checkTransitionEvidence({
       issue: ISSUE,
       toStatus: 'approved',
-      actorType: 'user',
+      agency: 'human',
       skip: false,
     });
     expect(violation).toBeNull();
@@ -92,7 +92,7 @@ describe('checkTransitionEvidence — plan_required rule', () => {
     const violation = await checkTransitionEvidence({
       issue: ISSUE,
       toStatus: 'approved',
-      actorType: 'device',
+      agency: 'agent',
       skip: true,
     });
     expect(violation).toBeNull();
@@ -103,7 +103,7 @@ describe('checkTransitionEvidence — plan_required rule', () => {
     const violation = await checkTransitionEvidence({
       issue: ISSUE,
       toStatus: 'approved',
-      actorType: 'device',
+      agency: 'agent',
       skip: false,
     });
     expect(violation).toBeNull();
@@ -115,7 +115,7 @@ describe('checkTransitionEvidence — plan_required rule', () => {
     const violation = await checkTransitionEvidence({
       issue: ISSUE,
       toStatus: 'approved',
-      actorType: 'device',
+      agency: 'agent',
       skip: false,
     });
     expect(violation).toBeNull();
@@ -126,7 +126,7 @@ describe('checkTransitionEvidence — plan_required rule', () => {
     const violation = await checkTransitionEvidence({
       issue: ISSUE,
       toStatus: 'approved',
-      actorType: 'device',
+      agency: 'agent',
       skip: false,
     });
     expect(violation).toBeNull();
@@ -136,7 +136,7 @@ describe('checkTransitionEvidence — plan_required rule', () => {
     const violation = await checkTransitionEvidence({
       issue: ISSUE,
       toStatus: 'developed',
-      actorType: 'device',
+      agency: 'agent',
       skip: false,
     });
     expect(violation).toBeNull();
@@ -154,7 +154,7 @@ describe('checkTransitionEvidence — plan_required rule', () => {
     const violation = await checkTransitionEvidence({
       issue: ISSUE,
       toStatus: 'approved',
-      actorType: 'device',
+      agency: 'agent',
       skip: false,
     });
     expect(violation).toBeNull();
@@ -176,7 +176,7 @@ describe('checkTransitionEvidence — no_work_evidence rule', () => {
     const violation = await checkTransitionEvidence({
       issue: ISSUE,
       toStatus: 'developed',
-      actorType: 'device',
+      agency: 'agent',
       skip: false,
     });
     expect(violation).toEqual({
@@ -191,7 +191,7 @@ describe('checkTransitionEvidence — no_work_evidence rule', () => {
     const violation = await checkTransitionEvidence({
       issue: ISSUE,
       toStatus: 'testing',
-      actorType: 'device',
+      agency: 'agent',
       skip: false,
     });
     expect(violation?.code).toBe('NO_WORK_EVIDENCE');
@@ -201,7 +201,7 @@ describe('checkTransitionEvidence — no_work_evidence rule', () => {
     const violation = await checkTransitionEvidence({
       issue: ISSUE,
       toStatus: 'developed',
-      actorType: 'device',
+      agency: 'agent',
       skip: false,
     });
     expect(violation).toBeNull();
@@ -212,7 +212,7 @@ describe('checkTransitionEvidence — no_work_evidence rule', () => {
     const violation = await checkTransitionEvidence({
       issue: ISSUE,
       toStatus: 'closed',
-      actorType: 'device',
+      agency: 'agent',
       skip: false,
     });
     expect(violation).toBeNull();
@@ -224,7 +224,7 @@ describe('checkTransitionEvidence — no_work_evidence rule', () => {
     const violation = await checkTransitionEvidence({
       issue: ISSUE,
       toStatus: 'developed',
-      actorType: 'user',
+      agency: 'human',
       skip: false,
     });
     expect(violation).toBeNull();
@@ -236,7 +236,7 @@ describe('checkTransitionEvidence — no_work_evidence rule', () => {
     const violation = await checkTransitionEvidence({
       issue: ISSUE,
       toStatus: 'developed',
-      actorType: 'device',
+      agency: 'agent',
       skip: true,
     });
     expect(violation).toBeNull();

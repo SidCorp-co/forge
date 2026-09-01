@@ -27,7 +27,8 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, type IssueStatus, projects } from '../db/schema.js';
-import { applyStatusTransition, type DeviceLite } from '../issues/apply-transition.js';
+import type { DeviceLite } from '../issues/actor-agency.js';
+import { applyStatusTransition } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { AUTONOMOUS_ENTRY_STATUS } from './autonomous-mode.js';

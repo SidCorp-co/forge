@@ -239,7 +239,7 @@ describe('ISS-786 state-integrity guards — composed A→C→B→D walk', () =>
       checkTransitionEvidence({
         issue: { id: ghostIssueId, projectId: ghostProjectId },
         toStatus: 'approved',
-        actorType: 'device',
+        agency: 'agent',
         skip: false,
       }),
     ).resolves.toBeNull();

@@ -19,6 +19,27 @@
 
 ### Fixed
 
+- REST decided every caller was a person, so the evidence gates ran on `/mcp` and not on the CLI's
+  own surface. `requireAuth` reduces a PAT principal to `principal: 'pat'`, a string tag, and four
+  separate route sites then built a `{ type: 'user' }` actor by hand. MCP was safe by accident — it
+  synthesizes a device for a PAT principal, and the gates keyed on device-ness — but REST has no
+  device to synthesize, so `PATCH /api/issues/batch`, `PATCH /api/issues/:id/transition` and the
+  manual step trigger all transitioned as a human. `/api/issues` is on the PAT allowlist, so those
+  are reachable with any write-scoped token, and an agent holding one skipped ISS-786/812 entirely.
+  Actors are now built in one place that carries the trust axis with them.
+
+- The lifecycle gates asked whether the actor was a device when what they meant was whether the
+  caller was a person. Four of them — the evidence gate, the agent-close hold, the release-record
+  refusal and the autonomous park rewrite — now read `agency`, and two of those already argued the
+  human-vs-agent case in their own guards while implementing device-ness. A job token makes the two
+  axes differ for the first time: the write is its creator's, the caller is an agent. `actor.type`
+  keeps answering who owns the write, which is what the two `actor_type` columns store, so no
+  existing caller changes behaviour and no migration was needed. The five branches that genuinely
+  mean "came from a runner" — WS room routing, the heartbeat, the orchestrator's `DeviceLite`, and
+  the two readers of the stored enum — were left alone deliberately. What is NOT fixed is the
+  stored half: agency is not persisted, so the activity feed will call an agent's write a person's
+  once job tokens run. `docs/proposals/agency-is-not-persisted.md` prices that.
+
 - A job's own access token authenticated as the human who owns it. Core mints one PAT per
   dispatched job under `jobs.created_by`, hands it to the runner and exports it to the agent as
   `$FORGE_PAT` — and `authenticatePat` stamped every PAT `agency: 'human'`, a constant. `agency` is

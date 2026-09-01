@@ -15,6 +15,7 @@ import { canTransitionFree, DRAFT_EXIT_TARGETS, isReopenEntry } from '../pipelin
 import { collectWorkEvidence, hasCodeEvidence } from '../pipeline/work-evidence.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
 import { resolveAutonomousParkTarget } from './autonomous-park.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { recordDropUnblock } from './drop-unblock.js';
@@ -49,14 +50,11 @@ export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(['released', 'closed',
 // cm:guard `dropped` closes the run like `closed` but must NEVER reach markMergedOnClose. Since 2026-08-25 dropping DOES release the dependents (owner's call), so this split is no longer what stops that — `drop-cascade.ts` expires the edges and records why on each dependent. What the split still stops is the shipped claim: `merged_at` means the code reached the base branch, a dropped issue's never did, and stamping it would make every downstream reader (release notes, the L2 gate's satisfied arm, pipeline-health) count work that does not exist.
 export const RUN_CLOSING_STATUSES = new Set<IssueStatus>(['closed', 'dropped']);
 
-export type DeviceLite = { id: string; ownerId: string };
-
 /**
  * Who is performing the transition. `id` feeds the outbox actor context
  * (ISS-196 trigger attribution); the WS `actorId` is the user id for user
  * actors and the device owner for device actors.
  */
-export type TransitionActor = { type: 'user'; id: string } | ({ type: 'device' } & DeviceLite);
 
 export type TransitionErrorCode =
   | 'NO_OP'
@@ -354,13 +352,13 @@ export async function transitionIssueStatus(
   const parkTarget = await resolveAutonomousParkTarget({
     projectId: issue.projectId,
     requested: requestedStatus,
-    actorType: actor.type,
+    agency: actorAgency(actor),
     viaDecomposeGate: options.viaDecomposeGate === true,
   });
   const { status: toStatus, held } = await resolveAgentCloseTarget({
     projectId: issue.projectId,
     requested: parkTarget,
-    actorType: actor.type,
+    agency: actorAgency(actor),
     viaReleasePath: options.viaReleasePath === true,
   });
   if (fromStatus === toStatus) {
@@ -522,7 +520,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       const violation = await checkTransitionEvidence({
         issue: { id: issue.id, projectId: issue.projectId },
         toStatus: requestedStatus,
-        actorType: actor.type,
+        agency: actorAgency(actor),
         skip: options.skip === true,
         executor: tx,
       });

@@ -21,7 +21,7 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { deleteMemory } from '../memory/indexer.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { AttachmentError } from './attachment-service.js';
@@ -518,7 +518,7 @@ issueRoutes.patch(
       track('metadata', patch.metadata);
     }
 
-    const actor = { type: 'user' as const, id: userId };
+    const actor = restActor(c);
 
     let updated: IssueRow;
     try {
