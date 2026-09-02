@@ -4,14 +4,16 @@
 //
 // This is a different document, not a filtered one. A staged rule earns a
 // place here only when the driver would ACT differently having read it — the
-// ladder, `waiting`/`reopen`/`on_hold`, five-rounds-then-park, `forge_step_start`
-// and the whole MCP tool catalogue all fail that test in this lane, so they are
-// dropped rather than translated.
+// ladder, `waiting`/`reopen`/`on_hold`, five-rounds-then-park and
+// `forge_step_start`'s `code`/`fix` stage semantics all fail that test in this
+// lane, so they are dropped rather than translated. Note what that reasoning is
+// NOT: the driver has a working Forge MCP client and always did. The staged text
+// is wrong here on any transport, and the CLI is what the bundled skill names.
 //
 // Keep this file free of DB/env imports for the same reason `registry.ts` is:
 // the fact catalogue must render without a live database.
 
-// cm:edge contract -> packages/runner/skills/forge-drive/SKILL.md — the skill and this preamble are read in ONE context window and must name one transport and one status vocabulary. They disagreed until 2026-09-02, when this block was still the staged text: the skill named `forge-runner api` and nothing else, the preamble named `forge_step_start`, `forge_issues.update` and a nine-rung ladder, and the agent believed the preamble — 4,806 `forge_step_start` and 4,268 `forge_step_handoff.write` device calls in the MCP audit log, every one on a project in autonomous mode.
+// cm:edge contract -> packages/runner/skills/forge-drive/SKILL.md — the skill and this preamble are read in ONE context window and must name ONE transport and one status vocabulary. They disagreed until 2026-09-02: the skill named `forge-runner api` and nothing else, the preamble named `forge_step_start`, `forge_issues.update` and a nine-rung ladder, and the agent believed the preamble — 4,806 `forge_step_start` and 4,268 `forge_step_handoff.write` device calls, every one on a project in autonomous mode. Which one moves is a CHOICE and the skill won it: the job PAT is minted per job, scoped to one project and revoked when the job goes terminal, where the device token the MCP path uses is long-lived and fleet-wide. Do not restate this as "the driver cannot call MCP" — it can, and the integrations block deliberately still tells it to.
 // cm:guard do NOT restate the driver's five statuses here. `packages/runner/skills/forge-drive/SKILL.md` holds the single declaration, gated against `AUTONOMOUS_DRIVER_STATUSES` by check-autonomous-transitions.mjs; a second list in the preamble is one that gate does not read, and the two would drift inside the same context window.
 export const DRIVE_RULES_TEXT = `## Driver Rules
 - **You are the whole pipeline for this issue.** Nothing dispatches after you, so no status you write triggers anything and there is no next stage to hand to. Reach for the status your skill's table names, never the one that looks like it comes next.
@@ -35,9 +37,9 @@ Only when you hit a reusable lesson — a project convention, a non-obvious gotc
 - Never repeat file contents after reading — just edit.
 - Comments go to \`forge-runner api issues/<id>/comments -X POST\`, not to chat output.`;
 
-// cm:guard every path here is one an agent holding only `$FORGE_PAT` can actually reach: the fence in `middleware/pat-rest-surface.ts` is an ALLOWLIST, so a route whose prefix is absent answers 403 PAT_NOT_PERMITTED and the driver reads it as a Forge outage. Check the prefix before adding a line — `/api/me`, `/api/orgs`, `/api/admin` and `/api/pat` are fenced on purpose and no driver instruction may name them.
+// cm:guard every path here is one the job PAT can actually reach: the fence in `middleware/pat-rest-surface.ts` is an ALLOWLIST, so a route whose prefix is absent answers 403 PAT_NOT_PERMITTED and the driver reads it as a Forge outage. Check the prefix before adding a line — `/api/me`, `/api/orgs`, `/api/admin` and `/api/pat` are fenced on purpose and no driver instruction may name them.
 export const DRIVE_TOOL_REFERENCE_TEXT = `## Reaching Forge
-You have no MCP client. Forge is a REST API you call through \`forge-runner api <path>\`, which supplies the \`/api/\` prefix and the \`$FORGE_PAT\` the runner already exported. A path with no handler answers 404 — it never falls back.
+Reach Forge through \`forge-runner api <path>\`, which supplies the \`/api/\` prefix and the \`$FORGE_PAT\` the runner already exported. A path with no handler answers 404 — it never falls back. Use this and not a \`forge_*\` tool: the two reach the same data, and one transport named in one place is what keeps this document and your skill from contradicting each other mid-session.
 
 - **the issue** — \`issues/<id>\` · \`issues/<id> -X PATCH -d '{"status":"in_progress"}'\` · the project's list is \`projects/$FORGE_PROJECT_ID/issues\`; there is no \`GET /api/issues\`.
 - **comments** — \`issues/<id>/comments\` to read, \`issues/<id>/comments -X POST -d '{"body":"..."}'\` to write. Replies and edits are \`comments/<commentId>\`.
@@ -46,4 +48,4 @@ You have no MCP client. Forge is a REST API you call through \`forge-runner api 
 - **knowledge and memory** — \`projects/$FORGE_PROJECT_ID/knowledge\` for curated entries, \`memory/search\` and \`memory\` for the semantic store.
 - **the merge marker** — \`issues/<id>/merge\` (\`-X POST\` to stamp, \`-X DELETE\` to retract).
 
-Attachments are the one thing this cannot reach: an image or file attached to an issue needs a multimodal read the shell cannot perform, so if the work depends on one, say so in a comment rather than guessing at its contents.`;
+Attachments are the exception: reading an image or file attached to an issue needs a multimodal fetch no shell command can perform, so use \`forge_uploads\` for that one job. Connected integrations are the other — their block below names the tools they need, and those are correct as written.`;

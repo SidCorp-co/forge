@@ -341,7 +341,7 @@ function formatIssueSnapshot(
       }),
     );
   }
-  // cm:guard the pointer must name the lane's OWN transport, and `drive` is why this is a fork rather than one sentence: the autonomous driver reaches Forge through `forge-runner api` and has no MCP client to call, so the staged text sent it to a tool it could not use — measured on the audit log as 4,806 `forge_step_start` calls from agents, every one on an autonomous project, against a bundled skill that names no MCP tool at all.
+  // cm:guard the pointer must name the lane's OWN transport, and `drive` is why this is a fork rather than one sentence: the autonomous driver is told everywhere else to reach Forge through `forge-runner api`, so the staged text made this the third name for one read. Its MCP client works — the 2026-09-02 commit that first said otherwise overclaimed — measured on the audit log as 4,806 `forge_step_start` calls from agents, every one on an autonomous project, against a bundled skill that names no MCP tool at all.
   lines.push(
     '',
     jobType === 'drive'

@@ -353,7 +353,7 @@ Run one or two focused queries on the concrete nouns of THIS task. Hits are poin
     namespace: 'forge',
     appliesTo: ['clarify', 'release', 'drive'],
     version: 4,
-    // cm:guard name the transport the STAGE can reach — this fact applies to `drive`, which runs in a shell with `$FORGE_PAT` and no MCP client, and it named `forge_issues.update` until 2026-09-02. That is not cosmetic here: `RELEASE_RECORD_REQUIRED` (`issues/apply-transition.ts`) REFUSES an agent close while `releaseNotes` is null, so the one instruction that clears the driver's own exit gate was a call the driver could not make.
+    // cm:guard name the transport the STAGE is told to use everywhere else — this fact applies to `drive`, whose skill and preamble both speak `forge-runner api`, and it named `forge_issues.update` until 2026-09-02. That is not cosmetic here: `RELEASE_RECORD_REQUIRED` (`issues/apply-transition.ts`) REFUSES an agent close while `releaseNotes` is null, so the one instruction that clears the driver's own exit gate was a call the driver could not make.
     render: (ctx) => `## Release-notes shape
 Seed \`releaseNotes\` via ${
       ctx?.stage === 'drive' ? '`forge-runner api issues/<id> -X PATCH`' : '`forge_issues.update`'
@@ -375,7 +375,7 @@ forge-release appends this to the changelog at close. **An agent close is REFUSE
     // send the agent after a payload that cannot validate.
     appliesTo: Object.keys(HANDOFF_KEYS) as JobType[],
     version: 2,
-    // cm:guard name the transport the STAGE can actually reach: `drive` runs in a shell with `$FORGE_PAT` and no MCP client, and this fact applied to it while naming `forge_step_handoff.write` — an instruction the driver could not follow, in the same context as a bundled skill that names no tool at all. `HANDOFF_KEYS` carries a `drive` entry, so `appliesTo` includes it and the fork is not optional.
+    // cm:guard name the transport the STAGE is told to use everywhere else: `drive`'s skill and preamble both speak `forge-runner api`, and this fact applied to it while naming `forge_step_handoff.write` — a third name for one write, in the same context window as a bundled skill that names none. `HANDOFF_KEYS` carries a `drive` entry, so `appliesTo` includes it and the fork is not optional.
     render: (ctx) => {
       const stage = ctx?.stage ?? null;
       const keys = stage ? HANDOFF_KEYS[stage] : undefined;

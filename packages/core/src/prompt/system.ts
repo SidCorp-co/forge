@@ -166,24 +166,36 @@ async function resolveMemberLenses(
   }
 }
 
-function formatProjectContext(projectId: string): string {
+// cm:guard fork the CALL, not the warning — the secrets sentence applies to every lane and must survive both branches. The drive branch is a CONSISTENCY choice, not a capability one: that lane's skill and preamble both speak `forge-runner api`, and a third name for one read is what put `forge_step_start` in 4,806 audit rows against a skill that named it nowhere.
+function formatProjectContext(projectId: string, step: JobType | null): string {
+  const fetch =
+    step === 'drive'
+      ? `Read repo paths, branches, staging URLs and test credentials with \`forge-runner api projects/${projectId}\`.`
+      : 'Call `forge_projects.get` with this id to retrieve repo paths, branches, staging URLs, and test credentials.';
   return `## Project Context
 - projectId: ${projectId}
 
-Call \`forge_projects.get\` with this id to retrieve repo paths, branches, staging URLs, and test credentials. Do NOT echo passwords in commits, PR descriptions, or tool output beyond the immediate authentication step.`;
+${fetch} Do NOT echo passwords in commits, PR descriptions, or tool output beyond the immediate authentication step.`;
 }
 
+// cm:guard the park this line names must be one the reader's lane can actually write. It said `waiting` unconditionally until 2026-09-02, and `issues/autonomous-park.ts` rewrites `waiting` to `needs_info` for a device actor on every write — so the stop signal instructed the driver into the exact move a net exists to catch, on the only job type that runs unattended.
 function formatProjectConfig(
   baseBranch: string | null,
   productionBranch: string | null,
   noProgressRounds: number = DEFAULT_NO_PROGRESS_ROUNDS,
+  step: JobType | null = null,
 ): string {
   const b = baseBranch ?? BRANCH_SENTINEL;
   const p = productionBranch ?? BRANCH_SENTINEL;
   // cm:guard the "no movement" qualifier is the whole line (RFC 0002 INV-8) — printing the bare number teaches the deleted cap back, and an agent that reads it as a cap stops at round 5 on work that is progressing fine
-  let out = `## Project Config\n- baseBranch: ${b}\n- productionBranch: ${p}\n- noProgressRounds: ${noProgressRounds} — a stop signal, NOT a cap. Nothing limits how many times an issue may be reopened. If you have fixed the same problem this many times and NOTHING changed (same failure, same symptom, no new information), stop and set \`waiting\` with what you tried and what you need. Rounds that each move something forward are normal work.`;
+  const park = step === 'drive' ? 'needs_info' : 'waiting';
+  let out = `## Project Config\n- baseBranch: ${b}\n- productionBranch: ${p}\n- noProgressRounds: ${noProgressRounds} — a stop signal, NOT a cap. Nothing limits how many times an issue may be reopened. If you have fixed the same problem this many times and NOTHING changed (same failure, same symptom, no new information), stop and set \`${park}\` with what you tried and what you need. Rounds that each move something forward are normal work.`;
   if (!baseBranch || !productionBranch) {
-    out += `\n\nBranch detection: any value shown as \`${BRANCH_SENTINEL}\` is not configured. Before any git operation, run \`git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'\` and use the result instead. If detection fails, abort and ask the user via \`forge_config\`.`;
+    const ask =
+      step === 'drive'
+        ? 'abort and say so in a comment'
+        : 'abort and ask the user via `forge_config`';
+    out += `\n\nBranch detection: any value shown as \`${BRANCH_SENTINEL}\` is not configured. Before any git operation, run \`git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'\` and use the result instead. If detection fails, ${ask}.`;
   }
   return out;
 }
@@ -365,6 +377,7 @@ export async function buildPipelinePreambleStructured(
         project.baseBranch,
         project.productionBranch,
         factInputs?.noProgressRounds ?? DEFAULT_NO_PROGRESS_ROUNDS,
+        step,
       ),
     });
   }
@@ -374,7 +387,7 @@ export async function buildPipelinePreambleStructured(
   // shared prefix stays the longest common cacheable span.
   sections.push({
     id: 'project-context',
-    body: formatProjectContext(projectId),
+    body: formatProjectContext(projectId, step),
   });
   // Forge facts for this stage — the project-resolved contextual facts (status
   // ladder, complexity, decompose, handoff, …) + connected integrations + a

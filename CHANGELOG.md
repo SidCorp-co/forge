@@ -230,6 +230,21 @@
   `$FORGE_PAT` and no MCP client. The four prompt sites fixed a day earlier emitted zero `forge_`
   for a drive job while the preamble in the same context window named eleven tools.
 
+  **Correction to the sentence above and to `208fb2f0`:** "no MCP client" is wrong and is left
+  standing rather than edited away, because it was published. The driver has one, and always did —
+  376 `forge_phase` and 137 `forge_step_start` device calls in the three days to 2026-09-02, every one on an autonomous project, and `forge_phase` has no caller but the
+  driver. The fork is not a reachability fix. It rests on two things that survive the correction:
+  the staged content is wrong on any transport, and a skill and a preamble read in one context
+  window must name ONE way to reach Forge. Which one moves is a choice, and the CLI won it because
+  the job PAT is minted per job, scoped to one project and revoked at terminal where the device
+  token behind the MCP path is long-lived and fleet-wide. Every guard that stated the false version
+  has been rewritten.
+
+  The connected-integrations block is the deliberate exception and was checked rather than forked:
+  `forge_storefront_target` has no REST route at all, `mcp__epodsystem__*` is a third-party server
+  the runner injects, and the driver's MCP client reaches both. Forking that block would have
+  broken storefront work on a drive job.
+
   `prompt/facts/drive-rules.ts` is the lane's own document, not a filtered copy: a staged rule
   earns a place in it only when the driver would act differently having read it. The ladder, the
   parks, five-rounds-then-`waiting` and the tool catalogue fail that test and are dropped rather
@@ -245,6 +260,13 @@
   pair applied to `code`/`fix` and `release` respectively, none of which exists in this mode: the
   job that runs unattended for an hour in a tree other agents are using had no worktree protocol at
   all, and nothing ever asked it to remove what it created.
+
+  `project-config` and `project-context` fork too, and the first is the sharpest fix in the set: its
+  `noProgressRounds` line told the driver to stop by setting `waiting` — the park
+  `issues/autonomous-park.ts` rewrites to `needs_info` for a device actor — so the prompt instructed
+  the exact move a net exists to catch, on the only job type that runs unattended for an hour. That
+  one survived every unit assertion and was found by reading the assembled preamble off the live
+  deploy through `POST /api/prompts/preview`; the regression test now runs that route.
 
   `check-injected-doc-modes.mjs` now reads the new file. It has to: its own guard says a surface
   the gate does not list is injected text nobody checks, and the drive rules live outside

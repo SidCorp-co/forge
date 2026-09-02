@@ -6,6 +6,14 @@
  * and core's prompt said `forge_step_start` / `forge_step_handoff.write` /
  * `forge_issues.update` — and the agent believed the prompt: 4,806 and 4,268
  * MCP calls respectively, every one on an autonomous project.
+ *
+ * The rule under test is ONE NAME, not an unreachable tool. The driver has a
+ * working Forge MCP client and always did (376 `forge_phase` device calls in
+ * the 3 days to 2026-09-02, all on autonomous projects, from a skill that is
+ * the only caller of it). The CLI wins because the job PAT is minted per job,
+ * scoped to one project and revoked at terminal, where the device token behind
+ * the MCP path is long-lived and fleet-wide — and because the skill, which
+ * ships compiled into the runner, already says so.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -42,7 +50,7 @@ describe('the drive prompt speaks the CLI', () => {
     const found = [...prompt('drive').matchAll(/forge_[a-z_.]+/g)].map((m) => m[0]);
     expect(
       found,
-      'core told the driver to call a tool its shell cannot reach, against a bundled skill that names none',
+      'core named a third transport for a lane whose skill and preamble both speak the CLI',
     ).toEqual([]);
   });
 
@@ -98,11 +106,14 @@ describe('the injected step-handoff fact follows the same lane split', () => {
 });
 
 describe('the mandatory preamble blocks fork with the lane', () => {
-  // cm:guard this pair is the whole point: `toEqual([])` alone passes on a block that renders empty, and a staged assertion alone passes on a fork that never happened. Assert BOTH halves of every split, or the test cannot tell a correct fork from a deleted one.
-  it('hands a driver a preamble with no MCP tool in it', () => {
+  // cm:guard `forge_uploads` is the ONE deliberate name, and the exception is real rather than a lapse: reading an attached image needs a multimodal fetch that returns an image content block, which no shell command can produce. Everything else must resolve to a `forge-runner api` path — and assert the staged half too, because a zero-count alone passes on a block that renders empty.
+  it('hands a driver a preamble naming only the tool with no shell form', () => {
     const { pipelineRules, toolReference } = mandatoryPreambleBlocks('drive');
     const text = `${pipelineRules}\n${toolReference}`;
-    expect([...text.matchAll(/forge_[a-z_.]+/g)].map((m) => m[0])).toEqual([]);
+    const named = [...text.matchAll(/forge_[a-z_.]+/g)]
+      .map((m) => m[0])
+      .filter((t) => t !== 'forge_');
+    expect([...new Set(named)]).toEqual(['forge_uploads']);
     expect(text.length).toBeGreaterThan(1000);
   });
 

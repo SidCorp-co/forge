@@ -308,7 +308,8 @@ mod tests {
     /// changed: the driver must name the three `/api/pipeline-runs` endpoints
     /// that write the journal, and must NOT still name `forge_phase` beside
     /// them — an instruction offering both is the same failure in a subtler
-    /// shape, with the agent free to pick the one the shell cannot reach.
+    /// shape, because BOTH work and the agent picks one per session, so half
+    /// the journals land in each place and the resume point is a coin flip.
     #[test]
     fn the_driver_declares_phases_with_the_call_that_writes_the_journal() {
         let driver = BUNDLED_FILES
@@ -331,9 +332,11 @@ mod tests {
             // binary, the skills and the env vars all spell it `forge-` or `FORGE_`.
             assert!(
                 !body.contains("forge_"),
-                "{rel} names an MCP tool; the bundled skills run in a shell that reaches REST \
-                 and nothing else, so a tool name there is an instruction the agent cannot \
-                 follow — and `forge_step_start` is why this is not pedantry: naming it in \
+                "{rel} names an MCP tool; the bundled skills must name ONE transport and the \
+                 CLI is the one they chose — the job PAT is minted per job, scoped to one \
+                 project and revoked at terminal, where the device token behind the MCP path \
+                 is long-lived and fleet-wide. Both transports work, which is exactly why a \
+                 second name is a defect and not a fallback: `forge_step_start` named in \
                  place of the phase call left 76 finished drive jobs sharing one journal row"
             );
         }

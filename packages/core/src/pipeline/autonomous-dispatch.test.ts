@@ -98,8 +98,8 @@ describe('dispatchAutonomous', () => {
     expect(prompt).toContain('pipeline-runs/run-1/resume-point');
   });
 
-  // cm:guard this prompt and packages/runner/skills/forge-drive/SKILL.md are read in ONE context window, so they must name one transport. They disagreed until 2026-09-02 — the skill said `forge-runner api`, this said `forge_issues` / `forge_config` / `forge_phase` — and the agent believed the prompt: 4,806 `forge_step_start` and 4,268 `forge_step_handoff.write` MCP calls, every one on an autonomous project. The runner-side twin of this rule is `bundled_skills.rs`, which bans the same substring in the skill bodies.
-  it('names no MCP tool, because the shell it runs in has no MCP client', async () => {
+  // cm:guard this prompt and packages/runner/skills/forge-drive/SKILL.md are read in ONE context window, so they must name one transport. They disagreed until 2026-09-02 — the skill said `forge-runner api`, this said `forge_issues` / `forge_config` / `forge_phase` — and the agent believed the prompt: 4,806 `forge_step_start` and 4,268 `forge_step_handoff.write` MCP calls, every one on an autonomous project. The rule is ONE name, not an unreachable tool: the driver's MCP client works, and the job PAT wins because it is minted per job and revoked at terminal where the device token is fleet-wide. The runner-side twin is `bundled_skills.rs`, which bans the same substring in the skill bodies.
+  it('names one transport, and the skill already chose the CLI', async () => {
     selectLimit.mockResolvedValueOnce([{ status: 'open' }]);
 
     await dispatchAutonomous({ ...BASE, status: 'open', cfg: { mode: 'autonomous' } });
