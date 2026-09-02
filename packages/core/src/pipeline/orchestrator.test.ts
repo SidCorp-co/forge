@@ -49,12 +49,7 @@ vi.mock('../jobs/enqueue.js', () => ({
   enqueueJob: (...a: unknown[]) => enqueueMock(...(a as [])),
 }));
 
-// ISS-110 — auto-skip helper invokes applyStatusTransition once per hop. Stub
-// it so unit tests can assert hop count + targets without modeling the full
-// status update path (DB UPDATE + WS broadcast + run timeline sync). The 4th
-// arg captures the options bag so we can assert `{ skip: true }` flows
-// through (without it, `canTransition` rejects `developed → testing` and the
-// chain hangs — see review blocker #1).
+// cm:guard the 4th arg MUST stay in this signature: it captures the options bag, and without `{ skip: true }` flowing through, `canTransition` rejects `developed → testing` and the hop chain hangs instead of failing.
 const applyTransitionMock = vi.fn<
   (issue: unknown, toStatus: string, device: unknown, options?: { skip?: boolean }) => Promise<void>
 >(async () => undefined);
@@ -129,16 +124,8 @@ vi.mock('./plan-gate-guard.js', () => ({
   postMissingPlanComment: (...a: unknown[]) => postMissingPlanCommentMock(...(a as [])),
 }));
 
-// ISS-108 — orchestrator resolves skillName from the DB via
-// createProjectSkillResolver. Stubbing the module keeps the orchestrator unit
-// test pure (no skill_registrations rows needed) and lets each case control
-// whether a registration exists for the target stage.
 const resolverResolve = vi.fn();
-// ISS-239 — autoSkipDisabledStages calls resolver.stages() to build the
-// `hasSkill` predicate. Default to a set containing every stage so existing
-// ISS-110 tests (which don't set up stage registrations) keep their original
-// expectations — the skip predicate then degrades to the original
-// `enabled === false` behaviour. Individual ISS-239 tests override this.
+// cm:guard defaults to EVERY stage so the ISS-110 cases keep `enabled === false` as their only skip trigger; narrowing this default silently changes what those tests measure.
 const resolverStagesMock = vi.fn<() => Promise<ReadonlySet<string>>>(
   async () =>
     new Set<string>([
@@ -173,9 +160,6 @@ const appendSkipChainEntryMock = vi.fn<
 const postSkipChainCappedCommentMock = vi.fn<
   (args: { projectId: string; issueId: string; from: string; visited: string[] }) => Promise<void>
 >(async () => undefined);
-// Default-on handoff prefetch (proposal Y) — orchestrator now calls this
-// before buildJobPromptString. Stub to no-op so unit tests stay focused on
-// orchestrator scheduling logic instead of DB query plumbing for handoffs.
 vi.mock('./handoff-prefetch.js', () => ({
   fetchHandoffPromptInputs: async () => ({ priorHandoffs: null, handoffScope: null }),
 }));
@@ -1142,6 +1126,20 @@ describe('pipeline/orchestrator soft-skip (ISS-110)', () => {
 });
 
 describe('pipeline/orchestrator auto-skip missing skill (ISS-239)', () => {
+  it('does not skip AT ALL on an autonomous project, whose skills ship in the runner binary', async () => {
+    cfgResolved({ enabled: true, mode: 'autonomous' });
+    resolverStagesMock.mockResolvedValueOnce(new Set<string>());
+    nextSelect.mockResolvedValueOnce([
+      { id: 'iss-1', projectId: 'proj-1', status: 'open', reopenCount: 0 },
+    ]);
+    const bus = makeBus();
+    await bus.emit('transition', transition({ from: 'draft', to: 'open' }) as never);
+    expect(
+      applyTransitionMock.mock.calls.filter((c) => c[3]?.skip === true).map((c) => c[1]),
+      'a staged skip on an autonomous project walks the issue to an anchor no job dispatches at (forge-dev ISS-870)',
+    ).toEqual([]);
+  });
+
   it('auto-skips past a stage with no registered skill even when states is undefined', async () => {
     cfgResolved({ enabled: true, autoTest: true });
     // Only `testing` has a registered skill — `developed` (review) does not.

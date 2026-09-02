@@ -655,11 +655,11 @@ async function autoSkipDisabledStages(
 ): Promise<boolean> {
   const { cfg, projectCreatedBy, resolver } = preloaded;
   if (!cfg?.enabled) return false;
+  // cm:guard the staged skip walk must NOT run on an autonomous project, and `hasSkill` is why: autonomous skills ship in the runner binary and are never resolved from `skill_registrations`, so the predicate is false at EVERY stage and the walk is guaranteed to march the issue off the driver's path to the first anchor. Measured on forge-dev 2026-09-02 — ISS-870 went `open` -> `approved` twice in a row, and `approved` is not in AUTONOMOUS_DRIVER_STATUSES, so no job could ever be dispatched at it.
+  // cm:edge contract -> packages/core/src/pipeline/autonomous-mode.ts — `AUTONOMOUS_DRIVER_STATUSES` is the set a job CAN be dispatched at; skipping an autonomous issue to any status outside it is the ISS-890 wedge, reached without a single agent running.
+  if (isAutonomous(cfg)) return false;
 
-  // ISS-239 — build the hasSkill predicate up-front so the resolver walks
-  // skip stages with no registered skill as well as stages the operator
-  // explicitly disabled. resolver.stages() shares the same memoized load()
-  // as resolver.resolve(); the same instance flows into considerEnqueue.
+  // cm:guard reuse THIS resolver instance — `stages()` and `resolve()` share one memoized load, and the same instance flows into `considerEnqueue`, so building a second one here doubles the DB hit per hook fire.
   const skillStages = await resolver.stages();
   const hasSkill = (stage: IssueStatus) => skillStages.has(stage);
 
