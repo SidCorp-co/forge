@@ -138,6 +138,7 @@ import { registerOutboxWorker, stopOutboxWorker } from './pipeline/outbox-worker
 import { registerPausedRunWedgeResolve } from './pipeline/paused-run-wedge-resolve.js';
 import { registerPhaseJournalBackfill } from './pipeline/phase-journal-backfill.js';
 import { registerPhaseJournalClose } from './pipeline/phase-journal-close.js';
+import { phaseRoutes } from './pipeline/phase-routes.js';
 import { registerReconciler } from './pipeline/reconciler.js';
 import { pipelineRegistryRoutes } from './pipeline/registry-routes.js';
 import { registerReleaseCompletedSubscriber } from './pipeline/release-coolify.js';
@@ -401,6 +402,7 @@ app.route('/api/agents', agentRoutes);
 app.route('/api/chat/sessions', chatSessionRoutes);
 app.route('/api/agent-sessions', agentSessionAttachmentRoutes);
 app.route('/api/agent-sessions', agentSessionRoutes);
+app.route('/api/pipeline-runs', phaseRoutes);
 app.route('/api/pipeline-runs', pipelineRunReadRoutes);
 app.route('/api/pipeline-runs', pipelineRunRoutes);
 app.route('/api/projects', pipelineRunProjectRoutes);

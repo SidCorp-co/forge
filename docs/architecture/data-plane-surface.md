@@ -39,6 +39,8 @@ is the live example. Read the mount and its middleware, not the prefix alone.
 | `forge_config` | `/api/projects/:id/pipeline-config` |
 | `forge_skills.*` (11) | `/api/skills`, `/api/projects/:projectId/skills` |
 | `forge_skill_facts.*` (2) | `/api/skill-facts` |
+| `forge_phase` start / end / resume_point | `POST /api/pipeline-runs/:id/phases`, `POST /api/pipeline-runs/:id/phases/end`, `GET /api/pipeline-runs/:id/resume-point` |
+| `forge_step_handoff.*` (3) | `/api/issue-step-contexts` |
 | `forge_jobs.*` (5) | `/api/jobs`, `/api/projects/:id/jobs` |
 | `forge_pipeline_runs.get` | `/api/pipeline-runs` |
 | `forge_project_pipeline_runs` | `/api/projects/:id/pipeline-runs` |
@@ -63,8 +65,15 @@ cannot satisfy the evidence gate on `developed`, `testing` or a merge claim.
 | Tool | Why it cannot move |
 |---|---|
 | `forge_uploads` | returns an **image content block** to a multimodal model; a shell process cannot |
-| `forge_step_start` · `forge_phase` | session lifecycle hooks, not data queries |
-| `forge_step_handoff.write` / `.get` / `.delete` | same — the handoff is session state |
+| `forge_step_start` | it opens the session the other tools report into, and hands back the issue body the runner did not inline |
+
+`forge_phase` and `forge_step_handoff` were listed here until 2026-09-02 as "session lifecycle
+hooks, not data queries". Both were checked against their handlers and neither is: a phase keys on
+`(run, phase, attempt)` — `issueId`, `jobId` and `agentSessionId` are optional provenance the
+driver does not send — and a handoff keys on `(project, issue, run, step, attempt)`. Nothing in
+either needs the session's identity, which is the whole reason a shell holding only `$FORGE_PAT`
+can make the call. `forge_step_handoff` already had its REST twin and the row was simply never
+re-checked.
 
 ## Fenced on purpose — do not "fix" these by adding a prefix
 
@@ -104,6 +113,17 @@ forge-runner api issues/<id>                     # GET  one issue
 forge-runner api issues/<id>/comments -X POST -d '{"body":"..."}'
 forge-runner api issues/<id>/merge -X POST -d '{"target":"main"}'
 forge-runner api projects/<id>/integrations/coolify/deploy -X POST -d '{}'
+```
+
+The agent process is given `$FORGE_PAT`, `$FORGE_PROJECT_ID` and `$FORGE_PROJECT_SLUG` and nothing
+else — no run id, no job id, no session id. A driver that knows only its issue reaches its run
+through the list route, which is why the phase endpoints take the run as a path segment and resolve
+the project from it rather than asking the caller for both:
+
+```
+forge-runner api "projects/$FORGE_PROJECT_ID/pipeline-runs?issueId=<issue>&status=running"
+forge-runner api pipeline-runs/<run>/phases -X POST -d '{"phase":"code"}'
+forge-runner api pipeline-runs/<run>/phases/end -X POST -d '{"phase":"code","attempt":1,"outcome":"ok"}'
 ```
 
 `issues/<id>`, `/issues/<id>` and `/api/issues/<id>` are the same path — the CLI supplies the
