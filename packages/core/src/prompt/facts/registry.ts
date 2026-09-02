@@ -375,7 +375,7 @@ forge-release appends this to the changelog at close. **An agent close is REFUSE
     // send the agent after a payload that cannot validate.
     appliesTo: Object.keys(HANDOFF_KEYS) as JobType[],
     version: 2,
-    // cm:guard name the transport the STAGE is told to use everywhere else: `drive`'s skill and preamble both speak `forge-runner api`, and this fact applied to it while naming `forge_step_handoff.write` — a third name for one write, in the same context window as a bundled skill that names none. `HANDOFF_KEYS` carries a `drive` entry, so `appliesTo` includes it and the fork is not optional.
+    // cm:guard name the transport the STAGE is told to use everywhere else: `drive`'s skill and preamble both speak `forge-runner api`, and this fact applied to it while naming `forge_step_handoff.write` — a third name for one write, in the same context window as a driver skill that names none. `HANDOFF_KEYS` carries a `drive` entry, so `appliesTo` includes it and the fork is not optional.
     render: (ctx) => {
       const stage = ctx?.stage ?? null;
       const keys = stage ? HANDOFF_KEYS[stage] : undefined;

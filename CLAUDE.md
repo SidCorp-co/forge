@@ -20,6 +20,14 @@ number.
 | `packages/contracts` | Shared cross-app TS types & registries (`issues.ts`, `pipeline-registry.ts`, `requests.ts`, `responses.ts`, `rows.ts`, `domain-templates.ts`). |
 | `packages/observability` | Shared telemetry helpers (incl. the secret scrubber). |
 
+**The driver skill lives in a second repo.** `github.com/SidCorp-co/forge-plugin` is Forge's own
+Claude Code plugin — the `forge` CLI, the session hooks, and `plugin/skills/issue-flow`, which is
+the skill `AUTONOMOUS_SKILL_NAME` names and every `drive` job runs. It reaches a runner through
+`pipelineConfig.plugins` → `GET /api/devices/me/plugins`, gated by that box's `[plugins] enabled`.
+Nothing in this repo can gate the pair: a change to the five driver statuses, the drive prompt, or
+the phase endpoints has a second half in that repo, and the `cm:guard`s that name it are the only
+record of the coupling. It is a Forge project too (`forge-plugin`, autonomous, pinned to a SHA).
+
 ## Commands
 
 **`pnpm verify` when you finish coding, before you push** — the conformance entrypoint. It reports

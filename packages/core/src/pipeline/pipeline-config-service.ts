@@ -81,7 +81,7 @@ function assertAutonomousReady(
   const detail = missing.map((f) => `${f.key} (${f.role})`).join('; ');
   throw new PipelineConfigError(
     'AUTONOMOUS_FACTS_MISSING',
-    `autonomous mode needs project facts this project has not set: ${detail}. One set of skills ships in the runner binary — the difference between projects lives in projectFacts, so an unanswered key is a phase the agent cannot finish.`,
+    `autonomous mode needs project facts this project has not set: ${detail}. The driver skill is one plugin shared by every project (github.com/SidCorp-co/forge-plugin) — the difference between projects lives in projectFacts, so an unanswered key is a phase the agent cannot finish.`,
     { missing: missing.map((f) => f.key) },
   );
 }

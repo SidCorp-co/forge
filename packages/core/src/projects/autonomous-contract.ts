@@ -1,14 +1,15 @@
-// What a project must tell the bundled autonomous skills about itself.
+// What a project must tell the autonomous driver skill about itself.
 //
 // The staged pipeline solved per-project specificity by FORKING skills: every
 // project that built differently got its own copy of forge-code, and the copies
-// drifted from the original the day they were made. Autonomous mode ships one
-// set of skills in the runner binary, so the difference has to live in data.
+// drifted from the original the day they were made. Autonomous mode runs ONE
+// driver skill for every project — `issue-flow`, from Forge's own plugin repo
+// github.com/SidCorp-co/forge-plugin — so the difference has to live in data.
 //
 // `projectFacts` is already that place — a kebab-key → free-text map the author
 // owns (see ./project-facts.ts). This file adds the only thing it was missing:
-// a DECLARED list of which keys the bundled skills consult, so "this project is
-// ready to run autonomous" is a question with an answer.
+// a DECLARED list of which keys the driver consults, so "this project is ready
+// to run autonomous" is a question with an answer.
 //
 // Design: docs/proposals/agent-driven-pipeline.md
 
