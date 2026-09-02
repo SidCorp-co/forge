@@ -10,6 +10,24 @@
 
 ### Added
 
+- The phase journal over REST: `POST /api/pipeline-runs/:id/phases`, `POST .../phases/end` and
+  `GET .../resume-point`. `forge_phase` was recorded as one of the tools that "cannot move" to the
+  CLI, on the rationale that it is a session lifecycle hook rather than a data query. It is not: a
+  phase keys on `(run, phase, attempt)` and its `issueId` / `jobId` / `agentSessionId` are optional
+  provenance the driver never sends. That single tool was the reason an autonomous driver still
+  needed MCP, because the bundled `forge-drive` skill declares a phase at every one of its seven
+  boundaries.
+
+  The REST twin is deliberately narrower than the tool it mirrors. It takes the run and resolves
+  the project from it, so the cross-project write that `assertRunInProject` exists to catch cannot
+  be expressed. And its end body is strict with `note` as the only artifact it will store: a
+  free-form artifact is how a driver writes its own review verdict onto a phase no reviewer judged,
+  and the database CHECK constrains `source`, not `kind`. The MCP tool stays until a runner ships a
+  skill that calls the CLI form — two live paths for one transition, ending at the next runner cut.
+
+  `docs/architecture/data-plane-surface.md` carried the same wrong claim about
+  `forge_step_handoff`, whose three actions have been on `/api/issue-step-contexts` all along.
+
 - `activity_log.actor_agency` — the audit row now records whether an agent or a person was at the
   keyboard, which `actor_type` cannot answer: a job token is held by an agent and owned by a
   person, so it writes `actor_type = 'user'` truthfully while an agent is driving. `Actor` requires
@@ -64,7 +82,6 @@
   project in the path, so the fence has something to check. The session read authorises on the
   row's project, not the path's, and answers 404 rather than 403 on a mismatch so it does not
   confirm the session exists.
-
 
 - Per-project retry rescues and session failures: `GET /api/projects/:id/metrics/retry-rescues`
   and `.../session-failures`. Both existed only as a cross-project view that deliberately refuses
@@ -157,7 +174,6 @@
   one project cannot finish another's release, and it gets the same "not found" a missing batch
   gives rather than being told the run exists somewhere else.
 
-
 - Work queued behind a paused pipeline run is now reported instead of sitting silently. Of every
   gate that can hold a `queued` job, `pipeline_run_not_running` was the only one with neither a
   reaper nor an alarm behind it: the picker only offers jobs whose run is `running`, so nothing
@@ -195,6 +211,19 @@
   real total shown; one human comment clears a row for good. (ISS-881)
 
 ### Fixed
+
+- `POST /api/issues/:id/comments` stamped no `is_ai` at all, so an agent's comment took the column
+  default and landed `is_ai = false` with a NULL `author_device_id` — the exact tuple the
+  `comments.is_ai` guard defines as a human. Measured against the deploy with `forge-runner api`.
+  The MCP tool labels every write `true` because that path is automated by construction; this route
+  serves a person in a browser and an agent holding a job PAT through the same door, so the value
+  now comes from the caller's agency. Migrating agents onto the CLI would otherwise have grown the
+  count of agent comments rendering as people's in step with the migration.
+
+- `docs/architecture/data-plane-surface.md` told a reader to call `forge-runner api issues` and
+  `/api/comments`. Both 404: neither router has a collection route. The issue list is
+  project-scoped (`/api/projects/:id/issues`) and a comment is created at
+  `/api/issues/:id/comments`.
 
 - A failed agent session now says what killed it. Every agent-side death was recorded as
   `job_failed` — one token covering an exhausted spend cap, an expired sign-in, an unreachable
@@ -317,7 +346,6 @@
   later. A test now fails if any allowlisted prefix is unreachable by a PAT, which forces the
   grant to be made by someone looking at the route.
 
-
 - Opening any issue now works again. Every issue's detail page answered "This page couldn't load" —
   not one issue, all of them, on every project — after the list endpoints started stating their own
   size in the response body. The comment thread was still read as a plain list, so the page threw
@@ -418,7 +446,6 @@
   a completed turn is recorded as completed. A turn that died before writing its handoff still
   retries — that case is genuinely indistinguishable from one that finished, and re-running work is
   the safe side of it. (ISS-888)
-
 
 - A retry that started from an empty transcript now says so, says which of seven reasons took the
   prior session away, and the rate is readable beside the failures it explains. Forge cannot promise
@@ -584,7 +611,6 @@
   when a device token reaches it, core reports `auth.device_token_on_data_plane` with the route
   it hit, so the branch can be removed on evidence rather than on a source read that found no
   caller.
-
 
 - The three gates that freeze a per-file number — test-signal, the lint budget and the size budget —
   now run one shared ratchet instead of three copies of it. Each carried its own registry read,
