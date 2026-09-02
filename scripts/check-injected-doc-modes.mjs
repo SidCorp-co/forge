@@ -41,6 +41,11 @@ const SURFACES = [
     file: 'packages/core/src/prompt/facts/registry.ts',
     openers: ['render: \\([^)]*\\) =>', '(?:export )?const \\w+ ='],
   },
+  // cm:guard the autonomous lane's mandatory blocks live in their OWN file because `registry.ts` is at its 500-line budget, and a surface this gate does not list is injected text nobody checks — which is the exact hole the guard above was written to close, one file over.
+  {
+    file: 'packages/core/src/prompt/facts/drive-rules.ts',
+    openers: ['(?:export )?const \\w+ ='],
+  },
 ];
 
 class CannotRun extends Error {}

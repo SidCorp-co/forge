@@ -32,7 +32,8 @@ import { estimateTokens } from '../lib/token-estimator.js';
 import { logger } from '../logger.js';
 import type { SystemPromptOverrideConfig } from '../pipeline/pipeline-config-schema.js';
 import { DEFAULT_NO_PROGRESS_ROUNDS } from '../pipeline/reopen-policy.js';
-import { OPERATING_AFFORDANCES_TEXT, renderFact } from './facts/registry.js';
+import { mandatoryPreambleBlocks } from './facts/mandatory-blocks.js';
+import { OPERATING_AFFORDANCES_TEXT } from './facts/registry.js';
 import {
   loadActiveIntegrationRows,
   loadProjectFactInputs,
@@ -78,9 +79,7 @@ const BRANCH_SENTINEL = '<detect-from-git>';
 // preamble share one source. Re-exported here unchanged for existing callers
 // (chat-preamble shim, schedules, agent-sessions); a parity test in
 // system.test.ts pins the rendered text.
-export const PIPELINE_RULES = renderFact('pipeline-rules') ?? '';
-
-export const TOOL_REFERENCE = renderFact('mcp-tool-reference') ?? '';
+export { PIPELINE_RULES, TOOL_REFERENCE } from './facts/mandatory-blocks.js';
 
 const CHAT_ORIENTATION = `## Project Orientation
 You are working in a Forge-managed project. Forge MCP tools are available for project management — \`forge_issues\`, \`forge_comments\`, \`forge_config\`, \`forge_memory\`, \`forge_pm_*\`. Use them when the request relates to issues, tasks, status, or project memory.
@@ -354,9 +353,10 @@ export async function buildPipelinePreambleStructured(
   const step = opts?.step ?? null;
   const factInputs = step ? await loadProjectFactInputs(projectId) : null;
   const project = factInputs?.branches ?? (await loadProjectBranches(projectId));
+  const mandatory = mandatoryPreambleBlocks(step);
   const sections: Array<{ id: PreambleBlockId; body: string }> = [
-    { id: 'pipeline-rules', body: PIPELINE_RULES },
-    { id: 'tool-reference', body: TOOL_REFERENCE },
+    { id: 'pipeline-rules', body: mandatory.pipelineRules },
+    { id: 'tool-reference', body: mandatory.toolReference },
   ];
   if (project) {
     sections.push({

@@ -220,6 +220,47 @@
 
 ### Fixed
 
+- **The autonomous driver was handed the staged pipeline's rulebook on every job.** Two blocks are
+  injected into every dispatch rather than fetched on demand — `PIPELINE_RULES` and
+  `TOOL_REFERENCE` — and both were written for a lane the driver does not run in. What reached it
+  was a nine-rung status ladder this mode does not have, instructions to park at `waiting`,
+  `reopen` and `on_hold` (the three `issues/autonomous-park.ts` rewrites at write time, so the net
+  built to catch a mistake fired on every session that followed the prompt), a "check in first"
+  rule pointing at `forge_step_start`, and a full MCP tool catalogue — handed to a shell holding
+  `$FORGE_PAT` and no MCP client. The four prompt sites fixed a day earlier emitted zero `forge_`
+  for a drive job while the preamble in the same context window named eleven tools.
+
+  `prompt/facts/drive-rules.ts` is the lane's own document, not a filtered copy: a staged rule
+  earns a place in it only when the driver would act differently having read it. The ladder, the
+  parks, five-rounds-then-`waiting` and the tool catalogue fail that test and are dropped rather
+  than translated; the crash contract, `merged_at` verification, branch and shared-tree discipline,
+  "never speak for a human" and the learning-capture loop pass it, and are stated in
+  `forge-runner api` terms. `mandatoryPreambleBlocks(step)` is the fork, and it returns the staged
+  constants byte-identically so the shared prompt prefix every staged job sends is unchanged.
+
+  Two contextual facts reached `drive` and were wrong there for the same reason.
+  `release-notes-format` named `forge_issues.update` — not cosmetic, because
+  `RELEASE_RECORD_REQUIRED` refuses an agent close while `releaseNotes` is null, so the one
+  instruction that clears the driver's own exit gate was a call it could not make. And the worktree
+  pair applied to `code`/`fix` and `release` respectively, none of which exists in this mode: the
+  job that runs unattended for an hour in a tree other agents are using had no worktree protocol at
+  all, and nothing ever asked it to remove what it created.
+
+  `check-injected-doc-modes.mjs` now reads the new file. It has to: its own guard says a surface
+  the gate does not list is injected text nobody checks, and the drive rules live outside
+  `facts/registry.ts` only because that file is at its 500-line budget.
+
+- **A `drive` handoff was not code evidence, so the driver could not stamp its own merge.**
+  `collectWorkEvidence` scanned `('code','fix')` on both the job table and the handoff table, and
+  `drive` is the step that writes the code, merges it and closes the issue in one session — its
+  handoff schema carries `commitSha` and `filesModified`, the two fields `hasCodeEvidence` reads.
+  `applyMergeMarker` refuses an agent's `POST /api/issues/:id/merge` with `NO_WORK_EVIDENCE`, and
+  the close-stamp audit comment told every reader "no branch, commit or code handoff is recorded"
+  for work that had all three. Measured on forge-beta 2026-09-02: 7 stored `drive` handoffs, 7 of
+  them carrying a `commitSha`, 0 counted. The unit suite could not have caught this — it queues
+  rows behind a fake query builder that never executes a `where`, which is exactly what an
+  `inArray` list is — so the regression test runs the real SQL.
+
 - **Core's own prompt told the autonomous driver to use MCP**, against a bundled skill that names
   no MCP tool at all — the two are read in one context window and the agent believed the prompt.
   Measured on `mcp_audit_log`: 4,806 `forge_step_start` and 4,268 `forge_step_handoff.write` calls

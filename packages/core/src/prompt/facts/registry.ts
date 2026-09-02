@@ -352,9 +352,12 @@ Run one or two focused queries on the concrete nouns of THIS task. Hits are poin
     scope: 'global',
     namespace: 'forge',
     appliesTo: ['clarify', 'release', 'drive'],
-    version: 3,
-    render: () => `## Release-notes shape
-Seed \`releaseNotes\` via \`forge_issues.update\` as \`{ section, userFacing, technical }\`:
+    version: 4,
+    // cm:guard name the transport the STAGE can reach — this fact applies to `drive`, which runs in a shell with `$FORGE_PAT` and no MCP client, and it named `forge_issues.update` until 2026-09-02. That is not cosmetic here: `RELEASE_RECORD_REQUIRED` (`issues/apply-transition.ts`) REFUSES an agent close while `releaseNotes` is null, so the one instruction that clears the driver's own exit gate was a call the driver could not make.
+    render: (ctx) => `## Release-notes shape
+Seed \`releaseNotes\` via ${
+      ctx?.stage === 'drive' ? '`forge-runner api issues/<id> -X PATCH`' : '`forge_issues.update`'
+    } as \`{ section, userFacing, technical }\`:
 - \`section\` ∈ \`Added | Changed | Fixed | Removed | Security | Skip\` (\`Skip\` = internal-only, no changelog line).
 - \`userFacing\` — one plain-language line for end users.
 - \`technical\` — optional implementation detail.
@@ -401,12 +404,12 @@ ${tail}`;
     tier: 'contextual',
     scope: 'global',
     namespace: 'forge',
-    appliesTo: ['code', 'fix'],
-    version: 3,
+    appliesTo: ['code', 'fix', 'drive'],
+    version: 4,
     render: () => `## Worktree isolation
 Implement on the ISS-* branch inside a dedicated git worktree under \`.claude/worktrees/iss-XX-short-title/\` — never check out branches in the main tree.
 - Create on first entry; REUSE the existing worktree if it's already present (fix re-enters the one code created).
-- Resolve collisions by reusing rather than recreating. Do NOT delete it when you finish — \`fix\` and \`review\` re-enter this same worktree; the \`worktree-cleanup\` fact makes removal a release-stage step.
+- Resolve collisions by reusing rather than recreating. Do NOT delete it when you finish — on a staged project \`fix\` and \`review\` re-enter this same worktree. Removal is asked for in exactly one place, the \`worktree-cleanup\` block: at the release step when a project has one, and at your own ship phase when you are the driver.
 - The root checkout is SHARED with other agents running right now. Never \`git checkout\`, \`git stash\`, \`git reset\` or \`git clean\` there. Uncommitted changes you find are very likely someone else's in-flight work; clobbering them is silent, and they cannot get it back.
 - Resolve every path against your WORKTREE root, not the repo root — including "quick" edits to packages your issue only touches incidentally. An absolute repo-root path writes into whatever branch the shared tree happens to be on.
 - Uncommitted changes already in your worktree that you did not make mean a prior attempt was interrupted. Inspect them and adopt or discard deliberately; never assume they are yours.
@@ -422,12 +425,12 @@ Implement on the ISS-* branch inside a dedicated git worktree under \`.claude/wo
     tier: 'contextual',
     scope: 'global',
     namespace: 'forge',
-    appliesTo: ['release'],
-    version: 1,
+    appliesTo: ['release', 'drive'],
+    version: 2,
     render: () => `## Remove this issue's worktree
 The branch you just merged leaves a worktree behind at \`.claude/worktrees/iss-XX-short-title/\`, carrying its own \`node_modules\` and build cache — routinely 0.8-3 GB each. Nothing else ever removes it, so releasing without this step is how a runner box fills up and every project on it starts failing.
 
-Remove ONLY this issue's worktree, and only after checking it:
+Remove ONLY this issue's worktree, once its branch has merged — that is the release step on a staged project, and your ship phase when you are the driver. Only after checking it:
 1. \`git -C <worktree> status --porcelain\` — if any TRACKED file is modified, STOP. Do not remove it, and say so in your handoff: uncommitted work you did not author is someone's interrupted attempt, and it is unrecoverable once deleted. Untracked files (\`??\`) are build output and do not block removal.
 2. \`git worktree remove .claude/worktrees/iss-XX-short-title --force\` from the repo root. \`--force\` is required (untracked build output) and is safe only because step 1 already cleared it.
 3. \`git worktree prune\` — drops the stale admin entry so \`git worktree list\` stops naming a directory that is gone.

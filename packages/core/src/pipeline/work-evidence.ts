@@ -2,10 +2,10 @@
  * ISS-786 Child B — evidence Forge already stores that code exists for an
  * issue. Core has no repo checkout (`git merge-base`/`is-ancestor` return
  * zero source hits under `packages/core/src`), so a real git check is
- * impossible server-side; this reads DB-side signals instead: the `code`/
- * `fix` step handoff (`commitSha` / `filesModified`, `issue_step_contexts`
+ * impossible server-side; this reads DB-side signals instead: the handoff of
+ * a step that writes code (`commitSha` / `filesModified`, `issue_step_contexts`
  * `kind='handoff'`) and the direct-ship `sessionContext.branch` marker
- * (`state-machine.ts:80`). A done `code`/`fix` job with an EMPTY handoff is
+ * (`state-machine.ts:80`). A done implementation job with an EMPTY handoff is
  * explicitly NOT evidence — that is precisely the ISS-105 fabrication shape,
  * so `implementationJobCount` alone never satisfies {@link hasCodeEvidence}.
  *
@@ -18,6 +18,10 @@ import { and, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import { issueDependencies, issueStepContexts, issues, jobs, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
+
+// cm:guard `drive` belongs in this list for the same reason `code` and `fix` do: it is a step that WRITES CODE, and its handoff schema carries `commitSha` and `filesModified` — the two fields `hasCodeEvidence` reads. It was absent until 2026-09-02, so an autonomous driver that merged its branch and wrote a correct handoff had no evidence at all: `applyMergeMarker` refused its own `POST /api/issues/:id/merge` with NO_WORK_EVIDENCE, and the close-stamp audit comment told every reader "no branch, commit or code handoff is recorded" on work that had all three. Measured the same day on forge-beta: 7 `drive` handoffs stored, 7 of them carrying a `commitSha`, 0 counted here.
+// cm:edge lockstep -> packages/core/src/prompt/facts/registry.ts#HANDOFF_KEYS — a step whose handoff schema gains `commitSha`/`filesModified` is evidence of code and belongs here; one that loses them stops being evidence and must leave.
+const IMPLEMENTATION_STEPS = ['code', 'fix', 'drive'] as const;
 
 const JOB_SCAN_LIMIT = 50;
 const HANDOFF_SCAN_LIMIT = 50;
@@ -39,7 +43,7 @@ export async function collectWorkEvidence(
     executor
       .select({ id: jobs.id })
       .from(jobs)
-      .where(and(eq(jobs.issueId, issueId), inArray(jobs.type, ['code', 'fix'])))
+      .where(and(eq(jobs.issueId, issueId), inArray(jobs.type, IMPLEMENTATION_STEPS)))
       .limit(JOB_SCAN_LIMIT),
     executor
       .select({ payload: issueStepContexts.payload })
@@ -48,7 +52,7 @@ export async function collectWorkEvidence(
         and(
           eq(issueStepContexts.issueId, issueId),
           eq(issueStepContexts.kind, 'handoff'),
-          inArray(issueStepContexts.step, ['code', 'fix']),
+          inArray(issueStepContexts.step, IMPLEMENTATION_STEPS),
         ),
       )
       .limit(HANDOFF_SCAN_LIMIT),
@@ -128,7 +132,7 @@ export async function isDecomposeParent(
 
 export const NO_WORK_EVIDENCE_DETAIL =
   'no branch, commit or code handoff is recorded for this issue — record the branch in ' +
-  'sessionContext.branch or write the code/fix step handoff with commitSha/filesModified ' +
+  'sessionContext.branch or write the implementation step handoff with commitSha/filesModified ' +
   'before advancing';
 
 // cm:guard fails OPEN on any internal error — a broken evidence check must never freeze a legitimate advance

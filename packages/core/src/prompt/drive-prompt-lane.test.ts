@@ -9,6 +9,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import {
+  mandatoryPreambleBlocks,
+  PIPELINE_RULES,
+  TOOL_REFERENCE,
+} from './facts/mandatory-blocks.js';
 import { getFact } from './facts/registry.js';
 import { buildJobPromptString, type IssueSnapshot } from './user.js';
 
@@ -89,5 +94,77 @@ describe('the injected step-handoff fact follows the same lane split', () => {
 
   it('still names the MCP tool for a staged step', () => {
     expect(render('code')).toContain('forge_step_handoff.write');
+  });
+});
+
+describe('the mandatory preamble blocks fork with the lane', () => {
+  // cm:guard this pair is the whole point: `toEqual([])` alone passes on a block that renders empty, and a staged assertion alone passes on a fork that never happened. Assert BOTH halves of every split, or the test cannot tell a correct fork from a deleted one.
+  it('hands a driver a preamble with no MCP tool in it', () => {
+    const { pipelineRules, toolReference } = mandatoryPreambleBlocks('drive');
+    const text = `${pipelineRules}\n${toolReference}`;
+    expect([...text.matchAll(/forge_[a-z_.]+/g)].map((m) => m[0])).toEqual([]);
+    expect(text.length).toBeGreaterThan(1000);
+  });
+
+  it('drops the rules a driver cannot act on rather than translating them', () => {
+    const { pipelineRules } = mandatoryPreambleBlocks('drive');
+    for (const dead of [
+      'ladder',
+      '`waiting`',
+      '`reopen`',
+      '`on_hold`',
+      'open → confirmed',
+      'Five rounds',
+    ]) {
+      expect(pipelineRules, `${dead} has no meaning in the autonomous lane`).not.toContain(dead);
+    }
+  });
+
+  it('keeps the rules a driver does act on', () => {
+    const { pipelineRules } = mandatoryPreambleBlocks('drive');
+    for (const kept of [
+      'never background-and-exit',
+      'reset --hard',
+      'stale clone',
+      'merge-base --is-ancestor',
+      'Never speak for a human',
+    ]) {
+      expect(pipelineRules).toContain(kept);
+    }
+  });
+
+  it('leaves every staged step on the byte-identical shared prefix', () => {
+    for (const step of ['code', 'review', 'test', 'triage', null] as const) {
+      const { pipelineRules, toolReference } = mandatoryPreambleBlocks(step);
+      expect(pipelineRules).toBe(PIPELINE_RULES);
+      expect(toolReference).toBe(TOOL_REFERENCE);
+    }
+  });
+});
+
+describe('the release-notes fact clears the gate it describes', () => {
+  const render = (stage: 'drive' | 'release') =>
+    getFact('release-notes-format')?.render?.({ stage } as never) ?? '';
+
+  // cm:guard RELEASE_RECORD_REQUIRED refuses an agent close while `releaseNotes` is null, so this fact is the driver's own exit instruction — naming a tool it cannot call leaves it stuck at a gate with no reachable remedy
+  it('names a call the driver can make', () => {
+    expect([...render('drive').matchAll(/forge_[a-z_.]+/g)].map((m) => m[0])).toEqual([]);
+    expect(render('drive')).toContain('forge-runner api issues/<id> -X PATCH');
+  });
+
+  it('still names the MCP tool for the staged release step', () => {
+    expect(render('release')).toContain('forge_issues.update');
+  });
+});
+
+describe('the worktree lifecycle reaches the one job that runs unattended', () => {
+  // cm:guard both halves or neither: `worktree-protocol` says create-and-reuse and `worktree-cleanup` is the only place removal is asked for, so adding drive to the first alone gives the driver a worktree nothing ever removes — the shape that put 17G of `.claude/worktrees` on one box
+  it('gives the driver both halves', () => {
+    expect(getFact('worktree-protocol')?.appliesTo).toContain('drive');
+    expect(getFact('worktree-cleanup')?.appliesTo).toContain('drive');
+  });
+
+  it('does not send the driver to a release step this mode does not have', () => {
+    expect(getFact('worktree-protocol')?.render?.()).not.toContain('release-stage step');
   });
 });

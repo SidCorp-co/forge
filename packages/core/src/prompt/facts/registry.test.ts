@@ -178,10 +178,16 @@ describe('forge facts registry', () => {
 describe('worktree-protocol fact — the invariant that must outrank a stale skill step', () => {
   const body = renderFact('worktree-protocol') ?? '';
 
-  it('reaches exactly the stages that write code, globally', () => {
+  // cm:guard the membership rule is "every stage that writes code", and `drive` is one — it was missing until 2026-09-02, which left the ONE job type that runs unattended for an hour in a shared checkout with no worktree instruction at all. Assert the rule both ways: a stage that writes code and is absent is the leak, and a stage that writes none and is present tells a reader to build somewhere it has no business building.
+  it('reaches every stage that writes code, and only those, globally', () => {
     const fact = getFact('worktree-protocol');
     expect(fact?.scope).toBe('global');
-    expect(fact?.appliesTo).toEqual(['code', 'fix']);
+    for (const writes of ['code', 'fix', 'drive']) {
+      expect(fact?.appliesTo, `${writes} writes code and needs the protocol`).toContain(writes);
+    }
+    for (const reads of ['triage', 'plan', 'review', 'test', 'release']) {
+      expect(fact?.appliesTo, `${reads} writes no code`).not.toContain(reads);
+    }
   });
 
   it('names every destructive op on the shared root, not just checkout', () => {
@@ -225,10 +231,12 @@ describe('worktree-protocol fact — the invariant that must outrank a stale ski
 describe('worktree-cleanup fact — the half of the lifecycle that deletes', () => {
   const body = renderFact('worktree-cleanup') ?? '';
 
-  // cm:guard `release` and ONLY release — adding `code`/`fix`/`review` here tells a stage to delete the worktree its successor re-enters, and dropping `release` restores the leak this fact exists to close
-  it('reaches release, and none of the stages that re-enter the worktree', () => {
+  // cm:guard the rule is "the stage after which nothing re-enters this worktree", not the literal `release`. On a staged project that is the release step; on an autonomous one it is `drive`, which merges and ships inside one session and has no successor at all — so `drive` belongs here for the same reason `code` and `review` must never appear, and dropping either entry restores the leak this fact exists to close.
+  it('reaches the stages nothing follows, and none that re-enter the worktree', () => {
     const fact = getFact('worktree-cleanup');
-    expect(fact?.appliesTo).toEqual(['release']);
+    for (const last of ['release', 'drive']) {
+      expect(fact?.appliesTo, `nothing re-enters the worktree after ${last}`).toContain(last);
+    }
     for (const stage of ['code', 'fix', 'review', 'test']) {
       expect(fact?.appliesTo, `must not apply to ${stage}`).not.toContain(stage);
     }
