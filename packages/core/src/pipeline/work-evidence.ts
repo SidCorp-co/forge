@@ -16,7 +16,7 @@
 
 import { and, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
-import { issueDependencies, issueStepContexts, issues, jobs } from '../db/schema.js';
+import { issueDependencies, issueStepContexts, issues, jobs, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 
 const JOB_SCAN_LIMIT = 50;
@@ -53,8 +53,13 @@ export async function collectWorkEvidence(
       )
       .limit(HANDOFF_SCAN_LIMIT),
     executor
-      .select({ sessionContext: issues.sessionContext })
+      .select({
+        sessionContext: issues.sessionContext,
+        baseBranch: projects.baseBranch,
+        productionBranch: projects.productionBranch,
+      })
       .from(issues)
+      .innerJoin(projects, eq(projects.id, issues.projectId))
       .where(eq(issues.id, issueId))
       .limit(1),
   ]);
@@ -77,9 +82,14 @@ export async function collectWorkEvidence(
   }
 
   const sessionContext = issueRows[0]?.sessionContext as Record<string, unknown> | null | undefined;
-  const branch =
+  const named =
     sessionContext && typeof sessionContext.branch === 'string' && sessionContext.branch.length > 0
       ? sessionContext.branch
+      : null;
+  // cm:guard the project's OWN base or production branch is not evidence of work on THIS issue — it names where work lands, not that any happened, and it is the one string an agent can write truthfully while having done nothing. Measured on forge-dev 2026-09-02: 2 issues carried `branch: 'main'` (base AND production) with zero `code`/`fix`/`drive` jobs, satisfying the gate ISS-786 built to stop exactly that claim. 17 of the 112 issues holding a branch fleet-wide named their base or production branch.
+  const branch =
+    named && named !== issueRows[0]?.baseBranch && named !== issueRows[0]?.productionBranch
+      ? named
       : null;
 
   return {

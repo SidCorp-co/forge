@@ -11,13 +11,11 @@ import { describe, expect, it, vi } from 'vitest';
 const queue: unknown[][] = [];
 vi.mock('../db/client.js', () => ({
   db: {
-    select: () => ({
-      from: () => ({
-        where: () => ({
-          limit: async () => queue.shift() ?? [],
-        }),
-      }),
-    }),
+    select: () => {
+      const tail = { where: () => ({ limit: async () => queue.shift() ?? [] }) };
+      // cm:guard the chain must answer `innerJoin` as well as `where` — the issue read joins `projects` for the base/production branch, and a mock that only models `from().where()` fails every case in this file with a TypeError instead of the assertion it was written for.
+      return { from: () => ({ ...tail, innerJoin: () => tail }) };
+    },
   },
 }));
 
@@ -50,6 +48,31 @@ describe('collectWorkEvidence', () => {
       handoffFilesModified: 1,
       branch: 'ISS-1-foo',
     });
+  });
+
+  it('the project base branch is NOT evidence — it names where work lands, not that any happened', async () => {
+    setup(
+      [],
+      [],
+      [{ sessionContext: { branch: 'main' }, baseBranch: 'main', productionBranch: 'main' }],
+    );
+    const evidence = await collectWorkEvidence('iss-1');
+    expect(
+      evidence.branch,
+      'forge-dev 2026-09-02: 2 issues carried branch:main with zero code/fix/drive jobs and passed the gate',
+    ).toBeNull();
+    expect(hasCodeEvidence(evidence)).toBe(false);
+  });
+
+  it('an issue-specific branch still counts even when a base branch is configured', async () => {
+    setup(
+      [],
+      [],
+      [{ sessionContext: { branch: 'ISS-9-x' }, baseBranch: 'main', productionBranch: 'master' }],
+    );
+    const evidence = await collectWorkEvidence('iss-1');
+    expect(evidence.branch).toBe('ISS-9-x');
+    expect(hasCodeEvidence(evidence)).toBe(true);
   });
 
   it('a bare done job with an empty handoff is NOT evidence (ISS-105 shape)', async () => {
