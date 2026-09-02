@@ -18,6 +18,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
+import { applyKernelTransition } from '../lifecycle/transition.js';
 import type { FailureKind } from '../pipeline/failure-classifier.js';
 import {
   DEFAULT_RECOVERY_STATS,
@@ -108,15 +109,19 @@ export async function incrementAutoRetryCount(sessionId: string): Promise<Recove
   return next;
 }
 
+// cm:guard route through `applyKernelTransition`, never `db.update` — both values this takes are terminal, so a direct write leaves the row terminal with NO `kernel_transitions` row, and invariant I2 says every terminal write is auditable. It went unseen because the guard scanned for a status LITERAL and this passes a variable; the guard now rejects a non-literal status on a kernel table for exactly that reason.
+// cm:edge lockstep -> packages/core/src/lifecycle/transition-guard.test.ts — that guard is what keeps this routed; weakening its non-literal rule makes this bypassable again with no test going red.
 export async function markSessionTerminal(
   sessionId: string,
   terminal: 'completed_via_recovery' | 'cancelled_stale',
 ): Promise<void> {
-  await db
-    .update(agentSessions)
-    .set({
-      status: terminal,
-      updatedAt: new Date(),
-    })
-    .where(eq(agentSessions.id, sessionId));
+  await applyKernelTransition(db, {
+    entity: 'session',
+    to: terminal,
+    set: { updatedAt: new Date() },
+    where: eq(agentSessions.id, sessionId),
+    reason: terminal,
+    actor: { type: 'system' },
+    source: 'recovery-verifier',
+  });
 }

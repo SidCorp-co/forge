@@ -78,11 +78,17 @@ function findViolations(path: string, rawBody: string): string[] {
       const rest = body.slice(start, start + 600);
       const segEnd = rest.search(/\.where\(|\.returning\(|;\n/);
       const seg = segEnd === -1 ? rest : rest.slice(0, segEnd);
-      if (/status\s*:/.test(seg)) {
-        for (const term of terminals) {
-          if (seg.includes(`'${term}'`) || seg.includes(`"${term}"`)) {
-            hits.push(`${path}: .update(${table}).set({ status: '${term}' })`);
-            break;
+      const statusValue = seg.match(/status\s*:\s*([^,\n}]+)/)?.[1]?.trim();
+      if (statusValue) {
+        // cm:guard a status written from a VARIABLE counts as a violation, because the guard cannot prove it is non-terminal — and that is not hypothetical: `markSessionTerminal` wrote `status: terminal` typed `'completed_via_recovery' | 'cancelled_stale'`, both terminal, and slipped past the literal scan for as long as it existed, leaving no `kernel_transitions` row behind. Measured 2026-09-02: exactly one such site in the tree, so this rule costs no false positives. A legitimate non-terminal write from a variable must name its statuses as literals, or route through the chokepoint.
+        if (!/^['"]/.test(statusValue)) {
+          hits.push(`${path}: .update(${table}).set({ status: ${statusValue} }) — non-literal`);
+        } else {
+          for (const term of terminals) {
+            if (seg.includes(`'${term}'`) || seg.includes(`"${term}"`)) {
+              hits.push(`${path}: .update(${table}).set({ status: '${term}' })`);
+              break;
+            }
           }
         }
       }
