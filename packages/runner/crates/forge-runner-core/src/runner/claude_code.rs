@@ -837,6 +837,9 @@ impl Runner for ClaudeCodeRunner {
         if let Some(tok) = spec.pat_token.as_ref() {
             cmd.env("FORGE_PAT", tok.expose());
         }
+        for (k, v) in project_env(&spec) {
+            cmd.env(k, v);
+        }
         let stdin_mode = if spec.duplex {
             std::process::Stdio::piped()
         } else {
@@ -1347,10 +1350,54 @@ impl Runner for ClaudeCodeRunner {
     }
 }
 
+// cm:guard the PAT alone does not let a bundled skill reach REST — every project-scoped route takes the project UUID as a PATH segment, and until 2026-09-02 the agent was handed a credential with nothing to name the project it may speak for. `X-Forge-Project-Slug` does not close this: only `/mcp` resolves that header, REST does not.
+// cm:edge contract -> packages/runner/skills/forge-drive/SKILL.md — the skill spells `$FORGE_PROJECT_ID` into a `forge-runner api projects/<id>/...` path; renaming either side makes that call resolve to `projects//...` and 404 with nothing saying why.
+fn project_env(spec: &JobSpec) -> Vec<(&'static str, String)> {
+    let mut out = Vec::new();
+    if !spec.project_id.is_empty() {
+        out.push(("FORGE_PROJECT_ID", spec.project_id.clone()));
+    }
+    if let Some(slug) = spec.project_slug.as_ref() {
+        out.push(("FORGE_PROJECT_SLUG", slug.clone()));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn project_env_names_the_project_the_rest_path_needs() {
+        let mut s = spec(false);
+        s.project_id = "da368b0a-8e21-4763-9d90-8f7b9d0c7115".into();
+        s.project_slug = Some("forge-dev".into());
+        let env = project_env(&s);
+        let id = env.iter().find(|(k, _)| *k == "FORGE_PROJECT_ID");
+        assert_eq!(
+            id.map(|(_, v)| v.as_str()),
+            Some("da368b0a-8e21-4763-9d90-8f7b9d0c7115"),
+            "a bundled skill builds `projects/$FORGE_PROJECT_ID/...`; without this the path is `projects//...`"
+        );
+        assert_eq!(
+            env.iter()
+                .find(|(k, _)| *k == "FORGE_PROJECT_SLUG")
+                .map(|(_, v)| v.as_str()),
+            Some("forge-dev")
+        );
+    }
+
+    #[test]
+    fn project_env_omits_an_absent_id_rather_than_exporting_empty() {
+        let s = spec(false);
+        assert!(s.project_id.is_empty());
+        let env = project_env(&s);
+        assert!(
+            env.iter().all(|(k, _)| *k != "FORGE_PROJECT_ID"),
+            "exporting an empty FORGE_PROJECT_ID would build `projects//...` and 404 instead of failing loudly"
+        );
+    }
 
     fn spec(duplex: bool) -> JobSpec {
         JobSpec {

@@ -38,8 +38,11 @@ verdict requires. Re-declare `code` each time so the journal shows the rounds.
 ## What this project told you about itself
 
 These skills ship in the runner binary and are the same on every project. Nothing about *this*
-repo is baked into them. Call `forge_config` with action `get` once, before phase 1, and read
-`projectFacts`:
+repo is baked into them. Read `projectFacts` once, before phase 1:
+
+```
+forge-runner api projects/$FORGE_PROJECT_ID/pipeline-config
+```
 
 | key | you need it for |
 |---|---|
