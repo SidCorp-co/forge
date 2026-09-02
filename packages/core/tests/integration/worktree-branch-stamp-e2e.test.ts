@@ -29,6 +29,9 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
+// cm:guard every case in this file asserts the STAGED cascade (`draft` children promoted to `approved`); the autonomous cases override it explicitly below. An absent mode resolves autonomous since 2026-09-02, so this constant is what keeps the two halves of the file testing two different things.
+const STAGED = { pipelineConfig: { mode: 'staged' } };
+
 vi.mock('../../src/ws/server.js', () => ({
   roomManager: { publish: vi.fn(() => 1) },
 }));
@@ -72,7 +75,7 @@ describe('core stamps the issue feature branch onto the job payload', () => {
     issSeq: number;
   }> {
     const owner = await createTestUser(harness.db);
-    const project = await createTestProject(harness.db, owner.id);
+    const project = await createTestProject(harness.db, owner.id, { agentConfig: STAGED });
     const issueId = randomUUID();
     const issSeq = Math.floor(Math.random() * 1_000_000);
     await harness.db.execute(sql`

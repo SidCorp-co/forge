@@ -25,6 +25,9 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
+// cm:guard every case in this file asserts the STAGED cascade (`draft` children promoted to `approved`); the autonomous cases override it explicitly below. An absent mode resolves autonomous since 2026-09-02, so this constant is what keeps the two halves of the file testing two different things.
+const STAGED = { pipelineConfig: { mode: 'staged' } };
+
 type IssueRow = import('../../src/issues/apply-transition.js').TransitionIssueRow;
 
 describe('release record required E2E', () => {
@@ -49,7 +52,7 @@ describe('release record required E2E', () => {
     await truncateAll(harness.db);
     const owner = await createTestUser(harness.db);
     ownerId = owner.id;
-    projectId = (await createTestProject(harness.db, owner.id)).id;
+    projectId = (await createTestProject(harness.db, owner.id, { agentConfig: STAGED })).id;
   });
 
   async function insertIssue(status: string, note: unknown = null): Promise<string> {

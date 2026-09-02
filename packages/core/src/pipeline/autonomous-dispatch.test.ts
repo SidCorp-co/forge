@@ -18,6 +18,7 @@ vi.mock('./runs.js', () => ({ openIssueRun }));
 const { autonomousStepFor, dispatchAutonomous, dispatchDriveManual, isAutonomous } = await import(
   './autonomous-dispatch.js'
 );
+const { resolveMode } = await import('./autonomous-mode.js');
 
 const ACTOR = { type: 'user', id: 'user-1', agency: 'human' } as const;
 const BASE = {
@@ -43,19 +44,28 @@ describe('autonomousStepFor', () => {
 });
 
 describe('isAutonomous', () => {
-  it('is false for every project that has not said otherwise', () => {
-    expect(isAutonomous(null)).toBe(false);
-    expect(isAutonomous({ enabled: true })).toBe(false);
+  // cm:guard the two false cases are NOT one case and this is where that is proved. `null` is "missing project, or a config that did not parse" and must answer staged, because rewriting parks and cascading children on a project nobody can see is broken is the worse direction. An absent `mode` is "this project never chose", which since 2026-09-02 answers autonomous. Write these as one `?.` and the unparseable config silently becomes autonomous.
+  it('separates a config that did not parse from a project that never chose', () => {
+    expect(isAutonomous(null), 'unreadable config must stay staged').toBe(false);
+    expect(isAutonomous({ enabled: true }), 'absent mode takes the default').toBe(true);
     expect(isAutonomous({ enabled: true, mode: 'staged' })).toBe(false);
     expect(isAutonomous({ enabled: true, mode: 'autonomous' })).toBe(true);
+  });
+
+  // cm:guard the flip must reach the skill lock and the reconciler too — those read `mode` on their own, one of them off a raw SQL column, and a project that dispatches autonomously while its bundled skills stay unlocked is editable from under the driver mid-run
+  it('resolves the same default for every reader of the raw field', () => {
+    expect(resolveMode(undefined)).toBe('autonomous');
+    expect(resolveMode(null)).toBe('autonomous');
+    expect(resolveMode('staged')).toBe('staged');
+    expect(resolveMode('autonomous')).toBe('autonomous');
   });
 });
 
 describe('dispatchAutonomous', () => {
   it('declines the decision on a staged project so the caller walks its own path', async () => {
-    expect(await dispatchAutonomous({ ...BASE, status: 'open', cfg: { enabled: true } })).toBe(
-      false,
-    );
+    expect(
+      await dispatchAutonomous({ ...BASE, status: 'open', cfg: { enabled: true, mode: 'staged' } }),
+    ).toBe(false);
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();
   });
 

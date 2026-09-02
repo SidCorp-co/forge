@@ -72,6 +72,8 @@ const state: FakeState = {
     baseBranch: 'main',
     productionBranch: 'main',
     repoPath: '/tmp/repo',
+    // cm:guard say `staged` OUT LOUD — every case below that does not override this reads the staged parent set (`confirmed`/`clarified`), and since 2026-09-02 an empty config resolves autonomous, so omitting it silently moved the whole file onto the other mode's vocabulary
+    agentConfig: { pipelineConfig: { mode: 'staged' } },
   },
   edges: [],
   activity: [],
@@ -299,6 +301,7 @@ function resetState() {
     baseBranch: 'main',
     productionBranch: 'main',
     repoPath: '/tmp/repo',
+    agentConfig: { pipelineConfig: { mode: 'staged' } },
   };
 }
 

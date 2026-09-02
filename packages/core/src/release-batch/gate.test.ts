@@ -7,11 +7,16 @@ import { describe, expect, it } from 'vitest';
 import { resolveReleaseGateStatus } from './gate.js';
 
 describe('resolveReleaseGateStatus', () => {
-  it('gives a staged project a gate by default, as it always has', () => {
+  // cm:guard `{ enabled: true }` no longer spells staged — since 2026-09-02 an absent `mode` resolves autonomous, and only `null` (an unreadable config) still falls back to staged. The title says "by default"; the default it now means is the one written here.
+  it('gives a staged project a gate, and an unreadable config the same', () => {
     expect(resolveReleaseGateStatus(null)).toBe('tested');
-    expect(resolveReleaseGateStatus({ enabled: true })).toBe('tested');
+    expect(resolveReleaseGateStatus({ enabled: true, mode: 'staged' })).toBe('tested');
     expect(
-      resolveReleaseGateStatus({ enabled: true, states: { tested: { mode: 'manual' } } }),
+      resolveReleaseGateStatus({
+        enabled: true,
+        mode: 'staged',
+        states: { tested: { mode: 'manual' } },
+      }),
     ).toBe('tested');
   });
 

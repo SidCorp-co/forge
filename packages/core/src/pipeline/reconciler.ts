@@ -8,6 +8,7 @@ import {
   AUTONOMOUS_ENTRY_STATUS,
   AUTONOMOUS_INFLIGHT_STATUSES,
   AUTONOMOUS_JOB_TYPE,
+  resolveMode,
 } from './autonomous-mode.js';
 import { checkAutonomousRescueCap, recordAutonomousRescue } from './autonomous-rescue-cap.js';
 import { reEnqueueForIssue } from './orchestrator.js';
@@ -145,7 +146,7 @@ export async function runReconcilerOnce(): Promise<{
       if (stalled) continue;
 
       // cm:guard the guard above cannot bound an autonomous project: it resolves the stage's job type through `resolveJobTypeForStatus`, and `drive` has no `PIPELINE_STEPS` entry, so it counts a type that never exists and has never once fired here. Removing this second check restores an unbounded re-dispatch loop on every autonomous project, which is the ISS-626 incident with a different job type.
-      const autonomous = row.mode === 'autonomous';
+      const autonomous = resolveMode(row.mode) === 'autonomous';
       let autonomousRunId: string | null = null;
       if (autonomous) {
         const cap = await checkAutonomousRescueCap({

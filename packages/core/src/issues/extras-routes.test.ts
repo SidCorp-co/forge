@@ -228,7 +228,11 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
       orgRole: null,
     });
     selectLimit.mockResolvedValueOnce([
-      { agentConfig: opts.agentConfig ?? null, ownerId: USER_ID },
+      // cm:guard the fallback says `staged` OUT LOUD. `null` used to mean it; since 2026-09-02 an empty config resolves autonomous, and every case in this block exercises the STAGED route (`clarified → plan`, the stage override, the merge-instruction text) — none of which the autonomous branch ever reaches.
+      {
+        agentConfig: opts.agentConfig ?? { pipelineConfig: { mode: 'staged' } },
+        ownerId: USER_ID,
+      },
     ]);
     selectLimit.mockResolvedValueOnce([]); // findActiveJob → no conflict
     insertReturning.mockResolvedValueOnce([{ id: JOB_ID }]);
@@ -284,7 +288,10 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     setupHappyPath({
       status: 'testing',
       agentConfig: {
-        pipelineConfig: { mergeStates: { baseBranch: 'testing', productionBranch: 'released' } },
+        pipelineConfig: {
+          mode: 'staged',
+          mergeStates: { baseBranch: 'testing', productionBranch: 'released' },
+        },
       },
     });
 
@@ -313,7 +320,9 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
       role: 'member',
       orgRole: null,
     });
-    selectLimit.mockResolvedValueOnce([{ agentConfig: null, ownerId: USER_ID }]);
+    selectLimit.mockResolvedValueOnce([
+      { agentConfig: { pipelineConfig: { mode: 'staged' } }, ownerId: USER_ID },
+    ]);
     selectLimit.mockResolvedValueOnce([{ id: 'existing-job-id' }]); // findActiveJob hit
 
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/run-pipeline-step`, {

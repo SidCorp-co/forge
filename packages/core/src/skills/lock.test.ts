@@ -16,12 +16,13 @@ describe('skillLockReason', () => {
     );
   });
 
-  it('locks the bundled set only while the project runs autonomous', () => {
+  // cm:guard the lock follows the DEFAULT, not the literal. Since 2026-09-02 an absent `mode` resolves autonomous, so a project that never chose runs the bundled skills — and leaving them editable there is a skill the runner overwrites from the binary on the next job while the project believes its edit took.
+  it('locks the bundled set wherever the project resolves autonomous, chosen or defaulted', () => {
     expect(skillLockReason('forge-drive', { bundled: BUNDLED, mode: 'autonomous' })).toBe(
       'autonomous-mode',
     );
+    expect(skillLockReason('forge-drive', { bundled: BUNDLED })).toBe('autonomous-mode');
     expect(skillLockReason('forge-drive', { bundled: BUNDLED, mode: 'staged' })).toBeNull();
-    expect(skillLockReason('forge-drive', { bundled: BUNDLED })).toBeNull();
   });
 
   it('locks the whole surface when the project declares true', () => {

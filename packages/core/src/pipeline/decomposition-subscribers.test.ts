@@ -40,12 +40,14 @@ const dbInsert = vi.fn(() => ({ values: vi.fn().mockResolvedValue([]) }));
 const dbSelect = vi.fn();
 
 function installDefaultDbSelect(): void {
-  // Default: every chain resolves to a single owner row. Tests that need a
-  // different sequence override via mockImplementationOnce BEFORE the bus
-  // emit runs.
+  // cm:guard ONE generic chain answers every select in this file, `isAutonomousProject`'s config read included — so the row must carry `agentConfig`, and carry it `staged` OUT LOUD. A row without the column parses as an empty config, which since 2026-09-02 resolves AUTONOMOUS, and every cascade case below asserts the staged target (`approved`). A test needing a different sequence overrides with mockImplementationOnce BEFORE the bus emit.
   dbSelect.mockImplementation(() => ({
     from: () => ({
-      where: () => ({ limit: async () => [{ createdBy: 'owner-1' }] }),
+      where: () => ({
+        limit: async () => [
+          { createdBy: 'owner-1', agentConfig: { pipelineConfig: { mode: 'staged' } } },
+        ],
+      }),
     }),
   }));
 }

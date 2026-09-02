@@ -77,6 +77,9 @@ async function insertGlobalSkill(name: string): Promise<string> {
   return id;
 }
 
+// cm:guard this file's cases assert STAGED behaviour unless they pass `mode: 'autonomous'`; an absent mode resolves autonomous since 2026-09-02, so the fixture has to say staged out loud or both halves test the same driver.
+const STAGED = { pipelineConfig: { mode: 'staged' } };
+
 async function seedProject(
   args: {
     statesOverride?: Record<string, { enabled?: boolean; mode?: 'auto' | 'manual' }>;
@@ -84,7 +87,7 @@ async function seedProject(
   } = {},
 ) {
   const owner = await createTestUser(harness.db);
-  const project = await createTestProject(harness.db, owner.id);
+  const project = await createTestProject(harness.db, owner.id, { agentConfig: STAGED });
   await createTestProjectMember(harness.db, {
     userId: owner.id,
     projectId: project.id,
@@ -121,8 +124,9 @@ async function seedProject(
   }
 
   const states = { ...mods.defaultStatesConfig(), ...(args.statesOverride ?? {}) };
+  // cm:guard this UPDATE REPLACES agent_config wholesale, so the `agentConfig` seeded at create time is gone by here — the mode has to be written again, and it has to be written explicitly: an absent one resolves autonomous since 2026-09-02, while the three fixtures below walk the staged ladder to `closed`.
   const pipelineConfig = {
-    ...(args.mode ? { mode: args.mode } : {}),
+    mode: args.mode ?? 'staged',
     enabled: true,
     autoTriage: true,
     autoClarify: true,

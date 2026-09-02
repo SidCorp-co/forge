@@ -108,13 +108,14 @@ describe('answer-resume E2E', () => {
     expect(await statusOf(id)).toBe('needs_info');
   });
 
-  it('treats a project that declared no mode as staged', async () => {
+  // cm:guard this asserted the OPPOSITE until 2026-09-02, when `mode` still defaulted to staged, and it is kept rather than deleted because it is the only place the default is observable end to end: a project that declared nothing now resumes on a human comment, exactly as one that declared `autonomous` does. If this ever reads `needs_info` again, the default moved and 28 of 31 live projects are not what anyone thinks they are.
+  it('resumes a project that declared no mode, because the default is autonomous', async () => {
     await setMode(null);
     const id = await insertIssue('needs_info');
 
     await comment(id, 'user');
 
-    expect(await statusOf(id)).toBe('needs_info');
+    expect(await statusOf(id)).toBe('open');
   });
 
   // cm:guard the autonomous board renders waiting/on_hold/needs_info alike as needs_human, but only needs_info was entered by the AGENT asking — resuming the other two takes a pause away from the person who chose it. ISS-886 made an agent's `waiting` unreachable on this mode, which narrows what these two rows represent (a human's pause, and the decompose review gate) without changing the rule: still not resumable by comment.

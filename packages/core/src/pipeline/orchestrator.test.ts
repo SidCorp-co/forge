@@ -228,10 +228,10 @@ function issueCreated(overrides: Partial<CreatedPayload> = {}): CreatedPayload {
   };
 }
 
+// cm:guard the caller's `cfg` is spread OVER a `staged` base rather than used raw, because the staged branch is what nearly every case here asserts and since 2026-09-02 a config with no `mode` resolves autonomous — which returns before `considerEnqueue` reaches any of it, and the failure reads as "the spy was never called" rather than "the fixture chose the other driver". A case that wants autonomous passes `mode: 'autonomous'` and still wins, because the spread puts it last.
 function cfgResolved(cfg: unknown) {
-  nextSelect.mockResolvedValueOnce([
-    { agentConfig: { pipelineConfig: cfg }, createdBy: 'u-owner' },
-  ]);
+  const pipelineConfig = { mode: 'staged', ...(cfg as object) };
+  nextSelect.mockResolvedValueOnce([{ agentConfig: { pipelineConfig }, createdBy: 'u-owner' }]);
 }
 
 function skillRegistered(skillName: string, type: string, toggle: string) {

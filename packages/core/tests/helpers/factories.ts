@@ -133,6 +133,13 @@ export interface CreateTestProjectOverrides {
    * is seeded with `createdBy` as org `owner` (the common single-user case).
    */
   orgId?: string;
+  /**
+   * Seed `projects.agent_config`. A suite that exercises the STAGED pipeline
+   * must pass `{ pipelineConfig: { mode: 'staged' } }` — since 2026-09-02 an
+   * absent `mode` resolves autonomous, so omitting it puts the fixture on the
+   * other driver.
+   */
+  agentConfig?: Record<string, unknown>;
 }
 
 export async function createTestProject(
@@ -150,9 +157,11 @@ export async function createTestProject(
     createdBy,
   };
 
+  // cm:guard the helper seeds NO mode by default on purpose: a fixture then resolves whatever the product default resolves, so a future flip surfaces here instead of hiding behind a helper that pinned the old answer.
   await db.execute(sql`
-    INSERT INTO projects (id, slug, name, org_id, created_by)
-    VALUES (${project.id}, ${project.slug}, ${project.name}, ${project.orgId}, ${project.createdBy})
+    INSERT INTO projects (id, slug, name, org_id, created_by, agent_config)
+    VALUES (${project.id}, ${project.slug}, ${project.name}, ${project.orgId}, ${project.createdBy},
+            ${JSON.stringify(overrides.agentConfig ?? {})}::jsonb)
   `);
 
   return project;

@@ -698,6 +698,42 @@
 
 ### Changed
 
+- **`pipelineConfig.mode` defaults to `autonomous`.** It was optional, and absent read as `staged`,
+  so every project created since the mode existed started on the staged pipeline whether or not
+  anyone wanted it. Measured 2026-09-02 across 31 live projects: 28 said `autonomous` explicitly,
+  **0 said `staged`**, and the 3 that said nothing had 12 jobs between them with none since
+  2026-08-11. Staged was not a choice anyone made; it was the answer nobody gave.
+
+  The default lives in `resolveMode`, which has three readers — `isAutonomous`, the skill lock, and
+  the reconciler, which reads the raw SQL column rather than the parsed config. A project that
+  dispatched under one driver while its bundled skills locked under the other is what a second copy
+  of `=== 'autonomous'` would buy. `isAutonomous(null)` still answers staged, and that is now stated
+  rather than implied: a config that did not parse is a different case from a project that never
+  chose, and answering `autonomous` for an unreadable one would rewrite parks and cascade children
+  on a project nobody can see is broken.
+
+  **What this costs, named rather than discovered later.** `assertAutonomousReady` refuses the write
+  that sets `mode: 'autonomous'` while `build-commands` or `test-commands` is unanswered. A project
+  carrying the default made no such write, so it reaches the driver having answered no contract —
+  and `forge-drive/SKILL.md` said outright that "a project cannot be switched to autonomous mode
+  without them". That sentence is now false for the default path and has been replaced with the
+  weaker truth: read the facts, and if they are missing, say so in the close comment and name what
+  you ran instead, rather than reporting a phase green on a command nobody declared.
+
+  Three projects carried the default. `forge-plugin` was pinned to `staged` explicitly so the flip
+  changes nothing for it. `qa-iss319-create-verify` and `qa-project-available-for-testing` could not
+  be pinned — the credential doing this work is not admin on either — so both flip to autonomous
+  with no contract facts. Neither has run a job since 2026-08-11 and both are QA projects, but that
+  is a consequence someone chose to accept, not one that went unnoticed.
+
+  **Nine test suites spelled "staged" by omission and now say it.** That is the same defect as the
+  fleet's, in fixture form: `agentConfig: null`, a mock row without the column, a helper that seeded
+  no config at all. One of them — `answer-resume-e2e` — asserted the old default in its own title
+  ("treats a project that declared no mode as staged") and is kept, inverted, because it is the only
+  place the default is observable end to end. `createTestProject` deliberately still seeds NO mode,
+  so a fixture resolves whatever the product resolves and the next flip surfaces in the suites
+  instead of hiding behind a helper that pinned the old answer.
+
 - All five middlewares that authenticate a bearer token now read it through one pair of
   functions instead of five copies of the same regex. No route changed what it accepts. The two
   differences that were real are kept and named: whether the `forge_auth` cookie may stand in for

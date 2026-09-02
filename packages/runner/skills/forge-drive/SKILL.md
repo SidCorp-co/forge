@@ -74,8 +74,12 @@ forge-runner api projects/$FORGE_PROJECT_ID/pipeline-config
 | `reproduction` | phase 1 — the URL, the seed data, the account |
 | `done-means` | phase 7 — what this project counts as finished beyond the criteria |
 
-The first two are guaranteed: a project cannot be switched to autonomous mode without them. The
-rest may be absent, which means the project has no rule and the ordinary answer applies.
+A project that was SWITCHED to this mode answered the first two — the switch is refused without
+them. A project that simply never chose a mode did not: autonomous is the default, and the default
+answers no contract. So read them, and if `build-commands` or `test-commands` is missing, say so in
+the close comment and name what you ran instead. Do not invent a build you never proved, and do not
+report a phase green on a command nobody declared. The rest may be absent, which means the project
+has no rule and the ordinary answer applies.
 
 If a fact is wrong or missing something you needed, say so in the close comment. Do not work
 around it silently — the next session reads the same map.

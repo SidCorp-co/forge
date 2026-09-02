@@ -31,8 +31,15 @@ export const AUTONOMOUS_JOB_TYPE: JobType = 'drive';
 /** Ships in the runner binary; never resolved from `skill_registrations`. */
 export const AUTONOMOUS_SKILL_NAME = 'forge-drive';
 
+// cm:guard the ONLY place the absent-`mode` default is decided, and it has three readers — `isAutonomous`, `skills/lock.ts` and `reconciler.ts` (which reads the raw SQL column, not the parsed config). A second copy of `=== 'autonomous'` anywhere is a project that dispatches under one driver while its skills lock under the other.
+// cm:guard flipped from staged to autonomous on 2026-09-02, measured not assumed: of 31 live projects 28 said `autonomous` EXPLICITLY, 0 said `staged`, and the 3 that said nothing had 12 jobs between them with none since 2026-08-11. Staged was never a choice anyone made; it was the answer nobody gave. The price is named in `forge-drive/SKILL.md`: `assertAutonomousReady` gates the WRITE that sets this key, so a project carrying the default has answered no contract, and the guarantee that skill used to make about `build-commands`/`test-commands` no longer holds. Flipping back means restoring that guarantee, not just this literal.
+export function resolveMode(mode: string | null | undefined): 'staged' | 'autonomous' {
+  return mode === 'staged' ? 'staged' : 'autonomous';
+}
+
+// cm:guard `cfg === null` is a DISTINCT case from an absent `mode` and must stay one: null means the project is missing or its config did not parse, and answering `autonomous` there would rewrite parks and cascade children on a project nobody can see is broken. Absent `mode` means the project never said, which the default now answers. Collapsing the two — `resolveMode(cfg?.mode)` — silently makes an unparseable config autonomous.
 export function isAutonomous(cfg: PipelineConfig | null): boolean {
-  return cfg?.mode === 'autonomous';
+  return cfg !== null && resolveMode(cfg.mode) === 'autonomous';
 }
 
 /** Where the driver's work ends and the issue run closes with it. */

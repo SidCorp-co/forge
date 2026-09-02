@@ -70,6 +70,7 @@ const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const ACTOR_ID = '33333333-3333-4333-8333-333333333333';
 const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
 
+// cm:guard `undefined` here means "this project's config is EMPTY", which since 2026-09-02 resolves to autonomous — it is no longer a way to spell "staged". A staged case must pass `'staged'`, and the two tests below that read as staged-by-omission were exactly the fleet's own bug in fixture form: 0 of 31 live projects had ever said `staged` either.
 function projectMode(mode: string | undefined) {
   projectSelectLimit.mockResolvedValueOnce([
     { agentConfig: mode ? { pipelineConfig: { mode } } : {} },
@@ -159,7 +160,7 @@ describe('reopen on an autonomous project', () => {
 
 describe('every other transition is untouched', () => {
   it('leaves `reopen` alone on a staged project', async () => {
-    projectMode(undefined);
+    projectMode('staged');
     queueUpdate('reopen');
 
     const result = await transitionIssueStatus(
@@ -281,7 +282,7 @@ describe('waiting on an autonomous project', () => {
   });
 
   it('leaves an agent `waiting` alone on a staged project', async () => {
-    projectMode(undefined);
+    projectMode('staged');
     queueUpdate('waiting');
 
     const result = await transitionIssueStatus(
