@@ -105,5 +105,23 @@ forge-runner api projects/<id>/integrations/coolify/deploy -X POST -d '{}'
 
 `issues`, `/issues` and `/api/issues` are the same path. The credential is a **personal access
 token**, not the device token — a device token answers 401 on every route behind `requireAuth`. In a
-job the runner exports one as `$FORGE_PAT`, minted for that job and revoked when it goes terminal.
+job the runner exports one as `$FORGE_PAT`, minted for that job and revoked when it goes terminal,
+alongside `$FORGE_PROJECT_ID` and `$FORGE_PROJECT_SLUG` (runner 0.9.8+) — the PAT alone cannot build
+a project-scoped path, because every such route takes the project UUID as a path segment and only
+`/mcp` resolves `X-Forge-Project-Slug`.
 Full flag and exit-code reference: [`packages/runner/README.md`](../../packages/runner/README.md).
+
+## The caller class this does NOT cover
+
+**A `schedules` run is not a job, so it can never hold a job PAT.** Schedules dispatch through
+`agent:start` on the device room; the mint is per-job, so these sessions authenticate to `/mcp` with
+the **device token** and always will under the current mechanism.
+
+Measured 2026-09-02 in a window where no pipeline job ran at all: 20 registered tools still took
+device-token calls, and the timestamps match the cron entries — `pixelight-product-autopublish`
+(`0 */12 * * *`) against calls at 00:00:20 on two consecutive days, three `0 9 * * *` schedules
+against 29 calls from one box starting 09:00:24.
+
+So "move the caller from the device token to a job PAT" is not a prerequisite a schedule can ever
+satisfy. Removing a data tool those 8 schedules name breaks them at their cron hour with nobody
+watching. Which credential a schedule should hold is an open decision, not an oversight.
