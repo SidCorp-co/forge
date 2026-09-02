@@ -123,9 +123,13 @@ what the findings name, and go round again.
 
 ## Statuses you may write
 
-These five, and nothing else. They are kernel statuses — the values `forge_issues` accepts. The
+These five, and nothing else. They are kernel statuses — the values the issue API accepts. The
 board renders them under different names; write what is in this column, never what you see on a
 board.
+
+```
+forge-runner api issues/<issue> -X PATCH -d '{"status":"in_progress"}'
+```
 
 | Write | Means |
 |---|---|
@@ -161,9 +165,10 @@ answered it, and the answer will not change by tomorrow.
 ### Grounded is the load-bearing word
 
 A recommendation is grounded when you derived it from this project's own information — `projectFacts`,
-`forge_knowledge`, project memory, the repo itself — and you can **name what you derived it from**. A
-recommendation you cannot source is not a recommendation, it is a guess in a confident tone. That
-question has no basis, and it goes in the second row.
+the project's knowledge base (`forge-runner api projects/$FORGE_PROJECT_ID/knowledge`), project
+memory, the repo itself — and you can **name what you derived it from**. A recommendation you cannot
+source is not a recommendation, it is a guess in a confident tone. That question has no basis, and it
+goes in the second row.
 
 ### Not recoverable is a list, not a feeling
 

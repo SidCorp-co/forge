@@ -327,15 +327,14 @@ mod tests {
             );
         }
         for (rel, body) in BUNDLED_FILES {
+            // `forge_` with an underscore is an MCP tool name and nothing else: the
+            // binary, the skills and the env vars all spell it `forge-` or `FORGE_`.
             assert!(
-                !body.contains("forge_step_start"),
-                "{rel} names forge_step_start; the autonomous lane has no steps, and that tool \
-                 writes no phase journal"
-            );
-            assert!(
-                !body.contains("forge_phase"),
-                "{rel} still names the forge_phase MCP tool; the bundled skills run in a shell \
-                 that reaches REST and nothing else"
+                !body.contains("forge_"),
+                "{rel} names an MCP tool; the bundled skills run in a shell that reaches REST \
+                 and nothing else, so a tool name there is an instruction the agent cannot \
+                 follow — and `forge_step_start` is why this is not pedantry: naming it in \
+                 place of the phase call left 76 finished drive jobs sharing one journal row"
             );
         }
     }
