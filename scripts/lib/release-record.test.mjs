@@ -157,6 +157,24 @@ describe('judge', () => {
     expect(verdict.violations.find((v) => v.rule === 'no-silent-loss').removed).toHaveLength(2);
   });
 
+  it('refuses a release section that carries the same `###` heading twice', () => {
+    const doubled = RECORD.replace(
+      '## [Unreleased]',
+      '## [Unreleased]\n\n### Fixed\n\n- an earlier fix.',
+    );
+    const verdict = judge({ head: doubled, base: doubled, amnesty: { removals: [] } });
+    expect(verdict.code).toBe(1);
+    const structure = verdict.violations.filter((v) => v.rule === 'structure');
+    expect(structure).toHaveLength(1);
+    expect(structure[0].detail).toContain('### Fixed');
+  });
+
+  it('reads a heading repeated under a DIFFERENT release as two distinct sections, not a repeat', () => {
+    const twoReleases =
+      '# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- a.\n\n## [0.1.0] - 2026-04-01\n\n### Fixed\n\n- b.\n';
+    expect(judge({ head: twoReleases, base: twoReleases, amnesty: { removals: [] } }).code).toBe(0);
+  });
+
   it('cannot run without a base revision, and says so rather than passing', () => {
     expect(judge({ head: RECORD, base: null, amnesty: { removals: [] } })).toMatchObject({
       code: 2,

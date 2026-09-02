@@ -20,6 +20,8 @@ export const UNRELEASED = 'Unreleased';
 
 const BULLET = /^[-*+]\s+(.*)$/;
 const HEADING = /^#{1,6}\s/;
+// cm:edge contract -> packages/web-v2/src/lib/changelog.ts — `parseChangelog` pushes ONE rendered section per `###` heading, so a heading repeated inside one release is not cosmetic there: the feed lists the same category twice for one release. Nothing types that agreement, and this rule is the only thing holding it
+const SUBSECTION_HEADING = /^###\s+(.+?)\s*$/;
 
 // cm:guard normalise WHITESPACE ONLY. Entries in this file are hard-wrapped, so a reflow moves every word to a different line while the entry says exactly what it said — comparing raw lines would report a rewrap as 30 deletions, and a gate that fires on formatting is a gate someone routes around. Normalising further (case, punctuation) would go the other way and let a real rewrite pass as the same entry.
 export function normaliseEntry(text) {
@@ -37,8 +39,10 @@ export function normaliseEntry(text) {
 export function parseRecord(text) {
   const sections = [];
   const entries = new Set();
+  const repeatedSubsections = [];
   let inSection = false;
   let open = null;
+  let seenSubsections = null;
 
   const flush = () => {
     if (open === null) return;
@@ -55,10 +59,18 @@ export function parseRecord(text) {
       flush();
       sections.push(heading[1].trim());
       inSection = true;
+      seenSubsections = new Set();
       continue;
     }
     if (HEADING.test(line)) {
       flush();
+      const subsection = inSection ? SUBSECTION_HEADING.exec(line) : null;
+      if (subsection) {
+        const title = subsection[1];
+        if (seenSubsections.has(title)) {
+          repeatedSubsections.push({ section: sections.at(-1), title });
+        } else seenSubsections.add(title);
+      }
       continue;
     }
     if (!inSection) continue;
@@ -77,7 +89,7 @@ export function parseRecord(text) {
   }
   flush();
 
-  return { sections, entries };
+  return { sections, entries, repeatedSubsections };
 }
 
 /** Amnesty entries are matched after the same normalisation the record gets, or they never match. */
@@ -115,6 +127,16 @@ export function judge({ head, base, amnesty }) {
         `CHANGELOG.md carries no \`## [${UNRELEASED}]\` heading. Five readers need it: the in-app ` +
         `What's New feed, the release step, the release cutter, the batch release plan, and the ` +
         `release-notes schema. Without it the feed renders blank instead of failing.`,
+    });
+  }
+
+  for (const { section, title } of now.repeatedSubsections) {
+    violations.push({
+      rule: 'structure',
+      detail:
+        `\`## [${section}]\` carries \`### ${title}\` more than once. The What's New feed pushes one ` +
+        `rendered section per heading, so a reader sees the same category listed twice for one ` +
+        `release; fold the bullets under the first \`### ${title}\` instead of appending a new one.`,
     });
   }
 
