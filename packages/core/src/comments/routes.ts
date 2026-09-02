@@ -123,7 +123,14 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
       try {
         const rows = await db
           .insert(comments)
-          .values({ issueId, authorId: userId, body, parentId: parentId ?? null })
+          // cm:guard stamp `isAi` from the caller's AGENCY, and do NOT hardcode it either way: this route serves a person in a browser and an agent holding a job PAT through the same door, so the MCP rule ("every write here is automated") is false here and the default (`false`) is false for the agent. Measured 2026-09-02 with `forge-runner api issues/<id>/comments`: the row landed `is_ai=false, author_device_id=null`, which is exactly the tuple the `comments.is_ai` guard defines as a HUMAN — an agent comment rendering as a person's on the very path ISS-894 is migrating everything onto.
+          .values({
+            issueId,
+            authorId: userId,
+            body,
+            parentId: parentId ?? null,
+            isAi: c.get('agency') === 'agent',
+          })
           .returning({
             id: comments.id,
             issueId: comments.issueId,

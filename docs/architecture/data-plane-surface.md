@@ -30,9 +30,10 @@ is the live example. Read the mount and its middleware, not the prefix alone.
 
 | MCP tool | REST | 
 |---|---|
-| `forge_issues` | `/api/issues`, `/api/projects/:id/issues` |
+| `forge_issues` list | `/api/projects/:id/issues` — **there is no `GET /api/issues`**; the collection is project-scoped only |
+| `forge_issues` get / update / delete | `/api/issues/:id`, and `PATCH /api/issues/batch` |
 | `forge_issues` mark_merged / unmark | `POST` / `DELETE /api/issues/:id/merge` |
-| `forge_comments` | `/api/comments` |
+| `forge_comments` create / list | `/api/issues/:id/comments` — `/api/comments/:id` is edit, delete and replies only, and has no collection route |
 | `forge_memory.*` (5) | `/api/memory` |
 | `forge_knowledge` | `/api/knowledge`, `/api/knowledge-edges`, `/api/projects/:id/knowledge` |
 | `forge_config` | `/api/projects/:id/pipeline-config` |
@@ -98,14 +99,19 @@ project-scoped twin built for it — not a widened fence.
 ## Calling it
 
 ```
-forge-runner api issues                          # GET  /api/issues
+forge-runner api projects/<id>/issues            # GET  the issue list — project-scoped
+forge-runner api issues/<id>                     # GET  one issue
+forge-runner api issues/<id>/comments -X POST -d '{"body":"..."}'
 forge-runner api issues/<id>/merge -X POST -d '{"target":"main"}'
 forge-runner api projects/<id>/integrations/coolify/deploy -X POST -d '{}'
 ```
 
-`issues`, `/issues` and `/api/issues` are the same path. The credential is a **personal access
-token**, not the device token — a device token answers 401 on every route behind `requireAuth`. In a
-job the runner exports one as `$FORGE_PAT`, minted for that job and revoked when it goes terminal,
+`issues/<id>`, `/issues/<id>` and `/api/issues/<id>` are the same path — the CLI supplies the
+prefix, it does not invent a route, so a path with no handler answers 404 rather than falling back
+to anything.
+
+The credential is a **personal access token**, not the device token — a device token answers 401 on
+every route behind `requireAuth`. In a job the runner exports one as `$FORGE_PAT`, minted for that job and revoked when it goes terminal,
 alongside `$FORGE_PROJECT_ID` and `$FORGE_PROJECT_SLUG` (runner 0.9.8+) — the PAT alone cannot build
 a project-scoped path, because every such route takes the project UUID as a path segment and only
 `/mcp` resolves `X-Forge-Project-Slug`.
