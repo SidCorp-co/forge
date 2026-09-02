@@ -28,6 +28,14 @@
   `docs/architecture/data-plane-surface.md` carried the same wrong claim about
   `forge_step_handoff`, whose three actions have been on `/api/issue-step-contexts` all along.
 
+  The bundled `forge-drive` and `forge-review` skills call the CLI form and no longer name an MCP
+  tool at all — with the phase journal reachable, nothing in the autonomous lane still needs one.
+  The gate that caught the 2026-08-24 defect (76 finished `drive` jobs, one journal row, because
+  the declare-a-phase line named a tool that writes no journal) moved with them: it now requires
+  the three endpoints by name and refuses a body that still mentions `forge_phase`, because an
+  instruction offering both leaves the agent free to pick the one its shell cannot reach. Reaching
+  the fleet needs a runner release; until one is cut, running drivers keep the MCP path.
+
 - `activity_log.actor_agency` — the audit row now records whether an agent or a person was at the
   keyboard, which `actor_type` cannot answer: a job token is held by an agent and owned by a
   person, so it writes `actor_type = 'user'` truthfully while an agent is driving. `Actor` requires

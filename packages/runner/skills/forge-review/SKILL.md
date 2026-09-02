@@ -24,8 +24,7 @@ an error.
 ```
 
 `decision` is required and must be one of the three below. `attempt` is the number the driver got
-back from `forge_phase` when it opened this review; include it so the verdict lands on the round it
-judged. The runner reads that file, posts it, and deletes it — which is why the record says a
+back when it opened this review phase; include it so the verdict lands on the round it judged. The runner reads that file, posts it, and deletes it — which is why the record says a
 runner wrote it and why nobody gets to rewrite your words on the way.
 
 Write the line and stop. Do not report the verdict to the driver in prose as well: the driver acts
@@ -46,7 +45,8 @@ role exists to prevent.
 ## Run it
 
 Read the diff, then **build it and run the tests** — `projectFacts.build-commands` and
-`projectFacts.test-commands` from `forge_config` say how, on this project. A review that only read
+`projectFacts.test-commands` say how, on this project. Read them with
+`forge-runner api projects/$FORGE_PROJECT_ID/pipeline-config`. A review that only read
 is worth a fraction of one that ran. If the build or tests fail, that is `request_changes` with the
 output attached — not a note in passing.
 

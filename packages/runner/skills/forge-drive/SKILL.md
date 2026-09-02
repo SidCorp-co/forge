@@ -26,14 +26,35 @@ things: deploy and close. Everything else is yours.
 | 6 · merge | the branch in the base it came from | `merge` |
 | 7 · ship | changelog line, close comment | `ship` |
 
-Declare each phase with `forge_phase` **before** you begin it (action `start`), and close it when it
-finishes (action `end`, with an outcome). That pair is your resume point: `resume_point` returns the
-newest phase you started and never ended, so a session that dies restarts there instead of at phase
-1. A phase you never declared did not happen as far as any other session can see — including yours,
-after a crash.
+Declare each phase **before** you begin it, and close it when it finishes with an outcome. That pair
+is your resume point: a session that dies restarts at the newest phase you started and never ended,
+instead of at phase 1. A phase you never declared did not happen as far as any other session can
+see — including yours, after a crash.
 
 Phase 5 can send you back to phase 3. That loop has no counter — go around as many times as the
 verdict requires. Re-declare `code` each time so the journal shows the rounds.
+
+## Declaring a phase
+
+The journal is keyed on the **run**, not on you, so find the run once before phase 1 — you were
+given the issue id, and the run is the open one on it:
+
+```
+forge-runner api "projects/$FORGE_PROJECT_ID/pipeline-runs?issueId=<issue>&status=running"
+```
+
+Then, for every phase in the table above:
+
+```
+forge-runner api pipeline-runs/<run>/phases -X POST -d '{"phase":"code"}'
+forge-runner api pipeline-runs/<run>/phases/end -X POST -d '{"phase":"code","attempt":1,"outcome":"ok"}'
+forge-runner api pipeline-runs/<run>/resume-point
+```
+
+`start` answers with the `attempt` number — pass that exact number back to `end`, because
+re-entering a phase opens a new attempt rather than overwriting the old one. `outcome` is `ok`,
+`failed` or `abandoned`; a `note` is the only extra field the close accepts. You cannot write a
+review verdict here, by design — see phase 5.
 
 ## What this project told you about itself
 
@@ -97,8 +118,8 @@ Check the verdict landed: the `review` phase you close should carry the reviewer
 your account of it. If `FORGE_VERDICT_FILE` is unset, say so in the phase artifact rather than
 proceeding as though a review was recorded.
 
-`request_changes` sends you back to phase 3. Re-declare `code` with `forge_phase` so the journal
-shows the round, fix what the findings name, and go round again.
+`request_changes` sends you back to phase 3. Re-declare `code` so the journal shows the round, fix
+what the findings name, and go round again.
 
 ## Statuses you may write
 
@@ -182,8 +203,8 @@ write it to be answered by someone who was not here: what you tried, what you ne
 do with each possible answer.
 
 A human answering with a comment is what starts you again. The next session declares its phases from
-the same journal, so `forge_phase` action `resume_point` puts it back where you stopped — which is
-also why the question has to be in the comment and not only in your head.
+the same journal, so `resume-point` puts it back where you stopped — which is also why the question
+has to be in the comment and not only in your head.
 
 Do not set `needs_info` because something is hard, slow, or ambiguous in a way you could resolve
 by reading more code. Read more code.

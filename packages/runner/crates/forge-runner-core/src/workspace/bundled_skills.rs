@@ -303,22 +303,39 @@ mod tests {
     /// `forge_step_start`, a staged-pipeline tool that writes no journal, while
     /// every other mention in the same file said `forge_phase`. So the resume
     /// point silently did not exist: a session that died restarted at phase 1.
+    ///
+    /// The proposition survived the move to REST on 2026-09-02 and the target
+    /// changed: the driver must name the three `/api/pipeline-runs` endpoints
+    /// that write the journal, and must NOT still name `forge_phase` beside
+    /// them — an instruction offering both is the same failure in a subtler
+    /// shape, with the agent free to pick the one the shell cannot reach.
     #[test]
-    fn the_driver_declares_phases_with_the_tool_that_writes_the_journal() {
+    fn the_driver_declares_phases_with_the_call_that_writes_the_journal() {
         let driver = BUNDLED_FILES
             .iter()
             .find(|(rel, _)| *rel == "forge-drive/SKILL.md")
             .expect("the driver skill is embedded")
             .1;
-        assert!(
-            driver.contains("`forge_phase` **before** you begin it"),
-            "the driver must name forge_phase where it tells the agent to declare a phase"
-        );
+        for needle in [
+            "pipeline-runs/<run>/phases -X POST",
+            "pipeline-runs/<run>/phases/end -X POST",
+            "pipeline-runs/<run>/resume-point",
+        ] {
+            assert!(
+                driver.contains(needle),
+                "the driver must show `{needle}` where it tells the agent to declare a phase"
+            );
+        }
         for (rel, body) in BUNDLED_FILES {
             assert!(
                 !body.contains("forge_step_start"),
                 "{rel} names forge_step_start; the autonomous lane has no steps, and that tool \
                  writes no phase journal"
+            );
+            assert!(
+                !body.contains("forge_phase"),
+                "{rel} still names the forge_phase MCP tool; the bundled skills run in a shell \
+                 that reaches REST and nothing else"
             );
         }
     }
