@@ -65,119 +65,6 @@
   row's project, not the path's, and answers 404 rather than 403 on a mismatch so it does not
   confirm the session exists.
 
-### Fixed
-
-- An agent's comment rendered as the person who owns the credential. `comments.is_ai` has recorded
-  agent authorship on every write path since ISS-820, including the owner-lane PAT where
-  `author_device_id` is NULL, but the comment tree never selected the column: the read path keyed
-  the author off `author_device_id` alone, so `isAgent` only ever meant "came from a device token".
-  The tree is now generic over its row type and `attachAuthors` demands `isAi`, which makes a query
-  that forgets the column a compile error rather than a feed that quietly attributes agent writes
-  to a human. The attach step also copies the resolved actor before marking it — `resolveActors`
-  returns one object per actor, so the same person's hand-typed comments were one mutation away
-  from being relabelled too. The actor vocabulary (`ActorRef`, `ResolvedActor`, `actorKey`) split
-  into `issues/actor-identity.ts` so formatting a key no longer drags in the Postgres client.
-
-- REST decided every caller was a person, so the evidence gates ran on `/mcp` and not on the CLI's
-  own surface. `requireAuth` reduces a PAT principal to `principal: 'pat'`, a string tag, and four
-  separate route sites then built a `{ type: 'user' }` actor by hand. MCP was safe by accident — it
-  synthesizes a device for a PAT principal, and the gates keyed on device-ness — but REST has no
-  device to synthesize, so `PATCH /api/issues/batch`, `PATCH /api/issues/:id/transition` and the
-  manual step trigger all transitioned as a human. `/api/issues` is on the PAT allowlist, so those
-  are reachable with any write-scoped token, and an agent holding one skipped ISS-786/812 entirely.
-  Actors are now built in one place that carries the trust axis with them.
-
-- The lifecycle gates asked whether the actor was a device when what they meant was whether the
-  caller was a person. Four of them — the evidence gate, the agent-close hold, the release-record
-  refusal and the autonomous park rewrite — now read `agency`, and two of those already argued the
-  human-vs-agent case in their own guards while implementing device-ness. A job token makes the two
-  axes differ for the first time: the write is its creator's, the caller is an agent. `actor.type`
-  keeps answering who owns the write, which is what the two `actor_type` columns store, so no
-  existing caller changes behaviour and no migration was needed. The five branches that genuinely
-  mean "came from a runner" — WS room routing, the heartbeat, the orchestrator's `DeviceLite`, and
-  the two readers of the stored enum — were left alone deliberately. What is NOT fixed is the
-  stored half: agency is not persisted, so the activity feed will call an agent's write a person's
-  once job tokens run. `docs/proposals/agency-is-not-persisted.md` prices that.
-
-- A job's own access token authenticated as the human who owns it. Core mints one PAT per
-  dispatched job under `jobs.created_by`, hands it to the runner and exports it to the agent as
-  `$FORGE_PAT` — and `authenticatePat` stamped every PAT `agency: 'human'`, a constant. `agency` is
-  the field the ISS-786/812 evidence gates read: `principalActor` maps a human PAT to a `user`
-  actor, and both `checkTransitionEvidence` and `forge_issues.mark_merged` skip their evidence
-  check for one. So the credential built specifically for agents was the single class exempt from
-  the gates that exist because agents fabricate evidence. It is now derived from the `job:` name
-  prefix, in the one place a PAT principal is built — that function serves `/mcp` and REST alike,
-  since `beginPatRequest` calls into it, so the CLI surface is covered by the same line. Measured
-  on production the same day: no job token has ever been minted, so this changes the behaviour of
-  nothing that has run, and lands before the first one exists rather than after.
-
-- `forge_issues.mark_merged` gated its evidence check on `principal.kind === 'device'` while the
-  comment above it said it mirrored `checkTransitionEvidence`'s scope, which keys on the actor. The
-  two neighbouring writes in the same file already went through `principalActor`; this one did not,
-  so any agent holding a PAT — the agent-driven chat surface, and now a job token — could claim an
-  issue was merged without the in-DB evidence a device is required to show. `merged_at` is what the
-  feature-branch barrier reads to release every dependent, so the claim ships work ahead of its
-  blocker.
-
-- `POST /api/pat` accepted a hand-made token named `job:…`. The prefix is not cosmetic: it is how
-  a user's PAT cap is counted, how a job's revoke sweep finds its token, and now how agency is
-  decided. A token wearing it escaped its owner's cap, could be revoked by a job that never owned
-  it, and would authenticate as an agent. The name is now refused on that route only — `mintPat`
-  still accepts the prefix, because that is how a dispatch mints the real thing.
-
-- Six MCP tools are back after being deleted the same day: `forge_orgs.list`, `forge_orgs.members`,
-  `forge_skill_facts.list`, `forge_skill_facts.get`, `forge_metrics.project_retry_rescues` and
-  `forge_metrics.session_failures`. Their removal claimed an audit-log split had shown no runner
-  called them; the split was wrong. `mcp_audit_log.user_id` is filled in for a device caller too —
-  it is stamped with the device's owner — so only `device_id` and `token_id` separate the two, and
-  a count that leans on `user_id` reads every device call as a human one. Split correctly, all six
-  had device callers, and the fleet hit a deleted tool at 09:07 UTC on 2026-09-01 and read
-  `not_found`. `/api/skill-facts` is `requireAuth()`, which answers a device token 401, so the
-  route was never a replacement for the callers that existed. The registered tool set is 59.
-  The four tools removed before them stay removed, but not for the reason first given here: split
-  the same way, `forge_metrics.step_durations` shows three device calls, not zero. All three are
-  from June, nothing has called it in ten weeks, and the replacement a runner would reach for is
-  `forge_metrics.project_step_durations` — still registered, device-reachable, and the name the
-  one skill that mentions this metric actually tells an agent to call. `forge_skills.pin` and
-  `forge_ux_improver` are at zero device calls; `forge_steer` never appears in the table at all.
-  The extraction that commit also did is kept — `metrics/session-failures-report.ts` remains the
-  one place the report is shaped, and the restored tools delegate to it instead of shaping it again.
-
-- The MCP fence that keeps a project-bound access token inside its project is now tested. It had
-  no coverage at all: every existing test built an unbound token, so the branch had never executed
-  once. It is the only thing stopping fourteen tools — a token reaches them with a synthesized
-  device identity, and their handlers read only the owner, never the token's binding. Removing the
-  fence now turns four tests red, and one of them shows the query reaching the database on a
-  project the token was never granted.
-
-- `/api/agent-sessions` is off the PAT allowlist. It granted nothing — the middleware guarding it
-  has no PAT branch — but its list route fans out across every project the caller can see,
-  `messages[]` included, so the entry pre-approved that reach for whoever added a PAT branch
-  later. A test now fails if any allowlisted prefix is unreachable by a PAT, which forces the
-  grant to be made by someone looking at the route.
-
-### Changed
-
-- All five middlewares that authenticate a bearer token now read it through one pair of
-  functions instead of five copies of the same regex. No route changed what it accepts. The two
-  differences that were real are kept and named: whether the `forge_auth` cookie may stand in for
-  a missing header, and whether "no header" and "malformed header" get the same 401 — `/mcp`
-  answers those differently, and collapsing them would have downgraded its challenge.
-- Corrected the record of how device tokens are authorised. It said three middlewares disagreed;
-  there are five, and four of them already agree — a device is its own principal, with no access
-  to its owner's account. `requireAnyAuth` is the single exception, and it is now instrumented:
-  when a device token reaches it, core reports `auth.device_token_on_data_plane` with the route
-  it hit, so the branch can be removed on evidence rather than on a source read that found no
-  caller.
-
-### Removed
-
-- Four MCP tools whose work REST already does: `forge_steer`, `forge_ux_improver`,
-  `forge_skills.pin` and `forge_metrics.step_durations`. Nothing that runs on a build box had
-  called any of them, and every one has an endpoint that does the same job. The registered tool
-  set is now 59.
-
-### Added
 
 - Per-project retry rescues and session failures: `GET /api/projects/:id/metrics/retry-rescues`
   and `.../session-failures`. Both existed only as a cross-project view that deliberately refuses
@@ -270,7 +157,166 @@
   one project cannot finish another's release, and it gets the same "not found" a missing batch
   gives rather than being told the run exists somewhere else.
 
+
+- Work queued behind a paused pipeline run is now reported instead of sitting silently. Of every
+  gate that can hold a `queued` job, `pipeline_run_not_running` was the only one with neither a
+  reaper nor an alarm behind it: the picker only offers jobs whose run is `running`, so nothing
+  behind a pause can start, and because the active-job index covers `queued`, nothing can queue a
+  replacement step for that issue either — the issue is dead, not slow. Measured on the fleet
+  2026-08-30, four triage jobs had been in that state for 38 days with no surface anywhere able to
+  say so. A new sweeper pass notifies the project owner once per paused run past the threshold,
+  naming what paused it, how many steps are frozen behind it, and — read from the pause kind, not
+  guessed — whether it will resume by itself. The notification clears as soon as the run leaves
+  `paused`, whether it resumed or was closed. Nothing is cancelled, re-queued or re-dispatched: a
+  pause is either a machine condition that clears itself or a decision only a person can revisit,
+  and a job killed here is work the resume existed to rescue. (ISS-879)
+
+- A plan now records the branches that were weighed and dropped, not only the one that was taken.
+  Forge keeps the issue rather than the conversation, so a rejected branch that is not in the plan is
+  gone — and a plan without it reads exactly like one where nothing else was ever considered. Both
+  plan-writing skills (the autonomous driver and the staged planner) ask for a `Rejected
+  alternatives` section naming each branch and the fact that killed it, say that a forced choice is
+  written as forced, and say that an empty heading is worse than none. What is checked is that the
+  shipped bodies still ask; whether a given plan's rejected branches are real is prose no test can
+  read. (ISS-883)
+
+- `docs/VISION.md` and every proposal now say what adopting them costs the reader, and a gate keeps
+  it that way. The constitution had a Boundaries section — what Forge will not become — and nothing
+  pricing what choosing Forge takes from a team that chooses it, while the repo's own rule reads "a
+  trade-off is priced or it is not taken". `check-honest-costs` refuses an absent section, one that
+  prices nothing, and a `TBD` where the price goes; it cannot judge whether a stated price is honest,
+  and says so. (ISS-882)
+
+- Attention lists agent-filed `draft` issues that no human has looked at yet. `draft` is inert by
+  design — the dispatcher never picks it up and nothing notifies on a draft create — so a proposal
+  an agent filed used to be reachable from no surface in the product: measured 2026-08-30, 428 of
+  them across 16 projects, all addressed to the account that paired the runner rather than to anyone
+  who signs in. They now reach the project's admins, ordered by priority, capped at 20 rows with the
+  real total shown; one human comment clears a row for good. (ISS-881)
+
 ### Fixed
+
+- A failed agent session now says what killed it. Every agent-side death was recorded as
+  `job_failed` — one token covering an exhausted spend cap, an expired sign-in, an unreachable
+  runner and an agent that exited with no result alike — so the only way to learn which had
+  happened was to open the transcript. `agent_sessions.failure_reason` is now bound to a
+  `FailureCause` enum on the column and the human sentence moved to a new `failure_detail`, which
+  splits the two axes that were sharing one field; the session lane asks the same classifier the
+  job lane already asked instead of writing a literal at the boundary, so a cause cannot be
+  correct in one table and absent in the other. 99.93% of 10,904 failed jobs over 90 days land on
+  one of 33 named causes, and the UI shows the label with the next action rather than a status
+  word. Historic `job_failed` rows resolve at read time and were deliberately not backfilled —
+  most no longer have a source to infer a cause from, and a guessed cause is a confident lie where
+  the old token was at least an admitted one. They read as `unclassified`, which
+  `forge_metrics.session_failures` counts as a first-class value rather than hiding, because that
+  is the true measure of the period when nothing was classified at all. (ISS-877)
+
+- A font host that does not answer can no longer take the backend deploy down with it.
+  `layout.tsx` imported Hanken Grotesk and JetBrains Mono from `next/font/google`, which downloads
+  the binaries while `next build` runs, and one Coolify application builds core and web-v2
+  together — so on 2026-08-13 an unanswered font host exited the build, a core-only fix sat
+  merged-but-not-live for about 90 minutes and needed a hand re-dispatch, and the failure was
+  first misread as a defect in the diff being deployed. Both families are now committed as the
+  exact variable woff2 Google serves for the `latin` subset and declared through
+  `next/font/local`; the CSS variables and `font-display: swap` are unchanged, no
+  `adjustFontFallback` override was needed, each SIL OFL licence ships beside its binary, and a
+  test fails if the `next/font/google` import ever returns. Verified by severing egress through
+  next/font's own proxy path — the build exits 1 on the merge-base naming the font fetch, and 0
+  on the branch with both files emitted byte-for-byte, including from a container with no network
+  device at all. One consequence worth knowing before reading a live page as a regression:
+  `next/font/local` derives the generated `font-family` from the variable name, so the computed
+  value now reads `hanken` / `jetbrainsMono` rather than a hashed `__Hanken_Grotesk_*`.
+  (ISS-854)
+
+- An agent's comment rendered as the person who owns the credential. `comments.is_ai` has recorded
+  agent authorship on every write path since ISS-820, including the owner-lane PAT where
+  `author_device_id` is NULL, but the comment tree never selected the column: the read path keyed
+  the author off `author_device_id` alone, so `isAgent` only ever meant "came from a device token".
+  The tree is now generic over its row type and `attachAuthors` demands `isAi`, which makes a query
+  that forgets the column a compile error rather than a feed that quietly attributes agent writes
+  to a human. The attach step also copies the resolved actor before marking it — `resolveActors`
+  returns one object per actor, so the same person's hand-typed comments were one mutation away
+  from being relabelled too. The actor vocabulary (`ActorRef`, `ResolvedActor`, `actorKey`) split
+  into `issues/actor-identity.ts` so formatting a key no longer drags in the Postgres client.
+
+- REST decided every caller was a person, so the evidence gates ran on `/mcp` and not on the CLI's
+  own surface. `requireAuth` reduces a PAT principal to `principal: 'pat'`, a string tag, and four
+  separate route sites then built a `{ type: 'user' }` actor by hand. MCP was safe by accident — it
+  synthesizes a device for a PAT principal, and the gates keyed on device-ness — but REST has no
+  device to synthesize, so `PATCH /api/issues/batch`, `PATCH /api/issues/:id/transition` and the
+  manual step trigger all transitioned as a human. `/api/issues` is on the PAT allowlist, so those
+  are reachable with any write-scoped token, and an agent holding one skipped ISS-786/812 entirely.
+  Actors are now built in one place that carries the trust axis with them.
+
+- The lifecycle gates asked whether the actor was a device when what they meant was whether the
+  caller was a person. Four of them — the evidence gate, the agent-close hold, the release-record
+  refusal and the autonomous park rewrite — now read `agency`, and two of those already argued the
+  human-vs-agent case in their own guards while implementing device-ness. A job token makes the two
+  axes differ for the first time: the write is its creator's, the caller is an agent. `actor.type`
+  keeps answering who owns the write, which is what the two `actor_type` columns store, so no
+  existing caller changes behaviour and no migration was needed. The five branches that genuinely
+  mean "came from a runner" — WS room routing, the heartbeat, the orchestrator's `DeviceLite`, and
+  the two readers of the stored enum — were left alone deliberately. What is NOT fixed is the
+  stored half: agency is not persisted, so the activity feed will call an agent's write a person's
+  once job tokens run. `docs/proposals/agency-is-not-persisted.md` prices that.
+
+- A job's own access token authenticated as the human who owns it. Core mints one PAT per
+  dispatched job under `jobs.created_by`, hands it to the runner and exports it to the agent as
+  `$FORGE_PAT` — and `authenticatePat` stamped every PAT `agency: 'human'`, a constant. `agency` is
+  the field the ISS-786/812 evidence gates read: `principalActor` maps a human PAT to a `user`
+  actor, and both `checkTransitionEvidence` and `forge_issues.mark_merged` skip their evidence
+  check for one. So the credential built specifically for agents was the single class exempt from
+  the gates that exist because agents fabricate evidence. It is now derived from the `job:` name
+  prefix, in the one place a PAT principal is built — that function serves `/mcp` and REST alike,
+  since `beginPatRequest` calls into it, so the CLI surface is covered by the same line. Measured
+  on production the same day: no job token has ever been minted, so this changes the behaviour of
+  nothing that has run, and lands before the first one exists rather than after.
+
+- `forge_issues.mark_merged` gated its evidence check on `principal.kind === 'device'` while the
+  comment above it said it mirrored `checkTransitionEvidence`'s scope, which keys on the actor. The
+  two neighbouring writes in the same file already went through `principalActor`; this one did not,
+  so any agent holding a PAT — the agent-driven chat surface, and now a job token — could claim an
+  issue was merged without the in-DB evidence a device is required to show. `merged_at` is what the
+  feature-branch barrier reads to release every dependent, so the claim ships work ahead of its
+  blocker.
+
+- `POST /api/pat` accepted a hand-made token named `job:…`. The prefix is not cosmetic: it is how
+  a user's PAT cap is counted, how a job's revoke sweep finds its token, and now how agency is
+  decided. A token wearing it escaped its owner's cap, could be revoked by a job that never owned
+  it, and would authenticate as an agent. The name is now refused on that route only — `mintPat`
+  still accepts the prefix, because that is how a dispatch mints the real thing.
+
+- Six MCP tools are back after being deleted the same day: `forge_orgs.list`, `forge_orgs.members`,
+  `forge_skill_facts.list`, `forge_skill_facts.get`, `forge_metrics.project_retry_rescues` and
+  `forge_metrics.session_failures`. Their removal claimed an audit-log split had shown no runner
+  called them; the split was wrong. `mcp_audit_log.user_id` is filled in for a device caller too —
+  it is stamped with the device's owner — so only `device_id` and `token_id` separate the two, and
+  a count that leans on `user_id` reads every device call as a human one. Split correctly, all six
+  had device callers, and the fleet hit a deleted tool at 09:07 UTC on 2026-09-01 and read
+  `not_found`. `/api/skill-facts` is `requireAuth()`, which answers a device token 401, so the
+  route was never a replacement for the callers that existed. The registered tool set is 59.
+  The four tools removed before them stay removed, but not for the reason first given here: split
+  the same way, `forge_metrics.step_durations` shows three device calls, not zero. All three are
+  from June, nothing has called it in ten weeks, and the replacement a runner would reach for is
+  `forge_metrics.project_step_durations` — still registered, device-reachable, and the name the
+  one skill that mentions this metric actually tells an agent to call. `forge_skills.pin` and
+  `forge_ux_improver` are at zero device calls; `forge_steer` never appears in the table at all.
+  The extraction that commit also did is kept — `metrics/session-failures-report.ts` remains the
+  one place the report is shaped, and the restored tools delegate to it instead of shaping it again.
+
+- The MCP fence that keeps a project-bound access token inside its project is now tested. It had
+  no coverage at all: every existing test built an unbound token, so the branch had never executed
+  once. It is the only thing stopping fourteen tools — a token reaches them with a synthesized
+  device identity, and their handlers read only the owner, never the token's binding. Removing the
+  fence now turns four tests red, and one of them shows the query reaching the database on a
+  project the token was never granted.
+
+- `/api/agent-sessions` is off the PAT allowlist. It granted nothing — the middleware guarding it
+  has no PAT branch — but its list route fans out across every project the caller can see,
+  `messages[]` included, so the entry pre-approved that reach for whoever added a PAT branch
+  later. A test now fails if any allowlisted prefix is unreachable by a PAT, which forces the
+  grant to be made by someone looking at the route.
+
 
 - Opening any issue now works again. Every issue's detail page answered "This page couldn't load" —
   not one issue, all of them, on every project — after the list endpoints started stating their own
@@ -373,64 +419,6 @@
   retries — that case is genuinely indistinguishable from one that finished, and re-running work is
   the safe side of it. (ISS-888)
 
-### Added
-
-- Work queued behind a paused pipeline run is now reported instead of sitting silently. Of every
-  gate that can hold a `queued` job, `pipeline_run_not_running` was the only one with neither a
-  reaper nor an alarm behind it: the picker only offers jobs whose run is `running`, so nothing
-  behind a pause can start, and because the active-job index covers `queued`, nothing can queue a
-  replacement step for that issue either — the issue is dead, not slow. Measured on the fleet
-  2026-08-30, four triage jobs had been in that state for 38 days with no surface anywhere able to
-  say so. A new sweeper pass notifies the project owner once per paused run past the threshold,
-  naming what paused it, how many steps are frozen behind it, and — read from the pause kind, not
-  guessed — whether it will resume by itself. The notification clears as soon as the run leaves
-  `paused`, whether it resumed or was closed. Nothing is cancelled, re-queued or re-dispatched: a
-  pause is either a machine condition that clears itself or a decision only a person can revisit,
-  and a job killed here is work the resume existed to rescue. (ISS-879)
-
-- A plan now records the branches that were weighed and dropped, not only the one that was taken.
-  Forge keeps the issue rather than the conversation, so a rejected branch that is not in the plan is
-  gone — and a plan without it reads exactly like one where nothing else was ever considered. Both
-  plan-writing skills (the autonomous driver and the staged planner) ask for a `Rejected
-  alternatives` section naming each branch and the fact that killed it, say that a forced choice is
-  written as forced, and say that an empty heading is worse than none. What is checked is that the
-  shipped bodies still ask; whether a given plan's rejected branches are real is prose no test can
-  read. (ISS-883)
-
-- `docs/VISION.md` and every proposal now say what adopting them costs the reader, and a gate keeps
-  it that way. The constitution had a Boundaries section — what Forge will not become — and nothing
-  pricing what choosing Forge takes from a team that chooses it, while the repo's own rule reads "a
-  trade-off is priced or it is not taken". `check-honest-costs` refuses an absent section, one that
-  prices nothing, and a `TBD` where the price goes; it cannot judge whether a stated price is honest,
-  and says so. (ISS-882)
-
-- Attention lists agent-filed `draft` issues that no human has looked at yet. `draft` is inert by
-  design — the dispatcher never picks it up and nothing notifies on a draft create — so a proposal
-  an agent filed used to be reachable from no surface in the product: measured 2026-08-30, 428 of
-  them across 16 projects, all addressed to the account that paired the runner rather than to anyone
-  who signs in. They now reach the project's admins, ordered by priority, capped at 20 rows with the
-  real total shown; one human comment clears a row for good. (ISS-881)
-
-### Changed
-
-- The three gates that freeze a per-file number — test-signal, the lint budget and the size budget —
-  now run one shared ratchet instead of three copies of it. Each carried its own registry read,
-  baseline I/O, freeze comparison and staged-file collection, and the copies had drifted apart:
-  `check-size-budget`'s own comment named `check-lint-budget` as the version it must not drift from
-  with nothing enforcing that, while `check-test-signal` fell back to built-in defaults when the
-  registry was missing, read a failed `git diff --cached` as an empty stage — a commit hook
-  reporting clean because git broke — and overwrote a baseline it could not parse. All three now
-  fail closed the same way, and each keeps its own entry point, its own baseline file and its own
-  conformance axis. Detection policy is unchanged: old and new were run against each other over the
-  frozen records, both ratio rules seeded separately, the assertion-count boundary either side, a
-  regression on a frozen file, the staged path and the re-freeze, with identical output and exit
-  codes throughout. (ISS-848)
-
-- The test-signal baseline had drifted since it was frozen and is re-cut at the measured numbers:
-  one file had left the low-signal ratio entirely while two others sat under ceilings up to 32
-  above their real counts. Every ceiling moved down and a dead record left. (ISS-848)
-
-### Fixed
 
 - A retry that started from an empty transcript now says so, says which of seven reasons took the
   prior session away, and the rate is readable beside the failures it explains. Forge cannot promise
@@ -582,3 +570,42 @@
   agent's `churn` ledger stays as the human's reading material and is named as such. Rounds that each
   fix a different blocker still do not alarm, and one approval resets the count. Nothing is capped,
   parked or blocked — there is still no limit on how many rounds an issue may take. (ISS-878)
+
+### Changed
+
+- All five middlewares that authenticate a bearer token now read it through one pair of
+  functions instead of five copies of the same regex. No route changed what it accepts. The two
+  differences that were real are kept and named: whether the `forge_auth` cookie may stand in for
+  a missing header, and whether "no header" and "malformed header" get the same 401 — `/mcp`
+  answers those differently, and collapsing them would have downgraded its challenge.
+- Corrected the record of how device tokens are authorised. It said three middlewares disagreed;
+  there are five, and four of them already agree — a device is its own principal, with no access
+  to its owner's account. `requireAnyAuth` is the single exception, and it is now instrumented:
+  when a device token reaches it, core reports `auth.device_token_on_data_plane` with the route
+  it hit, so the branch can be removed on evidence rather than on a source read that found no
+  caller.
+
+
+- The three gates that freeze a per-file number — test-signal, the lint budget and the size budget —
+  now run one shared ratchet instead of three copies of it. Each carried its own registry read,
+  baseline I/O, freeze comparison and staged-file collection, and the copies had drifted apart:
+  `check-size-budget`'s own comment named `check-lint-budget` as the version it must not drift from
+  with nothing enforcing that, while `check-test-signal` fell back to built-in defaults when the
+  registry was missing, read a failed `git diff --cached` as an empty stage — a commit hook
+  reporting clean because git broke — and overwrote a baseline it could not parse. All three now
+  fail closed the same way, and each keeps its own entry point, its own baseline file and its own
+  conformance axis. Detection policy is unchanged: old and new were run against each other over the
+  frozen records, both ratio rules seeded separately, the assertion-count boundary either side, a
+  regression on a frozen file, the staged path and the re-freeze, with identical output and exit
+  codes throughout. (ISS-848)
+
+- The test-signal baseline had drifted since it was frozen and is re-cut at the measured numbers:
+  one file had left the low-signal ratio entirely while two others sat under ceilings up to 32
+  above their real counts. Every ceiling moved down and a dead record left. (ISS-848)
+
+### Removed
+
+- Four MCP tools whose work REST already does: `forge_steer`, `forge_ux_improver`,
+  `forge_skills.pin` and `forge_metrics.step_durations`. Nothing that runs on a build box had
+  called any of them, and every one has an endpoint that does the same job. The registered tool
+  set is now 59.
