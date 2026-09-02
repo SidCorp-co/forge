@@ -27,8 +27,6 @@ import type { UserPromptPolicyConfig } from './pipeline-config-schema.js';
 export interface ResolvedHandoffsPolicy {
   enabled: boolean;
   injectFromSteps: HandoffStep[];
-  requireHandoffWrite: boolean;
-  missingMarkerPolicy: 'fail' | 'warn' | 'silent';
   fallbackToRawIssueFieldIfMissing: boolean;
 }
 
@@ -72,8 +70,6 @@ export function resolveHandoffsPolicy(
   return {
     enabled: explicit?.enabled ?? true,
     injectFromSteps: explicitInject ?? defaultInjectFromSteps(jobType),
-    requireHandoffWrite: explicit?.requireHandoffWrite ?? true,
-    missingMarkerPolicy: explicit?.missingMarkerPolicy ?? 'warn',
     fallbackToRawIssueFieldIfMissing: explicit?.fallbackToRawIssueFieldIfMissing ?? true,
   };
 }

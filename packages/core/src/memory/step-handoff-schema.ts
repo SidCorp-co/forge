@@ -299,6 +299,59 @@ export interface HandoffScope {
  * prompt. Stable per (step, scope) pair so snapshot tests give meaningful
  * diffs when prompt logic evolves.
  */
+/**
+ * The autonomous lane's termination block.
+ *
+ * `renderTerminationBlock` below is the staged one and stays as it is. The
+ * driver needs its own because the staged text is wrong for it in three ways
+ * that all point the same direction: it names MCP tools on a lane that reaches
+ * Forge over the CLI, it sends the agent to "the next state in the Pipeline
+ * Rules ladder" on a lane that has no ladder, and it offers `waiting` and
+ * `reopen` — the two parks `issues/autonomous-park.ts` then silently rewrites,
+ * so instructing them makes that net fire on every session it was built to
+ * catch once.
+ */
+// cm:guard do NOT restate the five statuses here. The driver skill's "Statuses you may write" table is the single declaration, gated against `AUTONOMOUS_DRIVER_STATUSES` by check-autonomous-transitions.mjs; a second list in the prompt is one the gate does not read and the two would drift in the same context window.
+// cm:edge contract -> packages/runner/skills/forge-drive/SKILL.md — the skill owns the protocol and this block owns only what the skill cannot know: the scope literals. Adding process here duplicates an authority that is already gated.
+export function renderDriveTerminationBlock(scope: HandoffScope): string {
+  return [
+    '## Before you stop',
+    '',
+    'Record a handoff. Nothing dispatches after you, so this is not context for a next step —',
+    'it is the summary of the turn a human reads on the issue, and the only one that outlives',
+    'your session.',
+    '',
+    '```',
+    "forge-runner api issue-step-contexts -X POST -d '{",
+    `  "projectId": "${scope.projectId}",`,
+    `  "issueId": "${scope.issueId}",`,
+    `  "pipelineRunId": "${scope.runId}",`,
+    '  "step": "drive",',
+    `  "attempt": ${scope.attempt},`,
+    '  "payload": <see schema below>',
+    "}'",
+    '```',
+    '',
+    'Then leave the issue on one of the statuses your skill lists, and nothing else:',
+    '',
+    '```',
+    `forge-runner api issues/${scope.issueId} -X PATCH -d '{"status":"<status>"}'`,
+    '```',
+    '',
+    'Required JSON shape for the `payload`:',
+    '',
+    '```json',
+    renderHandoffSchemaPrompt('drive'),
+    '```',
+    '',
+    'Rules:',
+    '- All fields above are REQUIRED unless marked optional.',
+    '- Array fields have a max length; do not exceed it.',
+    '- Enum fields must use one of the listed values exactly.',
+    '- Do NOT invent fields not listed above.',
+  ].join('\n');
+}
+
 export function renderTerminationBlock(opts: { step: HandoffStep; scope: HandoffScope }): string {
   const { step, scope } = opts;
   return [

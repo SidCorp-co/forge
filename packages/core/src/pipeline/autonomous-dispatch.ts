@@ -47,19 +47,28 @@ export function autonomousStepFor(
   return { type: AUTONOMOUS_JOB_TYPE, skillName: AUTONOMOUS_SKILL_NAME };
 }
 
-// cm:guard the runId MUST be in the prompt — `forge_phase` takes it as a required argument, and without it the agent cannot make the call the skill tells it to make first. It has no other way to learn its own run.
+// cm:guard the runId MUST be in the prompt — every phase endpoint takes it as a path segment, and the agent has no other way to learn its own run without spending a call on the pipeline-runs list route. It named `forge_phase` until 2026-09-02; the argument survived the move to REST, the tool did not.
+// cm:edge contract -> packages/runner/skills/forge-drive/SKILL.md — that skill and this prompt are read in one context and must name ONE way to reach Forge. They disagreed until 2026-09-02: the skill said CLI, this said `forge_issues` / `forge_config` / `forge_phase`, and the agent believed the prompt — 4,806 `forge_step_start` and 4,268 `forge_step_handoff.write` MCP calls from agents, every one on an autonomous project.
 function buildDrivePrompt(args: { issueId: string; projectId: string; runId: string }): string {
   return [
     `Drive issue ${args.issueId} to completion with the \`${AUTONOMOUS_SKILL_NAME}\` skill.`,
     '',
-    `Project: ${args.projectId}. Read the issue with \`forge_issues\`, and this project's`,
-    '`projectFacts` with `forge_config` action `get` before phase 1 — the skills ship in the',
-    'runner binary and know nothing about this repo.',
+    `Project: ${args.projectId}. You reach Forge over the CLI — \`forge-runner api <path>\`,`,
+    'authenticated by `$FORGE_PAT`, which the runner has already exported. Read the issue and',
+    "this project's `projectFacts` before phase 1; the skills ship in the runner binary and know",
+    'nothing about this repo:',
     '',
-    `Your run is ${args.runId}. Declare every phase with \`forge_phase\` before you begin it,`,
-    'passing that runId. The declaration is your resume point: a session that dies restarts from',
-    'the last phase you declared, so call `forge_phase` action `resume_point` first — if it',
-    'returns a phase, you are a resumed session and that is where you continue.',
+    `    forge-runner api issues/${args.issueId}`,
+    `    forge-runner api projects/${args.projectId}/pipeline-config`,
+    '',
+    `Your run is ${args.runId}. Declare every phase before you begin it, and close it when it`,
+    'ends. The declaration is your resume point: a session that dies restarts from the last phase',
+    'you declared, so read the resume point FIRST — if it returns a phase, you are a resumed',
+    'session and that is where you continue.',
+    '',
+    `    forge-runner api pipeline-runs/${args.runId}/resume-point`,
+    `    forge-runner api pipeline-runs/${args.runId}/phases -X POST -d '{"phase":"understand"}'`,
+    `    forge-runner api pipeline-runs/${args.runId}/phases/end -X POST -d '{"phase":"understand","attempt":1,"outcome":"ok"}'`,
   ].join('\n');
 }
 

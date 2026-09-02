@@ -87,15 +87,25 @@ describe('dispatchAutonomous', () => {
     });
   });
 
-  // cm:guard forge_phase takes runId as a REQUIRED argument, so a prompt without it instructs the agent to make a call it cannot make — and the failure looks like the agent ignoring its skill
-  it('tells the agent which run it is on, since forge_phase cannot be called without it', async () => {
+  // cm:guard every phase endpoint takes the run as a PATH SEGMENT, so a prompt without it instructs the agent to make a call it cannot form — and the failure looks like the agent ignoring its skill
+  it('tells the agent which run it is on, and where its resume point lives', async () => {
     selectLimit.mockResolvedValueOnce([{ status: 'open' }]);
 
     await dispatchAutonomous({ ...BASE, status: 'open', cfg: { mode: 'autonomous' } });
 
     const prompt = String(insertAndEnqueueJob.mock.calls[0]?.[0]?.promptString ?? '');
     expect(prompt).toContain('run-1');
-    expect(prompt).toContain('resume_point');
+    expect(prompt).toContain('pipeline-runs/run-1/resume-point');
+  });
+
+  // cm:guard this prompt and packages/runner/skills/forge-drive/SKILL.md are read in ONE context window, so they must name one transport. They disagreed until 2026-09-02 — the skill said `forge-runner api`, this said `forge_issues` / `forge_config` / `forge_phase` — and the agent believed the prompt: 4,806 `forge_step_start` and 4,268 `forge_step_handoff.write` MCP calls, every one on an autonomous project. The runner-side twin of this rule is `bundled_skills.rs`, which bans the same substring in the skill bodies.
+  it('names no MCP tool, because the shell it runs in has no MCP client', async () => {
+    selectLimit.mockResolvedValueOnce([{ status: 'open' }]);
+
+    await dispatchAutonomous({ ...BASE, status: 'open', cfg: { mode: 'autonomous' } });
+
+    const prompt = String(insertAndEnqueueJob.mock.calls[0]?.[0]?.promptString ?? '');
+    expect([...prompt.matchAll(/forge_[a-z_.]+/g)].map((m) => m[0])).toEqual([]);
   });
 
   // cm:guard the property the whole branch exists for: falling through at a non-entry status makes the staged resolver report "no skill registered", which pauses the run and comments on the issue every time the agent moves it

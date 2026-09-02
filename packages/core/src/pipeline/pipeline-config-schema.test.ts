@@ -275,7 +275,7 @@ describe('stageConfigSchema per-state overrides', () => {
     expect(parsed.states?.developed?.userPromptPolicy?.fieldCaps?.plan).toBe(20_000);
   });
 
-  it('accepts handoffs policy with full knobs', () => {
+  it('accepts every handoffs field that still exists', () => {
     const parsed = pipelineConfigSchema.parse({
       states: {
         developed: {
@@ -284,8 +284,6 @@ describe('stageConfigSchema per-state overrides', () => {
               enabled: true,
               injectFromSteps: ['triage', 'plan'],
               fallbackToRawIssueFieldIfMissing: true,
-              requireHandoffWrite: true,
-              missingMarkerPolicy: 'warn',
             },
           },
         },
@@ -296,18 +294,18 @@ describe('stageConfigSchema per-state overrides', () => {
       'triage',
       'plan',
     ]);
-    expect(parsed.states?.developed?.userPromptPolicy?.handoffs?.missingMarkerPolicy).toBe('warn');
   });
 
-  it('rejects handoffs.missingMarkerPolicy outside the enum', () => {
-    expect(() =>
-      pipelineConfigSchema.parse({
-        states: {
-          developed: { userPromptPolicy: { handoffs: { missingMarkerPolicy: 'explode' } } },
-        },
-      }),
-    ).toThrow();
-  });
+  it.each(['missingMarkerPolicy', 'requireHandoffWrite'])(
+    'rejects handoffs.%s — the gate knobs are gone, not merely unread',
+    (key) => {
+      expect(() =>
+        pipelineConfigSchema.parse({
+          states: { developed: { userPromptPolicy: { handoffs: { [key]: 'anything' } } } },
+        }),
+      ).toThrow();
+    },
+  );
 
   it('does NOT cap fieldCaps server-side (D3: operator owns budget)', () => {
     // 1 million chars — silly but allowed.

@@ -27,6 +27,7 @@ import {
   type HandoffScope,
   type HandoffStep,
   isHandoffStep,
+  renderDriveTerminationBlock,
   renderTerminationBlock,
   type StepHandoffPayload,
 } from '../memory/step-handoff-schema.js';
@@ -340,12 +341,12 @@ function formatIssueSnapshot(
       }),
     );
   }
-  // Fetch-via-tool pointer: the prompt no longer inlines the issue body by
-  // default. Tell the agent where the full data lives so it never works off
-  // the title alone.
+  // cm:guard the pointer must name the lane's OWN transport, and `drive` is why this is a fork rather than one sentence: the autonomous driver reaches Forge through `forge-runner api` and has no MCP client to call, so the staged text sent it to a tool it could not use — measured on the audit log as 4,806 `forge_step_start` calls from agents, every one on an autonomous project, against a bundled skill that names no MCP tool at all.
   lines.push(
     '',
-    'Full issue body, comments, attachments, and prior step handoffs are NOT inlined here — call `forge_step_start` first to load them. Read an attached image/file with `forge_uploads` action=fetch.',
+    jobType === 'drive'
+      ? 'Full issue body, comments and attachments are NOT inlined here — read them with `forge-runner api issues/<id>` and `forge-runner api issues/<id>/comments`.'
+      : 'Full issue body, comments, attachments, and prior step handoffs are NOT inlined here — call `forge_step_start` first to load them. Read an attached image/file with `forge_uploads` action=fetch.',
   );
   return lines.join('\n');
 }
@@ -556,11 +557,15 @@ export function buildJobPromptString(args: {
     lines.push('', formatPriorHandoffs(handoffsToRender));
   }
 
-  // Append `## Termination protocol` last so it sits at the end of the
-  // prompt — agents read top-down; the work body comes first, the
-  // termination contract is the final thing they see before acting.
+  // cm:guard append this LAST, after every body block — an agent reads top-down and acts on what it read most recently, so a termination contract placed above the work is one it has stopped holding by the time it finishes.
+  // cm:guard fork on `drive`, and `jobType` is a sound proxy for the lane because `autonomousStepFor` is the ONLY producer of that type and `stageEnum` on `POST /:id/run-pipeline-step` excludes it — a drive job cannot be enqueued outside the autonomous lane. The staged block sends the agent to "the next state in the Pipeline Rules ladder", which this mode does not have, and offers `waiting` and `reopen`, which `issues/autonomous-park.ts` then rewrites on every session.
   if (handoffsEnabled && isHandoffStep(args.jobType) && args.handoffScope) {
-    lines.push('', renderTerminationBlock({ step: args.jobType, scope: args.handoffScope }));
+    lines.push(
+      '',
+      args.jobType === 'drive'
+        ? renderDriveTerminationBlock(args.handoffScope)
+        : renderTerminationBlock({ step: args.jobType, scope: args.handoffScope }),
+    );
   }
 
   return lines.join('\n');

@@ -142,30 +142,15 @@ export const userPromptPolicySchema = z
       .optional(),
     truncationStrategy: z.enum(['paragraph-boundary', 'byte-cut']).optional(),
     /**
-     * Step-handoff memory injection + verification (proposal Y).
+     * Step-handoff injection. Absent means ON — the resolved default lives in
+     * `pipeline/handoff-policy.ts`, not in the `.default()` below, which only
+     * fires when a project sends a partial object.
      *
-     * When `enabled=true` the prompt builder:
-     *   - Queries `memories` for prior step handoffs scoped to the current
-     *     pipeline_run and renders them under `## Prior step handoffs`.
-     *   - Skips raw `description` / `plan` injection for steps whose
-     *     handoff is present (saves prompt tokens).
-     *   - Appends a `## Termination protocol` block instructing the agent
-     *     to call `forge_memory.write` with the rendered schema and emit
-     *     `DONE` only after the write succeeds.
-     *
-     * The lifecycle hook (`POST /api/jobs/:id/complete`) then verifies:
-     *   - `requireHandoffWrite=true`  → look up the handoff row; fail the
-     *     job with `failureKind='handoff_not_written'` if missing.
-     *   - `missingMarkerPolicy`       → behaviour when the agent's last
-     *     text does not end with `DONE`/`HANDOFF_GIVE_UP`:
-     *       'fail'   — mark FAILED (`handoff_no_done_marker`)
-     *       'warn'   — log breadcrumb, finalize as done (rollout-safe)
-     *       'silent' — finalize as done, no log
-     *
-     * `fallbackToRawIssueFieldIfMissing=true` keeps the raw `description`/
-     * `plan` injection when a predecessor handoff is missing — rollout-safe
-     * during Phase 1a/b before every project has produced handoffs.
+     * The prompt builder renders prior handoffs under `## Prior step handoffs`,
+     * drops the raw `description` / `plan` a present handoff already carries,
+     * and appends a termination block asking for this step's own.
      */
+    // cm:guard the handoff is CONTEXT, never a gate, and this block carried two knobs that said otherwise for as long as they existed: `requireHandoffWrite` and `missingMarkerPolicy` described `POST /api/jobs/:id/complete` failing a job for a missing row or a missing `DONE` marker. No such check exists — the axis-separation decision removed it deliberately, and the one place that still reads a handoff (`jobs/finalize-done.ts`) does the opposite, rescuing a job the runner called failed. Both were removed on 2026-09-02 with 0 projects setting either. Re-adding one re-opens a decision, so make it there, not here.
     handoffs: z
       .object({
         enabled: z.boolean().default(false),
@@ -186,8 +171,6 @@ export const userPromptPolicySchema = z
           )
           .default([]),
         fallbackToRawIssueFieldIfMissing: z.boolean().default(true),
-        requireHandoffWrite: z.boolean().default(true),
-        missingMarkerPolicy: z.enum(['fail', 'warn', 'silent']).default('warn'),
       })
       .strict()
       .optional(),

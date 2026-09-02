@@ -2,12 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { resolveHandoffsPolicy } from './handoff-policy.js';
 
 describe('resolveHandoffsPolicy', () => {
-  it('defaults to enabled + warn + canonical injects when no explicit config', () => {
+  it('defaults to enabled + canonical injects when no explicit config', () => {
     expect(resolveHandoffsPolicy(null, 'plan')).toEqual({
       enabled: true,
       injectFromSteps: ['triage', 'clarify'],
-      requireHandoffWrite: true,
-      missingMarkerPolicy: 'warn',
       fallbackToRawIssueFieldIfMissing: true,
     });
   });
@@ -36,8 +34,6 @@ describe('resolveHandoffsPolicy', () => {
   it('explicit enabled=false overrides default-on', () => {
     const r = resolveHandoffsPolicy({ handoffs: { enabled: false } } as never, 'plan');
     expect(r.enabled).toBe(false);
-    // Other fields still default
-    expect(r.missingMarkerPolicy).toBe('warn');
   });
 
   it('explicit injectFromSteps replaces the default canonical list', () => {
@@ -61,19 +57,5 @@ describe('resolveHandoffsPolicy', () => {
     expect(r.injectFromSteps).toEqual(['triage', 'plan', 'clarify']);
   });
 
-  it('explicit missingMarkerPolicy=fail overrides default warn', () => {
-    const r = resolveHandoffsPolicy(
-      { handoffs: { enabled: true, missingMarkerPolicy: 'fail' } } as never,
-      'plan',
-    );
-    expect(r.missingMarkerPolicy).toBe('fail');
-  });
-
-  it('explicit requireHandoffWrite=false overrides default true', () => {
-    const r = resolveHandoffsPolicy(
-      { handoffs: { enabled: true, requireHandoffWrite: false } } as never,
-      'plan',
-    );
-    expect(r.requireHandoffWrite).toBe(false);
-  });
+  // cm:guard the resolved policy carries NO gate field, and a test asserting one is how they came back: `requireHandoffWrite` and `missingMarkerPolicy` resolved for months with no reader, and their own tests were the only thing keeping them alive. The handoff is context; `jobs/finalize-done.ts` reads it to RESCUE a failed job, never to fail a passing one.
 });

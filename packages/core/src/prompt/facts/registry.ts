@@ -371,16 +371,25 @@ forge-release appends this to the changelog at close. **An agent close is REFUSE
     // none, so injecting the generic "write a handoff" instruction there would
     // send the agent after a payload that cannot validate.
     appliesTo: Object.keys(HANDOFF_KEYS) as JobType[],
-    version: 1,
+    version: 2,
+    // cm:guard name the transport the STAGE can actually reach: `drive` runs in a shell with `$FORGE_PAT` and no MCP client, and this fact applied to it while naming `forge_step_handoff.write` — an instruction the driver could not follow, in the same context as a bundled skill that names no tool at all. `HANDOFF_KEYS` carries a `drive` entry, so `appliesTo` includes it and the fork is not optional.
     render: (ctx) => {
       const stage = ctx?.stage ?? null;
       const keys = stage ? HANDOFF_KEYS[stage] : undefined;
+      const call =
+        stage === 'drive'
+          ? '`forge-runner api issue-step-contexts -X POST`'
+          : '`forge_step_handoff.write`';
       const body = keys
-        ? `For the \`${stage}\` step, call \`forge_step_handoff.write\` with: \`${keys}\`.`
-        : 'Call `forge_step_handoff.write` with the structured payload for your step (triage/clarify/plan/code/review/test/fix each have a schema).';
+        ? `For the \`${stage}\` step, call ${call} with: \`${keys}\`.`
+        : `Call ${call} with the structured payload for your step (triage/clarify/plan/code/review/test/fix each have a schema).`;
+      const tail =
+        stage === 'drive'
+          ? 'Nothing dispatches after you, so this is not context for a next step — it is the summary of the turn a human reads on the issue.'
+          : 'Handoff is best-effort context for the next step; it never replaces the mandatory status advance. Finish by replying `DONE` on its own line as your final assistant text.';
       return `## Step handoff (best-effort)
 ${body}
-Handoff is best-effort context for the next step; it never replaces the mandatory status advance. Finish by replying \`DONE\` on its own line as your final assistant text.`;
+${tail}`;
     },
   },
 

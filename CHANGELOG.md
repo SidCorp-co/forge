@@ -220,6 +220,33 @@
 
 ### Fixed
 
+- **Core's own prompt told the autonomous driver to use MCP**, against a bundled skill that names
+  no MCP tool at all — the two are read in one context window and the agent believed the prompt.
+  Measured on `mcp_audit_log`: 4,806 `forge_step_start` and 4,268 `forge_step_handoff.write` calls
+  from agents, every one on an autonomous project, whose shell holds `$FORGE_PAT` and has no MCP
+  client. Four sites, all forked on `drive` rather than rewritten, so a staged prompt comes out
+  byte-identical: the drive dispatch prompt, the fetch-via-tool pointer, the termination block and
+  the injected step-handoff fact.
+
+  The staged termination block was wrong for the driver in a third way beyond the tool names. It
+  sent the agent to "the next state in the Pipeline Rules ladder", which this mode does not have,
+  and offered `waiting` and `reopen` — the two parks `issues/autonomous-park.ts` rewrites at write
+  time. Instructing them made a net built to catch a mistake fire on every session instead. The
+  driver's block names neither, and states no ladder: the skill's five-status table is the single
+  declaration, and `check-autonomous-transitions.mjs` already gates it.
+
+  `jobType === 'drive'` is the lane, not a heuristic: `autonomousStepFor` is the only producer of
+  that type, `dispatchDriveManual` is reachable only behind `isAutonomous`, and `stageEnum` on
+  `POST /api/issues/:id/run-pipeline-step` excludes it.
+
+- Removed `userPromptPolicy.handoffs.requireHandoffWrite` and `.missingMarkerPolicy`. Both resolved
+  a default on every prompt build and no code read either. The comment above them described a
+  `POST /api/jobs/:id/complete` check that fails a job for a missing handoff row or a missing
+  `DONE` marker; no such check exists — the axis-separation decision removed it, and the one place
+  that still reads a handoff (`jobs/finalize-done.ts`) does the opposite, rescuing a job the runner
+  called failed. 0 projects set either, and no UI, contract or doc referenced them. The schema is
+  `.strict()`, so a config still sending one is now rejected rather than silently ignored.
+
 - `POST /api/issues/:id/comments` stamped no `is_ai` at all, so an agent's comment took the column
   default and landed `is_ai = false` with a NULL `author_device_id` — the exact tuple the
   `comments.is_ai` guard defines as a human. Measured against the deploy with `forge-runner api`.
