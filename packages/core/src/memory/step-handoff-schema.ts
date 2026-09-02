@@ -311,8 +311,8 @@ export interface HandoffScope {
  * so instructing them makes that net fire on every session it was built to
  * catch once.
  */
-// cm:guard do NOT restate the five statuses here. The driver skill's "Statuses you may write" table is the single declaration, gated against `AUTONOMOUS_DRIVER_STATUSES` by check-autonomous-transitions.mjs; a second list in the prompt is one the gate does not read and the two would drift in the same context window.
-// cm:edge contract -> packages/runner/skills/forge-drive/SKILL.md — the skill owns the protocol and this block owns only what the skill cannot know: the scope literals. Adding process here duplicates an authority that is already gated.
+// cm:guard do NOT restate the five statuses here. The driver skill (`issue-flow`, forge-plugin repo) declares what the agent reads and `AUTONOMOUS_DRIVER_STATUSES` declares what core enforces; a third list in the prompt is one more copy to drift in the same context window, and no gate reads it.
+// cm:guard CROSS-REPO coupling, so no `cm:edge` can hold it: the other side is `plugin/skills/issue-flow/SKILL.md` in github.com/SidCorp-co/forge-plugin. the skill owns the protocol and this block owns only what the skill cannot know: the scope literals. Adding process here duplicates an authority that is already gated.
 export function renderDriveTerminationBlock(scope: HandoffScope): string {
   return [
     '## Before you stop',

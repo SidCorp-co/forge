@@ -1,14 +1,13 @@
 /**
- * The phase journal's CHECK constraint, against real Postgres.
+ * The phase journal against real Postgres, after the reviewer-verdict mechanism
+ * was removed on 2026-09-02.
  *
- * `phase_journal_verdict_is_runner_written` is the only thing standing between
- * a driver and its own review record. Under the agent-driven pipeline there is
- * no job boundary left between coding and review, so nothing downstream would
- * contradict a session that wrote itself an approval — the database has to
- * refuse it.
- *
- * A constraint that has never been observed rejecting anything is a claim, not
- * a mechanism, and a mocked db cannot observe it. Hence this file.
+ * Until then `phase_journal_verdict_is_runner_written` refused any `verdict`
+ * artifact not written by the runner. The constraint is gone with the mechanism
+ * (migration 0194), but rows it protected still exist, and `endPhase` keeps one
+ * clause for their sake: an agent note may not land on a row already carrying a
+ * verdict. That clause protects HISTORY — nothing writes a verdict any more —
+ * and this file is what proves it still does.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -22,7 +21,7 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-describe('phase_journal constraints E2E', () => {
+describe('phase_journal E2E', () => {
   let harness: TestDatabase;
   let projectId: string;
   let runId: string;
@@ -64,11 +63,7 @@ describe('phase_journal constraints E2E', () => {
     `);
   }
 
-  /**
-   * drizzle wraps the driver error, so the constraint name is on the cause, not
-   * the message. Asserting the name rather than regex-matching prose is what
-   * makes this test fail if a DIFFERENT constraint starts rejecting the row.
-   */
+  // cm:why drizzle wraps the driver error, so the constraint name is on the cause, not the message — asserting the name rather than regex-matching prose is what makes this fail if a DIFFERENT constraint starts rejecting the row
   async function violatedConstraint(p: Promise<unknown>): Promise<string | undefined> {
     try {
       await p;
@@ -79,49 +74,8 @@ describe('phase_journal constraints E2E', () => {
     }
   }
 
-  it('refuses a verdict the agent wrote for itself', async () => {
-    expect(
-      await violatedConstraint(
-        insertPhase('review', 'agent', { kind: 'verdict', decision: 'approve' }),
-      ),
-    ).toBe('phase_journal_verdict_is_runner_written');
-  });
-
-  it('refuses an agent-written rejection too, so the rule is about authorship not outcome', async () => {
-    expect(
-      await violatedConstraint(
-        insertPhase('review', 'agent', { kind: 'verdict', decision: 'request_changes' }),
-      ),
-    ).toBe('phase_journal_verdict_is_runner_written');
-  });
-
-  it('accepts the same verdict from the runner', async () => {
-    await insertPhase('review', 'runner', { kind: 'verdict', decision: 'approve' });
-
-    const rows = await harness.db.execute(sql`
-      SELECT source, artifact->>'decision' AS decision FROM phase_journal WHERE phase = 'review'
-    `);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ source: 'runner', decision: 'approve' });
-  });
-
-  // cm:guard a verdict that updates zero rows returned 200 and left no record — indistinguishable from a review that never ran, on the one check the driver cannot perform on itself
-  it('refuses a verdict for a phase attempt that was never opened', async () => {
-    const { recordVerdict } = await import('../../src/pipeline/phase-journal.js');
-
-    await expect(
-      recordVerdict({
-        runId,
-        phase: 'review',
-        attempt: 7,
-        outcome: 'ok',
-        verdict: { decision: 'approve' },
-      }),
-    ).rejects.toThrow(/no row for review attempt 7/);
-  });
-
-  // cm:guard the driver must not erase the one row it cannot author — an accepted overwrite keeps `source: 'runner'`, so its own prose then reads as the reviewer's verdict (getcontent 2026-08-21: 9 of 10 closed issues lost a real verdict this way)
-  it('refuses to let an agent note overwrite a recorded verdict', async () => {
+  // cm:guard HISTORY protection: rows from before 2026-09-02 carry the reviewer's decision under `source: 'runner'`, and an accepted overwrite keeps that source so the driver's prose reads as the reviewer's (getcontent 2026-08-21: 9 of 10 closed issues lost a real verdict this way). Nothing writes such rows now; this keeps the ones that exist honest.
+  it('refuses to let an agent note overwrite a historical verdict row', async () => {
     const { endPhase } = await import('../../src/pipeline/phase-journal.js');
     await insertPhase('review', 'runner', {
       kind: 'verdict',
@@ -149,6 +103,15 @@ describe('phase_journal constraints E2E', () => {
     expect(rows[0]?.['ended_at']).toBeNull();
   });
 
+  // cm:guard this is the removal's own witness, not an aspiration: the CHECK that refused this insert is gone with migration 0194, and a test that still asserted the refusal would be the stale claim the changelog warns about. If this ever fails, the constraint came back — decide that on purpose.
+  it('no longer refuses a verdict-shaped row from an agent — the CHECK is gone', async () => {
+    await insertPhase('review', 'agent', { kind: 'verdict', decision: 'approve' });
+    const rows = await harness.db.execute(
+      sql`SELECT source FROM phase_journal WHERE phase = 'review'`,
+    );
+    expect(rows).toHaveLength(1);
+  });
+
   it('still closes a phase whose artifact is not a verdict', async () => {
     const { endPhase } = await import('../../src/pipeline/phase-journal.js');
     await insertPhase('code', 'agent', { kind: 'note', text: 'first' });
@@ -168,7 +131,7 @@ describe('phase_journal constraints E2E', () => {
     expect(rows[0]?.['ended_at']).not.toBeNull();
   });
 
-  it('lets the agent write every non-verdict phase it owns', async () => {
+  it('lets the agent write every phase it owns', async () => {
     await insertPhase('code', 'agent', { kind: 'commit', sha: 'abc123' });
     await insertPhase('plan', 'agent', null);
 

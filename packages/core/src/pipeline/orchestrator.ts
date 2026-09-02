@@ -426,7 +426,7 @@ export async function triggerPipelineStepManual(args: {
   reason: Record<string, unknown>;
 }): Promise<{ jobId: string; type: JobType }> {
   const { cfg, projectCreatedBy } = await loadPipelineConfig(args.projectId);
-  // cm:guard the autonomous branch must sit BEFORE skill resolution: `forge-drive` ships in the runner binary and is never in `skill_registrations`, so the staged resolver throws NO_SKILL_REGISTERED and Run is dead on every autonomous project — which is the only escape from a gated entry stage
+  // cm:guard the autonomous branch must sit BEFORE skill resolution: the driver skill arrives as a Claude Code plugin and is never in `skill_registrations`, so the staged resolver throws NO_SKILL_REGISTERED and Run is dead on every autonomous project — which is the only escape from a gated entry stage
   if (isAutonomous(cfg)) return dispatchDriveManual({ ...args, projectCreatedBy });
   const resolver = createProjectSkillResolver(args.projectId);
 

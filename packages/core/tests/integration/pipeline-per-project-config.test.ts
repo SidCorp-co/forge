@@ -378,7 +378,7 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
       type: j.type,
       skillName: j.payload.skillName,
     }));
-    expect(summary).toEqual([{ type: 'drive', skillName: 'forge-drive' }]);
+    expect(summary).toEqual([{ type: 'drive', skillName: 'issue-flow' }]);
   });
 
   it('fixture 2 — custom skill override at the plan stage (`clarified`) runs the custom skill there; defaults elsewhere', async () => {

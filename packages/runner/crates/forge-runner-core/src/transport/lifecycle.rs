@@ -70,29 +70,6 @@ pub async fn kill_ack(client: &CoreClient, job_id: &str, outcome: &str) -> Resul
     send(client, &url, body).await
 }
 
-/// Record the reviewer's structured result on the job's run. The row lands
-/// `source='runner'` because THIS credential posted it — there is no
-/// user-authenticated twin of this endpoint, by design.
-// cm:edge contract -> packages/core/src/pipeline/verdict-routes.ts — field names and the decision vocabulary are that route's zod schema; a mismatch is a 400 the runner logs and drops, not a compile error
-pub async fn verdict(
-    client: &CoreClient,
-    job_id: &str,
-    v: &crate::workspace::verdict::Verdict,
-) -> Result<()> {
-    let url = client.url(&format!("/api/jobs/{job_id}/verdict"));
-    let mut body = serde_json::json!({ "decision": v.decision });
-    if let Some(phase) = &v.phase {
-        body["phase"] = serde_json::Value::String(phase.clone());
-    }
-    if let Some(attempt) = v.attempt {
-        body["attempt"] = serde_json::Value::from(attempt);
-    }
-    if let Some(findings) = &v.findings {
-        body["findings"] = findings.clone();
-    }
-    send(client, &url, body).await
-}
-
 async fn send(client: &CoreClient, url: &str, body: serde_json::Value) -> Result<()> {
     let resp = client
         .http()

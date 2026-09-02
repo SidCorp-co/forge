@@ -32,7 +32,6 @@ passed, because the external record of what shipped belonged to none of them.
 | lint debt | `check-lint-budget` — `conformance` | per (file, rule) biome violations in `web-v2` and `core`, frozen; drained on touch where a scope asks for it | which rules exist — each package's `biome.json` declares them |
 | checkers | `biome check scripts` — `conformance` | the files in `scripts/` that implement every other gate | anything under `packages/` |
 | knowledge | `cm verify` — `codemap` | `cm:` couplings, prose discipline, module headers | anything a tool can derive |
-| transitions | `check-autonomous-transitions` — `codemap` | that every bundled skill writes the kernel statuses `AUTONOMOUS_DRIVER_STATUSES` declares, never a render label | what an agent wrote at runtime — that lives in `activity_log` |
 | injected docs | `check-injected-doc-modes` — `codemap` | that a status transition in a guide body or a mandatory fact names the pipeline mode it belongs to | whether the prose around a qualified transition is true; a project's own `projectFacts`, which live in the DB |
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs | whether the price stated is honest — that is review's |
 | relations | `archmap check` — `archmap` | which module may depend on which | how a file is written |

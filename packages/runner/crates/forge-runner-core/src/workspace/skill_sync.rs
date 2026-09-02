@@ -292,10 +292,7 @@ fn detect_user_shadow(name: &str) -> Option<(PathBuf, Option<String>)> {
 /// longer in `keep` — the converge-on-delete set (ISS-802 stage ③ prune). A
 /// dir with no `.hash` marker is left alone: it was never seeded by Forge (a
 /// user-created folder under `.claude/skills/`), so pruning must not touch it.
-// cm:guard a bundled name is never prunable, marker or not — the server manifest never lists a skill that ships in this binary, so without this exclusion the first sync after an autonomous job deletes the skill set that job is running on
-// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/workspace/bundled_skills.rs — `seed_into` writes these dirs; the two must agree on the name set
 fn find_prunable(skills_root: &Path, keep: &std::collections::HashSet<&str>) -> Vec<PathBuf> {
-    let bundled = crate::workspace::bundled_skills::all_names();
     let Ok(entries) = std::fs::read_dir(skills_root) else {
         return Vec::new();
     };
@@ -305,9 +302,7 @@ fn find_prunable(skills_root: &Path, keep: &std::collections::HashSet<&str>) -> 
         .map(|e| e.path())
         .filter(|dir| {
             let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            !keep.contains(name)
-                && !bundled.iter().any(|b| b == name)
-                && read_hash_marker(dir).is_some()
+            !keep.contains(name) && read_hash_marker(dir).is_some()
         })
         .collect()
 }

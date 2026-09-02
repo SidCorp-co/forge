@@ -12,7 +12,6 @@
 //
 // Design: docs/proposals/agent-driven-pipeline.md
 
-import { resolveMode } from '../pipeline/autonomous-mode.js';
 import { isMetaSkillName } from './meta-skills.js';
 
 /**
@@ -22,15 +21,11 @@ import { isMetaSkillName } from './meta-skills.js';
  */
 export type LockedSkillsDeclaration = boolean | readonly string[] | undefined;
 
-export type SkillLockReason = 'forge-reserved' | 'autonomous-mode' | 'project-declared';
+export type SkillLockReason = 'forge-reserved' | 'project-declared';
 
 export interface SkillLockContext {
   /** `pipelineConfig.lockedSkills`. */
   declared?: LockedSkillsDeclaration;
-  /** Names the runner ships in its binary — locked while the project runs autonomous. */
-  bundled?: readonly string[];
-  /** `pipelineConfig.mode`. */
-  mode?: string | undefined;
 }
 
 /**
@@ -42,8 +37,6 @@ export interface SkillLockContext {
 // cm:guard locks only ever ADD — a project declaration can never unlock a Forge-reserved name, or `lockedSkills: []` would become a way to shadow forge-reconcile, the agent that polices the project's own updates
 export function skillLockReason(name: string, ctx: SkillLockContext): SkillLockReason | null {
   if (isMetaSkillName(name)) return 'forge-reserved';
-  if (resolveMode(ctx.mode) === 'autonomous' && ctx.bundled?.includes(name))
-    return 'autonomous-mode';
   if (ctx.declared === true) return 'project-declared';
   if (Array.isArray(ctx.declared) && ctx.declared.includes(name)) return 'project-declared';
   return null;

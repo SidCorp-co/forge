@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isSkillLocked, readLockedSkills, skillLockReason } from './lock.js';
 
-const BUNDLED = ['forge-drive', 'forge-understand', 'forge-plan', 'forge-review', 'forge-ship'];
-
 describe('skillLockReason', () => {
   it('locks a Forge-reserved name with no declaration at all', () => {
     expect(skillLockReason('forge-reconcile', {})).toBe('forge-reserved');
@@ -14,15 +12,6 @@ describe('skillLockReason', () => {
     expect(skillLockReason('forge-verify-skill', { declared: ['something-else'] })).toBe(
       'forge-reserved',
     );
-  });
-
-  // cm:guard the lock follows the DEFAULT, not the literal. Since 2026-09-02 an absent `mode` resolves autonomous, so a project that never chose runs the bundled skills — and leaving them editable there is a skill the runner overwrites from the binary on the next job while the project believes its edit took.
-  it('locks the bundled set wherever the project resolves autonomous, chosen or defaulted', () => {
-    expect(skillLockReason('forge-drive', { bundled: BUNDLED, mode: 'autonomous' })).toBe(
-      'autonomous-mode',
-    );
-    expect(skillLockReason('forge-drive', { bundled: BUNDLED })).toBe('autonomous-mode');
-    expect(skillLockReason('forge-drive', { bundled: BUNDLED, mode: 'staged' })).toBeNull();
   });
 
   it('locks the whole surface when the project declares true', () => {
@@ -37,7 +26,7 @@ describe('skillLockReason', () => {
   });
 
   it('leaves an ordinary project skill writable when nothing declares otherwise', () => {
-    expect(isSkillLocked('my-custom-skill', { bundled: BUNDLED, mode: 'staged' })).toBe(false);
+    expect(isSkillLocked('my-custom-skill', { declared: [] })).toBe(false);
   });
 });
 

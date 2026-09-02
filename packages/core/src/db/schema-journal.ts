@@ -13,9 +13,7 @@
 //
 // Design: docs/proposals/agent-driven-pipeline.md
 
-import { sql } from 'drizzle-orm';
 import {
-  check,
   index,
   integer,
   jsonb,
@@ -28,11 +26,9 @@ import {
 import { agentSessions, issues, jobs, pipelineRuns, projects } from './schema.js';
 
 /**
- * Who wrote the row. The distinction is the whole integrity story: an agent may
- * narrate its own progress, but a result that judges the agent's work must come
- * from the runner, out of a structured return value the agent never touched.
- * `system` is core deriving a row from kernel state it observed itself — the
- * most trustworthy of the three, and how staged-mode history is reconstructed.
+ * Who wrote the row. `agent` narrates its own progress over REST; `system` is
+ * core deriving a row from kernel state it observed itself. `runner` stays in
+ * the enum because rows carrying it exist; nothing writes it any more.
  */
 export const phaseJournalSources = ['runner', 'agent', 'system'] as const;
 export type PhaseJournalSource = (typeof phaseJournalSources)[number];
@@ -42,11 +38,9 @@ export type PhaseJournalOutcome = (typeof phaseJournalOutcomes)[number];
 
 /**
  * A phase's structured result. `kind` is what makes a row machine-readable
- * rather than prose: `verdict` rows carry a review decision and are the ones
- * the CHECK constraint below refuses from an agent.
+ * rather than prose.
  */
 export type PhaseArtifact =
-  | { kind: 'verdict'; decision: 'approve' | 'request_changes' | 'abstain'; findings?: unknown[] }
   | { kind: 'commit'; sha: string; message?: string }
   | { kind: 'note'; text: string }
   | Record<string, unknown>;
@@ -80,11 +74,6 @@ export const phaseJournal = pgTable(
     endedAt: timestamp('ended_at', { withTimezone: true }),
   },
   (t) => ({
-    // cm:guard a verdict judges the agent, so the agent may not author one — without this the driver can paraphrase request_changes into an approval, and no job boundary remains between coding and review to contradict it
-    verdictIsRunnerWritten: check(
-      'phase_journal_verdict_is_runner_written',
-      sql`${t.artifact}->>'kind' IS DISTINCT FROM 'verdict' OR ${t.source} = 'runner'`,
-    ),
     // cm:guard one row per (run, phase, attempt) — resume reads the latest unfinished phase, and a duplicate makes "where did it stop" ambiguous exactly when the session has died and cannot be asked
     oneRowPerAttempt: uniqueIndex('phase_journal_run_phase_attempt_idx').on(
       t.runId,

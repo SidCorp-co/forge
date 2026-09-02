@@ -19,7 +19,6 @@ import { isMetaSkillName, MetaSkillReservedError } from './meta-skills.js';
 
 export interface ProjectLockContext {
   declared: LockedSkillsDeclaration;
-  mode: string | undefined;
 }
 
 /**
@@ -35,8 +34,7 @@ export async function projectLockContext(projectId: string): Promise<ProjectLock
     .limit(1);
   const agentConfig = row?.agentConfig as Record<string, unknown> | undefined;
   const cfg = agentConfig?.['pipelineConfig'] as Record<string, unknown> | undefined;
-  const mode = typeof cfg?.['mode'] === 'string' ? (cfg['mode'] as string) : undefined;
-  return { declared: readLockedSkills(cfg), mode };
+  return { declared: readLockedSkills(cfg) };
 }
 
 /**

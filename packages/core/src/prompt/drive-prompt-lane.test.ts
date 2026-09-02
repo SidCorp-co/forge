@@ -1,7 +1,7 @@
 /**
  * The autonomous driver's prompt names one transport, and it is the CLI.
  *
- * The bundled `forge-drive` skill and this prompt are read in the same context
+ * The driver skill (`issue-flow`, delivered as a plugin) and this prompt are read in the same context
  * window. They disagreed until 2026-09-02 — the skill said `forge-runner api`
  * and core's prompt said `forge_step_start` / `forge_step_handoff.write` /
  * `forge_issues.update` — and the agent believed the prompt: 4,806 and 4,268

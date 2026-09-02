@@ -80,13 +80,6 @@ const CHECKS = [
   },
   {
     axis: 'knowledge',
-    label: 'autonomous-transitions',
-    cmd: ['node', 'scripts/check-autonomous-transitions.mjs'],
-    // cm:edge naming -> scripts/check-autonomous-transitions.mjs — parses that script's success line
-    scanned: /agree across (\d+) files/,
-  },
-  {
-    axis: 'knowledge',
     label: 'injected-doc-modes',
     // cm:edge naming -> scripts/check-injected-doc-modes.mjs — parses that script's success line
     cmd: ['node', 'scripts/check-injected-doc-modes.mjs'],
@@ -189,7 +182,6 @@ const CHECKS = [
 
 // cm:edge contract -> .github/workflows/ci.yml — every `- run:` line and every named step there must appear as a key here; `--ci-parity` fails on an unlisted one. Adding a CI step without a line here is the drift this map exists to catch.
 const CI_COVERAGE = {
-  'node scripts/check-autonomous-transitions.mjs': 'verify',
   'node scripts/check-honest-costs.mjs': 'verify',
   'node scripts/check-release-record.mjs': 'verify',
   'node scripts/check-injected-doc-modes.mjs': 'verify',

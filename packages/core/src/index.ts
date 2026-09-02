@@ -146,7 +146,6 @@ import { pipelineRunProjectRoutes, pipelineRunReadRoutes } from './pipeline/runs
 import { pipelineRunRoutes } from './pipeline/runs-routes.js';
 import { stepHandoffRoutes } from './pipeline/step-handoff-routes.js';
 import { registerPipelineSweeper } from './pipeline/sweeper.js';
-import { verdictRoutes } from './pipeline/verdict-routes.js';
 import { registerPmCadenceTicker, unregisterPmCadenceTicker } from './pm/cadence.js';
 import {
   registerPmEscalationSweeper,
@@ -383,7 +382,6 @@ app.route('/api/jobs', jobRoutes);
 app.route('/api/jobs', jobEventsRoutes);
 app.route('/api/jobs', jobEventsListRoutes);
 app.route('/api/jobs', jobLifecycleDeviceRoutes);
-app.route('/api/jobs', verdictRoutes);
 app.route('/api/jobs', jobLifecycleUserRoutes);
 app.route('/api/webhooks', webhookInboundRoutes);
 app.route('/api/memory', memorySearchRoutes);

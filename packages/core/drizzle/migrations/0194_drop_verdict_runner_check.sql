@@ -1,0 +1,1 @@
+ALTER TABLE "phase_journal" DROP CONSTRAINT "phase_journal_verdict_is_runner_written";

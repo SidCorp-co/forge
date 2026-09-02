@@ -6,7 +6,6 @@
 //! frame straight onto the right process.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 use std::sync::Arc;
 use std::time::Duration;
@@ -19,17 +18,9 @@ use tokio::sync::{mpsc, Mutex};
 use super::inflight;
 use super::process::{build_command, graceful_kill};
 use super::{FailureKind, JobSpec, Runner, RunnerEvent, RunnerKind, RunnerStatus, SessionId};
-use crate::config::SkillSettings;
 use crate::error::{Error, Result};
 use crate::mcp;
-use crate::workspace::{bundled_skills, worktree};
-
-/// `jobs.type` of the autonomous driver — the one job an autonomous run has.
-// cm:edge contract -> packages/core/src/pipeline/autonomous-dispatch.ts — the literal core enqueues; a rename there silently stops the bundled skills reaching the worktree
-const AUTONOMOUS_STEP: &str = "drive";
-
-/// How often the runner looks for a reviewer result mid-session.
-const VERDICT_POLL_INTERVAL: Duration = Duration::from_secs(15);
+use crate::workspace::worktree;
 
 /// One `--input-format stream-json` user message, newline-terminated.
 // cm:guard the CLI accepts exactly this envelope and rejects a bare string — verified on claude 2.1.251, 2026-08-29. A malformed line is not an error: the process stays alive with nothing to answer, so the turn hangs until the job timeout with no diagnosis anywhere.
@@ -471,7 +462,6 @@ fn mcp_failure_is_fatal(is_issue_job: bool, mcp_failed: &[String]) -> bool {
 pub struct ClaudeCodeRunner {
     core_url: String,
     device_token: String,
-    skills: SkillSettings,
     sessions: Sessions,
     // cm:edge contract -> packages/runner/crates/forge-runner-core/src/config.rs — sized from `chat_max_concurrent`, but it counts something different: that budget queues TURNS in `daemon/chat.rs`, this one caps live duplex PROCESSES. They were one number while a turn was a process; keeping only the turn budget is how three abandoned resident sessions would sit at zero held permits.
     session_sem: Arc<tokio::sync::Semaphore>,
@@ -481,13 +471,11 @@ impl ClaudeCodeRunner {
     pub fn new(
         core_url: impl Into<String>,
         device_token: impl Into<String>,
-        skills: SkillSettings,
         session_cap: usize,
     ) -> Self {
         Self {
             core_url: core_url.into(),
             device_token: device_token.into(),
-            skills,
             sessions: Arc::new(Mutex::new(HashMap::new())),
             session_sem: Arc::new(tokio::sync::Semaphore::new(session_cap.max(1))),
         }
@@ -587,46 +575,6 @@ fn detect_usage_limit(json: &Value) -> Option<String> {
         }
     }
     None
-}
-
-/// Post every verdict the reviewer has left on disk. Best-effort: a rejected
-/// or unreachable post is logged and the verdict is gone, which is the same
-/// tradeoff every other lifecycle call in this runner makes.
-async fn drain_and_post_verdicts(core_url: &str, token: &str, job_id: &str, worktree: &Path) {
-    let verdicts = crate::workspace::verdict::drain_file(&declared_verdict_file(worktree));
-    if verdicts.is_empty() {
-        return;
-    }
-    let client = crate::transport::CoreClient::new(core_url.to_string(), token.to_string());
-    for v in verdicts {
-        match crate::transport::lifecycle::verdict(&client, job_id, &v).await {
-            Ok(()) => tracing::info!("[job {job_id}] recorded verdict: {}", v.decision),
-            Err(e) => tracing::error!("[job {job_id}] verdict post failed ({}): {e}", v.decision),
-        }
-    }
-}
-
-/// Where this job's reviewer was told to write. The env var is authoritative;
-/// the repo-root path is only the shape the file takes when nothing set it.
-fn declared_verdict_file(worktree: &Path) -> PathBuf {
-    std::env::var(crate::workspace::verdict::VERDICT_FILE_ENV)
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| crate::workspace::verdict::path(worktree))
-}
-
-/// Watch the worktree for reviewer results while the session runs.
-fn spawn_verdict_poller(
-    core_url: String,
-    token: String,
-    job_id: String,
-    worktree: PathBuf,
-) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(VERDICT_POLL_INTERVAL).await;
-            drain_and_post_verdicts(&core_url, &token, &job_id, &worktree).await;
-        }
-    })
 }
 
 impl ClaudeCodeRunner {
@@ -775,21 +723,6 @@ impl Runner for ClaudeCodeRunner {
         // plugin skills inherited from the config dir. A job-start re-seed was
         // removed because it clobbered project-shadowed skills mid-flight.
         //
-        // cm:guard the ONE exception, and only for its own names: an autonomous
-        // job's skills ship in this binary, so there is nothing to have synced
-        // ahead of time. It cannot clobber a project shadow the way the removed
-        // re-seed did, because core refuses to create a project skill under a
-        // bundled name while the project runs autonomous.
-        if spec.step == AUTONOMOUS_STEP {
-            match bundled_skills::seed_into(Path::new(&effective_repo), &self.skills) {
-                Ok(names) => tracing::info!(
-                    "[job {job_id}] seeded {} bundled skill(s): {}",
-                    names.len(),
-                    names.join(", ")
-                ),
-                Err(e) => tracing::error!("[job {job_id}] bundled skill seeding failed: {e}"),
-            }
-        }
 
         let prompt = spec
             .prompt
@@ -856,12 +789,6 @@ impl Runner for ClaudeCodeRunner {
             cmd.env("MCP_TIMEOUT", "15000");
         }
 
-        // cm:guard the reviewer is told the ABSOLUTE file, never a relative one — `forge-drive` works in a per-issue worktree it creates itself, so "the worktree root" means a different directory to the skill and to this poller, and for the whole of phase 3 it did (KineTrak ISS-1, 2026-08-20: three verdicts written, none posted, no error anywhere). Unconditional, and NOT nested under the MCP_TIMEOUT probe it sat inside until 2026-09-01: a box that exports MCP_TIMEOUT then loses the verdict path entirely, which is the same silent shape all over again.
-        cmd.env(
-            crate::workspace::verdict::VERDICT_FILE_ENV,
-            crate::workspace::verdict::path(Path::new(&effective_repo)),
-        );
-
         // New process group so we can kill the whole tree.
         #[cfg(unix)]
         unsafe {
@@ -871,21 +798,6 @@ impl Runner for ClaudeCodeRunner {
                     .map_err(std::io::Error::other)
             });
         }
-
-        // cm:guard the poller runs DURING the session, not only at the end: a
-        // review that sends the driver back to code happens mid-run, and a
-        // verdict core only learns about after the job finishes cannot gate
-        // anything the job did.
-        let verdict_poller = if spec.step == AUTONOMOUS_STEP {
-            Some(spawn_verdict_poller(
-                self.core_url.clone(),
-                self.device_token.clone(),
-                job_id.clone(),
-                PathBuf::from(&effective_repo),
-            ))
-        } else {
-            None
-        };
 
         let mut child = cmd.spawn().map_err(|e| {
             let _ = std::fs::remove_file(&mcp_path);
@@ -1050,9 +962,6 @@ impl Runner for ClaudeCodeRunner {
         // reap, classify, and emit Done/Failed.
         let sessions = self.sessions.clone();
         let job_id_task = job_id.clone();
-        let core_url_for_verdicts = self.core_url.clone();
-        let token_for_verdicts = self.device_token.clone();
-        let worktree_for_verdicts = PathBuf::from(&effective_repo);
         // cm:guard built for EVERY duplex spawn, and the two paths use it differently on purpose: chat's key IS its agent-session id, so it may PATCH the session directly, while a pipeline job's key is a `job_id` and every session-keyed PATCH with it 404s. The pipeline path therefore reports state as a job EVENT (core writes the column in `jobs/events-routes.ts`) and uses this client only for the job-keyed turn verdict.
         let core_for_state = spec.duplex.then(|| {
             crate::transport::CoreClient::new(self.core_url.clone(), self.device_token.clone())
@@ -1140,16 +1049,6 @@ impl Runner for ClaudeCodeRunner {
                 }
             }
             reader.abort();
-            if let Some(handle) = verdict_poller {
-                handle.abort();
-                drain_and_post_verdicts(
-                    &core_url_for_verdicts,
-                    &token_for_verdicts,
-                    &job_id,
-                    &worktree_for_verdicts,
-                )
-                .await;
-            }
 
             // Reap the child + group, capturing its exit status if the
             // exit-poll branch didn't already.
@@ -1350,8 +1249,8 @@ impl Runner for ClaudeCodeRunner {
     }
 }
 
-// cm:guard the PAT alone does not let a bundled skill reach REST — every project-scoped route takes the project UUID as a PATH segment, and until 2026-09-02 the agent was handed a credential with nothing to name the project it may speak for. `X-Forge-Project-Slug` does not close this: only `/mcp` resolves that header, REST does not.
-// cm:edge contract -> packages/runner/skills/forge-drive/SKILL.md — the skill spells `$FORGE_PROJECT_ID` into a `forge-runner api projects/<id>/...` path; renaming either side makes that call resolve to `projects//...` and 404 with nothing saying why.
+// cm:guard the PAT alone does not let the agent reach REST — every project-scoped route takes the project UUID as a PATH segment, and until 2026-09-02 the agent was handed a credential with nothing to name the project it may speak for. `X-Forge-Project-Slug` does not close this: only `/mcp` resolves that header, REST does not.
+// cm:edge contract -> packages/core/src/pipeline/autonomous-dispatch.ts — `buildDrivePrompt` spells `$FORGE_PROJECT_ID` into a `forge-runner api projects/<id>/...` path the agent is told to run; renaming either side makes that call resolve to `projects//...` and 404 with nothing saying why.
 fn project_env(spec: &JobSpec) -> Vec<(&'static str, String)> {
     let mut out = Vec::new();
     if !spec.project_id.is_empty() {
@@ -1719,8 +1618,7 @@ mod tests {
         let stdin = child.stdin.take();
         let (tx, rx) = mpsc::channel(16);
         let turn_done = Arc::new(tokio::sync::Notify::new());
-        let runner =
-            ClaudeCodeRunner::new("http://127.0.0.1:1", "tok", SkillSettings::default(), 1);
+        let runner = ClaudeCodeRunner::new("http://127.0.0.1:1", "tok", 1);
         runner.sessions.lock().await.insert(
             "j1".to_string(),
             Session {

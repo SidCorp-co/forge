@@ -36,7 +36,7 @@ beforeEach(() => {
 
 describe('autonomousStepFor', () => {
   it('produces the drive step only at the entry status', () => {
-    expect(autonomousStepFor('open')).toEqual({ type: 'drive', skillName: 'forge-drive' });
+    expect(autonomousStepFor('open')).toEqual({ type: 'drive', skillName: 'issue-flow' });
     for (const status of ['confirmed', 'approved', 'developed', 'testing', 'closed'] as const) {
       expect(autonomousStepFor(status)).toBeNull();
     }
@@ -79,7 +79,7 @@ describe('dispatchAutonomous', () => {
     expect(insertAndEnqueueJob).toHaveBeenCalledTimes(1);
     expect(insertAndEnqueueJob.mock.calls[0]?.[0]).toMatchObject({
       type: 'drive',
-      skillName: 'forge-drive',
+      skillName: 'issue-flow',
       pipelineRunId: 'run-1',
       payloadExtras: { mode: 'autonomous' },
     });
@@ -108,7 +108,7 @@ describe('dispatchAutonomous', () => {
     expect(prompt).toContain('pipeline-runs/run-1/resume-point');
   });
 
-  // cm:guard this prompt and packages/runner/skills/forge-drive/SKILL.md are read in ONE context window, so they must name one transport. They disagreed until 2026-09-02 — the skill said `forge-runner api`, this said `forge_issues` / `forge_config` / `forge_phase` — and the agent believed the prompt: 4,806 `forge_step_start` and 4,268 `forge_step_handoff.write` MCP calls, every one on an autonomous project. The rule is ONE name, not an unreachable tool: the driver's MCP client works, and the job PAT wins because it is minted per job and revoked at terminal where the device token is fleet-wide. The runner-side twin is `bundled_skills.rs`, which bans the same substring in the skill bodies.
+  // cm:guard this prompt and the `issue-flow` skill (forge-plugin repo) are read in ONE context window, so they must name one transport. They disagreed until 2026-09-02 — the skill said `forge-runner api`, this said `forge_issues` / `forge_config` / `forge_phase` — and the agent believed the prompt: 4,806 `forge_step_start` and 4,268 `forge_step_handoff.write` MCP calls, every one on an autonomous project. The rule is ONE name, not an unreachable tool: the driver's MCP client works, and the job PAT wins because it is minted per job and revoked at terminal where the device token is fleet-wide. The runner-side twin is `bundled_skills.rs`, which bans the same substring in the skill bodies.
   it('names one transport, and the skill already chose the CLI', async () => {
     selectLimit.mockResolvedValueOnce([{ status: 'open' }]);
 
@@ -179,7 +179,7 @@ describe('dispatchAutonomous', () => {
 });
 
 describe('dispatchDriveManual', () => {
-  // cm:guard `forge-drive` is never in `skill_registrations`, so the staged manual path throws NO_SKILL_REGISTERED here — without this entry point a gated entry stage has no way out but editing the config
+  // cm:guard the driver skill is never in `skill_registrations` (it arrives as a plugin), so the staged manual path throws NO_SKILL_REGISTERED here — without this entry point a gated entry stage has no way out but editing the config
   it('starts the driver even though the entry stage is gated to a human', async () => {
     const result = await dispatchDriveManual({ ...BASE, status: 'open' });
 

@@ -1,8 +1,24 @@
 # Agent-driven pipeline
 
-- Status: **Phases 0–4 shipped; phase 5 instrumented and awaiting evidence** — owner sessions 2026-08-19/20.
+- Status: **Phases 0–4 shipped; phase 5 instrumented and awaiting evidence** — owner sessions 2026-08-19/20. **Two of those phases were reversed on 2026-09-02 — see the section directly below before reading anything else here as current.**
 - Upgrade path: this becomes an RFC once the mode switch and the status vocabulary are agreed — both are cross-surface (REST, MCP, web, runner).
 - Related: `packages/runner/README.md` · skill delivery: `runner/crates/forge-runner-core/src/workspace/skill_sync.rs`
+
+## Reversed 2026-09-02 — skill delivery and the reviewer verdict
+
+Owner decision, recorded here so the shipping record below stays readable as history rather than
+being rewritten. The mode itself, the phase journal, resume-point and the five-status vocabulary
+**stand**. Two mechanisms came out:
+
+| Removed | Was | Why |
+|---|---|---|
+| Bundled skill set (`packages/runner/skills/`, `include_str!`, `bundled_skills.rs`, `[skills] bundled_*`) | Phase 0 — five skills compiled into the runner binary | Delivery by binary meant a skill fix waited on a runner release the fleet then had to pull: 0.9.9 and 0.9.10 were cut on 2026-09-02 and 8 of 10 runners were still on 0.9.8 hours later. The driver skill is now `issue-flow` from the `forge` Claude Code plugin (github.com/SidCorp-co/forge-plugin), which carries 724 lines of method to forge-drive's 242 and a project-overrides-skill rule this repo never had. Reaches a box through `pipelineConfig.plugins` → `GET /api/devices/me/plugins`, gated by that box's `[plugins] enabled`. |
+| Runner-written review verdict (`FORGE_VERDICT_FILE`, `verdict.rs`, the poller in `claude_code.rs`, `POST /api/jobs/:id/verdict`, CHECK `phase_journal_verdict_is_runner_written`) | Phase 3 — the reviewer wrote a file, the runner posted it, the DB refused an agent-authored verdict | Owner chose to drop it rather than port it into `issue-flow`. **The price, stated:** nothing now stops a driver recording its own approval. The 2026-08-21 measurement (9 of 10 closed getcontent issues had a real verdict overwritten by the driver's prose) is the failure this mechanism existed for, and it is reachable again. `endPhase` keeps its `kind IS DISTINCT FROM 'verdict'` clause so the historical rows stay honest; migration 0194 drops the constraint. |
+
+What this reversal does **not** do: it does not install the plugin anywhere. 0 of 31 projects
+designated it and every runner ships `[plugins] enabled = false`, so until a project designates and
+an operator flips the box switch, a `drive` job is told to use a skill it does not have. Chosen
+knowingly as a big-bang cut.
 
 ## Summary
 
@@ -255,7 +271,8 @@ paid for themselves.
   missing at runtime.
 - Daemon start materialises the enabled set into a version-keyed directory and logs the result.
 - `[skills] bundled_disabled` / `bundled_overrides` disable a bad skill from config, without a new
-  binary; `forge-drive` and `forge-review` survive the global switch.
+  binary; `forge-drive` and `forge-review` survive the global switch. *(Removed 2026-09-02 with the
+  bundled set — see the reversal section at the top.)*
 - **Nothing consumes the tree.** Pipeline behaviour is byte-for-byte unchanged.
 
 ### Phase 1 — the lock is a flag, and per-project knowledge has a home — **done**

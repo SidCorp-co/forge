@@ -172,16 +172,8 @@ jobs:
       - run: .forge/codemap/cm verify
       - run: .forge/codemap/cm verify --tier referential
       - run: .forge/codemap/cm verify --tier structural
-      # The autonomous transition standard.
-      # Same axis as codemap and no dependencies beyond node, so it rides this job rather than
-      # adding an eleventh entry to ci-passed's needs list and its result loop.
-      # What it holds is the SPECIFICATION: that AUTONOMOUS_DRIVER_STATUSES and every bundled skill
-      # name the same five kernel statuses, and that no skill instructs a render label. It cannot
-      # see what an agent wrote at runtime — that lives in activity_log and this job has no
-      # database.
-      - run: node scripts/check-autonomous-transitions.mjs
-      # Rides this job for the same reason as the check above: knowledge axis, node and nothing else.
-      # That checker holds the SKILL surfaces; this one holds the DOC surfaces injected beside them —
+      # Knowledge axis, node and nothing else, so it rides this job rather than adding an entry to
+      # ci-passed's needs list. Holds the DOC surfaces injected into every session —
       # guide bodies and the mandatory facts, which reach every project whatever its pipeline mode.
       # Two rules: a status transition names the mode it belongs to, and a pipeline STEP named as the
       # actor of something the reader is told about does too — staged and autonomous share no step.

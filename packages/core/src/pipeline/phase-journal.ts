@@ -1,9 +1,8 @@
 // Writing the phase journal (agent-driven pipeline, phase 2).
 //
 // The table is `db/schema-journal.ts`; this is the only place rows are made.
-// Two rules live here rather than in prose: a phase re-entered gets the next
-// attempt number instead of colliding, and a verdict is stamped as
-// runner-written no matter who asked for it.
+// One rule lives here rather than in prose: a phase re-entered gets the next
+// attempt number instead of colliding.
 //
 // Design: docs/proposals/agent-driven-pipeline.md
 
@@ -35,34 +34,6 @@ export interface EndPhaseInput {
   artifact?: PhaseArtifact;
 }
 
-export interface VerdictInput {
-  decision: 'approve' | 'request_changes' | 'abstain';
-  findings?: unknown[];
-}
-
-/**
- * Shape the row for a verdict. Split out from the write so the integrity rule
- * is testable without a database: whatever the caller passes, the source is
- * `runner`.
- */
-export function buildVerdictEntry(input: EndPhaseInput & { source?: string }): {
-  outcome: PhaseJournalOutcome;
-  artifact: PhaseArtifact;
-  source: 'runner';
-} {
-  return {
-    outcome: input.outcome,
-    artifact: input.artifact ?? { kind: 'verdict', decision: 'abstain' },
-    // cm:guard forced, never taken from the caller — the DB CHECK is the backstop for a path that bypasses this function, not a substitute for it
-    source: 'runner',
-  };
-}
-
-/**
- * Next attempt number for a phase on a run. A review that sends code back
- * re-enters `code`, and each round must be its own row so the journal shows how
- * many times it went around.
- */
 export async function nextAttempt(runId: string, phase: string): Promise<number> {
   const [row] = await db
     .select({ max: sql<number | null>`max(${phaseJournal.attempt})` })
@@ -90,7 +61,7 @@ export async function startPhase(input: StartPhaseInput): Promise<PhaseJournalRo
 }
 
 /** Close a phase the agent opened. */
-// cm:guard NEVER overwrite a row already carrying a verdict: `endPhase` leaves `source` untouched, so an agent note landing on a recorded verdict keeps `source: 'runner'` and the driver's prose then reads as the reviewer's — measured on getcontent 2026-08-21, 9 of 10 closed issues had a real verdict destroyed exactly this way
+// cm:guard the `kind IS DISTINCT FROM 'verdict'` clause protects HISTORY, not a live path: nothing writes a verdict row since 2026-09-02, but rows from before that carry the reviewer's decision under `source='runner'`, and an agent note landing on one keeps that source and reads as the reviewer's — measured on getcontent 2026-08-21, 9 of 10 closed issues had a real verdict destroyed exactly this way. Drop the clause only with a migration that first rewrites those rows.
 export async function endPhase(input: EndPhaseInput): Promise<void> {
   await db
     .update(phaseJournal)
@@ -115,7 +86,7 @@ export async function closeDanglingPhasesForJob(
   jobId: string,
   outcome: PhaseJournalOutcome,
 ): Promise<number> {
-  // cm:guard `forge_phase.jobId` is OPTIONAL and `forge-drive` does not send it, so EVERY autonomous row lands with job_id NULL — matching on job_id alone closed nothing on the one driver this was built for (measured on getcontent, 2026-08-20: 3 finished drive jobs, 0 rows closed). Widening to the run's unowned rows is what makes it fire.
+  // cm:guard the phase routes take no `jobId` and the driver has none to send, so EVERY autonomous row lands with job_id NULL — matching on job_id alone closed nothing on the one driver this was built for (measured on getcontent, 2026-08-20: 3 finished drive jobs, 0 rows closed). Widening to the run's unowned rows is what makes it fire.
   const [job] = await db
     .select({ runId: jobs.pipelineRunId })
     .from(jobs)
@@ -131,41 +102,6 @@ export async function closeDanglingPhasesForJob(
     .where(and(unowned ? or(owned, unowned) : owned, isNull(phaseJournal.endedAt)))
     .returning({ id: phaseJournal.id });
   return closed.length;
-}
-
-/**
- * Record a review result. Separate from {@link endPhase} because the row it
- * writes is the one the driver is not allowed to author.
- */
-export async function recordVerdict(
-  input: Omit<EndPhaseInput, 'artifact'> & { verdict: VerdictInput },
-): Promise<void> {
-  const entry = buildVerdictEntry({
-    ...input,
-    artifact: { kind: 'verdict', ...input.verdict },
-  });
-  const updated = await db
-    .update(phaseJournal)
-    .set({
-      outcome: entry.outcome,
-      artifact: entry.artifact,
-      source: entry.source,
-      endedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(phaseJournal.runId, input.runId),
-        eq(phaseJournal.phase, input.phase),
-        eq(phaseJournal.attempt, input.attempt),
-      ),
-    )
-    .returning({ id: phaseJournal.id });
-  // cm:guard an UPDATE matching no row must throw, not return 200 — a verdict that lands nowhere is indistinguishable from a review that never ran, and the reviewer is the one check the driver cannot perform on itself
-  if (updated.length === 0) {
-    throw new Error(
-      `phase_journal: no row for ${input.phase} attempt ${input.attempt} on run ${input.runId}`,
-    );
-  }
 }
 
 /**
