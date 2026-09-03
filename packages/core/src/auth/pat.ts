@@ -191,17 +191,6 @@ export async function revokePat(id: string, userId: string): Promise<Pat | null>
 }
 
 /**
- * Revoke a PAT without owner check — used by middleware auto-revoke paths
- * (rate-limit breach, suspicious IP). Idempotent.
- */
-export async function forceRevokePat(id: string): Promise<void> {
-  await db
-    .update(personalAccessTokens)
-    .set({ revokedAt: sql`now()` })
-    .where(and(eq(personalAccessTokens.id, id), isNull(personalAccessTokens.revokedAt)));
-}
-
-/**
  * Bulk revoke every live PAT for a user. Called from password-change /
  * account-disable hooks (T1, T4 mitigations in the threat model).
  *

@@ -773,6 +773,12 @@
 
 ### Changed
 
+- The default PAT rate limit is 600 requests a minute, up from 60. 600 is the number job tokens
+  already pinned, six times the measured peak of one busy session. `RATE_LIMIT_PAT_MAX` still
+  overrides it. The first rejected request of each window now writes a `rate_limited` row to
+  `mcp_audit_log` (tool `rate_limit`, action `<METHOD> <path>`), so a throttled token is visible
+  without reading server logs.
+
 - **Project Settings matches how Forge runs: one autonomous lane, and a release step the project
   declares.** The Pipeline tab showed a nine-rung ladder (`confirmed` → `clarified` → `approved` →
   `developed` → `testing` → `tested`), eight `autoX` step toggles, merge points, session groups and
@@ -809,8 +815,8 @@
   SHA, autoUpdate, whole-list replace); it had been read by `GET /api/devices/me/plugins` since it
   shipped and written by nothing with a UI.
 
-  Migration `0195` moves the data with the schema. Every issue at `tested` becomes `released` — 76
-  across 9 projects measured 2026-09-03, each at a real gate — with `merged_at` untouched, because
+  Migration `0195` moves the data with the schema. Every issue at `tested` becomes `released` — 66
+  across 10 projects measured 2026-09-03, each at a real gate — with `merged_at` untouched, because
   none of them has been released and that column is what unblocks their dependents. The staged keys
   are stripped from `agentConfig.pipelineConfig` on 34 projects. Left deliberately in place: 8
   issues at `testing` / `developed` / `approved` / `confirmed` / `clarified`, mid-flight under the
@@ -888,6 +894,12 @@
   above their real counts. Every ceiling moved down and a dead record left. (ISS-848)
 
 ### Removed
+
+- The PAT auto-revoke. A token that exceeded its per-minute ceiling in three windows of one hour
+  was revoked for good, silently: no audit row, no event, no reason. It could only ever fire on a
+  token `verifyPat` had already accepted, so it never touched a guesser, and the one thing it did
+  was burn four of one user's tokens in a day for running a plugin session at 4 requests a second.
+  A 429 is a throttle; it stays one. `forceRevokePat` is gone with it.
 
 - **The bundled autonomous skill set and the runner-written review verdict.** Owner decision,
   big-bang. Five skills compiled into the runner via `include_str!` (`forge-drive`, `-understand`,
