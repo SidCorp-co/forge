@@ -43,9 +43,25 @@ export interface PipelineHealth {
     details: Record<string, unknown>;
   };
   queuedAt?: string;
+  /** ISS-903 — the identity of the step the oldest queued job represents, set
+   *  whenever the issue HAS a queued job, gated or not. `waitingOn` says why it
+   *  has not dispatched; this says what has not dispatched. */
+  // cm:guard set this from the queued candidate even when `waitingOn` reports a HELD sibling — a queued step that is invisible on the surfaces derived from `agent_sessions` is exactly the blind spot ISS-903 closed, and a held-plus-queued issue is the case where the queued half is easiest to drop
+  queuedStep?: PipelineHealthQueuedStep;
   lastTickAt?: string;
   /** Only set when `stage === 'waiting'`. */
   waitingCause?: { kind: WaitingCause };
+}
+
+/** ISS-903 — the queued candidate, projected for a human surface. */
+export interface PipelineHealthQueuedStep {
+  jobId: string;
+  jobType: string;
+  /** `payload.stageStatus` — null for jobs nobody declared a trigger for. */
+  stageStatus: string | null;
+  queuedAt: string;
+  /** `jobs.retry_after_at` — the next attempt time, when the step has one. */
+  retryAfterAt: string | null;
 }
 
 export interface PipelineHealthSession {

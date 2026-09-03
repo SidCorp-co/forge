@@ -5,6 +5,7 @@
 // values derive from `@forge/contracts`, which is parity-tested against
 // `db/schema.ts` (`core/pipeline/registry.test.ts`).
 
+import type { PipelineHealth } from "@/features/issues/types";
 import {
   REGISTRY_JOB_TYPES,
   REGISTRY_PIPELINE_RUN_KINDS,
@@ -144,6 +145,10 @@ export interface PipelineIssueRow {
   assigneeId: string | null;
   /** Derived by the search hydrator with `?withAgentSessions=true`. */
   agentStatus?: "running" | "queued" | "completed" | "failed" | null;
+  /** ISS-903 — present with `?withPipelineHealth=1`. A queued job has no
+   *  session row, so `agentStatus` alone cannot tell a card that is about to
+   *  dispatch from one a gate has held for days. */
+  pipelineHealth?: PipelineHealth;
   metadata?: ({ branchConfig?: { branch?: string } | null } & Record<string, unknown>) | null;
 }
 

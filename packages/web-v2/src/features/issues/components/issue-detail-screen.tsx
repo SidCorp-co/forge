@@ -47,6 +47,7 @@ import {
   statusToRun,
   statusToStage,
 } from "../derive";
+import { deriveQueuedStep } from "../waiting";
 import {
   useActivity,
   useAttachments,
@@ -69,7 +70,7 @@ import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 import { BlockerBanner } from "./blocker-banner";
 import { useGuardedTransition } from "./use-guarded-transition";
 import { CommentThread } from "./comment-thread";
-import { LiveAgentPanel } from "./live-agent-panel";
+import { type LiveAgentState, LiveAgentPanel } from "./live-agent-panel";
 import { PropertiesRail } from "./properties-rail";
 import { SessionGroupTimeline } from "./session-group-timeline";
 import { StepArtifactCard } from "./step-artifact-card";
@@ -224,6 +225,13 @@ export function IssueDetailScreen({
   );
   const liveSession = pickActiveSession(issue.agentSessions);
   const liveStep = issue.pipelineHealth?.activeSession?.skill ?? stage;
+  // cm:why a queued job has no agent_sessions row, so this is the only signal the panel has that a next step exists at all; the live session outranks it
+  const queuedStep = deriveQueuedStep(issue.pipelineHealth, !!liveSession);
+  const agentState: LiveAgentState | null = liveSession
+    ? { kind: "live", session: liveSession }
+    : queuedStep
+      ? { kind: "queued", step: queuedStep }
+      : null;
 
   const focusStage = (s: StageKey) => {
     setExpandedStage(s);
@@ -447,10 +455,9 @@ export function IssueDetailScreen({
             </CardContent>
           </Card>
 
-          {/* Tier-1: live-agent detail — only when an agent is active (AC#3). */}
-          {liveSession && (
+          {agentState && (
             <LiveAgentPanel
-              session={liveSession}
+              state={agentState}
               step={liveStep}
               slug={slug}
               issueId={id}

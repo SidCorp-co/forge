@@ -70,6 +70,8 @@ export const issuesApi = {
     // ISS-700 — same grouped-query pattern for the latest-failed-job info
     // backing the Failed-badge tooltip (no per-row/hover fetch).
     params.set("withFailureInfo", "1");
+    // cm:why carries the queued step + its gate, without which a queued-but-undispatched row renders as actively worked
+    params.set("withPipelineHealth", "1");
     if (opts.q) params.set("q", opts.q);
     if (opts.priority) params.set("priority", opts.priority);
     if (opts.createdBy) params.set("createdBy", opts.createdBy);

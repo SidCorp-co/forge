@@ -21,22 +21,15 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import {
-  agentSessions,
-  type IssueStatus,
-  issueDependencies,
-  issues,
-  jobs,
-  pipelineRuns,
-  runners,
-} from '../db/schema.js';
+import { agentSessions, type IssueStatus, issueDependencies, issues } from '../db/schema.js';
 import { freshRunnerAvailability, resolveGateSettings } from '../jobs/dispatch-gates.js';
-import { extractStageStatus } from '../jobs/stage-overrides.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { isBlockerSatisfied } from './dependency-satisfaction.js';
+import { loadActiveJobsByIssue, loadPinnedRunnerSaturation } from './pipeline-health-loaders.js';
 import {
   heldWaitingOn,
+  queuedStepOf,
   retryCooldownWaitingOn,
   runnerWaitingOn,
   staleTriggerWaitingOn,
@@ -46,8 +39,6 @@ import type {
   PipelineHealth,
   PipelineHealthDecompChild,
   PipelineHealthDep,
-  PipelineHealthJob,
-  PipelineHealthRunnerSat,
   PipelineHealthSession,
 } from './pipeline-health-types.js';
 
@@ -58,6 +49,7 @@ export type {
   PipelineHealthDecompChild,
   PipelineHealthDep,
   PipelineHealthJob,
+  PipelineHealthQueuedStep,
   PipelineHealthRunnerSat,
   PipelineHealthSession,
   PipelineWaitingReason,
@@ -82,58 +74,6 @@ export function getLastTickAt(projectId: string): Date | null {
 
 export function resetLastTickAtForTest(): void {
   lastTickAtByProject.clear();
-}
-
-/**
- * Q3 — the issue's live jobs, bucketed by issue id.
- */
-// cm:guard `held` MUST be loaded here but MUST NOT be counted at the runner-in-flight query in the loader below — this feeds the `issue_busy` and `job_held` reasons, which mirror L1 `issueBusyJob` (held blocks a duplicate), while that query mirrors `runner_load` (held burns no cap). Drop it here and the gate refuses to dispatch while pipelineHealth reports no waitingOn at all — the exact lie this file's lockstep edge exists to prevent.
-async function loadActiveJobsByIssue(
-  projectId: string,
-  ids: string[],
-): Promise<Map<string, PipelineHealthJob[]>> {
-  const rows = await db
-    .select({
-      id: jobs.id,
-      type: jobs.type,
-      status: jobs.status,
-      queuedAt: jobs.queuedAt,
-      runnerId: jobs.runnerId,
-      agentSessionId: jobs.agentSessionId,
-      issueId: jobs.issueId,
-      failureReason: jobs.failureReason,
-      pipelineRunStatus: pipelineRuns.status,
-      payload: jobs.payload,
-      retryAfterAt: jobs.retryAfterAt,
-    })
-    .from(jobs)
-    .leftJoin(pipelineRuns, eq(pipelineRuns.id, jobs.pipelineRunId))
-    .where(
-      and(
-        eq(jobs.projectId, projectId),
-        inArray(jobs.issueId, ids),
-        inArray(jobs.status, ['queued', 'dispatched', 'running', 'held']),
-      ),
-    );
-  const byIssue = new Map<string, PipelineHealthJob[]>();
-  for (const r of rows) {
-    if (!r.issueId) continue;
-    const bucket = byIssue.get(r.issueId) ?? [];
-    bucket.push({
-      id: r.id,
-      type: r.type,
-      status: r.status,
-      queuedAt: r.queuedAt,
-      runnerId: r.runnerId,
-      agentSessionId: r.agentSessionId,
-      failureReason: r.failureReason,
-      pipelineRunStatus: r.pipelineRunStatus,
-      stageStatus: extractStageStatus(r.payload),
-      retryAfterAt: r.retryAfterAt,
-    });
-    byIssue.set(r.issueId, bucket);
-  }
-  return byIssue;
 }
 
 /**
@@ -175,6 +115,13 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     out.waitingCause = { kind: issue.waitingKind };
   }
 
+  // cm:guard the candidate is picked HERE, above the held arm, so `queuedAt` and `queuedStep` describe the queued step whichever arm goes on to own `waitingOn` — an issue carrying a held job AND a queued one still has a step nobody can see, which is the ISS-903 blind spot. The `waitingOn` PRECEDENCE below is unchanged; only the projection moved.
+  const candidate = [...queuedJobs].sort((a, b) => a.queuedAt.getTime() - b.queuedAt.getTime())[0];
+  if (candidate) {
+    out.queuedAt = candidate.queuedAt.toISOString();
+    out.queuedStep = queuedStepOf(candidate);
+  }
+
   // cm:guard this call MUST stay above the `queuedJobs.length === 0` return — a held job is usually the issue's ONLY job, so deriving it from inside the queued-candidate block below reports nothing at all in exactly the case that matters
   const held = heldWaitingOn(issueJobs);
   if (held) {
@@ -182,12 +129,8 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     return out;
   }
 
-  if (queuedJobs.length === 0) return out;
-
-  const candidate = [...queuedJobs].sort((a, b) => a.queuedAt.getTime() - b.queuedAt.getTime())[0];
   if (!candidate) return out;
   const sinceIso = candidate.queuedAt.toISOString();
-  out.queuedAt = sinceIso;
 
   // cm:guard this arm belongs FIRST among the queued reasons, matching the CASE in dispatch-gates.ts — a paused or terminal parent run makes every later gate moot, and reporting `project_full` or `runner_full` for it sends the reader after a slot that would change nothing
   if (candidate.pipelineRunStatus && candidate.pipelineRunStatus !== 'running') {
@@ -288,56 +231,6 @@ function skillFromSessionMetadata(metadata: Record<string, unknown> | null): str
   const skillName = metadata.skillName;
   if (typeof skillName === 'string') return skillName;
   return '';
-}
-
-function runnerDefaultConcurrency(_runnerType: string): number {
-  // ISS-232 Phase 2 — runner cap is unified to 1 across all types. The
-  // antigravity 5-slot branch is gone; antigravity-as-load-balancer is
-  // replaced by primary-pinned selection (see runners/select.ts).
-  return 1;
-}
-
-/**
- * Q6 — in-flight load on the runners that queued candidates are pinned to.
- * Empty when no candidate has a `runner_id` (nothing to be saturated).
- */
-// cm:guard count only `dispatched|running` here — this mirrors the gate's `runner_load` CTE, where `held` is deliberately absent because a held job has released its slot; adding it reports `runner_full` for a runner that is in fact free
-async function loadPinnedRunnerSaturation(
-  jobsByIssue: ReadonlyMap<string, PipelineHealthJob[]>,
-): Promise<Map<string, PipelineHealthRunnerSat>> {
-  const candidateRunnerIds = new Set<string>();
-  for (const list of jobsByIssue.values()) {
-    for (const j of list) {
-      if (j.status === 'queued' && j.runnerId) candidateRunnerIds.add(j.runnerId);
-    }
-  }
-  const out = new Map<string, PipelineHealthRunnerSat>();
-  if (candidateRunnerIds.size === 0) return out;
-
-  const ids = [...candidateRunnerIds];
-  const runnerRows = await db
-    .select({ id: runners.id, type: runners.type, capabilities: runners.capabilities })
-    .from(runners)
-    .where(inArray(runners.id, ids));
-  const inFlightRows = await db
-    .select({ runnerId: jobs.runnerId, count: sql<string>`COUNT(*)::text` })
-    .from(jobs)
-    .where(and(inArray(jobs.runnerId, ids), inArray(jobs.status, ['dispatched', 'running'])))
-    .groupBy(jobs.runnerId);
-
-  const inFlightByRunner = new Map<string, number>();
-  for (const r of inFlightRows) {
-    if (r.runnerId) inFlightByRunner.set(r.runnerId, Number(r.count));
-  }
-  for (const r of runnerRows) {
-    const caps = (r.capabilities ?? {}) as Record<string, unknown>;
-    const cap =
-      typeof caps.maxConcurrent === 'number' && caps.maxConcurrent > 0
-        ? caps.maxConcurrent
-        : runnerDefaultConcurrency(r.type);
-    out.set(r.id, { type: r.type, cap, inFlight: inFlightByRunner.get(r.id) ?? 0 });
-  }
-  return out;
 }
 
 export async function hydratePipelineHealthForIssues(
@@ -496,6 +389,22 @@ export async function hydratePipelineHealthForIssues(
   }
 
   return map;
+}
+
+// cm:guard this is the ONE degrade-to-stage-only wrapper — `issues/routes.ts` and `issues/search.ts` both call it rather than keeping a copy each. pipelineHealth is derived, so a transient DB blip (or a partial drizzle mock in a unit test) must not 500 a list of issues; callers graft `{ stage: row.status }` for any id the map omits.
+export async function safeHydratePipelineHealthForIssues(
+  projectId: string,
+  issueIds: readonly string[],
+): Promise<Map<string, PipelineHealth>> {
+  try {
+    return await hydratePipelineHealthForIssues(projectId, issueIds);
+  } catch (err) {
+    logger.warn(
+      { err, projectId, issueCount: issueIds.length },
+      'pipeline-health: hydrate failed; falling back to stage-only',
+    );
+    return new Map();
+  }
 }
 
 export async function publishPipelineHealthChanged(

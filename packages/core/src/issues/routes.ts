@@ -30,34 +30,15 @@ import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { AttachmentError } from './attachment-service.js';
 import { createIssue, IssueCreateError } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
+import { DecomposeError, decomposeParent, IntegrationBranchError } from './decompose.js';
 import { LabelResolutionError, resolveLabelIdsForWrite } from './label-service.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
-import { hydratePipelineHealthForIssues, type PipelineHealth } from './pipeline-health.js';
+import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
 import { issueRelationInputSchema } from './relations-service.js';
 import { sessionContextSchema } from './session-context.js';
-import { IssueUpdateNotFound, updateIssueFields } from './update-service.js';
-
-// Defence against partial drizzle mocks in unit tests + transient DB blips:
-// pipelineHealth is derived; the list/single endpoints must not 500 if the
-// derivation throws. Callers degrade to `{ stage: row.status }` per issue.
-async function safeHydratePipelineHealth(
-  projectId: string,
-  issueIds: readonly string[],
-): Promise<Map<string, PipelineHealth>> {
-  try {
-    return await hydratePipelineHealthForIssues(projectId, issueIds);
-  } catch (err) {
-    logger.warn(
-      { err, projectId, issueCount: issueIds.length },
-      'pipeline-health: hydrate failed; falling back to stage-only',
-    );
-    return new Map();
-  }
-}
-
-import { DecomposeError, decomposeParent, IntegrationBranchError } from './decompose.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
+import { IssueUpdateNotFound, updateIssueFields } from './update-service.js';
 
 const attachmentInputSchema = z
   .object({
@@ -262,7 +243,7 @@ issueProjectRoutes.get(
       .where(eq(issueLabels.issueId, issue.id));
 
     const serialized = serializeIssue(issue);
-    const healthMap = await safeHydratePipelineHealth(projectId, [issue.id]);
+    const healthMap = await safeHydratePipelineHealthForIssues(projectId, [issue.id]);
     const creatorMap = await hydrateCreatorsForIssues([
       { id: issue.id, createdById: issue.createdById, createdVia: issue.createdVia },
     ]);
@@ -323,7 +304,7 @@ issueProjectRoutes.get(
     // (6 queries flat regardless of page size) and the FE wants it on every
     // row to render gate-aware badges.
     const ids = serialized.map((r) => r.id);
-    const healthMap = await safeHydratePipelineHealth(projectId, ids);
+    const healthMap = await safeHydratePipelineHealthForIssues(projectId, ids);
     // cm:why no opt-in flag here — every list/detail surface needs the creator fields, unlike withCost/withAgentSessions
     const creatorMap = await hydrateCreatorsForIssues(
       serialized.map((r) => ({ id: r.id, createdById: r.createdById, createdVia: r.createdVia })),
@@ -398,7 +379,7 @@ issueRoutes.get(
       .innerJoin(labels, eq(labels.id, issueLabels.labelId))
       .where(eq(issueLabels.issueId, id));
 
-    const healthMap = await safeHydratePipelineHealth(issue.projectId, [issue.id]);
+    const healthMap = await safeHydratePipelineHealthForIssues(issue.projectId, [issue.id]);
     const serialized = serializeIssue(issue);
     // ISS-308 A1 — hydrate the derived agentStatus on the single-issue detail
     // payload too (the list/search endpoints already do). Without it the detail
