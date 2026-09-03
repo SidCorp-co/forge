@@ -3,7 +3,7 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { collectIssueFieldUpdates } from '../issues/patch-fields.js';
-import { bodyText } from './prepare.js';
+import { bodySlots, bodyText } from './prepare.js';
 
 /**
  * `refuseUnrecordedClose` states the shape of the rule this file gates: a rule
@@ -233,5 +233,25 @@ describe('the read projection is safe on stored rows', () => {
   it('passes a markdown row through untouched', () => {
     expect(bodyText('**Triage** — m', 'markdown')).toBe('**Triage** — m');
     expect(bodyText('**Triage** — m', null)).toBe('**Triage** — m');
+  });
+
+  /**
+   * `issueUpdated` carries only the fields whose VALUE moved, and `track` in
+   * `issues/routes.ts` is what drops the rest — so editing an html description
+   * that was already html emits `description` with no format. Measured live on
+   * forge-beta: ISS-899's body was re-embedded as raw `<forge-problem>` markup.
+   */
+  it('projects a component body whose format was lost in transit, rather than embedding markup', () => {
+    const body = '<forge-symptom><forge-opening>patched</forge-opening></forge-symptom>';
+    const text = bodyText(body, null);
+    expect(text).not.toContain('<forge-');
+    expect(text).toContain('patched');
+    expect(bodySlots(body, null)).not.toBeNull();
+  });
+
+  it('still refuses to sniff a row that SAYS markdown, whatever it contains', () => {
+    const body = '<forge-symptom><forge-opening>x</forge-opening></forge-symptom>';
+    expect(bodyText(body, 'markdown')).toBe(body);
+    expect(bodySlots(body, 'markdown')).toBeNull();
   });
 });

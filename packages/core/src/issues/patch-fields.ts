@@ -70,7 +70,7 @@ export function collectIssueFieldUpdates(
   updates.descriptionFormat = prepared?.format ?? 'markdown';
   updates.descriptionTemplate = prepared?.template ?? null;
   onChange?.('description', updates.description);
-  // cm:edge contract -> packages/core/src/memory/indexer.ts — the `issueUpdated` hook carries only CHANGED fields, and the indexer needs the format alongside the body to project it; unreported, an html description is re-embedded as raw markup on every edit
+  // cm:edge contract -> packages/core/src/memory/indexer.ts — the `issueUpdated` hook carries only CHANGED fields, and the indexer needs the format alongside the body to project it. Reported unconditionally here, but do NOT rely on it arriving: REST's `track` drops a field whose value did not move, so an edit that leaves the format at `html` emits `description` alone. `bodyText` sniffs an absent format for that reason — this call is the cheap half, that sniff is the one that holds.
   onChange?.('descriptionFormat', updates.descriptionFormat);
   return { updates, warnings: prepared?.warnings ?? [] };
 }

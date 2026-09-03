@@ -91,7 +91,7 @@ export function prepareBody(input: PrepareInput): PreparedBody {
  */
 // cm:guard never let this throw. It reads rows already in the table, including any written before a registry change, and a read path that refuses its own data takes the issue view and the agent prompt down together. An unparseable stored body degrades to its own bytes.
 export function bodyText(body: string, format: string | null | undefined): string {
-  if (format !== 'html') return body;
+  if (!readsAsHtml(body, format)) return body;
   try {
     return bodyToText(parseBody(body)) || body;
   } catch {
@@ -99,12 +99,35 @@ export function bodyText(body: string, format: string | null | undefined): strin
   }
 }
 
+/**
+ * An ABSENT format is sniffed rather than assumed `markdown`.
+ *
+ * Both columns are NOT NULL, so null never comes off a row — it means a caller
+ * lost the field in transit, and one does: `track` in `issues/routes.ts` drops
+ * a field whose value did not move, so the unconditional
+ * `onChange('descriptionFormat')` in `patch-fields.ts` never reaches
+ * `issueUpdated` when a body was edited without changing format. Measured live
+ * on forge-beta 2026-09-03: ISS-899's html description was re-embedded as raw
+ * `<forge-problem>` markup, spending its vector budget on tag names.
+ *
+ * Fixed HERE and not at that call site because there are four readers and the
+ * format can be lost on any route into them; a reader that cannot be blinded
+ * is worth more than one event made complete. An explicit `'markdown'` still
+ * wins, so a markdown row can never be misread as markup.
+ */
+// cm:guard the sniff must stay the SAME rule as `resolveFormat`'s — a body that opens with `<forge-` is html on the way in and on the way out, or a body stores one way and reads the other
+function readsAsHtml(body: string, format: string | null | undefined): boolean {
+  if (format === 'html') return true;
+  if (format) return false;
+  return body.trimStart().startsWith('<forge-');
+}
+
 /** Parsed slots of a STORED body, for the MCP read surface. Never throws. */
 export function bodySlots(
   body: string,
   format: string | null | undefined,
 ): Record<string, unknown> | null {
-  if (format !== 'html') return null;
+  if (!readsAsHtml(body, format)) return null;
   try {
     return validateBody(parseBody(body)).slots;
   } catch {
