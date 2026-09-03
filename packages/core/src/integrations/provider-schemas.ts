@@ -27,17 +27,37 @@ const coolifyTargetSchema = z
   })
   .transform((t) => ({ id: t.id ?? randomUUID(), label: t.label, resourceUuid: t.resourceUuid }));
 
+const releaseVerifyProbeSchema = z.object({
+  url: z.string().url().max(500),
+  commitPath: z.string().min(1).max(200).optional(),
+});
+
+// cm:edge contract -> packages/core/src/release-batch/channel.ts — `resolveReleaseChannel` reads these three keys off `effectiveConfig(pair)` of the production binding whatever its provider; a provider whose config schema lacks them strips them on PATCH (zod objects drop unknown keys) and the roster reports the label as undeclared with a 200 behind it. Measured 2026-09-03 on sidpeak's coolify binding.
+const releaseChannelFields = {
+  /** Matched against `runners.labels`; only those boxes may run the release. */
+  releaseRunnerLabel: z.string().min(1).max(60).optional(),
+  verify: z
+    .object({
+      probes: z.array(releaseVerifyProbeSchema).min(1).max(10),
+      timeoutSeconds: z.number().int().min(10).max(3600).optional(),
+      stableReads: z.number().int().min(1).max(10).optional(),
+    })
+    .optional(),
+  /** What to do when a deploy replaces a working build with a dead one. */
+  rollback: z.string().max(4000).optional(),
+};
+
+const RELEASE_CHANNEL_KEYS = ['releaseRunnerLabel', 'verify', 'rollback'] as const;
+
 const coolifyConfigSchema = z.object({
   baseUrl: z.string().url().max(500),
   // One binding fans out to ≥1 target (split BE/FE deploy as separate apps).
   targets: z.array(coolifyTargetSchema).min(1).max(20),
+  ...releaseChannelFields,
 });
 
-// Coolify's deploy targets are BINDING-tier: two projects sharing one connection
-// (org-shared credential) each deploy their own Coolify resources, so `targets`
-// lives on binding.config (overlaid over connection.config at dispatch — binding
-// wins). Everything else (baseUrl) stays connection-tier with the credential.
-const COOLIFY_BINDING_CONFIG_KEYS = ['targets'] as const;
+// cm:why binding-tier = per project: two projects share one org connection (the credential + baseUrl) but each deploys its own targets and names its own release box, probes and rollback — a key left on the connection tier is also a key a project admin cannot write on an org-owned connection
+const COOLIFY_BINDING_CONFIG_KEYS = ['targets', ...RELEASE_CHANNEL_KEYS] as const;
 
 /** Provider → binding-tier config keys (everything else stays on the
  *  connection with the credential). Coolify: per-project deploy targets;
@@ -154,24 +174,7 @@ const rocketchatSecretsSchema = z.object({
 });
 
 // cm:why the release channel `agent` is declared here rather than left as free-text: the REST create path validates through the discriminated union below, so a provider absent from it cannot be created at all — `provider` being a `text` column only means no MIGRATION is needed. It carries no credential and has no adapter because nothing is integrated: the deploy is the project's own script, run by the release session on a box that already holds the key.
-const agentReleaseVerifyProbeSchema = z.object({
-  url: z.string().url().max(500),
-  commitPath: z.string().min(1).max(200).optional(),
-});
-
-const agentReleaseConfigSchema = z.object({
-  /** Matched against `runners.labels`; only those boxes may run the release. */
-  releaseRunnerLabel: z.string().min(1).max(60).optional(),
-  verify: z
-    .object({
-      probes: z.array(agentReleaseVerifyProbeSchema).min(1).max(10),
-      timeoutSeconds: z.number().int().min(10).max(3600).optional(),
-      stableReads: z.number().int().min(1).max(10).optional(),
-    })
-    .optional(),
-  /** What to do when a deploy replaces a working build with a dead one. */
-  rollback: z.string().max(4000).optional(),
-});
+const agentReleaseConfigSchema = z.object(releaseChannelFields);
 
 // Discriminated on `provider` so each provider validates its own config +
 // secrets shape. `environment` defaults to 'prod' for postman (it has no

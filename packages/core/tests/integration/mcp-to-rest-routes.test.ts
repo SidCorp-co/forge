@@ -263,11 +263,29 @@ describe('release batch lifecycle — replaces forge_release_batch', () => {
 
   it('loads the batch context for a run that belongs to the project in the path', async () => {
     const { project, token } = await seed();
+    await harness.db.execute(
+      sql`UPDATE projects SET base_branch = 'main' WHERE id = ${project.id}`,
+    );
     const runId = await seedBatchRun(project.id);
 
     const res = await call(`/api/projects/${project.id}/release-batches/${runId}`, token);
     expect(res.status).toBe(200);
-    expect((await res.json()) as { projectId: string }).toMatchObject({ projectId: project.id });
+    expect((await res.json()) as { projectId: string }).toMatchObject({
+      projectId: project.id,
+      baseBranch: 'main',
+    });
+  });
+
+  // cm:guard the context is the only lifecycle route allowed to need the branches — it answers 409 with the code the agent acts on; abort and finish below must keep answering for the same undeclared project
+  it('answers 409 RELEASE_BRANCHES_UNDECLARED for the context of a project with no baseBranch', async () => {
+    const { project, token } = await seed();
+    const runId = await seedBatchRun(project.id);
+
+    const res = await call(`/api/projects/${project.id}/release-batches/${runId}`, token);
+    expect(res.status).toBe(409);
+    expect((await res.json()) as { code: string }).toMatchObject({
+      code: 'RELEASE_BRANCHES_UNDECLARED',
+    });
   });
 
   // cm:guard this is the case the MCP tool could not have: it read the project OFF the run, so a mismatch was impossible. A project-scoped URL makes it possible, and the PAT fence bites on the path id alone — so without this refusal a token scoped to one project finishes another project's release.
@@ -287,13 +305,19 @@ describe('release batch lifecycle — replaces forge_release_batch', () => {
     expect(finish.status).toBe(404);
   });
 
-  it('abort releases the claims and closes nothing', async () => {
+  // cm:guard the queued job is the row batch edfd569d left behind on 2026-09-03: abort released the claims, the retry stayed `queued` under a `running` run, and the previous batch's retry had already shipped to production after ITS abort — a green here means nothing under an aborted run can still execute
+  it('abort releases the claims, cancels the run and its jobs, and closes no issue', async () => {
     const { user, project, token } = await seed();
     const runId = await seedBatchRun(project.id);
     const issueId = randomUUID();
+    const jobId = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, release_batch_run_id)
       VALUES (${issueId}, ${project.id}, 1, 'Shipped thing', 'tested', ${user.id}, ${runId})
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, type, status, payload, pipeline_run_id, created_by)
+      VALUES (${jobId}, ${project.id}, 'release_batch', 'queued', '{}'::jsonb, ${runId}, ${user.id})
     `);
 
     const res = await call(`/api/projects/${project.id}/release-batches/${runId}/abort`, token, {
@@ -310,6 +334,10 @@ describe('release batch lifecycle — replaces forge_release_batch', () => {
       sql`SELECT status, release_batch_run_id FROM issues WHERE id = ${issueId}`,
     );
     expect(after[0]).toMatchObject({ status: 'tested', release_batch_run_id: null });
+    const run = await harness.db.execute(sql`SELECT status FROM pipeline_runs WHERE id = ${runId}`);
+    expect(run[0]).toMatchObject({ status: 'cancelled' });
+    const job = await harness.db.execute(sql`SELECT status FROM jobs WHERE id = ${jobId}`);
+    expect(job[0]).toMatchObject({ status: 'cancelled' });
   });
 });
 

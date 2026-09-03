@@ -220,6 +220,26 @@
 
 ### Fixed
 
+- Aborting a release batch now cancels the run and every job under it. `abort` used to release
+  the claims and stop there, leaving the run `running` and its job alive: sidpeak batch `ee39c4ae`
+  (2026-09-03) was aborted while its retry job kept going, shipped 20 commits to production, and
+  then `finish` found no claims and closed 0 of 12 issues; batch `edfd569d` was aborted and left a
+  `queued` retry under a still-running run. The route now goes through `closeRunIfOneShot`, which
+  is the cascade-calling helper the orphan invariant requires.
+
+- The three release-batch lifecycle routes (`GET`, `finish`, `abort`) answered 500
+  `RELEASE_BRANCHES_UNDECLARED` for a project with no `baseBranch`, because the ownership check
+  computed the whole release plan. Ownership is now a plain run lookup; only the context route
+  needs the branches, and it answers 409 with that code. `54cd78d9` shipped this red on all three
+  integration tests and on `release-batch-run.test.ts` — a green `pnpm verify` is not a green CI,
+  again.
+
+- `releaseRunnerLabel`, `verify` and `rollback` on a **coolify** production binding were silently
+  dropped: the coolify config schema did not know the keys, zod strips unknown keys, and the PATCH
+  returned 200 while the roster kept reporting the label as undeclared. The three fields are now
+  shared between the `agent` and `coolify` schemas and live on the binding tier, so a project admin
+  can declare them on an org-shared connection without touching the credential.
+
 - **A duplex job could be reaped as dead while it was only waiting for a session slot.** The
   runner's session heartbeat starts when the Claude process spawns, but `start` can block for
   minutes before that: a duplex job waits on the per-device session semaphore, and a session parked

@@ -23,6 +23,7 @@ vi.mock('../release-batch/service.js', () => {
     }
   }
   class NoReleaseGateError extends Error {}
+  class ReleaseBranchesUndeclaredError extends Error {}
   class ReleaseRecordMissingError extends Error {
     constructor(public readonly issueIds: string[] = []) {
       super(`RELEASE_RECORD_MISSING: ${issueIds.length} issue(s) have no release note`);
@@ -35,6 +36,7 @@ vi.mock('../release-batch/service.js', () => {
     NoRunnerOnlineError,
     ReleasePoolEmptyError,
     NoReleaseGateError,
+    ReleaseBranchesUndeclaredError,
     ReleaseRecordMissingError,
   };
 });
@@ -43,6 +45,7 @@ const { runScheduledReleaseCut } = await import('./release-batch-run.js');
 const {
   BatchInFlightError,
   NoRunnerOnlineError,
+  ReleaseBranchesUndeclaredError,
   ReleasePoolEmptyError,
   ReleaseRecordMissingError,
 } = await import('../release-batch/service.js');
@@ -103,6 +106,7 @@ describe('the scheduled cut', () => {
     ['no runner online at 04:00', () => new NoRunnerOnlineError()],
     ['the release box lost its label', () => new ReleasePoolEmptyError('epod-prod')],
     ['an issue at the gate with no release note', () => new ReleaseRecordMissingError(['a'])],
+    ['a project that declares no baseBranch', () => new ReleaseBranchesUndeclaredError()],
   ])('reports "not now" rather than failure for %s', async (_name, make) => {
     roster([{ id: 'a' }]);
     createReleaseBatch.mockRejectedValue(make());

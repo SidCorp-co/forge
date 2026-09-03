@@ -1,6 +1,7 @@
 // create: opens a system run, atomically claims N gate-status issues, enqueues one
 // release_batch job. finish: closes all claimed issues tested→closed. abort:
-// releases claims, writes one comment per issue, closes nothing.
+// releases claims, cancels the run and every job under it, writes one comment
+// per issue, closes no issue.
 //
 // RUNNER-CAP NOTE: the batch job holds its runner's single slot (nothing else
 // deploys while a release is shipping). It does NOT count toward per-project
@@ -402,7 +403,6 @@ export async function abortReleaseBatch(
   `);
 
   const releasedIds = released.map((r) => r.id);
-
   for (const issueId of releasedIds) {
     try {
       await db.insert(comments).values({
@@ -416,12 +416,16 @@ export async function abortReleaseBatch(
     }
   }
 
+  // cm:guard abort is "nothing under this run executes any further", not just "no claims" — batch ee39c4ae (2026-09-03) was aborted while its retry job kept running, shipped 20 commits to production, then `finish` found no claims and closed 0 of 12; the run must go terminal here so the cascade cancels queued retries and kills the live session
+  await closeRunIfOneShot(runId, 'cancelled');
+
   return releasedIds;
 }
 
 // cm:edge naming -> packages/core/src/release-batch/queries.ts — every caller imports the batch surface from this module; the read-only half lives next door for the size budget, and re-exporting keeps that a file layout rather than an API change
 export {
   type ActiveReleaseBatchInfo,
+  findReleaseBatchRun,
   getActiveReleaseBatch,
   isOpenReleaseBatchRun,
   loadReleaseRoster,

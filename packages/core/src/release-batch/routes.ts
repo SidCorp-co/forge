@@ -4,7 +4,7 @@
 // GET  /:projectId/release-batches/active — returns the active batch for the project, or null
 // GET  /:projectId/release-batches/:runId — batch context: roster, branches, deployPlanned
 // POST /:projectId/release-batches/:runId/finish — close every claimed issue
-// POST /:projectId/release-batches/:runId/abort — release the claims, close nothing
+// POST /:projectId/release-batches/:runId/abort — release the claims, cancel the run, close no issue
 
 import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
@@ -18,6 +18,7 @@ import {
   BatchInFlightError,
   ClaimConflictError,
   createReleaseBatch,
+  findReleaseBatchRun,
   finishReleaseBatch,
   getActiveReleaseBatch,
   loadReleaseBatchContext,
@@ -77,12 +78,7 @@ releaseBatchRoutes.post(
       if (err instanceof NoReleaseGateError) {
         throw conflict('NO_RELEASE_GATE', 'This project has no release gate configured');
       }
-      if (err instanceof ReleaseBranchesUndeclaredError) {
-        throw conflict(
-          'RELEASE_BRANCHES_UNDECLARED',
-          'This project declares no baseBranch, so there is nothing a release could promote from',
-        );
-      }
+      if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches();
       if (err instanceof ReleasePoolEmptyError) {
         throw serviceUnavailable(
           'RELEASE_POOL_EMPTY',
@@ -157,15 +153,21 @@ const finishBodySchema = z.object({ commit: z.string().trim().max(200).optional(
 const abortBodySchema = z.object({ reason: z.string().trim().max(2000).optional() }).strict();
 
 // cm:guard resolve the run FIRST and refuse when `context.projectId` differs from the id in the path — the path id is what the PAT fence bites on, so accepting a runId that belongs to another project is exactly how a token scoped to project A finishes project B's release. The MCP tool this replaces read the project OFF the run and could not have this bug; a project-scoped URL can, and only this comparison stops it.
+// cm:guard ownership only — no release plan, no branches. `abort` and `finish` must answer for a run whose project has since lost its branch declaration (or anything else the plan needs): abort is the agent's escape hatch, and an escape hatch that 500s leaves the run `running` with its claims held. Measured 2026-09-03: the three lifecycle routes all threw RELEASE_BRANCHES_UNDECLARED from here.
 async function loadRunForProject(runId: string, projectId: string, userId: string) {
-  const context = await loadReleaseBatchContext(runId);
-  if (!context || context.projectId !== projectId) throw notFound('release batch not found');
+  const run = await findReleaseBatchRun(runId);
+  if (!run || run.projectId !== projectId) throw notFound('release batch not found');
 
   const access = await loadProjectAccess(projectId, userId);
   if (!access) throw notFound('project not found');
   assertProjectRole(access, 'member');
+}
 
-  return context;
+function undeclaredBranches(): HTTPException {
+  return conflict(
+    'RELEASE_BRANCHES_UNDECLARED',
+    'This project declares no baseBranch, so there is nothing a release could promote from',
+  );
 }
 
 releaseBatchRoutes.get(
@@ -175,7 +177,13 @@ releaseBatchRoutes.get(
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
-    return c.json(await loadRunForProject(runId, projectId, c.get('userId')));
+    await loadRunForProject(runId, projectId, c.get('userId'));
+    try {
+      return c.json(await loadReleaseBatchContext(runId));
+    } catch (err) {
+      if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches();
+      throw err;
+    }
   },
 );
 
