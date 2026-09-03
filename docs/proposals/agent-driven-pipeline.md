@@ -255,7 +255,7 @@ never edited — the binary wins by construction.
 |---|---|---|
 | 1 | Post-deploy live E2E | **Dropped for now.** Verification after deploy is separate work, revisited after the mode lands. |
 | 2 | UI buttons | Write a **comment**. One write path, one read path — the agent cannot be half-blind. |
-| 3 | Sunset condition for `staged` | Deferred until there is data from phase 5. |
+| 3 | Sunset condition for `staged` | Deferred here, then **answered by ISS-897 (2026-09-03)** without waiting for phase-5 evidence: 0 of 38 projects had ever declared `staged`, so the lane was removed as unchosen rather than sunset as outcompeted. |
 | 4 | Progress-based watchdog | A new commit **or** a new journal phase counts as progress. 90 min without either → alert; 180 min → `held`. Never reap — RFC 0002 already separated the park axis. |
 | 5 | First test projects | `KineTrak` and `archmap` — smaller blast radius than forge-dev, and both are real work rather than a synthetic fixture. |
 
@@ -363,8 +363,8 @@ paid for themselves.
 - A human comment on a `needs_info` issue returns it to `open` — `pipeline/answer-resume.ts`. The
   agent that asked is gone, so the answer is the only thing that can dispatch a new session. Only
   `needs_info`: `waiting` and `on_hold` were entered by a person and stay that way. The
-  orchestrator's `needs_info → open` short-circuit, which exists so a staged project does not
-  re-triage, is now staged-only.
+  orchestrator's `needs_info → open` short-circuit, which existed so a staged project did not
+  re-triage, was deleted with that lane by ISS-897.
 
 > **Correction: only ONE of the six is a new kernel status.** `running` is what `in_progress`
 > already enforces, `needs_human` what the three parked statuses do, `done` what `closed` does.
@@ -430,28 +430,24 @@ run somewhere other than a test:
 | orphan hygiene covers the new type | a drive job stranded by a core restart was reaped in ~4 min as `infra` / *"agent session terminated without job completion"*, and the reconciler then re-dispatched on its own. This covers a job that gets **reaped**; a job that exits `done` leaving the issue at `in_progress` is a different shape, uncovered until ISS-890 added `resetAutonomousWedgesOnce` |
 
 The one thing that broke was self-inflicted and worth writing down: the first drive job dispatched
-during a core deploy, so the runner's websocket was down and the session timed out. **Deploy before
-flipping a project, or flip it back to `staged` first** — while a project is autonomous the
-reconciler re-dispatches every minute, so a restart window is nearly certain to catch one. Since
-ISS-890 that re-dispatch is bounded: after `AUTONOMOUS_RESCUE_CAP` rescues of one run without the
-issue advancing, the issue is parked at `needs_info` instead.
+during a core deploy, so the runner's websocket was down and the session timed out. **Deploy when a
+project is quiet** — the reconciler re-dispatches every minute, so a restart window is nearly
+certain to catch one. Since ISS-890 that re-dispatch is bounded: after `AUTONOMOUS_RESCUE_CAP`
+rescues of one run without the issue advancing, the issue is parked at `needs_info` instead.
 
-#### Switching a live project over
+#### Switching a live project over — removed by ISS-897
 
-Flipping `mode` is not a drop-in: the staged driver leaves work the autonomous one has no step
-for. `autonomousStepFor` returns a job at `open` and nowhere else, so at the moment of the switch:
+This section held a migration runbook for flipping `mode` from `staged` to `autonomous`. There is
+no `mode` any more: ISS-897 removed the key from `pipelineConfigSchema`, migrated it off all 38
+project rows, and deleted the staged dispatch path with it. The runbook is kept out rather than
+kept stale — it named a config key that no longer parses and a driver that no longer exists, and a
+reader who followed it would be writing a value the next settings save silently drops.
 
-| What the staged driver left | What happens under autonomous | What to do |
-|---|---|---|
-| an issue mid-pipeline (`in_progress`, `developed`, `testing`, …) | its next transition enqueues nothing — it stalls at a status the board still shows as active | move it back to `open`, or let it finish before switching |
-| a `held` job | still counted by the L1 `issueBusyJob` gate, so the drive job for that issue is refused as a duplicate | cancel the held job — under the new driver it is debris, not a pause someone chose |
-| a job already dispatched | runs to completion normally; its result transition then produces nothing | let it drain before switching |
-
-Measured on KineTrak 2026-08-20: one `held` triage on ISS-1, parked on `retry_rounds_exhausted`
-for fifteen hours, was the only thing standing between the switch and the first drive job — and it
-is invisible on the board, which shows ISS-1 as a plain `open` issue. **Switch a project when it is
-quiet, and check `jobs` for `held` rows first.** A project with seven jobs in flight is the wrong
-moment, whatever the config says.
+The one durable finding from it, which is still true and is about the DRIVER rather than the
+switch: a `held` job still counts against the L1 `issueBusyJob` gate, so a drive job for that issue
+is refused as a duplicate. Measured on KineTrak 2026-08-20 — one `held` triage on ISS-1, parked on
+`retry_rounds_exhausted` for fifteen hours, invisible on a board that showed ISS-1 as a plain `open`
+issue.
 
 #### The memory profile is the driver's, not the box's — 2026-08-20
 
@@ -783,6 +779,6 @@ The mode is better on the axes it was built for. It is not free on the others:
 - **Review independence rests on a fork, not on a dispatch.** The reviewer is clean-context because
   the driver forks it that way and passes `FORGE_VERDICT_FILE` through. That is a discipline inside
   one session, where the staged pipeline got it from the process boundary for free.
-- **Two modes must stay true until `staged` is sunset.** Every kernel change is checked against both,
-  and the sunset condition is deferred until phase 5 has evidence — so the doubled surface is the
-  standing cost of not having decided yet.
+- **Two modes were the standing cost of not having decided.** Every kernel change had to hold under
+  both. ISS-897 ended that by deleting `staged` — the doubled surface is gone, and with it the
+  `mode` key, the eight `auto<Stage>` toggles, `sessionGroups` and `mergeStates`.
