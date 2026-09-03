@@ -76,6 +76,28 @@ const READ_PATHS: Record<string, RegExp> = {
 
 const WRITES_A_BODY = /\.(insert|update)\((comments|issues)\)/;
 
+/**
+ * A strip is only reported if the TRANSPORT hands it back. `prepareBody`
+ * returns `warnings` on every door, but two of them dropped it on the floor
+ * until the ISS-898 live walk hit them: REST comment create and MCP
+ * `forge_issues` create. AC 6/7 measure this response, not the stored row, so
+ * a caller who typed `<div>` and got a 201 had no way to learn it was
+ * unwrapped. Each entry is the pair of writes that file answers.
+ *
+ * `issues/decompose.ts` is deliberately absent: it writes N children inside
+ * one transaction and its response has no per-child slot, so its warnings have
+ * nowhere to go. An invalid body there is refused, which is the half that matters.
+ */
+const WARNING_SURFACES: Record<string, RegExp[]> = {
+  'comments/routes.ts': [/\{ \.\.\.inserted, warnings/, /\{ \.\.\.updated, warnings/],
+  'issues/routes.ts': [/response\.warnings = /, /\{ \.\.\.patched, warnings/],
+  'mcp/tools/forge-comments.ts': [
+    /result\.warnings = bodyWarnings/,
+    /result\.warnings = written\.warnings/,
+  ],
+  'mcp/tools/forge-issues.ts': [/out\.warnings = /, /updateResult\.warnings = /],
+};
+
 // cm:why comments are stripped before the scan because a cm:guard that QUOTES `db.insert(comments)` to explain the rule is not a write path — the first one written flagged `db/schema.ts` as an unclassified writer
 function codeOf(file: string): string {
   return readFileSync(file, 'utf8')
@@ -106,6 +128,18 @@ describe('every caller-supplied body door is gated', () => {
     for (const [rel, pattern] of Object.entries(READ_PATHS)) {
       const src = readFileSync(join(SRC, rel), 'utf8');
       expect(pattern.test(src), `${rel} no longer projects the body`).toBe(true);
+    }
+  });
+
+  it('every door that answers its caller hands back the strips it made', () => {
+    for (const [rel, patterns] of Object.entries(WARNING_SURFACES)) {
+      const src = readFileSync(join(SRC, rel), 'utf8');
+      for (const pattern of patterns) {
+        expect(
+          pattern.test(src),
+          `${rel} performs a strip and answers 201/200 without reporting it (${pattern.source})`,
+        ).toBe(true);
+      }
     }
   });
 

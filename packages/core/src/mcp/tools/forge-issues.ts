@@ -649,6 +649,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           out.attachments = result.attachments;
           if (result.attachmentErrors.length > 0) out.attachmentErrors = result.attachmentErrors;
         }
+        if (result.bodyWarnings.length > 0) out.warnings = result.bodyWarnings;
         return out;
       }
       case 'update': {

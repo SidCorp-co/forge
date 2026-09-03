@@ -205,7 +205,11 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         logger.error({ err, commentId: insertedId }, 'comment mention fan-out failed');
       }
 
-      return c.json(inserted, 201);
+      // cm:guard ISS-898 — surface `prepared.warnings` here, the same as the PATCH half below and both MCP actions: a strip the gate performed and the transport swallowed is a body the caller believes they wrote. AC 6/7 measure this response, not the stored row.
+      return c.json(
+        prepared.warnings.length > 0 ? { ...inserted, warnings: prepared.warnings } : inserted,
+        201,
+      );
     },
   );
 
