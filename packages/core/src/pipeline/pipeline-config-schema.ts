@@ -5,83 +5,18 @@ import {
   isKnownMcpServerName,
   MCP_CATALOG_NAMES,
 } from './mcp-catalog.js';
-import { PIPELINE_STEPS, type StepToggleKey } from './registry.js';
-
-export type { StepToggleKey };
-
 /**
- * Step toggle — accepts the v0 boolean form AND the new object form that
- * carries a per-step runner override. The orchestrator's `isToggleEnabled`
- * already accepts both shapes, so v0 documents continue to parse without a
- * data migration. The object form is the canonical going-forward shape.
+ * Per-stage `{ enabled, mode }` config under `pipelineConfig.states`, keyed by
+ * the kernel status the config applies at.
  *
- * `runner` is intentionally `string` (not a closed enum). The dispatcher
- * resolves the runner type against the project's registered `runners` rows
- * and the global runner-adapter registry — keeping it open here means new
- * adapter types auto-work without a schema change.
- *
- * `model` is opaque: it is passed through to the adapter, never validated
- * here. Models change too frequently to enumerate.
+ * These are the four non-terminal statuses the one lane has. Only `open`
+ * dispatches — `autonomousStepFor` returns a step there and nowhere else — so
+ * the other three carry prompt/tool policy for a session that is already
+ * running or resuming, never a dispatch decision.
  */
-export const stepToggleSchema = z.union([
-  z.boolean(),
-  z.object({
-    enabled: z.boolean(),
-    runner: z.string().optional(),
-    model: z.string().optional(),
-  }),
-]);
-
-export type StepToggle = z.infer<typeof stepToggleSchema>;
-
-/**
- * Authoritative list of step toggle keys exposed to projects. Derived from
- * `PIPELINE_STEPS` in `./registry.ts` so a new step is added in exactly one
- * place. Includes `autoClarify` (ISS-171, re-homed to the happy path): the
- * `confirmed → clarify` auto-dispatch gate; clarify exits to the (now
- * reified) `clarified` status, where plan dispatches.
- *
- * Cast to the explicit tuple literal because Zod's `z.enum` requires a
- * `readonly [string, ...string[]]` shape that the wider `string[]` type of
- * `Array.map` doesn't satisfy.
- */
-export const STEP_TOGGLE_KEYS = PIPELINE_STEPS.map((s) => s.toggle) as unknown as readonly [
-  'autoTriage',
-  'autoClarify',
-  'autoPlan',
-  'autoCode',
-  'autoReview',
-  'autoTest',
-  'autoFix',
-  'autoRelease',
-];
-
-/**
- * Per-stage `{ enabled, mode }` config under `pipelineConfig.states`.
- * `enabled:false` skips dispatch for both auto + PM paths; `mode:'manual'`
- * skips the auto path and rejects PM dispatch with
- * `FORBIDDEN: STAGE_MANUAL_ONLY`. Human-triggered `/run-pipeline-step` still
- * works regardless — manual mode means "only a human can fire this stage".
- *
- * `tested` is listed here despite having no skill in STATUS_TO_JOB_TYPE: the FE
- * needs a toggle to opt-in to soft-skip auto-transition via STAGE_FORWARD. With
- * `mode:'manual'` (the default) an issue parks at it; `enabled:false` skips it.
- * `pass`/`staging`/`deploying` were retired (unify gate model) — `tested`
- * ("Awaiting release") is the single production approval gate, and review exits
- * straight to `testing`.
- */
-export const STAGE_NAMES = [
-  'open',
-  'needs_info',
-  'confirmed',
-  'clarified',
-  'approved',
-  'developed',
-  'testing',
-  'tested',
-  'reopen',
-  'released',
-] as const;
+// cm:guard the staged ladder (`confirmed` `clarified` `approved` `developed` `testing` `tested`) was removed here by ISS-897, and this schema STRIPS unknown keys — so re-adding one of those names does not just widen a union, it un-deletes a stage the settings surface no longer shows and the orchestrator no longer walks. A key here must be a status this lane actually reaches.
+// cm:edge contract -> packages/core/src/pipeline/autonomous-mode.ts — the same four statuses AUTONOMOUS_DRIVER_STATUSES names minus the terminals; a stage name that is not a driver status is config for a state no issue on this lane is ever in
+export const STAGE_NAMES = ['open', 'in_progress', 'needs_info', 'released'] as const;
 
 export type StageName = (typeof STAGE_NAMES)[number];
 
@@ -197,18 +132,7 @@ export const budgetConfigSchema = z
 
 export type BudgetConfig = z.infer<typeof budgetConfigSchema>;
 
-// Both `enabled` and `mode` are optional so PATCH
-// `{ states: { developed: { enabled: false } } }` works without resending
-// the rest. New per-state config fields (skillName, model, allowedTools,
-// disallowedTools, permissionMode, timeoutSeconds, mcpServers, systemPrompt,
-// userPromptPolicy,
-// budget, sessionGroup) are all optional; defaults preserve the
-// current hardcoded behavior.
-//
-// No `.passthrough()` — the merge layer (`mergePipelineConfig`) handles
-// legacy-key round-trip at the top level via spread. Stage-level legacy
-// keys are not preserved by design; the schema is the source of truth for
-// what a stage block may contain.
+// cm:why every field is optional so a PATCH may send one stage key without resending the rest, and there is no `.passthrough()`: `mergePipelineConfig` round-trips legacy TOP-LEVEL keys by spread, while a stage-level key this object does not name is dropped on purpose
 export const stageConfigSchema = z.object({
   enabled: z.boolean().optional(),
   mode: z.enum(['auto', 'manual']).optional(),
@@ -226,20 +150,10 @@ export const stageConfigSchema = z.object({
   userPromptPolicy: userPromptPolicySchema.optional(),
   // Budget caps (consumed by dispatcher pre-flight + in-flight kill paths).
   budget: budgetConfigSchema.optional(),
-  // Session-group membership (PR-5). Joins this stage to a named group whose
-  // members share a Claude CLI session via --resume across the group.
-  sessionGroup: z.string().min(1).max(64).optional(),
   // cm:why per-state runner pool: unset/empty = whole fleet (pre-pool behaviour), one element = a hard pin, and every other selection rule still applies WITHIN the pool rather than being replaced by it
   // cm:edge contract -> packages/core/src/runners/select.ts — apply the pool INSIDE the candidate queries next to rate_limited_until, never as an exclude set: both wrap-arounds in selectRunnerForJob deliberately clear excludeDeviceIds
   // cm:guard an all-busy/all-limited pool leaves the job queued — never widen the pool to place it, or the operator loses the guarantee that a stage ran where they pinned it
   deviceIds: z.array(z.uuid()).max(20).optional(),
-  // Complexity-based auto-skip. When the issue landing on this stage has a
-  // `complexity` in this list, the soft-skip resolver treats the stage as
-  // skippable (reason `complexity_skip`) instead of dispatching its job —
-  // same chain/telemetry as disabled-stage and missing-skill skips. Primary
-  // use: `states.confirmed.skipComplexities=['xs','s']` lets trivially-sized
-  // issues bypass the clarify step. Unset = never skip.
-  skipComplexities: z.array(z.enum(issueComplexities)).max(issueComplexities.length).optional(),
 });
 
 export type StageConfig = z.infer<typeof stageConfigSchema>;
@@ -251,38 +165,26 @@ export const statesConfigSchema = z
 export type StatesConfig = z.infer<typeof statesConfigSchema>;
 
 /**
- * ISS-581 — stages that should NOT have access to scheduling/orchestration
- * agency tools by default. Review/test/release agents don't need to create
- * schedules, run workflows, or trigger remote jobs — denying these reduces the
- * blast radius if an agent behaves unexpectedly. allowedTools is intentionally
- * NOT set: an allowlist must enumerate every builtin and is fragile on CLI
- * upgrades, whereas a denylist is expansion-safe.
+ * ISS-581 — agency tools the driver does not need. A session that implements an
+ * issue has no reason to create schedules, run workflows or trigger remote
+ * jobs; denying them bounds the blast radius if one behaves unexpectedly.
+ * `allowedTools` is intentionally NOT set: an allowlist must enumerate every
+ * builtin and is fragile on CLI upgrades, whereas a denylist is expansion-safe.
  */
-const STAGE_DEFAULT_DISALLOWED: Partial<Record<StageName, string[]>> = {
-  developed: [
-    'CronCreate',
-    'CronDelete',
-    'CronList',
-    'Workflow',
-    'RemoteTrigger',
-    'ScheduleWakeup',
-  ],
-  testing: ['CronCreate', 'CronDelete', 'CronList', 'Workflow', 'RemoteTrigger', 'ScheduleWakeup'],
-  released: ['CronCreate', 'CronDelete', 'CronList', 'Workflow', 'RemoteTrigger', 'ScheduleWakeup'],
-};
+const DRIVER_DEFAULT_DISALLOWED = [
+  'CronCreate',
+  'CronDelete',
+  'CronList',
+  'Workflow',
+  'RemoteTrigger',
+  'ScheduleWakeup',
+];
 
 export function defaultStatesConfig(): Record<StageName, StageConfig> {
   return Object.fromEntries(
     STAGE_NAMES.map((s) => [
       s,
-      // `tested` is the production approval GATE — `manual` by default so the
-      // pipeline PARKS for a human before release. Flip to `auto` for full
-      // auto-ship. Every other stage runs automatically.
-      {
-        enabled: true,
-        mode: s === 'tested' ? ('manual' as const) : ('auto' as const),
-        ...(STAGE_DEFAULT_DISALLOWED[s] ? { disallowedTools: STAGE_DEFAULT_DISALLOWED[s] } : {}),
-      },
+      { enabled: true, mode: 'auto' as const, disallowedTools: [...DRIVER_DEFAULT_DISALLOWED] },
     ]),
   ) as Record<StageName, StageConfig>;
 }
@@ -296,66 +198,11 @@ export function defaultStatesConfig(): Record<StageName, StageConfig> {
  * deliberate so legacy Strapi-era keys (`clarified`, `pipelineSteps`,
  * `previewEnabled`, etc.) round-trip through the API without causing 400s
  * but are not surfaced as configurable controls.
- *
- * Step toggles are listed explicitly (rather than generated from
- * `STEP_TOGGLE_KEYS`) so Zod can infer each as optional in the resulting
- * type. Adding a new step requires editing the const tuple above AND
- * adding one row here — kept in lockstep by the test that asserts every
- * `STEP_TOGGLE_KEYS` entry has a schema field.
  */
-/**
- * Session group: a named set of stages that share one Claude CLI session.
- * The first dispatched stage in a group creates the session; subsequent
- * stages resume via `--resume <claudeSessionId>`. Each stage still owns its
- * own system prompt, model, and tools (server stamps them every dispatch);
- * the runner falls back to embedding the state's system prompt as
- * turn-level rules in the user prompt body when CLI ignores
- * --append-system-prompt on resume (undocumented behavior).
- *
- * On resume failure (session file gone, version drift, CLI error), the
- * orchestrator re-dispatches per `onResumeFail`:
- *  - "fresh" (default): retry without claudeSessionId — fresh CLI session.
- *  - "abort": fail the job; operator must investigate.
- */
-export const sessionGroupsSchema = z.record(
-  z.string().min(1).max(64),
-  z.array(z.enum(STAGE_NAMES)).min(1).max(STAGE_NAMES.length),
-);
-
-export type SessionGroupsConfig = z.infer<typeof sessionGroupsSchema>;
-
-/**
- * ISS-232 — per-project mapping of which stage status represents a merge
- * event. The state-machine stamps `issues.merged_at` when an issue
- * transitions OUT of `baseBranch`; the picker's L2 dependency gate keys on
- * the resulting `merged_at IS NULL` predicate.
- *
- * Trunk-based projects (jarvis-agents, Anhome) leave both fields at
- * `"released"` — `productionBranch` collapses into `baseBranch` and the
- * `decomposeChildrenPending` L2 gate shares the column with `blockedBy`.
- * Multi-base-branch projects will split these in a future v3 with a
- * dedicated `merged_to_prod_at` column.
- */
-export const mergeStatesSchema = z
-  .object({
-    baseBranch: z.enum(STAGE_NAMES).optional(),
-    productionBranch: z.enum(STAGE_NAMES).optional(),
-  })
-  .strict();
-
-export type MergeStatesConfigInput = z.infer<typeof mergeStatesSchema>;
-
+// cm:guard the strip is the DELETION MECHANISM for a removed key, so removing a row here is a data change on every project: the next settings save drops that key from the stored document. ISS-897 removed the eight `autoX` step toggles, `sessionGroups`, `mergeStates`, `states[x].sessionGroup` and `states[x].skipComplexities` this way, paired with a migration that did it at once rather than leaving 38 projects half-stripped. Do not remove a key whose reader still branches on it.
 export const pipelineConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
-    autoTriage: stepToggleSchema.optional(),
-    autoClarify: stepToggleSchema.optional(),
-    autoPlan: stepToggleSchema.optional(),
-    autoCode: stepToggleSchema.optional(),
-    autoReview: stepToggleSchema.optional(),
-    autoTest: stepToggleSchema.optional(),
-    autoFix: stepToggleSchema.optional(),
-    autoRelease: stepToggleSchema.optional(),
     // Per-project cap on simultaneously-active issues. Defaults to 1 (see
     // `dispatch-gates.ts:DEFAULT_MAX_CONCURRENT_ISSUES`), preserving the
     // ISS-232 serial-per-project behaviour for every project that does not
@@ -383,16 +230,8 @@ export const pipelineConfigSchema = z
     // `X` (soft-skip) rather than dispatching a job. Cycle/dead-end detection
     // runs at PATCH time.
     states: statesConfigSchema,
-    // PR-5 — session-group routing.
-    sessionGroups: sessionGroupsSchema.optional(),
     onResumeFail: z.enum(['fresh', 'abort']).optional(),
-    // ISS-580 — bound the accumulated context a sessionGroup is allowed to
-    // resume. When the estimated peak context (MAX(input_tokens+cache_read_tokens)
-    // over the group's usage_records) exceeds this value, or the issue's
-    // reopenCount exceeds maxResumeReopenCycles, the dispatcher starts a FRESH
-    // session instead of resuming — continuity is preserved via the existing
-    // handoff/sessionContext mechanism (ISS-537). Set 0 to disable the gate.
-    // Defaults: 150000 tokens / 3 reopen cycles.
+    // cm:why ISS-580 — a resume carries the prior session's whole context, so past a peak the fresh session plus its handoff is cheaper and no less informed; 0 disables the bound, absent means 150000 tokens / 3 reopen cycles (jobs/resume-policy.ts)
     maxResumeTokens: z.number().int().min(0).optional(),
     maxResumeReopenCycles: z.number().int().min(0).optional(),
     // cm:guard advisory ONLY (RFC 0002 INV-8) — this replaced `REOPEN_CAP`, and the whole point is that nothing in core reads it to make a decision. It is rendered into the agent's `## Project Config` block and judged by the agent; a dispatch gate or transition that branches on it re-creates the cap that parked issues which were making progress.
@@ -402,8 +241,6 @@ export const pipelineConfigSchema = z
       })
       .strict()
       .optional(),
-    // ISS-232 — git-aware L2 dependency gate config.
-    mergeStates: mergeStatesSchema.optional(),
     // Project-default MCP servers seeded into EVERY job's temp `--mcp-config`
     // (forge-runner --strict-mcp-config makes Claude ignore the runner box's
     // own MCP config, so the project must declare the secret-free servers it
@@ -428,27 +265,7 @@ export const pipelineConfigSchema = z
     // cm:guard NO READER on the runner side yet, so the declared default of 0 is in force nowhere — the ceiling actually enforced is `SESSION_IDLE_TIMEOUT` (claude_code.rs). Only core reads this today, as the residency backstop in jobs/park-deadline.ts. Giving it the runner reader means 0 becomes the fleet default and turns residency OFF for every project that has not opted in, which is why it lands with the phase 5 flip and not before: raising it trades a held slot (RUNNER_CAP_PER_RUNNER = 1) for the park fast path, so it is a capacity decision, never a latency tweak.
     sessionResidencySeconds: z.number().int().min(0).max(3600).optional(),
   })
-  // PR-5 — cross-field validation: every `states[x].sessionGroup` must be a
-  // declared group in `sessionGroups`. Without this, a typo
-  // (`'implmentation'` vs `'implementation'`) passes Zod silently and the
-  // orchestrator stamps a group name that `findPriorSessionInGroup` will
-  // never match — operator sees fresh sessions instead of resume.
   .superRefine((cfg, ctx) => {
-    if (cfg.states && cfg.sessionGroups) {
-      const declaredGroups = new Set(Object.keys(cfg.sessionGroups));
-      for (const [stageName, stageCfg] of Object.entries(cfg.states)) {
-        if (!stageCfg || typeof stageCfg !== 'object') continue;
-        const sg = (stageCfg as { sessionGroup?: unknown }).sessionGroup;
-        if (typeof sg === 'string' && sg.length > 0 && !declaredGroups.has(sg)) {
-          ctx.addIssue({
-            code: 'custom',
-            path: ['states', stageName, 'sessionGroup'],
-            message: `sessionGroup "${sg}" is not declared in pipelineConfig.sessionGroups`,
-          });
-        }
-      }
-    }
-
     // ISS-623 W1 — reject a `name: true` mcpServers shorthand entry whose
     // name is neither a catalog server nor a known integration sentinel.
     // Without this, a typo (`shop` vs `epodsystem`) is silently dropped by

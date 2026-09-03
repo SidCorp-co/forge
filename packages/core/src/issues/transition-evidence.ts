@@ -63,7 +63,7 @@ export async function isPlanStageLive(
     if (!project) return false;
     const ac = (project.agentConfig as { pipelineConfig?: unknown } | null) ?? {};
     const parsed = pipelineConfigSchema.safeParse(ac.pipelineConfig ?? {});
-    if (!parsed.success || parsed.data.states?.clarified?.enabled === false) return false;
+    if (!parsed.success) return false;
     const stages = await (resolver ?? createProjectSkillResolver(projectId)).stages();
     return stages.has('clarified');
   } catch (err) {

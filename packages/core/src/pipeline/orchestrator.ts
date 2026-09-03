@@ -375,10 +375,6 @@ async function buildAndEnqueueStepJob(args: {
             preventiveContext,
             // cm:why stamped so the dispatcher re-resolves per-state overrides without a second pipelineConfig load
             stageStatus: args.status,
-            // PR-5 — stamp session group membership so the dispatcher's
-            // runner-framework path + agent-session-link can find the prior
-            // session of the same (issue, group) without a second config load.
-            ...(stageCfg?.sessionGroup ? { sessionGroup: stageCfg.sessionGroup } : {}),
           },
           // On unique-violation the error names the racing job id.
           resolveRacingJobId: () => findActiveJob(args.issueId, skill.type),
@@ -519,11 +515,9 @@ async function considerEnqueue(args: {
   const resolver = args.preloaded?.resolver ?? createProjectSkillResolver(args.projectId);
 
   // cm:why backstop for issues already at `approved` with a blank plan predating the transition-evidence writer guard — routes to `clarified` to get a plan written, or `needs_info` if a `plan` job already ran and it's still blank (else routing back would loop)
-  // cm:why isPlanStageComplexitySkipped short-circuits BEFORE the DB checks — on a project that skips the plan stage for this complexity the blank plan is legitimate and rerouting would livelock against the auto-skip resolver (ISS-819 review r2 blocker)
   if (
     jobMap.type === 'code' &&
     isBlankPlan(liveIssue.plan) &&
-    !isPlanStageComplexitySkipped(cfg, liveIssue.complexity) &&
     (await isPlanStageLive(args.projectId, resolver))
   ) {
     const planJobRan = await hasDonePlanJob(args.issueId);
@@ -663,22 +657,7 @@ async function autoSkipDisabledStages(
   const skillStages = await resolver.stages();
   const hasSkill = (stage: IssueStatus) => skillStages.has(stage);
 
-  // Clarify-on-happy-path — when any stage reachable from `payload.to` along
-  // STAGE_FORWARD declares `skipComplexities`, the resolver needs the issue's
-  // sized `complexity`, so load the row up-front (it doubles as the race
-  // guard the post-resolve path otherwise performs). Projects without the
-  // knob never pay this fetch.
   let issue: SkipIssueRow | null = null;
-  if (chainMayUseComplexity(payload.to, cfg)) {
-    issue = await loadIssueForSkip(payload.issueId);
-    if (!issue) return false;
-    if (issue.status !== payload.to) return false; // raced with another writer
-  }
-  const complexity = issue?.complexity ?? null;
-  const complexityMatches = complexity
-    ? (stage: IssueStatus) =>
-        stageConfigFor(cfg, stage)?.skipComplexities?.includes(complexity) === true
-    : undefined;
 
   // cfg.states is typed with the schema's narrower StageName keys; the
   // resolver accepts the wider IssueStatus shape, and reads only `.enabled`.
@@ -687,7 +666,7 @@ async function autoSkipDisabledStages(
   const skipResult = resolveSkipTarget(
     payload.to,
     cfg.states as unknown as Parameters<typeof resolveSkipTarget>[1],
-    { hasSkill, ...(complexityMatches ? { complexityMatches } : {}) },
+    { hasSkill },
   );
   if (!skipResult) return false;
 
@@ -792,7 +771,6 @@ async function autoSkipDisabledStages(
         to: nextStatus,
         reason: hop.reason,
         hop: hopIndex,
-        ...(hop.reason === 'complexity_skip' && complexity ? { complexity } : {}),
       },
       'orchestrator: auto-skip advanced issue',
     );
@@ -829,8 +807,7 @@ async function autoSkipDisabledStages(
           toStatus: nextStatus,
           reason: hop.reason,
           hop: hopIndex,
-          ...(hop.reason === 'complexity_skip' && complexity ? { complexity } : {}),
-        },
+          },
       });
     }
 
@@ -863,40 +840,6 @@ async function loadIssueForSkip(issueId: string): Promise<SkipIssueRow | null> {
     .where(eq(issues.id, issueId))
     .limit(1);
   return issue ?? null;
-}
-
-/**
- * Cheap pure pre-check: does any stage reachable from `start` along
- * STAGE_FORWARD (within the skip cap) declare `skipComplexities`? Decides
- * whether autoSkipDisabledStages must load the issue row BEFORE resolving
- * the skip chain (the complexity predicate is sync).
- */
-function chainMayUseComplexity(start: IssueStatus, cfg: PipelineConfig): boolean {
-  let cursor: IssueStatus | undefined = start;
-  for (let hop = 0; hop <= MAX_SKIP_CHAIN && cursor; hop++) {
-    if (stageConfigFor(cfg, cursor)?.skipComplexities?.length) return true;
-    cursor = STAGE_FORWARD[cursor];
-  }
-  return false;
-}
-
-/**
- * ISS-819 (review round 2) — is the plan stage (`clarified`) being
- * auto-skipped for THIS issue's `complexity`? When `states.clarified` declares
- * a matching `skipComplexities`, the plan step legitimately never runs and the
- * issue reaches `approved` with a blank plan by design. The dispatch-side
- * blank-plan backstop MUST treat the stage as not-live in that case: otherwise
- * it reroutes `approved → clarified`, `autoSkipDisabledStages` skips straight
- * back to `approved`, and the pair livelock forever (blank-plan comment on
- * every cycle). Mirrors `complexityMatches` in `autoSkipDisabledStages`.
- */
-// cm:edge lockstep -> packages/core/src/pipeline/state-machine.ts — same skipComplexities criterion resolveSkipTarget applies via complexityMatches; if that predicate changes, this must too
-function isPlanStageComplexitySkipped(
-  cfg: PipelineConfig | null,
-  complexity: IssueComplexity | null,
-): boolean {
-  if (!cfg || !complexity) return false;
-  return stageConfigFor(cfg, 'clarified')?.skipComplexities?.includes(complexity) === true;
 }
 
 function resolveSkipDevice(actor: Actor, projectCreatedBy: string | null): DeviceLite | null {
