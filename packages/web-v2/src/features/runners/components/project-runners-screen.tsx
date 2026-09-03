@@ -39,6 +39,7 @@ import { formatRelativeTime } from "@/lib/utils/format";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useMemo, useState } from "react";
+import { RunnerLabels } from "./runner-labels";
 import {
 	useActiveRunners,
 	useAssignDeviceToProject,
@@ -729,6 +730,13 @@ function RunnerRow({
 					{formatRelativeTime(runner.lastSeenAt, { emptyLabel: "never seen" })}
 				</span>
 			</div>
+
+			<RunnerLabels
+				projectId={projectId}
+				runnerId={runner.runnerId}
+				labels={runner.labels ?? []}
+				canEdit={canEdit}
+			/>
 
 			<div className="flex justify-start">
 				<Button

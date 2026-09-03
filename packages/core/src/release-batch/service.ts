@@ -1,6 +1,7 @@
-// create: opens a system run, atomically claims N tested issues, enqueues one
+// create: opens a system run, atomically claims N gate-status issues, enqueues one
 // release_batch job. finish: closes all claimed issues tested→closed. abort:
-// releases claims, writes one comment per issue, closes nothing.
+// releases claims, cancels the run and every job under it, writes one comment
+// per issue, closes no issue.
 //
 // RUNNER-CAP NOTE: the batch job holds its runner's single slot (nothing else
 // deploys while a release is shipping). It does NOT count toward per-project
@@ -15,12 +16,15 @@ import { issuesMissingReleaseRecord } from '../issues/release-record-required.js
 import { logger } from '../logger.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
+import { readProjectBranches } from '../projects/service.js';
 import { selectRunnerForJob } from '../runners/select.js';
 import { resolveReleaseChannel, resolveReleaseDeviceIds, resolveReleasePlan } from './channel.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
-import { loadProjectBranchConfig } from './project-config.js';
+import { ReleaseBranchesUndeclaredError, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { readLiveCommit, verifyDeployed } from './verify.js';
+
+export { ReleaseBranchesUndeclaredError };
 
 export class NoReleaseGateError extends Error {
   constructor() {
@@ -150,12 +154,11 @@ export async function createReleaseBatch(
   const runner = await selectRunnerForJob({ projectId, requiredCapabilities: {}, allowDeviceIds });
   if (!runner) throw new NoRunnerOnlineError();
 
-  const branchCfg = await loadProjectBranchConfig(projectId);
-  const baseBranch = branchCfg?.baseBranch ?? 'main';
-  const productionBranch = branchCfg?.productionBranch ?? 'main';
+  const { baseBranch, productionBranch, productionMergePlanned } = releaseBranches(
+    (await readProjectBranches(projectId)) ?? { baseBranch: null, productionBranch: null },
+  );
   // cm:guard `deployPlanned` names the CHANNEL, not the branches. It used to mean "the branches differ", which reported a planned deploy to every project that promotes across branches and deploys nothing — and a planned deploy that cannot happen is the kind of claim this whole gate exists to remove.
   const deployPlanned = plan.provider !== null;
-  const productionMergePlanned = productionBranch !== baseBranch;
 
   // cm:guard read the live commit BEFORE anything moves. Without this baseline a release that deployed nothing verifies perfectly: the probes answer, the commit matches what the agent reports, and what it reports is what was already serving.
   const commitBefore = plan.verify ? await readLiveCommit(plan.verify) : null;
@@ -282,9 +285,9 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
   const deployPlanned = (meta.deployPlanned as boolean | undefined) ?? false;
   const productionMergePlanned = (meta.productionMergePlanned as boolean | undefined) ?? false;
 
-  const branchCfg = await loadProjectBranchConfig(run.projectId);
-  const baseBranch = branchCfg?.baseBranch ?? 'main';
-  const productionBranch = branchCfg?.productionBranch ?? 'main';
+  const { baseBranch, productionBranch } = releaseBranches(
+    (await readProjectBranches(run.projectId)) ?? { baseBranch: null, productionBranch: null },
+  );
 
   const claimedIssues = await db
     .select({
@@ -408,7 +411,6 @@ export async function abortReleaseBatch(
   `);
 
   const releasedIds = released.map((r) => r.id);
-
   for (const issueId of releasedIds) {
     try {
       await db.insert(comments).values({
@@ -422,12 +424,16 @@ export async function abortReleaseBatch(
     }
   }
 
+  // cm:guard abort is "nothing under this run executes any further", not just "no claims" — batch ee39c4ae (2026-09-03) was aborted while its retry job kept running, shipped 20 commits to production, then `finish` found no claims and closed 0 of 12; the run must go terminal here so the cascade cancels queued retries and kills the live session
+  await closeRunIfOneShot(runId, 'cancelled');
+
   return releasedIds;
 }
 
 // cm:edge naming -> packages/core/src/release-batch/queries.ts — every caller imports the batch surface from this module; the read-only half lives next door for the size budget, and re-exporting keeps that a file layout rather than an API change
 export {
   type ActiveReleaseBatchInfo,
+  findReleaseBatchRun,
   getActiveReleaseBatch,
   isOpenReleaseBatchRun,
   loadReleaseRoster,

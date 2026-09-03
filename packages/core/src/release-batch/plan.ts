@@ -26,7 +26,35 @@ export const DEFAULT_RELEASE_PROCEDURE = `1. If productionBranch ≠ baseBranch:
    non-empty → skip the append.
    Commit message: \`docs(changelog): batch release <runId first 8> (<n> issues)\`.`;
 
+import { type ProjectLike, resolveIssueBranches } from '../branches/resolve.js';
 import type { VerifyConfig } from './verify.js';
+
+/** The project has no `baseBranch`, so there is nothing a release could promote from. */
+export class ReleaseBranchesUndeclaredError extends Error {
+  constructor() {
+    super('RELEASE_BRANCHES_UNDECLARED');
+    this.name = 'ReleaseBranchesUndeclaredError';
+  }
+}
+
+export interface ReleaseBranches {
+  baseBranch: string;
+  productionBranch: string;
+  /** False when the project promotes nothing — production IS the base branch. */
+  productionMergePlanned: boolean;
+}
+
+// cm:guard the branches come from the `projects` columns through the same resolver every other surface uses, and an undeclared base is an ERROR, never `'main'`. The loader this replaced read `agentConfig.branchConfig` — a key nothing writes — and defaulted both sides to `main`; on 2026-09-03 sidpeak (staging → master) cut three release batches whose envelope said `main → main`, and every one aborted on a branch origin does not have.
+export function releaseBranches(project: ProjectLike): ReleaseBranches {
+  const resolved = resolveIssueBranches({}, project);
+  if (!resolved.baseBranch) throw new ReleaseBranchesUndeclaredError();
+  const productionBranch = resolved.prodBranch ?? resolved.baseBranch;
+  return {
+    baseBranch: resolved.baseBranch,
+    productionBranch,
+    productionMergePlanned: productionBranch !== resolved.baseBranch,
+  };
+}
 
 export interface ReleaseChannel {
   /** `null` when the project declares no production binding: cut and stop. */

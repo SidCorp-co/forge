@@ -98,6 +98,8 @@ export interface ProjectRunner {
 	limitDetail: string | null;
 	repoPath: string | null;
 	branch: string | null;
+	/** Pool tags; a production binding's `releaseRunnerLabel` must match one exactly. */
+	labels: string[];
 	lastSeenAt: string | null;
 	provisionStatus: ProvisionStatus | null;
 	provisionDetail: string | null;

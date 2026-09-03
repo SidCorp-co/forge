@@ -16,7 +16,9 @@ vi.mock('../config/env.js', () => ({
 }));
 vi.mock('../db/client.js', () => ({ db: {} }));
 
-const { createSchema } = await import('./provider-schemas.js');
+const { configSchemaForProvider, createSchema, splitProviderConfig } = await import(
+  './provider-schemas.js'
+);
 
 const AGENT = {
   provider: 'agent' as const,
@@ -51,5 +53,29 @@ describe('the agent release channel', () => {
 
   it('accepts a channel that declares nothing but itself', () => {
     expect(createSchema.parse({ provider: 'agent', config: {} }).provider).toBe('agent');
+  });
+});
+
+describe('the release channel on a coolify production binding', () => {
+  // cm:guard this is the PATCH that returned 200 on sidpeak's prod binding on 2026-09-03 and changed nothing: zod drops unknown keys, so a schema without the field turns "declare the release runner" into a silent no-op the roster then reports as undeclared
+  it('keeps releaseRunnerLabel, verify and rollback through a partial PATCH, on the binding tier', () => {
+    const patch = {
+      releaseRunnerLabel: 'release',
+      verify: { probes: [{ url: 'https://hrm.example.test/api/health' }] },
+      rollback: 'redeploy the previous Coolify deployment',
+    };
+    const parsed = configSchemaForProvider('coolify').parse(patch) as Record<string, unknown>;
+    const tiers = splitProviderConfig('coolify', parsed);
+    expect(tiers.binding).toEqual(patch);
+    expect(tiers.connection).toEqual({});
+  });
+
+  it('still leaves baseUrl with the credential', () => {
+    const tiers = splitProviderConfig('coolify', {
+      baseUrl: 'https://coolify.example.test',
+      releaseRunnerLabel: 'release',
+    });
+    expect(tiers.connection).toEqual({ baseUrl: 'https://coolify.example.test' });
+    expect(tiers.binding).toEqual({ releaseRunnerLabel: 'release' });
   });
 });

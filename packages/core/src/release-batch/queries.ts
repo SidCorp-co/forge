@@ -8,10 +8,10 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, schedules } from '../db/schema.js';
+import { readProjectBranches } from '../projects/service.js';
 import { nextRunFor } from '../schedules/cron.js';
 import { resolveReleaseChannel } from './channel.js';
 import { resolveReleaseGate } from './gate.js';
-import { loadProjectBranchConfig } from './project-config.js';
 
 export interface ReleaseRosterEntry {
   id: string;
@@ -78,7 +78,7 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
     };
   }
   const nextCutAt = await nextScheduledCutAt(projectId);
-  const branchCfg = await loadProjectBranchConfig(projectId);
+  const branches = await readProjectBranches(projectId);
 
   const rows = await db
     .select({
@@ -98,7 +98,7 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
     gateStatus,
     channel: channel.provider,
     releaseRunnerLabel: channel.releaseRunnerLabel,
-    baseBranch: branchCfg?.baseBranch ?? null,
+    baseBranch: branches?.baseBranch ?? null,
     nextCutAt,
     issues: rows.map((r) => ({
       id: r.id,
@@ -111,6 +111,23 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
       claimedByRunId: r.releaseBatchRunId,
     })),
   };
+}
+
+export async function findReleaseBatchRun(
+  runId: string,
+): Promise<{ id: string; projectId: string } | null> {
+  const [run] = await db
+    .select({
+      id: pipelineRuns.id,
+      projectId: pipelineRuns.projectId,
+      metadata: pipelineRuns.metadata,
+    })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  if (!run) return null;
+  const meta = (run.metadata ?? {}) as Record<string, unknown>;
+  return meta.source === 'release-batch' ? { id: run.id, projectId: run.projectId } : null;
 }
 
 export async function isOpenReleaseBatchRun(projectId: string, runId: string): Promise<boolean> {
