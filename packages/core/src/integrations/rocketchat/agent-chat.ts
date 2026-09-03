@@ -1,22 +1,13 @@
 /**
- * ISS-727 — `agent`-mode dispatcher. When a project's RC answer-mode
- * (`answer-mode.ts`) is `agent`, EVERY real turn (not just an escalated one)
- * routes here instead of the fast provider-chat path: dedup against any
- * in-flight agent-chat turn for the same room, resolve a runner device, and
- * dispatch a runner-hosted `system` agent-session (product lens, ISS-674)
- * with the user's message. The session's reply is delivered later by the
- * completion bridge (`agent-chat-bridge.ts`), wired at every session-terminal
- * writer — this module never posts to the room itself.
- *
- * Mirrors `escalation.ts`'s dispatch machinery exactly (same
- * `resolveChatDevice` / `createChatSessionRow` / `dispatchChatTurn` reuse,
- * same "mark failed on dispatch throw" safety net). It differs only in
- * prompt shape — this asks for the FINAL user-facing reply directly and
- * verbatim, since there is no Bao synthesis turn on this path — and dedup
- * marker (`metadata.agentChat` vs `metadata.escalation`).
+ * ISS-727 — `agent`-mode dispatcher. When a project's answer-mode is `agent`,
+ * EVERY real turn routes here instead of the fast provider-chat path and runs
+ * as a runner-hosted `system` session; the reply arrives via
+ * `agent-chat-bridge.ts`. Differs from `escalation.ts` only in prompt shape
+ * and dedup marker.
  */
+// cm:guard this module never posts to the room itself — the bridge is the only path its output reaches a channel
 
-import { and, eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import {
   createChatSessionRow,
   dispatchChatTurn,
@@ -30,19 +21,13 @@ import { applyKernelTransition } from '../../lifecycle/transition.js';
 import { logger } from '../../logger.js';
 import { FIXED_REPLY_CONSTANT, sendFixedReply } from './outbound.js';
 import type { ProgressFacts } from './reply-guard.js';
-import { resolveRoomPostAuth } from './room-delivery.js';
+import { hasInFlightRoomSession, resolveRoomPostAuth } from './room-delivery.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
 const AGENT_CHAT_TITLE_MAX = 80;
 
-/**
- * How long a runner-hosted turn may run before Babo posts an interim
- * "still working" ack to the room. Under this, the runner's real answer
- * (delivered by `agent-chat-bridge.ts` the moment the session goes terminal)
- * arrives on its own with NO ack in front of it — the common fast case.
- * Only a genuinely slow turn ever shows the ack.
- */
+// cm:guard under this delay the room sees NO ack at all — the bridge delivers the real answer first, which is the common case; only a genuinely slow turn ever shows one
 export const AGENT_CHAT_ACK_DELAY_MS = 2 * 60 * 1000;
 
 export const AGENT_CHAT_ACK = (botName: string): string =>
@@ -67,15 +52,8 @@ export interface StartAgentChatArgs {
   botName: string;
   message: string;
   askedByUsername?: string | undefined;
-  /**
-   * Pre-built persona voice (`rocketChatPersona(...)`) — the caller
-   * (`connection-manager.ts`) already builds this for the fast path, and
-   * handing it in here (rather than this module importing
-   * `connection-manager.ts` to build its own) keeps this module free of any
-   * dependency back on its caller.
-   */
+  // cm:guard the persona is passed IN, never built here — importing connection-manager.ts for it would create a dependency back on this module's own caller
   persona: string;
-  /** Seeded recent-channel discussion — same block the fast path gets. */
   conversationContext?: string | null | undefined;
 }
 
@@ -83,40 +61,17 @@ export type StartAgentChatResult =
   | { started: true; sessionId: string }
   | { started: false; reason: 'deduped' | 'no-device' | 'dispatch-failed' };
 
-/**
- * DB-backed dedup: a `running` agent-chat session already tracks this room.
- * Mirrors `hasInFlightEscalation` — instance-independent, self-clears the
- * moment the session goes terminal via ANY writer.
- */
-export async function hasInFlightAgentChat(projectId: string, rid: string): Promise<boolean> {
-  const rows = await db
-    .select({ id: agentSessions.id })
-    .from(agentSessions)
-    .where(
-      and(
-        eq(agentSessions.projectId, projectId),
-        eq(agentSessions.status, 'running'),
-        sql`${agentSessions.metadata} -> 'agentChat' ->> 'rid' = ${rid}`,
-      ),
-    )
-    .limit(1);
-  return rows.length > 0;
+export function hasInFlightAgentChat(projectId: string, rid: string): Promise<boolean> {
+  return hasInFlightRoomSession(projectId, rid, 'agentChat');
 }
 
-/**
- * The prompt driving the runner-hosted agent-chat session: persona voice +
- * seeded conversation + the user's message, with an explicit instruction that
- * this turn's reply is delivered to the room VERBATIM (unlike escalation,
- * there is no synthesis turn downstream to reshape it).
- */
+// cm:guard the prompt must keep telling the session its reply is delivered VERBATIM — there is no synthesis turn downstream to reshape it, unlike escalation
 export function buildAgentChatPrompt(args: {
   persona: string;
   conversationContext?: string | null | undefined;
   message: string;
   askedByUsername?: string | undefined;
-  /** Deterministic project-progress block (ISS-671) — same injection every
-   *  external turn gets via `buildSystemPrompt`'s `progressFacts`, since agent
-   *  mode does not go through that builder. */
+  // cm:why agent mode does not go through buildSystemPrompt, so the progress block every other external turn gets has to be injected here by hand
   progressFacts?: string | null | undefined;
 }): string {
   const lines = [args.persona];
@@ -137,13 +92,7 @@ export function buildAgentChatPrompt(args: {
   return lines.join('\n\n');
 }
 
-/**
- * Dedup → resolve device → create session → dispatch. Returns without a
- * session on dedup/no-device (nothing to bridge later); on a dispatch throw,
- * the session is marked `failed` via `applyKernelTransition` — which fires
- * the completion bridge exactly like any other terminal writer, so the room
- * still gets one honest fallback reply asynchronously.
- */
+// cm:guard on a dispatch throw the session MUST be marked failed via applyKernelTransition — that fires the completion bridge like any other terminal writer, which is the only reason the room still gets one honest fallback
 export async function startAgentChat(args: StartAgentChatArgs): Promise<StartAgentChatResult> {
   if (await hasInFlightAgentChat(args.projectId, args.rid)) {
     return { started: false, reason: 'deduped' };
@@ -253,14 +202,7 @@ export type AgentChatFailoverResult =
   | { ok: true; status: 'redispatched'; sessionId: string; deviceId: string }
   | { ok: false; status: 'not-agent-chat' | 'exhausted' | 'no-device' | 'no-prompt' | 'error' };
 
-/**
- * Re-dispatch a failed agent-chat `session` onto another healthy runner,
- * reusing the prompt already stored on it (no prompt re-build — the stored
- * text is exactly what `buildAgentChatPrompt` produced for the first
- * attempt). Called from `deliverAgentChatReplyOnce` BEFORE it commits to the
- * fallback reply; the caller has already CAS-claimed `deliveredAt` on the
- * failed session, so this never races a second failover for the same turn.
- */
+// cm:guard reuse the STORED prompt, never rebuild it — the stored text is exactly what buildAgentChatPrompt produced for the first attempt, and the caller has already CAS-claimed deliveredAt so this cannot race a second failover for the same turn
 export async function redispatchAgentChatSessionOnFailover(
   session: SessionRow,
 ): Promise<AgentChatFailoverResult> {
@@ -405,20 +347,7 @@ export async function redispatchAgentChatSessionOnFailover(
   }
 }
 
-/**
- * Post the interim "still working" ack ONLY if the turn is genuinely slow.
- * Fires once, `AGENT_CHAT_ACK_DELAY_MS` after dispatch; at fire time it
- * re-reads the session and posts the ack only when it is still `running`
- * AND the completion bridge has not already stamped `deliveredAt` (i.e. the
- * real answer hasn't landed). A fast turn therefore shows no ack at all —
- * the bridge delivers the answer before this timer fires and this no-ops.
- *
- * Best-effort by design: the timer is `unref()`-ed so it never keeps the
- * process alive, and a core restart inside the window simply drops the ack
- * (the answer is still delivered by the bridge on the terminal transition,
- * and a hung session is still reaped by the loop monitor). Errors are
- * swallowed — an undelivered ack must never surface as a failure.
- */
+// cm:guard best-effort by design: the timer is unref()-ed and a core restart inside the window simply drops the ack, because the answer still arrives via the bridge and a hung session is still reaped by the loop monitor — an undelivered ack must never surface as a failure
 export function scheduleDelayedAck(args: {
   sessionId: string;
   connectionId: string;
@@ -429,7 +358,6 @@ export function scheduleDelayedAck(args: {
   const timer = setTimeout(() => {
     void postDelayedAck(args);
   }, AGENT_CHAT_ACK_DELAY_MS);
-  // Don't let a pending ack timer keep the Node process alive on shutdown.
   timer.unref?.();
 }
 
@@ -448,9 +376,7 @@ async function postDelayedAck(args: {
       .limit(1);
     const row = rows[0];
     if (!row) return;
-    // Turn already finished (any terminal status) — the bridge owns the reply.
     if (row.status !== 'running') return;
-    // Answer already delivered by the bridge — no interim ack needed.
     const deliveredAt = (row.metadata as { agentChat?: { deliveredAt?: string | null } } | null)
       ?.agentChat?.deliveredAt;
     if (deliveredAt) return;

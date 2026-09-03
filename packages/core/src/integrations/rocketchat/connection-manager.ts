@@ -1,18 +1,12 @@
 /**
- * ISS-604 (P2c + P2d) — Rocket.Chat bot-user connection manager.
- *
- * Loads active `rocketchat` integration connections, opens ONE long-lived DDP
- * bot-user socket per connection (single-owner via a pg advisory lock so a
- * scaled-out core never double-answers), and routes inbound room messages
- * through the read-only chat engine, replying in the same room.
- *
- * Lane A (conversational) only. Trigger-gated to @-mentions of the bot; the
- * bot's own messages / system / edits are ignored (no reply loops).
+ * ISS-604 — Rocket.Chat bot-user connection manager: one long-lived DDP socket
+ * per active connection, single-owner via a pg advisory lock so a scaled-out
+ * core never double-answers, routing @-mentions to a reply in the same room.
  */
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import pg from 'pg';
-import { runExternalChatTurn } from '../../chat/external-chat.js';
+import { type ExternalChatTurnResult, runExternalChatTurn } from '../../chat/external-chat.js';
 import { ESCALATE_TOOL_NAME } from '../../chat/tools/escalate.js';
 import {
   buildExternalMcpToolsets,
@@ -38,15 +32,13 @@ import {
   ESCALATION_NO_DEVICE_REPLY,
   startEscalation,
 } from './escalation.js';
-import { prepareFastTurn } from './images.js';
+import { type FastTurnInputs, prepareFastTurn } from './images.js';
 import { createSeenTracker, decideHandling } from './inbound-gate.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
 import { screenStakeholderReply } from './reply-screen.js';
 import { fetchOwnUsername } from './rest-client.js';
 import type { RocketChatConfig, RocketChatSecrets } from './types.js';
 
-/** ISS-609 (piece B) — the Forge-assistant persona for in-channel chat.
- *  `systemPromptOverride` on the project still wins over this. */
 export function rocketChatPersona(
   projectName: string,
   authorUsername?: string,
@@ -88,38 +80,21 @@ export function rocketChatPersona(
   ].join('\n');
 }
 
-/** Web-UI base for issue links in bot replies — the first CORS origin IS the
- *  web app's origin (operators must allow it for the UI to work at all).
- *  Exported (ISS-687) so the escalation completion bridge's Bao-synthesis
- *  turn builds the exact same persona + issue-link base as the sync path. */
+// cm:guard the first CORS origin IS the web app's origin (operators must allow it for the UI to work at all); exported so the escalation bridge's Bao turn builds the same issue-link base as the sync path
 export const webBaseUrl = env.CORS_ORIGINS.split(',')[0]?.trim().replace(/\/+$/, '') || undefined;
 
 const LOCK_NAMESPACE = 'forge:rocketchat';
 const MAX_BACKOFF_MS = 30_000;
-/** Delay before re-acquiring after the advisory-lock connection dies — gives
- *  the DB a beat to come back and lets another instance win the lock first. */
+// cm:why gives the DB a beat to come back, and lets another instance win the lock first
 const LOCK_REACQUIRE_DELAY_MS = 5000;
-/** pg NOTIFY channel fanning connection/binding CRUD out to EVERY core
- *  instance — the advisory-lock owner may not be the process that served the
- *  HTTP request. */
+// cm:guard fan CRUD to EVERY core instance — the advisory-lock owner may not be the process that served the HTTP request
 const RELOAD_CHANNEL = 'forge_rocketchat_reload';
 const LISTEN_RETRY_MS = 5000;
-/** Proactively redial each live DDP socket on this interval. A subscription
- *  can die WITHOUT a `nosub` (silent server-side drop) while server pings keep
- *  the link "alive", so the liveness watchdog never fires and the bot goes
- *  deaf until something closes the socket. A periodic fresh login + sub bounds
- *  that worst-case deaf window. The `nosub` handler recovers the SIGNALLED case
- *  immediately; this is the backstop for the silent one. */
+// cm:guard a subscription can die WITHOUT a `nosub` while server pings keep the link alive, so the watchdog never fires and the bot goes silently deaf; this periodic fresh login+sub bounds that window, and the `nosub` handler covers the signalled case
 const DDP_REFRESH_INTERVAL_MS = 10 * 60_000;
-/** Hard ceiling on the model turn(s) via the abort signal — cancels the
- *  provider fetch/SSE read so a stalled upstream terminates as an error. */
+// cm:why cancels the provider fetch/SSE read so a stalled upstream terminates as an error instead of hanging
 const TURN_TIMEOUT_MS = 90_000;
-/** Backstop ceiling on the WHOLE handler (seed → mcp → turn → verify). The
- *  abort signal only reaches the provider; an unbounded await BEFORE the turn
- *  (a hung DB query, a stuck session load) would still wedge the handler in
- *  silence. This watchdog guarantees a fallback reply + a Sentry event (tagged
- *  with the phase it hung in) no matter where it stalls. Set above
- *  TURN_TIMEOUT_MS so a normal provider-abort resolves cleanly first. */
+// cm:guard must stay ABOVE TURN_TIMEOUT_MS so a normal provider-abort resolves first: the abort signal only reaches the provider, so an unbounded await BEFORE the turn (hung DB query, stuck session load) would wedge the handler in silence without this backstop
 const HANDLE_TIMEOUT_MS = 120_000;
 
 class HandleTimeoutError extends Error {
@@ -129,9 +104,7 @@ class HandleTimeoutError extends Error {
   }
 }
 
-/** Reject with {@link HandleTimeoutError} if `p` has not settled within `ms`.
- *  Does NOT cancel `p` (the caller aborts the provider separately) — it only
- *  frees the handler to send a fallback and report. */
+// cm:guard does NOT cancel `p` — the caller aborts the provider separately; this only frees the handler to send a fallback and report
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const t = setTimeout(() => reject(new HandleTimeoutError(ms)), ms);
@@ -149,17 +122,11 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-/** Fallbacks speak AS the bot, by name — never as an anonymous "the
- *  system"/"the model". `name` is the bot's RC username, capitalized. */
+// cm:guard fallbacks speak AS the bot by name — never as an anonymous "the system" or "the model" voice
 const errorFallbackReply = (name: string): string =>
   `Xin lỗi, ${name} đang quá tải hoặc gặp sự cố — bạn thử lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
 
-/** Sent when even the corrective retry produced unverifiable claims — an
- *  honest non-answer beats a hallucinated one reaching the channel.
- *  ISS-818: name the REASON. A bare "couldn't verify" reads to a stakeholder
- *  as "didn't understand you", so they rephrase — which cannot help, because
- *  the question was understood and it was the ANSWER that failed the check.
- *  Say the figures couldn't be reconciled and to ask again shortly. */
+// cm:guard ISS-818 — name the REASON: a bare "couldn't verify" reads to a stakeholder as "didn't understand you" so they rephrase, which cannot help because the question WAS understood and the answer failed the check
 const unverifiedFallbackReply = (name: string): string =>
   `Xin lỗi, ${name} chưa đối chiếu được số liệu dự án nên không dám gửi câu trả lời chưa chắc chắn — không phải do câu hỏi của bạn, bạn hỏi lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
 
@@ -171,12 +138,16 @@ const capitalize = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.sli
 const correctiveMessage = (problems: string[]): string =>
   `[SYSTEM CHECK — not from the user] Your previous reply cannot be sent as-is: ${problems.join('; ')}. Rewrite it now, keep only verified facts, actually CALL the tools if work is needed, cite issue ids/links only exactly as tools returned them, and reply in the user's language.`;
 
+// cm:guard `send: false` is the explicit "this turn posts nothing" case — the completion bridge delivers that reply asynchronously, so posting here too double-replies
+type TurnOutcome = { send: false } | { send: true; text: string; proof: ReplySendProof };
+
+const fixed = (text: string): TurnOutcome => ({ send: true, text, proof: FIXED_REPLY_CONSTANT });
+
 interface Route {
   rid: string;
   projectId: string;
   projectSlug: string;
   projectName: string;
-  /** Forge user the chat tools run as (project's org owner). */
   principalUserId: string;
 }
 
@@ -184,23 +155,15 @@ interface ActiveConnection {
   client?: RocketChatDdpClient;
   lockClient: pg.Client;
   botUserId: string;
-  /** Bot's RC display handle, capitalized ("Babo") — used for self-reference
-   *  in fallback replies and the persona. */
+  /** Capitalized RC handle ("Babo") — the bot's self-reference in replies. */
   botName: string;
   serverUrl: string;
   authToken: string;
   routes: Map<string, Route>;
   reconnectAttempt: number;
   reconnectTimer?: NodeJS.Timeout | undefined;
-  /** Periodic socket-refresh timer (see DDP_REFRESH_INTERVAL_MS). */
   refreshTimer?: NodeJS.Timeout | undefined;
-  /** Duplicate-delivery guard — RC re-emits a message after URL-preview
-   *  enrichment (one mention → two frames). MUST be PER-CONNECTION: the same
-   *  bot user is subscribed on every org connection's socket via
-   *  `__my_messages__`, so EVERY connection receives EVERY room's messages. A
-   *  manager-global tracker let a connection with no route for a room mark the
-   *  id "seen" first, so the connection that DID own the route then dropped it
-   *  as a false duplicate — the intermittent "bot ignores the message" bug. */
+  // cm:guard MUST stay per-connection: the same bot user is subscribed on every org connection via `__my_messages__`, so a manager-global tracker let a routeless connection mark an id seen first and the routing connection dropped it as a false duplicate (root cause, 2026-07-15)
   seenMessage: (id: string) => boolean;
   closing: boolean;
 }
@@ -216,8 +179,7 @@ class RocketChatConnectionManager {
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
-    // Listen even with zero connections — the first-ever connect arrives as a
-    // NOTIFY from whichever instance served the HTTP request.
+    // cm:why listen even with zero connections — the first-ever connect arrives as a NOTIFY from whichever instance served the HTTP request
     this.startReloadListener();
     const rows = await db
       .select()
@@ -260,9 +222,7 @@ class RocketChatConnectionManager {
       return;
     }
 
-    // A dead lock connection means the advisory lock is GONE (session-scoped)
-    // and, without a listener, pg.Client's 'error' event would crash the
-    // process. Tear down and retry — another instance may own it by then.
+    // cm:guard a dead lock connection means the advisory lock is GONE (session-scoped), and without this listener pg.Client's 'error' event crashes the process
     lockClient.on('error', (err) => {
       logger.warn({ err, connectionId }, 'rocketchat: advisory-lock connection lost');
       const ac = this.conns.get(connectionId);
@@ -314,28 +274,37 @@ class RocketChatConnectionManager {
 
   private async buildRoutes(connectionId: string): Promise<Map<string, Route>> {
     const routes = new Map<string, Route>();
-    const bindings = await listBindingsForConnection(connectionId);
-    for (const { binding: b } of bindings) {
-      if (!b.active) continue;
-      // Binding-tier `rids` — one binding may listen on several rooms
-      // (migration 0146 rewrote legacy single-`rid` rows to `rids: [rid]`).
-      const rids = (b.config as { rids?: string[] } | null)?.rids ?? [];
-      if (rids.length === 0) continue;
-      const [proj] = await db
-        .select({ slug: projects.slug, name: projects.name, orgId: projects.orgId })
-        .from(projects)
-        .where(eq(projects.id, b.projectId))
-        .limit(1);
+    // cm:why two batched lookups, not a projects+organizations pair per binding: this was 1+2N round-trips and `reload` fires on ANY connection/binding CRUD, so a 10-binding connection paid 21 of them every reload
+    const active = (await listBindingsForConnection(connectionId))
+      .map(({ binding: b }) => ({ b, rids: (b.config as { rids?: string[] } | null)?.rids ?? [] }))
+      .filter(({ b, rids }) => b.active && rids.length > 0);
+    if (active.length === 0) return routes;
+
+    const projectRows = await db
+      .select({ id: projects.id, slug: projects.slug, name: projects.name, orgId: projects.orgId })
+      .from(projects)
+      .where(inArray(projects.id, [...new Set(active.map(({ b }) => b.projectId))]));
+    const projectById = new Map(projectRows.map((p) => [p.id, p]));
+    const orgIds = [...new Set(projectRows.map((p) => p.orgId))];
+    const ownerByOrg = new Map(
+      orgIds.length === 0
+        ? []
+        : (
+            await db
+              .select({ id: organizations.id, createdBy: organizations.createdBy })
+              .from(organizations)
+              .where(inArray(organizations.id, orgIds))
+          ).map((o) => [o.id, o.createdBy] as const),
+    );
+
+    for (const { b, rids } of active) {
+      const proj = projectById.get(b.projectId);
       if (!proj) continue;
-      const [org] = await db
-        .select({ createdBy: organizations.createdBy })
-        .from(organizations)
-        .where(eq(organizations.id, proj.orgId))
-        .limit(1);
-      if (!org?.createdBy) continue;
+      const principalUserId = ownerByOrg.get(proj.orgId);
+      if (!principalUserId) continue;
       for (const rid of rids) {
+        // cm:guard one room routes to exactly one project and the FIRST binding wins, which is only deterministic because listBindingsForConnection orders by desc(createdAt) — reorder that query and a re-bound room silently changes project
         if (routes.has(rid)) {
-          // One room routes to exactly one project — first active binding wins.
           logger.warn(
             { connectionId, rid, projectId: b.projectId },
             'rocketchat: room already routed to another project; skipping duplicate',
@@ -347,7 +316,7 @@ class RocketChatConnectionManager {
           projectId: b.projectId,
           projectSlug: proj.slug,
           projectName: proj.name,
-          principalUserId: org.createdBy,
+          principalUserId,
         });
       }
     }
@@ -357,9 +326,7 @@ class RocketChatConnectionManager {
   private async dial(connectionId: string): Promise<void> {
     const ac = this.conns.get(connectionId);
     if (!ac || ac.closing) return;
-    // A redial replaces the client; close the old socket and gate callbacks on
-    // still being current, so a slow-dying socket can't trigger a second dial
-    // (two live sockets = duplicate deliveries).
+    // cm:guard gate every callback on still being current — a slow-dying socket that triggers a second dial leaves two live sockets, i.e. duplicate deliveries
     try {
       ac.client?.close();
     } catch {
@@ -379,9 +346,7 @@ class RocketChatConnectionManager {
       onError: (e) => {
         if (!isCurrent()) return;
         logger.warn({ err: e, connectionId }, 'rocketchat: DDP error');
-        // Surface DDP-layer failures (subscription lost, link silent, login
-        // failure) to Sentry — they live BELOW the message handler, so without
-        // this they were invisible (the "replies once then deaf" blind spot).
+        // cm:why DDP-layer failures live BELOW the message handler, so without this they were invisible — the replies-once-then-deaf blind spot
         Sentry.captureException(e, {
           tags: { area: 'rocketchat', phase: 'ddp' },
           extra: { connectionId },
@@ -400,9 +365,7 @@ class RocketChatConnectionManager {
     }
   }
 
-  /** (Re)arm the periodic socket-refresh timer so a silently-dropped
-   *  subscription self-heals within DDP_REFRESH_INTERVAL_MS. Each successful
-   *  dial re-arms it, so the interval is measured from the last (re)connect. */
+  // cm:why each successful dial re-arms this, so the interval is measured from the last (re)connect
   private startRefresh(connectionId: string): void {
     const ac = this.conns.get(connectionId);
     if (!ac) return;
@@ -434,71 +397,18 @@ class RocketChatConnectionManager {
   private onMessage(connectionId: string, m: RocketChatIncomingMessage): void {
     const ac = this.conns.get(connectionId);
     if (!ac) return;
-    const decision = decideHandling(m, ac.botUserId);
+    if (!decideHandling(m, ac.botUserId).handle) return;
+    // cm:guard route BEFORE dedup: the same bot user is subscribed on EVERY connection's socket via `__my_messages__`, so a connection with no route for this room must drop the message without touching its dedup tracker — a shared/global tracker let a routeless connection mark the id seen first, so the connection that owned the route dropped it as a false duplicate (root cause of the intermittent "bot ignores the message", pinned 2026-07-15)
     const route = ac.routes.get(m.rid);
-    // TEMP DIAGNOSTIC (RC-drop hunt): EVERY message that @-mentions the bot emits
-    // a queryable Sentry event carrying the full gate verdict — so a mention that
-    // is received but never answered is visible WITHOUT core stdout (the current
-    // blind spot). Correlate in Sentry by `msg_id`:
-    //   • no "mention received" event for a msg_id  → RC never delivered it (DDP)
-    //   • received (gate=ok, route=true) but no "dispatched" → dropped as duplicate
-    //   • "dispatched" but no handler outcome         → hung/threw inside handle()
-    // Remove once the root cause is pinned.
-    const mentionsBot = m.mentions.includes(ac.botUserId);
-    if (mentionsBot) {
-      Sentry.captureMessage('rocketchat: bot mention received', {
-        level: 'info',
-        tags: {
-          area: 'rocketchat',
-          gate: decision.reason,
-          has_route: String(!!route),
-          msg_id: m.id,
-        },
-        extra: {
-          connectionId,
-          rid: m.rid,
-          msgId: m.id,
-          projectId: route?.projectId ?? null,
-          user: m.username,
-          textSnippet: m.text.slice(0, 160),
-          gateHandle: decision.handle,
-          isEdited: m.isEdited,
-          isSystem: m.isSystem,
-          tmid: m.tmid ?? null,
-        },
-      });
-    }
-    if (!decision.handle) return;
-    // Route BEFORE dedup: the same bot user is subscribed on every connection's
-    // socket, so a connection with NO route for this room must drop the message
-    // WITHOUT touching its dedup tracker — otherwise (with the old global
-    // tracker) it poisoned the id and the routing connection saw a false dup.
     if (!route) {
       logger.debug({ connectionId, rid: m.rid }, 'rocketchat: no binding for room; ignoring');
       return;
     }
-    if (ac.seenMessage(m.id)) {
-      if (mentionsBot) {
-        Sentry.captureMessage('rocketchat: bot mention dropped as duplicate', {
-          level: 'warning',
-          tags: { area: 'rocketchat', msg_id: m.id },
-          extra: { connectionId, rid: m.rid, msgId: m.id, textSnippet: m.text.slice(0, 160) },
-        });
-      }
-      return; // enrichment re-emit / reconnect replay (per-connection)
-    }
-    // Delivery marker: proves the mention reached the handler.
+    if (ac.seenMessage(m.id)) return; // enrichment re-emit / reconnect replay (per-connection)
     logger.info(
       { connectionId, rid: m.rid, msgId: m.id, user: m.username, projectId: route.projectId },
       'rocketchat: handling mention',
     );
-    if (mentionsBot) {
-      Sentry.captureMessage('rocketchat: bot mention dispatched to handler', {
-        level: 'info',
-        tags: { area: 'rocketchat', msg_id: m.id },
-        extra: { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId },
-      });
-    }
     void this.handle(ac, route, m, connectionId).catch((err) => {
       logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: message handling failed');
       Sentry.captureException(err, {
@@ -515,23 +425,16 @@ class RocketChatConnectionManager {
     connectionId: string,
   ): Promise<void> {
     const restAuth = { serverUrl: ac.serverUrl, authToken: ac.authToken, userId: ac.botUserId };
-    // Two nested guards so a stall NEVER leaves the mention in silence:
-    //  - `abort` (TURN_TIMEOUT_MS) cancels the provider fetch/SSE read.
-    //  - `withTimeout` (HANDLE_TIMEOUT_MS) is the whole-handler backstop for a
-    //    hang the abort can't reach (a pre-turn DB/session await). On either
-    //    fire we send a fallback AND capture to Sentry tagged with `phase`, so
-    //    the elusive drop becomes self-diagnosing next time.
+    // cm:guard two nested guards so a stall NEVER leaves the mention in silence: `abort` cancels the provider, `withTimeout` backstops a hang the abort cannot reach; either fire sends a fallback AND captures to Sentry tagged with `phase`
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(), TURN_TIMEOUT_MS);
     timer.unref?.();
     let external: ExternalMcpToolsets | undefined;
     let phase = 'start';
-    let reply: string;
-    // cm:why default stays the fixed-constant proof for every branch below EXCEPT the one that returns raw model text (right after `verdict.ok` is confirmed) — see that branch for why
-    let sendProof: ReplySendProof = FIXED_REPLY_CONSTANT;
+    let outcome: TurnOutcome;
     try {
-      reply = await withTimeout(
-        (async (): Promise<string> => {
+      outcome = await withTimeout(
+        (async (): Promise<TurnOutcome> => {
           // ISS-609 (piece A) — seed the turn with the recent room discussion
           // (+ full thread when threaded); deeper recall stays agentic via the
           // bounded rocketchat_history tool. The project's configured external
@@ -564,7 +467,7 @@ class RocketChatConnectionManager {
           // no-device reply) is all this turn sends synchronously.
           if (readRocketChatAnswerMode(projectRow[0]?.agentConfig) === 'agent') {
             phase = 'agent-chat';
-            const outcome = await startAgentChat({
+            const started = await startAgentChat({
               projectId: route.projectId,
               project: {
                 id: route.projectId,
@@ -580,22 +483,13 @@ class RocketChatConnectionManager {
               persona,
               conversationContext,
             });
-            // No synchronous ack: a fast turn's real answer (delivered by
-            // agent-chat-bridge when the session goes terminal) should arrive
-            // on its own. Only a genuinely slow turn gets an interim ack, and
-            // startAgentChat schedules that itself (scheduleDelayedAck,
-            // AGENT_CHAT_ACK_DELAY_MS). Returning '' skips this turn's own DDP
-            // send, same convention as the dispatch-failed case below.
-            if (outcome.started) return '';
-            if (outcome.reason === 'deduped') return AGENT_CHAT_DEDUP_REPLY(ac.botName);
-            if (outcome.reason === 'no-device') return AGENT_CHAT_NO_DEVICE_REPLY(ac.botName);
-            // 'dispatch-failed': the session was created then immediately
-            // marked failed — the completion bridge (wired at every
-            // session-terminal writer) already delivers the one honest
-            // fallback asynchronously via REST. An empty reply here skips
-            // this turn's own DDP send, same convention as the escalation
-            // dispatch-failed case below.
-            return '';
+            // cm:guard send NOTHING when the dispatch started: only a genuinely slow turn gets an interim ack, scheduled by startAgentChat itself (scheduleDelayedAck). Acking here would put a promise in front of an answer that usually arrives first
+            if (started.started) return { send: false };
+            if (started.reason === 'deduped') return fixed(AGENT_CHAT_DEDUP_REPLY(ac.botName));
+            if (started.reason === 'no-device')
+              return fixed(AGENT_CHAT_NO_DEVICE_REPLY(ac.botName));
+            // cm:guard 'dispatch-failed' sends nothing either — the session was created then marked failed, so the completion bridge already delivers the one honest fallback over REST; replying here too double-posts
+            return { send: false };
           }
 
           phase = 'mcp';
@@ -609,7 +503,7 @@ class RocketChatConnectionManager {
             externalToolsets: external.toolsets,
           });
           phase = 'turn';
-          let result = await runExternalChatTurn({
+          const result = await runExternalChatTurn({
             projectId: route.projectId,
             source: 'rocketchat',
             sessionId: this.sessionByRid.get(m.rid),
@@ -641,7 +535,7 @@ class RocketChatConnectionManager {
             } catch {
               // keep the raw message text
             }
-            const outcome = await startEscalation({
+            const started = await startEscalation({
               projectId: route.projectId,
               project: {
                 id: route.projectId,
@@ -655,16 +549,12 @@ class RocketChatConnectionManager {
               question,
               askedByUsername: m.username,
             });
-            if (outcome.started) return ESCALATION_ACK(ac.botName);
-            if (outcome.reason === 'deduped') return ESCALATION_DEDUP_REPLY(ac.botName);
-            if (outcome.reason === 'no-device') return ESCALATION_NO_DEVICE_REPLY(ac.botName);
-            // 'dispatch-failed': the session was created then immediately
-            // marked failed — the completion bridge (wired at every
-            // session-terminal writer) already delivers the one honest
-            // fallback asynchronously via REST. An empty reply here skips
-            // this turn's own DDP send so the room never gets two replies
-            // for the same failure.
-            return '';
+            if (started.started) return fixed(ESCALATION_ACK(ac.botName));
+            if (started.reason === 'deduped') return fixed(ESCALATION_DEDUP_REPLY(ac.botName));
+            if (started.reason === 'no-device')
+              return fixed(ESCALATION_NO_DEVICE_REPLY(ac.botName));
+            // cm:guard same as agent mode: on 'dispatch-failed' the bridge delivers the single fallback, so this turn must post nothing
+            return { send: false };
           }
 
           // Kernel guards: a reply citing issues that don't exist (or claiming
@@ -674,59 +564,19 @@ class RocketChatConnectionManager {
           // honest fallback. See reply-guard.ts (live incident 2026-07-07:
           // zero tool calls + fabricated issue link; ISS-672: kernel-hard
           // product-lint + empty-promise guards).
-          phase = 'verify';
-          let verdict = result.reply.trim()
-            ? await screenStakeholderReply(
-                route.projectId,
-                result.reply,
-                result.toolCalls,
-                result.progress,
-              )
-            : { ok: true, problems: [] as string[] };
-          if (!verdict.ok) {
-            logger.warn(
-              { rid: m.rid, projectId: route.projectId, problems: verdict.problems },
-              'rocketchat: reply failed output guards; corrective retry',
-            );
-            phase = 'retry';
-            result = await runExternalChatTurn({
-              projectId: route.projectId,
-              source: 'rocketchat',
-              sessionId: result.sessionId,
-              message: correctiveMessage(verdict.problems),
-              tools: fast.tools,
-              userKey: m.userId,
-              persona,
-              conversationContext,
-              resolveImage: fast.resolveImage,
-              signal: abort.signal,
-            });
-            this.sessionByRid.set(m.rid, result.sessionId);
-            verdict = result.reply.trim()
-              ? await screenStakeholderReply(
-                  route.projectId,
-                  result.reply,
-                  result.toolCalls,
-                  result.progress,
-                )
-              : { ok: false, problems: ['empty retry reply'] };
-            if (!verdict.ok) {
-              logger.error(
-                { rid: m.rid, projectId: route.projectId, problems: verdict.problems },
-                'rocketchat: retry still failing output guards; sending honest fallback',
-              );
-            }
-          }
-          if (!verdict.ok) return unverifiedFallbackReply(ac.botName);
-          const trimmedReply = result.reply.trim();
-          if (!trimmedReply) {
-            return result.terminal === 'error'
-              ? errorFallbackReply(ac.botName)
-              : emptyFallbackReply(ac.botName);
-          }
-          // cm:why proof this exact text passed screenStakeholderReply above — the only way sendFixedReply's `proof` param accepts model-generated text
-          sendProof = { ok: true, problems: verdict.problems };
-          return trimmedReply;
+          return await this.screenWithRetry({
+            route,
+            m,
+            botName: ac.botName,
+            first: result,
+            fast,
+            persona,
+            conversationContext,
+            signal: abort.signal,
+            setPhase: (p) => {
+              phase = p;
+            },
+          });
         })(),
         HANDLE_TIMEOUT_MS,
       );
@@ -751,20 +601,80 @@ class RocketChatConnectionManager {
         },
       });
       this.sessionByRid.delete(m.rid);
-      reply = errorFallbackReply(ac.botName);
+      outcome = fixed(errorFallbackReply(ac.botName));
     } finally {
       clearTimeout(timer);
       await external?.dispose();
     }
-    // cm:why reply === '' is the ISS-675 escalation sentinel (its fallback already delivered async via REST) — skip this send so the room doesn't get a second reply
-    // cm:why reply was already screened (or replaced with a fixed fallback) above — sendProof carries the proof through; this send is delivery-only through the outbound chokepoint, not a second guard pass
-    if (reply && ac.client) {
+    // cm:why delivery only, never a second guard pass: every branch above already screened its text or replaced it with a code-authored constant, and the proof rides along on the outcome
+    if (outcome.send && ac.client) {
       await sendFixedReply(
         { kind: 'ddp', client: ac.client, rid: m.rid, tmid: m.tmid, authToken: ac.authToken },
-        reply,
-        sendProof,
+        outcome.text,
+        outcome.proof,
       );
     }
+  }
+
+  // cm:guard exactly ONE corrective retry, then an honest fallback — never a second: each retry is a full model turn inside HANDLE_TIMEOUT_MS, and a model that failed the guard twice does not converge on a third
+  private async screenWithRetry(args: {
+    route: Route;
+    m: RocketChatIncomingMessage;
+    botName: string;
+    first: ExternalChatTurnResult;
+    fast: FastTurnInputs;
+    persona: string;
+    conversationContext: string | null;
+    signal: AbortSignal;
+    setPhase: (phase: string) => void;
+  }): Promise<TurnOutcome> {
+    const { route, m, botName, fast, persona, conversationContext, signal, setPhase } = args;
+    const screen = (r: ExternalChatTurnResult) =>
+      screenStakeholderReply(route.projectId, r.reply, r.toolCalls, r.progress);
+    let result = args.first;
+
+    setPhase('verify');
+    let verdict = result.reply.trim()
+      ? await screen(result)
+      : { ok: true, problems: [] as string[] };
+    if (!verdict.ok) {
+      logger.warn(
+        { rid: m.rid, projectId: route.projectId, problems: verdict.problems },
+        'rocketchat: reply failed output guards; corrective retry',
+      );
+      setPhase('retry');
+      result = await runExternalChatTurn({
+        projectId: route.projectId,
+        source: 'rocketchat',
+        sessionId: result.sessionId,
+        message: correctiveMessage(verdict.problems),
+        tools: fast.tools,
+        userKey: m.userId,
+        persona,
+        conversationContext,
+        resolveImage: fast.resolveImage,
+        signal,
+      });
+      this.sessionByRid.set(m.rid, result.sessionId);
+      verdict = result.reply.trim()
+        ? await screen(result)
+        : { ok: false, problems: ['empty retry reply'] };
+      if (!verdict.ok) {
+        logger.error(
+          { rid: m.rid, projectId: route.projectId, problems: verdict.problems },
+          'rocketchat: retry still failing output guards; sending honest fallback',
+        );
+      }
+    }
+    if (!verdict.ok) return fixed(unverifiedFallbackReply(botName));
+    const trimmedReply = result.reply.trim();
+    if (!trimmedReply) {
+      return fixed(
+        result.terminal === 'error' ? errorFallbackReply(botName) : emptyFallbackReply(botName),
+      );
+    }
+    // cm:guard the verdict travels WITH the text as its proof — the only shape sendFixedReply accepts for model-generated output, so no later branch can send unscreened text under a stale proof
+    return { send: true, text: trimmedReply, proof: { ok: true, problems: verdict.problems } };
   }
 
   private async teardown(connectionId: string): Promise<void> {

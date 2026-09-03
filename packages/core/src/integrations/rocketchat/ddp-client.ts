@@ -59,7 +59,6 @@ export interface RocketChatDdpOptions {
   authToken: string;
   userId: string;
   onMessage: (m: RocketChatIncomingMessage) => void;
-  onState?: (s: DdpClientState) => void;
   onClose?: (info: { code?: number | undefined; reason?: string | undefined }) => void;
   onError?: (e: Error) => void;
   /** Test seam. */
@@ -146,7 +145,6 @@ export class RocketChatDdpClient {
 
   private setState(s: DdpClientState): void {
     this.state = s;
-    this.opts.onState?.(s);
   }
 
   private nextId(): string {

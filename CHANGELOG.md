@@ -1086,6 +1086,54 @@
   The `release` skill itself lives in `SidCorp-co/forge-plugin`, so no diff here can carry it; its
   contract — input, output, and the three questions nobody has answered — is written down in
   `docs/proposals/release-step-contract.md`. (ISS-897)
+- **The Rocket.Chat reply paths share their plumbing, and the mention hot path stops paying for a
+  finished investigation.** The `TEMP DIAGNOSTIC` added in `45aa40fe` fired three
+  `Sentry.captureMessage` calls on every bot mention — up to `2C + 2` info-level events per user
+  message for `C` active connections, on the same quota as the `captureException` calls that report
+  real failures. Its own exit condition ("remove once the root cause is pinned") was met the same
+  day by `56a66671`, which found the manager-global dedup tracker and made it per-connection. It
+  outlived its purpose by seven weeks because "TEMP DIAGNOSTIC" is not marker-shaped, so no gate
+  aged it out; the rule it recorded is now a `cm:guard` on the route-before-dedup ordering, which
+  is the thing a future editor must not break.
+
+  The two completion bridges duplicated their marker plumbing verbatim — field-identical metadata
+  interfaces, two readers differing only in a JSON key, two copies of the compare-and-set
+  `deliveredAt` claim — and `agent-chat-bridge.ts` imported `extractFinalAssistantText` from its
+  peer bridge, which is what a shared helper with no home looks like. All four now live in
+  `room-delivery.ts`, parameterized by the marker, whose header already declared itself the place
+  where the bridges are kept in lockstep. `extractFinalAssistantText` calls
+  `messageRoleToTurnRole`, the normalizer its own docstring had cited while hand-rolling the
+  discriminator beside it.
+
+  `handle` no longer smuggles three values out of a nested closure. The `''`-means-skip-the-send
+  sentinel and the mutable `sendProof` are one `TurnOutcome` union, so the screening verdict
+  travels with the text it proves rather than in a variable a later branch could leave stale —
+  the same property `outbound.ts` already enforced at the type level for `sendFixedReply`, now
+  true of the decision that calls it. `buildRoutes` ran two queries per binding inside its loop,
+  so a 10-binding connection paid 21 round-trips on every reload, and reload fires on any
+  connection or binding write; it is three batched queries, with the newest-binding-wins ordering
+  it silently depended on now stated as a guard on the query that provides it.
+
+- **`comment-density` is gated on each edited file, and 366 comment lines went with it.** An
+  absolute threshold is a poor fit here — measured 2026-09-03 over 628 non-test files in
+  `packages/core/src`, the median density is 20.0% and 65% exceed the rule's 15% — because a
+  module header plus one-line `cm:` annotations is the shape this repo asks for. Enabling it at
+  `error` was an owner decision taken with that measurement in hand, and the cost landed
+  immediately: nine files in `integrations/rocketchat/` went from 607 comment lines to 241.
+
+  What that bought and what it cost, rather than only the first. Roughly thirty multi-line JSDoc
+  blocks became single-line `cm:guard`s, which is a real improvement in placement — `cm:guard` is
+  injected into an editing agent's context, where JSDoc prose has no consumer at all. Every
+  `cm:ignore` / `i18n-allow` directive was kept, because deleting those trades this gate's green
+  for `check-source-language.mjs`'s red. Dated incident evidence survives compressed. What is
+  gone is narrative: the escalation prompt's curation reasoning, the ack-timing walkthrough and
+  the `readProgressFacts` tri-state discussion are each one dense line now. `git show` on the
+  parent of this change is where the long form lives.
+
+  The ratchet also cuts the wrong way on deletions, which is worth knowing before the next pass:
+  removing dead code lowers a file's line count and therefore its comment allowance, so deleting
+  `sendStakeholderReply` from `outbound.ts` dropped its budget from 14 comment lines to 6 and
+  forced a second round of trimming in the same file.
 
 - **`pipelineConfig.mode` defaults to `autonomous`.** It was optional, and absent read as `staged`,
   so every project created since the mode existed started on the staged pipeline whether or not

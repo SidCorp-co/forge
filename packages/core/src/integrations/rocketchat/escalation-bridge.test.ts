@@ -1,10 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+/**
+ * The ISS-675/ISS-687 completion bridge: the CAS idempotency stamp (safe to
+ * call from both session-terminal writers), the PM structured-payload parser,
+ * and the Bao-synthesis delivery path (the bridge no longer posts the PM's raw
+ * text — it relays a fresh Bao turn's reply instead). Final-assistant-text
+ * extraction moved to `room-delivery.test.ts` with the function itself.
+ */
 
-// Unit tests for the ISS-675/ISS-687 completion bridge: final-assistant-text
-// extraction (both on-disk message shapes), the CAS idempotency stamp (safe to
-// call from both session-terminal writers), the PM structured-payload parser,
-// and the Bao-synthesis delivery path (the bridge no longer posts the PM's
-// raw text — it relays a fresh Bao turn's reply instead).
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Stub eager env validation (config/env.js throws at import when DATABASE_URL /
 // JWT_SECRET / DEVICE_TOKEN_PEPPER are absent) — escalation-bridge.js pulls in
@@ -67,8 +69,9 @@ vi.mock('../../chat/tools/principal.js', () => ({
   buildChatToolContext: (...args: unknown[]) => buildChatToolContext(...args),
 }));
 
-const { deliverEscalationReplyOnce, extractFinalAssistantText, parseEscalationPayload } =
-  await import('./escalation-bridge.js');
+const { deliverEscalationReplyOnce, parseEscalationPayload } = await import(
+  './escalation-bridge.js'
+);
 
 function makeSession(overrides: Record<string, unknown> = {}) {
   return {
@@ -96,37 +99,6 @@ function makeSession(overrides: Record<string, unknown> = {}) {
 function mockRouteResolution(proj = { slug: 'proj', name: 'Project', orgId: 'org-1' }) {
   selectLimit.mockResolvedValueOnce([proj]).mockResolvedValueOnce([{ createdBy: 'owner-1' }]);
 }
-
-describe('extractFinalAssistantText', () => {
-  it('reads the desktop/chat shape (entry.role)', () => {
-    const text = extractFinalAssistantText([
-      { role: 'user', content: 'hi' },
-      { role: 'assistant', content: 'the answer' },
-    ]);
-    expect(text).toBe('the answer');
-  });
-
-  it('reads the CLI-runner shape (entry.type, no role)', () => {
-    const text = extractFinalAssistantText([
-      { type: 'user', content: 'hi' },
-      { type: 'assistant', content: 'the answer' },
-    ]);
-    expect(text).toBe('the answer');
-  });
-
-  it('skips trailing empty-content entries to find the last real answer', () => {
-    const text = extractFinalAssistantText([
-      { type: 'assistant', content: 'the real answer' },
-      { type: 'assistant', content: '' },
-    ]);
-    expect(text).toBe('the real answer');
-  });
-
-  it('returns null when there is no assistant text at all', () => {
-    expect(extractFinalAssistantText([{ type: 'user', content: 'hi' }])).toBeNull();
-    expect(extractFinalAssistantText(null)).toBeNull();
-  });
-});
 
 describe('parseEscalationPayload', () => {
   it('parses a valid fenced JSON payload (answer only)', () => {

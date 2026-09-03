@@ -1,19 +1,11 @@
 /**
- * ISS-675 — async escalation dispatcher. When the fast chat model calls
- * `escalate(question)`, `connection-manager.ts` hands the request here: dedup
- * against any in-flight escalation for the same room, resolve a runner device,
- * and dispatch a runner-hosted `system` agent-session (product lens, ISS-674)
- * with an escalation prompt. The session's reply is delivered later by the
- * completion bridge (`escalation-bridge.ts`), wired at every session-terminal
- * writer — this module never posts to the room itself.
- *
- * Reuses the exact chat-turn machinery `schedules/dispatch.ts` uses for
- * tick-driven system sessions (`resolveChatDevice` / `createChatSessionRow` /
- * `dispatchChatTurn`), including its "mark failed on WS-publish throw"
- * safety net — so a dead-on-arrival dispatch here behaves identically.
+ * ISS-675 — async escalation dispatcher, reached when the fast chat model
+ * calls `escalate(question)`. Dedup, resolve a runner, dispatch a `system`
+ * session; the reply is delivered later by `escalation-bridge.ts`.
  */
+// cm:guard this module never posts to the room itself — the bridge is the only path its output reaches a channel
 
-import { and, eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import {
   createChatSessionRow,
   dispatchChatTurn,
@@ -23,6 +15,7 @@ import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
 import { applyKernelTransition } from '../../lifecycle/transition.js';
 import { logger } from '../../logger.js';
+import { hasInFlightRoomSession } from './room-delivery.js';
 
 const ESCALATION_TITLE_MAX = 80;
 
@@ -54,40 +47,12 @@ export type StartEscalationResult =
   | { started: true; sessionId: string }
   | { started: false; reason: 'deduped' | 'no-device' | 'dispatch-failed' };
 
-/**
- * DB-backed dedup: a `running` escalation session already tracks this room.
- * Instance-independent (unlike an in-memory Set) and self-clears the moment
- * the session goes terminal via ANY writer — the completion bridge wiring
- * guarantees a terminal transition always eventually lands.
- */
-export async function hasInFlightEscalation(projectId: string, rid: string): Promise<boolean> {
-  const rows = await db
-    .select({ id: agentSessions.id })
-    .from(agentSessions)
-    .where(
-      and(
-        eq(agentSessions.projectId, projectId),
-        eq(agentSessions.status, 'running'),
-        sql`${agentSessions.metadata} -> 'escalation' ->> 'rid' = ${rid}`,
-      ),
-    )
-    .limit(1);
-  return rows.length > 0;
+export function hasInFlightEscalation(projectId: string, rid: string): Promise<boolean> {
+  return hasInFlightRoomSession(projectId, rid, 'escalation');
 }
 
-/**
- * The prompt driving the runner-hosted escalation session. Curation rules are
- * spelled out explicitly (stable slug + dedup-by-reuse + no volatile numbers)
- * because the runner's `forge_knowledge` access has no client-side guardrail
- * of its own — the persona IS the enforcement here.
- *
- * ISS-687 — this session is an ADVISOR, not the one talking to the user: it
- * has no room-posting tool (structural — the bridge is the only path its
- * output reaches the room) and is instructed here to never call
- * `forge_issues` create itself. It hands back a structured payload; Bao
- * (`escalation-bridge.ts`) synthesizes the final reply and owns issue
- * creation.
- */
+// cm:guard the knowledge-curation rules are spelled out IN the prompt because the runner's forge_knowledge access has no client-side guardrail — this text is the only enforcement
+// cm:guard ISS-687 — this session is an ADVISOR: it must never be told to post to the room or call forge_issues create, because Bao (escalation-bridge.ts) owns the user-facing reply and issue creation
 export function buildEscalationPrompt(question: string): string {
   return [
     'A teammate asked a question in Rocket.Chat that the fast assistant could not answer from existing project knowledge:',
@@ -104,13 +69,7 @@ export function buildEscalationPrompt(question: string): string {
   ].join('\n');
 }
 
-/**
- * Dedup → resolve device → create session → dispatch. Returns without a
- * session on dedup/no-device (nothing to bridge later); on a dispatch throw,
- * the session is marked `failed` via `applyKernelTransition` — which fires the
- * completion bridge exactly like any other terminal writer, so the room still
- * gets one honest fallback reply asynchronously.
- */
+// cm:guard on a dispatch throw the session MUST be marked failed via applyKernelTransition — that fires the completion bridge like any other terminal writer, which is the only reason the room still gets one honest fallback
 export async function startEscalation(args: StartEscalationArgs): Promise<StartEscalationResult> {
   if (await hasInFlightEscalation(args.projectId, args.rid)) {
     return { started: false, reason: 'deduped' };

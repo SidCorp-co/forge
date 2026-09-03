@@ -1,9 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+// ISS-727 `agent`-mode dispatcher: dedup, device resolution, dispatch-failure
+// safety net. Mirrors escalation.test.ts — same chat-turn machinery.
 
-// Unit tests for the ISS-727 `agent`-mode dispatcher — dedup, device
-// resolution, and the dispatch-failure safety net. Mirrors
-// `escalation.test.ts` exactly since `agent-chat.ts` reuses the same
-// chat-turn machinery.
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
@@ -51,7 +49,9 @@ vi.mock('./outbound.js', () => ({
 }));
 
 const resolveRoomPostAuth = vi.fn();
-vi.mock('./room-delivery.js', () => ({
+// cm:why spread the original so the real `hasInFlightRoomSession` runs against this file's `db` mock — that query IS what the dedup assertions below exercise, so stubbing it would make them vacuous
+vi.mock('./room-delivery.js', async (orig) => ({
+  ...(await orig<typeof import('./room-delivery.js')>()),
   resolveRoomPostAuth: (...args: unknown[]) => resolveRoomPostAuth(...args),
 }));
 
