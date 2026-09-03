@@ -77,6 +77,7 @@ projectRunnerRoutes.get(
         limitDetail: runners.limitDetail,
         repoPath: runners.repoPath,
         branch: runners.branch,
+        labels: runners.labels,
         lastSeenAt: runners.lastSeenAt,
         provisionStatus: runners.provisionStatus,
         provisionDetail: runners.provisionDetail,
@@ -166,6 +167,7 @@ projectRunnerRoutes.post(
         deviceId: runners.deviceId,
         repoPath: runners.repoPath,
         branch: runners.branch,
+        labels: runners.labels,
         status: runners.status,
       });
 
@@ -211,6 +213,8 @@ const patchRunnerBodySchema = z
     repoPath: z.string().trim().max(500).nullable().optional(),
     branch: z.string().trim().max(100).nullable().optional(),
     capabilities: z.record(z.string(), z.unknown()).optional(),
+    // cm:edge contract -> packages/core/src/release-batch/channel.ts — `resolveReleaseDeviceIds` matches `runners.labels ? releaseRunnerLabel` with the exact string; this is the only PAT-reachable writer of that column (`/api/runners` is fenced), so a release pool is declared here or by nobody
+    labels: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
   })
   .strict();
 
@@ -224,7 +228,7 @@ projectRunnerRoutes.patch(
   }),
   async (c) => {
     const { id, runnerId } = c.req.valid('param');
-    const { repoPath, branch, capabilities } = c.req.valid('json');
+    const { repoPath, branch, capabilities, labels } = c.req.valid('json');
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
@@ -237,6 +241,7 @@ projectRunnerRoutes.patch(
         ...(repoPath !== undefined ? { repoPath } : {}),
         ...(branch !== undefined ? { branch } : {}),
         ...(capabilities ? { capabilities } : {}),
+        ...(labels !== undefined ? { labels } : {}),
       })
       .where(and(eq(runners.id, runnerId), eq(runners.projectId, id)))
       .returning({
@@ -245,6 +250,7 @@ projectRunnerRoutes.patch(
         deviceId: runners.deviceId,
         repoPath: runners.repoPath,
         branch: runners.branch,
+        labels: runners.labels,
         status: runners.status,
       });
 

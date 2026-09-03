@@ -167,6 +167,25 @@ export function usePatchRunner(deviceId: string) {
 	});
 }
 
+export function useSetRunnerLabels(projectId: string) {
+	const qc = useQueryClient();
+	const { toast } = useToast();
+	return useMutation({
+		mutationFn: ({ runnerId, labels }: { runnerId: string; labels: string[] }) =>
+			runnersApi.patchRunner(projectId, runnerId, { labels }),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: ["projects", projectId, "runners"] });
+			toast({ title: "Labels saved", tone: "success" });
+		},
+		onError: (err) =>
+			toast({
+				title: "Save failed",
+				description: formatApiError(err),
+				tone: "error",
+			}),
+	});
+}
+
 export function useUnbindRunner(deviceId: string) {
 	const qc = useQueryClient();
 	const { toast } = useToast();

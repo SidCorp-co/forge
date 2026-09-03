@@ -10,6 +10,13 @@
 
 ### Added
 
+- Runner pool labels can be set by a project admin: `labels` on
+  `PATCH /api/projects/:id/runners/:runnerId`, and an inline editor on each runner card under
+  Project → Runners. The column already gated releases (`releaseRunnerLabel` on the production
+  binding matches it), but its only writer was `PATCH /api/runners/:id`, which the PAT fence does
+  not reach and no screen called — sidpeak sat at `RELEASE_POOL_EMPTY` with three online runners
+  and no way to name one.
+
 - The phase journal over REST: `POST /api/pipeline-runs/:id/phases`, `POST .../phases/end` and
   `GET .../resume-point`. `forge_phase` was recorded as one of the tools that "cannot move" to the
   CLI, on the rationale that it is a session lifecycle hook rather than a data query. It is not: a
