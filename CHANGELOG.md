@@ -220,13 +220,30 @@
 
 ### Fixed
 
-- A pinned plugin designation never resolved once its marketplace's master moved past the pin.
-  `claude plugin marketplace add` clones at depth 1, and the runner's fetch-before-pin was
-  `git fetch --all --tags`, which on a shallow clone moves only the branch tips — so the pinned
-  SHA was never fetched and `checkout` failed with `reference is not a tree`. Seen on every box the
-  same morning the fleet was switched on (2026-09-03): `forge-plugin` master was one commit past
-  the pin, and every runner installed `forge` at HEAD while logging the pin as failed. The runner
-  now fetches the SHA by name, keeping the tip fetch as a fallback. Runner 0.10.1.
+- **A pinned plugin designation was never actually pinned.** Three defects stacked, found the
+  morning the fleet was switched on (2026-09-03) — every box installed `forge` at whatever
+  `forge-plugin` master happened to be, while the runner logged the pin as applied.
+  1. `claude plugin marketplace add` clones at depth 1, and the runner's fetch-before-pin was
+     `git fetch --all --tags`, which on a shallow clone moves only the branch tips — a pinned SHA
+     that master had moved past was never fetched (`reference is not a tree`). Runner 0.10.1
+     fetched the SHA by name, and that was the whole of 0.10.1; it was not enough.
+  2. `claude plugin install` **re-clones** a github-source marketplace even when the plugin is
+     already installed (measured on claude 2.1.241), so the checkout the runner had just made was
+     replaced by master before the install ran. A pin applied to a directory the CLI owns cannot
+     survive the CLI's next verb.
+  3. The step meant to move installs onto the pin ran `plugin update <name>`; the CLI wants the
+     qualified `<name>@<marketplace>` and answers "not found" to the bare form, so it had never
+     done anything.
+
+  Runner 0.10.2 changes who owns the clone. The runner keeps a full clone per marketplace under
+  `~/.config/forge-runner/marketplaces/<owner>__<repo>`, checked out to the pin (or to
+  `origin/HEAD` when unpinned with `autoUpdate`), and registers **that directory** as the
+  marketplace — the CLI then has nothing of its own to re-clone, and `install`/`update` copy
+  whatever the clone has checked out. A box that already carries the CLI's github-source
+  registration for the same repo is migrated on the next sweep: `marketplace remove` (which
+  uninstalls its plugins), `marketplace add <dir>`, reinstall. Verified by hand on ubuntu3 before
+  the code was written: install at the pin lands `gitCommitSha = 612f6bb`; moving the clone and
+  running `plugin update forge@forge-local` follows it; re-running `install` leaves the clone alone.
 
 - **The autonomous driver was handed the staged pipeline's rulebook on every job.** Two blocks are
   injected into every dispatch rather than fetched on demand — `PIPELINE_RULES` and
