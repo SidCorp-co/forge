@@ -320,7 +320,7 @@ describe('ISS-194 per-state override end-to-end', () => {
 
     const data2 = jobAssignedCall();
     // cm:why with the override cleared `model` falls back to DEFAULT_STAGE_MODELS rather than dropping out of the envelope (ISS-535); `permissionMode` has no default policy, so buildOverridesPayload omits it entirely
-    expect(data2.model).toBe('opus');
+    expect(data2.model).toBe('sonnet');
     expect(Object.keys(data2)).not.toContain('permissionMode');
     expect((data2.payload as { stageStatus?: unknown }).stageStatus).toBe('open');
 
@@ -338,8 +338,8 @@ describe('ISS-194 per-state override end-to-end', () => {
     };
     // cm:why persistPromptSnapshot writes `model_used` from the RESOLVED default, so the Inspector reports a concrete tier even with no override left
     expect(body.resolvedFlags.state).toBe('open');
-    expect(body.resolvedFlags.model).toBe('opus');
+    expect(body.resolvedFlags.model).toBe('sonnet');
     expect(body.resolvedFlags.permissionMode).toBeNull();
-    expect(body.model).toBe('opus');
+    expect(body.model).toBe('sonnet');
   });
 });

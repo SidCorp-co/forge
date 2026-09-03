@@ -66,12 +66,13 @@ vi.mock("@/features/runners/hooks", () => ({
   }),
 }));
 
+// cm:guard `released` is here to prove point 1: the editor does NOT surface it as a row, so a save that rebuilt `states` from the rows it renders would silently drop it.
 const STORED: PipelineConfig = {
   enabled: true,
   states: {
-    approved: { enabled: true, mode: "auto", sessionGroup: "build", disallowedTools: ["CronCreate"] },
-    developed: { enabled: true, mode: "auto", deviceIds: [CX] },
-    deploying: { enabled: false, mode: "manual" },
+    open: { enabled: true, mode: "auto", disallowedTools: ["CronCreate"] },
+    in_progress: { enabled: true, mode: "auto", deviceIds: [CX] },
+    released: { enabled: false, mode: "manual" },
   },
 };
 
@@ -88,54 +89,53 @@ describe("RunnerPoolsSection", () => {
 
   it("seeds from states[*].deviceIds", () => {
     renderSection();
-    expect(cell("Review", "dev1 · cx")).toHaveAttribute("aria-pressed", "true");
-    expect(cell("Review", "dev1 · CLI runner")).toHaveAttribute("aria-pressed", "false");
-    expect(cell("Code", "dev1 · cx")).toHaveAttribute("aria-pressed", "false");
+    expect(cell("Running", "dev1 · cx")).toHaveAttribute("aria-pressed", "true");
+    expect(cell("Running", "dev1 · CLI runner")).toHaveAttribute("aria-pressed", "false");
+    expect(cell("Queued", "dev1 · cx")).toHaveAttribute("aria-pressed", "false");
   });
 
   it("adding a runner to a stage preserves every sibling key and every other state", () => {
     renderSection();
-    fireEvent.click(cell("Code", "dev1 · CLI runner"));
+    fireEvent.click(cell("Queued", "dev1 · CLI runner"));
     fireEvent.click(screen.getByRole("button", { name: "Save runner pools" }));
 
     expect(mutate).toHaveBeenCalledTimes(1);
     const sent = mutate.mock.calls[0][0] as PipelineConfig;
-    expect(sent.states?.approved).toEqual({
+    expect(sent.states?.open).toEqual({
       enabled: true,
       mode: "auto",
-      sessionGroup: "build",
       disallowedTools: ["CronCreate"],
       deviceIds: [CLI],
     });
-    expect(sent.states?.developed).toEqual({ enabled: true, mode: "auto", deviceIds: [CX] });
-    expect(sent.states?.deploying).toEqual({ enabled: false, mode: "manual" });
+    expect(sent.states?.in_progress).toEqual({ enabled: true, mode: "auto", deviceIds: [CX] });
+    expect(sent.states?.released).toEqual({ enabled: false, mode: "manual" });
     expect(sent.enabled).toBe(true);
   });
 
   it("clearing a pool deletes the key rather than sending an empty array", () => {
     renderSection();
-    fireEvent.click(cell("Review", "dev1 · cx"));
+    fireEvent.click(cell("Running", "dev1 · cx"));
     fireEvent.click(screen.getByRole("button", { name: "Save runner pools" }));
 
     const sent = mutate.mock.calls[0][0] as PipelineConfig;
-    expect(sent.states?.developed).toEqual({ enabled: true, mode: "auto" });
-    expect("deviceIds" in (sent.states?.developed ?? {})).toBe(false);
+    expect(sent.states?.in_progress).toEqual({ enabled: true, mode: "auto" });
+    expect("deviceIds" in (sent.states?.in_progress ?? {})).toBe(false);
   });
 
   it("warns when every member of a pool is unavailable", () => {
-    renderSection({ ...STORED, states: { developed: { deviceIds: [CLI] } } });
+    renderSection({ ...STORED, states: { in_progress: { deviceIds: [CLI] } } });
     expect(screen.getByText(/Whole pool unavailable/)).toBeInTheDocument();
   });
 
   it("blocks the save while a pool names a device with no runner here", () => {
-    renderSection({ ...STORED, states: { developed: { deviceIds: ["33333333-3333-4333-8333-333333333333"] } } });
-    fireEvent.click(cell("Code", "dev1 · cx"));
+    renderSection({ ...STORED, states: { in_progress: { deviceIds: ["33333333-3333-4333-8333-333333333333"] } } });
+    fireEvent.click(cell("Queued", "dev1 · cx"));
     expect(screen.getByRole("button", { name: "Save runner pools" })).toBeDisabled();
   });
 
   it("renders no toggles and no save button without edit rights", () => {
     renderSection(STORED, false);
     expect(screen.queryByRole("button", { name: "Save runner pools" })).toBeNull();
-    expect(cell("Review", "dev1 · cx")).toBeDisabled();
+    expect(cell("Running", "dev1 · cx")).toBeDisabled();
   });
 });

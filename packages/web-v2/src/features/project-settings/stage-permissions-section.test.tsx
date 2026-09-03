@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 //
 // ISS-813 — read-only display of states[*].disallowedTools/allowedTools/
-// mcpServers/skipComplexities/sessionGroup. Pure component (no query of its
-// own), so tested directly with fixture configs rather than mocked hooks.
+// mcpServers. Pure component (no query of its own), so tested directly with
+// fixture configs rather than mocked hooks.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -28,24 +28,15 @@ const DENYLIST_FULL = [
 
 const FORGE_DEV_SHAPED: PipelineConfig = {
   states: {
-    open: { disallowedTools: DENYLIST_FULL, sessionGroup: "planning" },
-    confirmed: {
-      disallowedTools: DENYLIST_FULL.filter((t) => t !== "mcp__forge__forge_uploads"),
-      skipComplexities: ["xs", "s"],
-    },
-    clarified: {
+    open: { disallowedTools: DENYLIST_FULL },
+    in_progress: {
       disallowedTools: DENYLIST_FULL.filter((t) => t !== "mcp__forge__forge_pm_set_dependency"),
       mcpServers: { playwright: true },
     },
-    approved: { disallowedTools: DENYLIST_FULL },
-    developed: { disallowedTools: DENYLIST_FULL },
-    testing: {
+    needs_info: { disallowedTools: DENYLIST_FULL },
+    released: {
       disallowedTools: DENYLIST_FULL.filter((t) => t !== "mcp__forge__forge_uploads"),
-      mcpServers: { playwright: true },
     },
-    reopen: { disallowedTools: DENYLIST_FULL },
-    released: { disallowedTools: DENYLIST_FULL },
-    tested: { enabled: false },
   },
 };
 
@@ -63,24 +54,19 @@ describe("StagePermissionsSection", () => {
     expect(screen.getByTitle("CronCreate")).toHaveTextContent("Cron create");
   });
 
-  it("flags exactly testing, clarified, confirmed as outliers for the forge-dev fixture", () => {
+  // cm:guard the baseline is the MODAL denylist across the states, so `open` and `needs_info` (which carry it verbatim) must NOT be flagged and the two that drop a tool must. A test that only counted flags would pass on a component that flagged everything.
+  it("flags exactly the stages that drift from the modal baseline", () => {
     render(<StagePermissionsSection config={FORGE_DEV_SHAPED} />);
-    expect(screen.getAllByText("Differs from the other stages")).toHaveLength(3);
+    expect(screen.getAllByText("Differs from the other stages")).toHaveLength(2);
   });
 
   it("labels a per-state mcpServers entry as an override, not the project default", () => {
     render(<StagePermissionsSection config={FORGE_DEV_SHAPED} />);
-    expandRow("clarified");
+    expandRow("in_progress");
     expect(screen.getAllByText(/overrides the project default/i).length).toBeGreaterThan(0);
   });
 
-  it("renders skipComplexities and sessionGroup where set", () => {
-    render(<StagePermissionsSection config={FORGE_DEV_SHAPED} />);
-    expect(screen.getByText(/skips xs, s/i)).toBeInTheDocument();
-    expect(screen.getByText(/group: planning/i)).toBeInTheDocument();
-  });
-
-  it("collapses every row by default — 176-entries-across-9-stages legibility", () => {
+  it("collapses every row by default, so a long denylist stays legible", () => {
     render(<StagePermissionsSection config={FORGE_DEV_SHAPED} />);
     for (const btn of screen.getAllByRole("button")) {
       expect(btn).toHaveAttribute("aria-expanded", "false");

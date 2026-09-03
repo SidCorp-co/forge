@@ -230,9 +230,8 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 describe("label helpers", () => {
 	it("humanizes status / priority / complexity (no raw enum leaks)", () => {
 		expect(statusLabel("in_progress")).toBe("In progress");
-		expect(statusLabelFor("in_progress", "autonomous")).toBe("Running");
-		expect(statusLabelFor("in_progress", "staged")).toBe("In progress");
-		expect(statusLabelFor("needs_info", "autonomous")).toBe("Needs a human");
+		expect(statusLabelFor("in_progress")).toBe("Running");
+		expect(statusLabelFor("needs_info")).toBe("Needs a human");
 
 		expect(statusLabel("needs_info")).toBe("Needs info");
 		expect(priorityLabel("critical")).toBe("Critical");

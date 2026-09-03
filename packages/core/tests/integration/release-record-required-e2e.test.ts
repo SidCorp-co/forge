@@ -50,7 +50,6 @@ describe('release record required E2E', () => {
     const owner = await createTestUser(harness.db);
     ownerId = owner.id;
     projectId = (await createTestProject(harness.db, owner.id)).id;
-    await declareProduction();
   });
 
   // cm:guard the batch gate is now derived from the PROJECT, not from a config key: an active `prod` binding AND a production branch that differs from the base. Seed neither half and every case here fails on NO_RELEASE_GATE long before reaching what it meant to assert.
@@ -118,7 +117,7 @@ describe('release record required E2E', () => {
     expect(await stored(id)).toEqual({ status: 'in_progress', mergedAt: null });
   });
 
-  // cm:guard the staged close is `released -> closed`, and it is the case the first version of the rule got wrong: with a `merged_at IS NULL` condition the check read NULL here — the stamp lands later in the same transaction — and refused the path it meant to exempt. Both halves are asserted so that condition cannot come back green.
+  // cm:guard `released -> closed` is the canonical close, and it is the case the first version of the rule got wrong: with a `merged_at IS NULL` condition the check read NULL here — the stamp lands later in the same transaction — and refused the path it meant to exempt. Both halves are asserted so that condition cannot come back green.
   it('refuses from `released` too, and lets it through once a note exists', async () => {
     const { applyStatusTransition } = await import('../../src/issues/apply-transition.js');
     const bare = await insertIssue('released');
@@ -156,7 +155,7 @@ describe('release record required E2E', () => {
     expect((await stored(id)).status).toBe('closed');
   });
 
-  // cm:guard the exemption is `viaCloseCascade`, NOT `skip`. orchestrator.ts's auto-skip chain carries `skip` too, and resolveSkipTarget answers `closed` for a `released` stage with no registered skill — so a `skip` exemption would auto-close an unrecorded issue on any freshly-onboarded project. The chain catches this refusal and stops, which leaves the issue at `released`: unclosed and honest.
+  // cm:guard the exemption is `viaCloseCascade`, NOT `skip`. `skip` is the wide flag every internal transition carries — the decompose cascade, the park rewrites, any future sweep — so exempting on it would let an unrecorded issue reach `closed` from any of them. Widening this to `skip` was tried and the integration suite falsified it.
   it('refuses a bare `skip`, which is what the orchestrator auto-skip chain carries', async () => {
     const { applyStatusTransition } = await import('../../src/issues/apply-transition.js');
     const id = await insertIssue('released');
@@ -177,7 +176,12 @@ describe('release record required E2E', () => {
   });
 
   // cm:guard the OTHER door. `finishReleaseBatch` closes with `viaReleasePath`, which the transition rule exempts, so the batch is refused at its CLAIM instead — and this block is the whole justification for that exemption. ISS-863's evidence row is a batch that closed two issues whose releaseNotes was null; delete the preflight and that path is open again.
+  // cm:guard this project declares production and the outer one deliberately does NOT — the two halves of this file need opposite answers from the same gate. With a gate, an agent's `closed` is rewritten to `released` (`issues/release-gate-hold.ts`) and every close case above would assert nothing; without one, `createReleaseBatch` throws NO_RELEASE_GATE before it reaches the note preflight these cases are about.
   describe('the release batch, refused at the claim rather than the close', () => {
+    beforeEach(async () => {
+      await declareProduction();
+    });
+
     async function claim(ids: string[]) {
       const { createReleaseBatch } = await import('../../src/release-batch/service.js');
       return createReleaseBatch({ projectId, issueIds: ids, userId: ownerId });

@@ -1,18 +1,16 @@
 // @vitest-environment jsdom
 //
-// ISS-813 — this tab now DISPLAYS states[*].disallowedTools/sessionGroup/
-// mcpServers/skipComplexities (previously invisible, previously round-tripped
-// blind). Displaying a value is worthless if the Save button next to it can
-// still destroy it — the ISS-767 pattern, applied here. Two things must hold:
-//  1. saving via the EXISTING controls (master enabled, per-stage mode) never
-//     drops a sibling key, including one no current schema knows about yet;
-//  2. the `tested` checkpoint's Manual→Skip control, which used to REPLACE the
-//     whole state entry (deleting its disallowedTools), now preserves it.
+// ISS-813 — this tab DISPLAYS states[*].disallowedTools and mcpServers, which
+// were previously invisible and round-tripped blind. Displaying a value is
+// worthless if the Save button next to it can still destroy it, so what is
+// asserted here is that saving via the existing controls never drops a sibling
+// key — including one no current schema knows about yet.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ToastProvider } from "@/providers/toast-provider";
 import { PipelineTab } from "./components/pipeline-tab";
 import type { PipelineConfig } from "./types";
 
@@ -35,7 +33,7 @@ vi.mock("./hooks", async () => {
   };
 });
 
-const JOB_STAGES = ["open", "confirmed", "clarified", "approved", "developed", "testing", "reopen", "released"];
+const JOB_STAGES = ["open", "in_progress", "needs_info", "released"];
 vi.mock("@/features/skills/hooks", () => ({
   useSkills: () => ({ data: [], isLoading: false }),
   useSkillRegistrations: () => ({
@@ -65,52 +63,21 @@ const DENYLIST_FULL = [
 
 const STORED: PipelineConfig = {
   enabled: true,
-  autoTriage: true,
-  autoClarify: true,
-  autoPlan: true,
-  autoCode: true,
-  autoReview: true,
-  autoTest: true,
-  autoFix: true,
-  autoRelease: true,
   states: {
-    open: { enabled: true, mode: "auto", disallowedTools: DENYLIST_FULL, sessionGroup: "planning" },
-    confirmed: {
+    open: { enabled: true, mode: "auto", disallowedTools: DENYLIST_FULL },
+    in_progress: {
       enabled: true,
       mode: "auto",
       disallowedTools: DENYLIST_FULL.filter((t) => t !== "mcp__forge__forge_uploads"),
-      skipComplexities: ["xs", "s"],
-      sessionGroup: "planning",
-    },
-    clarified: {
-      enabled: true,
-      mode: "auto",
-      disallowedTools: DENYLIST_FULL.filter((t) => t !== "mcp__forge__forge_pm_set_dependency"),
       mcpServers: { playwright: true },
-      sessionGroup: "planning",
     },
-    approved: {
+    needs_info: {
       enabled: true,
       mode: "auto",
       disallowedTools: DENYLIST_FULL,
-      sessionGroup: "build",
       futureStageKnob: "stage-round-trips",
     },
-    developed: { enabled: true, mode: "auto", disallowedTools: DENYLIST_FULL, sessionGroup: "build" },
-    testing: {
-      enabled: true,
-      mode: "auto",
-      disallowedTools: DENYLIST_FULL.filter((t) => t !== "mcp__forge__forge_uploads"),
-      mcpServers: { playwright: true },
-      sessionGroup: "build",
-    },
-    tested: { enabled: true, mode: "manual", disallowedTools: DENYLIST_FULL },
-    reopen: { enabled: true, mode: "auto", disallowedTools: DENYLIST_FULL },
-    released: { enabled: true, mode: "auto", disallowedTools: DENYLIST_FULL, sessionGroup: "build" },
-  },
-  sessionGroups: {
-    planning: ["open", "confirmed", "clarified"],
-    build: ["approved", "developed", "testing", "released"],
+    released: { enabled: true, mode: "manual", disallowedTools: DENYLIST_FULL },
   },
   someFutureKnob: "round-trips",
 };
@@ -119,7 +86,9 @@ function renderTab() {
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
-      <PipelineTab projectId="proj-1" canEdit={true} slug="forge-dev" />
+      <ToastProvider>
+        <PipelineTab projectId="proj-1" canEdit={true} slug="forge-dev" />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
@@ -138,6 +107,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Pipeline tab · preserve-on-save (ISS-813, ISS-767 pattern)", () => {
+  // cm:guard removing the `...cfg` / `...rest` spreads on the save path makes this pass for the wrong reason — delete one and watch this go red before trusting it green.
   it("flipping the master switch preserves every states[*] override and unknown keys", () => {
     renderTab();
     fireEvent.click(screen.getByRole("switch", { name: "Pipeline enabled" }));
@@ -146,24 +116,21 @@ describe("Pipeline tab · preserve-on-save (ISS-813, ISS-767 pattern)", () => {
     const sent = mutate.mock.calls[0]?.[0] as PipelineConfig;
     const states = sent.states as Record<string, Record<string, unknown>>;
     expect(states.open.disallowedTools).toEqual(DENYLIST_FULL);
-    expect(states.confirmed.skipComplexities).toEqual(["xs", "s"]);
-    expect(states.clarified.mcpServers).toEqual({ playwright: true });
-    expect(states.open.sessionGroup).toBe("planning");
-    expect(states.approved.futureStageKnob).toBe("stage-round-trips");
+    expect(states.in_progress.mcpServers).toEqual({ playwright: true });
+    expect(states.needs_info.futureStageKnob).toBe("stage-round-trips");
     expect(sent.someFutureKnob).toBe("round-trips");
   });
 
-  // cm:guard removing the `...cfg`/`...rest` spreads on the save path (here or in applyCheckpointMode) makes this pass for the wrong reason — verify a spread removal actually fails this test before trusting it green
-  it("tested Manual → Skip preserves disallowedTools and clears mode (not a wholesale replace)", () => {
+  // cm:guard `released` carries `mode: 'manual'` in the fixture on purpose: the mode control is the one that used to REPLACE the whole state entry, so this is where a wholesale write would drop `disallowedTools` and nothing else would notice.
+  it("switching a stage's mode preserves the rest of its entry", () => {
     renderTab();
     const row = stageRow("Awaiting release");
-    fireEvent.click(within(row).getByRole("button", { name: "Skip" }));
+    fireEvent.click(within(row).getByRole("button", { name: "Auto" }));
     fireEvent.click(screen.getByRole("button", { name: /save pipeline config/i }));
 
     const sent = mutate.mock.calls[0]?.[0] as PipelineConfig;
-    const tested = (sent.states as Record<string, Record<string, unknown>>).tested;
-    expect(tested.enabled).toBe(false);
-    expect(tested.mode).toBeUndefined();
-    expect(tested.disallowedTools).toEqual(DENYLIST_FULL);
+    const released = (sent.states as Record<string, Record<string, unknown>>).released;
+    expect(released.mode).toBe("auto");
+    expect(released.disallowedTools).toEqual(DENYLIST_FULL);
   });
 });
