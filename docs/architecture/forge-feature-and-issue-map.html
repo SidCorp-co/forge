@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forge — bản đồ tính năng và vòng đời một issue</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --paper: #F4F7FC; --paper-2: #EEF2F7; --ink: #0E1726; --muted: #4B5563; --soft: #6B7280;
+      --rule: rgba(14,23,38,0.12); --accent: #2982FB; --accent-tint: rgba(41,130,251,0.08); --link: #364152;
+      --sans: 'Geist', system-ui, sans-serif; --serif: 'Instrument Serif', serif; --mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    body { font-family: var(--sans); background: var(--paper); color: var(--ink); padding: 3rem 2rem 4rem; }
+    .frame { max-width: 1240px; margin: 0 auto; }
+    .eyebrow { font-family: var(--mono); font-size: .66rem; font-weight: 500; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); margin-bottom: .5rem; }
+    h1 { font-family: var(--serif); font-size: clamp(1.5rem, 2.4vw + .75rem, 2rem); font-weight: 400; letter-spacing: -.02em; line-height: 1.15; margin-bottom: .5rem; }
+    h2 { font-family: var(--serif); font-size: 1.5rem; font-weight: 400; letter-spacing: -.02em; margin: 3.5rem 0 .25rem; }
+    .sub { color: var(--muted); font-size: .92rem; max-width: 78ch; margin-bottom: 1.5rem; line-height: 1.55; }
+    .fig { overflow-x: auto; }
+    svg { width: 100%; min-width: 960px; display: block; }
+    .colophon { margin-top: 3rem; padding-top: .75rem; border-top: 1px solid var(--rule); font-family: var(--mono); font-size: .66rem; color: var(--soft); letter-spacing: .04em; }
+  </style>
+</head>
+<body>
+<div class="frame">
+  <p class="eyebrow">Architecture · Forge</p>
+  <h1>Forge — bản đồ tính năng</h1>
+  <p class="sub">Ba tầng: bề mặt người/agent chạm vào, control plane (Hono + Postgres) giữ trạng thái và điều phối, và fleet thiết bị chạy Claude Code. Chỉ còn một lane: <em>autonomous</em> — một issue <code>open</code> sinh đúng một job <code>drive</code>.</p>
+
+  <div class="fig">
+  <svg viewBox="0 0 1120 536" role="img" aria-labelledby="feat-title feat-desc" xmlns="http://www.w3.org/2000/svg">
+    <title id="feat-title">Forge — bản đồ tính năng</title>
+    <desc id="feat-desc">Sơ đồ kiến trúc: ba bề mặt (web, MCP, CLI) ghi vào tracker trong core; dispatcher biến issue open thành một drive job; runner trên thiết bị nhận job và chạy Claude Code với plugin forge, plugin gọi lại Forge qua CLI forge-runner api.</desc>
+    <defs>
+      <marker id="f-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4B5563"/></marker>
+      <marker id="f-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2982FB"/></marker>
+      <marker id="f-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#364152"/></marker>
+    </defs>
+    <rect width="100%" height="100%" fill="#F4F7FC"/>
+
+    <!-- zones -->
+    <rect x="32" y="48" width="224" height="384" rx="8" fill="rgba(14,23,38,0.02)" stroke="rgba(14,23,38,0.10)" stroke-width="0.8"/>
+    <rect x="96" y="52" width="96" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="144" y="61" fill="rgba(14,23,38,0.45)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">BỀ MẶT</text>
+
+    <rect x="320" y="48" width="400" height="384" rx="8" fill="rgba(14,23,38,0.02)" stroke="rgba(14,23,38,0.10)" stroke-width="0.8"/>
+    <rect x="440" y="52" width="160" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="520" y="61" fill="rgba(14,23,38,0.45)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">CORE · HONO + POSTGRES</text>
+
+    <rect x="784" y="48" width="304" height="384" rx="8" fill="rgba(14,23,38,0.02)" stroke="rgba(14,23,38,0.10)" stroke-width="0.8"/>
+    <rect x="872" y="52" width="128" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="936" y="61" fill="rgba(14,23,38,0.45)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">FLEET · THIẾT BỊ</text>
+
+    <!-- arrows (before boxes) -->
+    <!-- Web → Issues -->
+    <path d="M232,120 H264 Q272,120 272,112 V112 Q272,104 280,104 H344" fill="none" stroke="#364152" stroke-width="1.2" marker-end="url(#f-arrow-link)"/>
+    <rect x="272" y="84" width="60" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="302" y="93" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">HTTP · JWT</text>
+    <!-- MCP → Issues -->
+    <path d="M232,232 H284 Q292,232 292,224 V136 Q292,128 300,128 H344" fill="none" stroke="#364152" stroke-width="1.2" marker-end="url(#f-arrow-link)"/>
+    <rect x="244" y="204" width="40" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="264" y="213" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">MCP</text>
+    <!-- CLI → Issues -->
+    <path d="M232,344 H304 Q312,344 312,336 V160 Q312,152 320,152 H344" fill="none" stroke="#364152" stroke-width="1.2" marker-end="url(#f-arrow-link)"/>
+    <rect x="240" y="316" width="64" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="272" y="325" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">REST · PAT</text>
+    <!-- Issues → Dispatcher -->
+    <line x1="520" y1="120" x2="560" y2="120" stroke="#2982FB" stroke-width="1.2" marker-end="url(#f-arrow-accent)"/>
+    <rect x="524" y="100" width="32" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="540" y="109" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">OPEN</text>
+    <!-- Dispatcher → Jobs -->
+    <line x1="632" y1="168" x2="632" y2="232" stroke="#2982FB" stroke-width="1.2" marker-end="url(#f-arrow-accent)"/>
+    <rect x="644" y="192" width="76" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="682" y="201" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">1 DRIVE JOB</text>
+    <!-- Jobs → Runner -->
+    <path d="M704,272 H744 Q752,272 752,264 V156 Q752,148 760,148 H816" fill="none" stroke="#4B5563" stroke-width="1.2" marker-end="url(#f-arrow)"/>
+    <rect x="760" y="196" width="68" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="794" y="205" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">WS DISPATCH</text>
+    <!-- Runner → Claude -->
+    <line x1="936" y1="168" x2="936" y2="232" stroke="#4B5563" stroke-width="1.2" marker-end="url(#f-arrow)"/>
+    <rect x="948" y="192" width="96" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="996" y="201" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">SPAWN claude -p</text>
+    <!-- Claude → CLI (the one transport back) -->
+    <path d="M936,328 V392 Q936,400 928,400 H152 Q144,400 144,392 V376" fill="none" stroke="#364152" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#f-arrow-link)"/>
+    <rect x="948" y="352" width="104" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="1000" y="361" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">1 TRANSPORT DUY NHẤT</text>
+
+    <!-- nodes -->
+    <!-- n1 Web -->
+    <rect x="56" y="88" width="176" height="64" rx="6" fill="#F4F7FC"/>
+    <rect x="56" y="88" width="176" height="64" rx="6" fill="rgba(75,85,99,0.10)" stroke="#6B7280" stroke-width="1"/>
+    <rect x="64" y="94" width="24" height="12" rx="2" fill="transparent" stroke="rgba(107,114,128,0.4)" stroke-width="0.8"/>
+    <text x="76" y="103" fill="rgba(107,114,128,0.9)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">UI</text>
+    <text x="144" y="126" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Web (web-v2)</text>
+    <text x="144" y="142" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">board · config · what's new</text>
+    <!-- n2 MCP -->
+    <rect x="56" y="200" width="176" height="64" rx="6" fill="#F4F7FC"/>
+    <rect x="56" y="200" width="176" height="64" rx="6" fill="rgba(75,85,99,0.10)" stroke="#6B7280" stroke-width="1"/>
+    <rect x="64" y="206" width="32" height="12" rx="2" fill="transparent" stroke="rgba(107,114,128,0.4)" stroke-width="0.8"/>
+    <text x="80" y="215" fill="rgba(107,114,128,0.9)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">AGENT</text>
+    <text x="144" y="238" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">MCP server</text>
+    <text x="144" y="254" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">/mcp · 53 forge_* tools</text>
+    <!-- n3 CLI -->
+    <rect x="56" y="312" width="176" height="64" rx="6" fill="#F4F7FC"/>
+    <rect x="56" y="312" width="176" height="64" rx="6" fill="rgba(75,85,99,0.10)" stroke="#6B7280" stroke-width="1"/>
+    <rect x="64" y="318" width="24" height="12" rx="2" fill="transparent" stroke="rgba(107,114,128,0.4)" stroke-width="0.8"/>
+    <text x="76" y="327" fill="rgba(107,114,128,0.9)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CLI</text>
+    <text x="144" y="350" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">forge-runner api</text>
+    <text x="144" y="366" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">REST · PAT theo job · allowlist</text>
+
+    <!-- n4 Issues & Projects -->
+    <rect x="344" y="88" width="176" height="80" rx="6" fill="#F4F7FC"/>
+    <rect x="344" y="88" width="176" height="80" rx="6" fill="rgba(14,23,38,0.05)" stroke="#4B5563" stroke-width="1"/>
+    <rect x="352" y="94" width="32" height="12" rx="2" fill="transparent" stroke="rgba(75,85,99,0.4)" stroke-width="0.8"/>
+    <text x="368" y="103" fill="rgba(75,85,99,0.9)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">STORE</text>
+    <text x="432" y="128" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Issues · Projects</text>
+    <text x="432" y="144" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">5 status · blocks edge</text>
+    <text x="432" y="156" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">pipelineConfig · facts · plugins</text>
+    <!-- n5 Dispatcher (focal) -->
+    <rect x="560" y="88" width="144" height="80" rx="6" fill="#F4F7FC"/>
+    <rect x="560" y="88" width="144" height="80" rx="6" fill="rgba(41,130,251,0.08)" stroke="#2982FB" stroke-width="1"/>
+    <rect x="568" y="94" width="36" height="12" rx="2" fill="transparent" stroke="rgba(41,130,251,0.4)" stroke-width="0.8"/>
+    <text x="586" y="103" fill="rgba(41,130,251,0.9)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">KERNEL</text>
+    <text x="632" y="128" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Dispatcher</text>
+    <text x="632" y="144" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">cap/runner · reconcile 1'</text>
+    <text x="632" y="156" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">gate: blocks · needs_info</text>
+    <!-- n6 Jobs / Runs / Journal -->
+    <rect x="560" y="232" width="144" height="80" rx="6" fill="#F4F7FC"/>
+    <rect x="560" y="232" width="144" height="80" rx="6" fill="rgba(14,23,38,0.05)" stroke="#4B5563" stroke-width="1"/>
+    <rect x="568" y="238" width="32" height="12" rx="2" fill="transparent" stroke="rgba(75,85,99,0.4)" stroke-width="0.8"/>
+    <text x="584" y="247" fill="rgba(75,85,99,0.9)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">STORE</text>
+    <text x="632" y="272" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Runs · Jobs · Journal</text>
+    <text x="632" y="288" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">phase_journal · resume-point</text>
+    <text x="632" y="300" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">cascade: run terminal ⇒ job</text>
+    <!-- n7 Memory & Knowledge -->
+    <rect x="344" y="232" width="176" height="80" rx="6" fill="#F4F7FC"/>
+    <rect x="344" y="232" width="176" height="80" rx="6" fill="rgba(14,23,38,0.05)" stroke="#4B5563" stroke-width="1"/>
+    <rect x="352" y="238" width="32" height="12" rx="2" fill="transparent" stroke="rgba(75,85,99,0.4)" stroke-width="0.8"/>
+    <text x="368" y="247" fill="rgba(75,85,99,0.9)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">STORE</text>
+    <text x="432" y="272" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Memory · Knowledge</text>
+    <text x="432" y="288" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">pgvector · guides · skill facts</text>
+    <text x="432" y="300" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Dream / Doc-Sync schedules</text>
+
+    <!-- n8 forge-runner -->
+    <rect x="816" y="88" width="240" height="80" rx="6" fill="#F4F7FC"/>
+    <rect x="816" y="88" width="240" height="80" rx="6" fill="#FFFFFF" stroke="#0E1726" stroke-width="1"/>
+    <rect x="824" y="94" width="40" height="12" rx="2" fill="transparent" stroke="rgba(14,23,38,0.4)" stroke-width="0.8"/>
+    <text x="844" y="103" fill="rgba(14,23,38,0.8)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">DAEMON</text>
+    <text x="936" y="128" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">forge-runner (Rust)</text>
+    <text x="936" y="144" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">pair device · WS · auto-update</text>
+    <text x="936" y="156" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">plugin sweep: clone do runner sở hữu</text>
+    <!-- n9 Claude + plugin (focal) -->
+    <rect x="816" y="232" width="240" height="96" rx="6" fill="#F4F7FC"/>
+    <rect x="816" y="232" width="240" height="96" rx="6" fill="rgba(41,130,251,0.08)" stroke="#2982FB" stroke-width="1"/>
+    <rect x="824" y="238" width="40" height="12" rx="2" fill="transparent" stroke="rgba(41,130,251,0.4)" stroke-width="0.8"/>
+    <text x="844" y="247" fill="rgba(41,130,251,0.9)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">DRIVER</text>
+    <text x="936" y="272" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Claude Code + plugin forge</text>
+    <text x="936" y="288" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">skill issue-flow · 9 phase</text>
+    <text x="936" y="300" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">SidCorp-co/forge-plugin @ pinned SHA</text>
+    <text x="936" y="312" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">designation per project → union per device</text>
+
+    <!-- callouts -->
+    <text x="352" y="348" fill="#4B5563" font-size="14" font-family="'Instrument Serif', serif" font-style="italic">Một lane duy nhất. Ladder staged — triage → plan →</text>
+    <text x="352" y="368" fill="#4B5563" font-size="14" font-family="'Instrument Serif', serif" font-style="italic">code → review → test → release — bị xoá 2026-09-02;</text>
+    <text x="352" y="388" fill="#4B5563" font-size="14" font-family="'Instrument Serif', serif" font-style="italic"><tspan font-family="'Geist Mono', monospace" font-size="9" font-style="normal">mode</tspan> vắng mặt nay đọc là autonomous.</text>
+
+    <!-- legend -->
+    <line x1="32" y1="464" x2="1088" y2="464" stroke="rgba(14,23,38,0.10)" stroke-width="0.8"/>
+    <text x="32" y="484" fill="#4B5563" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">CHÚ GIẢI</text>
+    <rect x="128" y="476" width="16" height="12" rx="2" fill="rgba(41,130,251,0.08)" stroke="#2982FB" stroke-width="1"/>
+    <text x="152" y="485" fill="#4B5563" font-size="9" font-family="'Geist', sans-serif">điểm quyết định</text>
+    <rect x="272" y="476" width="16" height="12" rx="2" fill="rgba(14,23,38,0.05)" stroke="#4B5563" stroke-width="1"/>
+    <text x="296" y="485" fill="#4B5563" font-size="9" font-family="'Geist', sans-serif">trạng thái (Postgres)</text>
+    <rect x="432" y="476" width="16" height="12" rx="2" fill="rgba(75,85,99,0.10)" stroke="#6B7280" stroke-width="1"/>
+    <text x="456" y="485" fill="#4B5563" font-size="9" font-family="'Geist', sans-serif">bề mặt vào</text>
+    <line x1="576" y1="482" x2="608" y2="482" stroke="#364152" stroke-width="1.2" marker-end="url(#f-arrow-link)"/>
+    <text x="616" y="485" fill="#4B5563" font-size="9" font-family="'Geist', sans-serif">HTTP / MCP</text>
+    <line x1="720" y1="482" x2="752" y2="482" stroke="#364152" stroke-width="1" stroke-dasharray="4,3"/>
+    <text x="760" y="485" fill="#4B5563" font-size="9" font-family="'Geist', sans-serif">driver gọi lại Forge — chỉ qua CLI, PAT theo job</text>
+  </svg>
+  </div>
+
+  <h2>Vòng đời một issue</h2>
+  <p class="sub">Bốn tay chơi, một chiều thời gian. Người tạo issue; core điều phối và <em>chỉ core</em> viết trạng thái; runner nhận job và mở tiến trình; driver làm việc theo issue-flow và nói chuyện với Forge bằng đúng một đường. <code>needs_info</code> là chỗ đỗ duy nhất mà một câu trả lời của người khởi động lại.</p>
+
+  <div class="fig">
+  <svg viewBox="0 0 1544 616" role="img" aria-labelledby="issue-title issue-desc" xmlns="http://www.w3.org/2000/svg">
+    <title id="issue-title">Vòng đời một issue trên Forge</title>
+    <desc id="issue-desc">Swimlane bốn lane — người, core, runner, driver — theo dõi một issue từ khi được tạo ở trạng thái open, qua dispatcher sinh drive job, runner spawn Claude Code, driver chạy issue-flow và ghi trạng thái closed hoặc needs_info, và vòng quay lại khi người trả lời.</desc>
+    <defs>
+      <marker id="i-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4B5563"/></marker>
+      <marker id="i-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2982FB"/></marker>
+      <marker id="i-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#364152"/></marker>
+    </defs>
+    <rect width="100%" height="100%" fill="#F4F7FC"/>
+
+    <!-- lanes -->
+    <line x1="112" y1="64" x2="1528" y2="64" stroke="rgba(14,23,38,0.12)" stroke-width="1"/>
+    <line x1="112" y1="176" x2="1528" y2="176" stroke="rgba(14,23,38,0.12)" stroke-width="1"/>
+    <line x1="112" y1="288" x2="1528" y2="288" stroke="rgba(14,23,38,0.12)" stroke-width="1"/>
+    <line x1="112" y1="400" x2="1528" y2="400" stroke="rgba(14,23,38,0.12)" stroke-width="1"/>
+    <line x1="112" y1="512" x2="1528" y2="512" stroke="rgba(14,23,38,0.12)" stroke-width="1"/>
+    <text x="24" y="124" fill="#4B5563" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">NGƯỜI</text>
+    <text x="24" y="236" fill="#4B5563" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">CORE</text>
+    <text x="24" y="348" fill="#4B5563" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">RUNNER</text>
+    <text x="24" y="460" fill="#4B5563" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">DRIVER</text>
+
+    <!-- arrows -->
+    <path d="M200,152 V224 Q200,232 208,232 H304" fill="none" stroke="#4B5563" stroke-width="1.2" marker-end="url(#i-arrow)"/>
+    <rect x="212" y="204" width="76" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="250" y="213" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">STATUS open</text>
+
+    <path d="M380,264 V340 Q380,348 388,348 H488" fill="none" stroke="#2982FB" stroke-width="1.2" marker-end="url(#i-arrow-accent)"/>
+    <rect x="392" y="320" width="88" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="436" y="329" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">WS · DRIVE JOB</text>
+
+    <path d="M572,384 V452 Q572,460 580,460 H688" fill="none" stroke="#4B5563" stroke-width="1.2" marker-end="url(#i-arrow)"/>
+    <rect x="584" y="432" width="84" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="626" y="441" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">claude -p · PAT</text>
+
+    <line x1="864" y1="460" x2="896" y2="460" stroke="#4B5563" stroke-width="1.2" marker-end="url(#i-arrow)"/>
+
+    <path d="M984,424 V304 Q984,296 992,296 H1160 Q1168,296 1168,288 V272" fill="none" stroke="#364152" stroke-width="1.2" marker-end="url(#i-arrow-link)"/>
+    <rect x="844" y="352" width="132" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="910" y="361" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">forge-runner api · PATCH</text>
+
+    <path d="M1072,460 H1080 Q1088,460 1088,452 V352 Q1088,344 1096,344 H1104" fill="none" stroke="#4B5563" stroke-width="1.2" marker-end="url(#i-arrow)"/>
+    <rect x="1004" y="404" width="52" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="1030" y="413" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">EXIT 0</text>
+
+    <line x1="1232" y1="312" x2="1232" y2="272" stroke="#4B5563" stroke-width="1.2" marker-end="url(#i-arrow)"/>
+    <rect x="1244" y="284" width="88" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="1288" y="293" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">JOB TERMINAL</text>
+
+    <path d="M1232,200 V128 Q1232,120 1240,120 H1328" fill="none" stroke="#4B5563" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#i-arrow)"/>
+    <rect x="1244" y="92" width="76" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="1282" y="101" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">needs_info</text>
+
+    <path d="M1416,88 V40 Q1416,32 1408,32 H388 Q380,32 380,40 V200" fill="none" stroke="#4B5563" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#i-arrow)"/>
+    <rect x="1272" y="12" width="128" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="1336" y="21" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">COMMENT → open → job mới</text>
+
+    <!-- nodes -->
+    <rect x="128" y="88" width="144" height="64" rx="6" fill="#F4F7FC"/>
+    <rect x="128" y="88" width="144" height="64" rx="6" fill="rgba(75,85,99,0.10)" stroke="#6B7280" stroke-width="1"/>
+    <text x="200" y="116" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Tạo issue</text>
+    <text x="200" y="132" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">web · MCP · CLI</text>
+    <text x="200" y="144" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">draft = chưa chạy</text>
+
+    <rect x="304" y="200" width="152" height="64" rx="6" fill="#F4F7FC"/>
+    <rect x="304" y="200" width="152" height="64" rx="6" fill="rgba(41,130,251,0.08)" stroke="#2982FB" stroke-width="1"/>
+    <text x="380" y="228" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Dispatcher</text>
+    <text x="380" y="244" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">open ⇒ run + 1 drive job</text>
+    <text x="380" y="256" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">chờ blocks · cap runner</text>
+
+    <rect x="488" y="312" width="168" height="72" rx="6" fill="#F4F7FC"/>
+    <rect x="488" y="312" width="168" height="72" rx="6" fill="#FFFFFF" stroke="#0E1726" stroke-width="1"/>
+    <text x="572" y="340" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Nhận job</text>
+    <text x="572" y="356" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">mint PAT · preflight git</text>
+    <text x="572" y="368" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">plugin forge sẵn ở device</text>
+
+    <rect x="688" y="424" width="176" height="72" rx="6" fill="#F4F7FC"/>
+    <rect x="688" y="424" width="176" height="72" rx="6" fill="#FFFFFF" stroke="#0E1726" stroke-width="1"/>
+    <text x="776" y="452" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Phase 0–2</text>
+    <text x="776" y="468" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">đọc issue · resume-point</text>
+    <text x="776" y="480" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">in_progress · hỏi ⇒ needs_info</text>
+
+    <rect x="896" y="424" width="176" height="72" rx="6" fill="#F4F7FC"/>
+    <rect x="896" y="424" width="176" height="72" rx="6" fill="rgba(41,130,251,0.08)" stroke="#2982FB" stroke-width="1"/>
+    <text x="984" y="452" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Phase 3–7</text>
+    <text x="984" y="468" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">code · test · merge · deploy</text>
+    <text x="984" y="480" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">journal mỗi phase · releaseNotes</text>
+
+    <rect x="1104" y="200" width="192" height="72" rx="6" fill="#F4F7FC"/>
+    <rect x="1104" y="200" width="192" height="72" rx="6" fill="rgba(14,23,38,0.05)" stroke="#4B5563" stroke-width="1"/>
+    <text x="1200" y="228" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Kernel viết trạng thái</text>
+    <text x="1200" y="244" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">closed ⇒ merged_at · run terminal</text>
+    <text x="1200" y="256" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">waiting/reopen ⇒ viết lại</text>
+
+    <rect x="1104" y="312" width="192" height="64" rx="6" fill="#F4F7FC"/>
+    <rect x="1104" y="312" width="192" height="64" rx="6" fill="#FFFFFF" stroke="#0E1726" stroke-width="1"/>
+    <text x="1200" y="340" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Kết thúc job</text>
+    <text x="1200" y="356" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">revoke PAT · done/failed</text>
+    <text x="1200" y="368" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">crash ⇒ resume từ journal</text>
+
+    <rect x="1328" y="88" width="176" height="64" rx="6" fill="#F4F7FC"/>
+    <rect x="1328" y="88" width="176" height="64" rx="6" fill="rgba(75,85,99,0.10)" stroke="#6B7280" stroke-width="1"/>
+    <text x="1416" y="116" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Trả lời</text>
+    <text x="1416" y="132" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">comment trên issue</text>
+    <text x="1416" y="144" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">chỗ đỗ duy nhất tự khởi động lại</text>
+
+    <!-- legend -->
+    <line x1="24" y1="544" x2="1528" y2="544" stroke="rgba(14,23,38,0.10)" stroke-width="0.8"/>
+    <text x="24" y="564" fill="#4B5563" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">CHÚ GIẢI</text>
+    <rect x="120" y="556" width="16" height="12" rx="2" fill="rgba(41,130,251,0.08)" stroke="#2982FB" stroke-width="1"/>
+    <text x="144" y="565" fill="#4B5563" font-size="9" font-family="'Geist', sans-serif">nơi quyết định / nơi việc thật diễn ra</text>
+    <rect x="392" y="556" width="16" height="12" rx="2" fill="rgba(14,23,38,0.05)" stroke="#4B5563" stroke-width="1"/>
+    <text x="416" y="565" fill="#4B5563" font-size="9" font-family="'Geist', sans-serif">trạng thái do kernel giữ</text>
+    <line x1="592" y1="562" x2="624" y2="562" stroke="#364152" stroke-width="1.2" marker-end="url(#i-arrow-link)"/>
+    <text x="632" y="565" fill="#4B5563" font-size="9" font-family="'Geist', sans-serif">driver → Forge, một transport</text>
+    <line x1="840" y1="562" x2="872" y2="562" stroke="#4B5563" stroke-width="1" stroke-dasharray="4,3"/>
+    <text x="880" y="565" fill="#4B5563" font-size="9" font-family="'Geist', sans-serif">vòng needs_info — chỉ chạy khi người trả lời</text>
+  </svg>
+  </div>
+
+  <p class="colophon">docs/architecture/forge-feature-and-issue-map.html · vẽ 2026-09-03 sau khi xoá staged mode và chuyển driver sang plugin forge (issue-flow) · nguồn: autonomous-mode.ts, dispatcher, plugins/designation.ts, runner plugin_sync.rs</p>
+</div>
+</body>
+</html>
