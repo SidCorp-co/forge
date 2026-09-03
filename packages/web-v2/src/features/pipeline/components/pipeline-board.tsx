@@ -29,7 +29,7 @@ import {
   runStatusToStatusKey,
   runsByIssue,
 } from "../derive";
-import { deriveQueuedStep } from "@/features/issues/waiting";
+import { deriveQueuedStep, queuedChipStatus } from "@/features/issues/waiting";
 import { useProjectIssues, useProjectRuns } from "../hooks";
 import type { PipelineIssueRow } from "../types";
 import { RunDetail } from "./run-detail";
@@ -135,7 +135,7 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
                 // the issue's TRUE lifecycle label on the chip (ISS-436), not
                 // the collapsed bucket label.
                 const status = queuedStep
-                  ? "waiting"
+                  ? queuedChipStatus(queuedStep)
                   : run
                     ? runStatusToStatusKey(run.status)
                     : issueStatusToStatusKey(issue.status);

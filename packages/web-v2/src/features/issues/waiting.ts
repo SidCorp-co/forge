@@ -111,6 +111,31 @@ export interface GateView {
 	short: string;
 	detail: string;
 	who: string;
+	/** False when the gate clears itself, which is what the `who` line already
+	 *  says in words. Drives the chip's colour, so the two cannot disagree. */
+	needsAction: boolean;
+}
+
+/** Which gates never clear on their own. The `who` copy above already splits
+ *  this way; this record is that same split in a form the chip can key on. */
+// cm:guard read this and the `who` line as ONE decision — an amber attention chip over copy that says "no action" is a false alarm, and a calm chip over "resume the run" hides a wait that outlives everyone's attention. `job_held` is absent because its answer depends on the hold reason, exactly as `heldCopy` branches on it.
+const GATE_NEEDS_ACTION: Record<Exclude<WaitingReason, "job_held">, boolean> = {
+	issue_busy: false,
+	run_not_running: true,
+	retry_cooldown: false,
+	stale_trigger: false,
+	waiting_on_dep: true,
+	waiting_on_decomp_children: true,
+	project_full: false,
+	runner_stale: true,
+	runner_full: false,
+};
+
+function gateNeedsAction(reason: WaitingReason, holdReason: unknown): boolean {
+	if (reason !== "job_held") return GATE_NEEDS_ACTION[reason];
+	return !(
+		typeof holdReason === "string" && SELF_RESUMING_HOLD_REASONS.has(holdReason)
+	);
 }
 
 /** The queued step as the panel, the card and the row all read it. `gate` is
@@ -137,6 +162,7 @@ export function gateView(waitingOn: PipelineHealth["waitingOn"]): GateView | nul
 		short: WAITING_REASON_SHORT[waitingOn.reason],
 		detail: copy.reason,
 		who: copy.who,
+		needsAction: gateNeedsAction(waitingOn.reason, waitingOn.details?.holdReason),
 	};
 }
 
@@ -160,4 +186,10 @@ export function deriveQueuedStep(
 		nextAttempt: formatCountdown(step.retryAfterAt),
 		gate: gateView(pipelineHealth?.waitingOn),
 	};
+}
+
+/** The StatusKey a queued step's chip wears: the attention tone only when the
+ *  gate needs a human, the calm queued tone otherwise. */
+export function queuedChipStatus(step: QueuedStepView): "waiting" | "queued" {
+	return step.gate?.needsAction ? "waiting" : "queued";
 }

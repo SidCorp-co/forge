@@ -35,6 +35,7 @@ const gatedStep: QueuedStepView = {
     short: "No runner online",
     detail: "No runner is online for this project — every host is offline, stale, or rate-limited.",
     who: "Bring a runner back (check the Runners tab); the step dispatches on the next tick.",
+    needsAction: true,
   },
 };
 

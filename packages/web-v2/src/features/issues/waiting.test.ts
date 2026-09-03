@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { deriveQueuedStep, WAITING_REASON_SHORT } from "./waiting";
+import { deriveQueuedStep, queuedChipStatus, WAITING_REASON_SHORT } from "./waiting";
 import type { PipelineHealth, WaitingReason } from "./types";
 
 const QUEUED_AT = "2026-09-03T14:43:00.000Z";
@@ -111,4 +111,43 @@ describe("WAITING_REASON_SHORT", () => {
       expect(label.length, `${r}: "${label}"`).toBeLessThanOrEqual(24);
     }
   });
+});
+
+describe("gate tone", () => {
+	it("asks for attention only where the copy asks the reader to act", () => {
+		const needs = (reason: WaitingReason, details: Record<string, unknown> = {}) =>
+			deriveQueuedStep(health({ waitingOn: { reason, since: QUEUED_AT, details } }), false)
+				?.gate?.needsAction;
+		expect(needs("runner_stale")).toBe(true);
+		expect(needs("run_not_running")).toBe(true);
+		expect(needs("waiting_on_dep")).toBe(true);
+		expect(needs("waiting_on_decomp_children")).toBe(true);
+		expect(needs("retry_cooldown")).toBe(false);
+		expect(needs("project_full")).toBe(false);
+		expect(needs("runner_full")).toBe(false);
+		expect(needs("stale_trigger")).toBe(false);
+		expect(needs("issue_busy")).toBe(false);
+	});
+
+	it("branches job_held on the hold reason, as its copy does", () => {
+		const held = (holdReason: string) =>
+			deriveQueuedStep(
+				health({ waitingOn: { reason: "job_held", since: QUEUED_AT, details: { holdReason } } }),
+				false,
+			)?.gate;
+		expect(held("monthly_budget_exhausted")?.needsAction).toBe(false);
+		expect(held("retry_rounds_exhausted")?.needsAction).toBe(true);
+	});
+
+	it("wears the calm queued tone for a self-clearing gate and attention for the rest", () => {
+		const step = (reason: WaitingReason) =>
+			deriveQueuedStep(health({ waitingOn: { reason, since: QUEUED_AT, details: {} } }), false);
+		const stale = step("runner_stale");
+		const cooldown = step("retry_cooldown");
+		const ungated = deriveQueuedStep(health(), false);
+		if (!stale || !cooldown || !ungated) throw new Error("expected a queued step");
+		expect(queuedChipStatus(stale)).toBe("waiting");
+		expect(queuedChipStatus(cooldown)).toBe("queued");
+		expect(queuedChipStatus(ungated)).toBe("queued");
+	});
 });

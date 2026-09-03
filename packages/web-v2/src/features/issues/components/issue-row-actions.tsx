@@ -33,7 +33,7 @@ import {
   statusToRun,
   statusToStage,
 } from "../derive";
-import { deriveQueuedStep, type QueuedStepView } from "../waiting";
+import { deriveQueuedStep, queuedChipStatus, type QueuedStepView } from "../waiting";
 import { useStatusLabeller } from "../vocabulary";
 import {
   ISSUE_COMPLEXITIES,
@@ -114,7 +114,7 @@ function AgentChip({
  *  mini stage tracker — replaces the old separate Pipeline/Status columns,
  *  which rendered the same `status`+`agentStatus` pair twice. */
 // cm:guard when a queued step is showing, the mini tracker must read `queued` and NOT `statusToRun` — that function answers `running` for an `in_progress` issue with no session, which is precisely the queued-but-undispatched row ISS-903 stopped painting as actively worked
-function StatusCell({ row }: { row: IssueRow }) {
+export function StatusCell({ row }: { row: IssueRow }) {
   const statusLabel = useStatusLabeller();
   const stage = statusToStage(row.status);
   const queuedStep = deriveQueuedStep(row.pipelineHealth, hasLiveAgent(row.agentStatus));
@@ -139,12 +139,12 @@ function StatusCell({ row }: { row: IssueRow }) {
 }
 
 /** ISS-903 — a queued step with no session, labelled with the gate holding it
- *  (or with "Queued" when nothing is). Colour resolves through the `waiting`
+ *  (or with "Queued" when nothing is). Colour resolves through an existing
  *  StatusKey's tone, like every other chip. */
 function QueuedChip({ step }: { step: QueuedStepView }) {
   const chip = (
     <StatusChip
-      status="waiting"
+      status={queuedChipStatus(step)}
       domain="session"
       size="sm"
       label={step.gate?.short ?? "Queued"}
