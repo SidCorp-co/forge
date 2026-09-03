@@ -540,8 +540,30 @@ pub async fn handle(
         pat_token: ja.pat_token.clone(),
     };
 
+    // cm:guard the session heartbeat loop in `consume` starts only after the process spawns, and `runner.start` can block for minutes before that — a duplex job waits on the session semaphore while parked `awaiting_input` sessions hold every permit, and `worktree::create` on a large repo is not instant. Core reaps a silent session at 3 minutes: sidpeak release job 483387d4 (2026-09-03) waited 4.5 min for a permit after ack, was killed as `session_lost` and answered the kill probe `not_found`. Beat from ack until `start` returns, or the wait is indistinguishable from a dead runner.
+    let pre_spawn_beat = {
+        let client = client.clone();
+        let job_id = job_id.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(HEARTBEAT_INTERVAL);
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            tick.tick().await;
+            loop {
+                tick.tick().await;
+                let beat = [JobEventInput::new(
+                    "progress",
+                    serde_json::json!({ "heartbeat": true, "phase": "pre-spawn" }),
+                )];
+                if let Err(e) = post_job_events(&client, &job_id, &beat).await {
+                    tracing::debug!("[job {job_id}] pre-spawn heartbeat: {e}");
+                }
+            }
+        })
+    };
     let (tx, rx) = mpsc::channel::<RunnerEvent>(200);
-    if let Err(e) = runner.start(spec, tx).await {
+    let started = runner.start(spec, tx).await;
+    pre_spawn_beat.abort();
+    if let Err(e) = started {
         let msg = format!("failed to start job: {e}");
         tracing::error!("[job {job_id}] {msg}");
         let _ = lifecycle::fail(client, &job_id, &msg).await;

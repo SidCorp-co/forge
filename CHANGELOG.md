@@ -220,6 +220,17 @@
 
 ### Fixed
 
+- **A duplex job could be reaped as dead while it was only waiting for a session slot.** The
+  runner's session heartbeat starts when the Claude process spawns, but `start` can block for
+  minutes before that: a duplex job waits on the per-device session semaphore, and a session parked
+  at `awaiting_input` keeps its permit until its residency deadline. Core reaps a silent session at
+  three minutes and, when the kill probe comes back `not_found` (nothing spawned yet), fails the
+  job as `session_lost`. sidpeak's release batch on 2026-09-03 (job `483387d4`) waited 4.5 minutes
+  for a permit after ack and died exactly that way, leaving its run `running` with no job and
+  twelve claims held. Runner 0.10.4 heartbeats from ack until `start` returns, and logs when it is
+  waiting for a slot instead of going quiet. Still open: core dispatches against the runner's job
+  cap, not its session ceiling, so a device full of parked sessions is offered jobs it cannot start.
+
 - **A pinned plugin designation was never actually pinned.** Three defects stacked, found the
   morning the fleet was switched on (2026-09-03) — every box installed `forge` at whatever
   `forge-plugin` master happened to be, while the runner logged the pin as applied.

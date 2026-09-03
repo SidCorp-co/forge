@@ -465,6 +465,7 @@ pub struct ClaudeCodeRunner {
     sessions: Sessions,
     // cm:edge contract -> packages/runner/crates/forge-runner-core/src/config.rs — sized from `chat_max_concurrent`, but it counts something different: that budget queues TURNS in `daemon/chat.rs`, this one caps live duplex PROCESSES. They were one number while a turn was a process; keeping only the turn budget is how three abandoned resident sessions would sit at zero held permits.
     session_sem: Arc<tokio::sync::Semaphore>,
+    session_cap: usize,
 }
 
 impl ClaudeCodeRunner {
@@ -478,6 +479,7 @@ impl ClaudeCodeRunner {
             device_token: device_token.into(),
             sessions: Arc::new(Mutex::new(HashMap::new())),
             session_sem: Arc::new(tokio::sync::Semaphore::new(session_cap.max(1))),
+            session_cap: session_cap.max(1),
         }
     }
 }
@@ -751,13 +753,22 @@ impl Runner for ClaudeCodeRunner {
 
         // cm:guard acquired BEFORE the spawn and held by the session, so the ceiling counts processes. Acquiring after would let every caller spawn first and queue second, which bounds nothing.
         let session_permit = if spec.duplex {
-            Some(
-                self.session_sem
-                    .clone()
-                    .acquire_owned()
-                    .await
-                    .map_err(|e| Error::Other(format!("session semaphore closed: {e}")))?,
-            )
+            let sem = self.session_sem.clone();
+            let permit = match sem.clone().try_acquire_owned() {
+                Ok(p) => p,
+                Err(_) => {
+                    // cm:guard a parked `awaiting_input` session keeps its permit until its residency deadline, so "no permit" here usually means the ceiling is spent on sessions doing nothing — say so, or the job's silence reads as a hang.
+                    tracing::warn!(
+                        "[job {}] waiting for a duplex session slot — all {} permits held (parked awaiting_input sessions keep theirs until residency ends)",
+                        spec.job_id,
+                        self.session_cap
+                    );
+                    sem.acquire_owned()
+                        .await
+                        .map_err(|e| Error::Other(format!("session semaphore closed: {e}")))?
+                }
+            };
+            Some(permit)
         } else {
             None
         };
