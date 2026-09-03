@@ -245,6 +245,13 @@
   the code was written: install at the pin lands `gitCommitSha = 612f6bb`; moving the clone and
   running `plugin update forge@forge-local` follows it; re-running `install` leaves the clone alone.
 
+  0.10.2's first sweep on the owner's own machine then showed the last gap: `marketplace add`
+  silently **replaces** a same-name marketplace, and the operator's dev checkout of `forge-plugin`
+  was registered under the very name the repo's `marketplace.json` claims. Runner 0.10.3 reads that
+  name from its clone first; a directory the operator registered under it outranks the server
+  designation on that device — the same precedence `merge_targets` already gives a local target —
+  and the sweep says so instead of taking it over.
+
 - **The autonomous driver was handed the staged pipeline's rulebook on every job.** Two blocks are
   injected into every dispatch rather than fetched on demand — `PIPELINE_RULES` and
   `TOOL_REFERENCE` — and both were written for a lane the driver does not run in. What reached it

@@ -226,12 +226,15 @@ pub async fn sync_clone(
 pub enum KnownMarketplace {
     /// Already the directory marketplace at `dir`, under this CLI name.
     Registered(String),
-    /// Registered from another source (the CLI's own github clone, or another path) under this name.
+    /// The CLI's own github clone of the same repo, under this name — ours to replace.
     Legacy(String),
+    /// A directory the operator registered under the name this repo's `marketplace.json` claims — theirs; the runner leaves it.
+    Foreign(String, PathBuf),
     Absent,
 }
 
-pub fn classify_known(json: &str, repo: &str, dir: &Path) -> KnownMarketplace {
+// cm:guard `claude plugin marketplace add` silently REPLACES a same-name marketplace (dev1 2026-09-03: the operator's `forge-local` at ~/tools/forge-plugin became the runner's clone). Check the name our clone's marketplace.json claims BEFORE adding; an operator's directory under that name outranks the server, the same way a local target outranks a server one in `merge_targets`.
+pub fn classify_known(json: &str, repo: &str, dir: &Path, name: Option<&str>) -> KnownMarketplace {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else {
         return KnownMarketplace::Absent;
     };
@@ -239,18 +242,30 @@ pub fn classify_known(json: &str, repo: &str, dir: &Path) -> KnownMarketplace {
         return KnownMarketplace::Absent;
     };
     let mut legacy = None;
-    for (name, entry) in obj {
+    for (key, entry) in obj {
         let source = entry.get("source");
         let path = source.and_then(|s| s.get("path")).and_then(|p| p.as_str());
         if path.is_some_and(|p| Path::new(p) == dir) {
-            return KnownMarketplace::Registered(name.clone());
+            return KnownMarketplace::Registered(key.clone());
+        }
+        if name == Some(key.as_str()) {
+            if let Some(p) = path {
+                return KnownMarketplace::Foreign(key.clone(), PathBuf::from(p));
+            }
         }
         let recorded = source.and_then(|s| s.get("repo")).and_then(|r| r.as_str());
         if recorded.is_some_and(|r| repo_matches(repo, r)) {
-            legacy = Some(name.clone());
+            legacy = Some(key.clone());
         }
     }
     legacy.map_or(KnownMarketplace::Absent, KnownMarketplace::Legacy)
+}
+
+/// The name the CLI will register this clone under: `.claude-plugin/marketplace.json` → `name`.
+fn marketplace_name_in(dir: &Path) -> Option<String> {
+    let raw = std::fs::read_to_string(dir.join(".claude-plugin").join("marketplace.json")).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    v.get("name")?.as_str().map(str::to_owned)
 }
 
 fn read_known_marketplaces() -> String {
@@ -263,8 +278,16 @@ fn read_known_marketplaces() -> String {
 /// Make the CLI serve `repo` from `dir`, returning the marketplace name it registered (the name is
 /// the plugin repo's own `marketplace.json` name, needed for `plugin@name` ids).
 async fn register_marketplace(repo: &str, dir: &Path) -> Option<String> {
-    match classify_known(&read_known_marketplaces(), repo, dir) {
+    let name = marketplace_name_in(dir);
+    match classify_known(&read_known_marketplaces(), repo, dir, name.as_deref()) {
         KnownMarketplace::Registered(name) => return Some(name),
+        KnownMarketplace::Foreign(name, path) => {
+            tracing::warn!(
+                "[plugins] {repo}: '{name}' is registered to {} by the operator — leaving it; the server designation is not applied on this device",
+                path.display()
+            );
+            return None;
+        }
         KnownMarketplace::Legacy(name) => {
             // cm:guard `marketplace remove` uninstalls that marketplace's plugins (measured 2026-09-03), so the install loop after this is what brings them back — never return early between the two
             tracing::info!("[plugins] {repo}: replacing CLI-owned marketplace '{name}' with the runner's clone");
@@ -278,7 +301,7 @@ async fn register_marketplace(repo: &str, dir: &Path) -> Option<String> {
     if let Err(e) = run_claude(&["plugin", "marketplace", "add", &dir_s, "--scope", "user"]).await {
         tracing::info!("[plugins] marketplace add {dir_s} (may already be added): {e}");
     }
-    match classify_known(&read_known_marketplaces(), repo, dir) {
+    match classify_known(&read_known_marketplaces(), repo, dir, name.as_deref()) {
         KnownMarketplace::Registered(name) => Some(name),
         _ => None,
     }
@@ -460,23 +483,46 @@ mod tests {
         let dir = Path::new("/home/x/.config/forge-runner/marketplaces/sidcorp-co__forge-plugin");
         let legacy = r#"{"forge-local":{"source":{"source":"github","repo":"SidCorp-co/forge-plugin"},"installLocation":"/home/x/.claude/plugins/marketplaces/forge-local"}}"#;
         assert_eq!(
-            classify_known(legacy, "SidCorp-co/forge-plugin", dir),
+            classify_known(legacy, "SidCorp-co/forge-plugin", dir, Some("forge-local")),
             KnownMarketplace::Legacy("forge-local".into())
         );
         let ours = r#"{"forge-local":{"source":{"source":"directory","path":"/home/x/.config/forge-runner/marketplaces/sidcorp-co__forge-plugin"},"installLocation":"/home/x/.config/forge-runner/marketplaces/sidcorp-co__forge-plugin"}}"#;
         assert_eq!(
-            classify_known(ours, "https://github.com/SidCorp-co/forge-plugin.git", dir),
+            classify_known(
+                ours,
+                "https://github.com/SidCorp-co/forge-plugin.git",
+                dir,
+                Some("forge-local")
+            ),
             KnownMarketplace::Registered("forge-local".into())
         );
         let other =
             r#"{"forge":{"source":{"source":"github","repo":"SidCorp-co/forge-pipeline-skills"}}}"#;
         assert_eq!(
-            classify_known(other, "SidCorp-co/forge-plugin", dir),
+            classify_known(other, "SidCorp-co/forge-plugin", dir, Some("forge-local")),
             KnownMarketplace::Absent
         );
         assert_eq!(
-            classify_known("not json", "SidCorp-co/forge-plugin", dir),
+            classify_known("not json", "SidCorp-co/forge-plugin", dir, None),
             KnownMarketplace::Absent
+        );
+    }
+
+    #[test]
+    fn classify_known_leaves_an_operator_directory_under_the_same_name() {
+        let dir = Path::new("/home/x/.config/forge-runner/marketplaces/sidcorp-co__forge-plugin");
+        let theirs = r#"{"forge-local":{"source":{"source":"directory","path":"/home/x/tools/forge-plugin"},"installLocation":"/home/x/tools/forge-plugin"}}"#;
+        assert_eq!(
+            classify_known(theirs, "SidCorp-co/forge-plugin", dir, Some("forge-local")),
+            KnownMarketplace::Foreign(
+                "forge-local".into(),
+                PathBuf::from("/home/x/tools/forge-plugin")
+            )
+        );
+        assert_eq!(
+            classify_known(theirs, "SidCorp-co/forge-plugin", dir, None),
+            KnownMarketplace::Absent,
+            "without the name we cannot tell it is the same marketplace, so nothing is claimed"
         );
     }
 
