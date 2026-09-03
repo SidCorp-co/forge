@@ -1,0 +1,1 @@
+ALTER TABLE "issues" ADD CONSTRAINT "issues_description_format_chk" CHECK ("issues"."description_format" IN ('markdown', 'html'));

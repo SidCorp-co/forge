@@ -1,0 +1,1 @@
+ALTER TABLE "comments" ADD CONSTRAINT "comments_format_chk" CHECK ("comments"."format" IN ('markdown', 'html'));

@@ -1095,6 +1095,11 @@ export const issues = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    // cm:guard the sibling of `comments_format_chk`, for the same reason: `text(..., { enum })` is a TypeScript type and emits no constraint, so without this the column accepts any string and `decompose`/`create-service` are the only thing standing between a caller and a format no renderer knows
+    descriptionFormatChk: check(
+      'issues_description_format_chk',
+      sql`${t.descriptionFormat} IN ('markdown', 'html')`,
+    ),
     projectIssSeqUq: uniqueIndex('issues_project_iss_seq_uq').on(t.projectId, t.issSeq),
     projectStatusIdx: index('issues_project_status_idx').on(t.projectId, t.status),
     assigneeIdx: index('issues_assignee_idx').on(t.assigneeId),
@@ -1159,6 +1164,8 @@ export const comments = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    // cm:guard the CHECK is the backstop, not a duplicate of the TS enum: `text(..., { enum })` is a compile-time type only and emits no constraint, so the ~17 kernel paths that `db.insert(comments)` without going through `prepareBody` have nothing else stopping an unrenderable format. Same reason `issues_complexity_chk` exists.
+    formatChk: check('comments_format_chk', sql`${t.format} IN ('markdown', 'html')`),
     issueIdx: index('comments_issue_id_idx').on(t.issueId),
     parentIdx: index('comments_parent_id_idx').on(t.parentId),
     parentFk: foreignKey({

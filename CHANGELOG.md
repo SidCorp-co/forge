@@ -10,6 +10,28 @@
 
 ### Added
 
+- Issue and comment bodies can be written as allowlisted HTML: `forge-*` components with typed
+  attributes and slots, plus the plain tag set the markdown renderer already produced. Send
+  `format: 'html'` on a comment create/update or an issue description; a valid body stores its root
+  component name in `template` and reads back its parsed `slots`, so a downstream reader takes a
+  field instead of matching `**Triage**` on a string prefix. An invalid `forge-*` element,
+  attribute or missing slot is refused with 400 `BODY_INVALID` naming it — the mechanism that gave
+  `releaseNotes` full compliance, where the guide asking for the same shape reached 14-28%.
+
+  **Nothing existing changes.** `format` defaults to `markdown`, every pre-existing row was
+  backfilled to it by the column default, and no shipped skill template was touched — so every
+  reader still parses what it parsed yesterday. Plain prose is always valid: tag-free text is
+  wrapped in `<p>` by blank line, and an unknown tag or a `<script>` is stripped and reported in
+  `warnings[]` rather than refused, because a human should never be told no for typing a `<div>`.
+
+  `forge_comments` gains an `update` action, without which a `<forge-artifact id>` could never be
+  placed at all: the attachment needs a comment id, which does not exist until after the create.
+
+  Reading paths see a compact text projection rather than markup — the agent prompt, the memory
+  embedding, and both MCP serializers — so the 8,000-character description cap holds the same
+  amount of requirements as before. Web rendering, the composer, the skill migration and a
+  per-stage `bodyPolicy` are later phases: `docs/proposals/body-templates.md`.
+
 - Runner pool labels can be set by a project admin: `labels` on
   `PATCH /api/projects/:id/runners/:runnerId`, and an inline editor on each runner card under
   Project → Runners. The column already gated releases (`releaseRunnerLabel` on the production

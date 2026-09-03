@@ -76,6 +76,13 @@ const READ_PATHS: Record<string, RegExp> = {
 
 const WRITES_A_BODY = /\.(insert|update)\((comments|issues)\)/;
 
+// cm:why comments are stripped before the scan because a cm:guard that QUOTES `db.insert(comments)` to explain the rule is not a write path — the first one written flagged `db/schema.ts` as an unclassified writer
+function codeOf(file: string): string {
+  return readFileSync(file, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+}
+
 function walk(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir)) {
@@ -105,7 +112,7 @@ describe('every caller-supplied body door is gated', () => {
   it('no new writer of comments.body or issues.description appears unclassified', () => {
     const classified = new Set([...Object.keys(DOORS), ...KERNEL_AUTHORED, ...PREPARED_UPSTREAM]);
     const writers = walk(SRC)
-      .filter((f) => WRITES_A_BODY.test(readFileSync(f, 'utf8')))
+      .filter((f) => WRITES_A_BODY.test(codeOf(f)))
       .map((f) => relative(SRC, f).split('\\').join('/'));
     expect(
       writers.filter((w) => !classified.has(w)),

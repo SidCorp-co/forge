@@ -1366,6 +1366,20 @@
       "when": 1790380800000,
       "tag": "0196_iss898_body_format_and_template",
       "breakpoints": true
+    },
+    {
+      "idx": 197,
+      "version": "7",
+      "when": 1790467200000,
+      "tag": "0197_iss898_body_format_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 198,
+      "version": "7",
+      "when": 1790553600000,
+      "tag": "0198_iss898_description_format_check",
+      "breakpoints": true
     }
   ]
 }
