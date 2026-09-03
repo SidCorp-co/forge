@@ -14,19 +14,12 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
+import { missingAutonomousFacts } from '../projects/autonomous-contract.js';
 import { resolveReleaseChannel } from './channel.js';
 import { resolveProductionDeclaration } from './gate.js';
 import { RELEASE_PROCEDURE_FACT } from './plan.js';
 
-export const BUILD_COMMANDS_FACT = 'build-commands';
-export const TEST_COMMANDS_FACT = 'test-commands';
-
-export type ReleaseGapKey =
-  | 'build-commands'
-  | 'test-commands'
-  | 'release-procedure'
-  | 'release-runner'
-  | 'rollback';
+export type ReleaseGapKey = string;
 
 export interface ReleaseReadiness {
   hasProduction: boolean;
@@ -54,7 +47,7 @@ function isDeclared(v: unknown): boolean {
  * back blind" — a defensible default that an operator should still be told
  * they are running under.
  */
-// cm:guard `build-commands` and `test-commands` are owed by EVERY project, production or not — they are what the driver needs to prove its own work. Only the three release gaps are conditional. Reporting the first two conditionally would make a project with no production look complete while its very first issue has nothing to run.
+// cm:guard the contract facts are owed by EVERY project, production or not — they are what the driver needs to prove its own work. Only the three release gaps are conditional. Reporting the contract conditionally would make a project with no production look complete while its very first issue has nothing to run.
 export async function loadReleaseReadiness(projectId: string): Promise<ReleaseReadiness | null> {
   const decl = await resolveProductionDeclaration(projectId);
   if (!decl) return null;
@@ -69,9 +62,8 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
       {}) as Record<string, unknown>;
 
   const channel = await resolveReleaseChannel(projectId);
-  const gaps: ReleaseGapKey[] = [];
-  if (!isDeclared(facts[BUILD_COMMANDS_FACT])) gaps.push('build-commands');
-  if (!isDeclared(facts[TEST_COMMANDS_FACT])) gaps.push('test-commands');
+  // cm:edge contract -> packages/core/src/projects/autonomous-contract.ts — the unconditional half of the contract is DECLARED there and read here; listing `build-commands` and `test-commands` again would let the two disagree about what a project owes
+  const gaps: ReleaseGapKey[] = missingAutonomousFacts(facts).map((f) => f.key);
   if (decl.hasProduction) {
     if (!isDeclared(facts[RELEASE_PROCEDURE_FACT])) gaps.push('release-procedure');
     if (!channel.releaseRunnerLabel) gaps.push('release-runner');

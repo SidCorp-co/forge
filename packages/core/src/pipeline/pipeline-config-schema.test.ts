@@ -5,57 +5,11 @@ import {
   PIPELINE_CONFIG_DEFAULTS,
   pipelineConfigPatchSchema,
   pipelineConfigSchema,
-  STEP_TOGGLE_KEYS,
-  stepToggleSchema,
 } from './pipeline-config-schema.js';
-
-describe('stepToggleSchema', () => {
-  it('accepts boolean form', () => {
-    expect(stepToggleSchema.parse(true)).toBe(true);
-    expect(stepToggleSchema.parse(false)).toBe(false);
-  });
-
-  it('accepts object form with runner + model', () => {
-    const v = stepToggleSchema.parse({ enabled: true, runner: 'antigravity', model: 'g3-pro' });
-    expect(v).toEqual({ enabled: true, runner: 'antigravity', model: 'g3-pro' });
-  });
-
-  it('accepts object form with only enabled', () => {
-    expect(stepToggleSchema.parse({ enabled: false })).toEqual({ enabled: false });
-  });
-
-  it('rejects non-boolean / non-object', () => {
-    expect(() => stepToggleSchema.parse(1)).toThrow();
-    expect(() => stepToggleSchema.parse('yes')).toThrow();
-    expect(() => stepToggleSchema.parse(null)).toThrow();
-  });
-
-  it('rejects object missing enabled', () => {
-    expect(() => stepToggleSchema.parse({ runner: 'claude-code' })).toThrow();
-  });
-});
 
 describe('pipelineConfigSchema', () => {
   it('accepts an empty document (all fields optional)', () => {
     expect(pipelineConfigSchema.parse({})).toEqual({});
-  });
-
-  it('accepts a v0 boolean-toggle document', () => {
-    const v0 = {
-      enabled: true,
-      autoTriage: true,
-      autoCode: false,
-    };
-    expect(pipelineConfigSchema.parse(v0)).toEqual(v0);
-  });
-
-  it('accepts mixed boolean + object toggles', () => {
-    const doc = {
-      enabled: true,
-      autoTriage: true,
-      autoCode: { enabled: true, runner: 'antigravity' },
-    };
-    expect(pipelineConfigSchema.parse(doc)).toEqual(doc);
   });
 
   it('drops unknown keys (legacy clarified, pipelineSteps)', () => {
@@ -69,11 +23,6 @@ describe('pipelineConfigSchema', () => {
     expect(out).toEqual({ enabled: true });
     expect((out as Record<string, unknown>).clarified).toBeUndefined();
     expect((out as Record<string, unknown>).pipelineSteps).toBeUndefined();
-  });
-
-  it('accepts autoClarify as a first-class toggle (ISS-171)', () => {
-    const out = pipelineConfigSchema.parse({ enabled: true, autoClarify: true });
-    expect(out.autoClarify).toBe(true);
   });
 
   it('silently drops legacy recovery keys (no longer surfaced)', () => {
@@ -99,23 +48,6 @@ describe('PIPELINE_CONFIG_DEFAULTS', () => {
   });
 });
 
-describe('STEP_TOGGLE_KEYS', () => {
-  it('is exactly the eight steps the orchestrator enqueues', () => {
-    expect([...STEP_TOGGLE_KEYS].sort()).toEqual(
-      [
-        'autoClarify',
-        'autoCode',
-        'autoFix',
-        'autoPlan',
-        'autoRelease',
-        'autoReview',
-        'autoTest',
-        'autoTriage',
-      ].sort(),
-    );
-  });
-});
-
 describe('pipelineConfigPatchSchema', () => {
   // ISS-232 Phase 3 dropped `runnerFallback` from the patch schema. The patch
   // is identical to `pipelineConfigSchema` (no extension fields).
@@ -124,9 +56,33 @@ describe('pipelineConfigPatchSchema', () => {
   it('accepts pipelineConfig fields', () => {
     const patch = {
       enabled: true,
-      autoCode: true,
+      maxConcurrentIssues: 3,
     };
     expect(pipelineConfigPatchSchema.parse(patch)).toEqual(patch);
+  });
+
+  // cm:guard ISS-897 removed these from the object literal, and the strip is what DELETES them from a stored document on the next save. A regression that re-adds one silently re-animates staged configuration on 38 projects, so assert the drop rather than the absence of an error.
+  it('strips every staged key it used to accept', () => {
+    const staged = {
+      enabled: true,
+      autoTriage: true,
+      autoClarify: true,
+      autoPlan: true,
+      autoCode: true,
+      autoReview: true,
+      autoTest: true,
+      autoFix: true,
+      autoRelease: true,
+      sessionGroups: { build: ['open'] },
+      mergeStates: { baseBranch: 'released', productionBranch: 'released' },
+      mode: 'staged',
+      states: { open: { enabled: true, sessionGroup: 'build', skipComplexities: ['xs'] } },
+    };
+    expect(pipelineConfigPatchSchema.parse(staged)).toEqual({
+      enabled: true,
+      mode: 'staged',
+      states: { open: { enabled: true } },
+    });
   });
 
   it('silently drops legacy `runnerFallback` field (unknown keys ignored)', () => {
@@ -160,8 +116,8 @@ describe('statesConfigSchema (ISS-110)', () => {
   it('accepts valid IssueStatus keys', () => {
     const patch = {
       states: {
-        developed: { enabled: false, mode: 'auto' as const },
-        testing: { enabled: true },
+        open: { enabled: false, mode: 'auto' as const },
+        needs_info: { enabled: true },
       },
     };
     expect(pipelineConfigSchema.parse(patch)).toEqual(patch);
@@ -183,7 +139,7 @@ describe('stageConfigSchema per-state overrides', () => {
   it('accepts skillName, model, allowedTools, permissionMode, timeoutSeconds', () => {
     const parsed = pipelineConfigSchema.parse({
       states: {
-        developed: {
+        open: {
           skillName: 'forge-review',
           model: 'sonnet',
           allowedTools: ['Bash', 'mcp__forge__forge_issues'],
@@ -192,22 +148,22 @@ describe('stageConfigSchema per-state overrides', () => {
         },
       },
     });
-    expect(parsed.states?.developed?.skillName).toBe('forge-review');
-    expect(parsed.states?.developed?.model).toBe('sonnet');
-    expect(parsed.states?.developed?.allowedTools).toEqual(['Bash', 'mcp__forge__forge_issues']);
-    expect(parsed.states?.developed?.permissionMode).toBe('acceptEdits');
-    expect(parsed.states?.developed?.timeoutSeconds).toBe(1800);
+    expect(parsed.states?.open?.skillName).toBe('forge-review');
+    expect(parsed.states?.open?.model).toBe('sonnet');
+    expect(parsed.states?.open?.allowedTools).toEqual(['Bash', 'mcp__forge__forge_issues']);
+    expect(parsed.states?.open?.permissionMode).toBe('acceptEdits');
+    expect(parsed.states?.open?.timeoutSeconds).toBe(1800);
   });
 
   it('accepts systemPrompt append/replace + extras', () => {
     const parsed = pipelineConfigSchema.parse({
       states: {
-        approved: {
+        released: {
           systemPrompt: { mode: 'replace', extras: 'CUSTOM RULES' },
         },
       },
     });
-    expect(parsed.states?.approved?.systemPrompt).toEqual({
+    expect(parsed.states?.released?.systemPrompt).toEqual({
       mode: 'replace',
       extras: 'CUSTOM RULES',
     });
@@ -216,7 +172,7 @@ describe('stageConfigSchema per-state overrides', () => {
   it('rejects unknown systemPrompt mode', () => {
     expect(() =>
       pipelineConfigSchema.parse({
-        states: { approved: { systemPrompt: { mode: 'merge' } } },
+        states: { released: { systemPrompt: { mode: 'merge' } } },
       }),
     ).toThrow();
   });
@@ -224,7 +180,7 @@ describe('stageConfigSchema per-state overrides', () => {
   it('caps systemPrompt.extras at 32_000 chars', () => {
     expect(() =>
       pipelineConfigSchema.parse({
-        states: { approved: { systemPrompt: { extras: 'x'.repeat(32_001) } } },
+        states: { released: { systemPrompt: { extras: 'x'.repeat(32_001) } } },
       }),
     ).toThrow();
   });
@@ -233,7 +189,7 @@ describe('stageConfigSchema per-state overrides', () => {
     for (const extras of ['', '   ', null] as const) {
       expect(() =>
         pipelineConfigSchema.parse({
-          states: { approved: { systemPrompt: { mode: 'replace', extras } } },
+          states: { released: { systemPrompt: { mode: 'replace', extras } } },
         }),
       ).toThrow();
     }
@@ -242,7 +198,7 @@ describe('stageConfigSchema per-state overrides', () => {
   it('accepts replace mode when extras has real content', () => {
     expect(() =>
       pipelineConfigSchema.parse({
-        states: { approved: { systemPrompt: { mode: 'replace', extras: 'ONLY THIS' } } },
+        states: { released: { systemPrompt: { mode: 'replace', extras: 'ONLY THIS' } } },
       }),
     ).not.toThrow();
   });
@@ -250,7 +206,7 @@ describe('stageConfigSchema per-state overrides', () => {
   it('accepts append mode with empty extras (no-op but valid)', () => {
     expect(() =>
       pipelineConfigSchema.parse({
-        states: { approved: { systemPrompt: { mode: 'append', extras: '' } } },
+        states: { released: { systemPrompt: { mode: 'append', extras: '' } } },
       }),
     ).not.toThrow();
   });
@@ -258,7 +214,7 @@ describe('stageConfigSchema per-state overrides', () => {
   it('accepts userPromptPolicy with all knobs', () => {
     const parsed = pipelineConfigSchema.parse({
       states: {
-        developed: {
+        open: {
           userPromptPolicy: {
             includeFields: ['plan', 'acceptanceCriteria'],
             sessionContext: { depth: 5, fields: ['decisions', 'filesModified'] },
@@ -268,17 +224,17 @@ describe('stageConfigSchema per-state overrides', () => {
         },
       },
     });
-    expect(parsed.states?.developed?.userPromptPolicy?.includeFields).toEqual([
+    expect(parsed.states?.open?.userPromptPolicy?.includeFields).toEqual([
       'plan',
       'acceptanceCriteria',
     ]);
-    expect(parsed.states?.developed?.userPromptPolicy?.fieldCaps?.plan).toBe(20_000);
+    expect(parsed.states?.open?.userPromptPolicy?.fieldCaps?.plan).toBe(20_000);
   });
 
   it('accepts every handoffs field that still exists', () => {
     const parsed = pipelineConfigSchema.parse({
       states: {
-        developed: {
+        open: {
           userPromptPolicy: {
             handoffs: {
               enabled: true,
@@ -289,8 +245,8 @@ describe('stageConfigSchema per-state overrides', () => {
         },
       },
     });
-    expect(parsed.states?.developed?.userPromptPolicy?.handoffs?.enabled).toBe(true);
-    expect(parsed.states?.developed?.userPromptPolicy?.handoffs?.injectFromSteps).toEqual([
+    expect(parsed.states?.open?.userPromptPolicy?.handoffs?.enabled).toBe(true);
+    expect(parsed.states?.open?.userPromptPolicy?.handoffs?.injectFromSteps).toEqual([
       'triage',
       'plan',
     ]);
@@ -301,7 +257,7 @@ describe('stageConfigSchema per-state overrides', () => {
     (key) => {
       expect(() =>
         pipelineConfigSchema.parse({
-          states: { developed: { userPromptPolicy: { handoffs: { [key]: 'anything' } } } },
+          states: { open: { userPromptPolicy: { handoffs: { [key]: 'anything' } } } },
         }),
       ).toThrow();
     },
@@ -311,7 +267,7 @@ describe('stageConfigSchema per-state overrides', () => {
     // 1 million chars — silly but allowed.
     expect(() =>
       pipelineConfigSchema.parse({
-        states: { developed: { userPromptPolicy: { fieldCaps: { description: 1_000_000 } } } },
+        states: { open: { userPromptPolicy: { fieldCaps: { description: 1_000_000 } } } },
       }),
     ).not.toThrow();
   });
@@ -319,64 +275,34 @@ describe('stageConfigSchema per-state overrides', () => {
   it('accepts budget caps', () => {
     const parsed = pipelineConfigSchema.parse({
       states: {
-        developed: { budget: { perRunUsd: 2.5, perMonthUsd: 100 } },
+        open: { budget: { perRunUsd: 2.5, perMonthUsd: 100 } },
       },
     });
-    expect(parsed.states?.developed?.budget).toEqual({ perRunUsd: 2.5, perMonthUsd: 100 });
+    expect(parsed.states?.open?.budget).toEqual({ perRunUsd: 2.5, perMonthUsd: 100 });
   });
 
   it('accepts budget action enum values', () => {
     const parsedPause = pipelineConfigSchema.parse({
-      states: { developed: { budget: { perMonthUsd: 50, action: 'pause' } } },
+      states: { open: { budget: { perMonthUsd: 50, action: 'pause' } } },
     });
-    expect(parsedPause.states?.developed?.budget?.action).toBe('pause');
+    expect(parsedPause.states?.open?.budget?.action).toBe('pause');
     const parsedWarn = pipelineConfigSchema.parse({
-      states: { developed: { budget: { perMonthUsd: 50, action: 'warn' } } },
+      states: { open: { budget: { perMonthUsd: 50, action: 'warn' } } },
     });
-    expect(parsedWarn.states?.developed?.budget?.action).toBe('warn');
+    expect(parsedWarn.states?.open?.budget?.action).toBe('warn');
   });
 
   it('rejects an unknown budget.action value', () => {
     expect(() =>
       pipelineConfigSchema.parse({
-        states: { developed: { budget: { perMonthUsd: 50, action: 'foo' } } },
+        states: { open: { budget: { perMonthUsd: 50, action: 'foo' } } },
       }),
     ).toThrow();
   });
 
-  it('accepts sessionGroup membership at the stage level', () => {
-    const parsed = pipelineConfigSchema.parse({
-      states: { developed: { sessionGroup: 'implementation' } },
-    });
-    expect(parsed.states?.developed?.sessionGroup).toBe('implementation');
-  });
 });
 
-describe('sessionGroups + onResumeFail', () => {
-  it('accepts a session-groups map keyed by group name', () => {
-    const parsed = pipelineConfigSchema.parse({
-      sessionGroups: {
-        implementation: ['approved', 'developed'],
-        verification: ['testing'],
-      },
-      onResumeFail: 'fresh',
-    });
-    expect(parsed.sessionGroups?.implementation).toEqual(['approved', 'developed']);
-    expect(parsed.onResumeFail).toBe('fresh');
-  });
-
-  it('rejects unknown stage names in a group', () => {
-    expect(() =>
-      pipelineConfigSchema.parse({
-        sessionGroups: { x: ['not_a_stage'] },
-      }),
-    ).toThrow();
-  });
-
-  it('rejects empty group', () => {
-    expect(() => pipelineConfigSchema.parse({ sessionGroups: { x: [] } })).toThrow();
-  });
-
+describe('resume policy', () => {
   it('rejects unknown onResumeFail policy', () => {
     expect(() => pipelineConfigSchema.parse({ onResumeFail: 'retry' })).toThrow();
   });
@@ -450,20 +376,20 @@ describe('mcpServers validation (ISS-623 W1)', () => {
 
   it('rejects an unknown true-sentinel name per-state', () => {
     expect(() =>
-      pipelineConfigSchema.parse({ states: { approved: { mcpServers: { shp: true } } } }),
+      pipelineConfigSchema.parse({ states: { released: { mcpServers: { shp: true } } } }),
     ).toThrow(/mcpServers entry.*shp.*not a known catalog server/);
   });
 
   it('accepts a known true-sentinel name per-state', () => {
     const parsed = pipelineConfigSchema.parse({
-      states: { approved: { mcpServers: { playwright: true, epodsystem: true } } },
+      states: { released: { mcpServers: { playwright: true, epodsystem: true } } },
     });
-    expect(parsed.states?.approved?.mcpServers).toEqual({ playwright: true, epodsystem: true });
+    expect(parsed.states?.released?.mcpServers).toEqual({ playwright: true, epodsystem: true });
   });
 });
 
 describe('defaultStatesConfig (ISS-581)', () => {
-  it('ships disallowedTools for developed/testing/released', () => {
+  it('ships disallowedTools for open/needs_info/released', () => {
     const config = defaultStatesConfig();
     const EXPECTED = [
       'CronCreate',
@@ -473,24 +399,12 @@ describe('defaultStatesConfig (ISS-581)', () => {
       'RemoteTrigger',
       'ScheduleWakeup',
     ];
-    expect(config.developed?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
-    expect(config.testing?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
+    expect(config.open?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
+    expect(config.needs_info?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
     expect(config.released?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
+    expect(config.in_progress?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
   });
 
-  it('does NOT set disallowedTools on open/confirmed/clarified/approved/tested/reopen', () => {
-    const config = defaultStatesConfig();
-    for (const stage of [
-      'open',
-      'confirmed',
-      'clarified',
-      'approved',
-      'tested',
-      'reopen',
-    ] as const) {
-      expect(config[stage]?.disallowedTools).toBeUndefined();
-    }
-  });
 });
 
 describe('mergePipelineConfig', () => {

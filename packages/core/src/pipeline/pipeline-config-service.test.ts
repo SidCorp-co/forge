@@ -46,112 +46,8 @@ beforeEach(() => {
   dbExecute.mockClear();
 });
 
-describe('updatePipelineConfig — MISSING_SKILL_FOR_ENABLED_STAGE (ISS-238)', () => {
-  it('rejects when a top-level toggle is enabled but the stage has no skill registration', async () => {
-    // 1. Load current project agentConfig (empty pipelineConfig).
-    pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
-    // 2. AUTO_STAGE_NEEDS_SKILL: no per-state auto-mode entries → skipped.
-    // 3. MISSING_SKILL_FOR_ENABLED_STAGE: skill registrations for stages with
-    //    enabled toggles. Patch enables autoReview → developed must have a row.
-    pushSelect([]); // no registrations for any toggle-enabled stage
-
-    await expect(
-      updatePipelineConfig({
-        projectId: '00000000-0000-0000-0000-000000000001',
-        patch: { enabled: true, autoReview: true },
-      }),
-    ).rejects.toMatchObject({
-      name: 'PipelineConfigError',
-      code: 'MISSING_SKILL_FOR_ENABLED_STAGE',
-      details: { stagesMissingSkill: expect.arrayContaining(['developed']) },
-    });
-  });
-
-  it('accepts the patch when every enabled toggle has a matching skill registration', async () => {
-    pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
-    // toggle-enabled stages query — return a row for `developed`.
-    pushSelect([{ stage: 'developed' }]);
-    // post-update re-read of agentConfig (return value path).
-    pushSelect([{ agentConfig: { pipelineConfig: { enabled: true, autoReview: true } } }]);
-
-    const result = await updatePipelineConfig({
-      projectId: '00000000-0000-0000-0000-000000000001',
-      patch: { autoReview: true },
-    });
-    expect(result.pipelineConfig).toMatchObject({ autoReview: true });
-    // Update SQL ran on the projects row.
-    expect(dbExecute).toHaveBeenCalledTimes(1);
-  });
-
-  it('still flags MISSING_SKILL when the patch only changes unrelated keys but leaves an enabled toggle without a skill', async () => {
-    // The rule reads the *merged* config, so it catches projects already in a
-    // broken state when the operator tries to make any pipelineConfig change.
-    pushSelect([{ agentConfig: { pipelineConfig: { enabled: true, autoReview: true } } }]);
-    pushSelect([]); // still no registrations
-
-    await expect(
-      updatePipelineConfig({
-        projectId: '00000000-0000-0000-0000-000000000001',
-        patch: { autoTriage: false },
-      }),
-    ).rejects.toMatchObject({
-      name: 'PipelineConfigError',
-      code: 'MISSING_SKILL_FOR_ENABLED_STAGE',
-    });
-  });
-});
-
-describe('updatePipelineConfig — AUTO_STAGE_NEEDS_SKILL delta-validation (ISS-382)', () => {
-  it('accepts a session-groups save that re-asserts mode:auto for skill-less stages (no transition)', async () => {
-    // The session-groups editor wholesale-replaces `states`, and GET
-    // read-normalizes every stage to enabled:true/mode:'auto'. The stored
-    // config has no per-state overrides and the project has NO skills.
-    pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
-    // No AUTO_STAGE_NEEDS_SKILL query expected (needRegistration is empty —
-    // every stage was already effectively auto+enabled before). No toggle
-    // query either (no autoX toggles enabled). Just the post-update re-read.
-    pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
-
-    const result = await updatePipelineConfig({
-      projectId: '00000000-0000-0000-0000-000000000001',
-      patch: {
-        sessionGroups: { build: ['open', 'confirmed'] },
-        states: {
-          open: { enabled: true, mode: 'auto', sessionGroup: 'build' },
-          confirmed: { enabled: true, mode: 'auto', sessionGroup: 'build' },
-          developed: { enabled: true, mode: 'auto' },
-        },
-      },
-    });
-    expect(result.pipelineConfig).toBeDefined();
-    expect(dbExecute).toHaveBeenCalledTimes(1);
-  });
-
-  it('still flags a stage this patch transitions from disabled into enabled+auto without a skill', async () => {
-    // current: developed explicitly disabled. Patch flips it to enabled+auto.
-    pushSelect([
-      { agentConfig: { pipelineConfig: { states: { developed: { enabled: false } } } } },
-    ]);
-    // AUTO_STAGE_NEEDS_SKILL registrations query → no skill for `developed`.
-    pushSelect([]);
-
-    await expect(
-      updatePipelineConfig({
-        projectId: '00000000-0000-0000-0000-000000000001',
-        patch: { states: { developed: { enabled: true, mode: 'auto' } } },
-      }),
-    ).rejects.toMatchObject({
-      name: 'PipelineConfigError',
-      code: 'AUTO_STAGE_NEEDS_SKILL',
-      details: { stagesMissingSkill: expect.arrayContaining(['developed']) },
-    });
-  });
-});
-
 describe('PipelineConfigError', () => {
-  it('exposes a stable code union including the ISS-238 code', () => {
-    // Compile-time assertion via runtime construction (the union widens on
-    // typo); failing this test means the public error shape regressed.
+  it('exposes a stable code union', () => {
     const err = new PipelineConfigError('MISSING_SKILL_FOR_ENABLED_STAGE', 'msg', {});
     expect(err.code).toBe('MISSING_SKILL_FOR_ENABLED_STAGE');
   });
@@ -270,13 +166,13 @@ describe('updatePipelineConfig — STAGE_POOL_UNKNOWN_RUNNER (per-state runner p
     await expect(
       updatePipelineConfig({
         projectId: PROJECT,
-        patch: { states: { developed: { deviceIds: [DEVICE_OK, DEVICE_MISSING] } } } as never,
+        patch: { states: { released: { deviceIds: [DEVICE_OK, DEVICE_MISSING] } } } as never,
       }),
     ).rejects.toMatchObject({
       name: 'PipelineConfigError',
       code: 'STAGE_POOL_UNKNOWN_RUNNER',
       details: {
-        stagesWithUnknownDevices: [{ stage: 'developed', deviceIds: [DEVICE_MISSING] }],
+        stagesWithUnknownDevices: [{ stage: 'released', deviceIds: [DEVICE_MISSING] }],
       },
     });
   });
@@ -285,60 +181,20 @@ describe('updatePipelineConfig — STAGE_POOL_UNKNOWN_RUNNER (per-state runner p
     pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
     pushSelect([{ deviceId: DEVICE_OK }]);
     pushSelect([
-      { agentConfig: { pipelineConfig: { states: { developed: { deviceIds: [DEVICE_OK] } } } } },
+      { agentConfig: { pipelineConfig: { states: { released: { deviceIds: [DEVICE_OK] } } } } },
     ]);
 
     const result = await updatePipelineConfig({
       projectId: PROJECT,
-      patch: { states: { developed: { deviceIds: [DEVICE_OK] } } } as never,
+      patch: { states: { released: { deviceIds: [DEVICE_OK] } } } as never,
     });
-    expect(result.pipelineConfig.states?.developed?.deviceIds).toEqual([DEVICE_OK]);
+    expect(result.pipelineConfig.states?.released?.deviceIds).toEqual([DEVICE_OK]);
   });
 });
 
-describe('updatePipelineConfig — AUTONOMOUS_FACTS_MISSING', () => {
+describe('updatePipelineConfig — round-trips', () => {
   const PROJECT = '00000000-0000-0000-0000-000000000001';
 
-  it('refuses the switch to autonomous while a required project fact is unanswered', async () => {
-    pushSelect([{ agentConfig: { projectFacts: { 'build-commands': 'pnpm build' } } }]);
-
-    await expect(
-      updatePipelineConfig({ projectId: PROJECT, patch: { mode: 'autonomous' } }),
-    ).rejects.toMatchObject({
-      name: 'PipelineConfigError',
-      code: 'AUTONOMOUS_FACTS_MISSING',
-      details: { missing: ['test-commands'] },
-    });
-    expect(dbExecute).not.toHaveBeenCalled();
-  });
-
-  it('allows the switch once the contract is answered', async () => {
-    const facts = { 'build-commands': 'pnpm build', 'test-commands': 'pnpm test' };
-    pushSelect([{ agentConfig: { projectFacts: facts } }]);
-    pushSelect([{ agentConfig: { pipelineConfig: { mode: 'autonomous' }, projectFacts: facts } }]);
-
-    const result = await updatePipelineConfig({
-      projectId: PROJECT,
-      patch: { mode: 'autonomous' },
-    });
-
-    expect(result.pipelineConfig.mode).toBe('autonomous');
-  });
-
-  // cm:guard the gate must not fire on patches that leave the mode alone, or a project already running autonomous can never change any other setting again
-  it('leaves an unrelated patch alone on a project with no facts at all', async () => {
-    pushSelect([{ agentConfig: { pipelineConfig: { mode: 'autonomous' } } }]);
-    pushSelect([{ agentConfig: { pipelineConfig: { mode: 'autonomous', autoProdDeploy: true } } }]);
-
-    const result = await updatePipelineConfig({
-      projectId: PROJECT,
-      patch: { autoProdDeploy: true },
-    });
-
-    expect(result.pipelineConfig.autoProdDeploy).toBe(true);
-  });
-
-  // cm:edge contract -> packages/core/src/skills/lock.ts — this schema strips unknown keys, so a lock that round-trips here is the only proof the Phase 1a lock is reachable through the typed surface at all
   it('round-trips lockedSkills instead of stripping it', async () => {
     pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
     pushSelect([{ agentConfig: { pipelineConfig: { lockedSkills: ['forge-drive'] } } }]);

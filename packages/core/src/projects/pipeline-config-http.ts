@@ -18,7 +18,6 @@ export function pipelineConfigHttpError(err: unknown): unknown {
     case 'STAGE_HAS_ISSUES':
     case 'AUTO_STAGE_NEEDS_SKILL':
     case 'MISSING_SKILL_FOR_ENABLED_STAGE':
-    case 'AUTONOMOUS_FACTS_MISSING':
       return new HTTPException(409, { message: err.message, cause });
     case 'PROJECT_NOT_FOUND':
       return new HTTPException(404, { message: 'not found', cause: { code: 'NOT_FOUND' } });

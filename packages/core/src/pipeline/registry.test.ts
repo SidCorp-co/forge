@@ -20,7 +20,6 @@ import {
   pipelineRunStatuses,
   runnerTypes,
 } from '../db/schema.js';
-import { STEP_TOGGLE_KEYS } from './pipeline-config-schema.js';
 import {
   getPipelineRegistry,
   MANUAL_ONLY_JOB_TYPES,
@@ -81,9 +80,9 @@ describe('PIPELINE_STEPS enum parity', () => {
     }
   });
 
-  it('every step.toggle is in STEP_TOGGLE_KEYS', () => {
+  it('every step.toggle is in REGISTRY_STEP_TOGGLE_KEYS', () => {
     for (const step of PIPELINE_STEPS) {
-      expect(STEP_TOGGLE_KEYS).toContain(step.toggle);
+      expect(REGISTRY_STEP_TOGGLE_KEYS).toContain(step.toggle);
     }
   });
 });
@@ -111,9 +110,6 @@ describe('derivation parity', () => {
     }
   });
 
-  it('STEP_TOGGLE_KEYS equals PIPELINE_STEPS.map(s => s.toggle)', () => {
-    expect([...STEP_TOGGLE_KEYS]).toEqual(PIPELINE_STEPS.map((s) => s.toggle));
-  });
 });
 
 describe('contracts ↔ core enum parity', () => {
