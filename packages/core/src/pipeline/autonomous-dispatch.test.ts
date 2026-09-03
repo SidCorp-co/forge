@@ -44,16 +44,15 @@ describe('autonomousStepFor', () => {
 });
 
 describe('isAutonomous', () => {
-  // cm:guard the two false cases are NOT one case and this is where that is proved. `null` is "missing project, or a config that did not parse" and must answer staged, because rewriting parks and cascading children on a project nobody can see is broken is the worse direction. An absent `mode` is "this project never chose", which since 2026-09-02 answers autonomous. Write these as one `?.` and the unparseable config silently becomes autonomous.
-  it('separates a config that did not parse from a project that never chose', () => {
-    expect(isAutonomous(null), 'unreadable config must stay staged').toBe(false);
-    expect(isAutonomous({ enabled: true }), 'absent mode takes the default').toBe(true);
-    expect(isAutonomous({ enabled: true, mode: 'staged' })).toBe(false);
-    expect(isAutonomous({ enabled: true, mode: 'autonomous' })).toBe(true);
+  // cm:guard `null` and "a config that parsed" are NOT one case, and this is where that is proved. ISS-897 left one lane, so `mode` is gone and the only question left is whether the config could be read at all — `null` is a missing, archived or unparseable project and must answer false, because rewriting parks and cascading children on a project nobody can see is broken is the worse direction.
+  it('separates a config that did not parse from a project that has one', () => {
+    expect(isAutonomous(null), 'unreadable config must not drive').toBe(false);
+    expect(isAutonomous({ enabled: true })).toBe(true);
+    expect(isAutonomous({})).toBe(true);
   });
 
-  // cm:guard the flip must reach the skill lock and the reconciler too — those read `mode` on their own, one of them off a raw SQL column, and a project that dispatches autonomously while its bundled skills stay unlocked is editable from under the driver mid-run
-  it('resolves the same default for every reader of the raw field', () => {
+  // cm:guard `resolveMode` outlives the schema key on purpose: its two readers are the raw-SQL wedge passes, which scan `agent_config->'pipelineConfig'->>'mode'` on rows written BEFORE the ISS-897 migration. The absent-key default must stay `autonomous` there or a pre-migration row drops out of the net it was written for.
+  it('reads a stored mode column, including one the migration has not reached', () => {
     expect(resolveMode(undefined)).toBe('autonomous');
     expect(resolveMode(null)).toBe('autonomous');
     expect(resolveMode('staged')).toBe('staged');
@@ -62,17 +61,16 @@ describe('isAutonomous', () => {
 });
 
 describe('dispatchAutonomous', () => {
-  it('declines the decision on a staged project so the caller walks its own path', async () => {
-    expect(
-      await dispatchAutonomous({ ...BASE, status: 'open', cfg: { enabled: true, mode: 'staged' } }),
-    ).toBe(false);
+  // cm:guard the one `false` this function still returns, and the caller relies on it: an unreadable config must produce no job at all rather than a drive session against a project whose settings nobody could parse.
+  it('declines the decision when the config could not be read', async () => {
+    expect(await dispatchAutonomous({ ...BASE, status: 'open', cfg: null })).toBe(false);
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();
   });
 
   it('enqueues exactly one drive job at the entry status', async () => {
     selectLimit.mockResolvedValueOnce([{ status: 'open' }]);
 
-    expect(await dispatchAutonomous({ ...BASE, status: 'open', cfg: { mode: 'autonomous' } })).toBe(
+    expect(await dispatchAutonomous({ ...BASE, status: 'open', cfg: { enabled: true } })).toBe(
       true,
     );
 
@@ -89,7 +87,7 @@ describe('dispatchAutonomous', () => {
   it('stamps the entry status so the operator per-state config governs the drive job', async () => {
     selectLimit.mockResolvedValueOnce([{ status: 'open' }]);
 
-    await dispatchAutonomous({ ...BASE, status: 'open', cfg: { mode: 'autonomous' } });
+    await dispatchAutonomous({ ...BASE, status: 'open', cfg: { enabled: true } });
 
     expect(insertAndEnqueueJob.mock.calls[0]?.[0]?.payloadExtras).toEqual({
       mode: 'autonomous',
@@ -101,7 +99,7 @@ describe('dispatchAutonomous', () => {
   it('tells the agent which run it is on, and where its resume point lives', async () => {
     selectLimit.mockResolvedValueOnce([{ status: 'open' }]);
 
-    await dispatchAutonomous({ ...BASE, status: 'open', cfg: { mode: 'autonomous' } });
+    await dispatchAutonomous({ ...BASE, status: 'open', cfg: { enabled: true } });
 
     const prompt = String(insertAndEnqueueJob.mock.calls[0]?.[0]?.promptString ?? '');
     expect(prompt).toContain('run-1');
@@ -112,7 +110,7 @@ describe('dispatchAutonomous', () => {
   it('names one transport, and the skill already chose the CLI', async () => {
     selectLimit.mockResolvedValueOnce([{ status: 'open' }]);
 
-    await dispatchAutonomous({ ...BASE, status: 'open', cfg: { mode: 'autonomous' } });
+    await dispatchAutonomous({ ...BASE, status: 'open', cfg: { enabled: true } });
 
     const prompt = String(insertAndEnqueueJob.mock.calls[0]?.[0]?.promptString ?? '');
     expect([...prompt.matchAll(/forge_[a-z_.]+/g)].map((m) => m[0])).toEqual([]);
@@ -121,7 +119,7 @@ describe('dispatchAutonomous', () => {
   // cm:guard the property the whole branch exists for: falling through at a non-entry status makes the staged resolver report "no skill registered", which pauses the run and comments on the issue every time the agent moves it
   it('owns the decision at every other status, and enqueues nothing there', async () => {
     for (const status of ['confirmed', 'developed', 'testing', 'closed'] as const) {
-      expect(await dispatchAutonomous({ ...BASE, status, cfg: { mode: 'autonomous' } })).toBe(true);
+      expect(await dispatchAutonomous({ ...BASE, status, cfg: { enabled: true } })).toBe(true);
     }
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();
     expect(openIssueRun).not.toHaveBeenCalled();
@@ -130,7 +128,7 @@ describe('dispatchAutonomous', () => {
   it('does not enqueue when the issue has already moved off the entry status', async () => {
     selectLimit.mockResolvedValueOnce([{ status: 'in_progress' }]);
 
-    expect(await dispatchAutonomous({ ...BASE, status: 'open', cfg: { mode: 'autonomous' } })).toBe(
+    expect(await dispatchAutonomous({ ...BASE, status: 'open', cfg: { enabled: true } })).toBe(
       true,
     );
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();
@@ -143,7 +141,7 @@ describe('dispatchAutonomous', () => {
         await dispatchAutonomous({
           ...BASE,
           status: 'open',
-          cfg: { mode: 'autonomous', states: { open } },
+          cfg: { enabled: true, states: { open } },
         }),
       ).toBe(true);
     }
@@ -158,7 +156,7 @@ describe('dispatchAutonomous', () => {
     await dispatchAutonomous({
       ...BASE,
       status: 'open',
-      cfg: { mode: 'autonomous', states: { open: { mode: 'auto', enabled: true } } },
+      cfg: { enabled: true, states: { open: { mode: 'auto', enabled: true } } },
     });
 
     expect(insertAndEnqueueJob).toHaveBeenCalledTimes(1);
@@ -171,7 +169,7 @@ describe('dispatchAutonomous', () => {
         actor: { type: 'device', id: 'dev-1', agency: 'agent' },
         projectCreatedBy: null,
         status: 'open',
-        cfg: { mode: 'autonomous' },
+        cfg: { enabled: true },
       }),
     ).toBe(true);
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();

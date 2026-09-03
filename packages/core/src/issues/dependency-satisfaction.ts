@@ -10,8 +10,6 @@
 // cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — that predicate is the authority; a satisfaction arm added there and not here makes every read model report an issue as unblocked while the gate keeps it queued, which starved a dependent for 40min with a blank blocker banner before pipeline-health.ts grew its own copy of this rule
 export function isBlockerSatisfied(
   blocker: { status: string | null; mergedAt: Date | null },
-  baseStampable: boolean,
 ): boolean {
-  if (blocker.mergedAt !== null && blocker.status !== 'reopen') return true;
-  return !baseStampable && blocker.status === 'closed';
+  return blocker.mergedAt !== null && blocker.status !== 'reopen';
 }

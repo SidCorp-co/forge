@@ -106,9 +106,6 @@ export interface ClassifyInput {
   runningIssueIds: ReadonlySet<string>;
   runningIssueCount: number;
   cap: number;
-  /** From `resolveGateSettings` — when the base merge state can never stamp
-   *  `merged_at`, the gate honors `status='closed'` as satisfaction. */
-  baseStampable: boolean;
   runnerInFlight: ReadonlyMap<string, PipelineHealthRunnerSat>;
   /** From `freshRunnerAvailability` — the picker's own runner-pool counts. */
   runnerPool: RunnerAvailability;

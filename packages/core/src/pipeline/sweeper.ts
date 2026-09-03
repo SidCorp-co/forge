@@ -459,17 +459,8 @@ export async function alarmClosedUnmergedBlockedDependents(
     `);
 
     let alerted = 0;
-    const stampableCache = new Map<string, boolean>();
     for (const row of rows) {
       try {
-        let stampable = stampableCache.get(row.project_id);
-        if (stampable === undefined) {
-          stampable = (await resolveGateSettings(row.project_id)).baseStampable;
-          stampableCache.set(row.project_id, stampable);
-        }
-        // Legit closed-bypass case (manual/toggle-off base) — the gate itself
-        // still honors `closed` for these; leave the dependent alone.
-        if (!stampable) continue;
         // comments.author_id is non-nullable; nothing to attribute the park to.
         if (!row.created_by) continue;
 

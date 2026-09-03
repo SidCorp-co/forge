@@ -152,7 +152,6 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     runningIssueIds,
     runningIssueCount,
     cap,
-    baseStampable,
     runnerInFlight,
     runnerPool,
     lastTickAt,
@@ -230,7 +229,7 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
   const blockers = deps.filter(
     (d) =>
       d.kind === 'blocks' &&
-      !isBlockerSatisfied({ status: d.fromStatus, mergedAt: d.fromMergedAt }, baseStampable),
+      !isBlockerSatisfied({ status: d.fromStatus, mergedAt: d.fromMergedAt }),
   );
   if (blockers.length > 0) {
     const closedUnmerged = blockers.filter((b) => b.fromStatus === 'closed');
@@ -253,7 +252,7 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
   // for every child to land. (The old inverse rule — child release waiting on
   // its parent — was removed from the gate; it deadlocked umbrella epics.)
   if (['code', 'review', 'test', 'fix'].includes(candidate.type)) {
-    const pendingChildren = decompChildren.filter((c) => !isBlockerSatisfied(c, baseStampable));
+    const pendingChildren = decompChildren.filter((c) => !isBlockerSatisfied(c));
     if (pendingChildren.length > 0) {
       out.waitingOn = {
         reason: 'waiting_on_decomp_children',
@@ -453,11 +452,8 @@ export async function hydratePipelineHealthForIssues(
     decompChildrenByIssue.set(r.parentIssueId, bucket);
   }
 
-  // Q5 — project_full inputs. The per-project cap defaults to 1 but is
-  // operator-tunable via `pipelineConfig.maxConcurrentIssues`; resolve the
-  // same values the dispatch picker enforces (cap + baseStampable) so this
-  // health card never drifts from actual dispatch behaviour.
-  const { cap, baseStampable } = await resolveGateSettings(projectId);
+  // cm:guard resolve the cap through `resolveGateSettings`, the same call the dispatch picker makes, and never by reading `pipelineConfig.maxConcurrentIssues` here — a second copy of the default-and-clamp is a health card that reports a slot the picker will not give.
+  const { cap } = await resolveGateSettings(projectId);
   const runningRows = await db.execute<{ issue_id: string }>(sql`
     SELECT DISTINCT (metadata->>'issueId') AS issue_id
     FROM agent_sessions
@@ -492,7 +488,6 @@ export async function hydratePipelineHealthForIssues(
       runningIssueIds,
       runningIssueCount,
       cap,
-      baseStampable,
       runnerInFlight,
       runnerPool,
       lastTickAt,

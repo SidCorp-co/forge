@@ -131,7 +131,6 @@ import {
 import { registerAnswerResume } from './pipeline/answer-resume.js';
 import { registerDecompositionSubscribers } from './pipeline/decomposition-subscribers.js';
 import { hooks } from './pipeline/hooks.js';
-import { runMissingSkillPauseBackfillIfRequested } from './pipeline/missing-skill-backfill.js';
 import { registerMissingSkillResume } from './pipeline/missing-skill-resume.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
 import { registerOutboxWorker, stopOutboxWorker } from './pipeline/outbox-worker.js';
@@ -520,8 +519,6 @@ if (isMain) {
   // cm:guard ISS-238 — register AFTER registerPipelineOrchestrator: this subscriber resumes a run whose missing skill was just registered and then re-enqueues, and that re-enqueue must walk through the orchestrator's own hooks, which are not on the bus yet if it is wired first
   registerMissingSkillResume(hooks);
   registerPausedRunWedgeResolve(hooks);
-
-  await runMissingSkillPauseBackfillIfRequested();
 
   // ISS-196 — must run AFTER subscribers are wired so the worker's first
   // drain hits a populated bus. Outbox worker polls the transactional

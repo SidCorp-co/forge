@@ -23,11 +23,8 @@ import { STAGE_FORWARD, validateStatesConfig } from './state-machine.js';
 export type PipelineConfigErrorCode =
   | 'OPEN_LOCKED_ON'
   | 'STAGE_HAS_ISSUES'
-  | 'AUTO_STAGE_NEEDS_SKILL'
   | 'STAGE_POOL_UNKNOWN_RUNNER'
-  | 'MISSING_SKILL_FOR_ENABLED_STAGE'
   | 'DEAD_END_CONFIG'
-  | 'MERGE_STATE_DISABLED'
   | 'PROJECT_NOT_FOUND';
 
 export class PipelineConfigError extends Error {
@@ -52,15 +49,7 @@ export interface UpdatePipelineConfigInput {
 
 export interface UpdatePipelineConfigResult {
   pipelineConfig: PipelineConfig;
-  /**
-   * Non-blocking advisories surfaced after a successful update. ISS-239 —
-   * populated when a stage is enabled in `states` but has no skill
-   * registration AND is not gated by `MISSING_SKILL_FOR_ENABLED_STAGE`
-   * (i.e. stages outside the PIPELINE_STEPS auto-toggle set, like
-   * `deploying`, `pass`, `staging`, `tested`). Issues at those stages will
-   * auto-skip past them via STAGE_FORWARD at runtime; the warning lets the
-   * operator know without rejecting the patch.
-   */
+  /** Non-blocking advisories surfaced after a successful update. */
   warnings: string[];
 }
 
@@ -154,86 +143,6 @@ export async function updatePipelineConfig(
           }
         }
 
-        const mergedStatesForRule3 = (nextPipeline as { states?: StagesConfig }).states ?? {};
-        // ISS-382 — delta-validation. Only require a skill for a stage this
-        // patch actually TRANSITIONS into enabled+auto. A patch that merely
-        // re-asserts an already-auto stage must not trip this rule — the
-        // session-groups editor resends the full `states` map (states is
-        // wholesale-replaced, and GET read-normalizes every stage to
-        // enabled:true/mode:'auto'), so without the delta a sessionGroup-only
-        // save would 409 on any project lacking skills for some auto stage.
-        // The symmetric top-level autoX toggle rule below still guards the
-        // enable-without-skill failure mode on every patch.
-        const currentStates = (currentPipeline as { states?: StagesConfig }).states ?? {};
-        // Treat an absent/partial stage as the runtime default (enabled+auto),
-        // so a stage with no stored override is NOT seen as transitioning into
-        // auto when the patch spells out the defaults explicitly.
-        const isAutoEnabled = (sc?: { enabled?: boolean; mode?: 'auto' | 'manual' }) =>
-          (sc?.enabled ?? true) !== false && (sc?.mode ?? 'auto') === 'auto';
-        const needRegistration = (
-          Object.entries(mergedStatesForRule3) as Array<
-            [string, { enabled?: boolean; mode?: 'auto' | 'manual' } | undefined]
-          >
-        )
-          .filter(
-            ([stage, v]) => isAutoEnabled(v) && !isAutoEnabled(currentStates[stage as IssueStatus]),
-          )
-          .map(([stage]) => stage as IssueStatus);
-        if (needRegistration.length > 0) {
-          const regs = await db
-            .select({ stage: skillRegistrations.stage })
-            .from(skillRegistrations)
-            .where(
-              and(
-                eq(skillRegistrations.projectId, projectId),
-                inArray(skillRegistrations.stage, needRegistration),
-              ),
-            );
-          const have = new Set(regs.map((r) => r.stage));
-          const missing = needRegistration.filter((s) => !have.has(s));
-          if (missing.length > 0) {
-            throw new PipelineConfigError(
-              'AUTO_STAGE_NEEDS_SKILL',
-              'auto-mode stages require a registered skill',
-              { stagesMissingSkill: missing },
-            );
-          }
-        }
-      }
-
-      // ISS-238 — symmetric rule for the top-level `auto<Stage>` toggles. The
-      // per-state `mode==='auto'` check above only catches stages an operator
-      // explicitly switched to auto mode. The actual production failure mode
-      // (Anhome, 2026-05-26) was a project with `autoReview=true` and no
-      // `developed` skill — the toggle defaults to checking against any
-      // skill registration for the matching stage, regardless of mode config.
-      const toggleEnabledStages: IssueStatus[] = [];
-      for (const step of PIPELINE_STEPS) {
-        const v = (nextPipeline as Record<string, unknown>)[step.toggle];
-        const on =
-          v === true ||
-          (typeof v === 'object' && v !== null && (v as { enabled?: boolean }).enabled !== false);
-        if (on) toggleEnabledStages.push(step.status);
-      }
-      if (toggleEnabledStages.length > 0) {
-        const regs = await db
-          .select({ stage: skillRegistrations.stage })
-          .from(skillRegistrations)
-          .where(
-            and(
-              eq(skillRegistrations.projectId, projectId),
-              inArray(skillRegistrations.stage, toggleEnabledStages),
-            ),
-          );
-        const have = new Set(regs.map((r) => r.stage));
-        const missing = toggleEnabledStages.filter((s) => !have.has(s));
-        if (missing.length > 0) {
-          throw new PipelineConfigError(
-            'MISSING_SKILL_FOR_ENABLED_STAGE',
-            'enabled auto-stage toggles require a registered skill for the corresponding stage',
-            { stagesMissingSkill: missing },
-          );
-        }
       }
 
       const mergedStates = (nextPipeline as { states?: StagesConfig }).states;
@@ -243,18 +152,6 @@ export async function updatePipelineConfig(
           'DEAD_END_CONFIG',
           `Cannot disable stages with no forward path: ${dead.unreachable.join(', ')}`,
           { unreachable: dead.unreachable },
-        );
-      }
-      // `merged_at` (the column the blocks/decomposes L2 gate keys on) is only
-      // stamped when an issue transitions OUT of `mergeStates.baseBranch`
-      // (see issues/merged-at.ts). If that stage is DISABLED the transition can
-      // never happen, so every dependent wedges forever (silent). Reject it.
-      const baseMergeState = resolveMergeStates(nextPipeline).baseBranch;
-      if (mergedStates?.[baseMergeState]?.enabled === false) {
-        throw new PipelineConfigError(
-          'MERGE_STATE_DISABLED',
-          `mergeStates.baseBranch '${baseMergeState}' is a disabled stage — merged_at can never stamp, so every blocks/decomposes dependent wedges. Point baseBranch at the enabled stage where the merge actually completes (e.g. 'testing'/'developed').`,
-          { baseBranch: baseMergeState },
         );
       }
       nextDoc.pipelineConfig = nextPipeline;
@@ -278,100 +175,7 @@ export async function updatePipelineConfig(
   const parsed = pipelineConfigSchema.parse(stored);
   const pipelineConfig: PipelineConfig = { ...PIPELINE_CONFIG_DEFAULTS, ...parsed };
 
-  // ISS-239 — non-blocking advisory for stages that the operator left
-  // enabled (default) but for which no skill is registered AND which are
-  // NOT covered by the ISS-238 hard rule (PIPELINE_STEPS-mapped stages).
-  // Those stages auto-skip cleanly at runtime via STAGE_FORWARD; surface
-  // the behaviour so operators aren't surprised when issues breeze past.
-  const warnings = await computeStageWithoutSkillWarnings(projectId, pipelineConfig);
-  const parkWarning = computeMergeStateParkWarning(pipelineConfig);
-  if (parkWarning) {
-    warnings.push(parkWarning);
-    logger.warn(
-      { projectId, warning: parkWarning },
-      'mergeStates baseBranch may never stamp merged_at',
-    );
-  }
+  const warnings: string[] = [];
 
   return { pipelineConfig, warnings };
-}
-
-const STEP_BY_STATUS = new Map<string, (typeof PIPELINE_STEPS)[number]>(
-  PIPELINE_STEPS.map((s) => [s.status, s]),
-);
-
-/**
- * Non-blocking advisory: `merged_at` only stamps when an issue transitions OUT
- * of `mergeStates.baseBranch`. If that stage can't auto-advance — it's `manual`,
- * or its pipeline-step auto-toggle (e.g. `autoRelease`) is off — issues PARK
- * there and `merged_at` never stamps, so `blocks`/`decomposes` dependents wedge
- * silently (the anhome/sid-desk class of bug). We can't statically detect a
- * no-op skill that fails to advance an enabled+auto stage, so this is a warning
- * (paired with the settings-UI surface), not a hard reject — the runtime stall
- * detector is the backstop for the cases config can't reveal.
- */
-export function computeMergeStateParkWarning(cfg: PipelineConfig): string | null {
-  const base = resolveMergeStates(cfg).baseBranch as string;
-  const sc = (cfg.states as Record<string, { mode?: string; enabled?: boolean } | undefined>)?.[
-    base
-  ];
-  if (sc?.mode === 'manual') {
-    return `mergeStates.baseBranch '${base}' is a manual stage — the pipeline won't auto-leave it, so merged_at never stamps and blocks/decomposes dependents will wedge. Point baseBranch at the stage where the merge auto-completes.`;
-  }
-  const step = STEP_BY_STATUS.get(base);
-  if (step && (cfg as Record<string, unknown>)[step.toggle] === false) {
-    return `mergeStates.baseBranch '${base}' maps to the '${step.jobType}' step whose auto-toggle '${step.toggle}' is off — that stage never dispatches/advances, so merged_at never stamps and blocks/decomposes dependents will wedge.`;
-  }
-  return null;
-}
-
-/**
- * ISS-639 — True when `mergeStates.baseBranch` is a normal auto-advancing
- * stage that CAN stamp `merged_at` (see `issues/merged-at.ts`). False when
- * structurally unstampable (manual mode / auto-toggle off / stage disabled)
- * — the case the blocks-gate `closed` bypass in `dispatch-gates.ts` exists
- * for. Single source of truth shared by the gate (dispatch-time) and the
- * sweeper (park-time) so they never disagree on which projects are exempt.
- */
-export function isBaseBranchStampable(cfg: PipelineConfig): boolean {
-  if (computeMergeStateParkWarning(cfg) !== null) return false;
-  const base = resolveMergeStates(cfg).baseBranch as string;
-  const sc = (cfg.states as Record<string, { enabled?: boolean } | undefined>)?.[base];
-  return sc?.enabled !== false;
-}
-
-const PIPELINE_STEPS_STAGES = new Set<string>(PIPELINE_STEPS.map((s) => s.status));
-
-async function computeStageWithoutSkillWarnings(
-  projectId: string,
-  cfg: PipelineConfig,
-): Promise<string[]> {
-  const stagesToCheck: IssueStatus[] = [];
-  for (const stage of STAGE_NAMES) {
-    if (PIPELINE_STEPS_STAGES.has(stage)) continue; // gated by ISS-238 instead
-    if (!(stage in STAGE_FORWARD)) continue; // no forward path → no auto-skip
-    const sc = cfg.states?.[stage];
-    if (sc && sc.enabled === false) continue;
-    stagesToCheck.push(stage as IssueStatus);
-  }
-  if (stagesToCheck.length === 0) return [];
-
-  const regs = await db
-    .select({ stage: skillRegistrations.stage })
-    .from(skillRegistrations)
-    .where(
-      and(
-        eq(skillRegistrations.projectId, projectId),
-        inArray(skillRegistrations.stage, stagesToCheck),
-      ),
-    );
-  const have = new Set(regs.map((r) => r.stage));
-  const warnings: string[] = [];
-  for (const stage of stagesToCheck) {
-    if (have.has(stage)) continue;
-    const msg = `Stage '${stage}' enabled but no skill registered. Issues will auto-skip past this stage via STAGE_FORWARD.`;
-    warnings.push(msg);
-    logger.warn({ projectId, stage }, msg);
-  }
-  return warnings;
 }

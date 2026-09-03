@@ -115,7 +115,6 @@ function digest(
   edge: IssueDependencyEdge,
   issueId: string,
   now: number,
-  baseStampable: boolean,
 ): IssueRelationDigest {
   const outgoing = edge.fromIssueId === issueId;
   const expired = isExpired(edge, now);
@@ -134,7 +133,7 @@ function digest(
       !outgoing &&
       edge.kind === 'blocks' &&
       !expired &&
-      !isBlockerSatisfied({ status: edge.fromStatus, mergedAt: edge.fromMergedAt }, baseStampable),
+      !isBlockerSatisfied({ status: edge.fromStatus, mergedAt: edge.fromMergedAt }),
   };
 }
 
@@ -153,9 +152,8 @@ export async function loadIssueRelations(
   const now = Date.now();
   // cm:guard keep this predicate the SAME SHAPE as `gatesDispatch`'s first two conjuncts — `resolveGateSettings` is an UNCACHED `projects` read on a path that runs on every agent turn, and only an unexpired incoming `blocks` edge ever consumes its answer; widening the test to "any incoming edge" pays that read for every decomposes-only or all-expired graph, narrowing it past `gatesDispatch` reports a satisfied blocker as gating
   const gates = incoming.some((e) => e.kind === 'blocks' && !isExpired(e, now));
-  const baseStampable = gates ? (await resolveGateSettings(projectId)).baseStampable : true;
   return {
-    blocks: outgoing.map((e) => digest(e, issueId, now, baseStampable)),
-    blockedBy: incoming.map((e) => digest(e, issueId, now, baseStampable)),
+    blocks: outgoing.map((e) => digest(e, issueId, now)),
+    blockedBy: incoming.map((e) => digest(e, issueId, now)),
   };
 }

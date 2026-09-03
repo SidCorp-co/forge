@@ -28,7 +28,6 @@ import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
 } from '../pipeline/pipeline-config-schema.js';
-import { isBaseBranchStampable } from '../pipeline/pipeline-config-service.js';
 import {
   RUNNER_CAPABILITIES,
   TRIGGER_STATUS_BY_JOB_TYPE,
@@ -103,16 +102,11 @@ export async function resolveProjectCap(projectId: string): Promise<number> {
 }
 
 /**
- * ISS-639 — resolve the per-project concurrent-issue cap AND whether
- * `mergeStates.baseBranch` can stamp `merged_at` from the SAME single
- * `projects.agent_config` select (the picker/asserter's parity test assumes
- * exactly one `projects` select per call — see {@link resolveProjectCap}).
- * `baseStampable` gates whether the `closed`-without-merge bypass in
- * {@link buildBarrierFragments} applies (see `isBaseBranchStampable`).
+ * The per-project concurrent-issue cap, from one `projects.agent_config`
+ * select (the picker/asserter's parity test assumes exactly one `projects`
+ * select per call — see {@link resolveProjectCap}).
  */
-export async function resolveGateSettings(
-  projectId: string,
-): Promise<{ cap: number; baseStampable: boolean }> {
+export async function resolveGateSettings(projectId: string): Promise<{ cap: number }> {
   const [row] = await db
     .select({ agentConfig: projects.agentConfig })
     .from(projects)
@@ -124,13 +118,7 @@ export async function resolveGateSettings(
   const capN = typeof rawCap === 'number' ? Math.floor(rawCap) : Number.NaN;
   const cap =
     !Number.isFinite(capN) || capN < 1 ? DEFAULT_MAX_CONCURRENT_ISSUES : Math.min(capN, 20);
-  // Merge onto PIPELINE_CONFIG_DEFAULTS — mirrors getPipelineConfig's own
-  // merge (pipeline-config-service.ts) so a project relying on the
-  // `tested` stage's manual-by-default `states` entry (never persisted
-  // since it's the default) is still detected as unstampable.
-  const pipelineConfig: PipelineConfig = { ...PIPELINE_CONFIG_DEFAULTS, ...(pc as PipelineConfig) };
-  const baseStampable = isBaseBranchStampable(pipelineConfig);
-  return { cap, baseStampable };
+  return { cap };
 }
 
 /**
@@ -396,9 +384,8 @@ export interface BarrierFragments {
 export function buildBarrierFragments(args: {
   projectIdRef: SQL;
   livenessSeconds: number;
-  baseStampable: boolean;
 }): BarrierFragments {
-  const { projectIdRef, livenessSeconds, baseStampable } = args;
+  const { projectIdRef, livenessSeconds } = args;
 
   // ISS-232 Phase 2 — `running_ids` is sourced exclusively from `jobs`
   // (queued | dispatched | running). The previous UNION with
@@ -476,10 +463,10 @@ export function buildBarrierFragments(args: {
         )
     )`;
 
-  // cm:guard ISS-639 — the `OR status='closed'` bypass is legal ONLY while the project's base branch is structurally unstampable (manual mode / auto-toggle off, per `isBaseBranchStampable`). On an auto-advancing base a `closed` blocker with `merged_at IS NULL` was closed WITHOUT its code landing, so the dependent must NOT dispatch; re-adding the arm unconditionally is the devbox ISS-2/ISS-4 bug.
-  // cm:edge lockstep -> packages/core/src/pipeline/sweeper.ts — `alarmClosedUnmergedBlockedDependents` (sweeper.ts) and `alarmUnrunnableBlockedDependents` (blocked-dependent-alarms.ts, covering `draft` AND `dropped`) are the surfacing halves of this predicate: this decides which blockers hold a job, those decide what the operator is told about it. A blocker status added or dropped here and not there is a job queued with nobody notified. (This comment named `parkClosedUnmergedBlockedDependents` for months after RFC 0002 renamed it and removed the park.)
-  const blockClosedArm = baseStampable ? sql`` : sql` AND p.status <> 'closed'`;
-  const decompClosedArm = baseStampable ? sql`` : sql` AND c2.status <> 'closed'`;
+  // cm:guard a `closed` blocker whose `merged_at` is NULL must NOT satisfy the gate, and the `OR status='closed'` bypass that used to sit here is not coming back. It was legal only while a project could declare a structurally unstampable base branch (`mergeStates` pointing at a manual or toggle-off stage); ISS-897 removed `mergeStates` and the toggles, so every project's base stamps and a `closed` blocker with no stamp is one closed WITHOUT its code landing — the devbox ISS-2/ISS-4 bug. An operator who really did land it stamps it: `POST /api/issues/:id/merge`.
+  // cm:edge lockstep -> packages/core/src/pipeline/sweeper.ts — `alarmClosedUnmergedBlockedDependents` (sweeper.ts) and `alarmUnrunnableBlockedDependents` (blocked-dependent-alarms.ts, covering `draft` AND `dropped`) are the surfacing halves of this predicate: this decides which blockers hold a job, those decide what the operator is told about it. A blocker status added or dropped here and not there is a job queued with nobody notified.
+  const blockClosedArm = sql` AND p.status <> 'closed'`;
+  const decompClosedArm = sql` AND c2.status <> 'closed'`;
 
   // cm:guard treat a currently-reopened blocker as UNSATISFIED regardless of merged_at — the stamp is COALESCE-once and never cleared, so a blocker that reached `tested` then got rejected back to `reopen` still reads as satisfied and dispatches the parent onto a broken child (sid-desk ISS-20/25); the stamp records that code landed once, not that it is still good
   //
@@ -590,12 +577,11 @@ export async function pickNextDispatchableJobForProject(
   projectId: string,
   opts?: { excludeJobIds?: string[] },
 ): Promise<JobRow | null> {
-  const { cap, baseStampable } = await resolveGateSettings(projectId);
+  const { cap } = await resolveGateSettings(projectId);
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const { ctes, predicates } = buildBarrierFragments({
     projectIdRef: sql`${projectId}`,
     livenessSeconds,
-    baseStampable,
   });
   // Jobs the current dispatch tick already tried and could not PLACE (e.g. a
   // resume pinned to a busy host, or no capable free runner). Excluding them
@@ -712,12 +698,11 @@ export async function assertDispatchable(
     .limit(1);
   if (!job) return { ok: false, reason: 'not_found', hint: jobId };
 
-  const { cap, baseStampable } = await resolveGateSettings(job.projectId);
+  const { cap } = await resolveGateSettings(job.projectId);
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const { ctes, predicates } = buildBarrierFragments({
     projectIdRef: sql`${job.projectId}`,
     livenessSeconds,
-    baseStampable,
   });
 
   const rows = await exec.execute<{ reason: string | null }>(sql`
@@ -749,12 +734,10 @@ export interface RunnerAvailability {
  * restate the six-clause availability rule.
  */
 // cm:guard take this from `buildBarrierFragments`, never a hand-copied WHERE — the availability rule is six clauses deep (online, heartbeat window, rate_limited_until, disabled device, …) and a second copy silently disagrees with the gate, which is how pipelineHealth came to report NO reason at all for jobs the picker was refusing (11 jobs, queued 6-22 days, measured 2026-08-14).
-// cm:why `baseStampable` is arbitrary here — it shapes only the dependency PREDICATES, never the CTEs, and this reads nothing but the CTE
 export async function freshRunnerAvailability(projectId: string): Promise<RunnerAvailability> {
   const { ctes } = buildBarrierFragments({
     projectIdRef: sql`${projectId}`,
     livenessSeconds: Math.floor(dispatchLivenessMs() / 1000),
-    baseStampable: false,
   });
   const rows = await db.execute<{ total: number; with_capacity: number }>(sql`
     WITH ${ctes}
@@ -775,11 +758,10 @@ export async function freshRunnerAvailability(projectId: string): Promise<Runner
 export async function gateReasonsForQueuedJobs(
   projectId: string,
 ): Promise<Map<string, GateSkipReason>> {
-  const { cap, baseStampable } = await resolveGateSettings(projectId);
+  const { cap } = await resolveGateSettings(projectId);
   const { ctes, predicates } = buildBarrierFragments({
     projectIdRef: sql`${projectId}`,
     livenessSeconds: Math.floor(dispatchLivenessMs() / 1000),
-    baseStampable,
   });
 
   const rows = await db.execute<{ id: string; reason: string | null }>(sql`

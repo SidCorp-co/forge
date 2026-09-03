@@ -260,11 +260,10 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
 
   const starved: StarvedProject[] = [];
   for (const c of candidates) {
-    const { cap, baseStampable } = await resolveGateSettings(c.project_id);
+    const { cap } = await resolveGateSettings(c.project_id);
     const { ctes, predicates } = buildBarrierFragments({
       projectIdRef: sql`${c.project_id}`,
       livenessSeconds,
-      baseStampable,
     });
     // cm:guard take runner health from the SSOT `fresh_capable_runners` CTE, never a hand-rolled copy of its clauses — the copy that used to live here drifted twice (main added `limit_reason <> 'auth'` and the `provision_status` gate without this file), and each missing clause counts a runner the dispatcher will never use as available, so real starvation reads `ok` and the alert meant to catch a wedged queue is what hides it.
     // cm:edge lockstep -> packages/core/src/runners/select.ts — the `capabilities @>` join is the ONE clause `selectRunnerForJob` applies that the picker's CTE does not, and it must stay: a job no runner is capable of is offered by the picker, rejected by the selector, and spins queued with no gate reason for any UI to show (measured 2026-08-14: 11 jobs across 5 projects sat 6-22 days in exactly that state). Surfacing that is A3's whole reason to exist.

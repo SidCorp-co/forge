@@ -12,12 +12,9 @@ export function pipelineConfigHttpError(err: unknown): unknown {
   switch (err.code) {
     case 'OPEN_LOCKED_ON':
     case 'DEAD_END_CONFIG':
-    case 'MERGE_STATE_DISABLED':
     case 'STAGE_POOL_UNKNOWN_RUNNER':
       return new HTTPException(400, { message: err.message, cause });
     case 'STAGE_HAS_ISSUES':
-    case 'AUTO_STAGE_NEEDS_SKILL':
-    case 'MISSING_SKILL_FOR_ENABLED_STAGE':
       return new HTTPException(409, { message: err.message, cause });
     case 'PROJECT_NOT_FOUND':
       return new HTTPException(404, { message: 'not found', cause: { code: 'NOT_FOUND' } });
