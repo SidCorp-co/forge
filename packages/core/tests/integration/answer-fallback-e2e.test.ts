@@ -189,10 +189,11 @@ describe('a human answer while the session is still parked', () => {
     expect(await issueStatus()).toBe('open');
   });
 
-  it('leaves a park in a project that is not running the autonomous driver alone', async () => {
+  // cm:guard the negative case is a project whose config cannot be PARSED, not one that chose another lane — ISS-897 left one lane and `isAutonomous` collapsed to `cfg !== null`. The fixture is deliberately invalid rather than merely unusual: that is the only remaining way to reach the `null` this branch exists for.
+  it('leaves a park in a project whose config does not parse alone', async () => {
     await harness.db.execute(sql`
       UPDATE projects SET agent_config = ${JSON.stringify({
-        pipelineConfig: { mode: 'staged' },
+        pipelineConfig: { enabled: 'yes-please' },
       })}::jsonb WHERE id = ${projectId}
     `);
     await askingSession({ runtimeState: 'awaiting_input' });

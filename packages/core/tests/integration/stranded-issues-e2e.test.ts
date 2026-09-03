@@ -83,16 +83,17 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     opts: {
       status?: string;
       mergedAgoMs?: number | null;
-      autonomous?: boolean;
+      /** Writes the pre-ISS-897 `mode: 'staged'` key a row may still carry. */
+      legacyStagedRow?: boolean;
       updatedAgoMs?: number;
     } = {},
   ) {
     const owner = await createTestUser(harness.db);
     const org = await seedOrg(harness.db, owner.id);
     const project = await createTestProject(harness.db, owner.id, { orgId: org.id });
-    if (opts.autonomous) {
+    if (opts.legacyStagedRow) {
       await harness.db.execute(
-        sql`UPDATE projects SET agent_config = ${JSON.stringify({ pipelineConfig: { mode: 'autonomous' } })}::jsonb WHERE id = ${project.id}`,
+        sql`UPDATE projects SET agent_config = ${JSON.stringify({ pipelineConfig: { mode: 'staged' } })}::jsonb WHERE id = ${project.id}`,
       );
     }
 
@@ -224,28 +225,29 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     expect((await readNotifs(harness, theirs.issueId)).length).toBe(0);
   });
 
-  // cm:why ISS-886 — on autonomous the park itself is the signal: no next step notices it and `answer-resume` restarts `needs_info` only, so a `waiting` issue stops dead until a human acts. kinetrak ISS-4's split had sat 11 days on 2026-08-30 with nobody told.
-  it('surfaces an UNMERGED autonomous park, which on a staged project it ignores', async () => {
-    const auto = await seed({ mergedAgoMs: null, autonomous: true, updatedAgoMs: 48 * HOUR });
-    const staged = await seed({ mergedAgoMs: null, updatedAgoMs: 48 * HOUR });
+  // cm:why ISS-886 — the park itself is the signal: no next step notices it and `answer-resume` restarts `needs_info` only, so a `waiting` issue stops dead until a human acts. kinetrak ISS-4's split had sat 11 days on 2026-08-30 with nobody told.
+  // cm:guard the SQL predicate is `coalesce(mode, 'autonomous') <> 'staged'`, NOT `= 'autonomous'`, and this pair is what proves it: ISS-897 stripped `mode` from every project row, so an equality test would select ZERO projects and switch this net off fleet-wide — silently, because a pass that finds nothing and a pass that looks at nothing both report 0. The `legacyStagedRow` half is the other direction: a row the migration has not reached still carries the key and must still be excluded.
+  it('surfaces an UNMERGED park on a stripped row, and skips a row still marked staged', async () => {
+    const stripped = await seed({ mergedAgoMs: null, updatedAgoMs: 48 * HOUR });
+    const legacy = await seed({ mergedAgoMs: null, legacyStagedRow: true, updatedAgoMs: 48 * HOUR });
 
     const res = await mods.detectStrandedIssues();
 
     expect(res.detected).toBe(1);
-    expect((await readNotifs(harness, auto.issueId)).length).toBeGreaterThan(0);
-    expect((await readNotifs(harness, staged.issueId)).length).toBe(0);
+    expect((await readNotifs(harness, stripped.issueId)).length).toBeGreaterThan(0);
+    expect((await readNotifs(harness, legacy.issueId)).length).toBe(0);
   });
 
   // cm:guard the autonomous arm dates from `updated_at`, and it must still respect the grace window — a park is only stranded once it has outlasted a legitimate merge-verify-close pass, or every fresh question would alarm the owner within the minute.
-  it('stays silent inside the grace window on an autonomous project too', async () => {
-    await seed({ mergedAgoMs: null, autonomous: true, updatedAgoMs: 1 * HOUR });
+  it('stays silent inside the grace window too', async () => {
+    await seed({ mergedAgoMs: null, updatedAgoMs: 1 * HOUR });
     await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 0 });
   });
 
   it.each(['needs_info', 'on_hold', 'open'])(
-    'stays silent for an aged autonomous issue in status %s — only `waiting` is a silent park',
+    'stays silent for an aged issue in status %s — only `waiting` is a silent park',
     async (status) => {
-      await seed({ status, mergedAgoMs: null, autonomous: true, updatedAgoMs: 48 * HOUR });
+      await seed({ status, mergedAgoMs: null, updatedAgoMs: 48 * HOUR });
       await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 0 });
     },
   );

@@ -135,14 +135,11 @@ export function applySkillMaintenanceCarveout(
  * `developed` review · `testing` test · `reopen` fix · `released` release.
  */
 // cm:guard a stage's tier is FIXED — nothing may vary it at dispatch time. Reopen-driven escalation (ISS-535 escalateModel) was deleted by owner decision: with every repo-touching stage at opus the ladder had no rung left to climb, and ISS-766 measured the opus-on-rework loop at $698 of a $1,207 week. Re-adding a runtime bump re-opens that.
+// cm:edge contract -> packages/core/src/pipeline/pipeline-config-schema.ts — keyed by the same four names `STAGE_NAMES` declares; the staged rungs were dropped by ISS-897 because nothing stamps them on a payload any more, and a default for a status no job carries is a tier no dispatch can reach.
 export const DEFAULT_STAGE_MODELS: Record<string, string> = {
   open: 'sonnet',
-  confirmed: 'opus',
-  clarified: 'opus',
-  approved: 'opus',
-  developed: 'opus',
-  testing: 'opus',
-  reopen: 'opus',
+  in_progress: 'sonnet',
+  needs_info: 'sonnet',
   released: 'sonnet',
 };
 

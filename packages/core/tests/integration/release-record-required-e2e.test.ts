@@ -25,9 +25,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:guard every case in this file asserts the STAGED cascade (`draft` children promoted to `approved`); the autonomous cases override it explicitly below. An absent mode resolves autonomous since 2026-09-02, so this constant is what keeps the two halves of the file testing two different things.
-const STAGED = { pipelineConfig: { mode: 'staged' } };
-
 type IssueRow = import('../../src/issues/apply-transition.js').TransitionIssueRow;
 
 describe('release record required E2E', () => {
@@ -52,8 +49,26 @@ describe('release record required E2E', () => {
     await truncateAll(harness.db);
     const owner = await createTestUser(harness.db);
     ownerId = owner.id;
-    projectId = (await createTestProject(harness.db, owner.id, { agentConfig: STAGED })).id;
+    projectId = (await createTestProject(harness.db, owner.id)).id;
+    await declareProduction();
   });
+
+  // cm:guard the batch gate is now derived from the PROJECT, not from a config key: an active `prod` binding AND a production branch that differs from the base. Seed neither half and every case here fails on NO_RELEASE_GATE long before reaching what it meant to assert.
+  // cm:edge contract -> packages/core/src/release-batch/gate.ts — `resolveProductionDeclaration` reads exactly these two facts
+  async function declareProduction(): Promise<void> {
+    const connectionId = randomUUID();
+    await harness.db.execute(sql`
+      UPDATE projects SET base_branch = 'main', production_branch = 'production' WHERE id = ${projectId}
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
+      VALUES (${connectionId}, 'user', ${ownerId}, 'coolify', true)
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO integration_bindings (connection_id, project_id, provider, environment, active)
+      VALUES (${connectionId}, ${projectId}, 'coolify', 'prod', true)
+    `);
+  }
 
   async function insertIssue(status: string, note: unknown = null): Promise<string> {
     const id = randomUUID();
@@ -177,8 +192,8 @@ describe('release record required E2E', () => {
 
     it('refuses the whole batch when any issue has no release note, and claims nothing', async () => {
       const { ReleaseRecordMissingError } = await import('../../src/release-batch/service.js');
-      const noted = await insertIssue('tested', SKIP_NOTE);
-      const bare = await insertIssue('tested');
+      const noted = await insertIssue('released', SKIP_NOTE);
+      const bare = await insertIssue('released');
 
       const err = await claim([noted, bare]).catch((e: unknown) => e);
 
@@ -186,13 +201,13 @@ describe('release record required E2E', () => {
       expect((err as { issueIds: string[] }).issueIds).toEqual([bare]);
       expect(await claimedRunId(noted)).toBeNull();
       expect(await claimedRunId(bare)).toBeNull();
-      expect((await stored(bare)).status).toBe('tested');
+      expect((await stored(bare)).status).toBe('released');
     });
 
     // cm:guard the refusal must come from the NOTE, not from something else failing first — a fully-noted batch has to get PAST this preflight, or the case above would pass just as well against a preflight that refused everything
     it('lets a fully-noted batch past this preflight', async () => {
-      const a = await insertIssue('tested', SKIP_NOTE);
-      const b = await insertIssue('tested', SKIP_NOTE);
+      const a = await insertIssue('released', SKIP_NOTE);
+      const b = await insertIssue('released', SKIP_NOTE);
 
       const err = await claim([a, b]).catch((e: unknown) => e);
 

@@ -160,12 +160,26 @@ describe('core stamps the issue feature branch onto the job payload', () => {
     expect(frame.payload).not.toHaveProperty('worktreeBranch');
   });
 
-  // cm:guard a merge stage stays in the repo ROOT however new the runner is. `prompt/merge-required.ts` still tells the agent to `git checkout <base>`, and git REFUSES a branch already checked out in the main worktree — so stamping here breaks the merge step on every project at once, at the last stage, where the cost is a whole issue's work. Drop the merge-state exclusion in `issues/merged-at.ts` and only this goes red.
-  it('leaves a merge stage in the repo root, because a worktree cannot check out the base branch', async () => {
-    const s = await enqueue('open');
-    const frame = await dispatchAndCaptureFrame({ ...s, agentVersion: '0.9.3' });
-    expect(frame.payload.stageStatus).toBe('released');
-    expect(frame.payload).not.toHaveProperty('worktreeBranch');
+  // cm:guard the merge-state exclusion is asserted on the PURE FUNCTION because dispatch can no longer reach it: since ISS-897 the only job type is `drive`, stamped `stageStatus:'open'`, and the merge state is `released`, so no dispatched job takes this arm. It is kept and tested because it is what would stop a merge stage being handed a worktree the day one is dispatched again — and an untested arm is one nobody notices removing.
+  it('gives a merge stage nothing, because a worktree cannot check out the base branch', async () => {
+    const { worktreeBranchPayload } = await import('../../src/issues/merged-at.js');
+
+    expect(
+      worktreeBranchPayload({
+        status: 'released',
+        agentConfig: {},
+        featureBranch: 'ISS-7',
+        runnerVersion: '0.9.3',
+      }),
+    ).toEqual({});
+    expect(
+      worktreeBranchPayload({
+        status: 'open',
+        agentConfig: {},
+        featureBranch: 'ISS-7',
+        runnerVersion: '0.9.3',
+      }),
+    ).toEqual({ worktreeBranch: 'ISS-7' });
   });
 
   // cm:guard the checkout and salvage must be named by ONE function. `salvage.rs#belongs_to_issue` matches a dirty worktree's branch against `issueKey`, so a second spelling would make salvage refuse — "no dirty worktree matches ISS-n" — on a checkout core itself asked for, and the failed attempt's diff would be thrown away. Change the format in `issues/issue-branch.ts` alone and this stays green; change it in one CALLER and it goes red.

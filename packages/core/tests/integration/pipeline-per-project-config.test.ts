@@ -1,18 +1,14 @@
 /**
- * ISS-107 epic acceptance — Per-project pipeline & skill configuration.
+ * What the orchestrator enqueues, driven through real Postgres.
  *
- * Cross-phase integration test that drives a full issue lifecycle through the
- * real orchestrator against real Postgres for three project configurations:
+ * This file walked a nine-rung staged ladder until ISS-897; what it asserts now
+ * is the shape that replaced it — ONE drive job at the entry status, and no job
+ * at any other status the issue passes through. The negative half is the point:
+ * a second job anywhere on the walk means two agents own one issue.
  *
- *   1. Default seed       — every stage uses the bootstrapped `forge-*` skill.
- *   2. Custom skill override — `confirmed` runs a custom skill, others default.
- *   3. Stage disabled     — `developed` is disabled; the issue soft-skips to
- *                            `testing` without a `review` job being created.
- *
- * No real runner is required: jobs are enqueued by the orchestrator and we
- * inspect the `jobs` rows + `activity_log` rows directly. `applyStatusTransition`
- * drives the issue forward one stage at a time, simulating what the runner
- * would do on success.
+ * No real runner is required: jobs are enqueued by the orchestrator and the
+ * `jobs` rows are read directly. `applyStatusTransition` drives the issue
+ * forward one status at a time, simulating what a session would do.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -77,17 +73,13 @@ async function insertGlobalSkill(name: string): Promise<string> {
   return id;
 }
 
-// cm:guard this file's cases assert STAGED behaviour unless they pass `mode: 'autonomous'`; an absent mode resolves autonomous since 2026-09-02, so the fixture has to say staged out loud or both halves test the same driver.
-const STAGED = { pipelineConfig: { mode: 'staged' } };
-
 async function seedProject(
   args: {
     statesOverride?: Record<string, { enabled?: boolean; mode?: 'auto' | 'manual' }>;
-    mode?: 'autonomous';
   } = {},
 ) {
   const owner = await createTestUser(harness.db);
-  const project = await createTestProject(harness.db, owner.id, { agentConfig: STAGED });
+  const project = await createTestProject(harness.db, owner.id);
   await createTestProjectMember(harness.db, {
     userId: owner.id,
     projectId: project.id,
@@ -124,20 +116,8 @@ async function seedProject(
   }
 
   const states = { ...mods.defaultStatesConfig(), ...(args.statesOverride ?? {}) };
-  // cm:guard this UPDATE REPLACES agent_config wholesale, so the `agentConfig` seeded at create time is gone by here — the mode has to be written again, and it has to be written explicitly: an absent one resolves autonomous since 2026-09-02, while the three fixtures below walk the staged ladder to `closed`.
-  const pipelineConfig = {
-    mode: args.mode ?? 'staged',
-    enabled: true,
-    autoTriage: true,
-    autoClarify: true,
-    autoPlan: true,
-    autoCode: true,
-    autoReview: true,
-    autoTest: true,
-    autoFix: true,
-    autoRelease: true,
-    states,
-  };
+  // cm:guard this UPDATE REPLACES agent_config wholesale, so anything seeded at create time is gone by here — `enabled` has to be written again or `considerEnqueue` returns before it reaches dispatch and every case below asserts an empty jobs table for the wrong reason.
+  const pipelineConfig = { enabled: true, states };
   await harness.db.execute(sql`
     UPDATE projects
     SET agent_config = jsonb_build_object('pipelineConfig', ${JSON.stringify(pipelineConfig)}::jsonb)
@@ -325,41 +305,45 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     mods.registerActivitySubscribers(mods.hooks);
   });
 
-  it('fixture 1 — default seed: every stage uses the bootstrapped forge-* skill', async () => {
+  it('enqueues ONE drive job at the entry status, and nothing at any other', async () => {
     const { owner, project } = await seedProject();
     let issue = await insertOpenIssue(project.id, owner.id);
 
-    // `open` → triage (issueCreated path; status stays open until we transition).
     await emitIssueCreated(issue, owner.id);
-    issue = await drive(issue, 'confirmed', owner.id); // → clarify
-    issue = await drive(issue, 'clarified', owner.id); // → plan
-    issue = await drive(issue, 'approved', owner.id); // → code
-    issue = await drive(issue, 'in_progress', owner.id); // human-gated, no job
-    issue = await drive(issue, 'developed', owner.id); // → review
-    issue = await drive(issue, 'testing', owner.id); // → test
-    issue = await drive(issue, 'tested', owner.id); // manual gate, no job
-    issue = await drive(issue, 'released', owner.id); // → release
-    issue = await drive(issue, 'closed', owner.id); // terminal, no job
+    for (const to of ['in_progress', 'released', 'closed'] as const) {
+      issue = await drive(issue, to, owner.id);
+    }
 
     expect(issue.status).toBe('closed');
-
-    const allJobs = await jobsFor(issue.id);
-    const summary = allJobs.map((j) => ({ type: j.type, skillName: j.payload.skillName }));
-    expect(summary).toEqual([
-      { type: 'triage', skillName: 'forge-triage' },
-      { type: 'clarify', skillName: 'forge-clarify' },
-      { type: 'plan', skillName: 'forge-plan' },
-      { type: 'code', skillName: 'forge-code' },
-      { type: 'review', skillName: 'forge-review' },
-      { type: 'test', skillName: 'forge-test' },
-      { type: 'release', skillName: 'forge-release' },
-    ]);
+    expect((await jobsFor(issue.id)).map((j) => ({ type: j.type, skillName: j.payload.skillName })))
+      .toEqual([{ type: 'drive', skillName: 'issue-flow' }]);
   });
 
-  // cm:why ISS-886 — the way out for parks already sitting there: six issues were at `waiting` on autonomous projects on 2026-08-30, and the write-time rewrite does nothing for those, so their exit (a human moving the issue to `open`) is asserted rather than assumed
-  // cm:guard the orchestrator has an explicit guard against re-adding an actor gate on a park EXIT (ISS-163 refused four legitimate resumes and produced no work) — this asserts the autonomous half of that from the outside, so a re-added gate fails here rather than silently freezing every parked issue on five projects.
-  it('a human moving an autonomous park `waiting` → `open` hands the issue back to the driver', async () => {
-    const { owner, project } = await seedProject({ mode: 'autonomous' });
+  // cm:guard the driver skill name reaches the agent as TEXT in the prompt and is never resolved from `skill_registrations` — the fixture registers eight `forge-*` skills precisely so a resolver that started reading them would produce a different skillName here and go red.
+  it('names the plugin skill, not a registered one, however many are registered', async () => {
+    const { owner, project } = await seedProject();
+    const issue = await insertOpenIssue(project.id, owner.id);
+
+    await emitIssueCreated(issue, owner.id);
+
+    const [job] = await jobsFor(issue.id);
+    expect(job?.payload.skillName).toBe('issue-flow');
+  });
+
+  // cm:guard the entry stage gated to a human must enqueue NOTHING. It is the operator's one way to hold an issue before a session starts, and `dispatchAutonomous` is the only place it is honoured — the staged copy of this check went with the lane.
+  it('enqueues nothing when the entry stage is gated to a human', async () => {
+    const { owner, project } = await seedProject({
+      statesOverride: { open: { enabled: true, mode: 'manual' } },
+    });
+    const issue = await insertOpenIssue(project.id, owner.id);
+
+    await emitIssueCreated(issue, owner.id);
+
+    expect(await jobsFor(issue.id)).toEqual([]);
+  });
+
+  it('a human moving a park `waiting` → `open` hands the issue back to the driver', async () => {
+    const { owner, project } = await seedProject();
     const issue = await insertOpenIssue(project.id, owner.id);
     await harness.db.execute(
       sql`UPDATE issues SET status='waiting', waiting_kind='needs_decision' WHERE id=${issue.id}`,
@@ -379,95 +363,5 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
       skillName: j.payload.skillName,
     }));
     expect(summary).toEqual([{ type: 'drive', skillName: 'issue-flow' }]);
-  });
-
-  it('fixture 2 — custom skill override at the plan stage (`clarified`) runs the custom skill there; defaults elsewhere', async () => {
-    const { owner, project } = await seedProject();
-
-    // Swap `clarified`'s registration (the plan stage) to a custom global skill.
-    const customSkillId = await insertGlobalSkill('custom-planner');
-    await harness.db.execute(sql`
-      DELETE FROM skill_registrations
-      WHERE project_id = ${project.id} AND stage = 'clarified'
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO skill_registrations (project_id, skill_id, stage, registered_by)
-      VALUES (${project.id}, ${customSkillId}, 'clarified', ${owner.id})
-    `);
-
-    let issue = await insertOpenIssue(project.id, owner.id);
-    await emitIssueCreated(issue, owner.id);
-    issue = await drive(issue, 'confirmed', owner.id);
-    issue = await drive(issue, 'clarified', owner.id);
-    issue = await drive(issue, 'approved', owner.id);
-    issue = await drive(issue, 'in_progress', owner.id);
-    issue = await drive(issue, 'developed', owner.id);
-    issue = await drive(issue, 'testing', owner.id);
-    issue = await drive(issue, 'tested', owner.id);
-    issue = await drive(issue, 'released', owner.id);
-    issue = await drive(issue, 'closed', owner.id);
-
-    expect(issue.status).toBe('closed');
-
-    const allJobs = await jobsFor(issue.id);
-    const planRows = allJobs.filter((j) => j.type === 'plan');
-    expect(planRows).toHaveLength(1);
-    expect(planRows[0]?.payload.skillName).toBe('custom-planner');
-
-    // Every other stage must still use the bootstrapped default.
-    const nonPlan = allJobs.filter((j) => j.type !== 'plan');
-    const expectedDefaults: Record<string, string> = {
-      triage: 'forge-triage',
-      clarify: 'forge-clarify',
-      code: 'forge-code',
-      review: 'forge-review',
-      test: 'forge-test',
-      release: 'forge-release',
-    };
-    for (const job of nonPlan) {
-      expect(job.payload.skillName).toBe(expectedDefaults[job.type]);
-    }
-  });
-
-  it('fixture 3 — `developed` disabled: issue soft-skips to `testing` with no review job + activity-log entry', async () => {
-    const { owner, project } = await seedProject({
-      statesOverride: { developed: { enabled: false, mode: 'auto' } },
-    });
-
-    let issue = await insertOpenIssue(project.id, owner.id);
-    await emitIssueCreated(issue, owner.id);
-    issue = await drive(issue, 'confirmed', owner.id);
-    issue = await drive(issue, 'clarified', owner.id);
-    issue = await drive(issue, 'approved', owner.id);
-    issue = await drive(issue, 'in_progress', owner.id);
-
-    // The skip is triggered on transition into the disabled stage. After this
-    // call, the issue's status reflects the post-skip landing (testing).
-    issue = await drive(issue, 'developed', owner.id);
-    expect(issue.status).toBe('testing');
-
-    issue = await drive(issue, 'tested', owner.id);
-    issue = await drive(issue, 'released', owner.id);
-    issue = await drive(issue, 'closed', owner.id);
-
-    expect(issue.status).toBe('closed');
-
-    const allJobs = await jobsFor(issue.id);
-    const jobTypes = allJobs.map((j) => j.type);
-
-    // The disabled stage MUST NOT produce a job for its job type.
-    expect(jobTypes).not.toContain('review');
-    // The downstream stage's job IS created — soft-skip lands the issue on it
-    // and the orchestrator dispatches normally from there.
-    expect(jobTypes).toContain('test');
-    expect(allJobs.find((j) => j.type === 'test')?.payload.skillName).toBe('forge-test');
-
-    const skipActivity = (await activityFor(issue.id)).filter(
-      (r) =>
-        r.action === 'issue.statusChanged' &&
-        r.payload.from === 'developed' &&
-        r.payload.to === 'testing',
-    );
-    expect(skipActivity).toHaveLength(1);
   });
 });

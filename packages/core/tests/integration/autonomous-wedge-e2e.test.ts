@@ -23,8 +23,10 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-const AUTONOMOUS = { pipelineConfig: { enabled: true, mode: 'autonomous' } };
-const STAGED = { pipelineConfig: { enabled: true, mode: 'staged' } };
+// cm:guard an EMPTY config is the post-migration shape and must be in this net: ISS-897 stripped `mode` from all 38 rows, and the predicate is `coalesce(..., 'autonomous') <> 'staged'` for exactly that reason.
+const AUTONOMOUS = { pipelineConfig: { enabled: true } };
+// cm:guard the pre-ISS-897 `mode: 'staged'` key a project row may still carry before the migration reaches it. It is the ONLY value that excludes a project now, and the exclusion is what stops this net acting on an issue a staged step still owned.
+const LEGACY_STAGED_ROW = { pipelineConfig: { enabled: true, mode: 'staged' } };
 
 describe('ISS-890 autonomous driver wedge (real Postgres)', () => {
   let harness: TestDatabase;
@@ -125,8 +127,8 @@ describe('ISS-890 autonomous driver wedge (real Postgres)', () => {
     expect(await statusOf(issueId)).toBe('in_progress');
   });
 
-  it('leaves a staged project alone — its own two nets own that issue', async () => {
-    const { issueId } = await seed({ agentConfig: STAGED });
+  it('leaves a row still marked staged alone — the migration has not reached it', async () => {
+    const { issueId } = await seed({ agentConfig: LEGACY_STAGED_ROW });
     const { resetAutonomousWedgesOnce } = await import('../../src/pipeline/reconciler.js');
 
     expect(await resetAutonomousWedgesOnce()).toBe(0);

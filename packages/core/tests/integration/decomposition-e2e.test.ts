@@ -204,8 +204,7 @@ async function bootstrap(): Promise<void> {
   mods.registerDecompositionSubscribers(mods.hooks);
 }
 
-// cm:guard every case here asserts the STAGED cascade (a `draft`/`open` child promoted to `approved`); the autonomous cases overwrite `agent_config` explicitly further down. An absent mode resolves autonomous since 2026-09-02, so without this the two halves of the file would test one driver twice.
-const STAGED = { pipelineConfig: { mode: 'staged' } };
+const PIPELINE_ON = { pipelineConfig: { enabled: true } };
 
 describe('ISS-119 decomposition lifecycle E2E', () => {
   beforeAll(bootstrap, 60_000);
@@ -223,7 +222,7 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
   describe('findDecompositionChildren / findDecompositionParent', () => {
     it('returns children for a kind=decomposes edge and ignores other kinds', async () => {
       const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id, { agentConfig: STAGED });
+      const project = await createTestProject(harness.db, owner.id, { agentConfig: PIPELINE_ON });
       const parent = await insertIssue(project.id, owner.id, { issSeq: 1 });
       const child = await insertIssue(project.id, owner.id, { issSeq: 2 });
       const other = await insertIssue(project.id, owner.id, { issSeq: 3 });
@@ -241,14 +240,14 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
 
     it('findDecompositionParent returns null when child has no inbound decomposes edge', async () => {
       const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id, { agentConfig: STAGED });
+      const project = await createTestProject(harness.db, owner.id, { agentConfig: PIPELINE_ON });
       const loner = await insertIssue(project.id, owner.id);
       expect(await mods.findDecompositionParent(loner)).toBeNull();
     });
 
     it('findDecompositionParent finds the parent via inverse query', async () => {
       const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id, { agentConfig: STAGED });
+      const project = await createTestProject(harness.db, owner.id, { agentConfig: PIPELINE_ON });
       const parent = await insertIssue(project.id, owner.id, { issSeq: 11 });
       const child = await insertIssue(project.id, owner.id, { issSeq: 12 });
       await insertDecomposesEdge(project.id, parent, child);
@@ -260,7 +259,7 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
 
     it('respects valid_until (expired edges are ignored)', async () => {
       const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id, { agentConfig: STAGED });
+      const project = await createTestProject(harness.db, owner.id, { agentConfig: PIPELINE_ON });
       const parent = await insertIssue(project.id, owner.id, { issSeq: 21 });
       const child = await insertIssue(project.id, owner.id, { issSeq: 22 });
       await harness.db.execute(sql`
@@ -280,7 +279,7 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
   describe('pickNextDispatchableJobForProject', () => {
     it('excludes release jobs whose decomposition parent is not released', async () => {
       const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id, { agentConfig: STAGED });
+      const project = await createTestProject(harness.db, owner.id, { agentConfig: PIPELINE_ON });
       const parent = await insertIssue(project.id, owner.id, { status: 'approved', issSeq: 61 });
       const child = await insertIssue(project.id, owner.id, { status: 'tested', issSeq: 62 });
       await insertDecomposesEdge(project.id, parent, child);
@@ -292,7 +291,7 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
 
     it('admits the release job once the parent reaches released', async () => {
       const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id, { agentConfig: STAGED });
+      const project = await createTestProject(harness.db, owner.id, { agentConfig: PIPELINE_ON });
       await seedFreshRunner(project.id, owner.id);
       const parent = await insertIssue(project.id, owner.id, { status: 'released', issSeq: 71 });
       const child = await insertIssue(project.id, owner.id, { status: 'tested', issSeq: 72 });
@@ -314,7 +313,7 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
     // must stay queued until their blocker hits a terminal status.
     it('sibling blocks edges within a decomposition gate downstream triage dispatch', async () => {
       const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id, { agentConfig: STAGED });
+      const project = await createTestProject(harness.db, owner.id, { agentConfig: PIPELINE_ON });
       await seedFreshRunner(project.id, owner.id);
       const parent = await insertIssue(project.id, owner.id, { status: 'approved', issSeq: 200 });
       const sub1 = await insertIssue(project.id, owner.id, { status: 'approved', issSeq: 201 });
@@ -370,46 +369,10 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
 
   // ---------- Hook subscribers ------------------------------------------
 
+  // cm:why ISS-886 — the cascade must promote children to a status the driver dispatches, which is `open` alone (`autonomousStepFor` answers there and nowhere else); `approved` is a status the board renders as `running` while nothing picks it up
   describe('cascade approve', () => {
-    it('flips open children to approved when parent transitions waiting → approved', async () => {
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id, { agentConfig: STAGED });
-      // Children parked at `draft` — CASCADE_APPROVE_FROM_STATUSES is
-      // {draft, on_hold} (decomposition-subscribers.ts). An `open` child is
-      // never promoted by the cascade.
-      const parent = await insertIssue(project.id, owner.id, { status: 'waiting', issSeq: 81 });
-      const childA = await insertIssue(project.id, owner.id, { status: 'draft', issSeq: 82 });
-      const childB = await insertIssue(project.id, owner.id, { status: 'draft', issSeq: 83 });
-      const childC = await insertIssue(project.id, owner.id, { status: 'draft', issSeq: 84 });
-      await insertDecomposesEdge(project.id, parent, childA);
-      await insertDecomposesEdge(project.id, parent, childB);
-      await insertDecomposesEdge(project.id, parent, childC);
-
-      await mods.applyStatusTransition(
-        { id: parent, projectId: project.id, status: 'waiting', reopenCount: 0 },
-        'approved',
-        { id: owner.id, ownerId: owner.id },
-      );
-      // ISS-196 — applyStatusTransition no longer emits `transition` inline; it
-      // writes a pipeline_outbox row via trigger. Drain it so the decomposition
-      // subscriber fires the cascade. (Children flip to approved → their own
-      // outbox rows, but no subscriber acts on a `draft→approved` child here.)
-      await mods.drainOutboxOnce();
-
-      expect(await readIssueStatus(childA)).toBe('approved');
-      expect(await readIssueStatus(childB)).toBe('approved');
-      expect(await readIssueStatus(childC)).toBe('approved');
-    });
-  });
-
-  // cm:why ISS-886 — the cascade must promote children to a status THIS project's driver dispatches; on autonomous that is `open`, while `approved` is a dead status there (`autonomousStepFor` answers for `open` alone) that the board still renders as `running`
-  describe('cascade approve on an autonomous project', () => {
     async function autonomousProject(ownerId: string) {
-      const project = await createTestProject(harness.db, ownerId, { agentConfig: STAGED });
-      await harness.db.execute(
-        sql`UPDATE projects SET agent_config = ${JSON.stringify({ pipelineConfig: { mode: 'autonomous' } })}::jsonb WHERE id = ${project.id}`,
-      );
-      return project;
+      return createTestProject(harness.db, ownerId, { agentConfig: PIPELINE_ON });
     }
 
     it('promotes draft children to `open`, not `approved`, when the parent leaves the gate', async () => {
@@ -469,49 +432,12 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
       expect(await readIssueStatus(child)).toBe('draft');
     });
 
-    // cm:guard the fleet constraint, asserted rather than assumed: ~20 tenants are staged and one project's driver must never change another's vocabulary. A staged parent moved to `open` promotes nothing, and its children still wait for `approved`.
-    it('leaves a STAGED project promoting on `approved` only', async () => {
-      const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id, { agentConfig: STAGED });
-      const openParent = await insertIssue(project.id, owner.id, {
-        status: 'waiting',
-        issSeq: 188,
-      });
-      const openChild = await insertIssue(project.id, owner.id, { status: 'draft', issSeq: 189 });
-      await insertDecomposesEdge(project.id, openParent, openChild);
-      const approvedParent = await insertIssue(project.id, owner.id, {
-        status: 'waiting',
-        issSeq: 190,
-      });
-      const approvedChild = await insertIssue(project.id, owner.id, {
-        status: 'draft',
-        issSeq: 191,
-      });
-      await insertDecomposesEdge(project.id, approvedParent, approvedChild);
-
-      await mods.applyStatusTransition(
-        { id: openParent, projectId: project.id, status: 'waiting', reopenCount: 0 },
-        'open',
-        { id: owner.id, ownerId: owner.id },
-      );
-      await mods.applyStatusTransition(
-        { id: approvedParent, projectId: project.id, status: 'waiting', reopenCount: 0 },
-        'approved',
-        { id: owner.id, ownerId: owner.id },
-      );
-      await mods.drainOutboxOnce();
-
-      expect(await readIssueStatus(openChild)).toBe('draft');
-      expect(await readIssueStatus(openParent)).toBe('open');
-      expect(await readIssueStatus(approvedChild)).toBe('approved');
-      expect(await readIssueStatus(approvedParent)).toBe('approved');
-    });
   });
 
   describe('close cascade', () => {
     it('forces non-closed children to closed when parent → closed', async () => {
       const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id, { agentConfig: STAGED });
+      const project = await createTestProject(harness.db, owner.id, { agentConfig: PIPELINE_ON });
       // Parent starts at `released` — the canonical pre-close status — so the
       // state-machine permits `released → closed` without `{ skip: true }`.
       const parent = await insertIssue(project.id, owner.id, { status: 'released', issSeq: 91 });
@@ -538,7 +464,7 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
   describe('watcher', () => {
     it('posts a comment on the parent when the LAST child reaches tested', async () => {
       const owner = await createTestUser(harness.db);
-      const project = await createTestProject(harness.db, owner.id, { agentConfig: STAGED });
+      const project = await createTestProject(harness.db, owner.id, { agentConfig: PIPELINE_ON });
       const parent = await insertIssue(project.id, owner.id, { status: 'approved', issSeq: 101 });
       const childA = await insertIssue(project.id, owner.id, { status: 'tested', issSeq: 102 });
       const childB = await insertIssue(project.id, owner.id, { status: 'developed', issSeq: 103 });

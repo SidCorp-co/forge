@@ -43,8 +43,10 @@ describe('answer-resume E2E', () => {
     projectId = (await createTestProject(harness.db, owner.id)).id;
   });
 
-  async function setMode(mode: string | null): Promise<void> {
-    const agentConfig = mode === null ? {} : { pipelineConfig: { enabled: true, mode } };
+  // cm:guard `'unreadable'` writes a config the schema REJECTS, which since ISS-897 is the only shape that is not autonomous — `mode` is gone and `isAutonomous` collapsed to `cfg !== null`. Do not spell the negative case as a valid config with an unusual value; that parses, and the test would pass for the wrong reason.
+  async function setMode(mode: 'autonomous' | 'unreadable' | null): Promise<void> {
+    const pipelineConfig = mode === 'unreadable' ? { enabled: 'yes-please' } : { enabled: true };
+    const agentConfig = mode === null ? {} : { pipelineConfig };
     await harness.db.execute(sql`
       UPDATE projects SET agent_config = ${JSON.stringify(agentConfig)}::jsonb
       WHERE id = ${projectId}
@@ -99,8 +101,8 @@ describe('answer-resume E2E', () => {
     expect(await statusOf(id)).toBe('needs_info');
   });
 
-  it('leaves a staged project on needs_info — its next step is dispatched by a button', async () => {
-    await setMode('staged');
+  it('leaves a project whose config does not parse on needs_info', async () => {
+    await setMode('unreadable');
     const id = await insertIssue('needs_info');
 
     await comment(id, 'user');
@@ -108,8 +110,8 @@ describe('answer-resume E2E', () => {
     expect(await statusOf(id)).toBe('needs_info');
   });
 
-  // cm:guard this asserted the OPPOSITE until 2026-09-02, when `mode` still defaulted to staged, and it is kept rather than deleted because it is the only place the default is observable end to end: a project that declared nothing now resumes on a human comment, exactly as one that declared `autonomous` does. If this ever reads `needs_info` again, the default moved and 28 of 31 live projects are not what anyone thinks they are.
-  it('resumes a project that declared no mode, because the default is autonomous', async () => {
+  // cm:guard this asserted the OPPOSITE until 2026-09-02, and it is kept rather than deleted because it is the only place the one-lane default is observable end to end: a project with an EMPTY config resumes on a human comment. If this ever reads `needs_info` again, something has started treating "declared nothing" as "declared another lane".
+  it('resumes a project with an empty config, because there is one lane', async () => {
     await setMode(null);
     const id = await insertIssue('needs_info');
 

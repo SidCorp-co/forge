@@ -31,7 +31,7 @@ export async function readPipelineConfig(projectId: string): Promise<PipelineCon
   return parsed.success ? parsed.data : null;
 }
 
-// cm:guard an unreadable config answers `false`, i.e. STAGED, and that direction is the safe one in both domains this feeds: a staged project keeps the vocabulary it already has, whereas guessing `true` would rewrite parks and cascade children to a status a staged dispatcher never reads.
+// cm:guard an unreadable config answers `false`, and since ISS-897 left one lane that is the WHOLE question this asks — `null` means the project is missing or its stored config did not parse, never that it chose something else. Answering `true` there would rewrite parks and cascade children on a project nobody can see is broken.
 export async function isAutonomousProject(projectId: string): Promise<boolean> {
   return isAutonomous(await readPipelineConfig(projectId));
 }

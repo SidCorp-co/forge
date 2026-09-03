@@ -10,9 +10,8 @@
  * those land, a follow-up issue should add a Playwright pass driving the
  * same fixtures end-to-end.
  *
- * Status-name correction: the issue body uses `states.code.model`, but the
- * schema keys `states` by status name. `code` jobs dispatch at status
- * `approved`, so the override path is `states.approved.model`.
+ * The schema keys `states` by STATUS name, and since ISS-897 the one status a
+ * job dispatches at is `open` — so the override path is `states.open.model`.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -150,7 +149,7 @@ describe('ISS-194 per-state override end-to-end', () => {
       INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
       VALUES (
         ${id}, ${projectId}, ${Math.floor(Math.random() * 1_000_000)},
-        'Issue', 'approved', 'medium', ${ownerId}
+        'Issue', 'open', 'medium', ${ownerId}
       )
     `);
     return id;
@@ -167,10 +166,8 @@ describe('ISS-194 per-state override end-to-end', () => {
       VALUES (${runId}, ${args.projectId}, ${args.issueId}, 'issue', 'running')
     `);
     const id = randomUUID();
-    // `stageStatus: 'approved'` mirrors what the orchestrator stamps at
-    // enqueue time. We bypass the orchestrator and write it directly so the
-    // test stays focused on the resolve → forward → surface contract.
-    const payload = JSON.stringify({ promptString: 'noop', stageStatus: 'approved' });
+    // cm:guard `stageStatus` is stamped here by hand, mirroring `enqueueDriveJob`, so the test stays on the resolve -> forward -> surface contract; drop it and `resolveStageOverrides` returns EMPTY and every assertion below reads a default it never overrode.
+    const payload = JSON.stringify({ promptString: 'noop', stageStatus: 'open' });
     await harness.db.execute(sql`
       INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, payload, created_by)
       VALUES (
@@ -201,15 +198,14 @@ describe('ISS-194 per-state override end-to-end', () => {
   it('forwards `model` + `permissionMode` from config to WS envelope and Inspector', async () => {
     const { ownerId, projectId, token } = await seedOwnerProjectDevice();
 
-    // cm:why mode:'manual' keeps pipeline-config-service's auto-mode check from demanding a registered skill for `approved`
-    // cm:guard the override tier MUST differ from DEFAULT_STAGE_MODELS['approved'] — pick one equal to the default and this test passes even when override forwarding is broken
-    // cm:edge lockstep -> packages/core/src/jobs/stage-overrides.ts — DEFAULT_STAGE_MODELS['approved'] is 'opus'; if it ever becomes 'sonnet', both tests in this file must switch to a different override tier
+    // cm:guard the override tier MUST differ from DEFAULT_STAGE_MODELS['open'] — pick one equal to the default and this test passes even when override forwarding is broken
+    // cm:edge lockstep -> packages/core/src/jobs/stage-overrides.ts — DEFAULT_STAGE_MODELS['open'] is 'sonnet'; if it ever becomes 'opus', both tests in this file must switch to a different override tier
     const patchRes = await patchPipelineConfig(projectId, token, {
       states: {
-        approved: {
+        open: {
           enabled: true,
           mode: 'manual',
-          model: 'sonnet',
+          model: 'opus',
           permissionMode: 'acceptEdits',
         },
       },
@@ -219,10 +215,10 @@ describe('ISS-194 per-state override end-to-end', () => {
     const stored = await readProjectAgentConfig(projectId);
     expect(stored.pipelineConfig).toMatchObject({
       states: {
-        approved: {
+        open: {
           enabled: true,
           mode: 'manual',
-          model: 'sonnet',
+          model: 'opus',
           permissionMode: 'acceptEdits',
         },
       },
@@ -235,12 +231,12 @@ describe('ISS-194 per-state override end-to-end', () => {
     expect(result).toBe('dispatched');
 
     const data = jobAssignedCall();
-    expect(data.model).toBe('sonnet');
+    expect(data.model).toBe('opus');
     expect(data.permissionMode).toBe('acceptEdits');
     expect(data.jobId).toBe(jobId);
     expect(data.projectId).toBe(projectId);
     expect(data.type).toBe('code');
-    expect((data.payload as { stageStatus?: unknown }).stageStatus).toBe('approved');
+    expect((data.payload as { stageStatus?: unknown }).stageStatus).toBe('open');
 
     // Inspector envelope.
     const inspRes = await app.request(`/api/jobs/${jobId}/prompt`, {
@@ -262,9 +258,9 @@ describe('ISS-194 per-state override end-to-end', () => {
     // envelope (the dispatcher does NOT update `jobs.payload`), so the
     // Inspector surfaces it as null — the WS-envelope assertion above is
     // where that override is proven for the Inspector contract.
-    expect(body.resolvedFlags.state).toBe('approved');
-    expect(body.resolvedFlags.model).toBe('sonnet');
-    expect(body.model).toBe('sonnet');
+    expect(body.resolvedFlags.state).toBe('open');
+    expect(body.resolvedFlags.model).toBe('opus');
+    expect(body.model).toBe('opus');
     expect(Object.keys(body.payloadExtras)).not.toContain('model');
     expect(Object.keys(body.payloadExtras)).not.toContain('stageStatus');
   });
@@ -276,10 +272,10 @@ describe('ISS-194 per-state override end-to-end', () => {
     //    actually live before the revert.
     const firstPatch = await patchPipelineConfig(projectId, token, {
       states: {
-        approved: {
+        open: {
           enabled: true,
           mode: 'manual',
-          model: 'sonnet',
+          model: 'opus',
           permissionMode: 'acceptEdits',
         },
       },
@@ -289,18 +285,15 @@ describe('ISS-194 per-state override end-to-end', () => {
     const issueId1 = await insertIssue(projectId, ownerId);
     const jobId1 = await insertCodeJob({ projectId, issueId: issueId1, ownerId });
     expect(await handleDispatch({ jobId: jobId1 })).toBe('dispatched');
-    expect(jobAssignedCall().model).toBe('sonnet');
+    expect(jobAssignedCall().model).toBe('opus');
     // Free the single runner's in-flight slot before the second dispatch.
     await markJobDone(jobId1);
 
-    // 2. Revert the override. `updatePipelineConfig` shallow-merges at the
-    //    `pipelineConfig` level — sending `states.approved` without `model`
-    //    or `permissionMode` replaces the entire `states.approved` entry,
-    //    dropping both keys.
+    // cm:guard the revert works by REPLACEMENT, not by omission: `updatePipelineConfig` shallow-merges at the `pipelineConfig` level, so sending `states.open` without `model` replaces that whole entry and drops the key. Send a narrower patch expecting a per-key merge and the override survives while this reads as reverted.
     roomManager.publish.mockClear();
     const revertPatch = await patchPipelineConfig(projectId, token, {
       states: {
-        approved: {
+        open: {
           enabled: true,
           mode: 'manual',
         },
@@ -312,10 +305,10 @@ describe('ISS-194 per-state override end-to-end', () => {
     const stateAfter = (
       storedAfter.pipelineConfig as
         | {
-            states?: { approved?: Record<string, unknown> };
+            states?: { open?: Record<string, unknown> };
           }
         | undefined
-    )?.states?.approved as Record<string, unknown> | undefined;
+    )?.states?.open as Record<string, unknown> | undefined;
     expect(stateAfter).toBeDefined();
     expect(Object.keys(stateAfter ?? {})).not.toContain('model');
     expect(Object.keys(stateAfter ?? {})).not.toContain('permissionMode');
@@ -329,7 +322,7 @@ describe('ISS-194 per-state override end-to-end', () => {
     // cm:why with the override cleared `model` falls back to DEFAULT_STAGE_MODELS rather than dropping out of the envelope (ISS-535); `permissionMode` has no default policy, so buildOverridesPayload omits it entirely
     expect(data2.model).toBe('opus');
     expect(Object.keys(data2)).not.toContain('permissionMode');
-    expect((data2.payload as { stageStatus?: unknown }).stageStatus).toBe('approved');
+    expect((data2.payload as { stageStatus?: unknown }).stageStatus).toBe('open');
 
     const inspRes = await app.request(`/api/jobs/${jobId2}/prompt`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -344,7 +337,7 @@ describe('ISS-194 per-state override end-to-end', () => {
       };
     };
     // cm:why persistPromptSnapshot writes `model_used` from the RESOLVED default, so the Inspector reports a concrete tier even with no override left
-    expect(body.resolvedFlags.state).toBe('approved');
+    expect(body.resolvedFlags.state).toBe('open');
     expect(body.resolvedFlags.model).toBe('opus');
     expect(body.resolvedFlags.permissionMode).toBeNull();
     expect(body.model).toBe('opus');
