@@ -4,9 +4,10 @@
 // types live in `@forge/contracts` (`Issue`, `Comment`, `ActivityLog`, …) but
 // those derive from Drizzle `$inferSelect` and so type date columns as `Date`,
 // whereas the REST JSON wire format serializes them as ISO strings. The search
-// endpoint also OMITS `pipelineHealth` (only the plain list serializer adds it
-// — see `packages/core/src/issues/search.ts`). So the list row is re-typed
-// locally with string dates + optional `pipelineHealth`, mirroring how
+// endpoint serves `pipelineHealth` only when the caller opts in with
+// `withPipelineHealth=1` (ISS-903 — see `packages/core/src/issues/search.ts`).
+// So the list row is re-typed locally with string dates + optional
+// `pipelineHealth`, mirroring how
 // `features/sessions/types.ts` re-typed the flat `agent_sessions` row.
 
 import {
@@ -68,8 +69,9 @@ export interface IssueFailureInfo {
 /**
  * One issue row from `GET /api/projects/:id/issues/search`. The raw `issues`
  * row plus `displayId` (`ISS-<issSeq>`) and — when `withAgentSessions=1` —
- * `agentSessions[]` + `agentStatus`. `pipelineHealth` is NOT present on the
- * search response, so per-row pipeline stage is derived from `status`.
+ * `agentSessions[]` + `agentStatus`. `pipelineHealth` arrives only under
+ * `withPipelineHealth=1`; without it, per-row pipeline stage is derived from
+ * `status` and a queued-but-undispatched step is invisible (ISS-903).
  */
 export interface IssueRow {
   id: string;
@@ -101,6 +103,9 @@ export interface IssueRow {
   /** ISS-764 — set when a batch release has claimed this issue. Non-null means
    *  the issue is locked into a batch and cannot be selected for a new one. */
   releaseBatchRunId?: string | null;
+  /** ISS-903 — present when the search call opts in with
+   *  `withPipelineHealth=1` (the list and the board both do). */
+  pipelineHealth?: PipelineHealth;
 }
 
 /** Project member row from `GET /api/projects/:projectId/members`. */
@@ -206,7 +211,6 @@ export interface IssueDetail extends IssueRow {
   acceptanceCriteria: string | null;
   labels?: IssueLabel[];
   metadata: Record<string, unknown> | null;
-  pipelineHealth?: PipelineHealth;
 }
 
 /** Why the dispatcher hasn't picked up the issue's next step. Mirrors core
@@ -226,6 +230,15 @@ export type WaitingReason =
 // cm:edge contract -> packages/core/src/db/schema.ts — mirrors `waitingKinds`, the AUTHORED kind an agent or human writes alongside `status='waiting'`; it is never derived, so an absent kind must render the generic copy rather than a guessed one
 export type WaitingCause = "needs_decision" | "needs_resource";
 
+/** ISS-903 — the queued candidate, as core projects it. */
+export interface PipelineHealthQueuedStep {
+  jobId: string;
+  jobType: string;
+  stageStatus: string | null;
+  queuedAt: string;
+  retryAfterAt: string | null;
+}
+
 /** Server-derived pipeline health for one issue. Mirrors core `PipelineHealth`
  *  (`issues/pipeline-health.ts:69-79`); `stage` is the single status→stage
  *  projection (do not re-derive a second mapping). */
@@ -234,6 +247,12 @@ export interface PipelineHealth {
   activeSession?: { id: string; status: "queued" | "running"; skill: string };
   waitingOn?: { reason: WaitingReason; since: string; details: Record<string, unknown> };
   queuedAt?: string;
+  /** ISS-903 — WHAT has not dispatched (`waitingOn` says why). Present whenever
+   *  the issue has a queued job, gated or not; a queued job has no
+   *  `agent_sessions` row, so this is the only signal the live-agent panel and
+   *  the board card have for a step that exists but is not running. */
+  // cm:edge contract -> packages/core/src/issues/pipeline-health-types.ts — this interface is a hand-mirror of core `PipelineHealth`, not an import; a field added there is invisible here until it is added here too
+  queuedStep?: PipelineHealthQueuedStep;
   lastTickAt?: string;
   /** Only set when `stage === "waiting"`. */
   waitingCause?: { kind: WaitingCause };

@@ -43,6 +43,10 @@ export interface KanbanCardProps {
   /** When true, render a small amber "hold" glyph — the issue is on manual
    *  hold so the dispatcher won't pick up new jobs (ISS-386). */
   held?: boolean;
+  /** ISS-903 — why the issue's queued step has not dispatched, in chip-length
+   *  words. Rendered as a hover title on the card so the reason is reachable
+   *  without opening the drawer; the `status` chip is what carries the state. */
+  waitingReason?: string;
   assignee?: { initials: string; hue?: AvatarHue };
   onClick?: () => void;
 }
@@ -56,6 +60,7 @@ export function KanbanCard({
   statusDomain = "issue",
   cost,
   held,
+  waitingReason,
   assignee,
   onClick,
 }: KanbanCardProps) {
@@ -63,7 +68,7 @@ export function KanbanCard({
     <button
       type="button"
       onClick={onClick}
-      aria-label={`Open ${id} — ${title}${held ? " (on manual hold)" : ""}`}
+      aria-label={`Open ${id} — ${title}${held ? " (on manual hold)" : ""}${waitingReason ? ` (waiting: ${waitingReason})` : ""}`}
       className="flex w-full flex-col gap-2.5 rounded-md border border-line bg-surface p-3 text-left shadow-xs transition-colors duration-[120ms] hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
     >
       <div className="flex items-center justify-between gap-2">
@@ -86,7 +91,9 @@ export function KanbanCard({
       </p>
       {/* Real status, visible WITHOUT opening the panel (ISS-436). */}
       <div className="flex items-center justify-between gap-2">
-        <StatusChip status={status} size="sm" domain={statusDomain} label={statusLabel} />
+        <span title={waitingReason}>
+          <StatusChip status={status} size="sm" domain={statusDomain} label={statusLabel} />
+        </span>
         {cost && <Stat icon="dollar">{cost}</Stat>}
       </div>
       <PipelineTracker stage={stage} status={TRACKER_STATUS[status] ?? "queued"} variant="compact" />

@@ -15,8 +15,21 @@ import { TRIGGER_STATUS_BY_JOB_TYPE, WORKING_STATUS_BY_JOB_TYPE } from '../pipel
 import type {
   PipelineHealth,
   PipelineHealthJob,
+  PipelineHealthQueuedStep,
   PipelineHealthRunnerSat,
 } from './pipeline-health-types.js';
+
+/** ISS-903 — the queued candidate as a human surface reads it. Unconditional:
+ *  every queued job has a step identity, whether or not a gate is holding it. */
+export function queuedStepOf(candidate: PipelineHealthJob): PipelineHealthQueuedStep {
+  return {
+    jobId: candidate.id,
+    jobType: candidate.type,
+    stageStatus: candidate.stageStatus ?? null,
+    queuedAt: candidate.queuedAt.toISOString(),
+    retryAfterAt: candidate.retryAfterAt?.toISOString() ?? null,
+  };
+}
 
 /** The `job_held` waitingOn for an issue with a held job, or `null`. */
 export function heldWaitingOn(issueJobs: PipelineHealthJob[]): PipelineHealth['waitingOn'] {

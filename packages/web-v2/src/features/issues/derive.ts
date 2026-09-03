@@ -9,6 +9,7 @@ import {
 	STATUS_KEY_TONE,
 	type StatusKey,
 } from "@/design/status";
+import { gateView } from "./waiting";
 import type {
 	CommentKind,
 	GroupBy,
@@ -25,7 +26,6 @@ import type {
 	PipelineHealth,
 	StepDurationRow,
 	StepHandoffRow,
-	WaitingReason,
 } from "./types";
 import { ISSUE_STATUSES } from "./types";
 
@@ -585,84 +585,6 @@ export function openBlockingRefs(
 		}));
 }
 
-// cm:edge contract -> packages/core/src/jobs/hold.ts — mirrors AUTO_RELEASE_REASONS (`holdResumesItself`); a reason that changes lane there and not here tells the reader "no action needed" about a hold that is in fact waiting for them
-const SELF_RESUMING_HOLD_REASONS = new Set([
-	"all_devices_exhausted",
-	"monthly_budget_exhausted",
-	"verify_unavailable",
-]);
-
-/** Copy for a `job_held` wait, which depends on whether the hold clears itself. */
-// cm:guard only the self-resuming half may say "no action" (RFC 0002) — a held step waiting on a MACHINE must not ask the reader to act, but `retry_rounds_exhausted` and `non_retryable_terminal` never clear on their own, and telling THOSE readers to sit tight is how a dead step outlives everyone's attention
-function heldCopy(holdReason: unknown): { reason: string; who: string } {
-	if (
-		typeof holdReason === "string" &&
-		SELF_RESUMING_HOLD_REASONS.has(holdReason)
-	) {
-		return {
-			reason:
-				"A step is held: it could not run and is waiting for the condition to clear.",
-			who: "No action — it resumes itself, and alerts if the hold outlives the condition.",
-		};
-	}
-	// cm:guard cancel BEFORE moving the issue — a held step occupies the issue-busy gate, so a transition made first cannot produce a replacement step and the issue looks stuck for a second reason
-	return {
-		reason:
-			"A step is held: it could not run, and this hold does not clear on its own.",
-		who: "Fix the cause, then cancel the step — the issue can only move on once it is cancelled.",
-	};
-}
-
-const WAITING_REASON_COPY: Record<
-	WaitingReason,
-	{ reason: string; who: string }
-> = {
-	issue_busy: {
-		reason: "Another job is already active on this issue.",
-		who: "Wait for the active run to finish.",
-	},
-	job_held: heldCopy(null),
-	// cm:guard these two must NOT say "no action" — unlike the capacity waits below, nothing clears them by itself: the run stays paused until someone resumes it and the pool stays empty until a host comes back. That silence is what let ISS-576/ISS-652 sit paused for 3 days and 11 jobs sit behind dead runners for up to 22.
-	run_not_running: {
-		reason:
-			"The step is queued, but its pipeline run is paused or already closed — nothing will dispatch it.",
-		who: "Resume the run (or cancel it and re-open the issue for a fresh one).",
-	},
-	runner_stale: {
-		reason:
-			"No runner is online for this project — every host is offline, stale, or rate-limited.",
-		who: "Bring a runner back (check the Runners tab); the step dispatches on the next tick.",
-	},
-	// cm:guard name the FIXED 60s inter-attempt wait, not a provider hint — `retry.ts` writes `retry_after_at` as `now + RETRY_COOLDOWN_MS` (or 0 on an immediate device failover) and nothing anywhere reads a Retry-After header into it, so copy about a provider quota sends the reader to a dashboard that has nothing to say about this wait
-	retry_cooldown: {
-		reason:
-			"The step failed and is waiting out a 60-second cooldown before its next attempt.",
-		who: "No action — the retry fires itself. If the attempts keep failing, read the step's error rather than waiting.",
-	},
-	// cm:guard this is the one queued reason that means the ISSUE is fine — the step answers a trigger the issue has already left, so the copy must not read as "your issue is blocked". Saying so would send the reader looking for a blocker that moved on by definition, which is the mislabel this reason was added to avoid.
-	stale_trigger: {
-		reason:
-			"A queued step answers a trigger this issue has already moved past.",
-		who: "No action — the step is discarded on the next dispatch sweep and the current stage takes over.",
-	},
-	waiting_on_dep: {
-		reason:
-			"Blocked by a dependency that hasn't merged to the base branch yet.",
-		who: "Finish (and merge) the blocking issue first.",
-	},
-	waiting_on_decomp_children: {
-		reason: "Waiting for its decomposed child issues to merge.",
-		who: "The child issues must land on the base branch first.",
-	},
-	project_full: {
-		reason: "The project's concurrency cap is reached.",
-		who: "No action — dispatches when a slot frees.",
-	},
-	runner_full: {
-		reason: "Every online runner is at capacity.",
-		who: "No action — dispatches when a runner frees.",
-	},
-};
 
 /**
  * Derive the single blocker verdict for an issue, or `null` when it is actively
@@ -737,11 +659,10 @@ export function deriveBlockerState(
 
 	// 5. pipelineHealth capacity / dependency waits.
 	const waitingOn = pipelineHealth?.waitingOn;
-	if (waitingOn && WAITING_REASON_COPY[waitingOn.reason]) {
-		const copy =
-			waitingOn.reason === "job_held"
-				? heldCopy(waitingOn.details?.holdReason)
-				: WAITING_REASON_COPY[waitingOn.reason];
+	// cm:guard do not gate this arm on `WAITING_REASON_COPY[reason]` again — core owns the reason vocabulary and this package hand-mirrors it, so an unrecognised reason used to fall through to the blocking-refs arm and the banner said NOTHING about a gate the server had named
+	const gate = waitingOn ? gateView(waitingOn) : null;
+	if (waitingOn && gate) {
+		const copy = { reason: gate.detail, who: gate.who };
 		const isDep =
 			waitingOn.reason === "waiting_on_dep" ||
 			waitingOn.reason === "waiting_on_decomp_children";
@@ -780,8 +701,9 @@ export function deriveBlockerState(
 			};
 		}
 
+		// cm:guard the banner tone follows `gate.needsAction`, the same field the chip's colour follows — this arm read `info` for every non-dependency gate, so a paused run and an empty runner pool looked exactly as calm as a 60-second retry cooldown on the one screen a human opens to find out why nothing is happening
 		return {
-			tone: "info",
+			tone: gate.needsAction ? "attention" : "info",
 			reason: copy.reason,
 			whoMustAct: copy.who,
 			cta:

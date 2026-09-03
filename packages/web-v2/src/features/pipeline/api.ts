@@ -77,6 +77,8 @@ export const pipelineApi = {
       limit: String(PIPELINE_ISSUES_PAGE_SIZE),
       offset: "0",
       withAgentSessions: "true",
+      // cm:why the gate reason arrives only under this flag, and without it a queued step renders as a running card
+      withPipelineHealth: "1",
       sort: "updatedAt:desc",
     });
     // Hide drafts + closed from the board (matches the issues table default).

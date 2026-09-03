@@ -21,6 +21,7 @@ import {
   buildOriginCondition,
   hydrateCreatorsForIssues,
 } from './creator.js';
+import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
 const coerceArray = <T>(v: T | T[] | undefined): T[] | undefined =>
@@ -67,6 +68,8 @@ const searchQuerySchema = z
     // ISS-700 — opt-in latest-failed-job info per issue (one grouped query,
     // same shape as withCost) to back the row's Failed-badge tooltip.
     withFailureInfo: z.coerce.boolean().optional().default(false),
+    // cm:why opt-in like withCost/withFailureInfo: it costs ~9 batched round trips, and the callers that need it are the board and the issues list, where a queued-but-undispatched issue otherwise renders as actively worked
+    withPipelineHealth: z.coerce.boolean().optional().default(false),
   })
   .strict();
 
@@ -268,6 +271,19 @@ searchRoutes.get(
       serialized = serialized.map((r) => ({
         ...r,
         failureInfo: failMap.get(r.id as string) ?? null,
+      }));
+    }
+
+    // cm:edge contract -> packages/web-v2/src/features/issues/types.ts — web re-types this payload rather than importing it, so a field added to `PipelineHealth` reaches the board and the list only once BOTH sides carry it
+    // cm:guard graft `{ stage }` for every id the map omits, never `undefined` — a row whose health failed to derive must still answer "which stage", or the consumer cannot tell a degraded hydration from an issue with nothing queued
+    if (q.withPipelineHealth && serialized.length > 0) {
+      const healthMap = await safeHydratePipelineHealthForIssues(
+        projectId,
+        serialized.map((r) => r.id as string),
+      );
+      serialized = serialized.map((r) => ({
+        ...r,
+        pipelineHealth: healthMap.get(r.id as string) ?? { stage: r.status },
       }));
     }
 

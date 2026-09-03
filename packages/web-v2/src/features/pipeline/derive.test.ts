@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateStageInsights, groupIssuesByStage, median } from "./derive";
+import { aggregateStageInsights, cardStatus, groupIssuesByStage, median } from "./derive";
 import type { PipelineIssueRow, StepDurationRow } from "./types";
 
 function issue(over: Partial<PipelineIssueRow> & { id: string; status: string }): PipelineIssueRow {
@@ -74,5 +74,83 @@ describe("aggregateStageInsights", () => {
     expect(code?.samples).toBe(3);
     expect(code?.medianSec).toBe(20); // median of [10,20,30]
     expect(code?.cost).toBeCloseTo(0.06, 5);
+  });
+});
+
+describe("cardStatus", () => {
+  const label = (s: string) => `label:${s}`;
+  const issue = (over: Partial<PipelineIssueRow> = {}): PipelineIssueRow =>
+    ({
+      id: "i",
+      projectId: "p",
+      displayId: "ISS-903",
+      title: "t",
+      status: "in_progress",
+      priority: "high",
+      assigneeId: null,
+      agentStatus: null,
+      ...over,
+    }) as PipelineIssueRow;
+  const queuedHealth = (reason?: string) =>
+    ({
+      stage: "in_progress",
+      queuedStep: {
+        jobId: "a872c0b8",
+        jobType: "drive",
+        stageStatus: "open",
+        queuedAt: "2026-09-03T14:43:00.000Z",
+        retryAfterAt: null,
+      },
+      ...(reason
+        ? { waitingOn: { reason, since: "2026-09-03T14:43:00.000Z", details: {} } }
+        : {}),
+    }) as PipelineIssueRow["pipelineHealth"];
+
+  it("lets a queued step outrank the run's own Running", () => {
+    const card = cardStatus(
+      issue({ pipelineHealth: queuedHealth("runner_stale") }),
+      { status: "running" },
+      label as never,
+    );
+    expect(card.status).toBe("waiting");
+    expect(card.label).toBe("No runner online");
+    expect(card.domain).toBe("session");
+    expect(card.waitingReason).toMatch(/No runner is online/);
+  });
+
+  it("says Queued with no gate sentence for a step merely awaiting its turn", () => {
+    const card = cardStatus(
+      issue({ pipelineHealth: queuedHealth() }),
+      { status: "running" },
+      label as never,
+    );
+    expect(card.status).toBe("queued");
+    expect(card.label).toBe("Queued");
+    expect(card.waitingReason).toBe("");
+  });
+
+  it("keeps the run's status when a session is live", () => {
+    const card = cardStatus(
+      issue({ pipelineHealth: queuedHealth("runner_stale"), agentStatus: "running" }),
+      { status: "running" },
+      label as never,
+    );
+    expect(card.status).toBe("running");
+    expect(card.label).toBeUndefined();
+  });
+
+  it("shows the gate for a deferred retry, whose agentStatus reads failed", () => {
+    const card = cardStatus(
+      issue({ pipelineHealth: queuedHealth("runner_stale"), agentStatus: "failed" }),
+      { status: "running" },
+      label as never,
+    );
+    expect(card.label).toBe("No runner online");
+  });
+
+  it("falls back to the issue's own lifecycle label with no run and nothing queued", () => {
+    const card = cardStatus(issue(), undefined, label as never);
+    expect(card.domain).toBe("issue");
+    expect(card.label).toBe("label:in_progress");
   });
 });

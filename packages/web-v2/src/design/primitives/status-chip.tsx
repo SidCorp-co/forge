@@ -16,10 +16,12 @@ export interface StatusChipProps {
   size?: "sm" | "md";
   /** Status vocabulary this chip belongs to. Defaults to `issue`. */
   domain?: StatusDomain;
-  /** Override the chip text with an exact label (e.g. the issue's TRUE
-   *  lifecycle status — "Approved" / "Confirmed" / …) while keeping the bucket
-   *  colour + dot for at-a-glance grouping. Ignored for the `session` domain and
-   *  whenever the live `running · stage` band is showing. ISS-366 D2. */
+  /** Override the chip text with an exact label — the issue's TRUE lifecycle
+   *  status ("Approved" / "Confirmed" / …) in the `issue` domain, or the gate
+   *  holding a queued step ("No runner online") in the `session` one — while
+   *  keeping the bucket colour + dot for at-a-glance grouping. Overridden only
+   *  by the live `running · stage` band. ISS-366 D2, ISS-903. */
+  // cm:guard a session-domain label must be RUN vocabulary — a gate, a step, an execution state — and never an issue lifecycle status: mixing the two is what ISS-366 D2 separated the domains to stop, and honouring `label` here is only sound while that holds
   label?: string;
 }
 
@@ -31,8 +33,7 @@ const SESSION_LABELS: Partial<Record<StatusKey, string>> = {
   zombie: "Stalled",
   paused: "Idle",
   passed: "Verified",
-  // ISS-664 — a finished interactive chat awaiting the owner's reply, distinct
-  // from the generic issue-lifecycle "Waiting" label.
+  // cm:guard "Waiting for me" is the INTERACTIVE-CHAT default (ISS-664) and is a lie for a machine gate — a caller that knows why the run is waiting passes `label`, which now wins over this entry; before ISS-903 it was dropped, so a `retry_cooldown` step whose own copy reads "no action" told the reader to act
   waiting: "Waiting for me",
 };
 
@@ -40,7 +41,7 @@ export function StatusChip({ status, stage, size = "md", domain = "issue", label
   const m = STATUS_META[status] ?? STATUS_META.queued;
   const isRunning = status === "running";
   const isSession = domain === "session";
-  const baseLabel = isSession ? (SESSION_LABELS[status] ?? m.label) : (label ?? m.label);
+  const baseLabel = isSession ? (label ?? SESSION_LABELS[status] ?? m.label) : (label ?? m.label);
   const text = stage && isRunning ? `running · ${stage}` : baseLabel;
   // Session chips always read in mono (execution telemetry); issue chips use the
   // sans label unless they're showing the live `running · stage` band.
