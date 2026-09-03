@@ -1,8 +1,10 @@
 // web-v2 feature module: pipeline — PURE derivations (no React, no fetching).
 // Status → stage / chip / tracker-state mappings, run/issue overlays, and the
 // money/duration formatters used across the kanban, run detail, and ops views.
+import { deriveQueuedStep, hasLiveAgentSession, queuedChipStatus } from "@/features/issues/waiting";
 import { type StageKey, STAGES } from "@/design/stages";
 import type { StatusKey } from "@/design/status";
+import type { IssueStatus } from "@/features/issues/types";
 import type {
   PipelineIssueRow,
   PipelineRunListItem,
@@ -229,3 +231,46 @@ export function aggregateStageInsights(
   });
 }
 
+
+/** Everything a kanban card's status chip needs, from the three signals that
+ *  can claim it: a queued step, the issue's live run, and the issue's own
+ *  lifecycle status. */
+export interface CardStatusView {
+  status: StatusKey;
+  /** Undefined lets `StatusChip` use the run vocabulary's own label. */
+  label: string | undefined;
+  domain: "session" | "issue";
+  /** The gate sentence, for the card's tooltip + aria-label; "" when none. */
+  waitingReason: string;
+}
+
+// cm:guard a queued step OUTRANKS the run's own status — a queued job lives under a `running` pipeline_run, so `runStatusToStatusKey` painted the card "Running" while nothing was running, and a waiting chip merely added beside it would have left the card asserting both (ISS-903)
+export function cardStatus(
+  issue: PipelineIssueRow,
+  run: { status: PipelineRunStatus } | undefined,
+  labelStatus: (s: IssueStatus) => string,
+): CardStatusView {
+  const queued = deriveQueuedStep(issue.pipelineHealth, hasLiveAgentSession(issue.agentStatus));
+  if (queued) {
+    return {
+      status: queuedChipStatus(queued),
+      label: queued.gate?.short ?? "Queued",
+      domain: "session",
+      waitingReason: queued.gate?.detail ?? "",
+    };
+  }
+  if (run) {
+    return {
+      status: runStatusToStatusKey(run.status),
+      label: undefined,
+      domain: "session",
+      waitingReason: "",
+    };
+  }
+  return {
+    status: issueStatusToStatusKey(issue.status),
+    label: labelStatus(issue.status as IssueStatus),
+    domain: "issue",
+    waitingReason: "",
+  };
+}

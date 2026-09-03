@@ -21,19 +21,7 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { formatApiError } from "@/lib/api/error";
 import { useStatusLabeller } from "@/features/issues/vocabulary";
-import type { IssueStatus } from "@/features/issues/types";
-import {
-  formatUsd,
-  groupIssuesByStage,
-  issueStatusToStatusKey,
-  runStatusToStatusKey,
-  runsByIssue,
-} from "../derive";
-import {
-  deriveQueuedStep,
-  hasLiveAgentSession,
-  queuedChipStatus,
-} from "@/features/issues/waiting";
+import { cardStatus, formatUsd, groupIssuesByStage, runsByIssue } from "../derive";
 import { useProjectIssues, useProjectRuns } from "../hooks";
 import type { PipelineIssueRow } from "../types";
 import { RunDetail } from "./run-detail";
@@ -125,37 +113,18 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
             <KanbanColumn key={group.stage} stage={group.stage} count={group.issues.length}>
               {group.issues.map((issue) => {
                 const run = issue.id ? runIndex.get(issue.id) : undefined;
-                // cm:guard a queued step OUTRANKS the run's own status here — a queued job lives under a `running` pipeline_run, so `runStatusToStatusKey` painted the card "Running" while nothing was running, and a waiting chip merely added beside it would have left the card asserting both (ISS-903)
-                const queuedStep = deriveQueuedStep(
-                  issue.pipelineHealth,
-                  hasLiveAgentSession(issue.agentStatus),
-                );
-                // Live run → execution status (session vocabulary). No run →
-                // the issue's TRUE lifecycle label on the chip (ISS-436), not
-                // the collapsed bucket label.
-                const status = queuedStep
-                  ? queuedChipStatus(queuedStep)
-                  : run
-                    ? runStatusToStatusKey(run.status)
-                    : issueStatusToStatusKey(issue.status);
-                const statusLabel = queuedStep
-                  ? (queuedStep.gate?.short ?? "Queued")
-                  : run
-                    ? undefined
-                    : labelStatus(issue.status as IssueStatus);
+                const card = cardStatus(issue, run, labelStatus);
                 return (
                   <KanbanCard
                     key={issue.id}
                     id={issue.displayId}
                     title={issue.title}
                     stage={group.stage}
-                    status={status}
-                    statusLabel={statusLabel}
-                    statusDomain={run || queuedStep ? "session" : "issue"}
+                    status={card.status}
+                    statusLabel={card.label}
+                    statusDomain={card.domain}
                     held={issue.status === "on_hold"}
-                    {...(queuedStep?.gate
-                      ? { waitingReason: queuedStep.gate.detail }
-                      : {})}
+                    {...(card.waitingReason ? { waitingReason: card.waitingReason } : {})}
                     cost={
                       run && run.cost.estimatedCost > 0
                         ? formatUsd(run.cost.estimatedCost)

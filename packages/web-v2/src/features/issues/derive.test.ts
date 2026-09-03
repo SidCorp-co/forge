@@ -627,6 +627,26 @@ describe("deriveBlockerState", () => {
 		).toBeNull();
 	});
 
+	it("tones the gate the way its own who-line reads", () => {
+		const banner = (reason: string) =>
+			deriveBlockerState(
+				blockerIssue({ status: "in_progress" }),
+				{
+					stage: "in_progress",
+					waitingOn: {
+						reason: reason as never,
+						since: "2026-09-03T14:43:00.000Z",
+						details: {},
+					},
+				},
+				undefined,
+			);
+		expect(banner("runner_stale")?.tone).toBe("attention");
+		expect(banner("run_not_running")?.tone).toBe("attention");
+		expect(banner("retry_cooldown")?.tone).toBe("info");
+		expect(banner("project_full")?.tone).toBe("info");
+	});
+
 	it("names a gate whose reason this build has no copy for", () => {
 		const b = deriveBlockerState(
 			blockerIssue({ status: "in_progress" }),
@@ -641,6 +661,9 @@ describe("deriveBlockerState", () => {
 			undefined,
 		);
 		expect(b?.reason).toMatch(/does not recognise/);
+		expect(b?.whoMustAct).toMatch(/pipeline view/);
+		expect(b?.cta.kind).toBe("none");
+		expect(b?.tone).toBe("attention");
 	});
 
 	it("needs_info shows the supplied question and a provide-info action", () => {
