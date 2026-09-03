@@ -17,9 +17,7 @@
 // a non-issue for a release it will never be part of parks it forever.
 
 import type { IssueStatus } from '../db/schema.js';
-import { isAutonomous } from '../pipeline/autonomous-mode.js';
-import { readPipelineConfig } from '../pipeline/autonomous-project.js';
-import { resolveReleaseGateStatus } from '../release-batch/gate.js';
+import { resolveReleaseGate } from '../release-batch/gate.js';
 import type { ActorAgency } from './actor-agency.js';
 
 export interface CloseTargetDecision {
@@ -30,7 +28,8 @@ export interface CloseTargetDecision {
 
 /**
  * Where an agent's `closed` actually lands. Every other target, every human
- * actor, every staged project and the release path itself pass through.
+ * actor, every project with no production and the release path itself pass
+ * through.
  */
 // cm:guard the agency check is what keeps a human's close working: an operator closing an issue by hand is making the shipped claim deliberately and owns it, while an agent has no way to know whether anything was released. It asks `agency`, NOT `actor.type` — this rule is about who is at the keyboard, and a job token is an agent writing as the person who queued it, so a device-ness test would let exactly that caller close unheld.
 export async function resolveAgentCloseTarget(args: {
@@ -44,12 +43,7 @@ export async function resolveAgentCloseTarget(args: {
   if (args.agency !== 'agent') return pass;
   if (args.viaReleasePath) return pass;
 
-  const cfg = await readPipelineConfig(args.projectId);
-
-  // cm:guard staged projects are excluded deliberately — their release job closes the issue with a device actor and no bypass, so holding it there would rewrite the release's own close back to the gate and loop forever
-  if (!isAutonomous(cfg)) return pass;
-
-  const gate = resolveReleaseGateStatus(cfg);
+  const gate = await resolveReleaseGate(args.projectId);
   if (!gate) return pass;
   return { status: gate, held: true };
 }

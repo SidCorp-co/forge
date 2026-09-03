@@ -1,21 +1,19 @@
-// The two status vocabularies a project can be read in.
+// How a status is read on the board.
 //
-// The kernel has one status enum and it is not changing per project: every
-// gate, index and reaper reads `issues.status`. What differs is what a reader
-// should be SHOWN. A staged project walks fifteen statuses because a human
-// approves at several of them. An autonomous project has seven: six because the
-// session owns everything between claim and close, plus `awaiting_release`,
-// because merging to the base branch is not shipping and only the release path
-// may close an issue from there.
+// The kernel has one status enum and it is not changing: every gate, index and
+// reaper reads `issues.status`. What differs is what a reader should be SHOWN.
+// The lane has seven labels — six because the session owns everything between
+// claim and close, plus `awaiting_release`, because merging to the base branch
+// is not shipping and only the release path may close an issue from there.
 //
 // So this is a rendering map, not a second state machine. A label exists here
 // only when some kernel status already enforces its rule — `running` is not a
 // new state, it is what `in_progress` has always meant. The one status the
 // kernel gained for this vocabulary is `dropped`, because closing-without-
 // stamping is a rule nothing else enforced; the gate needed no status of its
-// own because the release path already parks on `tested`.
+// own because the release path already parks on `released`.
 //
-// Design: docs/proposals/agent-driven-pipeline.md (the mode)
+// Design: docs/proposals/agent-driven-pipeline.md
 
 import type { REGISTRY_ISSUE_STATUSES } from "./pipeline-registry.js";
 
@@ -39,8 +37,8 @@ export const LABEL_TO_KERNEL: Record<AutonomousLabel, KernelIssueStatus> = {
 	open: "open",
 	running: "in_progress",
 	needs_human: "needs_info",
-	// cm:edge contract -> packages/core/src/release-batch/gate.ts — the gate resolver returns `tested` as the park status, and that is the ONLY reason this label writes there; a resolver that parks elsewhere leaves the board naming a status the release path never reads
-	awaiting_release: "tested",
+	// cm:edge contract -> packages/core/src/release-batch/gate.ts — the gate resolver returns `released` as the park status, and that is the ONLY reason this label writes there; a resolver that parks elsewhere leaves the board naming a status the release path never reads
+	awaiting_release: "released",
 	done: "closed",
 	dropped: "dropped",
 };
@@ -56,7 +54,7 @@ const KERNEL_TO_LABEL: Record<KernelIssueStatus, AutonomousLabel> = {
 	developed: "running",
 	testing: "running",
 	tested: "awaiting_release",
-	released: "running",
+	released: "awaiting_release",
 	// cm:edge lockstep -> packages/core/src/issues/apply-transition.ts — `reopen` reads as `open` only because the autonomous rewrite lands it there; drop that rewrite and the board shows a queued issue no dispatcher will ever pick up, which is how ISS-141 sat for an hour looking like it was running
 	reopen: "open",
 	waiting: "needs_human",
@@ -71,27 +69,9 @@ export function toAutonomousLabel(status: KernelIssueStatus): AutonomousLabel {
 }
 
 /**
- * How to render this project's issues. `mode` comes from
- * `agentConfig.pipelineConfig.mode`; anything other than `autonomous` renders
- * the kernel status as-is, which is what every existing client already does.
+ * How to render an issue's status. There is one lane and therefore one
+ * vocabulary — a project does not choose it.
  */
-export function renderStatus(
-	status: KernelIssueStatus,
-	mode: string | undefined,
-): string {
-	return mode === "autonomous" ? toAutonomousLabel(status) : status;
-}
-
-/**
- * Read `pipelineConfig.mode` out of a project's untyped `agentConfig`. Anything
- * that is not a string is absent, which renders the kernel vocabulary — the
- * behaviour every client already has.
- */
-// cm:guard absent must mean STAGED, never "unknown": a malformed config that relabelled the board would tell an operator their staged project is running a driver it is not
-export function readPipelineMode(agentConfig: unknown): string | undefined {
-	if (typeof agentConfig !== "object" || agentConfig === null) return undefined;
-	const pipeline = (agentConfig as Record<string, unknown>)["pipelineConfig"];
-	if (typeof pipeline !== "object" || pipeline === null) return undefined;
-	const mode = (pipeline as Record<string, unknown>)["mode"];
-	return typeof mode === "string" ? mode : undefined;
+export function renderStatus(status: KernelIssueStatus): string {
+	return toAutonomousLabel(status);
 }

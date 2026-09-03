@@ -17,8 +17,8 @@ import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { selectRunnerForJob } from '../runners/select.js';
 import { resolveReleaseChannel, resolveReleaseDeviceIds, resolveReleasePlan } from './channel.js';
-import { resolveReleaseGateStatus } from './gate.js';
-import { loadProjectBranchConfig, loadProjectPipelineConfig } from './project-config.js';
+import { resolveReleaseGate } from './gate.js';
+import { loadProjectBranchConfig } from './project-config.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { readLiveCommit, verifyDeployed } from './verify.js';
 
@@ -38,6 +38,17 @@ export class ReleasePoolEmptyError extends Error {
   constructor(public readonly label: string) {
     super('RELEASE_POOL_EMPTY');
     this.name = 'ReleasePoolEmptyError';
+  }
+}
+
+/**
+ * The project has production but its prod binding names no release runner. Rule
+ * 3 of ISS-897: a gate without a designated box is a refusal, never a fallback.
+ */
+export class ReleaseRunnerUndeclaredError extends Error {
+  constructor() {
+    super('RELEASE_RUNNER_UNDECLARED');
+    this.name = 'ReleaseRunnerUndeclaredError';
   }
 }
 
@@ -106,8 +117,7 @@ export async function createReleaseBatch(
 ): Promise<CreateReleaseBatchResult> {
   const { projectId, issueIds, userId } = args;
 
-  const cfg = await loadProjectPipelineConfig(projectId);
-  const gateStatus = resolveReleaseGateStatus(cfg);
+  const gateStatus = await resolveReleaseGate(projectId);
   if (!gateStatus) throw new NoReleaseGateError();
 
   const preflightRows = await db
@@ -130,12 +140,11 @@ export async function createReleaseBatch(
   if (unrecorded.length > 0) throw new ReleaseRecordMissingError(unrecorded);
 
   const plan = await resolveReleasePlan(projectId);
-  // cm:guard an empty pool must REFUSE, never fall back to the fleet: the pool exists because one box holds the production credential, and a release that lands anywhere else fails halfway through with the merge already pushed
-  const allowDeviceIds = plan.releaseRunnerLabel
-    ? await resolveReleaseDeviceIds(projectId, plan.releaseRunnerLabel)
-    : null;
-  if (allowDeviceIds && allowDeviceIds.length === 0) {
-    throw new ReleasePoolEmptyError(plan.releaseRunnerLabel as string);
+  // cm:guard a gated project MUST name its release runner, and an undeclared label refuses here rather than widening to the fleet. The pool exists because one box holds the production credential; `allowDeviceIds: null` means "anyone", and a release that lands on a box without that credential fails halfway through with the merge already pushed. Measured 2026-09-03: 0 of 20 active prod bindings carried `releaseRunnerLabel`, so this refusal is what makes the operator declare one instead of discovering the gap mid-deploy.
+  if (!plan.releaseRunnerLabel) throw new ReleaseRunnerUndeclaredError();
+  const allowDeviceIds = await resolveReleaseDeviceIds(projectId, plan.releaseRunnerLabel);
+  if (allowDeviceIds.length === 0) {
+    throw new ReleasePoolEmptyError(plan.releaseRunnerLabel);
   }
 
   const runner = await selectRunnerForJob({ projectId, requiredCapabilities: {}, allowDeviceIds });

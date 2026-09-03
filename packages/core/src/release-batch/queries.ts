@@ -10,8 +10,8 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, schedules } from '../db/schema.js';
 import { nextRunFor } from '../schedules/cron.js';
 import { resolveReleaseChannel } from './channel.js';
-import { resolveReleaseGateStatus } from './gate.js';
-import { loadProjectBranchConfig, loadProjectPipelineConfig } from './project-config.js';
+import { resolveReleaseGate } from './gate.js';
+import { loadProjectBranchConfig } from './project-config.js';
 
 export interface ReleaseRosterEntry {
   id: string;
@@ -65,8 +65,7 @@ async function nextScheduledCutAt(projectId: string): Promise<string | null> {
  * something a person reconstructs from a notification they may not have read.
  */
 export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoster> {
-  const cfg = await loadProjectPipelineConfig(projectId);
-  const gateStatus = resolveReleaseGateStatus(cfg);
+  const gateStatus = await resolveReleaseGate(projectId);
   const channel = await resolveReleaseChannel(projectId);
   if (!gateStatus) {
     return {

@@ -6,7 +6,6 @@
 import { useParams } from "next/navigation";
 import { ErrorState, ProjectLoader } from "@/design";
 import { PipelineBoard } from "@/features/pipeline/components/pipeline-board";
-import { IssueVocabularyProvider } from "@/features/issues/vocabulary";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 
@@ -44,8 +43,6 @@ export default function ProjectPipelinePage() {
   }
 
   return (
-    <IssueVocabularyProvider projectId={project.id}>
       <PipelineBoard scope={{ projectId: project.id, slug: project.slug }} />
-    </IssueVocabularyProvider>
   );
 }

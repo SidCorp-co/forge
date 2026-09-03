@@ -19,14 +19,14 @@ import { type BulkUpdate, useBulkUpdateIssues } from "../hooks";
 import { ISSUE_PRIORITIES, type IssueRow } from "../types";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "./batch-release-dialog";
 
-// cm:edge naming -> packages/core/src/release-batch/gate.ts — must match resolveReleaseGateStatus's default gate status
-const BATCH_RELEASE_GATE = "tested" as const;
+// cm:edge naming -> packages/core/src/release-batch/gate.ts — must match RELEASE_GATE_STATUS, the one status resolveReleaseGate returns
+const BATCH_RELEASE_GATE = "released" as const;
 
 function canBatchRelease(rows: IssueRow[]): { enabled: boolean; reason?: string } {
   if (rows.length === 0) return { enabled: false };
   const notAtGate = rows.filter((r) => r.status !== BATCH_RELEASE_GATE);
   if (notAtGate.length > 0) {
-    return { enabled: false, reason: `${notAtGate.length} selected issue${notAtGate.length > 1 ? "s are" : " is"} not at the tested gate` };
+    return { enabled: false, reason: `${notAtGate.length} selected issue${notAtGate.length > 1 ? "s are" : " is"} not awaiting release` };
   }
   const claimed = rows.filter((r) => r.releaseBatchRunId != null);
   if (claimed.length > 0) {

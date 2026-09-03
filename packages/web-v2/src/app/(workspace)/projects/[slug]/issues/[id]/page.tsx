@@ -6,7 +6,6 @@
 import { useParams } from "next/navigation";
 import { ErrorState, ProjectLoader } from "@/design";
 import { IssueDetailScreen } from "@/features/issues/components/issue-detail-screen";
-import { IssueVocabularyProvider } from "@/features/issues/vocabulary";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 
@@ -45,8 +44,6 @@ export default function ProjectIssueDetailPage() {
   }
 
   return (
-    <IssueVocabularyProvider projectId={project.id}>
       <IssueDetailScreen projectId={project.id} slug={project.slug} id={id} />
-    </IssueVocabularyProvider>
   );
 }

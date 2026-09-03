@@ -92,13 +92,8 @@ export const statusLabel = (s: IssueStatus): string => STATUS_LABELS[s] ?? s;
  * `agentConfig.pipelineConfig.mode`; anything but `autonomous` is unchanged.
  */
 // cm:edge contract -> packages/contracts/src/issue-vocabulary.ts — the kernel→label map lives there so web, dev and the MCP surface cannot disagree about what `in_progress` is called
-export const statusLabelFor = (
-	s: IssueStatus,
-	mode: string | undefined,
-): string =>
-	mode === "autonomous"
-		? (AUTONOMOUS_STATUS_LABELS[toAutonomousLabel(s)] ?? statusLabel(s))
-		: statusLabel(s);
+export const statusLabelFor = (s: IssueStatus): string =>
+	AUTONOMOUS_STATUS_LABELS[toAutonomousLabel(s)] ?? statusLabel(s);
 export const priorityLabel = (p: IssuePriority): string =>
 	PRIORITY_LABELS[p] ?? p;
 export const complexityLabel = (
