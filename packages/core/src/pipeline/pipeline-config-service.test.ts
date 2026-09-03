@@ -1,12 +1,9 @@
+// Tabular DB mock: each call to `db.select()` consumes one queued response, in
+// the order the service issues them — load the project, read the issues at any
+// stage being disabled, re-read the project for the return value.
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Tabular DB mock: each call to `db.select()` consumes one queued response.
-// The service issues:
-//   1. SELECT projects.agentConfig (load current project)
-//   2. SELECT issues (stagesBeingDisabled — only when disabling stages; skipped here)
-//   3. SELECT skillRegistrations (AUTO_STAGE_NEEDS_SKILL — only when per-state mode='auto')
-//   4. SELECT skillRegistrations (MISSING_SKILL_FOR_ENABLED_STAGE — top-level toggles)
-//   5. SELECT projects.agentConfig (re-read for return value, if validation passes)
 const selectQueue: unknown[][] = [];
 function pushSelect(rows: unknown[]) {
   selectQueue.push(rows);
@@ -34,12 +31,9 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const {
-  PipelineConfigError,
-  updatePipelineConfig,
-  computeMergeStateParkWarning,
-  isBaseBranchStampable,
-} = await import('./pipeline-config-service.js');
+const { PipelineConfigError, updatePipelineConfig } = await import(
+  './pipeline-config-service.js'
+);
 
 beforeEach(() => {
   selectQueue.length = 0;
@@ -48,108 +42,8 @@ beforeEach(() => {
 
 describe('PipelineConfigError', () => {
   it('exposes a stable code union', () => {
-    const err = new PipelineConfigError('MISSING_SKILL_FOR_ENABLED_STAGE', 'msg', {});
-    expect(err.code).toBe('MISSING_SKILL_FOR_ENABLED_STAGE');
-  });
-});
-
-describe('computeMergeStateParkWarning — silent-wedge advisory', () => {
-  it('warns when baseBranch is a manual stage', () => {
-    const w = computeMergeStateParkWarning({
-      enabled: true,
-      mergeStates: { baseBranch: 'tested', productionBranch: 'released' },
-      states: { tested: { mode: 'manual', enabled: true } },
-    } as never);
-    expect(w).toMatch(/manual stage/);
-    expect(w).toMatch(/tested/);
-  });
-
-  it("warns when baseBranch's step auto-toggle is off (e.g. released + autoRelease:false)", () => {
-    const w = computeMergeStateParkWarning({
-      enabled: true,
-      autoRelease: false,
-      mergeStates: { baseBranch: 'released', productionBranch: 'released' },
-      states: {},
-    } as never);
-    expect(w).toMatch(/autoRelease/);
-  });
-
-  it('no warning when baseBranch auto-advances (testing + autoTest on)', () => {
-    expect(
-      computeMergeStateParkWarning({
-        enabled: true,
-        autoTest: true,
-        mergeStates: { baseBranch: 'testing', productionBranch: 'released' },
-        states: {},
-      } as never),
-    ).toBeNull();
-  });
-
-  it('no warning for default released when autoRelease is unset (treated as on)', () => {
-    expect(
-      computeMergeStateParkWarning({
-        enabled: true,
-        mergeStates: { baseBranch: 'released', productionBranch: 'released' },
-        states: {},
-      } as never),
-    ).toBeNull();
-  });
-});
-
-// ISS-639 — blocks-gate `closed` bypass in dispatch-gates.ts must be
-// conditional on this exact predicate: single source of truth shared by the
-// gate (dispatch-time) and the sweeper (park-time).
-describe('isBaseBranchStampable', () => {
-  it('false when baseBranch is a manual stage (mirrors computeMergeStateParkWarning)', () => {
-    expect(
-      isBaseBranchStampable({
-        enabled: true,
-        mergeStates: { baseBranch: 'tested', productionBranch: 'released' },
-        states: { tested: { mode: 'manual', enabled: true } },
-      } as never),
-    ).toBe(false);
-  });
-
-  it("false when baseBranch's step auto-toggle is off", () => {
-    expect(
-      isBaseBranchStampable({
-        enabled: true,
-        autoRelease: false,
-        mergeStates: { baseBranch: 'released', productionBranch: 'released' },
-        states: {},
-      } as never),
-    ).toBe(false);
-  });
-
-  it('false when baseBranch stage is explicitly disabled', () => {
-    expect(
-      isBaseBranchStampable({
-        enabled: true,
-        mergeStates: { baseBranch: 'testing', productionBranch: 'released' },
-        states: { testing: { enabled: false, mode: 'auto' } },
-      } as never),
-    ).toBe(false);
-  });
-
-  it('true for a normal auto-advancing base (testing + autoTest on)', () => {
-    expect(
-      isBaseBranchStampable({
-        enabled: true,
-        autoTest: true,
-        mergeStates: { baseBranch: 'testing', productionBranch: 'released' },
-        states: {},
-      } as never),
-    ).toBe(true);
-  });
-
-  it('true for default released base when unconfigured', () => {
-    expect(
-      isBaseBranchStampable({
-        enabled: true,
-        mergeStates: { baseBranch: 'released', productionBranch: 'released' },
-        states: {},
-      } as never),
-    ).toBe(true);
+    const err = new PipelineConfigError('DEAD_END_CONFIG', 'msg', {});
+    expect(err.code).toBe('DEAD_END_CONFIG');
   });
 });
 

@@ -70,11 +70,9 @@ const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const ACTOR_ID = '33333333-3333-4333-8333-333333333333';
 const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
 
-// cm:guard `undefined` here means "this project's config is EMPTY", which since 2026-09-02 resolves to autonomous — it is no longer a way to spell "staged". A staged case must pass `'staged'`, and the two tests below that read as staged-by-omission were exactly the fleet's own bug in fixture form: 0 of 31 live projects had ever said `staged` either.
-function projectMode(mode: string | undefined) {
-  projectSelectLimit.mockResolvedValueOnce([
-    { agentConfig: mode ? { pipelineConfig: { mode } } : {} },
-  ]);
+// cm:guard an EMPTY config resolves to autonomous, and since ISS-897 removed `mode` there is no value that spells anything else — the only non-autonomous project left is one whose row does not come back at all, which `projectRow(null)` produces. Do not reintroduce a `mode` string here to get the negative case; it would parse to the same thing as the positive one and the test would pass for the wrong reason.
+function projectRow(present: 'yes' | null) {
+  projectSelectLimit.mockResolvedValueOnce(present ? [{ agentConfig: {} }] : []);
 }
 
 function queueUpdate(status: string) {
@@ -96,7 +94,7 @@ beforeEach(() => {
 
 describe('reopen on an autonomous project', () => {
   it('writes `open`, the one status the driver dispatches, instead of `reopen`', async () => {
-    projectMode('autonomous');
+    projectRow('yes');
     queueUpdate('open');
 
     const result = await transitionIssueStatus(
@@ -113,7 +111,7 @@ describe('reopen on an autonomous project', () => {
   });
 
   it('still demands and posts the reopen reason, against `reopen` and not the rewritten target', async () => {
-    projectMode('autonomous');
+    projectRow('yes');
     queueUpdate('open');
 
     await transitionIssueStatus(
@@ -130,7 +128,7 @@ describe('reopen on an autonomous project', () => {
   });
 
   it('refuses a reopen with no reason, exactly as it does on a staged project', async () => {
-    projectMode('autonomous');
+    projectRow('yes');
 
     await expect(
       transitionIssueStatus(
@@ -144,7 +142,7 @@ describe('reopen on an autonomous project', () => {
 
   // cm:guard the counter is the whole quality signal a reopen carries — an issue reopened four times is a pipeline failing at something, and a rewrite that lands on `open` without incrementing makes that indistinguishable from four fresh issues
   it('still increments the reopen counter', async () => {
-    projectMode('autonomous');
+    projectRow('yes');
     queueUpdate('open');
 
     await transitionIssueStatus(
@@ -159,8 +157,8 @@ describe('reopen on an autonomous project', () => {
 });
 
 describe('every other transition is untouched', () => {
-  it('leaves `reopen` alone on a staged project', async () => {
-    projectMode('staged');
+  it('leaves `reopen` alone when the project row cannot be read', async () => {
+    projectRow(null);
     queueUpdate('reopen');
 
     const result = await transitionIssueStatus(
@@ -196,7 +194,7 @@ const WAITING_OPTS = {
 
 describe('waiting on an autonomous project', () => {
   it("writes `needs_info` for an AGENT's park, the one park a human answer restarts", async () => {
-    projectMode('autonomous');
+    projectRow('yes');
     queueUpdate('needs_info');
 
     const result = await transitionIssueStatus(
@@ -213,7 +211,7 @@ describe('waiting on an autonomous project', () => {
 
   // cm:guard the kind is cleared BECAUSE the row no longer says `waiting`, and leaving it set would render a "a human is needed" banner keyed to a status the issue is not in — the exact stale-kind failure the CLEAR arm in apply-transition.ts exists for
   it('clears waitingKind on the rewritten row while still demanding it up front', async () => {
-    projectMode('autonomous');
+    projectRow('yes');
     queueUpdate('needs_info');
 
     await transitionIssueStatus(
@@ -231,7 +229,7 @@ describe('waiting on an autonomous project', () => {
   });
 
   it('refuses an agent `waiting` with no kind, exactly as it does on a staged project', async () => {
-    projectMode('autonomous');
+    projectRow('yes');
 
     await expect(
       transitionIssueStatus(
@@ -246,7 +244,7 @@ describe('waiting on an autonomous project', () => {
 
   // cm:guard a person parking work owns their own resume; rewriting theirs to a comment-wakeable status would take the pause away from the human who chose it
   it("leaves a HUMAN's park at `waiting`", async () => {
-    projectMode('autonomous');
+    projectRow('yes');
     queueUpdate('waiting');
 
     const result = await transitionIssueStatus(
@@ -264,7 +262,7 @@ describe('waiting on an autonomous project', () => {
   });
 
   it("leaves core's decompose review gate at `waiting`", async () => {
-    projectMode('autonomous');
+    projectRow('yes');
     queueUpdate('waiting');
 
     const result = await transitionIssueStatus(
@@ -281,8 +279,8 @@ describe('waiting on an autonomous project', () => {
     expect(result.status).toBe('waiting');
   });
 
-  it('leaves an agent `waiting` alone on a staged project', async () => {
-    projectMode('staged');
+  it('leaves an agent `waiting` alone when the project row cannot be read', async () => {
+    projectRow(null);
     queueUpdate('waiting');
 
     const result = await transitionIssueStatus(
@@ -301,7 +299,7 @@ describe('waiting on an autonomous project', () => {
 
   // cm:guard `on_hold` is a human's deliberate pause and the ISS-411 operator cancel writes it with a DEVICE actor — rewriting it here would undo the authoritative cancel, so this asserts the rewrite stops at `waiting`
   it('leaves `on_hold` alone even from a device actor', async () => {
-    projectMode('autonomous');
+    projectRow('yes');
     queueUpdate('on_hold');
 
     const result = await transitionIssueStatus(

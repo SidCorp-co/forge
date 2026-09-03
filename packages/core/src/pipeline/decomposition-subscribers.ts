@@ -32,7 +32,6 @@ import { applyStatusTransition } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { AUTONOMOUS_ENTRY_STATUS } from './autonomous-mode.js';
-import { isAutonomousProject } from './autonomous-project.js';
 import {
   allChildrenReady,
   DECOMP_CHILD_READY_STATUSES,
@@ -96,13 +95,13 @@ const CASCADE_APPROVE_PARENT_FROM: ReadonlySet<IssueStatus> = new Set([
  * dispatchable by the driver its project actually runs.
  */
 // cm:guard on autonomous this MUST be the driver's entry status, never `approved` — `autonomousStepFor` answers for `open` and nothing else, so children cascaded to `approved` are queued for a driver that will never look at them while the board renders them `running` (packages/contracts/src/issue-vocabulary.ts maps approved -> running). Measured 2026-08-30: 8 children across forge-dev ISS-576 and kinetrak ISS-4 sat in exactly that state, one set for 11 days.
-function cascadeTargetStatus(autonomous: boolean): IssueStatus {
-  return autonomous ? AUTONOMOUS_ENTRY_STATUS : 'approved';
+function cascadeTargetStatus(): IssueStatus {
+  return AUTONOMOUS_ENTRY_STATUS;
 }
 
 // cm:guard an autonomous project accepts `approved` as the approval gesture TOO, and dropping that arm reopens the stall from the other side: the guide told humans for months to move the parent `waiting -> approved`, so a reader with a stale copy writes a status their own board cannot render honestly. The arm below follows such a parent through to `open` rather than leaving it there, which is the whole requirement — no path may end on a status nothing picks up.
-function cascadeFires(to: IssueStatus, autonomous: boolean): boolean {
-  return autonomous ? to === AUTONOMOUS_ENTRY_STATUS || to === 'approved' : to === 'approved';
+function cascadeFires(to: IssueStatus): boolean {
+  return to === AUTONOMOUS_ENTRY_STATUS || to === 'approved';
 }
 
 // cm:guard the mode read sits AFTER the two cheap checks and the children query, and must stay there — this handler runs on EVERY status change in the system, and hoisting a `projects` select above them puts one extra query on every transition of every project to answer a question only a decompose parent's approval ever asks.
@@ -111,8 +110,7 @@ async function handleCascadeApprove(payload: HookPayloads['transition']): Promis
   if (payload.to !== 'approved' && payload.to !== AUTONOMOUS_ENTRY_STATUS) return;
   const children = await findDecompositionChildren(payload.issueId);
   if (children.length === 0) return;
-  const autonomous = await isAutonomousProject(payload.projectId);
-  if (!cascadeFires(payload.to, autonomous)) return;
+  if (!cascadeFires(payload.to)) return;
   const device = await resolveDeviceForProject(payload.projectId);
   if (!device) {
     logger.warn(
@@ -122,7 +120,7 @@ async function handleCascadeApprove(payload: HookPayloads['transition']): Promis
     return;
   }
 
-  const target = cascadeTargetStatus(autonomous);
+  const target = cascadeTargetStatus();
   let cascaded = 0;
   for (const child of children) {
     if (!CASCADE_APPROVE_FROM_STATUSES.has(child.status)) continue;
@@ -147,7 +145,7 @@ async function handleCascadeApprove(payload: HookPayloads['transition']): Promis
     }
   }
 
-  await followParentToEntryStatus(payload, autonomous, device);
+  await followParentToEntryStatus(payload, device);
 
   if (isSentryEnabled()) {
     Sentry.addBreadcrumb({
@@ -165,7 +163,7 @@ async function handleCascadeApprove(payload: HookPayloads['transition']): Promis
 }
 
 /**
- * An autonomous parent approved onto `approved` is moved on to the driver's
+ * A parent approved onto `approved` is moved on to the driver's
  * entry status. Its drive job is then held by `decomposeChildrenPending` until
  * every child has merged, so this dispatches nothing early — it only stops the
  * parent resting where nothing would ever pick it up.
@@ -173,10 +171,9 @@ async function handleCascadeApprove(payload: HookPayloads['transition']): Promis
 // cm:guard re-entry is bounded by `CASCADE_APPROVE_PARENT_FROM`, which does NOT contain `approved` — this write emits its own `transition`, and the day `approved` joins that set this recurses until the transition guard rejects a NO_OP
 async function followParentToEntryStatus(
   payload: HookPayloads['transition'],
-  autonomous: boolean,
   device: DeviceLite,
 ): Promise<void> {
-  if (!autonomous || payload.to !== 'approved') return;
+  if (payload.to !== 'approved') return;
   try {
     await applyStatusTransition(
       {

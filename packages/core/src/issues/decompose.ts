@@ -35,31 +35,13 @@ import {
 } from '../git/branches.js';
 import { logger } from '../logger.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
-import { isAutonomousProject } from '../pipeline/autonomous-project.js';
 import { hooks } from '../pipeline/hooks.js';
 import type { ActorAgency } from './actor-agency.js';
 import { parkParentAtReviewGate } from './decompose-review-gate.js';
 
 const MAX_BRANCH_SUFFIX = 10;
-// Plan (the step that decides to decompose) runs at `clarified`; `confirmed`
-// is tolerated for manual decompose before clarify, `waiting` for re-splits
-// from the review gate.
-const STAGED_PARENT_STATUSES: ReadonlySet<IssueStatus> = new Set([
-  'confirmed',
-  'clarified',
-  'waiting',
-]);
-
-// cm:guard the two sets are disjoint on purpose and MUST stay per-mode rather than merged into one permissive set — an autonomous project has no `confirmed`/`clarified`, and a staged project that accepted `in_progress` would let a step decompose an issue mid-run, which is neither mode's contract. The staged half is frozen: ISS-886 widened decompose to autonomous, and one project's driver must never change another's vocabulary.
-const AUTONOMOUS_PARENT_STATUSES: ReadonlySet<IssueStatus> = new Set([
-  'open',
-  'in_progress',
-  'waiting',
-]);
-
-function allowedParentStatuses(autonomous: boolean): ReadonlySet<IssueStatus> {
-  return autonomous ? AUTONOMOUS_PARENT_STATUSES : STAGED_PARENT_STATUSES;
-}
+// cm:guard `in_progress` is here because the driver owns the whole issue and decides mid-run that it is two; `waiting` is here for a re-split from the review gate. The staged half of this — a separate `confirmed`/`clarified` set chosen by mode — went with the lane in ISS-897. Do not widen this to every status: a parent decomposed from a terminal one has children nothing will ever promote.
+const PARENT_STATUSES: ReadonlySet<IssueStatus> = new Set(['open', 'in_progress', 'waiting']);
 
 export interface DecomposeChildSpec {
   title?: string | undefined;
@@ -174,8 +156,7 @@ export async function decomposeParent(
   const existingBranch = pickBranch(preParent.metadata?.branchConfig?.baseBranch ?? null);
   const parentAlreadyDecomposed = existingBranch != null;
 
-  const autonomous = await isAutonomousProject(preParent.projectId);
-  const allowed = allowedParentStatuses(autonomous);
+  const allowed = PARENT_STATUSES;
   if (!parentAlreadyDecomposed && !allowed.has(preParent.status)) {
     throw new DecomposeError(
       'BAD_REQUEST',
@@ -469,7 +450,6 @@ export async function decomposeParent(
     fromStatus: preParent.status,
     createdEdges: result.createdEdges,
     skip: parentAlreadyDecomposed || preParent.status === 'waiting',
-    autonomous,
   });
 
   return {

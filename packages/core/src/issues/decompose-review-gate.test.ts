@@ -77,19 +77,19 @@ describe('parkParentAtReviewGate', () => {
 
     const opts = optsOfLastCall();
     expect(opts.waitingKind).toBe('needs_decision');
-    expect(opts.transitionReason).toBe(reviewGateReason(3, true));
+    expect(opts.transitionReason).toBe(reviewGateReason(3));
     expect(String(opts.transitionReason).length).toBeGreaterThan(0);
   });
 
-  it('parks from whatever status the parent actually held, per mode', async () => {
+  it('parks from whatever status the parent actually held', async () => {
     projectExists();
 
-    await parkParentAtReviewGate({ ...BASE, fromStatus: 'clarified', autonomous: false });
+    await parkParentAtReviewGate({ ...BASE, fromStatus: 'in_progress' });
 
     expect(applyStatusTransitionMock.mock.calls[0]?.[0]).toMatchObject({
       id: PARENT_ID,
       projectId: PROJECT_ID,
-      status: 'clarified',
+      status: 'in_progress',
     });
   });
 
@@ -130,23 +130,17 @@ describe('parkParentAtReviewGate', () => {
 });
 
 describe('reviewGateReason', () => {
-  it('names `open` on an autonomous project — the board has no `approved` to offer', () => {
-    const text = reviewGateReason(4, true);
+  // cm:guard the text must name `open` and nothing else. `approved` was the staged half of this and it is gone, but the cascade still FIRES on `approved` for a reader working from a stale guide — telling a new reader to write it would send them to a status their board cannot render.
+  it('names `open`, the one status the cascade promotes from', () => {
+    const text = reviewGateReason(4);
 
     expect(text).toContain('`open`');
     expect(text).not.toContain('`approved`');
     expect(text).toContain('4 child issues');
   });
 
-  it('names `approved` on a staged project, unchanged', () => {
-    const text = reviewGateReason(4, false);
-
-    expect(text).toContain('`approved`');
-    expect(text).not.toContain('`open`');
-  });
-
   it('singularises a one-child split', () => {
-    expect(reviewGateReason(1, true)).toContain('1 child issue.');
-    expect(reviewGateReason(2, true)).toContain('2 child issues');
+    expect(reviewGateReason(1)).toContain('1 child issue.');
+    expect(reviewGateReason(2)).toContain('2 child issues');
   });
 });

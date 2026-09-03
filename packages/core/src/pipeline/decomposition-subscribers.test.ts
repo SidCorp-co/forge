@@ -40,12 +40,12 @@ const dbInsert = vi.fn(() => ({ values: vi.fn().mockResolvedValue([]) }));
 const dbSelect = vi.fn();
 
 function installDefaultDbSelect(): void {
-  // cm:guard ONE generic chain answers every select in this file, `isAutonomousProject`'s config read included — so the row must carry `agentConfig`, and carry it `staged` OUT LOUD. A row without the column parses as an empty config, which since 2026-09-02 resolves AUTONOMOUS, and every cascade case below asserts the staged target (`approved`). A test needing a different sequence overrides with mockImplementationOnce BEFORE the bus emit.
+  // cm:guard ONE generic chain answers every select in this file. A test needing a different sequence overrides with mockImplementationOnce BEFORE the bus emit.
   dbSelect.mockImplementation(() => ({
     from: () => ({
       where: () => ({
         limit: async () => [
-          { createdBy: 'owner-1', agentConfig: { pipelineConfig: { mode: 'staged' } } },
+          { createdBy: 'owner-1', agentConfig: {} },
         ],
       }),
     }),
@@ -89,7 +89,7 @@ beforeEach(() => {
 });
 
 describe('cascade approve', () => {
-  it('flips draft children to approved when parent transitions waiting → approved', async () => {
+  it('flips draft children to the entry status when the parent is approved', async () => {
     findDecompositionChildren.mockResolvedValueOnce([
       { id: CHILD_A, status: 'draft', projectId: PROJECT_ID },
       { id: CHILD_B, status: 'draft', projectId: PROJECT_ID },
@@ -105,18 +105,18 @@ describe('cascade approve', () => {
       projectId: PROJECT_ID,
       actor: { type: 'device', id: DEVICE_ID, agency: 'agent' },
       from: 'waiting',
-      to: 'approved',
+      to: 'open',
       reopenCount: 0,
     });
 
     expect(applyStatusTransition).toHaveBeenCalledTimes(3);
     for (const call of applyStatusTransition.mock.calls) {
-      expect(call[1]).toBe('approved');
+      expect(call[1]).toBe('open');
       expect(call[3]).toEqual({ skip: true });
     }
   });
 
-  it('cascades a parked draft child to approved (ISS-393: no manualHold clearing)', async () => {
+  it('cascades a parked draft child to the entry status (ISS-393: no manualHold clearing)', async () => {
     findDecompositionChildren.mockResolvedValueOnce([
       { id: CHILD_A, status: 'draft', projectId: PROJECT_ID },
     ]);
@@ -129,15 +129,15 @@ describe('cascade approve', () => {
       projectId: PROJECT_ID,
       actor: { type: 'device', id: DEVICE_ID, agency: 'agent' },
       from: 'waiting',
-      to: 'approved',
+      to: 'open',
       reopenCount: 0,
     });
 
     expect(applyStatusTransition).toHaveBeenCalledTimes(1);
-    expect(applyStatusTransition.mock.calls[0]?.[1]).toBe('approved');
+    expect(applyStatusTransition.mock.calls[0]?.[1]).toBe('open');
   });
 
-  it('does nothing for transitions that do not enter approved', async () => {
+  it('does nothing for transitions that are neither of the two approval gestures', async () => {
     findDecompositionChildren.mockResolvedValue([]);
     findDecompositionParent.mockResolvedValue(null);
 
@@ -154,7 +154,7 @@ describe('cascade approve', () => {
     expect(applyStatusTransition).not.toHaveBeenCalled();
   });
 
-  it('cascades on_hold children (skill-created) when parent enters approved from on_hold (drift-tolerant)', async () => {
+  it('cascades on_hold children (skill-created) when the parent is approved from on_hold (drift-tolerant)', async () => {
     findDecompositionChildren.mockResolvedValueOnce([
       { id: CHILD_A, status: 'on_hold', projectId: PROJECT_ID },
     ]);
@@ -167,7 +167,7 @@ describe('cascade approve', () => {
       projectId: PROJECT_ID,
       actor: { type: 'device', id: DEVICE_ID, agency: 'agent' },
       from: 'on_hold',
-      to: 'approved',
+      to: 'open',
       reopenCount: 0,
     });
 
@@ -189,7 +189,7 @@ describe('cascade approve', () => {
       projectId: PROJECT_ID,
       actor: { type: 'device', id: DEVICE_ID, agency: 'agent' },
       from: 'waiting',
-      to: 'approved',
+      to: 'open',
       reopenCount: 0,
     });
 
@@ -197,15 +197,31 @@ describe('cascade approve', () => {
     expect(applyStatusTransition.mock.calls[0]?.[0]?.id).toBe(CHILD_B);
   });
 
-  // ISS-130 regression guard: a child at `open` must NOT be cascaded — only
-  // `draft`/`on_hold` are parking statuses. If decomposition ever lands a child at
-  // `open` again (the original bug), forge-triage would have already grabbed
-  // it before the cascade could fire; even if the cascade fires first, the
-  // filter must reject `open` so we never silently double-approve an issue
-  // that the orchestrator was about to triage.
+  // cm:guard ISS-130 — only `draft` and `on_hold` are parking statuses, and `open` must stay out of the filter: a child already at `open` has been handed to the driver, so cascading it again re-dispatches work in flight.
   it('does NOT cascade children stuck at open (filter is draft-only)', async () => {
     findDecompositionChildren.mockResolvedValueOnce([
       { id: CHILD_A, status: 'open', projectId: PROJECT_ID },
+    ]);
+    findDecompositionParent.mockResolvedValue(null);
+    findDecompositionChildren.mockResolvedValue([]);
+
+    const bus = makeBus();
+    await bus.emit('transition', {
+      issueId: PARENT_ID,
+      projectId: PROJECT_ID,
+      actor: { type: 'device', id: DEVICE_ID, agency: 'agent' },
+      from: 'waiting',
+      to: 'open',
+      reopenCount: 0,
+    });
+
+    expect(applyStatusTransition).not.toHaveBeenCalled();
+  });
+
+  // cm:guard `approved` must keep firing the cascade AND must not leave the parent there. It is not a status this lane dispatches at, so a parent parked on it is queued for nobody while the board renders it running — the ISS-886 stall. A reader working from a stale guide still writes `approved`, which is exactly why the arm survives the lane it came from.
+  it('follows a parent approved onto `approved` through to the entry status', async () => {
+    findDecompositionChildren.mockResolvedValueOnce([
+      { id: CHILD_A, status: 'draft', projectId: PROJECT_ID },
     ]);
     findDecompositionParent.mockResolvedValue(null);
     findDecompositionChildren.mockResolvedValue([]);
@@ -220,7 +236,9 @@ describe('cascade approve', () => {
       reopenCount: 0,
     });
 
-    expect(applyStatusTransition).not.toHaveBeenCalled();
+    const targets = applyStatusTransition.mock.calls.map((c) => [c[0]?.id, c[1]]);
+    expect(targets).toContainEqual([CHILD_A, 'open']);
+    expect(targets).toContainEqual([PARENT_ID, 'open']);
   });
 });
 

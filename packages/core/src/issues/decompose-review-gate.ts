@@ -20,7 +20,6 @@ export interface ReviewGateArgs {
   createdEdges: number;
   /** Already decomposed once, or already sitting at the gate. */
   skip: boolean;
-  autonomous: boolean;
 }
 
 /**
@@ -50,7 +49,7 @@ export async function parkParentAtReviewGate(args: ReviewGateArgs): Promise<void
       { id: project.createdBy, ownerId: project.createdBy },
       {
         waitingKind: 'needs_decision',
-        transitionReason: reviewGateReason(args.createdEdges, args.autonomous),
+        transitionReason: reviewGateReason(args.createdEdges),
         viaDecomposeGate: true,
       },
     );
@@ -62,9 +61,9 @@ export async function parkParentAtReviewGate(args: ReviewGateArgs): Promise<void
   }
 }
 
-// cm:edge contract -> packages/core/src/pipeline/decomposition-subscribers.ts — this text tells the human which status to write, and the cascade fires on that status ONLY. `approved` is absent from the autonomous board's vocabulary (packages/contracts/src/issue-vocabulary.ts has no LABEL_TO_KERNEL entry for it), so naming it on an autonomous project sends the reader to a transition their UI cannot offer — the stall ISS-886 was filed for.
-export function reviewGateReason(createdEdges: number, autonomous: boolean): string {
+// cm:edge contract -> packages/core/src/pipeline/decomposition-subscribers.ts — this text tells the human which status to write, and the cascade fires on that status ONLY. Naming any other one sends the reader to a transition that promotes nothing, which is the ISS-886 stall.
+export function reviewGateReason(createdEdges: number): string {
   const plural = createdEdges === 1 ? '' : 's';
-  const target = autonomous ? '`open`' : '`approved`';
+  const target = '`open`';
   return `Decomposed into ${createdEdges} child issue${plural}. Review the split, then move this parent to ${target} to promote every child from \`draft\` to ${target}. The parent's own integration work runs LAST, after every child's code has merged.`;
 }

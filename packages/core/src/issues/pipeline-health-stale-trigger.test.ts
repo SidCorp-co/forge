@@ -34,7 +34,6 @@ function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
     runningIssueIds: new Set(),
     runningIssueCount: 0,
     cap: 5,
-    baseStampable: true,
     runnerInFlight: new Map(),
     runnerPool: { total: 1, withCapacity: 1 },
     lastTickAt: null,

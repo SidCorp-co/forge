@@ -73,7 +73,7 @@ const state: FakeState = {
     productionBranch: 'main',
     repoPath: '/tmp/repo',
     // cm:guard say `staged` OUT LOUD — every case below that does not override this reads the staged parent set (`confirmed`/`clarified`), and since 2026-09-02 an empty config resolves autonomous, so omitting it silently moved the whole file onto the other mode's vocabulary
-    agentConfig: { pipelineConfig: { mode: 'staged' } },
+    agentConfig: {},
   },
   edges: [],
   activity: [],
@@ -301,7 +301,7 @@ function resetState() {
     baseBranch: 'main',
     productionBranch: 'main',
     repoPath: '/tmp/repo',
-    agentConfig: { pipelineConfig: { mode: 'staged' } },
+    agentConfig: {},
   };
 }
 
@@ -311,7 +311,7 @@ function seedParent(overrides: Partial<FakeIssue> = {}): FakeIssue {
     projectId: PROJECT_ID,
     issSeq: 7,
     title: 'PR-D parent epic',
-    status: 'confirmed',
+    status: 'open',
     priority: 'medium',
     category: 'core',
     description: null,
@@ -401,16 +401,17 @@ describe('decomposeParent — branch-name conflict resolution', () => {
 });
 
 describe('decomposeParent — parent status guard', () => {
-  it('rejects when parent status is not confirmed or waiting and parent has no prior decomposition', async () => {
-    seedParent({ status: 'in_progress' });
-    await expect(
-      decomposeParent(PARENT_ID, [{ title: 'Child A' }], { userId: USER_ID, agency: 'human' }),
-    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+  // cm:guard the set is NOT every status. A parent decomposed from a terminal or pre-entry status has children the cascade never promotes — `decomposition-subscribers.ts` fires on `open`/`approved` and nothing else — so widening this here strands the whole split silently.
+  it('refuses a parent at a status the cascade could never promote from', async () => {
+    for (const status of ['confirmed', 'closed', 'draft'] as const) {
+      seedParent({ status });
+      await expect(
+        decomposeParent(PARENT_ID, [{ title: 'Child A' }], { userId: USER_ID, agency: 'human' }),
+      ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    }
   });
 
-  // cm:why ISS-886 — an autonomous project never holds `confirmed`/`clarified`, so the staged set refused every parent its driver could present and decompose was unreachable in that mode
-  it('accepts an autonomous parent at the statuses its driver actually holds', async () => {
-    state.project.agentConfig = { pipelineConfig: { mode: 'autonomous' } };
+  it('accepts a parent at the statuses its driver actually holds', async () => {
     for (const status of ['open', 'in_progress'] as const) {
       seedParent({ status });
       const out = await decomposeParent(PARENT_ID, [{ title: `Child ${status}` }], {
@@ -421,18 +422,7 @@ describe('decomposeParent — parent status guard', () => {
     }
   });
 
-  // cm:guard the two sets are per-mode, not a union: ~20 tenants are staged, and admitting `in_progress` there would let a step decompose an issue mid-run. This is the same fixture as the reject test above with only the mode flipped, so a merged set fails exactly one of the pair.
-  it('still refuses those same statuses on a staged project', async () => {
-    for (const status of ['open', 'in_progress'] as const) {
-      seedParent({ status });
-      await expect(
-        decomposeParent(PARENT_ID, [{ title: 'Child A' }], { userId: USER_ID, agency: 'human' }),
-      ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
-    }
-  });
-
   it('names the statuses THIS project accepts when it refuses', async () => {
-    state.project.agentConfig = { pipelineConfig: { mode: 'autonomous' } };
     seedParent({ status: 'confirmed' });
     await expect(
       decomposeParent(PARENT_ID, [{ title: 'Child A' }], { userId: USER_ID, agency: 'human' }),

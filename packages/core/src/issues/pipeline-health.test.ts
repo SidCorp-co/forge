@@ -39,7 +39,6 @@ function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
     runningIssueIds: new Set(),
     runningIssueCount: 0,
     cap: 5,
-    baseStampable: true,
     runnerInFlight: new Map(),
     runnerPool: { total: 1, withCapacity: 1 },
     lastTickAt: null,
@@ -188,7 +187,6 @@ describe('classifyPipelineHealthForIssue', () => {
   it('honors the closed bypass for an unstampable base (manual merge projects)', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({
-        baseStampable: false,
         jobs: [job()],
         deps: [
           { fromIssueId: 'iss-blocker', kind: 'blocks', fromStatus: 'closed', fromMergedAt: null },
