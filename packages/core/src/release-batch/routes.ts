@@ -24,6 +24,7 @@ import {
   loadReleaseRoster,
   NoReleaseGateError,
   NoRunnerOnlineError,
+  ReleaseBranchesUndeclaredError,
   ReleaseNotVerifiedError,
   ReleasePoolEmptyError,
   ReleaseRecordMissingError,
@@ -75,6 +76,12 @@ releaseBatchRoutes.post(
     } catch (err) {
       if (err instanceof NoReleaseGateError) {
         throw conflict('NO_RELEASE_GATE', 'This project has no release gate configured');
+      }
+      if (err instanceof ReleaseBranchesUndeclaredError) {
+        throw conflict(
+          'RELEASE_BRANCHES_UNDECLARED',
+          'This project declares no baseBranch, so there is nothing a release could promote from',
+        );
       }
       if (err instanceof ReleasePoolEmptyError) {
         throw serviceUnavailable(

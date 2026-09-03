@@ -8,10 +8,11 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, schedules } from '../db/schema.js';
+import { readProjectBranches } from '../projects/service.js';
 import { nextRunFor } from '../schedules/cron.js';
 import { resolveReleaseChannel } from './channel.js';
 import { resolveReleaseGateStatus } from './gate.js';
-import { loadProjectBranchConfig, loadProjectPipelineConfig } from './project-config.js';
+import { loadProjectPipelineConfig } from './project-config.js';
 
 export interface ReleaseRosterEntry {
   id: string;
@@ -79,7 +80,7 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
     };
   }
   const nextCutAt = await nextScheduledCutAt(projectId);
-  const branchCfg = await loadProjectBranchConfig(projectId);
+  const branches = await readProjectBranches(projectId);
 
   const rows = await db
     .select({
@@ -99,7 +100,7 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
     gateStatus,
     channel: channel.provider,
     releaseRunnerLabel: channel.releaseRunnerLabel,
-    baseBranch: branchCfg?.baseBranch ?? null,
+    baseBranch: branches?.baseBranch ?? null,
     nextCutAt,
     issues: rows.map((r) => ({
       id: r.id,

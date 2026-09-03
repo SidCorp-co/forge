@@ -17,6 +17,7 @@ import {
   createReleaseBatch,
   NoReleaseGateError,
   NoRunnerOnlineError,
+  ReleaseBranchesUndeclaredError,
   ReleasePoolEmptyError,
   ReleaseRecordMissingError,
 } from '../release-batch/service.js';
@@ -61,6 +62,7 @@ export async function runScheduledReleaseCut(args: {
       err instanceof NoRunnerOnlineError ||
       err instanceof ReleasePoolEmptyError ||
       err instanceof NoReleaseGateError ||
+      err instanceof ReleaseBranchesUndeclaredError ||
       err instanceof ReleaseRecordMissingError
     ) {
       return { status: 'skipped', output: `no cut this tick: ${(err as Error).message}` };

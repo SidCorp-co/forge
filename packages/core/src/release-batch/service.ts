@@ -1,4 +1,4 @@
-// create: opens a system run, atomically claims N tested issues, enqueues one
+// create: opens a system run, atomically claims N gate-status issues, enqueues one
 // release_batch job. finish: closes all claimed issues tested→closed. abort:
 // releases claims, writes one comment per issue, closes nothing.
 //
@@ -15,10 +15,15 @@ import { issuesMissingReleaseRecord } from '../issues/release-record-required.js
 import { logger } from '../logger.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
+import { readProjectBranches } from '../projects/service.js';
 import { selectRunnerForJob } from '../runners/select.js';
 import { resolveReleaseChannel, resolveReleaseDeviceIds, resolveReleasePlan } from './channel.js';
 import { resolveReleaseGateStatus } from './gate.js';
-import { loadProjectBranchConfig, loadProjectPipelineConfig } from './project-config.js';
+import { ReleaseBranchesUndeclaredError, releaseBranches } from './plan.js';
+
+export { ReleaseBranchesUndeclaredError };
+
+import { loadProjectPipelineConfig } from './project-config.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { readLiveCommit, verifyDeployed } from './verify.js';
 
@@ -141,12 +146,11 @@ export async function createReleaseBatch(
   const runner = await selectRunnerForJob({ projectId, requiredCapabilities: {}, allowDeviceIds });
   if (!runner) throw new NoRunnerOnlineError();
 
-  const branchCfg = await loadProjectBranchConfig(projectId);
-  const baseBranch = branchCfg?.baseBranch ?? 'main';
-  const productionBranch = branchCfg?.productionBranch ?? 'main';
+  const { baseBranch, productionBranch, productionMergePlanned } = releaseBranches(
+    (await readProjectBranches(projectId)) ?? { baseBranch: null, productionBranch: null },
+  );
   // cm:guard `deployPlanned` names the CHANNEL, not the branches. It used to mean "the branches differ", which reported a planned deploy to every project that promotes across branches and deploys nothing — and a planned deploy that cannot happen is the kind of claim this whole gate exists to remove.
   const deployPlanned = plan.provider !== null;
-  const productionMergePlanned = productionBranch !== baseBranch;
 
   // cm:guard read the live commit BEFORE anything moves. Without this baseline a release that deployed nothing verifies perfectly: the probes answer, the commit matches what the agent reports, and what it reports is what was already serving.
   const commitBefore = plan.verify ? await readLiveCommit(plan.verify) : null;
@@ -272,9 +276,9 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
   const deployPlanned = (meta.deployPlanned as boolean | undefined) ?? false;
   const productionMergePlanned = (meta.productionMergePlanned as boolean | undefined) ?? false;
 
-  const branchCfg = await loadProjectBranchConfig(run.projectId);
-  const baseBranch = branchCfg?.baseBranch ?? 'main';
-  const productionBranch = branchCfg?.productionBranch ?? 'main';
+  const { baseBranch, productionBranch } = releaseBranches(
+    (await readProjectBranches(run.projectId)) ?? { baseBranch: null, productionBranch: null },
+  );
 
   const claimedIssues = await db
     .select({
