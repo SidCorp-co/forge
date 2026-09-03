@@ -227,6 +227,11 @@
 
 ### Fixed
 
+- `RATE_LIMIT_PAT_MAX` and `RATE_LIMIT_PAT_WINDOW_MS` are declared on the `core` service in
+  `docker-compose.prod.yml`. Coolify injects variables through `${VAR}` in `environment:`, not through
+  `env_file`, so setting either in the Coolify UI did nothing until now: one user lost four tokens in
+  a day to the 60/min default and its three-breaches-an-hour auto-revoke, with no reason shown.
+
 - Aborting a release batch now cancels the run and every job under it. `abort` used to release
   the claims and stop there, leaving the run `running` and its job alive: sidpeak batch `ee39c4ae`
   (2026-09-03) was aborted while its retry job kept going, shipped 20 commits to production, and
