@@ -33,6 +33,7 @@
       "**/.venv/**",
       "**/venv/**",
       "**/.claude/worktrees/**",
+      "**/.worktrees/**",
       "**/*-backup-*/**",
       "**/storybook-static/**"
     ]
