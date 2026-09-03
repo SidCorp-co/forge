@@ -91,18 +91,7 @@ export function PluginsSection({
     </div>
   );
 
-  if (projectQ.isLoading || !draft) {
-    return (
-      <div className="mt-6 border-t border-line pt-5">
-        {heading}
-        <div className="mt-3 space-y-2">
-          <Skeleton className="h-16 w-full rounded-md" />
-          <Skeleton className="h-16 w-2/3 rounded-md" />
-        </div>
-      </div>
-    );
-  }
-
+  // cm:guard the error branch must sit BEFORE the loading one. `draft` is seeded from `projectQ.data`, so on a failed fetch it stays null forever — ordering these the other way round renders a skeleton that never resolves, which is the dead end §2 of the UX contract exists to forbid.
   if (projectQ.isError) {
     return (
       <div className="mt-6 border-t border-line pt-5">
@@ -112,6 +101,18 @@ export function PluginsSection({
             message={formatApiError(projectQ.error)}
             onRetry={() => projectQ.refetch()}
           />
+        </div>
+      </div>
+    );
+  }
+
+  if (projectQ.isLoading || !draft) {
+    return (
+      <div className="mt-6 border-t border-line pt-5">
+        {heading}
+        <div className="mt-3 space-y-2">
+          <Skeleton className="h-16 w-full rounded-md" />
+          <Skeleton className="h-16 w-2/3 rounded-md" />
         </div>
       </div>
     );
