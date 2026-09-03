@@ -276,7 +276,6 @@ describe('pickNextDispatchableJobForProject', () => {
     expect(text).not.toMatch(/c2\.status\s*<>\s*'closed'/);
   });
 
-
   // Cohesion + ISS-102 defence: pause/resume/cancel ride on `r.status='running'`.
   it('JOINs pipeline_runs, filters running, and orders by run.started_at then queued_at (cohesion)', async () => {
     mockProjectAgentConfigOnce(null);

@@ -276,7 +276,7 @@ export async function resolveStageOverrides(
     timeoutSeconds: stage.timeoutSeconds ?? null,
     mcpServers: stage.mcpServers ? { ...(stage.mcpServers as Record<string, unknown>) } : null,
     budget: stage.budget ? { ...stage.budget } : null,
-      // cm:why an empty array normalizes to null so `[]` cannot read as "no device is eligible" and silently wedge every job on the stage
+    // cm:why an empty array normalizes to null so `[]` cannot read as "no device is eligible" and silently wedge every job on the stage
     deviceIds: stage.deviceIds && stage.deviceIds.length > 0 ? [...stage.deviceIds] : null,
     declaredNames: stage.mcpServers
       ? [...collectDeclaredMcpNames({ mcpServers: stage.mcpServers as Record<string, unknown> })]

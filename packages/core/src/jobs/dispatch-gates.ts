@@ -25,10 +25,6 @@ import type { JobType, RunnerType } from '../db/schema.js';
 import { jobs, projects, runners } from '../db/schema.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import {
-  PIPELINE_CONFIG_DEFAULTS,
-  type PipelineConfig,
-} from '../pipeline/pipeline-config-schema.js';
-import {
   RUNNER_CAPABILITIES,
   TRIGGER_STATUS_BY_JOB_TYPE,
   WORKING_STATUS_BY_JOB_TYPE,

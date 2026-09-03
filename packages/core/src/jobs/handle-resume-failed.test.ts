@@ -17,9 +17,7 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const { isResumeFailedError, reclassifyAbortedResume } = await import(
-  './handle-resume-failed.js'
-);
+const { isResumeFailedError, reclassifyAbortedResume } = await import('./handle-resume-failed.js');
 const { CLASSIFIER_VERSION } = await import('../pipeline/failure-classifier.js');
 
 beforeEach(() => {

@@ -452,13 +452,18 @@ issueExtrasRoutes.get(
     while (cursor < rows.length) {
       const issueId = rows[cursor]?.issueId;
       const group: Row[] = [];
-      while (cursor < rows.length && rows[cursor]?.issueId === issueId) {
-        group.push(rows[cursor]!);
+      for (
+        let row = rows[cursor];
+        row !== undefined && row.issueId === issueId;
+        row = rows[cursor]
+      ) {
+        group.push(row);
         cursor++;
       }
       for (let i = 0; i < group.length - 1; i++) {
-        const cur = group[i]!;
-        const next = group[i + 1]!;
+        const cur = group[i];
+        const next = group[i + 1];
+        if (!cur || !next) continue;
         const status = (cur.payload as { from?: string } | null)?.from;
         if (!status) continue;
         const ms = next.createdAt.getTime() - cur.createdAt.getTime();

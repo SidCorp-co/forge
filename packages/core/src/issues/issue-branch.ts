@@ -6,7 +6,7 @@
  * worktree's branch against it. What changed is that core now ASSERTS it
  * instead of describing it: the name is sent as `worktreeBranch`, so the
  * runner cuts the checkout rather than the agent choosing a name core cannot
- * predict. `prompt/merge-required.ts` emitted the literal `origin/<issue-branch>`
+ * predict. The merge-required block emitted the literal `origin/<issue-branch>`
  * for exactly as long as core had no name to put there.
  */
 

@@ -94,9 +94,6 @@ vi.mock('../pipeline/skill-mapping.js', async () => {
 // need to model the extra pipeline_runs SELECT/INSERT in the db mock.
 // Default-on handoff prefetch — stub to no-op so tests don't have to wire
 // real UUIDs into the pipeline_run mock.
-vi.mock('../pipeline/handoff-prefetch.js', () => ({
-  fetchHandoffPromptInputs: async () => ({ priorHandoffs: null, handoffScope: null }),
-}));
 
 vi.mock('../pipeline/runs.js', () => ({
   openIssueRun: vi.fn(async () => ({ id: 'run-1', startedAt: new Date() })),
@@ -223,9 +220,7 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
       role: 'member',
       orgRole: null,
     });
-    selectLimit.mockResolvedValueOnce([
-      { agentConfig: opts.agentConfig ?? {}, ownerId: USER_ID },
-    ]);
+    selectLimit.mockResolvedValueOnce([{ agentConfig: opts.agentConfig ?? {}, ownerId: USER_ID }]);
     selectLimit.mockResolvedValueOnce([]);
     insertReturning.mockResolvedValueOnce([{ id: JOB_ID }]);
     enqueueJobMock.mockResolvedValueOnce(undefined);

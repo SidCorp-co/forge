@@ -327,7 +327,7 @@ export async function transitionIssueStatus(
   }
 
   // cm:guard the reason is posted BEFORE the status write, and a failed post must reject the whole transition — a park that commits without its reason is the unexplained park every guard deleted with the reopen cap tried to detect afterwards
-  // cm:guard `skip: true` is exempt ON PURPOSE — that is the orchestrator's curated soft-skip/guard chain, and every one of those paths posts its own operator comment first (plan-gate-guard.ts); requiring a second one would double-comment, and refusing the write would freeze the chain
+  // cm:guard `skip: true` is exempt ON PURPOSE — it marks a transition the system made rather than one an actor chose (the decompose cascade, the park rewrites), and each of those paths posts its own comment; requiring a second one would double-comment, and refusing the write would freeze the cascade mid-flight
   if (requiresAuthoredReason(fromStatus, requestedStatus) && options.skip !== true) {
     const reason = options.transitionReason?.trim();
     if (!reason) {

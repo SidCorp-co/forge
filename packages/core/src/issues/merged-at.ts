@@ -14,8 +14,9 @@
  * merged_at NULL — children stay blocked, which is correct (the merge may
  * not have made it to origin). Skill operators are responsible for
  * verifying the push BEFORE issuing the transition; the prompt builder
- * injects a merge-required block when stage matches mergeStates (see
- * `prompt/merge-required.ts`).
+ * injects a merge-required block when stage matches mergeStates. That
+ * injection was removed with the staged lane; the driver's own skill carries
+ * the merge protocol now.
  */
 
 import { and, eq, isNull, sql } from 'drizzle-orm';
@@ -145,7 +146,7 @@ export async function markMergedIfLeavingBase(
  * Idempotent via `WHERE merged_at IS NULL`; call inside the same tx as the
  * status UPDATE so a rollback drops both writes together.
  */
-// cm:flow release/close after:instruct — closing stamps merged_at when it is still null, which is why closing an issue that was never work unblocks its dependents as if it had shipped; unmark is the only reversal
+// cm:flow release/close after:stamp — closing stamps merged_at when it is still null, which is why closing an issue that was never work unblocks its dependents as if it had shipped; unmark is the only reversal
 export async function markMergedOnClose(
   tx: DrizzleTx,
   args: { issueId: string; toStatus: IssueStatus },
@@ -183,7 +184,7 @@ function atLeast(version: string | null | undefined, min: string): boolean {
  */
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/workspace/worktree.rs — `create` is what this field switches on, and BEFORE 0.9.3 it could only ever create: `git worktree add` refuses an existing path with or without `-b`, so the second stage of an issue died with `fatal: '.worktrees/ISS-n' already exists`. The version floor is not caution, it is the difference between reuse and a failed job, and it may only be lowered if that arm is proven present.
 // cm:guard resolved per RUNNER, at dispatch, never at job creation — core deploys in one step and the fleet updates on its own clock, so the only place the answer is knowable is where the box that will run it is already chosen. A retry that rotates onto an older box re-resolves and correctly sends nothing.
-// cm:guard a merge stage gets NOTHING, and that exclusion is what keeps merging alive while `prompt/merge-required.ts` still tells the agent to `git checkout <base>` — git REFUSES a branch already checked out in the main worktree, so stamping here would break the merge step on every project at once, at the last stage of the pipeline where the cost is a whole issue's work. It goes away in the change that makes the merge a merge request, and not before.
+// cm:guard a merge stage gets NOTHING, because git REFUSES to check out a branch already checked out in the main worktree and the merge step's whole job is `git checkout <base>`. No DISPATCHED job takes this arm today — since ISS-897 the only job type is `drive`, stamped `stageStatus:'open'`, and the merge state is `released` — so it is currently unreachable, tested directly in `tests/integration/worktree-branch-stamp-e2e.test.ts`, and kept because it is what would stop a merge stage being handed a worktree the day one is dispatched again.
 export function worktreeBranchPayload(args: {
   status: IssueStatus | null | undefined;
   agentConfig: unknown;

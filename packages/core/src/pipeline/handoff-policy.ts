@@ -50,7 +50,6 @@ function defaultInjectFromSteps(jobType: JobType): HandoffStep[] {
 /**
  * Merge an explicit `userPromptPolicy.handoffs` config (may be undefined) with
  * the system defaults. Used by:
- *   - `handoff-prefetch.ts` (dispatcher / orchestrator pre-fetch)
  *   - `prompt/user.ts`     (prompt builder injection + termination block)
  *
  * Keeping the resolution centralised guarantees the call sites agree on

@@ -17,7 +17,7 @@ import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { selectRunnerForJob } from '../runners/select.js';
 import { resolveReleaseChannel, resolveReleaseDeviceIds, resolveReleasePlan } from './channel.js';
-import { resolveReleaseGate } from './gate.js';
+import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 import { loadProjectBranchConfig } from './project-config.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { readLiveCommit, verifyDeployed } from './verify.js';
@@ -277,7 +277,8 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
   const meta = (run.metadata ?? {}) as Record<string, unknown>;
   if (meta.source !== 'release-batch') return null;
 
-  const gateStatus = (meta.gateStatus as IssueStatus | undefined) ?? 'tested';
+  // cm:guard the fallback is the CURRENT gate status. It read `'tested'` until ISS-897 — a rung of the deleted staged ladder that no issue is at any more and no project declares — so a run whose metadata predates `gateStatus` would have been reconstructed against a status the batch could never match.
+  const gateStatus = (meta.gateStatus as IssueStatus | undefined) ?? RELEASE_GATE_STATUS;
   const deployPlanned = (meta.deployPlanned as boolean | undefined) ?? false;
   const productionMergePlanned = (meta.productionMergePlanned as boolean | undefined) ?? false;
 

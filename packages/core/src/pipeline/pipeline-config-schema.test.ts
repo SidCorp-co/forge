@@ -298,7 +298,6 @@ describe('stageConfigSchema per-state overrides', () => {
       }),
     ).toThrow();
   });
-
 });
 
 describe('resume policy', () => {
@@ -399,7 +398,6 @@ describe('defaultStatesConfig (ISS-581)', () => {
     expect(config.released?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
     expect(config.in_progress?.disallowedTools).toEqual(expect.arrayContaining(EXPECTED));
   });
-
 });
 
 describe('mergePipelineConfig', () => {

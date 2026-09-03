@@ -45,11 +45,6 @@ type JobSnapshot = {
   payload: { skillName?: string };
 };
 
-type ActivityRow = {
-  action: string;
-  payload: { from?: string; to?: string };
-};
-
 const DEFAULT_SKILL_NAMES = [
   'forge-triage',
   'forge-clarify',
@@ -74,9 +69,7 @@ async function insertGlobalSkill(name: string): Promise<string> {
 }
 
 async function seedProject(
-  args: {
-    statesOverride?: Record<string, { enabled?: boolean; mode?: 'auto' | 'manual' }>;
-  } = {},
+  args: { statesOverride?: Record<string, { enabled?: boolean; mode?: 'auto' | 'manual' }> } = {},
 ) {
   const owner = await createTestUser(harness.db);
   const project = await createTestProject(harness.db, owner.id);
@@ -158,15 +151,6 @@ async function jobsFor(issueId: string): Promise<JobSnapshot[]> {
     ORDER BY created_at ASC, type ASC
   `);
   return rows as unknown as JobSnapshot[];
-}
-
-async function activityFor(issueId: string): Promise<ActivityRow[]> {
-  const rows = await harness.db.execute<ActivityRow>(sql`
-    SELECT action, payload FROM activity_log
-    WHERE issue_id = ${issueId}
-    ORDER BY created_at ASC
-  `);
-  return rows as unknown as ActivityRow[];
 }
 
 /**
@@ -315,8 +299,9 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     }
 
     expect(issue.status).toBe('closed');
-    expect((await jobsFor(issue.id)).map((j) => ({ type: j.type, skillName: j.payload.skillName })))
-      .toEqual([{ type: 'drive', skillName: 'issue-flow' }]);
+    expect(
+      (await jobsFor(issue.id)).map((j) => ({ type: j.type, skillName: j.payload.skillName })),
+    ).toEqual([{ type: 'drive', skillName: 'issue-flow' }]);
   });
 
   // cm:guard the driver skill name reaches the agent as TEXT in the prompt and is never resolved from `skill_registrations` — the fixture registers eight `forge-*` skills precisely so a resolver that started reading them would produce a different skillName here and go red.

@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { issueComplexities } from '../db/schema.js';
 import {
   INTEGRATION_SERVER_NAMES,
   isKnownMcpServerName,

@@ -314,14 +314,7 @@ export function registerMemoryIndexer(bus: HooksBus): () => void {
     }),
   );
 
-  // Comments are deliberately NOT auto-indexed. In a pipeline-driven project
-  // the bulk of comments are bot status chatter (triage notes, plan summaries,
-  // review verdicts, handoffs) — each create/update would cost an embedding
-  // call, yet no automatic read path ever consumes `source:'comment'` memory
-  // (the only auto-injection — ci-fix-pattern-query — filters `source:'note'`).
-  // Agents that want a comment-worth lesson remembered write it explicitly via
-  // `forge_memory.write` as `source:'knowledge'`. `deleteMemory` is still
-  // exported for the `forge_memory.delete` tool.
+  // cm:guard comments are deliberately NOT auto-indexed, and subscribing them here is the mistake to avoid: on a pipeline-driven project most comments are agent status chatter, so every create and update would buy an embedding call, and nothing reads `source:'comment'` memory automatically. A comment worth remembering is written explicitly as `source:'knowledge'`.
 
   return () => {
     for (const u of unsubs) u();

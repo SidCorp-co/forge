@@ -11,7 +11,6 @@ export function pipelineConfigHttpError(err: unknown): unknown {
   const cause = { code: err.code, details: err.details };
   switch (err.code) {
     case 'OPEN_LOCKED_ON':
-    case 'DEAD_END_CONFIG':
     case 'STAGE_POOL_UNKNOWN_RUNNER':
       return new HTTPException(400, { message: err.message, cause });
     case 'STAGE_HAS_ISSUES':

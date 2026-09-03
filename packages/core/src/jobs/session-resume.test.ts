@@ -4,7 +4,6 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-
 const selectLimitResults: unknown[][] = [];
 const executeLimitResults: unknown[][] = [];
 
@@ -24,32 +23,6 @@ vi.mock('../db/client.js', () => ({
     execute: executeSpy,
   },
 }));
-
-function serializeSqlFragments(node: unknown): string {
-  const out: string[] = [];
-  const visit = (n: unknown): void => {
-    if (n === null || n === undefined) return;
-    if (typeof n === 'string' || typeof n === 'number' || typeof n === 'boolean') {
-      out.push(String(n));
-      return;
-    }
-    if (Array.isArray(n)) {
-      for (const c of n) visit(c);
-      return;
-    }
-    if (typeof n === 'object') {
-      const obj = n as Record<string, unknown>;
-      if ('value' in obj) visit(obj.value);
-      if ('queryChunks' in obj) visit(obj.queryChunks);
-      if ('left' in obj) visit(obj.left);
-      if ('right' in obj) visit(obj.right);
-      if ('column' in obj) visit(obj.column);
-      if ('name' in obj && typeof obj.name === 'string') out.push(obj.name);
-    }
-  };
-  visit(node);
-  return out.join(' ');
-}
 
 const { loadResumeBounds, estimateIssueContextTokens } = await import('./session-resume.js');
 

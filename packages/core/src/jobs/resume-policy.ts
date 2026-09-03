@@ -19,7 +19,7 @@ import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { getTrippedDeviceIds } from '../runners/select.js';
 import { readAutoRetryPayload } from './retry.js';
 import { estimateIssueContextTokens, loadResumeBounds } from './session-resume.js';
-import { extractStageStatus, type StageOverrides } from './stage-overrides.js';
+import type { StageOverrides } from './stage-overrides.js';
 
 /**
  * Why a dispatch that HAD a prior session to continue started from an empty transcript instead.

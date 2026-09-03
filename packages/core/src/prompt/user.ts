@@ -478,8 +478,9 @@ export function buildJobPromptString(args: {
   policy?: UserPromptPolicyOverride | null;
   turnLevelSystemPrompt?: string | null;
   /**
-   * ISS-232 — merge-required injection. Caller resolves the text via
-   * `prompt/merge-required.ts:buildMergeRequiredBlock` from the project's
+   * ISS-232 — merge-required injection. The staged builder that produced
+   * this text was removed with its lane; the field survives for callers
+   * that still pass one. Historically resolved from the project's
    * `pipelineConfig.mergeStates` + the job's `stageStatus`; when non-null,
    * it is spliced in immediately after the `/<skill> <issueId>` line so the
    * skill reads it before any issue context. Whitespace-only strings are

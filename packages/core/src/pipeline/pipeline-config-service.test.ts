@@ -31,9 +31,7 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const { PipelineConfigError, updatePipelineConfig } = await import(
-  './pipeline-config-service.js'
-);
+const { PipelineConfigError, updatePipelineConfig } = await import('./pipeline-config-service.js');
 
 beforeEach(() => {
   selectQueue.length = 0;
@@ -42,8 +40,8 @@ beforeEach(() => {
 
 describe('PipelineConfigError', () => {
   it('exposes a stable code union', () => {
-    const err = new PipelineConfigError('DEAD_END_CONFIG', 'msg', {});
-    expect(err.code).toBe('DEAD_END_CONFIG');
+    const err = new PipelineConfigError('STAGE_POOL_UNKNOWN_RUNNER', 'msg', {});
+    expect(err.code).toBe('STAGE_POOL_UNKNOWN_RUNNER');
   });
 });
 

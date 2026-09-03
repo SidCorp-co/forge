@@ -23,10 +23,7 @@ import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { cancelJob, JobCancelError } from './cancel-job.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
 import { finalizeFailedJob } from './finalize-failure.js';
-import {
-    isResumeFailedError,
-  reclassifyAbortedResume,
-} from './handle-resume-failed.js';
+import { isResumeFailedError, reclassifyAbortedResume } from './handle-resume-failed.js';
 import { readJob } from './job-queries.js';
 import { salvageSchema, salvageSet } from './prior-attempts.js';
 import { JobResumeError, resumeHeldJob } from './resume-job.js';
@@ -345,11 +342,7 @@ jobLifecycleDeviceRoutes.post(
     // ISS-439 — materialize the usage_records row from the stored job_events.
     void materializeJobUsage(updated);
 
-    // Step-handoff is best-effort context for the next step — NOT a completion
-    // gate. A `done` job stays `done` whether or not the agent wrote its
-    // handoff row; the next step falls back to raw issue fields when a prior
-    // handoff is missing (see handoff-prefetch / handoff-policy
-    // fallbackToRawIssueFieldIfMissing).
+    // cm:guard the step-handoff is best-effort CONTEXT, never a completion gate — a `done` job stays `done` whether or not the agent wrote its handoff row. Two knobs said otherwise (`requireHandoffWrite`, `missingMarkerPolicy`) and were removed on 2026-09-02 with 0 projects setting either; re-adding one re-opens that decision.
 
     if (status === 'failed') {
       // cm:why a tagged resume failure is reclassified but still retried — the retry dispatches without the parent's session id, which is the whole remedy. The `abort` half of this branch went with `onResumeFail` (ISS-897), whose only reader keyed on a `sessionGroup` nothing has produced since the config key was removed.

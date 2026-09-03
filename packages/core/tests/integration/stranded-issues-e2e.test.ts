@@ -229,7 +229,11 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
   // cm:guard the SQL predicate is `coalesce(mode, 'autonomous') <> 'staged'`, NOT `= 'autonomous'`, and this pair is what proves it: ISS-897 stripped `mode` from every project row, so an equality test would select ZERO projects and switch this net off fleet-wide — silently, because a pass that finds nothing and a pass that looks at nothing both report 0. The `legacyStagedRow` half is the other direction: a row the migration has not reached still carries the key and must still be excluded.
   it('surfaces an UNMERGED park on a stripped row, and skips a row still marked staged', async () => {
     const stripped = await seed({ mergedAgoMs: null, updatedAgoMs: 48 * HOUR });
-    const legacy = await seed({ mergedAgoMs: null, legacyStagedRow: true, updatedAgoMs: 48 * HOUR });
+    const legacy = await seed({
+      mergedAgoMs: null,
+      legacyStagedRow: true,
+      updatedAgoMs: 48 * HOUR,
+    });
 
     const res = await mods.detectStrandedIssues();
 

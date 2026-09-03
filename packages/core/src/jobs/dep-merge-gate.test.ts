@@ -123,7 +123,6 @@ describe('L2 dependency gate — merged_at (ISS-232 / ISS-639)', () => {
     expect(text).not.toMatch(/c2\.status\s+NOT\s+IN/);
   });
 
-
   // cm:why sid-desk ISS-20/25 — merged_at is COALESCE-once and survives a later reopen, so a child that reached `tested` then failed QA still read as satisfied and dispatched its parent onto broken staging; both arms must treat a currently-reopened blocker as unsatisfied
   it('treats a reopened blocker/child as unsatisfied even when merged_at is stamped', async () => {
     mockProjectAgentConfigOnce({});

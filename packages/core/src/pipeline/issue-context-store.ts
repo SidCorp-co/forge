@@ -111,7 +111,7 @@ export async function writeIssueContext(
         target: [issueStepContexts.issueId, issueStepContexts.step, issueStepContexts.attempt],
         targetWhere: sql`${issueStepContexts.kind} = 'handoff'`,
         set: {
-          // cm:edge contract -> packages/core/src/pipeline/handoff-prefetch.ts — a re-run reuses (issue, step, attempt); conflict updates must move pipeline_run_id or current-run reads omit its replacement
+          // cm:edge contract -> packages/core/src/jobs/finalize-done.ts — a re-run reuses (issue, step, attempt), so the conflict update MUST move `pipeline_run_id`: that reader selects on it, and a row left pointing at the previous run reads as absent to the current one
           pipelineRunId: sql`excluded.pipeline_run_id`,
           payload: sql`excluded.payload`,
           verdict: sql`excluded.verdict`,

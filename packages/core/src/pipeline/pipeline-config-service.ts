@@ -1,19 +1,13 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues, projects, runners, skillRegistrations } from '../db/schema.js';
-import { resolveMergeStates } from '../issues/merged-at.js';
-import { logger } from '../logger.js';
-import { missingAutonomousFacts } from '../projects/autonomous-contract.js';
+import { type IssueStatus, issues, projects, runners } from '../db/schema.js';
 import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
   type PipelineConfigPatchInput,
   pipelineConfigSchema,
-  STAGE_NAMES,
 } from './pipeline-config-schema.js';
-import { PIPELINE_STEPS } from './registry.js';
 import type { StagesConfig } from './state-machine.js';
-import { STAGE_FORWARD, validateStatesConfig } from './state-machine.js';
 
 /**
  * Typed errors thrown by {@link updatePipelineConfig}. REST and MCP callers
@@ -24,7 +18,6 @@ export type PipelineConfigErrorCode =
   | 'OPEN_LOCKED_ON'
   | 'STAGE_HAS_ISSUES'
   | 'STAGE_POOL_UNKNOWN_RUNNER'
-  | 'DEAD_END_CONFIG'
   | 'PROJECT_NOT_FOUND';
 
 export class PipelineConfigError extends Error {
@@ -142,18 +135,8 @@ export async function updatePipelineConfig(
             );
           }
         }
-
       }
 
-      const mergedStates = (nextPipeline as { states?: StagesConfig }).states;
-      const dead = validateStatesConfig(mergedStates);
-      if (dead) {
-        throw new PipelineConfigError(
-          'DEAD_END_CONFIG',
-          `Cannot disable stages with no forward path: ${dead.unreachable.join(', ')}`,
-          { unreachable: dead.unreachable },
-        );
-      }
       nextDoc.pipelineConfig = nextPipeline;
     }
     const subkey = JSON.stringify(nextDoc);

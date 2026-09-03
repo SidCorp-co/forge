@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { loadReleaseReadiness } from './readiness.js';
 import {
   abortReleaseBatch,
   BatchInFlightError,
@@ -29,7 +30,6 @@ import {
   ReleaseRecordMissingError,
   ReleaseRunnerUndeclaredError,
 } from './service.js';
-import { loadReleaseReadiness } from './readiness.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 

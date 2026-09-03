@@ -161,10 +161,13 @@ describe('extractResolvedFlags', () => {
   });
 
   it('surfaces claudeSessionId for the Inspector resume badge', () => {
-    const r = extractResolvedFlags({ claudeSessionId: 'cli-xyz' }, {
-      skillName: null,
-      modelUsed: null,
-    });
+    const r = extractResolvedFlags(
+      { claudeSessionId: 'cli-xyz' },
+      {
+        skillName: null,
+        modelUsed: null,
+      },
+    );
 
     expect(r.claudeSessionId).toBe('cli-xyz');
   });

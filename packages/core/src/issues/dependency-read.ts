@@ -9,7 +9,6 @@ import { and, eq, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import { type IssueDependencyKind, issueDependencies, issues } from '../db/schema.js';
-import { resolveGateSettings } from '../jobs/dispatch-gates.js';
 import { isBlockerSatisfied } from './dependency-satisfaction.js';
 
 export type IssueDependencyEdge = {
@@ -111,11 +110,7 @@ const isExpired = (edge: IssueDependencyEdge, now: number): boolean =>
 
 // cm:guard `gatesDispatch` answers "is this edge holding me RIGHT NOW", and it is three conditions, not one: incoming + kind `blocks` + unexpired + the blocker unsatisfied. Drop any of them and it lies in the ordinary case — a `decomposes` parent also lands in `blockedBy` while L2 never gates the child on it, and every satisfied dependency in the project would report a live blocker forever once its blocker merged.
 // cm:edge lockstep -> packages/core/src/issues/dependency-satisfaction.ts — the merged/reopen/closed half of the rule lives there, shared with pipeline-health.ts; the valid_until half is inline here because it is the only part `expired` also needs
-function digest(
-  edge: IssueDependencyEdge,
-  issueId: string,
-  now: number,
-): IssueRelationDigest {
+function digest(edge: IssueDependencyEdge, issueId: string, now: number): IssueRelationDigest {
   const outgoing = edge.fromIssueId === issueId;
   const expired = isExpired(edge, now);
   return {
@@ -150,8 +145,6 @@ export async function loadIssueRelations(
 ): Promise<{ blocks: IssueRelationDigest[]; blockedBy: IssueRelationDigest[] }> {
   const { outgoing, incoming } = await loadIssueDependencyEdges(issueId, projectId);
   const now = Date.now();
-  // cm:guard keep this predicate the SAME SHAPE as `gatesDispatch`'s first two conjuncts — `resolveGateSettings` is an UNCACHED `projects` read on a path that runs on every agent turn, and only an unexpired incoming `blocks` edge ever consumes its answer; widening the test to "any incoming edge" pays that read for every decomposes-only or all-expired graph, narrowing it past `gatesDispatch` reports a satisfied blocker as gating
-  const gates = incoming.some((e) => e.kind === 'blocks' && !isExpired(e, now));
   return {
     blocks: outgoing.map((e) => digest(e, issueId, now)),
     blockedBy: incoming.map((e) => digest(e, issueId, now)),

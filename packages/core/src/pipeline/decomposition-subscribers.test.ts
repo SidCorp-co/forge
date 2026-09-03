@@ -44,9 +44,7 @@ function installDefaultDbSelect(): void {
   dbSelect.mockImplementation(() => ({
     from: () => ({
       where: () => ({
-        limit: async () => [
-          { createdBy: 'owner-1', agentConfig: {} },
-        ],
+        limit: async () => [{ createdBy: 'owner-1', agentConfig: {} }],
       }),
     }),
   }));

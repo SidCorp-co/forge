@@ -431,7 +431,6 @@ describe('ISS-119 decomposition lifecycle E2E', () => {
 
       expect(await readIssueStatus(child)).toBe('draft');
     });
-
   });
 
   describe('close cascade', () => {

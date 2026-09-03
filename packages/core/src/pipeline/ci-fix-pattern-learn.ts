@@ -10,9 +10,9 @@ import type { HooksBus } from './hooks.js';
  *
  * When an issue successfully traverses `reopen → developed`, capture the
  * (errors, diff) signature on its `sessionContext.ciFixContext` as a memory
- * row tagged `kind:'ci_fix_pattern'`. The query side (ci-fix-pattern-query)
- * later injects matching patterns into forge-code job payloads so the runner
- * can pre-emptively avoid known regressions.
+ * row tagged `kind:'ci_fix_pattern'`. Its query side was removed with the
+ * staged lane (ISS-897) — nothing injects these patterns into a job payload
+ * today, so this is a write with no reader until one is built.
  *
  * Storage piggybacks on the existing `memories` table:
  *   source     = 'note'

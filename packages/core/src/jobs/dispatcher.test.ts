@@ -163,7 +163,6 @@ const { persistPromptSnapshot } = await import('./prompt-snapshot.js');
 const { applyPostmanMcpServers } = await import('../integrations/postman/resolver.js');
 const { applyEpodsystemMcpServers } = await import('../integrations/epodsystem/resolver.js');
 const { applySentryMcpServers } = await import('../integrations/sentry/resolver.js');
-const { recordResumeDrop } = await import('../observability/hold-metrics.js');
 
 type Row = Record<string, unknown>;
 

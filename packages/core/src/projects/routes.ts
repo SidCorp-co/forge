@@ -698,10 +698,7 @@ projectRoutes.patch(
     if (plugins === null) delete next.plugins;
     else next.plugins = plugins;
 
-    await db
-      .update(projects)
-      .set({ agentConfig: next })
-      .where(eq(projects.id, id));
+    await db.update(projects).set({ agentConfig: next }).where(eq(projects.id, id));
 
     return c.json({ plugins: plugins ?? [] });
   },

@@ -173,7 +173,10 @@ describe('ISS-888 seam — resume policy <-> device selection', () => {
         issueId: 'iss-1',
         type: 'code',
         retryOf: 'j-parent',
-        payload: { stageStatus: 'open', _autoRetry: { round: 1, target: 'd-old', tries: 1, done: [] } },
+        payload: {
+          stageStatus: 'open',
+          _autoRetry: { round: 1, target: 'd-old', tries: 1, done: [] },
+        },
       },
     ]);
     mockSelectOnce([{ agentConfig: null }]);

@@ -29,7 +29,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-
 vi.mock('../../src/ws/server.js', () => ({
   roomManager: { publish: vi.fn(() => 1) },
 }));

@@ -149,7 +149,7 @@ describe('an agent close', () => {
     expect((await close(AGENT)).status).toBe('closed');
   });
 
-  // cm:guard `skip` must NOT exempt, and this is the case that proves it: orchestrator.ts's auto-skip chain carries `skip` and resolveSkipTarget answers `closed` for a `released` stage with no registered skill, so exempting the flag would auto-close an unrecorded issue on any freshly-onboarded project. The chain catches this refusal and stops, leaving the issue at `released`.
+  // cm:guard `skip` must NOT exempt, and this is the case that proves it: `skip` is the wide flag every internal transition carries — the decompose cascade, the park rewrites, any future sweep — so exempting on it would let an unrecorded issue reach `closed` from any of them. Only `viaCloseCascade` is narrow enough to be an exemption.
   it('does NOT exempt a bare `skip`, which the orchestrator auto-skip chain also carries', async () => {
     issueRow(null);
 

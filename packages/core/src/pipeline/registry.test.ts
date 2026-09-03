@@ -109,7 +109,6 @@ describe('derivation parity', () => {
       expect(STATUS_TO_SKILL[step.status]).toBe(step.skillName);
     }
   });
-
 });
 
 describe('contracts ↔ core enum parity', () => {

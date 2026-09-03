@@ -24,7 +24,6 @@ import { type AlertSweepResult, runAlertSweep } from '../admin/alert-sweeper.js'
 import { db } from '../db/client.js';
 import { agentSessions, type IssueStatus, jobs } from '../db/schema.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
-import { resolveGateSettings } from '../jobs/dispatch-gates.js';
 import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { killGraceMs } from '../jobs/kill-gate.js';
 import {
