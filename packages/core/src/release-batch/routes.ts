@@ -27,7 +27,9 @@ import {
   ReleaseNotVerifiedError,
   ReleasePoolEmptyError,
   ReleaseRecordMissingError,
+  ReleaseRunnerUndeclaredError,
 } from './service.js';
+import { loadReleaseReadiness } from './readiness.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 
@@ -75,6 +77,12 @@ releaseBatchRoutes.post(
     } catch (err) {
       if (err instanceof NoReleaseGateError) {
         throw conflict('NO_RELEASE_GATE', 'This project has no release gate configured');
+      }
+      if (err instanceof ReleaseRunnerUndeclaredError) {
+        throw conflict(
+          'RELEASE_RUNNER_UNDECLARED',
+          'This project has production but its production binding names no release runner — set `releaseRunnerLabel` on it, and label the box that holds the deploy credential',
+        );
       }
       if (err instanceof ReleasePoolEmptyError) {
         throw serviceUnavailable(
@@ -141,6 +149,23 @@ releaseBatchRoutes.get(
     assertProjectRole(access, 'member');
 
     return c.json(await loadReleaseRoster(projectId));
+  },
+);
+
+releaseBatchRoutes.get(
+  '/:projectId/release-readiness',
+  zValidator('param', projectParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('param');
+    const access = await loadProjectAccess(projectId, c.get('userId'));
+    if (!access) throw notFound('project not found');
+    assertProjectRole(access, 'member');
+
+    const readiness = await loadReleaseReadiness(projectId);
+    if (!readiness) throw notFound('project not found');
+    return c.json(readiness);
   },
 );
 
