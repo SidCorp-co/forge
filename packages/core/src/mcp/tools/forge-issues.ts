@@ -1,5 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { BodyInvalidError } from '../../body/errors.js';
+import { BODY_FORMATS } from '../../body/formats.js';
+import { bodySlots, bodyText } from '../../body/prepare.js';
 import {
   issueComplexities,
   issuePriorities,
@@ -50,6 +53,8 @@ import { buildListEnvelope, overfetch } from './list-envelope.js';
 
 // cm:edge lockstep -> packages/core/src/issues/create-service.ts — every error the create service can raise needs a case here; the agent-facing contract is the `CODE: message` prefix, and the UPDATE path routes its label resolution through this same mapper
 function toMcpIssueError(err: unknown): unknown {
+  // cm:guard the refusal reaches the agent with the ELEMENT, ATTRIBUTE and legal set intact — that named message is what it corrects from on the next call, and a generic BAD_REQUEST leaves it guessing
+  if (err instanceof BodyInvalidError) return new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
   if (err instanceof LabelResolutionError) {
     return new Error(
       `BAD_REQUEST: one or more labels do not exist in this project (no auto-create): ${err.missing.join(', ')}`,
@@ -113,6 +118,8 @@ const dataObject = z
   .object({
     title: z.string().trim().min(1).max(500).optional(),
     description: z.string().max(100_000).nullable().optional(),
+    // cm:edge contract -> packages/core/src/body/formats.ts — ISS-898. Optional; absent means `markdown`, which is what keeps every shipped template's `forge_issues → create` example valid unchanged.
+    descriptionFormat: z.enum(BODY_FORMATS).optional(),
     status: z.enum(issueStatuses).optional(),
     priority: z.enum(issuePriorities).optional(),
     category: z.string().trim().min(1).max(100).nullable().optional(),
@@ -245,10 +252,18 @@ export function serialize(row: IssueRow): Record<string, unknown> {
     documentId: row.id,
     issueId: `ISS-${row.issSeq}`,
     title: markUntrusted(row.title, { source: 'issue.title' }),
+    // cm:guard ISS-898 — the description reaches the agent PROJECTED, not as raw markup. Under thin-init `prompt/user.ts` inlines only the title, so THIS is the path a description actually travels; handing over raw HTML would spend the caller's context on tag names and shrink what the 8,000-char cap can hold, which is the gap the projection exists to close.
     description:
       row.description == null
         ? null
-        : markUntrusted(row.description, { source: 'issue.description' }),
+        : markUntrusted(bodyText(row.description, row.descriptionFormat), {
+            source: 'issue.description',
+          }),
+    descriptionFormat: row.descriptionFormat,
+    descriptionTemplate: row.descriptionTemplate,
+    descriptionSlots: row.descriptionTemplate
+      ? bodySlots(row.description ?? '', row.descriptionFormat)
+      : null,
     status: row.status,
     priority: row.priority,
     category: row.category,
@@ -660,9 +675,15 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           );
         }
 
-        const updates = collectIssueFieldUpdates(input.data as Record<string, unknown>, [
-          ...SHARED_ISSUE_PATCH_FIELDS,
-        ]);
+        let collected: ReturnType<typeof collectIssueFieldUpdates>;
+        try {
+          collected = collectIssueFieldUpdates(input.data as Record<string, unknown>, [
+            ...SHARED_ISSUE_PATCH_FIELDS,
+          ]);
+        } catch (err) {
+          throw toMcpIssueError(err);
+        }
+        const { updates, warnings: bodyWarnings } = collected;
 
         // cm:edge ordering -> packages/core/src/issues/transition-evidence.ts — field writes MUST commit before the status transition below, which re-reads issues.plan for PLAN_REQUIRED; reversed order throws PLAN_REQUIRED on a legal { plan, status:'approved' } call and discards the submitted plan
         // cm:edge ordering -> packages/core/src/issues/release-record-required.ts — the second reader of this order, and the reason a close needs one call rather than two: that rule re-reads issues.release_notes, so a reversed order throws RELEASE_RECORD_REQUIRED on a legal { releaseNotes, status:'closed' } and discards the note the caller just wrote to satisfy it
@@ -698,6 +719,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           ...(await serializeWithAttachments(fresh)),
           action: 'updated',
         };
+        if (bodyWarnings.length > 0) updateResult.warnings = bodyWarnings;
         if (r.length > 0) updateResult.relations = r;
         return updateResult;
       }

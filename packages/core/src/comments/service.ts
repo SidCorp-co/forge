@@ -9,6 +9,8 @@
  */
 
 import { asc, eq } from 'drizzle-orm';
+import type { BodyFormat } from '../body/formats.js';
+import { prepareBody } from '../body/prepare.js';
 import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
 
@@ -18,6 +20,8 @@ export type CommentThreadRow = {
   authorId: string;
   isAi: boolean;
   body: string;
+  format: BodyFormat;
+  template: string | null;
   parentId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -29,6 +33,8 @@ const threadColumns = {
   authorId: comments.authorId,
   isAi: comments.isAi,
   body: comments.body,
+  format: comments.format,
+  template: comments.template,
   parentId: comments.parentId,
   createdAt: comments.createdAt,
   updatedAt: comments.updatedAt,
@@ -85,14 +91,47 @@ export type NewComment = {
   authorDeviceId: string | null;
   isAi: boolean;
   body: string;
+  format?: BodyFormat | null | undefined;
   parentId: string | null;
 };
 
-/** Insert one comment and hand back the thread projection of it. */
-export async function insertComment(input: NewComment): Promise<CommentThreadRow> {
-  const [row] = await db.insert(comments).values(input).returning(threadColumns);
+/** A written comment plus whatever the sanitizer removed on the way in. */
+export type WrittenComment = { row: CommentThreadRow; warnings: string[] };
+
+// cm:guard ISS-898 — the caller-supplied body is validated HERE, not at each transport, because both REST and MCP create reach this one function and a gate on one of them is a gate on neither. The ~11 kernel-authored `db.insert(comments)` sites (apply-transition, budget-check, merge-marker, stage-stall-guard, pm/routes, release-batch) deliberately do NOT come through here: they take the `markdown` column default, which is right for text core formats itself.
+export async function insertComment(input: NewComment): Promise<WrittenComment> {
+  const prepared = prepareBody({ raw: input.body, format: input.format });
+  const { format: _ignored, ...rest } = input;
+  const [row] = await db
+    .insert(comments)
+    .values({
+      ...rest,
+      body: prepared.body,
+      format: prepared.format,
+      template: prepared.template,
+    })
+    .returning(threadColumns);
   if (!row) throw new Error('comment insert returned no row');
-  return row;
+  return { row, warnings: prepared.warnings };
+}
+
+/** Replace one comment's body, re-validating it. Returns null when it is gone. */
+export async function updateCommentBody(
+  commentId: string,
+  input: { body: string; format?: BodyFormat | null | undefined },
+): Promise<WrittenComment | null> {
+  const prepared = prepareBody({ raw: input.body, format: input.format });
+  const [row] = await db
+    .update(comments)
+    .set({
+      body: prepared.body,
+      format: prepared.format,
+      template: prepared.template,
+      updatedAt: new Date(),
+    })
+    .where(eq(comments.id, commentId))
+    .returning(threadColumns);
+  return row ? { row, warnings: prepared.warnings } : null;
 }
 
 /** Remove one comment. Emitting `commentDeleted` belongs to the caller. */

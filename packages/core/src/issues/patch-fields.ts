@@ -18,6 +18,8 @@
  * `issueUpdated` hook with before/after tracking; MCP update does not.
  */
 
+import { prepareBody } from '../body/prepare.js';
+
 export const SHARED_ISSUE_PATCH_FIELDS = [
   'title',
   'description',
@@ -32,23 +34,47 @@ export const SHARED_ISSUE_PATCH_FIELDS = [
   'detectorKey',
 ] as const;
 
+export interface CollectedIssueFieldUpdates {
+  updates: Record<string, unknown>;
+  /** What the body sanitizer removed, for the transport to hand back. */
+  warnings: string[];
+}
+
 /**
  * Copy every defined field from `patch` into a fresh updates object,
  * invoking `onChange` per copied field for surface-specific bookkeeping
  * (REST uses it for before/after change tracking).
  */
+// cm:guard ISS-898 — the description body is validated HERE, not at the two transports, because this function IS the convergence point they share; validating at one of them is validating at neither. It returns `warnings` rather than swallowing them so a caller who typed `<div>` learns it was unwrapped. `descriptionFormat` is read off the raw patch, never from `fields`, so it can never be written to the row unvalidated.
 export function collectIssueFieldUpdates(
   patch: Record<string, unknown>,
   fields: readonly string[],
   onChange?: (field: string, next: unknown) => void,
-): Record<string, unknown> {
+): CollectedIssueFieldUpdates {
   const updates: Record<string, unknown> = {};
   for (const field of fields) {
     const next = patch[field];
-    if (next !== undefined) {
-      updates[field] = next;
-      onChange?.(field, next);
-    }
+    if (next === undefined) continue;
+    updates[field] = next;
+    // cm:why `description` skips the callback here and fires it below with the PREPARED body — the activity log's `after` must be the bytes that were stored, not the bytes that were sent, or the feed records a value the row never held
+    if (field !== 'description') onChange?.(field, next);
   }
-  return updates;
+  if (updates.description === undefined) return { updates, warnings: [] };
+
+  const raw = updates.description;
+  const empty = typeof raw !== 'string' || raw.trim().length === 0;
+  const prepared = empty
+    ? null
+    : prepareBody({ raw: raw as string, format: readFormat(patch.descriptionFormat) });
+  updates.description = prepared ? prepared.body : raw;
+  updates.descriptionFormat = prepared?.format ?? 'markdown';
+  updates.descriptionTemplate = prepared?.template ?? null;
+  onChange?.('description', updates.description);
+  // cm:edge contract -> packages/core/src/memory/indexer.ts — the `issueUpdated` hook carries only CHANGED fields, and the indexer needs the format alongside the body to project it; unreported, an html description is re-embedded as raw markup on every edit
+  onChange?.('descriptionFormat', updates.descriptionFormat);
+  return { updates, warnings: prepared?.warnings ?? [] };
+}
+
+function readFormat(value: unknown): 'markdown' | 'html' | undefined {
+  return value === 'markdown' || value === 'html' ? value : undefined;
 }

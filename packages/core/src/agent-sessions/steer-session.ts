@@ -120,7 +120,7 @@ export async function steerIssue(
     );
   }
 
-  const comment = await insertComment({
+  const { row: comment } = await insertComment({
     issueId,
     authorId: opts.actorUserId,
     authorDeviceId: null,

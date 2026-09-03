@@ -1,10 +1,19 @@
 import { and, eq, sql } from 'drizzle-orm';
+import { bodyText } from '../body/prepare.js';
 import { db } from '../db/client.js';
 import { type MemorySource, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 import { searchMemories } from './search.js';
+
+// cm:guard ISS-898 — embed the PROJECTION, never the raw body. An `html` component description embedded verbatim spends its vector budget on tag and attribute names, so two issues sharing a template read as similar because they share markup rather than because they share a problem.
+function describe(row: { description?: unknown; descriptionFormat?: unknown }): string {
+  const description = typeof row.description === 'string' ? row.description : '';
+  if (!description) return '';
+  const format = typeof row.descriptionFormat === 'string' ? row.descriptionFormat : null;
+  return bodyText(description, format);
+}
 
 /**
  * Subscribe to issue/comment lifecycle hooks and keep the `memories` table in
@@ -278,7 +287,7 @@ export function registerMemoryIndexer(bus: HooksBus): () => void {
 
   unsubs.push(
     bus.on('issueCreated', (p) => {
-      const text = [p.snapshot.title, p.snapshot.description ?? ''].filter(Boolean).join('\n\n');
+      const text = [p.snapshot.title, describe(p.snapshot)].filter(Boolean).join('\n\n');
       if (!text) return;
       detach(() =>
         indexMemoryBestEffort({
@@ -296,8 +305,7 @@ export function registerMemoryIndexer(bus: HooksBus): () => void {
     bus.on('issueUpdated', (p) => {
       if (!p.fields.includes('title') && !p.fields.includes('description')) return;
       const title = (p.after.title ?? '') as string;
-      const description = (p.after.description ?? '') as string;
-      const text = [title, description].filter(Boolean).join('\n\n');
+      const text = [title, describe(p.after)].filter(Boolean).join('\n\n');
       if (!text) return;
       detach(() =>
         indexMemoryBestEffort({

@@ -37,7 +37,6 @@ const selectFrom = vi.fn(() => ({
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
 const deleteWhere = vi.fn();
-
 vi.mock('../../db/client.js', () => ({
   db: {
     select: vi.fn(() => ({ from: selectFrom })),

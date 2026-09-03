@@ -21,6 +21,8 @@ import type { Actor } from './activity.js';
 export interface IssueSnapshot {
   title: string;
   description: string | null;
+  // cm:edge contract -> packages/core/src/memory/indexer.ts — the indexer projects `description` through the body registry and needs the format to pick a path. OPTIONAL because absent degrades to the raw body rather than throwing; `body/doors.test.ts` is what asserts the two real producers set it.
+  descriptionFormat?: string;
   priority: string;
   category: string | null;
   reportedBy: string | null;

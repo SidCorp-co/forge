@@ -7,6 +7,15 @@
 
 export { type LoginInput, loginSchema } from './auth/login.js';
 export { type RegisterInput, registerSchema } from './auth/register.js';
+// cm:guard ISS-898 — only the descriptor TYPES and the format union leak; the registry itself must stay core-internal because it is runtime code core executes on every write, and `contracts-runtime-boundary.test.ts` forbids core value-importing anything it hands to contracts
+export {
+  BODY_FORMATS,
+  type BodyFormat,
+  COMPONENT_NAMES,
+  type ComponentSpec,
+  type ComponentView,
+  ROOT_COMPONENT_NAMES,
+} from './body/index.js';
 export * as schema from './db/schema.js';
 // Integration provider + capability descriptor surface for `@forge/contracts`.
 // Type-only: the runtime `capabilitiesFor` / `DEFAULT_CAPABILITIES` values stay

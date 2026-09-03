@@ -19,6 +19,8 @@
  * review-gate park.
  */
 import { eq, inArray, sql } from 'drizzle-orm';
+import type { BodyFormat } from '../body/formats.js';
+import { prepareBody } from '../body/prepare.js';
 import { db } from '../db/client.js';
 import {
   type IssueDependencyKind,
@@ -126,6 +128,7 @@ interface PendingChildHook {
   status: IssueStatus;
   title: string;
   description: string | null;
+  descriptionFormat: string;
   priority: IssuePriority;
   category: string | null;
   reportedBy: string | null;
@@ -257,7 +260,7 @@ export async function decomposeParent(
         .values({
           projectId: parentRow.projectId,
           title: spec.title.trim(),
-          description: spec.description ?? null,
+          ...childDescription(spec.description),
           status: 'draft',
           priority: spec.priority ?? parentRow.priority,
           category: spec.category ?? parentRow.category,
@@ -270,6 +273,7 @@ export async function decomposeParent(
           status: issues.status,
           title: issues.title,
           description: issues.description,
+          descriptionFormat: issues.descriptionFormat,
           priority: issues.priority,
           category: issues.category,
           reportedBy: issues.reportedBy,
@@ -278,15 +282,10 @@ export async function decomposeParent(
       if (!inserted) throw new DecomposeError('INTERNAL', 'child insert returned no row');
       childIds.push(inserted.id);
       pendingChildHooks.push({
+        ...inserted,
         issueId: inserted.id,
-        projectId: inserted.projectId,
         status: inserted.status as IssueStatus,
-        title: inserted.title,
-        description: inserted.description,
         priority: inserted.priority as IssuePriority,
-        category: inserted.category,
-        reportedBy: inserted.reportedBy,
-        assigneeId: inserted.assigneeId,
       });
       await recordActivityTx(tx, {
         issueId: inserted.id,
@@ -425,6 +424,7 @@ export async function decomposeParent(
         snapshot: {
           title: child.title,
           description: child.description,
+          descriptionFormat: child.descriptionFormat,
           priority: child.priority,
           category: child.category,
           reportedBy: child.reportedBy,
@@ -513,4 +513,21 @@ async function resolveIntegrationBranchName(
     'INTEGRATION_BRANCH_CONFLICT',
     `cannot find an unused integration branch name for ${baseCandidate}`,
   );
+}
+
+// cm:guard ISS-898 — a decompose child's description is agent-supplied, so it is the seventh caller-supplied door and takes the same gate as the other six. `prepareBody` REFUSES an invalid component body, and because the caller runs inside the decomposition transaction that refusal rolls the whole split back rather than landing half a plan — the right trade, since a child whose body silently lost its markup is worse than a refused decompose the caller retries.
+function childDescription(raw: string | null | undefined): {
+  description: string | null;
+  descriptionFormat: BodyFormat;
+  descriptionTemplate: string | null;
+} {
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    return { description: raw ?? null, descriptionFormat: 'markdown', descriptionTemplate: null };
+  }
+  const prepared = prepareBody({ raw });
+  return {
+    description: prepared.body,
+    descriptionFormat: prepared.format,
+    descriptionTemplate: prepared.template,
+  };
 }

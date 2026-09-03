@@ -38,6 +38,8 @@ export const CHAT_TOLERATED_DATA_KEYS: readonly string[] = [
   'category',
   'complexity',
   'description',
+  // cm:why TOLERATED rather than refused (ISS-898): it names the renderer for a description chat is already allowed to write, has no side effect of its own, and an invalid `forge-*` body is refused at the write door with a message naming the element — so widening chat here cannot store markup no reader can render
+  'descriptionFormat',
   'detectorKey',
   'isAgentTask',
   'issueId',

@@ -1359,6 +1359,13 @@
       "when": 1790294400000,
       "tag": "0195_iss897_release_gate_and_staged_config",
       "breakpoints": true
+    },
+    {
+      "idx": 196,
+      "version": "7",
+      "when": 1790380800000,
+      "tag": "0196_iss898_body_format_and_template",
+      "breakpoints": true
     }
   ]
 }

@@ -17,6 +17,9 @@
     "core-auth": [
       "packages/core/src/auth/**"
     ],
+    "core-body": [
+      "packages/core/src/body/**"
+    ],
     "core-branches": [
       "packages/core/src/branches/**"
     ],

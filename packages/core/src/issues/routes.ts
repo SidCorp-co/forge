@@ -3,6 +3,9 @@ import { and, count, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { BodyInvalidError } from '../body/errors.js';
+import { BODY_FORMATS } from '../body/formats.js';
+import { bodyInvalidHttp } from '../body/http-error.js';
 import { registerIssueCommentRoutes } from '../comments/routes.js';
 import { db } from '../db/client.js';
 import {
@@ -79,6 +82,7 @@ export const issueCreateSchema = z
   .object({
     title: z.string().trim().min(1).max(500),
     description: z.string().max(100_000).nullable().optional(),
+    descriptionFormat: z.enum(BODY_FORMATS).optional(),
     priority: z.enum(issuePriorities).optional(),
     category: z.string().trim().min(1).max(100).nullable().optional(),
     complexity: z.enum(issueComplexities).nullable().optional(),
@@ -106,6 +110,7 @@ export const issuePatchSchema = z
   .object({
     title: z.string().trim().min(1).max(500).optional(),
     description: z.string().max(100_000).nullable().optional(),
+    descriptionFormat: z.enum(BODY_FORMATS).optional(),
     priority: z.enum(issuePriorities).optional(),
     category: z.string().trim().min(1).max(100).nullable().optional(),
     complexity: z.enum(issueComplexities).nullable().optional(),
@@ -205,12 +210,14 @@ issueProjectRoutes.post(
     response.attachments = result.attachments;
     if (result.attachmentErrors.length > 0) response.attachmentErrors = result.attachmentErrors;
     if (result.relations.length > 0) response.relations = result.relations;
+    if (result.bodyWarnings.length > 0) response.warnings = result.bodyWarnings;
     return c.json(response, 201);
   },
 );
 
 // cm:edge lockstep -> packages/core/src/issues/create-service.ts — every error the create service can raise needs a case here, or it surfaces as an unmapped 500
 function toHttpCreateError(err: unknown): unknown {
+  if (err instanceof BodyInvalidError) return bodyInvalidHttp(err);
   if (err instanceof LabelResolutionError) {
     return new HTTPException(400, {
       message: 'one or more labels do not exist in this project',
@@ -504,12 +511,17 @@ issueRoutes.patch(
     };
     // Plain fields via the shared whitelist (issues/patch-fields.ts) so the
     // REST and MCP update surfaces cannot drift column lists.
-    Object.assign(
-      updates,
-      collectIssueFieldUpdates(patch, [...SHARED_ISSUE_PATCH_FIELDS, 'assigneeId'], (f, v) =>
-        track(f as keyof IssueRow, v),
-      ),
-    );
+    let collected: ReturnType<typeof collectIssueFieldUpdates>;
+    try {
+      collected = collectIssueFieldUpdates(
+        patch,
+        [...SHARED_ISSUE_PATCH_FIELDS, 'assigneeId'],
+        (f, v) => track(f as keyof IssueRow, v),
+      );
+    } catch (err) {
+      throw toHttpCreateError(err);
+    }
+    Object.assign(updates, collected.updates);
     if (patch.metadata !== undefined) {
       const baseRaw = patch.metadata?.branchConfig?.baseBranch;
       if (typeof baseRaw === 'string' && isSelfReferentialBranch(baseRaw, issue.issSeq)) {
@@ -548,7 +560,10 @@ issueRoutes.patch(
       });
     }
 
-    return c.json(serializeIssue(updated));
+    const patched = serializeIssue(updated);
+    return c.json(
+      collected.warnings.length > 0 ? { ...patched, warnings: collected.warnings } : patched,
+    );
   },
 );
 
@@ -557,6 +572,7 @@ const decomposeChildNewSchema = z
   .object({
     title: z.string().trim().min(1).max(500),
     description: z.string().max(100_000).nullable().optional(),
+    descriptionFormat: z.enum(BODY_FORMATS).optional(),
     priority: z.enum(issuePriorities).optional(),
     category: z.string().trim().min(1).max(100).nullable().optional(),
   })

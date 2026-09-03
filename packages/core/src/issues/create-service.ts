@@ -14,6 +14,8 @@
  */
 
 import { eq } from 'drizzle-orm';
+import type { BodyFormat } from '../body/formats.js';
+import { prepareBody } from '../body/prepare.js';
 import { db } from '../db/client.js';
 import { type IssueStatus, issueLabels, issues } from '../db/schema.js';
 import type { Actor } from '../pipeline/activity.js';
@@ -63,6 +65,7 @@ export type CreateIssueInput = {
   projectId: string;
   title: string;
   description?: string | null | undefined;
+  descriptionFormat?: BodyFormat | null | undefined;
   priority?: string | undefined;
   category?: string | null | undefined;
   complexity?: string | null | undefined;
@@ -110,6 +113,8 @@ export type CreateIssueResult =
       relations: AppliedIssueRelation[];
       attachments: PersistedIssueAttachment[];
       attachmentErrors: AttachmentErrorEntry[];
+      /** What the body sanitizer removed from the description on the way in. */
+      bodyWarnings: string[];
     };
 
 // cm:edge ordering -> packages/core/src/jobs/dispatch-gates.ts — relations MUST commit before the `issueCreated` emit below, which synchronously triggers considerEnqueue→dispatch; an edge written after it is invisible to the L2 blocks-gate on the first tick and the dependent ships ahead of its blocker
@@ -137,6 +142,12 @@ export async function createIssue(
     input.labels && input.labels.length > 0
       ? await resolveLabelIdsForWrite(input.projectId, input.labels)
       : [];
+
+  // cm:guard prepared BEFORE the transaction, for the same reason attachments and labels are: `prepareBody` REFUSES an invalid `forge-*` body, and refusing inside the transaction would leave the caller a rolled-back write instead of a 400 naming what to fix
+  const prepared =
+    typeof input.description === 'string' && input.description.trim().length > 0
+      ? prepareBody({ raw: input.description, format: input.descriptionFormat })
+      : null;
 
   const detectorKey = input.detectorKey ?? null;
   if (detectorKey) {
@@ -168,7 +179,9 @@ export async function createIssue(
       .values({
         projectId: input.projectId,
         title: input.title,
-        description: input.description ?? null,
+        description: prepared ? prepared.body : (input.description ?? null),
+        descriptionFormat: prepared?.format ?? 'markdown',
+        descriptionTemplate: prepared?.template ?? null,
         status: intake.status,
         priority: (input.priority ?? 'medium') as IssueCreateRow['priority'],
         category: input.category ?? null,
@@ -233,6 +246,8 @@ export async function createIssue(
     snapshot: {
       title: created.title,
       description: created.description,
+      // cm:edge contract -> packages/core/src/memory/indexer.ts — the indexer embeds `snapshot.description` through the body projection and needs the format to pick a path; without it an `html` component body is embedded as raw markup and the vector describes the template, not the problem
+      descriptionFormat: created.descriptionFormat,
       priority: created.priority,
       category: created.category,
       reportedBy: created.reportedBy,
@@ -241,5 +256,13 @@ export async function createIssue(
     },
   });
 
-  return { deduped: false, issue: created, labelIds, relations, attachments, attachmentErrors };
+  return {
+    deduped: false,
+    issue: created,
+    labelIds,
+    relations,
+    attachments,
+    attachmentErrors,
+    bodyWarnings: prepared?.warnings ?? [],
+  };
 }

@@ -18,8 +18,15 @@ import { requireAnyAuth } from '../middleware/require-any-auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import { AttachmentError, persistCommentAttachment } from './attachment-service.js';
+import {
+  commentBodySchema,
+  commentCreateSchema,
+  prepareCommentBody,
+  rethrowBodyInvalid,
+} from './body-input.js';
 import { pgConstraintName, pgErrorCode } from './error-mapping.js';
 import { parseMentions, resolveMentions } from './mentions.js';
+import { updateCommentBody } from './service.js';
 import {
   attachAuthors,
   buildCommentTree,
@@ -27,18 +34,20 @@ import {
   type CommentRow,
 } from './tree.js';
 
-const commentCreateSchema = z
-  .object({
-    body: z.string().trim().min(1).max(10_000),
-    parentId: z.uuid().optional(),
-  })
-  .strict();
-
-const commentBodySchema = z
-  .object({
-    body: z.string().trim().min(1).max(10_000),
-  })
-  .strict();
+/** The comment projection every REST response here shares. */
+const restCommentColumns = {
+  id: comments.id,
+  issueId: comments.issueId,
+  authorId: comments.authorId,
+  authorDeviceId: comments.authorDeviceId,
+  isAi: comments.isAi,
+  body: comments.body,
+  format: comments.format,
+  template: comments.template,
+  parentId: comments.parentId,
+  createdAt: comments.createdAt,
+  updatedAt: comments.updatedAt,
+} as const;
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -97,7 +106,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
     }),
     async (c) => {
       const { id: issueId } = c.req.valid('param');
-      const { body, parentId } = c.req.valid('json');
+      const { body, format, parentId } = c.req.valid('json');
       const userId = c.get('userId');
 
       const issue = await loadIssue(issueId);
@@ -119,6 +128,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         }
       }
 
+      const prepared = prepareCommentBody({ raw: body, format });
       let inserted: CommentRow | undefined;
       try {
         const rows = await db
@@ -127,20 +137,13 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
           .values({
             issueId,
             authorId: userId,
-            body,
+            body: prepared.body,
+            format: prepared.format,
+            template: prepared.template,
             parentId: parentId ?? null,
             isAi: c.get('agency') === 'agent',
           })
-          .returning({
-            id: comments.id,
-            issueId: comments.issueId,
-            authorId: comments.authorId,
-            authorDeviceId: comments.authorDeviceId,
-            body: comments.body,
-            parentId: comments.parentId,
-            createdAt: comments.createdAt,
-            updatedAt: comments.updatedAt,
-          });
+          .returning(restCommentColumns);
         inserted = rows[0];
       } catch (err) {
         const pgCode = pgErrorCode(err);
@@ -236,17 +239,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         .from(comments)
         .where(eq(comments.issueId, issueId));
       const rows = await db
-        .select({
-          id: comments.id,
-          issueId: comments.issueId,
-          authorId: comments.authorId,
-          authorDeviceId: comments.authorDeviceId,
-          isAi: comments.isAi,
-          body: comments.body,
-          parentId: comments.parentId,
-          createdAt: comments.createdAt,
-          updatedAt: comments.updatedAt,
-        })
+        .select(restCommentColumns)
         .from(comments)
         .where(eq(comments.issueId, issueId))
         .orderBy(asc(comments.createdAt))
@@ -358,15 +351,7 @@ commentRoutes.get(
       .where(eq(comments.parentId, id));
 
     const rows = await db
-      .select({
-        id: comments.id,
-        issueId: comments.issueId,
-        authorId: comments.authorId,
-        body: comments.body,
-        parentId: comments.parentId,
-        createdAt: comments.createdAt,
-        updatedAt: comments.updatedAt,
-      })
+      .select(restCommentColumns)
       .from(comments)
       .where(eq(comments.parentId, id))
       .orderBy(asc(comments.createdAt))
@@ -389,7 +374,7 @@ commentRoutes.patch(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { body } = c.req.valid('json');
+    const { body, format } = c.req.valid('json');
     const userId = c.get('userId');
 
     const comment = await loadComment(id);
@@ -400,19 +385,14 @@ commentRoutes.patch(
       }
     }
 
-    const [updated] = await db
-      .update(comments)
-      .set({ body, updatedAt: new Date() })
-      .where(eq(comments.id, id))
-      .returning({
-        id: comments.id,
-        issueId: comments.issueId,
-        authorId: comments.authorId,
-        body: comments.body,
-        createdAt: comments.createdAt,
-        updatedAt: comments.updatedAt,
-      });
-    if (!updated) throw notFound('comment not found');
+    let written: Awaited<ReturnType<typeof updateCommentBody>>;
+    try {
+      written = await updateCommentBody(id, { body, format });
+    } catch (err) {
+      rethrowBodyInvalid(err);
+    }
+    if (!written) throw notFound('comment not found');
+    const updated = written.row;
     await hooks.emit('commentUpdated', {
       issueId: updated.issueId,
       projectId: comment.projectId,
@@ -421,7 +401,8 @@ commentRoutes.patch(
       before: comment.body ?? '',
       after: updated.body,
     });
-    return c.json(updated);
+    const { warnings } = written;
+    return c.json(warnings.length > 0 ? { ...updated, warnings } : updated);
   },
 );
 

@@ -1,3 +1,4 @@
+export * from "./body-components.js";
 export * from "./divergence-charters.js";
 export * from "./domain-templates.js";
 export * from "./failure-causes.js";

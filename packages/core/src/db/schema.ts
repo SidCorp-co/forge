@@ -19,6 +19,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+import { BODY_FORMATS } from '../body/formats.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
 import type { ReleaseNotes } from '../issues/release-notes.js';
 import { FAILURE_CAUSES, type FailureCause } from '../pipeline/failure-causes.js';
@@ -999,13 +1000,7 @@ export const issueStatuses = [
   'draft',
   'dropped',
 ] as const;
-// `pass`, `staging`, and `deploying` were retired (unify gate model): the single
-// production approval gate is `tested` ("Awaiting release") and review exits
-// straight to `testing`. All three were removed from the lifecycle entirely;
-// one-shot migrations re-parked any stranded issue (pass/staging → tested,
-// deploying → testing), so no row can ever hold them again. The `staging`
-// *jobType* (schema `jobTypes`) is intentionally kept for back-compat with
-// historical `jobs.type='staging'` rows, but maps to no status.
+// cm:why `pass`, `staging` and `deploying` are absent because one-shot migrations re-parked every row off them, so no row can hold them again. The block that used to sit here also called `tested` "the single production approval gate", which ISS-897 falsified — the gate is derived from the project (an active `prod` binding AND a production branch distinct from the base), and `release-batch/gate.ts` is where it is decided.
 export type IssueStatus = (typeof issueStatuses)[number];
 
 export const issuePriorities = ['critical', 'high', 'medium', 'low', 'none'] as const;
@@ -1041,6 +1036,11 @@ export const issues = pgTable(
     issSeq: integer('iss_seq').notNull().default(0),
     title: text('title').notNull(),
     description: text('description'),
+    // cm:why named `description_*` rather than a bare `format`/`template` (ISS-898) — `plan` and `acceptanceCriteria` sit in this same table, so an unqualified name would read as covering all three the moment one of them gains a format
+    descriptionFormat: text('description_format', { enum: BODY_FORMATS })
+      .notNull()
+      .default('markdown'),
+    descriptionTemplate: text('description_template'),
     status: text('status', { enum: issueStatuses }).notNull().default('open'),
     priority: text('priority', { enum: issuePriorities }).notNull().default('medium'),
     category: text('category'),
@@ -1054,13 +1054,7 @@ export const issues = pgTable(
     createdById: uuid('created_by_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
-    // ISS-232 — git-aware Layer-2 dependency gate. Set by the state-machine
-    // (see `issues/merged-at.ts`) when an issue transitions OUT of
-    // `pipelineConfig.mergeStates.baseBranch` (default `"released"`). NULL =
-    // parent has not yet merged → downstream `kind=blocks` children stay
-    // gated by the picker. Operator can UPDATE directly to unblock children
-    // of an abandoned issue. Backfilled by migration 0077 for legacy issues
-    // already in `released`/`closed` at deploy time.
+    // cm:guard ISS-232 — this is the Layer-2 dependency gate: NULL means the blocker has not landed, so every `kind=blocks` dependent stays ungated by the picker. It is CALLER-ASSERTED (`issues/merged-at.ts`, `POST /api/issues/:id/merge`, and the close stamp) — nothing checks git — so stamping it on an issue whose code never merged dispatches its dependents against absent code. The old comment here named `pipelineConfig.mergeStates.baseBranch`, a key ISS-897 deleted.
     mergedAt: timestamp('merged_at', { withTimezone: true }),
     // ISS-42 C2 — t-shirt sizing (xs/s/m/l/xl) for scoping. NULL = unsized.
     complexity: text('complexity', { enum: issueComplexities }),
@@ -1157,6 +1151,9 @@ export const comments = pgTable(
     // cm:guard durable agent-authored marker set by every agent write path (MCP + core guards), incl. owner-lane PAT comments — human test is isAi=false AND authorDeviceId IS NULL
     isAi: boolean('is_ai').notNull().default(false),
     body: text('body').notNull(),
+    // cm:edge contract -> packages/core/src/body/prepare.ts — ISS-898. `format` decides which renderer and which validator a body gets, and its DEFAULT is load-bearing: every pre-existing row and every shipped SKILL.md example omits it, so `markdown` is what keeps them all valid. `template` is the root component name, replacing the regex guess in web-v2 `features/issues/derive.ts:deriveCommentKind`.
+    format: text('format', { enum: BODY_FORMATS }).notNull().default('markdown'),
+    template: text('template'),
     parentId: uuid('parent_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

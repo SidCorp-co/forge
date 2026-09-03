@@ -22,6 +22,7 @@
  * `appConfig.pipeline.states[state].userPromptPolicy`.
  */
 
+import { bodyText } from '../body/prepare.js';
 import type { JobType } from '../db/schema.js';
 import {
   type HandoffScope,
@@ -50,6 +51,7 @@ export interface IssueSnapshot {
   priority?: string | null;
   complexity?: string | null;
   description?: string | null;
+  descriptionFormat?: string | null;
   plan?: string | null;
   acceptanceCriteria?: string | null;
   sessionContext?: SessionContextSnapshot | null;
@@ -324,9 +326,15 @@ function formatIssueSnapshot(
     lines.push(
       '',
       'Description:',
-      markUntrusted(truncate(snapshot.description, fieldCaps.description, strategy), {
-        source: 'issue.description',
-      }),
+      // cm:guard ISS-898 — project BEFORE truncate, or the cap is spent on tag names. An `html` component description is ~25-40% heavier than the markdown it replaced, so a raw body would let the 8,000-char cap hold materially fewer requirements than it did before component bodies existed.
+      markUntrusted(
+        truncate(
+          bodyText(snapshot.description, snapshot.descriptionFormat),
+          fieldCaps.description,
+          strategy,
+        ),
+        { source: 'issue.description' },
+      ),
     );
   }
   if (fields.includes('plan') && snapshot.plan && !skipPlan) {
