@@ -66,7 +66,6 @@ export async function triggerPipelineStepManual(args: {
   projectId: string;
   issueId: string;
   status: IssueStatus;
-  stage?: JobType;
   actor: Actor;
   reason: Record<string, unknown>;
 }): Promise<{ jobId: string; type: JobType }> {

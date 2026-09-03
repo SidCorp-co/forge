@@ -729,29 +729,6 @@ describe('alarmClosedUnmergedBlockedDependents — alarm only (ISS-639, demoted 
     expect(wedge.nextStep).toContain('dispatches by itself');
   });
 
-  it('skips a project whose base branch is structurally unstampable (2026-06-19 fix preserved)', async () => {
-    resolveGateSettingsMock.mockResolvedValueOnce({ cap: 1, baseStampable: false });
-    dbExecute.mockResolvedValueOnce([closedUnmergedRow]);
-
-    const res = await alarmClosedUnmergedBlockedDependents(new Date());
-
-    expect(res.alerted).toBe(0);
-    expect(emitWedgeMock).not.toHaveBeenCalled();
-  });
-
-  it('caches baseStampable per project across multiple rows (one resolveGateSettings call)', async () => {
-    resolveGateSettingsMock.mockResolvedValueOnce({ cap: 1, baseStampable: true });
-    dbExecute.mockResolvedValueOnce([
-      closedUnmergedRow,
-      { ...closedUnmergedRow, issue_id: '65555555-5555-4555-8555-555555555555' },
-    ]);
-
-    const res = await alarmClosedUnmergedBlockedDependents(new Date());
-
-    expect(res.alerted).toBe(2);
-    expect(resolveGateSettingsMock).toHaveBeenCalledTimes(1);
-  });
-
   it('no rows → alerted 0, nothing touched', async () => {
     dbExecute.mockResolvedValueOnce([]);
     const res = await alarmClosedUnmergedBlockedDependents(new Date());

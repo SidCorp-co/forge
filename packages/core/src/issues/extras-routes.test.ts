@@ -211,15 +211,11 @@ describe('POST /api/issues/:id/enrich', () => {
 });
 
 describe('POST /api/issues/:id/run-pipeline-step', () => {
-  // Sequence of selectLimit calls per request:
-  //   1. emailVerifiedAt lookup (authVerified)
-  //   2. issue { id, projectId, status }
-  //   3. loadPipelineConfig — projects { agentConfig, ownerId }
-  //   4. findActiveJob — jobs { id } or empty for no-conflict
+  // cm:guard the three selectLimit mocks below are POSITIONAL and must stay in this order — verified email, the issue row, then loadPipelineConfig's project row. A test that queues them in another order still passes its own assertion while exercising a different code path.
   function setupHappyPath(opts: { status?: string; agentConfig?: unknown } = {}) {
     authVerified();
     selectLimit.mockResolvedValueOnce([
-      { id: ISSUE_ID, projectId: PROJECT_ID, status: opts.status ?? 'confirmed' },
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: opts.status ?? 'open' },
     ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
@@ -228,137 +224,74 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
       orgRole: null,
     });
     selectLimit.mockResolvedValueOnce([
-      // cm:guard the fallback says `staged` OUT LOUD. `null` used to mean it; since 2026-09-02 an empty config resolves autonomous, and every case in this block exercises the STAGED route (`clarified → plan`, the stage override, the merge-instruction text) — none of which the autonomous branch ever reaches.
-      {
-        agentConfig: opts.agentConfig ?? { pipelineConfig: { mode: 'staged' } },
-        ownerId: USER_ID,
-      },
+      { agentConfig: opts.agentConfig ?? {}, ownerId: USER_ID },
     ]);
-    selectLimit.mockResolvedValueOnce([]); // findActiveJob → no conflict
+    selectLimit.mockResolvedValueOnce([]);
     insertReturning.mockResolvedValueOnce([{ id: JOB_ID }]);
     enqueueJobMock.mockResolvedValueOnce(undefined);
   }
 
-  it('202 default-stage from issue status (clarified → plan)', async () => {
-    setupHappyPath({ status: 'clarified' });
-
-    const res = await buildApp().request(`/api/issues/${ISSUE_ID}/run-pipeline-step`, {
+  async function post(body = '{}') {
+    return buildApp().request(`/api/issues/${ISSUE_ID}/run-pipeline-step`, {
       method: 'POST',
-      headers: {
-        authorization: `Bearer ${await token()}`,
-        'content-type': 'application/json',
-      },
-      body: '{}',
+      headers: { authorization: `Bearer ${await token()}`, 'content-type': 'application/json' },
+      body,
     });
+  }
+
+  it('202 starts the driver at the entry status', async () => {
+    setupHappyPath({ status: 'open' });
+
+    const res = await post();
+
     expect(res.status).toBe(202);
-    const body = (await res.json()) as {
-      issueId: string;
-      jobId: string;
-      stage: string;
-      status: string;
-    };
-    expect(body).toEqual({
+    expect(await res.json()).toEqual({
       issueId: ISSUE_ID,
       jobId: JOB_ID,
-      stage: 'plan',
+      stage: 'drive',
       status: 'queued',
     });
     expect(enqueueJobMock).toHaveBeenCalledWith(expect.objectContaining({ jobId: JOB_ID }));
   });
 
-  it('202 explicit stage override', async () => {
-    // Issue is at `approved` (mapped to code) but caller forces `review`.
-    setupHappyPath({ status: 'approved' });
-
-    const res = await buildApp().request(`/api/issues/${ISSUE_ID}/run-pipeline-step`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${await token()}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ stage: 'review' }),
-    });
-    expect(res.status).toBe(202);
-    const body = (await res.json()) as { stage: string };
-    expect(body.stage).toBe('review');
-  });
-
-  it('keeps generic merge instructions for a manual stage override at a different merge state', async () => {
-    resolverScope = 'project';
+  // cm:guard this endpoint is the one exit from an entry stage set to `mode: 'manual'` — the gate means "a human decides", and this IS the human. It must NOT start honouring the gate.
+  it('202 even when the entry stage is gated to a human', async () => {
     setupHappyPath({
-      status: 'testing',
-      agentConfig: {
-        pipelineConfig: {
-          mode: 'staged',
-          mergeStates: { baseBranch: 'testing', productionBranch: 'released' },
-        },
-      },
+      status: 'open',
+      agentConfig: { pipelineConfig: { states: { open: { mode: 'manual' } } } },
     });
 
-    const res = await buildApp().request(`/api/issues/${ISSUE_ID}/run-pipeline-step`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${await token()}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ stage: 'code' }),
-    });
+    const res = await post();
 
     expect(res.status).toBe(202);
-    const payload = (
-      insertValues.mock.calls as unknown as Array<[{ payload: { promptString: string } }]>
-    ).at(-1)?.[0].payload.promptString;
-    expect(payload).toContain('No resolved git ref is configured');
-    expect(payload).not.toContain('registered project skill owns the git merge procedure');
   });
 
-  it('409 when an active job already exists for the same (issueId, type)', async () => {
+  // cm:guard a `stage` in the body is REFUSED, not ignored. It named a rung of the staged ladder; accepting it silently would 202 a request the server did not honour, which is worse than the 400.
+  it('400 on a body that still names a staged stage', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([
-      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'confirmed' },
-    ]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'member',
-      orgRole: null,
-    });
-    selectLimit.mockResolvedValueOnce([
-      { agentConfig: { pipelineConfig: { mode: 'staged' } }, ownerId: USER_ID },
-    ]);
-    selectLimit.mockResolvedValueOnce([{ id: 'existing-job-id' }]); // findActiveJob hit
 
-    const res = await buildApp().request(`/api/issues/${ISSUE_ID}/run-pipeline-step`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${await token()}`,
-        'content-type': 'application/json',
-      },
-      body: '{}',
-    });
-    expect(res.status).toBe(409);
-    expect(insertReturning).not.toHaveBeenCalled();
+    const res = await post(JSON.stringify({ stage: 'review' }));
+
+    expect(res.status).toBe(400);
     expect(enqueueJobMock).not.toHaveBeenCalled();
   });
 
-  it('400 when issue status has no skill mapping and no explicit stage', async () => {
+  it('409 when the issue is not at the entry status', async () => {
     authVerified();
-    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID, status: 'on_hold' }]);
+    selectLimit.mockResolvedValueOnce([
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'in_progress' },
+    ]);
     projectAccess.mockResolvedValueOnce({
       projectId: PROJECT_ID,
       orgId: 'org-1',
       role: 'member',
       orgRole: null,
     });
-    // No projects/jobs select mocks — the resolveSkillForStatus check throws
-    // before triggerPipelineStepManual reaches loadPipelineConfig.
+    selectLimit.mockResolvedValueOnce([{ agentConfig: {}, ownerId: USER_ID }]);
 
-    const res = await buildApp().request(`/api/issues/${ISSUE_ID}/run-pipeline-step`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${await token()}`,
-        'content-type': 'application/json',
-      },
-      body: '{}',
-    });
-    expect(res.status).toBe(400);
+    const res = await post();
+
+    expect(res.status).toBe(409);
     expect(enqueueJobMock).not.toHaveBeenCalled();
   });
 });

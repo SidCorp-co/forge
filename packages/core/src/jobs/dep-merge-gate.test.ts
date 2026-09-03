@@ -72,7 +72,7 @@ afterEach(() => {
 });
 
 describe('L2 dependency gate — merged_at (ISS-232 / ISS-639)', () => {
-  it('picker keys blockedBy on parent.merged_at IS NULL, not parent.status (default project = stampable base)', async () => {
+  it('picker keys blockedBy on parent.merged_at IS NULL, not parent.status ', async () => {
     mockProjectAgentConfigOnce(null);
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
@@ -85,7 +85,7 @@ describe('L2 dependency gate — merged_at (ISS-232 / ISS-639)', () => {
     expect(text).not.toMatch(/p\.status\s+NOT\s+IN/);
   });
 
-  it('picker keys decomposeChildrenPending on child.merged_at IS NULL (parent waits for children, stampable base)', async () => {
+  it('picker keys decomposeChildrenPending on child.merged_at IS NULL (parent waits for children)', async () => {
     mockProjectAgentConfigOnce(null);
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
@@ -99,7 +99,7 @@ describe('L2 dependency gate — merged_at (ISS-232 / ISS-639)', () => {
     expect(text).not.toMatch(/c2\.status\s+NOT\s+IN/);
   });
 
-  it('asserter mirrors picker — same merged_at clauses, no status compare (stampable base)', async () => {
+  it('asserter mirrors picker — same merged_at clauses, no status compare', async () => {
     // First select fetches the job; second fetches the project's agentConfig.
     dbSelect
       .mockImplementationOnce(() => ({
@@ -123,26 +123,6 @@ describe('L2 dependency gate — merged_at (ISS-232 / ISS-639)', () => {
     expect(text).not.toMatch(/c2\.status\s+NOT\s+IN/);
   });
 
-  // ISS-639 regression guard (commit d6e377c1) — a project whose baseBranch
-  // is structurally unstampable (manual mode) must keep the `closed` bypass
-  // so a sibling-`blocks` chain doesn't deadlock forever.
-  it('picker keeps the closed bypass when the base branch is structurally unstampable (manual mode)', async () => {
-    mockProjectAgentConfigOnce({
-      pipelineConfig: {
-        mergeStates: { baseBranch: 'released' },
-        states: { released: { mode: 'manual' } },
-      },
-    });
-    dbExecute.mockResolvedValueOnce([]);
-    await pickNextDispatchableJobForProject('p1');
-    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
-    expect(text).toMatch(
-      /\(\s*p\.merged_at\s+IS\s+NULL\s+OR\s+p\.status\s*=\s*'reopen'\s*\)\s+AND\s+p\.status\s*<>\s*'closed'/,
-    );
-    expect(text).toMatch(
-      /\(\s*c2\.merged_at\s+IS\s+NULL\s+OR\s+c2\.status\s*=\s*'reopen'\s*\)\s+AND\s+c2\.status\s*<>\s*'closed'/,
-    );
-  });
 
   // cm:why sid-desk ISS-20/25 — merged_at is COALESCE-once and survives a later reopen, so a child that reached `tested` then failed QA still read as satisfied and dispatched its parent onto broken staging; both arms must treat a currently-reopened blocker as unsatisfied
   it('treats a reopened blocker/child as unsatisfied even when merged_at is stamped', async () => {

@@ -184,18 +184,6 @@ describe('classifyPipelineHealthForIssue', () => {
     expect(out.waitingOn?.details.closedUnmergedBlockerIssueIds).toEqual(['iss-blocker']);
   });
 
-  it('honors the closed bypass for an unstampable base (manual merge projects)', () => {
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        jobs: [job()],
-        deps: [
-          { fromIssueId: 'iss-blocker', kind: 'blocks', fromStatus: 'closed', fromMergedAt: null },
-        ],
-      }),
-    );
-    expect(out.waitingOn).toBeUndefined();
-  });
-
   it('classifies project_full when running count >= cap', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({

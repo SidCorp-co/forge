@@ -264,12 +264,8 @@ describe('pickNextDispatchableJobForProject', () => {
     );
   });
 
-  // ISS-639 — the `p.status <> 'closed'` / `c2.status <> 'closed'` bypass
-  // arms must be OMITTED when the project's mergeStates.baseBranch can
-  // stamp merged_at (a normal auto-advancing stage). A closed-but-unmerged
-  // blocker must NOT satisfy the gate in this case (see
-  // pipeline-config-service.test.ts `isBaseBranchStampable`).
-  it('omits the closed-status bypass when the base branch is stampable (default/unconfigured project)', async () => {
+  // cm:guard the ` AND p.status <> 'closed'` arm must stay ABSENT from this SQL. Present, it narrows the unsatisfied test so a `closed` blocker with `merged_at IS NULL` reads as satisfied — a blocker closed WITHOUT its code landing dispatching its dependent, the devbox ISS-2/ISS-4 bug. It was switchable per project until ISS-897 removed `mergeStates`; nothing can turn it back on now, so a regression here is a code change, not a config one.
+  it('never lets a closed blocker with no merge stamp satisfy the gate', async () => {
     mockProjectAgentConfigOnce(null);
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
@@ -280,28 +276,6 @@ describe('pickNextDispatchableJobForProject', () => {
     expect(text).not.toMatch(/c2\.status\s*<>\s*'closed'/);
   });
 
-  // ISS-639 regression guard — preserves the 2026-06-19 fix (commit
-  // d6e377c1): a project whose baseBranch is structurally unstampable
-  // (manual mode) must keep the `closed` bypass so a sibling-`blocks` chain
-  // doesn't deadlock forever.
-  it('keeps the closed-status bypass when the base branch is structurally unstampable (manual mode)', async () => {
-    mockProjectAgentConfigOnce({
-      pipelineConfig: {
-        mergeStates: { baseBranch: 'released' },
-        states: { released: { mode: 'manual' } },
-      },
-    });
-    dbExecute.mockResolvedValueOnce([]);
-    await pickNextDispatchableJobForProject('p1');
-    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
-    // cm:guard the reopen arm (sid-desk ISS-20/25) must sit INSIDE the parens with merged_at, while the closed bypass stays OUTSIDE so it still short-circuits the whole test
-    expect(text).toMatch(
-      /\(\s*p\.merged_at\s+IS\s+NULL\s+OR\s+p\.status\s*=\s*'reopen'\s*\)\s+AND\s+p\.status\s*<>\s*'closed'/,
-    );
-    expect(text).toMatch(
-      /\(\s*c2\.merged_at\s+IS\s+NULL\s+OR\s+c2\.status\s*=\s*'reopen'\s*\)\s+AND\s+c2\.status\s*<>\s*'closed'/,
-    );
-  });
 
   // Cohesion + ISS-102 defence: pause/resume/cancel ride on `r.status='running'`.
   it('JOINs pipeline_runs, filters running, and orders by run.started_at then queued_at (cohesion)', async () => {
@@ -627,7 +601,7 @@ describe('assertDispatchable', () => {
   // ISS-639 — assertDispatchable's CASE-driven SQL must honor the SAME
   // baseStampable-conditional closed-bypass as the picker (both resolve it
   // via `resolveGateSettings` from the same single agent_config read).
-  it('omits the closed-status bypass when the base branch is stampable', async () => {
+  it('never lets a closed blocker with no merge stamp satisfy the gate', async () => {
     mockAssertChain({
       job: { projectId: 'p1' },
       cap: null,
@@ -637,23 +611,6 @@ describe('assertDispatchable', () => {
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
     expect(text).not.toMatch(/p\.status\s*<>\s*'closed'/);
     expect(text).not.toMatch(/c2\.status\s*<>\s*'closed'/);
-  });
-
-  it('keeps the closed-status bypass when the base branch is structurally unstampable', async () => {
-    mockAssertChain({
-      job: { projectId: 'p1' },
-      cap: {
-        pipelineConfig: {
-          mergeStates: { baseBranch: 'released' },
-          states: { released: { mode: 'manual' } },
-        },
-      },
-      caseResult: { reason: null },
-    });
-    await assertDispatchable('j1');
-    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
-    expect(text).toMatch(/p\.status\s*<>\s*'closed'/);
-    expect(text).toMatch(/c2\.status\s*<>\s*'closed'/);
   });
 
   it('SQL joins jobs/issues/pipeline_runs the same way the picker does', async () => {

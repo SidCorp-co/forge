@@ -35,8 +35,8 @@ import { triggerTerminalDispatch } from './transition.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
-const stageEnum = z.enum(['triage', 'plan', 'code', 'review', 'test', 'fix', 'release', 'clarify']);
-const runPipelineStepBodySchema = z.object({ stage: stageEnum.optional() }).strict();
+// cm:guard the body takes NO `stage`. It used to name one rung of the staged ladder, and ISS-897 left one job type — accepting the field and ignoring it (which is what `dispatchDriveManual` did for the whole of 2026-09-02) is an API that reports success for a request it did not honour.
+const runPipelineStepBodySchema = z.object({}).strict();
 
 // `complexity` is intentionally omitted: BulkActionBar does not expose a
 // complexity selector, so accepting it server-side would create a client/
@@ -353,14 +353,7 @@ issueExtrasRoutes.post(
   },
 );
 
-// POST /api/issues/:id/run-pipeline-step
-// ISS-5: manual trigger for a pipeline stage. Bypasses the per-stage `auto*`
-// toggles so the user can re-fire forge-plan / forge-code / etc. without
-// bouncing the issue status. Body `{ stage? }` overrides the default stage
-// resolved from the issue's current status (STATUS_TO_JOB_TYPE).
-// ISS-108 — `mode: 'manual'` is honored for the auto/PM paths only; this
-// endpoint is always human-triggered (auth-gated) so manual mode does NOT
-// block it. The whole point of manual mode is "only a human can fire this".
+// cm:guard this endpoint is the ONLY way out of a gated entry stage, so it must keep bypassing `states.open.mode === 'manual'` — that gate says "a human decides", and this IS the human deciding. Refusing here would make the gate a dead end with no exit but editing the config.
 issueExtrasRoutes.post(
   '/:id/run-pipeline-step',
   zValidator('param', idParamSchema, (r) => {
@@ -371,7 +364,6 @@ issueExtrasRoutes.post(
   }),
   async (c) => {
     const { id: issueId } = c.req.valid('param');
-    const { stage } = c.req.valid('json');
     const userId = c.get('userId');
 
     const [issue] = await db
@@ -389,7 +381,6 @@ issueExtrasRoutes.post(
         projectId: issue.projectId,
         issueId: issue.id,
         status: issue.status,
-        ...(stage ? { stage } : {}),
         actor: restActor(c),
         reason: { manual: true },
       });
@@ -408,9 +399,10 @@ issueExtrasRoutes.post(
           },
         });
       }
-      if (err instanceof Error && err.message.startsWith('NO_SKILL_REGISTERED')) {
-        throw badRequest({
-          message: `cannot run pipeline for status ${issue.status} without explicit stage`,
+      if (err instanceof Error && err.message.startsWith('AUTONOMOUS_NOT_AT_ENTRY')) {
+        throw new HTTPException(409, {
+          message: err.message,
+          cause: { code: 'NOT_AT_ENTRY_STATUS', status: issue.status },
         });
       }
       throw err;
