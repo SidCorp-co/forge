@@ -48,7 +48,7 @@ case today.
    an outage that predates the release is indistinguishable from one it caused, and a rollback
    deletes reviewed work while the outage survives it.
 
-## The two open questions
+## The three open questions
 
 - **Batch atomicity.** If issue 3 of 5 fails its verification, are 1–2 closed? The kernel does not
   decide this; `finishReleaseBatch` takes the whole set. A human should pick before the skill is
@@ -56,6 +56,14 @@ case today.
 - **Who writes the changelog line.** `releaseNotes` is populated per issue and `forge-release`
   appends at close. Whether the batch writes one grouped entry or N lines is a formatting decision
   nobody has made.
+- **Whether the roster may be incomplete.** Promotion is a merge of a BRANCH, so the unit that
+  ships is the branch and not the roster the caller assembled. An issue whose `merged_at` points at
+  the base branch, which is not `closed` and which nobody put in the batch, therefore ships anyway
+  and stays open — released in fact and unreleased on the board. The same asymmetry reaches
+  dependencies: a claimed issue whose `blocks` blocker is neither `closed` nor in this batch ships
+  ahead of the thing it depends on. A `create` that refused both cases (`RELEASE_ROSTER_INCOMPLETE`,
+  listing what it found) would close the gap, at the cost of a release that cannot be cut until the
+  roster is reconciled. Nobody has chosen which side to take.
 
 ## Honest costs
 
@@ -70,9 +78,10 @@ Adopting this splits one agent's job in two, and the seam is where the price sit
   followed the merge. Now an issue can sit merged-and-unreleased indefinitely, and every `blocks`
   dependent of it is already unblocked (`merged_at` is stamped at the merge) — so the backlog is
   invisible to the dispatcher by design. Nothing here builds the alarm for that.
-- **The two open questions above are deferred onto whoever writes the skill.** Batch atomicity and
-  the changelog shape are both decisions this document declines to make, which means the first
-  implementation makes them by accident unless a human answers first.
+- **The three open questions above are deferred onto whoever writes the skill.** Batch atomicity,
+  the changelog shape and whether an incomplete roster is refusable are all decisions this document
+  declines to make, which means the first implementation makes them by accident unless a human
+  answers first.
 - **The procedure is per project and unvalidated.** Core checks that `release-procedure` and
   `rollback` exist, never that they work. A project that declares a rollback it has not tested has
   bought the appearance of a way back, and obligation 5 cannot tell the difference.
