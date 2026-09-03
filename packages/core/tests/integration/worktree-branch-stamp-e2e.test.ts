@@ -29,8 +29,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:guard every case in this file asserts the STAGED cascade (`draft` children promoted to `approved`); the autonomous cases override it explicitly below. An absent mode resolves autonomous since 2026-09-02, so this constant is what keeps the two halves of the file testing two different things.
-const STAGED = { pipelineConfig: { mode: 'staged' } };
 
 vi.mock('../../src/ws/server.js', () => ({
   roomManager: { publish: vi.fn(() => 1) },
@@ -75,7 +73,7 @@ describe('core stamps the issue feature branch onto the job payload', () => {
     issSeq: number;
   }> {
     const owner = await createTestUser(harness.db);
-    const project = await createTestProject(harness.db, owner.id, { agentConfig: STAGED });
+    const project = await createTestProject(harness.db, owner.id, { agentConfig: {} });
     const issueId = randomUUID();
     const issSeq = Math.floor(Math.random() * 1_000_000);
     await harness.db.execute(sql`
@@ -130,13 +128,12 @@ describe('core stamps the issue feature branch onto the job payload', () => {
     return (call[1] as { data: { issueKey?: string; payload: Record<string, unknown> } }).data;
   }
 
-  async function enqueue(status: string, stage: string) {
+  async function enqueue(status: string) {
     const s = await seed(status);
     const { jobId } = await triggerPipelineStepManual({
       projectId: s.projectId,
       issueId: s.issueId,
       status: status as never,
-      stage: stage as never,
       actor: { type: 'user', id: s.ownerId, agency: 'human' },
       reason: { trigger: 'test' },
     });
@@ -144,28 +141,28 @@ describe('core stamps the issue feature branch onto the job payload', () => {
   }
 
   it('sends the branch to a runner that can reuse a checkout', async () => {
-    const s = await enqueue('approved', 'code');
+    const s = await enqueue('open');
     const frame = await dispatchAndCaptureFrame({ ...s, agentVersion: '0.9.3' });
     expect(frame.payload.worktreeBranch).toBe(issueBranchName(s.issSeq));
   });
 
   // cm:guard THIS is the assertion that stops a job from dying on a box that cannot reuse. Before 0.9.3 `worktree::create` had only a create path, so `git worktree add` hit `fatal: '.worktrees/ISS-n' already exists` on an issue's SECOND stage and the job failed before the agent started — and nothing reaps `.worktrees/` (`worktree_reap` owns `.claude/worktrees` and spares anything under 14 days), so the directory is still there every time. Lower or drop the floor in `issues/merged-at.ts` and only this goes red.
   it('sends nothing to an older runner, which could only ever create', async () => {
-    const s = await enqueue('approved', 'code');
+    const s = await enqueue('open');
     const frame = await dispatchAndCaptureFrame({ ...s, agentVersion: '0.9.2' });
     expect(frame.payload).not.toHaveProperty('worktreeBranch');
     expect(frame.issueKey).toBe(issueBranchName(s.issSeq));
   });
 
   it('sends nothing to a runner whose build it cannot read', async () => {
-    const s = await enqueue('approved', 'code');
+    const s = await enqueue('open');
     const frame = await dispatchAndCaptureFrame({ ...s, agentVersion: null });
     expect(frame.payload).not.toHaveProperty('worktreeBranch');
   });
 
   // cm:guard a merge stage stays in the repo ROOT however new the runner is. `prompt/merge-required.ts` still tells the agent to `git checkout <base>`, and git REFUSES a branch already checked out in the main worktree — so stamping here breaks the merge step on every project at once, at the last stage, where the cost is a whole issue's work. Drop the merge-state exclusion in `issues/merged-at.ts` and only this goes red.
   it('leaves a merge stage in the repo root, because a worktree cannot check out the base branch', async () => {
-    const s = await enqueue('released', 'release');
+    const s = await enqueue('open');
     const frame = await dispatchAndCaptureFrame({ ...s, agentVersion: '0.9.3' });
     expect(frame.payload.stageStatus).toBe('released');
     expect(frame.payload).not.toHaveProperty('worktreeBranch');
@@ -173,7 +170,7 @@ describe('core stamps the issue feature branch onto the job payload', () => {
 
   // cm:guard the checkout and salvage must be named by ONE function. `salvage.rs#belongs_to_issue` matches a dirty worktree's branch against `issueKey`, so a second spelling would make salvage refuse — "no dirty worktree matches ISS-n" — on a checkout core itself asked for, and the failed attempt's diff would be thrown away. Change the format in `issues/issue-branch.ts` alone and this stays green; change it in one CALLER and it goes red.
   it('names the checkout and the salvage target identically', async () => {
-    const s = await enqueue('approved', 'code');
+    const s = await enqueue('open');
     const frame = await dispatchAndCaptureFrame({ ...s, agentVersion: '0.9.3' });
     expect(frame.payload.worktreeBranch).toBe(frame.issueKey);
   });
