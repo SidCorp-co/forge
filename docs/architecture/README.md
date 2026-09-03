@@ -8,4 +8,4 @@ transport, not that a feature shipped.
 |---|---|
 | [system-overview.md](system-overview.md) | what runs where, and what talks to what |
 | [data-plane-surface.md](data-plane-surface.md) | which MCP tool a REST route replaces, and which the CLI cannot reach |
-| [forge-feature-and-issue-map.html](forge-feature-and-issue-map.html) | two figures: the three planes and their one lane, and the four-actor life of a single issue — open the file in a browser |
+| [forge-feature-and-issue-map.html](forge-feature-and-issue-map.html) | three figures: the three planes and their one lane, the four-actor life of a single issue, and where release sits after `closed` — open the file in a browser |

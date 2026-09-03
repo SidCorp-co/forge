@@ -276,7 +276,7 @@
     <rect x="1104" y="200" width="192" height="72" rx="6" fill="#F4F7FC"/>
     <rect x="1104" y="200" width="192" height="72" rx="6" fill="rgba(14,23,38,0.05)" stroke="#4B5563" stroke-width="1"/>
     <text x="1200" y="228" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Kernel viết trạng thái</text>
-    <text x="1200" y="244" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">closed ⇒ merged_at · run terminal</text>
+    <text x="1200" y="244" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">closed ⇒ merged_at, hoặc giữ ở tested</text>
     <text x="1200" y="256" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">waiting/reopen ⇒ viết lại</text>
 
     <rect x="1104" y="312" width="192" height="64" rx="6" fill="#F4F7FC"/>
@@ -302,6 +302,99 @@
     <text x="632" y="565" fill="#4B5563" font-size="9" font-family="'Geist', sans-serif">driver → Forge, một transport</text>
     <line x1="840" y1="562" x2="872" y2="562" stroke="#4B5563" stroke-width="1" stroke-dasharray="4,3"/>
     <text x="880" y="565" fill="#4B5563" font-size="9" font-family="'Geist', sans-serif">vòng needs_info — chỉ chạy khi người trả lời</text>
+  </svg>
+  </div>
+
+  <h2>Release — sau <code>closed</code>, không phải trong issue-flow</h2>
+  <p class="sub">Driver dừng ở baseBranch và môi trường staging. Trên project khai gate (<code>states.tested = manual</code>), kernel viết lại <code>closed</code> thành <code>tested</code>; một job hệ thống <code>release_batch</code> claim N issue ở đó và chạy procedure của project — N = 1 chính là release từng issue. Chỉ <code>finish</code> mới stamp <code>merged_at</code>.</p>
+
+  <div class="fig">
+  <svg viewBox="0 0 1264 456" role="img" aria-labelledby="rel-title rel-desc" xmlns="http://www.w3.org/2000/svg">
+    <title id="rel-title">Release gate và release_batch trên Forge</title>
+    <desc id="rel-desc">Luồng release: driver đóng issue sau khi merge vào base branch và deploy staging; kernel giữ issue ở tested; một release_batch run được người, MCP hoặc schedule kích hoạt claim N issue tested, chạy procedure merge sang production, deploy và verify, rồi finish đóng issue hoặc abort trả claim.</desc>
+    <defs>
+      <marker id="r-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4B5563"/></marker>
+      <marker id="r-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2982FB"/></marker>
+    </defs>
+    <rect width="100%" height="100%" fill="#F4F7FC"/>
+
+    <!-- arrows -->
+    <line x1="192" y1="176" x2="224" y2="176" stroke="#4B5563" stroke-width="1.2" marker-end="url(#r-arrow)"/>
+    <line x1="384" y1="176" x2="416" y2="176" stroke="#4B5563" stroke-width="1.2" marker-end="url(#r-arrow)"/>
+    <line x1="576" y1="176" x2="640" y2="176" stroke="#2982FB" stroke-width="1.2" marker-end="url(#r-arrow-accent)"/>
+    <rect x="584" y="156" width="48" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="608" y="165" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">CLAIM N</text>
+    <line x1="728" y1="96" x2="728" y2="136" stroke="#4B5563" stroke-width="1.2" marker-end="url(#r-arrow)"/>
+    <line x1="816" y1="176" x2="848" y2="176" stroke="#4B5563" stroke-width="1.2" marker-end="url(#r-arrow)"/>
+    <line x1="1040" y1="176" x2="1072" y2="176" stroke="#4B5563" stroke-width="1.2" marker-end="url(#r-arrow)"/>
+    <rect x="1040" y="156" width="32" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="1056" y="165" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">OK</text>
+    <line x1="944" y1="216" x2="944" y2="264" stroke="#4B5563" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#r-arrow)"/>
+    <rect x="956" y="232" width="112" height="12" rx="2" fill="#F4F7FC"/>
+    <text x="1012" y="241" fill="#6B7280" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">FAILED · CONFLICT</text>
+
+    <!-- nodes -->
+    <rect x="32" y="136" width="160" height="80" rx="6" fill="#F4F7FC"/>
+    <rect x="32" y="136" width="160" height="80" rx="6" fill="#FFFFFF" stroke="#0E1726" stroke-width="1"/>
+    <text x="112" y="164" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Driver · Phase 7</text>
+    <text x="112" y="180" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">merge → baseBranch</text>
+    <text x="112" y="192" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">deploy staging · PATCH closed</text>
+
+    <rect x="224" y="136" width="160" height="80" rx="6" fill="#F4F7FC"/>
+    <rect x="224" y="136" width="160" height="80" rx="6" fill="rgba(14,23,38,0.05)" stroke="#4B5563" stroke-width="1"/>
+    <text x="304" y="164" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Kernel · release gate</text>
+    <text x="304" y="180" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">closed ⇒ giữ ở tested</text>
+    <text x="304" y="192" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">states.tested = manual</text>
+
+    <rect x="416" y="136" width="160" height="80" rx="6" fill="#F4F7FC"/>
+    <rect x="416" y="136" width="160" height="80" rx="6" fill="rgba(14,23,38,0.05)" stroke="#4B5563" stroke-width="1"/>
+    <text x="496" y="164" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Pool tested</text>
+    <text x="496" y="180" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">chưa merged_at</text>
+    <text x="496" y="192" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">2026-09-03: 74 issue</text>
+
+    <rect x="640" y="32" width="176" height="64" rx="6" fill="#F4F7FC"/>
+    <rect x="640" y="32" width="176" height="64" rx="6" fill="rgba(75,85,99,0.10)" stroke="#6B7280" stroke-width="1"/>
+    <text x="728" y="60" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Kích hoạt</text>
+    <text x="728" y="76" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">web Batch Release · MCP</text>
+    <text x="728" y="88" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">schedule (cron)</text>
+
+    <rect x="640" y="136" width="176" height="80" rx="6" fill="#F4F7FC"/>
+    <rect x="640" y="136" width="176" height="80" rx="6" fill="rgba(41,130,251,0.08)" stroke="#2982FB" stroke-width="1"/>
+    <text x="728" y="164" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">release_batch run</text>
+    <text x="728" y="180" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">claim N (N=1 = từng issue)</text>
+    <text x="728" y="192" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">1 job · runner label release</text>
+
+    <rect x="848" y="136" width="192" height="80" rx="6" fill="#F4F7FC"/>
+    <rect x="848" y="136" width="192" height="80" rx="6" fill="#FFFFFF" stroke="#0E1726" stroke-width="1"/>
+    <text x="944" y="164" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Procedure của project</text>
+    <text x="944" y="180" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">merge base → production</text>
+    <text x="944" y="192" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">deploy PROD · CHANGELOG · verify</text>
+
+    <rect x="1072" y="136" width="160" height="80" rx="6" fill="#F4F7FC"/>
+    <rect x="1072" y="136" width="160" height="80" rx="6" fill="rgba(14,23,38,0.05)" stroke="#4B5563" stroke-width="1"/>
+    <text x="1152" y="164" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">finish</text>
+    <text x="1152" y="180" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">tested ⇒ closed · merged_at</text>
+    <text x="1152" y="192" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">mở các issue bị blocks</text>
+
+    <rect x="848" y="264" width="192" height="64" rx="6" fill="#F4F7FC"/>
+    <rect x="848" y="264" width="192" height="64" rx="6" fill="rgba(14,23,38,0.02)" stroke="rgba(14,23,38,0.30)" stroke-width="1" stroke-dasharray="4,3"/>
+    <text x="944" y="292" fill="#0E1726" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">abort</text>
+    <text x="944" y="308" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">trả claim · 1 comment/issue</text>
+    <text x="944" y="320" fill="#4B5563" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">không close gì</text>
+
+    <!-- callout -->
+    <text x="32" y="292" fill="#4B5563" font-size="14" font-family="'Instrument Serif', serif" font-style="italic">15 project đã khai gate, 1 khai procedure riêng (epodsystem-core); 14 chạy floor mặc định.</text>
+    <text x="32" y="312" fill="#4B5563" font-size="14" font-family="'Instrument Serif', serif" font-style="italic">Prompt của job này còn gọi MCP <tspan font-family="'Geist Mono', monospace" font-size="9" font-style="normal">forge_coolify_deploy</tspan> — job duy nhất chưa sang CLI.</text>
+
+    <!-- legend -->
+    <line x1="32" y1="384" x2="1232" y2="384" stroke="rgba(14,23,38,0.10)" stroke-width="0.8"/>
+    <text x="32" y="404" fill="#4B5563" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">CHÚ GIẢI</text>
+    <rect x="128" y="396" width="16" height="12" rx="2" fill="rgba(41,130,251,0.08)" stroke="#2982FB" stroke-width="1"/>
+    <text x="152" y="405" fill="#4B5563" font-size="9" font-family="'Geist', sans-serif">nơi release được quyết định</text>
+    <rect x="336" y="396" width="16" height="12" rx="2" fill="rgba(14,23,38,0.05)" stroke="#4B5563" stroke-width="1"/>
+    <text x="360" y="405" fill="#4B5563" font-size="9" font-family="'Geist', sans-serif">trạng thái do kernel giữ</text>
+    <rect x="536" y="396" width="16" height="12" rx="2" fill="rgba(14,23,38,0.02)" stroke="rgba(14,23,38,0.30)" stroke-width="1" stroke-dasharray="4,3"/>
+    <text x="560" y="405" fill="#4B5563" font-size="9" font-family="'Geist', sans-serif">đường lùi</text>
   </svg>
   </div>
 
