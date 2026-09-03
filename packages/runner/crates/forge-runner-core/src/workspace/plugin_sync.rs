@@ -129,8 +129,8 @@ pub async fn ensure_plugins(settings: &PluginSettings, server: &[PluginTarget]) 
         };
 
         let Some(mp) = register_marketplace(repo, &dir).await else {
-            tracing::warn!(
-                "[plugins] {repo}: not registered with the CLI after `marketplace add` — skipping installs"
+            tracing::info!(
+                "[plugins] {repo}: no runner-owned marketplace to install from — skipping installs"
             );
             continue;
         };
