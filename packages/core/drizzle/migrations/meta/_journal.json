@@ -1352,6 +1352,13 @@
       "when": 1790208000000,
       "tag": "0194_drop_verdict_runner_check",
       "breakpoints": true
+    },
+    {
+      "idx": 195,
+      "version": "7",
+      "when": 1790294400000,
+      "tag": "0195_iss897_release_gate_and_staged_config",
+      "breakpoints": true
     }
   ]
 }

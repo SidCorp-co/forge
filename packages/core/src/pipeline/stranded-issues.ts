@@ -89,8 +89,8 @@ export async function detectStrandedIssues(
           or(
             and(isNotNull(issues.mergedAt), lt(issues.mergedAt, cutoff)),
             and(
-              // cm:edge contract -> packages/core/src/pipeline/autonomous-project.ts — the SAME mode question that `isAutonomousProject` answers, asked in SQL because this pass is one set-based scan over every project and an async per-row helper cannot appear in a `WHERE`. Read as jsonb the shape must match `pipelineConfigSchema.mode`; the two disagreeing means a park is surfaced on one mode and not the other, silently, and only this arm decides who gets told.
-              sql`${projects.agentConfig}->'pipelineConfig'->>'mode' = 'autonomous'`,
+              // cm:edge contract -> packages/core/src/pipeline/autonomous-project.ts — the SAME mode question that `isAutonomousProject` answers, asked in SQL because this pass is one set-based scan over every project and an async per-row helper cannot appear in a `WHERE`. It must test NOT-staged, never `= 'autonomous'`: ISS-897 stripped the key from all 38 projects, and `resolveMode` answers autonomous for an absent one, so an equality test would have silently stopped surfacing every park on every project.
+              sql`coalesce(${projects.agentConfig}->'pipelineConfig'->>'mode', 'autonomous') <> 'staged'`,
               lt(issues.updatedAt, cutoff),
             ),
           ),

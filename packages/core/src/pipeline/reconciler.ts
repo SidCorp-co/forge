@@ -251,7 +251,7 @@ export async function resetAutonomousWedgesOnce(): Promise<number> {
     sql`, `,
   );
 
-  // cm:guard the autonomy test reads the STORED mode and nothing else. `loadPipelineConfig` would default a missing mode to staged, so a raw read can only ever select FEWER projects than the dispatcher calls autonomous — the conservative direction. Inferring autonomy from "the last job was a drive job" instead would sweep in a project mid-migration whose staged steps still own the issue.
+  // cm:guard the autonomy test reads the STORED mode and nothing else, and it must test NOT-staged. ISS-897 stripped `mode` from all 38 project rows and `resolveMode` answers autonomous for an absent one, so the `= 'autonomous'` this used to carry would have selected zero projects and switched the ISS-890 wedge net off for the whole fleet — silently, because a pass that finds nothing and a pass that looks at nothing report the same number. Inferring autonomy from "the last job was a drive job" instead would sweep in a project mid-migration whose staged steps still own the issue.
   const wedged = await db.execute<{
     id: string;
     project_id: string;
@@ -269,7 +269,7 @@ export async function resetAutonomousWedgesOnce(): Promise<number> {
       ORDER BY j.created_at DESC
       LIMIT 1
     ) lj
-    WHERE p.agent_config -> 'pipelineConfig' ->> 'mode' = 'autonomous'
+    WHERE coalesce(p.agent_config -> 'pipelineConfig' ->> 'mode', 'autonomous') <> 'staged'
       AND i.status IN (${inflightList})
       AND i.updated_at < now() - interval '${sql.raw(WEDGE_GRACE)}'
       AND lj.status = 'done'
