@@ -773,6 +773,55 @@
 
 ### Changed
 
+- **Project Settings matches how Forge runs: one autonomous lane, and a release step the project
+  declares.** The Pipeline tab showed a nine-rung ladder (`confirmed` → `clarified` → `approved` →
+  `developed` → `testing` → `tested`), eight `autoX` step toggles, merge points, session groups and
+  a per-stage skill picker — configuration for a lane that `43b71a4c` had already made unreachable.
+  A screen that offers a control nothing reads is worse than one that offers none: ISS-892 was about
+  to redesign it, and would have redrawn the dead boxes faithfully.
+
+  What is gone from `pipelineConfigSchema`, and therefore from every stored project on its next
+  save: the eight `autoX` toggles, `sessionGroups`, `onResumeFail`, `mergeStates`, `mode`, and
+  per-stage `skipComplexities` / `sessionGroup`. `STAGE_NAMES` is now exactly the four statuses this
+  lane reaches — `open`, `in_progress`, `needs_info`, `released`. Removing the toggles from the Zod
+  object is what deletes the staged orchestrator, not merely its screen: `loadPipelineConfig` parses
+  through that schema and it strips unknown keys, so `isToggleEnabled` answers false for every stage on
+  every project and `considerEnqueue` can no longer enqueue a staged job at all. The staged dispatch
+  path is deleted rather than left unreachable.
+
+  **The release gate is now derived from the project, not configured.** It used to be
+  `states.tested.mode === 'manual'` — a project answered "do I ship to production?" by configuring a
+  stage it never ran, and the gate returned the literal `'tested'`. A project has production when an
+  active `prod` binding exists AND `productionBranch <> baseBranch`; the gate is then `released`, and
+  otherwise there is none and the driver's `closed` means what it says. Trunk-based projects with an
+  observability or storefront binding (forge-dev carries two) correctly get no gate.
+
+  Two refusals replace two silent fallbacks. A gated project whose production binding names no
+  `releaseRunnerLabel` fails its release run with `RELEASE_RUNNER_UNDECLARED` instead of picking a
+  box off the fleet — a release procedure that runs on an arbitrary machine is how a deploy reaches
+  the wrong environment. And a failing release on a project that declared no `rollback` aborts with
+  one comment per issue and leaves them at `released`, rather than rolling back blindly: from inside
+  one session an outage that predates the release is indistinguishable from one it caused.
+
+  Settings now names the missing half of the contract — `build-commands`, `test-commands`, and
+  `release-procedure` where there is production — before the first issue runs rather than when a job
+  discovers it. `agentConfig.plugins` became editable in the same tab (marketplace, name, pinned
+  SHA, autoUpdate, whole-list replace); it had been read by `GET /api/devices/me/plugins` since it
+  shipped and written by nothing with a UI.
+
+  Migration `0195` moves the data with the schema. Every issue at `tested` becomes `released` — 76
+  across 9 projects measured 2026-09-03, each at a real gate — with `merged_at` untouched, because
+  none of them has been released and that column is what unblocks their dependents. The staged keys
+  are stripped from `agentConfig.pipelineConfig` on 34 projects. Left deliberately in place: 8
+  issues at `testing` / `developed` / `approved` / `confirmed` / `clarified`, mid-flight under the
+  removed lane in projects this change does not own. Nothing dispatches them afterwards, and both
+  automatic dispositions are worse than saying so — `open` would fire 8 unrequested drive jobs
+  across other people's projects, `needs_info` would park them with no reason. Their owners decide.
+
+  The `release` skill itself lives in `SidCorp-co/forge-plugin`, so no diff here can carry it; its
+  contract — input, output, and the three questions nobody has answered — is written down in
+  `docs/proposals/release-step-contract.md`. (ISS-897)
+
 - **`pipelineConfig.mode` defaults to `autonomous`.** It was optional, and absent read as `staged`,
   so every project created since the mode existed started on the staged pipeline whether or not
   anyone wanted it. Measured 2026-09-02 across 31 live projects: 28 said `autonomous` explicitly,
