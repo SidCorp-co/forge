@@ -8,16 +8,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // directly (rather than pulling in their real dependency graphs) exactly
 // like that file does for `connection-manager.js`.
 
-const updateReturning = vi.fn();
-const updateWhere = vi.fn(() => ({ returning: updateReturning }));
-const updateSet = vi.fn(() => ({ where: updateWhere }));
-vi.mock('../../db/client.js', () => ({
-  db: { update: vi.fn(() => ({ set: updateSet })) },
+// cm:why the room-delivery mock below spreads the REAL module, whose graph validates env eagerly at import — without these two stubs the file fails to load rather than failing a test
+vi.mock('../../config/env.js', () => ({
+  env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
+vi.mock('../../db/client.js', () => ({ db: {} }));
 
+// cm:why `readRoomReplyMeta` is deliberately NOT stubbed — it is pure, and leaving it real keeps the "is this session ours" marker validation under test; only the DB/network helpers are faked
+const claimRoomReplyDelivery = vi.fn<(...args: unknown[]) => Promise<boolean>>();
 const resolveRoomPostAuth = vi.fn();
-vi.mock('./room-delivery.js', () => ({
+const extractFinalAssistantText = vi.fn();
+vi.mock('./room-delivery.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./room-delivery.js')>()),
+  claimRoomReplyDelivery: (...args: unknown[]) => claimRoomReplyDelivery(...args),
   resolveRoomPostAuth: (...args: unknown[]) => resolveRoomPostAuth(...args),
+  extractFinalAssistantText: (...args: unknown[]) => extractFinalAssistantText(...args),
 }));
 
 const screenStakeholderReply = vi.fn();
@@ -30,11 +35,6 @@ const sendFixedReply = vi.fn();
 vi.mock('./outbound.js', () => ({
   FIXED_REPLY_CONSTANT,
   sendFixedReply: (...args: unknown[]) => sendFixedReply(...args),
-}));
-
-const extractFinalAssistantText = vi.fn();
-vi.mock('./escalation-bridge.js', () => ({
-  extractFinalAssistantText: (...args: unknown[]) => extractFinalAssistantText(...args),
 }));
 
 const AGENT_CHAT_FALLBACK_REPLY = vi.fn((...args: unknown[]) => `FALLBACK(${String(args[0])})`);
@@ -72,7 +72,7 @@ function makeSession(overrides: Record<string, unknown> = {}) {
 
 describe('deliverAgentChatReplyOnce', () => {
   beforeEach(() => {
-    updateReturning.mockReset();
+    claimRoomReplyDelivery.mockReset();
     resolveRoomPostAuth.mockReset();
     screenStakeholderReply.mockReset();
     sendFixedReply.mockReset();
@@ -84,7 +84,7 @@ describe('deliverAgentChatReplyOnce', () => {
 
   it('is a no-op for a session with no agentChat metadata', async () => {
     await deliverAgentChatReplyOnce(makeSession({ metadata: {} }));
-    expect(updateReturning).not.toHaveBeenCalled();
+    expect(claimRoomReplyDelivery).not.toHaveBeenCalled();
   });
 
   it('is a no-op when already delivered (deliveredAt already set)', async () => {
@@ -100,24 +100,24 @@ describe('deliverAgentChatReplyOnce', () => {
         },
       }),
     );
-    expect(updateReturning).not.toHaveBeenCalled();
+    expect(claimRoomReplyDelivery).not.toHaveBeenCalled();
   });
 
   it('no-ops (does not post) when the CAS loses the race', async () => {
-    updateReturning.mockResolvedValue([]); // another caller already claimed it
+    claimRoomReplyDelivery.mockResolvedValue(false); // another caller already claimed it
     await deliverAgentChatReplyOnce(makeSession());
     expect(sendFixedReply).not.toHaveBeenCalled();
   });
 
   it('no-ops (does not post) when the connection cannot be resolved', async () => {
-    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(null);
     await deliverAgentChatReplyOnce(makeSession());
     expect(sendFixedReply).not.toHaveBeenCalled();
   });
 
   it('delivers the runner reply verbatim when the output guard passes', async () => {
-    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('Here is the final answer.');
     screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
@@ -138,7 +138,7 @@ describe('deliverAgentChatReplyOnce', () => {
   });
 
   it('threads the transcript tool calls into the output guard (ISS-727 review fix)', async () => {
-    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('Created ISS-42 for you.');
     screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
@@ -165,7 +165,7 @@ describe('deliverAgentChatReplyOnce', () => {
   });
 
   it('falls back when the output guard rejects the reply', async () => {
-    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('```leaky```');
     screenStakeholderReply.mockResolvedValue({ ok: false, problems: ['leaks a code fence'] });
@@ -178,7 +178,7 @@ describe('deliverAgentChatReplyOnce', () => {
   });
 
   it('falls back on a failed/empty session without calling the guard, once failover is exhausted', async () => {
-    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     redispatchAgentChatSessionOnFailover.mockResolvedValue({ ok: false, status: 'exhausted' });
 
@@ -194,7 +194,7 @@ describe('deliverAgentChatReplyOnce', () => {
   });
 
   it('re-dispatches a failed/transient session to a healthy runner instead of posting the fallback', async () => {
-    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    claimRoomReplyDelivery.mockResolvedValue(true);
     redispatchAgentChatSessionOnFailover.mockResolvedValue({
       ok: true,
       status: 'redispatched',
@@ -210,7 +210,7 @@ describe('deliverAgentChatReplyOnce', () => {
   });
 
   it('never retries a user_cancelled session — goes straight to fallback', async () => {
-    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
 
     await deliverAgentChatReplyOnce(
@@ -226,7 +226,7 @@ describe('deliverAgentChatReplyOnce', () => {
   });
 
   it('never retries a skill_not_synced failure — deterministic, retrying would reproduce the same outcome', async () => {
-    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
 
     await deliverAgentChatReplyOnce(
@@ -242,7 +242,7 @@ describe('deliverAgentChatReplyOnce', () => {
   });
 
   it('never retries a ws-publish-failed dispatch failure — deterministic, not an infra routing issue', async () => {
-    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
 
     await deliverAgentChatReplyOnce(
@@ -258,7 +258,7 @@ describe('deliverAgentChatReplyOnce', () => {
   });
 
   it('posts exactly one fallback when failover dispatch throws (dispatch-throw path returns {ok:false,status:error})', async () => {
-    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     redispatchAgentChatSessionOnFailover.mockResolvedValue({ ok: false, status: 'error' });
 
@@ -273,7 +273,7 @@ describe('deliverAgentChatReplyOnce', () => {
   });
 
   it('never retries a content-side outcome (completed session, output-guard rejected)', async () => {
-    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('```leaky```');
     screenStakeholderReply.mockResolvedValue({ ok: false, problems: ['leaks a code fence'] });
@@ -289,7 +289,7 @@ describe('deliverAgentChatReplyOnce', () => {
   });
 
   it('posts to the tmid thread when the original message was threaded', async () => {
-    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('answer');
     screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
@@ -316,7 +316,7 @@ describe('deliverAgentChatReplyOnce', () => {
   });
 
   it('room-never-silent: falls back when sendFixedReply throws (swallows the error)', async () => {
-    updateReturning.mockResolvedValue([{ id: 'session-1' }]);
+    claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('answer');
     screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });

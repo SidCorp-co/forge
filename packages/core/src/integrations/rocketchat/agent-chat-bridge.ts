@@ -1,81 +1,27 @@
 /**
- * ISS-727 — the `agent`-mode completion bridge: fires when an agent-chat
- * session (`metadata.agentChat` set by `agent-chat.ts`) reaches a terminal
- * status, from EITHER of the two writers that can flip a session terminal —
- * `agent-sessions/routes.ts` PATCH `/:id` (the runner happy-path) and
- * `lifecycle/transition.ts`'s `applyKernelTransition` (every other terminal
- * writer: sweeper timeout, cascade, cancel, dispatch-failure). Mirrors the
- * escalation bridge's wiring exactly — see `escalation-bridge.ts`'s header
- * for why both sites are required.
- *
- * Unlike the escalation bridge, this one does NOT run a synthesis turn: the
- * agent-chat session already produced the FINAL user-facing reply (see
- * `buildAgentChatPrompt`), so delivery only needs to extract it, run it
- * through the same kernel output-guard (`screenStakeholderReply`), and post
- * it — verbatim on success, an honest fallback otherwise.
- *
- * `deliverAgentChatReplyOnce` is idempotent via a CAS stamp
- * (`metadata.agentChat.deliveredAt`), so it is safe to call from both sites
- * (or the same site twice) without a double post.
+ * ISS-727 — the `agent`-mode completion bridge. Unlike the escalation bridge
+ * it runs NO synthesis turn: the session already produced the final
+ * user-facing reply, so delivery screens it and posts it verbatim.
  */
+// cm:guard must be fired from BOTH terminal writers — agent-sessions/routes.ts PATCH (runner happy-path) and lifecycle/transition.ts (sweeper, cascade, cancel, dispatch-failure) — or a whole class of replies hangs silent
 
-import { and, eq, sql } from 'drizzle-orm';
-import { db } from '../../db/client.js';
-import { agentSessions, type agentSessions as agentSessionsTable } from '../../db/schema.js';
+import type { agentSessions as agentSessionsTable } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { resolveFailureCause } from '../../pipeline/failure-causes.js';
 import { AGENT_CHAT_FALLBACK_REPLY, redispatchAgentChatSessionOnFailover } from './agent-chat.js';
-import { extractFinalAssistantText } from './escalation-bridge.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
 import type { ProgressFacts } from './reply-guard.js';
 import { screenStakeholderReply } from './reply-screen.js';
-import { resolveRoomPostAuth } from './room-delivery.js';
+import {
+  claimRoomReplyDelivery,
+  extractFinalAssistantText,
+  readRoomReplyMeta,
+  resolveRoomPostAuth,
+} from './room-delivery.js';
 
 type SessionRow = typeof agentSessionsTable.$inferSelect;
 
-interface AgentChatMeta {
-  connectionId: string;
-  rid: string;
-  tmid: string | null;
-  botName: string;
-  askedByUsername: string;
-  question: string;
-  deliveredAt: string | null;
-}
-
-function readAgentChatMeta(metadata: unknown): AgentChatMeta | null {
-  const ac = (metadata as { agentChat?: unknown } | null)?.agentChat;
-  if (!ac || typeof ac !== 'object') return null;
-  const a = ac as Record<string, unknown>;
-  if (
-    typeof a.connectionId !== 'string' ||
-    typeof a.rid !== 'string' ||
-    typeof a.botName !== 'string'
-  ) {
-    return null;
-  }
-  return {
-    connectionId: a.connectionId,
-    rid: a.rid,
-    tmid: typeof a.tmid === 'string' ? a.tmid : null,
-    botName: a.botName,
-    askedByUsername: typeof a.askedByUsername === 'string' ? a.askedByUsername : '',
-    question: typeof a.question === 'string' ? a.question : '',
-    deliveredAt: typeof a.deliveredAt === 'string' ? a.deliveredAt : null,
-  };
-}
-
-/** `metadata.progressFacts` as stored by `startAgentChat`/the failover retry
- *  — the snapshot the session's prompt was actually built with (ISS-671).
- *  Returns the `'legacy-session'` sentinel (ISS-818) when the key is entirely
- *  absent — an in-flight session created before this field existed — so the
- *  caller's `screenStakeholderReply(..., readProgressFacts(...))` self-computes
- *  instead of failing closed on a session that was simply never given a
- *  snapshot to check against. That case is named explicitly rather than
- *  spelled `undefined`, so it cannot be reached by a caller who merely forgot
- *  to pass the argument. `null` means the key IS present but the snapshot
- *  computation failed when the session was created — that DOES fail closed,
- *  same as any other guard failure. */
+// cm:guard three distinct meanings, do not collapse them: a snapshot screens against itself; `null` means the key IS present but its computation failed, which fails CLOSED; `'legacy-session'` (key absent entirely, pre-ISS-818 row) is the only case that self-computes, and is named rather than `undefined` so a caller who merely forgot the argument cannot reach it
 function readProgressFacts(metadata: unknown): ProgressFacts | null | 'legacy-session' {
   const m = metadata as Record<string, unknown> | null;
   if (!m || !('progressFacts' in m)) return 'legacy-session';
@@ -100,15 +46,7 @@ function readProgressFacts(metadata: unknown): ProgressFacts | null | 'legacy-se
   };
 }
 
-/**
- * Tool calls the runner actually made, flattened across every assistant
- * message in the transcript (`agent-stream-parser.ts`'s `ToolCall` shape:
- * `{id, name, input}`). One-shot dispatch (ISS-727) means the whole
- * transcript IS the one turn `screenStakeholderReply`'s claimed-creation
- * check is judging, so there is no "final turn" to isolate — unlike the
- * escalation bridge, which passes `[]` because its synthesis reply comes
- * from a separate Bao turn with no tool calls of its own.
- */
+// cm:why one-shot dispatch means the whole transcript IS the turn the claimed-creation check judges, so there is no "final turn" to isolate — unlike the escalation bridge, whose reply comes from a separate Bao turn and passes []
 function extractToolCalls(messages: unknown): Array<{ name: string; arguments: string }> {
   if (!Array.isArray(messages)) return [];
   const calls: Array<{ name: string; arguments: string }> = [];
@@ -126,37 +64,11 @@ function extractToolCalls(messages: unknown): Array<{ name: string; arguments: s
   return calls;
 }
 
-/**
- * Deliver an agent-chat session's final answer to its originating
- * RocketChat room/thread — exactly once. No-op when `session` is not an
- * agent-chat session, or the CAS stamp shows it was already delivered.
- */
 export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<void> {
-  const meta = readAgentChatMeta(session.metadata);
+  const meta = readRoomReplyMeta(session.metadata, 'agentChat');
   if (!meta) return;
   if (meta.deliveredAt) return;
-
-  const prevMetadata = (session.metadata as Record<string, unknown>) ?? {};
-  const prevAgentChat = (prevMetadata.agentChat as Record<string, unknown>) ?? {};
-  const now = new Date().toISOString();
-  const nextMetadata = {
-    ...prevMetadata,
-    agentChat: { ...prevAgentChat, deliveredAt: now },
-  };
-
-  // CAS: exactly one caller wins even if the PATCH /:id happy-path and the
-  // applyKernelTransition sweeper/failure hook race on the same session.
-  const claimed = await db
-    .update(agentSessions)
-    .set({ metadata: nextMetadata as never })
-    .where(
-      and(
-        eq(agentSessions.id, session.id),
-        sql`(${agentSessions.metadata} -> 'agentChat' ->> 'deliveredAt') IS NULL`,
-      ),
-    )
-    .returning({ id: agentSessions.id });
-  if (claimed.length === 0) return;
+  if (!(await claimRoomReplyDelivery(session, 'agentChat'))) return;
 
   // cm:why the CAS claim above already stamped THIS session's deliveredAt, so retrying here can never double-post — its "delivery" is really a hand-off to the retry; a content-side outcome (completed, no usable/screened text) is never retried, since retrying would just reproduce the same content decision; deterministic non-infra failures (skill_not_synced, ws_publish_failed) are excluded because retrying them on every runner produces the same outcome
   // cm:guard compare the RESOLVED cause, never the raw column — rows written before ISS-877 carry `ws-publish-failed` with a hyphen, and a literal comparison silently starts failing over the one class this list exists to exclude

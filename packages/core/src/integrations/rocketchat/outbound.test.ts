@@ -48,7 +48,7 @@ describe('outbound chokepoint — no bypass (ISS-671 AC#1)', () => {
     }
     expect(
       violations,
-      `A reply path is calling the RC send primitive directly instead of going through outbound.ts (sendStakeholderReply/sendFixedReply). Offending files:\n${violations.join('\n')}`,
+      `A reply path is calling the RC send primitive directly instead of going through outbound.ts (sendFixedReply). Offending files:\n${violations.join('\n')}`,
     ).toEqual([]);
   });
 
@@ -72,9 +72,7 @@ vi.mock('./rest-client.js', () => ({
   postRoomMessage: (...args: unknown[]) => postRoomMessage(...args),
 }));
 
-const { FIXED_REPLY_CONSTANT, sendStakeholderReply, sendFixedReply } = await import(
-  './outbound.js'
-);
+const { FIXED_REPLY_CONSTANT, sendFixedReply } = await import('./outbound.js');
 
 function ddpTransport(overrides: Record<string, unknown> = {}) {
   return {
@@ -95,89 +93,6 @@ function restTransport() {
     tmid: undefined,
   };
 }
-
-describe('sendStakeholderReply', () => {
-  beforeEach(() => {
-    screenStakeholderReply.mockReset();
-    postRoomMessage.mockReset();
-  });
-
-  it('screens then delivers over DDP when the guard passes', async () => {
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
-    const transport = ddpTransport();
-    const outcome = await sendStakeholderReply({
-      projectId: 'proj-1',
-      text: 'Here is the answer.',
-      toolCalls: [],
-      progress: null,
-      transport: transport as never,
-    });
-    expect(outcome).toEqual({ sent: true });
-    expect(transport.client.sendMessage).toHaveBeenCalledWith(
-      'room-1',
-      'Here is the answer.',
-      undefined,
-    );
-  });
-
-  it('delivers nothing when the guard rejects', async () => {
-    screenStakeholderReply.mockResolvedValue({ ok: false, problems: ['leaks a code fence'] });
-    const transport = ddpTransport();
-    const outcome = await sendStakeholderReply({
-      projectId: 'proj-1',
-      text: '```leaky```',
-      toolCalls: [],
-      progress: null,
-      transport: transport as never,
-    });
-    expect(outcome).toEqual({ sent: false, problems: ['leaks a code fence'] });
-    expect(transport.client.sendMessage).not.toHaveBeenCalled();
-  });
-
-  it('rejects an empty reply without calling the guard or delivering', async () => {
-    const transport = ddpTransport();
-    const outcome = await sendStakeholderReply({
-      projectId: 'proj-1',
-      text: '   ',
-      toolCalls: [],
-      progress: null,
-      transport: transport as never,
-    });
-    expect(outcome).toEqual({ sent: false, problems: ['empty reply'] });
-    expect(screenStakeholderReply).not.toHaveBeenCalled();
-    expect(transport.client.sendMessage).not.toHaveBeenCalled();
-  });
-
-  it('threads the progress snapshot into the guard', async () => {
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
-    const facts = { shipped: 54, closedUnshipped: 10, inFlight: 7, remaining: 3, total: 74 };
-    await sendStakeholderReply({
-      projectId: 'proj-1',
-      text: 'Done: 54.',
-      toolCalls: [],
-      progress: facts,
-      transport: ddpTransport() as never,
-    });
-    expect(screenStakeholderReply).toHaveBeenCalledWith('proj-1', 'Done: 54.', [], facts);
-  });
-
-  it('delivers over REST when the transport is rest', async () => {
-    screenStakeholderReply.mockResolvedValue({ ok: true, problems: [] });
-    await sendStakeholderReply({
-      projectId: 'proj-1',
-      text: 'answer',
-      toolCalls: [],
-      progress: null,
-      transport: restTransport() as never,
-    });
-    expect(postRoomMessage).toHaveBeenCalledWith(
-      { serverUrl: 'https://chat.example.co', authToken: 'tok', userId: 'bot-1' },
-      'room-1',
-      'answer',
-      undefined,
-    );
-  });
-});
 
 describe('sendFixedReply', () => {
   beforeEach(() => {
