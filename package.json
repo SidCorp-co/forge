@@ -16,6 +16,9 @@
     "postinstall": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "devDependencies": {
+    "@typescript-eslint/parser": "^8.69.0",
+    "eslint": "^10.9.1",
+    "eslint-plugin-code-quality": "link:../forge-plugin/packages/code-quality",
     "turbo": "^2.10.11"
   },
   "pnpm": {
