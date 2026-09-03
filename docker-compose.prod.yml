@@ -128,6 +128,8 @@ services:
       # to lift the 60-req/hr unauthenticated API limit. fetch-release.js reads
       # GITHUB_TOKEN; operators set RUNNER_RELEASE_GITHUB_TOKEN in `.env`.
       GITHUB_TOKEN: ${RUNNER_RELEASE_GITHUB_TOKEN:-}
+      RATE_LIMIT_PAT_MAX: ${RATE_LIMIT_PAT_MAX:-}
+      RATE_LIMIT_PAT_WINDOW_MS: ${RATE_LIMIT_PAT_WINDOW_MS:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 10s
