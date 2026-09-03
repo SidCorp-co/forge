@@ -220,6 +220,14 @@
 
 ### Fixed
 
+- A pinned plugin designation never resolved once its marketplace's master moved past the pin.
+  `claude plugin marketplace add` clones at depth 1, and the runner's fetch-before-pin was
+  `git fetch --all --tags`, which on a shallow clone moves only the branch tips — so the pinned
+  SHA was never fetched and `checkout` failed with `reference is not a tree`. Seen on every box the
+  same morning the fleet was switched on (2026-09-03): `forge-plugin` master was one commit past
+  the pin, and every runner installed `forge` at HEAD while logging the pin as failed. The runner
+  now fetches the SHA by name, keeping the tip fetch as a fallback. Runner 0.10.1.
+
 - **The autonomous driver was handed the staged pipeline's rulebook on every job.** Two blocks are
   injected into every dispatch rather than fetched on demand — `PIPELINE_RULES` and
   `TOOL_REFERENCE` — and both were written for a lane the driver does not run in. What reached it

@@ -261,24 +261,15 @@ fn repo_matches(configured: &str, recorded: &str) -> bool {
 /// `~/.claude/plugins/cache/...` is copied from whatever this clone has
 /// checked out at install/update time.
 async fn pin_marketplace_ref(install_location: &Path, sha: &str) -> crate::error::Result<()> {
-    // cm:why a pinned marketplace skips the auto-update pass, so without this fetch the clone never learns a newer SHA and a pin can only ever move backwards
-    let fetched = tokio::time::timeout(
-        COMMAND_TIMEOUT,
-        Command::new("git")
-            .args(["-C"])
-            .arg(install_location)
-            .args(["fetch", "--quiet", "--all", "--tags"])
-            .output(),
-    )
-    .await;
-    match fetched {
-        Ok(Ok(o)) if !o.status.success() => tracing::info!(
-            "[plugins] fetch before pin {sha} (continuing, the sha may already be local): {}",
-            String::from_utf8_lossy(&o.stderr).trim()
-        ),
-        Ok(Err(e)) => tracing::info!("[plugins] fetch before pin {sha} failed (continuing): {e}"),
-        Err(_) => tracing::info!("[plugins] fetch before pin {sha} timed out (continuing)"),
-        Ok(Ok(_)) => {}
+    // cm:guard fetch the SHA by name, not `--all`: the marketplace clone is depth 1, and on a shallow clone `fetch --all` moves only the branch tips, so a pin that master has moved past is never fetched and `checkout` fails with `reference is not a tree` on every pinned box (fleet-wide, 2026-09-03). The tip fetch stays as a fallback for a remote that refuses SHA wants.
+    let mut fetched = fetch_for_pin(install_location, &["fetch", "--quiet", "origin", sha]).await;
+    if fetched.is_err() {
+        fetched = fetch_for_pin(install_location, &["fetch", "--quiet", "--all", "--tags"]).await;
+    }
+    if let Err(e) = fetched {
+        tracing::info!(
+            "[plugins] fetch before pin {sha} failed (continuing, the sha may already be local): {e}"
+        );
     }
 
     let output = tokio::time::timeout(
@@ -300,6 +291,25 @@ async fn pin_marketplace_ref(install_location: &Path, sha: &str) -> crate::error
         )));
     }
     Ok(())
+}
+
+async fn fetch_for_pin(install_location: &Path, args: &[&str]) -> Result<(), String> {
+    let out = tokio::time::timeout(
+        COMMAND_TIMEOUT,
+        Command::new("git")
+            .args(["-C"])
+            .arg(install_location)
+            .args(args)
+            .output(),
+    )
+    .await
+    .map_err(|_| format!("git {} timed out", args.join(" ")))?
+    .map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
 }
 
 /// Run `claude <args>` with a bounded timeout, returning `Err` (never
@@ -325,6 +335,91 @@ async fn run_claude(args: &[&str]) -> crate::error::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn git(dir: &Path, args: &[&str]) {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .output()
+            .expect("git runs");
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    #[tokio::test]
+    async fn pin_reaches_a_sha_the_shallow_clone_never_fetched() {
+        let tmp = std::env::temp_dir().join(format!("plugin-pin-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let origin = tmp.join("origin");
+        let clone = tmp.join("clone");
+        std::fs::create_dir_all(&origin).unwrap();
+        git(&origin, &["init", "-q", "-b", "master"]);
+        git(
+            &origin,
+            &[
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "one",
+            ],
+        );
+        let old = String::from_utf8(
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(&origin)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap();
+        git(
+            &origin,
+            &[
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "two",
+            ],
+        );
+        git(
+            &origin,
+            &["config", "uploadpack.allowReachableSHA1InWant", "true"],
+        );
+        let _ = std::fs::remove_dir_all(&clone);
+        let url = format!("file://{}", origin.display());
+        git(
+            &tmp,
+            &["clone", "-q", "--depth", "1", &url, clone.to_str().unwrap()],
+        );
+
+        pin_marketplace_ref(&clone, old.trim())
+            .await
+            .expect("pin resolves the older sha");
+
+        let head = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&clone)
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), old.trim());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 
     #[test]
     fn repo_matches_shorthand_vs_full_url() {
