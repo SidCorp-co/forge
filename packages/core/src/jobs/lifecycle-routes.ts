@@ -24,8 +24,7 @@ import { cancelJob, JobCancelError } from './cancel-job.js';
 import { dispatchTickForProject } from './dispatch-tick.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import {
-  handleResumeFailed,
-  isResumeFailedError,
+    isResumeFailedError,
   reclassifyAbortedResume,
 } from './handle-resume-failed.js';
 import { readJob } from './job-queries.js';
@@ -353,21 +352,10 @@ jobLifecycleDeviceRoutes.post(
     // fallbackToRawIssueFieldIfMissing).
 
     if (status === 'failed') {
-      // PR-5c — resume failure takes precedence: invalidate prior session
-      // and branch by `onResumeFail` policy (fresh → retry; abort → no retry).
-      let resumePolicy: 'fresh' | 'abort' | null = null;
-      if (isResumeFailedError(input.error)) {
-        resumePolicy = await handleResumeFailed({
-          id: updated.id,
-          projectId: updated.projectId,
-          issueId: updated.issueId,
-          payload: updated.payload,
-        });
-      }
+      // cm:why a tagged resume failure is reclassified but still retried — the retry dispatches without the parent's session id, which is the whole remedy. The `abort` half of this branch went with `onResumeFail` (ISS-897), whose only reader keyed on a `sessionGroup` nothing has produced since the config key was removed.
       let precomputedRetry: RetryOutcome | undefined;
-      if (resumePolicy === 'abort') {
+      if (isResumeFailedError(input.error)) {
         updated = await reclassifyAbortedResume(updated);
-        precomputedRetry = { scheduled: false };
       }
       // ISS-280 / ISS-393 — shared finalize path: auto-retry → revert to
       // entry-status (or park at `waiting` when exhausted) → session sync →
@@ -474,20 +462,9 @@ jobLifecycleDeviceRoutes.post(
     // ISS-439 — materialize the usage_records row from the stored job_events.
     void materializeJobUsage(updated);
 
-    // PR-5c — same resume-failed branching as the user-lifecycle path.
-    let resumePolicy: 'fresh' | 'abort' | null = null;
+    const precomputedRetry: RetryOutcome | undefined = undefined;
     if (isResumeFailedError(input.error)) {
-      resumePolicy = await handleResumeFailed({
-        id: updated.id,
-        projectId: updated.projectId,
-        issueId: updated.issueId,
-        payload: updated.payload,
-      });
-    }
-    let precomputedRetry: RetryOutcome | undefined;
-    if (resumePolicy === 'abort') {
       updated = await reclassifyAbortedResume(updated);
-      precomputedRetry = { scheduled: false };
     }
 
     // ISS-280 — shared finalize path (see /complete).

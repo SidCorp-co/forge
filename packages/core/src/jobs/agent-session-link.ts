@@ -20,12 +20,6 @@ function deriveSkillName(payload: unknown): string | null {
   return typeof v === 'string' && v.length > 0 ? v : null;
 }
 
-function deriveSessionGroup(payload: unknown): string | null {
-  if (!payload || typeof payload !== 'object') return null;
-  const v = (payload as Record<string, unknown>).sessionGroup;
-  return typeof v === 'string' && v.length > 0 ? v : null;
-}
-
 function deriveStageStatus(payload: unknown): string | null {
   if (!payload || typeof payload !== 'object') return null;
   const v = (payload as Record<string, unknown>).stageStatus;
@@ -128,14 +122,7 @@ export async function ensureAgentSessionForJob(
     if (job.deviceId) metadata.deviceId = job.deviceId;
     // cm:guard ISS-887 — the ONLY durable answer to "did this attempt continue the prior transcript, and if not why not". It belongs on this row because the row is the attempt (a retry clone never carries `agentSessionId`, so every attempt mints its own) and it joins the linkage cluster below. Do NOT move it to a `job_events` row: `NOT EXISTS (SELECT 1 FROM job_events WHERE job_id = j.id)` is the never-claimed predicate in loop-monitor.ts#reapAckMisses and sweeper.ts#alarmNeverClaimedDispatches, so a dispatch-time server row silences the ack-miss reaper fleet-wide.
     metadata.resume = context.resume;
-    // PR-5 — session-group membership. The orchestrator stamped this on
-    // job.payload.sessionGroup at enqueue time (resolved from
-    // pipelineConfig.states[stage].sessionGroup); we propagate it here so
-    // `findPriorSessionInGroup` can index by (issueId, sessionGroup).
-    const payloadSessionGroup = deriveSessionGroup(job.payload);
-    if (payloadSessionGroup) metadata.sessionGroup = payloadSessionGroup;
-    // PR-5 — stamp the stage status so resume lookup can prefer prior
-    // sessions whose stage is in the same group (without re-parsing job.type).
+    // cm:why the stage status is stamped so a reader can tell which state's policy an attempt ran under without re-parsing job.type — the sessionGroup that used to sit beside it left with the config key (ISS-897)
     const payloadStageStatus = deriveStageStatus(job.payload);
     if (payloadStageStatus) metadata.stageStatus = payloadStageStatus;
 

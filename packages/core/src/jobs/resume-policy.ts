@@ -20,8 +20,7 @@ import { AUTONOMOUS_JOB_TYPE } from '../pipeline/autonomous-mode.js';
 import { getTrippedDeviceIds } from '../runners/select.js';
 import { readAutoRetryPayload } from './retry.js';
 import {
-  estimateGroupContextTokens,
-  findPriorSessionInGroup,
+  estimateIssueContextTokens,
   loadResumeBounds,
 } from './session-resume.js';
 import { extractStageStatus, type StageOverrides } from './stage-overrides.js';
@@ -109,19 +108,15 @@ async function loadParentAttempt(job: typeof jobs.$inferSelect): Promise<{
   }
 }
 
-/** ISS-580 — drop the resume when the group's accumulated context or the issue's reopen count
- *  has outgrown its configured bound. Returns the drop reason, or null when both bounds hold. */
+/** ISS-580 — drop the resume when the issue's accumulated context or its reopen count has
+ *  outgrown the project's bound. Returns the drop reason, or null when both bounds hold. */
 async function exceedsResumeBounds(args: {
   job: typeof jobs.$inferSelect;
   issueId: string;
-  sessionGroup: string;
   agentConfig: Record<string, unknown> | undefined;
 }): Promise<ResumeDropReason | null> {
   const bounds = await loadResumeBounds(args.job.projectId, args.agentConfig);
-  const estTokens = await estimateGroupContextTokens({
-    issueId: args.issueId,
-    sessionGroup: args.sessionGroup,
-  });
+  const estTokens = await estimateIssueContextTokens(args.issueId);
   let reopenCount = 0;
   try {
     const [issueRow] = await db
@@ -146,14 +141,13 @@ async function exceedsResumeBounds(args: {
     {
       jobId: args.job.id,
       issueId: args.issueId,
-      sessionGroup: args.sessionGroup,
       estTokens,
       reopenCount,
       maxResumeTokens: bounds.maxResumeTokens,
       maxResumeReopenCycles: bounds.maxResumeReopenCycles,
       reason,
     },
-    'resume-policy: sessionGroup resume bound exceeded — dispatching fresh session',
+    'resume-policy: resume bound exceeded — dispatching fresh session',
   );
   if (isSentryEnabled()) {
     Sentry.addBreadcrumb({
@@ -191,41 +185,6 @@ export async function resolveResumePolicy(args: {
 
   const isRetry = job.retryOf != null;
 
-  // cm:guard a drive job must never inherit a staged step's CLI session: it resumes through `forge_phase` action `resume_point`, and --resume onto a stale triage session would hand the driver another step's transcript as its own history
-  // cm:why gated on `!isRetry` alongside the bound check below: the retry branch replaces every value this block produces (`offeredClaudeSessionId`, `offeredDeviceId`, `pinDeviceId`) and resets `dropReason` to null before any of them is observed, so on a retry the group lookup is a DB query whose entire result is discarded — and its log line asserts a resume decision that never bore on the dispatch
-  if (!isRetry && overrides.sessionGroup && job.issueId && job.type !== AUTONOMOUS_JOB_TYPE) {
-    const prior = await findPriorSessionInGroup({
-      issueId: job.issueId,
-      sessionGroup: overrides.sessionGroup,
-    });
-    if (prior) {
-      offeredClaudeSessionId = prior.claudeSessionId;
-      offeredDeviceId = prior.deviceId;
-      pinDeviceId = prior.deviceId;
-    }
-  }
-
-  // cm:why the stage pool outranks the session-group resume pin: a resume is an optimisation, but "this stage ran on the box the operator pinned" is the guarantee the pool exists to make — so a prior session on an out-of-pool box loses BOTH the pin and the --resume (same shape as the stale-pin path below)
-  if (stagePool && pinDeviceId && !stagePool.includes(pinDeviceId)) {
-    logger.info(
-      { jobId: job.id, pinDeviceId, stagePool, stageStatus: extractStageStatus(job.payload) },
-      'resume-policy: session-group resume pin is outside the stage runner pool — dispatching fresh inside the pool',
-    );
-    pinDeviceId = null;
-    dropReason = 'stage_pool';
-  }
-
-  // cm:why gated on `!isRetry` because the retry branch below decides its own resume — running the 3-query bound check here would spend three queries and emit a resume-drop count plus a Sentry breadcrumb describing a resume that was never on the table
-  if (!isRetry && !dropReason && offeredClaudeSessionId && overrides.sessionGroup && job.issueId) {
-    dropReason = await exceedsResumeBounds({
-      job,
-      issueId: job.issueId,
-      sessionGroup: overrides.sessionGroup,
-      agentConfig: args.agentConfig,
-    });
-    if (dropReason) pinDeviceId = null;
-  }
-
   const autoRetry = readAutoRetryPayload(job.payload);
   let excludeDeviceIds: string[];
   let skipPrimary: boolean;
@@ -251,6 +210,14 @@ export async function resolveResumePolicy(args: {
       if (targetOutOfPool) dropReason = 'stage_pool';
       else if (pinDeviceId === null || pinDeviceId !== parent.deviceId) dropReason = 'rotation';
       else if (parent.failureAction !== 'retry') dropReason = 'failure_action';
+    }
+    if (!dropReason && offeredClaudeSessionId && job.issueId) {
+      dropReason = await exceedsResumeBounds({
+        job,
+        issueId: job.issueId,
+        agentConfig: args.agentConfig,
+      });
+      if (dropReason) pinDeviceId = null;
     }
   } else {
     skipPrimary = false;

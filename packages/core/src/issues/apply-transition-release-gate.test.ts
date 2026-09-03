@@ -42,6 +42,12 @@ vi.mock('../db/client.js', () => {
 
 vi.mock('../ws/server.js', () => ({ roomManager: { publish: vi.fn() } }));
 
+const listBindings = vi.fn(async () => [] as unknown[]);
+vi.mock('../integrations/store.js', async (importActual) => {
+  const actual = await importActual<typeof import('../integrations/store.js')>();
+  return { ...actual, listActiveBindingsForEnvironment: () => listBindings() };
+});
+
 const closeRunMock = vi.fn(async (..._a: unknown[]) => undefined);
 vi.mock('../pipeline/runs.js', () => ({
   closeOpenRunForIssue: (...a: unknown[]) => closeRunMock(...a),
@@ -70,15 +76,22 @@ const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const AGENT = { type: 'device', id: 'dev-1', ownerId: 'owner-1' } as const;
 const HUMAN = { type: 'user', id: '33333333-3333-4333-8333-333333333333' } as const;
 
-const GATED = {
-  pipelineConfig: {
-    mode: 'autonomous',
-    states: { tested: { mode: 'manual', enabled: true } },
-  },
-};
+/** A project WITH production: a prod binding, and a production branch that is not the base. */
+function gated() {
+  projectSelectLimit.mockResolvedValueOnce([{ baseBranch: 'dev', productionBranch: 'master' }]);
+  listBindings.mockResolvedValueOnce([{ binding: { provider: 'coolify' }, connection: {} }]);
+}
 
-function project(agentConfig: unknown) {
-  projectSelectLimit.mockResolvedValueOnce([{ agentConfig }]);
+/** A project with NO production — either half missing is enough. */
+function ungated(over: { branches?: boolean } = {}) {
+  projectSelectLimit.mockResolvedValueOnce(
+    over.branches
+      ? [{ baseBranch: 'dev', productionBranch: 'master' }]
+      : [{ baseBranch: 'main', productionBranch: 'main' }],
+  );
+  listBindings.mockResolvedValueOnce(
+    over.branches ? [] : [{ binding: { provider: 'sentry' }, connection: {} }],
+  );
 }
 
 function queueUpdate(status: string) {
@@ -97,6 +110,8 @@ const AT_WORK = {
 beforeEach(() => {
   vi.clearAllMocks();
   projectSelectLimit.mockReset();
+  listBindings.mockReset();
+  listBindings.mockResolvedValue([]);
   // cm:edge contract -> packages/core/src/issues/release-record-required.ts — that rule reads through this same channel on every device close, so the fallback row carries a release note: without one every close here would be refused for a reason this file is not about, and with an EMPTY fallback it would pass for the equally wrong reason that the rule found no row
   projectSelectLimit.mockResolvedValue([{ id: ISSUE_ID, releaseNotes: { section: 'Skip' } }]);
   updateReturning.mockReset();
@@ -105,19 +120,19 @@ beforeEach(() => {
 
 describe('an agent closing on a project that declared a release gate', () => {
   it('lands at the gate instead of `closed`', async () => {
-    project(GATED);
-    queueUpdate('tested');
+    gated();
+    queueUpdate('released');
 
     const result = await transitionIssueStatus(AT_WORK, 'closed', AGENT);
 
-    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({ status: 'tested' });
-    expect(result.status).toBe('tested');
+    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({ status: 'released' });
+    expect(result.status).toBe('released');
   });
 
   // cm:guard the merge stamp must survive the hold or the gate stops a false "shipped" by stalling every dependent instead — `merged_at` means "on the base branch", which a held issue is
   it('still stamps `merged_at`, because the branch did land', async () => {
-    project(GATED);
-    queueUpdate('tested');
+    gated();
+    queueUpdate('released');
 
     const result = await transitionIssueStatus(AT_WORK, 'closed', AGENT);
 
@@ -129,8 +144,8 @@ describe('an agent closing on a project that declared a release gate', () => {
   });
 
   it('closes the run, because the session is over even though the issue is not', async () => {
-    project(GATED);
-    queueUpdate('tested');
+    gated();
+    queueUpdate('released');
 
     await transitionIssueStatus(AT_WORK, 'closed', AGENT);
 
@@ -138,8 +153,8 @@ describe('an agent closing on a project that declared a release gate', () => {
   });
 
   it('says on the issue that it is merged and not shipped', async () => {
-    project(GATED);
-    queueUpdate('tested');
+    gated();
+    queueUpdate('released');
 
     await transitionIssueStatus(AT_WORK, 'closed', AGENT);
 
@@ -170,7 +185,7 @@ describe('who may still write `closed`', () => {
 
   // cm:guard this is the flag `release_batch finish` passes; if it ever stopped working the release would rewrite its own close back to the gate and no issue would ever close again
   it('the release path itself', async () => {
-    project(GATED);
+    gated();
     queueUpdate('closed');
 
     const result = await transitionIssueStatus(AT_WORK, 'closed', AGENT, {
@@ -180,8 +195,9 @@ describe('who may still write `closed`', () => {
     expect(result.status).toBe('closed');
   });
 
-  it('an agent on a staged project, whose release job closes with a device actor', async () => {
-    project({ pipelineConfig: { states: { tested: { mode: 'manual' } } } });
+  // cm:guard both halves, separately. A trunk project with a prod binding (forge-dev carries two, sentry and epodsystem) and a promoting project with none (epodsystem-core, dev->master) each fail exactly one half, and each must keep closing its own issues — a gate on either would park every issue behind a release nothing is configured to cut.
+  it('an agent on a project whose production branch is its base', async () => {
+    ungated();
     queueUpdate('closed');
 
     const result = await transitionIssueStatus(AT_WORK, 'closed', AGENT);
@@ -189,8 +205,8 @@ describe('who may still write `closed`', () => {
     expect(result.status).toBe('closed');
   });
 
-  it('an agent on an autonomous project that never declared a gate', async () => {
-    project({ pipelineConfig: { mode: 'autonomous' } });
+  it('an agent on a project with distinct branches but no production binding', async () => {
+    ungated({ branches: true });
     queueUpdate('closed');
 
     const result = await transitionIssueStatus(AT_WORK, 'closed', AGENT);

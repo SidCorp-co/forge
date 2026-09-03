@@ -3,7 +3,6 @@ import {
 	AUTONOMOUS_LABELS,
 	type AutonomousLabel,
 	LABEL_TO_KERNEL,
-	readPipelineMode,
 	renderStatus,
 	toAutonomousLabel,
 } from "./issue-vocabulary.js";
@@ -23,7 +22,6 @@ describe("toAutonomousLabel", () => {
 			"approved",
 			"developed",
 			"testing",
-			"released",
 		] as const) {
 			expect(toAutonomousLabel(status)).toBe("running");
 		}
@@ -41,7 +39,9 @@ describe("toAutonomousLabel", () => {
 		expect(toAutonomousLabel("dropped")).toBe("dropped");
 	});
 
-	it("reads the release park as its own label, not as running", () => {
+	// cm:guard ISS-897 moved the release park from `tested` to `released`, and BOTH must read as awaiting_release: the migration moved 74 live issues, and any row written before it — or by a client still on the old literal — is at `tested` and must not render as a running session nobody is running.
+	it("reads either release park as its own label, not as running", () => {
+		expect(toAutonomousLabel("released")).toBe("awaiting_release");
 		expect(toAutonomousLabel("tested")).toBe("awaiting_release");
 	});
 
@@ -68,30 +68,10 @@ describe("LABEL_TO_KERNEL", () => {
 });
 
 describe("renderStatus", () => {
-	it("leaves a staged project reading exactly as it does today", () => {
-		expect(renderStatus("in_progress", "staged")).toBe("in_progress");
-		expect(renderStatus("in_progress", undefined)).toBe("in_progress");
-		expect(renderStatus("needs_info", "something-else")).toBe("needs_info");
-	});
-
-	it("relabels only under autonomous", () => {
-		expect(renderStatus("in_progress", "autonomous")).toBe("running");
-	});
-});
-
-describe("readPipelineMode", () => {
-	it("reads the mode a project declared", () => {
-		expect(readPipelineMode({ pipelineConfig: { mode: "autonomous" } })).toBe(
-			"autonomous",
-		);
-	});
-
-	// cm:guard absent must read as staged, not as unknown — a board that relabels on a malformed config tells an operator their project runs a driver it does not
-	it("treats anything malformed or absent as no declaration", () => {
-		expect(readPipelineMode({ pipelineConfig: { mode: 42 } })).toBeUndefined();
-		expect(readPipelineMode({ pipelineConfig: null })).toBeUndefined();
-		expect(readPipelineMode({})).toBeUndefined();
-		expect(readPipelineMode(null)).toBeUndefined();
-		expect(readPipelineMode("nope")).toBeUndefined();
+	// cm:guard there is ONE vocabulary since ISS-897 removed the lane switch, so this takes no mode argument. Re-adding one means re-adding `pipelineConfig.mode` to the settings surface and the project rows, which that issue deleted on all 38 projects.
+	it("labels every status without asking the project", () => {
+		expect(renderStatus("in_progress")).toBe("running");
+		expect(renderStatus("needs_info")).toBe("needs_human");
+		expect(renderStatus("released")).toBe("awaiting_release");
 	});
 });

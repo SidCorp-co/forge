@@ -1,34 +1,13 @@
-/**
- * PR-5 — resume the prior Claude CLI session of a pipeline session-group.
- *
- * A session group is a named set of stages declared in
- * `pipelineConfig.sessionGroups`. The first stage dispatched in a group
- * creates a fresh CLI session; subsequent stages of the SAME group on the
- * SAME issue resume it via `--resume <claudeSessionId>`.
- *
- * Lookup strategy:
- *  - Filter by metadata.issueId + metadata.sessionGroup + claudeSessionId IS NOT NULL
- *  - Prefer status='completed' (clean prior runs); fall back to 'failed' is
- *    intentionally NOT allowed — a failed session may have a corrupted CLI
- *    file. Operator can re-trigger if they want to inherit a failed session.
- *  - Order by createdAt DESC, take the most recent.
- *
- * Returns the prior session's claudeSessionId + the deviceId that hosts
- * its session file, so the dispatcher can pin selection to the same host.
- *
- * ISS-226 — invariant: by the time the dispatcher calls
- * `findPriorSessionInGroup`, every prior `(issueId, sessionGroup)` session
- * is guaranteed terminal. The barrier lives in `handleDispatch` and is
- * implemented by `dispatch-gates.ts#hasNonTerminalPriorSession`. Do NOT
- * relax the strict `status='completed'` filter below to widen the lookup —
- * the issue body of ISS-226 forbids it (a still-`running` row may not have
- * its final claudeSessionId flushed; a row that later fails would poison
- * the resume). Fix lifecycle ordering, not the filter.
- */
+// Resume bounds, and where they come from.
+//
+// The (issue, sessionGroup) lookup this module was built around left with
+// `pipelineConfig.sessionGroups` (ISS-897) — one dispatching status has no
+// group of stages to share a session across. What survives is the per-project
+// bound a retry-resume is still judged against.
 
-import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, projects } from '../db/schema.js';
+import { projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 
 const DEFAULT_MAX_RESUME_TOKENS = 150_000;
@@ -83,81 +62,28 @@ export async function loadResumeBounds(
 }
 
 /**
- * ISS-580 — estimate the peak single-request context for all sessions in a
- * (issueId, sessionGroup) group by querying MAX(input_tokens+cache_read_tokens)
- * from usage_records joined via agent_sessions. This mirrors the compact_boundary
- * pre_tokens value — the largest single turn seen for this group.
- *
- * Returns 0 on no rows or DB error (fail-safe: never blocks dispatch).
+ * ISS-580 — the peak single-request context any session of this issue has
+ * reached (`MAX(input_tokens + cache_read_tokens)`), which mirrors the
+ * `compact_boundary` pre-token value. Fail-safe: 0 on no rows or DB error, so
+ * a broken estimate never blocks a dispatch.
  */
-export async function estimateGroupContextTokens(args: {
-  issueId: string;
-  sessionGroup: string;
-}): Promise<number> {
+// cm:guard scoped to the ISSUE since ISS-897 removed session groups, and that is deliberately BROADER than the resume it guards: a retry resumes one parent attempt, but every session of an issue shares the transcript that attempt would reload, so the widest peak is the honest bound. Narrowing it to one session id would let a chain of small attempts resume past a peak that has already forced a compaction.
+export async function estimateIssueContextTokens(issueId: string): Promise<number> {
   try {
-    // session_id is a uuid-shaped text column; guard the cast so a stray
-    // non-uuid value doesn't throw "operator does not exist: text = uuid".
-    // AND s.claude_session_id IS NOT NULL allows the planner to use
-    // agent_sessions_invalidate_lookup_idx (migration 0069 partial index).
     const rows = await db.execute<{ peak: string | null }>(sql`
       SELECT MAX(ur.input_tokens + ur.cache_read_tokens) AS peak
       FROM agent_sessions AS s
       JOIN usage_records AS ur
         ON ur.session_id ~ '^[0-9a-fA-F-]{36}$'
        AND ur.session_id::uuid = s.id
-      WHERE s.metadata->>'issueId' = ${args.issueId}
-        AND s.metadata->>'sessionGroup' = ${args.sessionGroup}
-        AND s.claude_session_id IS NOT NULL
+      WHERE s.metadata->>'issueId' = ${issueId}
     `);
     const peak = rows[0]?.peak;
     if (peak === null || peak === undefined) return 0;
     const n = Number(peak);
     return Number.isFinite(n) ? n : 0;
   } catch (err) {
-    logger.warn(
-      { err, issueId: args.issueId, sessionGroup: args.sessionGroup },
-      'session-resume: estimateGroupContextTokens failed, defaulting to 0',
-    );
+    logger.warn({ err, issueId }, 'session-resume: context estimate failed, defaulting to 0');
     return 0;
-  }
-}
-
-export interface PriorSession {
-  claudeSessionId: string;
-  deviceId: string | null;
-}
-
-export async function findPriorSessionInGroup(args: {
-  issueId: string;
-  sessionGroup: string;
-}): Promise<PriorSession | null> {
-  try {
-    const [row] = await db
-      .select({
-        claudeSessionId: agentSessions.claudeSessionId,
-        deviceId: agentSessions.deviceId,
-      })
-      .from(agentSessions)
-      .where(
-        and(
-          eq(agentSessions.status, 'completed'),
-          isNotNull(agentSessions.claudeSessionId),
-          sql`${agentSessions.metadata}->>'issueId' = ${args.issueId}`,
-          sql`${agentSessions.metadata}->>'sessionGroup' = ${args.sessionGroup}`,
-        ),
-      )
-      .orderBy(desc(agentSessions.createdAt))
-      .limit(1);
-    if (!row?.claudeSessionId) return null;
-    return { claudeSessionId: row.claudeSessionId, deviceId: row.deviceId };
-  } catch (err) {
-    // Surface DB hiccups so operators don't see "no prior session" as silent
-    // resume regressions. Caller treats null as "dispatch fresh" — the
-    // failure is non-fatal, but invisible degradation is the worst kind.
-    logger.warn(
-      { err, issueId: args.issueId, sessionGroup: args.sessionGroup },
-      'session-resume: prior-session lookup failed, falling back to fresh dispatch',
-    );
-    return null;
   }
 }

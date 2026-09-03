@@ -22,7 +22,6 @@ export interface ResolvedFlags {
   allowedTools: string | null;
   permissionMode: 'default' | 'plan' | 'acceptEdits' | 'bypassPermissions' | null;
   timeoutSeconds: number | null;
-  sessionGroup: string | null;
   claudeSessionId: string | null;
   systemPromptMode: 'append' | 'replace' | null;
 }
@@ -72,7 +71,6 @@ const KEYS_SURFACED_ELSEWHERE = new Set([
   'allowedTools',
   'permissionMode',
   'timeoutSeconds',
-  'sessionGroup',
   'stageStatus',
   'claudeSessionId',
   'mcpServersOverride',
@@ -121,7 +119,6 @@ export function extractResolvedFlags(
     allowedTools,
     permissionMode,
     timeoutSeconds,
-    sessionGroup: str('sessionGroup'),
     claudeSessionId: str('claudeSessionId'),
     systemPromptMode,
   };

@@ -62,7 +62,6 @@ function buildOverridesPayload(o: StageOverrides): Record<string, unknown> {
   if (o.permissionMode !== null) out.permissionMode = o.permissionMode;
   if (o.timeoutSeconds !== null) out.timeoutSeconds = o.timeoutSeconds;
   if (o.mcpServers !== null) out.mcpServersOverride = o.mcpServers;
-  if (o.sessionGroup !== null) out.sessionGroup = o.sessionGroup;
   return out;
 }
 
@@ -425,8 +424,6 @@ async function dispatchViaRunner(
   const runnerBasePromptString =
     typeof runnerPayload.promptString === 'string' ? runnerPayload.promptString : null;
   // Reuse the overrides we resolved before runner selection — saves one
-  // round-trip to projects, and guarantees the sessionGroup we pinned on
-  // matches the sessionGroup we forward to the runner.
   //
   // Shallow-copy before mutating: resolveStageOverrides returns a shared
   // module-level EMPTY singleton by reference on its early-return paths

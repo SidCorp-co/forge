@@ -37,7 +37,6 @@ export interface StageOverrides {
   timeoutSeconds: number | null;
   mcpServers: Record<string, unknown> | null;
   budget: BudgetConfig | null;
-  sessionGroup: string | null;
   /**
    * Per-state runner pool. Null (or an empty list, normalized to null here)
    * means the whole project fleet is eligible — the dispatcher passes this
@@ -63,7 +62,6 @@ const EMPTY: StageOverrides = {
   timeoutSeconds: null,
   mcpServers: null,
   budget: null,
-  sessionGroup: null,
   deviceIds: null,
   declaredNames: null,
 };
@@ -281,9 +279,7 @@ export async function resolveStageOverrides(
     timeoutSeconds: stage.timeoutSeconds ?? null,
     mcpServers: stage.mcpServers ? { ...(stage.mcpServers as Record<string, unknown>) } : null,
     budget: stage.budget ? { ...stage.budget } : null,
-    // cm:guard CONSTANT null since ISS-897 removed `states[x].sessionGroup` from the config schema — this is the ONLY producer, so every reader downstream (dispatcher, agent-session-link, resume-policy's group branch, session-resume, handle-resume-failed) is now permanently on its absent path. The plumbing is deliberately left standing rather than deleted in the same change; the price and the removal are recorded in docs/proposals/session-group-plumbing.md. Do not re-introduce a value here without re-introducing the config key.
-    sessionGroup: null,
-    // cm:why an empty array normalizes to null so `[]` cannot read as "no device is eligible" and silently wedge every job on the stage
+      // cm:why an empty array normalizes to null so `[]` cannot read as "no device is eligible" and silently wedge every job on the stage
     deviceIds: stage.deviceIds && stage.deviceIds.length > 0 ? [...stage.deviceIds] : null,
     declaredNames: stage.mcpServers
       ? [...collectDeclaredMcpNames({ mcpServers: stage.mcpServers as Record<string, unknown> })]

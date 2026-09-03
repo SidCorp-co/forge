@@ -230,7 +230,6 @@ export const pipelineConfigSchema = z
     // `X` (soft-skip) rather than dispatching a job. Cycle/dead-end detection
     // runs at PATCH time.
     states: statesConfigSchema,
-    onResumeFail: z.enum(['fresh', 'abort']).optional(),
     // cm:why ISS-580 — a resume carries the prior session's whole context, so past a peak the fresh session plus its handoff is cheaper and no less informed; 0 disables the bound, absent means 150000 tokens / 3 reopen cycles (jobs/resume-policy.ts)
     maxResumeTokens: z.number().int().min(0).optional(),
     maxResumeReopenCycles: z.number().int().min(0).optional(),

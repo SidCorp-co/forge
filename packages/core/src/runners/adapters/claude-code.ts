@@ -102,7 +102,6 @@ export const claudeCodeAdapter: RunnerAdapter = {
       'permissionMode',
       'timeoutSeconds',
       'mcpServersOverride',
-      'sessionGroup',
       // PR-5 — dispatcher merges `claudeSessionId` into payload when resuming
       // a session group; must lift to top-level WS so the dev runner reads it
       // at `data.claudeSessionId` (use-job-handler.ts:91).
