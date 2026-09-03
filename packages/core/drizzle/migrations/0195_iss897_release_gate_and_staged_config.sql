@@ -33,7 +33,6 @@ SET agent_config = jsonb_set(
       '{}'::jsonb
     )
   )
-),
-updated_at = now()
+)
 WHERE agent_config -> 'pipelineConfig' IS NOT NULL
   AND jsonb_typeof(agent_config -> 'pipelineConfig') = 'object';
