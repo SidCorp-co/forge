@@ -35,7 +35,10 @@ const health = (reason: PipelineHealth["waitingOn"] extends undefined ? never : 
     waitingOn: { reason, since: QUEUED_AT, details: {} },
   }) as PipelineHealth;
 
-const row = (pipelineHealth?: PipelineHealth): IssueRow =>
+const row = (
+  pipelineHealth?: PipelineHealth,
+  agentStatus: IssueRow["agentStatus"] = null,
+): IssueRow =>
   ({
     id: "i",
     projectId: "p",
@@ -56,7 +59,7 @@ const row = (pipelineHealth?: PipelineHealth): IssueRow =>
     mergedAt: null,
     createdAt: QUEUED_AT,
     updatedAt: QUEUED_AT,
-    agentStatus: null,
+    agentStatus,
     ...(pipelineHealth ? { pipelineHealth } : {}),
   }) as IssueRow;
 
@@ -72,6 +75,12 @@ describe("issue list row · queued chip", () => {
     delete (h as { waitingOn?: unknown }).waitingOn;
     render(<StatusCell row={row(h)} />);
     expect(screen.getByText("Queued")).toBeInTheDocument();
+  });
+
+  it("shows the gate on a deferred retry, whose agentStatus reads `failed`", () => {
+    render(<StatusCell row={row(health("runner_stale"), "failed")} />);
+    expect(screen.getByText("No runner online")).toBeInTheDocument();
+    expect(screen.getByText("Failed")).toBeInTheDocument();
   });
 
   it("renders no queued chip for a row with no queued step", () => {

@@ -9,7 +9,7 @@ import {
 	STATUS_KEY_TONE,
 	type StatusKey,
 } from "@/design/status";
-import { heldCopy, WAITING_REASON_COPY } from "./waiting";
+import { heldCopy, UNKNOWN_GATE_COPY, WAITING_REASON_COPY } from "./waiting";
 import type {
 	CommentKind,
 	GroupBy,
@@ -659,11 +659,12 @@ export function deriveBlockerState(
 
 	// 5. pipelineHealth capacity / dependency waits.
 	const waitingOn = pipelineHealth?.waitingOn;
-	if (waitingOn && WAITING_REASON_COPY[waitingOn.reason]) {
+	// cm:guard do not gate this arm on `WAITING_REASON_COPY[reason]` again — core owns the reason vocabulary and this package hand-mirrors it, so an unrecognised reason used to fall through to the blocking-refs arm and the banner said NOTHING about a gate the server had named
+	if (waitingOn) {
 		const copy =
 			waitingOn.reason === "job_held"
 				? heldCopy(waitingOn.details?.holdReason)
-				: WAITING_REASON_COPY[waitingOn.reason];
+				: (WAITING_REASON_COPY[waitingOn.reason] ?? UNKNOWN_GATE_COPY);
 		const isDep =
 			waitingOn.reason === "waiting_on_dep" ||
 			waitingOn.reason === "waiting_on_decomp_children";

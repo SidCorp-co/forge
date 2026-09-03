@@ -4,7 +4,7 @@
 // the board/list chips (the short label) must not drift apart, and the gate
 // vocabulary itself is owned by core's `PipelineWaitingReason`.
 //
-// cm:edge lockstep -> packages/core/src/issues/pipeline-health-types.ts — `PipelineWaitingReason` is the authority on which gates exist; a reason added there and missing from either record below stops compiling, which is the point
+// cm:edge lockstep -> packages/core/src/issues/pipeline-health-types.ts — `PipelineWaitingReason` is the authority on which gates exist and `WaitingReason` in ./types is a HAND-MIRROR of it, so nothing here breaks when a reason is added there: add it to that mirror and to all three records below in the same change. Until it is added, the reason arrives as an unrecognised string and degrades to UNKNOWN_GATE_COPY.
 
 import { formatCountdown } from "@/lib/utils/format";
 import type { PipelineHealth, WaitingReason } from "./types";
@@ -105,6 +105,15 @@ export const WAITING_REASON_SHORT: Record<WaitingReason, string> = {
 	runner_full: "Runners at capacity",
 };
 
+/** Copy for a gate this build has no words for. Core owns the vocabulary and
+ *  `WaitingReason` is a hand-mirror of it, so a newly added reason reaches this
+ *  UI before the mirror does. */
+// cm:guard an unrecognised reason must NOT degrade to silence or to "awaiting its turn" — that sentence promises the step dispatches on the next tick, and a gate nobody here has words for is exactly the one that may never. `needsAction` defaults true for the same reason: the safe read of an unknown wait is that someone should look at it.
+export const UNKNOWN_GATE_COPY = {
+	reason: "The step is queued behind a gate this page does not recognise.",
+	who: "Read the step in the pipeline view — this UI is older than the gate holding it.",
+};
+
 /** One gate, in every register the UI needs. */
 export interface GateView {
 	reason: WaitingReason;
@@ -132,7 +141,7 @@ const GATE_NEEDS_ACTION: Record<Exclude<WaitingReason, "job_held">, boolean> = {
 };
 
 function gateNeedsAction(reason: WaitingReason, holdReason: unknown): boolean {
-	if (reason !== "job_held") return GATE_NEEDS_ACTION[reason];
+	if (reason !== "job_held") return GATE_NEEDS_ACTION[reason] ?? true;
 	return !(
 		typeof holdReason === "string" && SELF_RESUMING_HOLD_REASONS.has(holdReason)
 	);
@@ -155,15 +164,23 @@ export function gateView(waitingOn: PipelineHealth["waitingOn"]): GateView | nul
 	const copy =
 		waitingOn.reason === "job_held"
 			? heldCopy(waitingOn.details?.holdReason)
-			: WAITING_REASON_COPY[waitingOn.reason];
-	if (!copy) return null;
+			: (WAITING_REASON_COPY[waitingOn.reason] ?? UNKNOWN_GATE_COPY);
 	return {
 		reason: waitingOn.reason,
-		short: WAITING_REASON_SHORT[waitingOn.reason],
+		short: WAITING_REASON_SHORT[waitingOn.reason] ?? "Waiting",
 		detail: copy.reason,
 		who: copy.who,
 		needsAction: gateNeedsAction(waitingOn.reason, waitingOn.details?.holdReason),
 	};
+}
+
+/** Whether an agent is executing under a session row right now — the question
+ *  `deriveQueuedStep` asks, which three surfaces had answered differently. */
+// cm:guard `failed` must NOT count as live here, however live the list's own `hasLiveAgent` treats it for the AgentChip: a DEFERRED RETRY's `agentStatus` is `failed`, because core's `deriveAgentStatus` falls through to the most recent terminal session when nothing is running or queued. Counting it suppressed the queued chip on exactly the incident shape ISS-903 was filed for.
+export function hasLiveAgentSession(
+	agentStatus: string | null | undefined,
+): boolean {
+	return agentStatus === "running" || agentStatus === "queued";
 }
 
 /**

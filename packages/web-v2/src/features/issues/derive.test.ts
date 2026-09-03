@@ -627,6 +627,22 @@ describe("deriveBlockerState", () => {
 		).toBeNull();
 	});
 
+	it("names a gate whose reason this build has no copy for", () => {
+		const b = deriveBlockerState(
+			blockerIssue({ status: "in_progress" }),
+			{
+				stage: "in_progress",
+				waitingOn: {
+					reason: "gate_added_after_this_build" as never,
+					since: "2026-09-03T14:43:00.000Z",
+					details: {},
+				},
+			},
+			undefined,
+		);
+		expect(b?.reason).toMatch(/does not recognise/);
+	});
+
 	it("needs_info shows the supplied question and a provide-info action", () => {
 		const b = deriveBlockerState(
 			blockerIssue({ status: "needs_info" }),

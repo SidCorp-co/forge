@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { deriveQueuedStep, queuedChipStatus, WAITING_REASON_SHORT } from "./waiting";
+import {
+  deriveQueuedStep,
+  hasLiveAgentSession,
+  queuedChipStatus,
+  WAITING_REASON_SHORT,
+} from "./waiting";
 import type { PipelineHealth, WaitingReason } from "./types";
 
 const QUEUED_AT = "2026-09-03T14:43:00.000Z";
@@ -150,4 +155,50 @@ describe("gate tone", () => {
 		expect(queuedChipStatus(cooldown)).toBe("queued");
 		expect(queuedChipStatus(ungated)).toBe("queued");
 	});
+});
+
+describe("hasLiveAgentSession", () => {
+  it("counts only a session that is actually executing or dispatched", () => {
+    expect(hasLiveAgentSession("running")).toBe(true);
+    expect(hasLiveAgentSession("queued")).toBe(true);
+    expect(hasLiveAgentSession(null)).toBe(false);
+    expect(hasLiveAgentSession(undefined)).toBe(false);
+    expect(hasLiveAgentSession("completed")).toBe(false);
+  });
+
+  it("does NOT count `failed` — that is what a deferred retry reads as", () => {
+    expect(hasLiveAgentSession("failed")).toBe(false);
+  });
+});
+
+describe("a deferred retry", () => {
+  it("still surfaces its gate, though the last attempt failed", () => {
+    const out = deriveQueuedStep(
+      health({
+        waitingOn: { reason: "runner_stale", since: QUEUED_AT, details: {} },
+      }),
+      hasLiveAgentSession("failed"),
+    );
+    expect(out?.gate?.short).toBe("No runner online");
+  });
+});
+
+describe("a gate this build has no words for", () => {
+  it("says so rather than claiming the step is merely awaiting its turn", () => {
+    const out = deriveQueuedStep(
+      health({
+        waitingOn: {
+          reason: "gate_added_after_this_build" as WaitingReason,
+          since: QUEUED_AT,
+          details: {},
+        },
+      }),
+      false,
+    );
+    expect(out?.gate).not.toBeNull();
+    expect(out?.gate?.short).toBe("Waiting");
+    expect(out?.gate?.detail).toMatch(/does not recognise/);
+    expect(out?.gate?.needsAction).toBe(true);
+    expect(queuedChipStatus(out as NonNullable<typeof out>)).toBe("waiting");
+  });
 });

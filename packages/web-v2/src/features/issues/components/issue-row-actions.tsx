@@ -33,7 +33,12 @@ import {
   statusToRun,
   statusToStage,
 } from "../derive";
-import { deriveQueuedStep, queuedChipStatus, type QueuedStepView } from "../waiting";
+import {
+  deriveQueuedStep,
+  hasLiveAgentSession,
+  queuedChipStatus,
+  type QueuedStepView,
+} from "../waiting";
 import { useStatusLabeller } from "../vocabulary";
 import {
   ISSUE_COMPLEXITIES,
@@ -113,11 +118,15 @@ function AgentChip({
 /** ISS-436 merged status cell: lifecycle chip (+ live agent chip) over the
  *  mini stage tracker — replaces the old separate Pipeline/Status columns,
  *  which rendered the same `status`+`agentStatus` pair twice. */
+// cm:guard the queued step is derived from `hasLiveAgentSession`, NOT this file's `hasLiveAgent` — the latter counts `failed` as live so the failure chip keeps its tooltip, and a deferred retry's `agentStatus` IS `failed`, so reusing it here hid the gate on the very row ISS-903 was filed about
 // cm:guard when a queued step is showing, the mini tracker must read `queued` and NOT `statusToRun` — that function answers `running` for an `in_progress` issue with no session, which is precisely the queued-but-undispatched row ISS-903 stopped painting as actively worked
 export function StatusCell({ row }: { row: IssueRow }) {
   const statusLabel = useStatusLabeller();
   const stage = statusToStage(row.status);
-  const queuedStep = deriveQueuedStep(row.pipelineHealth, hasLiveAgent(row.agentStatus));
+  const queuedStep = deriveQueuedStep(
+    row.pipelineHealth,
+    hasLiveAgentSession(row.agentStatus),
+  );
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-1.5">

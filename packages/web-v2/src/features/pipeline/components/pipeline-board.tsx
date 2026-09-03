@@ -29,7 +29,11 @@ import {
   runStatusToStatusKey,
   runsByIssue,
 } from "../derive";
-import { deriveQueuedStep, queuedChipStatus } from "@/features/issues/waiting";
+import {
+  deriveQueuedStep,
+  hasLiveAgentSession,
+  queuedChipStatus,
+} from "@/features/issues/waiting";
 import { useProjectIssues, useProjectRuns } from "../hooks";
 import type { PipelineIssueRow } from "../types";
 import { RunDetail } from "./run-detail";
@@ -46,11 +50,6 @@ interface PipelineBoardProps {
    *  Optional, defaults true so other callers keep their behaviour. */
   canWrite?: boolean;
 }
-
-/** A card whose issue has a live agent keeps the run's own status — the queued
- *  arm is only for a step nobody is executing. */
-const hasLiveSession = (issue: PipelineIssueRow): boolean =>
-  issue.agentStatus === "running" || issue.agentStatus === "queued";
 
 interface Selection {
   issue: PipelineIssueRow;
@@ -129,7 +128,7 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
                 // cm:guard a queued step OUTRANKS the run's own status here — a queued job lives under a `running` pipeline_run, so `runStatusToStatusKey` painted the card "Running" while nothing was running, and a waiting chip merely added beside it would have left the card asserting both (ISS-903)
                 const queuedStep = deriveQueuedStep(
                   issue.pipelineHealth,
-                  hasLiveSession(issue),
+                  hasLiveAgentSession(issue.agentStatus),
                 );
                 // Live run → execution status (session vocabulary). No run →
                 // the issue's TRUE lifecycle label on the chip (ISS-436), not
