@@ -5,10 +5,18 @@
 -- at a time, leaving the fleet half-stripped for as long as nobody opened a settings page.
 
 -- 1. `tested` was the release gate's status. It is `released` now: merged to the base branch,
---    run and verified on staging, waiting for production. Measured on the live replica
---    2026-09-03 — 74 issues across 8 projects, every one of them at a real gate
---    (`states.tested = {enabled:true, mode:'manual'}`). `merged_at` is deliberately untouched:
---    none of these has been released, and the column is what unblocks their dependents.
+--    run and verified on staging, waiting for production. It moves EVERY issue at `tested`,
+--    whatever the count when it runs — measured 76 across 9 projects on the live replica
+--    2026-09-03, every one of them at a real gate (`states.tested = {enabled:true,
+--    mode:'manual'}`). `merged_at` is deliberately untouched: none of these has been
+--    released, and the column is what unblocks their dependents.
+--
+--    NOT moved, and deliberately: 8 issues sit at `testing`/`developed`/`approved`/
+--    `confirmed`/`clarified` — mid-flight under the lane this removes, in projects this
+--    issue does not own. Nothing dispatches them afterwards. Moving them to `open` would
+--    fire 8 unrequested drive jobs across those projects and `needs_info` would park them
+--    with no reason and no comment, so this records the residual rather than picking one
+--    on their owners' behalf (docs/proposals/release-step-contract.md).
 UPDATE issues SET status = 'released', updated_at = now() WHERE status = 'tested';
 
 -- 2. Staged configuration leaves `agentConfig.pipelineConfig`. `states` keeps only the four

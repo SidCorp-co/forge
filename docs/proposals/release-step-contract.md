@@ -76,3 +76,19 @@ Adopting this splits one agent's job in two, and the seam is where the price sit
 - **The procedure is per project and unvalidated.** Core checks that `release-procedure` and
   `rollback` exist, never that they work. A project that declares a rollback it has not tested has
   bought the appearance of a way back, and obligation 5 cannot tell the difference.
+
+## Known residual: 8 issues the lane removal leaves behind
+
+Measured on the live replica 2026-09-03. Migration `0195` moves every issue at `tested` to
+`released` (76 across 9 projects). It does **not** move the 8 sitting at `testing`,
+`developed`, `approved`, `confirmed` and `clarified` — mid-flight work under the deleted
+lane, in projects ISS-897 does not own.
+
+After the migration nothing dispatches them: only `open` reaches the driver. They render on
+the board (`issue-vocabulary.ts` is total over the enum, deliberately) but no session will
+pick them up.
+
+Both automatic dispositions are worse than saying so. `open` fires 8 unrequested drive jobs
+across other people's projects; `needs_info` writes a park with no reason and no comment,
+which is a status move whose next reader cannot tell why. The disposition belongs to each
+project's owner, who can move theirs to `open` when they want it driven.
