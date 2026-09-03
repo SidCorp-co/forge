@@ -21,19 +21,9 @@ const TEMPLATE_SETS: Record<string, ReadonlyArray<{ stage: string; skillName: st
   ),
 };
 
+// cm:guard the preset writes `enabled` and nothing else. It carried the eight `auto<Stage>` toggles until ISS-897 removed them from `pipelineConfigSchema`, which STRIPS unknown keys — so every bootstrap since would have written eight keys the very next settings save silently dropped, and a reader of this file would have believed the pipeline was configured by them.
 const BALANCED_PRESET = {
   enabled: true,
-  autoTriage: true,
-  // Clarify opt-in is explicit: the builtin seed ships no forge-clarify
-  // global skill, so the `confirmed` stage soft-skips (missing_skill) to
-  // `clarified` until a project registers one AND flips this toggle.
-  autoClarify: false,
-  autoPlan: true,
-  autoCode: false,
-  autoReview: true,
-  autoTest: true,
-  autoFix: true,
-  autoRelease: false,
 } as const;
 
 // ISS-453 — named pipelineConfig presets. Only `balanced` is wired today;

@@ -1,10 +1,9 @@
+// The mock supports the two call shapes session-resume.ts uses: a
+// select-from-where-limit for the bounds, and a db.execute for the context
+// estimate.
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// ISS-580 — the mock must support three call shapes used by the three exported
-// functions in session-resume.ts:
-//  1. db.select({...}).from(...).where(...).orderBy(...).limit(1)   ← findPriorSessionInGroup
-//  2. db.select({...}).from(...).where(...).limit(1)                ← loadResumeBounds
-//  3. db.execute(sql`...`)                                          ← estimateGroupContextTokens
 
 const selectLimitResults: unknown[][] = [];
 const executeLimitResults: unknown[][] = [];
@@ -52,9 +51,7 @@ function serializeSqlFragments(node: unknown): string {
   return out.join(' ');
 }
 
-const { findPriorSessionInGroup, loadResumeBounds, estimateGroupContextTokens } = await import(
-  './session-resume.js'
-);
+const { loadResumeBounds, estimateIssueContextTokens } = await import('./session-resume.js');
 
 beforeEach(() => {
   selectLimitResults.length = 0;
@@ -63,47 +60,6 @@ beforeEach(() => {
   limitSpy.mockClear();
   where.mockClear();
   executeSpy.mockClear();
-});
-
-describe('findPriorSessionInGroup', () => {
-  it('returns null when no prior completed session has the (issue, group) pair', async () => {
-    selectLimitResults.push([]);
-    const r = await findPriorSessionInGroup({ issueId: 'i-1', sessionGroup: 'impl' });
-    expect(r).toBeNull();
-  });
-
-  it('returns the most recent claudeSessionId + deviceId when one exists', async () => {
-    selectLimitResults.push([{ claudeSessionId: 'cli-abc123', deviceId: 'd-1' }]);
-    const r = await findPriorSessionInGroup({ issueId: 'i-1', sessionGroup: 'impl' });
-    expect(r).toEqual({ claudeSessionId: 'cli-abc123', deviceId: 'd-1' });
-  });
-
-  it('swallows DB errors and returns null', async () => {
-    limitSpy.mockRejectedValueOnce(new Error('db down'));
-    const r = await findPriorSessionInGroup({ issueId: 'i-1', sessionGroup: 'impl' });
-    expect(r).toBeNull();
-  });
-
-  it('returns null when row exists but claudeSessionId is missing', async () => {
-    selectLimitResults.push([{ claudeSessionId: null, deviceId: 'd-1' }]);
-    const r = await findPriorSessionInGroup({ issueId: 'i-1', sessionGroup: 'impl' });
-    expect(r).toBeNull();
-  });
-
-  // ISS-226 — regression guard: the SQL filter must stay strict on
-  // status='completed'. A future contributor that widens the filter to
-  // `IN ('running','completed')` would re-introduce the resume-from-poisoned
-  // session bug ISS-226 closed by enforcing lifecycle ordering via the
-  // dispatch-time barrier (`dispatch-gates.ts#hasNonTerminalPriorSession`).
-  // If you find yourself relaxing this filter, read ISS-226's plan first.
-  it('ISS-226: filters strictly on status=completed (never widens to running)', async () => {
-    selectLimitResults.push([]);
-    await findPriorSessionInGroup({ issueId: 'i-1', sessionGroup: 'impl' });
-    expect(whereArgs).toHaveLength(1);
-    const fragments = serializeSqlFragments(whereArgs[0]);
-    expect(fragments).toContain('completed');
-    expect(fragments).not.toContain('running');
-  });
 });
 
 describe('loadResumeBounds (ISS-580)', () => {
@@ -150,28 +106,25 @@ describe('loadResumeBounds (ISS-580)', () => {
   });
 });
 
-describe('estimateGroupContextTokens (ISS-580)', () => {
-  it('returns 0 when no usage_records rows exist for the group', async () => {
+// cm:guard the estimate is scoped to the ISSUE, and that is deliberately broader than the one attempt a retry resumes: every session of an issue shares the transcript that attempt would reload, so the widest peak is the honest bound. A test that narrows the scope back to one session would pass while removing the ceiling.
+describe('estimateIssueContextTokens', () => {
+  it('returns 0 when no usage_records rows exist for the issue', async () => {
     executeLimitResults.push([{ peak: null }]);
-    const tokens = await estimateGroupContextTokens({ issueId: 'i-1', sessionGroup: 'impl' });
-    expect(tokens).toBe(0);
+    expect(await estimateIssueContextTokens('i-1')).toBe(0);
   });
 
-  it('returns 0 when query returns no rows', async () => {
+  it('returns 0 when the query returns no rows', async () => {
     executeLimitResults.push([]);
-    const tokens = await estimateGroupContextTokens({ issueId: 'i-1', sessionGroup: 'impl' });
-    expect(tokens).toBe(0);
+    expect(await estimateIssueContextTokens('i-1')).toBe(0);
   });
 
   it('returns the numeric peak value from the MAX aggregate', async () => {
     executeLimitResults.push([{ peak: '363342' }]);
-    const tokens = await estimateGroupContextTokens({ issueId: 'i-1', sessionGroup: 'impl' });
-    expect(tokens).toBe(363342);
+    expect(await estimateIssueContextTokens('i-1')).toBe(363342);
   });
 
   it('returns 0 on DB error (fail-safe — never blocks dispatch)', async () => {
     executeSpy.mockRejectedValueOnce(new Error('db down'));
-    const tokens = await estimateGroupContextTokens({ issueId: 'i-1', sessionGroup: 'impl' });
-    expect(tokens).toBe(0);
+    expect(await estimateIssueContextTokens('i-1')).toBe(0);
   });
 });

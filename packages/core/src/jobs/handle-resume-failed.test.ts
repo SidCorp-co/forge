@@ -5,7 +5,8 @@ const limit = vi.fn(() => Promise.resolve(limitResults.shift() ?? []));
 const where = vi.fn(() => ({ limit }));
 const from = vi.fn(() => ({ where }));
 const execute = vi.fn();
-const updateWhere = vi.fn();
+const updateReturning = vi.fn(() => Promise.resolve([] as unknown[]));
+const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 
 vi.mock('../db/client.js', () => ({
@@ -16,14 +17,18 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const { isResumeFailedError, handleResumeFailed } = await import('./handle-resume-failed.js');
+const { isResumeFailedError, reclassifyAbortedResume } = await import(
+  './handle-resume-failed.js'
+);
+const { CLASSIFIER_VERSION } = await import('../pipeline/failure-classifier.js');
 
 beforeEach(() => {
   limitResults.length = 0;
   limit.mockClear();
   execute.mockReset();
-  updateWhere.mockReset();
-  updateWhere.mockResolvedValue(undefined);
+  updateSet.mockClear();
+  updateReturning.mockReset();
+  updateReturning.mockResolvedValue([]);
 });
 
 describe('isResumeFailedError', () => {
@@ -39,52 +44,24 @@ describe('isResumeFailedError', () => {
   });
 });
 
-describe('handleResumeFailed', () => {
-  it('returns "fresh" with no work when payload has no sessionGroup', async () => {
-    const r = await handleResumeFailed({
-      id: 'j-1',
-      projectId: 'p-1',
-      issueId: 'i-1',
-      payload: {},
+// cm:guard `reclassifyAbortedResume` must write BOTH the reason and the kind, and stamp the classifier version — an aborted resume that keeps `failureKind: 'infra'` is read by the retry chain as a bad box and fails the job over to another one, where the same missing session id fails again.
+describe('reclassifyAbortedResume', () => {
+  it('rewrites the failure as code, stamped with the classifier version', async () => {
+    updateReturning.mockResolvedValueOnce([{ id: 'j-1', failureKind: 'code' }]);
+
+    const out = await reclassifyAbortedResume({ id: 'j-1' });
+
+    expect(updateSet).toHaveBeenCalledWith({
+      failureReason: 'resume_failed',
+      failureKind: 'code',
+      classifierVersion: CLASSIFIER_VERSION,
     });
-    expect(r).toBe('fresh');
-    expect(execute).not.toHaveBeenCalled();
+    expect(out).toEqual({ id: 'j-1', failureKind: 'code' });
   });
 
-  it('defaults to fresh when project has no agentConfig', async () => {
-    limitResults.push([{ agentConfig: null }]);
-    execute.mockResolvedValueOnce([]); // no prior sessions
-    const r = await handleResumeFailed({
-      id: 'j-1',
-      projectId: 'p-1',
-      issueId: 'i-1',
-      payload: { sessionGroup: 'impl' },
-    });
-    expect(r).toBe('fresh');
-  });
+  it('returns the row it was given when the write matched nothing', async () => {
+    updateReturning.mockResolvedValueOnce([]);
 
-  it('returns "abort" when project sets onResumeFail=abort', async () => {
-    limitResults.push([{ agentConfig: { pipelineConfig: { onResumeFail: 'abort' } } }]);
-    execute.mockResolvedValueOnce([]); // no priors to invalidate
-    const r = await handleResumeFailed({
-      id: 'j-1',
-      projectId: 'p-1',
-      issueId: 'i-1',
-      payload: { sessionGroup: 'impl' },
-    });
-    expect(r).toBe('abort');
-  });
-
-  it('invalidates prior sessions matching (issue, sessionGroup)', async () => {
-    limitResults.push([{ agentConfig: {} }]);
-    execute.mockResolvedValueOnce([{ id: 's-1' }, { id: 's-2' }]);
-    await handleResumeFailed({
-      id: 'j-1',
-      projectId: 'p-1',
-      issueId: 'i-1',
-      payload: { sessionGroup: 'impl' },
-    });
-    expect(updateSet).toHaveBeenCalledTimes(2);
-    expect(updateSet).toHaveBeenCalledWith({ claudeSessionId: null });
+    expect(await reclassifyAbortedResume({ id: 'j-1' })).toEqual({ id: 'j-1' });
   });
 });

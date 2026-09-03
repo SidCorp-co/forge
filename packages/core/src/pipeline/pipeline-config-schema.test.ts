@@ -80,7 +80,6 @@ describe('pipelineConfigPatchSchema', () => {
     };
     expect(pipelineConfigPatchSchema.parse(staged)).toEqual({
       enabled: true,
-      mode: 'staged',
       states: { open: { enabled: true } },
     });
   });
@@ -303,10 +302,6 @@ describe('stageConfigSchema per-state overrides', () => {
 });
 
 describe('resume policy', () => {
-  it('rejects unknown onResumeFail policy', () => {
-    expect(() => pipelineConfigSchema.parse({ onResumeFail: 'retry' })).toThrow();
-  });
-
   // ISS-580 — maxResumeTokens + maxResumeReopenCycles
   it('accepts maxResumeTokens and maxResumeReopenCycles as optional non-negative integers', () => {
     const parsed = pipelineConfigSchema.parse({

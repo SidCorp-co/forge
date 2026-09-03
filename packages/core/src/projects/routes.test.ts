@@ -1206,18 +1206,8 @@ describe('POST /api/projects/:id/api-key/rotate', () => {
 
 describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
   const PID = '11111111-1111-4111-8111-111111111111';
-  const EXPECTED_DEFAULT_STAGES = [
-    'approved',
-    'clarified',
-    'confirmed',
-    'developed',
-    'needs_info',
-    'open',
-    'released',
-    'reopen',
-    'tested',
-    'testing',
-  ].sort();
+  // cm:edge lockstep -> packages/core/src/pipeline/pipeline-config-schema.ts — the same four names `STAGE_NAMES` declares. A stage bootstrap seeds that the schema then strips is config no save preserves, which reads to an operator as a setting that silently reverts.
+  const EXPECTED_DEFAULT_STAGES = ['in_progress', 'needs_info', 'open', 'released'].sort();
 
   function bootstrap(token: string, body?: unknown) {
     return req(`/${PID}/skills/bootstrap`, {
@@ -1280,43 +1270,27 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     const setArg = updateSet.mock.calls[0]?.[0] as {
       agentConfig: { pipelineConfig: Record<string, unknown> };
     };
-    expect(setArg.agentConfig.pipelineConfig).toMatchObject({
-      enabled: true,
-      autoTriage: true,
-      autoClarify: false,
-      autoPlan: true,
-      autoCode: false,
-      autoReview: true,
-      autoTest: true,
-      autoFix: true,
-      autoRelease: false,
-    });
+    // cm:guard the preset writes `enabled` and the `states` map, and NOTHING else. It carried eight `auto<Stage>` toggles until ISS-897 removed them from the schema, which strips unknown keys — so a preset key that is not in the schema is written once and dropped by the next settings save, which reads to an operator as a setting that reverts itself.
+    expect(setArg.agentConfig.pipelineConfig).toMatchObject({ enabled: true });
+    expect(Object.keys(setArg.agentConfig.pipelineConfig).sort()).toEqual(['enabled', 'states']);
 
     // ISS-108 — bootstrap seeds the per-stage states config alongside the preset.
     const states = (setArg.agentConfig.pipelineConfig as { states: Record<string, unknown> })
       .states;
     expect(Object.keys(states).sort()).toEqual(EXPECTED_DEFAULT_STAGES);
     for (const key of Object.keys(states)) {
-      // `tested` is the production approval GATE — manual by default so the
-      // pipeline parks for a human before release; every other stage is auto.
-      const expectedMode = key === 'tested' ? 'manual' : 'auto';
-      // ISS-581 — developed/testing/released ship a default denylist of
-      // scheduling/orchestration agency tools; other stages carry no
-      // disallowedTools key at all (see STAGE_DEFAULT_DISALLOWED in
-      // pipeline-config-schema.ts).
-      const expectedDisallowed = ['developed', 'testing', 'released'].includes(key)
-        ? {
-            disallowedTools: [
-              'CronCreate',
-              'CronDelete',
-              'CronList',
-              'Workflow',
-              'RemoteTrigger',
-              'ScheduleWakeup',
-            ],
-          }
-        : {};
-      expect(states[key]).toEqual({ enabled: true, mode: expectedMode, ...expectedDisallowed });
+      expect(states[key]).toEqual({
+        enabled: true,
+        mode: 'auto',
+        disallowedTools: [
+          'CronCreate',
+          'CronDelete',
+          'CronList',
+          'Workflow',
+          'RemoteTrigger',
+          'ScheduleWakeup',
+        ],
+      });
     }
   });
 
@@ -1388,7 +1362,7 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     >;
     const patched = updateCalls[0]![0];
     expect(patched.agentConfig.pipelineConfig.enabled).toBe(false);
-    expect(Object.keys(patched.agentConfig.pipelineConfig.states)).toContain('approved');
+    expect(Object.keys(patched.agentConfig.pipelineConfig.states)).toContain('open');
   });
 
   // ISS-453 — skill seeding is data-driven via named template sets + presets.
@@ -1443,7 +1417,7 @@ describe('POST /api/projects/:id/skills/bootstrap (ISS-2A)', () => {
     const setArg = updateSet.mock.calls[0]?.[0] as {
       agentConfig: { pipelineConfig: Record<string, unknown> };
     };
-    expect(setArg.agentConfig.pipelineConfig).toMatchObject({ enabled: true, autoTriage: true });
+    expect(setArg.agentConfig.pipelineConfig).toMatchObject({ enabled: true });
   });
 
   it('503 NO_GLOBAL_SKILLS when the seeder has not run', async () => {

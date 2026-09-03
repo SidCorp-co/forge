@@ -113,7 +113,6 @@ describe('extractPayloadExtras', () => {
         allowedTools: 'Bash',
         permissionMode: 'acceptEdits',
         timeoutSeconds: 1800,
-        sessionGroup: 'impl',
         stageStatus: 'developed',
         claudeSessionId: 'cli-abc',
         mcpServersOverride: { x: 1 },
@@ -134,7 +133,6 @@ describe('extractResolvedFlags', () => {
       allowedTools: null,
       permissionMode: null,
       timeoutSeconds: null,
-      sessionGroup: null,
       claudeSessionId: null,
       systemPromptMode: null,
     });
@@ -162,12 +160,12 @@ describe('extractResolvedFlags', () => {
     expect(r.permissionMode).toBeNull();
   });
 
-  it('surfaces sessionGroup + claudeSessionId for the Inspector resume badge', () => {
-    const r = extractResolvedFlags(
-      { sessionGroup: 'impl', claudeSessionId: 'cli-xyz' },
-      { skillName: null, modelUsed: null },
-    );
-    expect(r.sessionGroup).toBe('impl');
+  it('surfaces claudeSessionId for the Inspector resume badge', () => {
+    const r = extractResolvedFlags({ claudeSessionId: 'cli-xyz' }, {
+      skillName: null,
+      modelUsed: null,
+    });
+
     expect(r.claudeSessionId).toBe('cli-xyz');
   });
 });

@@ -69,7 +69,6 @@ describe('resolveStageOverrides', () => {
                 permissionMode: 'acceptEdits',
                 timeoutSeconds: 1800,
                 systemPrompt: { mode: 'append', extras: 'X' },
-                sessionGroup: 'verification',
               },
             },
           },
@@ -82,7 +81,6 @@ describe('resolveStageOverrides', () => {
     expect(r.permissionMode).toBe('acceptEdits');
     expect(r.timeoutSeconds).toBe(1800);
     expect(r.systemPrompt).toEqual({ mode: 'append', extras: 'X' });
-    expect(r.sessionGroup).toBe('verification');
   });
 
   it('collects declaredNames from truthy per-state mcpServers keys, excluding false/null (ISS-623 W2)', async () => {
@@ -186,7 +184,6 @@ describe('applySkillMaintenanceCarveout (ISS-637)', () => {
       timeoutSeconds: null,
       mcpServers: null,
       budget: null,
-      sessionGroup: null,
       declaredNames: null,
     };
   }

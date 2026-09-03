@@ -16,13 +16,9 @@ import { agentSessions, issues, jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { recordResumeDrop } from '../observability/hold-metrics.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
-import { AUTONOMOUS_JOB_TYPE } from '../pipeline/autonomous-mode.js';
 import { getTrippedDeviceIds } from '../runners/select.js';
 import { readAutoRetryPayload } from './retry.js';
-import {
-  estimateIssueContextTokens,
-  loadResumeBounds,
-} from './session-resume.js';
+import { estimateIssueContextTokens, loadResumeBounds } from './session-resume.js';
 import { extractStageStatus, type StageOverrides } from './stage-overrides.js';
 
 /**
@@ -36,7 +32,6 @@ export type ResumeDropReason =
   | 'stage_pool'
   | 'resume_bound_tokens'
   | 'resume_bound_reopen_cycles'
-  | 'device_tripped'
   | 'rotation'
   | 'failure_action'
   | 'pin_stale';
@@ -65,11 +60,8 @@ export interface ResumePolicy {
 
 /**
  * The parent attempt a retry could continue: its CLI session, the box holding that session's
- * file, and the action the classifier gave the failure.
- *
- * `findPriorSessionInGroup` cannot answer this: it filters `status='completed'`, and a retry's
- * parent is `failed` by definition. So this reaches the parent through the retry chain rather
- * than through the session group.
+ * file, and the action the classifier gave the failure. Reached through the retry chain, which
+ * is the only relation that survives — a retry's parent is `failed` by definition.
  */
 // cm:guard `deviceId` and `failureAction` must come off the PARENT rows this reads, never off the `job` argument: `retry.ts` clones neither column and `claimRunnerSlot` stamps `device_id` only at dispatch — AFTER this runs — so both are NULL on every queued retry, and the same-box resume window below was unreachable in production until 2026-08-30 because it compared them against the child.
 async function loadParentAttempt(job: typeof jobs.$inferSelect): Promise<{
@@ -199,7 +191,6 @@ export async function resolveResumePolicy(args: {
       pinDeviceId = null;
       targetOutOfPool = true;
     }
-    // cm:why the session-group offer resolved above is discarded here rather than merged: the guard below lets a retry continue only its OWN parent attempt, so the group's candidate decided nothing and recording ITS drop reason would name a loss that never bore on this dispatch
     const parent = await loadParentAttempt(job);
     offeredClaudeSessionId = parent?.claudeSessionId ?? null;
     offeredDeviceId = parent?.deviceId ?? null;
@@ -220,6 +211,7 @@ export async function resolveResumePolicy(args: {
       if (dropReason) pinDeviceId = null;
     }
   } else {
+    // cm:guard a FIRST dispatch offers no prior session and therefore can never drop one. The (issue, sessionGroup) lookup that used to run here left with `pipelineConfig.sessionGroups` in ISS-897 — one dispatching status has no group of stages to share a transcript across — so `offeredClaudeSessionId` is null on every path through this branch. Re-adding an offer here means re-adding the drop reasons that judged it; leaving the offer out and the reasons in is what makes a vocabulary that names losses nothing can suffer.
     skipPrimary = false;
     const trippedDeviceIds = await getTrippedDeviceIds(job.projectId);
     excludeDeviceIds = trippedDeviceIds;
@@ -228,10 +220,6 @@ export async function resolveResumePolicy(args: {
         { jobId: job.id, projectId: job.projectId, trippedDeviceIds },
         'resume-policy: device circuit breaker tripped — rotating away from failing device(s)',
       );
-    }
-    if (pinDeviceId && excludeDeviceIds.includes(pinDeviceId)) {
-      pinDeviceId = null;
-      if (offeredClaudeSessionId) dropReason = 'device_tripped';
     }
   }
 

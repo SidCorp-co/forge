@@ -16,8 +16,7 @@ const trippedDeviceIds = vi.fn(async () => [] as string[]);
 vi.mock('../runners/select.js', () => ({ getTrippedDeviceIds: trippedDeviceIds }));
 
 vi.mock('./session-resume.js', () => ({
-  findPriorSessionInGroup: vi.fn(async () => null),
-  estimateGroupContextTokens: vi.fn(async () => 0),
+  estimateIssueContextTokens: vi.fn(async () => 0),
   loadResumeBounds: vi.fn(async () => ({ maxResumeTokens: 0, maxResumeReopenCycles: 0 })),
 }));
 
@@ -29,9 +28,7 @@ vi.mock('../observability/sentry.js', () => ({
 
 const { resolveResumePolicy, finalizeResumeForDevice } = await import('./resume-policy.js');
 const { recordResumeDrop } = await import('../observability/hold-metrics.js');
-const { findPriorSessionInGroup, estimateGroupContextTokens, loadResumeBounds } = await import(
-  './session-resume.js'
-);
+const { estimateIssueContextTokens, loadResumeBounds } = await import('./session-resume.js');
 
 type Job = Parameters<typeof resolveResumePolicy>[0]['job'];
 
@@ -66,7 +63,7 @@ function retryJob(over: { target: string | null }): Job {
   } as unknown as Job;
 }
 
-const NO_OVERRIDES = { sessionGroup: null, deviceIds: null } as never;
+const NO_OVERRIDES = { deviceIds: null } as never;
 
 /** Queue the two rows `loadParentAttempt` reads: the parent job, then its session. */
 function parentAttempt(over: {
@@ -89,8 +86,7 @@ beforeEach(() => {
   selectQueue.length = 0;
   vi.mocked(recordResumeDrop).mockClear();
   trippedDeviceIds.mockResolvedValue([]);
-  vi.mocked(findPriorSessionInGroup).mockResolvedValue(null);
-  vi.mocked(estimateGroupContextTokens).mockResolvedValue(0);
+  vi.mocked(estimateIssueContextTokens).mockResolvedValue(0);
   vi.mocked(loadResumeBounds).mockResolvedValue({
     maxResumeTokens: 0,
     maxResumeReopenCycles: 0,
@@ -246,139 +242,107 @@ describe('ISS-887 resolveResumePolicy — a start-from-scratch says so, and says
   });
 });
 
-describe('ISS-887 resolveResumePolicy — first-dispatch drops name their own cause', () => {
-  it('names `stage_pool` on a FIRST dispatch whose session-group pin is out of pool', async () => {
-    vi.mocked(findPriorSessionInGroup).mockResolvedValue({
-      claudeSessionId: 'cli-old',
-      deviceId: 'dev-a',
-    });
-    const out = await resolve({
-      job: {
-        id: 'j1',
-        projectId: 'p1',
-        issueId: 'iss-1',
-        type: 'code',
-        retryOf: null,
-        payload: {},
-      } as Job,
-      overrides: { sessionGroup: 'build', deviceIds: ['dev-pool'] } as never,
-      agentConfig: undefined,
-    });
-    expect(out.record.dropReason).toBe('stage_pool');
-    expect(out.record.priorClaudeSessionId).toBe('cli-old');
-    expect(out.priorClaudeSessionId).toBeNull();
-    expect(recordResumeDrop).toHaveBeenCalledWith('stage_pool');
-  });
+// cm:guard a FIRST dispatch is not a loss and must record nothing. The (issue, sessionGroup) lookup that gave attempt 1 something to continue left with `pipelineConfig.sessionGroups` in ISS-897, so there is no offer here to drop — and `ResumeDropReason` must not regrow a member that names a loss nothing on this path can suffer.
+describe('resolveResumePolicy — a first dispatch has nothing to drop', () => {
+  const firstDispatch = {
+    id: 'j1',
+    projectId: 'p1',
+    issueId: 'iss-1',
+    type: 'code',
+    retryOf: null,
+    payload: {},
+  } as Job;
 
-  it('names `device_tripped` when the circuit breaker excludes the session-group pin', async () => {
-    vi.mocked(findPriorSessionInGroup).mockResolvedValue({
-      claudeSessionId: 'cli-old',
-      deviceId: 'dev-a',
-    });
-    trippedDeviceIds.mockResolvedValue(['dev-a']);
-    const out = await resolve({
-      job: {
-        id: 'j1',
-        projectId: 'p1',
-        issueId: 'iss-1',
-        type: 'code',
-        retryOf: null,
-        payload: {},
-      } as Job,
-      overrides: { sessionGroup: 'build', deviceIds: null } as never,
-      agentConfig: undefined,
-    });
-    expect(out.record.dropReason).toBe('device_tripped');
-    expect(recordResumeDrop).toHaveBeenCalledWith('device_tripped');
-  });
+  it('records NOTHING even when the breaker trips every device', async () => {
+    trippedDeviceIds.mockResolvedValue(['dev-a', 'dev-x']);
 
-  it('records NOTHING when the breaker trips a device no prior session was pinned to', async () => {
-    trippedDeviceIds.mockResolvedValue(['dev-x']);
     const out = await resolve({
-      job: {
-        id: 'j1',
-        projectId: 'p1',
-        issueId: 'iss-1',
-        type: 'code',
-        retryOf: null,
-        payload: {},
-      } as Job,
-      overrides: { sessionGroup: 'build', deviceIds: null } as never,
+      job: firstDispatch,
+      overrides: { deviceIds: null } as never,
       agentConfig: undefined,
     });
+
     expect(out.record.dropReason).toBeNull();
+    expect(out.record.priorClaudeSessionId).toBeNull();
+    expect(out.record.resumed).toBe(false);
     expect(recordResumeDrop).not.toHaveBeenCalled();
   });
 
-  it('names the bound reason on a first dispatch that outgrew maxResumeTokens', async () => {
-    vi.mocked(findPriorSessionInGroup).mockResolvedValue({
-      claudeSessionId: 'cli-huge',
-      deviceId: 'dev-a',
-    });
+  it('records NOTHING even under a bound that a retry would have tripped', async () => {
     vi.mocked(loadResumeBounds).mockResolvedValue({
       maxResumeTokens: 150_000,
       maxResumeReopenCycles: 3,
     });
-    vi.mocked(estimateGroupContextTokens).mockResolvedValue(363_000);
-    selectQueue.push([{ reopenCount: 0 }]);
+    vi.mocked(estimateIssueContextTokens).mockResolvedValue(363_000);
+
     const out = await resolve({
-      job: {
-        id: 'j1',
-        projectId: 'p1',
-        issueId: 'iss-1',
-        type: 'code',
-        retryOf: null,
-        payload: {},
-      } as Job,
-      overrides: { sessionGroup: 'build', deviceIds: null } as never,
+      job: firstDispatch,
+      overrides: { deviceIds: ['dev-pool'] } as never,
       agentConfig: undefined,
     });
+
+    expect(out.record.dropReason).toBeNull();
+    expect(recordResumeDrop).not.toHaveBeenCalled();
+  });
+});
+
+// cm:guard the bounds apply to the RETRY path and must keep applying there — it is the one path that still has a transcript to continue, so a bound that stopped being read would let an attempt resume past the peak that already forced a compaction.
+describe('resolveResumePolicy — the bounds a retry is judged against', () => {
+  it('names the token bound when the issue outgrew maxResumeTokens', async () => {
+    vi.mocked(loadResumeBounds).mockResolvedValue({
+      maxResumeTokens: 150_000,
+      maxResumeReopenCycles: 3,
+    });
+    vi.mocked(estimateIssueContextTokens).mockResolvedValue(363_000);
+    parentAttempt({ ranOn: 'dev-a' });
+    selectQueue.push([{ reopenCount: 0 }]);
+
+    const out = await resolve({
+      job: retryJob({ target: 'dev-a' }),
+      overrides: NO_OVERRIDES,
+      agentConfig: undefined,
+    });
+
     expect(out.record.dropReason).toBe('resume_bound_tokens');
     expect(out.pinDeviceId).toBeNull();
     expect(recordResumeDrop).toHaveBeenCalledWith('resume_bound_tokens');
   });
 
-  it('BOUNDARY: a group exactly AT maxResumeTokens still resumes and records nothing', async () => {
-    vi.mocked(findPriorSessionInGroup).mockResolvedValue({
-      claudeSessionId: 'cli-edge',
-      deviceId: 'dev-a',
-    });
+  it('names the reopen bound when the token bound holds but the cycles do not', async () => {
     vi.mocked(loadResumeBounds).mockResolvedValue({
       maxResumeTokens: 150_000,
       maxResumeReopenCycles: 3,
     });
-    vi.mocked(estimateGroupContextTokens).mockResolvedValue(150_000);
-    selectQueue.push([{ reopenCount: 3 }]);
-    const out = await resolve({
-      job: {
-        id: 'j1',
-        projectId: 'p1',
-        issueId: 'iss-1',
-        type: 'code',
-        retryOf: null,
-        payload: {},
-      } as Job,
-      overrides: { sessionGroup: 'build', deviceIds: null } as never,
-      agentConfig: undefined,
-    });
-    expect(out.record.resumed).toBe(true);
-    expect(out.record.dropReason).toBeNull();
-    expect(recordResumeDrop).not.toHaveBeenCalled();
-  });
-
-  it('reports the group candidate it never considered as no loss at all on a retry', async () => {
-    vi.mocked(findPriorSessionInGroup).mockResolvedValue({
-      claudeSessionId: 'cli-group',
-      deviceId: 'dev-pool',
-    });
+    vi.mocked(estimateIssueContextTokens).mockResolvedValue(1_000);
     parentAttempt({ ranOn: 'dev-a' });
+    selectQueue.push([{ reopenCount: 4 }]);
+
     const out = await resolve({
       job: retryJob({ target: 'dev-a' }),
-      overrides: { sessionGroup: 'build', deviceIds: null } as never,
+      overrides: NO_OVERRIDES,
       agentConfig: undefined,
     });
-    expect(out.record.priorClaudeSessionId).toBe('claude-abc');
+
+    expect(out.record.dropReason).toBe('resume_bound_reopen_cycles');
+  });
+
+  it('BOUNDARY: exactly AT both bounds still resumes and records nothing', async () => {
+    vi.mocked(loadResumeBounds).mockResolvedValue({
+      maxResumeTokens: 150_000,
+      maxResumeReopenCycles: 3,
+    });
+    vi.mocked(estimateIssueContextTokens).mockResolvedValue(150_000);
+    parentAttempt({ ranOn: 'dev-a' });
+    selectQueue.push([{ reopenCount: 3 }]);
+
+    const out = await resolve({
+      job: retryJob({ target: 'dev-a' }),
+      overrides: NO_OVERRIDES,
+      agentConfig: undefined,
+    });
+
     expect(out.record.resumed).toBe(true);
+    expect(out.record.dropReason).toBeNull();
     expect(recordResumeDrop).not.toHaveBeenCalled();
   });
 });
@@ -441,52 +405,45 @@ describe('ISS-887 finalizeResumeForDevice — a pin the selector did not honour'
   });
 });
 
-describe('ISS-887 finalizeResumeForDevice — an offer with no pin is not a reachable session', () => {
-  it('drops a group resume whose prior session recorded no box', async () => {
-    vi.mocked(findPriorSessionInGroup).mockResolvedValue({
-      claudeSessionId: 'cli-group',
-      deviceId: null,
-    });
-    const out = await resolve(
-      {
-        job: { id: 'j1', projectId: 'p1', issueId: 'iss-1', type: 'code', retryOf: null } as Job,
-        overrides: { sessionGroup: 'build', deviceIds: null } as never,
-        agentConfig: undefined,
+// cm:guard `reachable` demands PROOF — both ids non-null AND equal — and these call the pure function directly BECAUSE no policy resolver reaches it any more: on the retry path a null pin is already dropped as `rotation`, and a first dispatch is offered nothing. That makes this the only place the null-pin arm is exercised at all, and deleting it leaves the arm untested the day a caller constructs a policy by hand.
+describe('finalizeResumeForDevice — an offer with no pin is not a reachable session', () => {
+  const offered = (pinDeviceId: string | null) =>
+    ({
+      priorClaudeSessionId: 'cli-old',
+      pinDeviceId,
+      excludeDeviceIds: [],
+      skipPrimary: false,
+      isRetry: false,
+      record: {
+        resumed: true,
+        dropReason: null,
+        priorClaudeSessionId: 'cli-old',
+        priorDeviceId: null,
+        pinDeviceId,
+        failureAction: null,
       },
-      'dev-anywhere',
-    );
+    }) as Parameters<typeof finalizeResumeForDevice>[0];
+
+  it('drops an offer carried on a null pin, however the selection landed', () => {
+    const out = finalizeResumeForDevice(offered(null), 'dev-anywhere');
+
     expect(out.priorClaudeSessionId).toBeNull();
     expect(out.record.dropReason).toBe('pin_stale');
     expect(recordResumeDrop).toHaveBeenCalledWith('pin_stale');
   });
 
-  it('does not count an attempt that was never offered a session, pin or no pin', async () => {
-    const out = await resolve(
-      {
-        job: { id: 'j1', projectId: 'p1', issueId: 'iss-1', type: 'code', retryOf: null } as Job,
-        overrides: { sessionGroup: 'build', deviceIds: null } as never,
-        agentConfig: undefined,
-      },
-      'dev-anywhere',
-    );
-    expect(out.record.dropReason).toBeNull();
-    expect(recordResumeDrop).not.toHaveBeenCalled();
-  });
+  it('drops it when NEITHER side names a box — two unknowns are not a match', () => {
+    const out = finalizeResumeForDevice(offered(null), null);
 
-  it('drops it when NEITHER side names a box — two unknowns are not a match', async () => {
-    vi.mocked(findPriorSessionInGroup).mockResolvedValue({
-      claudeSessionId: 'cli-group',
-      deviceId: null,
-    });
-    const out = await resolve(
-      {
-        job: { id: 'j1', projectId: 'p1', issueId: 'iss-1', type: 'code', retryOf: null } as Job,
-        overrides: { sessionGroup: 'build', deviceIds: null } as never,
-        agentConfig: undefined,
-      },
-      null,
-    );
     expect(out.priorClaudeSessionId).toBeNull();
     expect(out.record.dropReason).toBe('pin_stale');
+  });
+
+  it('keeps it when the pin and the selection are the same box', () => {
+    const out = finalizeResumeForDevice(offered('dev-a'), 'dev-a');
+
+    expect(out.priorClaudeSessionId).toBe('cli-old');
+    expect(out.record.dropReason).toBeNull();
+    expect(recordResumeDrop).not.toHaveBeenCalled();
   });
 });

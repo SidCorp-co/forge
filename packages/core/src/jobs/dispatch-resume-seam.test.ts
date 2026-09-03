@@ -96,16 +96,14 @@ vi.mock('../integrations/sentry/resolver.js', () => ({
 }));
 
 vi.mock('./session-resume.js', () => ({
-  findPriorSessionInGroup: vi.fn(async () => null),
   loadResumeBounds: vi.fn(async () => ({ maxResumeTokens: 150_000, maxResumeReopenCycles: 3 })),
-  estimateGroupContextTokens: vi.fn(async () => 0),
+  estimateIssueContextTokens: vi.fn(async () => 0),
 }));
 
 const { db } = await import('../db/client.js');
 const { handleDispatch } = await import('./dispatcher.js');
 const { selectRunnerForJob } = await import('../runners/select.js');
 const { getRunnerAdapter } = await import('../runners/registry.js');
-const { findPriorSessionInGroup, estimateGroupContextTokens } = await import('./session-resume.js');
 const { recordResumeDrop } = await import('../observability/hold-metrics.js');
 const { ensureAgentSessionForJob } = await import('./agent-session-link.js');
 
@@ -140,13 +138,6 @@ function mockRunnerDispatch(opts: { deviceId?: string } = {}): ReturnType<typeof
   return dispatchSpy;
 }
 
-const agentConfigWithGroup = {
-  pipelineConfig: {
-    sessionGroups: { build: ['approved'] },
-    states: { approved: { sessionGroup: 'build' } },
-  },
-};
-
 describe('ISS-888 seam — resume policy <-> device selection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -173,6 +164,7 @@ describe('ISS-888 seam — resume policy <-> device selection', () => {
    * durable record, and what the runner is actually told.
    */
   it('ISS-888: selection falling through a stale pin drops the resume everywhere it is recorded', async () => {
+    // cm:guard the offer comes from the RETRY chain, which since ISS-897 is the only producer of one — `loadParentAttempt` reads the parent job then its session, so those two rows must be queued in that order or the policy resolves with nothing to drop and the seam is not exercised at all.
     mockSelectOnce([
       {
         id: 'j-seam',
@@ -180,17 +172,15 @@ describe('ISS-888 seam — resume policy <-> device selection', () => {
         projectId: 'p1',
         issueId: 'iss-1',
         type: 'code',
-        payload: { stageStatus: 'approved' },
+        retryOf: 'j-parent',
+        payload: { stageStatus: 'open', _autoRetry: { round: 1, target: 'd-old', tries: 1, done: [] } },
       },
     ]);
-    mockSelectOnce([{ agentConfig: agentConfigWithGroup }]);
     mockSelectOnce([{ agentConfig: null }]);
-    mockSelectOnce([{ agentConfig: agentConfigWithGroup }]);
-    (findPriorSessionInGroup as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      claudeSessionId: 'cli-old',
-      deviceId: 'd-old',
-    });
-    (estimateGroupContextTokens as ReturnType<typeof vi.fn>).mockResolvedValueOnce(50_000);
+    mockSelectOnce([{ agentConfig: null }]);
+    mockSelectOnce([{ agentConfig: null }]);
+    mockSelectOnce([{ agentSessionId: 'sess-parent', failureAction: 'retry' }]);
+    mockSelectOnce([{ claudeSessionId: 'cli-old', deviceId: 'd-old' }]);
     mockSelectOnce([{ reopenCount: 0 }]);
     const dispatchSpy = mockRunnerDispatch({ deviceId: 'd-other' });
     mockUpdateReturn([{ id: 'j-seam' }]);
