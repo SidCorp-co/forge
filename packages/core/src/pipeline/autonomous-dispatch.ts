@@ -82,12 +82,11 @@ export interface DispatchAutonomousArgs {
 }
 
 /**
- * The operator's gate on the entry stage. In staged mode these two knobs sit
- * below the autonomous branch in `considerEnqueue` and so never applied here:
- * a project could set "require a human" and watch the driver start anyway.
+ * The operator's gate on the entry stage — the one place a project says "hold
+ * this issue for a human" without disabling the pipeline outright.
  */
 // cm:guard only the two knobs that name a HUMAN decision belong here. The per-step `auto*` toggles (autoTriage, autoCode…) name stages this mode does not have, so reading one as "may the driver start" would invent a meaning the operator never set.
-// cm:edge lockstep -> packages/core/src/pipeline/orchestrator.ts — the staged path applies its own copy of these two checks (`stageCfg.enabled === false`, `stageCfg.mode === 'manual'`) after `dispatchAutonomous` returns false; both modes must gate on the same pair or "require human review" means two different things per project
+// cm:guard this is the ONLY entry gate since ISS-897 left one lane. `orchestrator.ts` used to re-apply the same two checks below the autonomous branch for the staged path, and a second copy is what let the two disagree about what "require a human" meant per project; every caller now reaches dispatch through `dispatchAutonomous`, so a check added here needs no twin and must not grow one.
 function isEntryGateClosed(cfg: PipelineConfig | null): boolean {
   const entry = cfg?.states?.[AUTONOMOUS_ENTRY_STATUS as StageName];
   return entry?.enabled === false || entry?.mode === 'manual';

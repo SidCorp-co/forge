@@ -30,7 +30,7 @@ beforeEach(() => {
 
 describe('extractStageStatus', () => {
   it('returns the string when payload.stageStatus is set', () => {
-    expect(extractStageStatus({ stageStatus: 'approved' })).toBe('approved');
+    expect(extractStageStatus({ stageStatus: 'in_progress' })).toBe('in_progress');
   });
 
   it('returns null for missing/empty/non-string', () => {
@@ -51,8 +51,8 @@ describe('resolveStageOverrides', () => {
 
   it('applies the default policy model when project has no agentConfig (ISS-535)', async () => {
     limitResults.push([{ agentConfig: null }]);
-    const r = await resolveStageOverrides('p-1', { stageStatus: 'developed' });
-    expect(r.model).toBe('opus'); // developed → review → deep tier
+    const r = await resolveStageOverrides('p-1', { stageStatus: 'in_progress' });
+    expect(r.model).toBe('sonnet');
     expect(r.allowedTools).toBeNull(); // only model gets the default; rest stay empty
   });
 
@@ -62,7 +62,7 @@ describe('resolveStageOverrides', () => {
         agentConfig: {
           pipelineConfig: {
             states: {
-              developed: {
+              in_progress: {
                 skillName: 'forge-review',
                 model: 'sonnet',
                 allowedTools: ['Bash'],
@@ -75,7 +75,7 @@ describe('resolveStageOverrides', () => {
         },
       },
     ]);
-    const r = await resolveStageOverrides('p-1', { stageStatus: 'developed' });
+    const r = await resolveStageOverrides('p-1', { stageStatus: 'in_progress' });
     expect(r.model).toBe('sonnet');
     expect(r.allowedTools).toEqual(['Bash']);
     expect(r.permissionMode).toBe('acceptEdits');
@@ -89,43 +89,43 @@ describe('resolveStageOverrides', () => {
         agentConfig: {
           pipelineConfig: {
             states: {
-              developed: { mcpServers: { epodsystem: true, playwright: false, shop: true } },
+              in_progress: { mcpServers: { epodsystem: true, playwright: false, shop: true } },
             },
           },
         },
       },
     ]);
-    const r = await resolveStageOverrides('p-1', { stageStatus: 'developed' });
+    const r = await resolveStageOverrides('p-1', { stageStatus: 'in_progress' });
     expect(r.declaredNames).toEqual(expect.arrayContaining(['epodsystem', 'shop']));
     expect(r.declaredNames).not.toContain('playwright');
   });
 
   it('applies the default policy model when the stage status is missing from the config (ISS-535)', async () => {
     limitResults.push([
-      { agentConfig: { pipelineConfig: { states: { approved: { model: 'haiku' } } } } },
+      { agentConfig: { pipelineConfig: { states: { released: { model: 'haiku' } } } } },
     ]);
-    const r = await resolveStageOverrides('p-1', { stageStatus: 'developed' });
-    expect(r.model).toBe('opus'); // no `developed` entry → default policy
+    const r = await resolveStageOverrides('p-1', { stageStatus: 'in_progress' });
+    expect(r.model).toBe('sonnet');
   });
 
   it('per-project .model wins over the default policy (ISS-535)', async () => {
     limitResults.push([
-      { agentConfig: { pipelineConfig: { states: { developed: { model: 'haiku' } } } } },
+      { agentConfig: { pipelineConfig: { states: { in_progress: { model: 'haiku' } } } } },
     ]);
-    const r = await resolveStageOverrides('p-1', { stageStatus: 'developed' });
-    expect(r.model).toBe('haiku'); // explicit override beats the opus default
+    const r = await resolveStageOverrides('p-1', { stageStatus: 'in_progress' });
+    expect(r.model).toBe('haiku');
   });
 
   it('applies the default policy model when states[status].model is null (ISS-535)', async () => {
     limitResults.push([
       {
         agentConfig: {
-          pipelineConfig: { states: { clarified: { skillName: 'forge-plan', model: null } } },
+          pipelineConfig: { states: { in_progress: { skillName: 'issue-flow', model: null } } },
         },
       },
     ]);
-    const r = await resolveStageOverrides('p-1', { stageStatus: 'clarified' });
-    expect(r.model).toBe('opus'); // clarified → plan → deep tier
+    const r = await resolveStageOverrides('p-1', { stageStatus: 'in_progress' });
+    expect(r.model).toBe('sonnet');
   });
 
   it('falls through to no default for statuses absent from the policy table (ISS-535)', async () => {
@@ -138,28 +138,26 @@ describe('resolveStageOverrides', () => {
     // loadStageMap swallows the error and returns null → the hardcoded policy
     // table still routes the model (it needs no DB).
     limit.mockRejectedValueOnce(new Error('db down'));
-    const r = await resolveStageOverrides('p-1', { stageStatus: 'developed' });
-    expect(r.model).toBe('opus');
+    const r = await resolveStageOverrides('p-1', { stageStatus: 'in_progress' });
+    expect(r.model).toBe('sonnet');
   });
 });
 
 describe('resolveDefaultModel (ISS-535)', () => {
-  it('covers all 8 dispatchable statuses with the documented tiers', () => {
+  // cm:guard the table must name the STAGE_NAMES four and nothing else. A rung for a status no job stamps is a tier no dispatch can reach, and it was the presence of those rungs — not their values — that made this table read as a ladder after ISS-897 left one session.
+  it('covers the four dispatchable statuses and no rung of the deleted ladder', () => {
     expect(DEFAULT_STAGE_MODELS).toEqual({
       open: 'sonnet',
-      confirmed: 'opus',
-      clarified: 'opus',
-      approved: 'opus',
-      developed: 'opus',
-      testing: 'opus',
-      reopen: 'opus',
+      in_progress: 'sonnet',
+      needs_info: 'sonnet',
       released: 'sonnet',
     });
   });
 
   it('returns the tier for a known status and null otherwise', () => {
-    expect(resolveDefaultModel('clarified')).toBe('opus');
+    expect(resolveDefaultModel('open')).toBe('sonnet');
     expect(resolveDefaultModel('released')).toBe('sonnet');
+    expect(resolveDefaultModel('approved')).toBeNull();
     expect(resolveDefaultModel('staging')).toBeNull();
     expect(resolveDefaultModel('bogus')).toBeNull();
   });

@@ -504,52 +504,29 @@ describe('jobs/dispatcher', () => {
   });
 
   // cm:why select order for a non-pm job with stageStatus is (1) job lookup, (2) budget-check loadStageMap, (3) fallback chain, (4) preDispatch loadStageMap, (5) loadRepoPath — ISS-637 label lookups and the mcp-resolver fall through to the base empty-row mock. NO reopenCount row is queued on purpose: that is the regression guard for the deleted ISS-535 escalation, since a re-added lookup would consume a row this queue does not have and the tier assertion below would break.
-  it('dispatches a reopened fix job at the fixed `reopen` tier, with no reopenCount lookup', async () => {
+  // cm:guard `drive` at `open` is the ONLY shape this can assert since ISS-897: the two cases here before it stamped `reopen` and `approved`, statuses no job type carries any more, so both were asserting a tier nothing could dispatch at. What still has to hold is the wiring — the table's tier reaches `job.payload.model` — not which tier the table happens to name.
+  it('dispatches a drive job at the tier the policy table fixes for its status', async () => {
     mockSelectOnce([
       {
-        id: 'j-fix',
+        id: 'j-drive',
         status: 'queued',
         projectId: 'p1',
-        issueId: 'iss-r',
-        type: 'fix',
-        payload: { stageStatus: 'reopen' },
+        issueId: 'iss-d',
+        type: 'drive',
+        payload: { stageStatus: 'open' },
       },
     ]);
     mockSelectOnce([{ agentConfig: null }]); // budget-check loadStageMap → no budget → allow
     mockSelectOnce([{ agentConfig: null }]); // fallback chain
     mockSelectOnce([{ agentConfig: null }]);
     const dispatchSpy = mockRunnerDispatch();
-    mockUpdateReturn([{ id: 'j-fix' }]);
+    mockUpdateReturn([{ id: 'j-drive' }]);
     mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]); // loadRepoPath
 
-    const result = await handleDispatch({ jobId: 'j-fix' });
+    const result = await handleDispatch({ jobId: 'j-drive' });
     expect(result).toBe('dispatched');
     const arg = dispatchSpy.mock.calls[0]?.[0] as { job: { payload: Record<string, unknown> } };
-    expect(arg.job.payload.model).toBe('opus');
-  });
-
-  it('dispatches a code job at the fixed `approved` tier', async () => {
-    mockSelectOnce([
-      {
-        id: 'j-code',
-        status: 'queued',
-        projectId: 'p1',
-        issueId: 'iss-c',
-        type: 'code',
-        payload: { stageStatus: 'approved' },
-      },
-    ]);
-    mockSelectOnce([{ agentConfig: null }]); // budget-check loadStageMap
-    mockSelectOnce([{ agentConfig: null }]); // fallback chain
-    mockSelectOnce([{ agentConfig: null }]);
-    const dispatchSpy = mockRunnerDispatch();
-    mockUpdateReturn([{ id: 'j-code' }]);
-    mockSelectOnce([{ repoPath: '/repo', agentConfig: null }]); // loadRepoPath
-
-    const result = await handleDispatch({ jobId: 'j-code' });
-    expect(result).toBe('dispatched');
-    const arg = dispatchSpy.mock.calls[0]?.[0] as { job: { payload: Record<string, unknown> } };
-    expect(arg.job.payload.model).toBe('opus');
+    expect(arg.job.payload.model).toBe('sonnet');
   });
 
   // ISS-637 — skill-maintenance carve-out. Select order for a code/fix job

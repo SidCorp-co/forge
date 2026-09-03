@@ -29,6 +29,36 @@ import { PluginsSection } from "./plugins-section";
 import { ReleaseSection } from "./release-section";
 import { API_ONLY_KEYS, type PipelineConfig } from "../types";
 
+// cm:edge contract -> packages/core/src/pipeline/autonomous-dispatch.ts — `isEntryGateClosed` reads exactly this pair on exactly this status, and CLOSED is the OR of them: a screen that read only one knob would show "on" for a project whose issues the gate is holding, which is the invisible-gate the nine-row ladder left behind when ISS-897 removed it.
+const ENTRY_STATUS = "open";
+
+type EntryGate = { enabled?: boolean; mode?: string };
+
+function entryOf(cfg: PipelineConfig): EntryGate | undefined {
+  return (cfg.states as Record<string, EntryGate> | undefined)?.[ENTRY_STATUS];
+}
+
+function entryGateOpen(cfg: PipelineConfig): boolean {
+  const entry = entryOf(cfg);
+  return entry?.enabled !== false && entry?.mode !== "manual";
+}
+
+// cm:guard writes BOTH knobs to a matching pair, never one. Setting `mode` alone leaves a stored `enabled: false` holding the queue behind a toggle that now reads "on" — the two knobs are one decision here and only the OR above is read.
+function withEntryGate(cfg: PipelineConfig, open: boolean): PipelineConfig {
+  const states = (cfg.states ?? {}) as Record<string, EntryGate>;
+  return {
+    ...cfg,
+    states: {
+      ...states,
+      [ENTRY_STATUS]: {
+        ...states[ENTRY_STATUS],
+        enabled: open,
+        mode: open ? "auto" : "manual",
+      },
+    },
+  };
+}
+
 function StageRow({
   label,
   hint,
@@ -114,7 +144,8 @@ export function PipelineTab({
 
   const server = cfgQ.data?.pipelineConfig ?? {};
   const masterEnabled = draft.enabled !== false;
-  const dirty = (server.enabled !== false) !== masterEnabled;
+  const dirty =
+    (server.enabled !== false) !== masterEnabled || entryGateOpen(server) !== entryGateOpen(draft);
   const libraryHref = slug ? `/projects/${slug}/library?tab=skills` : undefined;
 
   return (
@@ -144,6 +175,18 @@ export function PipelineTab({
                 onChange={(v) => setDraft((d) => (d ? { ...d, enabled: v } : d))}
                 disabled={!canEdit}
                 aria-label="Pipeline enabled"
+              />
+            }
+          />
+          <StageRow
+            label="Start queued issues automatically"
+            hint="Off holds every issue at Queued until a human starts it. The pipeline stays on — nothing else changes."
+            control={
+              <Toggle
+                checked={entryGateOpen(draft)}
+                onChange={(v) => setDraft((d) => (d ? withEntryGate(d, v) : d))}
+                disabled={!canEdit || !masterEnabled}
+                aria-label="Start queued issues automatically"
               />
             }
           />

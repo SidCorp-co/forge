@@ -56,3 +56,23 @@ case today.
 - **Who writes the changelog line.** `releaseNotes` is populated per issue and `forge-release`
   appends at close. Whether the batch writes one grouped entry or N lines is a formatting decision
   nobody has made.
+
+## Honest costs
+
+Adopting this splits one agent's job in two, and the seam is where the price sits.
+
+- **A project with production pays a second runner.** The release step is mandatory config
+  (`releaseRunner`) beside the production binding, so a project that has production and no spare
+  box cannot cut a release at all — its issues accumulate at `released` and nothing tells the owner
+  except the count. The alternative (fall back to any runner) was rejected because a release
+  procedure that runs on an arbitrary box is how a deploy reaches the wrong environment.
+- **`released` is a real dwell state, and someone has to look at it.** Before this, `closed`
+  followed the merge. Now an issue can sit merged-and-unreleased indefinitely, and every `blocks`
+  dependent of it is already unblocked (`merged_at` is stamped at the merge) — so the backlog is
+  invisible to the dispatcher by design. Nothing here builds the alarm for that.
+- **The two open questions above are deferred onto whoever writes the skill.** Batch atomicity and
+  the changelog shape are both decisions this document declines to make, which means the first
+  implementation makes them by accident unless a human answers first.
+- **The procedure is per project and unvalidated.** Core checks that `release-procedure` and
+  `rollback` exist, never that they work. A project that declares a rollback it has not tested has
+  bought the appearance of a way back, and obligation 5 cannot tell the difference.

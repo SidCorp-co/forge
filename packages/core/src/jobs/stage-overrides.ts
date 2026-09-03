@@ -125,14 +125,18 @@ export function applySkillMaintenanceCarveout(
  * bumps — unlike dated full IDs (`claude-opus-4-8`, …), which rot. The aliases
  * match the `modelTiers` enum, so they are already valid `--model` values.
  *
- * Policy: a stage's tier is FIXED by its status and never varies at runtime —
- * sonnet for the mechanical classify/close ends, opus for every step that reads
- * or writes the repo. Statuses absent from this table (staging/custom/pm/smoke)
- * fall through to the dispatcher's `job.modelTier ?? 'default'`.
+ * Policy: a stage's tier is FIXED by its status and never varies at runtime.
+ * Statuses absent from this table fall through to the dispatcher's
+ * `job.modelTier ?? 'default'`.
  *
- * Which status hosts which step (the mapping this file cannot state in types):
- * `open` triage · `confirmed` clarify · `clarified` plan · `approved` code ·
- * `developed` review · `testing` test · `reopen` fix · `released` release.
+ * The opus rungs went with the statuses that hosted them (ISS-897): the split
+ * they encoded — sonnet to classify, opus to touch the repo — was a property of
+ * a nine-step ladder, and one session now does both halves. `open` has read
+ * sonnet since the autonomous lane shipped, so nothing dispatches differently
+ * for the trim; whether an hour-long repo-writing session belongs on that tier
+ * is a cost decision (ISS-766 measured $698 of a $1,207 week on opus rework)
+ * and it is the owner's, not this table's. A project that wants opus sets
+ * `states.open.model`, which still wins over everything here.
  */
 // cm:guard a stage's tier is FIXED — nothing may vary it at dispatch time. Reopen-driven escalation (ISS-535 escalateModel) was deleted by owner decision: with every repo-touching stage at opus the ladder had no rung left to climb, and ISS-766 measured the opus-on-rework loop at $698 of a $1,207 week. Re-adding a runtime bump re-opens that.
 // cm:edge contract -> packages/core/src/pipeline/pipeline-config-schema.ts — keyed by the same four names `STAGE_NAMES` declares; the staged rungs were dropped by ISS-897 because nothing stamps them on a payload any more, and a default for a status no job carries is a tier no dispatch can reach.

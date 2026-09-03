@@ -8,7 +8,7 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "@/providers/toast-provider";
 import { PipelineTab } from "./components/pipeline-tab";
@@ -49,8 +49,10 @@ vi.mock("@/features/runners/hooks", () => ({
   useProjectRunners: () => ({ data: [], isPending: false }),
 }));
 
+// cm:guard `PROJECT_DATA` is hoisted for the SAME reason `pipelineData` is, and this tab now has two hooks that need it: PluginsSection seeds its draft in `useEffect(..., [projectQ.data])`, so a mock that builds a fresh object per render re-seeds on every render, re-renders, and never settles — an inline literal here spun the render loop until the worker OOM'd at 4 GB after ~300s rather than failing an assertion.
+const PROJECT_DATA = { agentConfig: {} };
 vi.mock("@/features/projects/hooks", () => ({
-  useProject: () => ({ data: { agentConfig: {} }, isLoading: false, isError: false, refetch: vi.fn() }),
+  useProject: () => ({ data: PROJECT_DATA, isLoading: false, isError: false, refetch: vi.fn() }),
 }));
 
 const DENYLIST_FULL = [
@@ -93,13 +95,6 @@ function renderTab() {
   );
 }
 
-// cm:guard scope to the <p> a StageRow renders — the same label also renders as a <span> inside StagePermissionsSection's collapsible title, so an unscoped query matches both
-function stageRow(label: string): HTMLElement {
-  const heading = screen.getByText(label, { selector: "p" });
-  const row = heading.closest("div")?.parentElement;
-  if (!row) throw new Error(`Stage row for "${label}" not found`);
-  return row as HTMLElement;
-}
 
 beforeEach(() => {
   mutate.mockClear();
@@ -121,16 +116,32 @@ describe("Pipeline tab · preserve-on-save (ISS-813, ISS-767 pattern)", () => {
     expect(sent.someFutureKnob).toBe("round-trips");
   });
 
-  // cm:guard `released` carries `mode: 'manual'` in the fixture on purpose: the mode control is the one that used to REPLACE the whole state entry, so this is where a wholesale write would drop `disallowedTools` and nothing else would notice.
-  it("switching a stage's mode preserves the rest of its entry", () => {
+  // cm:guard the entry gate is the OTHER control on this tab, and it is the one that WRITES INTO `states` — so it is where a wholesale stage write would drop `disallowedTools` and nothing else would notice. `released` has no such control: it carries no dispatch gate, and its handling lives in ReleaseSection. It stays in STORED so the case above still proves an untouched stage round-trips whole.
+  it("closing the entry gate writes both knobs and preserves the rest of that stage", () => {
     renderTab();
-    const row = stageRow("Awaiting release");
-    fireEvent.click(within(row).getByRole("button", { name: "Auto" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Start queued issues automatically" }));
     fireEvent.click(screen.getByRole("button", { name: /save pipeline config/i }));
 
     const sent = mutate.mock.calls[0]?.[0] as PipelineConfig;
-    const released = (sent.states as Record<string, Record<string, unknown>>).released;
-    expect(released.mode).toBe("auto");
-    expect(released.disallowedTools).toEqual(DENYLIST_FULL);
+    const open = (sent.states as Record<string, Record<string, unknown>>).open;
+    expect(open.enabled).toBe(false);
+    expect(open.mode).toBe("manual");
+    expect(open.disallowedTools).toEqual(DENYLIST_FULL);
+    expect((sent.states as Record<string, Record<string, unknown>>).released.disallowedTools).toEqual(
+      DENYLIST_FULL,
+    );
+  });
+
+  // cm:guard the toggle must READ the OR of both knobs, not just `enabled` — a project stored with `mode: 'manual'` alone is held by `isEntryGateClosed` and must not render as running.
+  it("reads a stage held by `mode` alone as closed", () => {
+    pipelineData = {
+      pipelineConfig: {
+        ...STORED,
+        states: { ...STORED.states, open: { mode: "manual", disallowedTools: DENYLIST_FULL } },
+      } as PipelineConfig,
+    };
+    renderTab();
+    expect(screen.getByRole("switch", { name: "Start queued issues automatically" })).not.toBeChecked();
+    pipelineData = { pipelineConfig: STORED };
   });
 });
