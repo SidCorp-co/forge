@@ -18,7 +18,7 @@ export type PatScope = {
 
 const storage = new AsyncLocalStorage<PatScope>();
 
-// cm:guard NOTHING may read this fence from a fire-and-forget continuation. `run()` wraps `next()`, so a `void somePromise()` a handler starts inherits the store and keeps reading it long after the response is sent — `touchPatUsage`, `forceRevokePat` and the `pat.used` WS publish all do exactly that today. None of them consult the fence and none may start to: a scope read after the request has ended is a decision made against a caller who is no longer there.
+// cm:guard NOTHING may read this fence from a fire-and-forget continuation. `run()` wraps `next()`, so a `void somePromise()` a handler starts inherits the store and keeps reading it long after the response is sent — `touchPatUsage`, the `rate_limited` audit write and the `pat.used` WS publish all do exactly that today. None of them consult the fence and none may start to: a scope read after the request has ended is a decision made against a caller who is no longer there.
 export function runWithPatScope<T>(scope: PatScope, fn: () => T): T {
   return storage.run(scope, fn);
 }

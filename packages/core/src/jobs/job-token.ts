@@ -16,7 +16,7 @@ import { db } from '../db/client.js';
 import { personalAccessTokens } from '../db/schema.js';
 import { logger } from '../logger.js';
 
-// cm:guard NOT the `RULES.patPerToken` default of 60/min, and the gap is measured, not padded: over 30 days of `mcp_audit_log` a single project peaked at 108 calls in one minute (p50 2, p95 6, p99 10), so the default would 429 a busy job — and three breaches in an hour hand the token to `forceRevokePat`, which is permanent. A job mints its token once at dispatch and has no way to ask for another, so that burn does not degrade the job, it blinds it for the rest of its run. 600 is ~6x the observed peak and still a real ceiling on a credential that is bound to one project and dies with the job.
+// cm:guard pinned, not inherited from `RULES.patPerToken`: that default is an operator knob (`RATE_LIMIT_PAT_MAX`) sized for humans, and lowering it must not throttle the fleet. The number is measured, not padded — over 30 days of `mcp_audit_log` a single project peaked at 108 calls in one minute (p50 2, p95 6, p99 10). A job mints its token once at dispatch and has no way to ask for another, so a 429 storm does not degrade the job, it stalls it. 600 is ~6x the observed peak and still a real ceiling on a credential that is bound to one project and dies with the job.
 const JOB_TOKEN_RATE_LIMIT_PER_MINUTE = 600;
 
 /**

@@ -773,6 +773,12 @@
 
 ### Changed
 
+- The default PAT rate limit is 600 requests a minute, up from 60. 600 is the number job tokens
+  already pinned, six times the measured peak of one busy session. `RATE_LIMIT_PAT_MAX` still
+  overrides it. The first rejected request of each window now writes a `rate_limited` row to
+  `mcp_audit_log` (tool `rate_limit`, action `<METHOD> <path>`), so a throttled token is visible
+  without reading server logs.
+
 - **`pipelineConfig.mode` defaults to `autonomous`.** It was optional, and absent read as `staged`,
   so every project created since the mode existed started on the staged pipeline whether or not
   anyone wanted it. Measured 2026-09-02 across 31 live projects: 28 said `autonomous` explicitly,
@@ -839,6 +845,12 @@
   above their real counts. Every ceiling moved down and a dead record left. (ISS-848)
 
 ### Removed
+
+- The PAT auto-revoke. A token that exceeded its per-minute ceiling in three windows of one hour
+  was revoked for good, silently: no audit row, no event, no reason. It could only ever fire on a
+  token `verifyPat` had already accepted, so it never touched a guesser, and the one thing it did
+  was burn four of one user's tokens in a day for running a plugin session at 4 requests a second.
+  A 429 is a throttle; it stays one. `forceRevokePat` is gone with it.
 
 - **The bundled autonomous skill set and the runner-written review verdict.** Owner decision,
   big-bang. Five skills compiled into the runner via `include_str!` (`forge-drive`, `-understand`,

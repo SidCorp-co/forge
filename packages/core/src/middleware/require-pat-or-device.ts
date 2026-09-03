@@ -9,16 +9,16 @@
  *
  * On PAT path the dispatcher also:
  *   - enforces a per-token rolling rate limit (RULES.patPerToken) honoring
- *     `personal_access_tokens.rate_limit_max` overrides
- *   - auto-revokes a PAT that has hit the rate-limit ceiling three times
- *     within an hour
+ *     `personal_access_tokens.rate_limit_max` overrides, and audits the first
+ *     rejection of each window as `rate_limited`
  *   - records last-used timestamp + IP asynchronously
  */
 
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { type Device, verifyDeviceToken } from '../auth/deviceToken.js';
-import { forceRevokePat, touchPatUsage, verifyPat } from '../auth/pat.js';
+import { writeMcpAudit } from '../auth/mcp-audit.js';
+import { touchPatUsage, verifyPat } from '../auth/pat.js';
 import { isJobTokenName, isPatLike } from '../auth/pat-format.js';
 import { RULES } from '../config/rate-limits.js';
 import { userRoom } from '../ws/rooms.js';
@@ -86,21 +86,10 @@ const unauth = (message: string, options?: { invalidToken?: boolean; invalidRequ
     },
   });
 
-/**
- * Two-dimensional rate-limit bucket for PAT use:
- *   - per-minute count for the 429 trigger
- *   - per-hour count of how many minute-windows have been breached;
- *     when this hits 3 the PAT is auto-revoked.
- *
- * In-memory by design; survives a single-process restart only, which is
- * acceptable for an alpha-level alerting heuristic (the audit-log table
- * is the source of truth for forensic analysis).
- */
+// cm:guard a 429 from this bucket is a throttle and may never escalate into a revoke. The bucket only ever counts tokens `verifyPat` already accepted, so a guesser never reaches it and the only client it can punish is a legitimate one that is busy; the three-breaches-an-hour auto-revoke that lived here burned four of one user's tokens in a day (2026-09-03) and protected nothing. In-memory by design: a restart forgets it, which only grants a fresh window.
 type PatBucket = {
   minuteCount: number;
   minuteResetAt: number;
-  hourBreaches: number;
-  hourResetAt: number;
 };
 const patBuckets = new Map<string, PatBucket>();
 
@@ -134,46 +123,34 @@ interface RateLimitOutcome {
   allowed: boolean;
   remaining: number;
   resetMs: number;
-  breachedThreshold: boolean;
+  firstRejectionInWindow: boolean;
 }
 
 function checkPatRateLimit(tokenId: string, maxOverride: number | null): RateLimitOutcome {
   const max = maxOverride ?? RULES.patPerToken.max;
   const windowMs = RULES.patPerToken.windowMs;
-  const hourMs = 60 * 60 * 1000;
-  const breachLimit = 3;
 
   const now = Date.now();
   let bucket = patBuckets.get(tokenId);
   if (!bucket || now >= bucket.minuteResetAt) {
-    bucket = {
-      minuteCount: 0,
-      minuteResetAt: now + windowMs,
-      hourBreaches: bucket && now < bucket.hourResetAt ? bucket.hourBreaches : 0,
-      hourResetAt: bucket && now < bucket.hourResetAt ? bucket.hourResetAt : now + hourMs,
-    };
+    bucket = { minuteCount: 0, minuteResetAt: now + windowMs };
     patBuckets.set(tokenId, bucket);
-  }
-  if (now >= bucket.hourResetAt) {
-    bucket.hourBreaches = 0;
-    bucket.hourResetAt = now + hourMs;
   }
 
   bucket.minuteCount += 1;
   if (bucket.minuteCount > max) {
-    if (bucket.minuteCount === max + 1) bucket.hourBreaches += 1;
     return {
       allowed: false,
       remaining: 0,
       resetMs: bucket.minuteResetAt - now,
-      breachedThreshold: bucket.hourBreaches >= breachLimit,
+      firstRejectionInWindow: bucket.minuteCount === max + 1,
     };
   }
   return {
     allowed: true,
     remaining: Math.max(0, max - bucket.minuteCount),
     resetMs: bucket.minuteResetAt - now,
-    breachedThreshold: false,
+    firstRejectionInWindow: false,
   };
 }
 
@@ -194,9 +171,9 @@ function maybeEmitPatUsed(tokenId: string, userId: string): void {
  * over its ceiling.
  *
  * Shared with `requireAuth()` in `middleware/auth.ts`, which authenticates the
- * same tokens on the REST data plane. Extracted rather than copied because the
- * three-breaches-an-hour auto-revoke only works while every surface that
- * accepts a PAT charges the SAME bucket.
+ * same tokens on the REST data plane. Extracted rather than copied so every
+ * surface that accepts a PAT charges the SAME bucket: the ceiling a token
+ * owner reads in `X-RateLimit-Limit` is one number, not one per surface.
  */
 export async function authenticatePat(c: Context, token: string): Promise<PatPrincipal | null> {
   const verified = await verifyPat(token);
@@ -207,9 +184,18 @@ export async function authenticatePat(c: Context, token: string): Promise<PatPri
   c.header('X-RateLimit-Limit', String(row.rateLimitMax ?? RULES.patPerToken.max));
   c.header('X-RateLimit-Remaining', String(outcome.remaining));
   if (!outcome.allowed) {
-    if (outcome.breachedThreshold) {
-      // Sustained abuse — burn the token. Fire-and-forget so the 429 is fast.
-      void forceRevokePat(row.id);
+    // cm:why one audit row per breached window, not per rejected request — the row answers "was this token throttled, when, from where", and a client retrying at 4 Hz would otherwise write 240 rows a minute of the same answer.
+    if (outcome.firstRejectionInWindow) {
+      writeMcpAudit({
+        userId: row.userId,
+        tokenId: row.id,
+        deviceId: null,
+        tool: 'rate_limit',
+        action: `${c.req.method} ${c.req.path}`,
+        resultCode: 'rate_limited',
+        ip: getClientIp(c) ?? null,
+        userAgent: c.req.header('user-agent') ?? null,
+      });
     }
     const retryAfterSeconds = Math.max(1, Math.ceil(outcome.resetMs / 1000));
     c.header('Retry-After', String(retryAfterSeconds));

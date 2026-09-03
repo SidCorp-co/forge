@@ -1,7 +1,7 @@
 /**
  * Dispatcher middleware unit tests (ISS-150).
  *
- * Token-format routing (PAT vs device), 401 envelopes, rate-limit + auto-revoke.
+ * Token-format routing (PAT vs device), 401 envelopes, rate-limit + its audit row.
  */
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -23,13 +23,17 @@ vi.mock('../auth/deviceToken.js', () => ({
 vi.mock('../auth/pat.js', () => ({
   verifyPat: vi.fn(),
   touchPatUsage: vi.fn(),
-  forceRevokePat: vi.fn(),
+}));
+
+vi.mock('../auth/mcp-audit.js', () => ({
+  writeMcpAudit: vi.fn(),
 }));
 
 const { errorHandler } = await import('./error.js');
 const { requirePatOrDevice, __resetPatBuckets } = await import('./require-pat-or-device.js');
 const { verifyDeviceToken } = await import('../auth/deviceToken.js');
-const { verifyPat, forceRevokePat } = await import('../auth/pat.js');
+const { verifyPat } = await import('../auth/pat.js');
+const { writeMcpAudit } = await import('../auth/mcp-audit.js');
 
 const PAT_TOKEN = `forge_pat_dev_${'a'.repeat(64)}`;
 
@@ -77,7 +81,7 @@ function makeApp() {
 beforeEach(() => {
   vi.mocked(verifyDeviceToken).mockReset();
   vi.mocked(verifyPat).mockReset();
-  vi.mocked(forceRevokePat).mockReset();
+  vi.mocked(writeMcpAudit).mockReset();
   __resetPatBuckets();
 });
 
@@ -189,7 +193,43 @@ describe('requirePatOrDevice middleware (ISS-150)', () => {
     const res = await app.request('/whoami', { headers: hdrs });
     expect(res.status).toBe(429);
     expect(res.headers.get('Retry-After')).toBeTruthy();
-    // Single 429 does not auto-revoke (threshold is 3 breaches/hour).
-    expect(vi.mocked(forceRevokePat)).not.toHaveBeenCalled();
+  });
+
+  it('audits the first rejection of a window as rate_limited, once per window', async () => {
+    vi.mocked(verifyPat).mockResolvedValue({
+      row: { ...testPatRow, rateLimitMax: 1 },
+    } as never);
+    const app = makeApp();
+    const hdrs = { authorization: `Bearer ${PAT_TOKEN}`, 'user-agent': 'node' };
+    expect((await app.request('/whoami', { headers: hdrs })).status).toBe(200);
+    expect(vi.mocked(writeMcpAudit)).not.toHaveBeenCalled();
+    expect((await app.request('/whoami', { headers: hdrs })).status).toBe(429);
+    expect((await app.request('/whoami', { headers: hdrs })).status).toBe(429);
+    expect((await app.request('/whoami', { headers: hdrs })).status).toBe(429);
+    expect(vi.mocked(writeMcpAudit)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(writeMcpAudit)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tokenId: testPatRow.id,
+        userId: testPatRow.userId,
+        tool: 'rate_limit',
+        action: 'GET /whoami',
+        resultCode: 'rate_limited',
+        userAgent: 'node',
+      }),
+    );
+  });
+
+  it('keeps rejecting for the whole window and never revokes the token', async () => {
+    vi.mocked(verifyPat).mockResolvedValue({
+      row: { ...testPatRow, rateLimitMax: 1 },
+    } as never);
+    const app = makeApp();
+    const hdrs = { authorization: `Bearer ${PAT_TOKEN}` };
+    expect((await app.request('/whoami', { headers: hdrs })).status).toBe(200);
+    for (let i = 0; i < 10; i += 1) {
+      expect((await app.request('/whoami', { headers: hdrs })).status).toBe(429);
+    }
+    const pat = await import('../auth/pat.js');
+    expect('forceRevokePat' in pat).toBe(false);
   });
 });

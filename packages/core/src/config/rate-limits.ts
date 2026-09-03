@@ -10,10 +10,8 @@ const DEFAULTS = {
   authLocal: { windowMs: 15 * 60_000, max: 5, by: 'ip' },
   authRegister: { windowMs: 60 * 60_000, max: 3, by: 'ip' },
   devicesPair: { windowMs: 60 * 60_000, max: 10, by: 'ip' },
-  // ISS-150 — Per-PAT rate limit: 60 req/min by default, keyed by the PAT id
-  // (`c.get('patTokenId')`). Per-token overrides come from
-  // `personal_access_tokens.rate_limit_max` and are applied at call sites.
-  patPerToken: { windowMs: 60_000, max: 60, by: 'token' },
+  // cm:why 600, the same number `jobs/job-token.ts` pins: the measured peak of one busy session is 108 calls in a minute, and the 60 this shipped with (ISS-150) throttled a plugin session at 4 Hz within the first minute. Per-token overrides come from `personal_access_tokens.rate_limit_max`.
+  patPerToken: { windowMs: 60_000, max: 600, by: 'token' },
   // cm:why 32^7 + a 10-min TTL already makes guessing a code infeasible; these two caps exist for the other attack — an anonymous `init` caller filling device_login_codes with pending rows.
   deviceLoginInit: { windowMs: 60 * 60_000, max: 20, by: 'ip' },
   deviceLoginApprove: { windowMs: 60 * 60_000, max: 10, by: 'ip' },
