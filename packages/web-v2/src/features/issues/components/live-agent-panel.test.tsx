@@ -7,7 +7,7 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { QueuedStepView } from "../waiting";
 import type { IssueAgentSession } from "../types";
 import { LiveAgentPanel } from "./live-agent-panel";
@@ -21,6 +21,15 @@ vi.mock("next/link", () => ({
 }));
 
 afterEach(cleanup);
+
+// cm:guard pin the clock for EVERY test here, not only the ones asserting a duration — `heartbeatState` reads the wall clock, so a fixture heartbeat written relative to NOW goes stale on its own once real time passes it, and this file was green the day it was written and red the next
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(NOW);
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const NOW = new Date("2026-09-03T17:22:00.000Z");
 const QUEUED_AT = "2026-09-03T14:43:00.000Z";
@@ -65,11 +74,8 @@ describe("LiveAgentPanel — queued arm (ISS-903)", () => {
   });
 
   it("says how long the step has waited", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
     renderPanel({ kind: "queued", step: gatedStep });
     expect(screen.getByText("2h 39m")).toBeInTheDocument();
-    vi.useRealTimers();
   });
 
   it("shows the next attempt when one is known, and omits it when none is", () => {
