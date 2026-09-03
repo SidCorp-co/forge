@@ -29,7 +29,7 @@ SET agent_config = jsonb_set(
     (agent_config -> 'pipelineConfig')
       - 'autoTriage' - 'autoClarify' - 'autoPlan' - 'autoCode'
       - 'autoReview' - 'autoTest' - 'autoFix' - 'autoRelease'
-      - 'sessionGroups' - 'mergeStates' - 'mode'
+      - 'sessionGroups' - 'mergeStates' - 'mode' - 'onResumeFail'
   ) || jsonb_build_object(
     'states',
     coalesce(

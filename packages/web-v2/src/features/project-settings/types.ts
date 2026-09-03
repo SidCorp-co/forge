@@ -286,8 +286,6 @@ export interface PipelineConfig {
 	 * `statesConfigSchema` in core. See `PipelineStateConfig` above.
 	 */
 	states?: Record<string, PipelineStateConfig | undefined>;
-	/** What to do when a session resume fails (device gone / prior failed). */
-	onResumeFail?: "fresh" | "abort";
 	/**
 	 * Per-project cap on simultaneously-active issues (default 1). Raise it to
 	 * fan INDEPENDENT issues across the runner pool; dependent issues stay
