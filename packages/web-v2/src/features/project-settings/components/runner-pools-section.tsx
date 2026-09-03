@@ -21,7 +21,7 @@ import { formatPipelineConfigError } from "@/lib/api/error";
 import { useProjectRunners } from "@/features/runners/hooks";
 import type { ProjectRunner } from "@/features/runners/types";
 import { useUpdatePipelineConfig } from "../hooks";
-import { SESSION_GROUP_STAGES, type PipelineConfig } from "../types";
+import { PIPELINE_STATUS_ROWS, type PipelineConfig } from "../types";
 
 type StatesMap = Record<string, Record<string, unknown>>;
 type PoolMap = Record<string, string[]>;
@@ -173,7 +173,7 @@ export function RunnerPoolsSection({
               </tr>
             </thead>
             <tbody>
-              {SESSION_GROUP_STAGES.map((stage) => {
+              {PIPELINE_STATUS_ROWS.map((stage) => {
                 const selected = pools[stage.status] ?? [];
                 const members = runners.filter((r) => selected.includes(r.deviceId));
                 const allBlocked = members.length > 0 && members.every((r) => blockedReason(r) !== null);

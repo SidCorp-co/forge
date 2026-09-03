@@ -36,6 +36,7 @@ import {
   pipelineConfigSchema,
 } from '../pipeline/pipeline-config-schema.js';
 import { updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
+import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { readAgentConfig } from './agent-config.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { pipelineConfigHttpError } from './pipeline-config-http.js';
@@ -669,6 +670,40 @@ projectRoutes.patch(
     } catch (err) {
       throw pipelineConfigHttpError(err);
     }
+  },
+);
+
+// cm:why writable over REST since ISS-897 — `agentConfig.plugins` was reachable only through MCP `forge_config`, so an operator with a browser could read the list on the settings screen that explains what it is for and could not change it there
+
+// cm:guard the PATCH REPLACES the whole list, and the UI must GET then send it complete. A per-entry merge would need an identity for an entry, and the only candidate — `name` — is exactly what an operator edits when they move a plugin to another marketplace.
+// cm:edge contract -> packages/core/src/devices/routes.ts — `GET /api/devices/me/plugins` unions this list across every project a device serves, so a change here reaches a box on its next poll and only if that box has `[plugins] enabled`
+projectRoutes.patch(
+  '/:id/plugins',
+  zValidator('param', idParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  zValidator('json', z.object({ plugins: pluginDesignationsPatchSchema }), (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { plugins } = c.req.valid('json');
+    const access = await loadProjectAccess(id, c.get('userId'));
+    assertOrgRoleOnProject(access, 'admin', 'org admin required');
+
+    const current = await readAgentConfig(id);
+    if (current === null) throw notFound();
+
+    const next: Record<string, unknown> = { ...current };
+    if (plugins === null) delete next.plugins;
+    else next.plugins = plugins;
+
+    await db
+      .update(projects)
+      .set({ agentConfig: next })
+      .where(eq(projects.id, id));
+
+    return c.json({ plugins: plugins ?? [] });
   },
 );
 

@@ -137,25 +137,6 @@ export interface ProjectLabel {
 }
 
 /**
- * The 8 auto-stage toggle keys surfaced by the Pipeline tab — mirrors
- * `STEP_TOGGLE_KEYS` in `pipeline-config-schema.ts`. A stored toggle is either
- * a bare boolean or `{ enabled, runner?, model? }`; we surface only the boolean
- * and round-trip the full stored config so per-step overrides survive a save.
- */
-export const STEP_TOGGLE_KEYS = [
-	"autoTriage",
-	"autoClarify",
-	"autoPlan",
-	"autoCode",
-	"autoReview",
-	"autoTest",
-	"autoFix",
-	"autoRelease",
-] as const;
-
-export type StepToggleKey = (typeof STEP_TOGGLE_KEYS)[number];
-
-/**
  * One `states[<status>]` entry — mirrors `stageConfigSchema` in core
  * `pipeline/pipeline-config-schema.ts`. Only `enabled`/`mode` are edited by
  * this tab today (ISS-813 Phase 1 adds read-only display of the rest);
@@ -175,8 +156,6 @@ export interface PipelineStateConfig {
 	systemPrompt?: { mode?: "append" | "replace"; extras?: string | null };
 	userPromptPolicy?: Record<string, unknown>;
 	budget?: { perRunUsd?: number; perMonthUsd?: number; action?: "warn" | "pause" };
-	sessionGroup?: string;
-	skipComplexities?: string[];
 	/** Runner pool — the only devices this stage's jobs may land on. Empty/absent = whole fleet. */
 	deviceIds?: string[];
 	[key: string]: unknown;
@@ -193,6 +172,25 @@ export interface PluginDesignation {
 	name: string;
 	pinnedRef?: string | null;
 	autoUpdate?: boolean;
+}
+
+/** What a project still has to declare — mirrors `ReleaseReadiness` in core
+ *  `release-batch/readiness.ts`. `gaps` is what settings says out loud. */
+export interface ReleaseReadiness {
+	hasProduction: boolean;
+	baseBranch: string;
+	productionBranch: string;
+	provider: string | null;
+	releaseRunnerLabel: string | null;
+	rollback: string | null;
+	hasVerify: boolean;
+	gaps: (
+		| "build-commands"
+		| "test-commands"
+		| "release-procedure"
+		| "release-runner"
+		| "rollback"
+	)[];
 }
 
 /** One `agentConfig.stateContext[<jobType>]` entry — mirrors
@@ -266,11 +264,10 @@ export const UX_PRESET_LABELS: Record<UxPreset, string> = {
  * shapes are imported from the shared `@forge/contracts` type-only boundary. */
 
 /**
- * Loosely-typed pipeline config. We only read/write the master `enabled` flag
- * and the 8 step toggles; everything else (`states`, `sessionGroups`, …) is
- * carried through opaquely so a PATCH never drops keys the FE doesn't surface.
- * `pipelineConfigPatchSchema` requires `states`, so we always send back the
- * full object we fetched.
+ * Loosely-typed pipeline config. This screen edits a handful of keys and
+ * carries the rest through opaquely, so a PATCH never drops what it does not
+ * surface. `pipelineConfigPatchSchema` requires `states`, so the full fetched
+ * object always goes back.
  */
 export interface PipelineConfig {
 	enabled?: boolean;
@@ -289,23 +286,8 @@ export interface PipelineConfig {
 	 * `statesConfigSchema` in core. See `PipelineStateConfig` above.
 	 */
 	states?: Record<string, PipelineStateConfig | undefined>;
-	/**
-	 * Named session groups: `group → the issue STATUSES whose jobs share one
-	 * Claude CLI session (resumed via `--resume`). This is only a DECLARATION —
-	 * the dispatcher reads continuity from each `states[<status>].sessionGroup`,
-	 * so the editor must keep both in sync (see `session-groups-section.tsx`).
-	 * Mirrors `sessionGroupsSchema` in core `pipeline/pipeline-config-schema.ts`.
-	 */
-	sessionGroups?: Record<string, string[]>;
 	/** What to do when a session resume fails (device gone / prior failed). */
 	onResumeFail?: "fresh" | "abort";
-	/**
-	 * The pipeline STATE whose exit stamps `issues.merged_at` — the column the
-	 * `blocks`/`decomposes` dependency gate keys on. Must be a stage the pipeline
-	 * actually transitions out of (the merge point), else dependents wedge.
-	 * Mirrors `mergeStatesSchema` in core `pipeline/pipeline-config-schema.ts`.
-	 */
-	mergeStates?: { baseBranch?: string; productionBranch?: string };
 	/**
 	 * Per-project cap on simultaneously-active issues (default 1). Raise it to
 	 * fan INDEPENDENT issues across the runner pool; dependent issues stay
@@ -367,383 +349,12 @@ export const MCP_CATALOG: Record<
 
 export const MCP_CATALOG_NAMES = Object.keys(MCP_CATALOG);
 
-/**
- * Per-toggle metadata. `stage` is the SOURCE `issueStatus` the toggle dispatches
- * from — it's the key a skill is registered against (mirrors `PIPELINE_STEPS`
- * in core's `pipeline/registry.ts`). The Pipeline tab uses it to wire each row's
- * skill picker to the right stage, so a stage's toggle and its skill binding
- * live on one line instead of across two screens.
- */
-export const STEP_TOGGLE_LABELS: Record<
-	StepToggleKey,
-	{ label: string; hint: string; stage: string; skillName: string }
-> = {
-	autoTriage: {
-		label: "Auto triage",
-		hint: "open → confirmed",
-		stage: "open",
-		skillName: "forge-triage",
-	},
-	autoClarify: {
-		label: "Auto clarify",
-		hint: "confirmed → clarified",
-		stage: "confirmed",
-		skillName: "forge-clarify",
-	},
-	autoPlan: {
-		label: "Auto plan",
-		hint: "clarified → approved",
-		stage: "clarified",
-		skillName: "forge-plan",
-	},
-	autoCode: {
-		label: "Auto code",
-		hint: "approved → developed",
-		stage: "approved",
-		skillName: "forge-code",
-	},
-	autoReview: {
-		label: "Auto review",
-		hint: "developed → testing",
-		stage: "developed",
-		skillName: "forge-review",
-	},
-	autoTest: {
-		label: "Auto test",
-		hint: "testing → tested",
-		stage: "testing",
-		skillName: "forge-test",
-	},
-	autoFix: {
-		label: "Auto fix",
-		hint: "reopen → developed",
-		stage: "reopen",
-		skillName: "forge-fix",
-	},
-	autoRelease: {
-		label: "Auto release",
-		hint: "released → closed",
-		stage: "released",
-		skillName: "forge-release",
-	},
-};
-
-/** Normalize a stored toggle (boolean | { enabled }) to a plain boolean. */
-export function toggleEnabled(value: unknown): boolean {
-	if (typeof value === "boolean") return value;
-	if (value && typeof value === "object" && "enabled" in value) {
-		return Boolean((value as { enabled?: unknown }).enabled);
-	}
-	return false;
-}
-
-// ---------------------------------------------------------------------------
-// Per-stage mode (Auto / Manual / Skip) — one selector replacing the old
-// on/off toggle. Collapses the three backend knobs a stage actually depends on
-// (the `autoX` toggle, `states[x].enabled`, `states[x].mode`) into one choice:
-//   Auto   = pipeline auto-dispatches the stage's skill.
-//            → autoX:true,  states[x] = { enabled:true,  mode:"auto"   }
-//   Manual = stage waits for a human (gate); only a human fires/advances it.
-//            → autoX:false, states[x] = { enabled:true,  mode:"manual" }
-//   Skip   = stage is bypassed; the pipeline soft-skips to the next stage.
-//            → autoX:false, states[x] = { enabled:false }
-// Mirrors the dispatch gate in core `pipeline/orchestrator.ts` (a stage
-// auto-runs only when cfg.enabled && states[x].enabled!==false &&
-// states[x].mode!=="manual" && the autoX toggle is on).
-// ---------------------------------------------------------------------------
-
-export type StageMode = "auto" | "manual" | "skip";
-
-type StageStateEntry = PipelineStateConfig;
-type StagesMap = Record<string, StageStateEntry | undefined>;
-
-function statesOf(cfg: PipelineConfig): StagesMap {
-	return ((cfg.states as StagesMap | undefined) ?? {}) as StagesMap;
-}
-
-/**
- * Checkpoint statuses with NO pipeline skill (no `autoX` toggle, nothing to
- * auto-run). They only ever park (a human gate) or skip — never "Auto". Ordered
- * by where they sit in the lifecycle ladder so the Pipeline tab can interleave
- * them between the job stages. Mirrors the gaps in core `PIPELINE_STEPS`.
- */
-export const CHECKPOINT_STAGES: {
-	status: string;
-	label: string;
-	hint: string;
-}[] = [
-	// `tested` is the production approval GATE (manual by default): QA passed,
-	// a human advances it to `released`. The former `pass`/`staging`/`deploying`
-	// checkpoints are retired. See core `PIPELINE_STEPS` + `defaultStatesConfig`.
-	{
-		status: "tested",
-		label: "Awaiting release",
-		hint: "QA passed · approval gate before production",
-	},
-];
-
-/** Ordered render ladder for the Pipeline tab: job stages interleaved with checkpoints. */
-export const PIPELINE_LADDER: (
-	| { kind: "job"; toggle: StepToggleKey }
-	| { kind: "checkpoint"; status: string }
-)[] = [
-	{ kind: "job", toggle: "autoTriage" },
-	{ kind: "job", toggle: "autoClarify" },
-	{ kind: "job", toggle: "autoPlan" },
-	{ kind: "job", toggle: "autoCode" },
-	{ kind: "job", toggle: "autoReview" },
-	{ kind: "job", toggle: "autoTest" },
-	{ kind: "checkpoint", status: "tested" },
-	{ kind: "job", toggle: "autoRelease" },
-	{ kind: "job", toggle: "autoFix" },
-];
-
-/** Derive the 3-way mode for a JOB stage (has an autoX toggle + a skill). */
-export function deriveJobStageMode(
-	cfg: PipelineConfig,
-	toggleKey: StepToggleKey,
-	status: string,
-): StageMode {
-	const sc = statesOf(cfg)[status];
-	if (sc?.enabled === false) return "skip";
-	if (sc?.mode === "manual") return "manual";
-	// `autoX` off parks the stage (waits for a human) — same effect as manual.
-	if (!toggleEnabled(cfg[toggleKey])) return "manual";
-	return "auto";
-}
-
-/** Derive the mode for a CHECKPOINT stage — only "manual" (park) or "skip".
- *  A checkpoint has no skill, so at runtime it either PARKS (`mode:"manual"`) or
- *  auto-skips past it. `enabled:false` is the authoritative "skip" signal and
- *  MUST win over a leftover `mode:"manual"` — the server's `classifySkippable`
- *  checks `enabled===false` first, and a Manual→Skip toggle merges `enabled:false`
- *  onto the old entry without clearing `mode`. Without this precedence the
- *  segment would stay stuck on "Manual" after picking Skip (no dirty → Save
- *  disabled). So: enabled:false ⇒ skip; else mode==="manual" ⇒ manual; else skip. */
-export function deriveCheckpointMode(
-	cfg: PipelineConfig,
-	status: string,
-): "manual" | "skip" {
-	const sc = statesOf(cfg)[status];
-	if (sc?.enabled === false) return "skip";
-	return sc?.mode === "manual" ? "manual" : "skip";
-}
-
-/**
- * A secondary checkpoint (deploying/pass/staging) is surfaced ONLY when it's an
- * active manual gate (`mode:"manual"`). A skipped (`enabled:false`) or default
- * (auto) checkpoint carries no behaviour worth a row, so the Pipeline tab hides
- * it. `tested` is shown separately (always — the canonical pre-production gate),
- * so this only governs the secondary rows.
- */
-export function isCheckpointGated(
-	cfg: PipelineConfig,
-	status: string,
-): boolean {
-	const sc = statesOf(cfg)[status];
-	// A disabled (skipped) checkpoint is NOT an active gate, even if a stale
-	// `mode:"manual"` lingers on the entry (enabled:false wins — see deriveCheckpointMode).
-	return sc?.enabled !== false && sc?.mode === "manual";
-}
-
-/** The checkpoint always surfaced as the canonical pre-production gate. */
-export const PRIMARY_CHECKPOINT = "tested";
-
-/** Flip a toggle's `enabled` while preserving its object form ({enabled,runner,model}). */
-function withToggleEnabled(existing: unknown, enabled: boolean): unknown {
-	if (existing && typeof existing === "object")
-		return { ...(existing as object), enabled };
-	return enabled;
-}
-
-function mergeStateEntry(
-	cfg: PipelineConfig,
-	status: string,
-	patch: StageStateEntry,
-): StagesMap {
-	const states = statesOf(cfg);
-	return { ...states, [status]: { ...(states[status] ?? {}), ...patch } };
-}
-
-/** Apply a 3-way mode to a JOB stage → a new PipelineConfig (autoX + states[status]). */
-export function applyJobStageMode(
-	cfg: PipelineConfig,
-	toggleKey: StepToggleKey,
-	status: string,
-	mode: StageMode,
-): PipelineConfig {
-	if (mode === "auto") {
-		return {
-			...cfg,
-			[toggleKey]: withToggleEnabled(cfg[toggleKey], true),
-			states: mergeStateEntry(cfg, status, { enabled: true, mode: "auto" }),
-		};
-	}
-	if (mode === "manual") {
-		return {
-			...cfg,
-			[toggleKey]: withToggleEnabled(cfg[toggleKey], false),
-			states: mergeStateEntry(cfg, status, { enabled: true, mode: "manual" }),
-		};
-	}
-	return {
-		...cfg,
-		[toggleKey]: withToggleEnabled(cfg[toggleKey], false),
-		states: mergeStateEntry(cfg, status, { enabled: false }),
-	};
-}
-
-/** Apply a mode to a CHECKPOINT stage (manual = park / skip = bypass). */
-export function applyCheckpointMode(
-	cfg: PipelineConfig,
-	status: string,
-	mode: "manual" | "skip",
-): PipelineConfig {
-	if (mode === "manual") {
-		return {
-			...cfg,
-			states: mergeStateEntry(cfg, status, { enabled: true, mode: "manual" }),
-		};
-	}
-	// cm:guard Skip must drop `mode` but keep every other key — deriveCheckpointMode reads enabled:false as authoritative, but a replace-the-whole-entry approach (the prior bug) silently deletes sibling keys like disallowedTools
-	const { mode: _mode, ...rest } = statesOf(cfg)[status] ?? {};
-	return { ...cfg, states: { ...statesOf(cfg), [status]: { ...rest, enabled: false } } };
-}
-
-// ---------------------------------------------------------------------------
-// Session groups (ISS-494)
-// ---------------------------------------------------------------------------
-
-/**
- * The pipeline STATUSES a session group can contain — the 8 statuses that
- * dispatch a job, labelled by the step that runs there. Members of a
- * `sessionGroups` entry MUST be `STAGE_NAMES` (issue statuses), NOT tracker
- * step-names: a group is a set of statuses whose jobs resume one Claude
- * session. Cross-app parity: mirrors the dispatchable rows of `PIPELINE_STEPS`
- * in core `pipeline/registry.ts` (status → jobType). Statuses with no job
- * (needs_info, tested, pass, staging, deploying) are intentionally omitted —
- * grouping them has no effect on session continuity.
- */
-export const SESSION_GROUP_STAGES: ReadonlyArray<{
-	status: string;
-	label: string;
-}> = [
-	{ status: "open", label: "Triage" },
-	{ status: "confirmed", label: "Clarify" },
-	{ status: "clarified", label: "Plan" },
-	{ status: "approved", label: "Code" },
-	{ status: "developed", label: "Review" },
-	{ status: "testing", label: "Test" },
-	{ status: "reopen", label: "Fix" },
-	{ status: "released", label: "Release" },
-];
-
-/** status → friendly step label (falls back to the raw status). */
-export const SESSION_GROUP_STAGE_LABELS: Record<string, string> =
-	Object.fromEntries(SESSION_GROUP_STAGES.map((s) => [s.status, s.label]));
-
-export function sessionGroupStageLabel(status: string): string {
-	return SESSION_GROUP_STAGE_LABELS[status] ?? status;
-}
-
-/**
- * One-click recommended grouping (AC#4): planning-phase steps share a session,
- * build-phase steps share another. `fix` (status `reopen`) is left ungrouped so
- * it never shares with `code` (status `approved`) — they branch off the same
- * base and racing them risks merge conflicts.
- */
-export const SUGGESTED_SESSION_GROUPS: Record<string, string[]> = {
-	planning: ["open", "confirmed", "clarified"],
-	build: ["approved", "developed", "testing", "released"],
-};
-
-/** The two statuses whose jobs (code @ approved, fix @ reopen) must not share a
- *  group — used for the non-blocking merge-conflict warning. */
-export const CODE_STATUS = "approved";
-export const FIX_STATUS = "reopen";
-
-/** `onResumeFail` choices surfaced in the editor. */
-export const ON_RESUME_FAIL_OPTIONS: ReadonlyArray<{
-	value: "fresh" | "abort";
-	label: string;
-	hint: string;
-}> = [
-	{
-		value: "fresh",
-		label: "Start fresh",
-		hint: "Retry without --resume — a brand-new Claude session.",
-	},
-	{
-		value: "abort",
-		label: "Abort job",
-		hint: "Fail the job so an operator can investigate.",
-	},
-];
-
-const SESSION_GROUP_NAME_MAX = 64;
-
-/**
- * Client-side mirror of core `sessionGroupsSchema` + the cross-field
- * `superRefine`: group names are 1–64 chars and unique; each group has ≥1
- * member; each status belongs to at most one group. Returns human-readable
- * error strings (empty array = valid). The backend stays the source of truth;
- * this just blocks an obviously-invalid PATCH before it round-trips.
- */
-export function validateSessionGroups(
-	groups: Record<string, string[]>,
-): string[] {
-	const errors: string[] = [];
-	const names = Object.keys(groups);
-	const seenNames = new Set<string>();
-	const statusOwner = new Map<string, string>();
-
-	for (const rawName of names) {
-		const name = rawName.trim();
-		if (name.length === 0) {
-			errors.push("Group names cannot be empty.");
-		} else if (name.length > SESSION_GROUP_NAME_MAX) {
-			errors.push(
-				`Group name "${name}" exceeds ${SESSION_GROUP_NAME_MAX} characters.`,
-			);
-		}
-		if (seenNames.has(rawName)) {
-			errors.push(`Duplicate group name "${rawName}".`);
-		}
-		seenNames.add(rawName);
-
-		const members = groups[rawName] ?? [];
-		if (members.length === 0) {
-			errors.push(
-				`Group "${rawName || "(unnamed)"}" needs at least one stage.`,
-			);
-		}
-		for (const status of members) {
-			const prior = statusOwner.get(status);
-			if (prior && prior !== rawName) {
-				errors.push(
-					`Stage "${sessionGroupStageLabel(status)}" is in more than one group ("${prior}" and "${rawName}").`,
-				);
-			}
-			statusOwner.set(status, rawName);
-		}
-	}
-
-	return errors;
-}
-
-/** status → step label, for every `StageName` core accepts under `states`. */
-// cm:edge naming -> packages/core/src/pipeline/pipeline-config-schema.ts — same 10 STAGE_NAMES keys, same order; add a stage there and add its row here
+// cm:edge naming -> packages/core/src/pipeline/pipeline-config-schema.ts — the same four STAGE_NAMES keys, same order; a stage added there needs a row here or the screen renders its raw status
 export const PIPELINE_STATUS_ROWS: ReadonlyArray<{ status: string; label: string }> = [
-	{ status: "open", label: "Triage" },
-	{ status: "needs_info", label: "Needs info" },
-	{ status: "confirmed", label: "Clarify" },
-	{ status: "clarified", label: "Plan" },
-	{ status: "approved", label: "Code" },
-	{ status: "developed", label: "Review" },
-	{ status: "testing", label: "Test" },
-	{ status: "tested", label: "Awaiting release" },
-	{ status: "reopen", label: "Fix" },
-	{ status: "released", label: "Release" },
+	{ status: "open", label: "Queued" },
+	{ status: "in_progress", label: "Running" },
+	{ status: "needs_info", label: "Needs a human" },
+	{ status: "released", label: "Awaiting release" },
 ];
 
 const PIPELINE_STATUS_LABELS: Record<string, string> = Object.fromEntries(
@@ -800,7 +411,7 @@ export function humanizeToolName(raw: string): HumanizedToolName {
 }
 
 /** One stage row worth rendering on the Stage permissions section — carries
- *  any of allowedTools/disallowedTools/mcpServers/skipComplexities/sessionGroup. */
+ *  any of allowedTools / disallowedTools / mcpServers / deviceIds. */
 export interface StagePermissionRow {
 	status: string;
 	label: string;
@@ -812,8 +423,6 @@ function stageHasOverride(sc: PipelineStateConfig): boolean {
 		(sc.allowedTools?.length ?? 0) > 0 ||
 		(sc.disallowedTools?.length ?? 0) > 0 ||
 		Object.keys(sc.mcpServers ?? {}).length > 0 ||
-		(sc.skipComplexities?.length ?? 0) > 0 ||
-		Boolean(sc.sessionGroup) ||
 		// cm:why a stage whose ONLY override is its runner pool must still render — otherwise pinning a stage to a box makes that stage vanish from the one screen an operator checks it on
 		(sc.deviceIds?.length ?? 0) > 0
 	);

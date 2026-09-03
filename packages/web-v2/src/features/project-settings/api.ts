@@ -12,7 +12,9 @@ import type {
 	ProjectInvitationRow,
 	ProjectLabel,
 	ProjectMemberRow,
+	PluginDesignation,
 	ProjectUpdateInput,
+	ReleaseReadiness,
 	UxContractRule,
 	UxContractRulePatch,
 	UxFinding,
@@ -53,6 +55,18 @@ export const projectSettingsApi = {
 				body: JSON.stringify(pipelineConfig),
 			},
 		),
+
+	/** `PATCH /api/projects/:id/plugins` — replaces `agentConfig.plugins` whole. */
+	updatePlugins: (id: string, plugins: PluginDesignation[]) =>
+		apiClient<{ plugins: PluginDesignation[] }>(`/projects/${id}/plugins`, {
+			method: "PATCH",
+			body: JSON.stringify({ plugins }),
+		}),
+
+	/** `GET /api/projects/:id/release-readiness` — what this project still owes
+	 *  before its first issue runs. Member-gated. */
+	getReleaseReadiness: (id: string) =>
+		apiClient<ReleaseReadiness>(`/projects/${id}/release-readiness`),
 
 	/** `GET /api/projects/:id/project-facts` → `{ projectFacts, projectFactsConfig,
 	 *  maxAlwaysInjectChars }`. Member-gated. */

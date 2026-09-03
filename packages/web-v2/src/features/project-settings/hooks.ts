@@ -12,6 +12,7 @@ import { projectSettingsApi } from "./api";
 import type {
 	ApplyUxPresetInput,
 	PipelineConfig,
+	PluginDesignation,
 	ProjectFactsPatch,
 	ProjectUpdateInput,
 	UxContractRulePatch,
@@ -115,6 +116,36 @@ export function useUpdatePipelineConfig(id: string | undefined) {
 				description: formatPipelineConfigError(err),
 				tone: "error",
 			}),
+	});
+}
+
+/** Replace `agentConfig.plugins` whole. Invalidates the project detail so the
+ *  Plugins section and the read-only agent-config block both refresh. */
+export function useUpdatePlugins(id: string | undefined) {
+	const qc = useQueryClient();
+	const { toast } = useToast();
+	return useMutation({
+		mutationFn: (plugins: PluginDesignation[]) =>
+			projectSettingsApi.updatePlugins(id as string, plugins),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: ["project", id] });
+			toast({ title: "Plugins saved", tone: "success" });
+		},
+		onError: (err) =>
+			toast({
+				title: "Couldn't save plugins",
+				description: formatApiError(err),
+				tone: "error",
+			}),
+	});
+}
+
+/** What this project still owes before its first issue runs. */
+export function useReleaseReadiness(id: string | undefined) {
+	return useQuery({
+		queryKey: ["project", id, "release-readiness"],
+		queryFn: () => projectSettingsApi.getReleaseReadiness(id as string),
+		enabled: Boolean(id),
 	});
 }
 

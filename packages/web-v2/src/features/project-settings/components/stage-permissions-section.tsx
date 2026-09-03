@@ -72,7 +72,7 @@ export function StagePermissionsSection({
       <h3 className="fg-label text-fg">Stage permissions</h3>
       <p className="fg-body-sm mb-3 text-muted">
         What each stage&apos;s agent is allowed or denied, per-stage MCP overrides, complexity
-        skips, and session group — read-only. Editability lands in a follow-up.
+        and runner pools — read-only. Editability lands in a follow-up.
       </p>
 
       {rows.length === 0 ? (
@@ -87,7 +87,6 @@ export function StagePermissionsSection({
             const denied = row.config.disallowedTools ?? [];
             const allowed = row.config.allowedTools ?? [];
             const mcpNames = Object.keys(row.config.mcpServers ?? {});
-            const skips = row.config.skipComplexities ?? [];
             const pool = row.config.deviceIds ?? [];
             const diff = diffByStatus.get(row.status);
 
@@ -101,11 +100,9 @@ export function StagePermissionsSection({
                     {denied.length > 0 && <Badge>{denied.length} denied</Badge>}
                     {allowed.length > 0 && <Badge>{allowed.length} allowed</Badge>}
                     {mcpNames.length > 0 && <Badge>{mcpNames.length} MCP</Badge>}
-                    {row.config.sessionGroup && <Badge>group: {row.config.sessionGroup}</Badge>}
                     {pool.length > 0 && (
                       <Badge>{pool.length === 1 ? "1 pinned runner" : `${pool.length} runner pool`}</Badge>
                     )}
-                    {skips.length > 0 && <Badge>skips {skips.join(", ")}</Badge>}
                     {diff?.isOutlier && <Badge tone="amber">Differs from the other stages</Badge>}
                   </div>
                 }
@@ -156,19 +153,6 @@ export function StagePermissionsSection({
                         ))}
                       </div>
                     </div>
-                  )}
-
-                  {skips.length > 0 && (
-                    <p className="fg-body-sm text-fg">
-                      Skips this stage for complexity: {skips.join(", ")}
-                    </p>
-                  )}
-
-                  {row.config.sessionGroup && (
-                    <p className="fg-body-sm text-fg">
-                      Session group: <MonoTag>{row.config.sessionGroup}</MonoTag> — edited in
-                      Session groups below.
-                    </p>
                   )}
 
                   {pool.length > 0 && (
