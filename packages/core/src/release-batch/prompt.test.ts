@@ -26,6 +26,23 @@ const plan = (over: Partial<ReleasePlan> = {}): ReleasePlan => ({
 });
 
 describe('buildReleaseBatchPrompt', () => {
+  // cm:guard both halves. A prompt that names a rollback ONLY when one is declared leaves the undeclared case silent, and an agent facing a dead deploy with no instruction improvises one — which is the single action ISS-897 rule 2 forbids outright.
+  it('tells the agent to abort when the project declares no rollback', () => {
+    const out = buildReleaseBatchPrompt({ ...BASE, plan: plan({ rollback: null }) });
+    expect(out).toContain('declares NO rollback');
+    expect(out).toContain('ABORT');
+    expect(out).toContain('Reverting is a human decision');
+  });
+
+  it('gives the declared rollback instead, and never both', () => {
+    const out = buildReleaseBatchPrompt({
+      ...BASE,
+      plan: plan({ rollback: 'coolify rollback --to previous' }),
+    });
+    expect(out).toContain('coolify rollback --to previous');
+    expect(out).not.toContain('declares NO rollback');
+  });
+
   // cm:guard the floor exists because 17 gated projects had no procedure on the day this shipped; drop it and every one of their releases starts with the agent being told nothing
   it('falls back to the Forge default, and says that is what it is', () => {
     const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
