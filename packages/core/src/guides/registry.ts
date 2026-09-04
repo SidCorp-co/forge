@@ -58,18 +58,17 @@ An agent hits a login wall on a preview deploy, can't find credentials in \`forg
 The same shape costs tokens rather than a stall: a stage lands in a checkout whose hooks are missing, works out the install procedure from the lockfile, fixes it, and says nothing. The next job on that project pays for the same derivation, and the one after that. \`workspaceSetup\` exists so that happens once.`,
   },
   {
-    slug: 'issue-dependencies-and-decompose',
-    title: 'Issue dependencies & decompose',
+    slug: 'issue-dependencies',
+    title: 'Issue dependencies',
     summary:
-      'How blocks edges gate dispatch, the merged_at unblock signal, why decompose lifecycle is system-owned, and the one decompose action that IS yours — which differs by pipeline mode.',
-    version: 5,
-    body: `## Issue dependencies & decompose
+      'How blocks edges gate dispatch, the merged_at unblock signal, how to set an edge without racing the first dispatch, and why splitting an oversized issue is plain work rather than a lifecycle.',
+    version: 6,
+    body: `## Issue dependencies
 
 ### Relation kinds
 Edges are directional \`fromIssue --kind--> toIssue\`:
 - \`blocks\` — **the only kind that affects dispatch.** A → blocks → B means B cannot dispatch until A's code has reached the base branch — normally, until A has \`merged_at\` set. A reopened issue stays a blocker even if its prior merge stamp remains. A closed issue without \`merged_at\` unblocks B only when the project's base branch cannot be stamped structurally. It is **not** gated on A reaching \`released\`: a blocker parked at a manual release gate already unblocks B the instant its \`merged_at\` is stamped.
-- \`relates\`, \`duplicates\`, \`parent\` — metadata only, no dispatch effect.
-- \`decomposes\` — epic → child; engages the system-owned decomposition lifecycle below. Do not create this edge by hand outside that flow.
+- \`relates\`, \`duplicates\`, \`parent\`, \`decomposes\` — grouping labels, no dispatch effect. \`decomposes\` reads epic → child and is useful for showing structure; it holds nothing back, so ordering between the two is still a \`blocks\` edge.
 
 ### Setting a blocks edge — avoid the create-then-block race
 - Blocker known **at create time** → pass it in the create call itself (\`data.relations: [{ kind: 'blocks', dependsOnId }]\`), committed before the issue dispatches. This is atomic.
@@ -80,27 +79,12 @@ Edges are directional \`fromIssue --kind--> toIssue\`:
 ### The merged_at unblock signal
 A dependent dispatches the moment its blocker's \`merged_at\` is stamped, not when the blocker reaches \`released\`. \`merged_at\` auto-stamps only when a project's pipeline actually walks through the base-merge state. If you merge an issue's branch to the base branch and then **park** at that state manually (a gate the system doesn't auto-advance through), nothing stamps it and every downstream dependent stalls silently — stamp it yourself right after the merge lands.
 
-### Decompose is system-owned
-Decomposing is part of deciding HOW an issue gets built — on a staged project the plan step declares the \`decomposes\` edges; on an autonomous project the driver declares them from its planning phase. Either way it is not something to do by hand while working an unrelated issue.
+### An issue bigger than one change
+Splitting is ordinary work, not a lifecycle. Nothing parks a parent, nothing promotes a draft for you, and no edge holds a parent's own work back.
 
-The flow: write each child's plan, create the children (they land at \`draft\`), link each with a \`decomposes\` edge, then the parent is automatically parked at \`waiting\` — a human review gate. Approving the parent auto-cascades the children to whichever status **this project's driver dispatches**. The parent's own integration work is held until every child has \`merged_at\` set (or is \`closed\`), then runs last.
-
-**The human has exactly one action here: approve the split, and the status you write depends on the project's mode.**
-
-| Project mode | Statuses the parent may be decomposed FROM | Approve by moving the PARENT |
-|---|---|---|
-| staged (the default) | \`confirmed\`, \`clarified\`, \`waiting\` | \`waiting → approved\` |
-| \`autonomous\` | \`open\`, \`in_progress\`, \`waiting\` | \`waiting → open\` |
-
-That single transition is what promotes every child. Nothing else about decompose status is yours to set.
-
-On an autonomous project \`approved\` is not a status the driver reads and the board does not offer it, so the children are promoted to \`open\` instead — writing \`approved\` on the parent still works (it is forwarded to \`open\`), but \`open\` is the one to reach for. The park itself is exempt from that mode's rule that an agent's \`waiting\` becomes \`needs_info\`: a comment on a decomposed parent is discussion of the split, not approval of it, so answering it does not release the gate — only the transition does.
-
-Do not hand-set parent or child status. Two failure modes, both observed:
-- Moving children forward yourself skips the cascade, so they arrive without the parent's plan behind them and each burns a full triage/clarify/plan cycle rediscovering it.
-- A child you have already moved past \`draft\`/\`on_hold\` is **skipped** by the cascade for good — those are the only two statuses it promotes from. If you have already done this, park the children back at \`on_hold\` and re-enter \`approved\` on the parent; the cascade then picks them up correctly.
-
-Leaving the parent at \`waiting\` is not a safe default either — its own integration step can never dispatch from there. A decomposed epic that nobody approves is stalled, not waiting.
+- Most of the time the halves belong to ONE session: plan them as ordered steps and build them on one branch, in order.
+- When a half genuinely ships on its own, file it as its own issue at \`open\`, and if it must land first give the dependent a \`blocks\` edge naming it. Each issue then carries its own plan, criteria and review.
+- Never file the halves at \`draft\` expecting something to wake them. \`draft\` dispatches nothing, and no approval cascades it.
 
 ### Recording a note without triggering a pipeline run
 Create the issue at \`draft\`, never \`open\` — \`open\` auto-triages and spawns a pipeline run, burning a runner slot for something that was only meant to be a note.`,
@@ -282,7 +266,7 @@ Same discipline, shorter. Lead with the outcome, put the trace underneath. A com
 ### An issue is a unit of WORK — draft vs open
 \`draft\` never dispatches; \`open\` auto-triages and immediately spawns a pipeline run, burning a runner slot. Creating a note-only issue at \`open\` is the single most common way to accidentally start unwanted pipeline work.
 
-But \`draft\` is not a notepad either. Apply the test before you create anything: **an issue is work someone must do.** If nothing needs doing, it is not an issue — \`draft\` makes it invisible, not appropriate, and nobody ever opens the issue list looking for documentation. A note, learning, decision or record goes to \`forge_memory_write\` (durable business logic → repo \`docs/\`). Keep \`draft\` for follow-ups that need work later, and for decompose children awaiting parent approval. Red flags: \`open-as-note\` AND \`draft-as-note\`.
+But \`draft\` is not a notepad either. Apply the test before you create anything: **an issue is work someone must do.** If nothing needs doing, it is not an issue — \`draft\` makes it invisible, not appropriate, and nobody ever opens the issue list looking for documentation. A note, learning, decision or record goes to \`forge_memory_write\` (durable business logic → repo \`docs/\`). Keep \`draft\` for follow-ups that need work later. Red flags: \`open-as-note\` AND \`draft-as-note\`.
 
 ### Working an issue directly, outside the pipeline
 \`draft\` vs \`open\` is not the whole choice. \`draft\` has **four** exits, and picking the wrong one is what makes a direct session expensive:
@@ -300,7 +284,7 @@ Two of the four are easy to mix up. The \`developed\` route is the one people mi
 **Closing is not free, and \`dropped\` is why you rarely need it.** \`closed\` auto-stamps \`merged_at\`, and \`merged_at\` is exactly what releases every \`blocks\` dependent waiting on this issue — so closing something you ABANDONED silently unblocks work that should still be blocked. \`dropped\` is terminal without the stamp (dependents are freed by edge expiry instead), so use it for anything discarded and keep \`closed\` for work that actually landed. If you have already closed an abandoned issue, call \`forge_issues\` \`unmark\` to clear the stamp.
 
 ### What is actually enforced, and what is only advice
-The runtime gate is permissive: **any status may move to any status, except that nothing may move INTO \`draft\`**, and \`draft\` itself may only leave to \`open\`, \`developed\`, \`closed\` or \`dropped\`. One content rule sits beside it: **an agent may not write \`closed\` while \`releaseNotes\` is null**, because \`closed\` is what every reader takes as shipped and a shipped issue with nothing written for it is the record lying. Two exemptions, both narrow: a HUMAN close (an operator making the claim deliberately owns it) and the decompose cascade propagating a close already made. The batch release is not a third — it is refused earlier instead, at the claim, with \`RELEASE_RECORD_MISSING\`. What this guarantees is that a note exists ON THE ISSUE before an automated close; it does not guarantee a line reached \`CHANGELOG.md\`, which is a git artifact core never reads. \`dropped\` is legal, and it is a dead end by **convention, not by the gate**: the \`transitions\` map offers it no exit because reopening a dropped issue would carry \`merged_at\` NULL into an issue that then ships, so re-filing is the correct move. The recommended discard for non-work is still \`closed\` + \`unmark\`, per **Closing is not free** above.
+The runtime gate is permissive: **any status may move to any status, except that nothing may move INTO \`draft\`**, and \`draft\` itself may only leave to \`open\`, \`developed\`, \`closed\` or \`dropped\`. One content rule sits beside it: **an agent may not write \`closed\` while \`releaseNotes\` is null**, because \`closed\` is what every reader takes as shipped and a shipped issue with nothing written for it is the record lying. One exemption, and it is narrow: a HUMAN close, because an operator making the claim deliberately owns it. The batch release is not a second — it is refused earlier instead, at the claim, with \`RELEASE_RECORD_MISSING\`. What this guarantees is that a note exists ON THE ISSUE before an automated close; it does not guarantee a line reached \`CHANGELOG.md\`, which is a git artifact core never reads. \`dropped\` is legal, and it is a dead end by **convention, not by the gate**: the \`transitions\` map offers it no exit because reopening a dropped issue would carry \`merged_at\` NULL into an issue that then ships, so re-filing is the correct move. The recommended discard for non-work is still \`closed\` + \`unmark\`, per **Closing is not free** above.
 
 The status ladder you see in prompts, in the UI's next-state suggestions, and in the \`transitions\` map in the source is the **recommended happy path**, not a constraint. Do not infer that a hop is illegal because it is not listed there, and do not build multi-hop detours to reach a status you could have set directly. If a transition is genuinely refused you will get a typed error naming the reason (\`TRANSITION_REASON_REQUIRED\` on a park with no rationale, \`WAITING_KIND_REQUIRED\` on a \`waiting\` that does not say which kind, \`RELEASE_RECORD_REQUIRED\` on a close with no \`releaseNotes\` — set the field and close again, \`{ section: 'Skip', userFacing: '-' }\` is a complete answer, \`ILLEGAL_TRANSITION\` on either half of the rule above — \`draft\` as a target, or a \`draft\` leaving to anything else) — reason from that error, never from the shape of the ladder.
 
@@ -334,7 +318,7 @@ An earlier version of this pipeline refused every non-human exit from a park. It
 | \`needs_decision\` | a person must decide something the agent cannot (a tradeoff, a scope call, an approval) | the decision, then any status write |
 | \`needs_resource\` | a person must supply something the agent cannot create (a test account, credentials, third-party data) | the resource, then any status write |
 
-The kind is REQUIRED and core never guesses it. A plan awaiting approval and a decompose parent awaiting review are both \`needs_decision\`.
+The kind is REQUIRED and core never guesses it. A plan awaiting approval and a tradeoff awaiting a call are both \`needs_decision\`.
 
 **A step that cannot RUN is not \`waiting\`.** No runner, provider quota, project budget, retries spent — the JOB is \`held\` and the issue stays at its stage. \`pipelineHealth.waitingOn.reason = 'job_held'\` names the condition, and nothing is being asked of you: a capacity hold resumes itself when capacity returns.
 
@@ -355,7 +339,6 @@ Transitioning OUT of the project's \`mergeStates.baseBranch\` state stamps \`mer
 ### Derived fields you don't hand-set
 - \`plan\` — written by the **plan** step. A reporter who pre-fills it deletes that step's reason to exist, and risks a plan agent trusting it instead of exploring. Red flag: \`plan-by-hand\`.
 - \`acceptanceCriteria\` — written by **clarify/plan**. Draft ACs from the requester belong in \`description\` prose, not in this field.
-- Decompose parent/child status — system-owned; moving it by hand breaks the kickoff.
 - \`merged_at\` — you (or your step) stamp this one explicitly when you merge to the base branch and then park at a manual gate; everything else about pipeline status is either the ladder you're walking or a bounce state above. It is **caller-asserted, never verified against git** — so before stamping it, confirm the commit is actually reachable from the target branch, and never read someone else's \`merged_at\` as proof a merge happened.
 
 When you report an issue, fill \`title\`, \`description\`, \`priority\`, \`category\` — and leave the rest to the pipeline.

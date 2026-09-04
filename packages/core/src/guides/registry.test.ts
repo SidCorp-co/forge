@@ -11,7 +11,7 @@ describe('FORGE_GUIDES registry', () => {
     const slugs = new Set(FORGE_GUIDES.map((g) => g.slug));
     for (const required of [
       'project-settings-and-test-credentials',
-      'issue-dependencies-and-decompose',
+      'issue-dependencies',
       'memory-and-knowledge',
       'deploy-safety',
       'pipeline-and-issue-lifecycle',

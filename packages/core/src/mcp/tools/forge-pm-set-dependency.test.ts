@@ -37,16 +37,6 @@ vi.mock('../../issues/cycle-detect.js', () => ({
   detectCycle: vi.fn(async () => null),
 }));
 
-// cm:why mocked at the MODULE boundary, not modelled in the positional queue: `decomposeParent` issues its own statements, so letting it through would make every case here depend on how many, and its internals already have their own tests (ISS-138 PR-D)
-const decomposeSpy = vi.fn(async () => ({
-  parentId: 'parent',
-  childIds: ['child'],
-  integrationBranch: 'iss-1-foo',
-  createdEdges: 0,
-}));
-vi.mock('../../issues/decompose.js', () => ({
-  decomposeParent: decomposeSpy,
-}));
 
 const publishHealthSpy = vi.fn(async (_projectId: string, _ids: string[]) => undefined);
 vi.mock('../../issues/pipeline-health.js', () => ({
@@ -98,7 +88,6 @@ function pushMemberOk() {
 beforeEach(() => {
   queue.length = 0;
   vi.clearAllMocks();
-  decomposeSpy.mockClear();
   publishHealthSpy.mockClear();
 });
 
@@ -210,71 +199,6 @@ describe('forge_pm.set_dependency', () => {
 
     expect(result.created).toBe(true);
     expect(result.id).toBe(EDGE_ID);
-  });
-
-  // cm:guard only a `decomposes` edge may trigger the integration-branch helper — a `blocks` edge or an opt-out caller that reaches it creates a branch for a relationship that is not a decomposition (ISS-138 PR-D)
-  it('calls decomposeParent after a fresh decomposes edge insert', async () => {
-    const tool = forgePmSetDependencyTool(ctx);
-    pushMemberOk();
-    queue.push([
-      { id: FROM_ID, projectId: PROJECT_ID },
-      { id: TO_ID, projectId: PROJECT_ID },
-    ]);
-    queue.push([{ id: EDGE_ID }]);
-
-    await tool.handler({
-      projectId: PROJECT_ID,
-      fromIssueId: FROM_ID,
-      toIssueId: TO_ID,
-      kind: 'decomposes',
-    });
-
-    expect(decomposeSpy).toHaveBeenCalledTimes(1);
-    expect(decomposeSpy).toHaveBeenCalledWith(
-      FROM_ID,
-      [{ existingIssueId: TO_ID }],
-      { userId: OWNER_ID, agency: 'agent' },
-      { useIntegrationBranch: undefined },
-    );
-  });
-
-  it('skips decomposeParent when decomposeOpts.useIntegrationBranch is false', async () => {
-    const tool = forgePmSetDependencyTool(ctx);
-    pushMemberOk();
-    queue.push([
-      { id: FROM_ID, projectId: PROJECT_ID },
-      { id: TO_ID, projectId: PROJECT_ID },
-    ]);
-    queue.push([{ id: EDGE_ID }]);
-
-    await tool.handler({
-      projectId: PROJECT_ID,
-      fromIssueId: FROM_ID,
-      toIssueId: TO_ID,
-      kind: 'decomposes',
-      decomposeOpts: { useIntegrationBranch: false },
-    });
-
-    expect(decomposeSpy).not.toHaveBeenCalled();
-  });
-
-  it('does not call decomposeParent for non-decomposes edges', async () => {
-    const tool = forgePmSetDependencyTool(ctx);
-    pushMemberOk();
-    queue.push([
-      { id: FROM_ID, projectId: PROJECT_ID },
-      { id: TO_ID, projectId: PROJECT_ID },
-    ]);
-    queue.push([{ id: EDGE_ID }]);
-
-    await tool.handler({
-      projectId: PROJECT_ID,
-      fromIssueId: FROM_ID,
-      toIssueId: TO_ID,
-      kind: 'blocks',
-    });
-
-    expect(decomposeSpy).not.toHaveBeenCalled();
   });
 
   // cm:guard the relaxed gate still REFUSES a stranger — this is the FORBIDDEN branch of `loadDeviceProjectRole`, and it is the assertion that stops "relaxed from assertPmActor" from quietly meaning "open to any device"

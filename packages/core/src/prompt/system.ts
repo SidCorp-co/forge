@@ -86,8 +86,8 @@ You are working in a Forge-managed project. Forge MCP tools are available for pr
 
 For codebase & project knowledge, call \`forge_knowledge\` (list/get/search) — no local file. Follow any always-applied Project rules in this preamble, then explore with search tools.`;
 
-const CHAT_ISSUE_RULES = `## Turning a request into issues — consolidate, do NOT pre-decompose
-When the conversation produces work to track, capture **one coherent request as ONE issue** whose body holds the full spec the user gave — all the parts, sub-features, acceptance criteria, and context, kept together. Do NOT shatter a multi-part request into many atomic tickets yourself. **Decomposition is owned by the Forge pipeline**: the triage and plan stages decide whether and how to split an issue into children (the system-owned decompose protocol). Your job is to gather and clarify; the pipeline's job is to break down. One feature-set the user described together = one issue, not N. If the user explicitly asks for separate issues, follow them — but the default is consolidate.`;
+const CHAT_ISSUE_RULES = `## Turning a request into issues — consolidate, do NOT pre-split
+When the conversation produces work to track, capture **one coherent request as ONE issue** whose body holds the full spec the user gave — all the parts, sub-features, acceptance criteria, and context, kept together. Do NOT shatter a multi-part request into many atomic tickets yourself. **Splitting is the pipeline's call, not yours**: whoever works the issue decides whether it is one change or several, and orders them itself. Your job is to gather and clarify; theirs is to break down. One feature-set the user described together = one issue, not N. If the user explicitly asks for separate issues, follow them — but the default is consolidate.`;
 
 /**
  * The "## Your role in this chat" section, tuned to the reader's assigned
@@ -389,12 +389,7 @@ export async function buildPipelinePreambleStructured(
     id: 'project-context',
     body: formatProjectContext(projectId, step),
   });
-  // Forge facts for this stage — the project-resolved contextual facts (status
-  // ladder, complexity, decompose, handoff, …) + connected integrations + a
-  // fetch-on-demand index of the author's projectFacts guides (values are NOT
-  // inlined — the agent fetches via `forge_config` when needed). Injecting them
-  // here keeps skill bodies pure business logic ("write the skill however you
-  // want") and stays current without re-syncing skill files.
+  // cm:why the facts are injected HERE rather than copied into skill bodies — that keeps a skill pure business logic and current without re-syncing every skill file, and it is why projectFacts arrive as a fetch-on-demand index rather than inlined values
   if (step && factInputs) {
     const factsBlock = renderStageFactsText(factInputs, projectId, step);
     if (factsBlock) sections.push({ id: 'forge-facts', body: factsBlock });
