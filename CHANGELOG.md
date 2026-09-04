@@ -470,6 +470,81 @@
   called any of them, and every one has an endpoint that does the same job. The registered tool
   set is now 59.
 
+- The `intent` filter on `GET /api/chat-logs`. It matched `chat_logs.query_intent`, a column both
+  insert sites have written `null` since the provider-chat rewrite replaced the Strapi-era
+  intent router; the strict query schema now 400s `?intent=`. The column stays — historical rows
+  may hold data, and dropping it is a separate decision. The two inserts stop naming
+  `ragContext: null` and `queryIntent: null` explicitly.
+
+- **`registry.ts:unregister`, and two comments that outlived the second adapter.** The registry
+  export had zero callers anywhere in the tree — it was the swap-out half of a multi-provider
+  world, and there is one provider now. `auto-title.ts:generateSessionTitle` still told readers the
+  fast model was "LiteLLM OpenAI-compat or Gemini", and `lib/feature-flags.ts`'s `chatProvider`
+  note still described "LiteLLM + Gemini SSE" and env vars "(or Gemini equivalents)" that
+  `config/env.ts` no longer declares. Nothing here changes behaviour; all three were made wrong by
+  the deletions above, and a comment naming a deleted env var is how the next reader configures a
+  variable that does nothing.
+
+- **The Gemini chat adapter.** It accepted a `ChatStreamRequest` and ignored four fields of it:
+  `tools` and `toolChoice` (so `requireInitialToolUse` was a no-op and the Rocket.Chat bot would
+  have run tool-less, failed `screenStakeholderReply`, retried tool-less, and fallen back), plus
+  `temperature`, and `signal` — which it only polled between chunks, never handing it to the SDK, so
+  the hung-upstream abort `external-chat.ts` documents did not exist on that path. Its tests covered only multimodal mapping. A
+  second provider path that cannot serve the product's only agentic caller is two live paths and a
+  reader who cannot tell which one runs. `@google/genai` goes with it, and so — owner decision, once chat
+  had a single adapter — do `GEMINI_API_KEY` and `GEMINI_MODEL` themselves, along with the direct
+  `generativelanguage.googleapis.com` fallback in `memory/llm.ts` that was their last reader. A
+  proxy that already fans out to Vertex makes a second vendor client a second thing to keep true.
+  **This is a breaking configuration change**, and two earlier drafts of this entry got its reach
+  wrong in opposite directions, so precisely: `bootstrapChatProviders` registered `gemini` whenever
+  `GEMINI_API_KEY` was set, and `config/env.ts` declared it — but `docker-compose.prod.yml` never
+  passed it through, so on a compose deployment it never reached the container and the id was never
+  selectable there. On a directly-run core (dev, or any non-compose host) it was. Either way, a
+  deployment that relied on Gemini — for chat OR for the fast model — now has neither: chat logs
+  `chat provider: none configured` and 503s, and `fastModelConfigured()` reports false, so
+  memory-v2 extraction, consolidation and auto-titling skip rather than failing quietly. `LITELLM_*`
+  is the only path to both. Projects already pinned to `gemini` still resolve, because the id stays
+  registered as an alias of the OpenAI adapter: the row outlives the code that wrote it, and
+  `resolveForProject` would otherwise drop the row's `chat_model` and silently re-pin it to the env
+  default.
+
+- **The bundled autonomous skill set and the runner-written review verdict.** Owner decision,
+  big-bang. Five skills compiled into the runner via `include_str!` (`forge-drive`, `-understand`,
+  `-plan`, `-review`, `-ship`, 560 lines), `bundled_skills.rs`, the `[skills] bundled_disabled` /
+  `bundled_overrides` knobs, and the gate `check-autonomous-transitions.mjs` that held the skills to
+  `AUTONOMOUS_DRIVER_STATUSES` — gone. The driver is now `issue-flow` from the `forge` Claude Code
+  plugin (github.com/SidCorp-co/forge-plugin), named by `AUTONOMOUS_SKILL_NAME` and reaching a box
+  through `pipelineConfig.plugins`. Why: a skill fix waited on a runner release the fleet then had to
+  pull — 0.9.9 and 0.9.10 were cut on 2026-09-02 and 8 of 10 runners were still on 0.9.8 hours later
+  — and `issue-flow` carries 724 lines of method to forge-drive's 242.
+
+  With it, the reviewer-verdict mechanism: `FORGE_VERDICT_FILE`, `workspace/verdict.rs`, the poller
+  in `claude_code.rs`, `POST /api/jobs/:id/verdict`, `recordVerdict`, and migration 0194 drops
+  `phase_journal_verdict_is_runner_written`. **The price, stated rather than found later:** nothing
+  now stops a driver recording its own approval. The measurement this mechanism answered — getcontent
+  2026-08-21, 9 of 10 closed issues had a real verdict overwritten by the driver's prose — is reachable
+  again. `endPhase` keeps its `kind IS DISTINCT FROM 'verdict'` clause so the rows that exist stay
+  honest; the e2e that asserted the CHECK now asserts its absence, on purpose, so a return is a
+  decision and not an accident.
+
+  The `autonomous-mode` skill-lock reason went too, and that one was already dead:
+  `projectLockContext` never passed a `bundled` set, so the branch fired only in unit tests that
+  hand-supplied one. `check-autonomous-transitions` is unwired from `verify`, CI, the conformance
+  manifest and `scripts/README.md` — with the skill in another repo it had nothing to read, and a gate
+  that exits 2 forever is worse than no gate. `mcp/skill-tool-names.test.ts` went with it for the same
+  reason — it read the bundled tree to assert no skill named an unregistered MCP tool, and that check
+  now belongs to the plugin repo, whose `doc-claims.test.mjs` holds the equivalent for its own CLI.
+
+  **What this does not do:** install the plugin anywhere. 0 of 31 projects designate it and every
+  runner ships `[plugins] enabled = false` (a per-box kill switch the server cannot flip), so until a
+  project designates and an operator turns the box on, a `drive` job is told to use a skill it does
+  not have. Runner `0.10.0` carries the removal.
+
+- Four MCP tools whose work REST already does: `forge_steer`, `forge_ux_improver`,
+  `forge_skills.pin` and `forge_metrics.step_durations`. Nothing that runs on a build box had
+  called any of them, and every one has an endpoint that does the same job. The registered tool
+  set is now 59.
+
 ### Fixed
 
 - **The cc-startup signal counts assistant turns again.** `deriveCcStartupSignals` fed
@@ -558,12 +633,15 @@
     its title scored 0.727 against the draft filed one turn earlier, above the 0.72 floor, but
     two model-written descriptions of one chat message share little vocabulary and the 25%
     description weight dragged the blend under. A title that clears the floor alone is now a
-    duplicate; the blend still rescues a weaker title with a near-identical description. Because
-    word overlap cannot tell that apart from two issues about different screens — "Dark mode
-    broken on the settings page" against "…on the profile page" scores 0.750, above the floor the
-    real miss sat below — the rejection now names `data.confirmNotDuplicate`, which the guard
-    consumes to let a create through. A false positive costs one round instead of being
-    unrecoverable in the turn.
+    duplicate; the blend still rescues a weaker title with a near-identical description.
+
+- A dedup block the model cannot get past when it is wrong. The floor above is recall-first on
+  purpose, and word overlap cannot tell a repeat from two issues about different screens: "Dark
+  mode broken on the settings page" against "…on the profile page" scores 0.750, above the floor
+  the real miss sat below, so no threshold separates them. The rejection now names
+  `data.confirmNotDuplicate` and the guard consumes it before the create proceeds — consumed
+  rather than forwarded, because `forge_issues` validates `data` strictly. A false positive costs
+  one round instead of being unrecoverable in the turn.
 
 - web-v2 `features/activity` read `chat_logs.usage` through Anthropic-shaped snake_case keys
   (`input_tokens`, `cache_read_input_tokens`) that core has never written, so `sumTokens` returned
@@ -1392,80 +1470,3 @@
 - The test-signal baseline had drifted since it was frozen and is re-cut at the measured numbers:
   one file had left the low-signal ratio entirely while two others sat under ceilings up to 32
   above their real counts. Every ceiling moved down and a dead record left. (ISS-848)
-
-### Removed
-
-- The `intent` filter on `GET /api/chat-logs`. It matched `chat_logs.query_intent`, a column both
-  insert sites have written `null` since the provider-chat rewrite replaced the Strapi-era
-  intent router; the strict query schema now 400s `?intent=`. The column stays — historical rows
-  may hold data, and dropping it is a separate decision. The two inserts stop naming
-  `ragContext: null` and `queryIntent: null` explicitly.
-
-- **`registry.ts:unregister`, and two comments that outlived the second adapter.** The registry
-  export had zero callers anywhere in the tree — it was the swap-out half of a multi-provider
-  world, and there is one provider now. `auto-title.ts:generateSessionTitle` still told readers the
-  fast model was "LiteLLM OpenAI-compat or Gemini", and `lib/feature-flags.ts`'s `chatProvider`
-  note still described "LiteLLM + Gemini SSE" and env vars "(or Gemini equivalents)" that
-  `config/env.ts` no longer declares. Nothing here changes behaviour; all three were made wrong by
-  the deletions above, and a comment naming a deleted env var is how the next reader configures a
-  variable that does nothing.
-
-- **The Gemini chat adapter.** It accepted a `ChatStreamRequest` and ignored four fields of it:
-  `tools` and `toolChoice` (so `requireInitialToolUse` was a no-op and the Rocket.Chat bot would
-  have run tool-less, failed `screenStakeholderReply`, retried tool-less, and fallen back), plus
-  `temperature`, and `signal` — which it only polled between chunks, never handing it to the SDK, so
-  the hung-upstream abort `external-chat.ts` documents did not exist on that path. Its tests covered only multimodal mapping. A
-  second provider path that cannot serve the product's only agentic caller is two live paths and a
-  reader who cannot tell which one runs. `@google/genai` goes with it, and so — owner decision, once chat
-  had a single adapter — do `GEMINI_API_KEY` and `GEMINI_MODEL` themselves, along with the direct
-  `generativelanguage.googleapis.com` fallback in `memory/llm.ts` that was their last reader. A
-  proxy that already fans out to Vertex makes a second vendor client a second thing to keep true.
-  **This is a breaking configuration change**, and two earlier drafts of this entry got its reach
-  wrong in opposite directions, so precisely: `bootstrapChatProviders` registered `gemini` whenever
-  `GEMINI_API_KEY` was set, and `config/env.ts` declared it — but `docker-compose.prod.yml` never
-  passed it through, so on a compose deployment it never reached the container and the id was never
-  selectable there. On a directly-run core (dev, or any non-compose host) it was. Either way, a
-  deployment that relied on Gemini — for chat OR for the fast model — now has neither: chat logs
-  `chat provider: none configured` and 503s, and `fastModelConfigured()` reports false, so
-  memory-v2 extraction, consolidation and auto-titling skip rather than failing quietly. `LITELLM_*`
-  is the only path to both. Projects already pinned to `gemini` still resolve, because the id stays
-  registered as an alias of the OpenAI adapter: the row outlives the code that wrote it, and
-  `resolveForProject` would otherwise drop the row's `chat_model` and silently re-pin it to the env
-  default.
-
-- **The bundled autonomous skill set and the runner-written review verdict.** Owner decision,
-  big-bang. Five skills compiled into the runner via `include_str!` (`forge-drive`, `-understand`,
-  `-plan`, `-review`, `-ship`, 560 lines), `bundled_skills.rs`, the `[skills] bundled_disabled` /
-  `bundled_overrides` knobs, and the gate `check-autonomous-transitions.mjs` that held the skills to
-  `AUTONOMOUS_DRIVER_STATUSES` — gone. The driver is now `issue-flow` from the `forge` Claude Code
-  plugin (github.com/SidCorp-co/forge-plugin), named by `AUTONOMOUS_SKILL_NAME` and reaching a box
-  through `pipelineConfig.plugins`. Why: a skill fix waited on a runner release the fleet then had to
-  pull — 0.9.9 and 0.9.10 were cut on 2026-09-02 and 8 of 10 runners were still on 0.9.8 hours later
-  — and `issue-flow` carries 724 lines of method to forge-drive's 242.
-
-  With it, the reviewer-verdict mechanism: `FORGE_VERDICT_FILE`, `workspace/verdict.rs`, the poller
-  in `claude_code.rs`, `POST /api/jobs/:id/verdict`, `recordVerdict`, and migration 0194 drops
-  `phase_journal_verdict_is_runner_written`. **The price, stated rather than found later:** nothing
-  now stops a driver recording its own approval. The measurement this mechanism answered — getcontent
-  2026-08-21, 9 of 10 closed issues had a real verdict overwritten by the driver's prose — is reachable
-  again. `endPhase` keeps its `kind IS DISTINCT FROM 'verdict'` clause so the rows that exist stay
-  honest; the e2e that asserted the CHECK now asserts its absence, on purpose, so a return is a
-  decision and not an accident.
-
-  The `autonomous-mode` skill-lock reason went too, and that one was already dead:
-  `projectLockContext` never passed a `bundled` set, so the branch fired only in unit tests that
-  hand-supplied one. `check-autonomous-transitions` is unwired from `verify`, CI, the conformance
-  manifest and `scripts/README.md` — with the skill in another repo it had nothing to read, and a gate
-  that exits 2 forever is worse than no gate. `mcp/skill-tool-names.test.ts` went with it for the same
-  reason — it read the bundled tree to assert no skill named an unregistered MCP tool, and that check
-  now belongs to the plugin repo, whose `doc-claims.test.mjs` holds the equivalent for its own CLI.
-
-  **What this does not do:** install the plugin anywhere. 0 of 31 projects designate it and every
-  runner ships `[plugins] enabled = false` (a per-box kill switch the server cannot flip), so until a
-  project designates and an operator turns the box on, a `drive` job is told to use a skill it does
-  not have. Runner `0.10.0` carries the removal.
-
-- Four MCP tools whose work REST already does: `forge_steer`, `forge_ux_improver`,
-  `forge_skills.pin` and `forge_metrics.step_durations`. Nothing that runs on a build box had
-  called any of them, and every one has an endpoint that does the same job. The registered tool
-  set is now 59.

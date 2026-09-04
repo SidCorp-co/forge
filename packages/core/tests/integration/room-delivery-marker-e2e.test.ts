@@ -85,8 +85,10 @@ describe('room-delivery marker queries', () => {
     const rows = await harness.db.execute<{ metadata: Record<string, unknown> }>(
       sql`SELECT metadata FROM agent_sessions WHERE id = ${id}`,
     );
-    return (rows as unknown as Array<{ metadata: Record<string, unknown> }>)[0]
-      ?.metadata as Record<string, unknown>;
+    return (rows as unknown as Array<{ metadata: Record<string, unknown> }>)[0]?.metadata as Record<
+      string,
+      unknown
+    >;
   }
 
   for (const key of ['agentChat', 'escalation'] as const) {
