@@ -41,7 +41,7 @@ When the issue has a plan and triage/plan comments from Forge AI:
 
 1. Fetch issue + comments → extract plan and complexity from triage. Also detect **deployMode** (see above).
 2. **Confirm branch:** Run `git branch --show-current` and `git status`. If on wrong branch or dirty state, stash/clean first.
-3. Resolve the base branch, then branch: `git checkout <effectiveBase> && git pull && git checkout -b ISS-XX-short-title`. `<effectiveBase>` is the project `baseBranch` from `forge_config → get` for a normal issue — BUT for a decompose child or parent it is `metadata.branchConfig.baseBranch` (the shared integration branch). See **Decompose-aware branching** below before this step if the issue has `metadata.branchConfig` or `metadata.useIntegrationBranch`.
+3. Resolve the base branch, then branch: `git checkout <effectiveBase> && git pull && git checkout -b ISS-XX-short-title`. `<effectiveBase>` is the project `baseBranch` from `forge_config → get`, unless the issue carries a `metadata.branchConfig.baseBranch` override, which wins.
 4. Set `in_progress`
 5. Follow plan step-by-step — read each file as you reach it in the plan, edit, move on
 6. Build the affected package(s) — infer the build command from the repo (the package's build script / toolchain); catch compile/type errors
@@ -54,7 +54,6 @@ When the issue has a plan and triage/plan comments from Forge AI:
     - **deploy mode · distinct-branch** (`baseBranch !== productionBranch`) — push the ISS-* branch, merge it into `baseBranch`, then trigger `forge_coolify_deploy`. **Every complexity merges to `baseBranch` and deploys** — `baseBranch` is a non-production integration branch on this topology, so getting the change onto a reachable, QA-able environment is the point. Keep the ISS-* branch alive (release promotes it to prod).
     - **deploy mode · same-branch** (`baseBranch === productionBranch`) — push the ISS-* branch only; **no** merge, **no** `forge_coolify_deploy`, for ANY complexity (incl. xs/s). `baseBranch` IS the production branch on this topology, so merging here would ship unreviewed code straight to prod before independent review or QA run. Post a comment stating the merge + deploy is deferred to forge-release.
     - **local-only mode** — push the ISS-* branch only; **no** `baseBranch` merge, **no** `forge_coolify_deploy`.
-    - **decompose child/parent** — different base/target branch; see **Decompose-aware branching** above (child → integration branch, no deploy; parent → integrate-verify, no merge).
 12. Post comment
 13. Set status LAST (triggers the next step). **Never set `deploying` — it was retired from the lifecycle; the only valid exits from the code step are `developed` or `testing`.**
     - **deploy mode · distinct-branch** — `xs`/`s` → **`testing`** (skip independent review — the inline self-review is enough for a trivial change; forge-test reads the staging URLs from `forge_config`). `m`/`l`/`xl` → **`developed`** (independent forge-review runs, then advances to testing).
@@ -66,10 +65,6 @@ When the issue has a plan and triage/plan comments from Forge AI:
 Build and review happen BEFORE push. Only clean, reviewed code gets pushed (and, in deploy · distinct-branch mode, deployed).
 
 Read `references/workflow.md` for the full step-by-step including standalone mode.
-
-## Decompose-aware branching (epic children + parent integration)
-
-If the issue has `metadata.branchConfig` or `metadata.useIntegrationBranch`, it is part of a decomposed epic that shares ONE integration branch — branching and the parent integration step differ. **Read `.claude/skills/forge-plan/references/decompose-execution.md` and follow the forge-code section.** In short: a **child** branches off `metadata.branchConfig.baseBranch` (the integration branch, not the project `baseBranch`) — use it as `<effectiveBase>` in step 3; the **parent** (`useIntegrationBranch`) does not write feature code — it `git fetch`es + integration-verifies the integration branch it owns (with fetch+retry, never a base-ancestry guess — the ISS-144 false-negative), does NOT squash to base or deploy, and ends at `developed`.
 
 ## Docs-only deliverables (no-code decision / audit / spike)
 

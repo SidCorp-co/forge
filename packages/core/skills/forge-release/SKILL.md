@@ -11,7 +11,7 @@ The final step in the issue pipeline: `released → closed`. Lands the issue's o
 
 The ISS-* branch holds this issue's changes. Release = get **this issue's own changes — and only those** — onto `productionBranch`, then deploy and close. The one non-obvious trap is called out in Step 6.
 
-**State-never-lies (`VISION: state-never-lies`):** `merged_at` and the "Released" comment are promises other issues rely on — a blocks-gate/decompose child dispatches the moment `merged_at` is stamped, trusting the base branch now has this code. Never let branch-name equality or a push exit code stand in for verified git ancestry (see Step 4 and Step 8) — a wrongly-skipped merge or a silently-failed push must halt the release, not complete it.
+**State-never-lies (`VISION: state-never-lies`):** `merged_at` and the "Released" comment are promises other issues rely on — an issue held by a `blocks` edge dispatches the moment `merged_at` is stamped, trusting the base branch now has this code. Never let branch-name equality or a push exit code stand in for verified git ancestry (see Step 4 and Step 8) — a wrongly-skipped merge or a silently-failed push must halt the release, not complete it.
 
 ## Usage
 
@@ -63,10 +63,6 @@ forge_comments → create → {
 ```
 
 Stop. Do NOT call `forge_issues → update`, do NOT merge branches.
-
-### Step 0.5: Decompose-aware guard (epic child vs parent)
-
-If the issue has `metadata.branchConfig` or `metadata.useIntegrationBranch`, it is part of a decomposed epic — **only the parent reaches production/base**. **Read `.claude/skills/forge-plan/references/decompose-execution.md` and follow the forge-release section.** In short: a **child** already landed on the integration branch, so skip the merge steps — just CHANGELOG (if present), comment, close, and optionally delete its own `ISS-*` branch (still subject to the Step 8 verify-land gate below — a child's own commits must show as landed on the integration branch before it closes or deletes its branch). The **parent** (`useIntegrationBranch`) is the single promotion point: substitute the integration branch (`metadata.integrationBranch`) for the `ISS-*` branch in the merge steps (`git fetch` + retry if a child looks missing) and in the Step 8 gate, deploy, CHANGELOG, then at the close cascade-close any still-open children alongside the parent, and **delete the integration branch** during cleanup. For a non-decompose issue (no such metadata), ignore this step.
 
 ### Step 1: Fetch Issue & Config
 
@@ -248,7 +244,7 @@ If this fails, the release is still complete — log it and stop. Never let a cl
 
 ## Regression: verified-land gate (brand-gateway ISS-28 manual repro)
 
-**Scenario that exposed the bug:** a project (brand-gateway) with `baseBranch == productionBranch == "master"` and a workflow that defers the real merge to the release step (`mergeStates.baseBranch: "released"`). ISS-28's commits (`9cacbc7`/`c90f2a7`/`b956f46`) existed only on the local `ISS-28-shell-foundation` branch; `origin/master` never received them. The old Step 4 saw `productionBranch == baseBranch`, inferred "forge-code already merged it," skipped Steps 5–6 entirely, and the run proceeded straight through deploy → CHANGELOG → branch delete → "Released — Merged to master" comment → `closed` (which auto-stamped `merged_at`). Downstream decompose children (ISS-29/30/31) would have dispatched believing the shell was on `master` when it never was.
+**Scenario that exposed the bug:** a project (brand-gateway) with `baseBranch == productionBranch == "master"` and a workflow that defers the real merge to the release step (`mergeStates.baseBranch: "released"`). ISS-28's commits (`9cacbc7`/`c90f2a7`/`b956f46`) existed only on the local `ISS-28-shell-foundation` branch; `origin/master` never received them. The old Step 4 saw `productionBranch == baseBranch`, inferred "forge-code already merged it," skipped Steps 5–6 entirely, and the run proceeded straight through deploy → CHANGELOG → branch delete → "Released — Merged to master" comment → `closed` (which auto-stamped `merged_at`). Downstream the issues behind it (ISS-29/30/31) would have dispatched believing the shell was on `master` when it never was.
 
 **Verify the fix against this scenario:**
 1. Reproduce the setup: an ISS-* branch with unmerged commits, `productionBranch == baseBranch`, nothing pushed to `origin/<productionBranch>` yet.
