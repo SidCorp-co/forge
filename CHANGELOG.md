@@ -10,6 +10,42 @@
 
 ### Added
 
+- The provider-chat loop measures what it sends. `CHAT_CONTEXT_BUDGET_TOKENS` (default 80,000
+  estimated tokens; declared in `docker-compose.prod.yml` and both `.env.example`s) bounds every
+  request `runTurnEvents` makes: history was windowed by count on the Rocket.Chat path and not at
+  all on `POST /api/chat`, and eight tool rounds at 24k chars each could push a request past the
+  model's window and surface as a bare `error`. `chat/context-budget.ts` pins the system message
+  and the newest user turn, drops the oldest history first (an assistant `tool_calls` message and
+  its `tool` replies move as one unit — a reply without its parent is a provider 400), then
+  truncates the oldest intra-turn tool results in place, and tells the model on the first kept user
+  message how many earlier messages it can no longer see. What was elided is written into
+  `chat_logs.usage.elided` only when non-zero; a request whose pinned messages alone do not fit is
+  logged as `overBudget` rather than silently sent short.
+
+- `chat_logs.usage.cachedPromptTokens` — the OpenAI-compatible adapter reads
+  `usage.prompt_tokens_details.cached_tokens` and the loop sums it across rounds, so the
+  prompt-cache hit rate of a turn is now readable from the audit row instead of inferred.
+
+- Chat tool calls are recorded as `{ name, arguments, round, isError, durationMs, resultPreview }`.
+  `ChatToolset.execute` returns MCP's own `CallToolResult` — the chat tool layer is a wrapper over
+  the MCP catalog, so an external server's `isError` now reaches the record instead of being
+  flattened away by a string serializer that ran before the loop could see it.
+
+- `app_config.chat_model_by_kind` (migration 0195) and `chatModelByKind` on
+  `PUT /api/app-config/:projectId`: a per-turn-kind model on the same provider. Two kinds exist —
+  `agentic` (tools offered) and `relay` (tool-less prose; the Rocket.Chat escalation synthesis
+  passes `relay`). A kind with no entry falls to `chat_model`, then the provider default; a
+  malformed map falls the same way rather than 503-ing every turn on the project. The map is
+  replaced whole on PUT.
+
+- `response_format` plumbing on the chat provider contract (`ChatStreamRequest.responseFormat`,
+  `TurnCoreArgs.responseFormat`, `ExternalChatTurnArgs.responseFormat`). **No caller sets it** — the
+  fenced-JSON parsing in `escalation-bridge.ts` reads a runner-hosted Claude Code session's output,
+  not a provider call, so the one candidate had no request body to put it on. Added on the owner's
+  decision of 2026-09-04 so the next structured-output caller has a wire to plug into. It reaches
+  the provider only on a round that offers no tools (Gemini rejects function calling combined with
+  a JSON schema), and an endpoint that 400s the parameter gets one retry without it.
+
 - Runner pool labels can be set by a project admin: `labels` on
   `PATCH /api/projects/:id/runners/:runnerId`, and an inline editor on each runner card under
   Project → Runners. The column already gated releases (`releaseRunnerLabel` on the production
@@ -226,6 +262,13 @@
   real total shown; one human comment clears a row for good. (ISS-881)
 
 ### Fixed
+
+- web-v2 `features/activity` read `chat_logs.usage` through Anthropic-shaped snake_case keys
+  (`input_tokens`, `cache_read_input_tokens`) that core has never written, so `sumTokens` returned
+  0 for every row. `ChatLogUsage` is now the shape `run-turn-core.ts:usageForLog` writes
+  (`promptTokens`, `completionTokens`, `totalTokens`, `cachedPromptTokens`, `elided`); the module
+  header named a `activity-feed.tsx` that does not exist and now says what is true — no screen
+  renders the feed today. The `intent` list parameter went with the endpoint's filter.
 
 - **The system-job fast model stopped losing its whole token budget to the model's own thinking.**
   Measured against the live proxy on 2026-09-04 with `gemini/gemini-2.5-flash`: `max_tokens` covers
@@ -843,6 +886,25 @@
 
 ### Changed
 
+- **A chat round's tool calls run concurrently.** `runTurnEvents` executed the calls a model made
+  in one round serially, against an eight-round cap that the serial time made expensive. Calls are
+  now grouped by tool name — different tools run under `Promise.all`, same-name calls stay
+  sequential in model order, because `guardIssueWritesDeduped` is a SELECT-then-INSERT with no
+  uniqueness constraint behind it and two concurrent `forge_issues create` would both pass the
+  duplicate check. Results are fed back in model order so every `tool_call_id` gets exactly one
+  reply, and a throwing tool becomes an `isError` result rather than aborting the round.
+  `parallel_tool_calls` is not sent: an unknown parameter through the proxy onto Vertex is a 400.
+
+- **The per-turn context left the system prompt.** The Rocket.Chat conversation seed and the web
+  `pageContext` were rendered into the system message, so the `system + tools[]` prefix that
+  prompt caching keys on changed every turn. `chat/turn-context.ts` now prefixes them onto the
+  newest user message on the provider copy only (never persisted); `buildSystemPrompt` no longer
+  takes either. Not a second system message — LiteLLM hoists every system role into Gemini's
+  `system_instruction`, which puts the volatile block back in the prefix — and not its own user
+  message, which breaks Gemini's role alternation. `progressFacts` stays in the system prompt: it is
+  the ISS-671 kernel fact that must survive `systemPromptOverride`, and it changes only when the
+  counts do. `POST /api/chat` now sends the same 30-message window the Rocket.Chat path always did.
+
 - **One chat adapter, and it speaks OpenAI.** `chat/providers/litellm.ts` is now
   `chat/providers/openai.ts` and registers as `openai`: the wire format is the contract
   (`providers/types.ts` mirrors Chat Completions exactly), so a LiteLLM proxy, a vendor endpoint or
@@ -972,6 +1034,12 @@
   above their real counts. Every ceiling moved down and a dead record left. (ISS-848)
 
 ### Removed
+
+- The `intent` filter on `GET /api/chat-logs`. It matched `chat_logs.query_intent`, a column both
+  insert sites have written `null` since the provider-chat rewrite replaced the Strapi-era
+  intent router; the strict query schema now 400s `?intent=`. The column stays — historical rows
+  may hold data, and dropping it is a separate decision. The two inserts stop naming
+  `ragContext: null` and `queryIntent: null` explicitly.
 
 - **`registry.ts:unregister`, and two comments that outlived the second adapter.** The registry
   export had zero callers anywhere in the tree — it was the swap-out half of a multi-provider
