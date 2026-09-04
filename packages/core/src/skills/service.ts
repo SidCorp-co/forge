@@ -413,10 +413,8 @@ export async function resolveOrAdoptProjectSkill(
 }
 
 /**
- * Resolve the device-bound runners for a project to a distinct set of device
- * ids, optionally narrowed to one device. Remote (host='remote') runners have
- * no device and are excluded — skills sync to a filesystem, which only a
- * device-bound runner (desktop or CLI) has.
+ * Resolve a project's runners to a distinct set of device ids, optionally
+ * narrowed to one device.
  */
 export async function listProjectSyncDeviceIds(
   projectId: string,

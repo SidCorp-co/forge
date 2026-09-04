@@ -53,7 +53,7 @@ export const REGISTRY_JOB_TYPES = [
 	"drive",
 ] as const;
 
-export const REGISTRY_RUNNER_TYPES = ["claude-code", "antigravity"] as const;
+export const REGISTRY_RUNNER_TYPES = ["claude-code"] as const;
 
 // cm:edge contract -> packages/core/src/db/schema.ts#issuePriorities — client-facing mirror of the
 //   issue/run enums, so web-v2/dev derive their unions from here instead of hand-copying the DB enum

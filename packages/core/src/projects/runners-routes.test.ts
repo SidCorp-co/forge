@@ -158,7 +158,6 @@ describe('POST /api/projects/:id/runners (ISS-172)', () => {
         projectId: PID,
         deviceId: DID,
         type: 'claude-code',
-        host: 'device',
         status: 'online',
       }),
     );

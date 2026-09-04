@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  createTestDevice,
   createTestProject,
   createTestProjectMember,
   createTestUser,
@@ -80,10 +81,15 @@ describe('GET /api/runners/active', () => {
   }
 
   async function insertRunner(projectId: string, name: string): Promise<string> {
+    // cm:guard `runners.device_id` is NOT NULL since 2026-09-04 — seed a real device instead of the `host='remote'`/NULL shape this fixture used, which now fails the insert rather than producing a row.
+    const ownerRows = (await harness.db.execute(
+      sql`SELECT created_by AS id FROM projects WHERE id = ${projectId}`,
+    )) as unknown as Array<{ id: string }>;
+    const device = await createTestDevice(harness.db, ownerRows[0]?.id as string);
     const id = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
-      VALUES (${id}, ${projectId}, 'claude-code', 'remote', NULL, ${name}, '{}'::jsonb, 'online', now())
+      INSERT INTO runners (id, project_id, type, device_id, name, capabilities, status, last_seen_at)
+      VALUES (${id}, ${projectId}, 'claude-code', ${device.id}, ${name}, '{}'::jsonb, 'online', now())
     `);
     return id;
   }

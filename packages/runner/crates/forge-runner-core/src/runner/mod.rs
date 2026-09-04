@@ -1,5 +1,5 @@
 //! The runner abstraction — the seam that lets one device drive multiple CLI
-//! backends (Claude Code today; codex / antigravity later). Core already tags
+//! backends (Claude Code today; codex later). Core already tags
 //! every `job.assigned` with `runnerType`, so a new kind = new `RunnerKind`
 //! variant + a `Runner` impl + a stream parser.
 

@@ -125,29 +125,6 @@ describe('POST /api/schedules', () => {
     expect(body.message).toMatch(/1 hour/);
   });
 
-  it('400 runner:antigravity rejected (ISS-244 — desktop-only on interactive path)', async () => {
-    authVerified();
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'admin',
-      orgRole: 'owner',
-    });
-    const res = await buildApp().request('/api/schedules', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({
-        projectId: PROJECT_ID,
-        name: 'daily',
-        cron: '0 9 * * *',
-        prompt: 'p',
-        runner: 'antigravity',
-      }),
-    });
-    expect(res.status).toBe(400);
-    expect(insertReturning).not.toHaveBeenCalled();
-  });
-
   it('403 non-owner', async () => {
     authVerified();
     projectAccess.mockResolvedValueOnce({
@@ -209,7 +186,6 @@ describe('POST /api/schedules', () => {
       runner?: string;
     };
     expect(insertCall?.nextRunAt).toBeInstanceOf(Date);
-    expect(insertCall?.runner).toBe('desktop');
   });
 
   // ISS-618 — kind='script' schedules.
@@ -330,26 +306,6 @@ describe('POST /api/schedules', () => {
 });
 
 describe('PUT /api/schedules/:id', () => {
-  it('400 runner:antigravity rejected on update (ISS-244)', async () => {
-    authVerified();
-    selectLimit.mockResolvedValueOnce([
-      { id: SCHEDULE_ID, projectId: PROJECT_ID, cron: '0 9 * * *', enabled: true },
-    ]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'admin',
-      orgRole: 'owner',
-    });
-    const res = await buildApp().request(`/api/schedules/${SCHEDULE_ID}`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
-      body: JSON.stringify({ runner: 'antigravity' }),
-    });
-    expect(res.status).toBe(400);
-    expect(updateReturning).not.toHaveBeenCalled();
-  });
-
   // ISS-618 — the route-level superRefine only catches an in-patch conflict
   // (kind + the opposing field both present); full consistency against the
   // persisted row is service.ts's job (see service.test.ts-equivalent below).

@@ -115,7 +115,6 @@ export async function listSchedulesForMcp(projectId: string, enabled?: boolean) 
       projectId: schedules.projectId,
       name: schedules.name,
       cron: schedules.cron,
-      runner: schedules.runner,
       enabled: schedules.enabled,
       targetProjectSlug: schedules.targetProjectSlug,
       lastRunAt: schedules.lastRunAt,
@@ -310,7 +309,6 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
       prompt: kind === 'script' ? null : (input.prompt ?? null),
       kind,
       script: kind === 'script' ? (input.script ?? null) : null,
-      runner: input.runner ?? 'desktop',
       enabled,
       targetProjectSlug: input.targetProjectSlug ?? null,
       metadata: (input.metadata as never) ?? null,
@@ -377,7 +375,6 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
   if (patch.prompt !== undefined) updates.prompt = patch.prompt;
   if (patch.kind !== undefined) updates.kind = patch.kind;
   if (patch.script !== undefined) updates.script = patch.script;
-  if (patch.runner !== undefined) updates.runner = patch.runner;
   if (patch.targetProjectSlug !== undefined) updates.targetProjectSlug = patch.targetProjectSlug;
   if (patch.metadata !== undefined) updates.metadata = patch.metadata;
   if (patch.templateKey !== undefined) updates.templateKey = patch.templateKey;
@@ -448,7 +445,6 @@ export async function runScheduleNow(
         name: schedule.name,
         projectId: schedule.projectId,
         prompt: schedule.prompt,
-        runner: schedule.runner,
         targetProjectSlug: schedule.targetProjectSlug ?? null,
         templateKey: schedule.templateKey ?? null,
         params: (schedule.params as Record<string, unknown> | null) ?? null,

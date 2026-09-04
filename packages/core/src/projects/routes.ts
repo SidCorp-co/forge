@@ -327,9 +327,7 @@ projectRoutes.get(
       })
       .from(runners)
       .innerJoin(devices, eq(devices.id, runners.deviceId))
-      .where(
-        and(eq(runners.projectId, id), eq(runners.type, 'claude-code'), eq(runners.host, 'device')),
-      );
+      .where(and(eq(runners.projectId, id), eq(runners.type, 'claude-code')));
 
     // apiKey is returned for member+ (ADR 0013); the viewer tier is read-only
     // and the key is execution-grade (MCP pairing / widget), so it's withheld.

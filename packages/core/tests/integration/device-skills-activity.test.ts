@@ -77,8 +77,8 @@ describe('device skills report -> activity log (ISS-798 fix)', () => {
       .returning();
     if (!skill) throw new Error('insert into skills returned no row');
     await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, type, host, device_id, name, status)
-      VALUES (${randomUUID()}, ${project.id}, 'claude-code', 'device', ${device.id}, 'e2e-runner', 'online')
+      INSERT INTO runners (id, project_id, type, device_id, name, status)
+      VALUES (${randomUUID()}, ${project.id}, 'claude-code', ${device.id}, 'e2e-runner', 'online')
     `);
     return { project, device, skill, deviceToken };
   }

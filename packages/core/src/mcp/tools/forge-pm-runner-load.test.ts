@@ -83,14 +83,12 @@ describe('forge_pm.runner_load', () => {
         {
           id: 'r1',
           type: 'claude-code',
-          host: 'device',
           status: 'online',
           lastSeenAt: new Date('2026-05-01T00:00:00Z'),
         },
         {
           id: 'r2',
-          type: 'antigravity',
-          host: 'remote',
+          type: 'claude-code',
           status: 'offline',
           lastSeenAt: null,
         },

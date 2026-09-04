@@ -10,7 +10,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { createTestUser, type TestDatabase } from './index.js';
+import { createTestDevice, createTestUser, type TestDatabase } from './index.js';
 
 export interface AlertFixtures {
   insertRun(projectId: string, status: string): Promise<string>;
@@ -111,10 +111,15 @@ export function alertFixtures(harness: TestDatabase): AlertFixtures {
     // cm:why lastSeenAt defaults to a fresh heartbeat, like a real 'online' runner; the four nullable overrides exist so a spec can drive one A3 contributor at a time (stale, rate-limited, auth-dead, unprovisioned)
     async insertRunner(args) {
       const id = randomUUID();
+      // cm:guard a runner needs a REAL device row since `runners.device_id` went NOT NULL (2026-09-04). This fixture used to insert a `host='remote'` runner carrying no device at all; that shape now fails the insert outright instead of producing the row these A3 alert specs read back.
+      const ownerRows = (await db.execute(
+        sql`SELECT created_by AS id FROM projects WHERE id = ${args.projectId}`,
+      )) as unknown as Array<{ id: string }>;
+      const device = await createTestDevice(db, ownerRows[0]?.id as string);
       await db.execute(sql`
-        INSERT INTO runners (id, project_id, type, host, name, status, capabilities, quarantined_until, last_seen_at, rate_limited_until, limit_reason, provision_status)
+        INSERT INTO runners (id, project_id, type, device_id, name, status, capabilities, quarantined_until, last_seen_at, rate_limited_until, limit_reason, provision_status)
         VALUES (
-          ${id}, ${args.projectId}, 'claude-code', 'remote', 'test-runner', ${args.status},
+          ${id}, ${args.projectId}, 'claude-code', ${device.id}, 'test-runner', ${args.status},
           ${JSON.stringify(args.capabilities ?? {})}::jsonb, ${args.quarantinedUntil ?? null},
           ${args.lastSeenAt === undefined ? new Date().toISOString() : args.lastSeenAt},
           ${args.rateLimitedUntil ?? null}, ${args.limitReason ?? null}, ${args.provisionStatus ?? null}

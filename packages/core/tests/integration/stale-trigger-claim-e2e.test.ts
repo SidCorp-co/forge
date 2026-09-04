@@ -42,8 +42,8 @@ describe('stale-trigger claim E2E', () => {
 
     await harness.db.execute(sql`UPDATE devices SET last_seen_at = now() WHERE id = ${device.id}`);
     await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
-      VALUES (${runnerId}, ${project.id}, 'claude-code', 'device', ${device.id}, 'runner', '{}'::jsonb, 'online', now())
+      INSERT INTO runners (id, project_id, type, device_id, name, capabilities, status, last_seen_at)
+      VALUES (${runnerId}, ${project.id}, 'claude-code', ${device.id}, 'runner', '{}'::jsonb, 'online', now())
     `);
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)

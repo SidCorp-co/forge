@@ -19,7 +19,6 @@ export interface ScheduleRow {
   prompt: string | null;
   kind: ScheduleKind;
   script: string | null;
-  runner: string | null;
   enabled: boolean;
   targetProjectSlug: string | null;
   lastRunAt: string | null;

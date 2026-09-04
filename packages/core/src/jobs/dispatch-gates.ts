@@ -117,12 +117,10 @@ export async function resolveGateSettings(projectId: string): Promise<{ cap: num
 }
 
 /**
- * ISS-232 Phase 2 — runner cap is unified to 1 across every runner type.
- * The per-runner `capabilities.maxConcurrent` override is dropped (it was
- * unused outside synthetic tests and the antigravity-as-load-balancer
- * path the v2 spec replaces). Keeping the constant exported so telemetry
- * + tests stay decoupled from the in-CTE literal.
+ * One job per runner, exported so telemetry and tests stay decoupled from the
+ * CTE literal that has to match it.
  */
+// cm:guard raising this above 1 is NOT a one-line change. Two jobs on one box share the repo ROOT: `packages/runner/.../workspace/refresh.rs` runs `fetch` + `checkout --` + `merge --ff-only` there on EVERY job, worktree lane included, and the daemon has no lock for pipeline jobs (the only `Semaphore` is chat's). This cap is the sole thing serialising those writes today, so a per-device cap has to land together with that lock, never before it.
 export const RUNNER_CAP_PER_RUNNER = 1;
 
 /**
@@ -377,22 +375,8 @@ export function buildBarrierFragments(args: {
 }): BarrierFragments {
   const { projectIdRef, livenessSeconds } = args;
 
-  // ISS-232 Phase 2 — `running_ids` is sourced exclusively from `jobs`
-  // (queued | dispatched | running). The previous UNION with
-  // `agent_sessions` mixed concerns: agent_session rows lag the job
-  // lifecycle, so an in-flight job whose session row hadn't landed yet
-  // (or whose session had failed-and-rebooted) was double-counted in
-  // one direction, under-counted in the other. The jobs table is the
-  // authoritative ledger — every dispatched job has a row, every retry
-  // burst is captured by `status='queued' AND retry_after_at > now()`.
-  // Issues with a queued retry-cooldown job still hold their slot so a
-  // worker-wide rate-limit can't release it to an unrelated issue.
-  //
-  // `fresh_capable_runners` lost the per-runner `maxConcurrent` override
-  // and the antigravity 5-slot case branch — cap is hardcoded to 1 for
-  // every runner type (claude-code processes Claude CLI serially; the
-  // antigravity exception was load-balance-by-capacity, which the v2
-  // spec replaces with primary-pinned selection).
+  // cm:guard `running_ids` reads ONLY `jobs`, never a UNION with `agent_sessions` — session rows lag the job lifecycle, so a job whose session row had not landed (or had failed and rebooted) was double-counted one way and under-counted the other. `jobs` is the authoritative ledger: every dispatched job has a row, and a retry burst is `status='queued' AND retry_after_at > now()`, which is what keeps a cooling issue holding its own slot instead of yielding it to an unrelated one under a worker-wide rate limit.
+  // cm:guard the `1 AS cap` literal below is RUNNER_CAP_PER_RUNNER inlined — Drizzle cannot interpolate a constant into this raw CTE without qualifying the identifier, so the two are kept in sync by hand. Change one without the other and the picker offers a slot the locked claim then refuses, which surfaces as a job sitting `queued` with no gate reason.
   const ctes = sql`running_ids AS (
       SELECT DISTINCT issue_id::text AS issue_id
       FROM jobs

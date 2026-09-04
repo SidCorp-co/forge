@@ -2,7 +2,7 @@
 
 Lightweight pure-Rust CLI daemon that brokers between Forge **core** and the local
 machine: pairs as a device, receives jobs over WebSocket, runs them with the Claude
-Code CLI (future: codex / antigravity), and streams events back.
+Code CLI (future: codex), and streams events back.
 
 Replaces the Tauri desktop app.
 

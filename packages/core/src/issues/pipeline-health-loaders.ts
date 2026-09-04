@@ -66,7 +66,7 @@ export async function loadActiveJobsByIssue(
   return byIssue;
 }
 
-// cm:why unified to 1 for every runner type since ISS-232 Phase 2 — the antigravity 5-slot branch is gone, and antigravity-as-load-balancer was replaced by the primary-pinned selection in runners/select.ts
+// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts#RUNNER_CAP_PER_RUNNER — the health view's idea of a runner's capacity has to be the dispatcher's, or the UI reports headroom the gate will not grant
 function runnerDefaultConcurrency(_runnerType: string): number {
   return 1;
 }

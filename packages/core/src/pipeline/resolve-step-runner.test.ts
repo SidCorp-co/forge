@@ -14,7 +14,7 @@ describe('resolveRunnerChainForJob', () => {
   });
 
   it('ignores legacy `runnerFallback` jsonb field (v2 dropped the chain)', () => {
-    const cfg = { runnerFallback: ['antigravity', 'claude-code'] };
+    const cfg = { runnerFallback: ['forge-cloud', 'claude-code'] };
     expect(resolveRunnerChainForJob('code', cfg)).toEqual(['claude-code']);
   });
 
@@ -28,13 +28,6 @@ describe('resolveRunnerChainForJob', () => {
     expect(resolveRunnerChainForJob('code', cfg)).toEqual(['claude-code']);
   });
 
-  it('returns single-element chain from per-step runner override', () => {
-    const cfg = {
-      pipelineConfig: { autoCode: { enabled: true, runner: 'antigravity' } },
-    };
-    expect(resolveRunnerChainForJob('code', cfg)).toEqual(['antigravity']);
-  });
-
   it('ignores per-step runner when not a registered type', () => {
     const cfg = {
       pipelineConfig: { autoCode: { enabled: true, runner: 'forge-cloud' } },
@@ -44,7 +37,7 @@ describe('resolveRunnerChainForJob', () => {
 
   it('returns default for unknown jobType', () => {
     const cfg = {
-      pipelineConfig: { autoCode: { enabled: true, runner: 'antigravity' } },
+      pipelineConfig: { autoCode: { enabled: true, runner: 'claude-code' } },
     };
     // biome-ignore lint/suspicious/noExplicitAny: testing unknown type input
     expect(resolveRunnerChainForJob('mystery' as any, cfg)).toEqual(['claude-code']);
@@ -53,16 +46,5 @@ describe('resolveRunnerChainForJob', () => {
   it('handles malformed pipelineConfig gracefully', () => {
     const cfg = { pipelineConfig: { autoCode: 'not-an-object' } };
     expect(resolveRunnerChainForJob('code', cfg)).toEqual(['claude-code']);
-  });
-
-  it('respects per-step runner per job type independently', () => {
-    const cfg = {
-      pipelineConfig: {
-        autoCode: { enabled: true, runner: 'antigravity' },
-        autoTriage: true,
-      },
-    };
-    expect(resolveRunnerChainForJob('code', cfg)).toEqual(['antigravity']);
-    expect(resolveRunnerChainForJob('triage', cfg)).toEqual(['claude-code']);
   });
 });

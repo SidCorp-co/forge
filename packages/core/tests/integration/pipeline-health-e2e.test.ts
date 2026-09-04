@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  createTestDevice,
   createTestProject,
   createTestUser,
   setupTestDatabase,
@@ -80,9 +81,14 @@ describe('ISS-164 pipelineHealth E2E', () => {
   // cm:guard every fixture project needs one fresh runner or the classifier answers `runner_stale` for all of them — the gate is right to say so (an empty pool dispatches nothing), which is exactly why the default fixture must model a WORKING project and the empty pool gets its own test
   async function insertFreshRunner(projectId: string): Promise<string> {
     const id = randomUUID();
+    // cm:guard `runners.device_id` is NOT NULL since 2026-09-04 — seed a real device instead of the `host='remote'`/no-device shape this fixture used, which now fails the insert rather than producing a row.
+    const ownerRows = (await harness.db.execute(
+      sql`SELECT created_by AS id FROM projects WHERE id = ${projectId}`,
+    )) as unknown as Array<{ id: string }>;
+    const device = await createTestDevice(harness.db, ownerRows[0]?.id as string);
     await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, type, host, name, status, last_seen_at)
-      VALUES (${id}, ${projectId}, 'claude-code', 'remote', 'fixture-runner', 'online', now())
+      INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at)
+      VALUES (${id}, ${projectId}, 'claude-code', ${device.id}, 'fixture-runner', 'online', now())
     `);
     return id;
   }

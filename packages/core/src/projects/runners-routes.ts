@@ -134,7 +134,6 @@ projectRunnerRoutes.post(
       .values({
         projectId: id,
         type: 'claude-code',
-        host: 'device',
         deviceId,
         name: device.name,
         capabilities: defaultRunnerCapabilities('claude-code', capabilities),

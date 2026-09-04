@@ -126,10 +126,8 @@ describe('checkLayer4RunnerFull', () => {
     expect(r).toMatchObject({ pass: false, reason: 'runner_full' });
   });
 
-  // ISS-232 Phase 2 — antigravity cap collapsed to 1 (was 5). The
-  // capabilities.maxConcurrent override was also removed; cap is hardcoded.
-  it('uses cap=1 for antigravity (no longer 5)', async () => {
-    runnerCapsOnce({ type: 'antigravity', capabilities: { maxConcurrent: 9 } });
+  it('ignores a per-runner capabilities.maxConcurrent override', async () => {
+    runnerCapsOnce({ type: 'claude-code', capabilities: { maxConcurrent: 9 } });
     dbExecute.mockResolvedValueOnce([{ count: '1' }]);
     const r = await checkLayer4RunnerFull('r1');
     expect(r).toMatchObject({ pass: false, reason: 'runner_full' });
@@ -390,9 +388,7 @@ describe('pickNextDispatchableJobForProject', () => {
     expect(cteMatch?.[1] ?? '').not.toMatch(/agent_sessions/);
   });
 
-  // ISS-232 Phase 2 — runner cap unified to 1; `capabilities.maxConcurrent`
-  // override + antigravity 5-slot CASE removed.
-  it('fresh_capable_runners CTE uses cap=1 (no maxConcurrent override, no antigravity CASE)', async () => {
+  it('fresh_capable_runners CTE uses cap=1, with no per-runner override', async () => {
     mockProjectAgentConfigOnce(null);
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');

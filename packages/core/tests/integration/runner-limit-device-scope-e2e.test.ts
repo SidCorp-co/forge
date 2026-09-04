@@ -82,8 +82,8 @@ describe('a runner limit reaches every binding of its device', () => {
       [ids.stranger, projectC.id, other.id],
     ] as const) {
       await harness.db.execute(sql`
-        INSERT INTO runners (id, project_id, device_id, name, type, host, status, last_seen_at)
-        VALUES (${id}, ${projectId}, ${deviceId}, 'box', 'claude-code', 'device', 'online', now())
+        INSERT INTO runners (id, project_id, device_id, name, type, status, last_seen_at)
+        VALUES (${id}, ${projectId}, ${deviceId}, 'box', 'claude-code', 'online', now())
       `);
     }
     return { ...ids, projectA: projectA.id };

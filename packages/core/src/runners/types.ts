@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { RunnerHost, RunnerLimitReason, RunnerStatus, RunnerType } from '../db/schema.js';
+import type { RunnerLimitReason, RunnerStatus, RunnerType } from '../db/schema.js';
 
 export const runnerCapabilitiesSchema = z
   .object({
@@ -27,7 +27,6 @@ export interface Runner {
   id: string;
   projectId: string;
   type: RunnerType;
-  host: RunnerHost;
   deviceId: string | null;
   name: string;
   labels: string[];

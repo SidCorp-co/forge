@@ -84,8 +84,8 @@ describe('capacity deferral E2E', () => {
     deviceId = device.id;
     runnerId = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
-      VALUES (${runnerId}, ${projectId}, 'claude-code', 'device', ${deviceId},
+      INSERT INTO runners (id, project_id, type, device_id, name, capabilities, status, last_seen_at)
+      VALUES (${runnerId}, ${projectId}, 'claude-code', ${deviceId},
               ${`runner-${runnerId.slice(0, 8)}`}, '{}'::jsonb, 'online', now())
     `);
   });

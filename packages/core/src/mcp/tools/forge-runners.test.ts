@@ -91,7 +91,6 @@ const runnerRow = {
   id: RUNNER_ID,
   projectId: PROJECT_ID,
   type: 'claude-code',
-  host: 'device',
   deviceId: DEVICE_ID,
   name: 'r1',
   labels: [],
@@ -123,7 +122,6 @@ describe('forge_runners', () => {
               id: RUNNER_ID,
               projectId: PROJECT_ID,
               type: 'claude-code',
-              host: 'device',
               deviceId: DEVICE_ID,
               name: 'r1',
               labels: [],
@@ -162,7 +160,6 @@ describe('forge_runners', () => {
               id: RUNNER_ID,
               projectId: PROJECT_ID,
               type: 'claude-code',
-              host: 'device',
               deviceId: DEVICE_ID,
               name: 'r1',
               labels: [],
@@ -181,7 +178,6 @@ describe('forge_runners', () => {
       data: {
         projectId: PROJECT_ID,
         type: 'claude-code',
-        host: 'device',
         deviceId: DEVICE_ID,
         name: 'r1',
         capabilities: { skills: ['triage'] },
@@ -196,7 +192,7 @@ describe('forge_runners', () => {
     await expect(
       tool.handler({
         action: 'register',
-        data: { projectId: PROJECT_ID, type: 'claude-code', host: 'device', name: 'r1' },
+        data: { projectId: PROJECT_ID, type: 'claude-code', deviceId: DEVICE_ID, name: 'r1' },
       }),
     ).rejects.toThrow(/FORBIDDEN/);
   });
@@ -210,7 +206,7 @@ describe('forge_runners', () => {
         data: {
           projectId: PROJECT_ID,
           type: 'claude-code',
-          host: 'device',
+          deviceId: DEVICE_ID,
           name: 'r1',
           capabilities: { maxConcurrent: -3 },
         },

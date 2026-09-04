@@ -95,7 +95,6 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
         .values({
           projectId: input.projectId,
           type: input.type,
-          host: 'device',
           deviceId: principal.deviceId,
           name: input.name,
           labels: input.labels ?? [],

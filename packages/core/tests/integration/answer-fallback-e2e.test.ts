@@ -220,8 +220,8 @@ describe('the answer whose session turned out to be gone', () => {
     await ageEpisode();
     // cm:guard the runner row is what makes this case `unknown` rather than `gone`. `resolveSessionSend` reads `runners.lastSeenAt` for the session's device, and a MISSING row is a fact about the box too — no runner, no liveness, `gone`. Seeding it is the only way to reach the branch this test owns.
     await harness.db.execute(sql`
-      INSERT INTO runners (project_id, type, host, device_id, name, status, last_seen_at)
-      VALUES (${projectId}, 'claude-code', 'device', ${deviceId}, 'r1', 'online', now())
+      INSERT INTO runners (project_id, type, device_id, name, status, last_seen_at)
+      VALUES (${projectId}, 'claude-code', ${deviceId}, 'r1', 'online', now())
     `);
     expect(await resumeLapsedAnswers(new Date(), { projectId })).toBe(0);
     expect(await issueStatus()).toBe('needs_info');

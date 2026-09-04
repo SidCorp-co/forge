@@ -2,7 +2,6 @@ import { z } from 'zod';
 import {
   type RunnerStatus,
   type RunnerType,
-  runnerHosts,
   runnerStatuses,
   type runners,
   runnerTypes,
@@ -27,8 +26,7 @@ const registerDataSchema = z
   .object({
     projectId: z.uuid(),
     type: z.enum(runnerTypes),
-    host: z.enum(runnerHosts),
-    deviceId: z.uuid().optional(),
+    deviceId: z.uuid(),
     name: z.string().trim().min(1).max(120),
     labels: z.array(z.string()).optional(),
     capabilities: z.record(z.string(), z.unknown()).optional(),
@@ -60,7 +58,6 @@ function publicRunnerRow(r: typeof runners.$inferSelect) {
     id: r.id,
     projectId: r.projectId,
     type: r.type,
-    host: r.host,
     deviceId: r.deviceId,
     name: r.name,
     labels: Array.isArray(r.labels) ? (r.labels as string[]) : [],
@@ -124,8 +121,7 @@ export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
       const row = await insertRunner({
         projectId: input.data.projectId,
         type: input.data.type,
-        host: input.data.host,
-        deviceId: input.data.deviceId ?? null,
+        deviceId: input.data.deviceId,
         name: input.data.name,
         labels: input.data.labels ?? [],
         capabilities: caps,

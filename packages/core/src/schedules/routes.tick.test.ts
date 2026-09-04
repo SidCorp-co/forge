@@ -62,7 +62,6 @@ const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 
 function dueScheduleRow(
   overrides: Partial<{
-    runner: 'desktop' | 'antigravity';
     targetProjectSlug: string | null;
   }> = {},
 ) {
@@ -74,7 +73,6 @@ function dueScheduleRow(
     // ISS-244 — desktop is the only runner supported on the interactive
     // dispatch path; tick tests default to it so happy paths exercise the
     // real flow.
-    runner: overrides.runner ?? 'desktop',
     targetProjectSlug: overrides.targetProjectSlug ?? null,
     cron: '0 9 * * *',
     nextRunAt: new Date('2026-04-25T09:00:00Z'),
@@ -119,7 +117,7 @@ describe('runScheduleTickOnce', () => {
   });
 
   it("desktop schedule with no online device → lastStatus='skipped' (no dispatched id)", async () => {
-    selectFromMock.mockResolvedValueOnce([dueScheduleRow({ runner: 'desktop' })]);
+    selectFromMock.mockResolvedValueOnce([dueScheduleRow()]);
     updateReturningMock.mockResolvedValueOnce([{ id: SCHEDULE_ID }]);
     dispatchMock.mockResolvedValueOnce({
       ok: false,

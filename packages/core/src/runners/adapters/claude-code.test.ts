@@ -32,7 +32,6 @@ function runner(over: Partial<Runner> = {}): Runner {
     id: 'r-1',
     projectId: 'p-1',
     type: 'claude-code',
-    host: 'device',
     deviceId: 'd-1',
     name: 'desk',
     labels: [],

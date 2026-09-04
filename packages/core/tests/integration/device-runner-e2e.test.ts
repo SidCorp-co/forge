@@ -88,9 +88,9 @@ describe('F2 device-runner E2E', () => {
     //    legacy activeDeviceId device-routing path).
     await harness.db.execute(sql`UPDATE devices SET status = 'online' WHERE id = ${device.id}`);
     await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
+      INSERT INTO runners (id, project_id, type, device_id, name, capabilities, status, last_seen_at)
       VALUES (
-        ${randomUUID()}, ${project.id}, 'claude-code', 'device', ${device.id},
+        ${randomUUID()}, ${project.id}, 'claude-code', ${device.id},
         'e2e-runner', '{"pm": true}'::jsonb, 'online', now()
       )
     `);

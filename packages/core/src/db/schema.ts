@@ -876,11 +876,8 @@ export const jobEventsRelations = relations(jobEvents, ({ one }) => ({
 // lives in a `RunnerAdapter` registered by `bootstrapRunnerAdapters()`.
 // EPIC 2 owns the schema. EPIC 3 Phase B (ISS-272 follow-up) layers admin
 // dashboard reads on top — do not redesign these columns there.
-export const runnerTypes = ['claude-code', 'antigravity'] as const;
+export const runnerTypes = ['claude-code'] as const;
 export type RunnerType = (typeof runnerTypes)[number];
-
-export const runnerHosts = ['device', 'remote'] as const;
-export type RunnerHost = (typeof runnerHosts)[number];
 
 export const runnerStatuses = ['online', 'offline', 'draining', 'disabled'] as const;
 
@@ -916,8 +913,10 @@ export const runners = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     type: text('type', { enum: runnerTypes }).notNull(),
-    host: text('host', { enum: runnerHosts }).notNull(),
-    deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'set null' }),
+    // cm:guard every runner is a binding of a REAL paired device: the `host='remote'` lane and its `device_id IS NULL` rows were deleted 2026-09-04, so a null device is not a second shape to handle, it is corruption. Selection, dispatch and the limit scope all join through this column; leaving it nullable is what let those joins silently drop rows instead of failing.
+    deviceId: uuid('device_id')
+      .notNull()
+      .references(() => devices.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     labels: jsonb('labels').notNull().default([]),
     capabilities: jsonb('capabilities').notNull().default({}),
@@ -959,15 +958,11 @@ export const runners = pgTable(
       t.type,
       t.status,
     ),
-    projectDeviceTypeUq: uniqueIndex('runners_project_device_type_uq')
-      .on(t.projectId, t.deviceId, t.type)
-      .where(sql`device_id IS NOT NULL`),
-    // Remote runners (host='remote', deviceId IS NULL) must be uniquely
-    // named per project + type so an operator can't accidentally create
-    // duplicate antigravity backends with separate callback secrets.
-    remoteNameUq: uniqueIndex('runners_remote_name_uq')
-      .on(t.projectId, t.type, t.name)
-      .where(sql`host = 'remote'`),
+    projectDeviceTypeUq: uniqueIndex('runners_project_device_type_uq').on(
+      t.projectId,
+      t.deviceId,
+      t.type,
+    ),
   }),
 );
 
@@ -1775,9 +1770,6 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
   assignee: one(users, { fields: [tasks.assigneeId], references: [users.id] }),
 }));
 
-export const scheduleRunners = ['desktop', 'antigravity'] as const;
-export type ScheduleRunner = (typeof scheduleRunners)[number];
-
 export const scheduleStatuses = ['success', 'failed', 'running', 'skipped'] as const;
 export type ScheduleStatus = (typeof scheduleStatuses)[number];
 
@@ -1800,7 +1792,6 @@ export const schedules = pgTable(
     // ISS-618 — nullable: a script-kind schedule has no prompt at all.
     // App-layer validation enforces prompt-required for kind='prompt'.
     prompt: text('prompt'),
-    runner: text('runner', { enum: scheduleRunners }).notNull().default('antigravity'),
     enabled: boolean('enabled').notNull().default(true),
     targetProjectSlug: text('target_project_slug'),
     lastRunAt: timestamp('last_run_at', { withTimezone: true }),

@@ -63,8 +63,8 @@ describe('runner failure attribution E2E (ISS-806)', () => {
     const device = await createTestDevice(harness.db, owner.id);
     const runnerId = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, device_id, name, type, host, status, last_seen_at)
-      VALUES (${runnerId}, ${project.id}, ${device.id}, 'box', 'claude-code', 'device', 'online', now())
+      INSERT INTO runners (id, project_id, device_id, name, type, status, last_seen_at)
+      VALUES (${runnerId}, ${project.id}, ${device.id}, 'box', 'claude-code', 'online', now())
     `);
     return { runnerId, projectId: project.id };
   }

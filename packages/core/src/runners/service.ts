@@ -41,8 +41,7 @@ export async function findRunnerProjectId(runnerId: string): Promise<string | nu
 export type NewRunner = {
   projectId: string;
   type: RunnerType;
-  host: (typeof runners.$inferInsert)['host'];
-  deviceId: string | null;
+  deviceId: string;
   name: string;
   labels: string[];
   capabilities: Record<string, unknown>;

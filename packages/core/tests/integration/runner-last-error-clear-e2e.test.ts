@@ -101,9 +101,9 @@ describe('runner fault flags clear when the fault is over', () => {
     const device = await createTestDevice(harness.db, owner.id);
     const runnerId = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, device_id, name, type, host, status, last_seen_at,
+      INSERT INTO runners (id, project_id, device_id, name, type, status, last_seen_at,
                            last_error, limit_reason, limit_detail, rate_limited_until)
-      VALUES (${runnerId}, ${project.id}, ${device.id}, 'box', 'claude-code', 'device', 'online', now(),
+      VALUES (${runnerId}, ${project.id}, ${device.id}, 'box', 'claude-code', 'online', now(),
               ${health.lastError ?? null}, ${health.limitReason ?? null},
               ${health.limitDetail ?? null}, ${health.rateLimitedUntil?.toISOString() ?? null})
     `);
@@ -265,10 +265,10 @@ describe('runner fault flags clear when the fault is over', () => {
       const device = await createTestDevice(harness.db, owner.id);
       const runnerId = randomUUID();
       await harness.db.execute(sql`
-        INSERT INTO runners (id, project_id, device_id, name, type, host, status, last_seen_at,
+        INSERT INTO runners (id, project_id, device_id, name, type, status, last_seen_at,
                              last_error, limit_reason, limit_detail, rate_limited_until,
                              quarantined_until, quarantine_reason)
-        VALUES (${runnerId}, ${project.id}, ${device.id}, 'box', 'claude-code', 'device', 'online', now(),
+        VALUES (${runnerId}, ${project.id}, ${device.id}, 'box', 'claude-code', 'online', now(),
                 ${SPEND_CAP}, 'usage_limit', ${SPEND_CAP},
                 ${new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()},
                 ${new Date(Date.now() + 60 * 60 * 1000).toISOString()},
@@ -321,8 +321,8 @@ describe('runner fault flags clear when the fault is over', () => {
       const device = await createTestDevice(harness.db, user.id);
       const runnerId = randomUUID();
       await harness.db.execute(sql`
-        INSERT INTO runners (id, project_id, device_id, name, type, host, status, last_seen_at)
-        VALUES (${runnerId}, ${project.id}, ${device.id}, 'box', 'claude-code', 'device', 'online', now())
+        INSERT INTO runners (id, project_id, device_id, name, type, status, last_seen_at)
+        VALUES (${runnerId}, ${project.id}, ${device.id}, 'box', 'claude-code', 'online', now())
       `);
       const res = await post(
         `/api/projects/${project.id}/runners/${runnerId}/clear-error`,

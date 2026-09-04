@@ -110,8 +110,8 @@ describe('ISS-492 — cross-tenant IDOR isolation', () => {
   /** A runner row binding a device to a project (device-pool source of truth). */
   async function seedRunner(projectId: string, deviceId: string): Promise<void> {
     await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, type, host, device_id, name, status)
-      VALUES (${randomUUID()}, ${projectId}, 'claude-code', 'device', ${deviceId},
+      INSERT INTO runners (id, project_id, type, device_id, name, status)
+      VALUES (${randomUUID()}, ${projectId}, 'claude-code', ${deviceId},
               ${`runner-${deviceId.slice(0, 8)}`}, 'online')
     `);
   }

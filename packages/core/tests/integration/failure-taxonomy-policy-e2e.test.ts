@@ -142,11 +142,11 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     const runnerId = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO runners (
-        id, project_id, type, host, device_id, name, capabilities, status,
+        id, project_id, type, device_id, name, capabilities, status,
         last_seen_at, rate_limited_until
       )
       VALUES (
-        ${runnerId}, ${projectId}, 'claude-code', 'device', ${device.id},
+        ${runnerId}, ${projectId}, 'claude-code', ${device.id},
         ${`runner-${runnerId.slice(0, 8)}`}, '{}'::jsonb,
         ${opts.status === 'offline' ? 'offline' : 'online'}, now(),
         ${opts.rateLimitedUntil ? opts.rateLimitedUntil.toISOString() : null}

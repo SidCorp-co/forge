@@ -206,7 +206,6 @@ type RunnerRow = {
   id: string;
   project_id: string;
   type: RunnerType;
-  host: 'device' | 'remote';
   device_id: string | null;
   name: string;
   labels: unknown;
@@ -227,7 +226,6 @@ function rowToRunner(r: RunnerRow): Runner {
     id: r.id,
     projectId: r.project_id,
     type: r.type,
-    host: r.host,
     deviceId: r.device_id,
     name: r.name,
     labels: Array.isArray(r.labels) ? (r.labels as string[]) : [],
@@ -266,8 +264,7 @@ function rowToRunner(r: RunnerRow): Runner {
  * Phase 2 (ISS-232) dropped the `fallbackChain` parameter and the
  * `capabilities.maxConcurrent` per-runner override; the runner/job-type
  * capability gate is enforced post-select via `runnerSupportsJobType`,
- * and runner cap is hardcoded to 1 across the codebase (claude-code +
- * antigravity were already 1, then 5; both collapse to 1 here).
+ * and runner cap is hardcoded to 1 across the codebase.
  */
 export async function selectRunnerForJob(input: SelectInput): Promise<Runner | null> {
   const { projectId, requiredCapabilities, pinDeviceId } = input;
@@ -412,7 +409,7 @@ async function findHealthyByDevice(
 ): Promise<Runner | null> {
   const rows = await db.execute<RunnerRow>(
     sql`
-      SELECT id, project_id, type, host, device_id, name, labels,
+      SELECT id, project_id, type, device_id, name, labels,
              capabilities, config, status, last_seen_at, last_error,
              limit_reason, rate_limited_until, limit_detail,
              quarantined_until, quarantine_reason
@@ -477,7 +474,7 @@ async function findStandby(
       : sql``;
   const rows = await db.execute<RunnerRow>(
     sql`
-      SELECT id, project_id, type, host, device_id, name, labels,
+      SELECT id, project_id, type, device_id, name, labels,
              capabilities, config, status, last_seen_at, last_error,
              limit_reason, rate_limited_until, limit_detail,
              quarantined_until, quarantine_reason
@@ -533,7 +530,7 @@ async function pickLeastLoadedFreeRunner(
       : sql``;
   const rows = await db.execute<RunnerRow>(
     sql`
-      SELECT r.id, r.project_id, r.type, r.host, r.device_id, r.name, r.labels,
+      SELECT r.id, r.project_id, r.type, r.device_id, r.name, r.labels,
              r.capabilities, r.config, r.status, r.last_seen_at, r.last_error,
              r.limit_reason, r.rate_limited_until, r.limit_detail,
              r.quarantined_until, r.quarantine_reason

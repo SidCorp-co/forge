@@ -7,8 +7,7 @@ import { STATUS_TO_JOB_TYPE } from './skill-mapping.js';
  * ISS-232 Phase 3 — the project-level `runnerFallback` chain was removed.
  * The v2 selector picks primary → standby deterministically; runner-type
  * matching is enforced post-select via `runnerSupportsJobType`. The
- * per-step `runner` override on a step toggle still wins when set
- * (operator opting one stage onto antigravity, for example), but it is
+ * per-step `runner` override on a step toggle still wins when set, but it is
  * a single-element chain — there is no project-wide cascade behind it.
  *
  * Pure function — no DB reads. Caller (dispatcher) supplies the
@@ -45,7 +44,8 @@ function extractRunnerFromToggle(toggle: unknown): RunnerType | null {
   return isKnownRunnerType(runner) ? runner : null;
 }
 
-const KNOWN_RUNNER_TYPES: ReadonlySet<RunnerType> = new Set(['claude-code', 'antigravity']);
+// cm:guard the "a known override wins over the default" arm is UNTESTABLE while this set holds one member — the override and the default are the same string, so any such test passes vacuously. Two were deleted rather than kept green when `antigravity` went (2026-09-04). Restore them in the same commit that adds the second type; only the unknown-type rejection is covered until then.
+const KNOWN_RUNNER_TYPES: ReadonlySet<RunnerType> = new Set(['claude-code']);
 
 function isKnownRunnerType(v: unknown): v is RunnerType {
   return typeof v === 'string' && KNOWN_RUNNER_TYPES.has(v as RunnerType);

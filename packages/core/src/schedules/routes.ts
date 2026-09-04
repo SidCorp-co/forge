@@ -35,13 +35,6 @@ const runsQuerySchema = z
   })
   .strict();
 
-// ISS-244 — `runner: 'antigravity'` is rejected on this surface until the
-// antigravity adapter gains an interactive WS entry point. Schedule dispatch
-// now rides the same rails as `/api/agent-sessions/start`, which is desktop
-// (claude-code) only. Keep the enum narrow at the API boundary; the DB-level
-// enum (`scheduleRunners`) stays wide so existing rows don't fail at read.
-const apiScheduleRunner = z.enum(['desktop']);
-
 const scheduleMode = z.enum(['propose', 'auto']);
 
 // ISS-618 — a schedule is either 'prompt' (existing agent-session behavior) or
@@ -56,7 +49,6 @@ const createSchema = z
     prompt: z.string().trim().min(1).max(20_000).optional(),
     kind: apiScheduleKind.optional(),
     script: z.string().trim().min(1).max(50_000).optional(),
-    runner: apiScheduleRunner.optional(),
     enabled: z.boolean().optional(),
     targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
     metadata: z.record(z.string(), z.unknown()).nullable().optional(),
@@ -116,7 +108,6 @@ const updateSchema = z
     prompt: z.string().trim().min(1).max(20_000).optional(),
     kind: apiScheduleKind.optional(),
     script: z.string().trim().min(1).max(50_000).optional(),
-    runner: apiScheduleRunner.optional(),
     enabled: z.boolean().optional(),
     targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
     metadata: z.record(z.string(), z.unknown()).nullable().optional(),
@@ -297,7 +288,6 @@ export async function runScheduleTickOnce(now: Date = new Date()): Promise<strin
             name: schedule.name,
             projectId: schedule.projectId,
             prompt: schedule.prompt,
-            runner: schedule.runner,
             targetProjectSlug: schedule.targetProjectSlug ?? null,
             templateKey: schedule.templateKey ?? null,
             params: (schedule.params as Record<string, unknown> | null) ?? null,

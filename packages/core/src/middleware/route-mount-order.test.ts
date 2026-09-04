@@ -1,4 +1,4 @@
-// Pins the Hono semantics the /api/issues and /api/runners mounts depend on:
+// Pins the Hono semantics the /api/issues mounts depend on:
 // when two sub-apps share a prefix and one registers a `use('*')` guard, the
 // guard covers the OTHER sub-app's paths too. Only registration order decides
 // whether the unguarded handler is reachable. ISS-719 / ISS-720 were both this.
@@ -17,7 +17,7 @@ function guardedSubApp() {
   return app;
 }
 
-/** Mirrors `runnerCallbackRoutes`: capability-authenticated, no session guard. */
+/** A capability-authenticated sub-app: no session guard of its own. */
 function publicSubApp() {
   const app = new Hono();
   app.get('/callback/:hash', (c) => {

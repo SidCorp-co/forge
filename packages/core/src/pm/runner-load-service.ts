@@ -16,7 +16,6 @@ import { countInFlightByRunner } from '../jobs/in-flight.js';
 export type RunnerLoad = {
   id: string;
   type: string;
-  host: string | null;
   status: string;
   lastSeenAt: Date | null;
   capacity: number;
@@ -29,7 +28,6 @@ export async function readRunnerLoad(projectId: string): Promise<RunnerLoad[]> {
     .select({
       id: runners.id,
       type: runners.type,
-      host: runners.host,
       status: runners.status,
       lastSeenAt: runners.lastSeenAt,
     })

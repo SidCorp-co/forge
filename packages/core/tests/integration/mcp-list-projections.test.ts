@@ -52,8 +52,8 @@ describe('MCP list projections', () => {
   it('a schedule row reaches an agent without its 20k prompt', async () => {
     const { project } = await seed();
     await harness.db.execute(sql`
-      INSERT INTO schedules (id, project_id, name, cron, runner, enabled, prompt)
-      VALUES (${randomUUID()}, ${project.id}, 'nightly', '0 0 * * *', 'claude-code', true,
+      INSERT INTO schedules (id, project_id, name, cron, enabled, prompt)
+      VALUES (${randomUUID()}, ${project.id}, 'nightly', '0 0 * * *', true,
         ${'x'.repeat(20000)})
     `);
 

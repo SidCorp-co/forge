@@ -158,15 +158,15 @@ async function insertJob(
 async function insertRunner(
   projectId: string,
   deviceId: string,
-  args: { type?: 'claude-code' | 'antigravity'; maxConcurrent?: number } = {},
+  args: { type?: 'claude-code'; maxConcurrent?: number } = {},
 ): Promise<string> {
   const id = randomUUID();
   const type = args.type ?? 'claude-code';
   const caps = args.maxConcurrent != null ? { maxConcurrent: args.maxConcurrent } : {};
   await harness.db.execute(sql`
-    INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status)
+    INSERT INTO runners (id, project_id, type, device_id, name, capabilities, status)
     VALUES (
-      ${id}, ${projectId}, ${type}, 'device', ${deviceId}, ${`runner-${id.slice(0, 8)}`},
+      ${id}, ${projectId}, ${type}, ${deviceId}, ${`runner-${id.slice(0, 8)}`},
       ${JSON.stringify(caps)}::jsonb, 'online'
     )
   `);
@@ -181,9 +181,9 @@ async function seedFreshRunner(projectId: string, ownerId: string): Promise<stri
   await harness.db.execute(sql`UPDATE devices SET last_seen_at = now() WHERE id = ${device.id}`);
   const runnerId = randomUUID();
   await harness.db.execute(sql`
-    INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
+    INSERT INTO runners (id, project_id, type, device_id, name, capabilities, status, last_seen_at)
     VALUES (
-      ${runnerId}, ${projectId}, 'claude-code', 'device', ${device.id},
+      ${runnerId}, ${projectId}, 'claude-code', ${device.id},
       ${`runner-${runnerId.slice(0, 8)}`}, '{}'::jsonb, 'online', now()
     )
   `);

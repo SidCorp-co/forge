@@ -22,7 +22,6 @@ import {
 // REST uses viewer for read, but member is the lowest MCP gate available
 // (assertPrincipalIsMember); viewer-only PAT callers are not a supported
 // MCP persona so member is an acceptable tightening for the MCP surface.
-const apiScheduleRunner = z.enum(['desktop']);
 const scheduleMode = z.enum(['propose', 'auto']);
 // ISS-618 — 'script' runs a standalone sandboxed Node.js script, no agent/LLM.
 const apiScheduleKind = z.enum(['prompt', 'script']);
@@ -42,7 +41,6 @@ const inputSchema = z
     prompt: z.string().trim().min(1).max(20_000).optional(),
     kind: apiScheduleKind.optional(),
     script: z.string().trim().min(1).max(50_000).optional(),
-    runner: apiScheduleRunner.optional(),
     targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
     metadata: z.record(z.string(), z.unknown()).nullable().optional(),
     templateKey: z.string().trim().min(1).max(200).nullable().optional(),
@@ -59,7 +57,7 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'list returns a body-free projection (no prompt/script field) to stay under the MCP output cap. ' +
     'catalog returns the full improvement-message registry (static list, no prompt 20k). ' +
     "kind='script' runs a standalone sandboxed Node.js script (ctx.log/ctx.http.fetch/ctx.notify/ctx.params) " +
-    'on the cron cadence with no agent session and no Claude runner — pass `script` instead of `prompt`/`templateKey`. ' +
+    'on the cron cadence with no agent session and no Claude session — pass `script` instead of `prompt`/`templateKey`. ' +
     'Mirrors REST /api/schedules but accepts device/PAT principals without a user JWT.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
@@ -113,7 +111,6 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
             prompt: input.prompt,
             kind: input.kind,
             script: input.script,
-            runner: input.runner,
             enabled: input.enabled,
             targetProjectSlug: input.targetProjectSlug,
             metadata: input.metadata,
@@ -139,7 +136,6 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
             prompt: input.prompt,
             kind: input.kind,
             script: input.script,
-            runner: input.runner,
             enabled: input.enabled,
             targetProjectSlug: input.targetProjectSlug,
             metadata: input.metadata,

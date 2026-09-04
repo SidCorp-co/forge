@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  createTestDevice,
   createTestProject,
   createTestUser,
   setupTestDatabase,
@@ -39,10 +40,15 @@ describe('readRunnerLoad', () => {
   });
 
   async function insertRunner(projectId: string, name: string, type = 'claude-code') {
+    // cm:guard `runners.device_id` is NOT NULL since 2026-09-04 — seed a real device instead of the `host='remote'`/NULL shape this fixture used, which now fails the insert rather than producing a row.
+    const ownerRows = (await harness.db.execute(
+      sql`SELECT created_by AS id FROM projects WHERE id = ${projectId}`,
+    )) as unknown as Array<{ id: string }>;
+    const device = await createTestDevice(harness.db, ownerRows[0]?.id as string);
     const id = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
-      VALUES (${id}, ${projectId}, ${type}, 'remote', NULL, ${name}, '{}'::jsonb, 'online', now())
+      INSERT INTO runners (id, project_id, type, device_id, name, capabilities, status, last_seen_at)
+      VALUES (${id}, ${projectId}, ${type}, ${device.id}, ${name}, '{}'::jsonb, 'online', now())
     `);
     return id;
   }
@@ -87,7 +93,7 @@ describe('readRunnerLoad', () => {
   it('counts each runner its own jobs, and only the occupying ones', async () => {
     const project = await seedProject();
     const busy = await insertRunner(project.id, 'busy');
-    const idle = await insertRunner(project.id, 'idle', 'antigravity');
+    const idle = await insertRunner(project.id, 'idle', 'claude-code');
 
     await insertJob(project.id, busy, 'running');
     await insertJob(project.id, busy, 'dispatched');
@@ -108,7 +114,7 @@ describe('readRunnerLoad', () => {
   it('does not hand one runner another runner load', async () => {
     const project = await seedProject();
     const a = await insertRunner(project.id, 'a');
-    const b = await insertRunner(project.id, 'b', 'antigravity');
+    const b = await insertRunner(project.id, 'b', 'claude-code');
 
     await insertJob(project.id, a, 'running');
     await insertJob(project.id, b, 'running');

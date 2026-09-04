@@ -206,7 +206,7 @@ export async function handleDispatch(msg: DispatchMessage): Promise<'dispatched'
  * PM-isolated dispatch. Always runner-path, always requires `capabilities.pm`,
  * and ignores any caller-supplied `requiredCapabilities` for the PM filter so
  * a malicious or buggy producer cannot opt out. Fallback chain is hard-coded
- * to `['claude-code']` — antigravity does not run PM in v0.1.
+ * to `['claude-code']`.
  */
 export async function handlePmDispatch(msg: DispatchMessage): Promise<'dispatched' | 'skipped'> {
   const { jobId } = msg;
@@ -384,7 +384,7 @@ async function dispatchViaRunner(
   }
 
   // cm:guard this is the AUTHORITATIVE per-runner cap gate and it must stay atomic — lock the runner row (FOR UPDATE serializes concurrent dispatches to the same host), recount orphan-aware in-flight under that lock, and only then claim. The picker's L4 EXISTS is pool-coarse: it proves SOME runner is free, never that THIS selected one is, and at maxConcurrentIssues>1 a resume-pin to a busy host or two ticks racing on the same free runner still targets one at capacity. Checking outside the lock makes exceeding RUNNER_CAP_PER_RUNNER a race away.
-  // cm:why `deviceId` mirrors the runner for consumers still reading the legacy column; antigravity-remote runners have none, so it stays null rather than being invented
+  // cm:why `deviceId` mirrors the runner for consumers still reading the legacy column
   const dispatchedAt = new Date();
   const claim = await claimRunnerSlot({
     jobId: job.id,

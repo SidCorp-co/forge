@@ -208,7 +208,7 @@ function ScheduleRunItem({
   );
 }
 
-/** Expanded panel: the schedule's prompt + runner/target meta + recent runs. */
+/** Expanded panel: the schedule's prompt + target meta + recent runs. */
 function ScheduleHistory({ row, slug }: { row: ScheduleRow; slug: string | undefined }) {
   const runsQ = useScheduleRuns(row.projectId, row.id, true);
   const runs = runsQ.data?.runs ?? [];
@@ -216,7 +216,6 @@ function ScheduleHistory({ row, slug }: { row: ScheduleRow; slug: string | undef
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <ScheduleKindBadge kind={row.kind} />
-        {row.runner && row.kind === "prompt" && <Badge tone="neutral">{row.runner}</Badge>}
         {row.targetProjectSlug && (
           <span className="fg-caption font-mono text-subtle">→ {row.targetProjectSlug}</span>
         )}

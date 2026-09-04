@@ -239,8 +239,7 @@ describe('RUNNER_CAPABILITIES covers every dispatchable job type', () => {
   });
 
   // cm:edge contract -> packages/core/src/pipeline/autonomous-dispatch.ts — AUTONOMOUS_JOB_TYPE; spelled literally because importing that module pulls in db/client.js, which validates env at import and would make this hermetic suite need a database
-  it('the autonomous driver runs on claude-code and nowhere else', () => {
+  it('the autonomous driver runs on claude-code', () => {
     expect(RUNNER_CAPABILITIES['claude-code']).toContain('drive');
-    expect(RUNNER_CAPABILITIES.antigravity).not.toContain('drive');
   });
 });

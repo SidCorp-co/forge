@@ -249,6 +249,29 @@
 
 ### Removed
 
+- **The `antigravity` runner type and the `host='remote'` lane.** Both carried zero rows on
+  forge-beta against 64 code references, and everything that existed only to serve them is gone
+  with them: the adapter, its HMAC-signed `POST /api/runners/:id/events` callback, the
+  content-hash-addressed `GET /api/runners/skills-zip/:hash` capability URL and the zip builder
+  behind it, the SSE event normaliser, and the `runnerCallbackRoutes` sub-app (with the mount-order
+  guard that existed to keep it in front of the auth middleware).
+
+  `runners.host` and `schedules.runner` are dropped rather than left holding one legal value.
+  `schedules.runner` is the sharper of the two: its DB default was `'antigravity'`, a value the API
+  surface rejected, so any row that ever took the default was born undispatchable.
+
+  **`runners.device_id` is now `NOT NULL`, with `ON DELETE cascade`.** A runner is a binding
+  between a real paired device and a project; the nullable column existed only for remote runners,
+  and every selection, dispatch and limit query already joins through it. Creating a runner without
+  a device is now refused at the API and MCP boundary instead of producing a row nothing can
+  dispatch to. The migration deletes remote and device-less rows first — without that, `SET NOT
+  NULL` aborts on the first such row and the container serves new code against the old schema.
+
+  Two `resolve-step-runner` tests were deleted rather than kept green: they used `antigravity` as
+  "a registered type that is not the default", and with one type left the override and the default
+  are the same string, so the assertions could no longer fail. The `cm:guard` on
+  `KNOWN_RUNNER_TYPES` records that the override arm is uncovered until a second type returns.
+
 - **`comments.is_ai`, and with it every per-comment claim about who was typing.** Authorship now
   follows the credential and nothing else: a device token is recorded as that device, and any other
   token as the person it belongs to. The column asked each writer to declare itself, and the answer

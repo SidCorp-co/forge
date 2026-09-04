@@ -76,8 +76,8 @@ describe('load-balanced dispatch E2E', () => {
   async function runner(projectId: string, deviceId: string): Promise<string> {
     const id = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
-      VALUES (${id}, ${projectId}, 'claude-code', 'device', ${deviceId},
+      INSERT INTO runners (id, project_id, type, device_id, name, capabilities, status, last_seen_at)
+      VALUES (${id}, ${projectId}, 'claude-code', ${deviceId},
         ${`r-${id.slice(0, 8)}`}, '{}'::jsonb, 'online', now())`);
     return id;
   }

@@ -141,13 +141,6 @@ export async function dispatchScheduleRun(
     return dispatchScheduleReleaseBatchRun(input);
   }
 
-  // Antigravity adapter is HTTP-push and lives behind the (now-bypassed)
-  // jobs/dispatcher path. Until antigravity gains an interactive WS entry
-  // point, only desktop schedules can ride this code path.
-  if (schedule.runner !== 'desktop') {
-    return { ok: false, reason: 'unsupported-runner', status: 'skipped' };
-  }
-
   if (schedule.prompt == null && !schedule.templateKey) {
     logger.error(
       { scheduleId: schedule.id },

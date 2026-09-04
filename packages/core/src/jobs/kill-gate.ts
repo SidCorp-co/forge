@@ -80,8 +80,8 @@ export type RequestKillResult = 'requested' | 'no_device';
  * a no-op and only the publish repeats; once the episode has aged out the
  * stamp is refreshed and the stale `killConfirmedAt`/`killOutcome` cleared,
  * so a later reap can never inherit an answer given for an earlier one.
- * Returns `'no_device'` when the job has no `deviceId` (e.g. an
- * antigravity-remote runner) — there is no channel to kill over.
+ * Returns `'no_device'` when the job has no `deviceId` — there is no channel
+ * to kill over.
  * `resolveKillConfirmation` still falls back to the owning RUNNER's heartbeat
  * going stale in that case, but a live, un-cancelable no-device job parks at
  * `waiting` until that heartbeat lapses — there is no faster confirmation

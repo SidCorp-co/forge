@@ -138,22 +138,6 @@ export const RUNNER_CAPABILITIES: Record<RunnerType, readonly JobType[]> = {
     'verify_skill',
     'drive',
   ],
-  // cm:guard `drive` is DELIBERATELY absent here — the autonomous driver is a Claude Code skill set seeded by ClaudeCodeRunner, so an antigravity box cannot run it. This is the one asymmetry in this map; do not "fix" it by copying the list.
-  antigravity: [
-    'plan',
-    'code',
-    'review',
-    'fix',
-    'triage',
-    'test',
-    'staging',
-    'release',
-    'clarify',
-    'smoke',
-    'release_batch',
-    'reconcile',
-    'verify_skill',
-  ],
 };
 
 export interface JobTypeMapping {

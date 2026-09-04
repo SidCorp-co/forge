@@ -1,4 +1,3 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
 import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -7,22 +6,17 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import {
   agentSessions,
-  jobEvents,
-  jobs,
   type RunnerStatus,
   type RunnerType,
   runnerEvents,
-  runnerHosts,
   runnerStatuses,
   runners,
   runnerTypes,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
-import { normalizeAntigravityEvent } from './event-normalizer.js';
 import { clearRunnerQuarantine } from './quarantine.js';
 import { getRunnerAdapter, listRunnerTypes } from './registry.js';
 import { setRunnerStatus } from './runner-events.js';
@@ -43,7 +37,6 @@ function rowToRunner(r: typeof runners.$inferSelect): Runner {
     id: r.id,
     projectId: r.projectId,
     type: r.type,
-    host: r.host,
     deviceId: r.deviceId,
     name: r.name,
     labels: Array.isArray(r.labels) ? (r.labels as string[]) : [],
@@ -72,9 +65,8 @@ const createBody = z
   .object({
     projectId: z.uuid(),
     type: z.enum(runnerTypes),
-    host: z.enum(runnerHosts),
     name: z.string().min(1).max(120),
-    deviceId: z.uuid().optional(),
+    deviceId: z.uuid(),
     labels: z.array(z.string()).optional(),
     capabilities: z.record(z.string(), z.unknown()).optional(),
     config: z.record(z.string(), z.unknown()).default({}),
@@ -347,8 +339,7 @@ runnerRoutes.post(
       .values({
         projectId: input.projectId,
         type: input.type,
-        host: input.host,
-        deviceId: input.deviceId ?? null,
+        deviceId: input.deviceId,
         name: input.name,
         labels: input.labels ?? [],
         capabilities: defaultRunnerCapabilities(input.type, input.capabilities),
@@ -546,183 +537,5 @@ runnerRoutes.post(
     assertProjectRole(access, 'admin', 'project admin only');
     await clearRunnerQuarantine(id, existing.projectId);
     return c.json({ ok: true });
-  },
-);
-
-// HMAC-authenticated callback for the `antigravity` adapter (and any future
-// remote runner). Body is the raw event stream; signature header proves the
-// caller knows the per-runner `callbackSecret`.
-const eventsBody = z
-  .object({
-    events: z
-      .array(
-        z.object({
-          type: z.string(),
-          data: z.record(z.string(), z.unknown()).optional(),
-          timestamp: z.string().optional(),
-          jobId: z.uuid().optional(),
-        }),
-      )
-      .min(1),
-  })
-  .strict();
-
-export const runnerCallbackRoutes = new Hono();
-
-// ISS-387 — public skills bundle download for `host='remote'` runners. The URL
-// is a capability: gated by the unguessable content hash (sha256 prefix), no
-// session — the remote service GETs it after dispatch, like the events
-// callback. Unknown/cold hash → 404 (the dispatch omits skills_zip and the
-// remote falls back to its own copy).
-runnerCallbackRoutes.get('/skills-zip/:hash', async (c) => {
-  const hash = c.req.param('hash');
-  if (!/^[a-f0-9]{16,64}$/.test(hash)) {
-    throw new HTTPException(400, { message: 'invalid hash', cause: { code: 'BAD_REQUEST' } });
-  }
-  const { readSkillsZipByHash } = await import('./skills-zip.js');
-  const buf = await readSkillsZipByHash(hash);
-  if (!buf)
-    throw new HTTPException(404, {
-      message: 'skills bundle not found',
-      cause: { code: 'NOT_FOUND' },
-    });
-  return new Response(Uint8Array.from(buf), {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/zip',
-      'Content-Disposition': `attachment; filename="skills-${hash}.zip"`,
-    },
-  });
-});
-
-// In-memory replay shield: per-runner LRU of recently-seen signatures within
-// the 5-min skew window. Multi-instance deployments would need redis here, but
-// for v1 a per-process map is acceptable (worst case: replay across instances
-// during the 5-min window; acceptable risk given the secret rotation path).
-const REPLAY_WINDOW_MS = 5 * 60_000;
-const replayCache = new Map<string, number>();
-
-function isReplay(key: string): boolean {
-  const now = Date.now();
-  // Opportunistic eviction.
-  if (replayCache.size > 5000) {
-    for (const [k, ts] of replayCache) {
-      if (now - ts > REPLAY_WINDOW_MS) replayCache.delete(k);
-    }
-  }
-  const seen = replayCache.get(key);
-  if (seen !== undefined && now - seen <= REPLAY_WINDOW_MS) return true;
-  replayCache.set(key, now);
-  return false;
-}
-
-export function clearReplayCacheForTest(): void {
-  replayCache.clear();
-}
-
-runnerCallbackRoutes.post(
-  '/:id/events',
-  zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const sigHeader = c.req.header('x-forge-signature') ?? '';
-    const tsHeader = c.req.header('x-forge-timestamp') ?? '';
-    const ts = Number.parseInt(tsHeader, 10);
-    if (!sigHeader || !tsHeader || Number.isNaN(ts)) {
-      throw new HTTPException(401, { message: 'missing signature' });
-    }
-    const skewMs = Math.abs(Date.now() - ts);
-    if (skewMs > REPLAY_WINDOW_MS) {
-      throw new HTTPException(401, { message: 'timestamp skew' });
-    }
-    const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
-    if (!existing) throw notFound();
-    const cfg = (existing.config ?? {}) as { callbackSecret?: string };
-    if (!cfg.callbackSecret) throw new HTTPException(401, { message: 'no callback secret' });
-
-    const raw = await c.req.text();
-    const expected = createHmac('sha256', cfg.callbackSecret)
-      .update(raw)
-      .update(tsHeader)
-      .digest('hex');
-    const expectedHeader = `sha256=${expected}`;
-    const a = Buffer.from(sigHeader);
-    const b = Buffer.from(expectedHeader);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) {
-      throw new HTTPException(401, { message: 'bad signature' });
-    }
-    // Replay protection — reject the same (runner, signature) inside the
-    // skew window.
-    if (isReplay(`${id}:${sigHeader}`)) {
-      throw new HTTPException(409, { message: 'replay detected' });
-    }
-
-    let bodyJson: unknown;
-    try {
-      bodyJson = JSON.parse(raw);
-    } catch {
-      throw badRequest({ body: 'malformed JSON' });
-    }
-    const parsed = eventsBody.safeParse(bodyJson);
-    if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-    const { events } = parsed.data;
-
-    // Wrap insert in a transaction with FOR UPDATE on the per-job seq frontier
-    // to prevent concurrent callbacks for the same job from racing on
-    // MAX(seq)+1. Also scope job lookup by runner's projectId so a compromised
-    // antigravity callback (with valid HMAC) for runner R can't write events
-    // for jobs in other projects.
-    const persisted = await db.transaction(async (tx) => {
-      let count = 0;
-      const nextSeqByJob = new Map<string, number>();
-      const verifiedJobs = new Set<string>();
-      for (const ev of events) {
-        const norm = normalizeAntigravityEvent({
-          type: ev.type,
-          data: ev.data ?? {},
-          ...(ev.timestamp !== undefined ? { timestamp: ev.timestamp } : {}),
-        });
-        if (norm.length === 0) continue;
-        const targetJobId = ev.jobId;
-        if (!targetJobId) continue;
-        if (!verifiedJobs.has(targetJobId)) {
-          const [job] = await tx
-            .select({ id: jobs.id })
-            .from(jobs)
-            .where(and(eq(jobs.id, targetJobId), eq(jobs.projectId, existing.projectId)))
-            .limit(1);
-          if (!job) continue;
-          verifiedJobs.add(targetJobId);
-        }
-        let nextSeq = nextSeqByJob.get(targetJobId);
-        if (nextSeq === undefined) {
-          // FOR UPDATE on the existing job_events rows for this job pins the
-          // seq frontier for the duration of the tx so a concurrent callback
-          // serialises behind us instead of computing the same MAX.
-          const seqRows = await tx.execute<{ max_seq: number | null }>(
-            sql`SELECT COALESCE(MAX(seq), 0) AS max_seq FROM job_events WHERE job_id = ${targetJobId} FOR UPDATE`,
-          );
-          const max = seqRows[0]?.max_seq ?? 0;
-          nextSeq = (typeof max === 'number' ? max : Number(max)) + 1;
-        }
-        for (const n of norm) {
-          await tx.insert(jobEvents).values({
-            jobId: targetJobId,
-            kind: n.kind,
-            data: n.data,
-            seq: nextSeq,
-          });
-          nextSeq++;
-          count++;
-        }
-        nextSeqByJob.set(targetJobId, nextSeq);
-      }
-      return count;
-    });
-
-    logger.info({ runnerId: id, events: events.length, persisted }, 'runner callback ingested');
-    return c.json({ ok: true, persisted }, 202);
   },
 );

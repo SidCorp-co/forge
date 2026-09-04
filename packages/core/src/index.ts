@@ -163,7 +163,7 @@ import { promptRoutes } from './prompt/routes.js';
 import { startBoss, stopBoss } from './queue/boss.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
 import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
-import { runnerCallbackRoutes, runnerRoutes } from './runners/routes.js';
+import { runnerRoutes } from './runners/routes.js';
 import { registerRunnerStaleDetector } from './runners/stale-detector.js';
 import { scheduleRoutes } from './schedules/routes.js';
 import { registerScheduleTicker, unregisterScheduleTicker } from './schedules/runner.js';
@@ -428,8 +428,6 @@ app.route('/api/usage-records', usageRecordRoutes);
 app.route('/api/chat-logs', chatLogRoutes);
 app.route('/api/app-config', appConfigRoutes);
 app.route('/api/domain-templates', domainTemplateRoutes);
-// cm:guard runnerCallbackRoutes MUST mount before runnerRoutes — runnerRoutes carries `use('*', requireAuth(), assertEmailVerified())`, which covers every /api/runners path regardless of which sub-app declares the handler. Mounted second, the HMAC events callback and the capability-gated skills-zip download 401 for their own (session-less) callers. See middleware/route-mount-order.test.ts.
-app.route('/api/runners', runnerCallbackRoutes);
 app.route('/api/runners', runnerRoutes);
 
 // v1 EPIC 1 (ISS-270) — chat support agent. Mount only when the flag is on

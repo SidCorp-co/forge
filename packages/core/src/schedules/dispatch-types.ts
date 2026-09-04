@@ -13,7 +13,6 @@ export interface ScheduleRowForDispatch {
   projectId: string;
   /** Null for `kind='script'` — a script schedule carries no prompt at all (ISS-618). */
   prompt: string | null;
-  runner: 'desktop' | 'antigravity';
   targetProjectSlug: string | null;
   /** When set, the skill-improve engine builds the prompt instead of using `prompt`. */
   templateKey?: string | null;
@@ -44,7 +43,7 @@ export type DispatchScheduleResult =
   | { ok: true; sessionId: string; status: 'running' | 'success'; resolvedProjectId: string }
   | {
       ok: false;
-      reason: 'project-not-found' | 'no-device' | 'unsupported-runner' | 'already-applied';
+      reason: 'project-not-found' | 'no-device' | 'already-applied';
       status: 'skipped';
     }
   | { ok: false; reason: 'session-failed'; status: 'failed'; sessionId?: string };

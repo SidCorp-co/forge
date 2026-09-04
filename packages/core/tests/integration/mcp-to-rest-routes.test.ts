@@ -13,6 +13,7 @@ import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  createTestDevice,
   createTestOrgMember,
   createTestProject,
   createTestProjectMember,
@@ -141,9 +142,10 @@ describe('ops-health — replaces forge_ops_health', () => {
   it('returns the project the caller is a member of, and its runners', async () => {
     const { project, token } = await seed();
     const runnerId = randomUUID();
+    const device = await createTestDevice(harness.db, project.createdBy);
     await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, type, host, name, status)
-      VALUES (${runnerId}, ${project.id}, 'claude-code', 'remote', 'r1', 'online')
+      INSERT INTO runners (id, project_id, type, device_id, name, status)
+      VALUES (${runnerId}, ${project.id}, 'claude-code', ${device.id}, 'r1', 'online')
     `);
 
     const res = await call(`/api/projects/${project.id}/ops-health`, token);

@@ -75,9 +75,9 @@ describe('runner quarantine backoff E2E', () => {
     const device = await createTestDevice(harness.db, owner.id, { status: 'online' });
     runnerId = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
+      INSERT INTO runners (id, project_id, type, device_id, name, capabilities, status, last_seen_at)
       VALUES (
-        ${runnerId}, ${projectId}, 'claude-code', 'device', ${device.id},
+        ${runnerId}, ${projectId}, 'claude-code', ${device.id},
         ${`runner-${runnerId.slice(0, 8)}`}, '{}'::jsonb, 'online', now()
       )
     `);

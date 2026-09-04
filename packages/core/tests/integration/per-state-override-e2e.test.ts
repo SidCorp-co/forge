@@ -110,9 +110,9 @@ describe('ISS-194 per-state override end-to-end', () => {
     // resolves it via the standby step (no defaultDeviceId pin needed).
     const runnerId = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, type, host, device_id, name, capabilities, status, last_seen_at)
+      INSERT INTO runners (id, project_id, type, device_id, name, capabilities, status, last_seen_at)
       VALUES (
-        ${runnerId}, ${project.id}, 'claude-code', 'device', ${device.id},
+        ${runnerId}, ${project.id}, 'claude-code', ${device.id},
         ${`runner-${runnerId.slice(0, 8)}`}, ${'{"pm": true}'}::jsonb, 'online', now()
       )
     `);
