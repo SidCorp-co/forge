@@ -179,13 +179,11 @@ export async function runExternalChatTurn(
       query: args.message,
       reply: result.finalText.length > 0 ? result.finalText : null,
       model: resolved.model,
-      ragContext: null,
       toolCalls: result.toolCalls as never,
       usage: usageForLog(result) as never,
       iterations: result.iterations,
       durationMs,
       error: result.errorMessage,
-      queryIntent: null,
       source: session.source,
     });
   } catch (err) {

@@ -270,7 +270,8 @@ describe('POST /api/chat (mounted)', () => {
     expect(logRow.source).toBe('web');
     expect(logRow.error).toBeNull();
     expect(logRow.toolCalls).toEqual([]);
-    expect(logRow.ragContext).toBeNull();
+    expect(logRow).not.toHaveProperty('ragContext');
+    expect(logRow).not.toHaveProperty('queryIntent');
     expect((logRow.usage as { promptTokens?: number })?.promptTokens).toBe(5);
 
     // ISS-71 regression guard — chat turn must not broadcast over WS.

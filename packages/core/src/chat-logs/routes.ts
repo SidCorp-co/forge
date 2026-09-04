@@ -15,7 +15,6 @@ const idParamSchema = z.object({ id: z.uuid() });
 const listQuerySchema = z
   .object({
     projectSlug: z.string().min(1).max(200).optional(),
-    intent: z.string().min(1).max(100).optional(),
     source: z.string().min(1).max(100).optional(),
     qaRating: z.enum(qaRatings).optional(),
     dateFrom: z.coerce.date().optional(),
@@ -73,7 +72,7 @@ chatLogRoutes.get(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const { projectSlug, intent, source, qaRating, dateFrom, dateTo, page, pageSize } =
+    const { projectSlug, source, qaRating, dateFrom, dateTo, page, pageSize } =
       c.req.valid('query');
     const userId = c.get('userId');
 
@@ -108,7 +107,6 @@ chatLogRoutes.get(
       );
     }
 
-    if (intent) conditions.push(eq(chatLogs.queryIntent, intent));
     if (source) conditions.push(eq(chatLogs.source, source));
     if (qaRating) conditions.push(eq(chatLogs.qaRating, qaRating));
     if (dateFrom) conditions.push(gte(chatLogs.createdAt, dateFrom));

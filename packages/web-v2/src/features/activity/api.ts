@@ -10,7 +10,6 @@ export const ACTIVITY_PAGE_SIZE = 25;
 
 export interface ListActivityOpts {
   source?: SourceFilter;
-  intent?: string;
   qaRating?: QaRating | "";
   page?: number;
   pageSize?: number;
@@ -23,14 +22,12 @@ export const activityApi = {
    */
   list: ({
     source,
-    intent,
     qaRating,
     page = 1,
     pageSize = ACTIVITY_PAGE_SIZE,
   }: ListActivityOpts) => {
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (source) params.set("source", source);
-    if (intent) params.set("intent", intent);
     if (qaRating) params.set("qaRating", qaRating);
     return apiClientList<ChatLogRow>(`/chat-logs?${params}`);
   },

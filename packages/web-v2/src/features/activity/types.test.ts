@@ -44,8 +44,8 @@ describe("formatTokens", () => {
 describe("sumTokens", () => {
   it("sums input/output across rows, tolerating null usage", () => {
     const rows = [
-      row({ input_tokens: 100, output_tokens: 20 }),
-      row({ input_tokens: 50 }),
+      row({ promptTokens: 100, completionTokens: 20, cachedPromptTokens: 80 }),
+      row({ promptTokens: 50, elided: { historyMessages: 2, truncatedToolResults: 0, overBudget: false } }),
       row(null),
     ];
     expect(sumTokens(rows)).toEqual({ input: 150, output: 20 });
