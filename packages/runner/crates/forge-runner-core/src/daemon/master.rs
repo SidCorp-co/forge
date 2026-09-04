@@ -132,7 +132,7 @@ async fn one_pass(client: &CoreClient, _cfg: &Config) {
         );
         return;
     }
-    spawn_master(&pass_prompt(&keys), &home.to_string_lossy()).await;
+    spawn_master(&pass_prompt(&keys), &home.to_string_lossy(), &home).await;
 }
 
 /// The master's own process, versioned with this binary.
@@ -152,7 +152,16 @@ fn install_skill(home: &std::path::Path) -> std::io::Result<()> {
     std::fs::write(dir.join("SKILL.md"), MASTER_SKILL)
 }
 
-async fn spawn_master(prompt: &str, cwd: &str) {
+/// The one place a master's own account of a pass survives.
+// cm:guard a master writes NO `agent_sessions` row — it invents its own session id and core has no record of it — so discarding its stdout leaves the whole judgement layer unobservable: measured 2026-09-05, five consecutive passes claimed 1-2 jobs each and then spent 135s doing something nobody could name, and the only honest answer to "is it stuck or thinking" was that the evidence had been thrown away. Truncated per pass rather than appended: the question is always about the pass that just ran.
+fn pass_log(home: &std::path::Path) -> std::process::Stdio {
+    match std::fs::File::create(home.join("last-pass.log")) {
+        Ok(f) => std::process::Stdio::from(f),
+        Err(_) => std::process::Stdio::null(),
+    }
+}
+
+async fn spawn_master(prompt: &str, cwd: &str, home: &std::path::Path) {
     let args: Vec<String> = vec![
         "--permission-mode".into(),
         "bypassPermissions".into(),
@@ -160,7 +169,7 @@ async fn spawn_master(prompt: &str, cwd: &str) {
         prompt.to_string(),
     ];
     let mut child = match build_command(&args, cwd)
-        .stdout(std::process::Stdio::null())
+        .stdout(pass_log(home))
         .stderr(std::process::Stdio::null())
         .spawn()
     {
@@ -182,6 +191,10 @@ async fn spawn_master(prompt: &str, cwd: &str) {
             crate::runner::process::graceful_kill(&mut child).await;
         }
     }
+    tracing::info!(
+        "[master] pass transcript: {}",
+        home.join("last-pass.log").display()
+    );
 }
 
 #[cfg(test)]
