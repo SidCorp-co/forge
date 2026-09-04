@@ -85,6 +85,12 @@ const SESSION_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// How long this session may sit parked between turns.
 // cm:edge lockstep -> packages/core/src/jobs/park-deadline.ts — core's backstop resolves the SAME field with a COALESCE onto the same default, and fires at that value plus a grace. Resolving `0` differently here is what would make the two race: core reaping a park this side still considers live, with `residency_expired` no longer meaning "the runner is gone".
 // cm:guard `Some(0)` means "use the default", NOT "no residency". The config key defaults to 0 and no project has set it, so reading 0 literally would turn residency off for the entire fleet the moment this reader shipped — a regression against the phase 1b const it replaces, and exactly why ISS-873 moved this reader out of phase 3.
+/// Whether this spawn must hold one of the box's duplex session permits.
+// cm:guard the cap covers duplex PIPELINE jobs ONLY. Chat opts out at the spec (`counts_against_session_cap: false`) and must keep doing so: the wait below has no timeout, so a chat turn queued behind parked pipeline sessions is killed by core's 90s `no_client_ack` sweeper before it ever spawns (session 1af837da, 2026-09-04). Widening this to `spec.duplex` alone restores that.
+fn takes_session_permit(spec: &JobSpec) -> bool {
+    spec.duplex && spec.counts_against_session_cap
+}
+
 fn resolve_residency(configured: Option<u64>) -> Duration {
     match configured {
         Some(secs) if secs > 0 => Duration::from_secs(secs),
@@ -232,7 +238,7 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
                 turn_done.notify_waiters();
                 // cm:guard `reported` stays FALSE for a turn that did not end the job — the process exit path reads it to decide whether to classify, and marking a parked turn reported would leave a session that later dies with no terminal event at all.
                 reported = job_ended;
-                // cm:guard a FINISHED issue job must not sit resident to the idle ceiling: core has its terminal event, and every second after it holds a runner slot at RUNNER_CAP_PER_RUNNER = 1 for a job nobody will send another turn to. Chat does the opposite on purpose — its residency between turns is the feature.
+                // cm:guard a FINISHED issue job must not sit resident to the idle ceiling: core has its terminal event, and every second after it holds one of the box's job slots (per-device now, `devices.max_concurrent`) for a job nobody will send another turn to. Chat does the opposite on purpose — its residency between turns is the feature, and since 2026-09-04 chat holds no slot at all.
                 if is_issue_job && job_ended {
                     if let Some(s) = sessions.lock().await.get_mut(job_id) {
                         s.stdin = None;
@@ -463,7 +469,7 @@ pub struct ClaudeCodeRunner {
     core_url: String,
     device_token: String,
     sessions: Sessions,
-    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/config.rs — sized from `chat_max_concurrent`, but it counts something different: that budget queues TURNS in `daemon/chat.rs`, this one caps live duplex PROCESSES. They were one number while a turn was a process; keeping only the turn budget is how three abandoned resident sessions would sit at zero held permits.
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/config.rs — sized from `duplex_max_sessions`, and it counts live duplex PROCESSES spawned by PIPELINE jobs only. Chat is exempt (`counts_against_session_cap: false`) since 2026-09-04, so this number no longer bounds the box's total claude processes — an abandoned chat session is reaped by its residency ceiling and by nothing else.
     session_sem: Arc<tokio::sync::Semaphore>,
     session_cap: usize,
 }
@@ -752,7 +758,7 @@ impl Runner for ClaudeCodeRunner {
             .map(Duration::from_secs);
 
         // cm:guard acquired BEFORE the spawn and held by the session, so the ceiling counts processes. Acquiring after would let every caller spawn first and queue second, which bounds nothing.
-        let session_permit = if spec.duplex {
+        let session_permit = if takes_session_permit(&spec) {
             let sem = self.session_sem.clone();
             let permit = match sem.clone().try_acquire_owned() {
                 Ok(p) => p,
@@ -1330,9 +1336,29 @@ mod tests {
             resume_id: None,
             agent_session_id: None,
             duplex,
+            counts_against_session_cap: duplex,
             session_residency_seconds: None,
             pat_token: None,
         }
+    }
+
+    #[test]
+    fn a_chat_spawn_takes_no_session_permit_but_a_duplex_pipeline_job_does() {
+        let mut chat = spec(true);
+        chat.counts_against_session_cap = false;
+        assert!(
+            !takes_session_permit(&chat),
+            "a chat turn that waits for a permit is reaped as `no_client_ack` at 90s"
+        );
+
+        assert!(
+            takes_session_permit(&spec(true)),
+            "a duplex pipeline job is what the ceiling is for"
+        );
+        assert!(
+            !takes_session_permit(&spec(false)),
+            "a print spawn holds no session"
+        );
     }
 
     fn args_for(duplex: bool) -> Vec<String> {

@@ -17,7 +17,7 @@ pub mod skill_pull;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use tokio::sync::{mpsc, watch, Semaphore};
+use tokio::sync::{mpsc, watch};
 
 use crate::config::Config;
 use crate::error::Result;
@@ -122,7 +122,7 @@ pub async fn run(
     let runner = Arc::new(ClaudeCodeRunner::new(
         core_url.clone(),
         device_token.clone(),
-        (cfg.runner.chat_max_concurrent as usize).max(1),
+        (cfg.runner.duplex_max_sessions as usize).max(1),
     ));
 
     // Discover server-side assignments (`/me/runners`). This is the source of
@@ -360,13 +360,6 @@ pub async fn run(
         cfg.bindings.len()
     );
 
-    // Interactive-chat concurrency budget — separate from the pipeline
-    // `job.assigned` path so a long chat never consumes a pipeline cap slot and
-    // a burst of chats can't exhaust the box (ISS-321). Clamp to >= 1.
-    let chat_sem = Arc::new(Semaphore::new(
-        (cfg.runner.chat_max_concurrent as usize).max(1),
-    ));
-
     let cfg = Arc::new(cfg);
 
     // Workspace-provisioning sweep. Runs once at startup then periodically so a
@@ -516,23 +509,23 @@ pub async fn run(
                         }
                     }
                     "agent:start" => {
-                        let (client, runner, cfg, sem) =
-                            (client.clone(), runner.clone(), cfg.clone(), chat_sem.clone());
+                        let (client, runner, cfg) =
+                            (client.clone(), runner.clone(), cfg.clone());
                         let guard = InflightGuard::enter(&inflight);
                         tokio::spawn(async move {
                             let _guard = guard; // released when the chat turn finishes (drain gate)
-                            if let Err(e) = chat::handle_start(&client, runner, &cfg, sem, frame.data).await {
+                            if let Err(e) = chat::handle_start(&client, runner, &cfg, frame.data).await {
                                 tracing::error!("[chat] start: {e}");
                             }
                         });
                     }
                     "agent:send" => {
-                        let (client, runner, cfg, sem) =
-                            (client.clone(), runner.clone(), cfg.clone(), chat_sem.clone());
+                        let (client, runner, cfg) =
+                            (client.clone(), runner.clone(), cfg.clone());
                         let guard = InflightGuard::enter(&inflight);
                         tokio::spawn(async move {
                             let _guard = guard; // released when the chat turn finishes (drain gate)
-                            if let Err(e) = chat::handle_send(&client, runner, &cfg, sem, frame.data).await {
+                            if let Err(e) = chat::handle_send(&client, runner, &cfg, frame.data).await {
                                 tracing::error!("[chat] send: {e}");
                             }
                         });

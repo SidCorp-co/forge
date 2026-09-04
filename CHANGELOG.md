@@ -547,6 +547,20 @@
 
 ### Fixed
 
+- **Chat turns no longer queue for a duplex session permit.** A chat turn waited for one of the
+  box's session permits, and the wait had no timeout. Queued behind parked pipeline sessions it was
+  killed by core's 90s `no_client_ack` sweeper — measured on forge-beta session `1af837da`
+  (2026-09-04): five user messages, `agent_startup_failed`, not one assistant reply.
+
+  The exemption is by name — `JobSpec.counts_against_session_cap` is false for chat and true for a
+  duplex pipeline job — rather than inferred from something that differs between them by accident
+  (`issue_id`, `pat_token`, `step`). A new caller that leaves it false spawns processes nothing
+  bounds, which is why the field is explicit and the predicate has its own test.
+
+  `[runner] chat_max_concurrent` is retired. The number it carried now sizes `duplex_max_sessions`,
+  which counts live duplex PROCESSES for pipeline jobs only; an old config still loads and warns
+  once, naming the new key.
+
 - **The cc-startup signal counts assistant turns again.** `deriveCcStartupSignals` fed
   `pipeline/failure-classifier.ts` a threshold written as "≤3 assistant messages" while counting
   every `stdout` ROW. `--include-partial-messages` (ISS-479) had already broken that equivalence —

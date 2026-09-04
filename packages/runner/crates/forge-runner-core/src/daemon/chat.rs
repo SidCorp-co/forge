@@ -15,9 +15,9 @@
 //! so `agent:abort` still maps onto the right process; replies stream back
 //! with `PATCH /api/agent-sessions/:id`, exactly like the desktop.
 //!
-//! Chat never goes through the `jobs` table or `dispatch::handle`, so it cannot
-//! consume the pipeline cap. Its own `chat_max_concurrent` budget queues turns;
-//! live processes are capped in the runner (ISS-873 invariant 3).
+//! Chat never goes through `jobs` or `dispatch::handle`, so it takes no
+//! pipeline slot, and since 2026-09-04 no budget of its own either: a turn
+//! never queues. Its residency ceiling is the only bound.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -25,7 +25,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tokio::sync::{mpsc, Semaphore};
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::config::Config;
@@ -216,7 +216,6 @@ pub async fn handle_start(
     client: &CoreClient,
     runner: Arc<ClaudeCodeRunner>,
     cfg: &Config,
-    sem: Arc<Semaphore>,
     data: Value,
 ) -> Result<()> {
     let f: StartFrame =
@@ -239,7 +238,6 @@ pub async fn handle_start(
     run_turn(
         client,
         runner,
-        sem,
         Turn {
             session_id: f.session_id,
             prompt,
@@ -261,7 +259,6 @@ pub async fn handle_send(
     client: &CoreClient,
     runner: Arc<ClaudeCodeRunner>,
     cfg: &Config,
-    sem: Arc<Semaphore>,
     data: Value,
 ) -> Result<()> {
     let f: SendFrame =
@@ -280,7 +277,6 @@ pub async fn handle_send(
     run_turn(
         client,
         runner,
-        sem,
         Turn {
             session_id: f.session_id,
             prompt,
@@ -306,26 +302,47 @@ pub async fn handle_abort(runner: Arc<ClaudeCodeRunner>, session_id: &str) {
     }
 }
 
-async fn run_turn(
-    client: &CoreClient,
-    runner: Arc<ClaudeCodeRunner>,
-    sem: Arc<Semaphore>,
-    turn: Turn,
-) -> Result<()> {
-    // ISS-584 (C): ack the turn the moment we own it — BEFORE the chat semaphore
-    // (a queued turn is still "received") and before claude starts. Lets core
-    // tell apart "no runner ever got this" (never acked) from "runner got it but
-    // claude died on startup" (acked, no claudeSessionId), and fast-fail the
+/// The spawn spec for one chat turn.
+// Session key = sessionId so `agent:abort` → `runner.abort(sessionId)` hits the
+// right process. step="chat" / job_id=sessionId only label the run.
+fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
+    JobSpec {
+        job_id: session_id.to_string(),
+        project_id: String::new(),
+        project_slug: turn.project_slug.clone(),
+        issue_id: None,
+        step: "chat".into(),
+        repo_path: turn.repo_path.clone().into(),
+        prompt: Some(prompt.to_string()),
+        system_prompt: turn.system_prompt.clone(),
+        model: turn.model.clone(),
+        allowed_tools: None,
+        disallowed_tools: None,
+        permission_mode: None,
+        timeout_seconds: None,
+        mcp_servers_override: turn.mcp_servers_override.clone(),
+        worktree_branch: None,
+        worktree_start_point: None,
+        resume_id: turn.resume_id.clone(),
+        agent_session_id: Some(session_id.to_string()),
+        duplex: true,
+        // cm:guard chat NEVER takes a session-cap permit. It waited on one until 2026-09-04, and the wait had no timeout: session 1af837da queued behind parked pipeline sessions, was killed by core's 90s `no_client_ack` sweeper, and ended with five user messages and no reply. Owner decision: chat has no limit. Flipping this to true restores that wait.
+        counts_against_session_cap: false,
+        // cm:guard chat takes the DEFAULT and no project value, because the field is `pipelineConfig.sessionResidencySeconds` and chat has no pipeline behind it. A chat session's residency is bounded by the same const it always was; giving it a pipeline project's number would make a project setting silently change how long an unrelated chat window stays warm.
+        session_residency_seconds: None,
+        // cm:guard chat gets NO job token, and that is not an omission: the mint is keyed on a `jobs` row's `created_by`, and a chat session has no job. Handing chat a token would need its own principal and its own revoke trigger, neither of which exists — so chat keeps using whatever `$FORGE_PAT` the operator provisioned.
+        pat_token: None,
+    }
+}
+
+async fn run_turn(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, turn: Turn) -> Result<()> {
+    // ISS-584 (C): ack the turn the moment we own it, before claude starts. Lets
+    // core tell apart "no runner ever got this" (never acked) from "runner got it
+    // but claude died on startup" (acked, no claudeSessionId), and fast-fail the
     // latter. Best-effort: a failed ack only forfeits the speed-up, never the turn.
     if let Err(e) = agent_sessions::ack_session(client, &turn.session_id).await {
         tracing::debug!("[chat {}] ack failed (non-fatal): {e}", turn.session_id);
     }
-
-    // Separate chat budget — never blocks on / consumes the pipeline cap.
-    let _permit = sem
-        .acquire_owned()
-        .await
-        .map_err(|e| Error::Other(format!("chat semaphore closed: {e}")))?;
 
     let session_id = turn.session_id.clone();
     tracing::info!(
@@ -370,33 +387,7 @@ async fn run_turn(
         turn.prompt.clone()
     };
 
-    // Session key = sessionId so `agent:abort` → `runner.abort(sessionId)` hits
-    // the right process. step="chat" / job_id=sessionId only label the run.
-    let spec = JobSpec {
-        job_id: session_id.clone(),
-        project_id: String::new(),
-        project_slug: turn.project_slug.clone(),
-        issue_id: None,
-        step: "chat".into(),
-        repo_path: turn.repo_path.clone().into(),
-        prompt: Some(prompt.clone()),
-        system_prompt: turn.system_prompt.clone(),
-        model: turn.model.clone(),
-        allowed_tools: None,
-        disallowed_tools: None,
-        permission_mode: None,
-        timeout_seconds: None,
-        mcp_servers_override: turn.mcp_servers_override.clone(),
-        worktree_branch: None,
-        worktree_start_point: None,
-        resume_id: turn.resume_id.clone(),
-        agent_session_id: Some(session_id.clone()),
-        duplex: true,
-        // cm:guard chat takes the DEFAULT and no project value, because the field is `pipelineConfig.sessionResidencySeconds` and chat has no pipeline behind it. A chat session's residency is bounded by the same const it always was; giving it a pipeline project's number would make a project setting silently change how long an unrelated chat window stays warm.
-        session_residency_seconds: None,
-        // cm:guard chat gets NO job token, and that is not an omission: the mint is keyed on a `jobs` row's `created_by`, and a chat session has no job. Handing chat a token would need its own principal and its own revoke trigger, neither of which exists — so chat keeps using whatever `$FORGE_PAT` the operator provisioned.
-        pat_token: None,
-    };
+    let spec = chat_spec(&session_id, &prompt, &turn);
 
     let (tx, rx) = mpsc::channel::<RunnerEvent>(200);
     // cm:guard `send` failing must fall back to a spawn, never fail the turn. The resident session can go away between the `resident()` check and the write — the idle ceiling, an abort, a crash — and a user whose message is refused because a process died in that window has lost the turn for a reason that has nothing to do with them.
@@ -666,6 +657,33 @@ mod tests {
     use super::*;
     use crate::config::Binding;
     use std::path::PathBuf;
+
+    fn turn_for_test() -> Turn {
+        Turn {
+            session_id: "s1".into(),
+            prompt: "hi".into(),
+            repo_path: "/tmp".into(),
+            project_slug: Some("demo".into()),
+            system_prompt: None,
+            model: None,
+            resume_id: None,
+            mcp_servers_override: None,
+            attachment_dir: None,
+        }
+    }
+
+    #[test]
+    fn a_chat_turn_is_duplex_and_exempt_from_the_session_cap() {
+        let spec = chat_spec("s1", "hi", &turn_for_test());
+        assert!(
+            spec.duplex,
+            "chat is resident — a print spawn cannot take a follow-up on stdin"
+        );
+        assert!(
+            !spec.counts_against_session_cap,
+            "a chat turn must never queue for a permit: the wait has no timeout and core kills the session at 90s as `no_client_ack`, after which every send answers 200 into a cancelled session"
+        );
+    }
 
     #[test]
     fn parses_assistant_text_into_agent_message() {

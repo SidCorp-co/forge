@@ -154,12 +154,13 @@ fn default_skill_auto_pull() -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunnerSettings {
-    /// Max concurrent interactive chat turns on this device. Chat runs OFF the
-    /// jobs table and OUTSIDE the pipeline cap, so it gets its own budget — a
-    /// long chat must never consume a pipeline `job.assigned` slot, and a burst
-    /// of chats must never exhaust the box (ISS-321). Clamped to >= 1 at use.
-    #[serde(default = "default_chat_max_concurrent")]
-    pub chat_max_concurrent: u32,
+    /// Max live duplex claude PROCESSES this device runs for PIPELINE jobs
+    /// (`pipelineConfig.sessionMode='duplex'`). Chat is not counted here and has
+    /// no ceiling of its own — a chat process is bounded by its residency
+    /// timeout alone. Clamped to >= 1 at use.
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — this number sizes `session_sem`, whose permit is taken only when a spec sets `counts_against_session_cap`. Renamed from `chat_max_concurrent` on 2026-09-04 because chat stopped taking permits and the old name then described nothing the number does.
+    #[serde(default = "default_duplex_max_sessions")]
+    pub duplex_max_sessions: u32,
     /// Send `runner:register` (gated behind core `runnerFramework` flag).
     #[serde(default)]
     pub register_enabled: bool,
@@ -168,19 +169,22 @@ pub struct RunnerSettings {
 impl Default for RunnerSettings {
     fn default() -> Self {
         Self {
-            chat_max_concurrent: default_chat_max_concurrent(),
+            duplex_max_sessions: default_duplex_max_sessions(),
             register_enabled: false,
         }
     }
 }
 
-fn default_chat_max_concurrent() -> u32 {
+fn default_duplex_max_sessions() -> u32 {
     3
 }
 
-/// `[runner] max_concurrent` and `device_max_concurrent` were removed 2026-09-04:
-/// they were parsed and written for their whole life and read by nothing, so a
-/// box set to 4 ran exactly one job and said nothing about it.
+/// `[runner] max_concurrent`, `device_max_concurrent` and `chat_max_concurrent`
+/// were all removed on 2026-09-04. The first two were parsed and written for
+/// their whole life and read by nothing, so a box set to 4 ran exactly one job
+/// and said nothing about it. `chat_max_concurrent` WAS read — it sized both the
+/// chat turn queue and the duplex process ceiling — so a config that sets it is
+/// asking for something the runner no longer does with that key.
 ///
 /// Serde ignores unknown keys, so an old file still loads — but ignoring is what
 /// made them a trap. Warn only on a value the operator can only have typed:
@@ -190,7 +194,14 @@ fn default_chat_max_concurrent() -> u32 {
 // cm:guard warn, NEVER refuse to start. These keys were serialized into every config file this tool has ever written, so a hard failure here is a fleet-wide outage on upgrade — the opposite of the loud break, which is meant to stop a WRONG action, not every action.
 // cm:edge contract -> packages/core/src/runners/device-cap.ts#effectiveDeviceCap — this warning text promises core owns the cap, and that is now `devices.max_concurrent` resolved against the runner's version. If the knob moves again, this message has to move with it or it sends operators somewhere that no longer decides.
 fn warn_on_retired_concurrency_keys(raw: &str, path: &std::path::Path) {
-    for (key, tool_written_default) in [("max_concurrent", "1"), ("device_max_concurrent", "0")] {
+    const CORE_OWNS_IT: &str = "pipeline concurrency is decided by core, per device";
+    // cm:guard `chat_max_concurrent` is the one retired key whose value was LOAD-BEARING, so its warning must name the key that replaced it. Say only "no longer read" here and an operator who raised it to 8 is told their line is inert while the ceiling it used to lift silently sits at the default 3.
+    const CHAT_UNCAPPED: &str = "chat no longer has a concurrency limit at all, and the duplex          process ceiling this number used to size now reads `duplex_max_sessions`";
+    for (key, tool_written_default, why) in [
+        ("max_concurrent", "1", CORE_OWNS_IT),
+        ("device_max_concurrent", "0", CORE_OWNS_IT),
+        ("chat_max_concurrent", "3", CHAT_UNCAPPED),
+    ] {
         let Some(value) = toml_scalar_in_runner_table(raw, key) else {
             continue;
         };
@@ -198,9 +209,8 @@ fn warn_on_retired_concurrency_keys(raw: &str, path: &std::path::Path) {
             continue;
         }
         tracing::warn!(
-            "{}: `[runner] {key} = {value}` is no longer read and has not been since it was \
-             introduced — pipeline concurrency is decided by core, per device. Remove the line; \
-             it will disappear on the next config write either way.",
+            "{}: `[runner] {key} = {value}` is no longer read — {why}. Remove the line; it will \
+             disappear on the next config write either way.",
             path.display()
         );
     }
@@ -294,7 +304,7 @@ mod tests {
         let s = toml::to_string_pretty(&cfg).unwrap();
         let back: Config = toml::from_str(&s).unwrap();
         assert_eq!(back.core_url.as_deref(), Some("https://core.example.com"));
-        assert_eq!(back.runner.chat_max_concurrent, 3);
+        assert_eq!(back.runner.duplex_max_sessions, 3);
         assert_eq!(back.bindings.len(), 1);
         assert!(back.skills.auto_pull);
     }
@@ -313,7 +323,10 @@ device_max_concurrent = 8
 chat_max_concurrent = 5
 "#;
         let cfg: Config = toml::from_str(raw).expect("retired keys must not break parsing");
-        assert_eq!(cfg.runner.chat_max_concurrent, 5);
+        assert_eq!(
+            cfg.runner.duplex_max_sessions, 3,
+            "a retired key must not keep sizing the ceiling that replaced it"
+        );
     }
 
     #[test]
@@ -328,10 +341,24 @@ chat_max_concurrent = 5
             Some("8")
         );
 
-        let written_by_the_tool = "[runner]\nmax_concurrent = 1\ndevice_max_concurrent = 0\n";
+        assert_eq!(
+            toml_scalar_in_runner_table(
+                "[runner]\nchat_max_concurrent = 8\n",
+                "chat_max_concurrent"
+            )
+            .as_deref(),
+            Some("8")
+        );
+
+        let written_by_the_tool =
+            "[runner]\nmax_concurrent = 1\ndevice_max_concurrent = 0\nchat_max_concurrent = 3\n";
         assert_eq!(
             toml_scalar_in_runner_table(written_by_the_tool, "max_concurrent").as_deref(),
             Some("1")
+        );
+        assert_eq!(
+            toml_scalar_in_runner_table(written_by_the_tool, "chat_max_concurrent").as_deref(),
+            Some("3")
         );
     }
 
