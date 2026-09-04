@@ -357,3 +357,42 @@ describe('runTurnEvents — parallel tool rounds', () => {
     expect(toolMsgs.map((m) => m.tool_call_id)).toEqual(['c1', 'c2']);
   });
 });
+
+describe('runTurnEvents — context budget', () => {
+  it('truncates the oldest tool results to fit and reports what it removed, guards untouched', async () => {
+    const seen: Array<Array<{ role: string; content: unknown }>> = [];
+    const hungry: ChatProvider = {
+      id: 'mock',
+      defaultModel: 'm',
+      async *stream(req): AsyncIterable<ChatStreamEvent> {
+        seen.push([...(req.messages as Array<{ role: string; content: unknown }>)]);
+        if (seen.length <= 3) {
+          yield { type: 'tool_call', id: `c${seen.length}`, name: 'get', arguments: '{}' };
+        } else {
+          yield { type: 'chunk', text: 'summary' };
+        }
+        yield { type: 'done' };
+      },
+    };
+    const tools: ChatToolset = {
+      tools: [{ type: 'function', function: { name: 'get', parameters: {} } }],
+      execute: async () => ok('z'.repeat(4_000)),
+    };
+    const { result } = await drain(
+      runTurnEvents({
+        provider: hungry,
+        model: 'm',
+        messages: [{ role: 'user', content: 'go' }],
+        tools,
+        contextBudgetTokens: 1_500,
+      }),
+    );
+    expect(result.iterations).toBe(4);
+    expect(result.finalText).toBe('summary');
+    const round3 = seen[2] ?? [];
+    expect(round3.some((m) => m.role === 'tool' && /elided/.test(String(m.content)))).toBe(true);
+    expect(round3.filter((m) => m.role === 'tool')).toHaveLength(2);
+    expect(result.elided.truncatedToolResults).toBeGreaterThan(0);
+    expect(result.elided.overBudget).toBe(false);
+  });
+});

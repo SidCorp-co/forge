@@ -88,6 +88,7 @@ services:
       LITELLM_API_URL: ${LITELLM_API_URL:-}
       LITELLM_API_KEY: ${LITELLM_API_KEY:-}
       LITELLM_MODEL: ${LITELLM_MODEL:-}
+      CHAT_CONTEXT_BUDGET_TOKENS: ${CHAT_CONTEXT_BUDGET_TOKENS:-}
       # OAuth/OIDC (ISS-314). Toggle FEATURE_SOCIAL_AUTH=true to expose
       # provider buttons; provider rows are read at request time so you can
       # add/remove providers without restarting once the flag is on.

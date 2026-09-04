@@ -1,16 +1,12 @@
 /**
- * ISS-604 (P2a) — non-streaming chat entrypoint for external channels
- * (Rocket.Chat, Telegram, …). Mirrors the resolution the SSE `/api/chat` route
- * does, but drains the shared turn loop ({@link runTurnEvents}) to a single
- * reply string — the shape an external bot needs (one complete message, not an
- * SSE stream).
- *
- * The caller supplies the toolset (so it owns the principal/scope); pass none
- * for a plain, tool-less completion. Persists the final assistant text to the
- * session + a `chat_logs` audit row, exactly like the SSE path.
+ * ISS-604 (P2a) — non-streaming chat entrypoint for external channels (Rocket.Chat, Telegram, …):
+ * the same resolution as the SSE `/api/chat` route, but the shared turn loop is drained to one
+ * reply string. The caller supplies the toolset (it owns the principal); none means a tool-less
+ * completion. Persists the final assistant text and a `chat_logs` audit row exactly like the SSE path.
  */
 
 import { eq } from 'drizzle-orm';
+import { env } from '../config/env.js';
 import { db as defaultDb } from '../db/client.js';
 import { appConfig, chatLogs, projects } from '../db/schema.js';
 import {
@@ -19,9 +15,10 @@ import {
   type ProjectProgress,
 } from '../issues/progress.js';
 import { logger } from '../logger.js';
+import { PROVIDER_HISTORY_WINDOW } from './context-budget.js';
 import { defaultChatProviderId } from './providers/bootstrap.js';
 import { resolveForProject } from './providers/registry.js';
-import { runTurnEvents } from './run-turn-core.js';
+import { runTurnEvents, usageForLog } from './run-turn-core.js';
 import {
   appendAssistantMessage,
   appendUserMessage,
@@ -50,24 +47,16 @@ export interface ExternalChatTurnArgs {
   persona?: string | null;
   /** Seeded recent-conversation block for the system prompt (ISS-609). */
   conversationContext?: string | null;
-  /** Images that arrived WITH this message, bytes already in hand. Stored on
-   *  the turn by reference and sent to the model as content parts. */
+  /** Images that arrived WITH this message, bytes in hand; stored by reference, sent as content parts. */
   images?: readonly TurnImage[] | undefined;
-  /** Re-fetch bytes for an image from an EARLIER turn still inside the vision
-   *  lookback; omit to let older images fall out of the model's view. */
+  /** Re-fetch bytes for an image from an EARLIER turn inside the vision lookback; omit to let older images fall out of view. */
   resolveImage?: ImageResolver | undefined;
-  /** Aborts the turn (provider fetch + SSE read) so a hung upstream terminates
-   *  as an error instead of wedging the caller forever. */
+  /** Aborts the turn (provider fetch + SSE read) so a hung upstream terminates as an error instead of wedging the caller. */
   signal?: AbortSignal | undefined;
   db?: typeof defaultDb;
 }
 
-/**
- * External sessions live as long as the room (one per RC room, never rotated),
- * so both the model-visible window and the persisted transcript must be
- * bounded or a chatty room grows the prompt until every turn fails on context.
- */
-const PROVIDER_HISTORY_WINDOW = 30;
+/** External sessions live as long as the room (never rotated), so the persisted transcript is bounded too — the model-visible window is `context-budget.ts`'s. */
 const PERSISTED_MESSAGES_CAP = 200;
 
 export interface ExternalChatTurnResult {
@@ -76,13 +65,9 @@ export interface ExternalChatTurnResult {
   terminal: 'done' | 'error';
   error: string | null;
   iterations: number;
-  /** Tool calls the model made this turn — callers verify reply claims
-   *  (e.g. cited issue ids) against what was actually done. */
+  /** Tool calls the model made this turn — callers verify reply claims (cited issue ids) against what was actually done. */
   toolCalls: Array<{ name: string; arguments: string }>;
-  /** The deterministic progress snapshot injected into this turn's system
-   *  prompt (ISS-671), or `null` on a computation failure. Callers screen the
-   *  reply against THIS snapshot rather than re-querying, so the guard never
-   *  bounces a reply that matched what the model was actually shown. */
+  /** The progress snapshot injected into THIS turn's system prompt (ISS-671), or `null` on a computation failure; callers screen the reply against it rather than re-querying, so the guard never bounces a reply that matched what the model was shown. */
   progress: ProjectProgress | null;
 }
 
@@ -156,12 +141,19 @@ export async function runExternalChatTurn(
     // having investigated anything.
     temperature: 0.2,
     requireInitialToolUse: args.tools !== undefined,
+    contextBudgetTokens: env.CHAT_CONTEXT_BUDGET_TOKENS,
     signal: args.signal,
   });
   let step = await gen.next();
   while (!step.done) step = await gen.next();
   const result = step.value;
   const durationMs = Date.now() - startedAt;
+  if (result.elided.overBudget) {
+    logger.warn(
+      { sessionId: session.id, elided: result.elided },
+      'chat: request exceeds the context budget even after elision',
+    );
+  }
 
   if (result.terminal === 'done' && result.finalText.length > 0) {
     appendAssistantMessage(session, result.finalText);
@@ -181,7 +173,7 @@ export async function runExternalChatTurn(
       model: resolved.model,
       ragContext: null,
       toolCalls: result.toolCalls as never,
-      usage: (Object.keys(result.usage).length > 0 ? result.usage : null) as never,
+      usage: usageForLog(result) as never,
       iterations: result.iterations,
       durationMs,
       error: result.errorMessage,

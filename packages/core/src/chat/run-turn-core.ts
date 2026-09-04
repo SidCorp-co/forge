@@ -8,6 +8,13 @@
  */
 
 import type { CallToolResult } from '../mcp/tool-result.js';
+import {
+  addElision,
+  applyContextBudget,
+  DEFAULT_CONTEXT_BUDGET_TOKENS,
+  type ElisionReport,
+  emptyElision,
+} from './context-budget.js';
 import type {
   ChatMessage,
   ChatProvider,
@@ -32,6 +39,8 @@ export interface TurnCoreArgs {
   /** `tool_choice:'required'` on the FIRST round only, so a lazy model cannot
    *  answer without investigating and the loop can still terminate. */
   requireInitialToolUse?: boolean | undefined;
+  /** Estimated-token cap on each provider request; `context-budget.ts` elides to fit. */
+  contextBudgetTokens?: number | undefined;
   signal?: AbortSignal | undefined;
 }
 
@@ -54,8 +63,18 @@ export interface TurnCoreResult {
   usage: ChatStreamUsage;
   iterations: number;
   toolCalls: ToolCallRecord[];
+  /** What the context budget removed over the whole turn. */
+  elided: ElisionReport;
   terminal: 'done' | 'error';
   errorMessage: string | null;
+}
+
+/** The `chat_logs.usage` jsonb: token counts plus, only when something was elided, the report — a row with no `elided` key means nothing was. */
+export function usageForLog(result: TurnCoreResult): Record<string, unknown> | null {
+  const { historyMessages, truncatedToolResults, overBudget } = result.elided;
+  const elided = historyMessages > 0 || truncatedToolResults > 0 || overBudget;
+  const out = { ...result.usage, ...(elided ? { elided: result.elided } : {}) };
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 interface CollectedToolCall {
@@ -135,9 +154,11 @@ export async function* runTurnEvents(
   args: TurnCoreArgs,
 ): AsyncGenerator<ChatStreamEvent, TurnCoreResult> {
   const { provider, model, tools, temperature, signal } = args;
-  const messages: ChatMessage[] = [...args.messages];
+  const budgetTokens = args.contextBudgetTokens ?? DEFAULT_CONTEXT_BUDGET_TOKENS;
+  let messages: ChatMessage[] = [...args.messages];
   const usage: ChatStreamUsage = {};
   const toolCalls: ToolCallRecord[] = [];
+  const elided = emptyElision();
   let finalText = '';
   let errorMessage: string | null = null;
   let terminal: 'done' | 'error' | null = null;
@@ -150,6 +171,14 @@ export async function* runTurnEvents(
       let turnText = '';
       const turnToolCalls: CollectedToolCall[] = [];
       let sawError = false;
+
+      // cm:why applied to the CARRIED array, not a per-round copy — elisions accumulate, so rounds 2..8 see a byte-identical prefix (where implicit prompt caching pays) instead of re-deciding what to drop each round
+      const bounded = applyContextBudget(messages, {
+        budgetTokens,
+        reservedTokens: Math.ceil(JSON.stringify(offered?.tools ?? []).length / 4),
+      });
+      messages = bounded.messages;
+      addElision(elided, bounded.elided);
 
       for await (const event of provider.stream({
         model,
@@ -225,6 +254,7 @@ export async function* runTurnEvents(
     usage,
     iterations,
     toolCalls,
+    elided,
     terminal: terminal ?? 'done',
     errorMessage,
   };

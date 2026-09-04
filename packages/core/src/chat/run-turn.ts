@@ -13,7 +13,7 @@ import { streamSSE } from 'hono/streaming';
 import { db } from '../db/client.js';
 import { chatLogs } from '../db/schema.js';
 import type { ChatMessage, ChatProvider, ChatStreamEvent } from './providers/types.js';
-import { runTurnEvents, type TurnCoreResult } from './run-turn-core.js';
+import { runTurnEvents, type TurnCoreResult, usageForLog } from './run-turn-core.js';
 import { appendAssistantMessage, type ChatSessionRow, persistMessages } from './session.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 
@@ -32,6 +32,8 @@ export interface RunTurnArgs {
   userMessage: string;
   /** Caller key for `chat_logs.user_key` (userId for web, null for widget). */
   userKey: string | null;
+  /** Estimated-token cap on each provider request (`env.CHAT_CONTEXT_BUDGET_TOKENS`). */
+  contextBudgetTokens?: number | undefined;
 }
 
 export function runChatTurn({
@@ -43,6 +45,7 @@ export function runChatTurn({
   projectSlug,
   userMessage,
   userKey,
+  contextBudgetTokens,
 }: RunTurnArgs) {
   return streamSSE(c, async (stream) => {
     // Disable buffering on Traefik / nginx so events flush immediately.
@@ -64,6 +67,7 @@ export function runChatTurn({
       model: resolved.model,
       messages: providerMessages,
       tools,
+      contextBudgetTokens,
       signal: ac.signal,
     });
     let step = await gen.next();
@@ -74,6 +78,9 @@ export function runChatTurn({
     const result: TurnCoreResult = step.value;
 
     const durationMs = Date.now() - startedAt;
+    if (result.elided.overBudget) {
+      console.warn('chat: request exceeds the context budget even after elision', result.elided);
+    }
 
     if (result.terminal === 'done' && result.finalText.length > 0) {
       appendAssistantMessage(session, result.finalText);
@@ -94,7 +101,7 @@ export function runChatTurn({
         model: resolved.model,
         ragContext: null,
         toolCalls: result.toolCalls as never,
-        usage: (Object.keys(result.usage).length > 0 ? result.usage : null) as never,
+        usage: usageForLog(result) as never,
         iterations: result.iterations,
         durationMs,
         error: result.errorMessage,

@@ -70,6 +70,7 @@ const EnvSchema = z.object({
   LITELLM_API_URL: z.url().optional(),
   LITELLM_API_KEY: z.string().min(1).optional(),
   LITELLM_MODEL: z.string().min(1).default('gpt-4o-mini'),
+  CHAT_CONTEXT_BUDGET_TOKENS: z.coerce.number().int().positive().default(80_000),
   // cm:why ISS-314 — a provider counts as "enabled" only when its whole required set is present (clientId + clientSecret, plus issuerUrl for generic OIDC) and the frontend renders whatever /api/auth/oauth/providers reports rather than a hardcoded button list; OAUTH_REDIRECT_BASE defaults to APP_BASE_URL but is split out because some deployments terminate the callback on a different host (api subdomain) than the SPA; GitHub is plain OAuth 2.0 with no id_token (we fetch /user + /user/emails), Google is full OIDC on a hardcoded discovery doc, and the generic block (Auth0, Keycloak, Authentik, ZITADEL, …) discovers from `${OIDC_ISSUER_URL}/.well-known/openid-configuration`
   OAUTH_REDIRECT_BASE: z.url().optional(),
 
