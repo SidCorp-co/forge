@@ -29,10 +29,6 @@ function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
     issue: { id: 'iss-1', status: 'approved', mergedAt: null, waitingKind: null },
     sessions: [],
     jobs: [],
-    deps: [],
-    runningIssueIds: new Set(),
-    runningIssueCount: 0,
-    cap: 5,
     runnerInFlight: new Map(),
     runnerPool: { total: 1, withCapacity: 1 },
     lastTickAt: null,
@@ -62,7 +58,7 @@ function job(
   };
 }
 
-// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — every case here mirrors an outcome of `predicates.staleTrigger`; the gate deciding differently from this classifier is the idle-and-actionable lie the file's guard names
+// cm:edge lockstep -> packages/core/src/jobs/queued-gates.ts — every case here mirrors an outcome of `predicates.staleTrigger`; the gate deciding differently from this classifier is the idle-and-actionable lie the file's guard names
 describe('stale_trigger — the gate whose job answers a trigger the issue has left (ISS-789)', () => {
   it('reports it when the queued job declares a trigger the issue is no longer at', () => {
     const out = classifyPipelineHealthForIssue(
@@ -154,31 +150,6 @@ describe('stale_trigger — the gate whose job answers a trigger the issue has l
           job({ id: 'job-live', type: 'code', status: 'running' }),
           job({
             id: 'job-next',
-            type: 'plan',
-            stageStatus: 'clarified',
-            retryAfterAt: new Date('2026-05-17T08:01:00.000Z'),
-          }),
-        ],
-      }),
-    );
-    expect(out.waitingOn?.reason).toBe('retry_cooldown');
-  });
-
-  it('reports the cooldown ahead of blocked_by, matching the CASE arm order', () => {
-    const now = new Date('2026-05-17T08:00:30.000Z');
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        now,
-        deps: [
-          {
-            fromIssueId: 'iss-blocker',
-            kind: 'blocks',
-            fromStatus: 'approved',
-            fromMergedAt: null,
-          },
-        ],
-        jobs: [
-          job({
             type: 'plan',
             stageStatus: 'clarified',
             retryAfterAt: new Date('2026-05-17T08:01:00.000Z'),

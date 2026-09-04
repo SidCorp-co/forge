@@ -55,7 +55,7 @@ devicePoolRoutes.post(
   async (c) => {
     const { jobId, sessionId } = c.req.valid('json');
     const result = await claimJobForMaster({ jobId, deviceId: c.get('device').id, sessionId });
-    // cm:guard a refused claim answers 200 with `ok:false`, NOT 4xx. A full box and a lost race are ordinary outcomes a master handles by choosing differently; making them errors invites a retry loop against a condition retrying cannot change.
+    // cm:guard a refused claim answers 200 with `ok:false`, NOT 4xx. A busy issue and a lost race are ordinary outcomes a master handles by choosing differently; making them errors invites a retry loop against a condition retrying cannot change.
     return c.json(result);
   },
 );

@@ -137,15 +137,9 @@ async function cloneFromTemplate(workerId: string): Promise<TestDatabase | null>
   };
 }
 
-async function quiesceOrReport(dbName: string): Promise<void> {
+async function quiesceOrReport(_dbName: string): Promise<void> {
   const { quiesceBackgroundWork } = await import('./quiesce.js');
-  const { stuckProjects } = await quiesceBackgroundWork();
-  if (stuckProjects.length > 0) {
-    console.error(
-      `[db] ${dbName}: dispatch sweeps still chained for ${stuckProjects.join(', ')} ` +
-        'after the bounded drain — a re-tick loop is outliving its test.',
-    );
-  }
+  await quiesceBackgroundWork();
 }
 
 // cm:why the DROP below is WITH (FORCE), so a leaked connection is severed silently and resurfaces as a failure in whichever file runs next. This names the leak in the file that caused it, which is the only place it can be fixed.

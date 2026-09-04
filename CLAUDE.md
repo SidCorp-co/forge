@@ -14,7 +14,7 @@ number.
 
 | Package | What |
 |---|---|
-| `packages/core` | Hono backend. Single app (`src/index.ts`) mounting per-domain route modules (`src/<domain>/routes.ts`); Drizzle ORM over Postgres (pgvector); WebSocket server (`/ws`); MCP server (`/mcp`, tools in `src/mcp/tools/forge-*.ts`); the pipeline dispatcher that drives Claude. |
+| `packages/core` | Hono backend. Single app (`src/index.ts`) mounting per-domain route modules (`src/<domain>/routes.ts`); Drizzle ORM over Postgres (pgvector); WebSocket server (`/ws`); MCP server (`/mcp`, tools in `src/mcp/tools/forge-*.ts`); the job pool a master agent claims from. |
 | `packages/web-v2` | Next.js cloud UI, canonical at `/`. Feature modules under `src/features/<domain>/`. |
 | `packages/runner` | Headless Rust `forge-runner` CLI daemon (crates `forge-runner` / `forge-runner-core`) for servers/CI; pairs as a device. |
 | `packages/contracts` | Shared cross-app TS types & registries (`issues.ts`, `pipeline-registry.ts`, `requests.ts`, `responses.ts`, `rows.ts`, `domain-templates.ts`). |
@@ -152,7 +152,7 @@ line number — a line number is stale the moment anything above it moves, and s
 ## Invariants
 
 - **No child `jobs` row stays non-terminal under a terminal `pipeline_run`** — one orphan wedges a
-  cap=1 runner slot. Three defences in lockstep (close-cascade, loop monitor, dispatch gates), plus
+  runner slot. Three defences in lockstep (close-cascade, loop monitor, pool exclusion), plus
   `held` as a deliberate fourth shape that is NOT an orphan. New code that flips
   `pipeline_runs.status` terminal MUST route through a cascade-calling helper. The `cm:guard` and
   the two `cm:edge lockstep` live on `packages/core/src/pipeline/runs-cascade.ts`; the four hops and

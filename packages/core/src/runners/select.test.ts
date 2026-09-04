@@ -112,7 +112,7 @@ describe('selectRunnerForJob', () => {
     captureInto(captured);
     await selectRunnerForJob({ projectId: PROJECT_A, pinDeviceId: DEVICE_X });
     limit.mockResolvedValueOnce([{ defaultDeviceId: null }]);
-    await selectRunnerForJob({ projectId: PROJECT_A, projectCap: 2 });
+    await selectRunnerForJob({ projectId: PROJECT_A, spillAcrossPool: true });
     expect(captured.length).toBeGreaterThan(0);
     for (const q of captured) {
       expect(q.sql).toContain('quarantined_until');
@@ -521,7 +521,7 @@ describe('selectRunnerForJob — per-state runner pool', () => {
       pinDeviceId: DEVICE_X,
       allowDeviceIds: POOL,
     });
-    await selectRunnerForJob({ projectId: PROJECT_A, projectCap: 2, allowDeviceIds: POOL });
+    await selectRunnerForJob({ projectId: PROJECT_A, spillAcrossPool: true, allowDeviceIds: POOL });
     expect(captured.length).toBeGreaterThan(0);
     for (const q of captured) {
       expect(q.sql).toContain('device_id IN (');

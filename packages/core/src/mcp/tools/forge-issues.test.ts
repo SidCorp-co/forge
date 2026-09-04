@@ -131,11 +131,6 @@ vi.mock('../../pipeline/hooks.js', () => ({
   hooks: { emit: vi.fn().mockResolvedValue(undefined) },
 }));
 
-const dispatchTick = vi.fn();
-vi.mock('../../jobs/dispatch-tick.js', () => ({
-  dispatchTickForProject: (...args: unknown[]) => dispatchTick(...args),
-}));
-
 // ISS-786 child B — mocked independently of the generic `db.select` chain
 // (real evidence collection is unit-tested in `pipeline/work-evidence.test.ts`).
 // Defaults to "evidence found" (null violation) so the dozens of pre-existing
@@ -1155,28 +1150,6 @@ describe('forge_issues tool', () => {
     );
   });
 
-  it('update with plain fields does NOT fire dispatchTickForProject', async () => {
-    const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
-      projectSlug: PROJECT_SLUG,
-    });
-    // loadIssue
-    selectLimit.mockResolvedValueOnce([baseIssueRow]);
-    // membership check
-    selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    // re-load fresh
-    selectLimit.mockResolvedValueOnce([baseIssueRow]);
-
-    await tool.handler({
-      action: 'update',
-      documentId: ISSUE_ID,
-      data: { title: 'renamed', description: 'new desc', plan: 'new plan' },
-    });
-
-    expect(dispatchTick).not.toHaveBeenCalled();
-  });
-
   it('update with status routes through state machine and rejects illegal transition', async () => {
     const tool = forgeIssuesTool({
       principal: { kind: 'device', device: fakeDevice },
@@ -1473,7 +1446,7 @@ describe('forge_issues tool', () => {
     };
     const STAMPED = new Date('2026-05-30T00:00:00.000Z');
 
-    it('mark_merged stamps merged_at via COALESCE, writes audit comment, broadcasts, and ticks', async () => {
+    it('mark_merged stamps merged_at via COALESCE, writes audit comment, and broadcasts', async () => {
       const tool = forgeIssuesTool({
         principal: { kind: 'device', device: fakeDevice },
         device: fakeDevice,
@@ -1532,8 +1505,6 @@ describe('forge_issues tool', () => {
           after: { mergedAt: STAMPED },
         }),
       );
-      // dispatcher wake so the now-unblocked parent dispatches promptly
-      expect(dispatchTick).toHaveBeenCalledWith(PROJECT_ID);
     });
 
     it('mark_merged with explicit mergedAt binds an ISO string with a ::timestamptz cast', async () => {
@@ -1646,8 +1617,6 @@ describe('forge_issues tool', () => {
           after: { mergedAt: null },
         }),
       );
-      // clearing only adds a block — no dispatcher wake.
-      expect(dispatchTick).not.toHaveBeenCalled();
     });
 
     it('unmark requires data.issueId', async () => {

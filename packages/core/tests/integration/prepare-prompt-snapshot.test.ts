@@ -1,7 +1,7 @@
 /**
  * ISS-186 — prompt-snapshot write path E2E.
  *
- * Drives the real `handleDispatch` runner path against real Postgres to
+ * Drives the real `prepareClaimedJob` against real Postgres to
  * verify that the dispatcher populates the 6 prompt-snapshot columns on
  * `jobs` (added by migration 0068) and UPSERTs into `prompt_blobs` with an
  * atomic `ref_count` increment so two dispatches for the same project
@@ -19,14 +19,13 @@ import {
   createTestDevice,
   createTestProject,
   createTestUser,
-  openDeviceSocket,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
 
 type Mods = {
-  handleDispatch: typeof import('../../src/jobs/dispatcher.js').handleDispatch;
+  prepareClaimedJob: typeof import('../../src/jobs/prepare-claimed-job.js').prepareClaimedJob;
 };
 
 describe('ISS-186 prompt-snapshot write path', () => {
@@ -40,33 +39,24 @@ describe('ISS-186 prompt-snapshot write path', () => {
     process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
     process.env.NODE_ENV ??= 'test';
 
-    const dispatcherMod = await import('../../src/jobs/dispatcher.js');
-    const { bootstrapRunnerAdapters } = await import('../../src/runners/bootstrap.js');
-    // Register adapters so `getRunnerAdapter('claude-code')` resolves on the
-    // dispatch path. Idempotent.
-    bootstrapRunnerAdapters();
-    mods = { handleDispatch: dispatcherMod.handleDispatch };
+    const prepareMod = await import('../../src/jobs/prepare-claimed-job.js');
+    mods = { prepareClaimedJob: prepareMod.prepareClaimedJob };
   }, 60_000);
 
   afterAll(async () => {
     if (harness) await harness.cleanup();
   });
 
-  const sockets: Array<{ close(): void }> = [];
-
   beforeEach(async () => {
     await truncateAll(harness.db);
-    while (sockets.length) sockets.pop()?.close();
   });
 
   async function seedRunner() {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
     const device = await createTestDevice(harness.db, owner.id, { status: 'online' });
-    // dispatcher requires fresh lastSeenAt within DISPATCH_LIVENESS_MS.
     await harness.db.execute(sql`UPDATE devices SET last_seen_at = now() WHERE id = ${device.id}`);
-    // Online claude-code runner bound to the device so `selectRunnerForJob`
-    // resolves it via the standby step (no defaultDeviceId pin needed).
+    // cm:guard the runner row must be bound to THIS device — `prepareClaimedJob` resolves the runner by (project, device) and refuses by name when the pair is missing.
     const runnerId = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO runners (id, project_id, type, device_id, name, capabilities, status, last_seen_at)
@@ -75,17 +65,7 @@ describe('ISS-186 prompt-snapshot write path', () => {
         ${`runner-${runnerId.slice(0, 8)}`}, ${'{"pm": true}'}::jsonb, 'online', now()
       )
     `);
-    // cm:guard the `runners` row is what the SQL gates read, but `job.assigned` is what CARRIES the job — since ISS-862 the adapter reports `failed` when the frame reaches no open socket, so every dispatch below needs one open. Seeding only the row is a device that is online in Postgres and unreachable in memory, which is a real production state and deliberately no longer dispatchable.
-    sockets.push(openDeviceSocket(device.id));
     return { owner, project, device, runnerId };
-  }
-
-  // Runner cap is 1 in-flight; mark a dispatched job terminal so a second
-  // dispatch to the same runner isn't blocked by the runner_full barrier.
-  async function markJobDone(jobId: string) {
-    await harness.db.execute(sql`
-      UPDATE jobs SET status = 'done', finished_at = now() WHERE id = ${jobId}
-    `);
   }
 
   async function insertIssue(projectId: string, ownerId: string): Promise<string> {
@@ -127,8 +107,8 @@ describe('ISS-186 prompt-snapshot write path', () => {
     return id;
   }
 
-  it('populates all snapshot columns on the jobs row after dispatch', async () => {
-    const { owner, project } = await seedRunner();
+  it('populates all snapshot columns on the jobs row after preparation', async () => {
+    const { owner, project, device } = await seedRunner();
     const issueId = await insertIssue(project.id, owner.id);
     const jobId = await insertJob({
       projectId: project.id,
@@ -137,8 +117,7 @@ describe('ISS-186 prompt-snapshot write path', () => {
       promptString: '/forge-triage iss-1',
     });
 
-    const result = await mods.handleDispatch({ jobId });
-    expect(result).toBe('dispatched');
+    await mods.prepareClaimedJob({ jobId, deviceId: device.id });
 
     const rows = await harness.db.execute<{
       system_prompt_hash: string | null;
@@ -150,8 +129,9 @@ describe('ISS-186 prompt-snapshot write path', () => {
       SELECT system_prompt_hash, user_prompt_snapshot, prompt_input_token_est, model_used, prompt_blocks
       FROM jobs WHERE id = ${jobId}
     `);
-    const row = rows[0]!;
+    const row = rows[0];
     expect(row).toBeDefined();
+    if (!row) throw new Error('unreachable: asserted above');
     expect(row.system_prompt_hash).toMatch(/^[0-9a-f]{64}$/);
     expect(row.user_prompt_snapshot).toBe('/forge-triage iss-1');
     expect(typeof row.prompt_input_token_est).toBe('number');
@@ -164,7 +144,7 @@ describe('ISS-186 prompt-snapshot write path', () => {
       chars: number;
       estTokens: number;
     }>;
-    // pipeline-rules + tool-reference + project-config = 3 blocks.
+    // cm:why the floor is 2 rather than 3 — project-config is only emitted when the project HAS one, so pinning 3 makes this test a function of fixture config rather than of the preamble builder.
     expect(blocks.length).toBeGreaterThanOrEqual(2);
     for (const block of blocks) {
       expect(block).toHaveProperty('id');
@@ -174,41 +154,44 @@ describe('ISS-186 prompt-snapshot write path', () => {
     }
   });
 
-  it('dedupes prompt_blobs across same-project dispatches with atomic ref_count', async () => {
-    const { owner, project } = await seedRunner();
+  it('dedupes prompt_blobs across same-project preparations with atomic ref_count', async () => {
+    const { owner, project, device } = await seedRunner();
     const issueA = await insertIssue(project.id, owner.id);
     const issueB = await insertIssue(project.id, owner.id);
     const jobA = await insertJob({ projectId: project.id, issueId: issueA, ownerId: owner.id });
     const jobB = await insertJob({ projectId: project.id, issueId: issueB, ownerId: owner.id });
 
-    expect(await mods.handleDispatch({ jobId: jobA })).toBe('dispatched');
-    // Free the single runner's in-flight slot before the second dispatch.
-    await markJobDone(jobA);
-    expect(await mods.handleDispatch({ jobId: jobB })).toBe('dispatched');
+    await mods.prepareClaimedJob({ jobId: jobA, deviceId: device.id });
+    await mods.prepareClaimedJob({ jobId: jobB, deviceId: device.id });
 
     const blobs = await harness.db.execute<{ hash: string; ref_count: number }>(sql`
       SELECT hash, ref_count FROM prompt_blobs
     `);
     expect(blobs).toHaveLength(1);
-    expect(Number(blobs[0]!.ref_count)).toBe(2);
+    const blob = blobs[0];
+    if (!blob) throw new Error('unreachable: asserted above');
+    expect(Number(blob.ref_count)).toBe(2);
 
     const jobRows = await harness.db.execute<{ system_prompt_hash: string }>(sql`
       SELECT system_prompt_hash FROM jobs WHERE id IN (${jobA}, ${jobB})
     `);
-    expect(jobRows[0]!.system_prompt_hash).toBe(jobRows[1]!.system_prompt_hash);
-    expect(jobRows[0]!.system_prompt_hash).toBe(blobs[0]!.hash);
+    expect(jobRows).toHaveLength(2);
+    const [first, second] = jobRows;
+    if (!first || !second) throw new Error('unreachable: asserted above');
+    expect(first.system_prompt_hash).toBe(second.system_prompt_hash);
+    expect(first.system_prompt_hash).toBe(blob.hash);
   });
 
   it('writes empty-string userPromptSnapshot when payload omits promptString', async () => {
-    const { owner, project } = await seedRunner();
+    const { owner, project, device } = await seedRunner();
     const issueId = await insertIssue(project.id, owner.id);
     const jobId = await insertJob({ projectId: project.id, issueId, ownerId: owner.id });
 
-    expect(await mods.handleDispatch({ jobId })).toBe('dispatched');
+    await mods.prepareClaimedJob({ jobId, deviceId: device.id });
 
     const rows = await harness.db.execute<{ user_prompt_snapshot: string | null }>(sql`
       SELECT user_prompt_snapshot FROM jobs WHERE id = ${jobId}
     `);
-    expect(rows[0]!.user_prompt_snapshot).toBe('');
+    expect(rows[0]?.user_prompt_snapshot).toBe('');
   });
 });

@@ -33,7 +33,7 @@ const assertDispatchableMock = vi.fn(async (_jobId: string, _exec?: unknown) => 
   ok: false as const,
   reason: 'stale_trigger' as const,
 }));
-vi.mock('./dispatch-gates.js', () => ({
+vi.mock('./queued-gates.js', () => ({
   gateReasonsForQueuedJobs: (projectId: string) => gateReasonsMock(projectId),
   assertDispatchable: (jobId: string, exec?: unknown) => assertDispatchableMock(jobId, exec),
 }));

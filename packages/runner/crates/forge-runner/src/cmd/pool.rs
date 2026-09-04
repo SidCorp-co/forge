@@ -124,6 +124,20 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         Command::Load(a) => {
             let v = pool::load(&c, a.project_id.as_deref()).await?;
             println!("{}", serde_json::to_string_pretty(&v)?);
+            // cm:guard print the fault flags LOUDLY as well as in the JSON — `auth` means this box's Claude session is dead, nothing in core excludes it from being claimed onto any more, and a master that misses the line hands it work that cannot start.
+            if let Some(faults) = v
+                .get("device")
+                .and_then(|d| d.get("runnerFaults"))
+                .and_then(|f| f.as_array())
+            {
+                for f in faults {
+                    eprintln!(
+                        "warning: runner {} is flagged {}",
+                        f.get("runnerId").and_then(|x| x.as_str()).unwrap_or("?"),
+                        f.get("limitReason").and_then(|x| x.as_str()).unwrap_or("?")
+                    );
+                }
+            }
         }
     }
     Ok(())

@@ -23,10 +23,10 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
-// cm:edge contract -> packages/core/src/jobs/dispatch-gates.ts — these stubs must keep the real return SHAPES (a Map for the batch, a DispatchBarrier for the single job); dispatch-gates.test.ts owns whether the gate reasons themselves are right, this file only covers the MCP layer attaching them
+// cm:edge contract -> packages/core/src/jobs/queued-gates.ts — these stubs must keep the real return SHAPES (a Map for the batch, a DispatchBarrier for the single job); dispatch-gates.test.ts owns whether the gate reasons themselves are right, this file only covers the MCP layer attaching them
 const gateReasonsMock = vi.fn(async (_projectId: string) => new Map<string, string>());
 const assertDispatchableMock = vi.fn(async (_jobId: string) => ({ ok: true }) as unknown);
-vi.mock('../../jobs/dispatch-gates.js', () => ({
+vi.mock('../../jobs/queued-gates.js', () => ({
   gateReasonsForQueuedJobs: (projectId: string) => gateReasonsMock(projectId),
   assertDispatchable: (jobId: string) => assertDispatchableMock(jobId),
 }));

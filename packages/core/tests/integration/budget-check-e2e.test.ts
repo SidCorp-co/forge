@@ -1,7 +1,7 @@
 /**
  * W2.3.2 — Monthly budget gate E2E.
  *
- * Drives the real `handleDispatch` against real Postgres. Seeds the
+ * Drives the real claim path against real Postgres. Seeds the
  * `pipeline_run_step_durations` view's underlying tables (jobs +
  * pipeline_runs + agent_sessions + usage_records) to control the
  * month-to-date spend on (project, jobType) and asserts the dispatcher:
@@ -25,15 +25,31 @@ import {
 } from '../helpers/index.js';
 
 type Mods = {
-  handleDispatch: typeof import('../../src/jobs/dispatcher.js').handleDispatch;
+  claimJobForMaster: typeof import('../../src/devices/claim.js').claimJobForMaster;
   hooks: typeof import('../../src/pipeline/hooks.js').hooks;
   __resetBudgetWarnDedup: typeof import('../../src/jobs/budget-check.js').__resetBudgetWarnDedup;
   CLASSIFIER_VERSION: typeof import('../../src/pipeline/failure-classifier.js').CLASSIFIER_VERSION;
 };
 
+/** Claim as a master would, with a fresh session id each time. */
+async function claim(jobId: string) {
+  return mods.claimJobForMaster({ jobId, deviceId: seededDeviceId, sessionId: randomUUID() });
+}
+
+/** Claim, and assert the cap turned it away rather than the job simply failing. */
+async function claimRefusedForBudget(jobId: string): Promise<void> {
+  const result = await claim(jobId);
+  expect(result.ok).toBe(false);
+  expect(result.ok === false && result.reason).toBe('budget_exhausted');
+}
+
+// cm:guard the runner must be bound to THIS device — the claim prepares the job on it, and `prepareClaimedJob` refuses by name otherwise, which would mask the budget outcome behind a setup error.
+let seededDeviceId = '';
+
+let mods: Mods;
+
 describe('W2.3.2 monthly budget gate E2E', () => {
   let harness: TestDatabase;
-  let mods: Mods;
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
@@ -49,12 +65,12 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
 
-    const dispatcherMod = await import('../../src/jobs/dispatcher.js');
+    const claimMod = await import('../../src/devices/claim.js');
     const hooksMod = await import('../../src/pipeline/hooks.js');
     const budgetMod = await import('../../src/jobs/budget-check.js');
     const classifierMod = await import('../../src/pipeline/failure-classifier.js');
     mods = {
-      handleDispatch: dispatcherMod.handleDispatch,
+      claimJobForMaster: claimMod.claimJobForMaster,
       hooks: hooksMod.hooks,
       __resetBudgetWarnDedup: budgetMod.__resetBudgetWarnDedup,
       CLASSIFIER_VERSION: classifierMod.CLASSIFIER_VERSION,
@@ -111,11 +127,9 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     return { owner, project, stage };
   }
 
-  // Seed an online `claude-code` runner so the dispatch barrier (L4/L5) passes
-  // and `handleDispatch` reaches the monthly-budget gate. Without it the
-  // barrier short-circuits with `runner_stale` and the gate never runs.
   async function seedRunner(projectId: string, ownerId: string): Promise<void> {
     const device = await createTestDevice(harness.db, ownerId, { status: 'online' });
+    seededDeviceId = device.id;
     const runnerId = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO runners (id, project_id, type, device_id, name, capabilities, status, last_seen_at)
@@ -281,7 +295,7 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     // The dispatcher will continue past the budget gate; we don't care
     // whether it ultimately dispatches (no runner online) — only that the
     // gate did NOT fail the job and did NOT emit any hooks.
-    await mods.handleDispatch({ jobId });
+    await claim(jobId);
 
     expect(warnPayloads).toHaveLength(0);
     expect(breachPayloads).toHaveLength(0);
@@ -305,14 +319,14 @@ describe('W2.3.2 monthly budget gate E2E', () => {
 
     // Two dispatches in the same hour bucket — only the first should warn.
     const jobA = await insertQueuedJob(project.id, { issueId, type: 'code' });
-    await mods.handleDispatch({ jobId: jobA });
+    await claim(jobA);
     // Free the (issue_id, type) active-unique slot (jobs_active_unique covers
     // queued|dispatched|running) so the second job can be inserted for the same
     // issue+type. The warn dedup is in-process per (project, stage, hour), so
     // terminating jobA does not reset it.
     await harness.db.execute(sql`UPDATE jobs SET status = 'completed' WHERE id = ${jobA}`);
     const jobB = await insertQueuedJob(project.id, { issueId, type: 'code' });
-    await mods.handleDispatch({ jobId: jobB });
+    await claim(jobB);
 
     expect(warnPayloads).toHaveLength(1);
     expect(warnPayloads[0]).toMatchObject({
@@ -343,9 +357,7 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     });
 
     const jobId = await insertQueuedJob(project.id, { issueId, type: 'code' });
-    const result = await mods.handleDispatch({ jobId });
-
-    expect(result).toBe('skipped');
+    await claimRefusedForBudget(jobId);
     const after = await getJob(jobId);
     expect(after?.status).toBe('failed');
     expect(after?.failureReason).toBe('monthly_budget_exhausted');
@@ -386,8 +398,7 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     const runId = runIdRows[0]?.pipeline_run_id;
     expect(runId).toBeTruthy();
 
-    const result = await mods.handleDispatch({ jobId });
-    expect(result).toBe('skipped');
+    await claimRefusedForBudget(jobId);
 
     const jobRows = await harness.db.execute<{
       status: string;
@@ -439,7 +450,7 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     });
 
     const jobId = await insertQueuedJob(project.id, { issueId, type: 'code' });
-    await mods.handleDispatch({ jobId });
+    await claim(jobId);
 
     expect(breachPayloads).toHaveLength(0);
     expect(warnPayloads).toHaveLength(1);
@@ -467,7 +478,7 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     });
 
     const jobId = await insertQueuedJob(project.id, { issueId, type: 'code' });
-    await mods.handleDispatch({ jobId });
+    await claim(jobId);
 
     expect(warnPayloads).toHaveLength(0);
     expect(breachPayloads).toHaveLength(0);

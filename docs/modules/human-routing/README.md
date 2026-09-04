@@ -49,7 +49,7 @@ agent-filed issue has no assignee and MCP `forge_issues` cannot set one.
 | `pendingSkillUpdates` | reconcile runs at the human decision gate, for projects the caller admins | project admin |
 | `unseenDrafts` | `draft` issues an **agent** filed (`created_via` set and not `web`) that no human has commented on — priority-ordered, capped, with `unseenDraftsTotal` reporting the unclipped count | assignee; unassigned falls back to creator **or project admin** |
 
-`unseenDrafts` exists because `draft` is inert by design: the dispatcher never picks it up and
+`unseenDrafts` exists because `draft` is inert by design: no job is ever enqueued for it and
 `NOTIFY_ON_STATUS` carries no `draft`, and that hook fires on `transition` rather than create — so
 before this bucket an agent-filed draft was reachable from no surface at all. A comment on a non-device
 credential (`author_device_id IS NULL`) is the receipt that clears it. An agent holding a person's

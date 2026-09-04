@@ -82,49 +82,25 @@ describe('core stamps the issue feature branch onto the job payload', () => {
     return { projectId: project.id, issueId, ownerId: owner.id, issSeq };
   }
 
-  async function payloadOf(jobId: string): Promise<Record<string, unknown>> {
-    const rows = await harness.db.execute<{ payload: Record<string, unknown> }>(
-      sql`SELECT payload FROM jobs WHERE id = ${jobId}`,
-    );
-    return rows[0]?.payload ?? {};
-  }
-
-  async function dispatchAndCaptureFrame(args: {
+  async function preparePayload(args: {
     jobId: string;
     projectId: string;
     issueId: string;
     ownerId: string;
     agentVersion: string | null;
-  }): Promise<{ issueKey?: string; payload: Record<string, unknown> }> {
-    const { claudeCodeAdapter } = await import('../../src/runners/adapters/claude-code.js');
-    const { roomManager } = (await import('../../src/ws/server.js')) as unknown as {
-      roomManager: { publish: ReturnType<typeof vi.fn> };
-    };
-    roomManager.publish.mockClear();
+  }): Promise<{ issueKey?: string } & Record<string, unknown>> {
     const deviceId = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO devices (id, owner_id, name, platform, token_hash, token_prefix, status, agent_version)
       VALUES (${deviceId}, ${args.ownerId}, 'd', 'linux', ${randomUUID()}, ${deviceId.slice(0, 8)}, 'online', ${args.agentVersion})
     `);
-    await claudeCodeAdapter.dispatch({
-      job: {
-        id: args.jobId,
-        projectId: args.projectId,
-        issueId: args.issueId,
-        type: 'code',
-        payload: await payloadOf(args.jobId),
-        promptString: '',
-        systemPrompt: null,
-        dispatchedAt: new Date(),
-        attempts: 1,
-        agentSessionId: null,
-      },
-      runner: { id: randomUUID(), type: 'claude-code', deviceId },
-    } as never);
-    // cm:guard narrowed, NEVER `?.` — no call means the adapter never dispatched, and optional chaining would turn that into an `undefined` flowing into a `not.toHaveProperty('worktreeBranch')` that passes for the wrong reason. Three of the five cases here assert an ABSENCE, so a silent undefined makes exactly those unfalsifiable; `check-lint-budget` warns off `--write` on this rule for the same reason.
-    const [call] = roomManager.publish.mock.calls;
-    if (!call) throw new Error('the adapter published no job.assigned frame');
-    return (call[1] as { data: { issueKey?: string; payload: Record<string, unknown> } }).data;
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, device_id, type, name, status, last_seen_at)
+      VALUES (${randomUUID()}, ${args.projectId}, ${deviceId}, 'claude-code', 'wt-runner', 'online', now())
+    `);
+    const { prepareClaimedJob } = await import('../../src/jobs/prepare-claimed-job.js');
+    const prepared = await prepareClaimedJob({ jobId: args.jobId, deviceId });
+    return prepared.payload as { issueKey?: string } & Record<string, unknown>;
   }
 
   async function enqueue(status: string) {
@@ -141,22 +117,22 @@ describe('core stamps the issue feature branch onto the job payload', () => {
 
   it('sends the branch to a runner that can reuse a checkout', async () => {
     const s = await enqueue('open');
-    const frame = await dispatchAndCaptureFrame({ ...s, agentVersion: '0.9.3' });
-    expect(frame.payload.worktreeBranch).toBe(issueBranchName(s.issSeq));
+    const payload = await preparePayload({ ...s, agentVersion: '0.9.3' });
+    expect(payload.worktreeBranch).toBe(issueBranchName(s.issSeq));
   });
 
   // cm:guard THIS is the assertion that stops a job from dying on a box that cannot reuse. Before 0.9.3 `worktree::create` had only a create path, so `git worktree add` hit `fatal: '.worktrees/ISS-n' already exists` on an issue's SECOND stage and the job failed before the agent started — and nothing reaps `.worktrees/` (`worktree_reap` owns `.claude/worktrees` and spares anything under 14 days), so the directory is still there every time. Lower or drop the floor in `issues/merged-at.ts` and only this goes red.
   it('sends nothing to an older runner, which could only ever create', async () => {
     const s = await enqueue('open');
-    const frame = await dispatchAndCaptureFrame({ ...s, agentVersion: '0.9.2' });
-    expect(frame.payload).not.toHaveProperty('worktreeBranch');
-    expect(frame.issueKey).toBe(issueBranchName(s.issSeq));
+    const payload = await preparePayload({ ...s, agentVersion: '0.9.2' });
+    expect(payload).not.toHaveProperty('worktreeBranch');
+    expect(payload.issueKey).toBe(issueBranchName(s.issSeq));
   });
 
   it('sends nothing to a runner whose build it cannot read', async () => {
     const s = await enqueue('open');
-    const frame = await dispatchAndCaptureFrame({ ...s, agentVersion: null });
-    expect(frame.payload).not.toHaveProperty('worktreeBranch');
+    const payload = await preparePayload({ ...s, agentVersion: null });
+    expect(payload).not.toHaveProperty('worktreeBranch');
   });
 
   // cm:guard the merge-state exclusion is asserted on the PURE FUNCTION because dispatch can no longer reach it: since ISS-897 the only job type is `drive`, stamped `stageStatus:'open'`, and the merge state is `released`, so no dispatched job takes this arm. It is kept and tested because it is what would stop a merge stage being handed a worktree the day one is dispatched again — and an untested arm is one nobody notices removing.
@@ -184,7 +160,7 @@ describe('core stamps the issue feature branch onto the job payload', () => {
   // cm:guard the checkout and salvage must be named by ONE function. `salvage.rs#belongs_to_issue` matches a dirty worktree's branch against `issueKey`, so a second spelling would make salvage refuse — "no dirty worktree matches ISS-n" — on a checkout core itself asked for, and the failed attempt's diff would be thrown away. Change the format in `issues/issue-branch.ts` alone and this stays green; change it in one CALLER and it goes red.
   it('names the checkout and the salvage target identically', async () => {
     const s = await enqueue('open');
-    const frame = await dispatchAndCaptureFrame({ ...s, agentVersion: '0.9.3' });
-    expect(frame.payload.worktreeBranch).toBe(frame.issueKey);
+    const payload = await preparePayload({ ...s, agentVersion: '0.9.3' });
+    expect(payload.worktreeBranch).toBe(payload.issueKey);
   });
 });

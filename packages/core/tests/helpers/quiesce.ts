@@ -1,10 +1,9 @@
 // Drain the app's fire-and-forget background work before a worker database is
 // dropped.
 //
-// The app schedules sweeps that outlive the call that triggered them: a hook
-// subscriber calls `dispatchTickForProject` without awaiting, `drainOutboxOnce`
-// emits on the hooks bus which re-enters the pipeline, and pg-boss keeps its own
-// timers. `cleanup()` used to end the pool and DROP the database while those were
+// The app schedules work that outlives the call that triggered them:
+// `drainOutboxOnce` emits on the hooks bus which re-enters the pipeline, and
+// pg-boss keeps its own timers. `cleanup()` used to end the pool and DROP the database while those were
 // still running, so the sweep queried a database that no longer existed. vitest
 // attributes that unhandled rejection to whichever FILE is running at the time,
 // not the one that leaked it — the reason a docs-only commit could turn
@@ -15,7 +14,6 @@
 // satisfy `db/client.js` must still reach its own teardown.
 
 const MODULES = {
-  dispatchTick: '../../src/jobs/dispatch-tick.js',
   outboxWorker: '../../src/pipeline/outbox-worker.js',
   boss: '../../src/queue/boss.js',
   dbClient: '../../src/db/client.js',
@@ -29,22 +27,15 @@ async function loadedOnly<T>(specifier: string): Promise<T | null> {
   }
 }
 
-export interface QuiesceResult {
-  /** Project ids whose dispatch sweep was still chained after the bounded drain. */
-  stuckProjects: string[];
-}
+// cm:why the drain reports nothing now that no pass re-chains itself: pg-boss and the outbox worker are stopped outright, so "it returned" IS the whole result. Kept as a named type rather than `void` because `quiesceOrReport` awaits it and a future pass with something to report has somewhere to put it.
+export type QuiesceResult = Record<string, never>;
 
-// cm:edge protocol -> packages/core/src/jobs/dispatch-tick.ts — ordering is load-bearing: stop the outbox worker FIRST so it cannot enqueue another sweep, then drain the sweeps already chained. Swapping these lets a drained tick be replaced by one the stopped worker had already queued.
+// cm:guard stop the outbox worker BEFORE pg-boss — it emits on the hooks bus, which re-enters the pipeline, so a worker still running while the queue goes down enqueues against a database the harness is about to drop.
 export async function quiesceBackgroundWork(): Promise<QuiesceResult> {
   const outbox = await loadedOnly<typeof import('../../src/pipeline/outbox-worker.js')>(
     MODULES.outboxWorker,
   );
   if (outbox) await outbox.stopOutboxWorker().catch(() => {});
-
-  const tick = await loadedOnly<typeof import('../../src/jobs/dispatch-tick.js')>(
-    MODULES.dispatchTick,
-  );
-  const stuckProjects = tick ? await tick.quiesceDispatchTicks().catch(() => []) : [];
 
   const boss = await loadedOnly<typeof import('../../src/queue/boss.js')>(MODULES.boss);
   if (boss?.isBossStarted()) await boss.stopBoss().catch(() => {});
@@ -53,5 +44,5 @@ export async function quiesceBackgroundWork(): Promise<QuiesceResult> {
   const dbClient = await loadedOnly<typeof import('../../src/db/client.js')>(MODULES.dbClient);
   if (dbClient) await dbClient.closeDb().catch(() => {});
 
-  return { stuckProjects };
+  return {};
 }

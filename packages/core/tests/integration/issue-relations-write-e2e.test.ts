@@ -85,7 +85,7 @@ describe('ISS-868 issue relations writer', () => {
     });
 
     const [live] = (await loadIssueRelations(dependent, projectId)).blockedBy;
-    expect(live).toMatchObject({ fromIssueId: blocker, toIssueId: dependent, gatesDispatch: true });
+    expect(live?.expired).toBe(false);
 
     const [retracted] = await applyIssueRelations(writer, projectId, dependent, [
       { kind: 'blocks', dependsOnId: blocker, validUntil: '2020-01-01T00:00:00.000Z' },
@@ -93,7 +93,9 @@ describe('ISS-868 issue relations writer', () => {
     expect(retracted).toMatchObject({ edgeId: created?.edgeId, created: false, updated: true });
 
     const [expired] = (await loadIssueRelations(dependent, projectId)).blockedBy;
-    expect(expired).toMatchObject({ expired: true, gatesDispatch: false });
+    // cm:guard a retraction EXPIRES the edge, it does not delete it — the row is the record that the dependency once held, and `validUntil` in the past is how a reader tells "retracted" from "never declared".
+    expect(expired?.expired).toBe(true);
+    expect(expired?.edgeId).toBe(live?.edgeId);
 
     const activityRows = await harness.db.execute<{
       actor_type: string;
@@ -137,7 +139,5 @@ describe('ISS-868 issue relations writer', () => {
         .sort(),
     ).toEqual([blockerA, blockerB].sort());
     expect(blocks.map((e) => e.toIssueId)).toEqual([downstream]);
-    expect(blockedBy.find((e) => e.fromIssueId === blockerA)?.gatesDispatch).toBe(true);
-    expect(blockedBy.find((e) => e.fromIssueId === blockerB)?.gatesDispatch).toBe(true);
   });
 });

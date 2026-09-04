@@ -34,10 +34,6 @@ function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
     issue: { id: 'iss-1', status: 'approved', mergedAt: null, waitingKind: null },
     sessions: [],
     jobs: [],
-    deps: [],
-    runningIssueIds: new Set(),
-    runningIssueCount: 0,
-    cap: 5,
     runnerInFlight: new Map(),
     runnerPool: { total: 1, withCapacity: 1 },
     lastTickAt: null,
@@ -139,80 +135,9 @@ describe('classifyPipelineHealthForIssue', () => {
     expect(out.waitingOn?.details.holdReason).toBe('all_devices_exhausted');
   });
 
-  it('classifies waiting_on_dep for an unmerged blocks parent', () => {
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        jobs: [job()],
-        deps: [
-          { fromIssueId: 'iss-blocker', kind: 'blocks', fromStatus: 'open', fromMergedAt: null },
-        ],
-      }),
-    );
-    expect(out.waitingOn?.reason).toBe('waiting_on_dep');
-    expect(out.waitingOn?.details.blockerIssueIds).toEqual(['iss-blocker']);
-    expect(out.waitingOn?.details.closedUnmergedBlockerIssueIds).toBeUndefined();
-  });
-
-  it('ignores `blocks` parents whose merged_at is stamped', () => {
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        jobs: [job()],
-        deps: [
-          {
-            fromIssueId: 'iss-blocker',
-            kind: 'blocks',
-            fromStatus: 'released',
-            fromMergedAt: QUEUED_AT,
-          },
-        ],
-      }),
-    );
-    expect(out.waitingOn).toBeUndefined();
-  });
-
-  it('flags a closed-but-unmerged blocker under a stampable base (gate parity, ISS-639)', () => {
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        jobs: [job()],
-        deps: [
-          { fromIssueId: 'iss-blocker', kind: 'blocks', fromStatus: 'closed', fromMergedAt: null },
-        ],
-      }),
-    );
-    expect(out.waitingOn?.reason).toBe('waiting_on_dep');
-    expect(out.waitingOn?.details.closedUnmergedBlockerIssueIds).toEqual(['iss-blocker']);
-  });
-
-  it('classifies project_full when running count >= cap', () => {
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        cap: 1,
-        runningIssueIds: new Set(['iss-other']),
-        runningIssueCount: 1,
-        jobs: [job()],
-      }),
-    );
-    expect(out.waitingOn?.reason).toBe('project_full');
-    expect(out.waitingOn?.details.cap).toBe(1);
-    expect(out.waitingOn?.details.running).toEqual(['iss-other']);
-  });
-
-  it('does NOT classify project_full when the candidate issue is in the running set', () => {
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        cap: 1,
-        runningIssueIds: new Set(['iss-1']),
-        runningIssueCount: 1,
-        jobs: [job()],
-      }),
-    );
-    expect(out.waitingOn).toBeUndefined();
-  });
-
   it('classifies runner_full when the candidate runner is saturated', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({
-        cap: 5,
         jobs: [job({ runnerId: 'rnr-1', type: 'plan' })],
         runnerInFlight: new Map([['rnr-1', { type: 'claude-code', cap: 1, inFlight: 1 }]]),
       }),
@@ -231,34 +156,9 @@ describe('classifyPipelineHealthForIssue', () => {
     const older = job({ id: 'job-older', queuedAt: QUEUED_AT });
     const newer = job({ id: 'job-newer', queuedAt: new Date(QUEUED_AT.getTime() + 30_000) });
     const out = classifyPipelineHealthForIssue(
-      baseInput({
-        jobs: [newer, older],
-        deps: [
-          { fromIssueId: 'iss-blocker', kind: 'blocks', fromStatus: 'open', fromMergedAt: null },
-        ],
-      }),
+      baseInput({ jobs: [newer, older, job({ id: 'job-held', status: 'held' })] }),
     );
     expect(out.waitingOn?.since).toBe(QUEUED_AT.toISOString());
-  });
-});
-
-describe('classifyPipelineHealthForIssue — dependency satisfaction parity', () => {
-  it('keeps a merged blocker at reopen in waiting_on_dep', () => {
-    const out = classifyPipelineHealthForIssue(
-      baseInput({
-        jobs: [job()],
-        deps: [
-          {
-            fromIssueId: 'iss-blocker',
-            kind: 'blocks',
-            fromStatus: 'reopen',
-            fromMergedAt: QUEUED_AT,
-          },
-        ],
-      }),
-    );
-    expect(out.waitingOn?.reason).toBe('waiting_on_dep');
-    expect(out.waitingOn?.details.blockerIssueIds).toEqual(['iss-blocker']);
   });
 });
 
@@ -278,13 +178,7 @@ describe('classifyPipelineHealthForIssue — the two gates that never clear them
   it('reports run_not_running ahead of every other queued gate', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({
-        cap: 1,
-        runningIssueIds: new Set(['iss-other']),
-        runningIssueCount: 1,
         runnerPool: { total: 0, withCapacity: 0 },
-        deps: [
-          { fromIssueId: 'iss-blocker', kind: 'blocks', fromStatus: 'open', fromMergedAt: null },
-        ],
         jobs: [job({ pipelineRunStatus: 'paused' })],
       }),
     );

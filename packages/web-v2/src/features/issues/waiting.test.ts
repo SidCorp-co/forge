@@ -102,8 +102,6 @@ describe("WAITING_REASON_SHORT", () => {
     "run_not_running",
     "retry_cooldown",
     "stale_trigger",
-    "waiting_on_dep",
-    "project_full",
     "runner_stale",
     "runner_full",
   ];
@@ -124,9 +122,7 @@ describe("gate tone", () => {
 				?.gate?.needsAction;
 		expect(needs("runner_stale")).toBe(true);
 		expect(needs("run_not_running")).toBe(true);
-		expect(needs("waiting_on_dep")).toBe(true);
 		expect(needs("retry_cooldown")).toBe(false);
-		expect(needs("project_full")).toBe(false);
 		expect(needs("runner_full")).toBe(false);
 		expect(needs("stale_trigger")).toBe(false);
 		expect(needs("issue_busy")).toBe(false);

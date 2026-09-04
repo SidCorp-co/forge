@@ -644,7 +644,6 @@ describe("deriveBlockerState", () => {
 		expect(banner("runner_stale")?.tone).toBe("attention");
 		expect(banner("run_not_running")?.tone).toBe("attention");
 		expect(banner("retry_cooldown")?.tone).toBe("info");
-		expect(banner("project_full")?.tone).toBe("info");
 	});
 
 	it("names a gate whose reason this build has no copy for", () => {
@@ -712,25 +711,6 @@ describe("deriveBlockerState", () => {
 			expect(b?.reason).not.toContain("decision");
 		});
 
-		it("a dependency closed-without-merging still wins over the generic copy", () => {
-			const b = deriveBlockerState(
-				blockerIssue({ status: "waiting" }),
-				{
-					stage: "waiting",
-					waitingOn: {
-						reason: "waiting_on_dep",
-						since: "x",
-						details: {
-							blockerIssueIds: ["blk-1"],
-							closedUnmergedBlockerIssueIds: ["blk-1"],
-						},
-					},
-				},
-				incomingBlocks({ fromStatus: "closed" }),
-			);
-			expect(b?.reason).toContain("closed without");
-			expect(b?.cta.kind).toBe("open-blocker");
-		});
 	});
 
 	it("on_hold status → resume action", () => {
@@ -749,8 +729,6 @@ describe("deriveBlockerState", () => {
 			"run_not_running",
 			"retry_cooldown",
 			"stale_trigger",
-			"waiting_on_dep",
-			"project_full",
 			"runner_stale",
 			"runner_full",
 		] as const) {
@@ -801,28 +779,6 @@ describe("deriveBlockerState", () => {
 		expect(permanent?.reason).toContain("does not clear on its own");
 		expect(permanent?.whoMustAct).not.toContain("No action");
 		expect(permanent?.whoMustAct).toContain("cancel the step");
-	});
-
-	it("escalates closed-unmerged blockers to an operator decision with refs", () => {
-		const b = deriveBlockerState(
-			blockerIssue({ status: "in_progress" }),
-			{
-				stage: "code",
-				waitingOn: {
-					reason: "waiting_on_dep",
-					since: "x",
-					details: {
-						blockerIssueIds: ["blk-1"],
-						closedUnmergedBlockerIssueIds: ["blk-1"],
-					},
-				},
-			},
-			incomingBlocks({ fromStatus: "closed" }),
-		);
-		expect(b?.tone).toBe("attention");
-		expect(b?.reason).toContain("closed without");
-		expect(b?.cta.kind).toBe("open-blocker");
-		expect(b?.blockingRefs?.length).toBe(1);
 	});
 
 	it("falls back to open blocks edges with a link action", () => {

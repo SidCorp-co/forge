@@ -9,7 +9,6 @@ import { and, eq, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import { type IssueDependencyKind, issueDependencies, issues } from '../db/schema.js';
-import { isBlockerSatisfied } from './dependency-satisfaction.js';
 
 export type IssueDependencyEdge = {
   id: string;
@@ -102,14 +101,12 @@ export type IssueRelationDigest = {
   otherMergedAt: Date | null;
   validUntil: Date | null;
   expired: boolean;
-  gatesDispatch: boolean;
 };
 
 const isExpired = (edge: IssueDependencyEdge, now: number): boolean =>
   edge.validUntil != null && edge.validUntil.getTime() <= now;
 
-// cm:guard `gatesDispatch` answers "is this edge holding me RIGHT NOW", and it is three conditions, not one: incoming + kind `blocks` + unexpired + the blocker unsatisfied. Drop any of them and it lies in the ordinary case — a `decomposes` parent also lands in `blockedBy` while L2 never gates the child on it, and every satisfied dependency in the project would report a live blocker forever once its blocker merged.
-// cm:edge lockstep -> packages/core/src/issues/dependency-satisfaction.ts — the merged/reopen/closed half of the rule lives there, shared with pipeline-health.ts; the valid_until half is inline here because it is the only part `expired` also needs
+// cm:guard this digest reports what an edge IS, never whether it is holding anything back. `gatesDispatch` lived here until the dispatch gate it named was deleted; a field that answers "am I blocked" is a verdict, and the verdict is the master's to reach from `expired` plus the blocker's own status. Re-adding one puts a second opinion in front of the reader who is supposed to form the first.
 function digest(edge: IssueDependencyEdge, issueId: string, now: number): IssueRelationDigest {
   const outgoing = edge.fromIssueId === issueId;
   const expired = isExpired(edge, now);
@@ -124,11 +121,6 @@ function digest(edge: IssueDependencyEdge, issueId: string, now: number): IssueR
     otherMergedAt: outgoing ? edge.toMergedAt : edge.fromMergedAt,
     validUntil: edge.validUntil,
     expired,
-    gatesDispatch:
-      !outgoing &&
-      edge.kind === 'blocks' &&
-      !expired &&
-      !isBlockerSatisfied({ status: edge.fromStatus, mergedAt: edge.fromMergedAt }),
   };
 }
 

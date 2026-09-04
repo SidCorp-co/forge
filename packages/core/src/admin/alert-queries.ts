@@ -12,7 +12,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { buildBarrierFragments, resolveGateSettings } from '../jobs/dispatch-gates.js';
+import { buildBarrierFragments } from '../jobs/queued-gates.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 
 export type AdminAlertId = 'A1' | 'A2' | 'A3' | 'A4' | 'A5';
@@ -225,17 +225,15 @@ type StarvedProject = {
 /**
  * A3 — a project with jobs that WOULD dispatch except no runner can accept them.
  *
- * Starvation is defined as passing every dispatch barrier EXCEPT runner
- * availability. A job held by project concurrency (project_cap), a `blocks`
- * dependency, issue-busy, or a retry cooldown is NOT starved — the
- * dispatcher is correctly holding it and it dispatches on its own once the
- * upstream gate clears. Counting those as "no usable runner" is a false positive
- * (e.g. at the default cap of 1, a second issue's job queued behind an actively
- * running one), and a stale trigger is the same story — `jobs/stale-trigger.ts`
- * ends that job, no runner would have helped.
+ * Starvation is defined as a job nothing holds back EXCEPT runner
+ * availability. A job that is issue-busy, in a retry cooldown, or already
+ * claimed by a master (`held_by`) is NOT starved — something is legitimately
+ * in front of it and it becomes claimable once that clears. Counting those as
+ * "no usable runner" is a false positive, and a stale trigger is the same
+ * story — `jobs/stale-trigger.ts` ends that job, no runner would have helped.
  *
- * To stay drift-free with the real dispatcher, this replays the SSOT gate
- * fragments (`buildBarrierFragments`, the same builder the picker/asserter use)
+ * To stay drift-free with the explainer, this replays the SSOT fragments
+ * (`buildBarrierFragments`, the same builder both readers use)
  * per candidate project — both halves: the barrier predicates AND the
  * `fresh_capable_runners` CTE that decides runner health — then adds the two
  * clauses the picker leaves to `selectRunnerForJob`: the per-job capability
@@ -260,7 +258,6 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
 
   const starved: StarvedProject[] = [];
   for (const c of candidates) {
-    const { cap } = await resolveGateSettings(c.project_id);
     const { ctes, predicates } = buildBarrierFragments({
       projectIdRef: sql`${c.project_id}`,
       livenessSeconds,
@@ -295,11 +292,7 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
         AND NOT (${predicates.issueBusySession})
         AND NOT (${predicates.issueBusyJob})
         AND NOT (${predicates.staleTrigger})
-        AND NOT (${predicates.blockedBy})
-        AND (
-          j.issue_id::text IN (SELECT issue_id FROM running_ids)
-          OR (SELECT COUNT(*) FROM running_ids) < ${cap}
-        )
+        AND j.held_by IS NULL
         AND NOT EXISTS (
           SELECT 1 FROM fresh_capable_runners fcr
           JOIN runners rr ON rr.id = fcr.id

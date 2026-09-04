@@ -8,7 +8,6 @@ import { failReconcileRunForFailedJob } from '../skills/reconcile-service.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
-import { dispatchTickForProject } from './dispatch-tick.js';
 import { insertInterventionEvent } from './intervention-event.js';
 
 /** Job statuses from which a single-job cancel is permitted. */
@@ -119,8 +118,6 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
       event: 'job.cancelled',
       data: { jobId: updated.id, status: 'cancelled' },
     });
-
-    void dispatchTickForProject(updated.projectId);
 
     // ISS-164 — keep pipeline-health rollups current.
     if (updated.issueId) {

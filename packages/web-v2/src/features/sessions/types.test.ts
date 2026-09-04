@@ -156,8 +156,6 @@ describe("classifySessionOutcome (ISS-322 four-bucket classifier)", () => {
       "no_worker_online",
       "user_cancelled",
       "issue_busy",
-      "waiting_on_dep",
-      "project_full",
       "runner_full",
     ]) {
       const o = classifySessionOutcome("failed", reason);

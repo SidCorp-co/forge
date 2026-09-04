@@ -49,15 +49,9 @@ describe('PIPELINE_CONFIG_DEFAULTS', () => {
 });
 
 describe('pipelineConfigPatchSchema', () => {
-  // ISS-232 Phase 3 dropped `runnerFallback` from the patch schema. The patch
-  // is identical to `pipelineConfigSchema` (no extension fields).
-  // `maxConcurrentIssues` was later RE-ADDED as an opt-in per-project cap
-  // (default 1), so it is accepted within [1,20] — see tests below.
+  // cm:why the patch schema IS `pipelineConfigSchema` — there are no patch-only extension fields, and the pair being one object is what stops a PATCH accepting a shape a GET can never return.
   it('accepts pipelineConfig fields', () => {
-    const patch = {
-      enabled: true,
-      maxConcurrentIssues: 3,
-    };
+    const patch = { enabled: true };
     expect(pipelineConfigPatchSchema.parse(patch)).toEqual(patch);
   });
 
@@ -96,18 +90,10 @@ describe('pipelineConfigPatchSchema', () => {
     expect(out).toEqual({ enabled: true });
   });
 
-  it('preserves `maxConcurrentIssues` within the [1,20] range', () => {
-    const out = pipelineConfigPatchSchema.parse({
-      enabled: true,
-      maxConcurrentIssues: 4,
-    });
-    expect(out).toEqual({ enabled: true, maxConcurrentIssues: 4 });
-  });
-
-  it('rejects `maxConcurrentIssues` outside [1,20]', () => {
-    expect(() => pipelineConfigPatchSchema.parse({ maxConcurrentIssues: 0 })).toThrow();
-    expect(() => pipelineConfigPatchSchema.parse({ maxConcurrentIssues: 21 })).toThrow();
-    expect(() => pipelineConfigPatchSchema.parse({ maxConcurrentIssues: 2.5 })).toThrow();
+  // cm:guard the strip is the DELETION MECHANISM for the removed concurrency cap — the schema drops unknown keys on parse, so a project's next settings save clears `maxConcurrentIssues` from the stored document. Migration 0205 does it for every project at once so the fleet is never half-stripped; this pins that the schema no longer answers with it.
+  it('drops the removed concurrency cap rather than echoing it back', () => {
+    const out = pipelineConfigPatchSchema.parse({ enabled: true, maxConcurrentIssues: 4 });
+    expect(out).toEqual({ enabled: true });
   });
 });
 

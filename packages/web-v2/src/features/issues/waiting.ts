@@ -69,15 +69,6 @@ export const WAITING_REASON_COPY: Record<
 			"A queued step answers a trigger this issue has already moved past.",
 		who: "No action — the step is discarded on the next dispatch sweep and the current stage takes over.",
 	},
-	waiting_on_dep: {
-		reason:
-			"Blocked by a dependency that hasn't merged to the base branch yet.",
-		who: "Finish (and merge) the blocking issue first.",
-	},
-	project_full: {
-		reason: "The project's concurrency cap is reached.",
-		who: "No action — dispatches when a slot frees.",
-	},
 	runner_full: {
 		reason: "Every online runner is at capacity.",
 		who: "No action — dispatches when a runner frees.",
@@ -94,8 +85,6 @@ export const WAITING_REASON_SHORT: Record<WaitingReason, string> = {
 	run_not_running: "Run paused",
 	retry_cooldown: "Retry cooldown",
 	stale_trigger: "Step superseded",
-	waiting_on_dep: "Blocked by dep",
-	project_full: "Project at cap",
 	runner_stale: "No runner online",
 	runner_full: "Runners at capacity",
 };
@@ -128,8 +117,6 @@ const GATE_NEEDS_ACTION: Record<Exclude<WaitingReason, "job_held">, boolean> = {
 	run_not_running: true,
 	retry_cooldown: false,
 	stale_trigger: false,
-	waiting_on_dep: true,
-	project_full: false,
 	runner_stale: true,
 	runner_full: false,
 };

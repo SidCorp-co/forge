@@ -234,12 +234,15 @@ describe('A3 runner starvation (ISS-652)', () => {
     expect(findAlert(cleared, 'A3')?.status).toBe('ok');
   });
 
-  // cm:guard the discriminating case for project_cap: identical fixture to the one above at the DEFAULT cap of 1, where the dispatcher is correctly holding issue B and it goes out the moment A finishes. The runner is full in both, so a passing test proves project_cap is replayed rather than the runner state alone being read.
-  it('stays ok when a second issue is held by project_cap, not the runner (cap=1)', async () => {
+  // cm:guard the discriminating case for `held_by`: a job a master has already claimed is NOT starved — a master is holding it precisely because it means to run it, and counting that as "no usable runner" alarms on the healthy path. The fixture is otherwise identical to the alarming one, so a pass proves the hold is replayed rather than the runner state alone being read.
+  it('stays ok when the queued job is already claimed by a master', async () => {
     const owner = await createTestUser(ctx.harness.db);
     const project = await createTestProject(ctx.harness.db, owner.id);
     const runnerId = await fx.insertRunner({ projectId: project.id, status: 'online' });
     await seedTwoIssuesOneBusyRunner(fx, project.id, owner.id, runnerId);
+    await ctx.harness.db.execute(
+      sql`UPDATE jobs SET held_by = gen_random_uuid(), held_at = now() WHERE status = 'queued'`,
+    );
 
     const { body } = await getAlerts(ctx, await ctx.adminToken());
     expect(findAlert(body, 'A3')?.status).toBe('ok');

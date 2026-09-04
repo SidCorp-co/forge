@@ -234,31 +234,8 @@ describe('ISS-164 pipelineHealth E2E', () => {
     });
   });
 
-  it('classifies project_full IMMEDIATELY at queue time (ISS-137 blind-spot closure)', async () => {
-    const { project } = await seedProject({ maxConcurrentIssues: 1 });
-    const issueA = await insertIssue(project.id);
-    const issueB = await insertIssue(project.id);
-
-    // Issue A holds the only concurrency slot via a running session.
-    const sessionA = await insertSession(project.id, {
-      issueId: issueA,
-      status: 'running',
-    });
-    // Issue B has a fresh queued job, no agent_session yet.
-    await insertJob(project.id, { issueId: issueB, status: 'queued', type: 'plan' });
-
-    const map = await mods.hydratePipelineHealthForIssues(project.id, [issueA, issueB]);
-
-    expect(map.get(issueA)?.activeSession?.id).toBe(sessionA);
-    expect(map.get(issueA)?.waitingOn).toBeUndefined();
-
-    const bHealth = map.get(issueB);
-    expect(bHealth?.waitingOn?.reason).toBe('project_full');
-    expect(bHealth?.waitingOn?.details.cap).toBe(1);
-    expect(bHealth?.waitingOn?.details.running).toContain(issueA);
-  });
-
-  it('classifies waiting_on_dep when a blocks parent is non-terminal', async () => {
+  // cm:guard an issue with an UNMERGED blocker must report NO waitingOn — this is the behaviour the blocker gate's deletion changed, and it is the whole point: a `blocks` edge is a fact the master reads and weighs (a docs-only dependent can run beside its blocker), not a condition the kernel enforces. A `waiting_on_dep` reappearing here means routing moved back into core.
+  it('does not report a blocker as a wait — the edge is a fact, not a gate', async () => {
     const { project } = await seedProject();
     const blocker = await insertIssue(project.id, { status: 'open' });
     const child = await insertIssue(project.id);
@@ -266,12 +243,11 @@ describe('ISS-164 pipelineHealth E2E', () => {
     await insertJob(project.id, { issueId: child, status: 'queued', type: 'plan' });
 
     const map = await mods.hydratePipelineHealthForIssues(project.id, [child]);
-    const health = map.get(child);
-    expect(health?.waitingOn?.reason).toBe('waiting_on_dep');
-    expect(health?.waitingOn?.details.blockerIssueIds).toEqual([blocker]);
+    expect(map.get(child)?.waitingOn).toBeUndefined();
   });
 
-  it('classifies waiting_on_dep for a closed-but-unmerged blocker (gate parity, ISS-639)', async () => {
+  // cm:guard the same for a blocker that closed WITHOUT its code landing — the one case the old gate treated as permanently blocking. It is still the most alarming shape on the board, and it is still the master's call, so health must not pre-empt it with a verdict.
+  it('does not report a closed-but-unmerged blocker as a wait either', async () => {
     const { project } = await seedProject();
     const blocker = await insertIssue(project.id, { status: 'closed' });
     const child = await insertIssue(project.id);
@@ -279,19 +255,7 @@ describe('ISS-164 pipelineHealth E2E', () => {
     await insertJob(project.id, { issueId: child, status: 'queued', type: 'plan' });
 
     const map = await mods.hydratePipelineHealthForIssues(project.id, [child]);
-    const health = map.get(child);
-    expect(health?.waitingOn?.reason).toBe('waiting_on_dep');
-    expect(health?.waitingOn?.details.closedUnmergedBlockerIssueIds).toEqual([blocker]);
-  });
-
-  it('classifies waiting_on_dep when an open blocks parent gates the child', async () => {
-    const { project } = await seedProject();
-    const blocker = await insertIssue(project.id, { status: 'open' });
-    const child = await insertIssue(project.id);
-    await insertEdge(project.id, blocker, child, 'blocks');
-    await insertJob(project.id, { issueId: child, status: 'queued', type: 'plan' });
-    const map = await mods.hydratePipelineHealthForIssues(project.id, [child]);
-    expect(map.get(child)?.waitingOn?.reason).toBe('waiting_on_dep');
+    expect(map.get(child)?.waitingOn).toBeUndefined();
   });
 
   it('classifies issue_busy when a sibling job is dispatched', async () => {

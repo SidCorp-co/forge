@@ -56,7 +56,7 @@ function deviceScope(runnerId: string) {
  * Record a limit on every binding of the runner's device. No-ops when
  * `runnerId` is absent — orphan/sweeper failures may not carry a runner.
  */
-// cm:edge contract -> packages/core/src/jobs/dispatch-gates.ts — `fresh_capable_runners` matches the reason 'auth' as a LITERAL, so stamping it here is what hard-excludes the runner; renaming the enum member silently reopens dispatch to auth-dead boxes
+// cm:edge contract -> packages/core/src/jobs/queued-gates.ts — `fresh_capable_runners` matches the reason 'auth' as a LITERAL, so stamping it here is what hard-excludes the runner; renaming the enum member silently reopens dispatch to auth-dead boxes
 export async function stampRunnerLimit(
   runnerId: string | null | undefined,
   projectId: string,

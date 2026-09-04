@@ -19,7 +19,8 @@ flowchart LR
 | Concern | Where it lives |
 |---|---|
 | Run and job lifecycle | `core/src/pipeline/`, `core/src/jobs/`, `schema.ts:pipelineRuns`, `schema.ts:jobs` |
-| Dispatch and its gates | `core/src/jobs/dispatcher.ts`, `core/src/jobs/dispatch-gates.ts` |
+| The claim and what it refuses | `core/src/devices/claim.ts`, `core/src/jobs/prepare-claimed-job.ts` |
+| Why a queued job is not running | `core/src/jobs/queued-gates.ts` |
 | Advisory status map | `core/src/pipeline/state-machine.ts:transitions` |
 | Retry, escalation, failure class | `core/src/jobs/retry.ts`, `core/src/pipeline/failure-classifier.ts` |
 | Failure cause taxonomy | `core/src/pipeline/failure-causes.ts:FAILURE_CAUSES`, `core/src/pipeline/failure-patterns.ts:CAUSE_RULES` |
@@ -54,7 +55,7 @@ flowchart LR
 - **A stop must say why.** `reopen`, `waiting` and `needs_info` are rejected without a `reason`;
   `waiting` additionally requires `waitingKind`. A stopped pipeline that does not say what it waits
   for is a question nobody can answer.
-- **A park no dispatcher picks up is not representable.**
+- **A park no master picks up is not representable.**
   `core/src/issues/autonomous-park.ts` rewrites at write time to the only two statuses the driver
   reads: `reopen` → `open` for **any** actor, and `waiting` → `needs_info` for an **agent** only. A
   human's `waiting` and their `on_hold` pass through. A project

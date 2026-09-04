@@ -2,15 +2,15 @@
  * ISS-164 — the per-gate `waitingOn` builders for `pipeline-health.ts`.
  *
  * Each function answers ONE arm of the dispatch CASE in
- * `jobs/dispatch-gates.ts#buildGateReasonCase`. They live apart from the
+ * `jobs/queued-gates.ts#buildGateReasonCase`. They live apart from the
  * classifier because the classifier owns only the PRECEDENCE between arms;
  * what each arm reports, and the incident each shape came from, belongs
  * beside the arm itself. Pure: no db, and any clock is injected.
  */
 
 import type { JobType } from '../db/schema.js';
-import type { RunnerAvailability } from '../jobs/dispatch-gates.js';
-import { runnerSupportsJobType } from '../jobs/dispatch-gates.js';
+import type { RunnerAvailability } from '../jobs/queued-gates.js';
+import { runnerSupportsJobType } from '../jobs/queued-gates.js';
 import { TRIGGER_STATUS_BY_JOB_TYPE, WORKING_STATUS_BY_JOB_TYPE } from '../pipeline/registry.js';
 import type {
   PipelineHealth,
@@ -69,7 +69,7 @@ export function retryCooldownWaitingOn(
 /** The `stale_trigger` waitingOn for a queued candidate answering a trigger the
  *  issue has already left, or `null`. */
 // cm:guard every clause here mirrors one in `predicates.staleTrigger`, and the two must agree on EVERY input — this arm claims the step is about to be discarded, so a clause here the gate lacks promises a discard that never comes, and one the gate has and this lacks hides a discard that does. The cooldown is NOT among them: the gate resolves it in an earlier CASE arm, so the classifier's caller must reach `retryCooldownWaitingOn` first, in that same order.
-// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — `predicates.staleTrigger` is the authority for both the job-type scope (which keeps `drive` out) and the per-type `workingStatus` allowance
+// cm:edge lockstep -> packages/core/src/jobs/queued-gates.ts — `predicates.staleTrigger` is the authority for both the job-type scope (which keeps `drive` out) and the per-type `workingStatus` allowance
 export function staleTriggerWaitingOn(
   candidate: PipelineHealthJob,
   liveStatus: string,

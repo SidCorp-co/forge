@@ -29,7 +29,7 @@ vi.mock('./run-pause.js', () => ({
 }));
 
 const gateReasons = vi.fn(async (_projectId: string) => new Map<string, string>());
-vi.mock('../jobs/dispatch-gates.js', () => ({
+vi.mock('../jobs/queued-gates.js', () => ({
   gateReasonsForQueuedJobs: (projectId: string) => gateReasons(projectId),
 }));
 

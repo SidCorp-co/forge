@@ -20,7 +20,7 @@ import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
-import { assertDispatchable, gateReasonsForQueuedJobs } from './dispatch-gates.js';
+import { assertDispatchable, gateReasonsForQueuedJobs } from './queued-gates.js';
 
 /** `jobs.failure_reason` written on a discard — the string an operator greps. */
 export const STALE_TRIGGER_REASON = 'stale_trigger';

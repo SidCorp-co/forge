@@ -287,13 +287,6 @@ export interface PipelineConfig {
 	 */
 	states?: Record<string, PipelineStateConfig | undefined>;
 	/**
-	 * Per-project cap on simultaneously-active issues (default 1). Raise it to
-	 * fan INDEPENDENT issues across the runner pool; dependent issues stay
-	 * serialized by the dependency gates regardless. Range [1,20]. Mirrors
-	 * `maxConcurrentIssues` in core `pipeline/pipeline-config-schema.ts`.
-	 */
-	maxConcurrentIssues?: number;
-	/**
 	 * ISS-606 — per-project intake gate. When enabled, EVERY create that would
 	 * land at `open` (all channels, member-created included) parks at `draft`
 	 * + label `intake` until a human approves via draft→open. `notify`

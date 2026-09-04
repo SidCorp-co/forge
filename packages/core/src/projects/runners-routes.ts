@@ -5,7 +5,6 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
-import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -290,7 +289,6 @@ projectRunnerRoutes.post(
 
     const cleared = await clearRunnerFaultFlags(runnerId, id);
     // cm:why the tick is the point of the button: a box excluded by rate_limited_until or quarantine holds queued jobs that nothing re-examines until the next dispatch trigger, so clearing alone would look like a no-op to the operator
-    if (cleared) void dispatchTickForProject(id);
     return c.json({ runnerId, cleared });
   },
 );

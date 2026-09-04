@@ -699,7 +699,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           });
         }
 
-        // cm:edge ordering -> packages/core/src/jobs/dispatch-gates.ts — relations commit BEFORE the transition below, for the same reason create commits them before issueCreated: the transition is what wakes considerEnqueue→dispatch, so a blocks edge written after it misses the first tick and the dependent ships ahead of its blocker. This order is also the SAFE side of a partial failure, which is why the two writes are deliberately not one transaction: edges landed + transition failed leaves an extra `blocks` edge holding a job, which a human can retract, where the reverse ships a dependent ahead of its blocker and cannot be undone.
+        // cm:edge ordering -> packages/core/src/jobs/queued-gates.ts — relations commit BEFORE the transition below, for the same reason create commits them before issueCreated: the transition is what wakes considerEnqueue→dispatch, so a blocks edge written after it misses the first tick and the dependent ships ahead of its blocker. This order is also the SAFE side of a partial failure, which is why the two writes are deliberately not one transaction: edges landed + transition failed leaves an extra `blocks` edge holding a job, which a human can retract, where the reverse ships a dependent ahead of its blocker and cannot be undone.
         const r = await applyIssueRelations(
           { actor: principalHookActor(principal, device), createdById: device.ownerId },
           issue.projectId,
@@ -742,11 +742,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         return transitionOutput;
       }
 
-      // ISS-286 — explicit, idempotent, auditable merge-marker. Decouples
-      // `merged_at` from the implicit `markMergedIfLeavingBase` side-effect so
-      // a skill can stamp the merge directly after verifying a push (epic /
-      // feature-branch barrier: a `blocks` parent is gated on every child's
-      // `merged_at IS NOT NULL` — see jobs/dispatch-gates.ts blockedBy).
+      // cm:why ISS-286 — an explicit, idempotent, auditable marker that decouples `merged_at` from the implicit `markMergedIfLeavingBase` side-effect, so a skill can stamp the merge straight after verifying a push; since the blocker gate was deleted the stamp is a FACT a master reads off the relation rather than something the kernel enforces, and what it means for a dependent is the master's call
       case 'mark_merged':
       case 'unmark': {
         const issueId = input.data?.issueId;

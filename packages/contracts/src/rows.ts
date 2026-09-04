@@ -15,18 +15,13 @@ export type User = Pick<
 
 export type Project = typeof schema.projects.$inferSelect;
 
-// ISS-164 — pipeline health (D4 of ISS-141). Derived server-side from a live
-// join over `issues + jobs + agent_sessions + issue_dependencies` so the FE
-// never re-derives gate state across endpoints. See
-// `packages/core/src/issues/pipeline-health.ts` for the loader.
+// cm:edge contract -> packages/core/src/issues/pipeline-health.ts — ISS-164: that loader derives every member of this union server-side, and the FE renders what it is told rather than re-deriving it; a reason added there and not here renders as nothing at all.
 export type PipelineWaitingReason =
   | 'issue_busy'
   | 'job_held'
   | 'run_not_running'
   | 'retry_cooldown'
   | 'stale_trigger'
-  | 'waiting_on_dep'
-  | 'project_full'
   | 'runner_stale'
   | 'runner_full';
 

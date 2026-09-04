@@ -1,7 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
-import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { findMissingWorkEvidence } from '../pipeline/work-evidence.js';
@@ -118,7 +117,6 @@ export async function applyMergeMarker(args: {
   });
 
   // cm:guard the tick is on `mark` ONLY — clearing `merged_at` can only ADD a block, so waking the dispatcher there is work that can never find anything, while skipping it on `mark` leaves a now-unblocked parent waiting out the 60s pg-boss backstop instead of dispatching in ~1s.
-  if (args.op === 'mark') void dispatchTickForProject(before.projectId);
 
   return { issue, action: args.op === 'mark' ? 'merged' : 'unmarked' };
 }

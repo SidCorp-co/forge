@@ -21,7 +21,6 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { cancelJob, JobCancelError } from './cancel-job.js';
-import { dispatchTickForProject } from './dispatch-tick.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { isResumeFailedError, reclassifyAbortedResume } from './handle-resume-failed.js';
 import { readJob } from './job-queries.js';
@@ -289,7 +288,6 @@ jobLifecycleDeviceRoutes.post(
           // A successful completion clears any rate/usage/auth limit on the runner.
           void clearRunnerLimit(reclaimed.runnerId, reclaimed.projectId);
           void clearRunnerQuarantine(reclaimed.runnerId, reclaimed.projectId);
-          void dispatchTickForProject(reclaimed.projectId);
           if (reclaimed.issueId) {
             await publishPipelineHealthChanged(reclaimed.projectId, [reclaimed.issueId]);
           }
@@ -398,7 +396,6 @@ jobLifecycleDeviceRoutes.post(
 
     // ISS-40 PR-E — re-tick the project so newly-freed slots get filled.
     // Fire-and-forget; never await.
-    void dispatchTickForProject(updated.projectId);
 
     // ISS-164 — refresh pipelineHealth for the linked issue (activeSession
     // clears, queued siblings may now classify differently).

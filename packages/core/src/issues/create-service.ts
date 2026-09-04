@@ -117,7 +117,7 @@ export type CreateIssueResult =
       bodyWarnings: string[];
     };
 
-// cm:edge ordering -> packages/core/src/jobs/dispatch-gates.ts — relations MUST commit before the `issueCreated` emit below, which synchronously triggers considerEnqueue→dispatch; an edge written after it is invisible to the L2 blocks-gate on the first tick and the dependent ships ahead of its blocker
+// cm:edge ordering -> packages/core/src/jobs/queued-gates.ts — relations MUST commit before the `issueCreated` emit below, which synchronously triggers considerEnqueue→dispatch; an edge written after it is invisible to the L2 blocks-gate on the first tick and the dependent ships ahead of its blocker
 // cm:guard decode attachments and resolve labels BEFORE the insert — both reject on bad input, and doing them after would leave a half-created issue with no files and no labels
 // cm:edge lockstep -> packages/core/src/issues/routes.ts — the REST POST maps IssueCreateError / LabelResolutionError / AttachmentError to status codes
 // cm:edge lockstep -> packages/core/src/mcp/tools/forge-issues.ts — same mapping on the MCP side, to its `CODE: message` string form

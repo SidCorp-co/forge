@@ -68,7 +68,7 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
     .where(and(eq(runners.deviceId, principal.deviceId), eq(runners.type, input.type)))
     .limit(1);
 
-  const wasOffline = !existing || existing.status !== 'online';
+  const wasOffline = existing?.status !== 'online';
   let runnerId: string;
   if (existing) {
     const [updated] = await db
@@ -141,7 +141,7 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
     event: 'runner.status',
     data: { runnerId, status: 'online' },
   });
-  // cm:edge protocol -> packages/core/src/jobs/dispatch-subscribers.ts — ISS-40 PR-E: a runner coming online must re-tick the project, since queued jobs may have been held on `runner_full` / `no_worker_online`. Announced rather than called: importing the job layer from here put this file inside a 52-file import cycle.
+  // cm:guard announce, never act — this file must not import the job layer, which is what put it inside a 52-file import cycle the last time it did. A box coming back online is news; what to do about it is the master's on that box.
   if (wasOffline) {
     void hooks.emit('runnerOnline', { projectId: input.projectId, runnerId });
   }

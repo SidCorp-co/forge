@@ -41,9 +41,7 @@
   sweep every minute returns the holds of any master that went terminal or stopped beating, which
   is what stops a master dying at 3am from parking work nobody can reach. The pool reports each
   blocker's raw `status`/`merged_at` rather than a computed "satisfied" flag, so `dropped` and
-  landed-then-`reopen` stay distinguishable. Nothing calls these yet: the push path still runs and
-  is deleted in one step once a master runs against them
-  (`docs/proposals/master-orchestration.html`).
+  landed-then-`reopen` stay distinguishable (`docs/proposals/master-orchestration.html`).
 
 - Retrieval v3, phase 0 (ISS-904). Every hybrid memory search now records on its
   `retrieval_analytics` row how many hits the semantic list and the keyword list each produced and
@@ -393,6 +391,31 @@
   real total shown; one human comment clears a row for good. (ISS-881)
 
 ### Removed
+
+- **Core no longer pushes work at a runner, and there is no concurrency cap left in it.** The
+  central picker, the dispatch tick, the pg-boss dispatcher and the `job.assigned` frame are gone,
+  along with the per-project `pipelineConfig.maxConcurrentIssues` (migration `0205` strips the key
+  from every project so the fleet is not left half-carrying a number nothing honours) and its
+  Settings → Pipeline → Concurrency control. A master agent on the box claims from the pool
+  instead, and how many issues run at once is its judgement, weighed against `GET /me/load`.
+
+  **The blocker gate went with them.** A `blocks` edge no longer holds a job back anywhere: the
+  relation is reported with the blocker's raw `status` and `merged_at` and the master decides what
+  it means, which is the only reading that can tell a `dropped` blocker from one that merged and
+  then bounced to `reopen`. `waiting_on_dep` and `project_full` are removed from the waiting-reason
+  vocabulary in core, contracts and the UI rather than left rendering a block that can no longer
+  occur, and the three dependency-alarm passes that existed to surface that gate are deleted.
+
+  What core still enforces at claim time is one holder per job and **one in-flight job per issue,
+  whatever its type** — `jobs_active_unique` is on `(issue_id, type)` and so does not cover a
+  `code` and a `review` job running against one issue at once. Budget exhaustion keeps its ISS-823
+  shape (a terminal job plus a `held` retry) rather than becoming a refusal that would leave the
+  job in the pool for the next master to re-refuse and re-comment.
+
+  A runner carrying `limit_reason='auth'` is a visible consequence: nothing excludes it from being
+  claimed onto any more, so `GET /me/load` now reports `runnerFaults` verbatim and
+  `forge-runner pool load` warns on them.
+
 
 - **`[runner] max_concurrent` and `device_max_concurrent` from the runner's `config.toml`.** Both
   were parsed, serialized and written into every config file the daemon has ever produced, and read

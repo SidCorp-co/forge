@@ -20,7 +20,6 @@ import { formatApiError, formatPipelineConfigError } from "@/lib/api/error";
 import { useProjectRunners } from "@/features/runners/hooks";
 import { isFeatureOff, usePipelineConfig, useUpdatePipelineConfig } from "../hooks";
 import { McpServersSection } from "./mcp-servers-section";
-import { ConcurrencySection } from "./concurrency-section";
 import { IntakeGateSection } from "./intake-gate-section";
 import { StagePermissionsSection } from "./stage-permissions-section";
 import { RunnerPoolsSection } from "./runner-pools-section";
@@ -221,7 +220,6 @@ export function PipelineTab({
         <StagePermissionsSection config={server} deviceNames={deviceNames} />
 
         {/* Concurrency (maxConcurrentIssues) — round-trips the full fetched config. */}
-        <ConcurrencySection projectId={projectId} config={server} canEdit={canEdit} />
 
         <RunnerPoolsSection projectId={projectId} config={server} canEdit={canEdit} />
 

@@ -19,7 +19,7 @@ flowchart TB
     direction TB
     E["REST /api · WS /ws · MCP /mcp"]
     P["shared policy layer<br/>user ▷ project member · device ▷ project pool"]
-    D["job dispatcher (pg-boss)<br/>event broadcaster (room-scoped WS)"]
+    D["job pool (claimed by a master)<br/>event broadcaster (room-scoped WS)"]
     DB[("Postgres 17<br/>state · jobs · embeddings (pgvector)")]
     E --> P --> D --> DB
   end

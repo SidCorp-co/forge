@@ -53,7 +53,8 @@ const RELATIONS = sql`
  *
  * `limit` bounds the read only — taking any of it is a separate `claim`.
  */
-// cm:guard `held_by IS NULL` is the ONLY exclusion beyond the job being queued under a live run. Do NOT add a dependency filter, a project cap, or an ordering by priority: each would be the kernel deciding routing again, which is the whole thing this replaces. A master that wants priority order sorts what it reads.
+// cm:guard the exclusions here are exactly the conditions under which a claim CANNOT succeed — queued under a live run, unheld, off cooldown, no in-flight sibling for the issue. Do NOT add a dependency filter, a project cap, or an ordering by priority: those are routing judgements the master owns, and a pool that pre-decides them is the kernel deciding routing again, which is the whole thing this replaces.
+// cm:edge lockstep -> packages/core/src/devices/claim.ts — the sibling-job NOT EXISTS below must stay identical to L1 in `claimJobForMaster`. Looser here offers work every claim refuses; tighter hides work a master could have taken, and neither failure says a word.
 export async function readPool(args: {
   deviceId: string;
   projectId?: string | undefined;
@@ -74,6 +75,12 @@ export async function readPool(args: {
       AND pr.status IN ('running', 'paused')
       AND j.held_by IS NULL
       AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())
+      AND NOT EXISTS (
+        SELECT 1 FROM jobs other
+        WHERE other.issue_id = j.issue_id
+          AND other.id <> j.id
+          AND other.status IN ('dispatched','running','held')
+      )
       ${projectFilter}
     GROUP BY j.id, i.iss_seq, i.title, i.description, i.priority, i.category, i.status
     ORDER BY j.queued_at ASC

@@ -20,20 +20,14 @@ export interface TestServer {
 }
 
 export async function startTestServer(): Promise<TestServer> {
-  const [
-    { app },
-    { attachWs, closeWs, wsClientCount },
-    { startBoss, stopBoss },
-    { registerDispatcher, unregisterDispatcher },
-  ] = await Promise.all([
-    import('../../src/index.js'),
-    import('../../src/ws/server.js'),
-    import('../../src/queue/boss.js'),
-    import('../../src/jobs/dispatcher.js'),
-  ]);
+  const [{ app }, { attachWs, closeWs, wsClientCount }, { startBoss, stopBoss }] =
+    await Promise.all([
+      import('../../src/index.js'),
+      import('../../src/ws/server.js'),
+      import('../../src/queue/boss.js'),
+    ]);
 
   await startBoss();
-  await registerDispatcher();
 
   // Node http server + Hono node-adapter on an ephemeral port.
   const server = serve({ fetch: app.fetch, port: 0 });
@@ -57,7 +51,6 @@ export async function startTestServer(): Promise<TestServer> {
     wsUrl,
     openSocketCount: wsClientCount,
     async close() {
-      await unregisterDispatcher();
       await stopBoss();
       await closeWs();
       await new Promise<void>((resolve, reject) => {

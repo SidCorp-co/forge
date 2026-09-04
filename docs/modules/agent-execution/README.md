@@ -6,16 +6,17 @@ infrastructure the team controls.
 ```mermaid
 flowchart LR
   subgraph CP["control plane (core)"]
-    DISP[dispatcher] ; WS["/ws"]
+    POOL[job pool] ; WS["/ws"]
   end
   subgraph RT["runtime plane (operator's machine)"]
-    DEV[device<br/>revocable token] --> RUN[runner<br/>capability handle]
+    DEV[device<br/>revocable token] --> MA[master session<br/>decides order + batch]
+    MA --> RUN[runner<br/>capability handle]
     RUN --> CC[claude CLI]
     CC --> WT[git worktree]
   end
-  DISP -->|job| WS -->|dispatch| DEV
+  MA -->|claim| POOL
   CC -->|job_events| WS --> EV[(job_events)]
-  DISP --> SESS[(agent_sessions)]
+  POOL --> SESS[(agent_sessions)]
   SESS --> INBOX[session_inbox<br/>work · answer · inject · checkpoint · cancel]
   CRED[model credentials] -.never leave.-> RT
 ```
@@ -26,7 +27,8 @@ flowchart LR
 |---|---|
 | Device pairing, revocation, binding | `core/src/devices/`, `schema.ts:devices`, `schema.ts:pairingCodes` |
 | Runner capability and selection | `core/src/runners/`, `schema.ts:runners` (`capabilities` jsonb) |
-| Job dispatch and event stream | `core/src/jobs/`, `schema.ts:jobEvents`, `schema.ts:jobEventKinds` |
+| The claimable job pool | `core/src/devices/pool.ts`, `core/src/devices/claim.ts`, `schema.ts:jobs.heldBy` |
+| Job preparation and event stream | `core/src/jobs/`, `schema.ts:jobEvents`, `schema.ts:jobEventKinds` |
 | Agent sessions and their inbox | `core/src/agent-sessions/`, `schema.ts:agentSessions`, `schema.ts:sessionInbox` |
 | Interactive chat (not a pipeline job) | `core/src/chat/`, `core/src/chat-logs/` |
 | Transport | `core/src/ws/` |
@@ -47,7 +49,7 @@ flowchart LR
 - **Execution credentials stay on the runtime plane.** Forge orchestrates; it never becomes the
   model provider and never holds model credentials (`VISION: server-never-holds-credentials`). A
   runner is reached only through its own revocable device token.
-- **A runner is a capability handle, not a machine.** The dispatcher targets capabilities; concrete
+- **A runner is a capability handle, not a machine.** A claim targets capabilities; concrete
   behaviour lives on the device.
 - **Chat and pipeline jobs share the runner, not the entry.** Chat is a conversation with no issue
   status to advance; a job is one step of a run. Both exec through the same shared path, so a change

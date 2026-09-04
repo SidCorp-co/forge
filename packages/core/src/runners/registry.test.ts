@@ -16,9 +16,6 @@ function makeAdapter(type: string): RunnerAdapter {
     validateConfig() {
       return { ok: true, config: {} };
     },
-    async dispatch() {
-      return { status: 'dispatched' };
-    },
     async health() {
       return { ok: true };
     },

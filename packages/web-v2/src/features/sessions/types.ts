@@ -80,8 +80,6 @@ export type SessionFailureReason = FailureCause | LegacyFailureReason;
  */
 export type LegacyFailureReason =
   | "issue_busy"
-  | "waiting_on_dep"
-  | "project_full"
   | "runner_full"
   | "no_worker_online"
   | "ws-publish-failed"
@@ -233,8 +231,6 @@ export const FAILURE_REASON_LABEL: Record<SessionFailureReason, string> = {
   job_failed: "Unclassified",
   migration_zombie_cleanup: "Swept (migration)",
   issue_busy: "Issue busy",
-  waiting_on_dep: "Waiting on dependency",
-  project_full: "Project at capacity",
   runner_full: "Runner at capacity",
 };
 
@@ -272,8 +268,6 @@ export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
   user_cancelled: "Cancelled by a user — Rerun to start a fresh session.",
   job_failed: "The cause wasn't recorded — open the run timeline to see why.",
   issue_busy: "Another session holds this issue — it will retry once that frees.",
-  waiting_on_dep: "Blocked on a dependency issue — resolve the blocker first.",
-  project_full: "Project hit its concurrency cap — it will dispatch when a slot frees.",
   runner_full: "The runner is at capacity — it will dispatch when a slot frees.",
   skill_not_synced: "The skill hadn't finished syncing to the runner yet — start a new chat to retry.",
   orphan_under_terminal_run: "The run ended while this was still open — nothing to do.",

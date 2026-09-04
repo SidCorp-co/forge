@@ -15,6 +15,13 @@ export type DeviceLoad = {
   reposLocked: string[];
   agentVersion: string | null;
   lastSeenMinutes: number | null;
+  /**
+   * Every fault flag standing on this box's runners, verbatim: `auth` when the
+   * Claude OAuth session died, `rate_limit` while a reset is pending, a
+   * quarantine after repeated box-scoped failures.
+   */
+  // cm:guard report these RAW and never fold them into "usable: false". Before this design, `fresh_capable_runners` excluded an `auth` runner from dispatch by name, and that exclusion was ALSO the deadlock: `clearRunnerLimit` fires on a successful job, and the box could not win one while excluded. Nothing excludes it now, so this is the master's only way to know — and a master that reads `auth` can route around the box AND say why, which is the half the old gate could never do.
+  runnerFaults: Array<{ runnerId: string; limitReason: string; until: string | null }>;
 };
 
 export type ProjectLoad = {
@@ -44,7 +51,15 @@ export async function readDeviceLoad(deviceId: string): Promise<DeviceLoad | nul
     SELECT d.id, d.name, d.agent_version,
            EXTRACT(EPOCH FROM (now() - d.last_seen_at)) / 60 AS last_seen_minutes,
            COALESCE(l.n, 0)::int AS jobs_running,
-           COALESCE(l.repos, ARRAY[]::text[]) AS repos_locked
+           COALESCE(l.repos, ARRAY[]::text[]) AS repos_locked,
+           COALESCE((
+             SELECT json_agg(json_build_object(
+                      'runnerId', r.id,
+                      'limitReason', r.limit_reason,
+                      'until', r.rate_limited_until))
+             FROM runners r
+             WHERE r.device_id = d.id AND r.limit_reason IS NOT NULL
+           ), '[]'::json) AS runner_faults
     FROM devices d
     LEFT JOIN (
       SELECT j.device_id,
@@ -69,6 +84,7 @@ export async function readDeviceLoad(deviceId: string): Promise<DeviceLoad | nul
     reposLocked: (row.repos_locked as string[] | null) ?? [],
     agentVersion: (row.agent_version as string | null) ?? null,
     lastSeenMinutes: row.last_seen_minutes === null ? null : Number(row.last_seen_minutes),
+    runnerFaults: (row.runner_faults as DeviceLoad['runnerFaults'] | null) ?? [],
   };
 }
 

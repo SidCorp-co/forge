@@ -24,7 +24,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type * as AgentSessionsSessionFailure from '../../src/agent-sessions/session-failure.js';
 import type * as DbClient from '../../src/db/client.js';
 import type * as DbSchema from '../../src/db/schema.js';
-import type * as JobsDispatcher from '../../src/jobs/dispatcher.js';
+import type * as BudgetBreach from '../../src/jobs/budget-breach.js';
 import type * as JobsRetry from '../../src/jobs/retry.js';
 import type * as PipelineFailureClassifier from '../../src/pipeline/failure-classifier.js';
 import type * as PipelineHooks from '../../src/pipeline/hooks.js';
@@ -55,177 +55,177 @@ type Mods = {
   onlineCapableDeviceIds: typeof RunnersSelect.onlineCapableDeviceIds;
   finalizeScheduleSessionFailure: typeof AgentSessionsSessionFailure.finalizeScheduleSessionFailure;
   writeBackScheduleLastStatus: typeof SchedulesService.writeBackScheduleLastStatus;
-  handleDispatch: typeof JobsDispatcher.handleDispatch;
+  endJobForBudgetBreach: typeof BudgetBreach.endJobForBudgetBreach;
   hooks: typeof PipelineHooks.hooks;
   db: typeof DbClient.db;
   jobs: typeof DbSchema.jobs;
 };
 
+let harness: TestDatabase;
+let mods: Mods;
+
+beforeAll(async () => {
+  harness = await setupTestDatabase();
+  process.env.DATABASE_URL = harness.url;
+  process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+  process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+  process.env.SMTP_HOST ??= 'localhost';
+  process.env.SMTP_PORT ??= '1025';
+  process.env.SMTP_USER ??= 'test';
+  process.env.SMTP_PASS ??= 'test';
+  process.env.SMTP_FROM ??= 'test@example.com';
+  process.env.APP_BASE_URL ??= 'http://localhost:3000';
+  process.env.CORS_ORIGINS ??= 'http://localhost:3000';
+  process.env.NODE_ENV ??= 'test';
+
+  // cm:guard import these SEQUENTIALLY, never with Promise.all. Resolving these ten graphs concurrently deadlocks the module runner — measured 2026-08-13: the hook never returned at 120s OR at 600s, so all 6 tests reported `skipped` and this suite had never once executed anywhere since it was written. Awaiting them one at a time runs the whole file in ~10s. The graphs overlap heavily (db/client, config/env, logger, schema) and a cycle between two concurrent evaluations is what wedges.
+  // cm:edge protocol -> packages/core/vitest.integration.config.ts — `pool: 'forks'` is what makes this reachable; a hook that hangs here is invisible as a FAILURE (vitest reports the tests as skipped and the suite as timed out), so a green-looking `core-integration` is not evidence this file ran
+  const classifierMod = await import('../../src/pipeline/failure-classifier.js');
+  const retryMod = await import('../../src/jobs/retry.js');
+  const quarantineMod = await import('../../src/runners/quarantine.js');
+  const selectMod = await import('../../src/runners/select.js');
+  const sessionFailureMod = await import('../../src/agent-sessions/session-failure.js');
+  const scheduleServiceMod = await import('../../src/schedules/service.js');
+  const breachMod = await import('../../src/jobs/budget-breach.js');
+  const hooksMod = await import('../../src/pipeline/hooks.js');
+  const dbMod = await import('../../src/db/client.js');
+  const schemaMod = await import('../../src/db/schema.js');
+  mods = {
+    classifyFailure: classifierMod.classifyFailure,
+    CLASSIFIER_VERSION: classifierMod.CLASSIFIER_VERSION,
+    scheduleAutoRetryWithVerify: retryMod.scheduleAutoRetryWithVerify,
+    AUTO_RETRY_PAYLOAD_KEY: retryMod.AUTO_RETRY_PAYLOAD_KEY,
+    RETRY_MAX_ROUNDS: retryMod.RETRY_MAX_ROUNDS,
+    RETRY_TRIES_PER_DEVICE: retryMod.RETRY_TRIES_PER_DEVICE,
+    CAPACITY_DEFER_CEILING_MS: retryMod.CAPACITY_DEFER_CEILING_MS,
+    maybeQuarantineRunner: quarantineMod.maybeQuarantineRunner,
+    RUNNER_QUARANTINE_STREAK: quarantineMod.RUNNER_QUARANTINE_STREAK,
+    RUNNER_QUARANTINE_TTL_MS: quarantineMod.RUNNER_QUARANTINE_TTL_MS,
+    selectRunnerForJob: selectMod.selectRunnerForJob,
+    onlineCapableDeviceIds: selectMod.onlineCapableDeviceIds,
+    finalizeScheduleSessionFailure: sessionFailureMod.finalizeScheduleSessionFailure,
+    writeBackScheduleLastStatus: scheduleServiceMod.writeBackScheduleLastStatus,
+    endJobForBudgetBreach: breachMod.endJobForBudgetBreach,
+    hooks: hooksMod.hooks,
+    db: dbMod.db,
+    jobs: schemaMod.jobs,
+  };
+  // cm:why 120s covers a cold testcontainer pull on a CI runner, matching the 17 sibling suites. It was previously blamed for the hang and raised from 60s to 120s as the fix — it was never the cause (600s hung identically); the concurrent imports above were.
+}, 120_000);
+
+afterAll(async () => {
+  if (harness) await harness.cleanup();
+});
+
+beforeEach(async () => {
+  await truncateAll(harness.db);
+  mods.hooks.reset();
+});
+
+// ---------- shared seed helpers ----------------------------------------
+
+async function seedProject() {
+  const owner = await createTestUser(harness.db);
+  const project = await createTestProject(harness.db, owner.id);
+  return { owner, project };
+}
+
+async function seedRunner(
+  projectId: string,
+  ownerId: string,
+  opts: { status?: string; rateLimitedUntil?: Date | null } = {},
+): Promise<{ deviceId: string; runnerId: string }> {
+  const device = await createTestDevice(harness.db, ownerId, {
+    status: opts.status === 'offline' ? 'offline' : 'online',
+  });
+  const runnerId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO runners (
+      id, project_id, type, device_id, name, capabilities, status,
+      last_seen_at, rate_limited_until
+    )
+    VALUES (
+      ${runnerId}, ${projectId}, 'claude-code', ${device.id},
+      ${`runner-${runnerId.slice(0, 8)}`}, '{}'::jsonb,
+      ${opts.status === 'offline' ? 'offline' : 'online'}, now(),
+      ${opts.rateLimitedUntil ? opts.rateLimitedUntil.toISOString() : null}
+    )
+  `);
+  return { deviceId: device.id, runnerId };
+}
+
+async function openSystemRun(projectId: string): Promise<string> {
+  const runId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
+    VALUES (${runId}, ${projectId}, NULL, 'system', 'running', now())
+  `);
+  return runId;
+}
+
+async function insertIssue(projectId: string, status = 'approved'): Promise<string> {
+  const id = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
+    VALUES (
+      ${id}, ${projectId}, ${Math.floor(Math.random() * 1_000_000)},
+      'Issue', ${status}, 'medium',
+      (SELECT created_by FROM projects WHERE id = ${projectId})
+    )
+  `);
+  return id;
+}
+
+async function insertJob(
+  projectId: string,
+  opts: {
+    issueId?: string | null;
+    type?: string;
+    status?: string;
+    runnerId?: string | null;
+    deviceId?: string | null;
+    error?: string | null;
+    finishedAt?: Date | null;
+    retryOf?: string | null;
+    failureKind?: string | null;
+    failureAction?: string | null;
+    failureReason?: string | null;
+    classifierVersion?: number | null;
+    pipelineRunId?: string;
+  } = {},
+): Promise<string> {
+  const id = randomUUID();
+  const pipelineRunId = opts.pipelineRunId ?? (await openSystemRun(projectId));
+  await harness.db.execute(sql`
+    INSERT INTO jobs (
+      id, project_id, issue_id, pipeline_run_id, device_id, runner_id,
+      created_by, type, status, payload, error, finished_at, retry_of,
+      failure_kind, failure_action, failure_reason, classifier_version
+    )
+    VALUES (
+      ${id}, ${projectId}, ${opts.issueId ?? null}, ${pipelineRunId},
+      ${opts.deviceId ?? null}, ${opts.runnerId ?? null},
+      (SELECT created_by FROM projects WHERE id = ${projectId}),
+      ${opts.type ?? 'code'}, ${opts.status ?? 'queued'}, '{}'::jsonb,
+      ${opts.error ?? null},
+      ${opts.finishedAt ? opts.finishedAt.toISOString() : null},
+      ${opts.retryOf ?? null},
+      ${opts.failureKind ?? null}, ${opts.failureAction ?? null},
+      ${opts.failureReason ?? null}, ${opts.classifierVersion ?? null}
+    )
+  `);
+  return id;
+}
+
+async function getJobRow(jobId: string) {
+  const [row] = await mods.db.select().from(mods.jobs).where(eq(mods.jobs.id, jobId));
+  if (!row) throw new Error(`job ${jobId} not found`);
+  return row;
+}
+
+// ---------- ISS-757 — org spend-cap storm ------------------------------
+
 describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five faces', () => {
-  let harness: TestDatabase;
-  let mods: Mods;
-
-  beforeAll(async () => {
-    harness = await setupTestDatabase();
-    process.env.DATABASE_URL = harness.url;
-    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
-    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-    process.env.SMTP_HOST ??= 'localhost';
-    process.env.SMTP_PORT ??= '1025';
-    process.env.SMTP_USER ??= 'test';
-    process.env.SMTP_PASS ??= 'test';
-    process.env.SMTP_FROM ??= 'test@example.com';
-    process.env.APP_BASE_URL ??= 'http://localhost:3000';
-    process.env.CORS_ORIGINS ??= 'http://localhost:3000';
-    process.env.NODE_ENV ??= 'test';
-
-    // cm:guard import these SEQUENTIALLY, never with Promise.all. Resolving these ten graphs concurrently deadlocks the module runner — measured 2026-08-13: the hook never returned at 120s OR at 600s, so all 6 tests reported `skipped` and this suite had never once executed anywhere since it was written. Awaiting them one at a time runs the whole file in ~10s. The graphs overlap heavily (db/client, config/env, logger, schema) and a cycle between two concurrent evaluations is what wedges.
-    // cm:edge protocol -> packages/core/vitest.integration.config.ts — `pool: 'forks'` is what makes this reachable; a hook that hangs here is invisible as a FAILURE (vitest reports the tests as skipped and the suite as timed out), so a green-looking `core-integration` is not evidence this file ran
-    const classifierMod = await import('../../src/pipeline/failure-classifier.js');
-    const retryMod = await import('../../src/jobs/retry.js');
-    const quarantineMod = await import('../../src/runners/quarantine.js');
-    const selectMod = await import('../../src/runners/select.js');
-    const sessionFailureMod = await import('../../src/agent-sessions/session-failure.js');
-    const scheduleServiceMod = await import('../../src/schedules/service.js');
-    const dispatcherMod = await import('../../src/jobs/dispatcher.js');
-    const hooksMod = await import('../../src/pipeline/hooks.js');
-    const dbMod = await import('../../src/db/client.js');
-    const schemaMod = await import('../../src/db/schema.js');
-    mods = {
-      classifyFailure: classifierMod.classifyFailure,
-      CLASSIFIER_VERSION: classifierMod.CLASSIFIER_VERSION,
-      scheduleAutoRetryWithVerify: retryMod.scheduleAutoRetryWithVerify,
-      AUTO_RETRY_PAYLOAD_KEY: retryMod.AUTO_RETRY_PAYLOAD_KEY,
-      RETRY_MAX_ROUNDS: retryMod.RETRY_MAX_ROUNDS,
-      RETRY_TRIES_PER_DEVICE: retryMod.RETRY_TRIES_PER_DEVICE,
-      CAPACITY_DEFER_CEILING_MS: retryMod.CAPACITY_DEFER_CEILING_MS,
-      maybeQuarantineRunner: quarantineMod.maybeQuarantineRunner,
-      RUNNER_QUARANTINE_STREAK: quarantineMod.RUNNER_QUARANTINE_STREAK,
-      RUNNER_QUARANTINE_TTL_MS: quarantineMod.RUNNER_QUARANTINE_TTL_MS,
-      selectRunnerForJob: selectMod.selectRunnerForJob,
-      onlineCapableDeviceIds: selectMod.onlineCapableDeviceIds,
-      finalizeScheduleSessionFailure: sessionFailureMod.finalizeScheduleSessionFailure,
-      writeBackScheduleLastStatus: scheduleServiceMod.writeBackScheduleLastStatus,
-      handleDispatch: dispatcherMod.handleDispatch,
-      hooks: hooksMod.hooks,
-      db: dbMod.db,
-      jobs: schemaMod.jobs,
-    };
-    // cm:why 120s covers a cold testcontainer pull on a CI runner, matching the 17 sibling suites. It was previously blamed for the hang and raised from 60s to 120s as the fix — it was never the cause (600s hung identically); the concurrent imports above were.
-  }, 120_000);
-
-  afterAll(async () => {
-    if (harness) await harness.cleanup();
-  });
-
-  beforeEach(async () => {
-    await truncateAll(harness.db);
-    mods.hooks.reset();
-  });
-
-  // ---------- shared seed helpers ----------------------------------------
-
-  async function seedProject() {
-    const owner = await createTestUser(harness.db);
-    const project = await createTestProject(harness.db, owner.id);
-    return { owner, project };
-  }
-
-  async function seedRunner(
-    projectId: string,
-    ownerId: string,
-    opts: { status?: string; rateLimitedUntil?: Date | null } = {},
-  ): Promise<{ deviceId: string; runnerId: string }> {
-    const device = await createTestDevice(harness.db, ownerId, {
-      status: opts.status === 'offline' ? 'offline' : 'online',
-    });
-    const runnerId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO runners (
-        id, project_id, type, device_id, name, capabilities, status,
-        last_seen_at, rate_limited_until
-      )
-      VALUES (
-        ${runnerId}, ${projectId}, 'claude-code', ${device.id},
-        ${`runner-${runnerId.slice(0, 8)}`}, '{}'::jsonb,
-        ${opts.status === 'offline' ? 'offline' : 'online'}, now(),
-        ${opts.rateLimitedUntil ? opts.rateLimitedUntil.toISOString() : null}
-      )
-    `);
-    return { deviceId: device.id, runnerId };
-  }
-
-  async function openSystemRun(projectId: string): Promise<string> {
-    const runId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
-      VALUES (${runId}, ${projectId}, NULL, 'system', 'running', now())
-    `);
-    return runId;
-  }
-
-  async function insertIssue(projectId: string, status = 'approved'): Promise<string> {
-    const id = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
-      VALUES (
-        ${id}, ${projectId}, ${Math.floor(Math.random() * 1_000_000)},
-        'Issue', ${status}, 'medium',
-        (SELECT created_by FROM projects WHERE id = ${projectId})
-      )
-    `);
-    return id;
-  }
-
-  async function insertJob(
-    projectId: string,
-    opts: {
-      issueId?: string | null;
-      type?: string;
-      status?: string;
-      runnerId?: string | null;
-      deviceId?: string | null;
-      error?: string | null;
-      finishedAt?: Date | null;
-      retryOf?: string | null;
-      failureKind?: string | null;
-      failureAction?: string | null;
-      failureReason?: string | null;
-      classifierVersion?: number | null;
-      pipelineRunId?: string;
-    } = {},
-  ): Promise<string> {
-    const id = randomUUID();
-    const pipelineRunId = opts.pipelineRunId ?? (await openSystemRun(projectId));
-    await harness.db.execute(sql`
-      INSERT INTO jobs (
-        id, project_id, issue_id, pipeline_run_id, device_id, runner_id,
-        created_by, type, status, payload, error, finished_at, retry_of,
-        failure_kind, failure_action, failure_reason, classifier_version
-      )
-      VALUES (
-        ${id}, ${projectId}, ${opts.issueId ?? null}, ${pipelineRunId},
-        ${opts.deviceId ?? null}, ${opts.runnerId ?? null},
-        (SELECT created_by FROM projects WHERE id = ${projectId}),
-        ${opts.type ?? 'code'}, ${opts.status ?? 'queued'}, '{}'::jsonb,
-        ${opts.error ?? null},
-        ${opts.finishedAt ? opts.finishedAt.toISOString() : null},
-        ${opts.retryOf ?? null},
-        ${opts.failureKind ?? null}, ${opts.failureAction ?? null},
-        ${opts.failureReason ?? null}, ${opts.classifierVersion ?? null}
-      )
-    `);
-    return id;
-  }
-
-  async function getJobRow(jobId: string) {
-    const [row] = await mods.db.select().from(mods.jobs).where(eq(mods.jobs.id, jobId));
-    if (!row) throw new Error(`job ${jobId} not found`);
-    return row;
-  }
-
-  // ---------- ISS-757 — org spend-cap storm ------------------------------
-
   it('ISS-757: org spend-cap classifies failover (not the old generic-infra bucket) and parks immediately instead of retrying', async () => {
     const spendCapText =
       "You've hit your org's monthly spend limit · run /usage-credits to ask your admin for a higher limit";
@@ -460,6 +460,35 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
   // ---------- ISS-630/804 — the fifth face: per-state budget gate ---------
 
   // cm:guard the issue/run assertions at the end are the RFC 0002 half of this test (INV-1/INV-4) — ISS-630's own finding was that the capped stage died SILENTLY; the fix is that it now dies honestly on the JOB axis, and re-parking the issue here would restore the lie while every failure_action assertion above still passed
+  it('composition: a fleet exhausted by a MIX of quarantine (ISS-825) and rate-limit (ISS-823) reasons still reads as exhausted, not offline', async () => {
+    const { owner, project } = await seedProject();
+    const { runnerId: quarantinedRunnerId, deviceId: quarantinedDeviceId } = await seedRunner(
+      project.id,
+      owner.id,
+    );
+    const { deviceId: limitedDeviceId } = await seedRunner(project.id, owner.id, {
+      rateLimitedUntil: new Date(Date.now() + 60 * 60_000),
+    });
+
+    await harness.db.execute(sql`
+      UPDATE runners SET quarantined_until = now() + interval '1 hour', quarantine_reason = 'preflight_failed: hooks_path'
+      WHERE id = ${quarantinedRunnerId}
+    `);
+
+    const healthy = await mods.onlineCapableDeviceIds(project.id);
+    expect(healthy).toHaveLength(0);
+
+    // The unfiltered set (what "all devices" means to the retry engine) must
+    // still see both devices as present-but-excluded, not vanished — that is
+    // the distinction that tells "every online box is exhausted" (park +
+    // notify) apart from "the fleet is offline" (wait quietly).
+    const all = await mods.onlineCapableDeviceIds(project.id, undefined, { includeLimited: true });
+    expect(new Set(all)).toEqual(new Set([quarantinedDeviceId, limitedDeviceId]));
+  });
+});
+
+// cm:guard the budget case lives in its own block because it is the one face whose shape is written by a DIFFERENT module (`jobs/budget-breach.ts`) — the other five are the classifier's own output, and mixing them made the describe read as if the classifier decided this one too.
+describe('ISS-812 failure-taxonomy — the budget face', () => {
   it('ISS-630/804: a budget-exhausted stage holds the job, leaving the issue and run untouched (the 3x-vs-0x asymmetry)', async () => {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
@@ -478,8 +507,7 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
                             ))
       WHERE id = ${project.id}
     `);
-    const { deviceId } = await seedRunner(project.id, owner.id);
-    void deviceId;
+    await seedRunner(project.id, owner.id);
 
     const issueId = await insertIssue(project.id, 'open');
     // Historical spend already over the cap for this (project, jobType).
@@ -528,8 +556,13 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
       )
     `);
 
-    const result = await mods.handleDispatch({ jobId });
-    expect(result).toBe('skipped');
+    // cm:guard drive the BREACH directly, not the claim — the subject here is the taxonomy shape (terminal + a `held` retry, issue and run untouched), and routing through the claim would make this case fail for setup reasons that belong to `budget-check-e2e.test.ts` instead.
+    const { checkMonthlyBudget } = await import('../../src/jobs/budget-check.js');
+    const [jobRow] = await mods.db.select().from(mods.jobs).where(eq(mods.jobs.id, jobId));
+    if (!jobRow) throw new Error('seeded job vanished');
+    const budget = await checkMonthlyBudget(jobRow);
+    expect(budget.action).toBe('pause');
+    await mods.endJobForBudgetBreach(jobRow, budget);
 
     const jobRows = await harness.db.execute<{
       status: string;
@@ -565,30 +598,4 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
   });
 
   // ---------- Composition: quarantine + per-account exhaustion share the same gate ----
-
-  it('composition: a fleet exhausted by a MIX of quarantine (ISS-825) and rate-limit (ISS-823) reasons still reads as exhausted, not offline', async () => {
-    const { owner, project } = await seedProject();
-    const { runnerId: quarantinedRunnerId, deviceId: quarantinedDeviceId } = await seedRunner(
-      project.id,
-      owner.id,
-    );
-    const { deviceId: limitedDeviceId } = await seedRunner(project.id, owner.id, {
-      rateLimitedUntil: new Date(Date.now() + 60 * 60_000),
-    });
-
-    await harness.db.execute(sql`
-      UPDATE runners SET quarantined_until = now() + interval '1 hour', quarantine_reason = 'preflight_failed: hooks_path'
-      WHERE id = ${quarantinedRunnerId}
-    `);
-
-    const healthy = await mods.onlineCapableDeviceIds(project.id);
-    expect(healthy).toHaveLength(0);
-
-    // The unfiltered set (what "all devices" means to the retry engine) must
-    // still see both devices as present-but-excluded, not vanished — that is
-    // the distinction that tells "every online box is exhausted" (park +
-    // notify) apart from "the fleet is offline" (wait quietly).
-    const all = await mods.onlineCapableDeviceIds(project.id, undefined, { includeLimited: true });
-    expect(new Set(all)).toEqual(new Set([quarantinedDeviceId, limitedDeviceId]));
-  });
 });

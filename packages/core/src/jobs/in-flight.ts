@@ -14,7 +14,7 @@ import { db } from '../db/client.js';
 export const OCCUPYING_JOB_STATUSES = ['dispatched', 'running'] as const;
 
 // cm:guard the parent-run filter is NOT optional and NOT a reporting nicety: ISS-258. A job whose `pipeline_run` is already terminal is an orphan that holds no cap slot, and `countInFlightForRunner` — the gate that actually allocates the slot — has excluded them since the Forge Dev 2026-05-27 stall. A report that counts them says a runner is full that the dispatcher will happily fill, and the PM then routes work away from a healthy box on the strength of a job nobody is running. `pr.id IS NULL` keeps jobs with no parent counted.
-// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — `countInFlightForRunner` answers this same question for one runner and MUST keep the same predicate; a clause here and not there puts the number an operator reads back out of step with the number that decides dispatch
+// cm:edge lockstep -> packages/core/src/jobs/queued-gates.ts — `countInFlightForRunner` answers this same question for one runner and MUST keep the same predicate; a clause here and not there puts the number an operator reads back out of step with the number that decides dispatch
 const OCCUPYING_JOBS_FOR = (runnerFilter: ReturnType<typeof sql>) => sql`
   SELECT j.runner_id, COUNT(*)::int AS n
   FROM jobs j

@@ -127,14 +127,6 @@ vi.mock('../ws/server.js', () => ({
   roomManager: { publish: (...args: unknown[]) => wsPublish(...args) },
 }));
 
-// Mock dispatch-tick.js — extras-routes.ts now imports `triggerTerminalDispatch`
-// from `./transition.js`, which transitively pulls pg-boss via dispatcher.ts.
-// Mocking the leaf decouples this test from queue/runner module init.
-const dispatchTick = vi.fn();
-vi.mock('../jobs/dispatch-tick.js', () => ({
-  dispatchTickForProject: (...args: unknown[]) => dispatchTick(...args),
-}));
-
 // The batch status path routes through the shared `transitionIssueStatus`
 // core, which syncs the issue's open run (setCurrentStepForOpenIssueRun +
 // closeOpenRunForIssue on terminal). Those helpers run kernel transitions
@@ -198,7 +190,6 @@ beforeEach(() => {
   transitionEmit.mockClear();
   issueUpdatedEmit.mockClear();
   wsPublish.mockClear();
-  dispatchTick.mockClear();
   dependentsAwait.mockReset();
   dependentsAwait.mockResolvedValue([]);
   dependentsInnerJoin.mockClear();
@@ -303,8 +294,6 @@ describe('PATCH /api/issues/batch', () => {
     // Distinct project access pre-loaded in parallel — for one shared project,
     // only one lookup runs.
     expect(projectAccess).toHaveBeenCalledTimes(1);
-    // No terminal status transition → no Layer-2 dispatch tick.
-    expect(dispatchTick).not.toHaveBeenCalled();
   });
 
   it('mixed status + priority — illegal transition surfaces as skipReason on the partially-applied row', async () => {
@@ -431,7 +420,7 @@ describe('PATCH /api/issues/batch', () => {
     expect(body.skipped).toEqual([{ id: ISS2, reason: 'forbidden' }]);
   });
 
-  it('terminal status transitions fan out Layer-2 dispatch ticks once per parent + child project', async () => {
+  it('batches the dependents query once across every terminal issue, and broadcasts one cascade per blocker', async () => {
     authVerified();
     selectAwait.mockResolvedValueOnce([
       // Two issues in PROJECT_A, both at `tested` → `released` (terminal).
@@ -485,19 +474,9 @@ describe('PATCH /api/issues/batch', () => {
       }),
     });
     expect(res.status).toBe(200);
-    // Layer-2 fan-out: parent project ticked once (deduped across the two
-    // terminal issues) + the distinct child project from the IN-list query.
-    const calledProjects = dispatchTick.mock.calls.map((c) => c[0]).sort();
-    expect(calledProjects).toEqual([PROJECT_A, PROJECT_B].sort());
     // Children query runs once with `inArray(fromIssueId, [ISS1, ISS2])` —
     // not once per terminal issue.
     expect(dependentsWhere).toHaveBeenCalledTimes(1);
-    // Each dispatch tick carries a `triggerBlockerIssueId` so the dispatcher
-    // can attribute any subsequent `dependency.unblocked` event.
-    for (const call of dispatchTick.mock.calls) {
-      const [, options] = call;
-      expect(options).toMatchObject({ triggerBlockerIssueId: expect.any(String) });
-    }
     // Two `issue.unblockCascade` events broadcast — one per terminal blocker
     // (ISS1, ISS2) since each has at least one outgoing `blocks` edge.
     const cascadeCalls = wsPublish.mock.calls.filter(

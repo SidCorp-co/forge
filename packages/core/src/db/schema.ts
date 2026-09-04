@@ -547,7 +547,7 @@ export const pairingCodes = pgTable(
 );
 
 // cm:guard `held` is NON-TERMINAL and slotless — a job blocked on a mechanical condition (no runner, provider quota, project budget) waits HERE, never on issues.status (RFC 0002); being absent from runner_load/running_ids is exactly what makes it slotless, but it MUST appear in both `jobs_active_unique` partial indexes below and in L1 issueBusyJob or a duplicate job is enqueued for the same issue
-// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — `issueBusyJob` must list `held`; `runner_load` and `running_ids` must NOT
+// cm:edge lockstep -> packages/core/src/jobs/queued-gates.ts — `issueBusyJob` must list `held`; `runner_load` and `running_ids` must NOT
 export const jobStatuses = [
   'queued',
   'dispatched',

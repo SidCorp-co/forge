@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { jobStatuses, jobTypes } from '../../db/schema.js';
 import { cancelJob, JobCancelError } from '../../jobs/cancel-job.js';
-import { assertDispatchable, gateReasonsForQueuedJobs } from '../../jobs/dispatch-gates.js';
 import { listJobEvents, listJobs, readJob } from '../../jobs/job-queries.js';
+import { assertDispatchable, gateReasonsForQueuedJobs } from '../../jobs/queued-gates.js';
 import { JobResumeError, resumeHeldJob } from '../../jobs/resume-job.js';
 import {
   assertPrincipalIsMember,

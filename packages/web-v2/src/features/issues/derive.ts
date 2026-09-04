@@ -657,57 +657,19 @@ export function deriveBlockerState(
 		};
 	}
 
-	// 5. pipelineHealth capacity / dependency waits.
 	const waitingOn = pipelineHealth?.waitingOn;
 	// cm:guard do not gate this arm on `WAITING_REASON_COPY[reason]` again — core owns the reason vocabulary and this package hand-mirrors it, so an unrecognised reason used to fall through to the blocking-refs arm and the banner said NOTHING about a gate the server had named
 	const gate = waitingOn ? gateView(waitingOn) : null;
 	if (waitingOn && gate) {
 		const copy = { reason: gate.detail, who: gate.who };
-		const isDep = waitingOn.reason === "waiting_on_dep";
-
-		// Closed-but-unmerged blocker: waiting will NEVER resolve this — an
-		// operator must decide (mark_merged if the code is actually in, or
-		// reopen the blocker). The blocker is `closed`, so openBlockingRefs
-		// filtered it out; rebuild refs from the server-named culprit ids.
-		const closedUnmergedIds = new Set(
-			Array.isArray(waitingOn.details?.closedUnmergedBlockerIssueIds)
-				? (waitingOn.details.closedUnmergedBlockerIssueIds as string[])
-				: [],
-		);
-		if (waitingOn.reason === "waiting_on_dep" && closedUnmergedIds.size > 0) {
-			const closedUnmergedRefs: BlockingRef[] = (deps?.incoming ?? [])
-				.filter(
-					(e) => e.kind === "blocks" && closedUnmergedIds.has(e.fromIssueId),
-				)
-				.map((e) => ({
-					id: e.fromIssueId,
-					displayId: e.fromDisplayId ?? `ISS-${e.fromIssueId.slice(0, 6)}`,
-					title: e.fromTitle ?? null,
-					status: e.fromStatus ?? null,
-				}));
-			const refs = [...blockingRefs, ...closedUnmergedRefs];
-			return {
-				tone: "attention",
-				reason:
-					"Blocked by a dependency that was closed without its code merging to the base branch.",
-				whoMustAct:
-					"An operator must decide: mark the blocker merged if its code is actually in, or reopen it.",
-				cta: refs.length
-					? { label: "Open blocking issue", kind: "open-blocker" }
-					: { label: "", kind: "none" },
-				...(refs.length ? { blockingRefs: refs } : {}),
-			};
-		}
-
 		// cm:guard the banner tone follows `gate.needsAction`, the same field the chip's colour follows — this arm read `info` for every non-dependency gate, so a paused run and an empty runner pool looked exactly as calm as a 60-second retry cooldown on the one screen a human opens to find out why nothing is happening
 		return {
 			tone: gate.needsAction ? "attention" : "info",
 			reason: copy.reason,
 			whoMustAct: copy.who,
-			cta:
-				isDep && blockingRefs.length
-					? { label: "Open blocking issue", kind: "open-blocker" }
-					: { label: "", kind: "none" },
+			cta: blockingRefs.length
+				? { label: "Open blocking issue", kind: "open-blocker" }
+				: { label: "", kind: "none" },
 			...(blockingRefs.length ? { blockingRefs } : {}),
 		};
 	}

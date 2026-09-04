@@ -60,7 +60,7 @@ export interface CascadeResult {
 // cm:flow release/reap after:close — closing the run reaps its child jobs, and on a `pipeline_completed` close the release job that is still running flips to done, NOT cancelled; that sentinel is why a successful release does not look like a cancelled one
 // cm:guard every terminal pipeline_runs.status transition must route through this helper — nothing else reaps child jobs
 // cm:edge lockstep -> packages/core/src/jobs/loop-monitor.ts — orphan-hygiene defence 2; the three defences move together
-// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — orphan-hygiene defence 3
+// cm:edge lockstep -> packages/core/src/devices/pool.ts — orphan-hygiene defence 3: the pool offers a job only under a `running`/`paused` parent, so an orphan the cascade missed is never handed to a master. It took this role from the dispatch gates when the central picker was deleted.
 export async function cascadeCancelChildJobs(
   tx: Tx | Db,
   runId: string,

@@ -5,7 +5,7 @@
  * live join over `issues + jobs + pipeline_runs + agent_sessions +
  * issue_dependencies`, plus the picker's own `fresh_capable_runners` CTE
  * (`freshRunnerAvailability`), and mirrors EVERY arm of the dispatch CASE in
- * `jobs/dispatch-gates.ts`. A gate with no arm here renders as an idle,
+ * `jobs/queued-gates.ts`. A gate with no arm here renders as an idle,
  * actionable issue. `jobs.gate_reason` is deliberately NOT read: this layer
  * must stay correct after ISS-162 (D1) drops the column, and reading it would
  * mask the 29-min plan-stage UI blind spot from ISS-137.
@@ -21,11 +21,10 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, type IssueStatus, issueDependencies, issues } from '../db/schema.js';
-import { freshRunnerAvailability, resolveGateSettings } from '../jobs/dispatch-gates.js';
+import { agentSessions, type IssueStatus, issues } from '../db/schema.js';
+import { freshRunnerAvailability } from '../jobs/queued-gates.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
-import { isBlockerSatisfied } from './dependency-satisfaction.js';
 import { loadActiveJobsByIssue, loadPinnedRunnerSaturation } from './pipeline-health-loaders.js';
 import {
   heldWaitingOn,
@@ -37,7 +36,6 @@ import {
 import type {
   ClassifyInput,
   PipelineHealth,
-  PipelineHealthDep,
   PipelineHealthSession,
 } from './pipeline-health-types.js';
 
@@ -45,7 +43,6 @@ import type {
 export type {
   ClassifyInput,
   PipelineHealth,
-  PipelineHealthDep,
   PipelineHealthJob,
   PipelineHealthQueuedStep,
   PipelineHealthRunnerSat,
@@ -81,18 +78,7 @@ export function resetLastTickAtForTest(): void {
  * this for every requested issue id.
  */
 export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHealth {
-  const {
-    issue,
-    sessions,
-    jobs: issueJobs,
-    deps,
-    runningIssueIds,
-    runningIssueCount,
-    cap,
-    runnerInFlight,
-    runnerPool,
-    lastTickAt,
-  } = input;
+  const { issue, sessions, jobs: issueJobs, runnerInFlight, runnerPool, lastTickAt } = input;
 
   const queuedJobs = issueJobs.filter((j) => j.status === 'queued');
   const activeJobs = issueJobs.filter((j) => j.status !== 'queued');
@@ -166,37 +152,6 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     return out;
   }
 
-  const blockers = deps.filter(
-    (d) =>
-      d.kind === 'blocks' &&
-      !isBlockerSatisfied({ status: d.fromStatus, mergedAt: d.fromMergedAt }),
-  );
-  if (blockers.length > 0) {
-    const closedUnmerged = blockers.filter((b) => b.fromStatus === 'closed');
-    out.waitingOn = {
-      reason: 'waiting_on_dep',
-      since: sinceIso,
-      details: {
-        blockerIssueIds: blockers.map((b) => b.fromIssueId),
-        // Called out separately: these need an operator decision
-        // (mark_merged or reopen), waiting will not resolve them.
-        ...(closedUnmerged.length > 0
-          ? { closedUnmergedBlockerIssueIds: closedUnmerged.map((b) => b.fromIssueId) }
-          : {}),
-      },
-    };
-    return out;
-  }
-
-  if (runningIssueCount >= cap && !runningIssueIds.has(issue.id)) {
-    out.waitingOn = {
-      reason: 'project_full',
-      since: sinceIso,
-      details: { cap, running: [...runningIssueIds] },
-    };
-    return out;
-  }
-
   const runnerWait = runnerWaitingOn(candidate, sinceIso, runnerInFlight, runnerPool);
   if (runnerWait) {
     out.waitingOn = runnerWait;
@@ -267,51 +222,6 @@ export async function hydratePipelineHealthForIssues(
 
   const jobsByIssue = await loadActiveJobsByIssue(projectId, ids);
 
-  // Q4 — incoming `blocks` edges pointing AT these issues, with the
-  // blocker's merged_at (the gate's actual satisfaction key).
-  const depRows = await db
-    .select({
-      toIssueId: issueDependencies.toIssueId,
-      fromIssueId: issueDependencies.fromIssueId,
-      kind: issueDependencies.kind,
-      fromStatus: issues.status,
-      fromMergedAt: issues.mergedAt,
-    })
-    .from(issueDependencies)
-    .innerJoin(issues, eq(issues.id, issueDependencies.fromIssueId))
-    .where(
-      and(
-        inArray(issueDependencies.toIssueId, ids),
-        eq(issueDependencies.kind, 'blocks'),
-        sql`(${issueDependencies.validUntil} IS NULL OR ${issueDependencies.validUntil} > now())`,
-      ),
-    );
-  const depsByIssue = new Map<string, PipelineHealthDep[]>();
-  for (const r of depRows) {
-    const bucket = depsByIssue.get(r.toIssueId) ?? [];
-    bucket.push({
-      fromIssueId: r.fromIssueId,
-      kind: r.kind,
-      fromStatus: r.fromStatus,
-      fromMergedAt: r.fromMergedAt,
-    });
-    depsByIssue.set(r.toIssueId, bucket);
-  }
-
-  // cm:guard resolve the cap through `resolveGateSettings`, the same call the dispatch picker makes, and never by reading `pipelineConfig.maxConcurrentIssues` here — a second copy of the default-and-clamp is a health card that reports a slot the picker will not give.
-  const { cap } = await resolveGateSettings(projectId);
-  const runningRows = await db.execute<{ issue_id: string }>(sql`
-    SELECT DISTINCT (metadata->>'issueId') AS issue_id
-    FROM agent_sessions
-    WHERE project_id = ${projectId}
-      AND status IN ('queued','running')
-      AND (metadata->>'issueId') IS NOT NULL
-  `);
-  const runningIssueIds = new Set(
-    runningRows.map((r) => r.issue_id).filter((v): v is string => Boolean(v)),
-  );
-  const runningIssueCount = runningIssueIds.size;
-
   const runnerInFlight = await loadPinnedRunnerSaturation(jobsByIssue);
 
   const runnerPool = await freshRunnerAvailability(projectId);
@@ -329,10 +239,6 @@ export async function hydratePipelineHealthForIssues(
       },
       sessions: sessionsByIssue.get(issueId) ?? [],
       jobs: jobsByIssue.get(issueId) ?? [],
-      deps: depsByIssue.get(issueId) ?? [],
-      runningIssueIds,
-      runningIssueCount,
-      cap,
       runnerInFlight,
       runnerPool,
       lastTickAt,

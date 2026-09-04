@@ -18,93 +18,93 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-describe('master pool', () => {
-  let harness: TestDatabase;
-  let mods: {
-    readPool: typeof import('../../src/devices/pool.js').readPool;
-    claimJobForMaster: typeof import('../../src/devices/claim.js').claimJobForMaster;
-    releaseJobFromMaster: typeof import('../../src/devices/claim.js').releaseJobFromMaster;
-    releaseAllHeldBySession: typeof import('../../src/devices/claim.js').releaseAllHeldBySession;
-    readDeviceLoad: typeof import('../../src/devices/load.js').readDeviceLoad;
-    readProjectLoad: typeof import('../../src/devices/load.js').readProjectLoad;
-    reapDeadMasterHolds: typeof import('../../src/devices/master-reaper.js').reapDeadMasterHolds;
+let harness: TestDatabase;
+let mods: {
+  readPool: typeof import('../../src/devices/pool.js').readPool;
+  claimJobForMaster: typeof import('../../src/devices/claim.js').claimJobForMaster;
+  releaseJobFromMaster: typeof import('../../src/devices/claim.js').releaseJobFromMaster;
+  releaseAllHeldBySession: typeof import('../../src/devices/claim.js').releaseAllHeldBySession;
+  readDeviceLoad: typeof import('../../src/devices/load.js').readDeviceLoad;
+  readProjectLoad: typeof import('../../src/devices/load.js').readProjectLoad;
+  reapDeadMasterHolds: typeof import('../../src/devices/master-reaper.js').reapDeadMasterHolds;
+};
+
+beforeAll(async () => {
+  harness = await setupTestDatabase();
+  process.env.DATABASE_URL = harness.url;
+  process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+  process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+  process.env.NODE_ENV ??= 'test';
+  const pool = await import('../../src/devices/pool.js');
+  const claim = await import('../../src/devices/claim.js');
+  const load = await import('../../src/devices/load.js');
+  const reaper = await import('../../src/devices/master-reaper.js');
+  mods = {
+    readPool: pool.readPool,
+    claimJobForMaster: claim.claimJobForMaster,
+    releaseJobFromMaster: claim.releaseJobFromMaster,
+    releaseAllHeldBySession: claim.releaseAllHeldBySession,
+    readDeviceLoad: load.readDeviceLoad,
+    readProjectLoad: load.readProjectLoad,
+    reapDeadMasterHolds: reaper.reapDeadMasterHolds,
   };
+}, 60_000);
 
-  beforeAll(async () => {
-    harness = await setupTestDatabase();
-    process.env.DATABASE_URL = harness.url;
-    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
-    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-    process.env.NODE_ENV ??= 'test';
-    const pool = await import('../../src/devices/pool.js');
-    const claim = await import('../../src/devices/claim.js');
-    const load = await import('../../src/devices/load.js');
-    const reaper = await import('../../src/devices/master-reaper.js');
-    mods = {
-      readPool: pool.readPool,
-      claimJobForMaster: claim.claimJobForMaster,
-      releaseJobFromMaster: claim.releaseJobFromMaster,
-      releaseAllHeldBySession: claim.releaseAllHeldBySession,
-      readDeviceLoad: load.readDeviceLoad,
-      readProjectLoad: load.readProjectLoad,
-      reapDeadMasterHolds: reaper.reapDeadMasterHolds,
-    };
-  }, 60_000);
+afterAll(async () => {
+  if (harness) await harness.cleanup();
+});
 
-  afterAll(async () => {
-    if (harness) await harness.cleanup();
-  });
+beforeEach(async () => {
+  await truncateAll(harness.db);
+});
 
-  beforeEach(async () => {
-    await truncateAll(harness.db);
-  });
+async function seed() {
+  const owner = await createTestUser(harness.db);
+  const project = await createTestProject(harness.db, owner.id);
+  const device = await createTestDevice(harness.db, owner.id);
+  const runner = randomUUID();
+  const blockerIssue = randomUUID();
+  const issue = randomUUID();
+  const run = randomUUID();
+  const job = randomUUID();
 
-  async function seed() {
-    const owner = await createTestUser(harness.db);
-    const project = await createTestProject(harness.db, owner.id);
-    const device = await createTestDevice(harness.db, owner.id);
-    const runner = randomUUID();
-    const blockerIssue = randomUUID();
-    const issue = randomUUID();
-    const run = randomUUID();
-    const job = randomUUID();
+  await harness.db.execute(sql`
+    UPDATE devices SET agent_version = '0.10.5', last_seen_at = now() WHERE id = ${device.id}
+  `);
+  await harness.db.execute(sql`
+    UPDATE projects SET repo_path = '/tmp/pool-test' WHERE id = ${project.id}
+  `);
+  await harness.db.execute(sql`
+    INSERT INTO runners (id, project_id, device_id, type, name, status, last_seen_at)
+    VALUES (${runner}, ${project.id}, ${device.id}, 'claude-code', 'pool-runner', 'online', now())
+  `);
+  await harness.db.execute(sql`
+    INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
+    VALUES (${blockerIssue}, ${project.id}, 9001, 'blocker', 'dropped', 'medium', ${owner.id})
+  `);
+  await harness.db.execute(sql`
+    INSERT INTO issues (id, project_id, iss_seq, title, description, status, priority, category, created_by_id)
+    VALUES (${issue}, ${project.id}, 9002, 'the work', 'body text', 'open', 'high', 'core',
+            ${owner.id})
+  `);
+  await harness.db.execute(sql`
+    INSERT INTO issue_dependencies (project_id, from_issue_id, to_issue_id, kind, created_by_id)
+    VALUES (${project.id}, ${blockerIssue}, ${issue}, 'blocks', ${owner.id})
+  `);
+  await harness.db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status)
+    VALUES (${run}, ${project.id}, ${issue}, 'issue', 'running')
+  `);
+  await harness.db.execute(sql`
+    INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, created_by, queued_at)
+    VALUES (${job}, ${project.id}, ${issue}, ${run}, 'code', 'queued', ${owner.id},
+            now() - interval '30 minutes')
+  `);
 
-    await harness.db.execute(sql`
-      UPDATE devices SET agent_version = '0.10.5', last_seen_at = now() WHERE id = ${device.id}
-    `);
-    await harness.db.execute(sql`
-      UPDATE projects SET repo_path = '/tmp/pool-test' WHERE id = ${project.id}
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, device_id, type, name, status, last_seen_at)
-      VALUES (${runner}, ${project.id}, ${device.id}, 'claude-code', 'pool-runner', 'online', now())
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
-      VALUES (${blockerIssue}, ${project.id}, 9001, 'blocker', 'dropped', 'medium', ${owner.id})
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, description, status, priority, category, created_by_id)
-      VALUES (${issue}, ${project.id}, 9002, 'the work', 'body text', 'open', 'high', 'core',
-              ${owner.id})
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO issue_dependencies (project_id, from_issue_id, to_issue_id, kind, created_by_id)
-      VALUES (${project.id}, ${blockerIssue}, ${issue}, 'blocks', ${owner.id})
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status)
-      VALUES (${run}, ${project.id}, ${issue}, 'issue', 'running')
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, created_by, queued_at)
-      VALUES (${job}, ${project.id}, ${issue}, ${run}, 'code', 'queued', ${owner.id},
-              now() - interval '30 minutes')
-    `);
+  return { owner, project, device, run, job, issue };
+}
 
-    return { owner, project, device, run, job };
-  }
-
+describe('master pool', () => {
   it('offers a job whose blocker never merged, and reports the blocker raw', async () => {
     const { device, job } = await seed();
     const items = await mods.readPool({ deviceId: device.id, limit: 20 });
@@ -124,6 +124,56 @@ describe('master pool', () => {
     // cm:guard this pair is why the pool returns raw fields: `dropped` with a null merged_at and `reopen` WITH one both collapse to `satisfied:false`, and a master treats them differently. An assertion that only checked falsiness would still pass against the boolean this design deletes.
     expect(rel?.blockerStatus).toBe('dropped');
     expect(rel?.blockerMergedAt).toBeNull();
+  });
+
+  // cm:guard L1 is the ONLY correctness gate the master cannot be trusted with, so it needs a test that fails when the NOT EXISTS is dropped. `jobs_active_unique` is on (issue_id, type), so the two jobs here are deliberately DIFFERENT types — a same-type pair is refused by the index and would pass this test with the gate deleted.
+  it('refuses a second step for an issue that already has one in flight', async () => {
+    const { owner, project, device, run, issue } = await seed();
+    const second = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, created_by, queued_at)
+      VALUES (${second}, ${project.id}, ${issue}, ${run}, 'review', 'queued', ${owner.id}, now())
+    `);
+    await harness.db.execute(sql`
+      UPDATE jobs SET status = 'running' WHERE id IN (
+        SELECT id FROM jobs WHERE issue_id = ${issue} AND type = 'code'
+      )
+    `);
+
+    const refused = await mods.claimJobForMaster({
+      jobId: second,
+      deviceId: device.id,
+      sessionId: randomUUID(),
+    });
+    expect(refused.ok).toBe(false);
+    expect(refused.ok === false && refused.reason).toBe('issue_busy');
+
+    const offered = await mods.readPool({ deviceId: device.id, limit: 20 });
+    expect(offered.find((i) => i.jobId === second)).toBeUndefined();
+  });
+
+  it('separates a busy issue from a job another master already took', async () => {
+    const { device, job } = await seed();
+    const taken = await mods.claimJobForMaster({
+      jobId: job,
+      deviceId: device.id,
+      sessionId: randomUUID(),
+    });
+    expect(taken.ok).toBe(true);
+
+    const second = await mods.claimJobForMaster({
+      jobId: job,
+      deviceId: device.id,
+      sessionId: randomUUID(),
+    });
+    expect(second.ok === false && second.reason).toBe('already_held');
+
+    const missing = await mods.claimJobForMaster({
+      jobId: randomUUID(),
+      deviceId: device.id,
+      sessionId: randomUUID(),
+    });
+    expect(missing.ok === false && missing.reason).toBe('not_found');
   });
 
   it('lets exactly one of two masters claim the same job', async () => {
@@ -178,7 +228,10 @@ describe('master pool', () => {
       (await mods.readPool({ deviceId: device.id, limit: 20 })).find((i) => i.jobId === job),
     ).toBeUndefined();
   });
+});
 
+// cm:guard the reaper cases live in their own block so the shared setup is not counted against either one twice — they also assert the OPPOSITE property from the pool cases above: that a hold is taken BACK, which is the half that has no caller to notice when it breaks.
+describe('master pool — reaping dead holds', () => {
   it('reaps a hold whose master went terminal, and leaves a live one alone', async () => {
     const { owner, project, device, run, job } = await seed();
     const deadSession = randomUUID();
@@ -234,6 +287,20 @@ describe('master pool', () => {
     expect(
       (await mods.readPool({ deviceId: device.id, limit: 20 })).find((i) => i.jobId === job),
     ).toBeDefined();
+  });
+
+  // cm:guard a fault flag must reach the master RAW. `fresh_capable_runners` used to exclude an `auth` runner from dispatch by name, and nothing excludes it now — so if this stops being reported, a master hands work to a box whose Claude session is dead and learns only from the failure.
+  it('reports a runner fault verbatim rather than hiding the box', async () => {
+    const { project, device } = await seed();
+    await harness.db.execute(sql`
+      UPDATE runners SET limit_reason = 'auth', rate_limited_until = NULL
+      WHERE project_id = ${project.id} AND device_id = ${device.id}
+    `);
+
+    const load = await mods.readDeviceLoad(device.id);
+    expect(load?.runnerFaults).toHaveLength(1);
+    expect(load?.runnerFaults[0]?.limitReason).toBe('auth');
+    expect(load?.runnerFaults[0]?.until).toBeNull();
   });
 
   it('separates pool depth from running, and surfaces the oldest running job', async () => {

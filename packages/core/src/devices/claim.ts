@@ -1,28 +1,40 @@
 /**
  * A master agent taking one job, and the kernel recording that it did.
  *
- * The routing decision is the master's and is not re-litigated here. What
- * this owns is the part that must hold when the master is gone: one holder
- * per job, and a device row locked while the count is taken.
+ * The routing decision is the master's and is not re-litigated here. What this
+ * owns is the part that must hold when the master is gone: one holder per job,
+ * one in-flight step per issue, and a hold that is given back on every path
+ * that fails after it lands.
  */
 
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
+import { endJobForBudgetBreach } from '../jobs/budget-breach.js';
+import { checkMonthlyBudget, shouldEmitWarn } from '../jobs/budget-check.js';
 import { mintJobToken } from '../jobs/job-token.js';
+import { type PreparedJob, prepareClaimedJob } from '../jobs/prepare-claimed-job.js';
+import { hooks } from '../pipeline/hooks.js';
 
 export type ClaimResult =
-  | { ok: true; jobId: string; jobToken: string; issueKey: string | null }
-  | { ok: false; reason: 'not_found' | 'already_held' | 'device_busy' };
+  | {
+      ok: true;
+      jobId: string;
+      jobToken: string;
+      issueKey: string | null;
+      prepared: PreparedJob;
+    }
+  | { ok: false; reason: 'not_found' | 'already_held' | 'issue_busy' | 'budget_exhausted' };
 
 /**
  * Claim one queued job for `sessionId` on `deviceId`.
  *
- * Refuses on physical fullness — a truth about the box the master cannot see —
- * and on losing the race for a job another master took first.
+ * Refuses when another step for the same issue is already in flight, and when
+ * a job was taken by whoever asked first.
  */
-// cm:guard the hold and the count MUST happen under one locked device row, the same discipline `claimRunnerSlot` uses. Two masters on one box asking "is there room" outside a lock both read the same free slot and both take it; the lock is what makes the second one lose.
-// cm:guard a refusal here is NOT a job failure and must never touch `attempts` or `failure_kind`. A full box is the ordinary case, and spending a retry on it burns an issue's budget on something that was never wrong.
+// cm:guard how MANY jobs this box may hold is deliberately NOT decided here — the master weighs `GET /me/load` and the runner refuses on physical fullness (RAM, permit, repo lock), neither of which core can see. Do not reintroduce a device count: a ceiling in the kernel is the knob this design removed, and a master that meets one stops weighing the facts.
+// cm:guard L1 — one issue, one in-flight job, whatever the TYPE. `jobs_active_unique` is on (issue_id, type) and so permits a `code` and a `review` job for one issue at once; this NOT EXISTS is the only thing left standing between that and two agents writing the same worktree. It MUST stay inside the UPDATE's WHERE so the check and the hold are one statement — read separately, two masters both see a clear issue.
+// cm:guard a refusal here is NOT a job failure and must never touch `attempts` or `failure_kind`. A busy issue and a lost race are the ordinary case, and spending a retry on either burns an issue's budget on something that was never wrong.
 export async function claimJobForMaster(args: {
   jobId: string;
   deviceId: string;
@@ -30,24 +42,39 @@ export async function claimJobForMaster(args: {
 }): Promise<ClaimResult> {
   // cm:guard the token is minted AFTER this transaction commits, never inside it. `mintJobToken` writes through the module-level `db` rather than the passed `tx`, so a mint placed inside would survive a rollback — a live credential for a job whose hold never landed, with nothing left pointing at it to revoke.
   const claimed = await db.transaction(async (tx) => {
-    const deviceRows = (await tx.execute(sql`
-      SELECT d.id FROM devices d WHERE d.id = ${args.deviceId} FOR UPDATE OF d
-    `)) as unknown as Array<Record<string, unknown>>;
-    if (!deviceRows[0]) return { kind: 'not_found' } as const;
-
     const held = await tx
       .update(jobs)
       .set({ heldBy: args.sessionId, heldAt: sql`now()` })
-      .where(and(eq(jobs.id, args.jobId), eq(jobs.status, 'queued'), isNull(jobs.heldBy)))
-      .returning({
-        id: jobs.id,
-        issueId: jobs.issueId,
-        projectId: jobs.projectId,
-        createdBy: jobs.createdBy,
-      });
+      .where(
+        and(
+          eq(jobs.id, args.jobId),
+          eq(jobs.status, 'queued'),
+          isNull(jobs.heldBy),
+          // cm:guard write `jobs.issue_id` / `jobs.id` LITERALLY, never as `${jobs.issueId}`. Drizzle renders a column reference inside a raw `sql` template UNQUALIFIED, so `issue_id` would resolve against the subquery's own `other` row — a NOT EXISTS comparing a row to itself, always true, and L1 silently gone.
+          sql`NOT EXISTS (
+            SELECT 1 FROM jobs other
+            WHERE other.issue_id = jobs.issue_id
+              AND other.id <> jobs.id
+              AND other.status IN ('dispatched','running','held')
+          )`,
+        ),
+      )
+      .returning();
 
     const row = held[0];
-    if (!row) return { kind: 'already_held' } as const;
+    // cm:guard name the refusal the master can ACT on. `issue_busy` means come back for this job later; `already_held` means another master has it and this one never will. Collapsing them into one reason is how a master learns to treat both as "pick something else" and quietly stops working an issue nothing is wrong with.
+    if (!row) {
+      const diag = (await tx.execute(sql`
+        SELECT j.held_by IS NOT NULL AS taken,
+               EXISTS (SELECT 1 FROM jobs o
+                       WHERE o.issue_id = j.issue_id AND o.id <> j.id
+                         AND o.status IN ('dispatched','running','held')) AS busy
+        FROM jobs j WHERE j.id = ${args.jobId} AND j.status = 'queued' LIMIT 1
+      `)) as unknown as Array<Record<string, unknown>>;
+      const d = diag[0];
+      if (!d) return { kind: 'not_found' } as const;
+      return { kind: d.taken ? 'already_held' : 'issue_busy' } as const;
+    }
 
     const keyRows = row.issueId
       ? ((await tx.execute(sql`
@@ -57,7 +84,7 @@ export async function claimJobForMaster(args: {
 
     return {
       kind: 'held',
-      row,
+      job: row,
       issSeq: (keyRows[0]?.iss_seq as number | null) ?? null,
     } as const;
   });
@@ -65,21 +92,53 @@ export async function claimJobForMaster(args: {
   if (claimed.kind !== 'held') return { ok: false, reason: claimed.kind };
 
   const jobToken = await mintJobToken({
-    id: claimed.row.id,
-    projectId: claimed.row.projectId,
-    createdBy: claimed.row.createdBy,
+    id: claimed.job.id,
+    projectId: claimed.job.projectId,
+    createdBy: claimed.job.createdBy,
   });
   // cm:guard a mint that fails MUST give the hold back before returning. Leaving it set would park the job on a master that never received a credential for it, and only the 3-minute reaper would notice — a slot lost to a failure that was visible right here.
   if (!jobToken) {
-    await releaseJobFromMaster({ jobId: claimed.row.id, sessionId: args.sessionId });
+    await releaseJobFromMaster({ jobId: claimed.job.id, sessionId: args.sessionId });
     return { ok: false, reason: 'not_found' };
+  }
+
+  // cm:guard the breach ENDS the job (ISS-823 shape: terminal + a `held` retry), it does not merely refuse it. The reason returned here is for the master's next choice; the rows `endJobForBudgetBreach` writes are the kernel's record, and leaving the job `queued` instead would have the next master claim it and post the same comment again.
+  const budget = await checkMonthlyBudget(claimed.job);
+  if (budget.action === 'pause') {
+    await releaseJobFromMaster({ jobId: claimed.job.id, sessionId: args.sessionId });
+    await endJobForBudgetBreach(claimed.job, budget);
+    return { ok: false, reason: 'budget_exhausted' };
+  }
+  if (
+    budget.action === 'warn-80' &&
+    budget.stageStatus !== null &&
+    shouldEmitWarn(claimed.job.projectId, budget.stageStatus)
+  ) {
+    await hooks.emit('pipeline.budgetWarning', {
+      projectId: claimed.job.projectId,
+      stageStatus: budget.stageStatus,
+      jobType: claimed.job.type,
+      spent: budget.spent,
+      budget: budget.budget ?? 0,
+      pct: budget.budget && budget.budget > 0 ? budget.spent / budget.budget : 0,
+    });
+  }
+
+  // cm:guard a preparation that throws MUST give the hold back, for the same reason a failed mint does: the job would otherwise sit claimed by a master that never received the work, reachable only by the 3-minute reaper.
+  let prepared: PreparedJob;
+  try {
+    prepared = await prepareClaimedJob({ jobId: claimed.job.id, deviceId: args.deviceId });
+  } catch (err) {
+    await releaseJobFromMaster({ jobId: claimed.job.id, sessionId: args.sessionId });
+    throw err;
   }
 
   return {
     ok: true,
-    jobId: claimed.row.id,
+    jobId: claimed.job.id,
     jobToken,
     issueKey: claimed.issSeq == null ? null : `ISS-${claimed.issSeq}`,
+    prepared,
   };
 }
 

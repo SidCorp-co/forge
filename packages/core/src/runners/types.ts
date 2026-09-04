@@ -114,7 +114,6 @@ export interface RunnerAdapter {
   validateConfig(
     config: unknown,
   ): { ok: true; config: Record<string, unknown> } | { ok: false; error: string };
-  dispatch(input: DispatchInput): Promise<DispatchResult>;
   health(input: HealthInput): Promise<HealthResult>;
   refreshQuota?(input: HealthInput): Promise<QuotaResult>;
 }

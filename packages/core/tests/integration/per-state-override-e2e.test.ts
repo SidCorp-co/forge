@@ -37,7 +37,7 @@ vi.mock('../../src/ws/server.js', () => ({
 describe('ISS-194 per-state override end-to-end', () => {
   let harness: TestDatabase;
   let app: Hono<{ Variables: import('../../src/middleware/request-id.js').RequestIdVars }>;
-  let handleDispatch: typeof import('../../src/jobs/dispatcher.js').handleDispatch;
+  let prepareClaimedJob: typeof import('../../src/jobs/prepare-claimed-job.js').prepareClaimedJob;
   let roomManager: { publish: ReturnType<typeof vi.fn> };
   let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
 
@@ -68,10 +68,10 @@ describe('ISS-194 per-state override end-to-end', () => {
     const { errorHandler } = await import('../../src/middleware/error.js');
     const { requestId } = await import('../../src/middleware/request-id.js');
     const jwtMod = await import('../../src/auth/jwt.js');
-    const dispatcherMod = await import('../../src/jobs/dispatcher.js');
+    const prepareMod = await import('../../src/jobs/prepare-claimed-job.js');
     const { bootstrapRunnerAdapters } = await import('../../src/runners/bootstrap.js');
     signUserToken = jwtMod.signUserToken;
-    handleDispatch = dispatcherMod.handleDispatch;
+    prepareClaimedJob = prepareMod.prepareClaimedJob;
     // Register adapters so the claude-code runner resolves on dispatch.
     bootstrapRunnerAdapters();
 
@@ -118,14 +118,6 @@ describe('ISS-194 per-state override end-to-end', () => {
     `);
     const token = await signUserToken(owner.id);
     return { ownerId: owner.id, projectId: project.id, deviceId: device.id, token };
-  }
-
-  // Runner cap is 1 in-flight; mark a dispatched job terminal so a second
-  // dispatch to the same runner isn't blocked by the runner_full barrier.
-  async function markJobDone(jobId: string): Promise<void> {
-    await harness.db.execute(sql`
-      UPDATE jobs SET status = 'done', finished_at = now() WHERE id = ${jobId}
-    `);
   }
 
   async function patchPipelineConfig(
@@ -178,14 +170,12 @@ describe('ISS-194 per-state override end-to-end', () => {
     return id;
   }
 
-  function jobAssignedCall(): Record<string, unknown> {
-    const calls = roomManager.publish.mock.calls.filter(
-      (c) => (c[1] as { event?: string } | undefined)?.event === 'job.assigned',
-    );
-    expect(calls).toHaveLength(1);
-    const call = calls[0];
-    if (!call) throw new Error('job.assigned publish call not captured');
-    return (call[1] as { data: Record<string, unknown> }).data;
+  /** The flags a prepared job hands a subagent — where the frame used to carry them. */
+  function preparedFlags(p: {
+    model: string;
+    payload: Record<string, unknown>;
+  }): Record<string, unknown> {
+    return { model: p.model, ...p.payload };
   }
 
   async function readProjectAgentConfig(projectId: string): Promise<Record<string, unknown>> {
@@ -196,7 +186,7 @@ describe('ISS-194 per-state override end-to-end', () => {
   }
 
   it('forwards `model` + `permissionMode` from config to WS envelope and Inspector', async () => {
-    const { ownerId, projectId, token } = await seedOwnerProjectDevice();
+    const { ownerId, projectId, deviceId, token } = await seedOwnerProjectDevice();
 
     // cm:guard the override tier MUST differ from DEFAULT_STAGE_MODELS['open'] — pick one equal to the default and this test passes even when override forwarding is broken
     // cm:edge lockstep -> packages/core/src/jobs/stage-overrides.ts — DEFAULT_STAGE_MODELS['open'] is 'sonnet'; if it ever becomes 'opus', both tests in this file must switch to a different override tier
@@ -227,16 +217,10 @@ describe('ISS-194 per-state override end-to-end', () => {
     const issueId = await insertIssue(projectId, ownerId);
     const jobId = await insertCodeJob({ projectId, issueId, ownerId });
 
-    const result = await handleDispatch({ jobId });
-    expect(result).toBe('dispatched');
-
-    const data = jobAssignedCall();
+    const data = preparedFlags(await prepareClaimedJob({ jobId, deviceId }));
     expect(data.model).toBe('opus');
     expect(data.permissionMode).toBe('acceptEdits');
-    expect(data.jobId).toBe(jobId);
-    expect(data.projectId).toBe(projectId);
-    expect(data.type).toBe('code');
-    expect((data.payload as { stageStatus?: unknown }).stageStatus).toBe('open');
+    expect(data.stageStatus).toBe('open');
 
     // Inspector envelope.
     const inspRes = await app.request(`/api/jobs/${jobId}/prompt`, {
@@ -266,7 +250,7 @@ describe('ISS-194 per-state override end-to-end', () => {
   });
 
   it('reverting the override produces a new dispatch with default values', async () => {
-    const { ownerId, projectId, token } = await seedOwnerProjectDevice();
+    const { ownerId, projectId, deviceId, token } = await seedOwnerProjectDevice();
 
     // 1. Apply override + dispatch one job to confirm the override path is
     //    actually live before the revert.
@@ -284,10 +268,7 @@ describe('ISS-194 per-state override end-to-end', () => {
 
     const issueId1 = await insertIssue(projectId, ownerId);
     const jobId1 = await insertCodeJob({ projectId, issueId: issueId1, ownerId });
-    expect(await handleDispatch({ jobId: jobId1 })).toBe('dispatched');
-    expect(jobAssignedCall().model).toBe('opus');
-    // Free the single runner's in-flight slot before the second dispatch.
-    await markJobDone(jobId1);
+    expect(preparedFlags(await prepareClaimedJob({ jobId: jobId1, deviceId })).model).toBe('opus');
 
     // cm:guard the revert works by REPLACEMENT, not by omission: `updatePipelineConfig` shallow-merges at the `pipelineConfig` level, so sending `states.open` without `model` replaces that whole entry and drops the key. Send a narrower patch expecting a per-key merge and the override survives while this reads as reverted.
     roomManager.publish.mockClear();
@@ -316,13 +297,11 @@ describe('ISS-194 per-state override end-to-end', () => {
     // 3. Dispatch a second code job with the override gone.
     const issueId2 = await insertIssue(projectId, ownerId);
     const jobId2 = await insertCodeJob({ projectId, issueId: issueId2, ownerId });
-    expect(await handleDispatch({ jobId: jobId2 })).toBe('dispatched');
-
-    const data2 = jobAssignedCall();
-    // cm:why with the override cleared `model` falls back to DEFAULT_STAGE_MODELS rather than dropping out of the envelope (ISS-535); `permissionMode` has no default policy, so buildOverridesPayload omits it entirely
+    const data2 = preparedFlags(await prepareClaimedJob({ jobId: jobId2, deviceId }));
+    // cm:why with the override cleared `model` falls back to DEFAULT_STAGE_MODELS rather than dropping out of the prepared flags (ISS-535); `permissionMode` has no default policy, so buildOverridesPayload omits it entirely
     expect(data2.model).toBe('sonnet');
     expect(Object.keys(data2)).not.toContain('permissionMode');
-    expect((data2.payload as { stageStatus?: unknown }).stageStatus).toBe('open');
+    expect(data2.stageStatus).toBe('open');
 
     const inspRes = await app.request(`/api/jobs/${jobId2}/prompt`, {
       headers: { Authorization: `Bearer ${token}` },

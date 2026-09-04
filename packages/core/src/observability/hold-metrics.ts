@@ -22,7 +22,7 @@
  * `/metrics` endpoint exists.
  */
 
-import type { GateSkipReason } from '../jobs/dispatch-gates.js';
+import type { GateSkipReason } from '../jobs/queued-gates.js';
 import type { ResumeDropReason } from '../jobs/resume-policy.js';
 
 const RUNNER_DEATH_BUCKETS_SECONDS = [10, 20, 30, 45, 60, 90, 120, 300] as const;

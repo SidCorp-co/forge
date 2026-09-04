@@ -160,7 +160,7 @@ export interface HookPayloads {
     deviceId: string;
     runnerId: string;
   };
-  // cm:edge protocol -> packages/core/src/jobs/dispatch-subscribers.ts — the ONLY subscriber that turns this into a dispatch tick; heartbeat-ws emits it instead of calling the dispatcher so the WS layer does not import the job layer, and with no subscriber registered a runner coming online waits for the sweeper's backstop instead of dispatching at once
+  // cm:guard nothing in core subscribes to this any more, and that is deliberate: a box coming online no longer pulls work toward it, because the master on that box decides what it takes. Kept as an announcement other surfaces read; wiring it back to something that starts work would put routing in the kernel again.
   runnerOnline: {
     projectId: string;
     runnerId: string;

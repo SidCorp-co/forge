@@ -11,7 +11,6 @@ import {
   issues,
   waitingKinds,
 } from '../db/schema.js';
-import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { projectRoom } from '../ws/rooms.js';
@@ -158,19 +157,7 @@ export async function triggerTerminalDispatch(
       });
     }
   } catch {
-    // Cascade broadcast + child collection are best-effort; the 60s backstop
-    // recovers missed unblocks and we'd rather lose a toast than a dispatch.
-  }
-
-  for (const projectId of parentProjectIds) {
-    const blockerIssueId = terminal.find((t) => t.projectId === projectId)?.issueId;
-    void dispatchTickForProject(
-      projectId,
-      blockerIssueId ? { triggerBlockerIssueId: blockerIssueId } : undefined,
-    );
-  }
-  for (const [childProjectId, blockerIssueId] of childTargets) {
-    void dispatchTickForProject(childProjectId, { triggerBlockerIssueId: blockerIssueId });
+    // cm:why the cascade broadcast is a toast and nothing more — the edge rows are the record and a master reads those itself, so losing one costs a UI hint rather than a dispatch
   }
 }
 

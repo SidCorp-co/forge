@@ -22,9 +22,8 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { type AlertSweepResult, runAlertSweep } from '../admin/alert-sweeper.js';
 import { db } from '../db/client.js';
-import { agentSessions, type IssueStatus, jobs } from '../db/schema.js';
+import { agentSessions } from '../db/schema.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
-import { dispatchTickForProject } from '../jobs/dispatch-tick.js';
 import { killGraceMs } from '../jobs/kill-gate.js';
 import {
   getLoopThresholds,
@@ -38,11 +37,6 @@ import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
 import {
-  alarmUnrunnableBlockedDependents,
-  type BlockedDependentAlarmResult,
-  STALL_GRACE_MS,
-} from './blocked-dependent-alarms.js';
-import {
   alarmAgedHolds,
   alarmChurningIssues,
   alarmPausedRunsWithQueuedWork,
@@ -55,7 +49,6 @@ import { type OrphanedPauseResult, resumeOrphanedPauses } from './run-pause.js';
 import { closeOpenRunForIssue, closeRunIfOneShot } from './runs.js';
 import { detectStrandedIssues, type StrandedIssuesResult } from './stranded-issues.js';
 import { emitPipelineWedge } from './wedge.js';
-import { blockerStatusLabel, humanizeDuration } from './wedge-copy.js';
 
 export const PIPELINE_SWEEPER_QUEUE = 'pipeline-sweeper';
 
@@ -120,12 +113,6 @@ export interface SweepResult {
   idleChatSessions: IdleChatCloseResult;
   /** ISS-461 — issue runs closed because their backing issue is terminal (reaps). */
   orphanedIssueRuns: IssueRunReapResult;
-  /** ISS-442 — dependency deadlocks surfaced (a gate that will never clear). */
-  stalledDependencies: StallDetectResult;
-  /** ISS-639 — dependents alarmed because their blocker closed without merging. */
-  closedUnmergedAlarms: ClosedUnmergedAlarmResult;
-  /** Dependents alarmed because a `blocks` parent is still at `draft` (alarm only). */
-  draftBlockedAlarms: BlockedDependentAlarmResult;
   /** RFC 0002 INV-7 — holds that outlived their threshold (alarm only). */
   agedHolds: Inv7AlarmResult;
   stalledQueuedJobs: Inv7AlarmResult;
@@ -143,7 +130,6 @@ export interface SweepResult {
   retryRescueThresholds: RetryRescueAlertResult;
   /** ISS-652 — Tier 1 ops alert engine push pass. */
   alerts: AlertSweepResult;
-  backstopProjects: number;
   queueSnapshots: number;
 }
 
@@ -194,17 +180,6 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const orphanedIssueRuns = await runPass('reapOrphanedIssueRuns', () =>
     reapOrphanedIssueRuns(now),
   );
-  const stalledDependencies = await runPass('detectStalledDependencies', () =>
-    detectStalledDependencies(now),
-  );
-  // cm:why alarm, not a reap (RFC 0002 demoted it from a park): the dependent sits queued because its blocker closed without merging, and once a human fixes the blocker it dispatches by itself
-  const closedUnmergedAlarms = await runPass('alarmClosedUnmergedBlockedDependents', () =>
-    alarmClosedUnmergedBlockedDependents(now),
-  );
-  // cm:why alarm, never a gate change — the owner's call 2026-08-14: a `blocks` edge onto a `draft` issue SHOULD keep waiting, because the edge is a deliberate statement of order. What was wrong was only that the wait was invisible.
-  const draftBlockedAlarms = await runPass('alarmUnrunnableBlockedDependents', () =>
-    alarmUnrunnableBlockedDependents(now),
-  );
   const agedHolds = await runPass('alarmAgedHolds', () => alarmAgedHolds(now));
   // cm:why alarm, not a reap: a plain `queued` job holds no capacity, so cancelling it frees nothing and only destroys work — and the state it reports (every gate passes, nothing started it) is one only a human can resolve, because the picker and the selector disagreeing is a configuration mismatch, not a stuck row
   const stalledQueuedJobs = await runPass('alarmStalledQueuedJobs', () =>
@@ -228,8 +203,6 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const retryRescueThresholds = await runPass('detectRetryRescueThresholds', () =>
     detectRetryRescueThresholds(now),
   );
-  const backstopProjects = await runPass('dispatcherBackstop', () => runDispatcherBackstop());
-  // cm:why ISS-652 — the alert sweep runs AFTER runDispatcherBackstop: passes are awaited sequentially, so a slow A4/A5 aggregation (usage_records/schedule_runs/agent_sessions/integration_deliveries) must never sit in front of the only per-minute queued-job re-evaluation
   const alerts = await runPass('alertSweep', () => runAlertSweep(now));
   // ISS-381 (2.2) — snapshot per-project queue depth.
   const queueSnapshots = await runPass('recordQueueSnapshots', () => recordQueueSnapshots());
@@ -256,9 +229,6 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     orphanedOneShotRuns: orphanedOneShotRuns as OneShotRunReapResult,
     idleChatSessions: idleChatSessions as IdleChatCloseResult,
     orphanedIssueRuns: orphanedIssueRuns as IssueRunReapResult,
-    stalledDependencies: stalledDependencies as StallDetectResult,
-    closedUnmergedAlarms: closedUnmergedAlarms as ClosedUnmergedAlarmResult,
-    draftBlockedAlarms: draftBlockedAlarms as BlockedDependentAlarmResult,
     agedHolds: agedHolds as Inv7AlarmResult,
     stalledQueuedJobs: stalledQueuedJobs as Inv7AlarmResult,
     pausedRunsWithQueuedWork: pausedRunsWithQueuedWork as Inv7AlarmResult,
@@ -269,125 +239,13 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     orphanedPauses: orphanedPauses as OrphanedPauseResult,
     retryRescueThresholds: retryRescueThresholds as RetryRescueAlertResult,
     alerts: alerts as AlertSweepResult,
-    backstopProjects: backstopProjects as number,
     queueSnapshots: queueSnapshots as number,
   };
 }
 
-type StalledRow = {
-  job_id: string;
-  project_id: string;
-  job_type: string;
-  issue_id: string;
-  wedged_seq: number;
-  wedged_title: string;
-  blocker_id: string;
-  blocker_status: string;
-  blocker_seq: number;
-  blocker_title: string;
-  queued_secs: number;
-};
-
-/**
- * ISS-442 — detect dependency deadlocks the dispatcher will never resolve and
- * surface them via `emitPipelineWedge` (deduped per job, fans out to the owner,
- * feeds the interventions metric). A job is deadlocked when it has sat `queued`
- * past {@link STALL_GRACE_MS} and its gate's blocker is PARKED: `merged_at` is
- * NULL, the blocker isn't `closed`, and the blocker has NO active job that could
- * ever advance it to stamp `merged_at`. Mirrors the `blockedBy` predicate in
- * `jobs/dispatch-gates.ts` (same job-type scoping) plus the parked-blocker
- * condition. Detection only — never
- * mutates state. Best-effort: never throws (returns 0 on error).
- */
-export async function detectStalledDependencies(
-  now: Date = new Date(),
-  scope: SweepScope = {},
-): Promise<StallDetectResult> {
-  try {
-    const cutoffIso = new Date(now.getTime() - STALL_GRACE_MS).toISOString();
-    const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
-
-    const rows = await db.execute<StalledRow>(sql`
-      SELECT j.id AS job_id, j.project_id, j.type AS job_type, j.issue_id::text AS issue_id,
-             wi.iss_seq AS wedged_seq, wi.title AS wedged_title,
-             p.id::text AS blocker_id, p.status AS blocker_status,
-             p.iss_seq AS blocker_seq, p.title AS blocker_title,
-             extract(epoch FROM (now() - j.queued_at))::int AS queued_secs
-      FROM jobs j
-      JOIN pipeline_runs r ON r.id = j.pipeline_run_id
-      JOIN issues wi ON wi.id = j.issue_id
-      -- cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — this job-type scoping must equal the blockedBy gate's: that predicate decides which jobs a parked blocker HOLDS, this one decides which of those the operator is ever told about. A type gated there and missing here is a job queued forever with no alarm.
-      JOIN issue_dependencies d ON (d.kind = 'blocks' AND d.to_issue_id = j.issue_id AND j.type <> 'pm')
-      JOIN issues p ON p.id = d.from_issue_id
-      WHERE j.status = 'queued'
-        AND j.issue_id IS NOT NULL
-        AND j.queued_at < ${cutoffIso}
-        AND r.status = 'running'
-        AND (d.valid_until IS NULL OR d.valid_until > now())
-        AND p.merged_at IS NULL
-        AND p.status <> 'closed'
-        AND NOT EXISTS (
-          SELECT 1 FROM jobs bj
-          WHERE bj.issue_id = p.id
-            AND bj.status IN ('queued','dispatched','running')
-        )
-        ${projectClause}
-      ORDER BY j.queued_at ASC
-      LIMIT 100
-    `);
-
-    const seen = new Set<string>();
-    let detected = 0;
-    for (const row of rows) {
-      if (seen.has(row.job_id)) continue;
-      seen.add(row.job_id);
-      const mins = Math.round(row.queued_secs / 60);
-      const rel = 'blocked by';
-      const relBusiness = 'a blocking issue';
-      const statusLabel = blockerStatusLabel(row.blocker_status);
-      const nextStep =
-        row.blocker_status === 'needs_info'
-          ? `Add the missing info to ISS-${row.blocker_seq}, or mark it done if it's already complete.`
-          : `Resolve ISS-${row.blocker_seq} (or mark it done) so this work can continue.`;
-      await emitPipelineWedge({
-        projectId: row.project_id,
-        issueId: row.issue_id,
-        hop: 'dispatch',
-        entity: 'job',
-        entityId: row.job_id,
-        reason: `'${row.job_type}' job queued ${mins}m, ${rel} ${row.blocker_id} which is parked at status='${row.blocker_status}' (merged_at NULL, no active job). The dependency gate keys on merged_at, which only stamps when the blocker leaves its mergeStates.baseBranch — so this gate will never clear on its own.`,
-        action: `Fix the blocker's merge point: Settings → Pipeline → "Merge points" (set baseBranch to the stage where it actually merges), or mark the blocker merged (forge_issues mark_merged) if it is genuinely done.`,
-        title: `Blocked: ISS-${row.wedged_seq} "${row.wedged_title}" is waiting on ${relBusiness} that can't continue`,
-        summary: `Waiting ${humanizeDuration(mins)}. ISS-${row.blocker_seq} "${row.blocker_title}" is parked at "${statusLabel}" and won't proceed on its own.`,
-        nextStep,
-        secondaryIssueId: row.blocker_id,
-      });
-      detected++;
-    }
-    if (detected > 0) {
-      logger.warn({ detected }, 'pipeline-sweeper: dependency deadlocks surfaced');
-    }
-    return { detected };
-  } catch (err) {
-    logger.error({ err }, 'pipeline-sweeper: stall detection pass failed (skipped)');
-    return { detected: 0 };
-  }
-}
-
-type ClosedUnmergedRow = {
-  job_id: string;
-  project_id: string;
-  issue_id: string;
-  issue_status: IssueStatus;
-  issue_reopen_count: number;
-  blocker_seq: number;
-  blocker_title: string;
-  created_by: string | null;
-};
-
 /**
  * ISS-639 — active counterpart to the blocks-gate fix in
- * `jobs/dispatch-gates.ts`: when a project's `mergeStates.baseBranch` IS
+ * `jobs/queued-gates.ts`: when a project's `mergeStates.baseBranch` IS
  * stampable, the gate no longer treats a `closed`+`merged_at IS NULL`
  * blocker as satisfying `blockedBy`, so a
  * dependent whose blocker closed without merging now just sits `queued`
@@ -408,80 +266,6 @@ type ClosedUnmergedRow = {
  * can no longer arise from normal operation. This pass stays as the backstop
  * for pre-existing rows and direct DB writes that bypass both paths.
  */
-
-export async function alarmClosedUnmergedBlockedDependents(
-  now: Date = new Date(),
-  scope: SweepScope = {},
-): Promise<ClosedUnmergedAlarmResult> {
-  try {
-    const cutoffIso = new Date(now.getTime() - STALL_GRACE_MS).toISOString();
-    const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
-
-    const rows = await db.execute<ClosedUnmergedRow>(sql`
-      SELECT DISTINCT ON (j.issue_id)
-             j.id AS job_id, j.project_id, j.issue_id::text AS issue_id,
-             wi.status AS issue_status, wi.reopen_count AS issue_reopen_count,
-             p.iss_seq AS blocker_seq, p.title AS blocker_title,
-             pr.created_by AS created_by
-      FROM jobs j
-      JOIN pipeline_runs r ON r.id = j.pipeline_run_id
-      JOIN issues wi ON wi.id = j.issue_id
-      JOIN projects pr ON pr.id = j.project_id
-      -- cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — this job-type scoping must equal the blockedBy gate's: that predicate decides which jobs a parked blocker HOLDS, this one decides which of those the operator is ever told about. A type gated there and missing here is a job queued forever with no alarm.
-      JOIN issue_dependencies d ON (d.kind = 'blocks' AND d.to_issue_id = j.issue_id AND j.type <> 'pm')
-      JOIN issues p ON p.id = d.from_issue_id
-      WHERE j.status = 'queued'
-        AND j.issue_id IS NOT NULL
-        AND j.queued_at < ${cutoffIso}
-        AND r.status = 'running'
-        AND (d.valid_until IS NULL OR d.valid_until > now())
-        AND p.status = 'closed'
-        AND p.merged_at IS NULL
-        ${projectClause}
-      ORDER BY j.issue_id, j.queued_at ASC
-      LIMIT 100
-    `);
-
-    let alerted = 0;
-    for (const row of rows) {
-      try {
-        // comments.author_id is non-nullable; nothing to attribute the park to.
-        if (!row.created_by) continue;
-
-        // cm:guard alarm ONLY — this pass must never write issues.status (RFC 0002 INV-5). It used to park the dependent at `waiting`, comment, and close the run; the comment then told the reader to "move this issue back to its stage", which is the intervention per occurrence the RFC removes. `pipelineHealth.waitingOn` already reports `waiting_on_dep` with the closed-unmerged blocker named, so the state does not lie without the park — and once the blocker is fixed the dependent dispatches with no manual move at all.
-        await emitPipelineWedge({
-          projectId: row.project_id,
-          issueId: row.issue_id,
-          hop: 'dispatch',
-          entity: 'job',
-          entityId: row.job_id,
-          reason: 'blocker_closed_unmerged',
-          title: 'Blocked on a blocker that closed without merging',
-          summary: `ISS-${row.blocker_seq} "${row.blocker_title}" is closed but its code never landed on the base branch (merged_at is empty), so this issue cannot dispatch.`,
-          nextStep:
-            'Reopen and merge the blocker, or `mark_merged` it if the code is genuinely in — this issue then dispatches by itself.',
-          action: 'Fix the blocker; no action is needed on this issue.',
-        });
-        alerted++;
-      } catch (err) {
-        logger.warn(
-          { err, issueId: row.issue_id },
-          'pipeline-sweeper: park-closed-unmerged row failed (skipped)',
-        );
-      }
-    }
-    if (alerted > 0) {
-      logger.warn(
-        { alerted },
-        'pipeline-sweeper: alarmed dependents blocked on closed-unmerged blocker',
-      );
-    }
-    return { alerted };
-  } catch (err) {
-    logger.error({ err }, 'pipeline-sweeper: park-closed-unmerged pass failed (skipped)');
-    return { alerted: 0 };
-  }
-}
 
 /**
  * ISS-381 (2.2) — write one `queue_snapshots` row per project that currently has
@@ -517,24 +301,6 @@ async function recordQueueSnapshots(): Promise<number> {
     logger.error({ err }, 'pipeline-sweeper: queue snapshot pass failed (skipped)');
     return 0;
   }
-}
-
-/**
- * Re-tick `dispatchTickForProject` for every project with at least one
- * queued job. Returns the count of projects observed (not ticks completed —
- * `dispatchTickForProject` debounces per project so a recently-fired event
- * trigger may coalesce this call into a no-op). Errors propagate to the
- * caller so the failure is visible to `pgboss-health` instead of swallowed.
- */
-async function runDispatcherBackstop(): Promise<number> {
-  const rows = await db
-    .selectDistinct({ projectId: jobs.projectId })
-    .from(jobs)
-    .where(eq(jobs.status, 'queued'));
-  for (const r of rows) {
-    void dispatchTickForProject(r.projectId);
-  }
-  return rows.length;
 }
 
 export type SweepScope = LoopScope;

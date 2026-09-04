@@ -221,8 +221,6 @@ export type WaitingReason =
   | "run_not_running"
   | "retry_cooldown"
   | "stale_trigger"
-  | "waiting_on_dep"
-  | "project_full"
   | "runner_stale"
   | "runner_full";
 

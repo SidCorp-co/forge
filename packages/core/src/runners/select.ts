@@ -16,7 +16,7 @@ const NOT_DISABLED_DEVICE = sql`AND NOT EXISTS (
   SELECT 1 FROM devices d WHERE d.id = device_id AND d.disabled_at IS NOT NULL
 )`;
 
-// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — every candidate predicate in this file must also sit in `fresh_capable_runners`; a clause here and not there makes the picker offer a job this selector then refuses, and the job spins `queued` forever with no gate reason
+// cm:edge lockstep -> packages/core/src/jobs/queued-gates.ts — every candidate predicate in this file must also sit in `fresh_capable_runners`; a clause here and not there makes the picker offer a job this selector then refuses, and the job spins `queued` forever with no gate reason
 // cm:why placed alongside rate_limited_until (not a bare column ref) so it
 // resolves correctly whether the enclosing query aliases `runners` as `r.` or not
 const NOT_QUARANTINED = sql`AND (quarantined_until IS NULL OR quarantined_until <= now())`;
@@ -181,15 +181,13 @@ interface SelectInput {
    */
   skipPrimary?: boolean;
   /**
-   * Per-project concurrency cap (`pipelineConfig.maxConcurrentIssues`, default
-   * 1). When > 1 AND this is a first dispatch (`!skipPrimary`), runner choice
-   * becomes LOAD-AWARE: primary-first, then spill to the least-loaded FREE
-   * runner so independent issues fan across the pool instead of piling onto the
-   * primary. At cap 1 (the default) selection is byte-for-byte the legacy
-   * primary-pinned path. Retries (`skipPrimary`) always use the round-robin
-   * regardless of cap. Defaults to 1 when omitted.
+   * Spill across the pool instead of pinning to the primary: primary-first,
+   * then the least-loaded FREE runner. Off by default, which is the legacy
+   * primary-pinned path byte for byte. Retries (`skipPrimary`) always use the
+   * round-robin regardless.
    */
-  projectCap?: number;
+  // cm:guard this replaced `projectCap > 1`, and it is a CALLER's choice now, not a project setting — the per-project cap it used to read no longer exists, because how many issues a box runs at once is the master agent's judgement. Do not reintroduce a config read here.
+  spillAcrossPool?: boolean;
   /**
    * Per-state runner pool — the ONLY devices this job may land on
    * (`pipelineConfig.states[<stage>].deviceIds`, resolved by the dispatcher).
@@ -246,7 +244,7 @@ function rowToRunner(r: RunnerRow): Runner {
  *      is online + fresh + meets `requiredCapabilities`. A stale pin
  *      returns null so the caller can drop the `--resume` and dispatch a
  *      fresh session.
- *   2. **least-loaded**, ONLY when `projectCap > 1` — `pickLeastLoadedFreeRunner`
+ *   2. **least-loaded**, ONLY when `spillAcrossPool` — `pickLeastLoadedFreeRunner`
  *      over every online + fresh + capable box under its cap, preferring
  *      `defaultDeviceId`. This arm never returns a box already at cap; it is
  *      what lets two issues of one project land on two hosts.
@@ -275,14 +273,14 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
   const excludeDeviceIds = input.excludeDeviceIds ?? [];
   const skipPrimary = input.skipPrimary ?? false;
-  const projectCap = input.projectCap ?? 1;
+  const spillAcrossPool = input.spillAcrossPool ?? false;
   const allowDeviceIds = input.allowDeviceIds ?? null;
 
   const picked = await pickRunner(projectId, required, livenessSeconds, {
     pinDeviceId: pinDeviceId ?? null,
     excludeDeviceIds,
     skipPrimary,
-    projectCap,
+    spillAcrossPool,
     allowDeviceIds,
   });
   if (picked) return picked;
@@ -295,7 +293,7 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
       pinDeviceId: pinDeviceId ?? null,
       excludeDeviceIds: [],
       skipPrimary,
-      projectCap,
+      spillAcrossPool,
       // cm:guard the wrap-around clears the EXCLUDE set only — `allowDeviceIds` must be forwarded intact, or an all-tripped pool silently probes a box the operator excluded from the stage
       allowDeviceIds,
     });
@@ -311,7 +309,7 @@ export async function selectRunnerForJob(input: SelectInput): Promise<Runner | n
       pinDeviceId: pinDeviceId ?? null,
       excludeDeviceIds: [],
       skipPrimary,
-      projectCap,
+      spillAcrossPool,
       allowDeviceIds,
     });
   }
@@ -326,7 +324,7 @@ async function pickRunner(
     pinDeviceId: string | null;
     excludeDeviceIds: string[];
     skipPrimary: boolean;
-    projectCap: number;
+    spillAcrossPool: boolean;
     allowDeviceIds: string[] | null;
   },
 ): Promise<Runner | null> {
@@ -354,7 +352,7 @@ async function pickRunner(
   const defaultDeviceId = project?.defaultDeviceId ?? null;
 
   // cm:guard this arm must NEVER return a box already at its cap — unlike the legacy primary step, which returns the primary regardless. It is what makes two independent issues land on two hosts instead of piling onto one. `preferDeviceId` is the FIRST sort key, not a tie-break, so the primary fills to its cap before anything spills — deliberate, to keep a usually-serial project on its warm checkout. That ordering trades startup throughput for a warm tree: same-project jobs on one box share a repo root and so queue behind the runner's `RepoLocks`. Reversing the two keys is a real option, but only against measured setup durations, never on the reading of this line alone.
-  if (!opts.skipPrimary && opts.projectCap > 1) {
+  if (!opts.skipPrimary && opts.spillAcrossPool) {
     return pickLeastLoadedFreeRunner(projectId, required, livenessSeconds, {
       excludeDeviceIds: opts.excludeDeviceIds,
       preferDeviceId: defaultDeviceId,
@@ -506,8 +504,8 @@ async function findStandby(
  * primary-first (`preferDeviceId`) then least-loaded then freshest then id.
  * Deterministic (no RANDOM). Returns null when EVERY capable runner is full →
  * the job stays queued and a later tick (freed slot) re-picks it. This is the
- * spill mechanism that makes `maxConcurrentIssues>1` fan across the pool; the
- * dispatcher's per-runner CAS gate is the authoritative no-overload backstop.
+ * spill mechanism behind `spillAcrossPool`; the device cap the runner enforces
+ * is the authoritative no-overload backstop.
  */
 async function pickLeastLoadedFreeRunner(
   projectId: string,

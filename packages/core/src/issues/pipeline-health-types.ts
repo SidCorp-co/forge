@@ -9,19 +9,17 @@
  */
 
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
-import type { RunnerAvailability } from '../jobs/dispatch-gates.js';
+import type { RunnerAvailability } from '../jobs/queued-gates.js';
 
 // cm:guard `job_held` is the ONLY thing that makes RFC 0002 honest — a held job leaves the issue at its stage entry-status, so without this reason the board shows an issue that looks idle and actionable while a step is in fact waiting on a machine. Delete it and you have rebuilt the ambiguity the RFC removed, on the other axis.
 // cm:guard every reason the dispatch CASE can return needs a member here, or the issue renders as idle-and-actionable while the picker refuses it — `run_not_running` and `runner_stale` were the two missing ones, and they are the two that never clear on their own: measured 2026-08-14, forge-dev ISS-576/ISS-652 sat under a `paused` run since 08-11 and 11 jobs across 5 projects sat behind dead runners for 6-22 days, all of them showing NO waitingOn at all.
-// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts#buildGateReasonCase — that CASE is the authority on which gates exist; a reason added there and not here is invisible to every UI
+// cm:edge lockstep -> packages/core/src/jobs/queued-gates.ts#buildGateReasonCase — that CASE is the authority on which gates exist; a reason added there and not here is invisible to every UI
 export type PipelineWaitingReason =
   | 'issue_busy'
   | 'job_held'
   | 'run_not_running'
   | 'retry_cooldown'
   | 'stale_trigger'
-  | 'waiting_on_dep'
-  | 'project_full'
   | 'runner_stale'
   | 'runner_full';
 
@@ -89,14 +87,6 @@ export interface PipelineHealthJob {
   retryAfterAt?: Date | null;
 }
 
-export interface PipelineHealthDep {
-  fromIssueId: string;
-  kind: string;
-  fromStatus: string;
-  /** Blocker's `issues.merged_at` — the L2 gate keys on this, not status. */
-  fromMergedAt: Date | null;
-}
-
 export interface PipelineHealthRunnerSat {
   type: string;
   cap: number;
@@ -107,10 +97,6 @@ export interface ClassifyInput {
   issue: { id: string; status: string; mergedAt: Date | null; waitingKind: WaitingKind | null };
   sessions: PipelineHealthSession[];
   jobs: PipelineHealthJob[];
-  deps: PipelineHealthDep[];
-  runningIssueIds: ReadonlySet<string>;
-  runningIssueCount: number;
-  cap: number;
   runnerInFlight: ReadonlyMap<string, PipelineHealthRunnerSat>;
   /** From `freshRunnerAvailability` — the picker's own runner-pool counts. */
   runnerPool: RunnerAvailability;

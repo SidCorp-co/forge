@@ -1,7 +1,7 @@
 /**
  * The merge claim, as its own route module.
  *
- * `merged_at` is not a field like the others: `jobs/dispatch-gates.ts` reads it
+ * `merged_at` is not a field like the others: `jobs/queued-gates.ts` reads it
  * to release every `blocks` dependent, so writing it says work shipped. These
  * two routes exist so an agent on the CLI can say that over REST instead of
  * through `forge_issues.mark_merged`.
@@ -39,7 +39,7 @@ const mergeMarkerBodySchema = z
   })
   .strict();
 
-// cm:guard `merged_at` is the feature-branch barrier's release signal (jobs/dispatch-gates.ts reads it to unblock every `blocks` dependent), so these two are a shipped-work CLAIM, not a field edit — which is why they route through `applyMergeMarker` rather than patching the column, and why `member` is the floor. They exist so the CLI can make that claim over REST without `forge_issues.mark_merged`; a hand-rolled second implementation here would be the copy that forgets the evidence gate.
+// cm:guard `merged_at` is the feature-branch barrier's release signal (jobs/queued-gates.ts reads it to unblock every `blocks` dependent), so these two are a shipped-work CLAIM, not a field edit — which is why they route through `applyMergeMarker` rather than patching the column, and why `member` is the floor. They exist so the CLI can make that claim over REST without `forge_issues.mark_merged`; a hand-rolled second implementation here would be the copy that forgets the evidence gate.
 async function runMergeMarker(
   c: Context<{ Variables: AuthVars }>,
   op: 'mark' | 'unmark',

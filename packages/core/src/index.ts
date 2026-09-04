@@ -81,15 +81,6 @@ import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
 import { searchRoutes } from './issues/search.js';
 import { issueSteerRoutes } from './issues/steer-routes.js';
 import { transitionRoutes } from './issues/transition.js';
-import { registerDispatchSubscribers } from './jobs/dispatch-subscribers.js';
-import {
-  registerDispatcher,
-  registerPmDispatcher,
-  registerReconcileDispatcher,
-  unregisterDispatcher,
-  unregisterPmDispatcher,
-  unregisterReconcileDispatcher,
-} from './jobs/dispatcher.js';
 import { jobEventsListRoutes, jobEventsRoutes } from './jobs/events-routes.js';
 import { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './jobs/lifecycle-routes.js';
 import { registerPgBossHealthProbe } from './jobs/pgboss-health.js';
@@ -238,9 +229,6 @@ export async function runShutdown(
   const sequence = (async () => {
     await closeWs();
     await stopRocketChatManager();
-    await unregisterDispatcher();
-    await unregisterPmDispatcher();
-    await unregisterReconcileDispatcher();
     await unregisterScheduleTicker();
     await unregisterPmCadenceTicker();
     await unregisterAgentCronTicker();
@@ -489,9 +477,6 @@ if (isMain) {
     bootstrapChatProviders();
   }
   bootstrapRunnerAdapters();
-  await registerDispatcher();
-  await registerPmDispatcher();
-  await registerReconcileDispatcher();
   await registerStaleDetector();
   await registerIntegrationsHealthSweep();
   await registerDeviceStaleDetector();
@@ -517,7 +502,6 @@ if (isMain) {
   await registerPmEscalationSweeper();
   registerWebhookSubscribers(hooks);
   registerPipelineOrchestrator(hooks);
-  registerDispatchSubscribers(hooks);
   registerAnswerResume(hooks);
   registerPhaseJournalClose(hooks);
   // cm:guard ISS-238 — register AFTER registerPipelineOrchestrator: this subscriber resumes a run whose missing skill was just registered and then re-enqueues, and that re-enqueue must walk through the orchestrator's own hooks, which are not on the bus yet if it is wired first

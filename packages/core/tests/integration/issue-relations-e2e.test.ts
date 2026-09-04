@@ -96,7 +96,6 @@ describe('ISS-868 issue relations read', () => {
       otherStatus: 'developed',
       kind: 'blocks',
       expired: false,
-      gatesDispatch: true,
     });
 
     const onBlocker = await loadIssueRelations(blocker, projectId);
@@ -105,7 +104,6 @@ describe('ISS-868 issue relations read', () => {
     expect(onBlocker.blocks[0]).toMatchObject({
       otherIssueId: dependent,
       otherDisplayId: 'ISS-102',
-      gatesDispatch: false,
     });
   });
 
@@ -116,7 +114,6 @@ describe('ISS-868 issue relations read', () => {
 
     const [edge] = (await loadIssueRelations(dependent, projectId)).blockedBy;
     expect(edge?.expired).toBe(true);
-    expect(edge?.gatesDispatch).toBe(false);
     expect(edge?.validUntil).toBeInstanceOf(Date);
   });
 
@@ -127,7 +124,6 @@ describe('ISS-868 issue relations read', () => {
 
     const [edge] = (await loadIssueRelations(dependent, projectId)).blockedBy;
     expect(edge?.expired).toBe(false);
-    expect(edge?.gatesDispatch).toBe(true);
   });
 
   it('does not report a decomposes parent as a dispatch blocker', async () => {
@@ -138,7 +134,6 @@ describe('ISS-868 issue relations read', () => {
     const [edge] = (await loadIssueRelations(child, projectId)).blockedBy;
     expect(edge?.kind).toBe('decomposes');
     expect(edge?.expired).toBe(false);
-    expect(edge?.gatesDispatch).toBe(false);
   });
 
   it('stops gating once the blocker has merged, the way L2 does', async () => {
@@ -150,27 +145,27 @@ describe('ISS-868 issue relations read', () => {
     const [edge] = (await loadIssueRelations(dependent, projectId)).blockedBy;
     expect(edge?.expired).toBe(false);
     expect(edge?.otherMergedAt).toBeInstanceOf(Date);
-    expect(edge?.gatesDispatch).toBe(false);
   });
 
-  it('gates again while a merged blocker sits at reopen — merged_at is never cleared', async () => {
+  // cm:guard report the blocker's status and stamp SEPARATELY and never fold them into one verdict — a blocker that merged and then bounced to `reopen` keeps its stamp (merged_at is COALESCE-once and never cleared), so the stamp alone says "landed" about code that is now suspect. Whoever reads this decides what the pair means; the row's job is to carry both.
+  it('reports a reopened blocker with its merge stamp intact', async () => {
     const blocker = await insertIssue(611, 'reopen');
     const dependent = await insertIssue(612);
     await insertEdge(blocker, dependent, 'blocks');
     await harness.db.execute(sql`UPDATE issues SET merged_at = now() WHERE id = ${blocker}`);
 
     const [edge] = (await loadIssueRelations(dependent, projectId)).blockedBy;
-    expect(edge?.gatesDispatch).toBe(true);
+    expect(edge?.otherStatus).toBe('reopen');
+    expect(edge?.otherMergedAt).not.toBeNull();
   });
 
-  it('still gates on a closed blocker whose code never landed, on a stampable base', async () => {
+  it('reports a closed blocker whose code never landed with a null stamp', async () => {
     const blocker = await insertIssue(621, 'closed');
     const dependent = await insertIssue(622);
     await insertEdge(blocker, dependent, 'blocks');
 
     const [edge] = (await loadIssueRelations(dependent, projectId)).blockedBy;
     expect(edge?.otherMergedAt).toBeNull();
-    expect(edge?.gatesDispatch).toBe(true);
   });
 
   it('omits the other issue title and the edge reason', async () => {

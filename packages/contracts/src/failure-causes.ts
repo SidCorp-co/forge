@@ -185,13 +185,13 @@ export const FAILURE_CAUSE_PRESENTATION: Record<FailureCause, FailureCausePresen
 };
 
 /**
- * Strings that reach `failure_reason` on a live row without being causes. They
- * are the dispatcher's SKIP reasons (`jobs/dispatch-gates.ts`), which describe
- * why a job was not started rather than how a session died, plus one retired
- * spelling. They are NOT aliased into the taxonomy on purpose — a skipped
- * dispatch is not a failure and giving it a cause would put it in the failure
- * count — but the UI still meets them on old rows and must read them neutral
- * rather than showing a raw token.
+ * Strings that reach `failure_reason` on a live row without being causes.
+ * Every one of them is now historical: they were the central dispatcher's SKIP
+ * reasons, and that dispatcher is gone — nothing writes these any more. They
+ * are NOT aliased into the taxonomy on purpose (a skipped dispatch was never a
+ * failure, and giving it a cause would put it in the failure count), but rows
+ * carrying them outlive the code that wrote them, so the UI must still read
+ * them neutral rather than showing a raw token.
  */
 export const LEGACY_NEUTRAL_REASONS: ReadonlySet<string> = new Set([
   'issue_busy',
