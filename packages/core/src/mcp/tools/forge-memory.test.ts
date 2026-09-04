@@ -267,4 +267,19 @@ describe('forge_memory.search tool (regression after enum + description change)'
     expect(r).toMatchObject({ hits: [], took_ms: 1 });
     expect(runMemorySearchMock).toHaveBeenCalledOnce();
   });
+
+  it('names the agent surface on every call, which is what makes the project rerank flag apply here', async () => {
+    limit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    runMemorySearchMock.mockResolvedValueOnce({ hits: [], model: 'gemini-embedding', took_ms: 1 });
+
+    await forgeMemorySearchTool(fakeDevice).handler({
+      projectId: PROJECT_ID,
+      query: 'q',
+      strategy: 'hybrid',
+    });
+
+    expect(runMemorySearchMock).toHaveBeenCalledWith(
+      expect.objectContaining({ strategy: 'hybrid', surface: 'agent' }),
+    );
+  });
 });

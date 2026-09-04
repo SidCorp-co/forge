@@ -52,6 +52,7 @@ memorySearchRoutes.post(
         query: body.query,
         topK: body.topK,
         sourceFilter: body.sourceFilter,
+        surface: 'web',
       });
     } catch (err) {
       if (err instanceof EmbeddingUnavailableError) {

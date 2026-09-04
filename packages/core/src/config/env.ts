@@ -74,6 +74,7 @@ const EnvSchema = z.object({
   LITELLM_FAST_REASONING_EFFORT: z
     .enum(['none', 'minimal', 'low', 'medium', 'high'])
     .default('none'),
+  RERANK_MODEL: z.string().min(1).optional(),
   CHAT_CONTEXT_BUDGET_TOKENS: z.coerce.number().int().positive().default(80_000),
   ANTHROPIC_API_URL: z.url().default('https://api.anthropic.com'),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),

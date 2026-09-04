@@ -106,6 +106,8 @@ for a planted pair of lists with one shared id. It goes red by deleting the `ove
 
 ## Phase 1 — rerank behind hybrid
 
+**Shipped in ISS-905** (with phase 3): `memory/rerank.ts`, the required `surface` argument on `runMemorySearch`, `RERANK_MODEL`, the one-in-five holdout drawn per eligible search, and `hitIds` on every hybrid agent analytics row so the exit criterion below can be computed by joining to `memories.last_verified_at`.
+
 **Model — owner decision 2026-09-04: the reranker is `cx/gpt-5.6-luna`**, the system-job fast
 model, not a native cross-encoder. That changes the client: there is no `/rerank` wire to call, so
 the rerank is one **listwise** chat completion through `memory/llm.ts:callFastModel`, the same
@@ -164,15 +166,24 @@ Tests that must go red:
   RRF order and the reranker's order disagree; flag off → RRF order, flag on → reranker order.
   Red by ignoring the flag.
 
-**Holdout**: with the flag on, one eligible call in five is deterministically not reranked —
-`hash(analytics row id) % 5 === 0` — and logged `rerankHoldout:true`. Without it the flag makes
-every eligible call reranked, and the only `reranked:false` rows left would be failures and
-ineligible strategies, which is not a control group (the review of this proposal caught that).
+**Holdout**: with the flag on, one eligible call in five is not reranked and is logged
+`rerankHoldout:true`. The draw is random per eligible search (`rerank.ts:inRerankHoldout`), not the
+`hash(analytics row id) % 5` this section first proposed: the analytics row is inserted after the
+search returns, so its id does not exist when the decision is needed, and a retry of the same query
+landing in the other arm is accepted — the comparison is between arms over a week of rows, not
+between paired searches. Without a holdout the flag makes every eligible call reranked, and the only
+`reranked:false` rows left would be failures and ineligible strategies, which is not a control group
+(the review of this proposal caught that).
 
 Exit criterion for the pilot on `forge-dev`: over one week, the `feedback verdict=confirmed` rate
 of `reranked:true` rows exceeds that of `rerankHoldout:true` rows on the same project and window.
-That rate is the one quality signal Forge already collects. The holdout is removed when the flag
-graduates from pilot, by the same issue that flips the other projects.
+That rate is the one quality signal Forge already collects. Attribution rule, since feedback lands
+on the memory row and not on the search: a search counts as confirmed when at least one id in its
+`hitIds` has `memories.last_verified_at` inside the 24 hours after the search's `created_at`; a
+memory returned by both arms inside that window counts for both, and the collision rate is reported
+next to the two rates so a week where it dominates is read as inconclusive rather than as a win.
+The holdout is removed when the flag graduates from pilot, by the same issue that flips the other
+projects.
 
 ## Phase 2 — the chunked memory model
 
@@ -321,6 +332,8 @@ Tests that must go red:
   assertion that one row per key still holds.
 
 ## Phase 3 — one-hop relation expansion
+
+**Shipped in ISS-905** (with phase 1): `memory/expand-relations.ts`, walking `blocks` and `blockedBy` edges of kind `blocks` / `relates`, unexpired only, on both surfaces; `expanded` / `expandedCount` on the analytics row.
 
 `runMemorySearch` gains `expandRelations?: boolean` (default from the project flag). After
 ranking, for each hit with `source:'issue'` — at most the top 5 — load its `blocks` / `relates`

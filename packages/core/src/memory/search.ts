@@ -39,6 +39,16 @@ export interface MemoryHit {
   /** `"ISS-<n>"` provenance when a release flagged this row; only present
    *  alongside `stale: true`. */
   supersededBy?: string;
+  /** 0-based position the reranker gave this hit; present only on a `reranked: true` response. */
+  rerankPosition?: number;
+  /** Present only on a row appended by relation expansion: the edge kind and the `ISS-n` hit it hangs off. */
+  via?: MemoryVia;
+}
+
+/** How an expanded row got into the list — it was not retrieved, it neighbours a hit that was. */
+export interface MemoryVia {
+  relation: 'blocks' | 'relates';
+  from: string;
 }
 
 /**
@@ -57,7 +67,7 @@ export function deriveMemoryStaleness(metadata: unknown): {
 const MIN_TOP_K = 1;
 const MAX_TOP_K = 50;
 
-function clampTopK(topK: number | undefined): number {
+export function clampTopK(topK: number | undefined): number {
   return Math.min(Math.max(topK ?? 10, MIN_TOP_K), MAX_TOP_K);
 }
 

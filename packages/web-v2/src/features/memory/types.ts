@@ -41,12 +41,16 @@ export interface MemorySearchHit {
   metadata: Record<string, unknown> | null;
   score: number;
   embeddedAt: string | null;
+  /** Set on a row relation expansion appended: it neighbours the `from` issue hit rather than matching the query. */
+  via?: { relation: "blocks" | "relates"; from: string };
 }
 
 export interface MemorySearchResult {
   hits: MemorySearchHit[];
   model: string;
   took_ms: number;
+  /** True when rows carrying `via` were appended after the ranked hits. */
+  expanded?: boolean;
 }
 
 /** Badge tone per source — keeps the source legible at a glance. */
