@@ -112,6 +112,11 @@ services:
       EMBEDDINGS_API_KEY: ${EMBEDDINGS_API_KEY:-}
       EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL:-}
       EMBEDDINGS_DIM: ${EMBEDDINGS_DIM:-}
+      # config/env.ts reads these two as well; without a line here Coolify's
+      # ${VAR} injection cannot reach them and setting either in the UI is a
+      # silent no-op — the same defect 8ff505af fixed for RATE_LIMIT_PAT_*.
+      EMBEDDINGS_FALLBACK_MODEL: ${EMBEDDINGS_FALLBACK_MODEL:-}
+      EMBEDDINGS_TIMEOUT_MS: ${EMBEDDINGS_TIMEOUT_MS:-}
       # Optional Sentry telemetry. Use SENTRY_DSN_CORE in `.env` (not bare
       # SENTRY_DSN) so core and web can route to separate Sentry projects
       # — they share the same compose interpolation namespace. Empty =

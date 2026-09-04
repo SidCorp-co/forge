@@ -1,6 +1,7 @@
-// ISS-726: callFastModel used to gate on LITELLM_API_URL alone, so on a
-// deployment configured with GEMINI_API_KEY only it returned null forever and
-// auto-title + memory-v2 extraction/consolidation were silently no-ops.
+// ISS-726 was a fast model that returned null forever while every log stayed
+// clean, so these assert the two ways that recurs: a backend this module can
+// call but fastModelConfigured() does not report, and a null that a caller
+// cannot tell from "the model had nothing to say".
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -9,8 +10,6 @@ const { env } = vi.hoisted(() => ({
     LITELLM_API_URL: string | undefined;
     LITELLM_API_KEY: string | undefined;
     LITELLM_MODEL: string;
-    GEMINI_API_KEY: string | undefined;
-    GEMINI_MODEL: string;
   },
 }));
 
@@ -20,6 +19,7 @@ vi.mock('../logger.js', () => ({
 }));
 
 const { callFastModel, fastModelConfigured } = await import('./llm.js');
+const { logger } = await import('../logger.js');
 
 const fetchMock = vi.fn();
 vi.stubGlobal('fetch', fetchMock);
@@ -32,8 +32,6 @@ beforeEach(() => {
   env.LITELLM_API_URL = undefined;
   env.LITELLM_API_KEY = undefined;
   env.LITELLM_MODEL = 'fast-model';
-  env.GEMINI_API_KEY = undefined;
-  env.GEMINI_MODEL = 'gemini-test';
 });
 
 describe('callFastModel backend selection', () => {
@@ -42,45 +40,81 @@ describe('callFastModel backend selection', () => {
     expect(await callFastModel('hi', 10)).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+});
 
-  it('falls back to Gemini when only GEMINI_API_KEY is set', async () => {
-    env.GEMINI_API_KEY = 'gkey';
-    fetchMock.mockResolvedValue(
-      jsonResponse({ candidates: [{ content: { parts: [{ text: '  a title  ' }] } }] }),
-    );
-
-    expect(fastModelConfigured()).toBe(true);
-    expect(await callFastModel('summarize', 20)).toBe('a title');
-
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-test:generateContent',
-    );
-    expect((init.headers as Record<string, string>)['x-goog-api-key']).toBe('gkey');
+describe('callFastModel budget exhaustion and reasoning control', () => {
+  beforeEach(() => {
+    env.LITELLM_API_URL = 'https://proxy.test';
+    env.LITELLM_API_KEY = 'k';
   });
 
-  it('joins multi-part Gemini candidates rather than dropping all but the first', async () => {
-    env.GEMINI_API_KEY = 'gkey';
-    fetchMock.mockResolvedValue(
-      jsonResponse({ candidates: [{ content: { parts: [{ text: 'one ' }, { text: 'two' }] } }] }),
-    );
-    expect(await callFastModel('p', 20)).toBe('one two');
-  });
+  const bodyOf = (call: number): Record<string, unknown> => {
+    const init = fetchMock.mock.calls[call]?.[1] as { body?: string } | undefined;
+    return JSON.parse(init?.body ?? '{}');
+  };
 
-  it('prefers LiteLLM when both backends are configured', async () => {
-    env.LITELLM_API_URL = 'http://litellm.test';
-    env.GEMINI_API_KEY = 'gkey';
+  it("asks the endpoint not to reason, so the caller's max_tokens buys output", async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse({ choices: [{ message: { content: 'from litellm' } }] }),
+      jsonResponse({ choices: [{ finish_reason: 'stop', message: { content: 'a title' } }] }),
     );
 
-    expect(await callFastModel('p', 20)).toBe('from litellm');
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('http://litellm.test/chat/completions');
+    expect(await callFastModel('prompt', 24)).toBe('a title');
+    expect(bodyOf(0)).toMatchObject({ reasoning_effort: 'none', max_tokens: 24 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('returns null (not a throw) when the Gemini call is rejected', async () => {
-    env.GEMINI_API_KEY = 'gkey';
-    fetchMock.mockResolvedValue({ ok: false, status: 429 } as unknown as Response);
-    expect(await callFastModel('p', 20)).toBeNull();
+  it('retries once with a bigger budget when the budget ran out before any output', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({ choices: [{ finish_reason: 'length', message: { content: null } }] }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ choices: [{ finish_reason: 'stop', message: { content: 'recovered' } }] }),
+      );
+
+    expect(await callFastModel('prompt', 24)).toBe('recovered');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const retry = bodyOf(1);
+    expect(retry.max_tokens).toBeGreaterThan(24);
+    expect(retry.reasoning_effort).toBe('none');
+  });
+
+  it('says the budget ran out rather than returning a bare null a caller reads as "nothing to say"', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ choices: [{ finish_reason: 'length', message: { content: null } }] }),
+    );
+
+    expect(await callFastModel('prompt', 24)).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const warned = vi.mocked(logger.warn).mock.calls.map((c) => String(c[1]));
+    expect(warned.some((m) => m.includes('token budget exhausted'))).toBe(true);
+  });
+
+  it('drops reasoning_effort and retries when the endpoint rejects the parameter', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: async () => 'Unrecognized request argument supplied: reasoning_effort',
+      } as unknown as Response)
+      .mockResolvedValueOnce(
+        jsonResponse({ choices: [{ finish_reason: 'stop', message: { content: 'plain' } }] }),
+      );
+
+    expect(await callFastModel('prompt', 400)).toBe('plain');
+    const retry = bodyOf(1);
+    expect(retry.reasoning_effort).toBeUndefined();
+    expect(retry.max_tokens).toBe(400);
+  });
+
+  it('does not retry a 400 that rejects the content rather than the request shape', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => 'content filtered',
+    } as unknown as Response);
+
+    expect(await callFastModel('prompt', 400)).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

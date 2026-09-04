@@ -4,7 +4,7 @@ vi.mock('../../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
 
-const { createLiteLLMProvider } = await import('./litellm.js');
+const { createOpenAIProvider } = await import('./openai.js');
 
 import type { ChatStreamEvent } from './types.js';
 
@@ -24,7 +24,7 @@ async function collect(iter: AsyncIterable<ChatStreamEvent>): Promise<ChatStream
   return out;
 }
 
-describe('litellm provider', () => {
+describe('openai-compatible provider', () => {
   it('emits chunk events for delta content then done on [DONE]', async () => {
     const fetchImpl = vi.fn(
       async (..._args: unknown[]) =>
@@ -38,7 +38,7 @@ describe('litellm provider', () => {
         ),
     );
 
-    const provider = createLiteLLMProvider({
+    const provider = createOpenAIProvider({
       baseUrl: 'http://lite/',
       apiKey: 'k',
       defaultModel: 'm',
@@ -75,7 +75,7 @@ describe('litellm provider', () => {
         ),
     );
 
-    const provider = createLiteLLMProvider({
+    const provider = createOpenAIProvider({
       baseUrl: 'http://lite',
       apiKey: 'k',
       defaultModel: 'm',
@@ -97,7 +97,7 @@ describe('litellm provider', () => {
     const fetchImpl = vi.fn(
       async (..._args: unknown[]) => new Response('bad request', { status: 400 }),
     );
-    const provider = createLiteLLMProvider({
+    const provider = createOpenAIProvider({
       baseUrl: 'http://lite',
       apiKey: 'k',
       defaultModel: 'm',
@@ -128,7 +128,7 @@ describe('litellm provider', () => {
         { status: 200, headers: { 'content-type': 'text/event-stream' } },
       );
     });
-    const provider = createLiteLLMProvider({
+    const provider = createOpenAIProvider({
       baseUrl: 'http://lite',
       apiKey: 'k',
       defaultModel: 'm',
@@ -149,7 +149,7 @@ describe('litellm provider', () => {
     const fetchImpl = vi.fn(
       async (..._args: unknown[]) => new Response('overloaded', { status: 503 }),
     );
-    const provider = createLiteLLMProvider({
+    const provider = createOpenAIProvider({
       baseUrl: 'http://lite',
       apiKey: 'k',
       defaultModel: 'm',
@@ -170,7 +170,7 @@ describe('litellm provider', () => {
     const fetchImpl = vi.fn(async (..._args: unknown[]) => {
       throw new Error('network down');
     });
-    const provider = createLiteLLMProvider({
+    const provider = createOpenAIProvider({
       baseUrl: 'http://lite',
       apiKey: 'k',
       defaultModel: 'm',
@@ -199,7 +199,7 @@ describe('litellm provider', () => {
           { status: 200 },
         ),
     );
-    const provider = createLiteLLMProvider({
+    const provider = createOpenAIProvider({
       baseUrl: 'http://lite',
       apiKey: 'k',
       defaultModel: 'm',
@@ -224,7 +224,7 @@ describe('litellm provider', () => {
     const fetchImpl = vi.fn(
       async (..._args: unknown[]) => new Response(sseBody(['data: [DONE]\n\n']), { status: 200 }),
     );
-    const provider = createLiteLLMProvider({
+    const provider = createOpenAIProvider({
       baseUrl: 'http://lite',
       apiKey: 'k',
       defaultModel: 'm',
@@ -259,7 +259,7 @@ describe('litellm provider', () => {
           { status: 200 },
         ),
     );
-    const provider = createLiteLLMProvider({
+    const provider = createOpenAIProvider({
       baseUrl: 'http://lite',
       apiKey: 'k',
       defaultModel: 'm',
@@ -275,7 +275,133 @@ describe('litellm provider', () => {
   });
 });
 
-describe('litellm provider — multimodal content', () => {
+describe('openai-compatible provider — SSE framing', () => {
+  it('reads CRLF-delimited frames — a proxy that sends \\r\\n\\r\\n is not a silent empty turn', async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          sseBody([
+            'data: {"choices":[{"delta":{"content":"hello"}}]}\r\n\r\n',
+            'data: [DONE]\r\n\r\n',
+          ]),
+          { status: 200 },
+        ),
+    );
+    const provider = createOpenAIProvider({
+      baseUrl: 'http://lite',
+      apiKey: 'k',
+      defaultModel: 'm',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const events = await collect(
+      provider.stream({ model: 'm', messages: [{ role: 'user', content: 'x' }] }),
+    );
+
+    expect(events.filter((e) => e.type === 'chunk')).toEqual([{ type: 'chunk', text: 'hello' }]);
+    expect(events.at(-1)).toEqual({ type: 'done' });
+  });
+
+  it('keeps a final frame that arrives without its trailing blank line', async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          sseBody([
+            'data: {"choices":[{"delta":{"content":"A"}}]}\n\n',
+            'data: {"choices":[{"delta":{"content":"B"}}]}\n',
+          ]),
+          { status: 200 },
+        ),
+    );
+    const provider = createOpenAIProvider({
+      baseUrl: 'http://lite',
+      apiKey: 'k',
+      defaultModel: 'm',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const events = await collect(
+      provider.stream({ model: 'm', messages: [{ role: 'user', content: 'x' }] }),
+    );
+
+    expect(events.filter((e) => e.type === 'chunk')).toEqual([
+      { type: 'chunk', text: 'A' },
+      { type: 'chunk', text: 'B' },
+    ]);
+    expect(events.at(-1)).toEqual({ type: 'done' });
+  });
+  it('reads a boundary whose two terminators disagree — LF then CRLF is legal SSE', async () => {
+    const provider = createOpenAIProvider({
+      fetchImpl: vi.fn(
+        async () =>
+          new Response(
+            sseBody(['data: {"choices":[{"delta":{"content":"mixed"}}]}\n\r\ndata: [DONE]\n\r\n']),
+            { status: 200 },
+          ),
+      ) as unknown as typeof fetch,
+      baseUrl: 'http://x',
+      apiKey: 'k',
+      defaultModel: 'm',
+      retryDelaysMs: [0],
+    });
+
+    const events = await collect(provider.stream({ model: 'm', messages: [] }));
+
+    expect(events).toEqual([{ type: 'chunk', text: 'mixed' }, { type: 'done' }]);
+  });
+
+  it('joins a CRLF frame whose JSON spans two data: lines instead of splitting on the inner CRLF', async () => {
+    const provider = createOpenAIProvider({
+      fetchImpl: vi.fn(
+        async () =>
+          new Response(
+            sseBody([
+              'data: {"choices":[{"delta":{"content":"joined"}}]\r\ndata: }\r\n\r\ndata: [DONE]\r\n\r\n',
+            ]),
+            { status: 200 },
+          ),
+      ) as unknown as typeof fetch,
+      baseUrl: 'http://x',
+      apiKey: 'k',
+      defaultModel: 'm',
+      retryDelaysMs: [0],
+    });
+
+    const events = await collect(provider.stream({ model: 'm', messages: [] }));
+
+    expect(events).toEqual([{ type: 'chunk', text: 'joined' }, { type: 'done' }]);
+  });
+
+  it('reads a CRLF boundary split across two reads without gluing the frames', async () => {
+    const provider = createOpenAIProvider({
+      fetchImpl: vi.fn(
+        async () =>
+          new Response(
+            sseBody([
+              'data: {"choices":[{"delta":{"content":"A"}}]}\r\n\r',
+              '\ndata: {"choices":[{"delta":{"content":"B"}}]}\r\n\r\n',
+              'data: [DONE]\r\n\r\n',
+            ]),
+            { status: 200 },
+          ),
+      ) as unknown as typeof fetch,
+      baseUrl: 'http://x',
+      apiKey: 'k',
+      defaultModel: 'm',
+      retryDelaysMs: [0],
+    });
+
+    const events = await collect(provider.stream({ model: 'm', messages: [] }));
+
+    expect(events).toEqual([
+      { type: 'chunk', text: 'A' },
+      { type: 'chunk', text: 'B' },
+      { type: 'done' },
+    ]);
+  });
+});
+
+describe('openai-compatible provider — multimodal content', () => {
   it('puts a multimodal user turn on the wire unchanged — the proxy is OpenAI-shaped', async () => {
     const fetchImpl = vi.fn(
       async (..._args: unknown[]) =>
@@ -284,7 +410,7 @@ describe('litellm provider — multimodal content', () => {
           headers: { 'content-type': 'text/event-stream' },
         }),
     );
-    const provider = createLiteLLMProvider({
+    const provider = createOpenAIProvider({
       baseUrl: 'http://lite/',
       apiKey: 'k',
       defaultModel: 'm',

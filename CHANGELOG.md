@@ -471,6 +471,75 @@
   because that one really is per-project. Existing split-brain rows correct themselves on the first
   failure or success on that device after this deploy.
 
+- **The system-job fast model stopped losing its whole token budget to the model's own thinking.**
+  Measured against the live proxy on 2026-09-04 with `gemini/gemini-2.5-flash`: `max_tokens` covers
+  REASONING tokens first, so the real `TITLE_PROMPT` at the real `TITLE_MAX_TOKENS = 24` spent 20
+  tokens thinking, emitted 0 text tokens and returned `content: null` — every agent-session
+  auto-title has been a silent no-op — while memory extraction at 400 spent 382 and returned JSON
+  truncated mid-object, which `parseExtractionOutput` drops with `catch { return null }`. Raising
+  the constants does not fix it: reasoning scaled to fill 24, 64 and 128 alike, all three
+  `finish_reason: length`. `callLiteLlm` now sends `reasoning_effort: 'none'`, the only one of five
+  probed spellings the proxy honours (`thinking: {type:'disabled'}` and `reasoning_effort: 'low'`
+  do not), after which both budgets pass unchanged — the title fits in 24 and extraction parses at
+  400. Because the helper is documented as working against ANY OpenAI-compatible endpoint, an
+  explicit unsupported-parameter 400 retries once without the field.
+
+- **A fast model that ran out of budget says so instead of returning the same `null` as a model
+  with nothing to say.** `callLiteLlm` returned a bare `null` for three different things — no
+  backend, HTTP failure, and budget exhausted mid-answer — and every caller's `if (!raw) skip`
+  read all three as "nothing to extract". That is the ISS-726 shape exactly: `fastModelConfigured()`
+  returns true, so no gate fires, and the feature is dead with clean logs. An empty body with
+  `finish_reason: 'length'` now retries once at a larger budget and, if still empty, logs the
+  finish reason and the budget. `llm.test.ts` asserts the handling rather than the constants,
+  because a mock cannot represent reasoning eating a budget but can represent the response shape
+  it produces.
+
+- **A tool-hungry chat turn no longer throws away eight rounds of work and answers with nothing.**
+  `runTurnEvents` finalized on the round that hit `MAX_TOOL_ITERATIONS`, taking that round's text as
+  the answer — but a round that requests tools has no text, so the turn returned `''` with
+  `terminal: 'done'` and `errorMessage: null`. Three things followed from one bug: `chat_logs` wrote
+  a burned turn as a clean success (`reply: null, error: null`), the capped round's tool calls were
+  collected and dropped so an `escalate` requested on the last round was invisible to the Rocket.Chat
+  caller that greps `toolCalls` for it, and the SSE client got `tool_call` events with no
+  `tool_result` to answer them. The cap now means what it says — at most 8 provider
+  round-trips, the last of them invoked with NO tools, so the model is asked for an answer rather
+  than offered work it has no round left to do. The count of executed tool rounds is unchanged at 7;
+  what changed is that the eighth is spent on prose instead of being discarded. Note what this does
+  NOT do: a last-round `escalate` is not made visible, it is made unreachable — round 8 carries no
+  tool schemas, so there is nothing left to request with. Nor can withholding tools compel prose, and a model that
+  requests one anyway on that round is now dropped rather than forwarded: nothing can execute a call
+  made against an empty toolset, so emitting it would hand the SSE client the same `tool_call` with
+  no `tool_result` that this entry is about, and counting it in `toolCalls` would tell
+  `external-chat.ts` an `escalate` ran when none did. An eighth round that returns nothing now
+  records the model's empty answer as the model's, which is a different fact from the loop
+  discarding a full one.
+
+- **An OpenAI-compatible endpoint that delimits SSE frames with CRLF is no longer a silent empty
+  reply.** The parser found frame boundaries with `indexOf('\n\n')`, which cannot match
+  `\r\n\r\n` — so against a proxy that rewrites line endings every frame buffered to EOF and was
+  then discarded, and the turn terminated `done` with no text, feeding straight into the bug above.
+  The comment above it claimed the parser would "tolerate stray `\r` from upstream proxies"; it
+  stripped `\r` inside a frame it had already found and did nothing at the boundary. A boundary is now
+  any two consecutive line terminators, each independently CRLF, CR or LF: the mixed forms
+  (`\n\r\n`, `\r\n\r`) are legal SSE that a regex over only the three symmetric spellings still
+  glues together, with the same silent-empty-turn result one layer down. The bare-`\r` branch
+  carries a `(?!\n)`, without which the engine backtracks a failed `\r\n` into `\r` + `\n` and
+  accepts ONE internal CRLF between two `data:` lines as a boundary — splitting a multi-line frame
+  in half, both halves failing `JSON.parse`, both dropped, and only ever under CRLF. A frame that arrives without its trailing blank line is flushed at stream end instead of
+  being dropped, and the body is now `cancel()`ed rather than merely unlocked — on the `[DONE]`
+  break it was left unread, holding its connection out of the pool.
+
+- `EMBEDDINGS_FALLBACK_MODEL` and `EMBEDDINGS_TIMEOUT_MS` are declared on the `core` service in
+  `docker-compose.prod.yml`. `config/env.ts` has always read both, but with no `${VAR}` line the
+  Coolify UI could not reach them — the same silent no-op as the `RATE_LIMIT_PAT_*` entry below.
+
+- **Both `.env.example` files describe the variables the code actually reads.** The root one had a
+  section headed "AI / embeddings" that listed only `LITELLM_*` and not one `EMBEDDINGS_*` key,
+  which tells an operator embeddings are covered when in fact memory then writes keyword-only rows
+  forever and semantic search never runs — a degradation the code takes deliberately and silently.
+  `packages/core/.env.example` had the mirror gap, documenting `EMBEDDINGS_*` and no `LITELLM_*`.
+  Both now say that these are two independent settings that may point at one proxy, and note that
+  `EMBEDDINGS_DIM` must match the pgvector column.
 
 - `RATE_LIMIT_PAT_MAX` and `RATE_LIMIT_PAT_WINDOW_MS` are declared on the `core` service in
   `docker-compose.prod.yml`. Coolify injects variables through `${VAR}` in `environment:`, not through
@@ -1086,6 +1155,20 @@
   The `release` skill itself lives in `SidCorp-co/forge-plugin`, so no diff here can carry it; its
   contract — input, output, and the three questions nobody has answered — is written down in
   `docs/proposals/release-step-contract.md`. (ISS-897)
+- **One chat adapter, and it speaks OpenAI.** `chat/providers/litellm.ts` is now
+  `chat/providers/openai.ts` and registers as `openai`: the wire format is the contract
+  (`providers/types.ts` mirrors Chat Completions exactly), so a LiteLLM proxy, a vendor endpoint or
+  anything else OpenAI-shaped is a URL, not a new adapter. `'litellm'` stays registered as an alias
+  of the same factory — `app_config.chat_provider_id` holds it for projects pinned before the
+  rename, and `resolveForProject` drops the row's `chat_model` along with an id it cannot resolve,
+  so removing the alias would silently re-pin those projects to the env default model. `LITELLM_*`
+  keeps its name because it names the deployment's proxy rather than a vendor, so no
+  operator has to rename anything. `'gemini'` is aliased to the same factory for the same reason —
+  see Removed. `.forge/codemap-baseline.json` and `.forge/size-baseline.json` were re-keyed by hand
+  to follow the rename: identical frozen comment hashes, the identical 184-line function allowance,
+  moved from the old path to the new one. No `--update-baseline` was run and nothing is newly
+  forgiven — the baseline diff is the rename and nothing else.
+
 - **The Rocket.Chat reply paths share their plumbing, and the mention hot path stops paying for a
   finished investigation.** The `TEMP DIAGNOSTIC` added in `45aa40fe` fired three
   `Sentry.captureMessage` calls on every bot mention — up to `2C + 2` info-level events per user
@@ -1199,3 +1282,74 @@
 - The test-signal baseline had drifted since it was frozen and is re-cut at the measured numbers:
   one file had left the low-signal ratio entirely while two others sat under ceilings up to 32
   above their real counts. Every ceiling moved down and a dead record left. (ISS-848)
+
+### Removed
+
+- **`registry.ts:unregister`, and two comments that outlived the second adapter.** The registry
+  export had zero callers anywhere in the tree — it was the swap-out half of a multi-provider
+  world, and there is one provider now. `auto-title.ts:generateSessionTitle` still told readers the
+  fast model was "LiteLLM OpenAI-compat or Gemini", and `lib/feature-flags.ts`'s `chatProvider`
+  note still described "LiteLLM + Gemini SSE" and env vars "(or Gemini equivalents)" that
+  `config/env.ts` no longer declares. Nothing here changes behaviour; all three were made wrong by
+  the deletions above, and a comment naming a deleted env var is how the next reader configures a
+  variable that does nothing.
+
+- **The Gemini chat adapter.** It accepted a `ChatStreamRequest` and ignored four fields of it:
+  `tools` and `toolChoice` (so `requireInitialToolUse` was a no-op and the Rocket.Chat bot would
+  have run tool-less, failed `screenStakeholderReply`, retried tool-less, and fallen back), plus
+  `temperature`, and `signal` — which it only polled between chunks, never handing it to the SDK, so
+  the hung-upstream abort `external-chat.ts` documents did not exist on that path. Its tests covered only multimodal mapping. A
+  second provider path that cannot serve the product's only agentic caller is two live paths and a
+  reader who cannot tell which one runs. `@google/genai` goes with it, and so — owner decision, once chat
+  had a single adapter — do `GEMINI_API_KEY` and `GEMINI_MODEL` themselves, along with the direct
+  `generativelanguage.googleapis.com` fallback in `memory/llm.ts` that was their last reader. A
+  proxy that already fans out to Vertex makes a second vendor client a second thing to keep true.
+  **This is a breaking configuration change**, and two earlier drafts of this entry got its reach
+  wrong in opposite directions, so precisely: `bootstrapChatProviders` registered `gemini` whenever
+  `GEMINI_API_KEY` was set, and `config/env.ts` declared it — but `docker-compose.prod.yml` never
+  passed it through, so on a compose deployment it never reached the container and the id was never
+  selectable there. On a directly-run core (dev, or any non-compose host) it was. Either way, a
+  deployment that relied on Gemini — for chat OR for the fast model — now has neither: chat logs
+  `chat provider: none configured` and 503s, and `fastModelConfigured()` reports false, so
+  memory-v2 extraction, consolidation and auto-titling skip rather than failing quietly. `LITELLM_*`
+  is the only path to both. Projects already pinned to `gemini` still resolve, because the id stays
+  registered as an alias of the OpenAI adapter: the row outlives the code that wrote it, and
+  `resolveForProject` would otherwise drop the row's `chat_model` and silently re-pin it to the env
+  default.
+
+- **The bundled autonomous skill set and the runner-written review verdict.** Owner decision,
+  big-bang. Five skills compiled into the runner via `include_str!` (`forge-drive`, `-understand`,
+  `-plan`, `-review`, `-ship`, 560 lines), `bundled_skills.rs`, the `[skills] bundled_disabled` /
+  `bundled_overrides` knobs, and the gate `check-autonomous-transitions.mjs` that held the skills to
+  `AUTONOMOUS_DRIVER_STATUSES` — gone. The driver is now `issue-flow` from the `forge` Claude Code
+  plugin (github.com/SidCorp-co/forge-plugin), named by `AUTONOMOUS_SKILL_NAME` and reaching a box
+  through `pipelineConfig.plugins`. Why: a skill fix waited on a runner release the fleet then had to
+  pull — 0.9.9 and 0.9.10 were cut on 2026-09-02 and 8 of 10 runners were still on 0.9.8 hours later
+  — and `issue-flow` carries 724 lines of method to forge-drive's 242.
+
+  With it, the reviewer-verdict mechanism: `FORGE_VERDICT_FILE`, `workspace/verdict.rs`, the poller
+  in `claude_code.rs`, `POST /api/jobs/:id/verdict`, `recordVerdict`, and migration 0194 drops
+  `phase_journal_verdict_is_runner_written`. **The price, stated rather than found later:** nothing
+  now stops a driver recording its own approval. The measurement this mechanism answered — getcontent
+  2026-08-21, 9 of 10 closed issues had a real verdict overwritten by the driver's prose — is reachable
+  again. `endPhase` keeps its `kind IS DISTINCT FROM 'verdict'` clause so the rows that exist stay
+  honest; the e2e that asserted the CHECK now asserts its absence, on purpose, so a return is a
+  decision and not an accident.
+
+  The `autonomous-mode` skill-lock reason went too, and that one was already dead:
+  `projectLockContext` never passed a `bundled` set, so the branch fired only in unit tests that
+  hand-supplied one. `check-autonomous-transitions` is unwired from `verify`, CI, the conformance
+  manifest and `scripts/README.md` — with the skill in another repo it had nothing to read, and a gate
+  that exits 2 forever is worse than no gate. `mcp/skill-tool-names.test.ts` went with it for the same
+  reason — it read the bundled tree to assert no skill named an unregistered MCP tool, and that check
+  now belongs to the plugin repo, whose `doc-claims.test.mjs` holds the equivalent for its own CLI.
+
+  **What this does not do:** install the plugin anywhere. 0 of 31 projects designate it and every
+  runner ships `[plugins] enabled = false` (a per-box kill switch the server cannot flip), so until a
+  project designates and an operator turns the box on, a `drive` job is told to use a skill it does
+  not have. Runner `0.10.0` carries the removal.
+
+- Four MCP tools whose work REST already does: `forge_steer`, `forge_ux_improver`,
+  `forge_skills.pin` and `forge_metrics.step_durations`. Nothing that runs on a build box had
+  called any of them, and every one has an endpoint that does the same job. The registered tool
+  set is now 59.

@@ -1,15 +1,15 @@
 /**
- * v1 EPIC 1 (ISS-270) — LiteLLM-compatible OpenAI chat-completions adapter.
- *
- * Talks to any OpenAI-compatible `/v1/chat/completions` endpoint with
- * `stream: true`. Used in production against a LiteLLM proxy that fans out
- * to multiple upstream models. Replaces the legacy 1-line stub at
- * `legacy/strapi-v0:forge/strapi/src/services/chat-provider-factory.ts`.
+ * v1 EPIC 1 (ISS-270) — the chat adapter. Streams any OpenAI-compatible
+ * `/v1/chat/completions` endpoint, which in production is a LiteLLM proxy
+ * fanning out to several upstream models — so "Vertex" and "Gemini" below name
+ * models reached THROUGH that proxy, not a second adapter. It is the only
+ * adapter: one wire format every hosted model already speaks beats an adapter
+ * per vendor, each with its own half-kept version of the tool-calling contract.
  */
 
 import type { ChatProvider, ChatStreamEvent, ChatStreamRequest, ChatStreamUsage } from './types.js';
 
-export interface LiteLLMConfig {
+export interface OpenAIConfig {
   baseUrl: string;
   apiKey: string;
   defaultModel: string;
@@ -20,7 +20,7 @@ export interface LiteLLMConfig {
 }
 
 /** Transient upstream statuses worth a pre-stream retry (Vertex "high demand"
- *  surfaces as 503 through LiteLLM; 429 is straight rate limiting). */
+ *  surfaces as 503 through the proxy; 429 is straight rate limiting). */
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 529]);
 const DEFAULT_RETRY_DELAYS_MS = [1000, 3000];
 
@@ -52,11 +52,11 @@ interface ToolCallAccumulator {
   args: string;
 }
 
-export function createLiteLLMProvider(cfg: LiteLLMConfig): ChatProvider {
+export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
   const fetchImpl = cfg.fetchImpl ?? fetch;
   const baseUrl = cfg.baseUrl.replace(/\/+$/, '');
   return {
-    id: 'litellm',
+    id: 'openai',
     defaultModel: cfg.defaultModel,
     async *stream(req: ChatStreamRequest): AsyncIterable<ChatStreamEvent> {
       const retryDelays = cfg.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
@@ -102,7 +102,7 @@ export function createLiteLLMProvider(cfg: LiteLLMConfig): ChatProvider {
         if (res?.ok && res.body) break;
         if (res) {
           const body = await safeReadText(res);
-          lastError = `litellm http ${res.status}${body ? `: ${body.slice(0, 500)}` : ''}`;
+          lastError = `openai http ${res.status}${body ? `: ${body.slice(0, 500)}` : ''}`;
           // Vertex constrained-decoding overflow on forced tool use — drop the
           // force and retry immediately (does not consume a backoff attempt).
           if (res.status === 400 && toolChoice && /too many states/i.test(body)) {
@@ -195,6 +195,20 @@ export function createLiteLLMProvider(cfg: LiteLLMConfig): ChatProvider {
   };
 }
 
+// cm:guard no regex FLAGS newer than es2017 anywhere in packages/core — `pnpm --filter web-v2 build` type-checks core's SOURCES against web-v2's own lower target, so a flag core's tsconfig accepts compiles clean here and fails the WEB build; `[\s\S]` carries dotAll's meaning with no flag, which is why neither regex below is flagged. Broke the Coolify deploy of 2a1e19c0, 2026-08-31. It lived in the Gemini adapter until that file was deleted 2026-09-03 and is a whole-package rule, so it moved here rather than dying with its host.
+// cm:guard an SSE boundary is ANY two consecutive line terminators, each independently CRLF, CR or LF — `\n\r\n` and `\r\n\r` are legal and a proxy that mixes them is not hypothetical, so matching only the three symmetric spellings glues frames together until the next recognized boundary or EOF and the turn returns an empty `done` indistinguishable from a model with nothing to say
+// cm:guard the `(?!\n)` is load-bearing and greediness will NOT do its job: without it the engine backtracks a failed `\r\n` into the bare `\r` and `\n` branches, so ONE internal CRLF between two `data:` lines satisfies both repetitions and splits a multi-line frame in half — each half then fails JSON.parse and is dropped by the catch-continue, silently, and ONLY under CRLF, the spelling this regex exists to support. Verified 2026-09-03: the un-guarded pattern matches `data: a\r\ndata: b\r\n\r\n` at index 7 instead of 16
+const FRAME_BOUNDARY = /(?:\r\n|\r(?!\n)|\n){2}/;
+
+/** The `data:` payload of one SSE frame, or '' when it carries no data line. */
+function frameData(raw: string): string {
+  return raw
+    .split(/\r\n|[\n\r]/)
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trimStart())
+    .join('\n');
+}
+
 async function* parseSseStream(body: ReadableStream<Uint8Array>): AsyncIterable<string> {
   const decoder = new TextDecoder();
   const reader = body.getReader();
@@ -204,22 +218,20 @@ async function* parseSseStream(body: ReadableStream<Uint8Array>): AsyncIterable<
       const { value, done } = await reader.read();
       if (done) break;
       buf += decoder.decode(value, { stream: true });
-      // SSE events are separated by a blank line. Use `\n\n` as the boundary
-      // and tolerate stray `\r` from upstream proxies.
-      let idx = buf.indexOf('\n\n');
-      while (idx !== -1) {
-        const raw = buf.slice(0, idx).replace(/\r/g, '');
-        buf = buf.slice(idx + 2);
-        const data = raw
-          .split('\n')
-          .filter((line) => line.startsWith('data:'))
-          .map((line) => line.slice(5).trimStart())
-          .join('\n');
+      let boundary = FRAME_BOUNDARY.exec(buf);
+      while (boundary) {
+        const data = frameData(buf.slice(0, boundary.index));
+        buf = buf.slice(boundary.index + boundary[0].length);
         if (data) yield data;
-        idx = buf.indexOf('\n\n');
+        boundary = FRAME_BOUNDARY.exec(buf);
       }
     }
+    // cm:guard flush once more after the read loop — an upstream that closes without a final blank line still sent that frame, and dropping it loses the last delta or the `[DONE]`
+    const tail = frameData(buf);
+    if (tail) yield tail;
   } finally {
+    // cm:guard cancel, don't just releaseLock — on the `[DONE]` break the body is left unread, and an uncancelled body holds its connection out of the pool for the socket's lifetime
+    await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
 }
