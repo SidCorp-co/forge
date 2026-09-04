@@ -26,7 +26,9 @@ const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 const project = (baseBranch: string | null, productionBranch: string | null) => [
   { baseBranch, productionBranch },
 ];
-const prodBinding = (provider = 'coolify') => [{ binding: { provider }, connection: {} }];
+const prodBinding = (provider = 'coolify', config: Record<string, unknown> = {}) => [
+  { binding: { provider, config }, connection: {} },
+];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -77,5 +79,25 @@ describe('resolveReleaseGate', () => {
     const decl = await resolveProductionDeclaration(PROJECT_ID);
     expect(decl?.provider).toBe('epodsystem');
     expect(decl?.hasProduction).toBe(false);
+  });
+
+  // cm:guard the storefront case the branch test could not read: a theme publish IS the release, so base and production are identical by nature and the gate has to come from the operator's own declaration instead.
+  it('gives the gate to a trunk-based project whose prod binding names its release box', async () => {
+    selectLimit.mockResolvedValue(project('main', 'main'));
+    listBindings.mockResolvedValue(prodBinding('epodsystem', { releaseRunnerLabel: 'epod-prod' }));
+    await expect(resolveReleaseGate(PROJECT_ID)).resolves.toBe('released');
+  });
+
+  // cm:guard this is the regression the OR must not cause. forge-dev's own epodsystem prod binding is the storefront MCP credential and carries no release box; if provider identity or mere presence granted the gate, every agent close in this repo would be rewritten to `released`.
+  it('still refuses a trunk-based project whose prod binding names no release box', async () => {
+    selectLimit.mockResolvedValue(project('main', 'main'));
+    listBindings.mockResolvedValue(prodBinding('epodsystem', { verify: { probes: [] } }));
+    await expect(resolveReleaseGate(PROJECT_ID)).resolves.toBeNull();
+  });
+
+  it('reads a blank label as no declaration, so an empty settings field is not a gate', async () => {
+    selectLimit.mockResolvedValue(project('main', 'main'));
+    listBindings.mockResolvedValue(prodBinding('coolify', { releaseRunnerLabel: '   ' }));
+    await expect(resolveReleaseGate(PROJECT_ID)).resolves.toBeNull();
   });
 });

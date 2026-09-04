@@ -16,7 +16,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, projects } from '../db/schema.js';
-import { listActiveBindingsForEnvironment } from '../integrations/store.js';
+import { effectiveConfig, listActiveBindingsForEnvironment } from '../integrations/store.js';
 
 /** The one status an issue waits at for production. */
 export const RELEASE_GATE_STATUS: IssueStatus = 'released';
@@ -34,7 +34,7 @@ export interface ProductionDeclaration {
  * has one and not the other cannot explain to an operator which half is
  * missing — and rule 6 of ISS-897 is that settings must say which.
  */
-// cm:guard both halves are required, and the AND is the whole rule. A prod binding on a trunk-based project (base === production) is an observability or storefront binding, not a release target — forge-dev carries two and deliberately has no gate. A distinct production branch with no binding is a project that has not finished declaring how it ships, and rule 3 of ISS-897 makes the release runner live on that binding, so a gate without one could never pick a box.
+// cm:guard a prod binding is required and is never enough on its own — rule 3 of ISS-897 puts the release runner ON that binding, so a gate with no binding could never pick a box. What makes the binding a RELEASE TARGET rather than observability is one of two declarations, and the OR is deliberate: a production branch distinct from the base (the release unit is a branch promotion), or `releaseRunnerLabel` on the binding (the operator naming the box that ships it, which no observability binding has any reason to carry). The branch test alone was the whole rule until 2026-09-04 and it read the wrong thing on a storefront: pixelight publishes a theme, so its release unit is the BINDING and its branches are identical by nature — it could not declare a gate at all, and 8 issues sat at `released` with no way forward. Provider identity is NOT the discriminator and must not become one: forge-dev carries an epodsystem prod binding on a trunk repo for the storefront MCP, and reading `epodsystem` as a release target would gate this repo's own closes.
 export async function resolveProductionDeclaration(
   projectId: string,
 ): Promise<ProductionDeclaration | null> {
@@ -51,10 +51,13 @@ export async function resolveProductionDeclaration(
   const baseBranch = row.baseBranch ?? 'main';
   const productionBranch = row.productionBranch ?? 'main';
   const bindings = await listActiveBindingsForEnvironment(projectId, 'prod');
-  const provider = bindings[0]?.binding.provider ?? null;
+  const pair = bindings[0];
+  const provider = pair?.binding.provider ?? null;
+  const label = pair ? effectiveConfig(pair).releaseRunnerLabel : null;
+  const declaresReleaseBox = typeof label === 'string' && label.trim().length > 0;
 
   return {
-    hasProduction: provider !== null && productionBranch !== baseBranch,
+    hasProduction: provider !== null && (productionBranch !== baseBranch || declaresReleaseBox),
     baseBranch,
     productionBranch,
     provider,

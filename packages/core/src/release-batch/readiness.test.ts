@@ -105,15 +105,29 @@ describe('loadReleaseReadiness', () => {
     expect(out?.rollback).toBe('redeploy the previous tag');
   });
 
-  // cm:guard rule 3 of ISS-897 puts the release runner ON the production binding, so a project that names one without declaring production has nowhere for it to apply — and settings must still show the runner it found, or the operator cannot tell which half they are missing.
-  it('reports the provider and the runner it found even where there is no gate', async () => {
+  // cm:guard settings must name the provider it found even with no gate, or the operator cannot tell which half they are missing. This case USED to be "a label on a trunk-based project has nowhere to apply"; since 2026-09-04 that label IS the declaration (`gate.ts`), so the remaining no-gate shape is a prod binding that declares neither half — which is what forge-dev's own storefront binding looks like.
+  it('reports the provider it found even where there is no gate', async () => {
     project({});
-    prodBinding({ releaseRunnerLabel: 'prod-box' });
+    prodBinding({});
 
     const out = await loadReleaseReadiness(PROJECT_ID);
 
     expect(out?.hasProduction).toBe(false);
     expect(out?.provider).toBe('coolify');
-    expect(out?.releaseRunnerLabel).toBe('prod-box');
+    expect(out?.releaseRunnerLabel).toBeNull();
+  });
+
+  // cm:guard the trunk-based storefront: `releaseRunnerLabel` alone opens the gate, and settings then owes the operator the rest of the contract rather than reporting a project with nothing left to declare.
+  it('reports the release gaps of a trunk-based project that named its release box', async () => {
+    project({});
+    prodBinding({ releaseRunnerLabel: 'epod-prod' });
+
+    const out = await loadReleaseReadiness(PROJECT_ID);
+
+    expect(out?.hasProduction).toBe(true);
+    expect(out?.gaps).toContain('release-procedure');
+    expect(out?.gaps).toContain('rollback');
+    expect(out?.gaps).not.toContain('release-runner');
+    expect(out?.hasVerify).toBe(false);
   });
 });

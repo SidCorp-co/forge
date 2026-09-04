@@ -355,6 +355,23 @@
 
 ### Fixed
 
+- **A trunk-based project can declare a release gate.** `hasProduction` asked one question — is
+  `productionBranch` different from `baseBranch`? — as a proxy for "is this prod binding a release
+  target or just observability". It reads the wrong thing on a project that does not ship by
+  promoting a branch: pixelight publishes a storefront theme, so its two branches are identical by
+  nature, and it could not declare a gate at all while 8 merged issues sat at `released` with no
+  step that reaches them. The declaration is now either half: a distinct production branch, OR
+  `releaseRunnerLabel` on the binding — the operator naming the box that ships it, which an
+  observability binding has no reason to carry. Everything downstream already handled this shape
+  (`releaseBranches` returns `productionMergePlanned: false` and the default procedure's merge step
+  is conditional), so nothing else changed.
+
+  Provider identity is deliberately NOT the discriminator: forge-dev carries an epodsystem prod
+  binding for the storefront MCP on a trunk repo, and reading the provider as a release target
+  would have gated this repo's own closes. Verified across all 31 live projects — only sidpeak
+  (which already had a gate through its branches) and pixelight carry a release label, so no
+  project's close behaviour changes as a side effect.
+
 - **A release runner can now be declared on any production binding, not just Coolify.** The batch
   release reads `releaseRunnerLabel` / `verify` / `rollback` off the project's oldest active `prod`
   binding whatever its provider, but only the `coolify` and `agent` config schemas carried those
