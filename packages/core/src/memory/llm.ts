@@ -7,6 +7,7 @@
  * call failed" and "the budget ran out" it was.
  */
 import { env } from '../config/env.js';
+import { openAiCompatUrl } from '../lib/openai-compat-url.js';
 import { logger } from '../logger.js';
 
 /** Hard cap so a hung endpoint can never wedge a pg-boss worker. */
@@ -36,7 +37,7 @@ async function postCompletion(
   extra: Record<string, unknown>,
 ): Promise<Response | null> {
   try {
-    return await fetch(`${env.LITELLM_API_URL}/chat/completions`, {
+    return await fetch(openAiCompatUrl(env.LITELLM_API_URL ?? '', 'chat/completions'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

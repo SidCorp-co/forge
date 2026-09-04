@@ -7,6 +7,7 @@
  * cache-read token counts, `thinking` blocks — and an Anthropic-format proxy is a URL an operator may have.
  */
 
+import { openAiCompatUrl } from '../../lib/openai-compat-url.js';
 import { DEFAULT_RETRY_DELAYS_MS, errorMessage, openStream, parseSseStream } from './sse.js';
 import type {
   ChatContentPart,
@@ -249,7 +250,7 @@ async function* readEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<Cha
 
 export function createAnthropicProvider(cfg: AnthropicConfig): ChatProvider {
   const fetchImpl = cfg.fetchImpl ?? fetch;
-  const baseUrl = cfg.baseUrl.replace(/\/+$/, '');
+  const url = openAiCompatUrl(cfg.baseUrl, 'messages');
   const maxTokens = cfg.maxTokens ?? DEFAULT_MAX_TOKENS;
   return {
     id: 'anthropic',
@@ -258,7 +259,7 @@ export function createAnthropicProvider(cfg: AnthropicConfig): ChatProvider {
       let toolChoice = req.toolChoice;
       const opened = await openStream({
         fetchImpl,
-        url: `${baseUrl}/v1/messages`,
+        url,
         label: 'anthropic',
         retryDelaysMs: cfg.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS,
         signal: req.signal,

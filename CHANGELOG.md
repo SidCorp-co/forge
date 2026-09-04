@@ -283,6 +283,14 @@
 
 ### Fixed
 
+- `LITELLM_API_URL` was read two ways. The chat adapter appended `/v1/chat/completions` to it
+  and `memory/llm.ts` appended `/chat/completions`, so the same value could not be right for
+  both. LiteLLM answers on both paths, which is why it never showed; on a proxy that serves
+  only `/v1/...` every agent-session auto-title and memory extraction 404'd and came back
+  `null` while chat worked on the same variable (measured 2026-09-04). Both readers, and the
+  Anthropic adapter, now build the URL through `lib/openai-compat-url.ts`, which takes the
+  host with or without a trailing `/v1`. The env examples say so.
+
 - Four defects the chat tool layer showed when a real model drove the real `forge_*` toolset
   against a live database (2026-09-04, Gemini and GPT through one proxy, both wires):
   - `forge_issues get` refused `ISS-3`. The tool prints `issueId: "ISS-<n>"` beside the UUID and
