@@ -11,7 +11,7 @@
  *
  * Shared by the `no_work_evidence` transition rule (`transition-evidence.ts`)
  * and the `mark_merged` MCP action (`mcp/tools/forge-issues.ts`) so both key
- * on identical evidence and an identical decompose-parent exemption.
+ * on identical evidence and an identical grouping-parent exemption.
  */
 
 import { and, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
@@ -112,7 +112,7 @@ export function hasCodeEvidence(evidence: WorkEvidence): boolean {
   );
 }
 
-export async function isDecomposeParent(
+export async function hasChildIssues(
   issueId: string,
   executor: EvidenceExecutor = db,
 ): Promise<boolean> {
@@ -141,7 +141,7 @@ export async function findMissingWorkEvidence(
   executor: EvidenceExecutor = db,
 ): Promise<string | null> {
   try {
-    if (await isDecomposeParent(issueId, executor)) return null;
+    if (await hasChildIssues(issueId, executor)) return null;
     const evidence = await collectWorkEvidence(issueId, executor);
     if (hasCodeEvidence(evidence)) return null;
     return NO_WORK_EVIDENCE_DETAIL;

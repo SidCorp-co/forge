@@ -1,12 +1,12 @@
 /**
- * `collectWorkEvidence` / `hasCodeEvidence` / `isDecomposeParent` /
+ * `collectWorkEvidence` / `hasCodeEvidence` / `hasChildIssues` /
  * `findMissingWorkEvidence` — ISS-786 child B: DB-side evidence that code
  * exists for an issue (no server-side git checkout is available).
  */
 
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:why queued by call order: `isDecomposeParent`'s edge read (via `findMissingWorkEvidence`), then
+// cm:why queued by call order: `hasChildIssues`'s edge read (via `findMissingWorkEvidence`), then
 //   `collectWorkEvidence`'s 3 parallel reads in source order — jobs, handoffs, issue.sessionContext
 const queue: unknown[][] = [];
 vi.mock('../db/client.js', () => ({
@@ -23,7 +23,7 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const { collectWorkEvidence, hasCodeEvidence, isDecomposeParent, findMissingWorkEvidence } =
+const { collectWorkEvidence, hasCodeEvidence, hasChildIssues, findMissingWorkEvidence } =
   await import('./work-evidence.js');
 
 function setup(...batches: unknown[][]) {
@@ -160,15 +160,15 @@ describe('hasCodeEvidence', () => {
   });
 });
 
-describe('isDecomposeParent', () => {
+describe('hasChildIssues', () => {
   it('true when an outgoing decomposes edge exists', async () => {
     setup([{ id: 'edge-1' }]);
-    expect(await isDecomposeParent('iss-1')).toBe(true);
+    expect(await hasChildIssues('iss-1')).toBe(true);
   });
 
   it('false when no decomposes edge exists', async () => {
     setup([]);
-    expect(await isDecomposeParent('iss-1')).toBe(false);
+    expect(await hasChildIssues('iss-1')).toBe(false);
   });
 });
 
