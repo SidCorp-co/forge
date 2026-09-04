@@ -10,6 +10,16 @@
 
 ### Added
 
+- Retrieval v3, phases 1 and 3 (ISS-905). On a project whose admin turned on `retrievalRerank`, an
+  agent's `hybrid` memory search (MCP `forge_memory.search`, the chat toolset, `forge_knowledge`
+  search) comes back in the order the fast model gives the fused candidates — `reranked: true`, a
+  `rerankPosition` on every hit, `score` still the RRF value — and falls back to the RRF order without
+  an error whenever the model answers with prose, an index out of range or nothing at all. One
+  eligible search in five is a deliberate holdout so the pilot has a control. `POST /api/memory/search`
+  is never reranked. On a project with `retrievalExpandRelations` on, a search whose hits include an
+  issue appends that issue's unexpired `blocks` / `relates` neighbours after the ranked hits, marked
+  `via` and scored 0. `RERANK_MODEL` optionally names a different model than `LITELLM_FAST_MODEL`.
+
 - Retrieval v3, phase 0 (ISS-904). Every hybrid memory search now records on its
   `retrieval_analytics` row how many hits the semantic list and the keyword list each produced and
   how many they shared, and `GET /api/admin/retrieval/breakdown?projectId&since` aggregates that per

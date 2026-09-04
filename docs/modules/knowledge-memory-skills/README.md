@@ -66,7 +66,28 @@ flowchart TB
   aggregates them per resolved strategy over the window (default seven days).
 - **Per-project retrieval flags live on `app_config` and default to today.** `schema.ts:appConfig`
   carries `retrievalRerank` (false), `memoryModel` (`flat` | `chunked`, `schema.ts:memoryModels`),
-  `retrievalExpandRelations` (false) and `memoryReindex` (`{}`). Nothing reads them until their phase
-  of `docs/proposals/retrieval-v3-rerank-chunks.md` ships. A project admin sets the first three through
-  `PUT /api/app-config/:projectId`; `memoryReindex` is refused there because it is the reindex job's
-  own state.
+  `retrievalExpandRelations` (false) and `memoryReindex` (`{}`). `retrieval-flags.ts:loadRetrievalFlags`
+  reads the first and third on every search; `memoryModel` and `memoryReindex` are read by nothing
+  until phase 2 of `docs/proposals/retrieval-v3-rerank-chunks.md` ships. A project admin sets the
+  first three through `PUT /api/app-config/:projectId`; `memoryReindex` is refused there because it is
+  the reindex job's own state.
+- **Every memory search names its surface, and only `agent` is ever reranked.**
+  `search-service.ts:runMemorySearch` requires `surface: 'agent' | 'web'`; the MCP tool
+  `forge_memory.search` (which the chat toolset registers too) and `forge_knowledge` search pass
+  `agent`, `POST /api/memory/search` passes `web`. With `retrievalRerank` on, an agent's `hybrid`
+  search fuses `3 × topK` candidates (cap 50) and `rerank.ts:rerankHits` asks the fast model
+  (`RERANK_MODEL`, else `LITELLM_FAST_MODEL`) for one listwise order; the response says
+  `reranked: true`, each hit carries `rerankPosition`, and `score` stays the RRF value, so callers read
+  the list in order rather than sorting by score. Prose, an out-of-range index or a failed call keep
+  the RRF order with `reranked: false` and never throw; an omitted candidate is appended, never dropped.
+  One eligible search in five is a deliberate holdout (`rerankHoldout: true`), the control the pilot's
+  exit criterion compares against. `semantic` and `keyword` are never reranked.
+- **Relation expansion is context, not retrieval.** With `retrievalExpandRelations` on,
+  `expand-relations.ts:expandIssueRelations` takes the first five `issue` hits, walks their unexpired
+  `blocks` / `relates` edges in both directions and appends the neighbours' memory rows after the ranked
+  hits with `score: 0` and `via: { relation, from: 'ISS-n' }`, at most `topK` of them, on both surfaces.
+  The analytics row of a hybrid agent search carries `hitIds` (the returned ids, in order) beside
+  `reranked` / `rerankMs` / `rerankHoldout` / `expanded` / `expandedCount` when they apply. Feedback
+  lands on the memory row, so attributing a later `verdict=confirmed` to a search is a rule, not a
+  key: the proposal's phase 1 defines it as a `hitIds` member verified within 24 hours of the search,
+  with cross-arm collisions counted for both and reported.

@@ -19,7 +19,8 @@ function reasoningControl(): Record<string, unknown> {
   return { reasoning_effort: env.LITELLM_FAST_REASONING_EFFORT };
 }
 
-function fastModel(): string {
+/** The model every system job runs on unless a caller names another. */
+export function fastModelName(): string {
   return env.LITELLM_FAST_MODEL ?? env.LITELLM_MODEL;
 }
 
@@ -41,6 +42,7 @@ function rejectsReasoningEffort(status: number, body: string): boolean {
 async function postCompletion(
   prompt: string,
   maxTokens: number,
+  model: string,
   extra: Record<string, unknown>,
 ): Promise<Response | null> {
   try {
@@ -51,7 +53,7 @@ async function postCompletion(
         ...(env.LITELLM_API_KEY ? { Authorization: `Bearer ${env.LITELLM_API_KEY}` } : {}),
       },
       body: JSON.stringify({
-        model: fastModel(),
+        model,
         messages: [{ role: 'user', content: prompt }],
         max_tokens: maxTokens,
         temperature: 0,
@@ -84,12 +86,16 @@ async function readChoice(response: Response): Promise<CompletionChoice | null> 
   }
 }
 
-async function callLiteLlm(prompt: string, maxTokens: number): Promise<string | null> {
+async function callLiteLlm(
+  prompt: string,
+  maxTokens: number,
+  model: string,
+): Promise<string | null> {
   let control: Record<string, unknown> = reasoningControl();
   let budget = maxTokens;
   // cm:guard at most two round-trips, and the two reasons are NOT interchangeable: a rejected `reasoning_effort` retries the SAME budget without the field, an exhausted budget retries WITH it at EXHAUSTED_RETRY_TOKENS. Letting either case fall through to the other is how one bad request becomes an unbounded loop against a paid endpoint
   for (let attempt = 0; attempt < 2; attempt++) {
-    const response = await postCompletion(prompt, budget, control);
+    const response = await postCompletion(prompt, budget, model, control);
     if (!response) return null;
     if (!response.ok) {
       const body = response.status === 400 ? await safeText(response) : '';
@@ -111,14 +117,14 @@ async function callLiteLlm(prompt: string, maxTokens: number): Promise<string | 
     // cm:guard an empty body with finish_reason 'length' is the budget running out MID-ANSWER, and returning a bare null for it is the ISS-726 shape: the caller's `if (!raw) skip` cannot tell it from a model that had nothing to say, so auto-title and memory extraction go dead in production while every log stays clean
     if (choice?.finish_reason === 'length' && attempt === 0) {
       logger.warn(
-        { budget, retryBudget: EXHAUSTED_RETRY_TOKENS, model: fastModel() },
+        { budget, retryBudget: EXHAUSTED_RETRY_TOKENS, model },
         'memory.llm: token budget exhausted before any output, retrying once with a larger budget',
       );
       budget = EXHAUSTED_RETRY_TOKENS;
       continue;
     }
     logger.warn(
-      { finishReason: choice?.finish_reason ?? null, budget, model: fastModel() },
+      { finishReason: choice?.finish_reason ?? null, budget, model },
       'memory.llm: completion returned no text',
     );
     return null;
@@ -127,8 +133,12 @@ async function callLiteLlm(prompt: string, maxTokens: number): Promise<string | 
 }
 
 // cm:guard keep this in sync with fastModelConfigured() — a backend callable here but not reported there makes every caller's `if (!fastModelConfigured()) skip` gate lie, which is how auto-title and memory-v2 went silently dead on forge-beta (ISS-726)
-export async function callFastModel(prompt: string, maxTokens: number): Promise<string | null> {
-  if (env.LITELLM_API_URL) return callLiteLlm(prompt, maxTokens);
+export async function callFastModel(
+  prompt: string,
+  maxTokens: number,
+  opts?: { model?: string },
+): Promise<string | null> {
+  if (env.LITELLM_API_URL) return callLiteLlm(prompt, maxTokens, opts?.model ?? fastModelName());
   return null;
 }
 

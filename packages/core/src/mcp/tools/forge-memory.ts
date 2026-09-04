@@ -43,13 +43,13 @@ const searchInputSchema = z.object({
 export const forgeMemorySearchTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_memory.search',
   description:
-    'Search project memory (issues, comments, jobs, notes, knowledge, decisions, policies). strategy: "semantic" (default, cosine-similarity scores), "keyword" (Postgres FTS — exact identifiers, error codes), or "hybrid" (RRF fusion of both; scores are fused ranks, not similarity). Hits are point-in-time: verify against live code before acting, then report the outcome via `forge_memory.feedback` (confirmed|outdated) — that write-back is how stale memory gets cleaned instead of waiting on slow usage decay. Step handoffs live in their own table — use `forge_step_handoff.get` for those. Requires the authenticated device owner to be a member of the given projectId.',
+    'Search project memory (issues, comments, jobs, notes, knowledge, decisions, policies). strategy: "semantic" (default, cosine-similarity scores), "keyword" (Postgres FTS — exact identifiers, error codes), or "hybrid" (RRF fusion of both; scores are fused ranks, not similarity). On a project whose admin turned on rerank, a hybrid result may come back `reranked: true` — read hits in list order (`rerankPosition`), not by `score`. On a project with relation expansion on, rows carrying `via` are one-hop dependency neighbours of an issue hit, appended after the ranked hits with score 0 — context, not matches. Hits are point-in-time: verify against live code before acting, then report the outcome via `forge_memory.feedback` (confirmed|outdated) — that write-back is how stale memory gets cleaned instead of waiting on slow usage decay. Step handoffs live in their own table — use `forge_step_handoff.get` for those. Requires the authenticated device owner to be a member of the given projectId.',
   inputSchema: zodToMcpSchema(searchInputSchema),
   handler: async (args) => {
     const input = searchInputSchema.parse(args);
     await assertDeviceOwnerIsMember(device, input.projectId);
     try {
-      return await runMemorySearch(input);
+      return await runMemorySearch({ ...input, surface: 'agent' });
     } catch (err) {
       // Surface embeddings outage with a stable prefix so MCP callers can
       // recognise it (mirrors REST's 503 EMBEDDING_UNAVAILABLE response).

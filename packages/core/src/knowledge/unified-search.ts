@@ -49,7 +49,13 @@ export async function runUnifiedSearch(input: {
       knowledgeHits.push(...hits.map((h) => ({ ...h, origin: 'knowledge' as const })));
     }
     if (needsMemory) {
-      const result = await runMemorySearch({ projectId, query, topK, strategy: 'keyword' });
+      const result = await runMemorySearch({
+        projectId,
+        query,
+        topK,
+        strategy: 'keyword',
+        surface: 'agent',
+      });
       memoryHits.push(...result.hits.map((h) => ({ ...h, origin: 'memory' as const })));
     }
     return { knowledge: knowledgeHits, memory: memoryHits };
@@ -75,7 +81,13 @@ export async function runUnifiedSearch(input: {
       knowledgeHits.push(...hits.map((h) => ({ ...h, origin: 'knowledge' as const })));
     }
     if (needsMemory) {
-      const result = await runMemorySearch({ projectId, query, topK, strategy: 'keyword' });
+      const result = await runMemorySearch({
+        projectId,
+        query,
+        topK,
+        strategy: 'keyword',
+        surface: 'agent',
+      });
       memoryHits.push(...result.hits.map((h) => ({ ...h, origin: 'memory' as const })));
     }
     return { knowledge: knowledgeHits, memory: memoryHits, degraded: true };
@@ -97,7 +109,7 @@ export async function runUnifiedSearch(input: {
 
   if (needsMemory) {
     tasks.push(
-      runMemorySearch({ projectId, query, topK, strategy }).then((result) => {
+      runMemorySearch({ projectId, query, topK, strategy, surface: 'agent' }).then((result) => {
         memoryHits.push(...result.hits.map((h) => ({ ...h, origin: 'memory' as const })));
         if (result.degraded) degraded = true;
       }),
