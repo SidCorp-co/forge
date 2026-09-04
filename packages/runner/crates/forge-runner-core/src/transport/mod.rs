@@ -1,6 +1,6 @@
 //! Transport to core.
 //!
-//! - `frames`         — WS frame envelope + `job.assigned` shape
+//! - `frames`         — WS frame envelope and the job-scoped token newtype
 //! - `ws`             — connect `/ws`, Bearer device token, subscribe, reconnect (M1)
 //! - `events`         — POST `/api/jobs/:id/events` (batch + retry) (M3)
 //! - `lifecycle`      — POST `/complete`, `/fail` (M3)

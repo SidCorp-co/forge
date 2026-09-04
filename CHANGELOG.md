@@ -8,6 +8,7 @@
 
 ## [Unreleased]
 
+
 ### Added
 
 - Retrieval v3, phase 2b (ISS-908). Project Settings gains a **Memory** tab. A project admin sees the
@@ -1351,6 +1352,23 @@
   parked or blocked — there is still no limit on how many rounds an issue may take. (ISS-878)
 
 ### Changed
+
+- **A box now takes its own work; nothing pushes it.** Core keeps jobs `queued` and offers them at
+  `GET /api/devices/me/pool`; the runner daemon polls that every 30 seconds and, whenever anything is
+  claimable, spawns one master — a Claude session running the `forge-master` skill — which decides
+  order and batch size and claims. The `job.assigned` frame, the dispatch tick, the per-project
+  concurrency cap and the five dispatch gates are gone; the only condition core still enforces at
+  claim time is one in-flight job per issue. A claim goes through the daemon's local control socket
+  rather than straight to core, because taking a job and running it must happen in the one process
+  that holds the repo lock and the in-flight map — `forge-runner pool claim` now refuses when no
+  daemon is listening, which is the honest answer, since nothing else on that box could run the job.
+  A master is killed at 150 seconds so it can never outlive the 3-minute hold core gives it.
+
+  The `forge-master` skill ships **inside the runner binary** and is written to the master's own
+  directory before every pass. Nothing else could deliver it — project skill sync writes into a
+  project's checkout and the master runs in no checkout — and a master told to use a skill that is
+  not on disk loads nothing and improvises the orchestration silently. The price, stated: editing
+  the master's process now needs a runner release, where a project skill needs only a push.
 
 - **`job_events` stops storing the CLI's partial-message frames.** `POST /jobs/:id/events` no
   longer persists a `stdout` row whose `line.type` is `stream_event`. Measured on forge-beta

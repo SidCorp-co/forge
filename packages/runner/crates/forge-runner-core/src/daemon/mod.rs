@@ -1,14 +1,16 @@
 //! Daemon orchestration.
 //!
 //! Loop: connect WS → subscribe `device:<id>` (+ `runner:register` when
-//! enabled) → heartbeat every 30s → on `job.assigned` dispatch a job and stream
+//! enabled) → heartbeat every 30s → poll the pool, spawn a master, run what it claims, streaming
 //! its events back; on `job.cancel` abort the matching process. Interactive
 //! chat (`agent:start` / `agent:send` / `agent:abort`) is handled out-of-band
 //! by `chat`, off the jobs path and under its own concurrency budget (ISS-321).
 
 pub mod chat;
+pub mod control;
 pub mod dispatch;
 pub mod inbox;
+pub mod master;
 pub mod preflight;
 pub mod repo_lock;
 pub mod setup_agent;
@@ -36,10 +38,10 @@ use dispatch::resolve_repo;
 /// auto-update loop can drain to idle before restarting the service (ISS-392),
 /// rather than killing a job or chat session mid-flight. Drop fires on both the
 /// success and error paths, so a panicking task still releases its slot.
-struct InflightGuard(Arc<AtomicUsize>);
+pub(crate) struct InflightGuard(Arc<AtomicUsize>);
 
 impl InflightGuard {
-    fn enter(counter: &Arc<AtomicUsize>) -> Self {
+    pub(crate) fn enter(counter: &Arc<AtomicUsize>) -> Self {
         counter.fetch_add(1, Ordering::AcqRel);
         Self(counter.clone())
     }
@@ -467,23 +469,35 @@ pub async fn run(
         });
     }
 
+    // cm:guard both loops start, or the box does neither half of its own work: the control socket is the ONLY way a master turns a decision into a running job, and the pool poll is the only thing that notices work exists now that core pushes nothing. A daemon that starts one without the other looks healthy and never runs anything.
+    {
+        let ctl = Arc::new(control::Control {
+            client: (*client).clone(),
+            runner: runner.clone(),
+            cfg: (*cfg).clone(),
+            locks: repo_locks.clone(),
+            inflight: inflight.clone(),
+        });
+        let cancel_rx = cancel_rx.clone();
+        tokio::spawn(async move {
+            if let Err(e) = control::serve(ctl, cancel_rx).await {
+                tracing::error!("[control] {e}");
+            }
+        });
+    }
+    {
+        let (client, cfg) = ((*client).clone(), (*cfg).clone());
+        let gate = Arc::new(master::MasterGate::new());
+        let cancel_rx = cancel_rx.clone();
+        tokio::spawn(async move { master::run(client, cfg, gate, cancel_rx).await });
+    }
+
     let mut cancel_rx = cancel_rx.clone();
     loop {
         tokio::select! {
             frame = frame_rx.recv() => {
                 let Some(frame) = frame else { break };
                 match frame.event.as_str() {
-                    "job.assigned" => {
-                        let (client, runner, cfg) = (client.clone(), runner.clone(), cfg.clone());
-                        let locks = repo_locks.clone();
-                        let guard = InflightGuard::enter(&inflight);
-                        tokio::spawn(async move {
-                            let _guard = guard; // released when the job finishes (drain gate)
-                            if let Err(e) = dispatch::handle(&client, runner, &cfg, &locks, frame.data).await {
-                                tracing::error!("[dispatch] {e}");
-                            }
-                        });
-                    }
                     "job.cancel" | "job.cancelRequested" => {
                         if let Some(jid) = job_id_of(&frame.data) {
                             tracing::info!("[cancel] job={jid}");

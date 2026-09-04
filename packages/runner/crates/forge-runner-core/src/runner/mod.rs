@@ -1,6 +1,6 @@
 //! The runner abstraction — the seam that lets one device drive multiple CLI
 //! backends (Claude Code today; codex later). Core already tags
-//! every `job.assigned` with `runnerType`, so a new kind = new `RunnerKind`
+//! every claimed job with `runnerType`, so a new kind = new `RunnerKind`
 //! variant + a `Runner` impl + a stream parser.
 
 use crate::transport::frames::JobToken;
@@ -35,7 +35,7 @@ impl RunnerKind {
 
 pub type SessionId = String;
 
-/// Normalized job description, decoupled from core's exact `job.assigned` shape.
+/// Normalized job description, decoupled from core's exact claim shape.
 #[derive(Debug, Clone)]
 pub struct JobSpec {
     pub job_id: String,

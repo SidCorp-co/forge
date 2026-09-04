@@ -1,12 +1,14 @@
 //! `pool` / `claim` / `release` / `load` — the master agent's hands.
 //!
 //! A master runs as a session on this box and has no credential of its own.
-//! These four subcommands are how it reaches core, through the one process
-//! that holds the device token.
+//! Reading goes straight to core with the device token; CLAIMING goes to the
+//! local daemon, because taking a job and running it have to happen in the one
+//! process that owns the repo lock and the in-flight map.
 
 use clap::{Args as ClapArgs, Subcommand};
 use forge_runner_core::auth::cred_store;
 use forge_runner_core::config::Config;
+use forge_runner_core::daemon::control;
 use forge_runner_core::transport::{pool, CoreClient};
 
 use super::Ctx;
@@ -109,8 +111,18 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
                 println!("      job {}", e.job_id);
             }
         }
+        // cm:guard the claim goes to the LOCAL DAEMON, never straight to core. The daemon holds the repo lock and the in-flight map in memory, so a claim made from this process would take a lock the daemon cannot see and start a job it cannot cancel, reap or salvage. If the daemon is not running, refusing here is the correct answer — there is nothing on this box that could run the job anyway.
         Command::Claim(a) => {
-            let out = pool::claim(&c, &a.job_id, &a.session_id).await?;
+            let Some(sock) = control::socket_path() else {
+                anyhow::bail!("cannot resolve the runner control socket path");
+            };
+            let out = match control::request_claim(&sock, &a.job_id, &a.session_id).await {
+                Ok(out) => out,
+                Err(e) => anyhow::bail!(
+                    "no runner daemon answered at {} ({e}) — start the service before claiming",
+                    sock.display()
+                ),
+            };
             println!("{}", serde_json::to_string_pretty(&out)?);
             // cm:guard a refusal exits NON-ZERO so a shell-driven master can branch on it, but the refusal itself is ordinary — it means another master won the race or the box is full, never that anything is broken.
             if !out.ok {

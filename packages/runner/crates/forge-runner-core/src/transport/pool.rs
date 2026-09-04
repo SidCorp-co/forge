@@ -6,6 +6,7 @@
 
 use super::CoreClient;
 use crate::error::{Error, Result};
+use crate::transport::frames::JobToken;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -73,6 +74,40 @@ pub async fn pool(
     Ok(parsed.items)
 }
 
+/// What core prepared for a claimed job: identity, prompt, and the settings the
+/// process runs under.
+// cm:guard NEVER add `#[serde(deny_unknown_fields)]`, here or on any type below. Core ships fields before the fleet is on the version that reads them, and denying unknowns turns the next such field into every box failing every claim at once, with the error inside serde rather than anywhere an operator would look.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Prepared {
+    pub job_id: String,
+    pub project_id: String,
+    #[serde(default)]
+    pub issue_id: Option<String>,
+    #[serde(rename = "type")]
+    pub job_type: String,
+    #[serde(default)]
+    pub payload: serde_json::Value,
+    #[serde(default)]
+    pub prompt_string: Option<String>,
+    #[serde(default)]
+    pub system_prompt: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub prior_claude_session_id: Option<String>,
+    #[serde(default)]
+    pub runner_type: Option<String>,
+    #[serde(default)]
+    pub session_mode: Option<String>,
+    #[serde(default)]
+    pub session_residency_seconds: Option<u64>,
+    #[serde(default)]
+    pub agent_session_id: Option<String>,
+    #[serde(default)]
+    pub attempts: Option<u32>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaimOutcome {
@@ -85,6 +120,75 @@ pub struct ClaimOutcome {
     pub issue_key: Option<String>,
     #[serde(default)]
     pub reason: Option<String>,
+    #[serde(default, skip_serializing)]
+    pub prepared: Option<Prepared>,
+}
+
+/// One claimed job, in the shape the dispatch path runs.
+// cm:guard identity here comes from `Prepared`, never from the pool entry the master was holding — that entry is a snapshot minutes old by the time a master decides, and core refuses the same mismatch on its own side rather than let a session row and a running process name different jobs.
+#[derive(Debug, Clone)]
+pub struct ClaimedJob {
+    pub job_id: String,
+    pub project_id: String,
+    pub issue_id: Option<String>,
+    pub job_type: String,
+    pub payload: serde_json::Value,
+    pub prompt_string: Option<String>,
+    pub system_prompt: Option<String>,
+    pub model: Option<String>,
+    pub allowed_tools: Option<String>,
+    pub disallowed_tools: Option<String>,
+    pub permission_mode: Option<String>,
+    pub timeout_seconds: Option<u64>,
+    pub mcp_servers_override: Option<serde_json::Value>,
+    pub claude_session_id: Option<String>,
+    pub runner_type: Option<String>,
+    pub session_mode: Option<String>,
+    pub session_residency_seconds: Option<u64>,
+    pub agent_session_id: Option<String>,
+    pub issue_key: Option<String>,
+    pub attempts: Option<u32>,
+    pub pat_token: Option<JobToken>,
+}
+
+fn payload_str(payload: &serde_json::Value, key: &str) -> Option<String> {
+    payload
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+}
+
+impl Prepared {
+    /// Fold the preparation and the claim's own two fields into one job.
+    // cm:guard the stage overrides live INSIDE `payload` (core's `buildOverridesPayload` writes them there) and must be read out here rather than expected as siblings. Reading them off the top level yields `None` for every one, which is not a parse error — it is a job that silently runs with the project defaults instead of the stage's model, tools and timeout.
+    pub fn into_claimed(self, job_token: Option<String>, issue_key: Option<String>) -> ClaimedJob {
+        let payload = self.payload;
+        ClaimedJob {
+            job_id: self.job_id,
+            project_id: self.project_id,
+            issue_id: self.issue_id,
+            job_type: self.job_type,
+            allowed_tools: payload_str(&payload, "allowedTools"),
+            disallowed_tools: payload_str(&payload, "disallowedTools"),
+            permission_mode: payload_str(&payload, "permissionMode"),
+            timeout_seconds: payload
+                .get("timeoutSeconds")
+                .and_then(serde_json::Value::as_u64),
+            mcp_servers_override: payload.get("mcpServersOverride").cloned(),
+            issue_key: issue_key.or_else(|| payload_str(&payload, "issueKey")),
+            payload,
+            prompt_string: self.prompt_string,
+            system_prompt: self.system_prompt,
+            model: self.model,
+            claude_session_id: self.prior_claude_session_id,
+            runner_type: self.runner_type,
+            session_mode: self.session_mode,
+            session_residency_seconds: self.session_residency_seconds,
+            agent_session_id: self.agent_session_id,
+            attempts: self.attempts,
+            pat_token: job_token.map(JobToken::new),
+        }
+    }
 }
 
 /// Take one job for `session_id`.

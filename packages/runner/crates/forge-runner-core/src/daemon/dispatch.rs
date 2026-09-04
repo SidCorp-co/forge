@@ -1,4 +1,4 @@
-//! Handle one `job.assigned`: resolve the repo, run it via the runner, and map
+//! Handle one CLAIMED job: resolve the repo, run it via the runner, and map
 //! the normalized [`RunnerEvent`] stream onto core's job-event + lifecycle API.
 
 use std::path::Path;
@@ -16,7 +16,7 @@ use crate::error::{Error, Result};
 use crate::runner::claude_code::ClaudeCodeRunner;
 use crate::runner::{JobSpec, Runner, RunnerEvent, ToolPhase};
 use crate::transport::events::{post_job_events, JobEventInput};
-use crate::transport::frames::JobAssigned;
+use crate::transport::pool::ClaimedJob;
 use crate::transport::runners::{self, MeRunner};
 use crate::transport::{lifecycle, CoreClient};
 use crate::workspace::{provision, refresh, salvage, skill_sync};
@@ -316,15 +316,15 @@ pub async fn handle_skill_sync(client: &CoreClient, cfg: &Config, data: Value) -
     Ok(())
 }
 
+/// Run one job this box has already claimed.
+// cm:guard the caller must hold the claim BEFORE calling, and must release it on every path that returns without the job running. Core hands the hold back only to `releaseJobFromMaster` or the 3-minute reaper, so a preparation that reaches here and then falls out silently costs a slot until a reaper notices.
 pub async fn handle(
     client: &CoreClient,
     runner: Arc<ClaudeCodeRunner>,
     cfg: &Config,
     locks: &RepoLocks,
-    data: Value,
+    ja: ClaimedJob,
 ) -> Result<()> {
-    let ja: JobAssigned =
-        serde_json::from_value(data).map_err(|e| Error::Other(format!("bad job.assigned: {e}")))?;
     let job_id = ja.job_id.clone();
     tracing::info!(
         "[job {job_id}] type={} project={}",
@@ -762,12 +762,14 @@ mod tests {
     use super::*;
     use crate::config::Binding;
 
-    fn frame(session_mode: Option<&str>) -> JobAssigned {
-        serde_json::from_value(serde_json::json!({
-            "jobId": "j1", "projectId": "p1", "type": "code",
-            "sessionMode": session_mode,
-        }))
-        .expect("job.assigned must parse")
+    fn frame(session_mode: Option<&str>) -> ClaimedJob {
+        let prepared: crate::transport::pool::Prepared =
+            serde_json::from_value(serde_json::json!({
+                "jobId": "j1", "projectId": "p1", "type": "code",
+                "sessionMode": session_mode,
+            }))
+            .expect("a preparation must parse");
+        prepared.into_claimed(None, None)
     }
 
     fn unrefreshed(foreign_work: bool) -> refresh::WorkspaceGit {
