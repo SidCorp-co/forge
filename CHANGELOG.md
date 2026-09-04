@@ -1374,6 +1374,14 @@
   `acked_at IS NULL`: an acked job has a detached agent behind it that outlives its master, and
   re-queueing that would offer a second box work already running.
 
+  The 3-minute reaper now sees a master that has no session row. It joined `agent_sessions` on
+  `held_by`, but a master is a bare Claude process that invents its own session id and writes no
+  such row, so the join matched nothing and the sweep reaped nothing — measured live on
+  2026-09-05, a job sat held by a master forty minutes dead, offered to no pool and swept by
+  nothing, which is the silent wedge `VISION: state-never-lies` calls a kernel bug. A holder with
+  no row is judged by `held_at` age instead, since there is no heartbeat to read; the two arms that
+  DO have a session keep reaping on its status and heartbeat immediately.
+
   The `forge-master` skill ships **inside the runner binary** and is written to the master's own
   directory before every pass. Nothing else could deliver it — project skill sync writes into a
   project's checkout and the master runs in no checkout — and a master told to use a skill that is

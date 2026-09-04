@@ -24,6 +24,7 @@ export const MASTER_HOLD_TIMEOUT_MS = 3 * 60 * 1000;
  * Returns the number of jobs handed back, and logs each holder so an operator
  * reading the pool can tell "nobody wanted this" from "its holder died".
  */
+// cm:guard LEFT JOIN, and the `held_at` bound applies to the SESSION-LESS arm only. A master is a bare Claude process that invents its own session id and writes no `agent_sessions` row, so the inner join this replaced matched nothing and reaped nothing — measured live 2026-09-05, a job sat held by a master 40 minutes dead, offered to no one and swept by nothing. A holder with no row cannot be judged by a heartbeat, so age is the only evidence there is; putting that clock on the other two arms instead would delay a KNOWN-dead master's holds by three minutes for no reason.
 // cm:guard `acked_at` is what separates the two cases, and it must be the test rather than the status. A job the runner ACKED has a process behind it that outlives its master, so only the hold is dropped — killing it would throw away a diff nobody asked to discard. A `dispatched` job with no ack never reached a process: its master died between the claim and the spawn, and leaving it stamped makes it exactly the orphan the loop monitor exists to chase, held by nobody and claimable by no one.
 // cm:edge lockstep -> packages/core/src/devices/claim.ts — `releaseJobFromMaster` unwinds the same three columns under the same `acked_at IS NULL` condition; one path undoing the stamp and the other not is a job that is claimable again on one route and stranded on the other.
 export async function reapDeadMasterHolds(): Promise<number> {
@@ -31,16 +32,18 @@ export async function reapDeadMasterHolds(): Promise<number> {
   const staleSeconds = Math.floor(MASTER_HOLD_TIMEOUT_MS / 1000);
 
   const rows = (await db.execute(sql`
-    WITH gone AS (
-      SELECT s.id, s.status
-      FROM agent_sessions s
-      WHERE s.status IN (${TERMINAL})
-         OR COALESCE(s.last_heartbeat_at, s.started_at)
-            < now() - make_interval(secs => ${staleSeconds})
-    )
-    , doomed AS (
-      SELECT j.id, j.held_by, g.status AS master_status
-      FROM jobs j JOIN gone g ON g.id = j.held_by
+    WITH doomed AS (
+      SELECT j.id, j.held_by,
+             COALESCE(s.status, 'no_session') AS master_status
+      FROM jobs j
+      LEFT JOIN agent_sessions s ON s.id = j.held_by
+      WHERE j.held_by IS NOT NULL
+        AND (
+          s.status IN (${TERMINAL})
+          OR COALESCE(s.last_heartbeat_at, s.started_at)
+             < now() - make_interval(secs => ${staleSeconds})
+          OR (s.id IS NULL AND j.held_at < now() - make_interval(secs => ${staleSeconds}))
+        )
     )
     UPDATE jobs
     SET held_by = NULL, held_at = NULL,

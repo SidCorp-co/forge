@@ -421,6 +421,43 @@ describe('master pool — reaping, load and preparation', () => {
     expect(live?.device_id).toBe(device.id);
   });
 
+  // cm:guard THE reaper's hardest case, and the one the inner join missed entirely. A master is a bare Claude process that invents its own session id and writes NO `agent_sessions` row, so a reaper that joins that table matches nothing and reaps nothing — measured live 2026-09-05, a job sat held by a master 40 minutes dead, offered to no one and swept by nothing. That is the silent wedge `VISION: state-never-lies` calls a kernel bug.
+  it('reaps a hold whose master never had a session row at all', async () => {
+    const { device, job } = await seed();
+    const ghost = randomUUID();
+
+    await mods.claimJobForMaster({ jobId: job, deviceId: device.id, sessionId: ghost });
+    await harness.db.execute(sql`
+      UPDATE jobs SET held_at = now() - interval '10 minutes' WHERE id = ${job}
+    `);
+
+    expect(await mods.reapDeadMasterHolds()).toBe(1);
+
+    const [row] = (await harness.db.execute(sql`
+      SELECT status, held_by, device_id FROM jobs WHERE id = ${job}
+    `)) as unknown as Array<Record<string, unknown>>;
+    expect(row?.held_by).toBeNull();
+    expect(row?.status).toBe('queued');
+    expect(row?.device_id).toBeNull();
+    expect(
+      (await mods.readPool({ deviceId: device.id, limit: 20 })).find((i) => i.jobId === job),
+    ).toBeDefined();
+  });
+
+  // cm:guard the `held_at` bound is what makes judging a session-less holder safe. Without it every claim is reaped the instant it is taken, because a master with no session row always looks dead — the reaper would race every master on the box.
+  it('leaves a fresh session-less hold alone', async () => {
+    const { device, job } = await seed();
+    await mods.claimJobForMaster({ jobId: job, deviceId: device.id, sessionId: randomUUID() });
+
+    expect(await mods.reapDeadMasterHolds()).toBe(0);
+
+    const [row] = (await harness.db.execute(sql`
+      SELECT held_by, status FROM jobs WHERE id = ${job}
+    `)) as unknown as Array<Record<string, unknown>>;
+    expect(row?.held_by).not.toBeNull();
+    expect(row?.status).toBe('dispatched');
+  });
+
   it('separates pool depth from running, and surfaces the oldest running job', async () => {
     const { device, project, job } = await seed();
 
