@@ -1,12 +1,12 @@
 /**
- * v1 EPIC 1 (ISS-270) — the chat adapter. Streams any OpenAI-compatible
- * `/v1/chat/completions` endpoint, which in production is a LiteLLM proxy
- * fanning out to several upstream models — so "Vertex" and "Gemini" below name
- * models reached THROUGH that proxy, not a second adapter. It is the only
- * adapter: one wire format every hosted model already speaks beats an adapter
- * per vendor, each with its own half-kept version of the tool-calling contract.
+ * v1 EPIC 1 (ISS-270) — the OpenAI-wire chat adapter. Streams any OpenAI-compatible
+ * `/v1/chat/completions` endpoint, which in production is a LiteLLM proxy fanning out to several
+ * upstream models — so "Vertex" and "Gemini" below name models reached THROUGH that proxy. The
+ * provider contract IS this wire, so this adapter passes the request through; `anthropic.ts` is the
+ * one adapter that translates, and the retry + SSE plumbing both share lives in `sse.ts`.
  */
 
+import { DEFAULT_RETRY_DELAYS_MS, errorMessage, openStream, parseSseStream } from './sse.js';
 import type { ChatProvider, ChatStreamEvent, ChatStreamRequest, ChatStreamUsage } from './types.js';
 
 export interface OpenAIConfig {
@@ -18,11 +18,6 @@ export interface OpenAIConfig {
   /** Backoff between pre-stream retries; tests pass [0] to skip waiting. */
   retryDelaysMs?: number[];
 }
-
-/** Transient upstream statuses worth a pre-stream retry (Vertex "high demand"
- *  surfaces as 503 through the proxy; 429 is straight rate limiting). */
-const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 529]);
-const DEFAULT_RETRY_DELAYS_MS = [1000, 3000];
 
 interface OpenAIToolCallDelta {
   index?: number;
@@ -60,7 +55,6 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
     id: 'openai',
     defaultModel: cfg.defaultModel,
     async *stream(req: ChatStreamRequest): AsyncIterable<ChatStreamEvent> {
-      const retryDelays = cfg.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
       // cm:guard both of these degrade ONCE and then the field is gone for the rest of the call, so a rejecting endpoint costs one extra request, never a loop: `tool_choice:'required'` makes Vertex compile every tool schema into a constrained-decoding grammar and 400s "too many states" on a large toolset, and `response_format` is optional in the OpenAI contract so a compatible endpoint may 400 it as unsupported — in both cases the post-turn reply guard still polices the answer
       let toolChoice = req.toolChoice;
       let responseFormat = req.responseFormat;
@@ -87,52 +81,30 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
         return i;
       };
 
-      // Pre-stream retry: nothing has been consumed yet, so a transient 429/5xx
-      // (or a network hiccup) is safely retried with backoff. Mid-stream errors
-      // below are NOT retried — partial output may already have been yielded.
-      let res: Response | null = null;
-      let lastError = '';
-      for (let attempt = 0; ; attempt++) {
-        try {
-          res = await fetchImpl(`${baseUrl}/v1/chat/completions`, init());
-        } catch (err) {
-          res = null;
-          lastError = errorMessage(err);
-        }
-        if (res?.ok && res.body) break;
-        if (res) {
-          const body = await safeReadText(res);
-          lastError = `openai http ${res.status}${body ? `: ${body.slice(0, 500)}` : ''}`;
-          // Vertex constrained-decoding overflow on forced tool use — drop the
-          // force and retry immediately (does not consume a backoff attempt).
-          if (res.status === 400 && toolChoice && /too many states/i.test(body)) {
+      const opened = await openStream({
+        fetchImpl,
+        url: `${baseUrl}/v1/chat/completions`,
+        init,
+        label: 'openai',
+        retryDelaysMs: cfg.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS,
+        signal: req.signal,
+        degrade: (body) => {
+          if (toolChoice && /too many states/i.test(body)) {
             toolChoice = undefined;
-            attempt--;
-            continue;
+            return true;
           }
           if (
-            res.status === 400 &&
             responseFormat &&
             /response_format|json_schema|unsupported|unrecognized/i.test(body)
           ) {
             responseFormat = undefined;
-            attempt--;
-            continue;
+            return true;
           }
-          if (!RETRYABLE_STATUS.has(res.status)) {
-            yield { type: 'error', message: lastError };
-            return;
-          }
-        }
-        if (attempt >= retryDelays.length || req.signal?.aborted) {
-          yield { type: 'error', message: lastError };
-          return;
-        }
-        await new Promise((r) => setTimeout(r, retryDelays[attempt]));
-      }
-      if (!res?.body) {
-        // Unreachable (the loop only breaks with a body) — narrows for TS.
-        yield { type: 'error', message: lastError };
+          return false;
+        },
+      });
+      if ('error' in opened) {
+        yield { type: 'error', message: opened.error };
         return;
       }
 
@@ -149,7 +121,7 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
       };
 
       try {
-        for await (const event of parseSseStream(res.body)) {
+        for await (const event of parseSseStream(opened.body)) {
           if (event === '[DONE]') break;
           let chunk: OpenAIChunk;
           try {
@@ -203,58 +175,4 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
       }
     },
   };
-}
-
-// cm:guard no regex FLAGS newer than es2017 anywhere in packages/core — `pnpm --filter web-v2 build` type-checks core's SOURCES against web-v2's own lower target, so a flag core's tsconfig accepts compiles clean here and fails the WEB build; `[\s\S]` carries dotAll's meaning with no flag, which is why neither regex below is flagged. Broke the Coolify deploy of 2a1e19c0, 2026-08-31. It lived in the Gemini adapter until that file was deleted 2026-09-03 and is a whole-package rule, so it moved here rather than dying with its host.
-// cm:guard an SSE boundary is ANY two consecutive line terminators, each independently CRLF, CR or LF — `\n\r\n` and `\r\n\r` are legal and a proxy that mixes them is not hypothetical, so matching only the three symmetric spellings glues frames together until the next recognized boundary or EOF and the turn returns an empty `done` indistinguishable from a model with nothing to say
-// cm:guard the `(?!\n)` is load-bearing and greediness will NOT do its job: without it the engine backtracks a failed `\r\n` into the bare `\r` and `\n` branches, so ONE internal CRLF between two `data:` lines satisfies both repetitions and splits a multi-line frame in half — each half then fails JSON.parse and is dropped by the catch-continue, silently, and ONLY under CRLF, the spelling this regex exists to support. Verified 2026-09-03: the un-guarded pattern matches `data: a\r\ndata: b\r\n\r\n` at index 7 instead of 16
-const FRAME_BOUNDARY = /(?:\r\n|\r(?!\n)|\n){2}/;
-
-/** The `data:` payload of one SSE frame, or '' when it carries no data line. */
-function frameData(raw: string): string {
-  return raw
-    .split(/\r\n|[\n\r]/)
-    .filter((line) => line.startsWith('data:'))
-    .map((line) => line.slice(5).trimStart())
-    .join('\n');
-}
-
-async function* parseSseStream(body: ReadableStream<Uint8Array>): AsyncIterable<string> {
-  const decoder = new TextDecoder();
-  const reader = body.getReader();
-  let buf = '';
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      let boundary = FRAME_BOUNDARY.exec(buf);
-      while (boundary) {
-        const data = frameData(buf.slice(0, boundary.index));
-        buf = buf.slice(boundary.index + boundary[0].length);
-        if (data) yield data;
-        boundary = FRAME_BOUNDARY.exec(buf);
-      }
-    }
-    // cm:guard flush once more after the read loop — an upstream that closes without a final blank line still sent that frame, and dropping it loses the last delta or the `[DONE]`
-    const tail = frameData(buf);
-    if (tail) yield tail;
-  } finally {
-    // cm:guard cancel, don't just releaseLock — on the `[DONE]` break the body is left unread, and an uncancelled body holds its connection out of the pool for the socket's lifetime
-    await reader.cancel().catch(() => undefined);
-    reader.releaseLock();
-  }
-}
-
-function errorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
-}
-
-async function safeReadText(res: Response): Promise<string> {
-  try {
-    return await res.text();
-  } catch {
-    return '';
-  }
 }
