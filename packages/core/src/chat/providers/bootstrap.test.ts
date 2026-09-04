@@ -28,7 +28,7 @@ describe('bootstrapChatProviders', () => {
     });
   });
 
-  it('registers the adapter under `openai`, and reports it as the default', () => {
+  it('registers the adapter under `openai`, and reports it as the default when it is alone', () => {
     bootstrapChatProviders();
 
     expect(CHAT_PROVIDER_ID).toBe('openai');
@@ -60,7 +60,7 @@ describe('bootstrapChatProviders', () => {
 describe('bootstrapChatProviders — anthropic', () => {
   beforeEach(() => clearProviders());
 
-  it('registers `anthropic` beside `openai` and keeps openai as the default', () => {
+  it('registers `anthropic` beside `openai` and makes anthropic the default', () => {
     setEnv({
       LITELLM_API_URL: 'http://proxy.test',
       LITELLM_API_KEY: 'k',
@@ -73,7 +73,7 @@ describe('bootstrapChatProviders — anthropic', () => {
     bootstrapChatProviders();
     expect(get('anthropic')?.id).toBe('anthropic');
     expect(get('anthropic')?.defaultModel).toBe('claude-sonnet-5');
-    expect(defaultChatProviderId()).toBe('openai');
+    expect(defaultChatProviderId()).toBe('anthropic');
   });
 
   it('is the default when it is the only adapter configured', () => {
