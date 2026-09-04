@@ -1,0 +1,315 @@
+<title>Workflow master-điều-phối v3</title>
+<style>
+  :root{--bg:#fbfaf8;--panel:#fff;--ink:#1c1a17;--muted:#6b6560;--line:#e3ded7;
+    --a:#2b5f8f;--a-s:#eaf1f8;--b:#1f6f4a;--b-s:#eaf5ef;--c:#b4531f;--c-s:#fdf1e8;--d:#8a3b52;--d-s:#fbeef1;}
+  @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#161513;--panel:#1e1d1a;--ink:#f0ece6;--muted:#a49d94;--line:#33302b;
+    --a:#7fb0d8;--a-s:#16212b;--b:#63c194;--b-s:#16271f;--c:#e8874a;--c-s:#2c1f16;--d:#e08099;--d-s:#291920;}}
+  :root[data-theme="dark"]{--bg:#161513;--panel:#1e1d1a;--ink:#f0ece6;--muted:#a49d94;--line:#33302b;
+    --a:#7fb0d8;--a-s:#16212b;--b:#63c194;--b-s:#16271f;--c:#e8874a;--c-s:#2c1f16;--d:#e08099;--d-s:#291920;}
+  body{background:var(--bg);color:var(--ink);margin:0;
+    font:15px/1.65 ui-sans-serif,-apple-system,"Segoe UI",system-ui,sans-serif;padding:40px 26px 90px;}
+  main{max-width:1150px;margin:0 auto;}
+  h1{font-size:26px;letter-spacing:-.02em;margin:0 0 4px;}
+  .sub{color:var(--muted);margin:0 0 4px;font-size:14px;}
+  h2{font-size:12.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);
+     margin:48px 0 6px;font-weight:650;padding-top:15px;border-top:1px solid var(--line);}
+  h2:first-of-type{border-top:0;padding-top:0;}
+  h3{font-size:15.5px;margin:26px 0 4px;letter-spacing:-.01em;}
+  .cap{color:var(--muted);font-size:13.5px;margin:0 0 13px;}
+  .board{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:20px 14px;overflow-x:auto;}
+  .mermaid{display:flex;justify-content:center;}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;margin-top:14px;}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{color:var(--muted);font-weight:650;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;}
+  code{font:12.5px ui-monospace,"SF Mono",Menlo,monospace;
+    background:color-mix(in srgb,var(--ink) 8%,transparent);padding:1px 5px;border-radius:4px;}
+  td.k{white-space:nowrap;}
+  pre.sh{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px 16px;
+    overflow-x:auto;font:12.5px ui-monospace,monospace;line-height:1.65;margin:14px 0 0;}
+  pre.sh b{color:var(--b);font-weight:600;}
+  pre.sh i{color:var(--muted);font-style:normal;}
+  .callout{border-left:3px solid var(--d);background:var(--d-s);padding:13px 16px;
+    border-radius:0 8px 8px 0;margin:18px 0;font-size:14px;}
+  .callout.g{border-left-color:var(--b);background:var(--b-s);}
+  .callout.i{border-left-color:var(--a);background:var(--a-s);}
+  .thesis{border:1px solid var(--line);border-left:3px solid var(--a);background:var(--a-s);
+    padding:16px 19px;border-radius:0 9px 9px 0;margin:22px 0 8px;font-size:15px;}
+  ol.q{padding-left:20px;font-size:14px;}
+  ol.q li{margin-bottom:9px;}
+</style>
+
+<main>
+  <h1>Workflow điều phối — bản hoàn chỉnh v3</h1>
+  <p class="sub">Forge · 2026-09-04 · master · runner · core · subagent — không cổng routing, không trần cấu hình</p>
+
+  <div class="thesis">
+    <b>Một câu:</b> core giữ <em>sự thật</em>, runner giữ <em>cái máy</em>, master giữ <em>phán
+    đoán</em>. Mọi con số và mọi thứ tự đều là <b>quyết định của master dựa trên dữ liệu thật</b>,
+    không phải hằng số ai đó đặt sáu tuần trước rồi quên.
+    <p style="margin:9px 0 0"><b>Ba thứ bị xoá:</b> chiều PUSH · cổng L2 (blocker) · trần
+    <code>maxConcurrentIssues</code>. Cái còn lại ở kernel là những thứ phải đúng <em>kể cả khi
+    người quyết đã chết</em>.</p>
+  </div>
+
+  <h2>1 · Ba lớp, một chiều quan sát</h2>
+  <div class="board"><pre class="mermaid">
+flowchart TB
+  CO["<b>CORE</b> — sự thật<br/><small>issue · job · state · retry · escalation · evidence</small>"]:::core
+  RU["<b>RUNNER</b> — cái máy<br/><small>box còn gì · repo lock · process sống<br/>chủ DUY NHẤT của device token</small>"]:::run
+  MA["<b>MASTER</b> — phán đoán<br/><small>agent_sessions · giữ base branch<br/>đọc · gom nhóm · xếp thứ tự · đề xuất số lượng</small>"]:::mas
+  S1["subagent 1<br/><small>job row + job token</small>"]:::sub
+  S2["subagent 2"]:::sub
+  MA <-->|"① unix socket — XÂY MỚI"| RU
+  RU <-->|"② WS + REST — đã có"| CO
+  MA -->|"③ spawn · giết"| S1
+  MA --> S2
+  S1 -->|"④ core tools THẲNG"| CO
+  S2 --> CO
+  CO -->|"⑤ job_events sinceSeq"| MA
+  classDef core fill:#eaf1f8,stroke:#2b5f8f,stroke-width:2.5px,color:#1d4265;
+  classDef run fill:#fdf1e8,stroke:#b4531f,stroke-width:2.5px,color:#7d3a15;
+  classDef mas fill:#eaf5ef,stroke:#1f6f4a,stroke-width:2.5px,color:#14502f;
+  classDef sub fill:transparent,stroke:#d9d3ca,stroke-width:1.5px,color:#1c1a17;
+  </pre></div>
+  <table>
+    <tr><th>Lớp</th><th>Trả lời</th><th>KHÔNG trả lời</th></tr>
+    <tr><td class="k"><b>core</b></td><td>issue nào tồn tại · xong chưa · thử mấy lần · quan hệ ra sao</td><td>làm cái nào trước · box nào rảnh <em>thật</em></td></tr>
+    <tr><td class="k"><b>runner</b></td><td>box còn chỗ không · repo bị giữ không · process sống không</td><td>issue nào quan trọng hơn</td></tr>
+    <tr><td class="k"><b>master</b></td><td>làm cái nào trước · gom cái nào · chạy mấy cái · giao ai</td><td>đã xong <em>chính thức</em> chưa · merge chưa</td></tr>
+  </table>
+
+  <h2>2 · Vòng đời một issue</h2>
+  <div class="board"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant C as core
+  participant R as runner
+  participant M as master
+  participant S as subagent
+  C->>C: issue → open · job vào pool NGAY
+  Note over C: không cổng · không blocked · không đánh thức
+  M->>R: pool --limit 20
+  R->>C: GET (device token)
+  C-->>R: issue + quan hệ THÔ
+  R-->>M: danh sách + tải box hiện tại
+  M->>C: load --scope project,device
+  C-->>M: job đang chạy · theo project · theo device
+  Note over M: ĐỌC issue (tự suy đường dẫn chạm)<br/>gom nhóm · xếp thứ tự · CHỌN SỐ LƯỢNG
+  M->>R: claim ISS-912
+  R-->>M: ok / từ chối (box hết chỗ vật lý)
+  R->>C: job row + job token
+  M->>S: spawn + core tools đầy đủ
+  S->>C: làm việc · job_event (seq…)
+  loop nhịp master — dưới 10 phút
+    M->>C: GET /jobs/:id/events?sinceSeq=N
+    Note over M: seq đứng yên ⇒ KẸT, master vào cuộc
+  end
+  S->>C: complete
+  M->>R: report done
+  R->>C: <b>core QUYẾT trạng thái issue</b>
+  </pre></div>
+
+  <h2>3 · Năm quyết định chịu lực</h2>
+
+  <h3>① Master ở <code>agent_sessions</code>, subagent ở <code>jobs</code></h3>
+  <div class="callout g">
+    Một phiên Claude Code trên terminal <b>chính là</b> <code>agent_sessions</code> — đường ray chat
+    và schedule đang chạy (<code>schedules/dispatch.ts</code>: “<em>there is no jobs row, no
+    dispatcher, no capability gate</em>”). Master không cần phát minh gì; subagent vẫn có job row
+    nên kernel dọn được. Hai tầng đã tồn tại, việc mới là <b>nối chúng</b>.
+  </div>
+
+  <h3>② Master báo, core quyết</h3>
+  <table>
+    <tr><th></th><th>Master</th><th>Core</th></tr>
+    <tr><td class="k">Kết thúc</td><td><b>báo</b> đã xong</td><td><b>quyết</b> issue chuyển trạng thái gì</td></tr>
+    <tr><td class="k">Hỏng</td><td><b>báo</b> hỏng + bằng chứng</td><td><b>quyết</b> retry · quarantine · escalate</td></tr>
+    <tr><td class="k">Thứ tự</td><td><b>quyết</b> hoàn toàn</td><td>không có ý kiến</td></tr>
+    <tr><td class="k">Đã merge chưa</td><td>không có ý kiến</td><td><b>quyết</b> — <code>merged_at</code></td></tr>
+  </table>
+  <div class="callout">
+    <code>VISION: kernel-hard-policy-soft</code> giao kernel giữ <b>job · session · run · state ·
+    evidence · transition · retry · failure · escalation</b>; <b>routing</b> là policy. Master nhận
+    routing — hợp lệ, và v3 mở rộng đúng phạm vi đó. Nhưng master tự ghi trạng thái thì mất
+    <code>state-never-lies</code>: <b>thứ tự công việc là ý kiến, đã merge hay chưa là sự thật, và
+    sự thật không nhận ý kiến làm nguồn.</b>
+  </div>
+
+  <h3>③ Subagent dùng core tools thẳng — master đọc <code>job_events</code></h3>
+  <div class="callout g">
+    Không proxy (master thành bản sao core, và master chết thì subagent <em>mất tay</em>), không mù
+    (master phải hỏi, mà cái kẹt nhất là cái im nhất).
+    <p style="margin:8px 0 0"><b>Cái cho không:</b> <code>seq</code> đứng yên <b>là bằng chứng</b>.
+    Subagent treo thì không ghi được sự kiện nào, và sự vắng mặt đó đo được bằng đồng hồ. Core chỉ
+    thấy “running” tới timeout — hàng chục phút; master thấy trong vài nhịp.</p>
+  </div>
+
+  <h3>④ Không cổng blocker — pool trả quan hệ thô</h3>
+  <div class="callout g">
+    Xoá một luật đang có <b>ba bản sao</b>: SQL trong <code>dispatch-gates.ts</code>, TS trong
+    <code>dependency-satisfaction.ts</code>, và bản thứ ba <code>pipeline-health.ts</code> phải mọc
+    thêm. Đã có sự cố: một dependent bỏ đói <b>40 phút</b> với banner trống vì hai bản lệch nhau.
+    <b>Không cổng thì không có gì phải giữ đồng bộ.</b>
+    <p style="margin:8px 0 0"><b>Đừng trả <code>satisfied: true/false</code></b> — đó là
+    <code>isBlockerSatisfied</code> đội tên khác, tức bản sao thứ tư. Trả trạng thái thô:
+    <code>mergedAt</code> có mà status <code>reopen</code> = đã landed rồi bị bounce;
+    <code>dropped</code> = bỏ hẳn. Hai ca, hai xử lý — một chữ <code>false</code> làm mất cả hai.</p>
+  </div>
+
+  <h3>⑤ Không trần cấu hình — master đề xuất số lượng</h3>
+  <table>
+    <tr><th></th><th>Trước</th><th>v3</th></tr>
+    <tr><td class="k">Bao nhiêu issue song song</td><td><code>maxConcurrentIssues</code> — hằng số, mặc định 1, trần 20</td><td><b>master quyết mỗi vòng</b>, từ tải thật</td></tr>
+    <tr><td class="k">Dựa trên</td><td>không gì cả — người đặt rồi quên</td><td>job đang chạy · tải box · độ nặng issue · nhóm đụng nhau</td></tr>
+    <tr><td class="k">Sai thì</td><td>sai mãi tới khi ai đó sửa config</td><td>sai một vòng, vòng sau tự chỉnh</td></tr>
+  </table>
+
+  <div class="callout">
+    <b>Một ranh giới KHÔNG bỏ, và nó không phải “limit”.</b> Runner vẫn được từ chối
+    <code>claim</code> khi box hết chỗ <em>vật lý</em> — RAM, permit, repo đang khoá. Đó không phải
+    trần chính sách mà là <b>sự thật về cái máy</b>, và master không đứng ở chỗ nhìn thấy nó.
+    <p style="margin:8px 0 0">Từ chối <b>không</b> tính là fail của job: hết chỗ là chuyện bình
+    thường, tính vào retry budget thì một box bận đốt hết lượt thử của issue.</p>
+  </div>
+
+  <h2>4 · Bộ công cụ của master</h2>
+  <p class="cap">Ba nhóm: <b>lấy việc</b> · <b>nhìn tải</b> · <b>báo cáo</b>. Master không có tool nào ghi trạng thái issue.</p>
+  <pre class="sh"><i># ── LẤY VIỆC ─────────────────────────────────</i>
+forge-runner <b>pool</b>     --limit 20        <i># việc + quan hệ thô, KHÔNG chiếm</i>
+forge-runner <b>claim</b>    ISS-912           <i># chiếm → job row + job token</i>
+forge-runner <b>release</b>  ISS-912 --reason  <i># nhả lại vào pool</i>
+
+<i># ── NHÌN TẢI (mới) ───────────────────────────</i>
+forge-runner <b>load</b>                        <i># box NÀY: job chạy, permit, repo khoá, RAM</i>
+forge-runner <b>load --scope project</b>        <i># project này: chạy ở đâu, bao nhiêu, bao lâu</i>
+forge-runner <b>load --scope fleet</b>          <i># mọi device của project: online, tải, version</i>
+
+<i># ── BÁO CÁO ──────────────────────────────────</i>
+forge-runner <b>report</b>   ISS-912 --state working|done|failed --evidence …</pre>
+
+  <h3>Hình dạng <code>pool</code></h3>
+  <pre class="sh">{
+  "issueId": "…", "key": "ISS-912", "status": "open",
+  "priority": "p1", "category": "core", "title": "…",
+  "description": "…",          <i>// master TỰ ĐỌC để suy đường dẫn chạm</i>
+  "ageHours": 30,
+  <b>"relations"</b>: [{
+    "kind": "blocks", "dependsOnKey": "ISS-900",
+    <b>"blockerStatus"</b>: "dropped",      <i>// THÔ — không phải satisfied:bool</i>
+    <b>"blockerMergedAt"</b>: null,
+    <b>"edgeValidUntil"</b>: "2026-09-10T…"
+  }],
+  <b>"heldBy"</b>: null                       <i>// master khác đang giữ?</i>
+}</pre>
+
+  <h3>Hình dạng <code>load</code></h3>
+  <pre class="sh">{
+  <b>"device"</b>: { "name":"dev1", "jobsRunning":2, "permitsHeld":1,
+               "reposLocked":["/home/forge/projects/forge-dev"],
+               "agentVersion":"0.10.5", "memAvailableMb":9400 },
+  <b>"project"</b>: { "slug":"forge-dev", "jobsRunning":3, "queueDepth":11,
+                "byState":{"code":2,"review":1},
+                "oldestRunningMinutes":41 },
+  <b>"fleet"</b>: [ { "device":"dev1","online":true,"jobsRunning":2 },
+              { "device":"ubuntu5","online":false,"lastSeenMinutes":63 } ]
+}</pre>
+  <div class="callout i">
+    <b><code>load</code> trả số thô, không trả lời khuyến nghị.</b> Không có trường
+    <code>canTakeMore: 3</code> — đó là core lại đoán hộ, tức một trần đội tên khác. Master nhìn
+    <code>jobsRunning</code>, <code>memAvailableMb</code>, <code>oldestRunningMinutes</code> rồi tự
+    kết luận. <code>oldestRunningMinutes</code> đáng giá riêng: một job chạy 41 phút là tín hiệu
+    khác hẳn hai job vừa bắt đầu, dù cả hai đều đếm là “2 đang chạy”.
+  </div>
+
+  <h3>Subagent cầm tool nào — policy, không phải hằng số kernel</h3>
+  <table>
+    <tr><th>Nhóm</th><th>Subagent</th><th>Vì sao</th></tr>
+    <tr><td class="k">Làm việc <small>issues · comments · handoff · memory · knowledge</small></td><td><b>có</b></td><td>đây là công việc; cắt là subagent thành cái vỏ</td></tr>
+    <tr><td class="k">Ghi tiến độ <small>job_event · step_start</small></td><td><b>có</b></td><td>chính là kênh master đọc — cắt là làm mù master</td></tr>
+    <tr><td class="k">Điều phối <small>pool · claim · release · load</small></td><td><b>không</b></td><td>subagent tự lấy thêm việc thì master hết là master</td></tr>
+    <tr><td class="k">Quản trị <small>projects_update · runners · skills</small></td><td><b>không</b></td><td><code>states.*.disallowedTools</code> đã làm đúng việc này</td></tr>
+  </table>
+
+  <h2>5 · Bốn cái chết, bốn người phát hiện</h2>
+  <div class="board"><pre class="mermaid">
+flowchart LR
+  X1["<b>subagent treo</b><br/><small>sống mà không tiến</small>"]:::x --> Y1["MASTER<br/>seq đứng yên"]:::ok
+  X2["<b>subagent chết</b>"]:::x --> Y2["MASTER<br/>nó spawn nên nó biết"]:::ok
+  X3["<b>master chết</b>"]:::x --> Y3["RUNNER<br/>socket đứt — tức thì"]:::ok
+  X4["<b>runner chết</b>"]:::x --> Y4["CORE<br/>heartbeat tắt — đã có"]:::ok
+  classDef x fill:#fbeef1,stroke:#8a3b52,stroke-width:2px,color:#6b2a3d;
+  classDef ok fill:#eaf5ef,stroke:#1f6f4a,stroke-width:2px,color:#14502f;
+  </pre></div>
+  <p class="cap" style="margin-top:12px">Mỗi lớp được lớp dưới quan sát, lớp dưới cùng đã có cơ chế. Ca ① mô hình cũ không bắt được. Ca ③ nhanh hơn <b>một bậc độ lớn</b> so với thiết kế hai lớp — runner ngay cạnh master, không chờ heartbeat 3 phút.</p>
+
+  <h2>6 · Ràng buộc phải thiết kế quanh nó</h2>
+  <div class="callout">
+    <b><code>SESSION_IDLE_TIMEOUT</code> = 10 phút, hằng số.</b> Master “giao việc rồi ngồi đợi”
+    <b>tự chết trước khi subagent đầu tiên xong</b>. Master phải là <b>vòng lặp có nhịp</b>: đọc
+    <code>sinceSeq</code> → <code>load</code> → ghi nhận → ngủ ngắn → lặp. Mỗi vòng một turn, và
+    turn là thứ reset đồng hồ.
+    <p style="margin:8px 0 0">Tình cờ đúng: master không nói gì 10 phút thì cũng không đang monitor
+    gì. <b>Cảnh báo phase 3:</b> cho hằng số này một reader per-project thì giá trị <code>0</code>
+    hiểu theo nghĩa đen sẽ tắt hẳn cơ chế thu hồi duy nhất của box — một project tự tắt được thứ
+    bảo vệ mọi project khác trên cùng máy.</p>
+  </div>
+
+  <h2>7 · Cái giá — nói thẳng</h2>
+  <table>
+    <tr><th>Mất</th><th>Đánh giá</th></tr>
+    <tr><td class="k">Bảo đảm cứng: dependent không chạy trước blocker</td><td><b>Có thật.</b> Cổng không bao giờ sai — nhưng cũng không bao giờ đúng ở ca “blocker <code>dropped</code>”, “hai file rời nhau”, “ba issue cùng chạm một module mà không có edge nào”.</td></tr>
+    <tr><td class="k">Trần cứng số việc song song</td><td>Master tính sai ⇒ box quá tải một vòng. <b>Giảm nhẹ:</b> runner từ chối theo sự thật vật lý, và vòng sau master thấy <code>load</code> tự chỉnh.</td></tr>
+    <tr><td class="k">Không master ⇒ không gì chạy</td><td>Trước đây core tự đẩy. <b>Giảm nhẹ:</b> schedule dựng master định kỳ.</td></tr>
+    <tr><td class="k">Luật thứ tự thành <b>prompt</b></td><td>Khó test hơn. Nhưng đúng với <code>kernel-hard-policy-soft</code>: routing là policy, và policy là nơi prompt sống.</td></tr>
+  </table>
+
+  <h2>8 · Thứ tự triển khai</h2>
+  <table>
+    <tr><th>#</th><th>Việc</th><th>Lớp</th><th>Được gì</th></tr>
+    <tr><td class="k">0a</td><td><b>Bật lại 3 box offline</b></td><td>ops</td><td><b>1 → 3</b> song song, không cần code</td></tr>
+    <tr><td class="k">0b</td><td>Cắt tag <code>runner-v0.10.5</code></td><td>ops</td><td>chat hết hàng đợi</td></tr>
+    <tr><td class="k">0c</td><td>Deploy core (migration <code>0201</code>)</td><td>ops</td><td>—</td></tr>
+    <tr><td class="k">1</td><td><b>Unix socket + IPC</b> trên daemon</td><td>runner</td><td><b>mảnh mới hoàn toàn</b></td></tr>
+    <tr><td class="k">2</td><td>CLI <code>pool·claim·release·load·report</code></td><td>runner</td><td>—</td></tr>
+    <tr><td class="k">3</td><td>Endpoint pool (quan hệ thô) · claim (job token) · <b>load</b></td><td>core</td><td>—</td></tr>
+    <tr><td class="k">4</td><td><b>Socket đứt ⇒ nhả job</b></td><td>runner</td><td><b>mắt xích chịu lực</b></td></tr>
+    <tr><td class="k">5</td><td>Skill master: đọc issue · gom nhóm · chọn số lượng · nhịp</td><td>policy</td><td>—</td></tr>
+    <tr><td class="k">6</td><td>Schedule dựng master định kỳ</td><td>policy</td><td>thay “ping check master”</td></tr>
+    <tr><td class="k">7</td><td><b>Xoá</b>: push · L2 + 3 mirror · <code>maxConcurrentIssues</code> · dispatch tick</td><td>core</td><td>sau cùng, khi pool chạy thật</td></tr>
+  </table>
+  <p class="cap" style="margin-top:11px">0a/0b/0c <b>độc lập nhau</b> — thứ tự nào cũng được, không có cửa sổ hỏng ở giữa: cột và code luôn đi chung một lần deploy. Bước 7 xoá được cả <code>dependency-satisfaction.ts</code> lẫn bản sao trong <code>pipeline-health.ts</code>.</p>
+
+  <h2>9 · So với các bản trước — cái gì biến mất</h2>
+  <table>
+    <tr><th>Bỏ</th><th>Vì sao không cần nữa</th></tr>
+    <tr><td class="k">Chiều PUSH · <code>job.assigned</code> · dispatch tick</td><td>máy tự đến lấy</td></tr>
+    <tr><td class="k">Ack có quyền từ chối</td><td>máy không nhận thứ nó không xin</td></tr>
+    <tr><td class="k"><code>capacity.report</code> lên core</td><td>runner biết, và runner là chỗ master hỏi</td></tr>
+    <tr><td class="k">Admission gate · <code>blocked</code> · đánh thức/thu hồi</td><td>không lưu quyết định thì không phải đồng bộ</td></tr>
+    <tr><td class="k">Hook <code>unmark</code> · red flag <em>open-then-block</em></td><td>hệ quả của cổng — tan cùng cổng</td></tr>
+    <tr><td class="k"><code>maxConcurrentIssues</code> · tách L3 “an toàn nhánh”</td><td>master đọc issue và nhìn <code>load</code>, quyết mỗi vòng</td></tr>
+    <tr><td class="k">Ping check master còn sống</td><td>schedule tự dựng lại; issue nằm pool chờ, thấy được</td></tr>
+    <tr><td class="k">Scheduler toàn cục · công bằng project</td><td>master xếp ưu tiên, đó là việc của nó</td></tr>
+  </table>
+  <p class="cap" style="margin-top:11px"><b>Thêm ở kernel đúng một thứ:</b> bước 4. Kênh <code>job_events</code>+<code>sinceSeq</code> đã chạy production — master chỉ là reader mới.</p>
+
+  <h2>10 · Còn phải chốt</h2>
+  <ol class="q">
+    <li><b>Master một-cho-mỗi-repo hay mỗi-box?</b> Giữ base branch ⇒ nghiêng <b>mỗi (box, repo)</b>. Socket phải phân biệt được ai đang nói, và <code>heldBy</code> phải mang được danh tính đó.</li>
+    <li><b>Bao lâu không có <code>seq</code> mới thì coi là kẹt?</b> Review im 5 phút là bình thường, code thì không ⇒ <b>master tự quyết theo loại việc</b>, đừng thành hằng số mới.</li>
+    <li><b>Master ngắt subagent thì job row đi đâu?</b> <em>Đề nghị</em>: master <code>report failed</code> + lý do, core quyết retry/fail. Master không tự ghi terminal.</li>
+    <li><b>Subagent đọc được <code>job_events</code> của nhau không?</b> <em>Nghiêng về không</em> lúc đầu — đó là đường để hai subagent thoả thuận sau lưng master.</li>
+    <li><b>“Run của một phiên chat” nghĩa là gì?</b> 123/216 interactive session ghi tiếp SAU khi run đóng. Câu hỏi core-side, cần một change riêng.</li>
+  </ol>
+  <p class="cap" style="margin-top:11px">Hai câu treo lâu nhất đã <b>tự biến mất</b> cùng thiết kế: “blocker <code>dropped</code> thì ai đánh thức” và “an toàn nhánh đo bằng gì”.</p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({startOnLoad:true,theme:dark?'dark':'neutral',
+    flowchart:{curve:'basis',nodeSpacing:44,rankSpacing:56,htmlLabels:true},
+    sequence:{useMaxWidth:true,wrap:true,width:205,boxMargin:9}});
+</script>
