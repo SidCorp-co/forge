@@ -95,6 +95,19 @@ undeclared trade-off is indistinguishable from an unnoticed one six weeks later.
 the old logic this supersedes, then the cleanup that removes it. Code that ships beside the
 thing it replaced leaves two live paths and a reader who cannot tell which one runs.
 
+**A loud break beats a silent substitution.** When a refactor cannot do the thing that was asked,
+it must fail where the gap is — never do the nearest thing that still returns. A redesign that
+lands missing a piece and says so is recoverable in an afternoon; one that quietly answers with
+something almost-right is found weeks later by the damage. So when the old path handled a case the
+new one does not: refuse it by name. Do not widen a filter to swallow it, do not fall back to the
+path being replaced, and do not delete the rows that no longer fit — an operator who is told
+`no SSH provider for this repo` loses ten minutes, one whose job silently ran against a different
+checkout loses the diff. The same rule governs the migration: a row the new schema cannot represent
+aborts the deploy naming the row, rather than being cleaned away so the `ALTER` succeeds.
+
+This is the one place effort is NOT the tiebreaker in reverse: a smaller change that preserves a
+silent fallback is not the cheaper option, it is the one whose bill arrives later and unlabelled.
+
 ### There is no "already red"
 
 **A defect you have seen may not leave your hands labelled "not mine".** In reach and inside the

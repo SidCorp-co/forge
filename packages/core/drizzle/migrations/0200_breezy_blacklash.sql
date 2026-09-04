@@ -4,13 +4,25 @@
 -- constant, and a constant column is a second copy of a fact the code holds.
 --
 -- Measured on forge-beta before this was written: 65 runner rows, every one
--- host='device' / type='claude-code', ZERO with a NULL device_id — so the
--- NOT NULL below tightens a column already total there. This DELETE is for the
--- deployments that are not forge-beta: without it `SET NOT NULL` aborts the
--- whole migration on the first remote runner row, and the container then
--- serves new code against the old schema. A binding to no device cannot
--- dispatch now that the adapter is gone, so removing it is the honest cleanup.
-DELETE FROM "runners" WHERE "host" = 'remote' OR "device_id" IS NULL;
+-- host='device' / type='claude-code', ZERO with a NULL device_id.
+--
+-- A deployment that DOES hold such rows stops here and is told so. Deleting
+-- them to make `SET NOT NULL` succeed would be the silent substitution
+-- CLAUDE.md forbids: the operator would find their runners gone with no
+-- record of it, at the moment they were reading a green deploy. Failing here
+-- costs them one command and keeps the decision theirs.
+DO $$
+DECLARE offending int;
+BEGIN
+  SELECT count(*) INTO offending FROM "runners" WHERE "host" = 'remote' OR "device_id" IS NULL;
+  IF offending > 0 THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'raise_exception',
+      MESSAGE = format('migration 0200: %s runner row(s) are host=''remote'' or carry no device', offending),
+      DETAIL  = 'The remote runner lane was removed, so these rows can no longer dispatch and `device_id` is about to become NOT NULL. This migration will not delete them for you.',
+      HINT    = 'Review them, then run: DELETE FROM runners WHERE host = ''remote'' OR device_id IS NULL;  and re-deploy.';
+  END IF;
+END $$;
 --> statement-breakpoint
 -- The FK was created inline by `0031_iss271_runners.sql` as
 -- `runners_device_id_fkey`; drizzle-kit generated a DROP for the name its own
