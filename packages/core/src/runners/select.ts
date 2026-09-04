@@ -240,28 +240,34 @@ function rowToRunner(r: RunnerRow): Runner {
 }
 
 /**
- * ISS-232 — deterministic 3-step selector. Returns the first non-null:
+ * ISS-232 — deterministic selector. Returns the first non-null:
  *
  *   1. **pin** (sticky session-group resume) — `pinDeviceId` runner if it
  *      is online + fresh + meets `requiredCapabilities`. A stale pin
  *      returns null so the caller can drop the `--resume` and dispatch a
  *      fresh session.
- *   2. **primary** — `projects.defaultDeviceId` runner if online + fresh +
+ *   2. **least-loaded**, ONLY when `projectCap > 1` — `pickLeastLoadedFreeRunner`
+ *      over every online + fresh + capable box under its cap, preferring
+ *      `defaultDeviceId`. This arm never returns a box already at cap; it is
+ *      what lets two issues of one project land on two hosts.
+ *   3. **primary** — `projects.defaultDeviceId` runner if online + fresh +
  *      capable. Returns the primary EVEN WHEN IT IS AT IN-FLIGHT CAP:
  *      the picker's L4 EXISTS already gates on
  *      `fresh_capable_runners.in_flight < cap`, so the dispatcher won't
  *      pick a new job when the primary is full. We intentionally do NOT
  *      fall through to standby on "primary full" — that would let a load-
  *      balance pattern silently emerge against the primary-pinned spec.
- *   3. **standby** — any other online + fresh runner on the project
+ *   4. **standby** — any other online + fresh runner on the project
  *      (device_id ≠ defaultDeviceId), ranked by `last_seen_at DESC, id
  *      ASC`. Deterministic — no `RANDOM()` tiebreaker — so a re-run with
  *      the same DB state always returns the same runner.
  *
  * Phase 2 (ISS-232) dropped the `fallbackChain` parameter and the
  * `capabilities.maxConcurrent` per-runner override; the runner/job-type
- * capability gate is enforced post-select via `runnerSupportsJobType`,
- * and runner cap is hardcoded to 1 across the codebase.
+ * capability gate is enforced post-select via `runnerSupportsJobType`.
+ * The cap is per DEVICE and comes from `devices.max_concurrent`, resolved
+ * through `effectiveDeviceCap` / `deviceCapSql` — which hold any box below
+ * `REPO_LOCK_MIN_RUNNER` at 1 whatever the column says.
  */
 export async function selectRunnerForJob(input: SelectInput): Promise<Runner | null> {
   const { projectId, requiredCapabilities, pinDeviceId } = input;
@@ -347,7 +353,7 @@ async function pickRunner(
     .limit(1);
   const defaultDeviceId = project?.defaultDeviceId ?? null;
 
-  // cm:guard this arm must NEVER return a box already at its cap — unlike the legacy primary step, which returns the primary regardless. It is what makes two independent issues land on two hosts instead of piling onto one, and the tie-break toward the primary is what keeps a usually-serial project on its warm checkout until it actually has to spill.
+  // cm:guard this arm must NEVER return a box already at its cap — unlike the legacy primary step, which returns the primary regardless. It is what makes two independent issues land on two hosts instead of piling onto one. `preferDeviceId` is the FIRST sort key, not a tie-break, so the primary fills to its cap before anything spills — deliberate, to keep a usually-serial project on its warm checkout. That ordering trades startup throughput for a warm tree: same-project jobs on one box share a repo root and so queue behind the runner's `RepoLocks`. Reversing the two keys is a real option, but only against measured setup durations, never on the reading of this line alone.
   if (!opts.skipPrimary && opts.projectCap > 1) {
     return pickLeastLoadedFreeRunner(projectId, required, livenessSeconds, {
       excludeDeviceIds: opts.excludeDeviceIds,
