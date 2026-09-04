@@ -199,7 +199,7 @@ and the issue prefix is the only one with a title; and the `queued` state a flip
 already chunked. `memoryModel` was removed from `PUT /api/app-config` in the same change: the flip
 has a job behind it and only the POST below may start one. **The Project Settings card that draws
 the five states is split out as ISS-908** (a screen change parks for human review; the backend
-does not), blocked on this issue. The settings-page passages below describe ISS-908; everything else below is code.
+does not), blocked on this issue. The settings-page passages below shipped separately in ISS-908 (the Memory tab); everything below is code.
 
 ### Shape
 
@@ -291,7 +291,7 @@ shows a moving number, not a spinner. An `EmbeddingUnavailableError` sets `state
 mid-run is the same case. `last_backfill_at` (a column that exists and nothing writes today) is
 stamped on `completed`.
 
-The settings page — **ISS-908, not shipped by ISS-906** — therefore has five states to draw: *flat* (estimate + confirm), *queued /
+The settings page — **shipped in ISS-908** as the Memory tab of Project Settings — therefore has five states to draw: *flat* (estimate + confirm), *queued /
 running* (progress with counts and Cancel), *failed* (error + Retry), *completed*
 (chunked, with the flat option offered), *cancelled* (partial, with Resume). A project whose
 reindex never finished is still correct to search — the UNION read below is what makes that
@@ -322,7 +322,7 @@ Files: `db/schema.ts` (+ migration for `memory_chunks` and the two `memories` co
 `when` = max + 86400000 per the CLAUDE.md invariant), `memory/chunker.ts` (+ test),
 `memory/indexer.ts`, `memory/embedding-backfill.ts`, `memory/chunk-reindex.ts` (+ test),
 `memory/search.ts`, `memory/search-service.ts`, the `app-config` memory-model routes (+ test),
-`docs/modules/knowledge-memory-skills/README.md`; the web-v2 project settings page is ISS-908.
+`docs/modules/knowledge-memory-skills/README.md`; the web-v2 Memory tab shipped in ISS-908.
 
 Tests that must go red:
 - unit, chunker: a 5,000-character body yields chunks each ≤ 1,400 characters with the seam text
@@ -400,8 +400,8 @@ Phases 1, 2 and 3 are otherwise independent and may ship in any order; 1 and 3 a
 
 Filed 2026-09-04 as `draft` on forge-dev: ISS-904 (phase 0), ISS-905 (phases 1+3), ISS-906
 (phase 2), ISS-907 (phase 4), the last three each carrying a `blocks` edge on ISS-904. The phase's
-tests are its acceptance. Phase 2's backend shipped in ISS-906 on 2026-09-04; its settings card is
-ISS-908. The proposal is retired to `docs/modules/knowledge-memory-skills/` once ISS-908 ships and
+tests are its acceptance. Phase 2's backend shipped in ISS-906 on 2026-09-04 and its Memory tab in
+ISS-908 on 2026-09-05. The proposal is retired to `docs/modules/knowledge-memory-skills/` once
 phase 4 is either opened or declined on the phase-0 evidence — the module README already carries the
 shipped rules, so what remains here is the pilot's exit criteria and phase 4's condition.
 

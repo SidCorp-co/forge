@@ -519,3 +519,43 @@ export const API_ONLY_KEYS: ApiOnlyKey[] = [
 			"Absent from pipelineConfigSchema — the GET route's schema parse strips them before the response reaches the browser, so this screen genuinely cannot read them (core schema change, tracked on ISS-814).",
 	},
 ];
+
+// cm:edge contract -> packages/core/src/app-config/memory-model-routes.ts — the five states, the counters and the estimate keys are decided there and by memory/chunk-reindex.ts; this screen only draws them
+
+export type MemoryModel = "flat" | "chunked";
+
+export const MEMORY_REINDEX_STATES = [
+	"queued",
+	"running",
+	"completed",
+	"failed",
+	"cancelled",
+] as const;
+export type MemoryReindexState = (typeof MEMORY_REINDEX_STATES)[number];
+
+/** `app_config.memory_reindex` as `GET /api/app-config/:id/memory-model/reindex` returns it. */
+export interface MemoryReindex {
+	state: MemoryReindexState;
+	total: number;
+	done: number;
+	remaining: number;
+	requestedAt: string;
+	startedAt?: string;
+	finishedAt?: string;
+	lastBatchAt?: string;
+	lastError?: string;
+}
+
+export interface MemoryModelStatus {
+	model: MemoryModel;
+	reindex: MemoryReindex | null;
+}
+
+/** `GET /api/app-config/:id/memory-model/estimate` — CHUNKED_SOURCES rows only. */
+export interface MemoryReindexEstimate {
+	memories: number;
+	totalChars: number;
+	estimatedChunks: number;
+	estimatedEmbedCalls: number;
+	estimatedMinutes: number;
+}

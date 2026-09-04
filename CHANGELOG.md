@@ -10,6 +10,14 @@
 
 ### Added
 
+- Retrieval v3, phase 2b (ISS-908). Project Settings gains a **Memory** tab. A project admin sees the
+  project's memory model and, when it is flat, the estimate for switching to chunked (memories,
+  characters, passages, embedding calls, minutes) with a *Switch to chunked* button. While the reindex
+  runs the tab shows done / total with a progress bar and the last batch time, refreshing every five
+  seconds, and offers *Cancel*; a failed reindex shows its error with *Retry*, a cancelled one its
+  partial counts with *Resume*; a completed one offers *Switch back to flat* behind a type-to-confirm
+  that names the seven-day purge. Members see the same state without the buttons.
+
 - Retrieval v3, phase 2 (ISS-906). A project admin can move a project's memory onto the chunked model
   with `POST /api/app-config/:projectId/memory-model { model: 'chunked' }`, after reading
   `GET …/memory-model/estimate`. From then on every `issue`, `note`, `knowledge`, `decision` and
