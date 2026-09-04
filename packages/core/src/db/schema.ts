@@ -438,6 +438,10 @@ export const devices = pgTable(
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     pairedAt: timestamp('paired_at', { withTimezone: true }).notNull().defaultNow(),
     capabilities: jsonb('capabilities'),
+    // cm:guard chat is NOT counted against this — it runs off the jobs table with its own budget on the runner (`[runner] chat_max_concurrent`) and never takes a `job.assigned` slot, so folding the two together would let a burst of chats starve the pipeline (ISS-321).
+    // cm:guard the unit is the DEVICE and must stay there: the resource a job consumes is one Claude process on one machine, so a box bound to 20 projects at cap 3 runs 3 jobs total, not 3 per project. It is compared against `countInFlightForDevice`, never against the per-binding count that feeds the load reports.
+    // cm:guard raising this above 1 is only safe on a runner new enough to hold the repo-root lock (`daemon/repo_lock.rs`). Core deploys in one step while the fleet updates on its own clock, so the effective cap is resolved per runner at dispatch against REPO_LOCK_MIN_RUNNER — an old box silently keeps 1 rather than being trusted with a number it cannot honour.
+    maxConcurrent: integer('max_concurrent').notNull().default(1),
     // ISS-305 — non-secret label recording that a git push credential was
     // auto-provisioned for this device at login time (e.g. 'https-helper' or
     // 'ssh-deploy-key'); NULL means no credential was provisioned. The secret

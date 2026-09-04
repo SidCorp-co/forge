@@ -49,6 +49,7 @@ const stubDevice: Device = {
   capabilities: null,
   machineId: null,
   gitCredentialRef: null,
+  maxConcurrent: 1,
   createdAt: new Date(),
 };
 

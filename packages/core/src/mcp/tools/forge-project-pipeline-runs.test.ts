@@ -66,6 +66,7 @@ const fakeDevice = {
   agentVersion: null,
   machineId: null,
   gitCredentialRef: null,
+  maxConcurrent: 1,
   tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
   tokenPrefix: 'fake0001',
   disabledAt: null,

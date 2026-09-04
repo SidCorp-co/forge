@@ -33,6 +33,7 @@ function stubDevice(userId: string): Device {
     pairedAt: new Date(0),
     capabilities: null,
     gitCredentialRef: null,
+    maxConcurrent: 1,
     machineId: null,
     createdAt: new Date(0),
   };

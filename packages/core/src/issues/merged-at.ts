@@ -160,6 +160,27 @@ export async function markMergedOnClose(
 /** First runner release whose `worktree::create` reuses an existing checkout. */
 export const WORKTREE_LANE_MIN_RUNNER = '0.9.3';
 
+/** First runner release holding the repo-root lock (`daemon/repo_lock.rs`). */
+// cm:guard per-FEATURE floor, never a blanket "is the runner current" check. Core deploys in one step and the fleet updates on its own clock, so a box that has not restarted yet is normal, not broken — and a box below this floor runs `workspace::refresh` on the shared root with no lock at all. Trusting it with a cap above 1 lets two jobs `merge --ff-only` one index and rewrite files an agent is mid-read on.
+// cm:edge lockstep -> packages/runner/Cargo.toml — this string names a runner release; it may only rise to a version that has actually been cut and published, or every box reads as too old and the whole fleet silently falls back to cap 1
+export const REPO_LOCK_MIN_RUNNER = '0.10.5';
+
+/**
+ * How many jobs this box may carry, given the runner build that will take them.
+ *
+ * `configured` is `devices.max_concurrent`.
+ */
+// cm:guard an unknown or unparseable version resolves to 1, and that direction is the whole safety of it. A wrong answer that says "too old" costs throughput an operator can see; one that says "new enough" corrupts a working tree nobody is watching.
+export function effectiveDeviceCap(
+  configured: number | null | undefined,
+  runnerVersion: string | null | undefined,
+): number {
+  const wanted = Math.trunc(configured ?? 1);
+  if (!Number.isFinite(wanted) || wanted < 1) return 1;
+  if (wanted === 1) return 1;
+  return atLeast(runnerVersion, REPO_LOCK_MIN_RUNNER) ? wanted : 1;
+}
+
 function atLeast(version: string | null | undefined, min: string): boolean {
   if (!version) return false;
   const a = version.split('.').map(Number);
