@@ -297,6 +297,11 @@
     top-level keys are now dropped against the tool's own schema before dispatch.
   - A handler that threw a Drizzle query error showed the model 500 characters of INSERT and
     never the Postgres reason; the thrown error's `cause` now wins when there is one.
+  - The ISS-687 dedup guard let a second report of the same Safari login bug through as ISS-7:
+    its title scored 0.727 against the draft filed one turn earlier, above the 0.72 floor, but
+    two model-written descriptions of one chat message share little vocabulary and the 25%
+    description weight dragged the blend under. A title that clears the floor alone is now a
+    duplicate; the blend still rescues a weaker title with a near-identical description.
 
 - web-v2 `features/activity` read `chat_logs.usage` through Anthropic-shaped snake_case keys
   (`input_tokens`, `cache_read_input_tokens`) that core has never written, so `sumTokens` returned

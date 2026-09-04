@@ -1,12 +1,5 @@
 /**
- * ISS-687 — lightweight dedup guard for chat-originated issue creation. Fires
- * on BOTH the direct-create path (Bao answering directly) and the
- * PM-advisory-proposal-create path (Bao creating on the PM's behalf) since
- * both flow through the one `forge_issues` create action wired in
- * `registry.ts`. Deterministic title/description similarity over the
- * project's recent draft/open issues — not semantic embeddings — so the
- * guard stays dependency-light, unit-testable, and reproducible. Fails OPEN:
- * a dedup query error must never block a legitimate create.
+ * ISS-687 — dedup guard for chat-originated issue creation (direct create and PM-proposal create both flow through the one `forge_issues` create in `registry.ts`): deterministic title/description similarity over the project's recent draft/open issues, no embeddings, so it stays unit-testable; fails OPEN because a dedup error must never block a legitimate create.
  */
 
 import { and, desc, eq, inArray } from 'drizzle-orm';
@@ -14,13 +7,9 @@ import type { Db } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 
-/** Recent draft/open issues considered for a duplicate match — bounded so the
- *  check stays cheap even on a busy project. */
 const RECENT_ISSUES_LIMIT = 50;
 
-/** Combined-score floor above which two issues are treated as duplicates.
- *  Tunable post-deploy against real repeat-report patterns (ISS-61..64 was
- *  the motivating near-identical-title case); start conservative. */
+/** Score floor for a duplicate; ISS-61..64 was the motivating near-identical-title case. */
 const DUPLICATE_THRESHOLD = 0.72;
 
 function tokenize(text: string): Set<string> {
@@ -83,7 +72,8 @@ export async function findDuplicateIssue(
   for (const row of rows) {
     const titleScore = titleSimilarity(args.title, row.title);
     const descScore = titleSimilarity(args.description, row.description ?? '');
-    const score = titleScore * 0.75 + descScore * 0.25;
+    // cm:guard a title that clears the threshold ALONE is a duplicate, whatever the description scores — measured 2026-09-04: "Safari 17: login page blank after OAuth redirect" scored 0.727 against the draft filed one turn earlier and still went through as ISS-7, because two LLM-written descriptions of the same chat message share little vocabulary and the 25% description weight dragged the blend under 0.72; the blend still lets a weaker title be rescued by a near-identical description
+    const score = Math.max(titleScore, titleScore * 0.75 + descScore * 0.25);
     if (score > bestScore) {
       bestScore = score;
       best = { id: row.id, issSeq: row.issSeq, title: row.title };
