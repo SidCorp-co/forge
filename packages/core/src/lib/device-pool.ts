@@ -8,7 +8,7 @@ import { dispatchLivenessMs } from './dispatch-liveness.js';
  *
  * Resolution order:
  *  1. The freshest online `claude-code` runner row for this project (mirrors
- *     `selectRunnerForJob` filters: status='online', host='device',
+ *     `selectRunnerForJob` filters: status='online',
  *     last_seen_at within the dispatch-liveness window), preferring a
  *     HEALTHY runner (no future `rate_limited_until`, `limit_reason` not
  *     `auth`) over a limited one — a limited runner is still returned when it
@@ -45,9 +45,7 @@ export async function findAvailableDeviceForProject(
     FROM runners r
     WHERE r.project_id = ${projectId}
       AND r.type       = 'claude-code'
-      AND r.host       = 'device'
       AND r.status     = 'online'
-      AND r.device_id IS NOT NULL
       AND r.last_seen_at IS NOT NULL
       AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
       AND NOT EXISTS (
@@ -89,7 +87,7 @@ export async function findAvailableDeviceForProject(
 /**
  * Verify that `deviceId` is a chat-capable runner for `projectId` and return it
  * when eligible, else `null`. "Chat-capable" mirrors the primary
- * `findAvailableDeviceForProject` filters (type='claude-code', host='device',
+ * `findAvailableDeviceForProject` filters (type='claude-code',
  * status='online', within the dispatch-liveness window, device not disabled) —
  * so an explicit runner pick from the UI is validated against the exact same
  * gate the auto-pick uses, and a stale/offline/foreign choice is rejected rather
@@ -118,7 +116,6 @@ export async function findChatCapableDeviceForProject(
     WHERE r.project_id = ${projectId}
       AND r.device_id  = ${deviceId}
       AND r.type       = 'claude-code'
-      AND r.host       = 'device'
       AND r.status     = 'online'
       AND r.last_seen_at IS NOT NULL
       AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
