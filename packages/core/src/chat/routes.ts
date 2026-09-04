@@ -26,6 +26,7 @@ import { appendUserMessage, loadOrCreateSession, toProviderMessages } from './se
 import { buildSystemPrompt } from './system-prompt.js';
 import { buildChatToolContext } from './tools/principal.js';
 import { buildProjectToolset } from './tools/registry.js';
+import { applyTurnContext } from './turn-context.js';
 
 const chatRequestSchema = z
   .object({
@@ -88,15 +89,14 @@ chatRoutes.post(
 
     appendUserMessage(session, message);
 
-    const systemPrompt = buildSystemPrompt({
-      project,
-      appConfig: appCfg ?? null,
-      pageContext: pageContext ?? null,
-    });
-    const providerMessages = [
-      { role: 'system' as const, content: systemPrompt },
-      ...toProviderMessages(session).slice(-PROVIDER_HISTORY_WINDOW),
-    ];
+    const systemPrompt = buildSystemPrompt({ project, appConfig: appCfg ?? null });
+    const providerMessages = applyTurnContext(
+      [
+        { role: 'system' as const, content: systemPrompt },
+        ...toProviderMessages(session).slice(-PROVIDER_HISTORY_WINDOW),
+      ],
+      { pageContext },
+    );
 
     // Read-only Forge toolset, fenced to this project + the calling user.
     const tools = buildProjectToolset(

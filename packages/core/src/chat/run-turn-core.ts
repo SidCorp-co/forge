@@ -143,6 +143,8 @@ function addUsage(into: ChatStreamUsage, from: ChatStreamUsage): void {
   if (from.completionTokens !== undefined)
     into.completionTokens = (into.completionTokens ?? 0) + from.completionTokens;
   if (from.totalTokens !== undefined) into.totalTokens = (into.totalTokens ?? 0) + from.totalTokens;
+  if (from.cachedPromptTokens !== undefined)
+    into.cachedPromptTokens = (into.cachedPromptTokens ?? 0) + from.cachedPromptTokens;
 }
 
 /**

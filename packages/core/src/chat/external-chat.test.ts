@@ -167,3 +167,23 @@ describe('runExternalChatTurn — images', () => {
     });
   });
 });
+
+describe('runExternalChatTurn — turn context placement', () => {
+  it('puts the conversation seed on the newest user message, never in the system prompt', async () => {
+    selectCall = 0;
+    seenRequests.length = 0;
+    buildSystemPromptCalls.length = 0;
+    await runExternalChatTurn({
+      projectId: 'p1',
+      source: 'rocketchat',
+      message: 'what broke?',
+      conversationContext: '[an]: deploy is failing',
+    });
+    const messages = seenRequests[0]?.messages as Array<{ role: string; content: string }>;
+    expect(messages[0]).toEqual({ role: 'system', content: 'SYS' });
+    expect(messages.at(-1)?.role).toBe('user');
+    expect(messages.at(-1)?.content).toContain('[an]: deploy is failing');
+    expect(messages.at(-1)?.content).toMatch(/---\n\nwhat broke\?$/);
+    expect(buildSystemPromptCalls[0]).not.toHaveProperty('conversationContext');
+  });
+});

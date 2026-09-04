@@ -38,6 +38,7 @@ export interface ChatStreamUsage {
   promptTokens?: number | undefined;
   completionTokens?: number | undefined;
   totalTokens?: number | undefined;
+  cachedPromptTokens?: number | undefined;
 }
 
 export type ChatStreamEvent =

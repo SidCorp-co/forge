@@ -428,3 +428,31 @@ describe('openai-compatible provider — multimodal content', () => {
     expect(body.messages).toEqual([{ role: 'user', content }]);
   });
 });
+
+describe('openai-compatible provider — cached prompt tokens', () => {
+  it('surfaces prompt_tokens_details.cached_tokens and omits the key when absent', async () => {
+    const fetchImpl = vi.fn(
+      async (..._args: unknown[]) =>
+        new Response(
+          sseBody([
+            'data: {"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":1,"total_tokens":6,"prompt_tokens_details":{"cached_tokens":4}}}\n\n',
+            'data: [DONE]\n\n',
+          ]),
+          { status: 200, headers: { 'content-type': 'text/event-stream' } },
+        ),
+    );
+    const provider = createOpenAIProvider({
+      baseUrl: 'http://lite',
+      apiKey: 'k',
+      defaultModel: 'm',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const events = await collect(
+      provider.stream({ model: 'm', messages: [{ role: 'user', content: 'hi' }] }),
+    );
+    expect(events.find((e) => e.type === 'usage')).toEqual({
+      type: 'usage',
+      usage: { promptTokens: 5, completionTokens: 1, totalTokens: 6, cachedPromptTokens: 4 },
+    });
+  });
+});

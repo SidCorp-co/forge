@@ -26,21 +26,6 @@ describe('buildSystemPrompt', () => {
     expect(prompt).not.toContain('helpful assistant');
   });
 
-  it('appends serialized pageContext when provided', () => {
-    const prompt = buildSystemPrompt({
-      project: { name: 'Acme' },
-      pageContext: { url: '/dash', user: 'jane' },
-    });
-    expect(prompt).toContain('Page context:');
-    expect(prompt).toContain('"url": "/dash"');
-    expect(prompt).toContain('"user": "jane"');
-  });
-
-  it('skips the page-context block when pageContext is empty', () => {
-    const prompt = buildSystemPrompt({ project: { name: 'Acme' }, pageContext: {} });
-    expect(prompt).not.toContain('Page context:');
-  });
-
   it('whitespace-only override falls through to default project prompt', () => {
     const prompt = buildSystemPrompt({
       project: { name: 'Acme' },
@@ -49,8 +34,6 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('helpful assistant');
     expect(prompt).toContain('Acme');
   });
-
-  // === ISS-609 — persona + conversationContext ===
 
   it('persona replaces the generic assistant line', () => {
     const prompt = buildSystemPrompt({
@@ -72,22 +55,14 @@ describe('buildSystemPrompt', () => {
     expect(prompt).not.toContain('Persona.');
   });
 
-  it('conversationContext is appended even when an override is set', () => {
-    const prompt = buildSystemPrompt({
+  it('is byte-stable across turns: no per-turn input can reach it', () => {
+    const input = {
       project: { name: 'Acme' },
-      appConfig: { systemPromptOverride: 'Override.' },
-      conversationContext: '[an]: deploy is failing',
-    });
-    expect(prompt).toContain('Conversation context');
-    expect(prompt).toContain('[an]: deploy is failing');
-  });
-
-  it('blank conversationContext adds no section', () => {
-    const prompt = buildSystemPrompt({
-      project: { name: 'Acme' },
-      conversationContext: '   ',
-    });
-    expect(prompt).not.toContain('Conversation context');
+      persona: 'Bot.',
+      progressFacts: 'Project progress: 3 done.',
+    };
+    expect(buildSystemPrompt({ ...input })).toBe(buildSystemPrompt({ ...input }));
+    expect(Object.keys(input)).not.toContain('conversationContext');
   });
 
   // === ISS-609 follow-up — personaStyle knob ===
