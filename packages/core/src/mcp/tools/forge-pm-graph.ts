@@ -1,7 +1,7 @@
 /**
  * `forge_pm.graph` (Epic 3, ISS-19) — dependency / parent-child graph that
  * the PM agent inspects when reasoning about blockers, parallelism, and
- * epic decomposition. Every edge comes from `issue_dependencies`
+ * epic structure. Every edge comes from `issue_dependencies`
  * (kind = blocks / relates / duplicates / parent).
  *
  * - `rootIssueId` omitted → return the whole project graph, capped at

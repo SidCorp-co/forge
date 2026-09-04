@@ -28,8 +28,6 @@ export interface AutonomousParkInput {
   projectId: string;
   requested: IssueStatus;
   agency: ActorAgency;
-  /** This `waiting` is core's decompose review gate, not an agent asking. */
-  viaDecomposeGate: boolean;
 }
 
 /**
@@ -51,5 +49,5 @@ export async function resolveAutonomousParkTarget(
 function isRewritablePark(input: AutonomousParkInput): boolean {
   if (input.requested === 'reopen') return true;
   if (input.requested !== 'waiting') return false;
-  return input.agency === 'agent' && !input.viaDecomposeGate;
+  return input.agency === 'agent';
 }

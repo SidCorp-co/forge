@@ -1081,9 +1081,6 @@ export const issues = pgTable(
     metadata: jsonb('metadata').$type<
       | ({
           branchConfig?: IssueBranchOverride | null;
-          // ISS-138 (PR-D) — opt-out flag for the decomposition helper.
-          // Defaults to true (helper creates the shared integration branch).
-          useIntegrationBranch?: boolean;
         } & Record<string, unknown>)
       | null
     >(),
@@ -1095,7 +1092,7 @@ export const issues = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    // cm:guard the sibling of `comments_format_chk`, for the same reason: `text(..., { enum })` is a TypeScript type and emits no constraint, so without this the column accepts any string and `decompose`/`create-service` are the only thing standing between a caller and a format no renderer knows
+    // cm:guard the sibling of `comments_format_chk`, for the same reason: `text(..., { enum })` is a TypeScript type and emits no constraint, so without this the column accepts any string and `create-service` is the only thing standing between a caller and a format no renderer knows
     descriptionFormatChk: check(
       'issues_description_format_chk',
       sql`${t.descriptionFormat} IN ('markdown', 'html')`,
@@ -2393,7 +2390,7 @@ export const retrievalAnalyticsRelations = relations(retrievalAnalytics, ({ one 
   project: one(projects, { fields: [retrievalAnalytics.projectId], references: [projects.id] }),
 }));
 
-// cm:guard only `kind='blocks'` gates dispatch: an edge (from=A, to=B, 'blocks') means A must reach a terminal status before B may dispatch, and cross-project edges are legal. `relates`/`duplicates`/`parent` are PM/UX metadata a dispatch path must never read, and `decomposes` (epic→child) engages the separate cascade in pipeline/decomposition.ts + decomposition-subscribers.ts rather than this gate.
+// cm:guard only `kind='blocks'` gates dispatch: an edge (from=A, to=B, 'blocks') means A must reach a terminal status before B may dispatch, and cross-project edges are legal. every other kind — `relates`, `duplicates`, `parent` and `decomposes` (epic→child) — is PM/UX metadata a dispatch path must never read. `decomposes` used to drive a parent lifecycle of its own; that was removed 2026-09-03 and it is now a grouping label, so ordering under an epic needs its own `blocks` edge.
 
 export const issueDependencyKinds = [
   'blocks',

@@ -129,7 +129,6 @@ import {
   projectCostAnalyticsRoutes,
 } from './pipeline/analytics-routes.js';
 import { registerAnswerResume } from './pipeline/answer-resume.js';
-import { registerDecompositionSubscribers } from './pipeline/decomposition-subscribers.js';
 import { hooks } from './pipeline/hooks.js';
 import { registerMissingSkillResume } from './pipeline/missing-skill-resume.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
@@ -513,7 +512,6 @@ if (isMain) {
   registerWebhookSubscribers(hooks);
   registerPipelineOrchestrator(hooks);
   registerDispatchSubscribers(hooks);
-  registerDecompositionSubscribers(hooks);
   registerAnswerResume(hooks);
   registerPhaseJournalClose(hooks);
   // cm:guard ISS-238 — register AFTER registerPipelineOrchestrator: this subscriber resumes a run whose missing skill was just registered and then re-enqueues, and that re-enqueue must walk through the orchestrator's own hooks, which are not on the bus yet if it is wired first

@@ -169,7 +169,7 @@ Use this quality bar to assess each stage:
 - **code**: implemented the plan? matched conventions? built + tested affected packages?
 - **review**: engaged the diff? found real issues or gave substantive APPROVE? not rubber-stamp?
 - **test**: verified ACs from acceptance criteria? ran Pass-B on UI surfaces when applicable?
-- **release**: clean merge? no silent conflict left? merged_at stamped if project uses blocks/decomposes?
+- **release**: clean merge? no silent conflict left? merged_at stamped if the project uses blocks edges?
 
 A finding with no responsible artifact (skill name + section) is not a finding — drop it.
 

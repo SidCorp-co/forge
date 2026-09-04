@@ -226,8 +226,8 @@ type StarvedProject = {
  * A3 — a project with jobs that WOULD dispatch except no runner can accept them.
  *
  * Starvation is defined as passing every dispatch barrier EXCEPT runner
- * availability. A job held by project concurrency (project_cap), a `blocks`/
- * `decomposes` dependency, issue-busy, or a retry cooldown is NOT starved — the
+ * availability. A job held by project concurrency (project_cap), a `blocks`
+ * dependency, issue-busy, or a retry cooldown is NOT starved — the
  * dispatcher is correctly holding it and it dispatches on its own once the
  * upstream gate clears. Counting those as "no usable runner" is a false positive
  * (e.g. at the default cap of 1, a second issue's job queued behind an actively
@@ -296,7 +296,6 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
         AND NOT (${predicates.issueBusyJob})
         AND NOT (${predicates.staleTrigger})
         AND NOT (${predicates.blockedBy})
-        AND NOT (${predicates.decomposeChildrenPending})
         AND (
           j.issue_id::text IN (SELECT issue_id FROM running_ids)
           OR (SELECT COUNT(*) FROM running_ids) < ${cap}

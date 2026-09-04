@@ -14,7 +14,7 @@ const getInputSchema = z
 export const forgeSkillFactsListTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skill_facts.list',
   description:
-    'List Forge Facts — the FIXED Forge process knowledge a skill author references instead of copy-pasting (status ladder, complexity/priority/category enums, relation kinds, decompose protocol, plan/release-notes/handoff formats, worktree protocol). Each fact carries id, tier (`mandatory` = always injected; `contextual` = insert via `{{forge:<id>}}`), namespace, and a project-resolved `preview`. Pass optional `stage` to tailor stage-specific facts (e.g. `handoff`). Call this while AUTHORING a skill to learn the real values rather than guessing. Requires project membership.',
+    'List Forge Facts — the FIXED Forge process knowledge a skill author references instead of copy-pasting (status ladder, complexity/priority/category enums, relation kinds, plan/release-notes/handoff formats, worktree protocol). Each fact carries id, tier (`mandatory` = always injected; `contextual` = insert via `{{forge:<id>}}`), namespace, and a project-resolved `preview`. Pass optional `stage` to tailor stage-specific facts (e.g. `handoff`). Call this while AUTHORING a skill to learn the real values rather than guessing. Requires project membership.',
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId, stage } = listInputSchema.parse(args);

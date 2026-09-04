@@ -142,25 +142,17 @@ Make the decision a **mergeable artifact** instead. Plan an in-repo markdown doc
 - Classify an issue as a no-code deliverable only when its acceptanceCriteria/goal is purely a decision/audit/spike write-up with **no** source, UI, API, or schema change. When in doubt, plan it as normal code — this is a narrow class, not a catch-all for "has some docs."
 - The deliverable is a doc at **`docs/proposals/<topic>.md`** (short, kebab, topic-focused), added to the index in `docs/proposals/README.md`. Name the exact path in the plan and outline the required sections so the coding step writes substantive content, not a stub.
 - This makes the change a **docs-only diff** (touches only docs/prose, no source paths — derived from the repo's own structure), which flows code → review → test → release like any other change. The coding/review/test steps key off that mechanical signal, so a real decision becomes a durable, discoverable artifact rather than a comment that vanishes from the codebase.
-- Do **NOT** decompose a no-code deliverable (see Step 5.5). Recommended follow-ups (e.g. ports the decision endorses) spin off as **standalone** issues linked with a soft `related_to` — never as `decomposes` children, since a pure decision has nothing to integrate.
+- Do **NOT** split a no-code deliverable (see Step 5.5). Recommended follow-ups (e.g. ports the decision endorses) spin off as **standalone** issues linked with a soft `related_to`, since a pure decision has nothing to integrate.
 
-### Step 5.5: Decide whether to decompose (l/xl epics only)
+### Step 5.5: A big issue is one plan with ordered steps, not a family of issues
 
-For `l`/`xl` issues with **>3 parallel workstreams** that each ship independently, split the epic into a parent + children using `kind='decomposes'` dependency edges. Adding the first edge makes core (ISS-138) create + push a **shared integration branch** off `<baseBranch>`, park the parent at `waiting`, and stamp `branchConfig` so every child branches off and merges back into that branch (not base). The lifecycle hooks in `pipeline/decomposition-subscribers.ts` then automate cascade approve, the all-children-ready watcher, the parent's integration gate, and close cascade. Only the parent squash-merges the integration branch → base, once, after verifying the assembled epic.
+An `l`/`xl` issue does not get split into tracker rows. Write it as **one plan whose steps are ordered**, and let the coding step build them in that order on a single branch — the session's own todo list is where a large change is broken down, not the dependency graph. There is no parent lifecycle, no shared integration branch and no gate holding a parent behind children.
 
-**When to decompose:**
-- Each child must be reviewable + testable independently.
-- Cap at 6-8 children per epic — worker reliability degrades beyond that.
-- The parent must have a meaningful integration-test step after all children land (otherwise just use `blocks` dependencies — the watcher exists specifically to re-fire integration tests on the parent).
-- Workstreams should not share critical code paths that will collide at PR-merge time.
+Order the steps so each one leaves the tree building and reviewable, name the files each touches, and make the end-to-end check that proves the whole thing works the last step.
 
-**When NOT to decompose:**
-- Single-file changes, refactors localized to one module, bug fixes.
-- **No-code deliverables** (decision/audit/spike, docs-only — see above): never decompose, regardless of how many recommendations they contain. A pure decision has nothing to integrate; endorsed follow-ups become standalone `related_to` issues.
-- Items where one child's failure should not block siblings' release — the gate is atomic by design.
-- Nested decomposition (epic → epic → story). Single-level only for v1.
+**A separate issue is warranted only when a piece genuinely ships on its own** — its own release, its own value, verifiable without the rest. Then file it at `open` with a `blocks` edge naming what it waits on (`forge_issues → create → data.relations`, or `forge_project_pm → set_dependency` between two issues that already exist), and verify the row landed — never claim an edge in prose without the call succeeding, the ISS-131 failure mode. `decomposes` remains available as a grouping label for showing epic structure; it gates nothing.
 
-**How to decompose** — once the decision is made, follow the mechanics in `references/decompose-protocol.md`: create children at `draft`, add `decomposes` (and any sibling `blocks`) dependency edges via `forge_project_pm → set_dependency` (verify each row landed — never claim an edge in prose without the call succeeding, the ISS-131 failure mode), write the parent `plan` as the per-child index **plus a parent integration-step section**, and do **NOT** create the integration branch, stamp `branchConfig`, or set the parent status yourself (core's `decomposeParent` does all three on the first edge). The reference also documents the integration-branch model (children branch off + merge back into the shared branch; the parent is the only one that squash-merges to base), the post-approval automation (cascade-approve, the `decomposeChildrenPending` gate, close cascade), and how to verify sibling-blocks edges took effect.
+Never split a no-code deliverable (decision/audit/spike, docs-only — see above), regardless of how many recommendations it contains. Endorsed follow-ups become standalone `related_to` issues.
 
 ### Step 6: Validate the Plan
 
@@ -189,7 +181,7 @@ forge_comments → create → { data: { body: "<plan comment>", issue: "<documen
 forge_issues → update → { documentId: "<id>", data: { status: "waiting" } }
 ```
 
-Set status to `waiting` — `l`/`xl` issues (and every decomposed epic) wait for a human to review the plan and manually approve. **Status update is LAST.**
+Set status to `waiting` — `l`/`xl` issues wait for a human to review the plan and manually approve. **Status update is LAST.**
 
 **If no triage comment found** (manual invocation, not from pipeline):
 - Default to auto-approve behavior (treat as `m`)

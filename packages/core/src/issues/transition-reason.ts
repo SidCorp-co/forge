@@ -15,7 +15,7 @@ import { type Db, db } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { comments } from '../db/schema.js';
 
-// cm:guard adding a status here makes the reason MANDATORY for every writer of it — core's own writers included (issues/decompose.ts is one), so add the argument at those call sites in the same change or the transition throws at runtime with the tests green
+// cm:guard adding a status here makes the reason MANDATORY for every writer of it — core's own system writers included, so add the argument at those call sites in the same change or the transition throws at runtime with the tests green
 export const REASON_REQUIRED_STATUSES = new Set<IssueStatus>(['reopen', 'waiting', 'needs_info']);
 
 /**

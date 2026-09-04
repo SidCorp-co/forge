@@ -36,7 +36,7 @@ describe('forge facts registry', () => {
     const text = renderFact('pipeline-rules') ?? '';
     expect(text.startsWith('## Pipeline Rules')).toBe(true);
     expect(text).toContain('Status LAST');
-    expect(text).toContain('Decompose is system-owned');
+    expect(text).toContain('The system never writes `waiting` by itself');
     // The project-resolved ladder section takes precedence over the inline
     // default chain — guards against the two drifting silently (F1).
     expect(text).toContain('### Status ladder');

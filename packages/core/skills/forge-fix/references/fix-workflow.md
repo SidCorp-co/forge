@@ -69,7 +69,7 @@ git checkout ISS-XX-short-title
 
 **deploy · same-branch** (`baseBranch === productionBranch`) — push the ISS-* branch only; no merge, no deploy. Merging here IS shipping to prod ahead of the re-review and QA this reopen exists for; forge-release lands it after they pass.
 
-**local-only mode** — push the ISS-* branch only; no merge, no deploy. (Decompose child/parent target the integration branch, not `baseBranch` — see decompose-execution.md.)
+**local-only mode** — push the ISS-* branch only; no merge, no deploy.
 
 ## Fix Strategy
 

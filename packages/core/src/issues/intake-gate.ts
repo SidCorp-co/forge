@@ -17,7 +17,7 @@ import { emitNotification } from '../notifications/emit.js';
  * silently never runs would violate "state never lies". Approval is the
  * existing one-click `draft → open` transition; reject is `closed`.
  * Creates that explicitly target non-open statuses (agent notes at draft,
- * decompose children, system drafts) pass through untouched.
+ * system drafts) pass through untouched.
  */
 
 export interface IntakeGateConfig {

@@ -96,13 +96,11 @@ export interface ApplyStatusTransitionOptions {
    * Bypass `canTransitionFree`. In practice that guard only forbids `draft`
    * as a target and restricts `draft`'s own exits, so this flag buys exactly
    * two things: entering `draft` (nothing does) and moving a `draft` issue to
-   * a status outside {open, closed, developed} — which is what the decompose
-   * cascade needs to promote children straight to `approved`. The soft-skip
-   * resolver (ISS-110) also passes it while walking `STAGE_FORWARD`.
+   * a status outside {open, closed, developed}. The soft-skip resolver
+   * (ISS-110) also passes it while walking `STAGE_FORWARD`.
    *
    * It is NOT a general safety override: NO_OP, stale-transition detection and
-   * every content guard still run. Callers are the orchestrator and the
-   * decomposition subscriber.
+   * every content guard still run. The orchestrator is its caller.
    */
   skip?: boolean;
   /**
@@ -131,18 +129,6 @@ export interface ApplyStatusTransitionOptions {
    */
   // cm:guard `release_batch finish` is the ONLY caller entitled to set this, and it must never be plumbed through a route parameter or an MCP argument — the flag IS the gate, and anything that can ask for it can close an unshipped issue
   viaReleasePath?: boolean;
-  /**
-   * This `waiting` is core's decompose review gate, so it survives the
-   * autonomous park rewrite.
-   */
-  // cm:guard `issues/decompose.ts` is the ONLY caller entitled to set this, and like `viaReleasePath` it must never be plumbed through a route parameter or an MCP argument — an agent that could ask for it could park itself where no comment of a human's will ever reach it, which is the whole defect the rewrite removes. It is exempt because a comment on a decomposed parent is discussion of the split, not approval of it: waking that park would dispatch the parent's integration before its children exist.
-  viaDecomposeGate?: boolean;
-  /**
-   * This close PROPAGATES a close that already happened rather than making
-   * one: the decompose cascade closing an abandoned parent's children.
-   */
-  // cm:guard `decomposition-subscribers.ts` handleCloseCascade is the ONLY caller entitled to set this, and like the two above it must never be plumbed through a route or an MCP argument. It exists because the release-record refusal needs an exemption NARROWER than `skip`: orchestrator.ts's auto-skip chain carries `skip` too and can anchor on `closed`, so exempting `skip` would auto-close an unrecorded issue on any project whose `released` stage has no registered skill.
-  viaCloseCascade?: boolean;
 }
 
 export interface StatusTransitionResult {
@@ -291,7 +277,7 @@ async function explainDraftRace(
 /**
  * THE issue state-machine writer. Every surface — REST `/transition`,
  * REST `PATCH /batch`, MCP `forge_issues`, orchestrator soft-skip,
- * reconciler, decompose cascade, finalize-failure — routes through here so
+ * reconciler, finalize-failure — routes through here so
  * guard semantics, the conditional UPDATE, `merged_at` stamping, WS
  * broadcast, pipeline-health refresh and run close cannot drift apart.
  *
@@ -327,7 +313,7 @@ export async function transitionIssueStatus(
   }
 
   // cm:guard the reason is posted BEFORE the status write, and a failed post must reject the whole transition — a park that commits without its reason is the unexplained park every guard deleted with the reopen cap tried to detect afterwards
-  // cm:guard `skip: true` is exempt ON PURPOSE — it marks a transition the system made rather than one an actor chose (the decompose cascade, the park rewrites), and each of those paths posts its own comment; requiring a second one would double-comment, and refusing the write would freeze the cascade mid-flight
+  // cm:guard `skip: true` is exempt ON PURPOSE — it marks a transition the system made rather than one an actor chose (the park rewrites), and each of those paths posts its own comment; requiring a second one would double-comment, and refusing the write would freeze the cascade mid-flight
   if (requiresAuthoredReason(fromStatus, requestedStatus) && options.skip !== true) {
     const reason = options.transitionReason?.trim();
     if (!reason) {
@@ -353,7 +339,6 @@ export async function transitionIssueStatus(
     projectId: issue.projectId,
     requested: requestedStatus,
     agency: actorAgency(actor),
-    viaDecomposeGate: options.viaDecomposeGate === true,
   });
   const { status: toStatus, held } = await resolveAgentCloseTarget({
     projectId: issue.projectId,
@@ -585,7 +570,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
 
 /**
  * Device-actor convenience wrapper used by MCP tools and pipeline internals
- * (orchestrator, reconciler, decompose, finalize-failure, runs-control).
+ * (orchestrator, reconciler, finalize-failure, runs-control).
  * Same semantics as `transitionIssueStatus`; failures surface as
  * `TransitionError` (an `Error` with the legacy `CODE: detail` message) so
  * MCP tool handlers can wrap them uniformly.

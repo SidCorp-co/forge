@@ -30,7 +30,6 @@ import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { AttachmentError } from './attachment-service.js';
 import { createIssue, IssueCreateError } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
-import { DecomposeError, decomposeParent, IntegrationBranchError } from './decompose.js';
 import { LabelResolutionError, resolveLabelIdsForWrite } from './label-service.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
@@ -73,11 +72,7 @@ export const issueCreateSchema = z
     attachments: z.array(attachmentInputSchema).max(10).optional(),
     detectorKey: z.string().trim().min(1).max(120).optional(),
     relations: z.array(issueRelationInputSchema).max(20).optional(),
-    // ISS-130 — narrow allow-list for entry status. The F4 transition
-    // endpoint still owns post-creation status changes; this only exists so
-    // decomposition children can land at `on_hold` (parked, no auto-triage)
-    // atomically with the insert. ISS-236 — also `draft` for AI-generated
-    // proposals (Dream / Doc-Sync) that wait for human promote/discard.
+    // cm:why ISS-130 / ISS-236 — the F4 transition endpoint owns every post-creation status change; this allow-list exists only so a caller can park at `on_hold` atomically with the insert, or hold an AI-generated proposal (Dream / Doc-Sync) at `draft` until a human promotes or discards it
     status: z.enum(['open', 'on_hold', 'draft']).optional(),
   })
   .strict();
@@ -545,89 +540,6 @@ issueRoutes.patch(
     return c.json(
       collected.warnings.length > 0 ? { ...patched, warnings: collected.warnings } : patched,
     );
-  },
-);
-
-// cm:edge contract -> packages/core/src/pipeline/decomposition-subscribers.ts — children land at `draft`, and which status the human's approval gesture promotes them to is that file's answer and differs per mode; a second statement of it here goes stale silently, as this block did until ISS-886
-const decomposeChildNewSchema = z
-  .object({
-    title: z.string().trim().min(1).max(500),
-    description: z.string().max(100_000).nullable().optional(),
-    descriptionFormat: z.enum(BODY_FORMATS).optional(),
-    priority: z.enum(issuePriorities).optional(),
-    category: z.string().trim().min(1).max(100).nullable().optional(),
-  })
-  .strict();
-
-const decomposeChildExistingSchema = z
-  .object({
-    existingIssueId: z.uuid(),
-  })
-  .strict();
-
-const decomposeBodySchema = z
-  .object({
-    children: z
-      .array(z.union([decomposeChildNewSchema, decomposeChildExistingSchema]))
-      .min(1)
-      .max(8),
-    useIntegrationBranch: z.boolean().optional(),
-  })
-  .strict();
-
-issueRoutes.post(
-  '/:id/decompose',
-  zValidator('param', issueIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  zValidator('json', decomposeBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const body = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const issue = await loadIssue(id);
-    const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member');
-
-    try {
-      const result = await decomposeParent(
-        id,
-        body.children,
-        { userId, agency: restActor(c).agency },
-        { useIntegrationBranch: body.useIntegrationBranch },
-      );
-      return c.json(result);
-    } catch (err) {
-      if (err instanceof IntegrationBranchError) {
-        throw new HTTPException(502, {
-          message: 'integration branch operation failed',
-          cause: { code: err.code, message: err.message },
-        });
-      }
-      if (err instanceof DecomposeError) {
-        if (err.code === 'NOT_FOUND') throw notFound(err.message);
-        if (err.code === 'BAD_REQUEST') {
-          throw new HTTPException(400, {
-            message: err.message,
-            cause: { code: 'BAD_REQUEST', details: err.message },
-          });
-        }
-        if (err.code === 'INTEGRATION_BRANCH_CONFLICT') {
-          throw new HTTPException(409, {
-            message: err.message,
-            cause: { code: err.code },
-          });
-        }
-        throw new HTTPException(500, {
-          message: err.message,
-          cause: { code: err.code },
-        });
-      }
-      throw err;
-    }
   },
 );
 

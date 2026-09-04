@@ -247,6 +247,26 @@
   who signs in. They now reach the project's admins, ordered by priority, capped at 20 rows with the
   real total shown; one human comment clears a row for good. (ISS-881)
 
+### Removed
+
+- **Epic decompose is gone from the kernel.** A `decomposes` edge no longer creates a shared
+  integration branch, parks the parent at `waiting`, cascade-approves the children, holds the
+  parent's jobs behind a `decompose_children_pending` gate, or cascade-closes the family. The kind
+  survives as a grouping label with no lifecycle: it shows epic → child in the UI and the graph, and
+  gates nothing. Ordering between two issues is a `blocks` edge, as it always was.
+
+  Splitting a large issue is now the coding session's own job — one plan with ordered steps on one
+  branch — and a piece that genuinely ships on its own becomes its own issue behind a `blocks` edge.
+  `forge-plan` Step 5.5 says exactly that; the decompose protocol and execution references are
+  deleted, along with the decompose-aware guards in `forge-code`, `forge-test` and `forge-release`.
+
+  What this costs the rows that exist: eight parents are parked at `waiting`/`on_hold` under a
+  `decomposes` edge across five projects, and fifteen of their children sit at `draft`/`on_hold`.
+  Approving such a parent no longer promotes its children — a person moves them, once. The
+  `waiting_on_decomp_children` health reason is removed from the contract and the UI, and
+  `metadata.useIntegrationBranch` from the schema; the per-issue `metadata.branchConfig` base-branch
+  override stays and still wins over the project default.
+
 ### Fixed
 
 - `RATE_LIMIT_PAT_MAX` and `RATE_LIMIT_PAT_WINDOW_MS` are declared on the `core` service in

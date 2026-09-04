@@ -1,6 +1,6 @@
 # Complexity Rules
 
-Complexity classification matters because `forge-plan` uses it to decide whether to auto-approve the implementation plan (`xs/s/m`) or hold it for human review (`l/xl`), and whether the issue is a decompose candidate. Getting this wrong has real costs:
+Complexity classification matters because `forge-plan` uses it to decide whether to auto-approve the implementation plan (`xs/s/m`) or hold it for human review (`l/xl`). Getting this wrong has real costs:
 - **Too high (l/xl)** → unnecessary human gate, slows the pipeline
 - **Too low** → under-planned, risks missing important cross-cutting concerns
 
@@ -28,13 +28,13 @@ Single file or component change, isolated, following an existing pattern.
 Roughly 6+ files, a sizable single feature, or a cross-cutting change within a package (and possibly spilling into a second). Bigger than "follow an existing pattern" but still one coherent piece of work.
 
 **Signals:** a feature touching a list screen + its API + a dialog; a non-trivial refactor across a module; several related endpoints.
-**Plan gate:** human review. May be a decompose candidate if it splits into independently-shippable tracks.
+**Plan gate:** human review.
 
 ## xl — epic
 Cross-package work combining schema + API + UI, a new subsystem, or a multi-track effort.
 
 **Signals:** mentions multiple packages, new content types / schema, new endpoints, "migration", "real-time", "authentication flow", "integration", a new third-party dependency, or several independently-reviewable workstreams.
-**Plan gate:** human review; usually a **decompose candidate** (forge-plan splits it into a parent + children).
+**Plan gate:** human review. forge-plan writes it as one ordered plan; a piece that genuinely ships on its own becomes its own issue behind a `blocks` edge.
 
 ## Assessment Heuristics (Without Codebase)
 

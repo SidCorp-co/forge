@@ -37,7 +37,6 @@ function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
     sessions: [],
     jobs: [],
     deps: [],
-    decompChildren: [],
     runningIssueIds: new Set(),
     runningIssueCount: 0,
     cap: 5,

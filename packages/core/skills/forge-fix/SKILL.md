@@ -127,8 +127,6 @@ git push origin ISS-XX-short-title
 ```
 `baseBranch` IS the production branch here, so merging would ship the fix to prod before the re-review and QA that were the whole reason this issue reopened. No merge, no deploy (skip Step 7); forge-release lands it after those pass. Say so in the Step 8 comment.
 
-(Decompose child/parent target the integration branch instead of `baseBranch` — see `.claude/skills/forge-plan/references/decompose-execution.md`.)
-
 ### Step 7: Deploy
 
 **Local-only mode** — skip this step entirely. No environment to deploy to.

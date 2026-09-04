@@ -33,7 +33,7 @@ Need different pipeline behaviour for THIS project?
 ## 3. Core authoring rules (NT1 — non-negotiable)
 
 1. **Write WHAT, not HOW.** Intent altitude: *"build & test the affected packages, push only if green."* The agent infers the actual commands from the repo (package.json / Makefile / Cargo / lockfile). **Bad:** hardcode `npm run build`. **Good:** "build the affected package (infer the command from the repo)."
-2. **Don't restate the preamble.** Status ladder, enums, "status LAST", handoff schema, decompose protocol, worktree rules are already injected every job. Restating them = drift when they change.
+2. **Don't restate the preamble.** Status ladder, enums, "status LAST", handoff schema, worktree rules are already injected every job. Restating them = drift when they change.
 3. **Don't hardcode project config.** `repoPath`, base/production branch literals, test URLs, 🔒 credentials → come from the check-in bundle / `forge_config` / `previewDeploy` / `projectFacts`. **Never inline a secret** (it syncs to disk).
 4. **Only write non-inferable POLICY** the agent can't derive from the repo: gitflow/merge model, deploy gate, stage exits that override the default ladder, domain heuristics, conventions.
 5. **Token economy — put the right thing in the right place:**
@@ -65,7 +65,7 @@ Need different pipeline behaviour for THIS project?
 |---|---|---|
 | open | forge-triage | completeness gate, complexity/category/priority |
 | confirmed | forge-clarify | reproduce/validate, confidence gate |
-| clarified | forge-plan | implementation plan, decompose decision |
+| clarified | forge-plan | implementation plan |
 | approved | forge-code | implement, build/test, simplify, push |
 | developed | forge-review | independent 5-axis review (report-only) |
 | testing | forge-test | QA against the deploy (functional + UX/a11y) |

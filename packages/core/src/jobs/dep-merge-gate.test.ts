@@ -85,20 +85,6 @@ describe('L2 dependency gate — merged_at (ISS-232 / ISS-639)', () => {
     expect(text).not.toMatch(/p\.status\s+NOT\s+IN/);
   });
 
-  it('picker keys decomposeChildrenPending on child.merged_at IS NULL (parent waits for children)', async () => {
-    mockProjectAgentConfigOnce(null);
-    dbExecute.mockResolvedValueOnce([]);
-    await pickNextDispatchableJobForProject('p1');
-    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
-    expect(text).toMatch(/d2\.kind\s*=\s*'decomposes'/);
-    // The job's issue is the PARENT (d2.from_issue_id = j.issue_id); the gate
-    // keys on the CHILD's merged_at (c2), not the parent's.
-    expect(text).toMatch(/d2\.from_issue_id\s*=\s*j\.issue_id/);
-    expect(text).toMatch(/c2\.merged_at\s+IS\s+NULL/);
-    expect(text).not.toMatch(/c2\.status\s*<>\s*'closed'/);
-    expect(text).not.toMatch(/c2\.status\s+NOT\s+IN/);
-  });
-
   it('asserter mirrors picker — same merged_at clauses, no status compare', async () => {
     // First select fetches the job; second fetches the project's agentConfig.
     dbSelect
@@ -116,21 +102,17 @@ describe('L2 dependency gate — merged_at (ISS-232 / ISS-639)', () => {
     await assertDispatchable('job-1');
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
     expect(text).toMatch(/p\.merged_at\s+IS\s+NULL/);
-    expect(text).toMatch(/c2\.merged_at\s+IS\s+NULL/);
     expect(text).not.toMatch(/p\.status\s*<>\s*'closed'/);
-    expect(text).not.toMatch(/c2\.status\s*<>\s*'closed'/);
     expect(text).not.toMatch(/p\.status\s+NOT\s+IN/);
-    expect(text).not.toMatch(/c2\.status\s+NOT\s+IN/);
   });
 
-  // cm:why sid-desk ISS-20/25 — merged_at is COALESCE-once and survives a later reopen, so a child that reached `tested` then failed QA still read as satisfied and dispatched its parent onto broken staging; both arms must treat a currently-reopened blocker as unsatisfied
-  it('treats a reopened blocker/child as unsatisfied even when merged_at is stamped', async () => {
+  // cm:why sid-desk ISS-20/25 — merged_at is COALESCE-once and survives a later reopen, so a blocker that reached `tested` then failed QA still read as satisfied and dispatched its dependent onto broken staging; the gate must treat a currently-reopened blocker as unsatisfied
+  it('treats a reopened blocker as unsatisfied even when merged_at is stamped', async () => {
     mockProjectAgentConfigOnce({});
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
     expect(text).toMatch(/p\.merged_at\s+IS\s+NULL\s+OR\s+p\.status\s*=\s*'reopen'/);
-    expect(text).toMatch(/c2\.merged_at\s+IS\s+NULL\s+OR\s+c2\.status\s*=\s*'reopen'/);
     // cm:guard only `reopen` belongs here — widening to on_hold/needs_info would silently wedge queues
     expect(text).not.toMatch(/p\.status\s*=\s*'on_hold'/);
     expect(text).not.toMatch(/p\.status\s*=\s*'needs_info'/);

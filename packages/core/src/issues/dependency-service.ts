@@ -17,11 +17,9 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueDependencies, type issueDependencyKinds, issues } from '../db/schema.js';
-import { logger } from '../logger.js';
 import { type Actor, safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { detectCycle } from './cycle-detect.js';
-import { decomposeParent } from './decompose.js';
 import type { IssueDependencyExecutor } from './dependency-executor.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 
@@ -50,7 +48,6 @@ export type SetIssueDependencyInput = {
   kind: IssueDependencyKind;
   reason?: string | undefined;
   validUntil?: string | undefined;
-  decomposeOpts?: { useIntegrationBranch?: boolean | undefined } | undefined;
 };
 
 /**
@@ -101,7 +98,7 @@ export async function setIssueDependency(
  * The DURABLE half: validate, detect a cycle, and land the row. Runs on the
  * caller's executor so a create can commit the issue and its edge together.
  */
-// cm:guard nothing here may emit, publish or touch git. The whole point of the split is that this half can run inside someone else's transaction — a hook fired from in here announces an edge a rollback can still take away, and `decomposeParent` would create a branch for an issue that never existed. Effects belong to `emitIssueDependencyEffects`, which the caller runs AFTER its commit.
+// cm:guard nothing here may emit or publish. The whole point of the split is that this half can run inside someone else's transaction — a hook fired from in here announces an edge a rollback can still take away. Effects belong to `emitIssueDependencyEffects`, which the caller runs AFTER its commit.
 export async function writeIssueDependency(
   input: SetIssueDependencyInput,
   writer: IssueDependencyWriter,
@@ -183,8 +180,8 @@ export async function writeIssueDependency(
 }
 
 /**
- * The EFFECTS half: announce the edge, refresh the dependent's health, and run
- * the decompose helper. Runs after the write has committed.
+ * The EFFECTS half: announce the edge and refresh the dependent's health.
+ * Runs after the write has committed.
  */
 // cm:guard `dependencyChanged` fires on an UPDATE too, not only an insert — expiring an edge can make the gated side dispatchable THIS INSTANT, and without the emit the unblock waits for whatever else happens to wake the dispatcher.
 // cm:edge ordering -> packages/core/src/issues/create-service.ts — the create path runs this BEFORE its `issueCreated` emit, because that hook is what wakes dispatch and the edge's health must already be published when it does
@@ -199,7 +196,6 @@ export async function emitIssueDependencyEffects(
     await recordOnBothSides(input, written.id, writer.actor, 'issue.dependency.added', {
       ...(input.reason ? { reason: input.reason } : {}),
     });
-    await maybeRunDecomposeHelper(input, writer);
     await refreshDependentHealth(input, opts);
     return;
   }
@@ -212,9 +208,6 @@ export async function emitIssueDependencyEffects(
     });
     await refreshDependentHealth(input, opts);
   }
-
-  // cm:why run the helper on the conflict path too — a parent whose first decompose edge predated ISS-138 PR-D owns no integration branch, and a later duplicate edge is the only occasion left to fill it
-  await maybeRunDecomposeHelper(input, writer);
 }
 
 async function emitEdgeChanged(input: SetIssueDependencyInput, edgeId: string): Promise<void> {
@@ -253,30 +246,7 @@ async function refreshDependentHealth(
   opts?: { deferHealthPublish?: boolean },
 ): Promise<void> {
   if (opts?.deferHealthPublish) return;
-  // cm:why ISS-164 — only blocks/decomposes change a waiting reason, and it is the dependent (`to`) side whose pipelineHealth goes stale, never the blocker's
-  if (input.kind !== 'blocks' && input.kind !== 'decomposes') return;
+  // cm:why ISS-164 — only `blocks` changes a waiting reason, and it is the dependent (`to`) side whose pipelineHealth goes stale, never the blocker's
+  if (input.kind !== 'blocks') return;
   await publishPipelineHealthChanged(input.projectId, [input.toIssueId]);
-}
-
-async function maybeRunDecomposeHelper(
-  input: SetIssueDependencyInput,
-  writer: IssueDependencyWriter,
-): Promise<void> {
-  if (input.kind !== 'decomposes') return;
-  // cm:guard an explicit `useIntegrationBranch:false` must skip the helper ENTIRELY, not pass the flag down — decomposeParent still creates branches for other reasons, and callers that only model decomposition rely on this call making no git side effect at all
-  if (input.decomposeOpts?.useIntegrationBranch === false) return;
-  try {
-    await decomposeParent(
-      input.fromIssueId,
-      [{ existingIssueId: input.toIssueId }],
-      { userId: writer.createdById, agency: writer.actor.agency },
-      { useIntegrationBranch: input.decomposeOpts?.useIntegrationBranch },
-    );
-  } catch (err) {
-    // cm:guard never fail the edge write when branch creation fails — the edge is the durable record the dispatcher gates on, and a git error here would lose it
-    logger.warn(
-      { err, parentId: input.fromIssueId, childId: input.toIssueId },
-      'setIssueDependency: decompose helper failed for decomposes edge',
-    );
-  }
 }

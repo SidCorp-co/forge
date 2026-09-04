@@ -1,6 +1,6 @@
 // Client-facing contract for `GET /api/skill-facts` and the MCP
 // `forge_skill_facts` tool. A "fact" is a unit of FIXED Forge process
-// knowledge (status ladder, complexity scale, decompose protocol, …) that a
+// knowledge (status ladder, complexity scale, relation kinds, …) that a
 // skill body references via `{{forge:<id>}}` / `{{project:<key>}}` instead of
 // copy-pasting. The runtime registry + render logic live in
 // `@forge/core/src/prompt/facts`; this file is the Zod contract.

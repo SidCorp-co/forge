@@ -14,8 +14,7 @@ flowchart LR
   I --> AL[activity_log]
   I --> DEP{{issue_dependencies}}
   DEP -->|blocks| G[gates dispatch]
-  DEP -->|decomposes| CAS[decomposition cascade]
-  DEP -->|relates · duplicates · parent| MET[PM metadata only]
+  DEP -->|relates · duplicates · parent · decomposes| MET[PM metadata only]
 ```
 
 ## What it owns
@@ -26,7 +25,6 @@ flowchart LR
 | Discussion and audit trail | `core/src/comments/`, `schema.ts:activityLog` |
 | Labels | `core/src/labels/`, `schema.ts:labels` |
 | Relations between issues | `schema.ts:issueDependencies`, `schema.ts:issueDependencyKinds` |
-| Epic decomposition | `core/src/pipeline/decomposition.ts`, `decomposition-subscribers.ts` |
 | Human sub-work under an issue | `core/src/tasks/`, `schema.ts:tasks` |
 | Inbound creation from outside | `core/src/webhooks/`, `core/src/mcp/tools/` |
 | UI | web `features/issues/`, `activity/` |
@@ -44,11 +42,11 @@ flowchart LR
 ## Guards
 
 - **Only `kind='blocks'` gates dispatch.** An edge `(from=A, to=B, 'blocks')` means A must reach a
-  terminal status before B may dispatch, and cross-project edges are legal. `relates` / `duplicates`
-  / `parent` are metadata a dispatch path must never read. The `cm:guard` is on
-  `schema.ts:issueDependencyKinds`.
-- **`decomposes` does not go through that gate** — epic→child engages the decomposition cascade
-  instead.
+  terminal status before B may dispatch, and cross-project edges are legal. Every other kind —
+  `relates`, `duplicates`, `parent`, `decomposes` — is metadata a dispatch path must never read. The
+  `cm:guard` is on `schema.ts:issueDependencyKinds`.
+- **`decomposes` gates nothing.** It reads epic → child and is useful for showing structure; the
+  parent lifecycle it once drove was removed 2026-09. Ordering under an epic is a `blocks` edge.
 - The status ladder itself belongs to [lifecycle-pipeline](../lifecycle-pipeline/). This domain owns
   the issue as an object, not the machine that moves it.
 

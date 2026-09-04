@@ -3,9 +3,9 @@
 // `autonomous-mode.ts` answers the same question about a config OBJECT and is
 // deliberately import-free, so every caller that starts from a projectId had to
 // write the same `select agent_config` and the same `safeParse` by hand. Four
-// did, in four modules that must agree — the close gate, the park rewrite, the
-// answer resume and the decompose cascade all change behaviour on this one
-// boolean, and a fifth copy is how they would start disagreeing.
+// did, in three modules that must agree — the close gate, the park rewrite and
+// the answer resume all change behaviour on this one boolean, and a fourth copy
+// is how they would start disagreeing.
 //
 // `readPipelineConfig` rather than `loadProjectPipelineConfig`: the release
 // path already owns a function by that name (`release-batch/project-config.ts`)

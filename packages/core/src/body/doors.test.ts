@@ -22,7 +22,6 @@ const DOORS: Record<string, RegExp> = {
   'comments/routes.ts': /prepareBodyOrThrow\(|updateCommentBody\(/,
   'issues/create-service.ts': /prepareBody\(/,
   'issues/patch-fields.ts': /prepareBody\(/,
-  'issues/decompose.ts': /prepareBody\(/,
   'mcp/tools/forge-comments.ts': /insertComment\(|updateCommentBody\(/,
   'mcp/tools/forge-issues.ts': /collectIssueFieldUpdates\(|createIssue\(/,
 };
@@ -83,10 +82,6 @@ const WRITES_A_BODY = /\.(insert|update)\((comments|issues)\)/;
  * `forge_issues` create. AC 6/7 measure this response, not the stored row, so
  * a caller who typed `<div>` and got a 201 had no way to learn it was
  * unwrapped. Each entry is the pair of writes that file answers.
- *
- * `issues/decompose.ts` is deliberately absent: it writes N children inside
- * one transaction and its response has no per-child slot, so its warnings have
- * nowhere to go. An invalid body there is refused, which is the half that matters.
  */
 const WARNING_SURFACES: Record<string, RegExp[]> = {
   'comments/routes.ts': [/\{ \.\.\.inserted, warnings/, /\{ \.\.\.updated, warnings/],
@@ -160,7 +155,7 @@ describe('every caller-supplied body door is gated', () => {
  * the raw body rather than throwing. That makes the type no longer the guard —
  * this is.
  */
-const FORMAT_PRODUCERS = ['issues/create-service.ts', 'issues/decompose.ts'];
+const FORMAT_PRODUCERS = ['issues/create-service.ts'];
 
 describe('every issueCreated producer names the description format', () => {
   it('or the memory indexer embeds raw markup and the vector describes the template', () => {

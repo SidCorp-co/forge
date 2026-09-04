@@ -77,11 +77,11 @@ Read `references/complexity-rules.md` for detailed rules. The `complexity` field
 - **s** — simple: single file/component, isolated change following an existing pattern.
 - **m** — medium: 2–5 files in one package; may add a small util/hook/component.
 - **l** — large: ~6+ files, a sizable feature, or cross-cutting within a package.
-- **xl** — epic: cross-package + schema/API/UI together, a new subsystem, or a decompose candidate.
+- **xl** — epic: cross-package + schema/API/UI together, or a new subsystem.
 
-This assessment matters because `forge-plan` uses it to decide whether to auto-approve the plan (`xs/s/m`) or hold it for human review (`l/xl`), and whether the issue is a decompose candidate. Getting it wrong toward `l/xl` wastes time on unnecessary human gates; too low risks under-planning. When uncertain, lean toward `m` — `forge-plan` can upgrade after reading the actual codebase.
+What rides on this rating, and the signals for each level, live in `references/complexity-rules.md`. When uncertain, lean toward `m` — `forge-plan` can upgrade after reading the actual codebase.
 
-**No-code deliverables** (decision/audit/spike — issues whose only output is a write-up, no source change): these flow through the pipeline by materializing a `docs/proposals/<topic>.md` artifact (forge-plan handles the routing). Do **NOT** flag them for decomposition no matter how many recommendations they list — a pure decision has nothing to integrate. Note the no-code nature in the triage comment so forge-plan plans the docs artifact rather than a code change.
+**No-code deliverables** (decision/audit/spike — issues whose only output is a write-up, no source change): these flow through the pipeline by materializing a `docs/proposals/<topic>.md` artifact (forge-plan handles the routing). Note the no-code nature in the triage comment so forge-plan plans the docs artifact rather than a code change.
 
 ### Step 4: Set Category
 

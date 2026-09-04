@@ -39,8 +39,7 @@ export type GateSkipReason =
   | 'issue_busy'
   | 'stale_trigger'
   | 'blocked_by'
-  // cm:guard every member here must be a string `buildGateReasonCase` can actually return, and every string it returns must be a member — `assertDispatchable` casts the raw CASE result into this union unchecked, so a mismatch is invisible to tsc. `release_decompose_pending` sat here for months naming an arm that never existed while `decompose_children_pending`, the one that does, was absent, and `observability/hold-metrics.ts` keyed its counter Map by a value outside its own key type.
-  | 'decompose_children_pending'
+  // cm:guard every member here must be a string `buildGateReasonCase` can actually return, and every string it returns must be a member — `assertDispatchable` casts the raw CASE result into this union unchecked, so a mismatch is invisible to tsc. A name that outlives its arm is the failure mode: `release_decompose_pending` sat here for months naming an arm that never existed, and `observability/hold-metrics.ts` keyed its counter Map by a value outside its own key type.
   | 'project_cap'
   | 'runner_full'
   | 'runner_stale';
@@ -350,11 +349,6 @@ export interface BarrierFragments {
      *  Folded `j.type <> 'pm'` into the predicate so PM jobs auto-skip the
      *  gate (PM has no issue deps). */
     blockedBy: SQL;
-    /** L2 — a decompose PARENT's forward jobs (code/review/test/fix) wait
-     *  until every `kind='decomposes'` child has landed on base
-     *  (`child.merged_at` set). Parent runs its integration last; children are
-     *  NOT gated on the parent. */
-    decomposeChildrenPending: SQL;
   };
 }
 
@@ -462,13 +456,11 @@ export function buildBarrierFragments(args: {
   // cm:guard these two arms are EMPTY and must stay empty. They carried ` AND p.status <> 'closed'` — which NARROWS the unsatisfied test, i.e. lets a `closed` blocker with no `merged_at` satisfy the gate — and were switched on only for a project declaring a structurally unstampable base branch (`mergeStates` at a manual or toggle-off stage). ISS-897 removed `mergeStates` and the toggles, so no project can declare one and a `closed` blocker with no stamp is one closed WITHOUT its code landing: the devbox ISS-2/ISS-4 bug. An operator who really did land it stamps it (`POST /api/issues/:id/merge`). They are kept as named empties rather than inlined so the arm has somewhere to be re-argued.
   // cm:edge lockstep -> packages/core/src/pipeline/sweeper.ts — `alarmClosedUnmergedBlockedDependents` (sweeper.ts) and `alarmUnrunnableBlockedDependents` (blocked-dependent-alarms.ts, covering `draft` AND `dropped`) are the surfacing halves of this predicate: this decides which blockers hold a job, those decide what the operator is told about it. A blocker status added or dropped here and not there is a job queued with nobody notified.
   const blockClosedArm = sql``;
-  const decompClosedArm = sql``;
 
   // cm:guard treat a currently-reopened blocker as UNSATISFIED regardless of merged_at — the stamp is COALESCE-once and never cleared, so a blocker that reached `tested` then got rejected back to `reopen` still reads as satisfied and dispatches the parent onto a broken child (sid-desk ISS-20/25); the stamp records that code landed once, not that it is still good
   //
   // cm:why ONLY `reopen` — `on_hold`/`needs_info` were considered and rejected. Over-blocking wedges a queue silently (the ISS-639 failure mode this file was already burned by); `reopen` is the only bounce that asserts the landed code itself is suspect.
   const blockReopenArm = sql` OR p.status = 'reopen'`;
-  const decompReopenArm = sql` OR c2.status = 'reopen'`;
 
   // cm:guard key the allowance on the job TYPE, never on the stamped trigger — `POST /run-pipeline-step` exists to re-fire a stage WITHOUT bouncing the issue status, so it stamps `stageStatus = issue.status`; re-fire `code` at `developed`, the agent flips the issue to `in_progress`, and a trigger-keyed arm ('approved','in_progress') matches nothing while the real pair is ('developed','in_progress'). Same concept, same key, same reason as `JOB_TYPE_INFLIGHT_STATUS` in pipeline/recovery-verifier.ts.
   // cm:edge lockstep -> packages/core/src/pipeline/recovery-verifier.ts — `JOB_TYPE_INFLIGHT_STATUS` is the failure-path twin of this allowance (both answer "is this retry still wanted?"); a type present in one and absent from the other means the retry engine keeps a job alive that this gate then discards
@@ -528,18 +520,6 @@ export function buildBarrierFragments(args: {
         AND d.kind = 'blocks'
         AND (d.valid_until IS NULL OR d.valid_until > now())
         AND (p.merged_at IS NULL${blockReopenArm})${blockClosedArm}
-    )`,
-    // cm:why the PARENT runs its integration LAST: its forward jobs stay queued until every `kind='decomposes'` child has `merged_at` stamped, the same satisfaction rule as `blockedBy` above
-    // cm:guard the dependency is one-directional and must stay that way — children are NOT gated on the parent. The inverse gate (`releaseDecomposePending`, child release waiting on `parent.merged_at`) deadlocked umbrella epics that never code-merge themselves, and was removed for it.
-    // cm:guard `drive` is the autonomous mode's whole pipeline in one job, so listing it here is safe ONLY because the EXISTS is anchored on `d2.from_issue_id = j.issue_id` — the parent side. A child is only ever `to_issue_id`, so its own drive job finds no edge and runs free; loosening that anchor would hold both sides and deadlock the epic against itself, silently, reporting `decompose_children_pending` on each.
-    // cm:guard the parent's held job sits `queued` for as long as the children take, and three passes must keep tolerating that: `inv7-alarms` third pass fires only on a queued job with NO gate reason, its fifth wants a PAUSED run, and `running_ids` above counts only `dispatched`/`running` plus retry-cooldown — so this neither alarms, nor is reaped, nor burns the project cap. A pass that started reaping on queue age alone would strand exactly the parents this gate exists to hold.
-    decomposeChildrenPending: sql`j.type IN ('code','review','test','fix','drive') AND EXISTS (
-      SELECT 1 FROM issue_dependencies d2
-      JOIN issues c2 ON c2.id = d2.to_issue_id
-      WHERE d2.from_issue_id = j.issue_id
-        AND d2.kind = 'decomposes'
-        AND (d2.valid_until IS NULL OR d2.valid_until > now())
-        AND (c2.merged_at IS NULL${decompReopenArm})${decompClosedArm}
     )`,
   };
 
@@ -614,7 +594,6 @@ export async function pickNextDispatchableJobForProject(
       AND NOT (${predicates.issueBusyJob})
       AND NOT (${predicates.staleTrigger})
       AND NOT (${predicates.blockedBy})
-      AND NOT (${predicates.decomposeChildrenPending})
       AND EXISTS (
         SELECT 1 FROM fresh_capable_runners fcr
         WHERE fcr.in_flight < fcr.cap
@@ -671,7 +650,6 @@ function buildGateReasonCase(predicates: BarrierFragments['predicates'], cap: nu
         WHEN ${predicates.issueBusyJob} THEN 'issue_busy'
         WHEN ${predicates.staleTrigger} THEN 'stale_trigger'
         WHEN ${predicates.blockedBy} THEN 'blocked_by'
-        WHEN ${predicates.decomposeChildrenPending} THEN 'decompose_children_pending'
         WHEN j.issue_id IS NOT NULL
              AND j.issue_id::text NOT IN (SELECT issue_id FROM running_ids)
              AND (SELECT COUNT(*) FROM running_ids) >= ${cap}

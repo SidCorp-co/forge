@@ -194,12 +194,6 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const orphanedIssueRuns = await runPass('reapOrphanedIssueRuns', () =>
     reapOrphanedIssueRuns(now),
   );
-  // ISS-442 — surface dependency deadlocks the dispatcher can't resolve: a job
-  // queued past the grace window whose `blocks`/`decomposes` blocker is parked
-  // (merged_at NULL, not closed, no active job to ever stamp it). Static config
-  // validation can't catch a no-op skill on an enabled+auto merge stage, so this
-  // runtime pass is the backstop (anhome-class wedge). Detect + escalate only —
-  // never mutates state (operator fixes mergeStates or marks the blocker merged).
   const stalledDependencies = await runPass('detectStalledDependencies', () =>
     detectStalledDependencies(now),
   );
@@ -291,7 +285,6 @@ type StalledRow = {
   blocker_status: string;
   blocker_seq: number;
   blocker_title: string;
-  kind: string;
   queued_secs: number;
 };
 
@@ -301,9 +294,9 @@ type StalledRow = {
  * feeds the interventions metric). A job is deadlocked when it has sat `queued`
  * past {@link STALL_GRACE_MS} and its gate's blocker is PARKED: `merged_at` is
  * NULL, the blocker isn't `closed`, and the blocker has NO active job that could
- * ever advance it to stamp `merged_at`. Mirrors the `blockedBy` /
- * `decomposeChildrenPending` predicates in `jobs/dispatch-gates.ts` (same
- * job-type scoping) plus the parked-blocker condition. Detection only — never
+ * ever advance it to stamp `merged_at`. Mirrors the `blockedBy` predicate in
+ * `jobs/dispatch-gates.ts` (same job-type scoping) plus the parked-blocker
+ * condition. Detection only — never
  * mutates state. Best-effort: never throws (returns 0 on error).
  */
 export async function detectStalledDependencies(
@@ -318,18 +311,14 @@ export async function detectStalledDependencies(
       SELECT j.id AS job_id, j.project_id, j.type AS job_type, j.issue_id::text AS issue_id,
              wi.iss_seq AS wedged_seq, wi.title AS wedged_title,
              p.id::text AS blocker_id, p.status AS blocker_status,
-             p.iss_seq AS blocker_seq, p.title AS blocker_title, d.kind,
+             p.iss_seq AS blocker_seq, p.title AS blocker_title,
              extract(epoch FROM (now() - j.queued_at))::int AS queued_secs
       FROM jobs j
       JOIN pipeline_runs r ON r.id = j.pipeline_run_id
       JOIN issues wi ON wi.id = j.issue_id
-      -- cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — this job-type list must equal the one in the decomposeChildrenPending gate: that predicate decides which jobs a pending child HOLDS, this one decides which of those the operator is ever told about. A type gated there and missing here is a job queued forever with no alarm, which is what drive was until ISS-886.
-      JOIN issue_dependencies d ON (
-            (d.kind = 'blocks' AND d.to_issue_id = j.issue_id AND j.type <> 'pm')
-         OR (d.kind = 'decomposes' AND d.from_issue_id = j.issue_id
-             AND j.type IN ('code','review','test','fix','drive'))
-      )
-      JOIN issues p ON p.id = (CASE WHEN d.kind = 'blocks' THEN d.from_issue_id ELSE d.to_issue_id END)
+      -- cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — this job-type scoping must equal the blockedBy gate's: that predicate decides which jobs a parked blocker HOLDS, this one decides which of those the operator is ever told about. A type gated there and missing here is a job queued forever with no alarm.
+      JOIN issue_dependencies d ON (d.kind = 'blocks' AND d.to_issue_id = j.issue_id AND j.type <> 'pm')
+      JOIN issues p ON p.id = d.from_issue_id
       WHERE j.status = 'queued'
         AND j.issue_id IS NOT NULL
         AND j.queued_at < ${cutoffIso}
@@ -353,8 +342,8 @@ export async function detectStalledDependencies(
       if (seen.has(row.job_id)) continue;
       seen.add(row.job_id);
       const mins = Math.round(row.queued_secs / 60);
-      const rel = row.kind === 'blocks' ? 'blocked by' : 'decomposes — waiting on child';
-      const relBusiness = row.kind === 'blocks' ? 'a blocking issue' : 'a sub-task';
+      const rel = 'blocked by';
+      const relBusiness = 'a blocking issue';
       const statusLabel = blockerStatusLabel(row.blocker_status);
       const nextStep =
         row.blocker_status === 'needs_info'
@@ -400,7 +389,7 @@ type ClosedUnmergedRow = {
  * ISS-639 — active counterpart to the blocks-gate fix in
  * `jobs/dispatch-gates.ts`: when a project's `mergeStates.baseBranch` IS
  * stampable, the gate no longer treats a `closed`+`merged_at IS NULL`
- * blocker as satisfying `blockedBy`/`decomposeChildrenPending`, so a
+ * blocker as satisfying `blockedBy`, so a
  * dependent whose blocker closed without merging now just sits `queued`
  * forever instead of silently dispatching onto a base branch missing the
  * blocker's code (devbox ISS-2/ISS-4). This pass raises an ALARM on it: past
@@ -438,13 +427,9 @@ export async function alarmClosedUnmergedBlockedDependents(
       JOIN pipeline_runs r ON r.id = j.pipeline_run_id
       JOIN issues wi ON wi.id = j.issue_id
       JOIN projects pr ON pr.id = j.project_id
-      -- cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — this job-type list must equal the one in the decomposeChildrenPending gate: that predicate decides which jobs a pending child HOLDS, this one decides which of those the operator is ever told about. A type gated there and missing here is a job queued forever with no alarm, which is what drive was until ISS-886.
-      JOIN issue_dependencies d ON (
-            (d.kind = 'blocks' AND d.to_issue_id = j.issue_id AND j.type <> 'pm')
-         OR (d.kind = 'decomposes' AND d.from_issue_id = j.issue_id
-             AND j.type IN ('code','review','test','fix','drive'))
-      )
-      JOIN issues p ON p.id = (CASE WHEN d.kind = 'blocks' THEN d.from_issue_id ELSE d.to_issue_id END)
+      -- cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts — this job-type scoping must equal the blockedBy gate's: that predicate decides which jobs a parked blocker HOLDS, this one decides which of those the operator is ever told about. A type gated there and missing here is a job queued forever with no alarm.
+      JOIN issue_dependencies d ON (d.kind = 'blocks' AND d.to_issue_id = j.issue_id AND j.type <> 'pm')
+      JOIN issues p ON p.id = d.from_issue_id
       WHERE j.status = 'queued'
         AND j.issue_id IS NOT NULL
         AND j.queued_at < ${cutoffIso}

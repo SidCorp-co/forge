@@ -10,9 +10,8 @@
 // needed. There is no next step to notice: `answer-resume.ts` restarts
 // `needs_info` and nothing else, so a human must act or the issue stops
 // forever. ISS-886 rewrote an AGENT's `waiting` away, which leaves exactly the
-// two kinds this pass now has to surface — a person's own park, and the
-// decompose review gate. Measured 2026-08-30: kinetrak ISS-4's split had been
-// waiting 11 days with nobody told.
+// park this pass has to surface: a person's own. Measured 2026-08-30: a split
+// parent had been waiting 11 days with nobody told.
 //
 // Detection + notify only. This pass never moves an issue: `waiting` is a
 // deliberate human park and only a human may leave it. The whole point is to
