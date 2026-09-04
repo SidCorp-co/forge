@@ -34,8 +34,6 @@ export const pmSetDependencyInputSchema = z
     reason: z.string().max(2000).optional(),
     validUntil: z.iso.datetime().optional(),
     // ISS-138 (PR-D) — opt-in to/out of integration-branch auto-creation
-    // when `kind === 'decomposes'`. Ignored for other kinds.
-    decomposeOpts: z.object({ useIntegrationBranch: z.boolean().optional() }).strict().optional(),
   })
   .strict();
 
@@ -93,7 +91,7 @@ function recordDeprecation(ctx: McpContext, toolName: string) {
 export const forgePmSetDependencyTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_pm.set_dependency',
   description:
-    "[DEPRECATED — use forge_project_pm (action=set_dependency)] Requires a paired-device token: a personal access token is refused with PM_REQUIRES_DEVICE, and its blocks/relates path is forge_issues create/update data.relations instead. Record a dependency edge (blocks/relates/duplicates/parent/decomposes) between two issues in the same project. Idempotent on (projectId, fromIssueId, toIssueId, kind) — a duplicate call returns created:false and applies whichever of `validUntil`/`reason` you passed, reporting `updated:true` when it changed something. Expire an edge by setting `validUntil` in the past; that is the only way an agent can retract one (DELETE is JWT-only REST). Omitted fields are left alone. Caller must be a member of the project. Dispatcher convention (ISS-40 PR-E): only `kind='blocks'` rows gate dispatch — `(from=A, to=B, kind='blocks')` means B waits for A's `merged_at` stamp; a reopened A blocks again, and a closed A without that stamp unblocks B only on a structurally unstampable base. For `blocks` edges, cycles are rejected with a CYCLE_DETECTED error. ISS-138 (PR-D): when `kind='decomposes'`, the first edge added to a parent also triggers integration-branch creation + branchConfig auto-fill on parent and child. Pass `decomposeOpts.useIntegrationBranch: false` to opt out (children then branch off the project default).",
+    "[DEPRECATED — use forge_project_pm (action=set_dependency)] Requires a paired-device token: a personal access token is refused with PM_REQUIRES_DEVICE, and its blocks/relates path is forge_issues create/update data.relations instead. Record a dependency edge (blocks/relates/duplicates/parent/decomposes) between two issues in the same project. Only `blocks` gates anything; `decomposes` is a grouping label with no lifecycle of its own. Idempotent on (projectId, fromIssueId, toIssueId, kind) — a duplicate call returns created:false and applies whichever of `validUntil`/`reason` you passed, reporting `updated:true` when it changed something. Expire an edge by setting `validUntil` in the past; that is the only way an agent can retract one (DELETE is JWT-only REST). Omitted fields are left alone. Caller must be a member of the project. Dispatcher convention (ISS-40 PR-E): only `kind='blocks'` rows gate dispatch — `(from=A, to=B, kind='blocks')` means B waits for A's `merged_at` stamp; a reopened A blocks again, and a closed A without that stamp unblocks B only on a structurally unstampable base. For `blocks` edges, cycles are rejected with a CYCLE_DETECTED error.",
   inputSchema: zodToMcpSchema(pmSetDependencyInputSchema),
   handler: async (args) => {
     recordDeprecation(ctx, 'forge_pm.set_dependency');

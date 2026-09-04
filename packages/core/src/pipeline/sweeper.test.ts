@@ -150,8 +150,8 @@ const {
   alarmClosedUnmergedBlockedDependents,
 } = await import('./sweeper.js');
 
-const DECOMPOSE_SCOPE =
-  /d\.kind = 'decomposes'[\s\S]*?j\.type IN \('code','review','test','fix','drive'\)/;
+// cm:guard both alarm passes must scope to the SAME `blocks` join the dispatch gate uses — a pass that stops mirroring it is a job queued forever with nobody notified, which is what `drive` was until ISS-886.
+const BLOCKS_SCOPE = /d\.kind = 'blocks' AND d\.to_issue_id = j\.issue_id AND j\.type <> 'pm'/;
 /** Flatten a drizzle `sql` template into its raw text for fragment assertions. */
 function sqlText(arg: unknown): string {
   const out: string[] = [];
@@ -645,7 +645,7 @@ describe('detectStalledDependencies — never-clearing gate (ISS-442)', () => {
   it('emits a deduped dispatch-hop wedge per parked-blocker deadlock', async () => {
     dbExecute.mockResolvedValueOnce([stalledRow]);
     const res = await detectStalledDependencies(new Date());
-    expect(sqlText(dbExecute.mock.calls[0]?.[0])).toMatch(DECOMPOSE_SCOPE);
+    expect(sqlText(dbExecute.mock.calls[0]?.[0])).toMatch(BLOCKS_SCOPE);
     expect(res.detected).toBe(1);
     expect(emitWedgeMock).toHaveBeenCalledTimes(1);
     expect(emitWedgeMock).toHaveBeenCalledWith(
@@ -765,8 +765,7 @@ describe('alarmClosedUnmergedBlockedDependents — alarm only (ISS-639, demoted 
     expect(text).toMatch(/j\.status\s*=\s*'queued'/);
     expect(text).toMatch(/j\.queued_at\s*<\s*/);
     expect(text).toMatch(/r\.status\s*=\s*'running'/);
-    // cm:guard ISS-886 — `drive` must sit in the decomposes arm of BOTH alarm passes (the twin assertion is in the `detectStalledDependencies` suite) or an autonomous decompose parent queues forever with nobody notified: `decomposeChildrenPending` holds a `drive` job on a pending child exactly as it holds `code`, and these two passes are the only things that ever tell an operator a held job exists.
-    expect(text).toMatch(DECOMPOSE_SCOPE);
+    expect(text).toMatch(BLOCKS_SCOPE);
   });
 
   it('runs as part of runPipelineSweep and reports the count', async () => {

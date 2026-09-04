@@ -518,8 +518,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'blocked-by it) or blocksId (THIS issue blocks it). The response carries a relations[] ' +
     'array — one entry per edge with edgeId + created/updated — so you can tell the write ' +
     'landed; re-send an existing edge with validUntil in the past to RETRACT it ' +
-    '(reported as updated:true). For decomposes edges, use forge_project_pm ' +
-    'set_dependency kind=decomposes directly. Read edges back with action=get, which ' +
+    '(reported as updated:true). For the other kinds, use forge_project_pm ' +
+    'set_dependency directly. Read edges back with action=get, which ' +
     'returns relations.blocks (this issue blocks them) and relations.blockedBy (they ' +
     'block this issue), each entry flagged `expired` when its validUntil has passed and ' +
     'the edge no longer gates dispatch. ' +
