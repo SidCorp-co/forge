@@ -148,6 +148,7 @@ async function synthesizeViaBao(
     source: 'rocketchat',
     message: buildSynthesisMessage(meta.question, payload, meta.askedByUsername),
     tools,
+    turnKind: tools ? 'agentic' : 'relay',
     persona,
     userKey: meta.askedByUsername || null,
   });

@@ -97,3 +97,42 @@ describe('chat provider registry', () => {
     ).rejects.toBeInstanceOf(HTTPException);
   });
 });
+
+describe('resolveForProject — per-kind model', () => {
+  const row = (chatModelByKind: unknown) => ({
+    chatProviderId: 'mock',
+    chatModel: 'project-model',
+    chatModelByKind,
+  });
+
+  it('a by-kind entry wins over chat_model for that kind only', async () => {
+    register('mock', () => fakeProvider('mock', 'mock-default'));
+    selectLimit.mockResolvedValue([row({ relay: 'cheap-model' })]);
+
+    expect((await resolveForProject(PROJECT_ID, { kind: 'relay' })).model).toBe('cheap-model');
+    expect((await resolveForProject(PROJECT_ID, { kind: 'agentic' })).model).toBe('project-model');
+    expect((await resolveForProject(PROJECT_ID)).model).toBe('project-model');
+  });
+
+  it('malformed or blank by-kind jsonb falls to chat_model, never throws', async () => {
+    register('mock', () => fakeProvider('mock', 'mock-default'));
+    for (const bad of ['oops', 42, null, { relay: 7 }, { relay: '  ' }, ['relay']]) {
+      selectLimit.mockResolvedValueOnce([row(bad)]);
+      expect((await resolveForProject(PROJECT_ID, { kind: 'relay' })).model).toBe('project-model');
+    }
+  });
+
+  it('a by-kind entry rides the row provider — it is discarded with the row when that provider is unknown', async () => {
+    register('fallback', () => fakeProvider('fallback', 'fallback-default'));
+    selectLimit.mockResolvedValueOnce([
+      { ...row({ relay: 'cheap-model' }), chatProviderId: 'gone' },
+    ]);
+
+    const resolved = await resolveForProject(PROJECT_ID, {
+      kind: 'relay',
+      fallbackProviderId: 'fallback',
+    });
+    expect(resolved.provider.id).toBe('fallback');
+    expect(resolved.model).toBe('fallback-default');
+  });
+});

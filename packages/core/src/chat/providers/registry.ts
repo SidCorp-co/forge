@@ -1,9 +1,5 @@
 /**
- * v1 EPIC 1 (ISS-270) — Chat provider registry, mirroring the runner-framework
- * registry pattern (ISS-271) so a future reader sees one convention. Providers
- * register at bootstrap; consumers resolve directly by id (`get`) or by project
- * (`resolveForProject`), which reads `app_config.chat_provider_id` and falls
- * back to the env default.
+ * v1 EPIC 1 (ISS-270) — Chat provider registry (same convention as the runner-framework registry, ISS-271). Providers register at bootstrap; `resolveForProject` reads `app_config.chat_provider_id` and falls back to the env default, and picks the model per turn kind — an `agentic` turn (tools offered) and a `relay` turn (tool-less prose, e.g. escalation synthesis) may run different models on one provider via `app_config.chat_model_by_kind`.
  */
 
 import { eq } from 'drizzle-orm';
@@ -39,6 +35,9 @@ export function get(id: string): ChatProvider | undefined {
   return instance;
 }
 
+export const chatTurnKinds = ['agentic', 'relay'] as const;
+export type ChatTurnKind = (typeof chatTurnKinds)[number];
+
 export interface ResolvedChatProvider {
   provider: ChatProvider;
   model: string;
@@ -48,15 +47,17 @@ export interface ResolveOptions {
   db?: typeof defaultDb | undefined;
   fallbackProviderId?: string | undefined;
   fallbackModel?: string | undefined;
+  kind?: ChatTurnKind | undefined;
 }
 
-/**
- * Resolve the provider + model for a project: `app_config.chat_provider_id`
- * when that id is registered (model from `app_config.chat_model`, else the
- * provider's default), otherwise the env-driven fallback id from
- * `defaultChatProviderId()`. Throws 503 when neither resolves, so callers can
- * return a structured error to the client.
- */
+// cm:guard tolerate any shape in the jsonb (non-object, non-string entry) by returning undefined — an operator can PUT this map by hand and a throw here would 503 every chat turn on the project instead of falling to `chat_model`
+function modelForKind(byKind: unknown, kind: ChatTurnKind): string | undefined {
+  if (!byKind || typeof byKind !== 'object') return undefined;
+  const value = (byKind as Record<string, unknown>)[kind];
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+/** `app_config.chat_provider_id` when registered (model: `chat_model_by_kind[kind]` → `chat_model` → provider default), else the env fallback id; throws 503 when neither resolves. */
 export async function resolveForProject(
   projectId: string,
   opts: ResolveOptions = {},
@@ -66,13 +67,17 @@ export async function resolveForProject(
     .select({
       chatProviderId: appConfig.chatProviderId,
       chatModel: appConfig.chatModel,
+      chatModelByKind: appConfig.chatModelByKind,
     })
     .from(appConfig)
     .where(eq(appConfig.projectId, projectId))
     .limit(1);
 
   const candidates: Array<{ id: string | null | undefined; model: string | null | undefined }> = [
-    { id: row?.chatProviderId, model: row?.chatModel },
+    {
+      id: row?.chatProviderId,
+      model: modelForKind(row?.chatModelByKind, opts.kind ?? 'agentic') ?? row?.chatModel,
+    },
     { id: opts.fallbackProviderId, model: opts.fallbackModel },
   ];
 

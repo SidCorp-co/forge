@@ -17,7 +17,7 @@ import {
 import { logger } from '../logger.js';
 import { PROVIDER_HISTORY_WINDOW } from './context-budget.js';
 import { defaultChatProviderId } from './providers/bootstrap.js';
-import { resolveForProject } from './providers/registry.js';
+import { type ChatTurnKind, resolveForProject } from './providers/registry.js';
 import type { ChatResponseFormat } from './providers/types.js';
 import { runTurnEvents, usageForLog } from './run-turn-core.js';
 import {
@@ -56,6 +56,8 @@ export interface ExternalChatTurnArgs {
   /** Aborts the turn (provider fetch + SSE read) so a hung upstream terminates as an error instead of wedging the caller. */
   signal?: AbortSignal | undefined;
   responseFormat?: ChatResponseFormat | undefined;
+  /** Picks `app_config.chat_model_by_kind[kind]`; defaults to `'agentic'`. */
+  turnKind?: ChatTurnKind | undefined;
   db?: typeof defaultDb;
 }
 
@@ -102,6 +104,7 @@ export async function runExternalChatTurn(
 
   const resolved = await resolveForProject(args.projectId, {
     fallbackProviderId: defaultChatProviderId(),
+    kind: args.turnKind ?? 'agentic',
     db: dbi,
   });
 

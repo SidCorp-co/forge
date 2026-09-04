@@ -78,6 +78,7 @@ chatRoutes.post(
 
     const resolved = await resolveForProject(projectId, {
       fallbackProviderId: defaultChatProviderId(),
+      kind: 'agentic',
     });
 
     const session = await loadOrCreateSession({
