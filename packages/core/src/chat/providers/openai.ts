@@ -61,11 +61,9 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
     defaultModel: cfg.defaultModel,
     async *stream(req: ChatStreamRequest): AsyncIterable<ChatStreamEvent> {
       const retryDelays = cfg.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
-      // `tool_choice: 'required'` makes Vertex/Gemini compile ALL tool schemas
-      // into a constrained-decoding grammar; a large toolset then 400s with
-      // "too many states for serving". Degrade to auto and retry rather than
-      // failing the turn — the post-turn reply guard still polices laziness.
+      // cm:guard both of these degrade ONCE and then the field is gone for the rest of the call, so a rejecting endpoint costs one extra request, never a loop: `tool_choice:'required'` makes Vertex compile every tool schema into a constrained-decoding grammar and 400s "too many states" on a large toolset, and `response_format` is optional in the OpenAI contract so a compatible endpoint may 400 it as unsupported — in both cases the post-turn reply guard still polices the answer
       let toolChoice = req.toolChoice;
+      let responseFormat = req.responseFormat;
       const init = (): RequestInit => {
         const i: RequestInit = {
           method: 'POST',
@@ -82,6 +80,7 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
             ...(req.tools && req.tools.length > 0 ? { tools: req.tools } : {}),
             ...(req.tools && req.tools.length > 0 && toolChoice ? { tool_choice: toolChoice } : {}),
             ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
+            ...(responseFormat ? { response_format: responseFormat } : {}),
           }),
         };
         if (req.signal) i.signal = req.signal;
@@ -108,6 +107,15 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
           // force and retry immediately (does not consume a backoff attempt).
           if (res.status === 400 && toolChoice && /too many states/i.test(body)) {
             toolChoice = undefined;
+            attempt--;
+            continue;
+          }
+          if (
+            res.status === 400 &&
+            responseFormat &&
+            /response_format|json_schema|unsupported|unrecognized/i.test(body)
+          ) {
+            responseFormat = undefined;
             attempt--;
             continue;
           }
