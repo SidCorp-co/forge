@@ -633,15 +633,12 @@
     its title scored 0.727 against the draft filed one turn earlier, above the 0.72 floor, but
     two model-written descriptions of one chat message share little vocabulary and the 25%
     description weight dragged the blend under. A title that clears the floor alone is now a
-    duplicate; the blend still rescues a weaker title with a near-identical description.
-
-- A dedup block the model cannot get past when it is wrong. The floor above is recall-first on
-  purpose, and word overlap cannot tell a repeat from two issues about different screens: "Dark
-  mode broken on the settings page" against "…on the profile page" scores 0.750, above the floor
-  the real miss sat below, so no threshold separates them. The rejection now names
-  `data.confirmNotDuplicate` and the guard consumes it before the create proceeds — consumed
-  rather than forwarded, because `forge_issues` validates `data` strictly. A false positive costs
-  one round instead of being unrecoverable in the turn.
+    duplicate; the blend still rescues a weaker title with a near-identical description. Because
+    word overlap cannot tell that apart from two issues about different screens — "Dark mode
+    broken on the settings page" against "…on the profile page" scores 0.750, above the floor the
+    real miss sat below — the rejection now names `data.confirmNotDuplicate`, which the guard
+    consumes to let a create through. A false positive costs one round instead of being
+    unrecoverable in the turn.
 
 - web-v2 `features/activity` read `chat_logs.usage` through Anthropic-shaped snake_case keys
   (`input_tokens`, `cache_read_input_tokens`) that core has never written, so `sumTokens` returned
