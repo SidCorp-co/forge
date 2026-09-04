@@ -806,16 +806,6 @@ impl Runner for ClaudeCodeRunner {
             cmd.env("MCP_TIMEOUT", "15000");
         }
 
-        // New process group so we can kill the whole tree.
-        #[cfg(unix)]
-        unsafe {
-            cmd.pre_exec(|| {
-                nix::unistd::setsid()
-                    .map(|_| ())
-                    .map_err(std::io::Error::other)
-            });
-        }
-
         let mut child = cmd.spawn().map_err(|e| {
             let _ = std::fs::remove_file(&mcp_path);
             Error::Other(format!("failed to spawn claude: {e}"))

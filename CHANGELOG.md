@@ -1382,6 +1382,12 @@
   no row is judged by `held_at` age instead, since there is no heartbeat to read; the two arms that
   DO have a session keep reaping on its status and heartbeat immediately.
 
+  Every process the runner spawns now leads its own process group. `graceful_kill` signals `-pid`,
+  which reaches nothing unless the child is a group leader — the agent lane called `setsid` itself
+  and so was fine, but the master and the setup agent were not, and both had timeouts that logged a
+  kill they never performed. Measured live on 2026-09-05: a master the daemon reported killing at
+  150s was still running eleven minutes later. Setting it in `build_command` covers all three lanes.
+
   The `forge-master` skill ships **inside the runner binary** and is written to the master's own
   directory before every pass. Nothing else could deliver it — project skill sync writes into a
   project's checkout and the master runs in no checkout — and a master told to use a skill that is
