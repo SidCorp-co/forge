@@ -425,3 +425,57 @@ describe('runTurnEvents — usage', () => {
     expect(result.usage).toEqual({ promptTokens: 220, cachedPromptTokens: 40 });
   });
 });
+
+describe('runTurnEvents — response_format', () => {
+  const recorder = (callTools: (round: number) => boolean) => {
+    const formats: unknown[] = [];
+    const provider: ChatProvider = {
+      id: 'mock',
+      defaultModel: 'm',
+      async *stream(req): AsyncIterable<ChatStreamEvent> {
+        formats.push(req.responseFormat);
+        if (callTools(formats.length) && req.tools) {
+          yield { type: 'tool_call', id: `c${formats.length}`, name: 'get', arguments: '{}' };
+        } else {
+          yield { type: 'chunk', text: '{}' };
+        }
+        yield { type: 'done' };
+      },
+    };
+    return { formats, provider };
+  };
+  const tools: ChatToolset = {
+    tools: [{ type: 'function', function: { name: 'get', parameters: {} } }],
+    execute: async () => ok('{}'),
+  };
+  const format = { type: 'json_object' } as const;
+
+  it('rides the single round of a tool-less turn', async () => {
+    const { formats, provider } = recorder(() => false);
+    await drain(
+      runTurnEvents({
+        provider,
+        model: 'm',
+        messages: [{ role: 'user', content: 'go' }],
+        responseFormat: format,
+      }),
+    );
+    expect(formats).toEqual([format]);
+  });
+
+  it('is withheld on every round that offers tools and sent on the tool-less final round', async () => {
+    const { formats, provider } = recorder(() => true);
+    await drain(
+      runTurnEvents({
+        provider,
+        model: 'm',
+        messages: [{ role: 'user', content: 'go' }],
+        tools,
+        responseFormat: format,
+      }),
+    );
+    expect(formats).toHaveLength(MAX_TOOL_ITERATIONS);
+    expect(formats.slice(0, -1).every((f) => f === undefined)).toBe(true);
+    expect(formats.at(-1)).toEqual(format);
+  });
+});

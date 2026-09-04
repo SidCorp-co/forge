@@ -18,6 +18,7 @@ import { logger } from '../logger.js';
 import { PROVIDER_HISTORY_WINDOW } from './context-budget.js';
 import { defaultChatProviderId } from './providers/bootstrap.js';
 import { resolveForProject } from './providers/registry.js';
+import type { ChatResponseFormat } from './providers/types.js';
 import { runTurnEvents, usageForLog } from './run-turn-core.js';
 import {
   appendAssistantMessage,
@@ -54,6 +55,7 @@ export interface ExternalChatTurnArgs {
   resolveImage?: ImageResolver | undefined;
   /** Aborts the turn (provider fetch + SSE read) so a hung upstream terminates as an error instead of wedging the caller. */
   signal?: AbortSignal | undefined;
+  responseFormat?: ChatResponseFormat | undefined;
   db?: typeof defaultDb;
 }
 
@@ -144,6 +146,7 @@ export async function runExternalChatTurn(
     temperature: 0.2,
     requireInitialToolUse: args.tools !== undefined,
     contextBudgetTokens: env.CHAT_CONTEXT_BUDGET_TOKENS,
+    responseFormat: args.responseFormat,
     signal: args.signal,
   });
   let step = await gen.next();

@@ -18,6 +18,7 @@ import {
 import type {
   ChatMessage,
   ChatProvider,
+  ChatResponseFormat,
   ChatStreamEvent,
   ChatStreamUsage,
 } from './providers/types.js';
@@ -41,6 +42,7 @@ export interface TurnCoreArgs {
   requireInitialToolUse?: boolean | undefined;
   /** Estimated-token cap on each provider request; `context-budget.ts` elides to fit. */
   contextBudgetTokens?: number | undefined;
+  responseFormat?: ChatResponseFormat | undefined;
   signal?: AbortSignal | undefined;
 }
 
@@ -189,6 +191,8 @@ export async function* runTurnEvents(
         temperature,
         toolChoice:
           args.requireInitialToolUse && iterations === 1 && offered ? 'required' : undefined,
+        // cm:guard `response_format` goes only on a round that offers NO tools — Gemini rejects function calling combined with a JSON response schema, and on a tool round the schema would constrain the prose-with-tool-calls shape this loop reads; a tool-less turn gets it on its single round, a tool turn on the final one
+        responseFormat: offered ? undefined : args.responseFormat,
         signal,
       })) {
         if (event.type === 'chunk') {

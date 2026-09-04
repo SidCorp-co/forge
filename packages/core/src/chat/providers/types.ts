@@ -49,10 +49,19 @@ export type ChatStreamEvent =
   | { type: 'done' }
   | { type: 'error'; message: string };
 
+/** OpenAI `response_format`. Plumbing with no caller yet; `runTurnEvents` sends it only on a round that offers no tools. */
+export type ChatResponseFormat =
+  | { type: 'json_object' }
+  | {
+      type: 'json_schema';
+      json_schema: { name: string; schema: Record<string, unknown>; strict?: boolean };
+    };
+
 export interface ChatStreamRequest {
   model: string;
   messages: ChatMessage[];
   tools?: ChatTool[] | undefined;
+  responseFormat?: ChatResponseFormat | undefined;
   temperature?: number | undefined;
   /** OpenAI-compat `tool_choice`. `'required'` forces ≥1 tool call this round — agentic callers set it on the FIRST round so a lazy model cannot answer without investigating, and later rounds stay auto so the loop can terminate. */
   toolChoice?: 'required' | 'auto' | undefined;
