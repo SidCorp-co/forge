@@ -31,6 +31,7 @@ flowchart TB
 | Guides served by slug from code | `core/src/guides/registry.ts` |
 | Device-scoped plugin channel | `core/src/plugins/`, runner `workspace/plugin_sync.rs` |
 | Semantic memory | `core/src/memory/`, `schema.ts:memories`, `schema.ts:memorySources` |
+| Chunked memory model (per project) | `schema-memory-chunks.ts:memoryChunks`, `core/src/memory/chunker.ts`, `chunk-writer.ts`, `chunk-reindex.ts`, `core/src/app-config/memory-model-routes.ts` |
 | Candidate accrual and promotion | `schema.ts:memoryCandidates`, `core/src/memory/candidates-*.ts` |
 | Step handoffs between stages | `core/src/memory/step-handoff-schema.ts` |
 | Project knowledge graph | `core/src/knowledge/`, `core/src/knowledge-edges/`, `schema.ts:knowledgeEntries` |
@@ -46,6 +47,8 @@ flowchart TB
 | `schema.ts:memorySources` | `issue` · `comment` · `job` · `note` · `knowledge` · `decision` · `policy` |
 | `schema.ts:memoryCandidateSignalTypes` | `reopen_loop` · `repeated_fix_type` · `handoff_gap_rescue` · `agent_self_report` |
 | `schema.ts:memoryCandidateStatuses` | `accruing` · `graduated` · `accepted` · `rejected` · `promoted` |
+| `schema.ts:memoryModels` | `flat` · `chunked` |
+| `schema-memory-chunks.ts:memoryReindexStates` | `queued` · `running` · `completed` · `failed` · `cancelled` |
 | `schema.ts:knowledgeKinds` | `overview` · `scenario` · `workflow` · `rule` · `guide` · `reference` · `glossary` |
 
 ## Guards
@@ -67,10 +70,33 @@ flowchart TB
 - **Per-project retrieval flags live on `app_config` and default to today.** `schema.ts:appConfig`
   carries `retrievalRerank` (false), `memoryModel` (`flat` | `chunked`, `schema.ts:memoryModels`),
   `retrievalExpandRelations` (false) and `memoryReindex` (`{}`). `retrieval-flags.ts:loadRetrievalFlags`
-  reads the first and third on every search; `memoryModel` and `memoryReindex` are read by nothing
-  until phase 2 of `docs/proposals/retrieval-v3-rerank-chunks.md` ships. A project admin sets the
-  first three through `PUT /api/app-config/:projectId`; `memoryReindex` is refused there because it is
-  the reindex job's own state.
+  reads the first three on every search and every memory write. A project admin sets the two booleans
+  through `PUT /api/app-config/:projectId`; `memoryModel` is refused there because flipping it is an
+  operation with a job behind it (below), and `memoryReindex` because it is that job's own state.
+- **The chunked memory model is a sibling table, joined on generation.** With `memoryModel` `chunked`,
+  a write of an `issue` / `note` / `knowledge` / `decision` / `policy` row (`chunker.ts:CHUNKED_SOURCES`,
+  the only place the set lives — `comment` and `job` are never chunked) bumps `memories.chunk_generation`,
+  nulls `chunked_at` and deletes the old passages in the same transaction as the parent upsert, then
+  `chunk-writer.ts:chunkAndPublish` embeds the prefixed ~1,200-character passages (200 overlap, one
+  chunk under 1,500) and inserts them into `memory_chunks` with that generation, stamping `chunked_at`
+  only if the generation is still current. The search arms in `search.ts:chunkedSearch` join
+  `c.generation = m.chunk_generation AND m.chunked_at IS NOT NULL`, `UNION ALL` the flat arm on
+  `chunked_at IS NULL`, so a superseded or half-written passage set is unreachable and a project that
+  flipped a minute ago is correct to search. A hit found through a passage carries
+  `matchedChunk: { index, text }`. A degraded write leaves `chunked_at` NULL and
+  `embedding-backfill.ts:runChunkBackfill` completes it once embeddings return.
+- **Flipping the model is an operation with five states, not a setting.** `memory-model-routes.ts`:
+  `GET …/memory-model/estimate` (rows, chars, chunks, embed calls, minutes; nothing enqueued),
+  `POST …/memory-model { model: 'chunked' }` (admin; 409 `REINDEX_LIVE` while a reindex is queued or
+  running; writes the `queued` state sized by `chunk-reindex.ts:countPending` so a resume shows the
+  rows already done, THEN enqueues the `memory-chunk-reindex` pg-boss job), `GET …/memory-model/reindex`,
+  `DELETE …/memory-model/reindex` (cancel between batches; finished rows stay chunked), and
+  `POST … { model: 'flat' }` (immediate read-path switch, cancels a live run, enqueues
+  `memory-chunk-purge` seven days out — the purge is a no-op if the project flipped back meanwhile).
+  `runChunkReindex` re-reads the state before every batch of 50, fails with `lastError` on an
+  embeddings outage, is resumable by construction (it walks `chunked_at IS NULL`), and stamps
+  `app_config.last_backfill_at` on `completed`. The Project Settings card that draws the five states is
+  ISS-908.
 - **Every memory search names its surface, and only `agent` is ever reranked.**
   `search-service.ts:runMemorySearch` requires `surface: 'agent' | 'web'`; the MCP tool
   `forge_memory.search` (which the chat toolset registers too) and `forge_knowledge` search pass

@@ -1,9 +1,11 @@
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { memories } from '../db/schema.js';
+import { appConfig, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
+import { chunkAndPublish, loadChunkParent } from './chunk-writer.js';
+import { CHUNKED_SOURCES } from './chunker.js';
 
 /**
  * memory-v2 phase 1 — re-embed rows written while the embeddings service was
@@ -63,6 +65,55 @@ export async function runEmbeddingBackfill(): Promise<{
   return { reembedded, aborted, durationMs: Date.now() - t0 };
 }
 
+/** The chunked-project rows whose current generation has no published passage set, oldest first — a degraded write, a failed re-embed or a flip that has not reached them yet. */
+export async function selectUnchunked(limit: number, projectId?: string) {
+  const where = [
+    eq(appConfig.memoryModel, 'chunked'),
+    isNull(memories.chunkedAt),
+    isNull(memories.archivedAt),
+    isNotNull(memories.embedding),
+    inArray(memories.source, [...CHUNKED_SOURCES]),
+  ];
+  if (projectId) where.push(eq(memories.projectId, projectId));
+  return db
+    .select({ id: memories.id })
+    .from(memories)
+    .innerJoin(appConfig, eq(appConfig.projectId, memories.projectId))
+    .where(and(...where))
+    .orderBy(asc(memories.updatedAt))
+    .limit(limit);
+}
+
+// cm:guard the chunk backfill only takes rows whose whole-document `embedding` is already there — a degraded row is completed by runEmbeddingBackfill first, in the same sweep, and chunking it before that would spend a second batch of calls against a service the first query just found down
+export async function runChunkBackfill(): Promise<{
+  chunked: number;
+  aborted: boolean;
+  durationMs: number;
+}> {
+  const t0 = Date.now();
+  const rows = await selectUnchunked(BATCH_SIZE);
+  let chunked = 0;
+  let aborted = false;
+  for (const row of rows) {
+    const parent = await loadChunkParent(row.id);
+    if (!parent) continue;
+    try {
+      const result = await chunkAndPublish(parent);
+      if (result.published) chunked++;
+    } catch (err) {
+      if (err instanceof EmbeddingUnavailableError) {
+        aborted = true;
+        break;
+      }
+      logger.error(
+        { err: (err as Error).message, memoryId: row.id },
+        'memory.backfill: chunk publish failed for row, skipping',
+      );
+    }
+  }
+  return { chunked, aborted, durationMs: Date.now() - t0 };
+}
+
 let registered = false;
 
 export async function registerEmbeddingBackfill(): Promise<void> {
@@ -76,6 +127,12 @@ export async function registerEmbeddingBackfill(): Promise<void> {
       const result = await runEmbeddingBackfill();
       if (result.reembedded > 0 || result.aborted) {
         logger.info(result, 'memory.backfill: sweep complete');
+      }
+      if (!result.aborted) {
+        const chunks = await runChunkBackfill();
+        if (chunks.chunked > 0 || chunks.aborted) {
+          logger.info(chunks, 'memory.backfill: chunk sweep complete');
+        }
       }
     } catch (err) {
       logger.error({ err }, 'memory.backfill: sweep failed');

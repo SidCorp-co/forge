@@ -7,6 +7,7 @@ export default defineConfig({
     './src/db/schema-activity.ts',
     './src/db/schema-journal.ts',
     './src/db/schema-session-inbox.ts',
+    './src/db/schema-memory-chunks.ts',
   ],
   out: './drizzle/migrations',
   dbCredentials: {

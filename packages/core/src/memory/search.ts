@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
-import { type MemorySource, memories } from '../db/schema.js';
+import { type MemoryModel, type MemorySource, memories } from '../db/schema.js';
 
 interface BaseSearchInput {
   projectId: string;
@@ -15,6 +15,8 @@ interface BaseSearchInput {
    * handoff scope queries (`run_id`/`step`/`attempt`).
    */
   metadataFilter?: Record<string, string | number | boolean> | undefined;
+  /** `chunked` adds the passage arm (memory_chunks joined on the parent's generation) UNION the flat arm on rows not yet chunked; absent or `flat` is the pre-v3 read. */
+  memoryModel?: MemoryModel | undefined;
 }
 
 export interface SearchInput extends BaseSearchInput {
@@ -43,6 +45,8 @@ export interface MemoryHit {
   rerankPosition?: number;
   /** Present only on a row appended by relation expansion: the edge kind and the `ISS-n` hit it hangs off. */
   via?: MemoryVia;
+  /** On a chunked project, the passage that matched; absent when the flat arm produced the hit. */
+  matchedChunk?: { index: number; text: string };
 }
 
 /** How an expanded row got into the list — it was not retrieved, it neighbours a hit that was. */
@@ -88,6 +92,7 @@ function baseWhereClauses(input: BaseSearchInput) {
 
 /** Semantic (dense vector) strategy — cosine over the HNSW index. */
 export async function searchMemories(input: SearchInput): Promise<MemoryHit[]> {
+  if (input.memoryModel === 'chunked') return chunkedSearch(input, 'semantic');
   const topK = clampTopK(input.topK);
 
   const whereClauses = baseWhereClauses(input);
@@ -134,9 +139,10 @@ export async function searchMemories(input: SearchInput): Promise<MemoryHit[]> {
  * which is why `hybridSearchMemories` fuses by rank (RRF), not by score.
  */
 export async function keywordSearchMemories(input: KeywordSearchInput): Promise<MemoryHit[]> {
-  const topK = clampTopK(input.topK);
   const trimmed = input.query.trim();
   if (!trimmed) return [];
+  if (input.memoryModel === 'chunked') return chunkedSearch(input, 'keyword');
+  const topK = clampTopK(input.topK);
 
   const tsQuery = sql`websearch_to_tsquery('english', ${trimmed})`;
   const whereClauses = baseWhereClauses(input);
@@ -166,6 +172,98 @@ export async function keywordSearchMemories(input: KeywordSearchInput): Promise<
     score: Number(r.rank),
     embeddedAt: r.embeddedAt,
     ...deriveMemoryStaleness(r.metadata),
+  }));
+}
+
+type ChunkedRow = {
+  id: string;
+  source: string;
+  source_ref: string;
+  text_content: string;
+  metadata: unknown;
+  embedded_at: Date | string;
+  measure: number | string;
+  chunk_index: number | null;
+  chunk_text: string | null;
+};
+
+function literalFilters(input: BaseSearchInput) {
+  const parts = [];
+  if (input.sourceFilter && input.sourceFilter.length > 0) {
+    parts.push(
+      sql`AND m.source IN (${sql.join(
+        input.sourceFilter.map((v) => sql`${v}`),
+        sql`, `,
+      )})`,
+    );
+  }
+  if (input.metadataFilter && Object.keys(input.metadataFilter).length > 0) {
+    parts.push(sql`AND m.metadata @> ${JSON.stringify(input.metadataFilter)}::jsonb`);
+  }
+  return parts.length ? sql.join(parts, sql` `) : sql``;
+}
+
+// cm:guard the chunk arm joins `c.generation = m.chunk_generation AND m.chunked_at IS NOT NULL` and the flat arm takes `m.chunked_at IS NULL` — the two are one partition of the project's rows, so a row is read through exactly one arm, a superseded passage set is invisible from the parent's rewrite onward, and a project mid-reindex returns migrated and unmigrated rows in one list. Column names are written LITERALLY because a drizzle column reference inside a raw template renders unqualified, which is ambiguous across the join
+async function chunkedSearch(
+  input: SearchInput | KeywordSearchInput,
+  kind: 'semantic' | 'keyword',
+): Promise<MemoryHit[]> {
+  const topK = clampTopK(input.topK);
+  const filters = literalFilters(input);
+  const q =
+    kind === 'semantic'
+      ? sql`${`[${(input as SearchInput).queryVec.join(',')}]`}::vector`
+      : sql`websearch_to_tsquery('english', ${(input as KeywordSearchInput).query.trim()})`;
+  const chunkMeasure =
+    kind === 'semantic' ? sql`c.embedding <=> ${q}` : sql`ts_rank(c.text_search, ${q})`;
+  const flatMeasure =
+    kind === 'semantic' ? sql`m.embedding <=> ${q}` : sql`ts_rank(m.text_search, ${q})`;
+  const chunkMatch =
+    kind === 'semantic' ? sql`AND c.embedding IS NOT NULL` : sql`AND c.text_search @@ ${q}`;
+  const flatMatch =
+    kind === 'semantic' ? sql`AND m.embedding IS NOT NULL` : sql`AND m.text_search @@ ${q}`;
+  const agg = kind === 'semantic' ? sql`MIN` : sql`MAX`;
+  const bestFirst = kind === 'semantic' ? sql`ASC` : sql`DESC`;
+
+  const rows = (await db.execute(sql`
+    WITH chunk_arm AS (
+      SELECT c.memory_id AS id,
+             ${agg}(${chunkMeasure}) AS measure,
+             (array_agg(c.chunk_index ORDER BY ${chunkMeasure} ${bestFirst}))[1] AS chunk_index,
+             (array_agg(c.text_content ORDER BY ${chunkMeasure} ${bestFirst}))[1] AS chunk_text
+      FROM memory_chunks c
+      JOIN memories m ON m.id = c.memory_id
+      WHERE m.project_id = ${input.projectId} AND m.archived_at IS NULL
+        AND m.chunked_at IS NOT NULL AND c.generation = m.chunk_generation
+        ${chunkMatch} ${filters}
+      GROUP BY c.memory_id
+    ), flat_arm AS (
+      SELECT m.id, ${flatMeasure} AS measure, NULL::int AS chunk_index, NULL::text AS chunk_text
+      FROM memories m
+      WHERE m.project_id = ${input.projectId} AND m.archived_at IS NULL
+        AND m.chunked_at IS NULL ${flatMatch} ${filters}
+    ), ranked AS (
+      SELECT * FROM chunk_arm UNION ALL SELECT * FROM flat_arm
+    )
+    SELECT m.id, m.source, m.source_ref, m.text_content, m.metadata, m.embedded_at,
+           r.measure, r.chunk_index, r.chunk_text
+    FROM ranked r JOIN memories m ON m.id = r.id
+    ORDER BY r.measure ${bestFirst}
+    LIMIT ${topK}
+  `)) as unknown as ChunkedRow[];
+
+  return rows.map((r) => ({
+    id: r.id,
+    source: r.source as MemorySource,
+    sourceRef: r.source_ref,
+    text: r.text_content,
+    metadata: r.metadata,
+    score: kind === 'semantic' ? 1 - Number(r.measure) : Number(r.measure),
+    embeddedAt: new Date(r.embedded_at),
+    ...deriveMemoryStaleness(r.metadata),
+    ...(r.chunk_index !== null && r.chunk_text !== null
+      ? { matchedChunk: { index: r.chunk_index, text: r.chunk_text } }
+      : {}),
   }));
 }
 

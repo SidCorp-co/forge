@@ -43,6 +43,8 @@ export interface MemorySearchHit {
   embeddedAt: string | null;
   /** Set on a row relation expansion appended: it neighbours the `from` issue hit rather than matching the query. */
   via?: { relation: "blocks" | "relates"; from: string };
+  /** On a chunked project, the passage that matched — shown instead of the head of a long body. */
+  matchedChunk?: { index: number; text: string };
 }
 
 export interface MemorySearchResult {

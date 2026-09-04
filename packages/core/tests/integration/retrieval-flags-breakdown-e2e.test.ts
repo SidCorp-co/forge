@@ -110,7 +110,7 @@ describe('app_config retrieval flags (migration 0203)', () => {
     expect(row.memoryReindex).toEqual({});
   });
 
-  it('an admin sets the three flags without touching the other fields; GET reads them back', async () => {
+  it('an admin sets the two boolean flags without touching the other fields; GET reads them back', async () => {
     const { projectId, token } = await projectWith('admin');
     await app.request(`/api/app-config/${projectId}`, {
       method: 'PUT',
@@ -120,11 +120,7 @@ describe('app_config retrieval flags (migration 0203)', () => {
     const put = await app.request(`/api/app-config/${projectId}`, {
       method: 'PUT',
       headers: json(token),
-      body: JSON.stringify({
-        retrievalRerank: true,
-        memoryModel: 'chunked',
-        retrievalExpandRelations: true,
-      }),
+      body: JSON.stringify({ retrievalRerank: true, retrievalExpandRelations: true }),
     });
     expect(put.status).toBe(200);
     const get = await app.request(`/api/app-config/${projectId}`, {
@@ -132,7 +128,7 @@ describe('app_config retrieval flags (migration 0203)', () => {
     });
     const row = (await get.json()) as Record<string, unknown>;
     expect(row.retrievalRerank).toBe(true);
-    expect(row.memoryModel).toBe('chunked');
+    expect(row.memoryModel).toBe('flat');
     expect(row.retrievalExpandRelations).toBe(true);
     expect(row.retrievalTopK).toBe(7);
     expect(row.chatModel).toBe('keep-me');
@@ -152,12 +148,12 @@ describe('app_config retrieval flags (migration 0203)', () => {
     expect(rows[0]?.n).toBe(0);
   });
 
-  it('memoryModel outside flat|chunked is 400; memoryReindex is not writable here (400)', async () => {
+  it('memoryModel is not writable here since ISS-906 (400); neither is memoryReindex (400)', async () => {
     const { projectId, token } = await projectWith('admin');
     const bad = await app.request(`/api/app-config/${projectId}`, {
       method: 'PUT',
       headers: json(token),
-      body: JSON.stringify({ memoryModel: 'sharded' }),
+      body: JSON.stringify({ memoryModel: 'chunked' }),
     });
     expect(bad.status).toBe(400);
     const reindex = await app.request(`/api/app-config/${projectId}`, {

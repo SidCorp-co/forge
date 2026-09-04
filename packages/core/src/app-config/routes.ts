@@ -5,7 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { chatTurnKinds } from '../chat/providers/registry.js';
 import { db } from '../db/client.js';
-import { appConfig, memoryModels } from '../db/schema.js';
+import { appConfig } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 
@@ -23,9 +23,8 @@ const upsertSchema = z
     retrievalMinScore: z.number().min(0).max(1).optional(),
     enabledChannels: z.array(z.string().min(1).max(100)).max(100).optional(),
     systemPromptOverride: z.string().max(40_000).nullable().optional(),
-    // cm:guard `memoryReindex` is deliberately absent here — it is the phase-2 reindex job's state and `.strict()` turning it into a 400 is what stops a client PUT from erasing a running migration's progress
+    // cm:guard `memoryModel` and `memoryReindex` are deliberately absent here — the flip is the POST /:projectId/memory-model operation (estimate first, 409 while a reindex is live) and the reindex state is the job's, so `.strict()` turning either key into a 400 is what stops a plain PUT from flipping a read path with no data behind it or erasing a running migration's state
     retrievalRerank: z.boolean().optional(),
-    memoryModel: z.enum(memoryModels).optional(),
     retrievalExpandRelations: z.boolean().optional(),
   })
   .strict();
@@ -83,7 +82,6 @@ appConfigRoutes.put(
     if (patch.systemPromptOverride !== undefined)
       updates.systemPromptOverride = patch.systemPromptOverride;
     if (patch.retrievalRerank !== undefined) updates.retrievalRerank = patch.retrievalRerank;
-    if (patch.memoryModel !== undefined) updates.memoryModel = patch.memoryModel;
     if (patch.retrievalExpandRelations !== undefined)
       updates.retrievalExpandRelations = patch.retrievalExpandRelations;
 
