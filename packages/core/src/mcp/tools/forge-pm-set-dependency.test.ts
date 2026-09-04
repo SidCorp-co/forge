@@ -37,7 +37,6 @@ vi.mock('../../issues/cycle-detect.js', () => ({
   detectCycle: vi.fn(async () => null),
 }));
 
-
 const publishHealthSpy = vi.fn(async (_projectId: string, _ids: string[]) => undefined);
 vi.mock('../../issues/pipeline-health.js', () => ({
   publishPipelineHealthChanged: (projectId: string, ids: string[]) =>

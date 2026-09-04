@@ -17,7 +17,6 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueDependencies, type issueDependencyKinds, issues } from '../db/schema.js';
-import { logger } from '../logger.js';
 import { type Actor, safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { detectCycle } from './cycle-detect.js';
@@ -251,4 +250,3 @@ async function refreshDependentHealth(
   if (input.kind !== 'blocks') return;
   await publishPipelineHealthChanged(input.projectId, [input.toIssueId]);
 }
-

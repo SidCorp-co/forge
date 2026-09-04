@@ -18,11 +18,7 @@ const SRC = resolve(import.meta.dirname, '..');
  * Modules permitted to write the `issues` table directly. Each is a domain
  * writer, not a transport: a caller reaches them, they do not answer a request.
  */
-const ISSUE_INSERT_ALLOWLIST = [
-  'issues/create-service.ts',
-  'issues/decompose.ts',
-  'memory/consolidation.ts',
-];
+const ISSUE_INSERT_ALLOWLIST = ['issues/create-service.ts', 'memory/consolidation.ts'];
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];

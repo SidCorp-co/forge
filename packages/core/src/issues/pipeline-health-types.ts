@@ -97,7 +97,6 @@ export interface PipelineHealthDep {
   fromMergedAt: Date | null;
 }
 
-
 export interface PipelineHealthRunnerSat {
   type: string;
   cap: number;

@@ -180,14 +180,6 @@ describe('the closes this rule deliberately does not touch', () => {
     expect((await close(AGENT, { viaReleasePath: true })).status).toBe('closed');
   });
 
-  // cm:guard the decompose close cascade closes a parent's children this way and SWALLOWS the error, so a refusal there would not fail anything — it would leave the children open in silence, which is the failure shape this rule exists to remove
-  it('the decompose close cascade, which propagates a close rather than making one', async () => {
-    everyRowRefusable();
-    queueUpdate('closed');
-
-    expect((await close(AGENT, { viaCloseCascade: true })).status).toBe('closed');
-  });
-
   it('`dropped`, which closes without claiming anything shipped', async () => {
     everyRowRefusable();
     queueUpdate('dropped');

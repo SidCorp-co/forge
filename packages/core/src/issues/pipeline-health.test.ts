@@ -260,7 +260,6 @@ describe('classifyPipelineHealthForIssue — dependency satisfaction parity', ()
     expect(out.waitingOn?.reason).toBe('waiting_on_dep');
     expect(out.waitingOn?.details.blockerIssueIds).toEqual(['iss-blocker']);
   });
-
 });
 
 describe('classifyPipelineHealthForIssue — the two gates that never clear themselves', () => {

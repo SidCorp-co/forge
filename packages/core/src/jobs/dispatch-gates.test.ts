@@ -231,7 +231,7 @@ describe('pickNextDispatchableJobForProject', () => {
   });
 
   // Snapshot the generated SQL so each gate clause is provably inline.
-  it('SQL inlines L1 (issue_busy), L2 (blocks + decomposes), L3 (project cap)', async () => {
+  it('SQL inlines L1 (issue_busy), L2 (blocks), L3 (project cap)', async () => {
     mockProjectAgentConfigOnce(null);
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
@@ -251,9 +251,7 @@ describe('pickNextDispatchableJobForProject', () => {
     // `merged_at IS NULL` so the gate defers to the state-machine writer
     // (see `issues/merged-at.ts`).
     expect(text).toMatch(/d\.kind\s*=\s*'blocks'/);
-    expect(text).toMatch(/d2\.kind\s*=\s*'decomposes'/);
     expect(text).toMatch(/p\.merged_at\s+IS\s+NULL/);
-    expect(text).toMatch(/c2\.merged_at\s+IS\s+NULL/);
     expect(text).not.toMatch(/p\.status\s+NOT\s+IN\s*\(/);
 
     // L3 — running_ids CTE + cap comparison
@@ -271,9 +269,7 @@ describe('pickNextDispatchableJobForProject', () => {
     await pickNextDispatchableJobForProject('p1');
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
     expect(text).toMatch(/p\.merged_at\s+IS\s+NULL/);
-    expect(text).toMatch(/c2\.merged_at\s+IS\s+NULL/);
     expect(text).not.toMatch(/p\.status\s*<>\s*'closed'/);
-    expect(text).not.toMatch(/c2\.status\s*<>\s*'closed'/);
   });
 
   // Cohesion + ISS-102 defence: pause/resume/cancel ride on `r.status='running'`.
@@ -591,7 +587,8 @@ describe('assertDispatchable', () => {
     expect(text).toMatch(/'blocked_by'/);
     // cm:why asserting the ABSENCE of `release_decompose_pending` is the only way this stays fixed — it sat in `GateSkipReason` for months naming an arm the CASE never had, and `assertDispatchable` casts the raw reason into that union, so tsc cannot tell a member from a fiction
     expect(text).not.toMatch(/'release_decompose_pending'/);
-    expect(text).toMatch(/'decompose_children_pending'/);
+    // cm:why the decompose parent gate was removed with the lifecycle in 2026-09; a CASE arm reappearing under either name is a mechanism nobody decided to bring back
+    expect(text).not.toMatch(/'decompose_children_pending'/);
     expect(text).toMatch(/'project_cap'/);
     expect(text).toMatch(/'runner_stale'/);
     expect(text).toMatch(/'runner_full'/);
@@ -670,7 +667,6 @@ describe('assertDispatchable', () => {
       /FROM\s+jobs\s+other/, // issueBusyJob
       /payload->>'stageStatus'/,
       /d\.kind\s*=\s*'blocks'/, // blockedBy
-      /d2\.kind\s*=\s*'decomposes'/, // decomposeChildrenPending
     ];
     for (const re of predicateSignatures) {
       expect(pickerSql, `picker missing predicate ${re}`).toMatch(re);
