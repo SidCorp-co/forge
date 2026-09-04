@@ -15,7 +15,7 @@ use crate::daemon::{preflight, setup_agent};
 use crate::error::{Error, Result};
 use crate::runner::claude_code::ClaudeCodeRunner;
 use crate::runner::{JobSpec, Runner, RunnerEvent, ToolPhase};
-use crate::transport::events::{post_job_events, JobEventInput};
+use crate::transport::events::{self, post_job_events, JobEventInput};
 use crate::transport::pool::ClaimedJob;
 use crate::transport::runners::{self, MeRunner};
 use crate::transport::{lifecycle, CoreClient};
@@ -375,11 +375,7 @@ pub async fn handle(
     // `origin_remote:`/`work_tree:`/`repo_path:` sub-variants are load-bearing —
     // core's classifier (`packages/core/src/pipeline/failure-classifier.ts`)
     // pattern-matches on this exact string to pick failureKind (ISS-808).
-    // cm:guard the workspace refresh below shares this gate deliberately — it fast-forwards a git checkout, so it is as meaningless on a repo-less project as the preflight is. Splitting them would send a `website` project into `git fetch` on a folder with no remote.
-    // Only create a worktree when core explicitly hands us a feature branch
-    // (e.g. code/fix stages). Triage/plan/review run in the repo root. Never
-    // fall back to the binding's base branch — that branch is already checked
-    // out in the main worktree, so `git worktree add` would refuse it.
+    // cm:guard the workspace refresh below shares this gate deliberately — it fast-forwards a git checkout, so it is as meaningless on a repo-less project as the preflight is. Splitting them would send a `website` project into `git fetch` on a folder with no remote. Only create a worktree when core explicitly hands us a feature branch (e.g. code/fix stages). Triage/plan/review run in the repo root. Never fall back to the binding's base branch — that branch is already checked out in the main worktree, so `git worktree add` would refuse it.
     let worktree_branch = ja
         .payload
         .get("worktreeBranch")
@@ -630,6 +626,8 @@ async fn consume(
     enum Terminal {
         Done(i32),
         Failed(String),
+        /// Core says this job is not this box's any more.
+        Disowned(String),
     }
     let mut terminal: Option<Terminal> = None;
 
@@ -644,18 +642,27 @@ async fn consume(
             _ = flush.tick() => {
                 if !buf.is_empty() {
                     let batch = std::mem::take(&mut buf);
-                    if let Err(e) = post_job_events(client, job_id, &batch).await {
-                        tracing::warn!("[job {job_id}] post events: {e}");
-                    } else {
-                        posted_since_beat = true;
+                    match post_job_events(client, job_id, &batch).await {
+                        Ok(_) => posted_since_beat = true,
+                        // cm:guard STOP on a disowned job, never keep posting. Every later batch answers the same way, and the loop that only logged turned that into 2 requests a second forever — measured on epodsystem 2026-09-05, two jobs whose stamp had been unwound underneath them. There is nothing to salvage-and-report either: the report itself is a call to a route that 403s.
+                        Err(e) if events::is_disowned(&e) => {
+                            terminal = Some(Terminal::Disowned(e.to_string()));
+                            break;
+                        }
+                        Err(e) => tracing::warn!("[job {job_id}] post events: {e}"),
                     }
                 }
             }
             _ = heartbeat.tick() => {
                 if !posted_since_beat {
                     let beat = [JobEventInput::new("progress", serde_json::json!({ "heartbeat": true }))];
-                    if let Err(e) = post_job_events(client, job_id, &beat).await {
-                        tracing::debug!("[job {job_id}] heartbeat: {e}");
+                    match post_job_events(client, job_id, &beat).await {
+                        Ok(_) => {}
+                        Err(e) if events::is_disowned(&e) => {
+                            terminal = Some(Terminal::Disowned(e.to_string()));
+                            break;
+                        }
+                        Err(e) => tracing::debug!("[job {job_id}] heartbeat: {e}"),
                     }
                 }
                 posted_since_beat = false;
@@ -663,7 +670,7 @@ async fn consume(
         }
     }
 
-    if !buf.is_empty() {
+    if !buf.is_empty() && !matches!(terminal, Some(Terminal::Disowned(_))) {
         if let Err(e) = post_job_events(client, job_id, &buf).await {
             tracing::warn!("[job {job_id}] final post events: {e}");
         }
@@ -684,6 +691,12 @@ async fn consume(
             } else {
                 tracing::info!("[job {job_id}] failed: {err}");
             }
+        }
+        // cm:guard say it at ERROR and say what it means, because this is the one outcome the box cannot repair. The agent process is still running and is left to exit on its own — it is a one-shot child, not a resident session `close` can reach — so its slot reads free while a claude is still on the box. That is a bounded inaccuracy and it is strictly better than what it replaces: a slot held forever behind an endless 403 loop. The master rebuild owns the process handle and is where killing it belongs.
+        Some(Terminal::Disowned(why)) => {
+            tracing::error!(
+                "[job {job_id}] core no longer routes this job to this box ({why}) — abandoning it; the agent process is left to exit on its own"
+            );
         }
         None => {
             // cm:guard this arm salvages too, and it is the one that matters most: a runner that dies mid-stream leaves the LARGEST uncommitted diff, having neither committed nor reported. Skipping it because the error string is generic loses exactly the work worth keeping.

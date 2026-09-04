@@ -192,31 +192,35 @@ describe('master pool', () => {
     expect(loser).toMatchObject({ ok: false, reason: 'already_held' });
   });
 
-  it('hides a held job, and shows it again once released', async () => {
+  // cm:guard the pool must hide a job for BOTH reasons it can be unavailable, and they are now different rows: a claimed job is hidden because it is no longer `queued`, a mid-claim one because somebody holds it. Testing only the first would pass against a pool that ignores `held_by` entirely, and two masters would then prepare the same job.
+  it('hides a claimed job, and hides a mid-claim hold too', async () => {
     const { device, job } = await seed();
-    const session = randomUUID();
     const claimed = await mods.claimJobForMaster({
       jobId: job,
       deviceId: device.id,
-      sessionId: session,
+      sessionId: randomUUID(),
     });
     expect(claimed.ok).toBe(true);
-
     expect(
       (await mods.readPool({ deviceId: device.id, limit: 20 })).find((i) => i.jobId === job),
     ).toBeUndefined();
 
-    expect(await mods.releaseJobFromMaster({ jobId: job, sessionId: session })).toBe(true);
-
+    const { device: d2, job: j2 } = await seed();
+    await harness.db.execute(sql`
+      UPDATE jobs SET held_by = ${randomUUID()}, held_at = now() WHERE id = ${j2}
+    `);
     expect(
-      (await mods.readPool({ deviceId: device.id, limit: 20 })).find((i) => i.jobId === job),
-    ).toBeDefined();
+      (await mods.readPool({ deviceId: d2.id, limit: 20 })).find((i) => i.jobId === j2),
+    ).toBeUndefined();
   });
 
-  it('releases everything a dead master held', async () => {
+  // cm:guard the only jobs a dead master still holds are ones it never got started — a claim that reached its stamp released the hold in the same statement. Seeding by hand is what keeps this covering the window that remains rather than one that no longer exists.
+  it('releases everything a dead master was still holding', async () => {
     const { device, job } = await seed();
     const session = randomUUID();
-    await mods.claimJobForMaster({ jobId: job, deviceId: device.id, sessionId: session });
+    await harness.db.execute(sql`
+      UPDATE jobs SET held_by = ${session}, held_at = now() WHERE id = ${job}
+    `);
 
     expect(await mods.releaseAllHeldBySession(session)).toBe(1);
     expect(
@@ -371,64 +375,59 @@ describe('master pool — reaping, load and preparation', () => {
     expect(row?.runner_id).toBe(runner?.id);
   });
 
-  // cm:guard a release must leave the job as claimable as it found it. Clearing the hold while leaving `dispatched` + a device_id behind is worse than not releasing at all: the pool skips it, no master can take it, and no process exists to finish it.
-  it('unwinds the stamp when a master lets go before the runner acked', async () => {
+  // cm:guard THE regression, and the second half is the whole assertion. A claim that leaves the hold set is a claim the reaper can undo underneath a live agent: measured on epodsystem 2026-09-05, jobs f7f4bce4 and 8b8b7be4 were re-queued with device_id NULL while their agents ran on, and every event they posted came back 403 at 2/s with nothing able to stop them. It needs no dead master — the session-less arm judges by `held_at` age alone, and `runner.start` is documented to block for minutes.
+  it('keeps the stamp when the reaper sweeps a claim old enough to look abandoned', async () => {
+    const { device, job } = await seed();
+
+    const result = await mods.claimJobForMaster({
+      jobId: job,
+      deviceId: device.id,
+      sessionId: randomUUID(),
+    });
+    expect(result.ok).toBe(true);
+
+    await harness.db.execute(sql`
+      UPDATE jobs SET held_at = now() - interval '10 minutes' WHERE id = ${job}
+    `);
+    expect(await mods.reapDeadMasterHolds()).toBe(0);
+
+    const [row] = (await harness.db.execute(sql`
+      SELECT status, device_id, dispatched_at, held_by FROM jobs WHERE id = ${job}
+    `)) as unknown as Array<Record<string, unknown>>;
+    expect(row?.status).toBe('dispatched');
+    expect(row?.device_id).toBe(device.id);
+    expect(row?.dispatched_at).not.toBeNull();
+    expect(row?.held_by).toBeNull();
+  });
+
+  // cm:guard the hold ends WITH the stamp, in one statement, so nothing is left for a release to find. A release that still had a claimed job to act on would be a release able to re-queue a running one.
+  it('leaves a claimed job with no hold for any release path to take', async () => {
     const { device, job } = await seed();
     const session = randomUUID();
 
     await mods.claimJobForMaster({ jobId: job, deviceId: device.id, sessionId: session });
-    expect(await mods.releaseJobFromMaster({ jobId: job, sessionId: session })).toBe(true);
+
+    expect(await mods.releaseJobFromMaster({ jobId: job, sessionId: session })).toBe(false);
+    expect(await mods.releaseAllHeldBySession(session)).toBe(0);
+    expect(await mods.releaseHoldsForSession(session)).toBe(0);
 
     const [row] = (await harness.db.execute(sql`
-      SELECT status, device_id, dispatched_at, held_by, attempts FROM jobs WHERE id = ${job}
+      SELECT status, device_id, attempts FROM jobs WHERE id = ${job}
     `)) as unknown as Array<Record<string, unknown>>;
-    expect(row?.status).toBe('queued');
-    expect(row?.device_id).toBeNull();
-    expect(row?.dispatched_at).toBeNull();
-    expect(row?.held_by).toBeNull();
-    // cm:guard a release is NOT a failure — spending an attempt on "I changed my mind about the order" burns an issue's retry budget on something that never went wrong.
+    expect(row?.status).toBe('dispatched');
+    expect(row?.device_id).toBe(device.id);
+    // cm:guard a claim is NOT an attempt — a master choosing an order must not spend an issue's retry budget.
     expect(Number(row?.attempts)).toBe(1);
-
-    expect(
-      (await mods.readPool({ deviceId: device.id, limit: 20 })).find((i) => i.jobId === job),
-    ).toBeDefined();
   });
 
-  // cm:guard an ACKED job keeps its stamp when its master goes. The agent process is setsid-detached and outlives the master that started it, so returning the row to `queued` would offer a second box work that is already running — two agents, one worktree.
-  it('leaves an acked job running when its master dies, and reclaims an unacked one', async () => {
-    const { device, job, project, owner, run } = await seed();
-    const session = randomUUID();
-    const acked = randomUUID();
-
-    await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, pipeline_run_id, type, status, created_by, queued_at,
-                        device_id, dispatched_at, acked_at, held_by)
-      VALUES (${acked}, ${project.id}, ${run}, 'review', 'dispatched', ${owner.id}, now(),
-              ${device.id}, now(), now(), ${session})
-    `);
-    await mods.claimJobForMaster({ jobId: job, deviceId: device.id, sessionId: session });
-
-    expect(await mods.releaseHoldsForSession(session)).toBe(2);
-
-    const rows = (await harness.db.execute(sql`
-      SELECT id, status, device_id FROM jobs WHERE id IN (${job}, ${acked})
-    `)) as unknown as Array<Record<string, unknown>>;
-    const unacked = rows.find((r) => r.id === job);
-    const live = rows.find((r) => r.id === acked);
-    expect(unacked?.status).toBe('queued');
-    expect(unacked?.device_id).toBeNull();
-    expect(live?.status).toBe('dispatched');
-    expect(live?.device_id).toBe(device.id);
-  });
-
-  // cm:guard THE reaper's hardest case, and the one the inner join missed entirely. A master is a bare Claude process that invents its own session id and writes NO `agent_sessions` row, so a reaper that joins that table matches nothing and reaps nothing — measured live 2026-09-05, a job sat held by a master 40 minutes dead, offered to no one and swept by nothing. That is the silent wedge `VISION: state-never-lies` calls a kernel bug.
-  it('reaps a hold whose master never had a session row at all', async () => {
+  // cm:guard the hold still has to be reapable in the window it exists in: between the claim's own UPDATE and the stamp, `prepareClaimedJob` runs and can throw or hang. Seed that shape by hand — a completed claim can no longer produce it, which is the point.
+  it('reaps a mid-claim hold whose master never had a session row at all', async () => {
     const { device, job } = await seed();
     const ghost = randomUUID();
 
-    await mods.claimJobForMaster({ jobId: job, deviceId: device.id, sessionId: ghost });
     await harness.db.execute(sql`
-      UPDATE jobs SET held_at = now() - interval '10 minutes' WHERE id = ${job}
+      UPDATE jobs SET held_by = ${ghost}, held_at = now() - interval '10 minutes'
+      WHERE id = ${job}
     `);
 
     expect(await mods.reapDeadMasterHolds()).toBe(1);
@@ -444,10 +443,12 @@ describe('master pool — reaping, load and preparation', () => {
     ).toBeDefined();
   });
 
-  // cm:guard the `held_at` bound is what makes judging a session-less holder safe. Without it every claim is reaped the instant it is taken, because a master with no session row always looks dead — the reaper would race every master on the box.
+  // cm:guard the `held_at` bound is what makes judging a session-less holder safe. Without it a master mid-preparation has its job taken the instant it takes it, because a holder with no session row always looks dead.
   it('leaves a fresh session-less hold alone', async () => {
-    const { device, job } = await seed();
-    await mods.claimJobForMaster({ jobId: job, deviceId: device.id, sessionId: randomUUID() });
+    const { job } = await seed();
+    await harness.db.execute(sql`
+      UPDATE jobs SET held_by = ${randomUUID()}, held_at = now() WHERE id = ${job}
+    `);
 
     expect(await mods.reapDeadMasterHolds()).toBe(0);
 
@@ -455,7 +456,7 @@ describe('master pool — reaping, load and preparation', () => {
       SELECT held_by, status FROM jobs WHERE id = ${job}
     `)) as unknown as Array<Record<string, unknown>>;
     expect(row?.held_by).not.toBeNull();
-    expect(row?.status).toBe('dispatched');
+    expect(row?.status).toBe('queued');
   });
 
   it('separates pool depth from running, and surfaces the oldest running job', async () => {

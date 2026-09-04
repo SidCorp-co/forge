@@ -623,6 +623,25 @@
 
 ### Fixed
 
+- **A claim no longer keeps a hold the reaper can undo underneath a running agent.** Claiming a job
+  stamped it onto the box but left `held_by` set, and the master-hold reaper — whose session-less arm
+  judges by `held_at` age alone — then unwound that stamp back to `queued` with `device_id` NULL while
+  the agent was still running. Everything that agent posted came back 403, and the flush loop simply
+  logged and tried again, at two requests a second with no ceiling: measured on epodsystem 2026-09-05
+  on jobs `f7f4bce4` and `8b8b7be4`. It needed no dead master — a healthy one whose `runner.start`
+  blocks past three minutes, which `dispatch.rs` documents as ordinary, reaped its own work. The stamp
+  now ends the hold in the same statement, so a claimed job is not reachable from any release path,
+  and the three paths that drop a hold drop the hold alone. A daemon that dies between that commit and
+  the spawn now leaves `dispatched` + unacked + unheld, which the loop monitor already chases — the
+  shape it replaces was recovered by nothing.
+
+- **A runner stops posting to a job core no longer routes to it.** 403 and 409 on `POST /jobs/:id/events`
+  now share one name, `JOB_DISOWNED`, and the consumer breaks out on it instead of logging and
+  retrying forever; it makes no lifecycle call either, since those 403 for the same reason. The agent
+  process is left to exit on its own — it is a one-shot child, not a resident session `close` can
+  reach — so the box reads one slot freer than it is, which is bounded and is strictly better than a
+  slot held forever behind an endless retry.
+
 - **Chat turns no longer queue for a duplex session permit.** A chat turn waited for one of the
   box's session permits, and the wait had no timeout. Queued behind parked pipeline sessions it was
   killed by core's 90s `no_client_ack` sweeper — measured on forge-beta session `1af837da`

@@ -25,8 +25,8 @@ export const MASTER_HOLD_TIMEOUT_MS = 3 * 60 * 1000;
  * reading the pool can tell "nobody wanted this" from "its holder died".
  */
 // cm:guard LEFT JOIN, and the `held_at` bound applies to the SESSION-LESS arm only. A master is a bare Claude process that invents its own session id and writes no `agent_sessions` row, so the inner join this replaced matched nothing and reaped nothing — measured live 2026-09-05, a job sat held by a master 40 minutes dead, offered to no one and swept by nothing. A holder with no row cannot be judged by a heartbeat, so age is the only evidence there is; putting that clock on the other two arms instead would delay a KNOWN-dead master's holds by three minutes for no reason.
-// cm:guard `acked_at` is what separates the two cases, and it must be the test rather than the status. A job the runner ACKED has a process behind it that outlives its master, so only the hold is dropped — killing it would throw away a diff nobody asked to discard. A `dispatched` job with no ack never reached a process: its master died between the claim and the spawn, and leaving it stamped makes it exactly the orphan the loop monitor exists to chase, held by nobody and claimable by no one.
-// cm:edge lockstep -> packages/core/src/devices/claim.ts — `releaseJobFromMaster` unwinds the same three columns under the same `acked_at IS NULL` condition; one path undoing the stamp and the other not is a job that is claimable again on one route and stranded on the other.
+// cm:guard drop the HOLD and nothing else — never the dispatch stamp. Every job this can reach is still `queued`, because `claimJobForMaster` clears the hold in the same statement that stamps; so a reaper that also unwound a stamp could only ever hit a job it had no business touching. It did, on epodsystem 2026-09-05: jobs f7f4bce4 and 8b8b7be4 were re-queued with `device_id` NULL while their agents were alive, and every event those agents posted came back 403 at 2/s with nothing able to stop them.
+// cm:edge lockstep -> packages/core/src/devices/claim.ts — `releaseJobFromMaster` is the same operation on one row, and both must stay hold-only; a path that also cleared a stamp would revive the epodsystem wedge from whichever route still had it.
 export async function reapDeadMasterHolds(): Promise<number> {
   // cm:guard the cutoff is computed by POSTGRES, not by node. A `Date` bound as a parameter through this driver throws at bind time, and — worse if it did not — a clock skew between the app host and the database would decide which masters count as dead.
   const staleSeconds = Math.floor(MASTER_HOLD_TIMEOUT_MS / 1000);
@@ -46,13 +46,7 @@ export async function reapDeadMasterHolds(): Promise<number> {
         )
     )
     UPDATE jobs
-    SET held_by = NULL, held_at = NULL,
-        status = CASE WHEN jobs.status = 'dispatched' AND jobs.acked_at IS NULL
-                      THEN 'queued' ELSE jobs.status END,
-        device_id = CASE WHEN jobs.status = 'dispatched' AND jobs.acked_at IS NULL
-                         THEN NULL ELSE jobs.device_id END,
-        dispatched_at = CASE WHEN jobs.status = 'dispatched' AND jobs.acked_at IS NULL
-                             THEN NULL ELSE jobs.dispatched_at END
+    SET held_by = NULL, held_at = NULL
     WHERE id IN (SELECT id FROM doomed)
     RETURNING id, (SELECT held_by FROM doomed d WHERE d.id = jobs.id) AS former_holder,
               (SELECT master_status FROM doomed d WHERE d.id = jobs.id) AS master_status
@@ -110,13 +104,7 @@ export function resetMasterReaperForTest(): void {
 export async function releaseHoldsForSession(sessionId: string): Promise<number> {
   const rows = (await db.execute(sql`
     UPDATE jobs
-    SET held_by = NULL, held_at = NULL,
-        status = CASE WHEN jobs.status = 'dispatched' AND jobs.acked_at IS NULL
-                      THEN 'queued' ELSE jobs.status END,
-        device_id = CASE WHEN jobs.status = 'dispatched' AND jobs.acked_at IS NULL
-                         THEN NULL ELSE jobs.device_id END,
-        dispatched_at = CASE WHEN jobs.status = 'dispatched' AND jobs.acked_at IS NULL
-                             THEN NULL ELSE jobs.dispatched_at END
+    SET held_by = NULL, held_at = NULL
     WHERE held_by = ${sessionId}
     RETURNING id
   `)) as unknown as Array<Record<string, unknown>>;
