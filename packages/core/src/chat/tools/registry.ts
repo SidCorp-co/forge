@@ -25,6 +25,7 @@ import { forgeProjectsGetTool } from '../../mcp/tools/forge-projects.js';
 import type { McpContext } from '../../mcp/tools/lib.js';
 import { guardIssueWrites } from './guards.js';
 import { findDuplicateIssue } from './issue-dedup.js';
+import { resolveIssueDisplayId } from './issue-ref.js';
 import { buildToolset, type ChatToolSpec, type ChatToolset } from './mcp-adapter.js';
 
 /**
@@ -40,6 +41,10 @@ async function guardIssueWritesDeduped(
 ): Promise<string | null> {
   const rejection = guardIssueWrites(args);
   if (rejection) return rejection;
+  if (ctx?.projectId) {
+    const unknownRef = await resolveIssueDisplayId(db, ctx.projectId, args);
+    if (unknownRef) return unknownRef;
+  }
   if (args.action === 'create' && ctx?.projectId) {
     const data = (args.data ?? {}) as Record<string, unknown>;
     const title = typeof data.title === 'string' ? data.title : '';
@@ -62,6 +67,7 @@ export const CHAT_TOOL_ALLOWLIST: ChatToolSpec[] = [
     factory: forgeIssuesTool,
     allowedActions: ['list', 'get', 'listTasks', 'create', 'update'],
     guard: guardIssueWritesDeduped,
+    describe: '`documentId` also accepts the short `ISS-<n>` id shown as `issueId`.',
   },
   { factory: forgeCommentsTool, allowedActions: ['list', 'create'] },
   { factory: forgeKnowledgeTool, allowedActions: ['list', 'get', 'search'] },

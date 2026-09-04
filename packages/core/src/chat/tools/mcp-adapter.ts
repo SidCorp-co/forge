@@ -15,6 +15,7 @@ export interface ChatToolSpec {
   factory: ContextScopedMcpToolFactory;
   /** Permitted `action` values; omit for single-action tools. */
   allowedActions?: string[];
+  describe?: string;
   /** Runs after the action gate, may mutate `args`; an error string rejects, null allows. `ctx.projectId` is the session-bound project, resolved BEFORE it is pinned onto `args`. */
   guard?: (
     args: Record<string, unknown>,
@@ -46,12 +47,28 @@ export function toolError(message: string): CallToolResult {
   return { content: [{ type: 'text', text: JSON.stringify({ error: message }) }], isError: true };
 }
 
+// cm:why a Drizzle query error's `message` is the SQL plus params and its `cause` is the Postgres reason — the model was shown 500 chars of INSERT and never "duplicate key" (measured 2026-09-04), so the cause wins when there is one
+export function thrownMessage(err: unknown): string {
+  const cause = (err as { cause?: unknown } | null)?.cause;
+  if (cause instanceof Error && cause.message) return cause.message;
+  return err instanceof Error ? err.message : String(err);
+}
+
 /** Flatten a result to the string the model reads as its `role:'tool'` message: text blocks joined, any other block (image, resource) JSON-serialised, capped at RESULT_CAP. */
 export function toolResultText(result: CallToolResult): string {
   const text = result.content
     .map((block) => (block.type === 'text' ? block.text : JSON.stringify(block)))
     .join('\n');
   return truncate(text, RESULT_CAP);
+}
+
+// cm:guard top-level keys the tool's OWN schema does not declare are dropped before the handler parses — models decorate calls (Gemini sends `reason` on a tool whose only parameter, projectId, was stripped from the advertised copy; measured 2026-09-04) and every forge_* input schema is `.strict()`, so an undeclared key is a whole-call rejection for a tool the model called correctly; judged against the declared schema, not the advertised one, so the pinned projectId is never a casualty, and skipped when the schema declares no properties or opts into additionalProperties
+function dropUndeclaredKeys(args: Record<string, unknown>, schema: Record<string, unknown>): void {
+  const props = schema.properties as Record<string, unknown> | undefined;
+  if (!props || Object.keys(props).length === 0 || schema.additionalProperties === true) return;
+  for (const key of Object.keys(args)) {
+    if (!(key in props)) delete args[key];
+  }
 }
 
 /** Shallow clone with `key` removed from `properties` and `required` — hides the server-pinned `projectId` so the model never guesses one. */
@@ -77,6 +94,7 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
       spec: ChatToolSpec;
       handler: (a: Record<string, unknown>) => Promise<unknown>;
       hasProjectId: boolean;
+      declared: Record<string, unknown>;
     }
   >();
 
@@ -87,16 +105,24 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
     const props = (tool.inputSchema as { properties?: Record<string, unknown> }).properties;
     const hasProjectId = !!props && 'projectId' in props;
     const willInject = hasProjectId && boundProjectId !== null;
-    bySanitized.set(name, { spec, handler: tool.handler, hasProjectId });
+    const parameters = willInject ? stripProperty(tool.inputSchema, 'projectId') : tool.inputSchema;
+    bySanitized.set(name, {
+      spec,
+      handler: tool.handler,
+      hasProjectId,
+      declared: tool.inputSchema,
+    });
     const readNote = spec.allowedActions
       ? ` (in chat only actions ${spec.allowedActions.join('/')} are permitted)`
       : '';
-    const parameters = willInject ? stripProperty(tool.inputSchema, 'projectId') : tool.inputSchema;
     tools.push({
       type: 'function',
       function: {
         name,
-        description: truncate(tool.description + readNote, DESCRIPTION_CAP),
+        description: truncate(
+          tool.description + readNote + (spec.describe ? ` ${spec.describe}` : ''),
+          DESCRIPTION_CAP,
+        ),
         parameters,
       },
     });
@@ -113,6 +139,7 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
       return toolError('arguments were not valid JSON');
     }
 
+    dropUndeclaredKeys(args, entry.declared);
     if (entry.spec.allowedActions) {
       const action = args.action;
       if (typeof action !== 'string' || !entry.spec.allowedActions.includes(action)) {
@@ -134,7 +161,7 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
     try {
       return toToolCallContent(await entry.handler(args));
     } catch (err) {
-      return toolError(err instanceof Error ? err.message : String(err));
+      return toolError(thrownMessage(err));
     }
   }
 

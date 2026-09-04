@@ -15,7 +15,10 @@ function stubTool(name: string, onCall: (a: Record<string, unknown>) => unknown)
   return {
     name,
     description: 'stub',
-    inputSchema: { type: 'object', properties: { action: { type: 'string' } } },
+    inputSchema: {
+      type: 'object',
+      properties: { action: {}, projectId: {}, documentId: {}, data: {}, filters: {} },
+    },
     handler: async (a) => onCall(a),
   };
 }
@@ -126,23 +129,6 @@ describe('chat mcp-adapter', () => {
     };
     expect('projectId' in params.properties).toBe(false);
     expect(params.required).toEqual(['action']);
-  });
-
-  it('does not inject projectId into tools whose schema lacks it', async () => {
-    const boundCtx = { boundProjectId: 'bound-proj-uuid' } as unknown as McpContext;
-    let received: Record<string, unknown> | null = null;
-    const { execute } = buildToolset(boundCtx, [
-      {
-        factory: () =>
-          stubTool('forge_comments', (a) => {
-            received = a;
-            return { ok: true };
-          }),
-        allowedActions: ['list'],
-      },
-    ]);
-    await execute('forge_comments', '{"action":"list"}');
-    expect(received).toEqual({ action: 'list' });
   });
 
   // === ISS-609 — guard hook + toolset composition ===
@@ -389,5 +375,110 @@ describe('chat mcp-adapter — MCP result vocabulary', () => {
     const out = toolError('nope');
     expect(out.isError).toBe(true);
     expect(body(out)).toEqual({ error: 'nope' });
+  });
+});
+
+describe('buildToolset — what the model is told when a handler throws', () => {
+  it("surfaces a thrown error's cause (the Postgres reason) instead of the SQL in its message", async () => {
+    const boom = new Error('Failed query: insert into "issues" (...) params: a, b, c');
+    (boom as Error & { cause: unknown }).cause = new Error(
+      'duplicate key value violates unique constraint "issues_project_iss_seq_uq"',
+    );
+    const toolset = buildToolset(ctx, [
+      {
+        factory: () => ({
+          name: 'forge_boom',
+          description: 'd',
+          inputSchema: { type: 'object', properties: {} },
+          handler: async () => {
+            throw boom;
+          },
+        }),
+      },
+    ]);
+    const result = await toolset.execute('forge_boom', '{}');
+    expect(result.isError).toBe(true);
+    expect(body(result)).toEqual({
+      error: 'duplicate key value violates unique constraint "issues_project_iss_seq_uq"',
+    });
+  });
+
+  it("appends a spec's `describe` note to the advertised description", () => {
+    const toolset = buildToolset(ctx, [
+      {
+        factory: () => ({
+          name: 'forge_x',
+          description: 'Does X.',
+          inputSchema: { type: 'object', properties: {} },
+          handler: async () => ({}),
+        }),
+        allowedActions: ['get'],
+        describe: 'Accepts ISS-<n>.',
+      },
+    ]);
+    expect(toolset.tools[0]?.function.description).toBe(
+      'Does X. (in chat only actions get are permitted) Accepts ISS-<n>.',
+    );
+  });
+});
+
+describe('buildToolset — keys the model invents', () => {
+  const spy = (schema: Record<string, unknown>) => {
+    const seen: Record<string, unknown>[] = [];
+    const toolset = buildToolset({ boundProjectId: 'p1' } as McpContext, [
+      {
+        factory: () => ({
+          name: 'forge_get',
+          description: 'd',
+          inputSchema: schema,
+          handler: async (a: Record<string, unknown>) => {
+            seen.push({ ...a });
+            return { ok: true };
+          },
+        }),
+      },
+    ]);
+    return { toolset, seen };
+  };
+
+  it('drops undeclared top-level keys so a strict handler still sees a valid call, and the pinned projectId survives', async () => {
+    const { toolset, seen } = spy({
+      type: 'object',
+      properties: { projectId: { type: 'string' } },
+      required: ['projectId'],
+    });
+    await toolset.execute('forge_get', '{"reason":"to summarise progress"}');
+    expect(seen).toEqual([{ projectId: 'p1' }]);
+  });
+
+  it('keeps every key when the schema opts into additionalProperties', async () => {
+    const { toolset, seen } = spy({
+      type: 'object',
+      properties: { a: {} },
+      additionalProperties: true,
+    });
+    await toolset.execute('forge_get', '{"a":1,"extra":2}');
+    expect(seen).toEqual([{ a: 1, extra: 2 }]);
+  });
+});
+
+describe('chat mcp-adapter — projectId injection is schema-driven', () => {
+  it('does not inject projectId into tools whose schema lacks it', async () => {
+    const boundCtx = { boundProjectId: 'bound-proj-uuid' } as unknown as McpContext;
+    let received: Record<string, unknown> | null = null;
+    const { execute } = buildToolset(boundCtx, [
+      {
+        factory: () => ({
+          ...stubTool('forge_comments', (a) => {
+            received = a;
+            return { ok: true };
+          }),
+          inputSchema: { type: 'object', properties: { action: {} } },
+        }),
+        allowedActions: ['list'],
+      },
+    ]);
+    await execute('forge_comments', '{"action":"list"}');
+    expect(received).toEqual({ action: 'list' });
   });
 });

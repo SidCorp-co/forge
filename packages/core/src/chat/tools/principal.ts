@@ -49,7 +49,8 @@ export function buildChatToolContext(opts: {
     agency: 'agent',
     userId: opts.userId,
     tokenId: CHAT_TOKEN_ID,
-    scopes: [],
+    // cm:guard `read` and only `read` — read handlers such as forge_projects_get refuse a PAT without it (measured 2026-09-04: the allowlist offered the tool and every call failed FORBIDDEN_SCOPE), while `write` is deliberately absent because the allowlist's per-action gate, not the scope, is what bounds chat writes
+    scopes: ['read'],
     projectIds: [opts.projectId],
     boundProjectId: opts.projectId,
   };
