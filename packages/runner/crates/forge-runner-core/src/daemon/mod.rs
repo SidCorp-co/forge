@@ -10,6 +10,7 @@ pub mod chat;
 pub mod dispatch;
 pub mod inbox;
 pub mod preflight;
+pub mod repo_lock;
 pub mod setup_agent;
 pub mod skill_pull;
 
@@ -206,6 +207,7 @@ pub async fn run(
     // drains this to zero before restarting so auto-update never kills running
     // work (ISS-392). Created before any spawn so every worker can register.
     let inflight = Arc::new(AtomicUsize::new(0));
+    let repo_locks = crate::daemon::repo_lock::RepoLocks::new();
 
     // Update check loop: warn when a newer release exists; auto-apply +
     // restart when `update.auto` is set. Checks ~30s after start, then every 6h.
@@ -480,10 +482,11 @@ pub async fn run(
                 match frame.event.as_str() {
                     "job.assigned" => {
                         let (client, runner, cfg) = (client.clone(), runner.clone(), cfg.clone());
+                        let locks = repo_locks.clone();
                         let guard = InflightGuard::enter(&inflight);
                         tokio::spawn(async move {
                             let _guard = guard; // released when the job finishes (drain gate)
-                            if let Err(e) = dispatch::handle(&client, runner, &cfg, frame.data).await {
+                            if let Err(e) = dispatch::handle(&client, runner, &cfg, &locks, frame.data).await {
                                 tracing::error!("[dispatch] {e}");
                             }
                         });

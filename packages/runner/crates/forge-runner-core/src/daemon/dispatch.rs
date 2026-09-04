@@ -10,6 +10,7 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::config::Config;
+use crate::daemon::repo_lock::RepoLocks;
 use crate::daemon::{preflight, setup_agent};
 use crate::error::{Error, Result};
 use crate::runner::claude_code::ClaudeCodeRunner;
@@ -319,6 +320,7 @@ pub async fn handle(
     client: &CoreClient,
     runner: Arc<ClaudeCodeRunner>,
     cfg: &Config,
+    locks: &RepoLocks,
     data: Value,
 ) -> Result<()> {
     let ja: JobAssigned =
@@ -356,6 +358,16 @@ pub async fn handle(
         }
     };
     let slug = resolved.slug;
+
+    // cm:guard hold the root from HERE until the session owns a tree of its own. `measure` runs `workspace::refresh` (fetch · checkout -- · merge --ff-only) on the ROOT for every job, worktree lane included, and `runner.start` adds the worktree to the root's `.git` — two jobs doing that at once write one index. This guard, not the core-side cap, is what makes a per-device cap above 1 safe.
+    // cm:guard the wait sits BEFORE `lifecycle::ack` on purpose, and must stay there. Unacked, a job that queues behind a busy root is still core's to re-dispatch elsewhere; move the acquire after the ack and the same wait becomes a silent post-ack stall that the 3-minute session reaper answers by killing it.
+    if locks.is_busy(&resolved.repo_path) {
+        tracing::info!(
+            "[job {job_id}] waiting for the repo root {} — another job on this box holds it",
+            resolved.repo_path.display()
+        );
+    }
+    let repo_guard = locks.acquire(&resolved.repo_path).await;
 
     // ISS-451 (ISS-442 C5, invariant I6): fail fast BEFORE claiming the job
     // when the repo / push credentials / hooks are broken, instead of a
@@ -563,6 +575,10 @@ pub async fn handle(
     let (tx, rx) = mpsc::channel::<RunnerEvent>(200);
     let started = runner.start(spec, tx).await;
     pre_spawn_beat.abort();
+    // cm:guard release only for a lane that got its own worktree. `start` returning means the tree exists and the process is spawned, so this job's writes have left the root — but a stage with no `worktreeBranch` (`pm`, `interactive`) runs its whole session IN the root, and handing the root to a second job underneath it rewrites files the agent is reading.
+    if !owns_root {
+        drop(repo_guard);
+    }
     if let Err(e) = started {
         let msg = format!("failed to start job: {e}");
         tracing::error!("[job {job_id}] {msg}");

@@ -10,6 +10,21 @@
 
 ### Added
 
+- **The runner serialises writes to a repo root, so a box can hold more than one job.**
+  `daemon/repo_lock.rs` keys one async mutex per repo path. A job takes it before preflight and
+  holds it through `workspace::refresh` (`fetch` · `checkout --` · `merge --ff-only`, which run
+  against the ROOT on every job, worktree lane included) and through `worktree add`; a lane that
+  got its own worktree drops it once `runner.start` returns, and a root-owning stage (`pm`,
+  `interactive`) keeps it for the whole session.
+
+  Nothing observable changes yet — core still pins one job per runner, and that pin is what has
+  been standing in for this lock. This is the piece that has to exist first: raising the cap
+  without it lets two jobs `merge --ff-only` one index and rewrite files an agent is mid-read on.
+
+  The wait sits deliberately BEFORE `lifecycle::ack`. Unacked, a job queued behind a busy root is
+  still core's to place elsewhere; after the ack the same wait would be a silent stall that the
+  three-minute session reaper answers by killing the job.
+
 - Issue and comment bodies can be written as allowlisted HTML: `forge-*` components with typed
   attributes and slots, plus the plain tag set the markdown renderer already produced. Send
   `format: 'html'` on a comment create/update or an issue description; a valid body stores its root
