@@ -243,3 +243,117 @@ describe('runTurnEvents — tool-call records', () => {
     expect(result.toolCalls[0]?.resultPreview).toHaveLength(500);
   });
 });
+
+describe('runTurnEvents — parallel tool rounds', () => {
+  const twoCalls = (names: [string, string]) =>
+    provider([
+      [
+        { type: 'tool_call', id: 'c1', name: names[0], arguments: '{}' },
+        { type: 'tool_call', id: 'c2', name: names[1], arguments: '{}' },
+        { type: 'done' },
+      ],
+      [{ type: 'chunk', text: 'ok' }, { type: 'done' }],
+    ]);
+
+  it('runs distinct tools concurrently and still yields results in model order', async () => {
+    const order: string[] = [];
+    let releaseA: () => void = () => {};
+    const aBlocked = new Promise<void>((resolve) => {
+      releaseA = resolve;
+    });
+    const tools: ChatToolset = {
+      tools: [],
+      execute: async (name) => {
+        order.push(`${name}:start`);
+        if (name === 'a') await aBlocked;
+        else releaseA();
+        order.push(`${name}:end`);
+        return ok(name);
+      },
+    };
+    const { events } = await drain(
+      runTurnEvents({
+        provider: twoCalls(['a', 'b']),
+        model: 'm',
+        messages: [{ role: 'user', content: 'go' }],
+        tools,
+      }),
+    );
+    expect(order).toEqual(['a:start', 'b:start', 'b:end', 'a:end']);
+    expect(events.filter((e) => e.type === 'tool_result').map((e) => 'id' in e && e.id)).toEqual([
+      'c1',
+      'c2',
+    ]);
+  });
+
+  it('serialises calls that share a tool name, so a SELECT-then-INSERT guard stays sound', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const tools: ChatToolset = {
+      tools: [],
+      execute: async () => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight--;
+        return ok('{}');
+      },
+    };
+    await drain(
+      runTurnEvents({
+        provider: twoCalls(['forge_issues', 'forge_issues']),
+        model: 'm',
+        messages: [{ role: 'user', content: 'go' }],
+        tools,
+      }),
+    );
+    expect(maxInFlight).toBe(1);
+  });
+
+  it('a throwing toolset costs its own call only — the round completes and both ids are answered', async () => {
+    const seen: unknown[][] = [];
+    const recording: ChatProvider = {
+      id: 'mock',
+      defaultModel: 'm',
+      async *stream(req): AsyncIterable<ChatStreamEvent> {
+        seen.push(req.messages);
+        if (seen.length === 1) {
+          yield { type: 'tool_call', id: 'c1', name: 'a', arguments: '{}' };
+          yield { type: 'tool_call', id: 'c2', name: 'b', arguments: '{}' };
+        } else {
+          yield { type: 'chunk', text: 'ok' };
+        }
+        yield { type: 'done' };
+      },
+    };
+    const tools: ChatToolset = {
+      tools: [],
+      execute: async (name) => {
+        if (name === 'b') throw new Error('boom');
+        return ok('fine');
+      },
+    };
+    const { events, result } = await drain(
+      runTurnEvents({
+        provider: recording,
+        model: 'm',
+        messages: [{ role: 'user', content: 'go' }],
+        tools,
+      }),
+    );
+    expect(result.terminal).toBe('done');
+    expect(events).toContainEqual({
+      type: 'tool_result',
+      id: 'c2',
+      result: JSON.stringify({ error: 'boom' }),
+    });
+    expect(result.toolCalls.map((t) => [t.name, t.isError])).toEqual([
+      ['a', false],
+      ['b', true],
+    ]);
+    const toolMsgs = (seen[1] as Array<{ role: string; tool_call_id?: string }>).filter(
+      (m) => m.role === 'tool',
+    );
+    expect(toolMsgs.map((m) => m.tool_call_id)).toEqual(['c1', 'c2']);
+  });
+});
