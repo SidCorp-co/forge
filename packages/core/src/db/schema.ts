@@ -2313,6 +2313,9 @@ export const sessionAttachmentsRelations = relations(sessionAttachments, ({ one 
 // upserted via PUT /api/app-config/:projectId. `chatProviderId` is free-form
 // text until EPIC 1 (ISS-270) ships the chat-provider registry that validates
 // it; consumers must fall back to env defaults when the provider is unknown.
+export const memoryModels = ['flat', 'chunked'] as const;
+export type MemoryModel = (typeof memoryModels)[number];
+
 export const appConfig = pgTable('app_config', {
   id: uuid('id').primaryKey().defaultRandom(),
   projectId: uuid('project_id')
@@ -2325,6 +2328,11 @@ export const appConfig = pgTable('app_config', {
   chatModelByKind: jsonb('chat_model_by_kind').notNull().default(sql`'{}'::jsonb`),
   retrievalTopK: integer('retrieval_top_k').notNull().default(10),
   retrievalMinScore: real('retrieval_min_score').notNull().default(0),
+  // cm:guard the four retrieval-v3 flags default to today's behaviour (off / flat / off / {}) and NOTHING reads them until its phase ships — docs/proposals/retrieval-v3-rerank-chunks.md; `memoryReindex` is written only by the phase-2 reindex job, never by PUT /api/app-config, so a stale client PUT cannot erase a running migration's state
+  retrievalRerank: boolean('retrieval_rerank').notNull().default(false),
+  memoryModel: text('memory_model', { enum: memoryModels }).notNull().default('flat'),
+  retrievalExpandRelations: boolean('retrieval_expand_relations').notNull().default(false),
+  memoryReindex: jsonb('memory_reindex').notNull().default(sql`'{}'::jsonb`),
   enabledChannels: jsonb('enabled_channels').notNull().default(sql`'[]'::jsonb`),
   systemPromptOverride: text('system_prompt_override'),
   lastBackfillAt: timestamp('last_backfill_at', { withTimezone: true }),

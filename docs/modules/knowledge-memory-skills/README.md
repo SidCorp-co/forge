@@ -59,3 +59,14 @@ flowchart TB
 - **Memory retrieval is hybrid.** `memories` carries both a pgvector embedding and a generated
   `tsvector`; the keyword strategy reads the latter via `@@` / `ts_rank`. The tsvector is a generated
   column — never written by the app.
+- **Every hybrid search says what each list contributed.** `search-service.ts:buildRetrievalMetadata`
+  writes `semanticHits`, `keywordHits` and `overlap` into `retrieval_analytics.metadata` beside
+  `strategy` / `requestedStrategy`; semantic-only and keyword-only rows carry none of the three, so
+  absence means "one list ran", never zero. `GET /api/admin/retrieval/breakdown?projectId&since`
+  aggregates them per resolved strategy over the window (default seven days).
+- **Per-project retrieval flags live on `app_config` and default to today.** `schema.ts:appConfig`
+  carries `retrievalRerank` (false), `memoryModel` (`flat` | `chunked`, `schema.ts:memoryModels`),
+  `retrievalExpandRelations` (false) and `memoryReindex` (`{}`). Nothing reads them until their phase
+  of `docs/proposals/retrieval-v3-rerank-chunks.md` ships. A project admin sets the first three through
+  `PUT /api/app-config/:projectId`; `memoryReindex` is refused there because it is the reindex job's
+  own state.

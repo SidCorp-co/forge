@@ -10,6 +10,15 @@
 
 ### Added
 
+- Retrieval v3, phase 0 (ISS-904). Every hybrid memory search now records on its
+  `retrieval_analytics` row how many hits the semantic list and the keyword list each produced and
+  how many they shared, and `GET /api/admin/retrieval/breakdown?projectId&since` aggregates that per
+  strategy for an admin. Four per-project retrieval settings land on `app_config` with today's
+  behaviour as their defaults — `retrievalRerank` off, `memoryModel` `flat`, `retrievalExpandRelations`
+  off, `memoryReindex` empty — settable by a project admin through `PUT /api/app-config/:projectId`
+  (the reindex state is not). Nothing reads them yet; they are the switches the later phases of
+  `docs/proposals/retrieval-v3-rerank-chunks.md` flip per project.
+
 - **A box can now be configured to run more than one job at a time.** `devices.max_concurrent`
   (default 1, CHECK 1..16) is enforced end to end: the picker CTE, `selectRunnerForJob` and the
   locked claim all read the same cap, and all three count occupancy with `countInFlightForDevice`.

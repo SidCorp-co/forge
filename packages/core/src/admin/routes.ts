@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, count, desc, eq, ilike, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, ilike, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -11,6 +11,7 @@ import {
   devices,
   projectMembers,
   projects,
+  retrievalAnalytics,
   users,
 } from '../db/schema.js';
 import { buildIlikePattern } from '../issues/search.js';
@@ -29,6 +30,11 @@ const devicesQuerySchema = paginationSchema.extend({
   status: z.enum(deviceStatuses).optional(),
 });
 
+const retrievalBreakdownQuerySchema = z.object({
+  projectId: z.uuid(),
+  since: z.iso.datetime().optional(),
+});
+
 const auditQuerySchema = paginationSchema.extend({
   action: z.string().trim().min(1).max(100).optional(),
   actorId: z.uuid().optional(),
@@ -43,6 +49,43 @@ export const adminRoutes = new Hono<{ Variables: AuthVars }>();
 
 const adminProtected = new Hono<{ Variables: AuthVars }>();
 adminProtected.use('*', requireAuth(), assertEmailVerified(), requireAdmin());
+
+const RETRIEVAL_BREAKDOWN_DEFAULT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const metadataInt = (key: string) =>
+  sql<number>`coalesce(sum((${retrievalAnalytics.metadata} ->> ${key})::int), 0)`.mapWith(Number);
+const strategyOf = sql<string>`coalesce(${retrievalAnalytics.metadata} ->> 'strategy', 'unknown')`;
+
+adminProtected.get(
+  '/retrieval/breakdown',
+  zValidator('query', retrievalBreakdownQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId, since } = c.req.valid('query');
+    const sinceDate = since
+      ? new Date(since)
+      : new Date(Date.now() - RETRIEVAL_BREAKDOWN_DEFAULT_WINDOW_MS);
+    const rows = await db
+      .select({
+        strategy: strategyOf,
+        searches: count(),
+        avgHitCount: sql<number>`coalesce(avg(${retrievalAnalytics.hitCount}), 0)`.mapWith(Number),
+        semanticHits: metadataInt('semanticHits'),
+        keywordHits: metadataInt('keywordHits'),
+        overlap: metadataInt('overlap'),
+      })
+      .from(retrievalAnalytics)
+      .where(
+        and(
+          eq(retrievalAnalytics.projectId, projectId),
+          gte(retrievalAnalytics.createdAt, sinceDate),
+        ),
+      )
+      .groupBy(strategyOf)
+      .orderBy(strategyOf);
+    return c.json({ projectId, since: sinceDate.toISOString(), strategies: rows });
+  },
+);
 
 adminProtected.get(
   '/users',
