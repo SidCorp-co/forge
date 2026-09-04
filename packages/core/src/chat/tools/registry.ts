@@ -35,6 +35,9 @@ import { buildToolset, type ChatToolSpec, type ChatToolset } from './mcp-adapter
  * draft/open issue is rejected with tool-error feedback so the model comments
  * on the existing one instead of filing a repeat.
  */
+// cm:guard the floor is recall-first on purpose and this key is the only way back — the title score is Jaccard word overlap, which cannot separate a real repeat (measured 0.727 on 2026-09-04) from two issues about different pages ("Dark mode broken on the settings page" vs "…profile page" scores 0.750), so the guard refuses both; without an override every false positive is unrecoverable inside the turn, because the model cannot restate its way past a deterministic check
+const DEDUP_OVERRIDE_KEY = 'confirmNotDuplicate';
+
 async function guardIssueWritesDeduped(
   args: Record<string, unknown>,
   ctx?: { projectId: string | null },
@@ -47,6 +50,9 @@ async function guardIssueWritesDeduped(
   }
   if (args.action === 'create' && ctx?.projectId) {
     const data = (args.data ?? {}) as Record<string, unknown>;
+    // cm:guard consumed here, never forwarded — `forge_issues` validates `data` strictly, so leaving the flag on it turns an override into a 400
+    const overridden = data[DEDUP_OVERRIDE_KEY] === true;
+    delete data[DEDUP_OVERRIDE_KEY];
     const title = typeof data.title === 'string' ? data.title : '';
     const description = typeof data.description === 'string' ? data.description : '';
     const duplicate = await findDuplicateIssue(db, {
@@ -54,8 +60,8 @@ async function guardIssueWritesDeduped(
       title,
       description,
     });
-    if (duplicate) {
-      return `a near-duplicate issue already exists (ISS-${duplicate.issSeq}: "${duplicate.title}", status draft/open) — comment on it via forge_comments instead of creating a new one`;
+    if (duplicate && !overridden) {
+      return `a near-duplicate issue already exists (ISS-${duplicate.issSeq}: "${duplicate.title}", status draft/open) — comment on it via forge_comments instead of creating a new one. The check is word overlap, not meaning: when this is genuinely a different issue (two screens, two releases, two customers), re-send the same create with \`data.${DEDUP_OVERRIDE_KEY}: true\`.`;
     }
   }
   return null;
