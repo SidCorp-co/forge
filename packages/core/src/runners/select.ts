@@ -31,8 +31,6 @@ const WORKSPACE_READY = sql`AND (provision_status IS NULL OR provision_status = 
 /**
  * Per-state runner pool (`pipelineConfig.states[x].deviceIds`) as a candidate
  * filter. `null`/empty pool → no fragment, so the fleet stays fully eligible.
- * Remote/server runners (NULL `device_id`) drop out of a non-empty pool by
- * construction — a pool names devices, and `NULL IN (...)` is never true.
  *
  * `column` lets a caller that aliases `runners` pass `sql`r.device_id``.
  */
