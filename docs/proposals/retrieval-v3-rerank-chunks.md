@@ -53,9 +53,10 @@ Three flag columns and one status column, in one migration owned by phase 0:
 `flat` is exactly today. Nothing in this proposal changes a project that never flips a flag, and
 the flags are independent: rerank works on flat or chunked; expansion works on either.
 
-Surfaced where the other per-project knobs are: the REST PUT, `forge_config` for agents, and the
-project settings page in web-v2. Not in `projects.agent_config` — that jsonb is the pipeline's, and
-the affordances table already warns about clobbering it.
+Surfaced where the other per-project knobs are: the REST PUT and the project settings page in
+web-v2; `forge_config` carries `pipelineConfig`, not `app_config`, so agents flip nothing here.
+Not in `projects.agent_config` — that jsonb is the pipeline's, and the affordances table already
+warns about clobbering it.
 
 ## Owner decisions, 2026-09-04
 
@@ -72,7 +73,7 @@ Asked and answered before any code; each is a constraint on the phases below, no
 
 ## Phase 0 — measure first, in the same shape the decision will be made in
 
-**Shipped in ISS-904** (branch `iss-904`): `buildRetrievalMetadata`, `GET /api/admin/retrieval/breakdown`, migration `0203` with the four `app_config` columns, and the REST PUT/GET of the three flags. The `forge_config` mention below was corrected at clarify: REST is the only surface `app_config` has, and that is where the flags are.
+**Shipped in ISS-904** (branch `iss-904`): `buildRetrievalMetadata`, `GET /api/admin/retrieval/breakdown`, migration `0203` with the four `app_config` columns, and the REST PUT/GET of the three flags.
 
 Before any new strategy: the `retrieval_analytics.metadata` jsonb gains a per-call breakdown so
 phase 4's question ("does keyword pull weight?") has an answer, and so every later phase can show
@@ -98,7 +99,7 @@ that already exists, and a flag nothing reads yet is harmless.
 
 Files: `memory/search-service.ts` (compute in `hybridSearchMemories`, log in `logRetrieval`),
 `admin/routes.ts`, `db/schema.ts` (+ migration, journal `when` = max + 86400000 per the CLAUDE.md
-invariant), the `app-config` routes and `forge_config` (expose the new columns).
+invariant), the `app-config` routes (expose the new columns).
 
 Test that must go red: a unit test on `logRetrieval`'s insert payload asserting the three counts
 for a planted pair of lists with one shared id. It goes red by deleting the `overlap` line.
