@@ -13,10 +13,13 @@ import type {
   ChatStreamEvent,
   ChatStreamUsage,
 } from './providers/types.js';
-import type { ChatToolset } from './tools/mcp-adapter.js';
+import { type ChatToolset, toolResultText } from './tools/mcp-adapter.js';
 
 // cm:guard 8 (was 5, ISS-609 follow-up) because investigating an external hub takes multi-hop chains — issue-search retries, schema introspection, query, act — and it counts PROVIDER rounds, not tool rounds: the final round MUST be invoked with NO tools (so 7 of the 8 carry them) — a model offered them on the round the loop will not iterate past answers with tool calls and no prose, and finalizing on THAT round returns '' as a `done` turn: seven round-trips of tool work billed, a chat_logs row that reads like a healthy answer. What the cap buys is that the eighth round is SPENT on an answer instead of being discarded; it does NOT make a last-round tool call visible — that round carries no schemas and a call invented there is dropped, which is the rule of the guard on the tool_call branch below, not this one's to restate
 export const MAX_TOOL_ITERATIONS = 8;
+
+/** What `chat_logs.tool_calls` keeps of a result: enough to see what the model was shown, never the full 24k body. */
+const RESULT_PREVIEW_CHARS = 500;
 
 export interface TurnCoreArgs {
   provider: ChatProvider;
@@ -31,12 +34,25 @@ export interface TurnCoreArgs {
   signal?: AbortSignal | undefined;
 }
 
+/** One tool call as audited in `chat_logs.tool_calls`; `name`/`arguments` are what the model emitted, the rest is what happened to it. */
+export interface ToolCallRecord {
+  name: string;
+  arguments: string;
+  /** 1-based provider round the call was made on. */
+  round: number;
+  /** MCP's own flag on the result — a guard rejection, a thrown handler, an external server's error. */
+  isError: boolean;
+  durationMs: number;
+  /** First {@link RESULT_PREVIEW_CHARS} of the text the model read. */
+  resultPreview: string;
+}
+
 export interface TurnCoreResult {
   /** The final assistant text (the round that requested no tools). */
   finalText: string;
   usage: ChatStreamUsage;
   iterations: number;
-  toolCalls: Array<{ name: string; arguments: string }>;
+  toolCalls: ToolCallRecord[];
   terminal: 'done' | 'error';
   errorMessage: string | null;
 }
@@ -66,7 +82,7 @@ export async function* runTurnEvents(
   const { provider, model, tools, temperature, signal } = args;
   const messages: ChatMessage[] = [...args.messages];
   const usage: ChatStreamUsage = {};
-  const toolCalls: Array<{ name: string; arguments: string }> = [];
+  const toolCalls: ToolCallRecord[] = [];
   let finalText = '';
   let errorMessage: string | null = null;
   let terminal: 'done' | 'error' | null = null;
@@ -133,10 +149,19 @@ export async function* runTurnEvents(
       });
 
       for (const tc of turnToolCalls) {
-        toolCalls.push({ name: tc.name, arguments: tc.arguments });
+        const startedAt = Date.now();
         const result = await offered.execute(tc.name, tc.arguments);
-        yield { type: 'tool_result', id: tc.id, result };
-        messages.push({ role: 'tool', tool_call_id: tc.id, content: result });
+        const text = toolResultText(result);
+        toolCalls.push({
+          name: tc.name,
+          arguments: tc.arguments,
+          round: iterations,
+          isError: result.isError === true,
+          durationMs: Date.now() - startedAt,
+          resultPreview: text.slice(0, RESULT_PREVIEW_CHARS),
+        });
+        yield { type: 'tool_result', id: tc.id, result: text };
+        messages.push({ role: 'tool', tool_call_id: tc.id, content: text });
       }
     }
   } catch (err) {

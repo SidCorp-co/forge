@@ -82,7 +82,7 @@ describe('runChatTurn tool loop', () => {
       ],
       execute: async (name, argsJson) => {
         executedWith = { name, args: argsJson };
-        return '{"items":[{"id":1},{"id":2}]}';
+        return { content: [{ type: 'text', text: '{"items":[{"id":1},{"id":2}]}' }] };
       },
     };
 
@@ -130,7 +130,7 @@ describe('runChatTurn tool loop', () => {
       session: session(),
       resolved: { provider, model: 'm' },
       providerMessages: [{ role: 'user', content: 'hi' }],
-      tools: { tools: [], execute: async () => '{}' },
+      tools: { tools: [], execute: async () => ({ content: [] }) },
       projectSlug: 'proj',
       userMessage: 'hi',
       userKey: 'u1',

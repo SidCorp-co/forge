@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import type { CallToolResult } from '../mcp/tool-result.js';
 import type { ChatProvider, ChatStreamEvent } from './providers/types.js';
 import { MAX_TOOL_ITERATIONS, runTurnEvents, type TurnCoreResult } from './run-turn-core.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
+
+const ok = (text: string): CallToolResult => ({ content: [{ type: 'text', text }] });
 
 async function drain(gen: AsyncGenerator<ChatStreamEvent, TurnCoreResult>) {
   const events: ChatStreamEvent[] = [];
@@ -48,7 +51,7 @@ describe('runTurnEvents', () => {
       tools: [{ type: 'function', function: { name: 'get', parameters: {} } }],
       execute: async (name, args) => {
         executed = { name, args };
-        return '{"ok":true}';
+        return ok('{"ok":true}');
       },
     };
     const { events, result } = await drain(
@@ -67,7 +70,16 @@ describe('runTurnEvents', () => {
     expect(events.filter((e) => e.type === 'done')).toHaveLength(1);
     expect(result.finalText).toBe('done!');
     expect(result.iterations).toBe(2);
-    expect(result.toolCalls).toEqual([{ name: 'get', arguments: '{"x":1}' }]);
+    expect(result.toolCalls).toEqual([
+      {
+        name: 'get',
+        arguments: '{"x":1}',
+        round: 1,
+        isError: false,
+        durationMs: expect.any(Number),
+        resultPreview: '{"ok":true}',
+      },
+    ]);
   });
 
   it('surfaces a provider error as terminal error, never throws', async () => {
@@ -101,7 +113,7 @@ describe('runTurnEvents', () => {
     };
     const tools: ChatToolset = {
       tools: [{ type: 'function', function: { name: 'get', parameters: {} } }],
-      execute: async () => '{"ok":true}',
+      execute: async () => ok('{"ok":true}'),
     };
 
     const { events, result } = await drain(
@@ -142,7 +154,7 @@ describe('runTurnEvents', () => {
     };
     const tools: ChatToolset = {
       tools: [{ type: 'function', function: { name: 'escalate', parameters: {} } }],
-      execute: async () => '{"ok":true}',
+      execute: async () => ok('{"ok":true}'),
     };
 
     const { events, result } = await drain(
@@ -162,5 +174,72 @@ describe('runTurnEvents', () => {
     expect(result.finalText).toBe('partial answer');
     expect(result.terminal).toBe('done');
     expect(events.at(-1)).toEqual({ type: 'done' });
+  });
+});
+
+describe('runTurnEvents — tool-call records', () => {
+  it('records an MCP isError result as an error and still feeds its text back to the model', async () => {
+    const seen: unknown[][] = [];
+    const recording: ChatProvider = {
+      id: 'mock',
+      defaultModel: 'm',
+      async *stream(req): AsyncIterable<ChatStreamEvent> {
+        seen.push(req.messages);
+        if (seen.length === 1) {
+          yield { type: 'tool_call', id: 'c1', name: 'get', arguments: '{}' };
+        } else {
+          yield { type: 'chunk', text: 'sorry' };
+        }
+        yield { type: 'done' };
+      },
+    };
+    const tools: ChatToolset = {
+      tools: [{ type: 'function', function: { name: 'get', parameters: {} } }],
+      execute: async () => ({
+        content: [{ type: 'text', text: '{"error":"not permitted"}' }],
+        isError: true,
+      }),
+    };
+    const { result } = await drain(
+      runTurnEvents({
+        provider: recording,
+        model: 'm',
+        messages: [{ role: 'user', content: 'go' }],
+        tools,
+      }),
+    );
+    expect(result.terminal).toBe('done');
+    expect(result.toolCalls).toEqual([
+      expect.objectContaining({
+        name: 'get',
+        round: 1,
+        isError: true,
+        resultPreview: '{"error":"not permitted"}',
+      }),
+    ]);
+    expect(seen[1]).toContainEqual({
+      role: 'tool',
+      tool_call_id: 'c1',
+      content: '{"error":"not permitted"}',
+    });
+  });
+
+  it('keeps only a preview of a long result in the record', async () => {
+    const tools: ChatToolset = {
+      tools: [{ type: 'function', function: { name: 'get', parameters: {} } }],
+      execute: async () => ok('y'.repeat(2_000)),
+    };
+    const { result } = await drain(
+      runTurnEvents({
+        provider: provider([
+          [{ type: 'tool_call', id: 'c1', name: 'get', arguments: '{}' }, { type: 'done' }],
+          [{ type: 'chunk', text: 'ok' }, { type: 'done' }],
+        ]),
+        model: 'm',
+        messages: [{ role: 'user', content: 'go' }],
+        tools,
+      }),
+    );
+    expect(result.toolCalls[0]?.resultPreview).toHaveLength(500);
   });
 });

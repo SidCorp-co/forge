@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import type { CallToolResult } from '../../mcp/tool-result.js';
 import type { McpContext, McpTool } from '../../mcp/tools/lib.js';
 import { guardIssueWrites } from './guards.js';
-import { buildToolset, mergeToolsets } from './mcp-adapter.js';
+import { buildToolset, mergeToolsets, toolError, toolResultText } from './mcp-adapter.js';
+
+/** The JSON the model reads out of a result's first text block. */
+const body = (r: CallToolResult) => JSON.parse((r.content[0] as { text: string }).text);
 
 // Minimal stub context — the read-only gate rejects before any handler runs,
 // and tools[] building only reads the descriptor, so no DB/principal is hit.
@@ -36,7 +40,7 @@ describe('chat mcp-adapter', () => {
       },
     ]);
     const out = await execute('forge_projects_get', '{"projectId":"p1"}');
-    expect(JSON.parse(out)).toEqual({ ok: true });
+    expect(body(out)).toEqual({ ok: true });
     expect(received).toEqual({ projectId: 'p1' });
   });
 
@@ -54,7 +58,7 @@ describe('chat mcp-adapter', () => {
     ]);
     const out = await execute('forge_issues', '{"action":"create"}');
     expect(called).toBe(false);
-    expect(JSON.parse(out).error).toMatch(/not permitted/);
+    expect(body(out).error).toMatch(/not permitted/);
   });
 
   it('allows a whitelisted read action', async () => {
@@ -62,7 +66,7 @@ describe('chat mcp-adapter', () => {
       { factory: () => stubTool('forge_issues', () => ({ items: [] })), allowedActions: ['list'] },
     ]);
     const out = await execute('forge_issues', '{"action":"list"}');
-    expect(JSON.parse(out)).toEqual({ items: [] });
+    expect(body(out)).toEqual({ items: [] });
   });
 
   it('returns a JSON error (not a throw) when the handler fails', async () => {
@@ -75,7 +79,7 @@ describe('chat mcp-adapter', () => {
       },
     ]);
     const out = await execute('forge_projects_get', '{}');
-    expect(JSON.parse(out).error).toBe('boom');
+    expect(body(out).error).toBe('boom');
   });
 
   it('pins projectId to the session-bound project, overriding what the model passed', async () => {
@@ -183,7 +187,7 @@ describe('chat mcp-adapter', () => {
       '{"action":"create","data":{"title":"Fix category","description":"Category too long, use the last one."}}',
     );
     expect(called).toBe(false);
-    expect(JSON.parse(out).error).toMatch(/too thin to be actionable/);
+    expect(body(out).error).toMatch(/too thin to be actionable/);
   });
 
   it('guard rejects any pipeline-dispatching status on update', async () => {
@@ -206,7 +210,7 @@ describe('chat mcp-adapter', () => {
         `{"action":"update","data":{"status":"${status}"}}`,
       );
       expect(called).toBe(false);
-      expect(JSON.parse(out).error).toMatch(/leave that transition to a human/);
+      expect(body(out).error).toMatch(/leave that transition to a human/);
     }
   });
 
@@ -228,10 +232,10 @@ describe('chat mcp-adapter', () => {
         'forge_issues',
         `{"action":"update","data":{"status":"${status}"}}`,
       );
-      expect(JSON.parse(out)).toEqual({ ok: true });
+      expect(body(out)).toEqual({ ok: true });
     }
     const out = await execute('forge_issues', '{"action":"update","data":{"title":"renamed"}}');
-    expect(JSON.parse(out)).toEqual({ ok: true });
+    expect(body(out)).toEqual({ ok: true });
     expect(received).toHaveLength(6);
   });
 
@@ -253,7 +257,7 @@ describe('chat mcp-adapter', () => {
       '{"action":"update","data":{"status":"draft","unblock":true}}',
     );
     expect(called).toBe(false);
-    expect(JSON.parse(out).error).toMatch(/unblock/);
+    expect(body(out).error).toMatch(/unblock/);
   });
 
   it('awaits an async guard before dispatch (rejection short-circuits)', async () => {
@@ -274,7 +278,7 @@ describe('chat mcp-adapter', () => {
     ]);
     const out = await execute('forge_issues', '{"action":"create","data":{}}');
     expect(called).toBe(false);
-    expect(JSON.parse(out).error).toMatch(/near-duplicate/);
+    expect(body(out).error).toMatch(/near-duplicate/);
   });
 
   it('awaits an async guard that allows the call (resolves to null)', async () => {
@@ -294,7 +298,7 @@ describe('chat mcp-adapter', () => {
       },
     ]);
     const out = await execute('forge_issues', '{"action":"create","data":{}}');
-    expect(JSON.parse(out)).toEqual({ ok: true });
+    expect(body(out)).toEqual({ ok: true });
     expect(received).toEqual({ action: 'create', data: {} });
   });
 
@@ -323,8 +327,67 @@ describe('chat mcp-adapter', () => {
     ]);
     const merged = mergeToolsets(a, b);
     expect(merged.tools.map((t) => t.function.name)).toEqual(['alpha', 'beta']);
-    expect(JSON.parse(await merged.execute('alpha', '{}'))).toEqual({ from: 'a' });
-    expect(JSON.parse(await merged.execute('beta', '{}'))).toEqual({ from: 'b' });
-    expect(JSON.parse(await merged.execute('gamma', '{}')).error).toMatch(/unknown tool/);
+    expect(body(await merged.execute('alpha', '{}'))).toEqual({ from: 'a' });
+    expect(body(await merged.execute('beta', '{}'))).toEqual({ from: 'b' });
+    expect(body(await merged.execute('gamma', '{}')).error).toMatch(/unknown tool/);
+  });
+});
+
+describe('chat mcp-adapter — MCP result vocabulary', () => {
+  it('a rejected action carries isError so the audit record can tell it from a result', async () => {
+    const { execute } = buildToolset(ctx, [
+      { factory: () => stubTool('forge_issues', () => ({ ok: true })), allowedActions: ['list'] },
+    ]);
+    const out = await execute('forge_issues', '{"action":"create"}');
+    expect(out.isError).toBe(true);
+    expect(body(out).error).toMatch(/not permitted/);
+  });
+
+  it('a thrown handler is flagged, not just stringified', async () => {
+    const { execute } = buildToolset(ctx, [
+      {
+        factory: () =>
+          stubTool('forge_projects.get', () => {
+            throw new Error('boom');
+          }),
+      },
+    ]);
+    const out = await execute('forge_projects_get', '{}');
+    expect(out.isError).toBe(true);
+    expect(body(out)).toEqual({ error: 'boom' });
+  });
+
+  it('a successful handler result is not flagged', async () => {
+    const { execute } = buildToolset(ctx, [
+      { factory: () => stubTool('forge_issues', () => ({ items: [] })), allowedActions: ['list'] },
+    ]);
+    const out = await execute('forge_issues', '{"action":"list"}');
+    expect(out.isError).not.toBe(true);
+    expect(out.structuredContent).toEqual({ items: [] });
+  });
+
+  it('surfaces a handler-supplied _mcpContent block set exactly as the /mcp transport does', async () => {
+    const image = { type: 'image', data: 'QUJD', mimeType: 'image/png' };
+    const { execute } = buildToolset(ctx, [
+      { factory: () => stubTool('forge_uploads', () => ({ _mcpContent: [image], name: 'a.png' })) },
+    ]);
+    const out = await execute('forge_uploads', '{}');
+    expect(out.content).toEqual([image]);
+    expect(out.structuredContent).toEqual({ name: 'a.png' });
+  });
+
+  it('toolResultText joins text blocks and serialises the others, capped', () => {
+    const image = { type: 'image', data: 'QUJD', mimeType: 'image/png' } as const;
+    const text = toolResultText({ content: [{ type: 'text', text: 'one' }, image] });
+    expect(text).toBe(`one\n${JSON.stringify(image)}`);
+    const long = toolResultText({ content: [{ type: 'text', text: 'x'.repeat(30_000) }] });
+    expect(long.length).toBeLessThan(30_000);
+    expect(long.endsWith('[truncated]')).toBe(true);
+  });
+
+  it('toolError is the one error shape: a JSON {error} text block plus the flag', () => {
+    const out = toolError('nope');
+    expect(out.isError).toBe(true);
+    expect(body(out)).toEqual({ error: 'nope' });
   });
 });
