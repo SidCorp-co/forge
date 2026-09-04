@@ -10,8 +10,6 @@ import type { RequiredCapabilities, Runner } from './types.js';
  * disabled (`devices.disabled_at` set). Correlates to the runner's `device_id`
  * in the enclosing query (works whether the runner row is aliased or not;
  * `devices` has no `device_id` column so the bare ref resolves outward).
- * Remote/server runners (NULL device_id) have no matching device row → the
- * NOT EXISTS is satisfied and they stay eligible.
  */
 const NOT_DISABLED_DEVICE = sql`AND NOT EXISTS (
   SELECT 1 FROM devices d WHERE d.id = device_id AND d.disabled_at IS NOT NULL
