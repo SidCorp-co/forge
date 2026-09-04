@@ -43,6 +43,7 @@ interface OpenAIChunk {
     prompt_tokens?: number;
     completion_tokens?: number;
     total_tokens?: number;
+    prompt_tokens_details?: { cached_tokens?: number };
   };
 }
 
@@ -181,11 +182,12 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
             if (chunk.usage.total_tokens !== undefined) {
               usage.totalTokens = chunk.usage.total_tokens;
             }
+            const cached = chunk.usage.prompt_tokens_details?.cached_tokens;
+            if (typeof cached === 'number') usage.cachedPromptTokens = cached;
             yield { type: 'usage', usage };
           }
         }
-        // Fallback: some proxies end the stream without a `tool_calls`
-        // finish_reason — flush anything still buffered before terminating.
+        // cm:why some proxies end the stream without a `tool_calls` finish_reason, so anything still buffered is flushed before terminating
         yield* flushToolCalls();
         yield { type: 'done' };
       } catch (err) {

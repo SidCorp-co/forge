@@ -29,6 +29,7 @@ import {
 } from './session.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
+import { applyTurnContext } from './turn-context.js';
 import { type ImageResolver, resolveVisionImages, type TurnImage } from './vision.js';
 
 export interface ExternalChatTurnArgs {
@@ -116,17 +117,18 @@ export async function runExternalChatTurn(
   const systemPrompt = buildSystemPrompt({
     project: { name: project.name, agentConfig: project.agentConfig },
     appConfig: appCfg ?? null,
-    pageContext: null,
     persona: args.persona ?? null,
-    conversationContext: args.conversationContext ?? null,
     progressFacts: progress ? buildProgressFactsBlock(progress) : null,
   });
   const historyWindow = session.messages.slice(-PROVIDER_HISTORY_WINDOW);
   const resolvedImages = await resolveVisionImages(historyWindow, images, args.resolveImage);
-  const providerMessages = [
-    { role: 'system' as const, content: systemPrompt },
-    ...toProviderMessages(session, resolvedImages).slice(-PROVIDER_HISTORY_WINDOW),
-  ];
+  const providerMessages = applyTurnContext(
+    [
+      { role: 'system' as const, content: systemPrompt },
+      ...toProviderMessages(session, resolvedImages).slice(-PROVIDER_HISTORY_WINDOW),
+    ],
+    { conversationContext: args.conversationContext },
+  );
 
   const startedAt = Date.now();
   const gen = runTurnEvents({

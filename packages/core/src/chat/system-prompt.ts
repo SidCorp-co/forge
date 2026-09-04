@@ -1,21 +1,10 @@
 /**
- * v1 EPIC 1 (ISS-294 / PR-B) — Minimal system-prompt builder.
- *
- * No RAG, no rolling stats — explicitly the v1 minimum. The prompt is project
- * name + description + optional `app_config.systemPromptOverride` + a
- * serialized `pageContext` block when the caller passes one.
- *
- * ISS-609 adds two optional blocks for external channels (Rocket.Chat):
- *   - `persona` — replaces the generic assistant line with a caller-supplied
- *     persona (the Forge-assistant persona for the RC bot). The project's
- *     `systemPromptOverride` still wins over it.
- *   - `conversationContext` — the seeded recent-channel-discussion block,
- *     appended as its own section regardless of override.
- *
- * ISS-671 adds `progressFacts` — the rendered `buildProgressFactsBlock`
- * output. Appended unconditionally like `conversationContext`, i.e. it
- * survives `systemPromptOverride`: a kernel fact must not be strippable by a
- * project's own prompt customization.
+ * v1 EPIC 1 (ISS-294 / PR-B) — the system prompt: persona or `app_config.systemPromptOverride`
+ * (the override wins), the project's `agentConfig.systemPrompt`, the `personaStyle` knob, and the
+ * ISS-671 `progressFacts` block, which survives the override because a kernel fact must not be
+ * strippable by a project's prompt customization. No RAG, no rolling stats. Everything that changes
+ * per turn (the conversation seed, the page context) is NOT here — see `turn-context.ts`: the
+ * system message plus `tools[]` is the prompt-cache prefix and must stay byte-stable across turns.
  */
 
 export interface ProjectSummary {
@@ -30,11 +19,8 @@ export interface AppConfigSummary {
 export interface BuildSystemPromptInput {
   project: ProjectSummary;
   appConfig?: AppConfigSummary | null | undefined;
-  pageContext?: Record<string, unknown> | null | undefined;
   /** Channel-specific assistant persona; ignored when an override is set. */
   persona?: string | null | undefined;
-  /** Recent-conversation seed (external channels); always appended when set. */
-  conversationContext?: string | null | undefined;
   /** Deterministic project-progress block (ISS-671); always appended when set. */
   progressFacts?: string | null | undefined;
 }
@@ -69,20 +55,9 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     sections.push(`Reply style & personality (project-configured):\n${style}`);
   }
 
-  const conversation = input.conversationContext?.trim();
-  if (conversation) {
-    sections.push(
-      `Conversation context — the discussion that led to this message (if it references older matter, use the available history tools before concluding):\n${conversation}`,
-    );
-  }
-
   const progressFacts = input.progressFacts?.trim();
   if (progressFacts) {
     sections.push(progressFacts);
-  }
-
-  if (input.pageContext && Object.keys(input.pageContext).length > 0) {
-    sections.push(`Page context:\n${JSON.stringify(input.pageContext, null, 2)}`);
   }
 
   return sections.join('\n\n');

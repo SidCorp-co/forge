@@ -396,3 +396,32 @@ describe('runTurnEvents — context budget', () => {
     expect(result.elided.overBudget).toBe(false);
   });
 });
+
+describe('runTurnEvents — usage', () => {
+  it('sums cachedPromptTokens across rounds like the other counters', async () => {
+    const tools: ChatToolset = {
+      tools: [{ type: 'function', function: { name: 'get', parameters: {} } }],
+      execute: async () => ok('{}'),
+    };
+    const { result } = await drain(
+      runTurnEvents({
+        provider: provider([
+          [
+            { type: 'tool_call', id: 'c1', name: 'get', arguments: '{}' },
+            { type: 'usage', usage: { promptTokens: 100, cachedPromptTokens: 10 } },
+            { type: 'done' },
+          ],
+          [
+            { type: 'chunk', text: 'ok' },
+            { type: 'usage', usage: { promptTokens: 120, cachedPromptTokens: 30 } },
+            { type: 'done' },
+          ],
+        ]),
+        model: 'm',
+        messages: [{ role: 'user', content: 'go' }],
+        tools,
+      }),
+    );
+    expect(result.usage).toEqual({ promptTokens: 220, cachedPromptTokens: 40 });
+  });
+});
