@@ -10,6 +10,20 @@
 
 ### Added
 
+- Retrieval v3, phase 2 (ISS-906). A project admin can move a project's memory onto the chunked model
+  with `POST /api/app-config/:projectId/memory-model { model: 'chunked' }`, after reading
+  `GET …/memory-model/estimate`. From then on every `issue`, `note`, `knowledge`, `decision` and
+  `policy` memory is also stored as ~1,200-character passages with a context prefix in the new
+  `memory_chunks` table (migration `0205`), and semantic and keyword search match on the passage,
+  returning `matchedChunk: { index, text }` on the hit, so a fact buried in the last paragraph of a
+  long issue is found instead of drowned by the document's head. Existing rows are re-embedded by a
+  resumable background job whose state (`queued · running · completed · failed · cancelled`, with
+  counts) is readable at `GET …/memory-model/reindex` and cancellable with `DELETE`; rows it has not
+  reached yet are still searched the old way, so the flip has no gap. Flipping back to `flat` is
+  immediate and purges the passages a week later. A rewrite during an embeddings outage never leaves
+  the old passages searchable. `memoryModel` is no longer settable through `PUT /api/app-config`.
+  The Project Settings card for the five states is ISS-908.
+
 - Retrieval v3, phases 1 and 3 (ISS-905). On a project whose admin turned on `retrievalRerank`, an
   agent's `hybrid` memory search (MCP `forge_memory.search`, the chat toolset, `forge_knowledge`
   search) comes back in the order the fast model gives the fused candidates — `reranked: true`, a

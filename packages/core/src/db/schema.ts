@@ -1554,7 +1554,7 @@ export const MEMORY_EMBEDDING_DIM = 1536;
  * app; Postgres derives it from `text_content`. Read via `@@` / `ts_rank` in
  * the keyword retrieval strategy (memory-v2 phase 1).
  */
-const tsVector = customType<{ data: string; driverData: string }>({
+export const tsVector = customType<{ data: string; driverData: string }>({
   dataType() {
     return 'tsvector';
   },
@@ -1586,6 +1586,9 @@ export const memories = pgTable(
     // Soft delete for decay/consolidation. Archived rows are excluded from
     // every read surface; hard purge happens after a further grace period.
     archivedAt: timestamp('archived_at', { withTimezone: true }),
+    // cm:guard `chunk_generation` is bumped and `chunked_at` nulled on EVERY write to a chunked-project row, inside the parent upsert's transaction (memory/chunk-writer.ts:invalidateChunks) — the chunk arm of search joins `memory_chunks.generation = chunk_generation` AND `chunked_at IS NOT NULL`, and that join is the only thing keeping a superseded chunk set unreachable when the re-embed of the new text fails (docs/proposals/retrieval-v3-rerank-chunks.md, phase 2)
+    chunkGeneration: integer('chunk_generation').notNull().default(0),
+    chunkedAt: timestamp('chunked_at', { withTimezone: true }),
     // memory-v2 phase 1 keyword retrieval. GENERATED ALWAYS in Postgres
     // (migration 0105) — drizzle must never include it in INSERT/UPDATE.
     textSearch: tsVector('text_search').generatedAlwaysAs(

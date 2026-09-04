@@ -4,9 +4,16 @@ import { env } from '../config/env.js';
 import * as baseSchema from './schema.js';
 import * as activitySchema from './schema-activity.js';
 import * as journalSchema from './schema-journal.js';
+import * as memoryChunksSchema from './schema-memory-chunks.js';
 import * as sessionInboxSchema from './schema-session-inbox.js';
 
-const schema = { ...baseSchema, ...activitySchema, ...journalSchema, ...sessionInboxSchema };
+const schema = {
+  ...baseSchema,
+  ...activitySchema,
+  ...journalSchema,
+  ...sessionInboxSchema,
+  ...memoryChunksSchema,
+};
 
 // ISS-663 — bound how long a connection can sit idle-in-transaction or run a
 // single statement, so a hung/leaked db.transaction() callback can't pin a

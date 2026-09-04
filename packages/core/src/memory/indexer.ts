@@ -5,7 +5,81 @@ import { type MemorySource, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
+import { chunkAndPublish, invalidateChunks } from './chunk-writer.js';
+import { isChunkedSource } from './chunker.js';
+import { loadRetrievalFlags } from './retrieval-flags.js';
 import { searchMemories } from './search.js';
+
+type Executor = Pick<typeof db, 'insert'>;
+
+function upsertParent(
+  exec: Executor,
+  input: IndexInput,
+  vector: number[] | null,
+  degraded: boolean,
+) {
+  return exec
+    .insert(memories)
+    .values({
+      projectId: input.projectId,
+      source: input.source,
+      sourceRef: input.sourceRef,
+      textContent: input.text,
+      embedding: vector,
+      metadata: input.metadata ?? {},
+    })
+    .onConflictDoUpdate({
+      target: [memories.projectId, memories.source, memories.sourceRef],
+      set: {
+        textContent: sql`excluded.text_content`,
+        // Degraded re-write: null the vector ONLY when the text actually
+        // changed (the old vector embeds stale text; null forces the backfill
+        // re-embed). When the text is identical, the existing vector is still
+        // valid — keep it instead of losing a good embedding to an outage.
+        embedding: degraded
+          ? sql`CASE WHEN ${memories.textContent} = excluded.text_content THEN ${memories.embedding} ELSE excluded.embedding END`
+          : sql`excluded.embedding`,
+        metadata: sql`excluded.metadata`,
+        // A fresh write revives a decayed/consolidated-away row.
+        archivedAt: sql`null`,
+        // embeddedAt only advances when a vector was actually written.
+        ...(degraded ? {} : { embeddedAt: sql`now()` }),
+        updatedAt: sql`now()`,
+      },
+    })
+    .returning({ id: memories.id, embeddedAt: memories.embeddedAt });
+}
+
+// cm:guard on a chunked project the invalidate rides the parent upsert's transaction and the chunk embed happens AFTER it commits — from that commit the row is searched through its flat arm only, so a failed re-embed can never leave the previous passages searchable beside text the parent no longer says; a degraded whole-document embed skips the chunk embed too (the same service is down) and the backfill completes the row
+async function upsertChunkedParent(
+  input: IndexInput,
+  vector: number[] | null,
+  degraded: boolean,
+): Promise<{ id: string; embeddedAt: Date }> {
+  const { row, generation } = await db.transaction(async (tx) => {
+    const [r] = await upsertParent(tx, input, vector, degraded);
+    if (!r) throw new Error('memory.indexer: upsert returned no row');
+    return { row: r, generation: await invalidateChunks(tx, r.id) };
+  });
+  if (degraded) return row;
+  try {
+    await chunkAndPublish({
+      id: row.id,
+      source: input.source,
+      sourceRef: input.sourceRef,
+      textContent: input.text,
+      metadata: input.metadata ?? {},
+      chunkGeneration: generation,
+    });
+  } catch (err) {
+    if (!(err instanceof EmbeddingUnavailableError)) throw err;
+    logger.warn(
+      { projectId: input.projectId, source: input.source, sourceRef: input.sourceRef },
+      'memory.indexer: embeddings unavailable for the chunk set, row stays flat-only for backfill',
+    );
+  }
+  return row;
+}
 
 // cm:guard ISS-898 — embed the PROJECTION, never the raw body. An `html` component description embedded verbatim spends its vector budget on tag and attribute names, so two issues sharing a template read as similar because they share markup rather than because they share a problem.
 function describe(row: { description?: unknown; descriptionFormat?: unknown }): string {
@@ -135,36 +209,11 @@ export async function indexMemory(input: IndexInput, opts?: IndexOptions): Promi
     );
   }
 
-  const [row] = await db
-    .insert(memories)
-    .values({
-      projectId: input.projectId,
-      source: input.source,
-      sourceRef: input.sourceRef,
-      textContent: input.text,
-      embedding: vector,
-      metadata: input.metadata ?? {},
-    })
-    .onConflictDoUpdate({
-      target: [memories.projectId, memories.source, memories.sourceRef],
-      set: {
-        textContent: sql`excluded.text_content`,
-        // Degraded re-write: null the vector ONLY when the text actually
-        // changed (the old vector embeds stale text; null forces the backfill
-        // re-embed). When the text is identical, the existing vector is still
-        // valid — keep it instead of losing a good embedding to an outage.
-        embedding: degraded
-          ? sql`CASE WHEN ${memories.textContent} = excluded.text_content THEN ${memories.embedding} ELSE excluded.embedding END`
-          : sql`excluded.embedding`,
-        metadata: sql`excluded.metadata`,
-        // A fresh write revives a decayed/consolidated-away row.
-        archivedAt: sql`null`,
-        // embeddedAt only advances when a vector was actually written.
-        ...(degraded ? {} : { embeddedAt: sql`now()` }),
-        updatedAt: sql`now()`,
-      },
-    })
-    .returning({ id: memories.id, embeddedAt: memories.embeddedAt });
+  const flags = await loadRetrievalFlags(input.projectId);
+  const row =
+    flags.memoryModel === 'chunked' && isChunkedSource(input.source)
+      ? await upsertChunkedParent(input, vector, degraded)
+      : (await upsertParent(db, input, vector, degraded))[0];
 
   if (!row) {
     // Shouldn't happen — UPSERT with returning always returns a row.

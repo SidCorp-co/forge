@@ -17,6 +17,7 @@ import { agentSessionProjectReadRoutes } from './agent-sessions/project-read-rou
 import { agentSessionRoutes } from './agent-sessions/routes.js';
 import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cron.js';
 import { agentRoutes } from './agents/routes.js';
+import { memoryModelRoutes } from './app-config/memory-model-routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
 import { devForceVerifyRoutes } from './auth/dev-force-verify.js';
 import { loginRoutes } from './auth/login.js';
@@ -107,6 +108,7 @@ import { meRecentChangesRoutes } from './me/recent-changes-routes.js';
 import { registerCandidatesDecay } from './memory/candidates-decay.js';
 import { registerCandidatesWorker } from './memory/candidates-observer.js';
 import { memoryCandidatesRoutes } from './memory/candidates-routes.js';
+import { registerChunkReindex } from './memory/chunk-reindex.js';
 import {
   registerMemoryConsolidation,
   registerMemoryReconcileWorker,
@@ -429,6 +431,7 @@ app.route('/api/knowledge-edges', knowledgeEdgeRoutes);
 app.route('/api/skills', skillCrudRoutes);
 app.route('/api/usage-records', usageRecordRoutes);
 app.route('/api/chat-logs', chatLogRoutes);
+app.route('/api/app-config', memoryModelRoutes);
 app.route('/api/app-config', appConfigRoutes);
 app.route('/api/domain-templates', domainTemplateRoutes);
 app.route('/api/runners', runnerRoutes);
@@ -493,6 +496,7 @@ if (isMain) {
   await registerIntegrationsHealthSweep();
   await registerDeviceStaleDetector();
   await registerEmbeddingBackfill();
+  await registerChunkReindex();
   await registerMemoryDecay();
   await registerMemoryConsolidation();
   await registerMemoryReconcileWorker();

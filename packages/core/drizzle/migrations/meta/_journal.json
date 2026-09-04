@@ -1422,6 +1422,13 @@
       "when": 1791072000000,
       "tag": "0204_curious_fat_cobra",
       "breakpoints": true
+    },
+    {
+      "idx": 205,
+      "version": "7",
+      "when": 1791158400000,
+      "tag": "0205_memory_chunks",
+      "breakpoints": true
     }
   ]
 }

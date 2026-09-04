@@ -194,20 +194,18 @@ describe('PUT /api/app-config/:projectId — retrieval v3 flags (ISS-904)', () =
     });
   };
 
-  it('an admin sets the three flags and only those fields reach the upsert', async () => {
+  it('an admin sets the two boolean flags and only those fields reach the upsert', async () => {
     insertReturning.mockResolvedValueOnce([
-      { id: CONFIG_ID, projectId: PROJECT_ID, retrievalRerank: true, memoryModel: 'chunked' },
+      { id: CONFIG_ID, projectId: PROJECT_ID, retrievalRerank: true, memoryModel: 'flat' },
     ]);
     const res = await put({
       retrievalRerank: true,
-      memoryModel: 'chunked',
       retrievalExpandRelations: true,
     });
     expect(res.status).toBe(200);
     expect(insertValues).toHaveBeenCalledWith({
       projectId: PROJECT_ID,
       retrievalRerank: true,
-      memoryModel: 'chunked',
       retrievalExpandRelations: true,
     });
   });
@@ -218,8 +216,8 @@ describe('PUT /api/app-config/:projectId — retrieval v3 flags (ISS-904)', () =
     expect(insertValues).not.toHaveBeenCalled();
   });
 
-  it('memoryModel outside flat|chunked is 400', async () => {
-    expect((await put({ memoryModel: 'sharded' })).status).toBe(400);
+  it('memoryModel is not writable through PUT (400) — the flip is POST /:projectId/memory-model', async () => {
+    expect((await put({ memoryModel: 'chunked' })).status).toBe(400);
     expect(insertValues).not.toHaveBeenCalled();
   });
 
