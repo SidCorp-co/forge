@@ -182,3 +182,49 @@ describe('PUT /api/app-config/:projectId — chatModelByKind', () => {
     expect(insertValues).not.toHaveBeenCalled();
   });
 });
+
+describe('PUT /api/app-config/:projectId — retrieval v3 flags (ISS-904)', () => {
+  const put = async (body: unknown, access: () => void = projectAccessAsOwner) => {
+    authVerified();
+    access();
+    return buildApp().request(`/api/app-config/${PROJECT_ID}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify(body),
+    });
+  };
+
+  it('an admin sets the three flags and only those fields reach the upsert', async () => {
+    insertReturning.mockResolvedValueOnce([
+      { id: CONFIG_ID, projectId: PROJECT_ID, retrievalRerank: true, memoryModel: 'chunked' },
+    ]);
+    const res = await put({
+      retrievalRerank: true,
+      memoryModel: 'chunked',
+      retrievalExpandRelations: true,
+    });
+    expect(res.status).toBe(200);
+    expect(insertValues).toHaveBeenCalledWith({
+      projectId: PROJECT_ID,
+      retrievalRerank: true,
+      memoryModel: 'chunked',
+      retrievalExpandRelations: true,
+    });
+  });
+
+  it('a member is refused with 403 before any write', async () => {
+    const res = await put({ retrievalRerank: true }, projectAccessAsMember);
+    expect(res.status).toBe(403);
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('memoryModel outside flat|chunked is 400', async () => {
+    expect((await put({ memoryModel: 'sharded' })).status).toBe(400);
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('memoryReindex is not writable through PUT (400)', async () => {
+    expect((await put({ memoryReindex: { state: 'running' } })).status).toBe(400);
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+});

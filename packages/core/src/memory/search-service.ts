@@ -4,6 +4,7 @@ import { type MemorySource, retrievalAnalytics } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
 import { logger } from '../logger.js';
 import {
+  type HybridBreakdown,
   hybridSearchMemories,
   keywordSearchMemories,
   type MemoryHit,
@@ -55,6 +56,7 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
   let resolved: MemorySearchStrategy = requested;
   let degraded = false;
   let hits: MemoryHit[];
+  let breakdown: HybridBreakdown | undefined;
 
   const base = {
     projectId: input.projectId,
@@ -67,10 +69,13 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
   } else {
     try {
       const queryVec = await embed(input.query);
-      hits =
-        requested === 'hybrid'
-          ? await hybridSearchMemories({ ...base, queryVec, query: input.query })
-          : await searchMemories({ ...base, queryVec });
+      if (requested === 'hybrid') {
+        const fused = await hybridSearchMemories({ ...base, queryVec, query: input.query });
+        hits = fused.hits;
+        breakdown = fused.breakdown;
+      } else {
+        hits = await searchMemories({ ...base, queryVec });
+      }
     } catch (err) {
       if (err instanceof EmbeddingUnavailableError && requested === 'hybrid') {
         // Keyword needs no embedding — serve degraded results instead of 503.
@@ -88,7 +93,7 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
   }
 
   const tookMs = Date.now() - startedAt;
-  logRetrieval(input, hits, resolved, requested, tookMs);
+  logRetrieval(input, hits, resolved, requested, tookMs, breakdown);
 
   // Usage tracking (phase 2) — detached; a tracking failure never fails the
   // search. Natural-key reads (forge_memory.get) intentionally do NOT count.
@@ -113,6 +118,15 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
   };
 }
 
+/** The `metadata` jsonb of one `retrieval_analytics` row; the breakdown keys exist only when hybrid ran, so their absence means "one list", never "zero hits". */
+export function buildRetrievalMetadata(
+  resolved: MemorySearchStrategy,
+  requested: MemorySearchStrategy,
+  breakdown: HybridBreakdown | undefined,
+): Record<string, unknown> {
+  return { strategy: resolved, requestedStrategy: requested, ...(breakdown ?? {}) };
+}
+
 /**
  * Append-only retrieval log (ISS-274 `retrieval_analytics`). Detached and
  * best-effort — an analytics outage must never fail or slow a search.
@@ -123,6 +137,7 @@ function logRetrieval(
   resolved: MemorySearchStrategy,
   requested: MemorySearchStrategy,
   durationMs: number,
+  breakdown: HybridBreakdown | undefined,
 ): void {
   queueMicrotask(() => {
     db.insert(retrievalAnalytics)
@@ -134,7 +149,7 @@ function logRetrieval(
         model: env.EMBEDDINGS_MODEL,
         durationMs,
         source: 'api-search',
-        metadata: { strategy: resolved, requestedStrategy: requested },
+        metadata: buildRetrievalMetadata(resolved, requested, breakdown),
       })
       .catch((err) => {
         logger.warn(
