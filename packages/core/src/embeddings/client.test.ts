@@ -148,3 +148,20 @@ describe('EmbeddingsClient.embed', () => {
     await expect(client.embed('x')).resolves.toEqual([0.1]);
   });
 });
+
+describe('EmbeddingsClient endpoint URL', () => {
+  it('posts to /v1/embeddings whether the base is the host or the /v1 root', async () => {
+    for (const baseUrl of ['https://embeddings.example', 'https://embeddings.example/v1/']) {
+      const fetchFn = vi.fn(
+        async (..._args: unknown[]) =>
+          new Response(JSON.stringify({ data: [{ embedding: [0.1, 0.2] }] }), { status: 200 }),
+      );
+      const client = new EmbeddingsClient(
+        { baseUrl, apiKey: 'k', model: 'm', timeoutMs: 1000, expectedDim: 2 },
+        fetchFn as unknown as typeof fetch,
+      );
+      await client.embed('hello');
+      expect(fetchFn.mock.calls[0]?.[0]).toBe('https://embeddings.example/v1/embeddings');
+    }
+  });
+});

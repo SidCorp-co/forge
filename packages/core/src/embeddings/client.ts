@@ -1,10 +1,11 @@
+import { openAiCompatUrl } from '../lib/openai-compat-url.js';
 import { logger } from '../logger.js';
 
 /**
  * LiteLLM-compatible embeddings client with timeout, bounded retry, and a
  * module-local circuit breaker.
  *
- * Protocol: `POST {baseUrl}/embeddings` with `{ input, model }` and
+ * Protocol: `POST {baseUrl}/v1/embeddings` (base is the host; a trailing `/v1` is tolerated) with `{ input, model }` and
  * `Authorization: Bearer <apiKey>`. Response follows the OpenAI shape
  * `{ data: [{ embedding: number[] }, ...] }`.
  */
@@ -145,7 +146,7 @@ export class EmbeddingsClient {
   }
 
   private async callOnce(texts: string[], model: string): Promise<number[][]> {
-    const url = new URL('embeddings', ensureTrailingSlash(this.cfg.baseUrl)).toString();
+    const url = openAiCompatUrl(this.cfg.baseUrl, 'embeddings');
 
     const body: Record<string, unknown> = {
       input: texts.length === 1 ? texts[0] : texts,
@@ -242,8 +243,4 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
-}
-
-function ensureTrailingSlash(u: string): string {
-  return u.endsWith('/') ? u : `${u}/`;
 }

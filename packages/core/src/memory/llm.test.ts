@@ -10,6 +10,8 @@ const { env } = vi.hoisted(() => ({
     LITELLM_API_URL: string | undefined;
     LITELLM_API_KEY: string | undefined;
     LITELLM_MODEL: string;
+    LITELLM_FAST_MODEL: string | undefined;
+    LITELLM_FAST_REASONING_EFFORT: string;
   },
 }));
 
@@ -32,6 +34,8 @@ beforeEach(() => {
   env.LITELLM_API_URL = undefined;
   env.LITELLM_API_KEY = undefined;
   env.LITELLM_MODEL = 'fast-model';
+  env.LITELLM_FAST_MODEL = undefined;
+  env.LITELLM_FAST_REASONING_EFFORT = 'none';
 });
 
 describe('callFastModel backend selection', () => {
@@ -131,5 +135,39 @@ describe('callFastModel endpoint URL', () => {
       await callFastModel('prompt', 24);
       expect(fetchMock.mock.calls[0]?.[0]).toBe('https://proxy.test/v1/chat/completions');
     }
+  });
+});
+
+describe('callFastModel model and reasoning selection', () => {
+  const bodyOf = (call: number): Record<string, unknown> =>
+    JSON.parse(((fetchMock.mock.calls[call] as unknown[])[1] as { body: string }).body);
+
+  it('runs LITELLM_FAST_MODEL when set and falls back to LITELLM_MODEL when not', async () => {
+    env.LITELLM_API_URL = 'https://proxy.test';
+    fetchMock.mockResolvedValue(
+      jsonResponse({ choices: [{ finish_reason: 'stop', message: { content: 'ok' } }] }),
+    );
+    await callFastModel('prompt', 24);
+    expect(bodyOf(0).model).toBe('fast-model');
+    env.LITELLM_FAST_MODEL = 'cx/gpt-5.6-luna';
+    await callFastModel('prompt', 24);
+    expect(bodyOf(1).model).toBe('cx/gpt-5.6-luna');
+  });
+
+  it('sends the configured reasoning_effort and still drops it when the endpoint rejects the field', async () => {
+    env.LITELLM_API_URL = 'https://proxy.test';
+    env.LITELLM_FAST_REASONING_EFFORT = 'low';
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: async () => 'Unrecognized request argument supplied: reasoning_effort',
+      } as unknown as Response)
+      .mockResolvedValueOnce(
+        jsonResponse({ choices: [{ finish_reason: 'stop', message: { content: 'ok' } }] }),
+      );
+    expect(await callFastModel('prompt', 24)).toBe('ok');
+    expect(bodyOf(0).reasoning_effort).toBe('low');
+    expect(bodyOf(1)).not.toHaveProperty('reasoning_effort');
   });
 });
