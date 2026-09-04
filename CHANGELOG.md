@@ -80,8 +80,8 @@
   calls, `thinking` blocks dropped), so `runTurnEvents` and every toolset stay wire-agnostic. The
   system block and the last tool carry `cache_control: ephemeral`, and `promptTokens` is reported
   as input + cache read + cache creation so it means the same thing as the OpenAI adapter's.
-  Selected per project through `app_config.chat_provider_id`; `openai` stays the default when both
-  are configured.
+  Selected per project through `app_config.chat_provider_id`, and the default whenever it is
+  configured; a project can still pin `openai`.
 
   This reverses the 2026-09-03 "one adapter" line, and the reason is measured, not aesthetic:
   against one proxy serving the same Gemini and GPT models on both wires, the OpenAI wire never

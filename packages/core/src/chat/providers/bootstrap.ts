@@ -1,4 +1,4 @@
-/** v1 EPIC 1 (ISS-270) — registers the chat adapters from env at boot; `defaultChatProviderId()` is the fallback `resolveForProject` uses when `app_config.chat_provider_id` is null (the OpenAI-wire adapter when both are configured), and registering nothing lets the app start with chat unconfigured. */
+/** v1 EPIC 1 (ISS-270) — registers the chat adapters from env at boot; `defaultChatProviderId()` is the fallback `resolveForProject` uses when `app_config.chat_provider_id` is null — the Anthropic Messages-wire adapter when it is configured, because measured 2026-09-04 it is the wire that reports cache reads and returns structured output where the Completions wire did not — and registering nothing lets the app start with chat unconfigured. */
 
 import { env } from '../../config/env.js';
 import { logger } from '../../logger.js';
@@ -45,5 +45,5 @@ export function bootstrapChatProviders(): void {
 
 export function defaultChatProviderId(): string | undefined {
   const registered = listProviders();
-  return [CHAT_PROVIDER_ID, ANTHROPIC_PROVIDER_ID].find((id) => registered.includes(id));
+  return [ANTHROPIC_PROVIDER_ID, CHAT_PROVIDER_ID].find((id) => registered.includes(id));
 }
