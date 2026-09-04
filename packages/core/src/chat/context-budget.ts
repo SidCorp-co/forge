@@ -87,15 +87,13 @@ function prefixText(m: ChatMessage, prefix: string): ChatMessage {
   return { ...m, content: prefix.trimEnd() };
 }
 
+function leadText(m: ChatMessage): string {
+  if (typeof m.content === 'string') return m.content;
+  return Array.isArray(m.content) ? (m.content.find((p) => p.type === 'text')?.text ?? '') : '';
+}
+
 function readOmitted(m: ChatMessage | undefined): number {
-  if (!m) return 0;
-  const text =
-    typeof m.content === 'string'
-      ? m.content
-      : Array.isArray(m.content)
-        ? (m.content.find((p) => p.type === 'text')?.text ?? '')
-        : '';
-  const hit = OMITTED_MARKER.exec(text);
+  const hit = m ? OMITTED_MARKER.exec(leadText(m)) : null;
   return hit ? Number(hit[1]) : 0;
 }
 
