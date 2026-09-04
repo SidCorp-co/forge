@@ -8,6 +8,32 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **`job_events` stops storing the CLI's partial-message frames.** `POST /jobs/:id/events` no
+  longer persists a `stdout` row whose `line.type` is `stream_event`. Measured on forge-beta
+  2026-09-04: the table held 7.29M `stdout` rows — 99.79% of it — and 74.8% of those were
+  `stream_event`, frames `lib/agent-stream-parser.ts` answers `{messages:[]}` for and no other
+  reader in core or web opens. They were stored forever and re-read on every incremental
+  transcript derive, which re-parses the job's whole event history each time it fires.
+
+  The filter is a denylist of that one proven-unread type, never an allowlist: a frame kind the
+  CLI adds next release keeps being stored, because an allowlist would drop it in silence. It
+  applies to persistence ONLY — the ack stamp, the session heartbeat, `runtime_state` and the
+  derive cadence are all still computed from the unfiltered batch, so a fan-out session that emits
+  nothing but deltas for minutes still reads as alive. That separation is the whole reason
+  `--include-partial-messages` is on (ISS-479) and it is asserted directly.
+
+### Fixed
+
+- **The cc-startup signal counts assistant turns again.** `deriveCcStartupSignals` fed
+  `pipeline/failure-classifier.ts` a threshold written as "≤3 assistant messages" while counting
+  every `stdout` ROW. `--include-partial-messages` (ISS-479) had already broken that equivalence —
+  one assistant turn emits six to ten rows — so the immediate-failover class it exists to catch
+  had quietly stopped firing. It now counts `line.type = 'assistant'`, which also makes the signal
+  independent of which frames the change above stores. Proven against real Postgres, since the
+  unit suites mock the query away.
+
 ### Added
 
 - **The runner serialises writes to a repo root, so a box can hold more than one job.**

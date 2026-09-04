@@ -118,6 +118,15 @@ function isParkEvent(e: { kind: string; data?: unknown }): boolean {
   return runtimeStateOf(e) === 'awaiting_input';
 }
 
+// cm:guard a DENYLIST of one proven-unread frame, never an allowlist — a frame kind the CLI adds tomorrow must keep being stored, and an allowlist would drop it in silence, which is the one failure this filter must not become
+// cm:edge contract -> packages/core/src/lib/agent-stream-parser.ts — `stream_event` is dropped because that parser answers `{messages:[]}` for it and nothing else in core or web reads one; teaching any reader to consume one means deleting this filter FIRST, because the frames it would need were never stored
+// cm:guard filter ONLY what is persisted, never the batch the signals above read — the ack stamp, the session heartbeat, `runtime_state` and the derive cadence are all computed from the UNFILTERED batch above, so dropping these rows cannot make a busy session look quiet, which is the whole reason `--include-partial-messages` is on (ISS-479)
+function isPartialStreamEvent(e: { kind: string; data?: unknown }): boolean {
+  if (e.kind !== 'stdout') return false;
+  const line = (e.data as { line?: { type?: unknown } } | null | undefined)?.line;
+  return line?.type === 'stream_event';
+}
+
 jobEventsRoutes.post(
   '/:id/events',
   requireDevice(),
@@ -146,26 +155,31 @@ jobEventsRoutes.post(
     // Server-assigned monotonic seq. Postgres rejects FOR UPDATE on aggregates,
     // so serialize concurrent inserts for this jobId via a transaction-scoped
     // advisory lock keyed on the jobId hash. The lock auto-releases at COMMIT/ROLLBACK.
-    const inserted = await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${jobId}))`);
-      const maxRows = await tx.execute<{ max_seq: number | null }>(sql`
+    const persisted = events.filter((e) => !isPartialStreamEvent(e));
+
+    const inserted =
+      persisted.length === 0
+        ? []
+        : await db.transaction(async (tx) => {
+            await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${jobId}))`);
+            const maxRows = await tx.execute<{ max_seq: number | null }>(sql`
         SELECT COALESCE(MAX(seq), 0) AS max_seq
         FROM job_events
         WHERE job_id = ${jobId}
       `);
-      const first = maxRows[0] as { max_seq: number | string | null } | undefined;
-      const baseSeq = Number(first?.max_seq ?? 0);
+            const first = maxRows[0] as { max_seq: number | string | null } | undefined;
+            const baseSeq = Number(first?.max_seq ?? 0);
 
-      const values = events.map((e, i) => ({
-        jobId,
-        kind: e.kind,
-        data: e.data,
-        seq: baseSeq + i + 1,
-        ...(e.ts ? { ts: new Date(e.ts) } : {}),
-      }));
+            const values = persisted.map((e, i) => ({
+              jobId,
+              kind: e.kind,
+              data: e.data,
+              seq: baseSeq + i + 1,
+              ...(e.ts ? { ts: new Date(e.ts) } : {}),
+            }));
 
-      return tx.insert(jobEvents).values(values).returning();
-    });
+            return tx.insert(jobEvents).values(values).returning();
+          });
 
     // Post-commit broadcast. Iterate and publish; failures bubble (fail-fast).
     for (const row of inserted) {

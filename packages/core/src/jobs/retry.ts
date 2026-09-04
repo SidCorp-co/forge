@@ -257,7 +257,8 @@ async function notifyCapacityOutage(
  * Best-effort: a query failure returns null (classifier falls through to its
  * text patterns).
  */
-async function deriveCcStartupSignals(
+// cm:guard exported for the integration test that proves this query RENDERS and RUNS — the predicate reaches into jsonb through a drizzle column reference inside a raw `sql` template, and a template that fails to render is swallowed by the catch below, which logs and returns null, disabling the classifier signal in silence
+export async function deriveCcStartupSignals(
   job: JobRow,
 ): Promise<{ diedBeforeFirstToolUse: boolean; sessionMessageCount: number } | null> {
   try {
@@ -265,7 +266,9 @@ async function deriveCcStartupSignals(
       .select({
         total: sql<number>`count(*)::int`,
         toolCalls: sql<number>`count(*) FILTER (WHERE ${jobEvents.kind} = 'tool_call')::int`,
-        messages: sql<number>`count(*) FILTER (WHERE ${jobEvents.kind} = 'stdout')::int`,
+        // cm:guard counts ASSISTANT lines, not stdout rows — the threshold that reads this (`<= 3` in pipeline/failure-classifier.ts) is written as "≤3 assistant messages", and a bare stdout count stopped meaning that when `--include-partial-messages` landed (ISS-479): one assistant turn now emits 6-10 stdout rows, so the classifier quietly stopped firing for the class it was built for
+        // cm:edge contract -> packages/core/src/jobs/events-routes.ts — `stream_event` rows are no longer persisted at all, so a stdout count would have shifted again here; naming the frame keeps this signal independent of which frames are stored
+        messages: sql<number>`count(*) FILTER (WHERE ${jobEvents.kind} = 'stdout' AND ${jobEvents.data}->'line'->>'type' = 'assistant')::int`,
       })
       .from(jobEvents)
       .where(eq(jobEvents.jobId, job.id));
