@@ -154,12 +154,6 @@ fn default_skill_auto_pull() -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunnerSettings {
-    /// Concurrent jobs per runner (per project). Core dispatch-gate assumes 1.
-    #[serde(default = "default_max_concurrent")]
-    pub max_concurrent: u32,
-    /// Cap on total concurrent jobs across the whole device. 0 = unlimited.
-    #[serde(default)]
-    pub device_max_concurrent: u32,
     /// Max concurrent interactive chat turns on this device. Chat runs OFF the
     /// jobs table and OUTSIDE the pipeline cap, so it gets its own budget — a
     /// long chat must never consume a pipeline `job.assigned` slot, and a burst
@@ -174,20 +168,64 @@ pub struct RunnerSettings {
 impl Default for RunnerSettings {
     fn default() -> Self {
         Self {
-            max_concurrent: default_max_concurrent(),
-            device_max_concurrent: 0,
             chat_max_concurrent: default_chat_max_concurrent(),
             register_enabled: false,
         }
     }
 }
 
-fn default_max_concurrent() -> u32 {
-    1
-}
-
 fn default_chat_max_concurrent() -> u32 {
     3
+}
+
+/// `[runner] max_concurrent` and `device_max_concurrent` were removed 2026-09-04:
+/// they were parsed and written for their whole life and read by nothing, so a
+/// box set to 4 ran exactly one job and said nothing about it.
+///
+/// Serde ignores unknown keys, so an old file still loads — but ignoring is what
+/// made them a trap. Warn only on a value the operator can only have typed:
+/// every config the runner ever WROTE carries `max_concurrent = 1` and
+/// `device_max_concurrent = 0`, and warning the whole fleet about its own
+/// defaults is noise nobody reads.
+// cm:guard warn, NEVER refuse to start. These keys were serialized into every config file this tool has ever written, so a hard failure here is a fleet-wide outage on upgrade — the opposite of the loud break, which is meant to stop a WRONG action, not every action.
+// cm:edge contract -> packages/core/src/jobs/dispatch-gates.ts#RUNNER_CAP_PER_RUNNER — this text promises core owns the cap; when a per-device cap ships, this message has to name the new place or it sends operators to a knob that no longer decides.
+fn warn_on_retired_concurrency_keys(raw: &str, path: &std::path::Path) {
+    for (key, tool_written_default) in [("max_concurrent", "1"), ("device_max_concurrent", "0")] {
+        let Some(value) = toml_scalar_in_runner_table(raw, key) else {
+            continue;
+        };
+        if value == tool_written_default {
+            continue;
+        }
+        tracing::warn!(
+            "{}: `[runner] {key} = {value}` is no longer read and has not been since it was \
+             introduced — pipeline concurrency is decided by core, per device. Remove the line; \
+             it will disappear on the next config write either way.",
+            path.display()
+        );
+    }
+}
+
+/// The scalar assigned to `key` inside the `[runner]` table, if the file sets one.
+fn toml_scalar_in_runner_table(raw: &str, key: &str) -> Option<String> {
+    let mut in_runner = false;
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_runner = line == "[runner]";
+            continue;
+        }
+        if !in_runner {
+            continue;
+        }
+        let Some((name, value)) = line.split_once('=') else {
+            continue;
+        };
+        if name.trim() == key {
+            return Some(value.trim().to_string());
+        }
+    }
+    None
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -216,6 +254,7 @@ impl Config {
             return Ok(Self::default());
         }
         let raw = std::fs::read_to_string(&p)?;
+        warn_on_retired_concurrency_keys(&raw, &p);
         toml::from_str(&raw).map_err(|e| Error::Config(format!("parse {}: {e}", p.display())))
     }
 
@@ -255,9 +294,53 @@ mod tests {
         let s = toml::to_string_pretty(&cfg).unwrap();
         let back: Config = toml::from_str(&s).unwrap();
         assert_eq!(back.core_url.as_deref(), Some("https://core.example.com"));
-        assert_eq!(back.runner.max_concurrent, 1);
+        assert_eq!(back.runner.chat_max_concurrent, 3);
         assert_eq!(back.bindings.len(), 1);
         assert!(back.skills.auto_pull);
+    }
+
+    // cm:guard an old config MUST still load. `save()` serialized `max_concurrent` and
+    // `device_max_concurrent` into every file this tool has ever written, so if removing the
+    // fields made parsing strict, every runner in the fleet would fail to start on upgrade.
+    #[test]
+    fn a_config_carrying_the_retired_keys_still_loads() {
+        let raw = r#"
+core_url = "https://core.example.com"
+
+[runner]
+max_concurrent = 4
+device_max_concurrent = 8
+chat_max_concurrent = 5
+"#;
+        let cfg: Config = toml::from_str(raw).expect("retired keys must not break parsing");
+        assert_eq!(cfg.runner.chat_max_concurrent, 5);
+    }
+
+    #[test]
+    fn a_deliberately_set_retired_key_is_detected_but_the_tool_written_default_is_not() {
+        let deliberate = "[runner]\nmax_concurrent = 4\ndevice_max_concurrent = 8\n";
+        assert_eq!(
+            toml_scalar_in_runner_table(deliberate, "max_concurrent").as_deref(),
+            Some("4")
+        );
+        assert_eq!(
+            toml_scalar_in_runner_table(deliberate, "device_max_concurrent").as_deref(),
+            Some("8")
+        );
+
+        let written_by_the_tool = "[runner]\nmax_concurrent = 1\ndevice_max_concurrent = 0\n";
+        assert_eq!(
+            toml_scalar_in_runner_table(written_by_the_tool, "max_concurrent").as_deref(),
+            Some("1")
+        );
+    }
+
+    // cm:guard the scan is table-scoped: `max_concurrent` under ANOTHER table is not this key, and
+    // reading it would warn an operator about a line that is doing its job.
+    #[test]
+    fn a_same_named_key_in_another_table_is_not_mistaken_for_the_retired_one() {
+        let raw = "[skills]\nmax_concurrent = 9\n\n[runner]\nchat_max_concurrent = 3\n";
+        assert_eq!(toml_scalar_in_runner_table(raw, "max_concurrent"), None);
     }
 
     #[test]

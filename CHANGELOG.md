@@ -249,6 +249,22 @@
 
 ### Removed
 
+- **`[runner] max_concurrent` and `device_max_concurrent` from the runner's `config.toml`.** Both
+  were parsed, serialized and written into every config file the daemon has ever produced, and read
+  by nothing — the only places they appeared outside the struct were their own defaults and a
+  round-trip serialization test. An operator who set `max_concurrent = 4` and restarted got exactly
+  one job and no indication why, which is the silent substitution `CLAUDE.md` now forbids.
+
+  Pipeline concurrency is decided by core, and until a per-device cap ships there is no runner-side
+  knob that does anything. Removing the fields is safe for the fleet because the config has no
+  `deny_unknown_fields`: an existing file carrying both keys still loads, and `save()` drops them on
+  the next write. A value the operator can only have typed by hand — anything other than the `1`
+  and `0` the tool itself wrote — is reported at load with the file path, rather than ignored.
+
+  It warns and never refuses: those keys sit in essentially every deployed config, so failing hard
+  on them would be a fleet-wide outage on upgrade. A loud break is meant to stop a wrong action, not
+  every action.
+
 - **The `antigravity` runner type and the `host='remote'` lane.** Both carried zero rows on
   forge-beta against 64 code references, and everything that existed only to serve them is gone
   with them: the adapter, its HMAC-signed `POST /api/runners/:id/events` callback, the
@@ -354,6 +370,17 @@
   set is now 59.
 
 ### Fixed
+
+- **Chat send stopped 500'ing on every project.** Migration 0200 dropped `runners.host` when the
+  remote runner lane was removed, but the two device picks in `lib/device-pool.ts` are hand-written raw
+  SQL strings, so nothing that runs on a change — not tsc, not the 5,276 unit
+  tests, whose `device-pool.test.ts` mocks `db.execute` and cannot represent a missing column — saw
+  `AND r.host = 'device'` outlive the column. Every `POST /api/agent-sessions/send` and every
+  chat-capable runner check answered `INTERNAL_ERROR` / `column r.host does not exist` on
+  forge-beta from the deploy of 2026-09-04 until this. The clauses are gone (and with them
+  `AND r.device_id IS NOT NULL`, dead since the column went NOT NULL in the same migration), and
+  `tests/integration/device-pool-schema-e2e.test.ts` now runs both picks against the migrated
+  schema, so the next dropped column fails there instead of in production.
 
 - **A trunk-based project can declare a release gate.** `hasProduction` asked one question — is
   `productionBranch` different from `baseBranch`? — as a proxy for "is this prod binding a release
