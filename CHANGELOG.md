@@ -332,6 +332,18 @@
 
 ### Fixed
 
+- A runner limit now reaches **every binding of the box that hit it**. One daemon holds one agent
+  login, but `runners` carries a row per (device × project) and the stamp was scoped to the row that
+  happened to run the job — so a box whose OAuth session had died was marked dead on one project and
+  read perfectly healthy on all the others, which kept dispatching into the same dead session.
+  Measured on forge-beta 2026-09-04: three devices in exactly that state, with 7, 1 and 1 sibling
+  bindings clean. `auth` carries no reset time, so nothing self-healed it — the shape that burned 421
+  jobs in 5.5h on dev1-ai013. The clear travels the same way, so one successful job un-sticks the
+  whole box; a binding's own `lastError` (a missing repo path, a preflight failure) stays local,
+  because that one really is per-project. Existing split-brain rows correct themselves on the first
+  failure or success on that device after this deploy.
+
+
 - `RATE_LIMIT_PAT_MAX` and `RATE_LIMIT_PAT_WINDOW_MS` are declared on the `core` service in
   `docker-compose.prod.yml`. Coolify injects variables through `${VAR}` in `environment:`, not through
   `env_file`, so setting either in the Coolify UI did nothing until now: one user lost four tokens in
