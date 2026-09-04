@@ -118,3 +118,18 @@ describe('callFastModel budget exhaustion and reasoning control', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('callFastModel endpoint URL', () => {
+  it('reaches /v1/chat/completions whether LITELLM_API_URL is the host or the /v1 root', async () => {
+    for (const base of ['https://proxy.test', 'https://proxy.test/v1/']) {
+      fetchMock.mockReset();
+      env.LITELLM_API_URL = base;
+      env.LITELLM_API_KEY = 'k';
+      fetchMock.mockResolvedValue(
+        jsonResponse({ choices: [{ finish_reason: 'stop', message: { content: 'ok' } }] }),
+      );
+      await callFastModel('prompt', 24);
+      expect(fetchMock.mock.calls[0]?.[0]).toBe('https://proxy.test/v1/chat/completions');
+    }
+  });
+});

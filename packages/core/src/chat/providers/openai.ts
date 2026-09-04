@@ -6,6 +6,7 @@
  * one adapter that translates, and the retry + SSE plumbing both share lives in `sse.ts`.
  */
 
+import { openAiCompatUrl } from '../../lib/openai-compat-url.js';
 import { DEFAULT_RETRY_DELAYS_MS, errorMessage, openStream, parseSseStream } from './sse.js';
 import type { ChatProvider, ChatStreamEvent, ChatStreamRequest, ChatStreamUsage } from './types.js';
 
@@ -50,7 +51,7 @@ interface ToolCallAccumulator {
 
 export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
   const fetchImpl = cfg.fetchImpl ?? fetch;
-  const baseUrl = cfg.baseUrl.replace(/\/+$/, '');
+  const url = openAiCompatUrl(cfg.baseUrl, 'chat/completions');
   return {
     id: 'openai',
     defaultModel: cfg.defaultModel,
@@ -83,7 +84,7 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
 
       const opened = await openStream({
         fetchImpl,
-        url: `${baseUrl}/v1/chat/completions`,
+        url,
         init,
         label: 'openai',
         retryDelaysMs: cfg.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS,

@@ -66,7 +66,7 @@ const EnvSchema = z.object({
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   S3_BUCKET: z.string().optional(),
   S3_REGION: z.string().optional(),
-  // cm:guard LITELLM_* names the deployment's PROXY, not a vendor — one OpenAI-compatible /v1/chat/completions endpoint now serves both readers, the `openai` chat adapter (ISS-270, gated by FEATURE_CHAT_PROVIDER) and the system-job fast model in `memory/llm.ts`, so unsetting LITELLM_API_URL takes memory-v2 extraction, consolidation and auto-titling down with chat; there is no second vendor path left to fall back on since GEMINI_* was deleted 2026-09-04
+  // cm:guard LITELLM_* names the deployment's PROXY, not a vendor — one OpenAI-compatible /v1/chat/completions endpoint now serves both readers, the `openai` chat adapter (ISS-270, gated by FEATURE_CHAT_PROVIDER) and the system-job fast model in `memory/llm.ts`, so unsetting LITELLM_API_URL takes memory-v2 extraction, consolidation and auto-titling down with chat, and both readers MUST build the URL through lib/openai-compat-url.ts — they disagreed on whether the value carried `/v1` until 2026-09-04 and memory 404'd on a proxy that serves only `/v1/...`; there is no second vendor path left to fall back on since GEMINI_* was deleted 2026-09-04
   LITELLM_API_URL: z.url().optional(),
   LITELLM_API_KEY: z.string().min(1).optional(),
   LITELLM_MODEL: z.string().min(1).default('gpt-4o-mini'),
