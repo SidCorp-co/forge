@@ -248,7 +248,7 @@ describe('deliverEscalationReplyOnce', () => {
     );
     expect(buildProjectToolset).toHaveBeenCalled();
     expect(runExternalChatTurn).toHaveBeenCalledWith(
-      expect.objectContaining({ tools: { TOOLSET: true } }),
+      expect.objectContaining({ tools: { TOOLSET: true }, turnKind: 'agentic' }),
     );
   });
 
@@ -271,7 +271,9 @@ describe('deliverEscalationReplyOnce', () => {
     );
 
     expect(buildProjectToolset).not.toHaveBeenCalled();
-    expect(runExternalChatTurn).toHaveBeenCalledWith(expect.objectContaining({ tools: undefined }));
+    expect(runExternalChatTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ tools: undefined, turnKind: 'relay' }),
+    );
   });
 
   it('falls back to the honest fallback reply when the guard rejects the synthesized answer', async () => {

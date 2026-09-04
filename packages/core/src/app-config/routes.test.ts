@@ -150,3 +150,35 @@ describe('PUT /api/app-config/:projectId', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('PUT /api/app-config/:projectId — chatModelByKind', () => {
+  const put = async (body: unknown) => {
+    authVerified();
+    projectAccessAsOwner();
+    return buildApp().request(`/api/app-config/${PROJECT_ID}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${await token()}` },
+      body: JSON.stringify(body),
+    });
+  };
+
+  it('round-trips a map keyed by turn kind', async () => {
+    insertReturning.mockResolvedValueOnce([
+      { id: CONFIG_ID, projectId: PROJECT_ID, chatModelByKind: { relay: 'cheap' } },
+    ]);
+    const res = await put({ chatModelByKind: { relay: 'cheap' } });
+    expect(res.status).toBe(200);
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ chatModelByKind: { relay: 'cheap' } }),
+    );
+    expect(((await res.json()) as { chatModelByKind: unknown }).chatModelByKind).toEqual({
+      relay: 'cheap',
+    });
+  });
+
+  it('400 on an unknown turn kind or a blank model', async () => {
+    expect((await put({ chatModelByKind: { fast: 'x' } })).status).toBe(400);
+    expect((await put({ chatModelByKind: { relay: '   ' } })).status).toBe(400);
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+});

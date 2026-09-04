@@ -1,0 +1,1 @@
+ALTER TABLE "app_config" ADD COLUMN "chat_model_by_kind" jsonb DEFAULT '{}'::jsonb NOT NULL;

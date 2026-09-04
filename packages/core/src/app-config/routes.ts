@@ -3,6 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { chatTurnKinds } from '../chat/providers/registry.js';
 import { db } from '../db/client.js';
 import { appConfig } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
@@ -14,6 +15,10 @@ const upsertSchema = z
   .object({
     chatProviderId: z.string().trim().min(1).max(200).nullable().optional(),
     chatModel: z.string().trim().min(1).max(200).nullable().optional(),
+    /** Replaces the whole map (PUT semantics) — GET first. */
+    chatModelByKind: z
+      .partialRecord(z.enum(chatTurnKinds), z.string().trim().min(1).max(200))
+      .optional(),
     retrievalTopK: z.number().int().min(1).max(100).optional(),
     retrievalMinScore: z.number().min(0).max(1).optional(),
     enabledChannels: z.array(z.string().min(1).max(100)).max(100).optional(),
@@ -67,6 +72,7 @@ appConfigRoutes.put(
     const updates: Record<string, unknown> = {};
     if (patch.chatProviderId !== undefined) updates.chatProviderId = patch.chatProviderId;
     if (patch.chatModel !== undefined) updates.chatModel = patch.chatModel;
+    if (patch.chatModelByKind !== undefined) updates.chatModelByKind = patch.chatModelByKind;
     if (patch.retrievalTopK !== undefined) updates.retrievalTopK = patch.retrievalTopK;
     if (patch.retrievalMinScore !== undefined) updates.retrievalMinScore = patch.retrievalMinScore;
     if (patch.enabledChannels !== undefined) updates.enabledChannels = patch.enabledChannels;

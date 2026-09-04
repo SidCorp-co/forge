@@ -2327,6 +2327,8 @@ export const appConfig = pgTable('app_config', {
     .references(() => projects.id, { onDelete: 'cascade' }),
   chatProviderId: text('chat_provider_id'),
   chatModel: text('chat_model'),
+  /** `{ [ChatTurnKind]: model }` — a per-kind model on the same provider; a missing kind falls to `chatModel`. */
+  chatModelByKind: jsonb('chat_model_by_kind').notNull().default(sql`'{}'::jsonb`),
   retrievalTopK: integer('retrieval_top_k').notNull().default(10),
   retrievalMinScore: real('retrieval_min_score').notNull().default(0),
   enabledChannels: jsonb('enabled_channels').notNull().default(sql`'[]'::jsonb`),
