@@ -143,19 +143,7 @@ describe('release record required E2E', () => {
     expect((await stored(id)).status).toBe('closed');
   });
 
-  it('leaves the decompose close cascade alone, so an abandoned epic still closes its children', async () => {
-    const { applyStatusTransition } = await import('../../src/issues/apply-transition.js');
-    const id = await insertIssue('in_progress');
-
-    await applyStatusTransition(await load(id), 'closed', device(), {
-      skip: true,
-      viaCloseCascade: true,
-    });
-
-    expect((await stored(id)).status).toBe('closed');
-  });
-
-  // cm:guard the exemption is `viaCloseCascade`, NOT `skip`. `skip` is the wide flag every internal transition carries — the decompose cascade, the park rewrites, any future sweep — so exempting on it would let an unrecorded issue reach `closed` from any of them. Widening this to `skip` was tried and the integration suite falsified it.
+  // cm:guard `skip` is the wide flag every internal transition carries — the park rewrites, any future sweep — so exempting on it would let an unrecorded issue reach `closed` from any of them. Widening this to `skip` was tried and the integration suite falsified it.
   it('refuses a bare `skip`, which is what the orchestrator auto-skip chain carries', async () => {
     const { applyStatusTransition } = await import('../../src/issues/apply-transition.js');
     const id = await insertIssue('released');

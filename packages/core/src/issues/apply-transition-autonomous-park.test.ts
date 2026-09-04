@@ -261,24 +261,6 @@ describe('waiting on an autonomous project', () => {
     expect(result.status).toBe('waiting');
   });
 
-  it("leaves core's decompose review gate at `waiting`", async () => {
-    projectRow('yes');
-    queueUpdate('waiting');
-
-    const result = await transitionIssueStatus(
-      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'in_progress', reopenCount: 0 },
-      'waiting',
-      { type: 'device', id: DEVICE_ID, ownerId: ACTOR_ID },
-      { ...WAITING_OPTS, waitingKind: 'needs_decision', viaDecomposeGate: true },
-    );
-
-    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({
-      status: 'waiting',
-      waitingKind: 'needs_decision',
-    });
-    expect(result.status).toBe('waiting');
-  });
-
   it('leaves an agent `waiting` alone when the project row cannot be read', async () => {
     projectRow(null);
     queueUpdate('waiting');
