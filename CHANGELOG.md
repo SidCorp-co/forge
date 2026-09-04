@@ -355,6 +355,20 @@
 
 ### Fixed
 
+- **A release runner can now be declared on any production binding, not just Coolify.** The batch
+  release reads `releaseRunnerLabel` / `verify` / `rollback` off the project's oldest active `prod`
+  binding whatever its provider, but only the `coolify` and `agent` config schemas carried those
+  fields — so on a project bound to a storefront, an API workspace or Sentry, the PATCH that names
+  the release box returned 200 and silently dropped it (zod objects drop unknown keys), and the
+  settings roster then reported the label as undeclared with no way to fix it. Every provider schema
+  now spreads them and lists them binding-tier, so which box releases stays the project's answer
+  even when the credential is shared across the org. Found on pixelight, where `base ===
+  production` hid the gap behind the earlier refusal.
+
+  An `agent` binding also stopped borrowing Coolify's config schema on PATCH: `configSchemaForProvider`
+  had no `agent` branch and fell through to it, which quietly accepted a `baseUrl` and deploy
+  `targets` for a channel that has no adapter to use them.
+
 - A runner limit now reaches **every binding of the box that hit it**. One daemon holds one agent
   login, but `runners` carries a row per (device × project) and the stamp was scoped to the row that
   happened to run the job — so a box whose OAuth session had died was marked dead on one project and

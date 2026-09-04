@@ -32,7 +32,7 @@ const releaseVerifyProbeSchema = z.object({
   commitPath: z.string().min(1).max(200).optional(),
 });
 
-// cm:edge contract -> packages/core/src/release-batch/channel.ts — `resolveReleaseChannel` reads these three keys off `effectiveConfig(pair)` of the production binding whatever its provider; a provider whose config schema lacks them strips them on PATCH (zod objects drop unknown keys) and the roster reports the label as undeclared with a 200 behind it. Measured 2026-09-03 on sidpeak's coolify binding.
+// cm:edge contract -> packages/core/src/release-batch/channel.ts — `resolveReleaseChannel` reads these three keys off `effectiveConfig(pair)` of the production binding whatever its provider, so EVERY provider config schema below must spread these fields and every provider must list them in BINDING_CONFIG_KEYS. A schema that omits them strips them on PATCH (zod objects drop unknown keys) and the roster then reports the label as undeclared behind a 200 — measured on sidpeak's coolify binding 2026-09-03, and again on pixelight's epodsystem binding 2026-09-04, where it made the storefront project's release gate undeclarable.
 const releaseChannelFields = {
   /** Matched against `runners.labels`; only those boxes may run the release. */
   releaseRunnerLabel: z.string().min(1).max(60).optional(),
@@ -61,10 +61,16 @@ const COOLIFY_BINDING_CONFIG_KEYS = ['targets', ...RELEASE_CHANNEL_KEYS] as cons
 
 /** Provider → binding-tier config keys (everything else stays on the
  *  connection with the credential). Coolify: per-project deploy targets;
- *  Rocket.Chat: the per-project room ids. */
+ *  Rocket.Chat: the per-project room ids; the three release-channel keys for
+ *  every provider, because which box releases and how a deploy is proved are
+ *  the project's answer even when the credential is shared org-wide. */
 const BINDING_CONFIG_KEYS: Record<string, readonly string[]> = {
   coolify: COOLIFY_BINDING_CONFIG_KEYS,
-  rocketchat: ['rids'],
+  rocketchat: ['rids', ...RELEASE_CHANNEL_KEYS],
+  postman: RELEASE_CHANNEL_KEYS,
+  epodsystem: RELEASE_CHANNEL_KEYS,
+  sentry: RELEASE_CHANNEL_KEYS,
+  agent: RELEASE_CHANNEL_KEYS,
 };
 
 /** Split a validated provider config into its connection-tier and binding-tier
@@ -102,6 +108,7 @@ const postmanConfigBase = z.object({
   collectionId: z.string().min(1).max(200).optional(),
   region: z.enum(['us', 'eu']),
   mode: z.enum(['minimal', 'full']),
+  ...releaseChannelFields,
 });
 
 const postmanConfigSchema = postmanConfigBase.extend({
@@ -126,6 +133,7 @@ const epodsystemConfigBase = z.object({
   themeId: z.string().min(1).max(200).optional(),
   draftThemeId: z.string().min(1).max(200).optional(),
   commerceEnabled: z.boolean().optional(),
+  ...releaseChannelFields,
 });
 
 const epodsystemSecretsSchema = z.object({
@@ -151,6 +159,7 @@ const sentryConfigBase = z.object({
   targets: z.array(sentryTargetSchema).max(50).optional(),
   organizationSlug: z.string().min(1).max(200).optional(),
   projectSlug: z.string().min(1).max(200).optional(),
+  ...releaseChannelFields,
 });
 
 const sentrySecretsSchema = z.object({
@@ -166,6 +175,7 @@ const sentrySecretsSchema = z.object({
 const rocketchatConfigBase = z.object({
   serverUrl: z.string().url().max(500),
   rids: z.array(z.string().min(1).max(200)).min(1).max(20).optional(),
+  ...releaseChannelFields,
 });
 
 const rocketchatSecretsSchema = z.object({
@@ -298,6 +308,7 @@ export function configSchemaForProvider(provider: string): z.ZodTypeAny {
   if (provider === 'epodsystem') return epodsystemConfigBase.partial();
   if (provider === 'sentry') return sentryConfigBase.partial();
   if (provider === 'rocketchat') return rocketchatConfigBase.partial();
+  if (provider === 'agent') return agentReleaseConfigSchema.partial();
   return coolifyConfigSchema.partial();
 }
 

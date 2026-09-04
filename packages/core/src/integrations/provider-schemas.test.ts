@@ -79,3 +79,31 @@ describe('the release channel on a coolify production binding', () => {
     expect(tiers.binding).toEqual({ releaseRunnerLabel: 'release' });
   });
 });
+
+describe('the release channel on every provider that can be the production binding', () => {
+  // cm:guard `resolveReleaseChannel` reads the oldest ACTIVE prod binding whatever its provider, so the three keys are generic and every schema owes them. Pixelight's epodsystem binding is the case that proved it: base===production hid the gap until 2026-09-04, and behind it the label PATCH was a 200 that stripped the field, leaving a storefront project no way to declare a release runner at all.
+  const patch = {
+    releaseRunnerLabel: 'release',
+    verify: { probes: [{ url: 'https://store.example.test/api/health' }] },
+    rollback: 'promote the previous theme revision',
+  };
+
+  for (const provider of ['coolify', 'postman', 'epodsystem', 'sentry', 'rocketchat', 'agent']) {
+    it(`survives a partial PATCH on ${provider}, on the binding tier`, () => {
+      const parsed = configSchemaForProvider(provider).parse(patch) as Record<string, unknown>;
+      expect(parsed).toEqual(patch);
+      expect(splitProviderConfig(provider, parsed).binding).toEqual(patch);
+    });
+  }
+
+  // cm:guard the `agent` branch of the dispatch, absent until 2026-09-04: without it an agent binding fell through to `coolifyConfigSchema.partial()`, which happens to carry the same three keys — so the bug was invisible on the release path and showed only as a channel accepting a deploy target it has no adapter for.
+  it('does not let an agent binding accept coolify deploy targets', () => {
+    const parsed = configSchemaForProvider('agent').parse({
+      ...patch,
+      baseUrl: 'https://coolify.example.test',
+      targets: [{ label: 'api', resourceUuid: 'abc' }],
+    }) as Record<string, unknown>;
+    expect(parsed.baseUrl).toBeUndefined();
+    expect(parsed.targets).toBeUndefined();
+  });
+});

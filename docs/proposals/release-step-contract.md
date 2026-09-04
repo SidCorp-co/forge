@@ -1,13 +1,17 @@
 # The `release` step: what core hands it, and what it owes back
 
 ISS-897 made release a separate job over N `released` issues on a designated production runner. The
-kernel half shipped with that issue; the agent half is a skill in
-`github.com/SidCorp-co/forge-plugin`, which this repo cannot gate. This file is the contract
-between them, written from the code that already exists rather than from an intention.
+kernel half shipped with that issue; the agent half is the DISPATCHED PROMPT, not a skill —
+`release-batch/prompt.ts` carries the whole protocol inline (roster, procedure, proof, rollback,
+abort-or-finish) and the project's `release-procedure` fact carries the ritual. This file is the
+contract between the two, written from the code that already exists rather than from an intention.
 
-**Status:** kernel side landed 2026-09-03 (ISS-897). No skill implements this yet, so a batch
-release dispatched today reaches a driver that does not know the protocol. Writing that skill is
-the work this file hands over.
+**Status:** live since 2026-09-03 (ISS-897). Sidpeak shipped 7 `release_batch` jobs that day with
+no skill installed and none needed — two distinct `systemPromptHash` values, the prompt doing the
+instructing. An earlier version of this line said "no skill implements this yet, so a batch release
+dispatched today reaches a driver that does not know the protocol"; that was written from the
+intention and it was wrong in effect, and on 2026-09-04 it was cited to tell an owner their batch
+would wedge. Do NOT add a skill for this protocol: it would be a second live copy of the prompt.
 
 ## When a project has a release step at all
 
@@ -85,6 +89,17 @@ Adopting this splits one agent's job in two, and the seam is where the price sit
 - **The procedure is per project and unvalidated.** Core checks that `release-procedure` and
   `rollback` exist, never that they work. A project that declares a rollback it has not tested has
   bought the appearance of a way back, and obligation 5 cannot tell the difference.
+
+## Every provider can be the production binding
+
+`resolveReleaseChannel` reads the OLDEST active `prod` binding whatever its provider, and
+`releaseRunnerLabel` / `verify` / `rollback` are read off `effectiveConfig` of that row. Until
+2026-09-04 only `coolify` and `agent` spread `releaseChannelFields`, so on a project whose oldest
+prod binding was any other provider the label PATCH returned 200 and stripped the field — the
+release gate could not be declared at all. Measured on pixelight (epodsystem, storefront), where
+`base === production` hid it behind the earlier refusal. Every provider schema now carries the three
+keys and lists them binding-tier; `provider-schemas.test.ts` is table-driven over the six so a new
+provider that omits them fails.
 
 ## Known residual: 8 issues the lane removal leaves behind
 
