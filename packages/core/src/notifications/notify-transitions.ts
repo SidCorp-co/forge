@@ -15,7 +15,7 @@ import { emitNotification } from './emit.js';
  * issue's assignee/owner. These are the moments a human cares about:
  * - `tested`  — parked at the manual release gate, needs a human to advance.
  * - `reopen`  — a regression / failed pipeline/deploy landed the issue back.
- * - `waiting` — parked for human review (decompose gate, exhausted retries).
+ * - `waiting` — parked for a human (a decision, a resource only a person has).
  * - `needs_info` — the autonomous driver asked a question only a human can answer.
  * - `closed`  — the work shipped.
  *

@@ -5,7 +5,7 @@
  * There is exactly one of each on purpose. `refuseUnrecordedClose` states the
  * shape of the rule this follows: a gate on some doors is a gate on none, and
  * a body reaches core through seven caller-supplied doors (two REST comment
- * routes, two MCP comment actions, issue create, issue patch, decompose
+ * routes, two MCP comment actions, issue create, issue patch
  * children). They converge here rather than each carrying a copy.
  *
  * `prepareBody` throws `BodyInvalidError`; the transport maps it to 400.

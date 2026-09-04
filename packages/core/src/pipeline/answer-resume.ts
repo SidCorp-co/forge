@@ -36,7 +36,7 @@ import { AUTONOMOUS_ENTRY_STATUS, AUTONOMOUS_QUESTION_STATUS } from './autonomou
 import { isAutonomousProject } from './autonomous-project.js';
 import type { HooksBus } from './hooks.js';
 
-// cm:guard `needs_info` ONLY, never the other two parks the autonomous vocabulary also renders as needs_human — `waiting` and `on_hold` are stopped by a PERSON, and a comment on one is discussion, not permission to restart. Since ISS-886 that is true by construction rather than by convention: an agent can no longer reach `waiting` on this mode (issues/autonomous-park.ts rewrites it here), so the only ones left are a human's own pause and the decompose review gate — and waking the gate would approve a split nobody reviewed.
+// cm:guard `needs_info` ONLY, never the other two parks the autonomous vocabulary also renders as needs_human — `waiting` and `on_hold` are stopped by a PERSON, and a comment on one is discussion, not permission to restart. Since ISS-886 that is true by construction rather than by convention: an agent can no longer reach `waiting` on this mode (issues/autonomous-park.ts rewrites it here), so the only one left on this mode is a human's own pause.
 async function resumableIssue(issueId: string) {
   const [issue] = await db
     .select({

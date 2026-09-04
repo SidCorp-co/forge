@@ -202,15 +202,7 @@ export function defaultStatesConfig(): Record<StageName, StageConfig> {
 export const pipelineConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
-    // Per-project cap on simultaneously-active issues. Defaults to 1 (see
-    // `dispatch-gates.ts:DEFAULT_MAX_CONCURRENT_ISSUES`), preserving the
-    // ISS-232 serial-per-project behaviour for every project that does not
-    // opt in. Raise it to fan independent issues across the runner pool —
-    // dependent issues stay serialized by the L1 issue-busy + L2 blocks/
-    // decomposes gates regardless of this value, so only INDEPENDENT issues
-    // parallelize. Capped at 20: beyond that, concurrent code/fix sessions on
-    // one repo collide at merge often enough that separate projects are the
-    // right tool.
+    // cm:why unset means 1 (`dispatch-gates.ts:DEFAULT_MAX_CONCURRENT_ISSUES`), keeping ISS-232 serial-per-project for every project that never opts in; dependent issues stay serialized by the L1 issue-busy + L2 blocks gates whatever this says, so raising it parallelizes INDEPENDENT issues only, and the 20 ceiling is where concurrent code/fix sessions on one repo start colliding at merge often enough that separate projects are the right tool
     maxConcurrentIssues: z.number().int().min(1).max(20).optional(),
     // ISS-606 — per-project intake gate. When enabled, EVERY create that
     // would land at `open` (all channels, member-created included) is parked

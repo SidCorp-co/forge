@@ -44,7 +44,7 @@ export async function pmSetDependencyHandler(
   actorOverride?: Actor,
   opts?: { deferHealthPublish?: boolean },
 ) {
-  // cm:guard gate on plain project membership, NOT the PM capability flag (ISS-131, was `assertPmActor`) — plan-pipeline agents must declare blocks/decomposes edges while writing a plan and run on `claude-code` runners that carry no PM flag; the cycle guard and the unique-index idempotency already cover the abuse surface
+  // cm:guard gate on plain project membership, NOT the PM capability flag (ISS-131, was `assertPmActor`) — plan-pipeline agents must declare blocks edges while writing a plan and run on `claude-code` runners that carry no PM flag; the cycle guard and the unique-index idempotency already cover the abuse surface
   await assertDeviceOwnerIsMember(device, input.projectId);
 
   try {

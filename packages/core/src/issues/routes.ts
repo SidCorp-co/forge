@@ -72,11 +72,7 @@ export const issueCreateSchema = z
     attachments: z.array(attachmentInputSchema).max(10).optional(),
     detectorKey: z.string().trim().min(1).max(120).optional(),
     relations: z.array(issueRelationInputSchema).max(20).optional(),
-    // ISS-130 — narrow allow-list for entry status. The F4 transition
-    // endpoint still owns post-creation status changes; this only exists so
-    // decomposition children can land at `on_hold` (parked, no auto-triage)
-    // atomically with the insert. ISS-236 — also `draft` for AI-generated
-    // proposals (Dream / Doc-Sync) that wait for human promote/discard.
+    // cm:why ISS-130 / ISS-236 — the F4 transition endpoint owns every post-creation status change; this allow-list exists only so a caller can park at `on_hold` atomically with the insert, or hold an AI-generated proposal (Dream / Doc-Sync) at `draft` until a human promotes or discards it
     status: z.enum(['open', 'on_hold', 'draft']).optional(),
   })
   .strict();

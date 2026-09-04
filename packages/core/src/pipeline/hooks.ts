@@ -35,9 +35,7 @@ export interface HookPayloads {
     issueId: string;
     projectId: string;
     actor: Actor;
-    // ISS-130 — the inserted row's status. The orchestrator's issueCreated
-    // subscriber forwards this to considerEnqueue so decomposition children
-    // created at `on_hold` do not auto-dispatch forge-triage.
+    // cm:guard ISS-130 — the orchestrator's issueCreated subscriber forwards this to considerEnqueue, which is what keeps an issue created at `on_hold` or `draft` from auto-dispatching forge-triage; drop it and every insert triages
     status: IssueStatus;
     snapshot: IssueSnapshot;
   };

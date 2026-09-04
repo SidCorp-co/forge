@@ -1,6 +1,6 @@
 /**
  * The dependency / parent-child graph the PM agent inspects when reasoning
- * about blockers, parallelism and epic decomposition. Every edge comes from
+ * about blockers, parallelism and epic structure. Every edge comes from
  * `issue_dependencies` (kind = blocks / relates / duplicates / parent).
  *
  * - no root → the whole project graph, capped at `PM_GRAPH_MAX_NODES`, with

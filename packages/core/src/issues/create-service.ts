@@ -53,7 +53,7 @@ export class IssueCreateError extends Error {
 
 /**
  * ISS-130 / ISS-236 — the only statuses an issue may be born at. `open` is the
- * normal triage entry, `on_hold` parks a decomposition child, `draft` holds an
+ * normal triage entry, `on_hold` parks it before triage, `draft` holds an
  * AI-generated proposal for human promote/discard. Every other status change
  * goes through the transition surface so the state machine and activity log run.
  */

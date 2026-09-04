@@ -39,9 +39,7 @@ export interface MergeStatesConfig {
    *  dispatch. */
   baseBranch: IssueStatus;
   /** Multi-branch projects use a distinct state for production merge; in
-   *  trunk-based v2 this equals `baseBranch`. The `decomposeChildrenPending`
-   *  L2 gate shares this `merged_at` column with `blockedBy` (a decompose
-   *  parent waits for its children's `merged_at`). Future v3 will split into
+   *  trunk-based v2 this equals `baseBranch`. Future v3 will split into
    *  `merged_to_prod_at`. */
   productionBranch: IssueStatus;
 }
@@ -131,10 +129,8 @@ export async function markMergedIfLeavingBase(
  * instead: close ⇒ done ⇒ stamp. The trade-off is deliberate:
  *   - pipeline closes already stamped on leaving the base merge state, so
  *     this is a no-op there (`WHERE merged_at IS NULL`);
- *   - TWO system paths auto-close, and both are now gated on a release note
- *     existing (`release-record-required.ts`): the decompose close cascade
- *     (`decomposition-subscribers.ts`, which propagates a close already made
- *     and is exempt via `viaCloseCascade`), and the orchestrator's auto-skip
+ *   - ONE system path auto-closes, and it is gated on a release note existing
+ *     (`release-record-required.ts`): the orchestrator's auto-skip
  *     chain, which anchors on `closed` when the `released` stage has no
  *     registered skill and is NOT exempt — it catches the refusal and stops.
  *     Everything else routes elsewhere (cancel → on_hold, failures →

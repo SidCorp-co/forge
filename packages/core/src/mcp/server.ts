@@ -143,7 +143,7 @@ import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/projec
  * `Set<string>` gates per-action so PAT callers can still invoke unrelated
  * actions on a dispatcher that happens to host device-only actions.
  */
-// cm:guard an action belongs here ONLY when it needs runner state a PAT cannot have: `dispatch`/`write_decision` call assertPmActor (a `runners` lookup keyed on device.id), and `set_dependency` can run decomposeParent, which creates an integration branch. ISS-868 removed snapshot/graph/runner_load, which only ever called assertDeviceOwnerIsMember — gating them left a PAT with no way to READ the graph it was being told it could not write.
+// cm:guard an action belongs here ONLY when it needs runner state a PAT cannot have: `dispatch`/`write_decision` call assertPmActor (a `runners` lookup keyed on device.id). ISS-868 removed snapshot/graph/runner_load, which only ever called assertDeviceOwnerIsMember — gating them left a PAT with no way to READ the graph it was being told it could not write.
 const DEVICE_REQUIRED: ReadonlyMap<string, ReadonlySet<string> | true> = new Map<
   string,
   ReadonlySet<string> | true
