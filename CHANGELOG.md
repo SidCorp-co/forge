@@ -118,7 +118,7 @@
   the MCP catalog, so an external server's `isError` now reaches the record instead of being
   flattened away by a string serializer that ran before the loop could see it.
 
-- `app_config.chat_model_by_kind` (migration 0195) and `chatModelByKind` on
+- `app_config.chat_model_by_kind` (migration 0202) and `chatModelByKind` on
   `PUT /api/app-config/:projectId`: a per-turn-kind model on the same provider. Two kinds exist —
   `agentic` (tools offered) and `relay` (tool-less prose; the Rocket.Chat escalation synthesis
   passes `relay`). A kind with no entry falls to `chat_model`, then the provider default; a
@@ -1312,26 +1312,16 @@
   connection or binding write; it is three batched queries, with the newest-binding-wins ordering
   it silently depended on now stated as a guard on the query that provides it.
 
-- **`comment-density` is gated on each edited file, and 366 comment lines went with it.** An
-  absolute threshold is a poor fit here — measured 2026-09-03 over 628 non-test files in
-  `packages/core/src`, the median density is 20.0% and 65% exceed the rule's 15% — because a
-  module header plus one-line `cm:` annotations is the shape this repo asks for. Enabling it at
-  `error` was an owner decision taken with that measurement in hand, and the cost landed
-  immediately: nine files in `integrations/rocketchat/` went from 607 comment lines to 241.
-
-  What that bought and what it cost, rather than only the first. Roughly thirty multi-line JSDoc
-  blocks became single-line `cm:guard`s, which is a real improvement in placement — `cm:guard` is
-  injected into an editing agent's context, where JSDoc prose has no consumer at all. Every
-  `cm:ignore` / `i18n-allow` directive was kept, because deleting those trades this gate's green
-  for `check-source-language.mjs`'s red. Dated incident evidence survives compressed. What is
-  gone is narrative: the escalation prompt's curation reasoning, the ack-timing walkthrough and
-  the `readProgressFacts` tri-state discussion are each one dense line now. `git show` on the
-  parent of this change is where the long form lives.
-
-  The ratchet also cuts the wrong way on deletions, which is worth knowing before the next pass:
-  removing dead code lowers a file's line count and therefore its comment allowance, so deleting
-  `sendStakeholderReply` from `outbound.ts` dropped its budget from 14 comment lines to 6 and
-  forced a second round of trimming in the same file.
+- **366 comment lines left `integrations/rocketchat/` and `chat/`, and the prose that mattered
+  stayed.** Roughly thirty multi-line JSDoc blocks became single-line `cm:guard`s — better
+  placement, not just fewer lines: a `cm:guard` is injected into an editing agent's context where
+  JSDoc prose has no consumer. Nine files in `integrations/rocketchat/` went from 607 comment
+  lines to 241. Every `cm:ignore` / `i18n-allow` directive was kept, and dated incident evidence
+  survives compressed; what is gone is narrative, and `git show` on this change's parent is where
+  the long form lives. The ESLint `comment-density` rule that drove the pass was NOT adopted —
+  comment content is codemap's axis (`CLAUDE.md`), and the rule's plugin resolved through a
+  `link:` path outside this repository, so neither CI nor a contributor could run it. The trim
+  stands on its own; the gate does not exist.
 
 - **`pipelineConfig.mode` defaults to `autonomous`.** It was optional, and absent read as `staged`,
   so every project created since the mode existed started on the staged pipeline whether or not
