@@ -1,10 +1,11 @@
 /**
- * `POST /issues/:id/comments` stamps `is_ai` from the caller's agency.
+ * `POST /issues/:id/comments` records the token's owner and nothing else.
  *
- * The MCP tool labels every write `isAi: true` because that path is automated
- * by construction. This route is not: a person in a browser and an agent
- * holding a job PAT arrive through the same door, so the value has to come
- * from the principal.
+ * A person in a browser and an agent holding that person's PAT arrive through
+ * the same door, and Forge no longer asks the caller to declare which one it
+ * is: `comments.is_ai` was that question, and the answer disagreed with the
+ * token on 3,172 of 23,414 rows. Agent identity comes back when an agent has
+ * one of its own, not as a self-reported boolean.
  */
 
 import { Hono } from 'hono';
@@ -60,27 +61,22 @@ async function post(agency: ActorAgency | undefined) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ body: 'hello' }),
   });
-  return { res, values: insertValues.mock.calls[0]?.[0] as { isAi?: boolean } | undefined };
+  return { res, values: insertValues.mock.calls[0]?.[0] as Record<string, unknown> | undefined };
 }
+
+const WRITTEN_COLUMNS = ['issueId', 'authorId', 'body', 'format', 'template', 'parentId'];
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('comment create — is_ai comes from agency', () => {
-  it('an agent-agency caller writes isAi: true', async () => {
-    const { values } = await post('agent');
-    expect(
-      values?.isAi,
-      'forge-runner api posted a comment that landed is_ai=false with a NULL device id — the exact tuple the comments.is_ai guard calls a human',
-    ).toBe(true);
-  });
+describe('comment create — authorship follows the token', () => {
+  it.each(['agent', 'human', undefined] as const)(
+    'records the token owner and declares no agency (%s)',
+    async (agency) => {
+      const { values } = await post(agency);
 
-  it('a human-agency caller writes isAi: false', async () => {
-    const { values } = await post('human');
-    expect(values?.isAi).toBe(false);
-  });
-
-  it('an absent agency is not treated as an agent', async () => {
-    const { values } = await post(undefined);
-    expect(values?.isAi).toBe(false);
-  });
+      expect(values?.authorId).toBe('u1');
+      // cm:guard the KEY SET, not just the absence of `isAi` — the defect this replaces was a column the writer filled in about itself, and a differently-named one (`actorAgency`, `writtenByBot`) would be the same defect. A new column here is a deliberate change to what a comment asserts, so it must break this list first.
+      expect(Object.keys(values ?? {}).sort()).toEqual([...WRITTEN_COLUMNS].sort());
+    },
+  );
 });

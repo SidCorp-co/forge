@@ -11,12 +11,11 @@ import {
 const issueId = '00000000-0000-0000-0000-000000000001';
 const authorId = '00000000-0000-0000-0000-000000000002';
 
-function row(id: string, parentId: string | null, body = id): CommentRow & { isAi: boolean } {
+function row(id: string, parentId: string | null, body = id): CommentRow {
   return {
     id,
     issueId,
     authorId,
-    isAi: false,
     body,
     parentId,
     createdAt: new Date('2026-04-26T00:00:00Z'),
@@ -124,36 +123,25 @@ describe('attachAuthors', () => {
     ]);
   }
 
-  it('marks an agent write on a human credential as an agent (is_ai, no device)', () => {
-    const tree = buildCommentTree([{ ...row('a', null), isAi: true, authorDeviceId: null }]);
-    attachAuthors(tree, resolvedMap());
-    expect(tree[0]?.author?.isAgent).toBe(true);
-    expect(tree[0]?.author?.displayName).toBe('alice@example.com');
-  });
-
-  it('leaves the SAME author’s hand-typed comment human when they also have an agent one', () => {
-    const tree = buildCommentTree([
-      { ...row('agent', null), isAi: true, authorDeviceId: null },
-      { ...row('human', null), isAi: false, authorDeviceId: null },
-    ]);
-    const resolved = resolvedMap();
-    attachAuthors(tree, resolved);
-    expect(tree[0]?.author?.isAgent).toBe(true);
-    expect(tree[1]?.author?.isAgent).toBe(false);
-    expect(resolved.get(`user:${authorId}`)?.isAgent).toBe(false);
-  });
-
-  it('still marks a device write as an agent when is_ai was never set', () => {
+  it('marks a device write as an agent', () => {
     const tree = buildCommentTree([{ ...row('a', null), authorDeviceId: deviceId }]);
     attachAuthors(tree, resolvedMap());
     expect(tree[0]?.author?.isAgent).toBe(true);
     expect(tree[0]?.author?.displayName).toBe('runner-1');
   });
 
+  // cm:guard a comment on a person's credential is THAT PERSON's, even when an agent typed it — this is the priced consequence of dropping `comments.is_ai` (2026-09-04) and it must fail loudly if someone reintroduces a per-row agent flag rather than giving agents an identity of their own.
+  it('marks a write on a human credential as that human, whoever held the token', () => {
+    const tree = buildCommentTree([{ ...row('a', null), authorDeviceId: null }]);
+    attachAuthors(tree, resolvedMap());
+    expect(tree[0]?.author?.isAgent).toBe(false);
+    expect(tree[0]?.author?.displayName).toBe('alice@example.com');
+  });
+
   it('attaches through nested replies, not just roots', () => {
     const tree = buildCommentTree([
       row('a', null),
-      { ...row('a1', 'a'), isAi: true, authorDeviceId: null },
+      { ...row('a1', 'a'), authorDeviceId: deviceId },
     ]);
     attachAuthors(tree, resolvedMap());
     expect(tree[0]?.author?.isAgent).toBe(false);

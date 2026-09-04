@@ -262,7 +262,7 @@ describe('cancelPipelineRun', () => {
     expect(opts).toMatchObject({ skip: true });
   });
 
-  // cm:guard the park must be attributed to the caller, not to `projects.createdBy` — a device actor stamps `isAi: true` and the interventions metric counts only user-actor transitions, so a park recorded as a device is an intervention nobody can measure
+  // cm:guard the park must be attributed to the caller, not to `projects.createdBy` — the interventions metric counts only user-actor transitions, so a park recorded as a device is an intervention nobody can measure
   it('attributes the park to the human who cancelled, not to the project creator', async () => {
     updateReturning.mockResolvedValueOnce([runRow('cancelled', { finishedAt: new Date() })]);
     updateReturning.mockResolvedValueOnce([]);

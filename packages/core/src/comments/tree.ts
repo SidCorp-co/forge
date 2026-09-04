@@ -9,8 +9,6 @@ export interface CommentRow {
   // the device's human owner). Optional so flat-list/REST builders that don't
   // select it still satisfy the type.
   authorDeviceId?: string | null;
-  /** ISS-820 durable agent-authored marker; true for an agent write on ANY credential. */
-  isAi?: boolean;
   body: string;
   parentId: string | null;
   createdAt: Date;
@@ -29,7 +27,6 @@ export interface CommentAttachmentLite {
   createdAt: Date;
 }
 
-// cm:guard generic over the ROW, not fixed to `CommentRow` — this is what makes `attachAuthors` reject a tree whose query forgot to select `is_ai`. Collapsing it back to `extends CommentRow` compiles fine and silently returns every agent comment labelled as a person.
 export type CommentNode<R extends CommentRow = CommentRow> = R & {
   replies: CommentNode<R>[];
   attachments: CommentAttachmentLite[];
@@ -87,10 +84,9 @@ export function walkCommentTree<R extends CommentRow>(
   }
 }
 
-// cm:guard COPY the resolved actor before writing `isAgent`, never mutate it — `resolved` is keyed by actor, so ONE object is shared by every comment that author wrote, and an agent write and a hand-typed comment from the SAME person are both in that set. Mutating it would relabel the human's comments too.
-// cm:guard OR `isAi` in, do not let it REPLACE the device test — `authorDeviceId` catches a device-token write and `isAi` catches an agent write on any credential, including the owner-lane PAT where `authorDeviceId` is NULL. Either test alone leaves one class of agent comment rendering as a person.
+// cm:guard authorship is the TOKEN's — a device token resolves to that device (agent), any other credential resolves to the person who owns it, and nothing per-comment overrides that. Do not reintroduce a stored "written by a bot" flag on the row: `comments.is_ai` was exactly that, and because an agent holding the owner's PAT wrote `true` on the owner's own identity, the column disagreed with the token on 3,172 of 23,414 rows (measured 2026-09-04) while claiming to be the durable human test.
 export function attachAuthors(
-  nodes: CommentNode<CommentRow & { isAi: boolean }>[],
+  nodes: CommentNode<CommentRow>[],
   resolved: Map<string, ResolvedActor>,
 ): void {
   walkCommentTree(nodes, (node) => {
@@ -99,6 +95,6 @@ export function attachAuthors(
         ? actorKey('device', node.authorDeviceId)
         : actorKey('user', node.authorId),
     );
-    node.author = actor ? { ...actor, isAgent: actor.isAgent || node.isAi === true } : null;
+    node.author = actor ? { ...actor } : null;
   });
 }

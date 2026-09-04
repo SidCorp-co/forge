@@ -1150,8 +1150,6 @@ export const comments = pgTable(
     authorDeviceId: uuid('author_device_id').references(() => devices.id, {
       onDelete: 'set null',
     }),
-    // cm:guard durable agent-authored marker set by every agent write path (MCP + core guards), incl. owner-lane PAT comments — human test is isAi=false AND authorDeviceId IS NULL
-    isAi: boolean('is_ai').notNull().default(false),
     body: text('body').notNull(),
     // cm:edge contract -> packages/core/src/body/prepare.ts — ISS-898. `format` decides which renderer and which validator a body gets, and its DEFAULT is load-bearing: every pre-existing row and every shipped SKILL.md example omits it, so `markdown` is what keeps them all valid. `template` is the root component name, replacing the regex guess in web-v2 `features/issues/derive.ts:deriveCommentKind`.
     format: text('format', { enum: BODY_FORMATS }).notNull().default('markdown'),

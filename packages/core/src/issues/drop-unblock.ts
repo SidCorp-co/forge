@@ -26,7 +26,6 @@ export async function recordDropUnblock(
         authorId,
         body: `Unblocked — ${label} was dropped, so its \`blocks\` edge on this issue expired and this issue can dispatch. \`merged_at\` was NOT stamped on ${label}: dropped means the work will not happen, not that it shipped. If this issue genuinely needs that work, re-point the dependency rather than letting it proceed.`,
         parentId: null,
-        isAi: true,
       })),
     );
   } catch (error) {

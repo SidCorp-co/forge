@@ -18,7 +18,7 @@ export type CommentThreadRow = {
   id: string;
   issueId: string;
   authorId: string;
-  isAi: boolean;
+  authorDeviceId: string | null;
   body: string;
   format: BodyFormat;
   template: string | null;
@@ -31,7 +31,7 @@ const threadColumns = {
   id: comments.id,
   issueId: comments.issueId,
   authorId: comments.authorId,
-  isAi: comments.isAi,
+  authorDeviceId: comments.authorDeviceId,
   body: comments.body,
   format: comments.format,
   template: comments.template,
@@ -89,7 +89,6 @@ export type NewComment = {
   issueId: string;
   authorId: string;
   authorDeviceId: string | null;
-  isAi: boolean;
   body: string;
   format?: BodyFormat | null | undefined;
   parentId: string | null;

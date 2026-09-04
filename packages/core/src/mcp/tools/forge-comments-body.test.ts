@@ -88,7 +88,6 @@ const baseCommentRow = {
   id: COMMENT_ID,
   issueId: ISSUE_ID,
   authorId: OWNER_ID,
-  isAi: false,
   body: 'Hello',
   format: 'markdown' as const,
   template: null,
@@ -121,7 +120,6 @@ describe('forge_comments component bodies (ISS-898)', () => {
     insertReturning.mockResolvedValueOnce([
       {
         ...baseCommentRow,
-        isAi: true,
         body: REVIEW_BODY,
         format: 'html',
         template: 'forge-review',
@@ -161,7 +159,7 @@ describe('forge_comments component bodies (ISS-898)', () => {
   it('create reports what the sanitizer removed instead of refusing plain markup', async () => {
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    insertReturning.mockResolvedValueOnce([{ ...baseCommentRow, isAi: true, format: 'html' }]);
+    insertReturning.mockResolvedValueOnce([{ ...baseCommentRow, format: 'html' }]);
 
     const result = (await tool().handler({
       action: 'create',

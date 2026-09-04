@@ -51,10 +51,13 @@ agent-filed issue has no assignee and MCP `forge_issues` cannot set one.
 
 `unseenDrafts` exists because `draft` is inert by design: the dispatcher never picks it up and
 `NOTIFY_ON_STATUS` carries no `draft`, and that hook fires on `transition` rather than create — so
-before this bucket an agent-filed draft was reachable from no surface at all. A human comment
-(`is_ai = false AND author_device_id IS NULL`) is the receipt that clears it; an agent cannot forge
-one. That is an **approximation** of the durable seen-receipt tracked in ISS-791, not that receipt:
-it cannot tell "never read" from "read and parked without replying".
+before this bucket an agent-filed draft was reachable from no surface at all. A comment on a non-device
+credential (`author_device_id IS NULL`) is the receipt that clears it. An agent holding a person's
+PAT clears it **as that person** — identity follows the token and nothing per-comment says
+otherwise (`comments.is_ai` did, and disagreed with the token on 3,172 of 23,414 rows; it was
+dropped 2026-09-04). That is an **approximation** of the durable seen-receipt tracked in ISS-791,
+not that receipt: it cannot tell "never read" from "read and parked without replying", nor a person
+from an agent on their credential. Both close with agent identity, not with a stored flag.
 
 **Why it does not stop at the creator.** MCP `forge_issues create` stamps `createdById` with the
 account that paired the runner, and on a real deployment the person who opens the UI signs in as a

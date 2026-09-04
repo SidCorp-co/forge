@@ -393,7 +393,6 @@ async function postStageStalledComment(args: {
         verification,
         state,
       }),
-      isAi: true,
     });
   } catch (err) {
     logger.warn(

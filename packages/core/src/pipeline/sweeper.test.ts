@@ -60,9 +60,7 @@ const dbExecute = vi.fn(async (..._args: unknown[]) => [] as Array<Record<string
 const sessionsWhere = vi.fn();
 const selectWhere = vi.fn(async () => [] as Array<{ status: string }>);
 const queuedProjectsRows: Array<{ projectId: string }> = [];
-// ISS-639 — db.insert(comments).values(...) call sites (park-comment pass).
-// Also used by ISS-447's applyKernelTransition audit-row insert; tests for
-// this pass filter by the `body`/`isAi` shape to isolate their own calls.
+// cm:why two unrelated writers land in this one mock — the park-comment pass and `applyKernelTransition`'s audit row — so a test that asserts on call count instead of filtering by `body` passes or fails on the other one's behaviour.
 const dbInsertValues = vi.fn(async (..._args: unknown[]) => undefined);
 
 vi.mock('../db/client.js', () => ({

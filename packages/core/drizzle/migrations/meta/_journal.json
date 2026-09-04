@@ -1380,6 +1380,13 @@
       "when": 1790553600000,
       "tag": "0198_iss898_description_format_check",
       "breakpoints": true
+    },
+    {
+      "idx": 199,
+      "version": "7",
+      "when": 1790640000000,
+      "tag": "0199_drop_comments_is_ai",
+      "breakpoints": true
     }
   ]
 }

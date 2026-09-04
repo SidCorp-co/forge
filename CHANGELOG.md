@@ -249,6 +249,26 @@
 
 ### Removed
 
+- **`comments.is_ai`, and with it every per-comment claim about who was typing.** Authorship now
+  follows the credential and nothing else: a device token is recorded as that device, and any other
+  token as the person it belongs to. The column asked each writer to declare itself, and the answer
+  disagreed with the token on 3,172 of 23,414 rows (measured 2026-09-04) — every one an agent
+  holding a person's PAT, writing `is_ai=true` on that person's own identity while the column was
+  documented as the durable human test. The MCP tool's hardcoded `true`, the REST route's stamp from
+  `agency`, and the ~10 kernel writers are gone; `attachAuthors` and the `unseenDrafts` receipt now
+  test `author_device_id` alone, and `forge_comments` returns that field so the driver's
+  `answered()` check in forge-plugin keeps a park unanswerable by the job that opened it.
+
+  **The price, stated rather than found later:** an agent on a person's PAT is now indistinguishable
+  from that person — it can clear the `unseenDrafts` receipt as them, and no surface marks its
+  comments. Measured before the drop: 20 `draft` issues leave the attention bucket on deploy,
+  drafts whose only non-device comment an agent wrote on a person's credential; after the DROP that
+  set is not recoverable. That is the honest reading of what the column already measured; it does not become true
+  by deleting it, it becomes visible. The gap closes when agents get an identity of their own, which
+  is a credential, not a boolean a writer fills in about itself. Until then `never speak for a human`
+  is a rule in the drive prompt with no mechanism behind it, and the prompt now says so. Migration
+  `0199_drop_comments_is_ai`.
+
 - **Epic decompose is gone from the kernel.** A `decomposes` edge no longer creates a shared
   integration branch, parks the parent at `waiting`, cascade-approves the children, holds the
   parent's jobs behind a `decompose_children_pending` gate, or cascade-closes the family. The kind
@@ -266,6 +286,49 @@
   `waiting_on_decomp_children` health reason is removed from the contract and the UI, and
   `metadata.useIntegrationBranch` from the schema; the per-issue `metadata.branchConfig` base-branch
   override stays and still wins over the project default.
+
+- The PAT auto-revoke. A token that exceeded its per-minute ceiling in three windows of one hour
+  was revoked for good, silently: no audit row, no event, no reason. It could only ever fire on a
+  token `verifyPat` had already accepted, so it never touched a guesser, and the one thing it did
+  was burn four of one user's tokens in a day for running a plugin session at 4 requests a second.
+  A 429 is a throttle; it stays one. `forceRevokePat` is gone with it.
+
+- **The bundled autonomous skill set and the runner-written review verdict.** Owner decision,
+  big-bang. Five skills compiled into the runner via `include_str!` (`forge-drive`, `-understand`,
+  `-plan`, `-review`, `-ship`, 560 lines), `bundled_skills.rs`, the `[skills] bundled_disabled` /
+  `bundled_overrides` knobs, and the gate `check-autonomous-transitions.mjs` that held the skills to
+  `AUTONOMOUS_DRIVER_STATUSES` — gone. The driver is now `issue-flow` from the `forge` Claude Code
+  plugin (github.com/SidCorp-co/forge-plugin), named by `AUTONOMOUS_SKILL_NAME` and reaching a box
+  through `pipelineConfig.plugins`. Why: a skill fix waited on a runner release the fleet then had to
+  pull — 0.9.9 and 0.9.10 were cut on 2026-09-02 and 8 of 10 runners were still on 0.9.8 hours later
+  — and `issue-flow` carries 724 lines of method to forge-drive's 242.
+
+  With it, the reviewer-verdict mechanism: `FORGE_VERDICT_FILE`, `workspace/verdict.rs`, the poller
+  in `claude_code.rs`, `POST /api/jobs/:id/verdict`, `recordVerdict`, and migration 0194 drops
+  `phase_journal_verdict_is_runner_written`. **The price, stated rather than found later:** nothing
+  now stops a driver recording its own approval. The measurement this mechanism answered — getcontent
+  2026-08-21, 9 of 10 closed issues had a real verdict overwritten by the driver's prose — is reachable
+  again. `endPhase` keeps its `kind IS DISTINCT FROM 'verdict'` clause so the rows that exist stay
+  honest; the e2e that asserted the CHECK now asserts its absence, on purpose, so a return is a
+  decision and not an accident.
+
+  The `autonomous-mode` skill-lock reason went too, and that one was already dead:
+  `projectLockContext` never passed a `bundled` set, so the branch fired only in unit tests that
+  hand-supplied one. `check-autonomous-transitions` is unwired from `verify`, CI, the conformance
+  manifest and `scripts/README.md` — with the skill in another repo it had nothing to read, and a gate
+  that exits 2 forever is worse than no gate. `mcp/skill-tool-names.test.ts` went with it for the same
+  reason — it read the bundled tree to assert no skill named an unregistered MCP tool, and that check
+  now belongs to the plugin repo, whose `doc-claims.test.mjs` holds the equivalent for its own CLI.
+
+  **What this does not do:** install the plugin anywhere. 0 of 31 projects designate it and every
+  runner ships `[plugins] enabled = false` (a per-box kill switch the server cannot flip), so until a
+  project designates and an operator turns the box on, a `drive` job is told to use a skill it does
+  not have. Runner `0.10.0` carries the removal.
+
+- Four MCP tools whose work REST already does: `forge_steer`, `forge_ux_improver`,
+  `forge_skills.pin` and `forge_metrics.step_durations`. Nothing that runs on a build box had
+  called any of them, and every one has an endpoint that does the same job. The registered tool
+  set is now 59.
 
 ### Fixed
 
@@ -934,48 +997,3 @@
 - The test-signal baseline had drifted since it was frozen and is re-cut at the measured numbers:
   one file had left the low-signal ratio entirely while two others sat under ceilings up to 32
   above their real counts. Every ceiling moved down and a dead record left. (ISS-848)
-
-### Removed
-
-- The PAT auto-revoke. A token that exceeded its per-minute ceiling in three windows of one hour
-  was revoked for good, silently: no audit row, no event, no reason. It could only ever fire on a
-  token `verifyPat` had already accepted, so it never touched a guesser, and the one thing it did
-  was burn four of one user's tokens in a day for running a plugin session at 4 requests a second.
-  A 429 is a throttle; it stays one. `forceRevokePat` is gone with it.
-
-- **The bundled autonomous skill set and the runner-written review verdict.** Owner decision,
-  big-bang. Five skills compiled into the runner via `include_str!` (`forge-drive`, `-understand`,
-  `-plan`, `-review`, `-ship`, 560 lines), `bundled_skills.rs`, the `[skills] bundled_disabled` /
-  `bundled_overrides` knobs, and the gate `check-autonomous-transitions.mjs` that held the skills to
-  `AUTONOMOUS_DRIVER_STATUSES` — gone. The driver is now `issue-flow` from the `forge` Claude Code
-  plugin (github.com/SidCorp-co/forge-plugin), named by `AUTONOMOUS_SKILL_NAME` and reaching a box
-  through `pipelineConfig.plugins`. Why: a skill fix waited on a runner release the fleet then had to
-  pull — 0.9.9 and 0.9.10 were cut on 2026-09-02 and 8 of 10 runners were still on 0.9.8 hours later
-  — and `issue-flow` carries 724 lines of method to forge-drive's 242.
-
-  With it, the reviewer-verdict mechanism: `FORGE_VERDICT_FILE`, `workspace/verdict.rs`, the poller
-  in `claude_code.rs`, `POST /api/jobs/:id/verdict`, `recordVerdict`, and migration 0194 drops
-  `phase_journal_verdict_is_runner_written`. **The price, stated rather than found later:** nothing
-  now stops a driver recording its own approval. The measurement this mechanism answered — getcontent
-  2026-08-21, 9 of 10 closed issues had a real verdict overwritten by the driver's prose — is reachable
-  again. `endPhase` keeps its `kind IS DISTINCT FROM 'verdict'` clause so the rows that exist stay
-  honest; the e2e that asserted the CHECK now asserts its absence, on purpose, so a return is a
-  decision and not an accident.
-
-  The `autonomous-mode` skill-lock reason went too, and that one was already dead:
-  `projectLockContext` never passed a `bundled` set, so the branch fired only in unit tests that
-  hand-supplied one. `check-autonomous-transitions` is unwired from `verify`, CI, the conformance
-  manifest and `scripts/README.md` — with the skill in another repo it had nothing to read, and a gate
-  that exits 2 forever is worse than no gate. `mcp/skill-tool-names.test.ts` went with it for the same
-  reason — it read the bundled tree to assert no skill named an unregistered MCP tool, and that check
-  now belongs to the plugin repo, whose `doc-claims.test.mjs` holds the equivalent for its own CLI.
-
-  **What this does not do:** install the plugin anywhere. 0 of 31 projects designate it and every
-  runner ships `[plugins] enabled = false` (a per-box kill switch the server cannot flip), so until a
-  project designates and an operator turns the box on, a `drive` job is told to use a skill it does
-  not have. Runner `0.10.0` carries the removal.
-
-- Four MCP tools whose work REST already does: `forge_steer`, `forge_ux_improver`,
-  `forge_skills.pin` and `forge_metrics.step_durations`. Nothing that runs on a build box had
-  called any of them, and every one has an endpoint that does the same job. The registered tool
-  set is now 59.

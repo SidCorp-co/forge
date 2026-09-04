@@ -174,12 +174,12 @@ async function draft(
 
 async function comment(
   issueId: string,
-  opts: { isAi: boolean; device?: boolean; author?: string },
+  opts: { device?: boolean; author?: string } = {},
 ): Promise<void> {
   await harness.db.execute(sql`
-    INSERT INTO comments (id, issue_id, author_id, author_device_id, is_ai, body)
+    INSERT INTO comments (id, issue_id, author_id, author_device_id, body)
     VALUES (${randomUUID()}, ${issueId}, ${opts.author ?? ownerId},
-            ${opts.device ? deviceId : null}, ${opts.isAi}, 'body')
+            ${opts.device ? deviceId : null}, 'body')
   `);
 }
 
@@ -295,24 +295,29 @@ describe('attention · unseen agent-filed drafts', () => {
 
   it('drops it once a human comments, and leaves the issue at draft', async () => {
     const id = await draft();
-    await comment(id, { isAi: false });
+    await comment(id);
     expect((await attention()).unseenDrafts).toHaveLength(0);
     expect(await statusOf(id)).toBe('draft');
   });
 
-  // cm:guard an agent MUST NOT be able to acknowledge for a human. Both halves of the marker have to be checked: a device-authored comment carries the owner's user id in author_id, so testing is_ai alone lets a PAT-lane agent comment clear the bucket.
-  it('is not cleared by an agent comment', async () => {
-    const flagged = await draft();
-    await comment(flagged, { isAi: true });
-    const byDevice = await draft();
-    await comment(byDevice, { isAi: false, device: true });
-    expect((await attention()).unseenDrafts).toHaveLength(2);
+  // cm:guard a DEVICE comment must never acknowledge for a human — a device-authored comment carries the owner's user id in author_id, so `author_id` alone is not the test and `author_device_id IS NULL` is.
+  it('is not cleared by a device comment', async () => {
+    const id = await draft();
+    await comment(id, { device: true });
+    expect((await attention()).unseenDrafts).toHaveLength(1);
+  });
+
+  // cm:guard this is the PRICE of dropping `comments.is_ai` (2026-09-04), asserted so it is a decision on the record and not a silent regression: an agent holding a person's PAT clears this bucket AS that person, because identity follows the token and a PAT-lane comment is indistinguishable from one the person typed. The fix is agent identity, not a self-declared flag — until then the receipt means "something on a human credential replied", not "a human read it".
+  it('IS cleared by an agent holding a human credential, as that human', async () => {
+    const id = await draft();
+    await comment(id);
+    expect((await attention()).unseenDrafts).toHaveLength(0);
   });
 
   // cm:why the receipt means A PERSON saw it, not that the owner replied. A teammate reading the draft and answering in the thread is exactly the routing this bucket exists to produce.
   it("is cleared by any human comment, not only the owner's", async () => {
     const id = await draft();
-    await comment(id, { isAi: false, author: otherId });
+    await comment(id, { author: otherId });
     expect((await attention()).unseenDrafts).toHaveLength(0);
   });
 
@@ -337,7 +342,7 @@ describe('attention · unseen agent-filed drafts', () => {
   it('counts only what the predicate matches, not every draft', async () => {
     await draft();
     const seen = await draft();
-    await comment(seen, { isAi: false });
+    await comment(seen);
     await draft({ via: 'web' });
     await draft({ createdBy: otherId, assignee: otherId });
     await draft({ status: 'open' });

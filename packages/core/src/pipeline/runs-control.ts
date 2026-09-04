@@ -135,7 +135,7 @@ export async function resumePipelineRun(runId: string): Promise<PipelineRunRow> 
  * is best-effort: a failure here must not fail the cancel.
  */
 // cm:guard the brake is that `on_hold` has no `STATUS_TO_JOB_TYPE` mapping, NOT the actor — every other status a cancelled run can leave behind is actionable, so the orchestrator opens a replacement run seconds later and the cancel achieves nothing (ISS-411). A future edit that parks somewhere actionable restores that silent re-dispatch.
-// cm:guard record the human who cancelled, never a synthesized device — a device actor writes `isAi: true` and attributes the park to `projects.createdBy`, which drops it out of the interventions metric that counts user-actor transitions. The device fallback is for callers with no user in scope, not the normal path.
+// cm:guard record the human who cancelled, never a synthesized device — a device actor attributes the park to `projects.createdBy`, which drops it out of the interventions metric that counts user-actor transitions. The device fallback is for callers with no user in scope, not the normal path.
 async function parkIssueOnCancel(run: PipelineRunRow, actorUserId?: string): Promise<boolean> {
   if (run.kind !== 'issue' || !run.issueId) return false;
   try {

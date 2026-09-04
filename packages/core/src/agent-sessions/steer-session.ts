@@ -124,7 +124,6 @@ export async function steerIssue(
     issueId,
     authorId: opts.actorUserId,
     authorDeviceId: null,
-    isAi: false,
     body,
     parentId: null,
   });

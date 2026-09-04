@@ -33,7 +33,7 @@ export async function projectLockContext(projectId: string): Promise<ProjectLock
     .where(eq(projects.id, projectId))
     .limit(1);
   const agentConfig = row?.agentConfig as Record<string, unknown> | undefined;
-  const cfg = agentConfig?.['pipelineConfig'] as Record<string, unknown> | undefined;
+  const cfg = agentConfig?.pipelineConfig as Record<string, unknown> | undefined;
   return { declared: readLockedSkills(cfg) };
 }
 

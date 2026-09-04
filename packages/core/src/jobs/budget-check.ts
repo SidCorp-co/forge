@@ -165,7 +165,6 @@ export async function postBudgetExhaustedComment(
       issueId: input.issueId,
       authorId: row.createdBy,
       body,
-      isAi: true,
     });
   } catch (err) {
     logger.warn(

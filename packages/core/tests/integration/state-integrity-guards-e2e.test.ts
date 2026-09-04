@@ -62,12 +62,12 @@ describe('ISS-786 state-integrity guards — composed A→C→B→D walk', () =>
   async function _insertComment(
     issueId: string,
     authorId: string,
-    opts: { isAi: boolean; authorDeviceId: string | null; createdAt: Date },
+    opts: { authorDeviceId: string | null; createdAt: Date },
   ): Promise<void> {
     await harness.db.execute(sql`
-      INSERT INTO comments (issue_id, author_id, author_device_id, is_ai, body, created_at)
+      INSERT INTO comments (issue_id, author_id, author_device_id, body, created_at)
       VALUES (
-        ${issueId}, ${authorId}, ${opts.authorDeviceId}, ${opts.isAi}, 'x',
+        ${issueId}, ${authorId}, ${opts.authorDeviceId}, 'x',
         ${opts.createdAt.toISOString()}::timestamptz
       )
     `);
@@ -203,11 +203,10 @@ describe('ISS-786 state-integrity guards — composed A→C→B→D walk', () =>
     expect(pausedRun.status).toBe('paused');
     expect(pausedRun.metadata.pauseReason).toBe('stage_stalled:developed');
 
-    const commentRows = await harness.db.execute<{ body: string; is_ai: boolean }>(sql`
-      SELECT body, is_ai FROM comments WHERE issue_id = ${issue.id} ORDER BY created_at DESC LIMIT 1
+    const commentRows = await harness.db.execute<{ body: string }>(sql`
+      SELECT body FROM comments WHERE issue_id = ${issue.id} ORDER BY created_at DESC LIMIT 1
     `);
-    const stallComment = commentRows[0] as { body: string; is_ai: boolean };
-    expect(stallComment.is_ai).toBe(true);
+    const stallComment = commentRows[0] as { body: string };
     // Verified-cause branch: no device recorded on the stalled jobs, so the
     // cause is named as unverified rather than confidently misdiagnosed.
     expect(stallComment.body).toContain('Could not verify a cause');

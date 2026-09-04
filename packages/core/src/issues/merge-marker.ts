@@ -32,7 +32,6 @@ export async function clearIssueMergedAt(issueId: string): Promise<void> {
     .where(eq(issues.id, issueId));
 }
 
-// cm:guard ISS-820 — `isAi: true` is not cosmetic: a comment written by an automated surface and stored as human releases a `needs_info` bounce, so the issue leaves the state a human was asked to resolve
 export async function writeAuditComment(
   issueId: string,
   authorId: string,
@@ -40,7 +39,7 @@ export async function writeAuditComment(
 ): Promise<AuditComment | null> {
   const [row] = await db
     .insert(comments)
-    .values({ issueId, authorId, body, parentId: null, isAi: true })
+    .values({ issueId, authorId, body, parentId: null })
     .returning({ id: comments.id, body: comments.body, parentId: comments.parentId });
   return row ?? null;
 }

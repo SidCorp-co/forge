@@ -68,11 +68,15 @@ import { agentChannelCondition } from '../issues/creator.js';
  *        nagging them about it is what teaches a queue to be ignored. Legacy
  *        `created_via IS NULL` rows read as human backlog, matching
  *        `issues/creator.ts`.
- *     2. no human comment (`is_ai = false AND author_device_id IS NULL`, the
- *        durable human test guarded on `comments`) — one human comment is the
- *        receipt, and an agent cannot forge it. This is an APPROXIMATION of
- *        the durable seen-receipt ISS-791 owns, not that receipt: it cannot
- *        tell "never read" from "read and parked without replying".
+ *     2. no comment on a non-device credential (`author_device_id IS NULL`) —
+ *        one such comment is the receipt. It is weaker than it reads: identity
+ *        follows the token, so an agent holding a person's PAT clears the
+ *        bucket as that person (measured 2026-09-04: 3,172 of 23,414 comments
+ *        are agent writes on a human credential). It is also an APPROXIMATION
+ *        of the durable seen-receipt ISS-791 owns, not that receipt: it cannot
+ *        tell "never read" from "read and parked without replying". Both gaps
+ *        close the same way — by giving agents their own identity, not by
+ *        storing a self-declared flag per comment.
  *     3. assignment wins, and only an UNOWNED draft falls back to the creator
  *        or to whoever administers the project — see
  *        {@link unseenDraftOwner} for why the creator alone reaches nobody.
@@ -223,13 +227,7 @@ function unseenDraftCondition(userId: string): SQL {
       db
         .select({ one: sql`1` })
         .from(comments)
-        .where(
-          and(
-            eq(comments.issueId, issues.id),
-            eq(comments.isAi, false),
-            isNull(comments.authorDeviceId),
-          ),
-        ),
+        .where(and(eq(comments.issueId, issues.id), isNull(comments.authorDeviceId))),
     ),
   ) as SQL;
 }

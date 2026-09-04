@@ -119,7 +119,6 @@ export async function postMissingSkillComment(args: {
       issueId: args.issueId,
       authorId: row.createdBy,
       body: buildMissingSkillCommentBody(args.stage),
-      isAi: true,
     });
   } catch (err) {
     logger.warn(

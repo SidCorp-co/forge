@@ -387,13 +387,11 @@ export async function transitionIssueStatus(
   // not fail the caller.
   if (held) {
     try {
-      // cm:guard ISS-820 — automated system comment; isAi:true, same dishonest-authorship class as the MCP audit comments
       await db.insert(comments).values({
         issueId: issue.id,
         authorId: actor.type === 'user' ? actor.id : actor.ownerId,
         body: `Held at the release gate — merged, not shipped. \`merged_at\` is stamped, so every \`blocks\`-dependent can dispatch now; the issue closes when a release ships it.`,
         parentId: null,
-        isAi: true,
       });
     } catch (err) {
       logger.warn(
@@ -416,13 +414,11 @@ export async function transitionIssueStatus(
       const evidenceNote = evidenceFound
         ? 'If this issue was abandoned (its code never landed on the base branch), run `forge_issues` `unmark` to re-block dependents.'
         : 'No branch, commit or code handoff is recorded for this issue — if its code never landed, run `forge_issues` `unmark` to re-block dependents.';
-      // cm:guard ISS-820 — automated system comment; isAi:true, same dishonest-authorship class as the MCP audit comments
       await db.insert(comments).values({
         issueId: issue.id,
         authorId: actor.type === 'user' ? actor.id : actor.ownerId,
         body: `merged_at auto-stamped on close — \`closed\` counts as done, so \`blocks\`-dependents can now dispatch. ${evidenceNote}`,
         parentId: null,
-        isAi: true,
       });
     } catch (err) {
       logger.warn(
@@ -497,7 +493,6 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
             toStatus: requestedStatus,
             reason: options.transitionReason?.trim() ?? '',
             waitingKind: options.waitingKind ?? null,
-            isAi: actor.type !== 'user',
           },
           tx,
         );

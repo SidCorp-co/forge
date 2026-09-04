@@ -38,11 +38,9 @@ import { buildListEnvelope, overfetch } from './list-envelope.js';
  *
  * `documentId` is the comment UUID; `filters.issue` is the issue UUID.
  *
- * ISS-820: every comment created here is `isAi:true`, regardless of
- * principal kind — including owner-lane PAT comments. That is honest
- * labeling of an automated write path, not a misclassification: this MCP
- * surface is only ever reached by an agent, never by a human typing into the
- * REST/UI comment box.
+ * Authorship follows the credential: a device principal is written down as
+ * that device, and every other principal as the person whose token it is.
+ * A comment carries no self-declared "an agent wrote this" marker.
  */
 
 const filtersSchema = z.object({ issue: z.uuid() }).strict().optional();
@@ -88,7 +86,8 @@ function serialize(
     documentId: row.id,
     issueId: row.issueId,
     authorId: row.authorId,
-    isAi: row.isAi,
+    // cm:guard SECOND HALF IN forge-plugin `plugin/src/flow/earned.mjs` — `answered()` asks whether a PERSON replied after a park, and this field is what it asks with now that `is_ai` is gone: non-null means a device token wrote it. Drop it from this projection and every screen the driver parks on becomes unanswerable, because the agent's own comments would read as a person's.
+    authorDeviceId: row.authorDeviceId ?? null,
     // ISS-532: comment bodies are untrusted (anyone can post) and reach the
     // agent verbatim via this MCP surface — frame as DATA, never instructions.
     body: markUntrusted(row.body, { source: 'comment.body' }),
@@ -199,7 +198,6 @@ async function run(
       }
 
       // cm:guard ISS-519 — authorId stays the human owner (device posts on their behalf); authorDeviceId is the AGENT marker, device-principal only — a PAT principal's stub device (stubDeviceForPat) must never be written here (ISS-638)
-      // cm:guard ISS-820 — every MCP comment is isAi:true regardless of principal kind, INCLUDING owner-lane PAT comments; that is honest labeling of an automated write path, not a misclassification
       let inserted: CommentRow | undefined;
       let bodyWarnings: string[] = [];
       try {
@@ -207,7 +205,6 @@ async function run(
           issueId,
           authorId: device.ownerId,
           authorDeviceId: principal.kind === 'device' ? device.id : null,
-          isAi: true,
           body,
           format: input.data?.format,
           parentId: input.data?.parentId ?? null,

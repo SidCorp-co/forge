@@ -191,8 +191,7 @@ export function principalUserId(principal: McpPrincipal): string {
  * down as that person, not as the synthetic device the PAT is carried on.
  * Everything downstream that branches on `actor.type` then lands correctly on
  * its own: the ISS-812 fabrication guard skips a human and covers an agent,
- * `isAi` labels a comment honestly, and `publishIssueStatusChange` names a user
- * id that exists.
+ * and `publishIssueStatusChange` names a user id that exists.
  */
 // cm:guard branch on `agency`, NEVER on `kind`. A `kind === 'pat'` test reads the agent-driven chat surface (chat/tools/principal.ts) as a human and hands it the ISS-812 exemption — the guard added because agents were fabricating evidence. `agency` is the only field that separates the two.
 export function principalActor(principal: McpPrincipal, device: DeviceLite): TransitionActor {

@@ -61,7 +61,6 @@ export async function postTransitionReasonComment(
     reason: string;
     waitingKind?: WaitingKind | null;
     /** True when a device actor wrote it — an agent's rationale is still an agent's. */
-    isAi: boolean;
   },
   executor: Pick<Db, 'insert'> = db,
 ): Promise<void> {
@@ -76,6 +75,5 @@ export async function postTransitionReasonComment(
       args.waitingKind ?? null,
     ),
     parentId: null,
-    isAi: args.isAi,
   });
 }
