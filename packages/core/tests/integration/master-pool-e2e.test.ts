@@ -26,6 +26,7 @@ let mods: {
   releaseAllHeldBySession: typeof import('../../src/devices/claim.js').releaseAllHeldBySession;
   readDeviceLoad: typeof import('../../src/devices/load.js').readDeviceLoad;
   readProjectLoad: typeof import('../../src/devices/load.js').readProjectLoad;
+  readFleetLoad: typeof import('../../src/devices/load.js').readFleetLoad;
   reapDeadMasterHolds: typeof import('../../src/devices/master-reaper.js').reapDeadMasterHolds;
 };
 
@@ -46,6 +47,7 @@ beforeAll(async () => {
     releaseAllHeldBySession: claim.releaseAllHeldBySession,
     readDeviceLoad: load.readDeviceLoad,
     readProjectLoad: load.readProjectLoad,
+    readFleetLoad: load.readFleetLoad,
     reapDeadMasterHolds: reaper.reapDeadMasterHolds,
   };
 }, 60_000);
@@ -231,7 +233,7 @@ describe('master pool', () => {
 });
 
 // cm:guard the reaper cases live in their own block so the shared setup is not counted against either one twice — they also assert the OPPOSITE property from the pool cases above: that a hold is taken BACK, which is the half that has no caller to notice when it breaks.
-describe('master pool — reaping dead holds', () => {
+describe('master pool — reaping, load and preparation', () => {
   it('reaps a hold whose master went terminal, and leaves a live one alone', async () => {
     const { owner, project, device, run, job } = await seed();
     const deadSession = randomUUID();
@@ -301,6 +303,41 @@ describe('master pool — reaping dead holds', () => {
     expect(load?.runnerFaults).toHaveLength(1);
     expect(load?.runnerFaults[0]?.limitReason).toBe('auth');
     expect(load?.runnerFaults[0]?.until).toBeNull();
+
+    const fleet = await mods.readFleetLoad(project.id, 120);
+    expect(fleet.find((e) => e.deviceId === device.id)?.runnerFaults[0]?.limitReason).toBe('auth');
+  });
+
+  // cm:guard a retry clone carries NO `agent_session_id`, so it is the ONE claim that always walks the create path in `ensureAgentSessionForJob` — and that function answers null on any failure, which `prepareClaimedJob` turns into a throw that releases the hold. A throw there is not a refusal: the job goes straight back to the pool for the next master to claim and throw on again, forever, with no attempt counter in the way. This test is what says that path completes.
+  it('prepares a retry clone, which arrives with no session of its own', async () => {
+    const { owner, project, device, run, job, issue } = await seed();
+    const retry = randomUUID();
+
+    await harness.db.execute(sql`
+      UPDATE jobs SET status = 'failed', finished_at = now() WHERE id = ${job}
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, created_by,
+                        queued_at, retry_of, attempts, agent_session_id)
+      VALUES (${retry}, ${project.id}, ${issue}, ${run}, 'code', 'queued', ${owner.id}, now(),
+              ${job}, 1, NULL)
+    `);
+
+    const result = await mods.claimJobForMaster({
+      jobId: retry,
+      deviceId: device.id,
+      sessionId: randomUUID(),
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.prepared.agentSessionId).toBeTruthy();
+    expect(result.prepared.attempts).toBe(1);
+
+    const [row] = (await harness.db.execute(sql`
+      SELECT agent_session_id FROM jobs WHERE id = ${retry}
+    `)) as unknown as Array<{ agent_session_id: string | null }>;
+    expect(row?.agent_session_id).toBe(result.prepared.agentSessionId);
   });
 
   it('separates pool depth from running, and surfaces the oldest running job', async () => {

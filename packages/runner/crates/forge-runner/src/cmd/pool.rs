@@ -124,21 +124,32 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         Command::Load(a) => {
             let v = pool::load(&c, a.project_id.as_deref()).await?;
             println!("{}", serde_json::to_string_pretty(&v)?);
-            // cm:guard print the fault flags LOUDLY as well as in the JSON — `auth` means this box's Claude session is dead, nothing in core excludes it from being claimed onto any more, and a master that misses the line hands it work that cannot start.
-            if let Some(faults) = v
-                .get("device")
-                .and_then(|d| d.get("runnerFaults"))
-                .and_then(|f| f.as_array())
-            {
-                for f in faults {
-                    eprintln!(
-                        "warning: runner {} is flagged {}",
-                        f.get("runnerId").and_then(|x| x.as_str()).unwrap_or("?"),
-                        f.get("limitReason").and_then(|x| x.as_str()).unwrap_or("?")
-                    );
+            // cm:guard print the fault flags LOUDLY as well as in the JSON — `auth` means that box's Claude session is dead, nothing in core excludes it from being claimed onto any more, and a master that misses the line hands it work that cannot start.
+            warn_faults(v.get("device"), "this box");
+            if let Some(fleet) = v.get("fleet").and_then(|f| f.as_array()) {
+                for entry in fleet {
+                    let name = entry.get("name").and_then(|x| x.as_str()).unwrap_or("?");
+                    warn_faults(Some(entry), name);
                 }
             }
         }
     }
     Ok(())
+}
+
+// cm:guard walk BOTH the device and every fleet entry. The fleet list is what a master reads when it spreads a batch over several boxes, so a fault printed only for the local device is invisible exactly when it decides where else the work goes.
+fn warn_faults(node: Option<&serde_json::Value>, label: &str) {
+    let Some(faults) = node
+        .and_then(|d| d.get("runnerFaults"))
+        .and_then(|f| f.as_array())
+    else {
+        return;
+    };
+    for f in faults {
+        eprintln!(
+            "warning: {label}: runner {} is flagged {}",
+            f.get("runnerId").and_then(|x| x.as_str()).unwrap_or("?"),
+            f.get("limitReason").and_then(|x| x.as_str()).unwrap_or("?")
+        );
+    }
 }

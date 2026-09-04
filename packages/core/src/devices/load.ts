@@ -40,7 +40,18 @@ export type FleetEntry = {
   jobsRunning: number;
   agentVersion: string | null;
   lastSeenMinutes: number | null;
+  // cm:guard the fleet view carries faults for the same reason it keeps offline boxes: a master spreading three jobs over three boxes reads THIS list, and an `auth`-dead runner that looks healthy here gets one of them. Same shape as `DeviceLoad['runnerFaults']` — raw flags, never a usable/unusable verdict.
+  runnerFaults: DeviceLoad['runnerFaults'];
 };
+
+const RUNNER_FAULTS = sql`COALESCE((
+  SELECT json_agg(json_build_object(
+           'runnerId', rf.id,
+           'limitReason', rf.limit_reason,
+           'until', rf.rate_limited_until))
+  FROM runners rf
+  WHERE rf.device_id = d.id AND rf.limit_reason IS NOT NULL
+), '[]'::json) AS runner_faults`;
 
 // cm:guard mirror `jobs/in-flight.ts#OCCUPYING_JOBS_FOR` EXACTLY — statuses AND the terminal-parent filter. A master sizing its next batch off a number that counts orphans reads a busy box where the claim will happily take more, and one that omits the filter reads a full box that is actually idle. Both directions end in a batch the box cannot honour.
 const OCCUPYING = sql`j.status IN ('dispatched', 'running')
@@ -52,14 +63,7 @@ export async function readDeviceLoad(deviceId: string): Promise<DeviceLoad | nul
            EXTRACT(EPOCH FROM (now() - d.last_seen_at)) / 60 AS last_seen_minutes,
            COALESCE(l.n, 0)::int AS jobs_running,
            COALESCE(l.repos, ARRAY[]::text[]) AS repos_locked,
-           COALESCE((
-             SELECT json_agg(json_build_object(
-                      'runnerId', r.id,
-                      'limitReason', r.limit_reason,
-                      'until', r.rate_limited_until))
-             FROM runners r
-             WHERE r.device_id = d.id AND r.limit_reason IS NOT NULL
-           ), '[]'::json) AS runner_faults
+           ${RUNNER_FAULTS}
     FROM devices d
     LEFT JOIN (
       SELECT j.device_id,
@@ -141,7 +145,8 @@ export async function readFleetLoad(
            d.id, d.name, d.agent_version,
            d.last_seen_at > now() - make_interval(secs => ${livenessSeconds}) AS online,
            EXTRACT(EPOCH FROM (now() - d.last_seen_at)) / 60 AS last_seen_minutes,
-           COALESCE(l.n, 0)::int AS jobs_running
+           COALESCE(l.n, 0)::int AS jobs_running,
+           ${RUNNER_FAULTS}
     FROM runners r
     JOIN devices d ON d.id = r.device_id
     LEFT JOIN (
@@ -162,5 +167,6 @@ export async function readFleetLoad(
     jobsRunning: Number(row.jobs_running ?? 0),
     agentVersion: (row.agent_version as string | null) ?? null,
     lastSeenMinutes: row.last_seen_minutes === null ? null : Number(row.last_seen_minutes),
+    runnerFaults: (row.runner_faults as DeviceLoad['runnerFaults'] | null) ?? [],
   }));
 }
