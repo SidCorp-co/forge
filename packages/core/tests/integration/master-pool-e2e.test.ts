@@ -333,6 +333,11 @@ describe('master pool — reaping, load and preparation', () => {
     if (!result.ok) return;
     expect(result.prepared.agentSessionId).toBeTruthy();
     expect(result.prepared.attempts).toBe(1);
+    // cm:guard identity comes from the PREPARATION, not from the pool entry the master was holding — the runner has nothing else to name the job by.
+    expect(result.prepared.jobId).toBe(retry);
+    expect(result.prepared.projectId).toBe(project.id);
+    expect(result.prepared.issueId).toBe(issue);
+    expect(result.prepared.type).toBe('code');
 
     const [row] = (await harness.db.execute(sql`
       SELECT agent_session_id FROM jobs WHERE id = ${retry}
