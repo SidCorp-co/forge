@@ -20,6 +20,17 @@
   issue appends that issue's unexpired `blocks` / `relates` neighbours after the ranked hits, marked
   `via` and scored 0. `RERANK_MODEL` optionally names a different model than `LITELLM_FAST_MODEL`.
 
+- **A master agent can now take work from a pool, instead of core pushing it.** Four device-scoped
+  endpoints under `/api/devices/me` — `pool`, `pool/claim`, `pool/release` and `load` — let a
+  session running on a box read what work exists, take some, hand it back, and see how loaded the
+  box, the project and the fleet are. `jobs.held_by` records who took a job; a `master-hold-reaper`
+  sweep every minute returns the holds of any master that went terminal or stopped beating, which
+  is what stops a master dying at 3am from parking work nobody can reach. The pool reports each
+  blocker's raw `status`/`merged_at` rather than a computed "satisfied" flag, so `dropped` and
+  landed-then-`reopen` stay distinguishable. Nothing calls these yet: the push path still runs and
+  is deleted in one step once a master runs against them
+  (`docs/proposals/master-orchestration.html`).
+
 - Retrieval v3, phase 0 (ISS-904). Every hybrid memory search now records on its
   `retrieval_analytics` row how many hits the semantic list and the keyword list each produced and
   how many they shared, and `GET /api/admin/retrieval/breakdown?projectId&since` aggregates that per

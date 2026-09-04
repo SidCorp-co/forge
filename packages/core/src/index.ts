@@ -37,6 +37,8 @@ import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { deviceLoginRoutes } from './devices/login-routes.js';
+import { registerMasterReaper } from './devices/master-reaper.js';
+import { devicePoolRoutes } from './devices/pool-routes.js';
 import { registerDevicePrune } from './devices/prune.js';
 import {
   deviceAuthRoutes,
@@ -410,6 +412,7 @@ app.route('/api/devices', devicePublicRoutes);
 app.route('/api/devices', deviceLoginRoutes);
 app.route('/api/devices', deviceAuthRoutes);
 app.route('/api/devices', deviceSkillRoutes);
+app.route('/api/devices', devicePoolRoutes);
 app.route('/api', deviceOwnerRoutes);
 app.route('/api/projects', deviceUserRoutes);
 app.route('/api/projects', deviceSkillStatusRoutes);
@@ -496,6 +499,7 @@ if (isMain) {
   await registerCandidatesWorker();
   await registerCandidatesDecay();
   await registerDevicePrune();
+  await registerMasterReaper();
   await registerRunnerStaleDetector();
   await registerRetentionSweeper();
   await registerPipelineSweeper();

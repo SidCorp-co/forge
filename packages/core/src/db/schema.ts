@@ -698,6 +698,10 @@ export const jobs = pgTable(
     // jobs alongside interactive sessions. Bare uuid (no FK) to match the
     // notifications.agent_session_id pattern — adding the FK later is additive.
     agentSessionId: uuid('agent_session_id'),
+    // cm:guard the master session holding this job. NULL means claimable; non-NULL means a master took it and is answerable for it. It MUST be released when that session dies — `devices/master-reaper.ts` is what does that, and without it a dead master's jobs are unclaimable forever with nothing reporting why.
+    // cm:edge lockstep -> packages/core/src/devices/pool.ts — `held_by IS NULL` is the pool's only exclusion, so a writer that sets this column without a matching release path silently shrinks the pool
+    heldBy: uuid('held_by'),
+    heldAt: timestamp('held_at', { withTimezone: true }),
     // Pipeline self-healing (Phase H, ISS-306; taxonomy rebuilt by ISS-450 /
     // ISS-442 C4). Set when the job ends in `failed`. failureKind drives the
     // per-class retry policy (code = no retry, transient-cc = immediate
