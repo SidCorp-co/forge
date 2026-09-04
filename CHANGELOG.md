@@ -70,6 +70,26 @@
   embedding, and both MCP serializers — so the 8,000-character description cap holds the same
   amount of requirements as before. Web rendering, the composer, the skill migration and a
   per-stage `bodyPolicy` are later phases: `docs/proposals/body-templates.md`.
+- An Anthropic Messages-wire chat adapter, `chat/providers/anthropic.ts`, registered as
+  `anthropic` when `ANTHROPIC_API_KEY` is set (`ANTHROPIC_API_URL` defaults to `api.anthropic.com`
+  and takes any Anthropic-format proxy; `ANTHROPIC_MODEL`, `ANTHROPIC_MAX_TOKENS`). It sits behind
+  the same OpenAI-shaped `ChatProvider` contract, translating on the way out (system → `system`,
+  `tool_calls` → `tool_use`, `role:'tool'` → `tool_result` blocks in the next user turn, data-URI
+  images → base64 `image` blocks, `response_format` → an uncached JSON instruction because the
+  Messages API has none) and on the way in (`content_block_*` events → chunks and reassembled tool
+  calls, `thinking` blocks dropped), so `runTurnEvents` and every toolset stay wire-agnostic. The
+  system block and the last tool carry `cache_control: ephemeral`, and `promptTokens` is reported
+  as input + cache read + cache creation so it means the same thing as the OpenAI adapter's.
+  Selected per project through `app_config.chat_provider_id`; `openai` stays the default when both
+  are configured.
+
+  This reverses the 2026-09-03 "one adapter" line, and the reason is measured, not aesthetic:
+  against one proxy serving the same Gemini and GPT models on both wires, the OpenAI wire never
+  surfaced a cached-token count and silently ignored a `json_schema` response format on GPT
+  (prose came back), while the Messages wire reported cache reads on every turn and returned valid
+  JSON on both models. The retry and SSE-framing plumbing both adapters share moved to
+  `chat/providers/sse.ts`; the OpenAI adapter is now a pass-through plus that module.
+
 - The provider-chat loop measures what it sends. `CHAT_CONTEXT_BUDGET_TOKENS` (default 80,000
   estimated tokens; declared in `docker-compose.prod.yml` and both `.env.example`s) bounds every
   request `runTurnEvents` makes: history was windowed by count on the Rocket.Chat path and not at
@@ -505,6 +525,21 @@
   whole box; a binding's own `lastError` (a missing repo path, a preflight failure) stays local,
   because that one really is per-project. Existing split-brain rows correct themselves on the first
   failure or success on that device after this deploy.
+- Four defects the chat tool layer showed when a real model drove the real `forge_*` toolset
+  against a live database (2026-09-04, Gemini and GPT through one proxy, both wires):
+  - `forge_issues get` refused `ISS-3`. The tool prints `issueId: "ISS-<n>"` beside the UUID and
+    both models reused the short id, which `documentId: z.uuid()` rejected, so neither could open an
+    issue it had just listed. `chat/tools/issue-ref.ts` rewrites `ISS-<n>` to the UUID inside the
+    bound project before the handler parses, and the tool's chat description says so.
+  - `forge_projects_get` was offered and always failed `FORBIDDEN_SCOPE`: the synthetic chat
+    principal carried no scopes and that read handler checks for `read`. It now carries `read` and
+    only `read`; the allowlist's per-action gate, not the scope, is what bounds chat writes.
+  - Gemini decorated a call with a `reason` key on a tool whose only parameter had been stripped
+    from the advertised schema, and the `.strict()` handler rejected the whole call. Undeclared
+    top-level keys are now dropped against the tool's own schema before dispatch.
+  - A handler that threw a Drizzle query error showed the model 500 characters of INSERT and
+    never the Postgres reason; the thrown error's `cause` now wins when there is one.
+
 - web-v2 `features/activity` read `chat_logs.usage` through Anthropic-shaped snake_case keys
   (`input_tokens`, `cache_read_input_tokens`) that core has never written, so `sumTokens` returned
   0 for every row. `ChatLogUsage` is now the shape `run-turn-core.ts:usageForLog` writes
