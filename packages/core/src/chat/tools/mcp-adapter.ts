@@ -154,10 +154,9 @@ export function mergeToolsets(...sets: ChatToolset[]): ChatToolset {
   }
   return {
     tools,
-    execute(name, argsJson) {
+    async execute(name, argsJson) {
       const set = owner.get(name);
-      if (!set) return Promise.resolve(toolError(`unknown tool "${name}"`));
-      return set.execute(name, argsJson);
+      return set ? set.execute(name, argsJson) : toolError(`unknown tool "${name}"`);
     },
   };
 }

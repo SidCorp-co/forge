@@ -86,7 +86,7 @@ interface CollectedToolCall {
 }
 
 interface ExecutedCall {
-  call: CollectedToolCall;
+  id: string;
   record: ToolCallRecord;
   /** What the model reads back — the flattened result. */
   text: string;
@@ -109,11 +109,7 @@ async function executeToolRound(
 ): Promise<ExecutedCall[]> {
   const out: ExecutedCall[] = [];
   const byName = new Map<string, number[]>();
-  calls.forEach((tc, i) => {
-    const group = byName.get(tc.name);
-    if (group) group.push(i);
-    else byName.set(tc.name, [i]);
-  });
+  for (const [i, tc] of calls.entries()) byName.set(tc.name, [...(byName.get(tc.name) ?? []), i]);
   await Promise.all(
     [...byName.values()].map(async (indices) => {
       for (const i of indices) {
@@ -122,7 +118,7 @@ async function executeToolRound(
         const result = await safeExecute(toolset, call);
         const text = toolResultText(result);
         out[i] = {
-          call,
+          id: call.id,
           text,
           record: {
             name: call.name,
@@ -139,14 +135,18 @@ async function executeToolRound(
   return out;
 }
 
+const USAGE_KEYS = [
+  'promptTokens',
+  'completionTokens',
+  'totalTokens',
+  'cachedPromptTokens',
+] as const;
+
 function addUsage(into: ChatStreamUsage, from: ChatStreamUsage): void {
-  if (from.promptTokens !== undefined)
-    into.promptTokens = (into.promptTokens ?? 0) + from.promptTokens;
-  if (from.completionTokens !== undefined)
-    into.completionTokens = (into.completionTokens ?? 0) + from.completionTokens;
-  if (from.totalTokens !== undefined) into.totalTokens = (into.totalTokens ?? 0) + from.totalTokens;
-  if (from.cachedPromptTokens !== undefined)
-    into.cachedPromptTokens = (into.cachedPromptTokens ?? 0) + from.cachedPromptTokens;
+  for (const key of USAGE_KEYS) {
+    const n = from[key];
+    if (n !== undefined) into[key] = (into[key] ?? 0) + n;
+  }
 }
 
 /**
@@ -174,7 +174,6 @@ export async function* runTurnEvents(
       const offered = iterations < MAX_TOOL_ITERATIONS ? tools : undefined;
       let turnText = '';
       const turnToolCalls: CollectedToolCall[] = [];
-      let sawError = false;
 
       // cm:why applied to the CARRIED array, not a per-round copy — elisions accumulate, so rounds 2..8 see a byte-identical prefix (where implicit prompt caching pays) instead of re-deciding what to drop each round
       const bounded = applyContextBudget(messages, {
@@ -213,13 +212,12 @@ export async function* runTurnEvents(
         } else if (event.type === 'error') {
           errorMessage = event.message;
           terminal = 'error';
-          sawError = true;
           yield event;
           break;
         }
       }
 
-      if (sawError) break;
+      if (terminal === 'error') break;
 
       if (turnToolCalls.length === 0 || !offered) {
         finalText = turnText;
@@ -239,14 +237,14 @@ export async function* runTurnEvents(
       });
 
       // cm:why results are yielded and fed back in MODEL order once the whole round has completed — every tool_call_id gets exactly one reply and the SSE pairing stays deterministic whatever finished first
-      for (const { call, record, text } of await executeToolRound(
+      for (const { id, record, text } of await executeToolRound(
         offered,
         turnToolCalls,
         iterations,
       )) {
         toolCalls.push(record);
-        yield { type: 'tool_result', id: call.id, result: text };
-        messages.push({ role: 'tool', tool_call_id: call.id, content: text });
+        yield { type: 'tool_result', id, result: text };
+        messages.push({ role: 'tool', tool_call_id: id, content: text });
       }
     }
   } catch (err) {

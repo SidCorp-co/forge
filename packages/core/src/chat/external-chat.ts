@@ -104,7 +104,7 @@ export async function runExternalChatTurn(
 
   const resolved = await resolveForProject(args.projectId, {
     fallbackProviderId: defaultChatProviderId(),
-    kind: args.turnKind ?? 'agentic',
+    kind: args.turnKind,
     db: dbi,
   });
 
