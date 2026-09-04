@@ -13,10 +13,12 @@ import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { appConfig, projects } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { PROVIDER_HISTORY_WINDOW } from './context-budget.js';
 import { defaultChatProviderId } from './providers/bootstrap.js';
 import { resolveForProject } from './providers/registry.js';
 import { runChatTurn } from './run-turn.js';
@@ -93,7 +95,7 @@ chatRoutes.post(
     });
     const providerMessages = [
       { role: 'system' as const, content: systemPrompt },
-      ...toProviderMessages(session),
+      ...toProviderMessages(session).slice(-PROVIDER_HISTORY_WINDOW),
     ];
 
     // Read-only Forge toolset, fenced to this project + the calling user.
@@ -110,6 +112,7 @@ chatRoutes.post(
       projectSlug: project.slug,
       userMessage: message,
       userKey: userId,
+      contextBudgetTokens: env.CHAT_CONTEXT_BUDGET_TOKENS,
     });
   },
 );

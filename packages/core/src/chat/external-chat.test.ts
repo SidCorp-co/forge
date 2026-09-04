@@ -37,6 +37,7 @@ vi.mock('./session.js', () => ({
 }));
 
 vi.mock('./providers/bootstrap.js', () => ({ defaultChatProviderId: () => 'mock' }));
+vi.mock('../config/env.js', () => ({ env: { CHAT_CONTEXT_BUDGET_TOKENS: 80_000 } }));
 const buildSystemPromptCalls: Array<Record<string, unknown>> = [];
 vi.mock('./system-prompt.js', () => ({
   buildSystemPrompt: (input: Record<string, unknown>) => {
