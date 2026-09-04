@@ -28,6 +28,7 @@ let mods: {
   readProjectLoad: typeof import('../../src/devices/load.js').readProjectLoad;
   readFleetLoad: typeof import('../../src/devices/load.js').readFleetLoad;
   reapDeadMasterHolds: typeof import('../../src/devices/master-reaper.js').reapDeadMasterHolds;
+  releaseHoldsForSession: typeof import('../../src/devices/master-reaper.js').releaseHoldsForSession;
 };
 
 beforeAll(async () => {
@@ -49,6 +50,7 @@ beforeAll(async () => {
     readProjectLoad: load.readProjectLoad,
     readFleetLoad: load.readFleetLoad,
     reapDeadMasterHolds: reaper.reapDeadMasterHolds,
+    releaseHoldsForSession: reaper.releaseHoldsForSession,
   };
 }, 60_000);
 
@@ -343,6 +345,80 @@ describe('master pool — reaping, load and preparation', () => {
       SELECT agent_session_id FROM jobs WHERE id = ${retry}
     `)) as unknown as Array<{ agent_session_id: string | null }>;
     expect(row?.agent_session_id).toBe(result.prepared.agentSessionId);
+  });
+
+  // cm:guard the four columns the RUNNER's own routes gate on. `lifecycle-routes.ts`, `events-routes.ts` and `turn-verdict-routes.ts` each 403 unless `jobs.device_id` matches the calling device, and ack additionally requires `status IN ('dispatched','running')` — so a claim that stamps neither starts a process core refuses to talk to. Measured live on 2026-09-05: two jobs ran on the correct repos and every ack and event came back 403 Forbidden.
+  it('stamps the job onto the box, in the four columns the runner is gated by', async () => {
+    const { device, job, project } = await seed();
+
+    const result = await mods.claimJobForMaster({
+      jobId: job,
+      deviceId: device.id,
+      sessionId: randomUUID(),
+    });
+    expect(result.ok).toBe(true);
+
+    const [row] = (await harness.db.execute(sql`
+      SELECT status, device_id, runner_id, dispatched_at FROM jobs WHERE id = ${job}
+    `)) as unknown as Array<Record<string, unknown>>;
+    expect(row?.status).toBe('dispatched');
+    expect(row?.device_id).toBe(device.id);
+    expect(row?.dispatched_at).not.toBeNull();
+
+    const [runner] = (await harness.db.execute(sql`
+      SELECT id FROM runners WHERE project_id = ${project.id} AND device_id = ${device.id}
+    `)) as unknown as Array<Record<string, unknown>>;
+    expect(row?.runner_id).toBe(runner?.id);
+  });
+
+  // cm:guard a release must leave the job as claimable as it found it. Clearing the hold while leaving `dispatched` + a device_id behind is worse than not releasing at all: the pool skips it, no master can take it, and no process exists to finish it.
+  it('unwinds the stamp when a master lets go before the runner acked', async () => {
+    const { device, job } = await seed();
+    const session = randomUUID();
+
+    await mods.claimJobForMaster({ jobId: job, deviceId: device.id, sessionId: session });
+    expect(await mods.releaseJobFromMaster({ jobId: job, sessionId: session })).toBe(true);
+
+    const [row] = (await harness.db.execute(sql`
+      SELECT status, device_id, dispatched_at, held_by, attempts FROM jobs WHERE id = ${job}
+    `)) as unknown as Array<Record<string, unknown>>;
+    expect(row?.status).toBe('queued');
+    expect(row?.device_id).toBeNull();
+    expect(row?.dispatched_at).toBeNull();
+    expect(row?.held_by).toBeNull();
+    // cm:guard a release is NOT a failure — spending an attempt on "I changed my mind about the order" burns an issue's retry budget on something that never went wrong.
+    expect(Number(row?.attempts)).toBe(1);
+
+    expect(
+      (await mods.readPool({ deviceId: device.id, limit: 20 })).find((i) => i.jobId === job),
+    ).toBeDefined();
+  });
+
+  // cm:guard an ACKED job keeps its stamp when its master goes. The agent process is setsid-detached and outlives the master that started it, so returning the row to `queued` would offer a second box work that is already running — two agents, one worktree.
+  it('leaves an acked job running when its master dies, and reclaims an unacked one', async () => {
+    const { device, job, project, owner, run } = await seed();
+    const session = randomUUID();
+    const acked = randomUUID();
+
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, pipeline_run_id, type, status, created_by, queued_at,
+                        device_id, dispatched_at, acked_at, held_by)
+      VALUES (${acked}, ${project.id}, ${run}, 'review', 'dispatched', ${owner.id}, now(),
+              ${device.id}, now(), now(), ${session})
+    `);
+    await mods.claimJobForMaster({ jobId: job, deviceId: device.id, sessionId: session });
+
+    expect(await mods.releaseHoldsForSession(session)).toBe(2);
+
+    const rows = (await harness.db.execute(sql`
+      SELECT id, status, device_id FROM jobs WHERE id IN (${job}, ${acked})
+    `)) as unknown as Array<Record<string, unknown>>;
+    const unacked = rows.find((r) => r.id === job);
+    const live = rows.find((r) => r.id === acked);
+    expect(unacked?.status).toBe('queued');
+    expect(unacked?.device_id).toBeNull();
+    expect(live?.status).toBe('dispatched');
+    expect(live?.device_id).toBe(device.id);
   });
 
   it('separates pool depth from running, and surfaces the oldest running job', async () => {

@@ -1364,6 +1364,16 @@
   daemon is listening, which is the honest answer, since nothing else on that box could run the job.
   A master is killed at 150 seconds so it can never outlive the 3-minute hold core gives it.
 
+  A claim stamps the job onto the box — `status='dispatched'`, `device_id`, `runner_id`,
+  `dispatched_at` — the same four columns the old `claimRunnerSlot` wrote. The runner's own routes
+  are gated on them (`lifecycle`, `events` and `turn-verdict` each 403 unless `jobs.device_id`
+  matches the calling device, and ack additionally requires a non-queued status), so the first
+  cut of this shipped without them and produced exactly that: measured live on 2026-09-05, two jobs
+  started on the correct repos and every ack and event came back 403. Every path that drops a hold —
+  release, the socket-drop path, the 3-minute reaper — unwinds those columns again, but only while
+  `acked_at IS NULL`: an acked job has a detached agent behind it that outlives its master, and
+  re-queueing that would offer a second box work already running.
+
   The `forge-master` skill ships **inside the runner binary** and is written to the master's own
   directory before every pass. Nothing else could deliver it — project skill sync writes into a
   project's checkout and the master runs in no checkout — and a master told to use a skill that is

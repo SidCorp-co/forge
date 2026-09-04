@@ -24,7 +24,8 @@ export const MASTER_HOLD_TIMEOUT_MS = 3 * 60 * 1000;
  * Returns the number of jobs handed back, and logs each holder so an operator
  * reading the pool can tell "nobody wanted this" from "its holder died".
  */
-// cm:guard a job already `dispatched`/`running` has its hold cleared and NOTHING else — the subagent process outlives the master that started it, and killing it here would throw away a diff nobody asked to discard. Clearing the hold only makes the row claimable again once it is back to `queued` by the ordinary path.
+// cm:guard `acked_at` is what separates the two cases, and it must be the test rather than the status. A job the runner ACKED has a process behind it that outlives its master, so only the hold is dropped — killing it would throw away a diff nobody asked to discard. A `dispatched` job with no ack never reached a process: its master died between the claim and the spawn, and leaving it stamped makes it exactly the orphan the loop monitor exists to chase, held by nobody and claimable by no one.
+// cm:edge lockstep -> packages/core/src/devices/claim.ts — `releaseJobFromMaster` unwinds the same three columns under the same `acked_at IS NULL` condition; one path undoing the stamp and the other not is a job that is claimable again on one route and stranded on the other.
 export async function reapDeadMasterHolds(): Promise<number> {
   // cm:guard the cutoff is computed by POSTGRES, not by node. A `Date` bound as a parameter through this driver throws at bind time, and — worse if it did not — a clock skew between the app host and the database would decide which masters count as dead.
   const staleSeconds = Math.floor(MASTER_HOLD_TIMEOUT_MS / 1000);
@@ -42,7 +43,13 @@ export async function reapDeadMasterHolds(): Promise<number> {
       FROM jobs j JOIN gone g ON g.id = j.held_by
     )
     UPDATE jobs
-    SET held_by = NULL, held_at = NULL
+    SET held_by = NULL, held_at = NULL,
+        status = CASE WHEN jobs.status = 'dispatched' AND jobs.acked_at IS NULL
+                      THEN 'queued' ELSE jobs.status END,
+        device_id = CASE WHEN jobs.status = 'dispatched' AND jobs.acked_at IS NULL
+                         THEN NULL ELSE jobs.device_id END,
+        dispatched_at = CASE WHEN jobs.status = 'dispatched' AND jobs.acked_at IS NULL
+                             THEN NULL ELSE jobs.dispatched_at END
     WHERE id IN (SELECT id FROM doomed)
     RETURNING id, (SELECT held_by FROM doomed d WHERE d.id = jobs.id) AS former_holder,
               (SELECT master_status FROM doomed d WHERE d.id = jobs.id) AS master_status
@@ -99,7 +106,14 @@ export function resetMasterReaperForTest(): void {
  */
 export async function releaseHoldsForSession(sessionId: string): Promise<number> {
   const rows = (await db.execute(sql`
-    UPDATE jobs SET held_by = NULL, held_at = NULL
+    UPDATE jobs
+    SET held_by = NULL, held_at = NULL,
+        status = CASE WHEN jobs.status = 'dispatched' AND jobs.acked_at IS NULL
+                      THEN 'queued' ELSE jobs.status END,
+        device_id = CASE WHEN jobs.status = 'dispatched' AND jobs.acked_at IS NULL
+                         THEN NULL ELSE jobs.device_id END,
+        dispatched_at = CASE WHEN jobs.status = 'dispatched' AND jobs.acked_at IS NULL
+                             THEN NULL ELSE jobs.dispatched_at END
     WHERE held_by = ${sessionId}
     RETURNING id
   `)) as unknown as Array<Record<string, unknown>>;

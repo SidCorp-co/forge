@@ -16,6 +16,19 @@ import { mintJobToken } from '../jobs/job-token.js';
 import { type PreparedJob, prepareClaimedJob } from '../jobs/prepare-claimed-job.js';
 import { hooks } from '../pipeline/hooks.js';
 
+/**
+ * Undo a dispatch stamp that never reached a process.
+ */
+// cm:guard `acked_at IS NULL` is the whole test and must not become a status check. An ACKED job has a setsid-detached agent behind it that outlives its master, so re-queueing it would offer a second box work already running — two agents, one worktree. An unacked one never started, and leaving it stamped strands it: no pool offers it, no process finishes it.
+const UNSTAMP = {
+  status: sql`CASE WHEN jobs.status = 'dispatched' AND jobs.acked_at IS NULL
+                   THEN 'queued' ELSE jobs.status END`,
+  deviceId: sql`CASE WHEN jobs.status = 'dispatched' AND jobs.acked_at IS NULL
+                     THEN NULL ELSE jobs.device_id END`,
+  dispatchedAt: sql`CASE WHEN jobs.status = 'dispatched' AND jobs.acked_at IS NULL
+                         THEN NULL ELSE jobs.dispatched_at END`,
+} as const;
+
 export type ClaimResult =
   | {
       ok: true;
@@ -24,7 +37,10 @@ export type ClaimResult =
       issueKey: string | null;
       prepared: PreparedJob;
     }
-  | { ok: false; reason: 'not_found' | 'already_held' | 'issue_busy' | 'budget_exhausted' };
+  | {
+      ok: false;
+      reason: 'not_found' | 'already_held' | 'issue_busy' | 'budget_exhausted' | 'hold_lost';
+    };
 
 /**
  * Claim one queued job for `sessionId` on `deviceId`.
@@ -64,12 +80,13 @@ export async function claimJobForMaster(args: {
     const row = held[0];
     // cm:guard name the refusal the master can ACT on. `issue_busy` means come back for this job later; `already_held` means another master has it and this one never will. Collapsing them into one reason is how a master learns to treat both as "pick something else" and quietly stops working an issue nothing is wrong with.
     if (!row) {
+      // cm:guard do NOT filter this diagnosis to `status = 'queued'`. The claim stamps a job `dispatched`, so the commonest reason to land here is that another master already took it — and a queued-only lookup finds nothing and answers `not_found`, telling a master the job does not exist when it is running one box over.
       const diag = (await tx.execute(sql`
-        SELECT j.held_by IS NOT NULL AS taken,
+        SELECT j.held_by IS NOT NULL OR j.status <> 'queued' AS taken,
                EXISTS (SELECT 1 FROM jobs o
                        WHERE o.issue_id = j.issue_id AND o.id <> j.id
                          AND o.status IN ('dispatched','running','held')) AS busy
-        FROM jobs j WHERE j.id = ${args.jobId} AND j.status = 'queued' LIMIT 1
+        FROM jobs j WHERE j.id = ${args.jobId} LIMIT 1
       `)) as unknown as Array<Record<string, unknown>>;
       const d = diag[0];
       if (!d) return { kind: 'not_found' } as const;
@@ -133,6 +150,26 @@ export async function claimJobForMaster(args: {
     throw err;
   }
 
+  // cm:guard THE HANDOVER, and it must be all four columns. The runner's own routes gate on `jobs.device_id` (lifecycle-routes, events-routes, turn-verdict-routes all 403 without it) and ack additionally requires `status IN ('dispatched','running')`, so a claim that stamps neither starts a process core will not talk to: measured live 2026-09-05, two jobs ran on the right repos and every ack and event came back 403. The old `claimRunnerSlot` stamped exactly these four; the pool path owes the same.
+  // cm:guard stamp AFTER preparation, never before. A preparation that throws releases the hold and the job must be plain `queued` again — set the status first and that same failure leaves a `dispatched` job with no process, which is the orphan shape the loop monitor exists to chase.
+  const stamped = await db
+    .update(jobs)
+    .set({
+      status: 'dispatched',
+      deviceId: args.deviceId,
+      runnerId: prepared.runnerId,
+      dispatchedAt: new Date(),
+    })
+    .where(
+      and(eq(jobs.id, claimed.job.id), eq(jobs.status, 'queued'), eq(jobs.heldBy, args.sessionId)),
+    )
+    .returning({ id: jobs.id });
+  // cm:guard a lost hold here means the reaper took the job back mid-preparation. Refuse rather than stamping anyway: another master may already hold it, and two boxes stamped onto one job is the state nothing downstream can untangle.
+  if (!stamped.length) {
+    await releaseJobFromMaster({ jobId: claimed.job.id, sessionId: args.sessionId });
+    return { ok: false, reason: 'hold_lost' };
+  }
+
   return {
     ok: true,
     jobId: claimed.job.id,
@@ -143,14 +180,14 @@ export async function claimJobForMaster(args: {
 }
 
 /** Give a held job back to the pool. */
-// cm:guard release must clear the hold WITHOUT touching `status` — the job goes back to being claimable, not back to being retried. A release that also reset status would make "I changed my mind about the order" indistinguishable from "this attempt failed".
+// cm:guard release NEVER makes a job look failed — it goes back to being claimable, not back to being retried, so `attempts` and the failure columns stay untouched. What it does undo is the dispatch stamp, and only while `acked_at IS NULL`: an unacked `dispatched` job whose master let go has no process behind it, and leaving that status is precisely the orphan a released job must not become. Once the runner has acked, the process outlives the master and only the hold is dropped.
 export async function releaseJobFromMaster(args: {
   jobId: string;
   sessionId: string;
 }): Promise<boolean> {
   const rows = await db
     .update(jobs)
-    .set({ heldBy: null, heldAt: null })
+    .set({ heldBy: null, heldAt: null, ...UNSTAMP })
     .where(and(eq(jobs.id, args.jobId), eq(jobs.heldBy, args.sessionId)))
     .returning({ id: jobs.id });
   return rows.length > 0;
@@ -163,11 +200,12 @@ export async function releaseJobFromMaster(args: {
  * the process outlives the master that started it, and killing it would
  * throw away a diff no one asked to discard.
  */
+// cm:edge lockstep -> packages/core/src/devices/master-reaper.ts — the third path that drops a hold, and it unwinds the same three columns under the same `acked_at IS NULL` test. A path that clears the hold but leaves the stamp produces a job no pool offers and no process is running.
 // cm:guard THE load-bearing link of the whole design. Without it a master that dies at 3am leaves its jobs unclaimable forever, and nothing reports why — the exact silent wedge `VISION: state-never-lies` calls a kernel bug. It is called from the runner when the local socket drops and from the session reaper when the heartbeat stops; both paths must stay, because a box that loses power never drops a socket.
 export async function releaseAllHeldBySession(sessionId: string): Promise<number> {
   const rows = await db
     .update(jobs)
-    .set({ heldBy: null, heldAt: null })
+    .set({ heldBy: null, heldAt: null, ...UNSTAMP })
     .where(eq(jobs.heldBy, sessionId))
     .returning({ id: jobs.id });
   return rows.length;
