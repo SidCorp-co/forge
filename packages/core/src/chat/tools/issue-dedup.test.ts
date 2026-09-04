@@ -68,6 +68,25 @@ describe('findDuplicateIssue', () => {
     });
   });
 
+  it('flags a repeat whose title clears the threshold even though its description is worded differently', async () => {
+    const db = fakeDb([
+      {
+        id: 'iss-6',
+        issSeq: 6,
+        title: '[Bug] Login page blank screen after OAuth redirect on Safari 17',
+        description:
+          'Problem: on Safari 17, after completing the OAuth redirect the storefront login page renders a blank white screen. Expected the signed-in home page.',
+      },
+    ]);
+    const match = await findDuplicateIssue(db, {
+      projectId: 'proj-1',
+      title: 'Safari 17: login page blank after OAuth redirect',
+      description:
+        'Bug report from chat: reproduces every attempt; user lands on an empty page once the identity provider sends them back.',
+    });
+    expect(match?.issSeq).toBe(6);
+  });
+
   it('returns null when nothing clears the threshold', async () => {
     const db = fakeDb([
       { id: 'iss-1', issSeq: 61, title: 'Add dark mode toggle', description: 'n/a' },
