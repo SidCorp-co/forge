@@ -6,7 +6,7 @@
 // issues run at once across the runner pool (core `dispatch-gates.ts`
 // resolveProjectCap → the picker's L3 running_ids gate). Default 1 keeps the
 // serial-per-project behaviour; raise it to parallelize INDEPENDENT issues
-// (dependent ones stay serialized by the blocks/decomposes gates regardless).
+// (dependent ones stay serialized by the blocks gate regardless).
 //
 // Save-island contract mirrors merge-states-section.tsx: take the full fetched
 // config, edit only this slice, spread `...config` so sibling keys survive the
@@ -64,9 +64,8 @@ export function ConcurrencySection({
         default (<strong>1</strong>) processes issues serially. Raising it fans{" "}
         <strong>independent</strong> issues onto separate runners in parallel —
         dependent issues (linked by{" "}
-        <code className="font-mono text-[12px]">blocks</code>/
-        <code className="font-mono text-[12px]">decomposes</code>) stay
-        serialized regardless. Each runner still handles one job at a time.
+        <code className="font-mono text-[12px]">blocks</code>) stay serialized
+        regardless. Each runner still handles one job at a time.
       </p>
 
       <div className="flex w-64 flex-col gap-1">

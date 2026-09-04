@@ -26,7 +26,6 @@ export type PipelineWaitingReason =
   | 'retry_cooldown'
   | 'stale_trigger'
   | 'waiting_on_dep'
-  | 'waiting_on_decomp_children'
   | 'project_full'
   | 'runner_stale'
   | 'runner_full';

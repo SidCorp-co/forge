@@ -282,7 +282,7 @@ export interface DepCounts {
  * Dependency badge counts for an issue. Edge `kind` encodes "from <verb> to":
  * - `blocks`: for issue `id` it is BLOCKED-BY each incoming `blocks` edge and
  *   BLOCKS each outgoing one.
- * - `decomposes` (system-owned, core `decompose.ts`): the edge runs
+ * - `decomposes` (a grouping label, no lifecycle): the edge runs
  *   parent→child, so an OUTGOING `decomposes` means `id` is the epic and the
  *   other endpoint a subtask; an INCOMING one means `id` is a subtask of a
  *   parent epic. (Legacy `parent` kind is treated the same, defensively.)
@@ -663,9 +663,7 @@ export function deriveBlockerState(
 	const gate = waitingOn ? gateView(waitingOn) : null;
 	if (waitingOn && gate) {
 		const copy = { reason: gate.detail, who: gate.who };
-		const isDep =
-			waitingOn.reason === "waiting_on_dep" ||
-			waitingOn.reason === "waiting_on_decomp_children";
+		const isDep = waitingOn.reason === "waiting_on_dep";
 
 		// Closed-but-unmerged blocker: waiting will NEVER resolve this — an
 		// operator must decide (mark_merged if the code is actually in, or

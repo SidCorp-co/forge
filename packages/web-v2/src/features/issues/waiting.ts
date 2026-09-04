@@ -74,10 +74,6 @@ export const WAITING_REASON_COPY: Record<
 			"Blocked by a dependency that hasn't merged to the base branch yet.",
 		who: "Finish (and merge) the blocking issue first.",
 	},
-	waiting_on_decomp_children: {
-		reason: "Waiting for its decomposed child issues to merge.",
-		who: "The child issues must land on the base branch first.",
-	},
 	project_full: {
 		reason: "The project's concurrency cap is reached.",
 		who: "No action — dispatches when a slot frees.",
@@ -99,7 +95,6 @@ export const WAITING_REASON_SHORT: Record<WaitingReason, string> = {
 	retry_cooldown: "Retry cooldown",
 	stale_trigger: "Step superseded",
 	waiting_on_dep: "Blocked by dep",
-	waiting_on_decomp_children: "Waiting on children",
 	project_full: "Project at cap",
 	runner_stale: "No runner online",
 	runner_full: "Runners at capacity",
@@ -134,7 +129,6 @@ const GATE_NEEDS_ACTION: Record<Exclude<WaitingReason, "job_held">, boolean> = {
 	retry_cooldown: false,
 	stale_trigger: false,
 	waiting_on_dep: true,
-	waiting_on_decomp_children: true,
 	project_full: false,
 	runner_stale: true,
 	runner_full: false,

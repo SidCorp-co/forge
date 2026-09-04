@@ -57,7 +57,7 @@ flowchart LR
 - **A park no dispatcher picks up is not representable.**
   `core/src/issues/autonomous-park.ts` rewrites at write time to the only two statuses the driver
   reads: `reopen` → `open` for **any** actor, and `waiting` → `needs_info` for an **agent** only. A
-  human's `waiting`, their `on_hold`, and the decompose review gate all pass through. A project
+  human's `waiting` and their `on_hold` pass through. A project
   whose config cannot be parsed is untouched — that is broken, not a second lane.
 
 ## Boundaries
