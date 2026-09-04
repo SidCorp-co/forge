@@ -7,13 +7,14 @@
  * NO DB writes here; the caller owns transport and persistence.
  */
 
+import type { CallToolResult } from '../mcp/tool-result.js';
 import type {
   ChatMessage,
   ChatProvider,
   ChatStreamEvent,
   ChatStreamUsage,
 } from './providers/types.js';
-import { type ChatToolset, toolResultText } from './tools/mcp-adapter.js';
+import { type ChatToolset, toolError, toolResultText } from './tools/mcp-adapter.js';
 
 // cm:guard 8 (was 5, ISS-609 follow-up) because investigating an external hub takes multi-hop chains — issue-search retries, schema introspection, query, act — and it counts PROVIDER rounds, not tool rounds: the final round MUST be invoked with NO tools (so 7 of the 8 carry them) — a model offered them on the round the loop will not iterate past answers with tool calls and no prose, and finalizing on THAT round returns '' as a `done` turn: seven round-trips of tool work billed, a chat_logs row that reads like a healthy answer. What the cap buys is that the eighth round is SPENT on an answer instead of being discarded; it does NOT make a last-round tool call visible — that round carries no schemas and a call invented there is dropped, which is the rule of the guard on the tool_call branch below, not this one's to restate
 export const MAX_TOOL_ITERATIONS = 8;
@@ -61,6 +62,60 @@ interface CollectedToolCall {
   id: string;
   name: string;
   arguments: string;
+}
+
+interface ExecutedCall {
+  call: CollectedToolCall;
+  record: ToolCallRecord;
+  /** What the model reads back — the flattened result. */
+  text: string;
+}
+
+/** A toolset that throws (none do by contract, every implementer returns `toolError`) still yields one result per call, so `Promise.all` over a round cannot drop the other calls' results or turn the turn into a terminal `error`. */
+async function safeExecute(toolset: ChatToolset, tc: CollectedToolCall): Promise<CallToolResult> {
+  try {
+    return await toolset.execute(tc.name, tc.arguments);
+  } catch (err) {
+    return toolError(err instanceof Error ? err.message : String(err));
+  }
+}
+
+// cm:guard calls that share a tool NAME run sequentially in model order and only distinct names run concurrently — `tools/registry.ts:guardIssueWritesDeduped` is a SELECT-then-INSERT with no uniqueness constraint behind it, so two concurrent `forge_issues create` would both pass `findDuplicateIssue`, and the RC history toolset's per-turn call counter is the same shape; a toolset that needed serial execution across DIFFERENT names would need a flag here, not a wider lock
+async function executeToolRound(
+  toolset: ChatToolset,
+  calls: CollectedToolCall[],
+  round: number,
+): Promise<ExecutedCall[]> {
+  const out: ExecutedCall[] = [];
+  const byName = new Map<string, number[]>();
+  calls.forEach((tc, i) => {
+    const group = byName.get(tc.name);
+    if (group) group.push(i);
+    else byName.set(tc.name, [i]);
+  });
+  await Promise.all(
+    [...byName.values()].map(async (indices) => {
+      for (const i of indices) {
+        const call = calls[i] as CollectedToolCall;
+        const startedAt = Date.now();
+        const result = await safeExecute(toolset, call);
+        const text = toolResultText(result);
+        out[i] = {
+          call,
+          text,
+          record: {
+            name: call.name,
+            arguments: call.arguments,
+            round,
+            isError: result.isError === true,
+            durationMs: Date.now() - startedAt,
+            resultPreview: text.slice(0, RESULT_PREVIEW_CHARS),
+          },
+        };
+      }
+    }),
+  );
+  return out;
 }
 
 function addUsage(into: ChatStreamUsage, from: ChatStreamUsage): void {
@@ -148,20 +203,15 @@ export async function* runTurnEvents(
         })),
       });
 
-      for (const tc of turnToolCalls) {
-        const startedAt = Date.now();
-        const result = await offered.execute(tc.name, tc.arguments);
-        const text = toolResultText(result);
-        toolCalls.push({
-          name: tc.name,
-          arguments: tc.arguments,
-          round: iterations,
-          isError: result.isError === true,
-          durationMs: Date.now() - startedAt,
-          resultPreview: text.slice(0, RESULT_PREVIEW_CHARS),
-        });
-        yield { type: 'tool_result', id: tc.id, result: text };
-        messages.push({ role: 'tool', tool_call_id: tc.id, content: text });
+      // cm:why results are yielded and fed back in MODEL order once the whole round has completed — every tool_call_id gets exactly one reply and the SSE pairing stays deterministic whatever finished first
+      for (const { call, record, text } of await executeToolRound(
+        offered,
+        turnToolCalls,
+        iterations,
+      )) {
+        toolCalls.push(record);
+        yield { type: 'tool_result', id: call.id, result: text };
+        messages.push({ role: 'tool', tool_call_id: call.id, content: text });
       }
     }
   } catch (err) {
