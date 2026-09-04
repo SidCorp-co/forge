@@ -70,6 +70,10 @@ const EnvSchema = z.object({
   LITELLM_API_URL: z.url().optional(),
   LITELLM_API_KEY: z.string().min(1).optional(),
   LITELLM_MODEL: z.string().min(1).default('gpt-4o-mini'),
+  LITELLM_FAST_MODEL: z.string().min(1).optional(),
+  LITELLM_FAST_REASONING_EFFORT: z
+    .enum(['none', 'minimal', 'low', 'medium', 'high'])
+    .default('none'),
   CHAT_CONTEXT_BUDGET_TOKENS: z.coerce.number().int().positive().default(80_000),
   ANTHROPIC_API_URL: z.url().default('https://api.anthropic.com'),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),

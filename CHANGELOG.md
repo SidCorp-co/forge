@@ -10,6 +10,13 @@
 
 ### Added
 
+- `LITELLM_FAST_MODEL` and `LITELLM_FAST_REASONING_EFFORT`: the system-job fast model (auto-titles,
+  memory extraction and consolidation) can run a different model than the chat default on the same
+  proxy, and its `reasoning_effort` is configurable (default `none`, for the reason recorded on
+  `memory/llm.ts`). Measured 2026-09-04: `cx/gpt-5.6-luna` at `low` returned a title inside the
+  24-token budget. The embeddings client joins the shared URL convention too — `EMBEDDINGS_BASE_URL`
+  is the host, with or without a trailing `/v1`.
+
 - An Anthropic Messages-wire chat adapter, `chat/providers/anthropic.ts`, registered as
   `anthropic` when `ANTHROPIC_API_KEY` is set (`ANTHROPIC_API_URL` defaults to `api.anthropic.com`
   and takes any Anthropic-format proxy; `ANTHROPIC_MODEL`, `ANTHROPIC_MAX_TOKENS`). It sits behind
