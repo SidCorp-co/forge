@@ -1,6 +1,6 @@
 /**
  * ISS-162 — Stateless Gates picker tests. The picker evaluates L1/L2/L3/L4/L5
- * inline via SQL. ISS-198 added L4 (runner_load CTE) and L5
+ * inline via SQL. ISS-198 added L4 (device_load CTE) and L5
  * (fresh_capable_runners' last_seen_at predicate) to the same query; the
  * `checkLayer4RunnerFull` + `checkLayer5RunnerHeartbeat` helpers remain for
  * telemetry parity.
@@ -67,10 +67,9 @@ function collectSqlFragments(sqlArg: unknown): string {
 }
 
 function selectChainOnce(rows: unknown[]): void {
+  const where = () => ({ limit: async () => rows });
   dbSelect.mockImplementationOnce(() => ({
-    from: () => ({
-      where: () => ({ limit: async () => rows }),
-    }),
+    from: () => ({ where, innerJoin: () => ({ where }) }),
   }));
 }
 
@@ -100,10 +99,27 @@ function mockAssertChain(opts: {
 }
 
 describe('checkLayer4RunnerFull', () => {
+  // cm:guard the row this queues is a runner JOINED to its device, and `maxConcurrent`/`agentVersion` come from the DEVICE. The cap is the box's, so a fixture that keeps supplying it per binding is asserting a unit the gate no longer uses.
   function runnerCapsOnce(
-    value: { type: string; capabilities: Record<string, unknown> } | null,
+    value: {
+      type: string;
+      capabilities: Record<string, unknown>;
+      maxConcurrent?: number;
+      agentVersion?: string | null;
+    } | null,
   ): void {
-    selectChainOnce(value ? [value] : []);
+    selectChainOnce(
+      value
+        ? [
+            {
+              type: value.type,
+              deviceId: 'dev-1',
+              maxConcurrent: value.maxConcurrent ?? 1,
+              agentVersion: value.agentVersion ?? '0.10.5',
+            },
+          ]
+        : [],
+    );
   }
 
   it('passes when runner row vanished (race)', async () => {
@@ -128,6 +144,26 @@ describe('checkLayer4RunnerFull', () => {
 
   it('ignores a per-runner capabilities.maxConcurrent override', async () => {
     runnerCapsOnce({ type: 'claude-code', capabilities: { maxConcurrent: 9 } });
+    dbExecute.mockResolvedValueOnce([{ count: '1' }]);
+    const r = await checkLayer4RunnerFull('r1');
+    expect(r).toMatchObject({ pass: false, reason: 'runner_full' });
+  });
+
+  it('takes the cap from the DEVICE, so a box set to 3 is not full at 1', async () => {
+    runnerCapsOnce({ type: 'claude-code', capabilities: {}, maxConcurrent: 3 });
+    dbExecute.mockResolvedValueOnce([{ count: '1' }]);
+    const r = await checkLayer4RunnerFull('r1');
+    expect(r.pass).toBe(true);
+  });
+
+  // cm:guard the floor is enforced HERE too, not only at the claim: a picker that offered work this gate would refuse spins the job queued forever with no gate reason.
+  it('holds a box at 1 when its runner predates the repo-root lock', async () => {
+    runnerCapsOnce({
+      type: 'claude-code',
+      capabilities: {},
+      maxConcurrent: 3,
+      agentVersion: '0.10.4',
+    });
     dbExecute.mockResolvedValueOnce([{ count: '1' }]);
     const r = await checkLayer4RunnerFull('r1');
     expect(r).toMatchObject({ pass: false, reason: 'runner_full' });
@@ -330,27 +366,24 @@ describe('pickNextDispatchableJobForProject', () => {
     expect(stripped).not.toMatch(/seconds/i);
   });
 
-  // ISS-198 — L4 (runner_load) + L5 (fresh_capable_runners) inline.
-  it('SQL inlines L4 runner_load CTE and L5 fresh_capable_runners heartbeat filter', async () => {
+  it('SQL inlines L4 device_load CTE and L5 fresh_capable_runners heartbeat filter', async () => {
     mockProjectAgentConfigOnce(null);
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
 
-    expect(text).toMatch(/runner_load/);
+    expect(text).toMatch(/device_load/);
     expect(text).toMatch(/fresh_capable_runners/);
     expect(text).toMatch(/r\.last_seen_at\s*>\s*now\(\)/);
     expect(text).toMatch(/fcr\.in_flight\s*<\s*fcr\.cap/);
   });
 
-  // ISS-258 — runner_load CTE must exclude jobs whose parent pipeline_run
-  // is terminal so an orphan does not burn the runner's cap slot.
-  it('runner_load CTE filters out terminal-parent jobs (orphan defence)', async () => {
+  it('device_load CTE filters out terminal-parent jobs (orphan defence)', async () => {
     mockProjectAgentConfigOnce(null);
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
-    const cte = text.match(/runner_load\s+AS\s*\(([\s\S]*?)\)\s*,/);
+    const cte = text.match(/device_load\s+AS\s*\(([\s\S]*?)\)\s*,/);
     expect(cte).not.toBeNull();
     const body = cte?.[1] ?? '';
     expect(body).toMatch(/LEFT\s+JOIN\s+pipeline_runs\s+pr\s+ON\s+pr\.id\s*=\s*j\.pipeline_run_id/);
@@ -388,12 +421,16 @@ describe('pickNextDispatchableJobForProject', () => {
     expect(cteMatch?.[1] ?? '').not.toMatch(/agent_sessions/);
   });
 
-  it('fresh_capable_runners CTE uses cap=1, with no per-runner override', async () => {
+  // cm:guard the CTE must take cap and in-flight from the DEVICE. A `1 AS cap` literal here, or a load keyed on `runner_id`, means the picker is answering about a binding while the locked claim answers about the box — the picker then offers work the claim refuses, every tick, with no gate reason.
+  it('fresh_capable_runners CTE takes cap and load from the device, not the binding', async () => {
     mockProjectAgentConfigOnce(null);
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
-    expect(text).toMatch(/fresh_capable_runners\s+AS\s*\([\s\S]+1\s+AS\s+cap/);
+    expect(text).toMatch(/fresh_capable_runners\s+AS\s*\([\s\S]+max_concurrent[\s\S]+AS\s+cap/);
+    expect(text).toMatch(/JOIN\s+devices\s+d\s+ON\s+d\.id\s*=\s*r\.device_id/);
+    expect(text).toMatch(/device_load\s+dl\s+ON\s+dl\.device_id\s*=\s*r\.device_id/);
+    expect(text).not.toMatch(/1\s+AS\s+cap/);
     expect(text).not.toMatch(/capabilities->>\s*'maxConcurrent'/);
     expect(text).not.toMatch(/CASE\s+r\.type/);
   });
@@ -416,8 +453,8 @@ describe('pickNextDispatchableJobForProject', () => {
 });
 
 describe('the `held` asymmetry (RFC 0002)', () => {
-  // cm:guard assert all three arms together, never one alone — `held` in `issueBusyJob` only stops a duplicate job for the same issue, while `held` absent from `running_ids` and `runner_load` is the entire reason it may wait indefinitely; add it to either CTE and one held job wedges the whole project, which is the `waiting` park RFC 0002 deletes, moved one axis down
-  it('sits in L1 issue_busy but in NEITHER running_ids NOR runner_load', async () => {
+  // cm:guard assert all three arms together, never one alone — `held` in `issueBusyJob` only stops a duplicate job for the same issue, while `held` absent from `running_ids` and `device_load` is the entire reason it may wait indefinitely; add it to either CTE and one held job wedges the whole project, which is the `waiting` park RFC 0002 deletes, moved one axis down
+  it('sits in L1 issue_busy but in NEITHER running_ids NOR device_load', async () => {
     mockProjectAgentConfigOnce(null);
     dbExecute.mockResolvedValueOnce([]);
     await pickNextDispatchableJobForProject('p1');
@@ -427,18 +464,18 @@ describe('the `held` asymmetry (RFC 0002)', () => {
       /FROM\s+jobs\s+other[\s\S]*?other\.status\s+IN\s*\(([^)]*)\)/,
     )?.[1];
     const runningIds = text.match(/running_ids\s+AS\s*\(([\s\S]*?)\)\s*,/)?.[1];
-    const runnerLoad = text.match(/runner_load\s+AS\s*\(([\s\S]*?)\)\s*,/)?.[1];
+    const deviceLoad = text.match(/device_load\s+AS\s*\(([\s\S]*?)\)\s*,/)?.[1];
 
     // cm:guard keep these five positive assertions — a regex that stopped matching leaves the slice `undefined`, and every `not.toContain` below then passes on nothing, so the test would go green precisely when the SQL it guards was rewritten
     expect(issueBusy).toBeTruthy();
     expect(runningIds).toBeTruthy();
-    expect(runnerLoad).toBeTruthy();
+    expect(deviceLoad).toBeTruthy();
     expect(runningIds).toContain("'dispatched'");
-    expect(runnerLoad).toContain("'dispatched'");
+    expect(deviceLoad).toContain("'dispatched'");
 
     expect(issueBusy).toContain("'held'");
     expect(runningIds).not.toContain("'held'");
-    expect(runnerLoad).not.toContain("'held'");
+    expect(deviceLoad).not.toContain("'held'");
   });
 });
 
@@ -648,7 +685,7 @@ describe('assertDispatchable', () => {
       /running_ids\s+AS\s*\(/,
       /SELECT\s+DISTINCT\s+issue_id::text\s+AS\s+issue_id\s+FROM\s+jobs/,
       /retry_after_at\s+IS\s+NOT\s+NULL\s+AND\s+retry_after_at\s*>\s*now\(\)/,
-      /runner_load\s+AS\s*\(/,
+      /device_load\s+AS\s*\(/,
       /fresh_capable_runners\s+AS\s*\(/,
       /r\.last_seen_at\s*>\s*now\(\)/,
     ];

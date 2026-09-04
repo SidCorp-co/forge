@@ -10,6 +10,7 @@
  */
 
 import { beforeEach, expect, it, vi } from 'vitest';
+import { makeFakeDevice } from '../fake-device.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -109,24 +110,7 @@ const BLOCKED_ID = '88888888-8888-4888-8888-888888888888';
 const ORG_ID = '99999999-9999-4999-8999-999999999999';
 const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
 
-const fakeDevice = {
-  id: '44444444-4444-4444-8444-444444444444',
-  ownerId: OWNER_ID,
-  name: 'fake',
-  platform: 'linux' as const,
-  agentVersion: null,
-  machineId: null,
-  gitCredentialRef: null,
-  maxConcurrent: 1,
-  tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
-  tokenPrefix: 'fake0001',
-  disabledAt: null,
-  status: 'online' as const,
-  lastSeenAt: null,
-  pairedAt: new Date(),
-  capabilities: null,
-  createdAt: new Date(),
-};
+const fakeDevice = makeFakeDevice('44444444-4444-4444-8444-444444444444', OWNER_ID);
 
 const baseIssueRow = {
   id: ISSUE_ID,

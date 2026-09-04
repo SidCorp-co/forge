@@ -17,28 +17,14 @@ vi.mock('../db/client.js', () => ({
   db: {} as unknown,
 }));
 
-import type { Device } from '../auth/deviceToken.js';
+import { makeFakeDevice } from './fake-device.fixture.js';
 import { REGISTERED_TOOLS } from './registered-tools.js';
 import { createMcpServer } from './server.js';
 
-const fakeDevice: Device = {
-  id: '00000000-0000-4000-8000-000000000001',
-  ownerId: '00000000-0000-4000-8000-000000000002',
-  name: 'fake',
-  platform: 'linux',
-  agentVersion: null,
-  tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
-  tokenPrefix: 'fake0001',
-  disabledAt: null,
-  status: 'online',
-  lastSeenAt: null,
-  pairedAt: new Date(),
-  capabilities: null,
-  machineId: null,
-  gitCredentialRef: null,
-  maxConcurrent: 1,
-  createdAt: new Date(),
-};
+const fakeDevice = makeFakeDevice(
+  '00000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+);
 
 const humanPat = (tokenId: string) =>
   ({

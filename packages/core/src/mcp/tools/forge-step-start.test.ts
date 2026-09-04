@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeFakeDevice } from '../fake-device.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -84,24 +85,7 @@ const ISSUE_ID = '22222222-2222-4222-8222-222222222222';
 const OWNER_ID = '44444444-4444-4444-8444-444444444444';
 const DEVICE_ID = '55555555-5555-4555-8555-555555555555';
 
-const fakeDevice = {
-  id: DEVICE_ID,
-  ownerId: OWNER_ID,
-  name: 'fake',
-  platform: 'linux' as const,
-  agentVersion: null,
-  machineId: null,
-  gitCredentialRef: null,
-  maxConcurrent: 1,
-  tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
-  tokenPrefix: 'fake0001',
-  disabledAt: null,
-  status: 'online' as const,
-  lastSeenAt: null,
-  pairedAt: new Date(),
-  capabilities: null,
-  createdAt: new Date(),
-};
+const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
 
 const ctx = {
   principal: { kind: 'device' as const, device: fakeDevice },

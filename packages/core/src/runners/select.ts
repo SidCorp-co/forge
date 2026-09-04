@@ -1,8 +1,8 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects, type RunnerType, runners } from '../db/schema.js';
-import { RUNNER_CAP_PER_RUNNER } from '../jobs/dispatch-gates.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
+import { deviceCapSql } from './device-cap.js';
 import type { RequiredCapabilities, Runner } from './types.js';
 
 /**
@@ -11,6 +11,7 @@ import type { RequiredCapabilities, Runner } from './types.js';
  * in the enclosing query (works whether the runner row is aliased or not;
  * `devices` has no `device_id` column so the bare ref resolves outward).
  */
+// cm:guard this correlates on a BARE `device_id` so it resolves outward whether or not the caller aliases `runners` — which means NO other column named `device_id` may be in scope where it is used. A join or subquery exposing a second one makes the reference ambiguous and Postgres fails the WHOLE query, which surfaces as "no runner available" for every job on the project rather than as an error anyone attributes to this line. Alias such keys (`AS load_device_id`), do not qualify this one.
 const NOT_DISABLED_DEVICE = sql`AND NOT EXISTS (
   SELECT 1 FROM devices d WHERE d.id = device_id AND d.disabled_at IS NOT NULL
 )`;
@@ -348,12 +349,7 @@ async function pickRunner(
     .limit(1);
   const defaultDeviceId = project?.defaultDeviceId ?? null;
 
-  // cap>1 first dispatch — LOAD-AWARE pool fan-out. Pick the least-loaded runner
-  // that still has a FREE slot (in_flight < RUNNER_CAP_PER_RUNNER), preferring
-  // the primary on ties so a usually-serial project keeps its warm primary and
-  // only spills under load. Unlike the legacy primary step this NEVER returns a
-  // full runner, so two independent issues land on two different hosts instead
-  // of piling onto the primary. Retries (skipPrimary) keep the round-robin.
+  // cm:guard this arm must NEVER return a box already at its cap — unlike the legacy primary step, which returns the primary regardless. It is what makes two independent issues land on two hosts instead of piling onto one, and the tie-break toward the primary is what keeps a usually-serial project on its warm checkout until it actually has to spill.
   if (!opts.skipPrimary && opts.projectCap > 1) {
     return pickLeastLoadedFreeRunner(projectId, required, livenessSeconds, {
       excludeDeviceIds: opts.excludeDeviceIds,
@@ -501,8 +497,8 @@ async function findStandby(
 
 /**
  * cap>1 LOAD-AWARE pick: the online + fresh + capable runner with a FREE slot
- * (in-flight < {@link RUNNER_CAP_PER_RUNNER}, orphan jobs under a terminal
- * pipeline_run excluded — mirrors the dispatch-gates `runner_load` CTE), ordered
+ * (in-flight < the device cap, orphan jobs under a terminal
+ * pipeline_run excluded — mirrors the dispatch-gates `device_load` CTE), ordered
  * primary-first (`preferDeviceId`) then least-loaded then freshest then id.
  * Deterministic (no RANDOM). Returns null when EVERY capable runner is full →
  * the job stays queued and a later tick (freed slot) re-picks it. This is the
@@ -533,16 +529,18 @@ async function pickLeastLoadedFreeRunner(
              r.limit_reason, r.rate_limited_until, r.limit_detail,
              r.quarantined_until, r.quarantine_reason
       FROM runners r
+      JOIN devices dv ON dv.id = r.device_id
       LEFT JOIN (
-        -- per-runner in-flight, orphan-aware (parent pipeline_run non-terminal)
-        SELECT j.runner_id, COUNT(*)::int AS in_flight
+        -- per-DEVICE in-flight, orphan-aware (parent pipeline_run non-terminal)
+        -- in-flight per DEVICE, orphan-aware; key aliased, see the guard above
+        SELECT j.device_id AS load_device_id, COUNT(*)::int AS in_flight
         FROM jobs j
         LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
-        WHERE j.runner_id IS NOT NULL
+        WHERE j.device_id IS NOT NULL
           AND j.status IN ('dispatched','running')
           AND (pr.id IS NULL OR pr.status IN ('running','paused'))
-        GROUP BY j.runner_id
-      ) rl ON rl.runner_id = r.id
+        GROUP BY j.device_id
+      ) rl ON rl.load_device_id = r.device_id
       WHERE r.project_id = ${projectId}
         AND r.status = 'online'
         AND r.capabilities @> ${required}::jsonb
@@ -552,7 +550,7 @@ async function pickLeastLoadedFreeRunner(
         ${NOT_QUARANTINED}
         ${NOT_AUTH_LIMITED}
         ${WORKSPACE_READY}
-        AND COALESCE(rl.in_flight, 0) < ${RUNNER_CAP_PER_RUNNER}
+        AND COALESCE(rl.in_flight, 0) < ${deviceCapSql('dv')}
         ${NOT_DISABLED_DEVICE}
         ${poolClause(opts.allowDeviceIds, sql`r.device_id`)}
         ${retryExclusionClause}

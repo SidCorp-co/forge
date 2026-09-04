@@ -7,7 +7,7 @@
  *   - cap=1 is byte-for-byte the legacy primary-pinned path (busy primary still
  *     returned).
  *   - claimRunnerSlot is the authoritative, race-safe per-runner cap gate: it
- *     can NEVER let a runner exceed RUNNER_CAP_PER_RUNNER, even under concurrent
+ *     can NEVER let a BOX exceed its device cap, even under concurrent
  *     dispatch of two jobs onto the same free runner.
  */
 import { randomUUID } from 'node:crypto';
@@ -98,8 +98,9 @@ describe('load-balanced dispatch E2E', () => {
       VALUES (${runId}, ${projectId}, ${issueId}, 'issue', 'running', now())`);
     const jobId = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, issue_id, type, status, runner_id, pipeline_run_id, payload, queued_at, dispatched_at, created_by)
-      VALUES (${jobId}, ${projectId}, ${issueId}, 'code', 'running', ${runnerId}, ${runId},
+      INSERT INTO jobs (id, project_id, issue_id, type, status, runner_id, device_id, pipeline_run_id, payload, queued_at, dispatched_at, created_by)
+      VALUES (${jobId}, ${projectId}, ${issueId}, 'code', 'running', ${runnerId},
+        (SELECT device_id FROM runners WHERE id = ${runnerId}), ${runId},
         '{}'::jsonb, now(), now(), (SELECT created_by FROM projects WHERE id = ${projectId}))`);
     return jobId;
   }
@@ -219,7 +220,6 @@ describe('load-balanced dispatch E2E', () => {
       const res = await mods.claimRunnerSlot({
         jobId: j,
         runnerId: r,
-        deviceId: null,
         dispatchedAt: new Date(),
       });
       expect(res).toBe('claimed');
@@ -234,7 +234,6 @@ describe('load-balanced dispatch E2E', () => {
       const res = await mods.claimRunnerSlot({
         jobId: j,
         runnerId: r,
-        deviceId: null,
         dispatchedAt: new Date(),
       });
       expect(res).toBe('runner_full');
@@ -249,7 +248,6 @@ describe('load-balanced dispatch E2E', () => {
       const res = await mods.claimRunnerSlot({
         jobId: j,
         runnerId: r2,
-        deviceId: null,
         dispatchedAt: new Date(),
       });
       expect(res).toBe('lost');
@@ -261,8 +259,8 @@ describe('load-balanced dispatch E2E', () => {
       const j1 = await queuedJob(p.id);
       const j2 = await queuedJob(p.id);
       const [a, b] = await Promise.all([
-        mods.claimRunnerSlot({ jobId: j1, runnerId: r, deviceId: null, dispatchedAt: new Date() }),
-        mods.claimRunnerSlot({ jobId: j2, runnerId: r, deviceId: null, dispatchedAt: new Date() }),
+        mods.claimRunnerSlot({ jobId: j1, runnerId: r, dispatchedAt: new Date() }),
+        mods.claimRunnerSlot({ jobId: j2, runnerId: r, dispatchedAt: new Date() }),
       ]);
       const outcomes = [a, b].sort();
       expect(outcomes).toEqual(['claimed', 'runner_full']);

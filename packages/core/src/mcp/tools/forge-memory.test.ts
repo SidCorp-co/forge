@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EmbeddingUnavailableError } from '../../embeddings/index.js';
+import { makeFakeDevice } from '../fake-device.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -65,24 +66,7 @@ const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const DEVICE_ID = '33333333-3333-4333-8333-333333333333';
 
-const fakeDevice = {
-  id: DEVICE_ID,
-  ownerId: OWNER_ID,
-  name: 'fake',
-  platform: 'linux' as const,
-  agentVersion: null,
-  machineId: null,
-  gitCredentialRef: null,
-  maxConcurrent: 1,
-  tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
-  tokenPrefix: 'fake0001',
-  disabledAt: null,
-  status: 'online' as const,
-  lastSeenAt: null,
-  pairedAt: new Date(),
-  capabilities: null,
-  createdAt: new Date(),
-};
+const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
 
 beforeEach(() => {
   limit.mockReset();

@@ -61,7 +61,6 @@ describe('stale-trigger claim E2E', () => {
     const result = await claimRunnerSlot({
       jobId,
       runnerId,
-      deviceId: device.id,
       dispatchedAt: new Date(),
     });
     const rows = await harness.db.execute<{ status: string; runner_id: string | null }>(sql`

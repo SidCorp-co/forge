@@ -8,33 +8,31 @@
 
 ## [Unreleased]
 
-### Changed
-
-- **`job_events` stops storing the CLI's partial-message frames.** `POST /jobs/:id/events` no
-  longer persists a `stdout` row whose `line.type` is `stream_event`. Measured on forge-beta
-  2026-09-04: the table held 7.29M `stdout` rows — 99.79% of it — and 74.8% of those were
-  `stream_event`, frames `lib/agent-stream-parser.ts` answers `{messages:[]}` for and no other
-  reader in core or web opens. They were stored forever and re-read on every incremental
-  transcript derive, which re-parses the job's whole event history each time it fires.
-
-  The filter is a denylist of that one proven-unread type, never an allowlist: a frame kind the
-  CLI adds next release keeps being stored, because an allowlist would drop it in silence. It
-  applies to persistence ONLY — the ack stamp, the session heartbeat, `runtime_state` and the
-  derive cadence are all still computed from the unfiltered batch, so a fan-out session that emits
-  nothing but deltas for minutes still reads as alive. That separation is the whole reason
-  `--include-partial-messages` is on (ISS-479) and it is asserted directly.
-
-### Fixed
-
-- **The cc-startup signal counts assistant turns again.** `deriveCcStartupSignals` fed
-  `pipeline/failure-classifier.ts` a threshold written as "≤3 assistant messages" while counting
-  every `stdout` ROW. `--include-partial-messages` (ISS-479) had already broken that equivalence —
-  one assistant turn emits six to ten rows — so the immediate-failover class it exists to catch
-  had quietly stopped firing. It now counts `line.type = 'assistant'`, which also makes the signal
-  independent of which frames the change above stores. Proven against real Postgres, since the
-  unit suites mock the query away.
-
 ### Added
+
+- **A box can now be configured to run more than one job at a time.** `devices.max_concurrent`
+  (default 1, CHECK 1..16) is enforced end to end: the picker CTE, `selectRunnerForJob` and the
+  locked claim all read the same cap, and all three count occupancy with `countInFlightForDevice`.
+
+  The unit is the DEVICE throughout, and that is the substance of the change rather than a detail
+  of it. A job consumes one Claude process on one machine, so a box bound to 20 projects at cap 3
+  runs 3 jobs in total, not 3 per project. Pairing a device cap with the old per-binding count
+  would have authorised twenty times the intended concurrency while every gate still read as if it
+  were holding.
+
+  Nothing changes for anyone who does not raise the column, and a box whose runner predates
+  `0.10.5` is held at 1 no matter what the column says — that release is the first with the
+  repo-root lock (`daemon/repo_lock.rs`), without which two jobs `merge --ff-only` the same index.
+  The floor is resolved per runner at dispatch, in SQL and in TypeScript from one constant, because
+  core deploys in one step while the fleet updates on its own clock.
+
+  `claimRunnerSlot` no longer takes a `deviceId` argument: it stamps the device row it just locked.
+  The parameter was a second opinion about the unit being enforced, and a caller passing `null` —
+  harmless while the column was a legacy mirror — let two concurrent claims both succeed on one
+  box. Deleting it turned that into a compile error, and typecheck then named every call site.
+
+  `RUNNER_CAP_PER_RUNNER` is gone. The PM's runner-load report now shows each box's real effective
+  capacity, so two bindings of one machine correctly report the same number.
 
 - **The runner serialises writes to a repo root, so a box can hold more than one job.**
   `daemon/repo_lock.rs` keys one async mutex per repo path. A job takes it before preflight and
@@ -411,6 +409,14 @@
   set is now 59.
 
 ### Fixed
+
+- **The cc-startup signal counts assistant turns again.** `deriveCcStartupSignals` fed
+  `pipeline/failure-classifier.ts` a threshold written as "≤3 assistant messages" while counting
+  every `stdout` ROW. `--include-partial-messages` (ISS-479) had already broken that equivalence —
+  one assistant turn emits six to ten rows — so the immediate-failover class it exists to catch
+  had quietly stopped firing. It now counts `line.type = 'assistant'`, which also makes the signal
+  independent of which frames the change above stores. Proven against real Postgres, since the
+  unit suites mock the query away.
 
 - **Chat send stopped 500'ing on every project.** Migration 0200 dropped `runners.host` when the
   remote runner lane was removed, but the two device picks in `lib/device-pool.ts` are hand-written raw
@@ -1011,6 +1017,20 @@
   parked or blocked — there is still no limit on how many rounds an issue may take. (ISS-878)
 
 ### Changed
+
+- **`job_events` stops storing the CLI's partial-message frames.** `POST /jobs/:id/events` no
+  longer persists a `stdout` row whose `line.type` is `stream_event`. Measured on forge-beta
+  2026-09-04: the table held 7.29M `stdout` rows — 99.79% of it — and 74.8% of those were
+  `stream_event`, frames `lib/agent-stream-parser.ts` answers `{messages:[]}` for and no other
+  reader in core or web opens. They were stored forever and re-read on every incremental
+  transcript derive, which re-parses the job's whole event history each time it fires.
+
+  The filter is a denylist of that one proven-unread type, never an allowlist: a frame kind the
+  CLI adds next release keeps being stored, because an allowlist would drop it in silence. It
+  applies to persistence ONLY — the ack stamp, the session heartbeat, `runtime_state` and the
+  derive cadence are all still computed from the unfiltered batch, so a fan-out session that emits
+  nothing but deltas for minutes still reads as alive. That separation is the whole reason
+  `--include-partial-messages` is on (ISS-479) and it is asserted directly.
 
 - The default PAT rate limit is 600 requests a minute, up from 60. 600 is the number job tokens
   already pinned, six times the measured peak of one busy session. `RATE_LIMIT_PAT_MAX` still

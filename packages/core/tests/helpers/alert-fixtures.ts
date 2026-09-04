@@ -89,6 +89,7 @@ export function alertFixtures(harness: TestDatabase): AlertFixtures {
       return id;
     },
 
+    // cm:guard stamp `device_id` from the runner, as `claimRunnerSlot` does. Occupancy is counted per DEVICE, so a job carrying only `runner_id` fills no slot — A3 then sees a free runner, reports `ok`, and the starvation spec passes while asserting nothing.
     async insertJob(args) {
       const id = randomUUID();
       const dispatchedAt =
@@ -98,10 +99,11 @@ export function alertFixtures(harness: TestDatabase): AlertFixtures {
           ? new Date().toISOString()
           : agoIso(args.queuedAgoMinutes * 60_000);
       await db.execute(sql`
-        INSERT INTO jobs (id, project_id, issue_id, type, status, payload, pipeline_run_id, runner_id, created_by, queued_at, dispatched_at)
+        INSERT INTO jobs (id, project_id, issue_id, type, status, payload, pipeline_run_id, runner_id, device_id, created_by, queued_at, dispatched_at)
         VALUES (
           ${id}, ${args.projectId}, ${args.issueId ?? null}, ${args.type ?? 'code'}, ${args.status},
           ${JSON.stringify(args.payload ?? {})}::jsonb, ${args.runId}, ${args.runnerId ?? null},
+          (SELECT device_id FROM runners WHERE id = ${args.runnerId ?? null}),
           (SELECT created_by FROM projects WHERE id = ${args.projectId}), ${queuedAt}, ${dispatchedAt}
         )
       `);

@@ -85,7 +85,11 @@ mod tests {
         for t in tasks {
             t.await.unwrap();
         }
-        assert_eq!(peak.load(Ordering::SeqCst), 1, "two holders entered at once");
+        assert_eq!(
+            peak.load(Ordering::SeqCst),
+            1,
+            "two holders entered at once"
+        );
     }
 
     // cm:guard the point of keying on the PATH is that unrelated repos stay parallel. A registry that returned one shared mutex would pass the test above and silently serialise the whole box, which is the cap=1 behaviour this exists to remove.

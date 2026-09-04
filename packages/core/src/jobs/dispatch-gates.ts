@@ -22,13 +22,14 @@
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import type { JobType, RunnerType } from '../db/schema.js';
-import { jobs, projects, runners } from '../db/schema.js';
+import { devices, jobs, projects, runners } from '../db/schema.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import {
   RUNNER_CAPABILITIES,
   TRIGGER_STATUS_BY_JOB_TYPE,
   WORKING_STATUS_BY_JOB_TYPE,
 } from '../pipeline/registry.js';
+import { deviceCapSql, effectiveDeviceCap } from '../runners/device-cap.js';
 import { countInFlightForOneRunner } from './in-flight.js';
 
 export type GateSkipReason =
@@ -115,13 +116,6 @@ export async function resolveGateSettings(projectId: string): Promise<{ cap: num
     !Number.isFinite(capN) || capN < 1 ? DEFAULT_MAX_CONCURRENT_ISSUES : Math.min(capN, 20);
   return { cap };
 }
-
-/**
- * One job per runner, exported so telemetry and tests stay decoupled from the
- * CTE literal that has to match it.
- */
-// cm:guard raising this above 1 is NOT a one-line change. Two jobs on one box share the repo ROOT: `packages/runner/.../workspace/refresh.rs` runs `fetch` + `checkout --` + `merge --ff-only` there on EVERY job, worktree lane included, and the daemon has no lock for pipeline jobs (the only `Semaphore` is chat's). This cap is the sole thing serialising those writes today, so a per-device cap has to land together with that lock, never before it.
-export const RUNNER_CAP_PER_RUNNER = 1;
 
 /**
  * Runner ↔ job-type capability gate. Sourced from the pipeline registry
@@ -226,20 +220,25 @@ export async function checkLayer4RunnerFull(
   options?: { excludeJobId?: string },
 ): Promise<GateResult> {
   const [runner] = await db
-    .select({ type: runners.type })
+    .select({
+      type: runners.type,
+      deviceId: runners.deviceId,
+      maxConcurrent: devices.maxConcurrent,
+      agentVersion: devices.agentVersion,
+    })
     .from(runners)
+    .innerJoin(devices, eq(devices.id, runners.deviceId))
     .where(eq(runners.id, runnerId))
     .limit(1);
   if (!runner) return PASS; // Runner vanished; let the dispatcher hit its own no-runner branch.
 
-  const cap = RUNNER_CAP_PER_RUNNER;
-  // ISS-258 — same orphan-aware filter as countInFlightForRunner: jobs
-  // whose parent pipeline_run is terminal must not count toward the cap.
+  const cap = effectiveDeviceCap(runner.maxConcurrent, runner.agentVersion);
+  // cm:edge lockstep -> packages/core/src/jobs/in-flight.ts#countInFlightForDevice — the same question asked in two places; a filter added there and not here reports a box as free that this gate calls full, and the operator sees a queue nobody can explain
   const rows = await db.execute<{ count: string }>(sql`
     SELECT COUNT(*)::text AS count
     FROM jobs j
     LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
-    WHERE j.runner_id = ${runnerId}
+    WHERE j.device_id = ${runner.deviceId}
       AND j.status IN ('dispatched', 'running')
       AND (pr.id IS NULL OR pr.status IN ('running', 'paused'))
       ${options?.excludeJobId ? sql`AND j.id <> ${options.excludeJobId}` : sql``}
@@ -269,7 +268,7 @@ export async function checkLayer4RunnerFull(
  *   3. only if a slot is free, CAS the job `queued → dispatched` on this runner.
  *
  * Returns `'claimed'` on success, `'runner_full'` if the runner is already at
- * {@link RUNNER_CAP_PER_RUNNER} (caller leaves the job queued for a later tick),
+ * the device's effective cap (caller leaves the job queued for a later tick),
  * or `'lost'` if the job was no longer `queued` (another dispatcher won the CAS).
  * Makes exceeding the per-runner cap IMPOSSIBLE regardless of dispatch races.
  */
@@ -277,7 +276,6 @@ export async function checkLayer4RunnerFull(
 export async function claimRunnerSlot(args: {
   jobId: string;
   runnerId: string;
-  deviceId: string | null;
   dispatchedAt: Date;
 }): Promise<'claimed' | 'runner_full' | 'lost'> {
   return db.transaction(async (tx) => {
@@ -293,22 +291,38 @@ export async function claimRunnerSlot(args: {
     const barrier = await assertDispatchable(args.jobId, tx);
     if (!barrier.ok && barrier.reason === 'stale_trigger') return 'lost' as const;
 
-    await tx.execute(sql`SELECT 1 FROM runners WHERE id = ${args.runnerId} FOR UPDATE`);
+    // cm:guard lock the DEVICE row, not the runner binding. The cap belongs to the box, so two dispatches racing on two different bindings of the SAME machine must serialise against each other — locking the binding lets both pass their own count and put the box at 2x its cap.
+    const deviceRows = await tx.execute<{
+      id: string;
+      max_concurrent: number;
+      agent_version: string | null;
+    }>(sql`
+      SELECT d.id, d.max_concurrent, d.agent_version
+      FROM devices d
+      JOIN runners r ON r.device_id = d.id
+      WHERE r.id = ${args.runnerId}
+      FOR UPDATE OF d
+    `);
+    const device = deviceRows[0];
+    if (!device) return 'lost' as const;
+
+    const cap = effectiveDeviceCap(device.max_concurrent, device.agent_version);
     const rows = await tx.execute<{ in_flight: number }>(sql`
       SELECT COUNT(*)::int AS in_flight
       FROM jobs j
       LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
-      WHERE j.runner_id = ${args.runnerId}
+      WHERE j.device_id = ${device.id}
         AND j.status IN ('dispatched','running')
         AND (pr.id IS NULL OR pr.status IN ('running','paused'))
     `);
-    if (Number(rows[0]?.in_flight ?? 0) >= RUNNER_CAP_PER_RUNNER) return 'runner_full' as const;
+    if (Number(rows[0]?.in_flight ?? 0) >= cap) return 'runner_full' as const;
     const upd = await tx
       .update(jobs)
       .set({
         status: 'dispatched',
         runnerId: args.runnerId,
-        deviceId: args.deviceId,
+        // cm:guard stamp the device this claim LOCKED and counted, never one the caller supplied. The cap is enforced by counting `jobs.device_id`, so a caller passing null or a stale id writes a job the next claim cannot see — two concurrent claims then both pass their own count and put the box at twice its cap. Measured while writing this: the loadbalance concurrency test went `['claimed','claimed']` the moment the write and the count disagreed about the unit.
+        deviceId: device.id,
         dispatchedAt: args.dispatchedAt,
       })
       .where(and(eq(jobs.id, args.jobId), eq(jobs.status, 'queued')))
@@ -320,7 +334,7 @@ export async function claimRunnerSlot(args: {
 type JobRow = typeof jobs.$inferSelect;
 
 export interface BarrierFragments {
-  /** Shared CTE chunk: `running_ids`, `runner_load`, `fresh_capable_runners`.
+  /** Shared CTE chunk: `running_ids`, `device_load`, `fresh_capable_runners`.
    *  Caller prefixes with `WITH ${ctes}` (and may comma-append more CTEs). */
   ctes: SQL;
   /** Gate predicates as failing-form SQL fragments. The picker negates each
@@ -376,7 +390,8 @@ export function buildBarrierFragments(args: {
   const { projectIdRef, livenessSeconds } = args;
 
   // cm:guard `running_ids` reads ONLY `jobs`, never a UNION with `agent_sessions` — session rows lag the job lifecycle, so a job whose session row had not landed (or had failed and rebooted) was double-counted one way and under-counted the other. `jobs` is the authoritative ledger: every dispatched job has a row, and a retry burst is `status='queued' AND retry_after_at > now()`, which is what keeps a cooling issue holding its own slot instead of yielding it to an unrelated one under a worker-wide rate limit.
-  // cm:guard the `1 AS cap` literal below is RUNNER_CAP_PER_RUNNER inlined — Drizzle cannot interpolate a constant into this raw CTE without qualifying the identifier, so the two are kept in sync by hand. Change one without the other and the picker offers a slot the locked claim then refuses, which surfaces as a job sitting `queued` with no gate reason.
+  // cm:guard `cap` and `in_flight` are BOTH per device, and neither may drift back to the binding. A job consumes one Claude process on one machine, so a box bound to 20 projects at cap 3 runs 3 jobs in total — pairing a device cap with a per-binding count would authorise 20x that while every gate read as if it were holding.
+  // cm:edge lockstep -> packages/core/src/runners/device-cap.ts#effectiveDeviceCap — the SQL half of the cap decision; the locked claim allocates on the TS half, so a SQL expression more generous than the TS one offers work the claim refuses every tick, forever, with no gate reason
   const ctes = sql`running_ids AS (
       SELECT DISTINCT issue_id::text AS issue_id
       FROM jobs
@@ -391,25 +406,26 @@ export function buildBarrierFragments(args: {
           )
         )
     ),
-    runner_load AS (
+    device_load AS (
       -- ISS-258 -- exclude jobs whose parent pipeline_run is terminal so an
       -- orphan (cascade missed, manual SQL fix, partial-outage state drift)
       -- never burns the runner cap slot. The cascade in pipeline/runs.ts
       -- is the primary fix; this is defence in depth.
-      SELECT j.runner_id, COUNT(*)::int AS in_flight
+      SELECT j.device_id, COUNT(*)::int AS in_flight
       FROM jobs j
       LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
-      WHERE j.runner_id IS NOT NULL
+      WHERE j.device_id IS NOT NULL
         AND j.status IN ('dispatched','running')
         AND (pr.id IS NULL OR pr.status IN ('running','paused'))
-      GROUP BY j.runner_id
+      GROUP BY j.device_id
     ),
     fresh_capable_runners AS (
       SELECT r.id,
-             1 AS cap,
-             COALESCE(rl.in_flight, 0) AS in_flight
+             ${deviceCapSql('d')} AS cap,
+             COALESCE(dl.in_flight, 0) AS in_flight
       FROM runners r
-      LEFT JOIN runner_load rl ON rl.runner_id = r.id
+      JOIN devices d ON d.id = r.device_id
+      LEFT JOIN device_load dl ON dl.device_id = r.device_id
       WHERE r.project_id = ${projectIdRef}
         AND r.status = 'online'
         AND r.last_seen_at IS NOT NULL
@@ -429,8 +445,6 @@ export function buildBarrierFragments(args: {
         -- handleDispatch skips, and the job spins queued forever (picker offers,
         -- selector rejects). A disabled device's runner can keep heartbeating
         -- (status stays online), so status alone does not cover this.
-        -- Remote/server runners (NULL device_id) have no device row, so the
-        -- NOT EXISTS holds and they stay eligible.
         AND NOT EXISTS (
           SELECT 1 FROM devices d
           WHERE d.id = r.device_id AND d.disabled_at IS NOT NULL
@@ -471,7 +485,7 @@ export function buildBarrierFragments(args: {
         AND (s.metadata->>'issueId') = j.issue_id::text
         AND (j.agent_session_id IS NULL OR s.id <> j.agent_session_id)
     )`,
-    // cm:guard `held` belongs HERE and in NEITHER `running_ids` nor `runner_load` — the asymmetry is the whole design (RFC 0002): absent from those two it consumes no project-serial or runner-cap slot and may wait indefinitely, present here it stops the reconciler enqueueing a second job for the same issue while the first waits
+    // cm:guard `held` belongs HERE and in NEITHER `running_ids` nor `device_load` — the asymmetry is the whole design (RFC 0002): absent from those two it consumes no project-serial or runner-cap slot and may wait indefinitely, present here it stops the reconciler enqueueing a second job for the same issue while the first waits
     // cm:edge lockstep -> packages/core/src/db/schema.ts — the `jobs_active_unique` partial index is the DB-level twin of this predicate; a status listed in one must be listed in the other or `enqueue` inserts the duplicate this gate refuses to dispatch
     issueBusyJob: sql`EXISTS (
       SELECT 1 FROM jobs other

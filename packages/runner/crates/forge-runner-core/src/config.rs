@@ -188,7 +188,7 @@ fn default_chat_max_concurrent() -> u32 {
 /// `device_max_concurrent = 0`, and warning the whole fleet about its own
 /// defaults is noise nobody reads.
 // cm:guard warn, NEVER refuse to start. These keys were serialized into every config file this tool has ever written, so a hard failure here is a fleet-wide outage on upgrade — the opposite of the loud break, which is meant to stop a WRONG action, not every action.
-// cm:edge contract -> packages/core/src/jobs/dispatch-gates.ts#RUNNER_CAP_PER_RUNNER — this text promises core owns the cap; when a per-device cap ships, this message has to name the new place or it sends operators to a knob that no longer decides.
+// cm:edge contract -> packages/core/src/runners/device-cap.ts#effectiveDeviceCap — this warning text promises core owns the cap, and that is now `devices.max_concurrent` resolved against the runner's version. If the knob moves again, this message has to move with it or it sends operators somewhere that no longer decides.
 fn warn_on_retired_concurrency_keys(raw: &str, path: &std::path::Path) {
     for (key, tool_written_default) in [("max_concurrent", "1"), ("device_max_concurrent", "0")] {
         let Some(value) = toml_scalar_in_runner_table(raw, key) else {

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeFakeDevice } from '../fake-device.fixture.js';
 
 /**
  * The MCP half of ISS-898's body gate: `format` reaching the write door, a
@@ -66,24 +67,7 @@ const ORG_ID = '88888888-8888-4888-8888-888888888888';
 
 const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
 
-const fakeDevice = {
-  id: DEVICE_ID,
-  ownerId: OWNER_ID,
-  name: 'fake',
-  platform: 'linux' as const,
-  agentVersion: null,
-  machineId: null,
-  gitCredentialRef: null,
-  maxConcurrent: 1,
-  tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
-  tokenPrefix: 'fake0001',
-  disabledAt: null,
-  status: 'online' as const,
-  lastSeenAt: null,
-  pairedAt: new Date(),
-  capabilities: null,
-  createdAt: new Date(),
-};
+const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
 
 const baseCommentRow = {
   id: COMMENT_ID,

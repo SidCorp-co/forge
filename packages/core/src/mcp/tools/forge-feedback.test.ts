@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeFakeDevice } from '../fake-device.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -76,24 +77,7 @@ function queueSlugAndMember(...then: unknown[][]): void {
   for (const rows of [[memberAccessRow], ...then]) m = m.mockResolvedValueOnce(rows);
 }
 
-const fakeDevice = {
-  id: DEVICE_ID,
-  ownerId: OWNER_ID,
-  name: 'fake',
-  platform: 'linux' as const,
-  agentVersion: null,
-  machineId: null,
-  gitCredentialRef: null,
-  maxConcurrent: 1,
-  tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
-  tokenPrefix: 'fake0001',
-  disabledAt: null,
-  status: 'online' as const,
-  lastSeenAt: null,
-  pairedAt: new Date(),
-  capabilities: null,
-  createdAt: new Date(),
-};
+const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
 
 function makeCtx(projectSlug = PROJECT_SLUG) {
   return {

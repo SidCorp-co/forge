@@ -383,13 +383,12 @@ async function dispatchViaRunner(
     return 'skipped';
   }
 
-  // cm:guard this is the AUTHORITATIVE per-runner cap gate and it must stay atomic — lock the runner row (FOR UPDATE serializes concurrent dispatches to the same host), recount orphan-aware in-flight under that lock, and only then claim. The picker's L4 EXISTS is pool-coarse: it proves SOME runner is free, never that THIS selected one is, and at maxConcurrentIssues>1 a resume-pin to a busy host or two ticks racing on the same free runner still targets one at capacity. Checking outside the lock makes exceeding RUNNER_CAP_PER_RUNNER a race away.
-  // cm:why `deviceId` mirrors the runner for consumers still reading the legacy column
+  // cm:guard this is the AUTHORITATIVE cap gate and it must stay atomic — lock the DEVICE row (FOR UPDATE serialises concurrent dispatches to the same box, including ones arriving through two different project bindings of it), recount orphan-aware in-flight under that lock, and only then claim. The picker's L4 EXISTS is pool-coarse: it proves SOME runner is free, never that THIS selected one is, and at maxConcurrentIssues>1 a resume-pin to a busy host or two ticks racing on the same free runner still targets one at capacity. Checking outside the lock makes exceeding the cap a race away.
+  // cm:guard the claim resolves and stamps the device itself — do NOT reintroduce a `deviceId` argument. The cap counts `jobs.device_id`, so a caller-supplied value is a second opinion about the unit being enforced, and the two disagreeing is exactly how both of two concurrent claims succeed.
   const dispatchedAt = new Date();
   const claim = await claimRunnerSlot({
     jobId: job.id,
     runnerId: runner.id,
-    deviceId: runner.deviceId,
     dispatchedAt,
   });
 

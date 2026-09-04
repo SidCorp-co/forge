@@ -54,7 +54,7 @@ export async function countInFlightForOneRunner(runnerId: string): Promise<numbe
  * The same count for a whole BOX, across every project it serves.
  */
 // cm:guard this, not the per-runner count, is what a concurrency cap must be compared against. The action a cap restrains is spawning a Claude process, and that process consumes the DEVICE — one box bound to N projects carrying one job each is at N, not at 1 N times. dev1 holds 20 bindings, so a per-binding count under a per-device cap would authorise 20x the intended concurrency, and every gate would read as if it were holding.
-// cm:edge lockstep -> packages/core/src/jobs/dispatch-gates.ts#RUNNER_CAP_PER_RUNNER — cap and count are one decision in two files; a cap that moves to the device while the count stays on the binding is not a smaller version of this change, it is the multiplied one
+// cm:edge lockstep -> packages/core/src/runners/device-cap.ts#effectiveDeviceCap — cap and count are one decision in two files, and both are per DEVICE; a count that drifts back to the binding is not a smaller version of this, it is the multiplied one
 export async function countInFlightForDevice(deviceId: string): Promise<number> {
   const rows = await db.execute<{ n: number | string }>(
     sql`

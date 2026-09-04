@@ -139,15 +139,18 @@ async function insertJob(
   const queuedAt = args.queuedAt ?? new Date();
   const pipelineRunId =
     args.pipelineRunId ?? (await insertPipelineRun(projectId, args.issueId ?? null));
+  // cm:guard stamp `device_id` from the runner, exactly as `claimRunnerSlot` does. The cap is counted per DEVICE, so a fixture that sets only `runner_id` seeds a job no gate can see — the suite would then report a free box while the real dispatcher reported a full one, and every cap assertion here would pass for the wrong reason.
   await harness.db.execute(sql`
     INSERT INTO jobs (
-      id, project_id, issue_id, type, status, runner_id,
+      id, project_id, issue_id, type, status, runner_id, device_id,
       agent_session_id, pipeline_run_id, payload, queued_at,
       created_by
     )
     VALUES (
       ${id}, ${projectId}, ${args.issueId ?? null}, ${type}, ${status},
-      ${args.runnerId ?? null}, ${args.agentSessionId ?? null}, ${pipelineRunId},
+      ${args.runnerId ?? null},
+      (SELECT device_id FROM runners WHERE id = ${args.runnerId ?? null}),
+      ${args.agentSessionId ?? null}, ${pipelineRunId},
       '{}'::jsonb, ${queuedAt.toISOString()},
       (SELECT created_by FROM projects WHERE id = ${projectId})
     )
