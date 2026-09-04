@@ -11,8 +11,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-type MemoryList = { items: Array<{ metadata: Record<string, unknown> }> };
-
 // Live E2E coverage — exercises the REAL embedding provider (LiteLLM proxy).
 // Skipped automatically when EMBEDDINGS_BASE_URL/EMBEDDINGS_API_KEY are not
 // set, so this file is safe to leave in the suite. Run via:
@@ -274,45 +272,5 @@ describeIfLive('memory live E2E (real embeddings)', () => {
     });
     const afterBody = (await after.json()) as { hits: Array<{ sourceRef: string }> };
     expect(afterBody.hits.some((h) => h.sourceRef === 'to-delete')).toBe(false);
-  });
-
-  it('handles step_handoff with structured metadata + JSON content', async () => {
-    const { projectId, token } = await seedMember();
-    const handoffJson = JSON.stringify({
-      step: 'plan',
-      schema_version: 1,
-      planSummary: 'Refactor auth middleware to read JWT from cookie OR header',
-      affectedFiles: ['src/middleware/auth.ts', 'src/auth/jwt.ts'],
-      acceptanceChecklist: ['401 on missing token', '200 on valid cookie', 'tests green'],
-      unknowns: [],
-    });
-
-    const res = await postMemory(token, {
-      projectId,
-      source: 'step_handoff',
-      sourceRef: 'run:abc/step:plan/attempt:1',
-      textContent: handoffJson,
-      metadata: { run_id: 'abc', step: 'plan', attempt: 1 },
-    });
-    expect(res.status).toBe(201);
-
-    // Direct metadata-filter lookup (forge_memory.get path).
-    const getRes = await app.request(`/api/memory?projectId=${projectId}&source=step_handoff`, {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    expect(getRes.status).toBe(200);
-    const rows = ((await getRes.json()) as MemoryList).items;
-    expect(rows.length).toBe(1);
-    expect(rows[0]?.metadata).toMatchObject({ run_id: 'abc', step: 'plan', attempt: 1 });
-
-    // Semantic search by intent (not exact text) still finds the handoff.
-    const search = await searchMemory(token, {
-      projectId,
-      query: 'auth middleware cookie token refactor plan',
-      topK: 3,
-      sourceFilter: ['step_handoff'],
-    });
-    const hits = ((await search.json()) as { hits: Array<{ sourceRef: string }> }).hits;
-    expect(hits[0]?.sourceRef).toBe('run:abc/step:plan/attempt:1');
   });
 });

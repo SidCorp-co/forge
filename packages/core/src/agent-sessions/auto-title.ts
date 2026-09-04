@@ -30,8 +30,8 @@ function postProcessTitle(raw: string): string | null {
 }
 
 /**
- * Ask the deployment-configured fast model (`callFastModel`, LiteLLM
- * OpenAI-compat or Gemini — same best-effort channel memory-v2 uses) for a short
+ * Ask the deployment-configured fast model (`callFastModel`, one
+ * OpenAI-compatible endpoint — same best-effort channel memory-v2 uses) for a short
  * (3-6 word) topic label for a conversation's first user message, in the
  * message's own language. Best-effort: returns `null` on any failure, empty
  * input, or a system-noise message — never throws.

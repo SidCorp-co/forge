@@ -1522,21 +1522,13 @@
     "b:8100cd89014a7198",
     "dad616000100a933"
   ],
-  "packages/core/src/chat/providers/gemini.ts": [
-    "2af82e180103cfc0",
-    "3f9604000107c8c0",
-    "4eee198001037be3",
-    "a8d5453c01038fa6",
-    "b:4d3d45d2010df10e",
-    "b:c645fa9e01130349"
-  ],
-  "packages/core/src/chat/providers/litellm.test.ts": [
+  "packages/core/src/chat/providers/openai.test.ts": [
     "b:63889a8d0106bc56",
     "c8b5642c0100446b",
     "deb97a1401035226",
     "dfaf5f9a01009833"
   ],
-  "packages/core/src/chat/providers/litellm.ts": [
+  "packages/core/src/chat/providers/openai.ts": [
     "0bd0d1c801064a57",
     "11d89da00108bf9b",
     "193e140001019ce9",

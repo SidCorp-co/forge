@@ -1,15 +1,10 @@
 /**
- * ISS-604 (P2a) — transport-agnostic tool-calling turn loop.
- *
- * The loop that used to live inside `run-turn.ts`'s SSE wrapper, extracted as
- * an async generator so BOTH consumers share one implementation:
- *   - `run-turn.ts` (SSE): forwards each yielded event to the browser.
- *   - `external-chat.ts` (Rocket.Chat / non-streaming): drains the events and
- *     uses the returned final text as the single reply message.
- *
- * It streams one assistant turn; while the model requests tools it executes
- * them, feeds the results back, and re-invokes — up to {@link MAX_TOOL_ITERATIONS}.
- * It performs NO SSE and NO DB writes; the caller owns transport + persistence.
+ * ISS-604 (P2a) — transport-agnostic tool-calling turn loop: one assistant turn,
+ * executing and feeding back tools for as long as the model asks for them, up to
+ * {@link MAX_TOOL_ITERATIONS}. Shared so neither consumer owns a private copy —
+ * `run-turn.ts` (SSE) forwards each event to the browser, `external-chat.ts`
+ * (Rocket.Chat) drains them and sends the final text as one message. NO SSE and
+ * NO DB writes here; the caller owns transport and persistence.
  */
 
 import type {
@@ -20,8 +15,7 @@ import type {
 } from './providers/types.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 
-// 8 (was 5, ISS-609 follow-up): investigating an external hub takes multi-hop
-// chains — issue-search retries → schema introspection → query → act.
+// cm:guard 8 (was 5, ISS-609 follow-up) because investigating an external hub takes multi-hop chains — issue-search retries, schema introspection, query, act — and it counts PROVIDER rounds, not tool rounds: the final round MUST be invoked with NO tools (so 7 of the 8 carry them) — a model offered them on the round the loop will not iterate past answers with tool calls and no prose, and finalizing on THAT round returns '' as a `done` turn: seven round-trips of tool work billed, a chat_logs row that reads like a healthy answer. What the cap buys is that the eighth round is SPENT on an answer instead of being discarded; it does NOT make a last-round tool call visible — that round carries no schemas and a call invented there is dropped, which is the rule of the guard on the tool_call branch below, not this one's to restate
 export const MAX_TOOL_ITERATIONS = 8;
 
 export interface TurnCoreArgs {
@@ -30,17 +24,15 @@ export interface TurnCoreArgs {
   /** system + history + new user turn. Copied internally, not mutated. */
   messages: ChatMessage[];
   tools?: ChatToolset | undefined;
-  /** Sampling temperature forwarded to the provider (agentic callers pass low). */
   temperature?: number | undefined;
-  /** Force ≥1 tool call on the FIRST round (`tool_choice: 'required'`) — a
-   *  lazy model then cannot answer without investigating. Later rounds stay
-   *  auto so the loop can terminate. No-op without tools. */
+  /** `tool_choice:'required'` on the FIRST round only, so a lazy model cannot
+   *  answer without investigating and the loop can still terminate. */
   requireInitialToolUse?: boolean | undefined;
   signal?: AbortSignal | undefined;
 }
 
 export interface TurnCoreResult {
-  /** The final assistant text (the round with no tool calls). */
+  /** The final assistant text (the round that requested no tools). */
   finalText: string;
   usage: ChatStreamUsage;
   iterations: number;
@@ -64,10 +56,9 @@ function addUsage(into: ChatStreamUsage, from: ChatStreamUsage): void {
 }
 
 /**
- * Run the turn, yielding client-facing events (chunk / tool_call / tool_result
- * / usage, then exactly one terminal `done` or `error`) and returning the
- * aggregate result. The generator never throws — provider/tool errors surface
- * as an `error` event + `terminal: 'error'`.
+ * Yields client-facing events (chunk / tool_call / tool_result / usage, then
+ * exactly one terminal `done` or `error`; the provider's own per-round `done` is
+ * swallowed). Never throws — provider and tool errors become that `error`.
  */
 export async function* runTurnEvents(
   args: TurnCoreArgs,
@@ -84,6 +75,7 @@ export async function* runTurnEvents(
   try {
     for (;;) {
       iterations++;
+      const offered = iterations < MAX_TOOL_ITERATIONS ? tools : undefined;
       let turnText = '';
       const turnToolCalls: CollectedToolCall[] = [];
       let sawError = false;
@@ -91,16 +83,18 @@ export async function* runTurnEvents(
       for await (const event of provider.stream({
         model,
         messages,
-        tools: tools?.tools,
+        tools: offered?.tools,
         temperature,
         toolChoice:
-          args.requireInitialToolUse && iterations === 1 && tools ? 'required' : undefined,
+          args.requireInitialToolUse && iterations === 1 && offered ? 'required' : undefined,
         signal,
       })) {
         if (event.type === 'chunk') {
           turnText += event.text;
           yield event;
         } else if (event.type === 'tool_call') {
+          // cm:guard a tool call arriving on the terminal round is dropped, not forwarded and not recorded — that round is invoked with NO tool schemas, so nothing will execute it and no `tool_result` can ever follow: yielding it hands the SSE client exactly the dangling pair this cap exists to prevent, and putting it in `toolCalls` tells external-chat.ts an `escalate` ran when nothing ran. The round's prose is still the answer; a round that emitted only this is an empty answer, and that is the model's fact to own rather than the loop's to hide
+          if (!offered) continue;
           turnToolCalls.push({
             id: event.id,
             name: event.name,
@@ -117,21 +111,11 @@ export async function* runTurnEvents(
           yield event;
           break;
         }
-        // Swallow the provider's per-turn `done`; one terminal event is emitted below.
       }
 
       if (sawError) break;
 
-      // No tools requested → final assistant turn.
-      if (turnToolCalls.length === 0) {
-        finalText = turnText;
-        terminal = 'done';
-        yield { type: 'done' };
-        break;
-      }
-
-      // Requested tools but none available, or iteration cap hit → finalize.
-      if (!tools || iterations >= MAX_TOOL_ITERATIONS) {
+      if (turnToolCalls.length === 0 || !offered) {
         finalText = turnText;
         terminal = 'done';
         yield { type: 'done' };
@@ -150,7 +134,7 @@ export async function* runTurnEvents(
 
       for (const tc of turnToolCalls) {
         toolCalls.push({ name: tc.name, arguments: tc.arguments });
-        const result = await tools.execute(tc.name, tc.arguments);
+        const result = await offered.execute(tc.name, tc.arguments);
         yield { type: 'tool_result', id: tc.id, result };
         messages.push({ role: 'tool', tool_call_id: tc.id, content: result });
       }

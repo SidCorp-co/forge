@@ -21,10 +21,6 @@
       "fileLines": 880,
       "maxFunctionLines": 174
     },
-    "packages/core/src/chat/providers/litellm.test.ts": {
-      "fileLines": 0,
-      "maxFunctionLines": 184
-    },
     "packages/core/src/chat/tools/mcp-adapter.test.ts": {
       "fileLines": 0,
       "maxFunctionLines": 220
@@ -396,6 +392,10 @@
     "packages/core/tests/integration/step-handoff-flow.test.ts": {
       "fileLines": 0,
       "maxFunctionLines": 185
+    },
+    "packages/core/src/chat/providers/openai.test.ts": {
+      "fileLines": 0,
+      "maxFunctionLines": 184
     }
   }
 }

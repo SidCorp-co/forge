@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatProvider, ChatStreamEvent } from './providers/types.js';
-import { runTurnEvents, type TurnCoreResult } from './run-turn-core.js';
+import { MAX_TOOL_ITERATIONS, runTurnEvents, type TurnCoreResult } from './run-turn-core.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 
 async function drain(gen: AsyncGenerator<ChatStreamEvent, TurnCoreResult>) {
@@ -81,5 +81,86 @@ describe('runTurnEvents', () => {
     expect(events.at(-1)).toEqual({ type: 'error', message: 'boom' });
     expect(result.terminal).toBe('error');
     expect(result.errorMessage).toBe('boom');
+  });
+
+  it('spends its last round on prose instead of discarding a tool-hungry turn', async () => {
+    const offered: boolean[] = [];
+    const insatiable: ChatProvider = {
+      id: 'mock',
+      defaultModel: 'm',
+      async *stream(req): AsyncIterable<ChatStreamEvent> {
+        const hasTools = !!req.tools && req.tools.length > 0;
+        offered.push(hasTools);
+        if (hasTools) {
+          yield { type: 'tool_call', id: `c${offered.length}`, name: 'get', arguments: '{}' };
+        } else {
+          yield { type: 'chunk', text: 'here is what I found' };
+        }
+        yield { type: 'done' };
+      },
+    };
+    const tools: ChatToolset = {
+      tools: [{ type: 'function', function: { name: 'get', parameters: {} } }],
+      execute: async () => '{"ok":true}',
+    };
+
+    const { events, result } = await drain(
+      runTurnEvents({
+        provider: insatiable,
+        model: 'm',
+        messages: [{ role: 'user', content: 'investigate' }],
+        tools,
+      }),
+    );
+
+    expect(result.finalText).toBe('here is what I found');
+    expect(result.terminal).toBe('done');
+    expect(result.iterations).toBe(MAX_TOOL_ITERATIONS);
+    expect(result.toolCalls).toHaveLength(MAX_TOOL_ITERATIONS - 1);
+    expect(offered).toEqual([...Array<boolean>(MAX_TOOL_ITERATIONS - 1).fill(true), false]);
+    const calls = events.filter((e) => e.type === 'tool_call');
+    const results = events.filter((e) => e.type === 'tool_result');
+    expect(results).toHaveLength(calls.length);
+    expect(events.at(-1)).toEqual({ type: 'done' });
+  });
+
+  it('never puts an unanswerable tool_call on the wire when the last round ignores having no tools', async () => {
+    const defiant: ChatProvider = {
+      id: 'mock',
+      defaultModel: 'm',
+      async *stream(req): AsyncIterable<ChatStreamEvent> {
+        const hasTools = !!req.tools && req.tools.length > 0;
+        yield {
+          type: 'tool_call',
+          id: hasTools ? 'real' : 'invented',
+          name: 'escalate',
+          arguments: '{}',
+        };
+        if (!hasTools) yield { type: 'chunk', text: 'partial answer' };
+        yield { type: 'done' };
+      },
+    };
+    const tools: ChatToolset = {
+      tools: [{ type: 'function', function: { name: 'escalate', parameters: {} } }],
+      execute: async () => '{"ok":true}',
+    };
+
+    const { events, result } = await drain(
+      runTurnEvents({
+        provider: defiant,
+        model: 'm',
+        messages: [{ role: 'user', content: 'investigate' }],
+        tools,
+      }),
+    );
+
+    const calls = events.filter((e) => e.type === 'tool_call');
+    const results = events.filter((e) => e.type === 'tool_result');
+    expect(calls).toHaveLength(results.length);
+    expect(calls.some((e) => e.type === 'tool_call' && e.id === 'invented')).toBe(false);
+    expect(result.toolCalls).toHaveLength(MAX_TOOL_ITERATIONS - 1);
+    expect(result.finalText).toBe('partial answer');
+    expect(result.terminal).toBe('done');
+    expect(events.at(-1)).toEqual({ type: 'done' });
   });
 });

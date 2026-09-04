@@ -1,59 +1,35 @@
 /**
- * v1 EPIC 1 (ISS-270) — Chat provider adapter contract.
- *
- * The registry holds factories keyed by short id (`'litellm'`, `'gemini'`).
- * `app_config.chat_provider_id` selects which one a project uses; env vars
- * supply credentials. Keep this file dependency-free — adapter modules import
- * the types but the types do not import adapters.
- *
- * ISS-604 — the contract mirrors the OpenAI Chat Completions wire so LiteLLM
- * (and any OpenAI-compatible proxy) maps 1:1. Tool/function calling is a live
- * path: a request carries `tools`, the stream emits `tool_call` events, and
- * the caller feeds `role:'tool'` results back for the next round.
+ * v1 EPIC 1 (ISS-270) — Chat provider adapter contract. The registry holds factories keyed by short id; `app_config.chat_provider_id` selects one and env supplies its credentials. Keep this file dependency-free — adapter modules import the types, never the reverse. ISS-604 — the contract IS the OpenAI Chat Completions wire, so an adapter for any compatible endpoint maps 1:1 and does no translation; tool calling is a live path, where a request carries `tools`, the stream emits `tool_call`, and the caller feeds `role:'tool'` results back for the next round.
  */
 
 export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
 
-/**
- * An assistant's request to invoke a tool (OpenAI shape). `arguments` is a
- * JSON string exactly as the model emitted it — the executor parses it, and
- * it is echoed verbatim into the follow-up assistant message.
- */
+/** An assistant's request to invoke a tool (OpenAI shape). `arguments` is a JSON string exactly as the model emitted it — the executor parses it, and it is echoed verbatim into the follow-up assistant message. */
 export interface ChatToolCall {
   id: string;
   type: 'function';
   function: { name: string; arguments: string };
 }
 
-/**
- * A slice of a multimodal user message (OpenAI Chat Completions shape). An
- * `image_url.url` is a self-contained `data:<mime>;base64,<bytes>` URI — never
- * a remote link: the model host would have to fetch it, and every image Forge
- * carries comes from a source (a Rocket.Chat upload) that needs a credential.
- */
+/** A slice of a multimodal user message (OpenAI shape). An `image_url.url` is a self-contained `data:<mime>;base64,<bytes>` URI — never a remote link: the model host would have to fetch it, and every image Forge carries comes from a source (a Rocket.Chat upload) that needs a credential. */
 export type ChatContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } };
 
 export interface ChatMessage {
   role: ChatRole;
-  // cm:guard a provider adapter MUST handle the parts-array form of `content`, not just the string — LiteLLM passes `messages` through to an OpenAI-wire proxy so parts map 1:1, but an adapter that builds its own body (gemini.ts) silently drops every image when it does `m.content ?? ''`, and a dropped image looks exactly like a model that answered without looking
-  /** `null` on an assistant message that only carries `tool_calls`. A parts
-   *  array carries a multimodal user turn (text + images). */
+  // cm:guard an adapter that does NOT pass `messages` straight through MUST handle the parts-array form of `content`, not just the string — the deleted Gemini adapter built its own body and dropped every image on `m.content ?? ''`, and a dropped image is indistinguishable from a model that looked and had nothing to say
+  /** `null` on an assistant message that only carries `tool_calls`; a parts array carries a multimodal user turn (text + images). */
   content: string | ChatContentPart[] | null;
-  /** Assistant-only: tool invocations requested this turn. */
   tool_calls?: ChatToolCall[];
-  /** `tool`-role only: the id of the `ChatToolCall` this result answers. */
   tool_call_id?: string;
 }
 
-/** A tool offered to the model (OpenAI `tools[]` entry). */
 export interface ChatTool {
   type: 'function';
   function: {
     name: string;
     description?: string;
-    /** JSON Schema for the arguments object. */
     parameters: Record<string, unknown>;
   };
 }
@@ -75,38 +51,18 @@ export type ChatStreamEvent =
 export interface ChatStreamRequest {
   model: string;
   messages: ChatMessage[];
-  /** Tools offered to the model this round; omit for a plain completion. */
   tools?: ChatTool[] | undefined;
-  /** Sampling temperature; omit for the provider default. Agentic callers
-   *  (RC bot) pass a low value for deterministic tool use. */
   temperature?: number | undefined;
-  /** OpenAI-compat `tool_choice`. `'required'` forces ≥1 tool call this
-   *  round — agentic callers set it on the FIRST round so a lazy model
-   *  cannot answer without investigating (later rounds stay auto). */
+  /** OpenAI-compat `tool_choice`. `'required'` forces ≥1 tool call this round — agentic callers set it on the FIRST round so a lazy model cannot answer without investigating, and later rounds stay auto so the loop can terminate. */
   toolChoice?: 'required' | 'auto' | undefined;
   signal?: AbortSignal | undefined;
 }
 
 export interface ChatProvider {
-  /** Short id used by `app_config.chat_provider_id` and registry keys. */
   readonly id: string;
-  /** Default model when the project's `app_config.chat_model` is null. */
   readonly defaultModel: string;
-  /**
-   * Stream a chat completion as a sequence of `ChatStreamEvent`s. The
-   * iterator MUST end with exactly one of `{ type: 'done' }` or
-   * `{ type: 'error' }` and MUST NOT emit further events after either.
-   *
-   * When the model requests tools, emit one `tool_call` per requested call
-   * (arguments reassembled from streamed fragments) BEFORE the terminal
-   * `done`; the caller executes them and re-invokes with the results.
-   */
+  // cm:guard the iterator MUST end with exactly one `done` or `error` and emit nothing after it, and every tool call the model requested (arguments reassembled from the streamed fragments) MUST be yielded BEFORE that terminal event — runTurnEvents swallows the per-round `done` and re-invokes on what it collected, so a call yielded late is a tool the caller never runs and never feeds back
   stream(req: ChatStreamRequest): AsyncIterable<ChatStreamEvent>;
-}
-
-export interface ChatProviderConfig {
-  /** Provider-specific config bag. */
-  [key: string]: unknown;
 }
 
 export type ChatProviderFactory = () => ChatProvider;

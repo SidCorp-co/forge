@@ -1,10 +1,9 @@
 /**
- * v1 EPIC 1 (ISS-270) — Chat provider registry.
- *
- * Mirrors the runner-framework registry pattern (ISS-271) so a future reader
- * sees one convention. Providers register at bootstrap; consumers either
- * resolve directly by id (`get(...)`) or by project (`resolveForProject(...)`)
- * which reads `app_config.chat_provider_id` then falls back to env defaults.
+ * v1 EPIC 1 (ISS-270) — Chat provider registry, mirroring the runner-framework
+ * registry pattern (ISS-271) so a future reader sees one convention. Providers
+ * register at bootstrap; consumers resolve directly by id (`get`) or by project
+ * (`resolveForProject`), which reads `app_config.chat_provider_id` and falls
+ * back to the env default.
  */
 
 import { eq } from 'drizzle-orm';
@@ -18,11 +17,6 @@ const instances = new Map<string, ChatProvider>();
 
 export function register(id: string, factory: ChatProviderFactory): void {
   factories.set(id, factory);
-  instances.delete(id);
-}
-
-export function unregister(id: string): void {
-  factories.delete(id);
   instances.delete(id);
 }
 
@@ -51,23 +45,17 @@ export interface ResolvedChatProvider {
 }
 
 export interface ResolveOptions {
-  /** Override the default DB client (for tests). */
   db?: typeof defaultDb | undefined;
-  /** Default provider id when `app_config` is empty (env-driven). */
   fallbackProviderId?: string | undefined;
-  /** Default model when neither `app_config.chat_model` nor provider default fits. */
   fallbackModel?: string | undefined;
 }
 
 /**
- * Resolve the provider + model to use for a project. Order:
- *   1. `app_config.chat_provider_id` (if registered) — model from
- *      `app_config.chat_model` else provider default.
- *   2. Fallback provider id (env-driven, e.g. whichever of LITELLM/GEMINI
- *      is configured) — model from fallback or provider default.
- *
- * Throws 503 when no provider can be resolved so callers can return a
- * structured error to the client.
+ * Resolve the provider + model for a project: `app_config.chat_provider_id`
+ * when that id is registered (model from `app_config.chat_model`, else the
+ * provider's default), otherwise the env-driven fallback id from
+ * `defaultChatProviderId()`. Throws 503 when neither resolves, so callers can
+ * return a structured error to the client.
  */
 export async function resolveForProject(
   projectId: string,
