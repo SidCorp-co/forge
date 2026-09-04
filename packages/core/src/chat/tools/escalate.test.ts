@@ -17,6 +17,9 @@ describe('buildEscalationToolset', () => {
   it('execute() returns a stub status without doing any real work', async () => {
     const toolset = buildEscalationToolset();
     const result = await toolset.execute('escalate', '{"question":"how does X work?"}');
-    expect(JSON.parse(result)).toEqual({ status: 'escalation_queued' });
+    expect(JSON.parse((result.content[0] as { text: string }).text)).toEqual({
+      status: 'escalation_queued',
+    });
+    expect(result.isError).not.toBe(true);
   });
 });

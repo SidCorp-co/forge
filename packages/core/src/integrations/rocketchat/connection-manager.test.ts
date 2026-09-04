@@ -29,7 +29,7 @@ vi.mock('../../chat/external-chat.js', () => ({
 }));
 
 vi.mock('../../chat/tools/registry.js', () => ({
-  buildProjectToolset: () => ({ tools: [], execute: async () => '' }),
+  buildProjectToolset: () => ({ tools: [], execute: async () => ({ content: [] }) }),
 }));
 
 vi.mock('../../chat/tools/external-mcp.js', () => ({
@@ -38,7 +38,7 @@ vi.mock('../../chat/tools/external-mcp.js', () => ({
 
 vi.mock('./context.js', () => ({
   buildConversationContext: async () => '',
-  buildRocketChatHistoryToolset: () => ({ tools: [], execute: async () => '' }),
+  buildRocketChatHistoryToolset: () => ({ tools: [], execute: async () => ({ content: [] }) }),
 }));
 
 const startEscalation = vi.fn();

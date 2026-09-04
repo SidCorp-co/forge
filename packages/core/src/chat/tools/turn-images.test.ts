@@ -14,7 +14,7 @@ const IMAGE: TurnImage = {
 };
 
 function inner(): ChatToolset & { execute: ReturnType<typeof vi.fn> } {
-  const execute = vi.fn().mockResolvedValue('{"ok":true}');
+  const execute = vi.fn().mockResolvedValue({ content: [{ type: 'text', text: '{"ok":true}' }] });
   return { tools: [], execute };
 }
 

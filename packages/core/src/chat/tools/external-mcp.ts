@@ -1,22 +1,18 @@
 /**
- * ISS-609 follow-up — bridge the project's CONFIGURED external MCP servers
- * (`pipelineConfig.mcpServers`, e.g. a task hub) into the provider-chat
- * toolset, so the RC bot investigates the same systems the pipeline agents
- * get injected.
- *
- * Per turn: connect each http server with the stored headers, list its tools,
- * adapt to OpenAI `tools[]` (names prefixed with the server key so hub/forge
- * names can't collide), and proxy execute → `tools/call`. Everything is
- * best-effort — a dead server logs and contributes no tools; it never breaks
- * the turn. Callers MUST `dispose()` after the turn to close the clients.
+ * ISS-609 follow-up — bridge the project's configured external MCP servers (`pipelineConfig.mcpServers`)
+ * into the provider-chat toolset so the RC bot investigates what the pipeline agents get injected.
+ * Per turn: connect each http server, list its tools, expose them as `<serverKey>__<tool>`, proxy
+ * execute → `tools/call`. Best-effort: a dead server logs and contributes no tools. Callers MUST
+ * `dispose()` after the turn.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { logger } from '../../logger.js';
+import type { CallToolResult } from '../../mcp/tool-result.js';
 import type { ChatTool } from '../providers/types.js';
-import type { ChatToolset } from './mcp-adapter.js';
+import { type ChatToolset, DESCRIPTION_CAP, toolError, truncate } from './mcp-adapter.js';
 
 export interface ExternalMcpServerConfig {
   url?: string;
@@ -32,12 +28,6 @@ const CONNECT_TIMEOUT_MS = 8000;
 const CALL_TIMEOUT_MS = 20_000;
 const MAX_SERVERS = 4;
 const MAX_TOOLS_PER_SERVER = 40;
-const DESCRIPTION_CAP = 1024;
-const RESULT_CAP = 24_000;
-
-function truncate(s: string, cap: number): string {
-  return s.length > cap ? `${s.slice(0, cap)}… [truncated]` : s;
-}
 
 function sanitize(name: string): string {
   return name.replace(/[^A-Za-z0-9_-]/g, '_');
@@ -73,19 +63,12 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   ]);
 }
 
-/** Serialize a tools/call result to the string the chat model receives. */
-function serializeCallResult(result: unknown): string {
-  const content = (result as { content?: unknown[] })?.content;
-  if (Array.isArray(content)) {
-    const text = content
-      .map((part) => {
-        const p = part as { type?: string; text?: string };
-        return p?.type === 'text' && typeof p.text === 'string' ? p.text : JSON.stringify(part);
-      })
-      .join('\n');
-    return truncate(text, RESULT_CAP);
+/** A server's `tools/call` reply passes through as-is; a pre-2024 server answering with the legacy `toolResult` field is wrapped as one text block. */
+function asCallToolResult(result: unknown): CallToolResult {
+  if (result && typeof result === 'object' && Array.isArray((result as CallToolResult).content)) {
+    return result as CallToolResult;
   }
-  return truncate(JSON.stringify(result ?? null), RESULT_CAP);
+  return { content: [{ type: 'text', text: JSON.stringify(result ?? null) }] };
 }
 
 export interface ExternalMcpToolsets {
@@ -143,12 +126,12 @@ export async function buildExternalMcpToolsets(agentConfig: unknown): Promise<Ex
         tools,
         async execute(name, argsJson) {
           const real = byName.get(name);
-          if (!real) return JSON.stringify({ error: `unknown tool "${name}"` });
+          if (!real) return toolError(`unknown tool "${name}"`);
           let args: Record<string, unknown>;
           try {
             args = argsJson.trim() ? (JSON.parse(argsJson) as Record<string, unknown>) : {};
           } catch {
-            return JSON.stringify({ error: 'arguments were not valid JSON' });
+            return toolError('arguments were not valid JSON');
           }
           try {
             const result = await withTimeout(
@@ -156,9 +139,9 @@ export async function buildExternalMcpToolsets(agentConfig: unknown): Promise<Ex
               CALL_TIMEOUT_MS,
               `mcp ${key} call ${real}`,
             );
-            return serializeCallResult(result);
+            return asCallToolResult(result);
           } catch (err) {
-            return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+            return toolError(err instanceof Error ? err.message : String(err));
           }
         },
       });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ChatToolset } from '../../chat/tools/mcp-adapter.js';
 import {
   buildRocketChatHistoryToolset,
   extractQuotedMessageIds,
@@ -137,6 +138,10 @@ describe('extractMessageText', () => {
 
 describe('buildRocketChatHistoryToolset', () => {
   const auth = { serverUrl: 'https://rc.invalid', authToken: 't', userId: 'bot' };
+  const body = async (p: ReturnType<ChatToolset['execute']>) => {
+    const r = await p;
+    return { ...JSON.parse((r.content[0] as { text: string }).text), isError: r.isError };
+  };
 
   it('advertises a single rocketchat_history tool', () => {
     const set = buildRocketChatHistoryToolset(auth, 'RID1');
@@ -149,13 +154,15 @@ describe('buildRocketChatHistoryToolset', () => {
     await set.execute('rocketchat_history', '{}');
     await set.execute('rocketchat_history', '{}');
     await set.execute('rocketchat_history', '{}');
-    const out = JSON.parse(await set.execute('rocketchat_history', '{}'));
+    const out = await body(set.execute('rocketchat_history', '{}'));
     expect(out.error).toMatch(/capped at 3 calls/);
+    expect(out.isError).toBe(true);
   });
 
   it('rejects invalid JSON args without throwing', async () => {
     const set = buildRocketChatHistoryToolset(auth, 'RID1');
-    const out = JSON.parse(await set.execute('rocketchat_history', '{nope'));
+    const out = await body(set.execute('rocketchat_history', '{nope'));
     expect(out.error).toMatch(/valid JSON/);
+    expect(out.isError).toBe(true);
   });
 });

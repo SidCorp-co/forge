@@ -1,16 +1,12 @@
 /**
- * ISS-609 (Lane A intelligence, piece A) — conversation-context seeding +
- * the bounded `rocketchat_history` chat tool.
- *
- * On a bot mention we SEED the turn with the last ~20 room messages (plus the
- * full thread when the mention is threaded), formatted `[user]: text`. Deeper
- * recall is agentic, not hardcoded: the model gets `rocketchat_history` (cap
- * 50 msgs/call, 3 calls/turn; overall bounded by the tool-loop iteration cap)
- * and decides itself when the discussion references older matter.
+ * ISS-609 — conversation-context seeding + the bounded `rocketchat_history` chat tool. A mention
+ * SEEDS the turn with the last ~20 room messages (plus the full thread when threaded); deeper recall
+ * is agentic — the model gets `rocketchat_history` (50 msgs/call, 3 calls/turn) and decides itself.
  */
 
 import type { ChatTool } from '../../chat/providers/types.js';
-import type { ChatToolset } from '../../chat/tools/mcp-adapter.js';
+import { type ChatToolset, toolError } from '../../chat/tools/mcp-adapter.js';
+import type { CallToolResult } from '../../mcp/tool-result.js';
 import {
   buildMessagePermalink,
   fetchMessage,
@@ -31,10 +27,7 @@ function clip(s: string, cap: number): string {
   return s.length > cap ? `${s.slice(0, cap)}… [truncated]` : s;
 }
 
-/** A quote-reply (`[ ](…?msg=<id>)`) embeds only the parent's `msg` snippet —
- *  the parent's own attachments (a webhook card's body and its task link) are
- *  LOST in the quote. These ids let the seed fetch the referenced messages in
- *  full so the model sees what was actually quoted. */
+/** A quote-reply (`[ ](…?msg=<id>)`) embeds only the parent's `msg` snippet and loses its attachments; these ids let the seed fetch the referenced messages in full. */
 const QUOTED_MSG_ID_RE = /\?msg=([A-Za-z0-9]+)/g;
 const MAX_QUOTED_FETCHES = 3;
 
@@ -54,12 +47,7 @@ export function extractQuotedMessageIds(
   return ids;
 }
 
-/**
- * Render REST messages as `[user]: text` lines (oldest first), dropping system
- * messages, the bot's own replies (unless `includeBot` — a thread's earlier
- * bot turns ARE the conversation), empty bodies, and the triggering mention
- * itself (it is the turn's user message). Returns null when nothing remains.
- */
+/** Render REST messages as `[user]: text` lines (oldest first), dropping system messages, the bot's own replies unless `includeBot`, empty bodies and the triggering mention. Null when nothing remains. */
 export function formatConversationLines(
   messages: RocketChatRestMessage[],
   opts: { botUserId: string; excludeMessageId?: string | undefined; includeBot?: boolean },
@@ -81,11 +69,7 @@ export function formatConversationLines(
   return block;
 }
 
-/**
- * Build the seed context for one mention: last {@link SEED_MESSAGE_COUNT} room
- * messages, plus the full thread when the mention is threaded. Best-effort —
- * any fetch failure degrades to null (the turn still runs, just contextless).
- */
+/** Seed context for one mention: last {@link SEED_MESSAGE_COUNT} room messages plus the full thread when threaded. Best-effort — a fetch failure degrades to null. */
 export async function buildConversationContext(
   auth: RocketChatRestAuth,
   opts: {
@@ -101,17 +85,13 @@ export async function buildConversationContext(
     const [room, thread, threadRoot, permalink] = await Promise.all([
       fetchRoomHistory(auth, opts.rid, { count: SEED_MESSAGE_COUNT }),
       opts.tmid ? fetchThreadMessages(auth, opts.tmid, HISTORY_MAX_PER_CALL) : Promise.resolve([]),
-      // getThreadMessages returns REPLIES only — without the root message the
-      // thing the thread is about is missing, and "the task above" in a
-      // threaded mention resolves against unrelated room noise.
+      // cm:why getThreadMessages returns REPLIES only — without the root message, "the task above" in a threaded mention resolves against unrelated room noise
       opts.tmid ? fetchMessage(auth, opts.tmid) : Promise.resolve(null),
       // Deterministic source link for issues the bot files — the model can
       // only cite the chat if the permalink is handed to it.
       buildMessagePermalink(auth, opts.rid, opts.tmid ?? opts.excludeMessageId).catch(() => null),
     ]);
-    // Expand quote-replies: fetch the messages referenced by `?msg=<id>` links
-    // in the trigger and the thread, so a quoted webhook card's full body (and
-    // its task link) reach the model instead of just the quote's snippet.
+    // cm:why a quote-reply carries only the parent's `msg` snippet, so the referenced messages are fetched in full or a quoted webhook card's body and task link never reach the model
     const quotedIds = extractQuotedMessageIds(
       [opts.triggerText, threadRoot?.text, ...thread.map((t) => t.text)],
       new Set([opts.excludeMessageId, ...(opts.tmid ? [opts.tmid] : [])]),
@@ -169,11 +149,7 @@ export async function buildConversationContext(
   }
 }
 
-/**
- * The RC-scoped read tool offered alongside the forge_* toolset: page back
- * through this room's history. `rid` is pinned server-side (the model never
- * addresses another room); calls are capped per turn.
- */
+/** Page back through THIS room's history; `rid` is pinned server-side and calls are capped per turn. */
 export function buildRocketChatHistoryToolset(auth: RocketChatRestAuth, rid: string): ChatToolset {
   const tool: ChatTool = {
     type: 'function',
@@ -197,21 +173,19 @@ export function buildRocketChatHistoryToolset(auth: RocketChatRestAuth, rid: str
   };
 
   let calls = 0;
-  async function execute(name: string, argsJson: string): Promise<string> {
-    if (name !== 'rocketchat_history') {
-      return JSON.stringify({ error: `unknown tool "${name}"` });
-    }
+  async function execute(name: string, argsJson: string): Promise<CallToolResult> {
+    if (name !== 'rocketchat_history') return toolError(`unknown tool "${name}"`);
     calls += 1;
     if (calls > HISTORY_MAX_CALLS_PER_TURN) {
-      return JSON.stringify({
-        error: `rocketchat_history is capped at ${HISTORY_MAX_CALLS_PER_TURN} calls per turn — answer with what you have`,
-      });
+      return toolError(
+        `rocketchat_history is capped at ${HISTORY_MAX_CALLS_PER_TURN} calls per turn — answer with what you have`,
+      );
     }
     let args: { before?: string; count?: number } = {};
     try {
       args = argsJson.trim() ? (JSON.parse(argsJson) as typeof args) : {};
     } catch {
-      return JSON.stringify({ error: 'arguments were not valid JSON' });
+      return toolError('arguments were not valid JSON');
     }
     const count = Math.min(
       Math.max(1, typeof args.count === 'number' ? Math.floor(args.count) : HISTORY_MAX_PER_CALL),
@@ -221,12 +195,13 @@ export function buildRocketChatHistoryToolset(auth: RocketChatRestAuth, rid: str
       count,
       before: typeof args.before === 'string' ? args.before : undefined,
     });
-    return JSON.stringify({
+    const page = {
       messages: messages
         .filter((m) => !m.isSystem && m.text.trim().length > 0)
         .map((m) => ({ ts: m.ts, user: m.username, text: clip(m.text, MESSAGE_CHAR_CAP) })),
       oldestTs: messages[0]?.ts ?? null,
-    });
+    };
+    return { content: [{ type: 'text', text: JSON.stringify(page) }] };
   }
 
   return { tools: [tool], execute };

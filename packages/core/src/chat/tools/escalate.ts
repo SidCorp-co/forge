@@ -1,12 +1,7 @@
 /**
- * ISS-675 — the `escalate` tool offered to the fast RocketChat chat model.
- *
- * A local synthetic tool (not an MCP tool), so it composes via `mergeToolsets`
- * without going through the MCP allowlist machinery — RC-only, never exposed
- * to web chat (those never escalate to a room). `execute()` returns a
- * stub; the real work happens in `connection-manager.ts`, which inspects
- * `result.toolCalls` for this call and drives `startEscalation` — the model's
- * tool-call record is the signal, not this function's return value.
+ * ISS-675 — the `escalate` tool offered to the fast RocketChat chat model. A local synthetic tool,
+ * RC-only, never exposed to web chat. `execute()` returns a stub: `connection-manager.ts` inspects
+ * `result.toolCalls` for this call and drives `startEscalation` — the record is the signal.
  */
 
 import type { ChatToolset } from './mcp-adapter.js';
@@ -36,6 +31,8 @@ export function buildEscalationToolset(): ChatToolset {
         },
       },
     ],
-    execute: async () => JSON.stringify({ status: 'escalation_queued' }),
+    execute: async () => ({
+      content: [{ type: 'text', text: JSON.stringify({ status: 'escalation_queued' }) }],
+    }),
   };
 }
