@@ -13,6 +13,9 @@ import type {
 	ProjectLabel,
 	ProjectMemberRow,
 	PluginDesignation,
+	MemoryModel,
+	MemoryModelStatus,
+	MemoryReindexEstimate,
 	ProjectUpdateInput,
 	ReleaseReadiness,
 	UxContractRule,
@@ -180,4 +183,26 @@ export const projectSettingsApi = {
 	/** `DELETE /api/ux-contract-rules/:ruleId` (admin, top-level route) — 204. */
 	deleteUxRule: (ruleId: string) =>
 		apiClient<unknown>(`/ux-contract-rules/${ruleId}`, { method: "DELETE" }),
+
+	/** `GET /api/app-config/:id/memory-model/reindex` → `{ model, reindex }` (viewer). */
+	getMemoryModel: (id: string) =>
+		apiClient<MemoryModelStatus>(`/app-config/${id}/memory-model/reindex`),
+
+	/** `GET /api/app-config/:id/memory-model/estimate` (viewer) — nothing is enqueued. */
+	getMemoryEstimate: (id: string) =>
+		apiClient<MemoryReindexEstimate>(`/app-config/${id}/memory-model/estimate`),
+
+	/** `POST /api/app-config/:id/memory-model { model }` (admin). `chunked` → 202 with the
+	 *  queued state, 409 `REINDEX_LIVE` while a reindex runs; `flat` → 200 at once. */
+	setMemoryModel: (id: string, model: MemoryModel) =>
+		apiClient<MemoryModelStatus>(`/app-config/${id}/memory-model`, {
+			method: "POST",
+			body: JSON.stringify({ model }),
+		}),
+
+	/** `DELETE /api/app-config/:id/memory-model/reindex` (admin) — 409 when nothing is live. */
+	cancelMemoryReindex: (id: string) =>
+		apiClient<MemoryModelStatus>(`/app-config/${id}/memory-model/reindex`, {
+			method: "DELETE",
+		}),
 };

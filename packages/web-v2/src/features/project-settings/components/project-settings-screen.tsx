@@ -29,6 +29,7 @@ import { BasicsTab } from "./basics-tab";
 import { IntegrationsTab } from "./integrations-tab";
 import { LabelsTab } from "./labels-tab";
 import { MembersTab } from "./members-tab";
+import { MemoryTab } from "./memory-tab";
 import { PipelineTab } from "./pipeline-tab";
 import { ProjectFactsTab } from "./project-facts-tab";
 import { RepoTab } from "./repo-tab";
@@ -42,6 +43,7 @@ const TAB_VALUES = [
 	"testing",
 	"pipeline",
 	"facts",
+	"memory",
 	"ux-contract",
 	"labels",
 	"members",
@@ -57,6 +59,7 @@ const TABS: TabItem[] = [
 	{ value: "testing", label: "Testing" },
 	{ value: "pipeline", label: "Pipeline" },
 	{ value: "facts", label: "Project Facts" },
+	{ value: "memory", label: "Memory" },
 	{ value: "ux-contract", label: "UX Contract" },
 	{ value: "labels", label: "Labels" },
 	{ value: "members", label: "Members" },
@@ -192,6 +195,12 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 					)}
 					{tab === "facts" && (
 						<ProjectFactsTab projectId={project.id} canEdit={canEdit} />
+					)}
+					{tab === "memory" && (
+						<MemoryTab
+							project={project}
+							canEdit={canEdit || isProjectAdmin}
+						/>
 					)}
 					{tab === "ux-contract" && (
 						<UxContractTab project={project} canEdit={canEdit} />

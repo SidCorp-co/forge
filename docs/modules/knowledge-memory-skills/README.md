@@ -95,8 +95,14 @@ flowchart TB
   `memory-chunk-purge` seven days out — the purge is a no-op if the project flipped back meanwhile).
   `runChunkReindex` re-reads the state before every batch of 50, fails with `lastError` on an
   embeddings outage, is resumable by construction (it walks `chunked_at IS NULL`), and stamps
-  `app_config.last_backfill_at` on `completed`. The Project Settings card that draws the five states is
-  ISS-908.
+  `app_config.last_backfill_at` on `completed`. Project Settings → **Memory**
+  (`web-v2/src/features/project-settings/components/memory-tab.tsx`) draws exactly one of the five
+  states from those two GETs and never infers one: flat shows the estimate and *Switch to chunked*;
+  queued/running shows done / total with a progress bar, the last batch time and *Cancel*, polling every
+  5 s only in those two states; failed shows `lastError` and *Retry*; cancelled shows the partial counts
+  and *Resume*; completed offers *Switch back to flat* behind a type-to-confirm whose copy names the
+  seven-day purge. A 409 is drawn as "A reindex is already running." and never retried; buttons render
+  only for a project admin or org owner/admin, the server's 403 being the second fence.
 - **Every memory search names its surface, and only `agent` is ever reranked.**
   `search-service.ts:runMemorySearch` requires `surface: 'agent' | 'web'`; the MCP tool
   `forge_memory.search` (which the chat toolset registers too) and `forge_knowledge` search pass
