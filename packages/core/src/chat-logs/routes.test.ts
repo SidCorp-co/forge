@@ -186,3 +186,13 @@ describe('PATCH /api/chat-logs/:id', () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe('GET /api/chat-logs — retired filters', () => {
+  it('400 on `intent`: `query_intent` has been written null at every insert site since the provider-chat rewrite', async () => {
+    authVerified();
+    const res = await buildApp().request('/api/chat-logs?intent=status', {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.status).toBe(400);
+  });
+});

@@ -1,24 +1,25 @@
 // web-v2 feature module: activity — types + pure derive helpers.
 //
 // A cross-project feed of agent Q&A turns. The standalone workspace Activity
-// page was removed in ISS-359 (replaced by Usage); these types + hooks now power
-// the "Recent activity" widget on the workspace Overview
-// (`features/overview/components/activity-feed.tsx`). Row shape mirrors the exact
-// projection `GET /api/chat-logs` returns (a drizzle `select()` over the
-// `chat_logs` table — camelCase keys), verified against
-// `packages/core/src/chat-logs/routes.ts` + `db/schema.ts` (do not guess
-// field names).
+// page was removed in ISS-359 (replaced by Usage); no screen renders these
+// today — `lib/ws/event-router.ts` still invalidates their `['chat-logs']` key.
+// Row shape mirrors the exact projection `GET /api/chat-logs` returns (a
+// drizzle `select()` over the `chat_logs` table — camelCase keys), verified
+// against `packages/core/src/chat-logs/routes.ts` + `db/schema.ts` (do not
+// guess field names).
 
 export const QA_RATINGS = ["good", "bad", "flagged"] as const;
 export type QaRating = (typeof QA_RATINGS)[number];
 
-/** Anthropic-format token usage as persisted on the chat-log row (snake_case
-    from the model response). Older rows may be `null` or partial. */
+/** `chat_logs.usage` as core writes it — `run-turn-core.ts:usageForLog`: the
+    summed provider usage plus, only when non-zero, what `context-budget.ts`
+    elided. Older rows may be `null` or partial. */
 export interface ChatLogUsage {
-  input_tokens?: number;
-  output_tokens?: number;
-  cache_read_input_tokens?: number;
-  cache_creation_input_tokens?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  cachedPromptTokens?: number;
+  elided?: { historyMessages: number; truncatedToolResults: number; overBudget: boolean };
 }
 
 /** One row of `GET /api/chat-logs` — a single agent conversation turn. */
@@ -53,8 +54,8 @@ export function sumTokens(rows: ChatLogRow[]): { input: number; output: number }
   let input = 0;
   let output = 0;
   for (const r of rows) {
-    input += r.usage?.input_tokens ?? 0;
-    output += r.usage?.output_tokens ?? 0;
+    input += r.usage?.promptTokens ?? 0;
+    output += r.usage?.completionTokens ?? 0;
   }
   return { input, output };
 }
