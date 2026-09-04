@@ -200,6 +200,7 @@ describe('flip to chunked: the buried marker becomes findable', () => {
     const { projectId, token } = await project();
     const ref = randomUUID();
     await indexMemory({ projectId, source: 'issue', sourceRef: ref, text: longBody() });
+    expect((await rowState(projectId, ref)).chunks).toEqual([]);
 
     const flat = await search(projectId, 'semantic');
     const flatHit = flat.hits.find((h) => h.sourceRef === ref);
@@ -346,7 +347,12 @@ describe('reindex lifecycle', () => {
     };
     const cancelled = await reindexMod.runChunkReindex(projectId);
     fake.onCall = null;
-    expect(cancelled?.state).toBe('cancelled');
+    expect(cancelled).toMatchObject({
+      state: 'cancelled',
+      done: reindexMod.REINDEX_BATCH_SIZE,
+      remaining: 10,
+    });
+    expect(cancelled?.lastBatchAt).toBeDefined();
     const [counts] = await harness.db.execute<{ chunked: number }>(
       sql`SELECT count(*)::int AS chunked FROM memories WHERE project_id = ${projectId} AND chunked_at IS NOT NULL`,
     );
