@@ -35,7 +35,6 @@ function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
     sessions: [],
     jobs: [],
     deps: [],
-    decompChildren: [],
     runningIssueIds: new Set(),
     runningIssueCount: 0,
     cap: 5,
@@ -262,39 +261,6 @@ describe('classifyPipelineHealthForIssue — dependency satisfaction parity', ()
     expect(out.waitingOn?.details.blockerIssueIds).toEqual(['iss-blocker']);
   });
 
-  it('gates parent work only on unsatisfied decompose children', () => {
-    const triage = classifyPipelineHealthForIssue(
-      baseInput({
-        jobs: [job({ type: 'triage' })],
-        decompChildren: [{ childIssueId: 'iss-child', status: 'in_progress', mergedAt: null }],
-      }),
-    );
-    expect(triage.waitingOn).toBeUndefined();
-
-    const code = classifyPipelineHealthForIssue(
-      baseInput({
-        jobs: [job({ type: 'code' })],
-        decompChildren: [{ childIssueId: 'iss-child', status: 'in_progress', mergedAt: null }],
-      }),
-    );
-    expect(code.waitingOn?.reason).toBe('waiting_on_decomp_children');
-
-    const satisfied = classifyPipelineHealthForIssue(
-      baseInput({
-        jobs: [job({ type: 'code' })],
-        decompChildren: [{ childIssueId: 'iss-child', status: 'released', mergedAt: QUEUED_AT }],
-      }),
-    );
-    expect(satisfied.waitingOn).toBeUndefined();
-
-    const reopened = classifyPipelineHealthForIssue(
-      baseInput({
-        jobs: [job({ type: 'code' })],
-        decompChildren: [{ childIssueId: 'iss-child', status: 'reopen', mergedAt: QUEUED_AT }],
-      }),
-    );
-    expect(reopened.waitingOn?.reason).toBe('waiting_on_decomp_children');
-  });
 });
 
 describe('classifyPipelineHealthForIssue — the two gates that never clear themselves', () => {
@@ -367,7 +333,6 @@ describe('waitingCause is a pass-through of issues.waiting_kind (RFC 0002 INV-5)
           mergedAt: new Date('2026-08-11T00:00:00.000Z'),
           waitingKind: null,
         },
-        decompChildren: [{ childIssueId: 'child-1', status: 'draft', mergedAt: null }],
       }),
     );
     expect(out.waitingCause).toBeUndefined();

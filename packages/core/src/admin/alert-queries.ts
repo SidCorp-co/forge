@@ -296,7 +296,6 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
         AND NOT (${predicates.issueBusyJob})
         AND NOT (${predicates.staleTrigger})
         AND NOT (${predicates.blockedBy})
-        AND NOT (${predicates.decomposeChildrenPending})
         AND (
           j.issue_id::text IN (SELECT issue_id FROM running_ids)
           OR (SELECT COUNT(*) FROM running_ids) < ${cap}

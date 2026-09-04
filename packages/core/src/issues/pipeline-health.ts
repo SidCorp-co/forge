@@ -37,7 +37,6 @@ import {
 import type {
   ClassifyInput,
   PipelineHealth,
-  PipelineHealthDecompChild,
   PipelineHealthDep,
   PipelineHealthSession,
 } from './pipeline-health-types.js';
@@ -46,7 +45,6 @@ import type {
 export type {
   ClassifyInput,
   PipelineHealth,
-  PipelineHealthDecompChild,
   PipelineHealthDep,
   PipelineHealthJob,
   PipelineHealthQueuedStep,
@@ -88,7 +86,6 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     sessions,
     jobs: issueJobs,
     deps,
-    decompChildren,
     runningIssueIds,
     runningIssueCount,
     cap,
@@ -189,21 +186,6 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
       },
     };
     return out;
-  }
-
-  // Gate `decomposeChildrenPending`: a decompose PARENT's forward jobs wait
-  // for every child to land. (The old inverse rule — child release waiting on
-  // its parent — was removed from the gate; it deadlocked umbrella epics.)
-  if (['code', 'review', 'test', 'fix'].includes(candidate.type)) {
-    const pendingChildren = decompChildren.filter((c) => !isBlockerSatisfied(c));
-    if (pendingChildren.length > 0) {
-      out.waitingOn = {
-        reason: 'waiting_on_decomp_children',
-        since: sinceIso,
-        details: { childIssueIds: pendingChildren.map((c) => c.childIssueId) },
-      };
-      return out;
-    }
   }
 
   if (runningIssueCount >= cap && !runningIssueIds.has(issue.id)) {
@@ -316,35 +298,6 @@ export async function hydratePipelineHealthForIssues(
     depsByIssue.set(r.toIssueId, bucket);
   }
 
-  // Q4b — outgoing `decomposes` edges FROM these issues (issue = decompose
-  // parent, gate `decomposeChildrenPending` waits on the children).
-  const decompRows = await db
-    .select({
-      parentIssueId: issueDependencies.fromIssueId,
-      childIssueId: issueDependencies.toIssueId,
-      childStatus: issues.status,
-      childMergedAt: issues.mergedAt,
-    })
-    .from(issueDependencies)
-    .innerJoin(issues, eq(issues.id, issueDependencies.toIssueId))
-    .where(
-      and(
-        inArray(issueDependencies.fromIssueId, ids),
-        eq(issueDependencies.kind, 'decomposes'),
-        sql`(${issueDependencies.validUntil} IS NULL OR ${issueDependencies.validUntil} > now())`,
-      ),
-    );
-  const decompChildrenByIssue = new Map<string, PipelineHealthDecompChild[]>();
-  for (const r of decompRows) {
-    const bucket = decompChildrenByIssue.get(r.parentIssueId) ?? [];
-    bucket.push({
-      childIssueId: r.childIssueId,
-      status: r.childStatus,
-      mergedAt: r.childMergedAt,
-    });
-    decompChildrenByIssue.set(r.parentIssueId, bucket);
-  }
-
   // cm:guard resolve the cap through `resolveGateSettings`, the same call the dispatch picker makes, and never by reading `pipelineConfig.maxConcurrentIssues` here — a second copy of the default-and-clamp is a health card that reports a slot the picker will not give.
   const { cap } = await resolveGateSettings(projectId);
   const runningRows = await db.execute<{ issue_id: string }>(sql`
@@ -377,7 +330,6 @@ export async function hydratePipelineHealthForIssues(
       sessions: sessionsByIssue.get(issueId) ?? [],
       jobs: jobsByIssue.get(issueId) ?? [],
       deps: depsByIssue.get(issueId) ?? [],
-      decompChildren: decompChildrenByIssue.get(issueId) ?? [],
       runningIssueIds,
       runningIssueCount,
       cap,

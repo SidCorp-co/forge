@@ -21,7 +21,6 @@ export type PipelineWaitingReason =
   | 'retry_cooldown'
   | 'stale_trigger'
   | 'waiting_on_dep'
-  | 'waiting_on_decomp_children'
   | 'project_full'
   | 'runner_stale'
   | 'runner_full';
@@ -98,14 +97,6 @@ export interface PipelineHealthDep {
   fromMergedAt: Date | null;
 }
 
-/** Outgoing `kind='decomposes'` edge: this issue is the decompose PARENT and
- *  its forward jobs wait for every child to land (gate
- *  `decomposeChildrenPending`). */
-export interface PipelineHealthDecompChild {
-  childIssueId: string;
-  status: string;
-  mergedAt: Date | null;
-}
 
 export interface PipelineHealthRunnerSat {
   type: string;
@@ -118,7 +109,6 @@ export interface ClassifyInput {
   sessions: PipelineHealthSession[];
   jobs: PipelineHealthJob[];
   deps: PipelineHealthDep[];
-  decompChildren: PipelineHealthDecompChild[];
   runningIssueIds: ReadonlySet<string>;
   runningIssueCount: number;
   cap: number;
