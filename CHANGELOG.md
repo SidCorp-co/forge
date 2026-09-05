@@ -633,6 +633,15 @@
   and an all-limited fleet defers on the self-clearing hold as designed. Found on epodsystem on
   2026-09-05, the day the floor shipped with only one half.
 
+- A fleet whose runners are merely out of date no longer reports itself as offline. The dispatch
+  gates gained a `runner_too_old` reason, ordered ahead of `runner_stale` so it is reachable, and the
+  capacity notification, the waiting-reason copy and the attention chip all name the real condition:
+  the host is online with a green heartbeat and only its build is below the floor the claim enforces.
+  Unlike a rate limit or an offline host, this one never clears by itself, so it is marked as needing
+  action and the next step names the runner update. Previously an operator was sent to a Runners tab
+  where everything looked perfect.
+
+
 - The master swept every 30 seconds while its account was rate-limited, spending a pass a minute on
   work it could not start. `GET /api/devices/me/runners` now reports the remaining seconds on the
   limit and the reason, and the master stretches its poll to at most five minutes when *every*

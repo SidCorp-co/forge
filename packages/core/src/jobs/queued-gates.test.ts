@@ -183,6 +183,18 @@ describe('assertDispatchable', () => {
     expect(text).not.toMatch(/'decompose_children_pending'/);
     expect(text).toMatch(/'runner_stale'/);
     expect(text).toMatch(/'runner_full'/);
+    expect(text).toMatch(/'runner_too_old'/);
+  });
+
+  // cm:guard the ORDER is the assertion, not the presence. `runner_stale` matches whenever the CTE is empty, and a below-floor box IS in the CTE — so an arm placed after it would be dead code, and every too-old fleet would keep reporting "no runner is online" about hosts whose heartbeats are green. Measured 2026-09-05: dev1 served 20 projects at 0.10.5 against a 0.11.0 floor.
+  it('reports a too-old fleet as too old rather than as no fleet at all', async () => {
+    mockAssertChain({ job: { projectId: 'p1' }, caseResult: { reason: null } });
+    await assertDispatchable('j1');
+    const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
+    expect(text.indexOf("'runner_stale'")).toBeLessThan(text.indexOf("'runner_too_old'"));
+    expect(text.indexOf("'runner_too_old'")).toBeLessThan(text.indexOf("'runner_full'"));
+    // cm:guard the capacity arm must ALSO be claim-scoped, or a fleet of below-floor boxes at capacity reports `runner_full` — "wait for a runner to free" about runners that will never take the job.
+    expect(text).toMatch(/claim_capable\s+AND\s+in_flight\s*<\s*cap/);
   });
 
   it('SQL joins jobs/issues/pipeline_runs the way both readers do', async () => {

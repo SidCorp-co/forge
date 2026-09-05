@@ -224,6 +224,9 @@ describe('capacity deferral E2E', () => {
     expect(clone).toBeTruthy();
     const rotation = clone?.payload._autoRetry as { round: number };
     expect(rotation.round).toBe(2);
+    // cm:guard read the NOTIFICATION TEXT, not just the call count. The offline case above says "no capable device is online", and that sentence is false here in the way that costs the most time: the host is online with a green heartbeat and only its build is too old, so an operator told to check the Runners tab finds nothing wrong and never reaches the one-command fix.
     expect(emitWedgeMock).toHaveBeenCalledTimes(1);
+    const ev = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
+    expect(ev.reason).not.toContain('online');
   });
 });

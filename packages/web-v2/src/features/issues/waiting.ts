@@ -73,6 +73,12 @@ export const WAITING_REASON_COPY: Record<
 		reason: "Every online runner is at capacity.",
 		who: "No action — dispatches when a runner frees.",
 	},
+	// cm:guard this must NOT read as an outage. The host is online and healthy; its runner build is simply older than the floor the claim enforces, so it is refused by name ("runner_too_old") on every attempt. Copy that says "offline or stale" — which is what this case reported before the reason existed — sends the operator to check heartbeats that are perfectly green, and the actual one-command fix goes unfound.
+	runner_too_old: {
+		reason:
+			"Every online runner for this project is running a build too old to claim work.",
+		who: "Update the runner on that host; the step dispatches on the next tick once it reports the new version.",
+	},
 };
 
 
@@ -87,6 +93,7 @@ export const WAITING_REASON_SHORT: Record<WaitingReason, string> = {
 	stale_trigger: "Step superseded",
 	runner_stale: "No runner online",
 	runner_full: "Runners at capacity",
+	runner_too_old: "Runner build too old",
 };
 
 /** Copy for a gate this build has no words for. Core owns the vocabulary and
@@ -119,6 +126,8 @@ const GATE_NEEDS_ACTION: Record<Exclude<WaitingReason, "job_held">, boolean> = {
 	stale_trigger: false,
 	runner_stale: true,
 	runner_full: false,
+	// cm:guard true, and it is the clearest true in this record: no reset arrives and no host comes back, because nothing is wrong with the host. A calm chip here means a project waits on a runner update nobody has been told to make.
+	runner_too_old: true,
 };
 
 function gateNeedsAction(reason: WaitingReason, holdReason: unknown): boolean {

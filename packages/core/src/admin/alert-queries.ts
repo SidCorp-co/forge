@@ -296,7 +296,8 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
         AND NOT EXISTS (
           SELECT 1 FROM fresh_capable_runners fcr
           JOIN runners rr ON rr.id = fcr.id
-          WHERE fcr.in_flight < fcr.cap
+          WHERE fcr.claim_capable
+            AND fcr.in_flight < fcr.cap
             AND rr.capabilities @> coalesce(nullif(j.payload -> 'requiredCapabilities', 'null'::jsonb), '{}'::jsonb)
             AND (
               pool.device_ids IS NULL

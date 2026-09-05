@@ -590,10 +590,16 @@ async function pickLeastLoadedFreeRunner(
 export async function onlineCapableDeviceIds(
   projectId: string,
   requiredCapabilities?: RequiredCapabilities,
-  opts?: { includeLimited?: boolean; allowDeviceIds?: string[] | null },
+  opts?: {
+    includeLimited?: boolean;
+    includeBelowFloor?: boolean;
+    allowDeviceIds?: string[] | null;
+  },
 ): Promise<string[]> {
   const required = JSON.stringify(requiredCapabilities ?? {});
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
+  // cm:guard `includeBelowFloor` widens the set for REPORTING only and must never reach a routing caller — a below-floor box cannot claim, so a picker or rotation handed one is back in the deadlock this clause was added to close. Its single legitimate use is telling an operator "your fleet is too old" apart from "your fleet is offline", which are the same empty set otherwise.
+  const floorClause = opts?.includeBelowFloor ? sql`` : CLAIM_CAPABLE_DEVICE;
   const limitClause = opts?.includeLimited
     ? sql``
     : sql`AND (rate_limited_until IS NULL OR rate_limited_until <= now()) ${NOT_QUARANTINED} ${NOT_AUTH_LIMITED}`;
@@ -610,7 +616,7 @@ export async function onlineCapableDeviceIds(
         ${limitClause}
         ${WORKSPACE_READY}
         ${NOT_DISABLED_DEVICE}
-        ${CLAIM_CAPABLE_DEVICE}
+        ${floorClause}
         ${poolClause(opts?.allowDeviceIds)}
       ORDER BY device_id ASC
     `,

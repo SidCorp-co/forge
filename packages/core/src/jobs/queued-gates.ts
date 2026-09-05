@@ -41,6 +41,7 @@ export type GateSkipReason =
   | 'stale_trigger'
   // cm:guard every member here must be a string `buildGateReasonCase` can actually return, and every string it returns must be a member — `assertDispatchable` casts the raw CASE result into this union unchecked, so a mismatch is invisible to tsc. A name that outlives its arm is the failure mode: `release_decompose_pending` sat here for months naming an arm that never existed, and `observability/hold-metrics.ts` keyed its counter Map by a value outside its own key type.
   | 'runner_full'
+  | 'runner_too_old'
   | 'runner_stale';
 
 /**
@@ -153,6 +154,8 @@ export function buildBarrierFragments(args: {
     fresh_capable_runners AS (
       SELECT r.id,
              ${deviceCapSql('d')} AS cap,
+             -- cm:guard carried as a COLUMN and not a WHERE clause, so the reason arms can tell "no box at all" from "a box too old to claim". Every reader asking "is there a usable runner" MUST therefore say WHERE claim_capable; one that forgets counts a box the claim refuses outright ("runner_too_old") and re-opens the picker-offers/selector-rejects deadlock this CTE carries three other guards about.
+             ${claimCapableSql('d')} AS claim_capable,
              COALESCE(dl.in_flight, 0) AS in_flight
       FROM runners r
       JOIN devices d ON d.id = r.device_id
@@ -169,8 +172,6 @@ export function buildBarrierFragments(args: {
         AND (r.quarantined_until IS NULL OR r.quarantined_until <= now())
         -- cm:guard mirrors WORKSPACE_READY in runners/select.ts — NULL is a legacy row that predates the column and stays eligible; only an explicit non-ready value blocks
         AND (r.provision_status IS NULL OR r.provision_status = 'ready')
-        -- cm:guard mirrors "claimCapableSql" in runners/device-cap.ts — a box below the claim floor is refused OUTRIGHT ("runner_too_old"), never degraded, so counting it here declares dispatchable a job no runner on that box can ever take. Backticks are forbidden in this CTE: it is a template literal, and one backtick in a comment ends it.
-        AND ${claimCapableSql('d')}
         -- Device turn-off gate — MUST mirror runners/select.ts
         -- (NOT_DISABLED_DEVICE). Without it the picker/asserter counts a runner
         -- on a disabled device as available and declares the job dispatchable,
@@ -258,8 +259,11 @@ function buildGateReasonCase(predicates: BarrierFragments['predicates']): SQL {
         WHEN ${predicates.issueBusyJob} THEN 'issue_busy'
         WHEN ${predicates.staleTrigger} THEN 'stale_trigger'
         WHEN NOT EXISTS (SELECT 1 FROM fresh_capable_runners) THEN 'runner_stale'
-        WHEN NOT EXISTS (SELECT 1 FROM fresh_capable_runners WHERE in_flight < cap)
-          THEN 'runner_full'
+        WHEN NOT EXISTS (SELECT 1 FROM fresh_capable_runners WHERE claim_capable)
+          THEN 'runner_too_old'
+        WHEN NOT EXISTS (
+          SELECT 1 FROM fresh_capable_runners WHERE claim_capable AND in_flight < cap
+        ) THEN 'runner_full'
         ELSE NULL
       END`;
 }
@@ -317,8 +321,8 @@ export async function freshRunnerAvailability(projectId: string): Promise<Runner
   });
   const rows = await db.execute<{ total: number; with_capacity: number }>(sql`
     WITH ${ctes}
-    SELECT COUNT(*)::int AS total,
-           COUNT(*) FILTER (WHERE in_flight < cap)::int AS with_capacity
+    SELECT COUNT(*) FILTER (WHERE claim_capable)::int AS total,
+           COUNT(*) FILTER (WHERE claim_capable AND in_flight < cap)::int AS with_capacity
     FROM fresh_capable_runners
   `);
   const row = rows[0];

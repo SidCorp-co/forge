@@ -222,7 +222,17 @@ async function notifyCapacityOutage(
     allowDeviceIds: stagePool,
   });
   const allLimited = present.length > 0;
-  const scope = stagePool ? `the ${job.type} runner pool` : 'this project';
+  // cm:guard ask this ONLY when the claim-capable set is empty, and never route on the answer. A below-floor box is online with a green heartbeat, so without this the operator is told "no capable device is online" and sent to a Runners tab where everything looks perfect; the real fix is one runner update on a host that is right there. Measured 2026-09-05: dev1 served 20 projects at 0.10.5 against a 0.11.0 floor.
+  const tooOld = allLimited
+    ? []
+    : await onlineCapableDeviceIds(job.projectId, required, {
+        includeLimited: true,
+        includeBelowFloor: true,
+        allowDeviceIds: stagePool,
+      });
+  const copy = wedgeCopy(allLimited, present.length, tooOld.length, {
+    scope: stagePool ? `the ${job.type} runner pool` : 'this project',
+  });
 
   await emitPipelineWedge({
     projectId: job.projectId,
@@ -230,22 +240,49 @@ async function notifyCapacityOutage(
     hop: 'dispatch',
     entity: 'capacity',
     entityId,
-    reason: allLimited
-      ? `all ${present.length} capable device(s) are rate-limited or quarantined`
-      : 'no capable device is online',
-    action: allLimited
-      ? 'raise the account limit or wait for the provider reset'
-      : 'bring a runner online for this project',
-    title: allLimited
-      ? `No capacity: every runner for ${scope} is limited`
-      : `No capacity: no runner online for ${scope}`,
-    summary: allLimited
-      ? `Work for ${scope} is paused because all ${present.length} of its runners have hit an account limit. Steps keep waiting and resume by themselves once one frees up.`
-      : `Work for ${scope} is paused because none of its runners are online. Steps keep waiting and resume by themselves once one connects.`,
-    nextStep: allLimited
-      ? 'Raise the account spend/usage limit, or wait for the provider reset — no other action needed.'
-      : 'Start a runner for this project (forge-runner on a paired device).',
+    ...copy,
   });
+}
+
+/**
+ * What to tell an operator about an empty pool, given which of the three ways
+ * it is empty.
+ */
+// cm:guard three cases, never two. "Limited" and "offline" both auto-clear and the copy says so; "too old" does NOT — no reset arrives and no host comes back, because nothing is wrong with the host. Folding it into either of the others promises a wait that never ends.
+function wedgeCopy(
+  allLimited: boolean,
+  limitedCount: number,
+  tooOldCount: number,
+  args: { scope: string },
+): { reason: string; action: string; title: string; summary: string; nextStep: string } {
+  const { scope } = args;
+  if (allLimited) {
+    return {
+      reason: `all ${limitedCount} capable device(s) are rate-limited or quarantined`,
+      action: 'raise the account limit or wait for the provider reset',
+      title: `No capacity: every runner for ${scope} is limited`,
+      summary: `Work for ${scope} is paused because all ${limitedCount} of its runners have hit an account limit. Steps keep waiting and resume by themselves once one frees up.`,
+      nextStep:
+        'Raise the account spend/usage limit, or wait for the provider reset — no other action needed.',
+    };
+  }
+  if (tooOldCount > 0) {
+    return {
+      reason: `all ${tooOldCount} capable device(s) run a build too old to claim work`,
+      action: 'update the runner on those hosts',
+      title: `No capacity: every runner for ${scope} is out of date`,
+      summary: `Work for ${scope} is paused because all ${tooOldCount} of its runners are online but running a build older than this server requires, so every claim is refused. This does NOT clear by itself.`,
+      nextStep:
+        'Update forge-runner on those hosts; work resumes on the next tick once they report the new version.',
+    };
+  }
+  return {
+    reason: 'no capable device is online',
+    action: 'bring a runner online for this project',
+    title: `No capacity: no runner online for ${scope}`,
+    summary: `Work for ${scope} is paused because none of its runners are online. Steps keep waiting and resume by themselves once one connects.`,
+    nextStep: 'Start a runner for this project (forge-runner on a paired device).',
+  };
 }
 
 /**
