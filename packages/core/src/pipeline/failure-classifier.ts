@@ -184,6 +184,27 @@ function classifyKind(
     return { kind: runnerKind, cause: textCause, reason: reasonExcerpt, meta };
   }
 
+  // cm:why ISS-823 — org/account spend-cap is per-account (evidence: CLASSIFIER_VERSION 7), so it fails over with exhaustion memory instead of going terminal
+  if (isSpendLimitError(text)) {
+    return {
+      kind: 'transient-cc',
+      cause: 'provider_spend_cap',
+      reason: 'org/account spend limit → per-account failover with exhaustion memory',
+      meta: { ...(meta ?? {}), limitScope: 'account-spend' },
+    };
+  }
+
+  // cm:guard after the runner tokens and before the cc-startup signal, both deliberately: `[MCP_INIT_FAILED]` must still win, and a limit error that also looks like a startup death must route to failover rather than to the same box (ISS-596).
+  if (isUsageLimitError(text)) {
+    return {
+      kind: 'transient-cc',
+      cause: 'provider_usage_limit',
+      reason: 'usage/session limit → cross-device failover',
+      meta,
+    };
+  }
+
+  // cm:guard the two limit branches above stay AHEAD of the four pre-spawn verdicts below, and that ordering is not cosmetic. Those four match their token ANYWHERE in the blob, and the blob is `note` plus the transcript tail, so a spend-capped account whose agent output happens to contain `preflight failed` would route `infra`/`retry` on the same box instead of the per-account failover its exhaustion memory needs. Before ISS-920 the preflight patterns sat in TRANSIENT, below here; moving them up must not take the limits with them.
   // cm:guard the four pre-spawn verdicts are matched HERE, above the cc-startup signal, and moving any of them down makes it unreachable rather than merely late: none of these jobs ever spawned, and the pre-spawn heartbeat leaves every one looking exactly like a startup death to `deriveCcStartupSignals`, which counts ALL job events (ISS-920). Every preflight prefix belongs in this group — the three terminal ones AND the catch-all — because a `push_credentials` timeout was still landing as `agent_startup_failed` after the first three moved up.
   for (const pat of TERMINAL_INFRA_PATTERNS) {
     if (pat.test(text)) {
@@ -229,26 +250,6 @@ function classifyKind(
         meta,
       };
     }
-  }
-
-  // cm:why ISS-823 — org/account spend-cap is per-account (evidence: CLASSIFIER_VERSION 7), so it fails over with exhaustion memory instead of going terminal
-  if (isSpendLimitError(text)) {
-    return {
-      kind: 'transient-cc',
-      cause: 'provider_spend_cap',
-      reason: 'org/account spend limit → per-account failover with exhaustion memory',
-      meta: { ...(meta ?? {}), limitScope: 'account-spend' },
-    };
-  }
-
-  // cm:guard after the runner tokens and before the cc-startup signal, both deliberately: `[MCP_INIT_FAILED]` must still win, and a limit error that also looks like a startup death must route to failover rather than to the same box (ISS-596).
-  if (isUsageLimitError(text)) {
-    return {
-      kind: 'transient-cc',
-      cause: 'provider_usage_limit',
-      reason: 'usage/session limit → cross-device failover',
-      meta,
-    };
   }
 
   // cm:guard this branch is broad and it must stay BELOW every verdict that names a job which never spawned. `deriveCcStartupSignals` counts ALL job events, not assistant messages, so one heartbeat satisfies it — which is how it was taking every permit failure, every repo-lock timeout and every `preflight_failed` (ISS-920). It sits above the remaining text patterns on purpose (ISS-450: a generic string from a real startup death must still reach immediate failover), so a new verdict about a job that never spawned goes above this line, not below.

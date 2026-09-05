@@ -91,7 +91,7 @@ Owner: <code>packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs</co
   <rect class="exit" x="560" y="418" width="300" height="34" rx="4"/>
   <text class="t" x="572" y="439">session_permit_saturated</text>
   <text class="m" x="560" y="470">all N permits held for 600s. cause box_session_saturated ·</text>
-  <text class="m" x="560" y="485">infra · FAILOVER — the next attempt goes to another box</text>
+  <text class="m" x="560" y="485">infra · failover · box_session_saturated — named, not yet routed</text>
 
   <path class="arrow" d="M170,452 L170,476"/>
   <rect class="box" x="20" y="476" width="300" height="34" rx="4"/>
@@ -117,8 +117,8 @@ Owner: <code>packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs</co
     <td><code>failed to start job: git worktree add failed: …</code></td>
     <td>not a box fault — deliberately outside the <code>preflight_failed:</code> namespace</td></tr>
 <tr><td>Every duplex permit on the box is held</td><td><code>runner.start</code>, lock already released</td>
-    <td><code>session_permit_saturated: all N duplex permits on this box held after 600s; holders: …</code></td>
-    <td><code>infra</code> / <code>failover</code>, cause <code>box_session_saturated</code></td></tr>
+    <td><code>session_permit_saturated: all N duplex permits on this box held after 600s; holders at wait start: …</code></td>
+    <td><code>infra</code> / <code>failover</code>, cause <code>box_session_saturated</code>. The action names the intent; on the pool path it does not move the job — see <a href="../proposals/pool-cannot-route-around-a-full-box.md">the proposal</a>.</td></tr>
 <tr><td>Nothing spawned inside the beat budget</td><td>the heartbeat task</td>
     <td>the beat stops; core's reaper judges the silence</td>
     <td><code>session_lost</code></td></tr>

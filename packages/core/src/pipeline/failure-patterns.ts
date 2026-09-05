@@ -145,10 +145,6 @@ export const CAUSE_RULES: ReadonlyArray<CauseRule> = [
       /unrecognized_model|unknown model|violate[sd]? .{0,40}usage polic|content[ _-]?filter/i,
     ),
   },
-  // cm:guard both sit above `provider_overloaded`, whose `\b50[0-9]\b` would otherwise claim `all 503 duplex permits` or a holder slug like `store-503` — the saturation line renders a cap, a wait and untrusted project slugs into text this table reads (ISS-920).
-  { cause: 'box_session_saturated', test: re(/\bsession_permit_saturated\b/i) },
-  // cm:guard `repo_lock_timeout` is NOT `box_session_saturated`, however alike the two looked before ISS-920. The permit wait no longer runs under the root lock, so a lock timeout now means a sibling genuinely spent `REPO_LOCK_WAIT` in preflight, the setup agent or `git worktree add` — mapping it to saturation would bake in the causality the fix removed.
-  { cause: 'repo_root_contention', test: re(/\brepo_lock_timeout\b/i) },
   {
     cause: 'provider_overloaded',
     test: re(

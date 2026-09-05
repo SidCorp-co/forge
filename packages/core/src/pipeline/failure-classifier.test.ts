@@ -385,7 +385,7 @@ describe('failure-classifier — a full box says the box is full (ISS-920)', () 
   // cm:guard the literal the runner renders, not an approximation — `acquire_session_permit`'s own test pins the same bytes, and the digits are why: a cap or wait rendering as 503 would be claimed by TRANSIENT_PATTERNS' /\\b50[0-9]\\b/ if this bucket sat behind it.
   const SATURATED =
     'session_permit_saturated: all 3 duplex permits on this box held after 600s; ' +
-    'holders: codemap, forge-dev, forge-dev';
+    'holders at wait start: codemap, forge-dev, forge-dev';
 
   it('routes a saturated box to failover, not to a retry on the same box', () => {
     const r = classifyFailure({ error: SATURATED });
@@ -395,8 +395,26 @@ describe('failure-classifier — a full box says the box is full (ISS-920)', () 
     expect(r.meta?.needsReview).toBeUndefined();
   });
 
+  // cm:guard neither verdict has a CAUSE_RULES row and neither needs one, because `reason` IS the excerpt and the token survives the 200-char cut at the front — this pins that round-trip, and without it a reword that pushes the token past the cut drops the session lane to `unclassified` in silence, the way 88 `cc-startup-death` rows did.
+  it('round-trips its own reason, which is why neither cause needs a CAUSE_RULES row', () => {
+    for (const error of [SATURATED, 'repo_lock_timeout: /srv/x is still held after 600s']) {
+      const first = classifyFailure({ error });
+      const second = classifyFailure({ error: first.reason });
+      expect(second.cause).toBe(first.cause);
+    }
+  });
+
+  it('does not let a spend-capped account be claimed by a preflight phrase in its transcript', () => {
+    const r = classifyFailure({
+      error: "preflight failed while the agent was talking\nYou've hit your monthly spend limit",
+    });
+    expect(r.cause).toBe('provider_spend_cap');
+  });
+
   it('keeps the holders in the reason an operator reads', () => {
-    expect(classifyFailure({ error: SATURATED }).reason).toContain('holders: codemap');
+    expect(classifyFailure({ error: SATURATED }).reason).toContain(
+      'holders at wait start: codemap',
+    );
   });
 
   // cm:why the permit wait no longer runs under the root lock, so a lock timeout can only mean a sibling genuinely spent the wait in preflight or `git worktree add` — a different event with a different cause.
@@ -416,7 +434,7 @@ describe('failure-classifier — a full box says the box is full (ISS-920)', () 
     const r = classifyFailure({
       error:
         'session_permit_saturated: all 503 duplex permits on this box held after 600s; ' +
-        'holders: store-403, store-401',
+        'holders at wait start: store-403, store-401',
     });
     expect(r.cause).toBe('box_session_saturated');
     expect(r.action).toBe('failover');

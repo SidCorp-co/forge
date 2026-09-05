@@ -539,6 +539,7 @@ pub async fn handle(
         // cm:guard the worktree is created HERE, under the root lock, and moved out of `ClaudeCodeRunner::start` to get it there (ISS-920). `git worktree add` writes the root's `.git`, so two jobs on one root doing it at once write one index — that is the whole reason this lock exists. Moving it back into `start` re-nests the lock around the permit wait.
         // cm:guard the branch is `ja.agent_name` and never a fallback. Core's `worktreeBranch` payload is gone; an empty name means the claim gate let an unnamed agent through, and a fallback would hide that bug behind a job quietly writing the repo root (ISS-897).
         // cm:guard the message stays `failed to start job:` and must not become `preflight_failed:`. `classifyBoxFault` keys the quarantine streak on that prefix, so three bad agent names in a row would take the box off the project for an hour (`runners/quarantine.ts`, streak 3).
+        // cm:guard the STRING is byte-identical to what `start` used to emit, the ORDERING is not: this now runs before `lifecycle::ack` below, where it used to run after it. A `git worktree add` failure therefore fails the job with no ack and no `skillsRanWith` recorded, which is the shape every `preflight_failed` early return above already has. Do not "fix" that by acking first — the ack is what tells core a tree exists to run in.
         let effective_repo = match worktree::create(
             &resolved.repo_path.to_string_lossy(),
             &ja.agent_name,

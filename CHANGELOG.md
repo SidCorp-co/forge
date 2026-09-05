@@ -821,9 +821,21 @@
   compiler releases the root before the permit is asked for. The permit wait itself is now bounded
   by `SESSION_PERMIT_WAIT` (10 min, one residency window) and fails as
   `session_permit_saturated: all N duplex permits on this box held after 600s; holders: <projects>`
-  — which core classifies `infra` + **failover**, so the job goes to a different box instead of
-  re-claiming the semaphore that just refused it. `PRE_SPAWN_BEAT_BUDGET` still derives from the
-  waits rather than being picked, now from both of them.
+  — which core classifies `infra` + **failover** with the cause `box_session_saturated`.
+  `PRE_SPAWN_BEAT_BUDGET` still derives from the waits rather than being picked, now from both of
+  them.
+
+  What that classification does NOT yet do is move the job. On the pool path `readPool` selects on
+  `status`, `held_by` and `retry_after_at` and nothing about routing — its own guard forbids adding
+  any — so `_autoRetry.target` is read only by the push dispatcher, and the saturated box may claim
+  the clone again. Worse before it is better: `failover` sets `immediateFailover`, so the clone is
+  claimable with **zero** cooldown where `repo_lock_timeout` used to pay `RETRY_COOLDOWN_MS`. That
+  is a priced trade: what this change buys is a job row that says `box_session_saturated` instead
+  of `repo_lock_timeout` + `unclassified`, which is B3's "distinguishable by whoever re-claims";
+  B3's "cannot spin" needs a master that can see permit pressure, and `pool load` reports no permit
+  figure at all. That is the master-orchestration work the issue puts out of scope, and it is
+  written down in `docs/proposals/pool-cannot-route-around-a-full-box.md` rather than left as a
+  sentence nobody owns.
 
   Two causes join the taxonomy with it: `box_session_saturated` for the above, and
   `repo_root_contention` for `repo_lock_timeout` — which is now a different event, meaning a
