@@ -845,6 +845,11 @@
   gets jobs failing at 600s that a longer wait would have served — they fail over rather than die,
   and no project sets the key today. The first one that does moves the number.
 
+  The runner half ships at `0.11.2`. `runner-v0.11.1` was cut hours before this fix, and
+  `update::apply` gates on `is_newer(manifest.version, CURRENT_VERSION)` — so a re-cut `0.11.1`
+  would have reached no box already on `0.11.1`, and the fix would have been merged, released and
+  still absent from every runner it was written for.
+
 - **A withdrawn runner still took jobs.** `readPool` joined `runners` only to prove a binding
   existed and read nothing else from the row; `claimJobForMaster` checked the agent version and
   nothing about the box. So `runners.status` — which has carried `draining` and `disabled` since the
