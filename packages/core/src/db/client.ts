@@ -5,6 +5,7 @@ import * as baseSchema from './schema.js';
 import * as activitySchema from './schema-activity.js';
 import * as journalSchema from './schema-journal.js';
 import * as memoryChunksSchema from './schema-memory-chunks.js';
+import * as memoryRevisionsSchema from './schema-memory-revisions.js';
 import * as sessionInboxSchema from './schema-session-inbox.js';
 
 const schema = {
@@ -13,6 +14,7 @@ const schema = {
   ...journalSchema,
   ...sessionInboxSchema,
   ...memoryChunksSchema,
+  ...memoryRevisionsSchema,
 };
 
 // ISS-663 — bound how long a connection can sit idle-in-transaction or run a

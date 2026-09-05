@@ -34,6 +34,7 @@ import {
   forgeMemoryDeleteTool,
   forgeMemoryFeedbackTool,
   forgeMemoryGetTool,
+  forgeMemoryRevisionsTool,
   forgeMemorySearchTool,
   forgeMemoryWriteTool,
 } from './tools/forge-memory.js';
@@ -200,6 +201,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeMemoryGetTool(ctx.device),
     forgeMemoryDeleteTool(ctx.device),
     forgeMemoryFeedbackTool(ctx.device),
+    forgeMemoryRevisionsTool(ctx.device),
     forgeStepHandoffWriteTool(ctx.device),
     forgeStepHandoffGetTool(ctx.device),
     forgeStepHandoffDeleteTool(ctx.device),

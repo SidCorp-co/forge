@@ -11,6 +11,20 @@
 
 ### Added
 
+- A memory body a later write replaced is kept and readable (ISS-790). After ISS-876 removed the
+  dedup absorb, an exact-key re-write became the only path by which one memory row's text replaces
+  another's — and it is the path both agent preambles instruct ("reusing a `sourceRef` refines the
+  existing note"), while `archiveSupersededText`, the one thing that had ever recorded a
+  replacement, went with the absorb. Nothing anywhere recorded the overwrite. A `memory_revisions`
+  table (migration `0208`) now keeps the previous body, written by an `AFTER UPDATE` trigger rather
+  than from TypeScript because `indexer.ts`, `consolidation.ts` and `chunk-reindex.ts` each rewrite
+  `text_content` on their own path and a record wired into one of them misses the next writer added.
+  Identical text records nothing, so the embedding backfill and `feedback` mint no history, and
+  lifecycle mirrors (issue/comment/job/decision) are excluded — their text tracks a record that keeps
+  its own. Read it at `GET /api/memory/revisions?projectId=…&sourceRef=…` or `forge_memory.revisions`.
+  The four wrong-day rows repaired on 2026-09-05 were recoverable only because the deleted absorb had
+  left archived snapshots behind; a repeat would have had nothing to read.
+
 - Retrieval v3, phase 4 (ISS-907). Keyword search understands identifiers. `LITELLM_API` finds a memory
   that says `LITELLM_API_URL`, `cascade` finds `runs-cascade.ts`, `memory/rerank.ts` finds the full
   path, and `transition` finds `applyKernelTransition` — across memories, memory passages, knowledge
@@ -1541,6 +1555,22 @@
   parked or blocked — there is still no limit on how many rounds an issue may take. (ISS-878)
 
 ### Changed
+
+- The autonomous driver's preamble tells it to recall, when to capture, and where a defect goes
+  (ISS-790). Three of that issue's five wanted behaviours were agent behaviours with nothing behind
+  them: `memory-recall-first` targets `clarify`/`plan`/`fix`, three staged rungs the driver lane
+  drops by design, so on an autonomous project nothing had ever instructed a driver to recall at all.
+  The lane now carries a recall block that fires **every time the work turns to a new area** rather
+  than once at the start, with the `memory/feedback` verify-report half that keeps recall
+  self-cleaning; `## Capture Learnings` states the moment ("not at the end of the run"); and a new
+  rule sends a live defect to the code or the tracker, never into memory as a note — one such note
+  sat unfixed for eight days with no issue for it.
+
+  Extra fix: the same preamble handed the driver `issues/<id> -X PATCH -d '{"status":"in_progress"}'`,
+  which 400s — `issuePatchSchema` is `.strict()` and carries no `status`; every post-creation status
+  change goes through `issues/<id>/transition`. Measured live against the API, and
+  `drive-prompt-lane.test.ts` had been asserting the broken shape, so the gate held the defect in
+  place.
 
 - **The master names the agent it starts, and that name is the branch and worktree the work lands
   in.** Core used to derive it: `worktreeBranchPayload` sent `ISS-<seq>` as the job's

@@ -8,6 +8,7 @@ export default defineConfig({
     './src/db/schema-journal.ts',
     './src/db/schema-session-inbox.ts',
     './src/db/schema-memory-chunks.ts',
+    './src/db/schema-memory-revisions.ts',
   ],
   out: './drizzle/migrations',
   dbCredentials: {

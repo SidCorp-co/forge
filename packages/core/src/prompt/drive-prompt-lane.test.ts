@@ -191,3 +191,54 @@ describe('the worktree lifecycle reaches the one job that runs unattended', () =
     expect(getFact('worktree-protocol')?.render?.()).not.toContain('release-stage step');
   });
 });
+
+/**
+ * ISS-790. Three of the issue's five wanted behaviours are agent behaviours, and
+ * the autonomous lane is the only lane forge-dev runs. Measured before this
+ * suite existed: `memory-recall-first` in `registry.ts` targets
+ * `appliesTo: ['clarify','plan','fix']` — three staged rungs `drive-rules.ts`
+ * deliberately drops — so nothing had ever told a driver to recall at all, while
+ * `## Capture Learnings` stated no moment and no rule named memory as the wrong
+ * home for a live defect.
+ */
+describe('the driver lane is told to recall, to capture, and where a defect goes', () => {
+  const rules = () => mandatoryPreambleBlocks('drive').pipelineRules;
+
+  it('mandates recall when the work turns, not only when the session opens', () => {
+    const p = rules();
+    expect(p).toContain('## Recall Before You Act');
+    expect(p).toContain('forge-runner api memory/search');
+    expect(p, 'a once-per-session recall is the failure this rule exists for').toContain(
+      'every time the work turns to a new area',
+    );
+  });
+
+  // cm:guard the verify-report half is what makes recall self-cleaning — a hit read and silently discarded leaves a stale row scoring for the next session
+  it('names the route that reports a hit verified or stale', () => {
+    expect(rules()).toContain('forge-runner api memory/feedback');
+  });
+
+  it('puts the capture at the moment of learning, not at the end of the run', () => {
+    expect(rules()).toContain('the moment you learn it, not at the end of the run');
+  });
+
+  it('sends a live defect to code or the tracker, never into memory', () => {
+    const p = rules();
+    expect(p).toContain('A defect is not a memory');
+    expect(p).toContain('Extra fixes:');
+  });
+
+  // cm:guard every path the preamble names must be one the job PAT can execute: `issuePatchSchema` is `.strict()` and carries no `status`, so the example this replaced answered 400 `Unrecognized key: "status"` for every driver that copied it — measured live on 2026-09-05
+  it('writes a status through the transition endpoint, not the patch route', () => {
+    const { pipelineRules, toolReference } = mandatoryPreambleBlocks('drive');
+    const text = `${pipelineRules}\n${toolReference}`;
+    expect(text).toContain(`issues/<id>/transition -X POST -d '{"toStatus":"in_progress"}'`);
+    expect(text, 'this body is refused by the strict patch schema').not.toContain(
+      `issues/<id> -X PATCH -d '{"status":"in_progress"}'`,
+    );
+  });
+
+  it('still keeps the patch route for the fields that do live there', () => {
+    expect(mandatoryPreambleBlocks('drive').toolReference).toContain('issues/<id> -X PATCH');
+  });
+});

@@ -29,6 +29,7 @@ export const REGISTERED_TOOLS = [
   'forge_memory.delete',
   'forge_memory.feedback',
   'forge_memory.get',
+  'forge_memory.revisions',
   'forge_memory.search',
   'forge_memory.write',
   'forge_metrics.project_retry_rescues',

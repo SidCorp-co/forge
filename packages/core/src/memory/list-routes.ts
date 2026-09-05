@@ -9,6 +9,7 @@ import { assertProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { runMemoryGet } from './get-service.js';
+import { memoryRevisionsInputSchema, runMemoryRevisions } from './revisions-service.js';
 
 const listQuerySchema = paginationSchema.extend({
   projectId: z.uuid(),
@@ -21,6 +22,11 @@ const listQuerySchema = paginationSchema.extend({
     .optional()
     .transform((v) => v === 'true'),
 });
+
+// cm:guard DERIVED from the service's own input schema, not retyped beside it — that is what the sibling list route above learned the hard way: `zValidator` strips a filter the query schema never declared, so `?sourceRef=x` answered with the whole store under a `total` that reads as a match. A filter added to `runMemoryRevisions` is declared here by construction; the query's own `limit`/`offset` come from `paginationSchema` because a query string carries strings.
+const revisionsQuerySchema = memoryRevisionsInputSchema
+  .omit({ limit: true, offset: true })
+  .extend(paginationSchema.shape);
 
 const deleteQuerySchema = z.object({
   projectId: z.uuid(),
@@ -53,6 +59,30 @@ memoryListRoutes.get(
       offset,
       orderBy: 'createdAt',
       orderDir: 'desc',
+    });
+
+    return c.json(listResponse(c, rows, total, { limit, offset }));
+  },
+);
+
+// cm:edge sideeffect -> packages/core/drizzle/migrations/0208_memory_revisions.sql — every row this route reads is written by the `memories_record_replacement` trigger and by no TypeScript at all, so a reader who greps for the INSERT that fills this table finds none and concludes the route answers empty by design
+memoryListRoutes.get(
+  '/revisions',
+  zValidator('query', revisionsQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId, memoryId, source, sourceRef, limit, offset } = c.req.valid('query');
+    const userId = c.get('userId');
+    await assertProjectAccess(projectId, userId, 'viewer');
+
+    const { rows, total } = await runMemoryRevisions({
+      projectId,
+      ...(memoryId ? { memoryId } : {}),
+      ...(source ? { source } : {}),
+      ...(sourceRef ? { sourceRef } : {}),
+      limit,
+      offset,
     });
 
     return c.json(listResponse(c, rows, total, { limit, offset }));
