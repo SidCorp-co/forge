@@ -89,6 +89,7 @@ const filtersSchema = z
     statusNot: z.enum(issueStatuses).optional(),
     priority: z.enum(issuePriorities).optional(),
     category: z.string().trim().optional(),
+    complexity: z.enum(issueComplexities).optional(),
     createdAfter: z.string().optional(),
     createdBefore: z.string().optional(),
     updatedAfter: z.string().optional(),
@@ -560,6 +561,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             statusNot: f?.statusNot,
             priority: f?.priority,
             category: f?.category,
+            // cm:guard this mapping is hand-copied field by field, and a filter accepted by `filtersSchema` but dropped here fails SILENTLY in the worst direction: the caller gets every row back and reads it as "nothing matched the narrowing", not as a broken filter. Add a filter above and you must add it here in the same edit — measured on ISS-912, where `complexity` reached all three projections and the strict schema while nothing could filter on it.
+            complexity: f?.complexity,
             createdAfter: f?.createdAfter ? parseDate(f.createdAfter, 'createdAfter') : undefined,
             createdBefore: f?.createdBefore
               ? parseDate(f.createdBefore, 'createdBefore')

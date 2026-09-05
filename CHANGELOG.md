@@ -11,6 +11,12 @@
 
 ### Added
 
+- `forge_issues list` accepts a `complexity` filter (ISS-912). The field was already returned by
+  `get` and on every list row, but nothing could narrow by it: the filter was absent from the input
+  schema and, once added there, still dropped by the hand-copied mapping into the list service — a
+  filter that vanishes in that mapping returns every row, which reads as "nothing narrowed" rather
+  than as an error.
+
 - `forge-runner` 0.11.1. Carries the master's rate-limit backoff and the pre-spawn heartbeat fix.
   The claim floor stays at 0.11.0 — it is a per-feature floor naming the first build that can name
   its agent, not a "must be current" check, so this release does not strand anything.

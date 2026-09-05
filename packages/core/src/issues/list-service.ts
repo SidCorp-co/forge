@@ -8,6 +8,7 @@ export type IssueListFilters = {
   statusNot?: IssueStatus | undefined;
   priority?: (typeof issues.$inferSelect)['priority'] | undefined;
   category?: string | undefined;
+  complexity?: (typeof issues.$inferSelect)['complexity'] | undefined;
   createdAfter?: Date | undefined;
   createdBefore?: Date | undefined;
   updatedAfter?: Date | undefined;
@@ -46,6 +47,7 @@ export async function listIssueRows(
   if (filters?.statusNot) conds.push(ne(issues.status, filters.statusNot));
   if (filters?.priority) conds.push(eq(issues.priority, filters.priority));
   if (filters?.category) conds.push(eq(issues.category, filters.category));
+  if (filters?.complexity) conds.push(eq(issues.complexity, filters.complexity));
   if (filters?.createdAfter) conds.push(gte(issues.createdAt, filters.createdAfter));
   if (filters?.createdBefore) conds.push(lt(issues.createdAt, filters.createdBefore));
   if (filters?.updatedAfter) conds.push(gte(issues.updatedAt, filters.updatedAfter));
