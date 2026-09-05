@@ -19,7 +19,7 @@ import { failReconcileRunIfNoVerdictRecorded } from '../skills/reconcile-service
 import { materializeJobUsage } from '../usage-records/materialize.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
-import { syncAgentSessionLifecycle } from './agent-session-link.js';
+import { SYNTHETIC_REAP_ERRORS, syncAgentSessionLifecycle } from './agent-session-link.js';
 import { cancelJob, JobCancelError } from './cancel-job.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { isResumeFailedError, reclassifyAbortedResume } from './handle-resume-failed.js';
@@ -84,7 +84,6 @@ const RUNNABLE_STATUSES = new Set(['dispatched', 'running']);
 // late /complete for a job carrying one of these means the runner actually
 // finished but its report was lost (e.g. to a core outage) and a sweep reaped
 // the row first — so the success is reconcilable, not a conflict.
-const SYNTHETIC_REAP_ERRORS = new Set(['session_lost', 'dispatch_unclaimed', 'stale']);
 
 async function loadJob(jobId: string) {
   const row = await readJob(jobId);

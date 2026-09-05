@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 type Row = Record<string, unknown> | undefined;
 
 const selectQueue: Row[] = [];
-const updateCalls: Array<{ table: string; set: Record<string, unknown> }> = [];
+const updateCalls: Array<{ table: string; set: Record<string, unknown>; where?: unknown }> = [];
 const insertCalls: Array<{ table: string; values: Record<string, unknown> }> = [];
 
 const tableNames = new WeakMap<object, string>();
@@ -41,11 +41,17 @@ vi.mock('../db/client.js', () => ({
         // The non-terminal ensure-path awaits `.where()` directly; the terminal
         // session sync routes through applyKernelTransition, which chains
         // `.where().returning()`. Return a thenable that supports both.
+        const call = updateCalls[updateCalls.length - 1];
         const p = Promise.resolve(undefined) as Promise<unknown> & {
           returning: () => Promise<Array<{ id: string }>>;
         };
         p.returning = () => Promise.resolve([{ id: 'sess-1' }]);
-        return { where: () => p };
+        return {
+          where: (pred: unknown) => {
+            if (call) call.where = pred;
+            return p;
+          },
+        };
       },
     }),
     insert: (tbl: object) => ({
@@ -59,6 +65,8 @@ vi.mock('../db/client.js', () => ({
 
 vi.mock('drizzle-orm', () => ({
   eq: () => ({ _sql: 'eq' }),
+  ne: (_col: unknown, v: unknown) => ({ _sql: 'ne', value: v }),
+  and: (...parts: unknown[]) => ({ _sql: 'and', parts: parts.filter(Boolean) }),
 }));
 
 // ISS-101 — agent-session-link now closes one-shot pipeline_runs on terminal
@@ -391,5 +399,43 @@ describe('jobs/agent-session-link — ISS-877 failure cause', () => {
   it('ISS-877: `job_failed` is not written by this path any more', async () => {
     await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: 'sess-1' } as never, 'failed');
     expect(updateCalls[0]?.set.failureReason).not.toBe('job_failed');
+  });
+
+  describe('syncAgentSessionLifecycle — which writer owns the reason', () => {
+    // cm:guard first writer wins on the failed branch: a session a sweeper already failed keeps ITS reason. Measured on epodsystem 2026-09-05 — 61 sessions read `session_lost` while `kernel_transitions` showed the real cause was `queue_timeout` 90s earlier, because this mirror re-failed an already-failed row and overwrote the diagnosis with its own consequence.
+    const guarded = (i: number) => {
+      const w = updateCalls[i]?.where as { parts?: Array<{ _sql: string; value?: unknown }> };
+      return Boolean(w?.parts?.some((p) => p._sql === 'ne' && p.value === 'failed'));
+    };
+
+    it.each(['session_lost', 'dispatch_unclaimed', 'stale'])(
+      'a sweeper marker (%s) must not overwrite a reason already on the row',
+      async (error) => {
+        await syncAgentSessionLifecycle(
+          { ...baseJob, agentSessionId: 'sess-1', error } as never,
+          'failed',
+        );
+        expect(guarded(0)).toBe(true);
+      },
+    );
+
+    // cm:guard the counterpart the guard must NOT catch: ISS-877 recovers a real cause from the job row, and those still have to land on a session a sweeper already failed. A test that only pins the synthetic side passes just as well on a guard widened to every failed sync.
+    it.each(['provider_spend_cap', '[SIGNAL_KILLED]', null])(
+      'a real diagnosis (%s) still lands on an already-failed session',
+      async (error) => {
+        await syncAgentSessionLifecycle(
+          { ...baseJob, agentSessionId: 'sess-1', error } as never,
+          'failed',
+        );
+        expect(guarded(0)).toBe(false);
+      },
+    );
+
+    // cm:guard the completed branch must stay UNguarded — a job reporting `done` proves the agent finished, so a session row still reading `failed` is the lie ISS-759 fixed. Guarding both branches symmetrically re-opens it.
+    it('still lets a done job clear a stamped session (ISS-759)', async () => {
+      await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: 'sess-1' } as never, 'done');
+      const w = updateCalls[0]?.where as { parts?: unknown[] };
+      expect(w?.parts).toBeUndefined();
+    });
   });
 });

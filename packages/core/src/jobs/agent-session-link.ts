@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, issues, jobs } from '../db/schema.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
@@ -184,6 +184,14 @@ export async function ensureAgentSessionForJob(
 }
 
 /**
+ * Errors a SWEEPER wrote, not the agent: each one names the consequence of a
+ * death some other row already diagnosed. They are the only job errors that
+ * must not overwrite a session's own reason.
+ */
+// cm:edge contract -> packages/core/src/jobs/lifecycle-routes.ts — the late-report reconcile reads the same set to decide a lost success is reconcilable rather than a conflict; a marker added to one half and not the other splits that judgement in two
+export const SYNTHETIC_REAP_ERRORS = new Set(['session_lost', 'dispatch_unclaimed', 'stale']);
+
+/**
  * ISS-877 — the cause this session died of, asked of the SAME classifier the
  * job lane already asked.
  *
@@ -254,7 +262,11 @@ export async function syncAgentSessionLifecycle(
         status === 'failed'
           ? { ...deriveSessionFailure(job), updatedAt: new Date() }
           : { failureReason: null, failureDetail: null, updatedAt: new Date() },
-      where: eq(agentSessions.id, job.agentSessionId),
+      // cm:guard a SYNTHETIC error must not overwrite a reason already on the row, and the discriminator is the marker set — NOT the branch. A sweeper's `session_lost` is the consequence of a death some other row diagnosed, so writing it back erases the cause (measured on epodsystem 2026-09-05: 61 sessions read `session_lost` while `kernel_transitions` held `queue_timeout` from 90s earlier). Widening this to every failed sync is the opposite bug: it also blocks ISS-877's real diagnoses — `provider_spend_cap` and friends arriving from the job row are exactly what that recovery reads, and they must still land on an already-failed session.
+      where:
+        status === 'failed' && SYNTHETIC_REAP_ERRORS.has(job.error ?? '')
+          ? and(eq(agentSessions.id, job.agentSessionId), ne(agentSessions.status, 'failed'))
+          : eq(agentSessions.id, job.agentSessionId),
       reason: `job_${outcome}`,
       actor: { type: 'system' },
       source: 'lifecycle-sync',
