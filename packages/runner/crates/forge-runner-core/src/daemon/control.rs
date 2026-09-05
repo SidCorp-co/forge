@@ -14,15 +14,21 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+#[cfg(unix)]
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+#[cfg(unix)]
 use tokio::net::{UnixListener, UnixStream};
 
 use crate::config::Config;
+#[cfg(unix)]
 use crate::daemon::dispatch;
 use crate::daemon::repo_lock::RepoLocks;
+#[cfg(unix)]
 use crate::daemon::InflightGuard;
 use crate::runner::claude_code::ClaudeCodeRunner;
-use crate::transport::{pool, CoreClient};
+#[cfg(unix)]
+use crate::transport::pool;
+use crate::transport::CoreClient;
 
 /// Where the daemon listens and the CLI connects: beside `config.toml`.
 // cm:guard derive this from `Config::path()` and nothing else. dev1 runs several runner services that differ ONLY by `XDG_CONFIG_HOME`, so the config dir is already the thing that separates them; a socket keyed on anything else (a fixed name, the hostname, `XDG_RUNTIME_DIR`) puts two daemons on one path, and a master then reaches whichever bound first — claiming for a project that box is not bound to.
@@ -81,6 +87,18 @@ pub struct Control {
 }
 
 /// Serve until `cancel` flips.
+// cm:guard REFUSE on a platform with no unix socket, never degrade to a daemon that polls the pool and cannot be claimed from. Under the pool a box runs work only when a master claims through this socket, so a Windows daemon that started anyway would sit online, report healthy, and never run a single job — the exact silent shape `daemon/mod.rs` starts both loops to avoid.
+#[cfg(not(unix))]
+pub async fn serve(
+    _ctl: Arc<Control>,
+    _cancel: tokio::sync::watch::Receiver<bool>,
+) -> std::io::Result<()> {
+    Err(std::io::Error::other(
+        "the master control socket needs a unix socket; this platform cannot host a runner that claims work",
+    ))
+}
+
+#[cfg(unix)]
 // cm:guard bind by REPLACING a stale socket file, never by refusing to start. A daemon killed by SIGKILL leaves the file behind, and a runner that then declines to listen is a box that accepts no work with nothing in its log naming the socket as the cause.
 pub async fn serve(
     ctl: Arc<Control>,
@@ -120,6 +138,7 @@ pub async fn serve(
     Ok(())
 }
 
+#[cfg(unix)]
 async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
@@ -139,6 +158,7 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
     let _ = reader.get_mut().write_all(out.as_bytes()).await;
 }
 
+#[cfg(unix)]
 /// Claim through core, then run the job here.
 // cm:guard a preparation that arrives and does not start MUST be released. Core clears a hold on `releaseJobFromMaster` or the 3-minute reaper and nothing else, so returning early on a spawn failure without the release parks a claimable job on a master that never ran it.
 async fn claim_and_start(
@@ -206,6 +226,19 @@ fn is_usable_branch_name(name: &str) -> bool {
 }
 
 /// Ask a running daemon to claim and start one job.
+#[cfg(not(unix))]
+pub async fn request_claim(
+    _path: &std::path::Path,
+    _job_id: &str,
+    _session_id: &str,
+    _agent: &str,
+) -> std::io::Result<ClaimReply> {
+    Err(std::io::Error::other(
+        "the master control socket needs a unix socket; this platform cannot claim work",
+    ))
+}
+
+#[cfg(unix)]
 pub async fn request_claim(
     path: &std::path::Path,
     job_id: &str,
