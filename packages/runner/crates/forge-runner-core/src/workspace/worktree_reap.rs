@@ -119,7 +119,13 @@ mod tests {
         let (repo, _wt) = repo_with_worktree_in("runner-lane", WORKTREE_ROOTS[1]).await;
         let removed = reap_repo(&repo, NOW).await;
         assert_eq!(removed.len(), 1, "{removed:?}");
-        assert!(removed[0].to_string_lossy().contains("/.worktrees/"));
+        // cm:guard compare PATH COMPONENTS, never a slash-delimited substring — the separator is `\\` on Windows, so `contains("/.worktrees/")` asserts the platform rather than the lane and fails runner-ci's windows leg while passing everywhere a developer looks.
+        assert!(
+            removed[0]
+                .components()
+                .any(|c| c.as_os_str() == std::ffi::OsStr::new(WORKTREE_ROOTS[1])),
+            "{removed:?}"
+        );
         let _ = std::fs::remove_dir_all(&repo);
     }
 
