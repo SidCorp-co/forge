@@ -37,6 +37,8 @@ export function SegmentedControl<T extends string>({
             onClick={() => !opt.disabled && onChange?.(opt.value)}
             className={cn(
               "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1 text-[13px] font-semibold transition-colors duration-[120ms]",
+              // cm:guard Keep this ring on the shared line: the ACTIVE segment paints `shadow-xs`, a utility-layer box-shadow that beats the `@layer base` :focus-visible ring, so without it the selected segment has NO focus indicator at all (outline is suppressed app-wide) — measured on /kit 2026-09-05, ISS-843.
+              "focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none",
               opt.disabled
                 ? "cursor-not-allowed text-muted opacity-50"
                 : active

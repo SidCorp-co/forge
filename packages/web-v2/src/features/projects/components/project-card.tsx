@@ -25,6 +25,8 @@ export function ProjectCard({ project, now, onTogglePin }: ProjectCardProps) {
       className={cn(
         'group flex flex-col gap-3 rounded-lg border border-line bg-surface p-4 shadow-sm',
         'transition-[box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:shadow-md',
+        // cm:guard This card's `shadow-sm` is a utility-layer box-shadow and erases the `@layer base` :focus-visible ring, so the focus ring must be re-declared here or a keyboard user tabbing the Projects console sees nothing — ISS-843.
+        'focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none',
       )}
     >
       <div className="flex items-start gap-3">

@@ -92,6 +92,10 @@ __pycache__
 # per-package agent notes and personal/maintainer instructions stay local.
 packages/*/CLAUDE.md
 CLAUDE.local.md
+# `next dev` regenerates packages/web-v2/AGENTS.md on every run (see
+# next/dist/server/lib/generate-agent-files.js), and packages/web-v2/CLAUDE.md @-imports it —
+# ignoring only the CLAUDE.md left an untracked file in the tree after any dev run.
+packages/*/AGENTS.md
 
 # Local-only scratch renders — the committed architecture lives in docs/proposals/
 docs/local/

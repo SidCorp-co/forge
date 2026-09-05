@@ -734,6 +734,21 @@
   copy, and `useRevokeDevice` stays silent on that 403 instead of toasting a failure next to the
   prompt that is in fact the next move. The misleading banner is deleted rather than reworded.
 
+- Keyboard focus is visible again on the selected segment of every SegmentedControl and on the
+  project cards in the Projects console (ISS-843). Both painted an elevation `shadow-*`, and in
+  Tailwind v4 a utility-layer `box-shadow` beats the `@layer base` `:focus-visible` ring that
+  globals.css gives everything else — so those two controls kept their shadow and lost their ring,
+  with `outline` already suppressed app-wide. Measured on `/kit` 2026-09-05 by tabbing all 47 stops:
+  the selected segment computed only `rgba(24,27,34,0.05) 0 1px 2px`, no ring; a ProjectCard clone
+  computed only its two elevation layers. Both now re-declare `focus-visible:shadow-[var(--shadow-focus)]`.
+  `design/focus-ring.test.ts` locks it: no `<button>`/`<a>`/`<Link>` may carry an unconditional
+  elevation shadow without a `focus-visible:shadow-*`, and the base-layer ring must stay in
+  `@layer base` (unlayered, it would beat every per-component ring instead).
+  ISS-843 was filed against Toggle's unchecked state; that one does not reproduce — an OFF Toggle
+  declares no shadow utility, so it inherits the base ring and computes
+  `rgba(45,91,214,0.2) 0 0 0 3px`. Checkbox unchecked is the same, and Radio declares its ring
+  outright. The reported symptom was real, but it was on two other components.
+
 - A memory write under a new `sourceRef` no longer destroys an unrelated note, and the forge-dev note
   store no longer lies about which day it holds (ISS-876, superseding closed ISS-861). The near-identical
   dedup absorb was unreachable for a refinement of an existing record — `findNearDuplicate` returns null
