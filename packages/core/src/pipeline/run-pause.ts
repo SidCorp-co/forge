@@ -2,24 +2,17 @@
  * Single writer for the pause/resume axis of `pipeline_runs.status`
  * (running ⇄ paused). Terminal transitions stay in `lifecycle/transition.ts`
  * (kernel chokepoint); this module is the equivalent chokepoint for the
- * non-terminal pause axis so every pause/resume emits the SAME side effects.
- * ISS-895 removed the machine writers (the missing-skill guard, the stage-stall
- * guard and the skill-registered auto-resume were all staged-lane), so the only
- * live writer is operator REST — the contract stands because historical rows
- * still carry their reasons and every reader below still has to answer for them:
+ * non-terminal pause axis so every pause/resume emits the SAME side effects:
+ * the `pipelineRunStatusChanged` hook (Sentry breadcrumb + memory observer) and
+ * the `pipeline_run.status_changed` WS broadcast. The operator path used to
+ * broadcast WS without the hook and the guard paths the hook without WS, so
+ * consumers could rely on neither; both now always fire.
  *
- *  - `pipelineRunStatusChanged` hook (Sentry breadcrumb + memory observer)
- *  - `pipeline_run.status_changed` WS broadcast to the project room
- *
- * Historically the operator path broadcast WS without the hook and the
- * guard paths emitted the hook without WS; consumers could not rely on
- * either signal. Both now always fire.
- *
- * `pauseReason` metadata contract: writers that pause with a machine
- * reason (`missing_skill:<stage>`, `stage_stalled:<stage>`) pass it via
- * `pauseReason`; resume ALWAYS clears the key. Leaving a stale reason
- * behind let a later `skillRegistered` auto-resume match (and resume) a
- * run an operator had re-paused for an unrelated cause.
+ * `pauseReason` metadata contract: a machine writer passes `<kind>:<detail>`
+ * via `pauseReason` and resume ALWAYS clears the key. ISS-895 removed the last
+ * machine writer with the staged lane, so only operator REST pauses today —
+ * but historical rows still carry their reasons and the readers below judge
+ * them, so the contract stands.
  */
 
 import { and, eq, type SQL, sql } from 'drizzle-orm';

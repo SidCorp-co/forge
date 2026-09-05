@@ -1,3 +1,4 @@
+import { existsSync, readdirSync } from 'node:fs';
 import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -162,12 +163,16 @@ describe('seedBuiltinSkills', () => {
   });
 
   it('loads non-empty files[] for skills that ship a references/ folder (AC #3)', async () => {
-    // forge-plan and forge-test both ship reference docs; after seeding their
-    // global rows must carry those files (previously always empty).
+    // cm:guard the name is read from disk, never hardcoded. It was `['forge-plan', 'forge-test']` until ISS-895 deleted both with the staged lane, and a hardcoded name that no longer ships turns this into a green assertion over zero rows — the seeder could stop loading files entirely and nothing would say so.
     const realRoot = new URL('../../skills/', import.meta.url).pathname;
+    const withRefs = readdirSync(realRoot, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && existsSync(path.join(realRoot, e.name, 'references')))
+      .map((e) => e.name);
+    expect(withRefs.length).toBeGreaterThan(0);
+
     await seedBuiltinSkills(harness.db as never, { skillsRoot: realRoot });
 
-    for (const name of ['forge-plan', 'forge-test']) {
+    for (const name of withRefs) {
       const [row] = await harness.db
         .select({ files: skills.files, contentHash: skills.contentHash, skillMd: skills.skillMd })
         .from(skills)

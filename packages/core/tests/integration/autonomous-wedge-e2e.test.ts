@@ -26,6 +26,7 @@ import {
 // cm:guard an EMPTY config is the post-migration shape and must be in this net: ISS-897 stripped `mode` from all 38 rows, and the predicate is `coalesce(..., 'autonomous') <> 'staged'` for exactly that reason.
 const AUTONOMOUS = { pipelineConfig: { enabled: true } };
 // cm:guard the pre-ISS-897 `mode: 'staged'` key a project row may still carry before the migration reaches it. It is the ONLY value that excludes a project now, and the exclusion is what stops this net acting on an issue a staged step still owned.
+// cm:why the legacy `mode` key a project row may still carry in its jsonb — ISS-895 removed it from the schema, and `pipelineConfigSchema` drops unknown keys on parse, so the row must behave exactly like one that never had it
 const LEGACY_STAGED_ROW = { pipelineConfig: { enabled: true, mode: 'staged' } };
 
 describe('ISS-890 autonomous driver wedge (real Postgres)', () => {
@@ -127,12 +128,13 @@ describe('ISS-890 autonomous driver wedge (real Postgres)', () => {
     expect(await statusOf(issueId)).toBe('in_progress');
   });
 
-  it('leaves a row still marked staged alone — the migration has not reached it', async () => {
+  // cm:guard a leftover `mode: 'staged'` key must NOT exclude the row. This asserted the opposite until ISS-895 deleted `mode` from the schema; the pass now has no project filter at all, and a row whose jsonb still carries the retired key parses to the same config as one that does not — so it gets the same rescue. Re-adding an exclusion here would leave whoever still has the key wedged with no pass that can see them.
+  it('rescues a row still carrying the retired `mode` key, exactly like one that is not', async () => {
     const { issueId } = await seed({ agentConfig: LEGACY_STAGED_ROW });
     const { resetAutonomousWedgesOnce } = await import('../../src/pipeline/reconciler.js');
 
-    expect(await resetAutonomousWedgesOnce()).toBe(0);
-    expect(await statusOf(issueId)).toBe('in_progress');
+    expect(await resetAutonomousWedgesOnce()).toBe(1);
+    expect(await statusOf(issueId)).toBe('open');
   });
 
   it('leaves a paused run alone — a pause is a decision somebody made', async () => {

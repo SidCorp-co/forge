@@ -79,7 +79,8 @@ function stepVocabulary() {
   );
   const caps = read(SOURCES.steps);
   const m = /'claude-code':\s*\[([^\]]*)\]/.exec(caps);
-  if (m === null) throw new CannotRun(`${SOURCES.steps}: RUNNER_CAPABILITIES claude-code not found`);
+  if (m === null)
+    throw new CannotRun(`${SOURCES.steps}: RUNNER_CAPABILITIES claude-code not found`);
   const claimable = [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]);
   if (claimable.length === 0) throw new CannotRun(`${SOURCES.steps}: no claimable job types`);
 

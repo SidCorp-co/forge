@@ -241,8 +241,8 @@ describe('A3 runner starvation (ISS-652)', () => {
     expect(findAlert(body, 'A3')?.status).toBe('ok');
   });
 
-  // cm:guard the discriminating case for staleTrigger: NO runner exists at all, so were the gate not replayed the alert would fire. jobs/stale-trigger.ts ends this job; no runner would ever have placed it.
-  it('stays ok when the queued job is held by a stale trigger', async () => {
+  // cm:guard this used to assert `ok`, on the `stale_trigger` gate arm that explained the wait away. ISS-895 deleted the arm AND the lane, so a queued job of a retired type is now exactly what A3 is for: no runner may claim `code` (it is absent from RUNNER_CAPABILITIES), nothing ends the job, and it sits queued forever. Reporting `ok` here would tell a platform admin the queue is healthy about the one row that can never move.
+  it('warns when a queued job names a job type no runner can claim', async () => {
     const owner = await createTestUser(ctx.harness.db);
     const project = await createTestProject(ctx.harness.db, owner.id);
     const run = await fx.insertRun(project.id, 'running');
@@ -258,12 +258,11 @@ describe('A3 runner starvation (ISS-652)', () => {
       status: 'queued',
       type: 'code',
       issueId,
-      // cm:why the enqueuer stamped `approved` and the issue has since moved to `developed` — that mismatch IS the stale trigger, and nothing in the fixture states it
       payload: { stageStatus: 'approved' },
       queuedAgoMinutes: 10,
     });
 
     const { body } = await getAlerts(ctx, await ctx.adminToken());
-    expect(findAlert(body, 'A3')?.status).toBe('ok');
+    expect(findAlert(body, 'A3')?.status).toBe('warn');
   });
 });

@@ -254,37 +254,24 @@ describe('alarmPausedRunsWithQueuedWork E2E (ISS-879) — when it stays quiet an
     expect(wedgeAt().summary).toContain('3 steps');
   });
 
-  // cm:guard the copy must come from `pauseResumesItself`, never from the pass's own opinion — `stage_stalled` has no resume path anywhere in the repo, and telling an operator it clears by itself is how a run sat 23 days with everyone believing it was handled (the same failure `alarmAgedHolds` carries a guard against)
-  it('tells the operator the truth about whether the pause clears by itself', async () => {
-    const machine = await insertIssue();
-    const machineRun = await insertRun({
-      issueId: machine.id,
-      status: 'paused',
-      pauseReason: 'missing_skill:open',
-      ageHours: 48,
-    });
-    await insertQueuedJob(machine.id, machineRun);
+  // cm:guard the copy must come from `pauseResumesItself`, never from the pass's own opinion, and since ISS-895 emptied `MACHINE_RESUMED_PAUSE_KINDS` the honest answer for EVERY kind is "a person must act". `missing_skill` is the case that changed: its resume path went with the staged lane, so the reassuring copy it used to earn is now the 23-day lie this guard exists against (the same failure `alarmAgedHolds` carries a guard for).
+  it.each(['missing_skill:open', 'stage_stalled:released'])(
+    'tells the operator the truth about %s — no pause clears by itself now',
+    async (pauseReason) => {
+      const issue = await insertIssue();
+      const runId = await insertRun({
+        issueId: issue.id,
+        status: 'paused',
+        pauseReason,
+        ageHours: 48,
+      });
+      await insertQueuedJob(issue.id, runId);
 
-    await mods.alarmPausedRunsWithQueuedWork(new Date());
-    expect(wedgeAt().nextStep).toContain('resumes on its own');
-    emitWedgeMock.mockClear();
-    await truncateAll(harness.db);
-    const owner = await createTestUser(harness.db);
-    ownerId = owner.id;
-    projectId = (await createTestProject(harness.db, owner.id)).id;
-
-    const human = await insertIssue();
-    const humanRun = await insertRun({
-      issueId: human.id,
-      status: 'paused',
-      pauseReason: 'stage_stalled:released',
-      ageHours: 48,
-    });
-    await insertQueuedJob(human.id, humanRun);
-
-    await mods.alarmPausedRunsWithQueuedWork(new Date());
-    expect(wedgeAt().nextStep).toContain('will NOT resume');
-  });
+      await mods.alarmPausedRunsWithQueuedWork(new Date());
+      expect(wedgeAt().nextStep).toContain('will NOT resume');
+      expect(wedgeAt().nextStep).not.toContain('resumes on its own');
+    },
+  );
 
   // cm:guard the operator cancel path must reach `pipelineRunStatusChanged` — `cancelPipelineRun` only WS-broadcast for its whole life, so the wedge's ONLY clearer never fired and the notification the alarm had just written stayed unresolved forever. That is the 721-row bell the wedge module's own guard is about, and the wedge copy tells the operator to cancel, so this is the path it steers them onto.
   it('clears the notification when the operator cancels the paused run', async () => {

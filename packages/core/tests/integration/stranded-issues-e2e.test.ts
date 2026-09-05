@@ -80,23 +80,11 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
   const HOUR = 60 * 60 * 1000;
 
   async function seed(
-    opts: {
-      status?: string;
-      mergedAgoMs?: number | null;
-      /** Writes the pre-ISS-897 `mode: 'staged'` key a row may still carry. */
-      legacyStagedRow?: boolean;
-      updatedAgoMs?: number;
-    } = {},
+    opts: { status?: string; mergedAgoMs?: number | null; updatedAgoMs?: number } = {},
   ) {
     const owner = await createTestUser(harness.db);
     const org = await seedOrg(harness.db, owner.id);
     const project = await createTestProject(harness.db, owner.id, { orgId: org.id });
-    if (opts.legacyStagedRow) {
-      await harness.db.execute(
-        sql`UPDATE projects SET agent_config = ${JSON.stringify({ pipelineConfig: { mode: 'staged' } })}::jsonb WHERE id = ${project.id}`,
-      );
-    }
-
     // cm:why two distinct routes to admin — explicit project_members admin AND the org owner seedOrg registers — because projectAdminUserIds unions both and a regression could drop either
     const projAdmin = await createTestUser(harness.db);
     await createTestProjectMember(harness.db, {
@@ -121,12 +109,12 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
       VALUES (${issueId}, ${project.id}, 'stranded probe', ${opts.status ?? 'waiting'},
               ${owner.id}, ${mergedAt}, 762)
     `);
-    if (opts.updatedAgoMs !== undefined) {
-      const updatedAt = new Date(Date.now() - opts.updatedAgoMs).toISOString();
-      await harness.db.execute(
-        sql`UPDATE issues SET updated_at = ${updatedAt} WHERE id = ${issueId}`,
-      );
-    }
+    // cm:guard age the row by DEFAULT. ISS-895 removed the `merged_at` arm with the staged lane, so `updated_at` is the only clock this pass has — a fixture that leaves it at `now()` seeds a row inside the grace window and every assertion about detection reads 0, which is indistinguishable from the pass being switched off.
+    const updatedAgo = opts.updatedAgoMs ?? 48 * HOUR;
+    const updatedAt = new Date(Date.now() - updatedAgo).toISOString();
+    await harness.db.execute(
+      sql`UPDATE issues SET updated_at = ${updatedAt} WHERE id = ${issueId}`,
+    );
     return { issueId, projectId: project.id, owner, projAdmin, plain };
   }
 
@@ -163,7 +151,7 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     expect((await readNotifs(harness, s.issueId)).length).toBe(first.notified);
   });
 
-  // cm:guard reading the alarm must NOT re-arm it on the next 60s tick — since ISS-886 the autonomous arm matches every `waiting` park past the grace window rather than the rare merged-and-parked contradiction, so an unread-only dedupe turns one read into a ping every minute for the life of the park, including the decompose review gate, which is SUPPOSED to sit there.
+  // cm:guard reading the alarm must NOT re-arm it on the next 60s tick — the predicate matches every `waiting` park past the grace window rather than the rare merged-and-parked contradiction the deleted staged arm needed, so an unread-only dedupe turns one read into a ping every minute for the life of the park.
   it('stays quiet after a read while the re-notify window is still open', async () => {
     const s = await seed();
     const first = await mods.detectStrandedIssues();
@@ -200,13 +188,14 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
   });
 
   it('stays silent inside the grace window', async () => {
-    await seed({ mergedAgoMs: mods.STRANDED_GRACE_MS - HOUR });
+    await seed({ updatedAgoMs: mods.STRANDED_GRACE_MS - HOUR });
     await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 0, notified: 0 });
   });
 
-  it('stays silent for a waiting issue whose code never merged', async () => {
+  // cm:guard `merged_at` must NOT gate this any more. It was the staged arm's whole clock and ISS-895 deleted that arm; a park in this lane never merges anything, so a pass that still required a merge would report zero forever — which reads as "nothing is stranded", not as "this pass stopped looking".
+  it('surfaces a waiting park whose code never merged', async () => {
     await seed({ mergedAgoMs: null });
-    await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 0, notified: 0 });
+    await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 1 });
   });
 
   it.each(['closed', 'in_progress', 'developed', 'testing', 'reopen'])(
@@ -226,23 +215,22 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
   });
 
   // cm:why ISS-886 — the park itself is the signal: no next step notices it and `answer-resume` restarts `needs_info` only, so a `waiting` issue stops dead until a human acts. kinetrak ISS-4's split had sat 11 days on 2026-08-30 with nobody told.
-  // cm:guard the SQL predicate is `coalesce(mode, 'autonomous') <> 'staged'`, NOT `= 'autonomous'`, and this pair is what proves it: ISS-897 stripped `mode` from every project row, so an equality test would select ZERO projects and switch this net off fleet-wide — silently, because a pass that finds nothing and a pass that looks at nothing both report 0. The `legacyStagedRow` half is the other direction: a row the migration has not reached still carries the key and must still be excluded.
-  it('surfaces an UNMERGED park on a stripped row, and skips a row still marked staged', async () => {
-    const stripped = await seed({ mergedAgoMs: null, updatedAgoMs: 48 * HOUR });
-    const legacy = await seed({
-      mergedAgoMs: null,
-      legacyStagedRow: true,
-      updatedAgoMs: 48 * HOUR,
-    });
+  // cm:guard NO project is excluded any more. The predicate carried a `coalesce(mode, 'autonomous') <> 'staged'` arm until ISS-895 removed `mode` from the schema entirely; every project reaches this pass now, and a row still carrying the legacy key in its jsonb is data the parser drops, not a project to skip. Re-adding a project filter here switches the net off for whoever it excludes — silently, because a pass that finds nothing and a pass that looks at nothing both report 0.
+  it('surfaces an unmerged park on every project, whatever legacy config the row carries', async () => {
+    const stripped = await seed({ mergedAgoMs: null });
+    const legacy = await seed({ mergedAgoMs: null });
+    await harness.db.execute(
+      sql`UPDATE projects SET agent_config = ${JSON.stringify({ pipelineConfig: { mode: 'staged' } })}::jsonb WHERE id = ${legacy.projectId}`,
+    );
 
     const res = await mods.detectStrandedIssues();
 
-    expect(res.detected).toBe(1);
+    expect(res.detected).toBe(2);
     expect((await readNotifs(harness, stripped.issueId)).length).toBeGreaterThan(0);
-    expect((await readNotifs(harness, legacy.issueId)).length).toBe(0);
+    expect((await readNotifs(harness, legacy.issueId)).length).toBeGreaterThan(0);
   });
 
-  // cm:guard the autonomous arm dates from `updated_at`, and it must still respect the grace window — a park is only stranded once it has outlasted a legitimate merge-verify-close pass, or every fresh question would alarm the owner within the minute.
+  // cm:guard the grace window still applies — a park is only stranded once it has outlasted a legitimate answer-and-move pass, or every fresh question would alarm the owner within the minute.
   it('stays silent inside the grace window too', async () => {
     await seed({ mergedAgoMs: null, updatedAgoMs: 1 * HOUR });
     await expect(mods.detectStrandedIssues()).resolves.toMatchObject({ detected: 0 });

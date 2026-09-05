@@ -93,17 +93,29 @@ describe('ISS-786 state-integrity — work-evidence guard on a real DB', () => {
     expect(developed.status).toBe('developed');
   });
 
-  // cm:guard fail-open is the property, not an accident: a broken read here must return the safe default rather than throw, or one unreadable row freezes every write on the issue.
-  it('fails open: a lookup that cannot succeed returns null instead of throwing', async () => {
+  // cm:guard fail-open is the property, not an accident: a read that CANNOT succeed must return the safe default rather than throw, or one broken query freezes every write on the issue. The probe is an executor that throws, because a ghost id is not the failing case — an issue with no rows behind it has no evidence, which is the rule firing correctly, and asserting null there would have proved nothing.
+  it('fails open: a read that throws returns null instead of propagating', async () => {
     const { checkTransitionEvidence } = await import('../../src/issues/transition-evidence.js');
-    const ghostId = '00000000-0000-0000-0000-000000000000';
+    const owner = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, owner.id);
+    const issue = await insertIssue({
+      projectId: project.id,
+      ownerId: owner.id,
+      status: 'approved',
+    });
+    const broken = {
+      select: () => {
+        throw new Error('simulated read failure');
+      },
+    } as unknown as NonNullable<Parameters<typeof checkTransitionEvidence>[0]['executor']>;
 
     await expect(
       checkTransitionEvidence({
-        issue: { id: ghostId, projectId: ghostId },
+        issue: { id: issue.id, projectId: project.id },
         toStatus: 'developed',
         agency: 'agent',
         skip: false,
+        executor: broken,
       }),
     ).resolves.toBeNull();
   });
