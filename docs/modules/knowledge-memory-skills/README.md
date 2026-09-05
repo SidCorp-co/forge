@@ -70,6 +70,12 @@ flowchart TB
   phrase and does not match `iss` and `26` apart. `memory_chunks`, `knowledge_entries` and `issues`
   carry the same column; `knowledge/search.ts:keywordSearchKnowledge` and both issue text matches
   (`issues/search.ts`, `issues/list-service.ts`) OR the identifier arm in the same way.
+- **One backfill re-embeds degraded rows in both tables.** A memory or knowledge upsert during an
+  embeddings outage stores `embedding = NULL` and is keyword-only until
+  `memory/embedding-backfill.ts:runEmbeddingBackfill` (every five minutes) re-embeds it — memories
+  first, then `knowledge_entries` from `knowledge/service.ts:knowledgeEmbedInput`, the upsert's own
+  text. Until 2026-09-05 the sweep read only `memories`, and a knowledge entry written degraded
+  stayed without a vector until its body changed.
 - **Hybrid fuses the two arms with equal weights.** `search.ts:reciprocalRankFusion` at `HYBRID_ALPHA`
   0.5, k = 60. At the former 0.7 / 0.3 a hit the keyword arm ranked first and the semantic arm never
   returned scored 0.3/61, below the semantic rank 8 at 0.7/68 and rank 24 at 0.7/84, so nothing found

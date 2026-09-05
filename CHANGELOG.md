@@ -644,6 +644,12 @@
 
 ### Fixed
 
+- The embedding backfill also re-embeds knowledge entries (found while shipping ISS-907). A knowledge
+  entry saved during an embeddings outage was stored without a vector "for backfill", but the
+  five-minute sweep only read memories, so the entry stayed keyword-only until its body changed; on
+  forge-beta 16 entries across four projects sat that way. The sweep now takes knowledge entries after
+  memories, embedding the same text the save would have.
+
 - The reranker is shown 1,500 characters of each candidate instead of 600 (ISS-914). A chunk passage
   runs to about 1,400 characters, so at 600 the model ranked a passage by its opening and demoted the
   exact hit on 8–13 of 40 tail-fact questions per project; at 1,500 it does so on 2–8, and the true

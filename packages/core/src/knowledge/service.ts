@@ -7,6 +7,13 @@ import { logger } from '../logger.js';
 
 const MAX_EMBED_CHARS = 8192;
 
+/** The text a knowledge entry is embedded from — title, blank line, body. */
+export const knowledgeEmbedText = (title: string, body: string): string => `${title}\n\n${body}`;
+// cm:guard the upsert and memory/embedding-backfill.ts embed the SAME string — a degraded upsert stores `embedding = NULL` and logs "for backfill", and the backfill's re-embed must be the vector the upsert would have written, or a backfilled entry ranks differently from a fresh one forever (ISS-907, extra fix)
+/** What is actually sent to the embeddings service: the embed text cut at MAX_EMBED_CHARS. */
+export const knowledgeEmbedInput = (title: string, body: string): string =>
+  knowledgeEmbedText(title, body).slice(0, MAX_EMBED_CHARS);
+
 export const knowledgeKindEnum = [
   'overview',
   'scenario',
@@ -57,9 +64,9 @@ const MAX_RESPONSE_CHARS = 38_000;
 export async function upsertKnowledgeEntry(
   input: UpsertKnowledgeInput,
 ): Promise<UpsertKnowledgeResult> {
-  const embedText = `${input.title}\n\n${input.body}`;
+  const embedText = knowledgeEmbedText(input.title, input.body);
   const truncated = embedText.length > MAX_EMBED_CHARS;
-  const toEmbed = truncated ? embedText.slice(0, MAX_EMBED_CHARS) : embedText;
+  const toEmbed = truncated ? knowledgeEmbedInput(input.title, input.body) : embedText;
 
   if (truncated) {
     logger.warn(

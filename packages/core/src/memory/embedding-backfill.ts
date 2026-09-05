@@ -1,7 +1,8 @@
 import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { appConfig, memories } from '../db/schema.js';
+import { appConfig, knowledgeEntries, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
+import { knowledgeEmbedInput } from '../knowledge/service.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
 import { chunkAndPublish, loadChunkParent } from './chunk-writer.js';
@@ -24,10 +25,24 @@ const MAX_EMBED_CHARS = 8192;
 
 export async function runEmbeddingBackfill(): Promise<{
   reembedded: number;
+  knowledgeReembedded: number;
   aborted: boolean;
   durationMs: number;
 }> {
   const t0 = Date.now();
+  const memoriesSweep = await backfillMemories();
+  const knowledgeSweep = memoriesSweep.aborted
+    ? { reembedded: 0, aborted: true }
+    : await backfillKnowledge();
+  return {
+    reembedded: memoriesSweep.reembedded,
+    knowledgeReembedded: knowledgeSweep.reembedded,
+    aborted: memoriesSweep.aborted || knowledgeSweep.aborted,
+    durationMs: Date.now() - t0,
+  };
+}
+
+async function backfillMemories(): Promise<{ reembedded: number; aborted: boolean }> {
   const rows = await db
     .select({ id: memories.id, textContent: memories.textContent })
     .from(memories)
@@ -62,7 +77,40 @@ export async function runEmbeddingBackfill(): Promise<{
     }
   }
 
-  return { reembedded, aborted, durationMs: Date.now() - t0 };
+  return { reembedded, aborted };
+}
+
+// cm:guard knowledge_entries is swept by the SAME job as memories — knowledge/service.ts stores `embedding = NULL` on a degraded upsert and logs "storing degraded row for backfill", and until 2026-09-05 no backfill read that table, so an entry written during an embeddings outage stayed keyword-only until its body changed (live: anhome 6 of 56, pixelight 5 of 9, sid-desk 4 of 5 entries without a vector). The text embedded is knowledge/service.ts:knowledgeEmbedInput, the upsert's own
+async function backfillKnowledge(): Promise<{ reembedded: number; aborted: boolean }> {
+  const rows = await db
+    .select({ id: knowledgeEntries.id, title: knowledgeEntries.title, body: knowledgeEntries.body })
+    .from(knowledgeEntries)
+    .where(and(isNull(knowledgeEntries.embedding), isNull(knowledgeEntries.archivedAt)))
+    .orderBy(asc(knowledgeEntries.updatedAt))
+    .limit(BATCH_SIZE);
+
+  let reembedded = 0;
+  let aborted = false;
+  for (const row of rows) {
+    try {
+      const vector = await embed(knowledgeEmbedInput(row.title, row.body));
+      await db
+        .update(knowledgeEntries)
+        .set({ embedding: vector })
+        .where(and(eq(knowledgeEntries.id, row.id), isNull(knowledgeEntries.embedding)));
+      reembedded++;
+    } catch (err) {
+      if (err instanceof EmbeddingUnavailableError) {
+        aborted = true;
+        break;
+      }
+      logger.error(
+        { err: (err as Error).message, knowledgeEntryId: row.id },
+        'knowledge.backfill: re-embed failed for row, skipping',
+      );
+    }
+  }
+  return { reembedded, aborted };
 }
 
 /** The chunked-project rows whose current generation has no published passage set, oldest first — a degraded write, a failed re-embed or a flip that has not reached them yet. */
@@ -125,7 +173,7 @@ export async function registerEmbeddingBackfill(): Promise<void> {
   await (boss as any).work(MEMORY_EMBED_BACKFILL_QUEUE, async () => {
     try {
       const result = await runEmbeddingBackfill();
-      if (result.reembedded > 0 || result.aborted) {
+      if (result.reembedded > 0 || result.knowledgeReembedded > 0 || result.aborted) {
         logger.info(result, 'memory.backfill: sweep complete');
       }
       if (!result.aborted) {
