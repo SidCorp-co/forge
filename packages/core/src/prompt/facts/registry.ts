@@ -333,7 +333,8 @@ Run one or two focused queries on the concrete nouns of THIS task. Hits are poin
     scope: 'global',
     namespace: 'forge',
     appliesTo: ['clarify', 'release', 'drive'],
-    version: 4,
+    version: 5,
+    // cm:guard the changelog half forks for the same reason the transport does: nothing dispatches after a `drive` job, so telling the driver that forge-release appends its line names a stage that never runs and leaves the entry unwritten. `RELEASE_RECORD_REQUIRED` gates the close on `issues.release_notes` alone, and `scripts/check-release-record.mjs` is a no-silent-loss ratchet rather than an entry-required check, so nothing downstream catches the gap either.
     // cm:guard name the transport the STAGE is told to use everywhere else — this fact applies to `drive`, whose skill and preamble both speak `forge-runner api`, and it named `forge_issues.update` until 2026-09-02. That is not cosmetic here: `RELEASE_RECORD_REQUIRED` (`issues/apply-transition.ts`) REFUSES an agent close while `releaseNotes` is null, so the one instruction that clears the driver's own exit gate was a call the driver could not make.
     render: (ctx) => `## Release-notes shape
 Seed \`releaseNotes\` via ${
@@ -342,7 +343,11 @@ Seed \`releaseNotes\` via ${
 - \`section\` ∈ \`Added | Changed | Fixed | Removed | Security | Skip\` (\`Skip\` = internal-only, no changelog line).
 - \`userFacing\` — one plain-language line for end users.
 - \`technical\` — optional implementation detail.
-forge-release appends this to the changelog at close. **An agent close is REFUSED while this field is null** (\`RELEASE_RECORD_REQUIRED\`) — \`closed\` is what every reader takes as shipped, so write the line before you close, or \`{ section: 'Skip', userFacing: '-' }\` when the change has no user-facing half. Use \`dropped\` for work that turned out not to be work. A batch release is refused earlier, when it CLAIMS the issues (\`RELEASE_RECORD_MISSING\`), so seed every issue in the batch before cutting it.`,
+${
+      ctx?.stage === 'drive'
+        ? 'In this mode nothing dispatches after you, so **you write the `CHANGELOG.md` line yourself**, in the commit that carries the change — no later stage appends it.'
+        : 'forge-release appends this to the changelog at close.'
+    } **An agent close is REFUSED while this field is null** (\`RELEASE_RECORD_REQUIRED\`) — \`closed\` is what every reader takes as shipped, so write the line before you close, or \`{ section: 'Skip', userFacing: '-' }\` when the change has no user-facing half. Use \`dropped\` for work that turned out not to be work. A batch release is refused earlier, when it CLAIMS the issues (\`RELEASE_RECORD_MISSING\`), so seed every issue in the batch before cutting it.`,
   },
   {
     id: 'handoff',

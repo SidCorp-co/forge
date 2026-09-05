@@ -166,6 +166,16 @@ describe('the release-notes fact clears the gate it describes', () => {
   it('still names the MCP tool for the staged release step', () => {
     expect(render('release')).toContain('forge_issues.update');
   });
+
+  // cm:guard the driver is the last stage there is, so a promise that forge-release writes its CHANGELOG line is a stage that never runs — and `RELEASE_RECORD_REQUIRED` gates the close on `releaseNotes` alone, so the missing entry closes green
+  it('does not promise the driver a changelog append no later stage performs', () => {
+    expect(render('drive')).not.toContain('forge-release appends');
+    expect(render('drive')).toContain('you write the `CHANGELOG.md` line yourself');
+  });
+
+  it('still tells the staged release step that forge-release appends it', () => {
+    expect(render('release')).toContain('forge-release appends this to the changelog at close.');
+  });
 });
 
 describe('the worktree lifecycle reaches the one job that runs unattended', () => {

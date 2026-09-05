@@ -633,6 +633,15 @@
 
 ### Fixed
 
+- The driver was told a stage that never runs would write its changelog line (ISS-910). The
+  injected `release-notes-format` fact said *"forge-release appends this to the changelog at
+  close"* on every stage it applies to, including `drive` — where nothing dispatches after the
+  driver. Neither backstop catches the gap it opens: the close is gated on `releaseNotes` being
+  set on the issue and never on `CHANGELOG.md`, and `check-release-record.mjs` is a
+  no-silent-loss ratchet, so an entry that was never written was never lost. The sentence now
+  forks on the stage, the way the same fact already forks for the transport, and tells a driver
+  it writes the line itself.
+
 - A job whose only claimable box was rate-limited burned all thirty retry attempts instead of
   holding. The claim floor that requires a runner able to name its agent (`0.11.0`) was enforced in
   TypeScript at the claim and nowhere in SQL, so `onlineCapableDeviceIds`, `fresh_capable_runners`
