@@ -23,9 +23,10 @@ use crate::transport::{pool, runners, CoreClient};
 // cm:why this interval IS the latency from an issue opening to an agent touching it, and it is the whole budget: nothing pushes any more, so a job queued one tick after a poll waits a full interval before anything looks. 30s was chosen against the old push path's measured dispatch lag on epodsystem (queue→dispatch of 17m, 23m, 46m and 2h08 on 2026-09-04) — an order of magnitude of headroom, at one cheap request per project per half minute.
 const POLL_INTERVAL: Duration = Duration::from_secs(30);
 
-/// A master that stops writing is a master that has died with holds.
-// cm:guard this bounds a ONE-SHOT pass and goes away with it. The long-lived master replaces it with an idle ceiling, and until that lands removing it would leave an overrunning pass unbounded. What it must NOT go back to claiming is that core reclaims anything when it fires: since `fd1265751` a claim ends its own hold in the statement that stamps, so a killed master leaves nothing behind to reclaim — the jobs it started keep running and report for themselves.
-const MASTER_MAX_RUNTIME: Duration = Duration::from_secs(150);
+/// The outer bound on one pass. Only a hung pass should ever meet it.
+// cm:guard sized so a WORKING pass never reaches it, because the master's judgement is the entire value of this design and a kill truncates it mid-decision. Measured on dev1 2026-09-05 against the previous 150s: passes weighing 1-2 jobs took 30-88s and finished, passes weighing 3-4 took 75-112s, and three consecutive passes at 3-4 jobs hit 150s and were killed — the ceiling was selecting against exactly the passes with the most to decide. This is a hang-breaker, not a time-box; if a pass is genuinely taking ten minutes the fault is worth seeing rather than hiding behind a kill.
+// cm:guard what this must NOT go back to claiming is that core reclaims anything when it fires: since `fd1265751` a claim ends its own hold in the statement that stamps, so a killed master leaves nothing behind to reclaim — the jobs it started keep running and report for themselves.
+const MASTER_MAX_RUNTIME: Duration = Duration::from_secs(600);
 
 /// The prompt that starts a pass. Deliberately thin: the skill is the process.
 // cm:guard name the skill and STOP. Restating its rules here creates a second copy of the master's process, and the copies drift in silence because nothing compares them — the skill file is where a reader looks and this string is what a master is actually told. The two ship together (see the include_str edge below), so there is no version where inlining the rules here is even the safer half.
@@ -48,8 +49,16 @@ agent you start works in a worktree cut from `origin/{base}`, never in this tree
         out.push('\n');
     }
     out.push_str(
-        "\nThis pass is time-boxed. Finish inside two minutes: claim what you are confident \
-about, report, and let the next pass take the rest.\n",
+        "\nYou NAME every agent you start: `forge-runner pool claim <jobId> --session-id <id> \
+--agent <name>`. The name becomes that agent's git branch and its worktree, so it must read as \
+the work — `ISS-175` when an agent takes one issue, something like `catalog-eav` when you group \
+several into one. Give two jobs the SAME name deliberately and they share one checkout and one \
+branch; give them different names and they cannot see each other's work. A claim with no name is \
+refused.\n",
+    );
+    out.push_str(
+        "\nTake the time you need to decide, then stop. Claim what you are confident about, \
+report, and let the next pass take the rest.\n",
     );
     out
 }

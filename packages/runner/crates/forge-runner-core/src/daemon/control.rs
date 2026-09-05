@@ -37,7 +37,13 @@ enum Request {
     /// Claim one job and start it here.
     // cm:guard the FIELDS need their own `rename_all` — the one on the enum renames variants, not fields. Without it these read `job_id`/`session_id` while the CLI sends camelCase, and every claim comes back "undecodable request".
     #[serde(rename_all = "camelCase")]
-    Claim { job_id: String, session_id: String },
+    Claim {
+        job_id: String,
+        session_id: String,
+        // cm:guard the master NAMES the agent, and the name is the worktree branch — core no longer sends one. Keep this `Option` rather than making serde require it: a missing name must come back as `agent_required`, which tells a master what to do, where a required field fails the whole frame as "undecodable request" and names nothing.
+        #[serde(default)]
+        agent: Option<String>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -121,9 +127,11 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
         return;
     }
     let reply = match serde_json::from_str::<Request>(&line) {
-        Ok(Request::Claim { job_id, session_id }) => {
-            claim_and_start(&ctl, &job_id, &session_id).await
-        }
+        Ok(Request::Claim {
+            job_id,
+            session_id,
+            agent,
+        }) => claim_and_start(&ctl, &job_id, &session_id, agent.as_deref()).await,
         Err(e) => ClaimReply::refused(format!("undecodable request: {e}")),
     };
     let mut out = serde_json::to_string(&reply).unwrap_or_else(|_| "{\"ok\":false}".into());
@@ -133,7 +141,18 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
 
 /// Claim through core, then run the job here.
 // cm:guard a preparation that arrives and does not start MUST be released. Core clears a hold on `releaseJobFromMaster` or the 3-minute reaper and nothing else, so returning early on a spawn failure without the release parks a claimable job on a master that never ran it.
-async fn claim_and_start(ctl: &Arc<Control>, job_id: &str, session_id: &str) -> ClaimReply {
+async fn claim_and_start(
+    ctl: &Arc<Control>,
+    job_id: &str,
+    session_id: &str,
+    agent: Option<&str>,
+) -> ClaimReply {
+    // cm:guard refuse an unnamed or unusable agent BEFORE the claim, so there is no hold to give back. The name becomes a git branch, and `git worktree add` rejects the bad ones minutes later from inside the spawn — where the failure reads as a broken repo rather than as a master that sent a name with a space in it.
+    let agent = match agent.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(a) if is_usable_branch_name(a) => a.to_string(),
+        Some(a) => return ClaimReply::refused(format!("agent_unusable: {a}")),
+        None => return ClaimReply::refused("agent_required"),
+    };
     let outcome = match pool::claim(&ctl.client, job_id, session_id).await {
         Ok(o) => o,
         Err(e) => return ClaimReply::refused(format!("claim failed: {e}")),
@@ -148,7 +167,7 @@ async fn claim_and_start(ctl: &Arc<Control>, job_id: &str, session_id: &str) -> 
     };
 
     let agent_session_id = prepared.agent_session_id.clone();
-    let job = prepared.into_claimed(outcome.job_token, outcome.issue_key.clone());
+    let job = prepared.into_claimed(outcome.job_token, outcome.issue_key.clone(), agent);
     let started_job_id = job.job_id.clone();
 
     let (client, runner, cfg, locks) = (
@@ -174,15 +193,30 @@ async fn claim_and_start(ctl: &Arc<Control>, job_id: &str, session_id: &str) -> 
     }
 }
 
+/// Whether a master's agent name can be a git branch and a directory.
+// cm:guard this is deliberately NARROWER than git's own rules. A name that is merely legal to git — `HEAD`, a leading dash, a slash, a unicode homoglyph — still has to be a path component under `.worktrees/` and an argument on a command line, and the master is free to pick another word. Widening it to match `git check-ref-format` buys nothing and re-opens every one of those.
+fn is_usable_branch_name(name: &str) -> bool {
+    !name.starts_with('-')
+        && !name.starts_with('.')
+        && !name.contains("..")
+        && name.len() <= 60
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+}
+
 /// Ask a running daemon to claim and start one job.
 pub async fn request_claim(
     path: &std::path::Path,
     job_id: &str,
     session_id: &str,
+    agent: &str,
 ) -> std::io::Result<ClaimReply> {
     let stream = UnixStream::connect(path).await?;
     let mut reader = BufReader::new(stream);
-    let body = serde_json::json!({ "op": "claim", "jobId": job_id, "sessionId": session_id });
+    let body = serde_json::json!({
+        "op": "claim", "jobId": job_id, "sessionId": session_id, "agent": agent
+    });
     let mut line = serde_json::to_string(&body).unwrap_or_default();
     line.push('\n');
     reader.get_mut().write_all(line.as_bytes()).await?;
@@ -198,9 +232,14 @@ mod tests {
 
     #[test]
     fn a_claim_request_parses_in_the_shape_the_cli_sends() {
-        let raw = r#"{"op":"claim","jobId":"j1","sessionId":"s1"}"#;
+        let raw = r#"{"op":"claim","jobId":"j1","sessionId":"s1","agent":"catalog-sweep"}"#;
         match serde_json::from_str::<Request>(raw).expect("must parse") {
-            Request::Claim { job_id, session_id } => {
+            Request::Claim {
+                job_id,
+                session_id,
+                agent,
+            } => {
+                assert_eq!(agent.as_deref(), Some("catalog-sweep"));
                 assert_eq!(job_id, "j1");
                 assert_eq!(session_id, "s1");
             }
@@ -214,5 +253,35 @@ mod tests {
         assert!(out.contains("\"reason\":\"issue_busy\""));
         assert!(!out.contains("jobId"));
         assert!(out.contains("\"ok\":false"));
+    }
+
+    /// A claim with no agent name must be REFUSED, not silently run in the
+    /// repo root — that was the shape core's `worktreeBranch` payload used to
+    /// prevent, and nothing replaces it but this.
+    #[test]
+    fn a_claim_with_no_agent_name_still_parses_so_it_can_be_refused_by_name() {
+        let raw = r#"{"op":"claim","jobId":"j1","sessionId":"s1"}"#;
+        match serde_json::from_str::<Request>(raw).expect("must parse") {
+            Request::Claim { agent, .. } => assert!(agent.is_none()),
+        }
+    }
+
+    #[test]
+    fn a_name_that_would_break_git_or_the_path_is_not_usable() {
+        for good in ["catalog-sweep", "ISS-175", "epod_billing.v2"] {
+            assert!(is_usable_branch_name(good), "{good} should be usable");
+        }
+        for bad in [
+            "-force",
+            ".hidden",
+            "a..b",
+            "has space",
+            "a/b",
+            "héllo",
+            "HEAD~1",
+        ] {
+            assert!(!is_usable_branch_name(bad), "{bad} must be refused");
+        }
+        assert!(!is_usable_branch_name(&"x".repeat(61)));
     }
 }

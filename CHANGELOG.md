@@ -1372,6 +1372,43 @@
 
 ### Changed
 
+- **The master names the agent it starts, and that name is the branch and worktree the work lands
+  in.** Core used to derive it: `worktreeBranchPayload` sent `ISS-<seq>` as the job's
+  `worktreeBranch`, so every job got a checkout named after its issue and a master could not put two
+  issues in one place. That rule, its `0.9.3` runner floor and its merge-stage exemption —
+  unreachable since ISS-897 left `drive` the only dispatched type — are deleted rather than left
+  beside the new path. `forge-runner pool claim` now takes a required `--agent <name>`: the daemon
+  refuses a claim with no name (`agent_required`) or an unusable one (`agent_unusable`) **before**
+  claiming, so there is no hold to give back and no job quietly writing the repo root. Reusing one
+  name across several claims puts those jobs in one checkout on one branch — the grouping the master
+  decides, which nothing checks for it: two issues on one branch ship as one diff.
+
+- **Salvage finds a failed job's work by the branch the master named, exactly.** It matched the issue
+  key against branch prefixes, which could not see a grouped agent's branch at all and, when a prefix
+  hit two trees, broke the tie by modification time — how a stranger's branch got committed to. The
+  prefix match, the mtime tie-break and the "several dirty and no issue key" refusal are gone; more
+  than one tree claiming the branch is now a refusal that names the fault instead of a guess that
+  looks like it worked. Salvage is also offered to every claimed job now, not only one serving an
+  issue, because every job has a worktree of its own.
+
+- **The worktree reaper now sweeps `.worktrees/` as well as `.claude/worktrees/`.** It walked only
+  the second. That was survivable while core derived every branch from the issue key — an issue
+  reused one checkout however many stages it ran, so the naming was the ceiling on how many could
+  exist. A master that invents a name per pass removes the ceiling, so the same predicate (older
+  than 14 days · nothing unpushed · no modified tracked file) now runs over both roots. Unreaped
+  trees are a liveness problem, not tidiness: ubuntu6 reached 100% disk on 2026-08-20 with 64 stale
+  worktrees holding 29G.
+
+- **Removed: `issueBranchName` and the snapshot's `featureBranch`.** Both existed to tell the runner
+  which branch an issue's work belonged on, and after `worktreeBranch` was deleted nothing read
+  either — the agent stands in its branch's checkout and needs no one to name it.
+
+- **A master pass is no longer killed at 150 seconds.** Measured on dev1 2026-09-05: passes weighing
+  one or two jobs took 30–88s and finished, and three consecutive passes weighing three or four hit
+  the ceiling and were killed mid-decision — the time-box was selecting against exactly the passes
+  with the most to weigh, in a design whose whole value is the master's judgement. The bound is now
+  ten minutes and is a hang-breaker, not a time-box.
+
 - **A master now belongs to a project, not to a box, and stands in that project's checkout.** The
   daemon asked core for one box-wide pool and started a single master for all of it, in a directory
   of its own. It now asks `/me/runners` which projects this device serves — core, not `config.toml`,

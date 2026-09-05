@@ -228,18 +228,7 @@ fn parse_worktrees(porcelain: &str) -> Vec<Target> {
     out
 }
 
-/// True when `branch` is the checkout the issue's agent would have cut —
-/// `ISS-862-runner-health` for `ISS-862`, and not `ISS-8620-…`.
-fn belongs_to_issue(branch: &str, issue_key: &str) -> bool {
-    let b = branch.to_ascii_lowercase();
-    let k = issue_key.to_ascii_lowercase();
-    let last = b.rsplit('/').next().unwrap_or(b.as_str());
-    match last.strip_prefix(k.as_str()) {
-        Some(rest) => rest.is_empty() || rest.starts_with('-'),
-        None => false,
-    }
-}
-
+#[allow(dead_code)]
 fn modified_at(p: &Path) -> std::time::SystemTime {
     std::fs::metadata(p)
         .and_then(|m| m.modified())
@@ -258,8 +247,9 @@ pub struct SalvageInput<'a> {
     pub repo_root: &'a Path,
     /// The project's base branch per the server, when it has one.
     pub base_branch: Option<&'a str>,
-    /// `ISS-<seq>` for the issue this job serves, when it serves one.
-    pub issue_key: Option<&'a str>,
+    /// The branch the master named this job's agent — its worktree, exactly.
+    // cm:guard match this branch EXACTLY and never by prefix. The old field was the issue key and had to guess which checkout an agent had cut (`ISS-862` vs `ISS-8620-…`); a master that groups two issues into one agent names a branch no issue key predicts, so the guess would salvage nothing or, worse, a stranger's tree. dev1 carried five agent worktrees on 2026-08-26, two dirty since 2026-08-12 — "the one dirty checkout" is not a thing that exists on a real box.
+    pub agent_branch: &'a str,
     pub job_id: &'a str,
     pub attempt: u32,
     pub failure: &'a str,
@@ -290,29 +280,24 @@ async fn pick_target(input: &SalvageInput<'_>) -> std::result::Result<Target, Sa
             dirty.push(t);
         }
     }
-    // cm:guard scope to the job's OWN issue whenever core told us which one. dev1 carried five agent worktrees on 2026-08-26, two of them dirty since 2026-08-12 — the reaper spares a dirty worktree by design, so "the one dirty checkout" is not a thing that exists on a real box. Salvaging a stranger's branch would push a commit onto work nobody asked us to touch.
-    if let Some(key) = input.issue_key {
-        let seen: Vec<String> = dirty.iter().map(|t| t.branch.clone()).collect();
-        dirty.retain(|t| belongs_to_issue(&t.branch, key));
-        // cm:guard filtering everything away must NOT report `none`. `none` means the checkout was clean, and the five outcomes exist so that "why is there no salvage?" stays answerable — an agent that named its branch something this key does not match would otherwise look identical to one that committed everything.
-        if dirty.is_empty() && !seen.is_empty() {
-            return Err(Salvage::refused(format!(
-                "no dirty worktree matches {key}; saw {}",
-                seen.join(", ")
-            )));
-        }
+    let seen: Vec<String> = dirty.iter().map(|t| t.branch.clone()).collect();
+    dirty.retain(|t| t.branch == input.agent_branch);
+    // cm:guard filtering everything away must NOT report `none`. `none` means the checkout was clean, and the five outcomes exist so that "why is there no salvage?" stays answerable — an agent whose tree is gone would otherwise look identical to one that committed everything.
+    if dirty.is_empty() && !seen.is_empty() {
+        return Err(Salvage::refused(format!(
+            "no dirty worktree on {}; saw {}",
+            input.agent_branch,
+            seen.join(", ")
+        )));
     }
+    // cm:guard REFUSE on more than one rather than picking, and never restore a tie-break here. Git will not check one branch out twice, so an exact match yielding two trees means this filter stopped being exact — and the arm this replaces broke that tie by mtime, which is precisely how a stranger's branch got committed to. A refusal names the fault; a pick hides it behind a salvage that looks like it worked.
     match dirty.len() {
         0 => Err(Salvage::bare(Outcome::None)),
         1 => Ok(dirty.remove(0)),
-        _ if input.issue_key.is_none() => Err(Salvage::refused(format!(
-            "{} dirty worktrees and no issue key to choose between them",
-            dirty.len()
+        n => Err(Salvage::refused(format!(
+            "{n} worktrees claim to be {}; refusing to guess",
+            input.agent_branch
         ))),
-        _ => {
-            dirty.sort_by_key(|t| std::cmp::Reverse(modified_at(&t.path)));
-            Ok(dirty.remove(0))
-        }
     }
 }
 
@@ -490,11 +475,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(root.with_extension("remote.git"));
     }
 
-    fn input<'a>(root: &'a Path, key: Option<&'a str>) -> SalvageInput<'a> {
+    fn input<'a>(root: &'a Path, agent_branch: &'a str) -> SalvageInput<'a> {
         SalvageInput {
             repo_root: root,
             base_branch: Some("main"),
-            issue_key: key,
+            agent_branch,
             job_id: "job-1",
             attempt: 2,
             failure: "spend limit",
@@ -506,7 +491,7 @@ mod tests {
         let (root, wt) = repo("push", "ISS-1-alpha").await;
         std::fs::write(wt.join("new.txt"), "salvaged\n").unwrap();
         std::fs::write(wt.join("f.txt"), "one\ntwo\n").unwrap();
-        let s = salvage_wip(input(&root, Some("ISS-1"))).await;
+        let s = salvage_wip(input(&root, "ISS-1-alpha")).await;
         assert_eq!(s.outcome, Outcome::Pushed, "{s:?}");
         assert_eq!(s.branch.as_deref(), Some("ISS-1-alpha"));
         assert_eq!(s.files, Some(2));
@@ -531,7 +516,7 @@ mod tests {
     async fn never_touches_a_dirty_repo_root() {
         let (root, _wt) = repo("root", "ISS-2-beta").await;
         std::fs::write(root.join("dirty.txt"), "x\n").unwrap();
-        let s = salvage_wip(input(&root, Some("ISS-2"))).await;
+        let s = salvage_wip(input(&root, "ISS-2-beta")).await;
         assert_eq!(s.outcome, Outcome::None, "{s:?}");
         let out = Command::new("git")
             .args(["status", "--porcelain"])
@@ -548,10 +533,10 @@ mod tests {
         let (root, _mine) = repo("nomatch", "ISS-10-mine").await;
         let theirs = add_worktree(&root, "ISS-99-theirs").await;
         std::fs::write(theirs.join("stale.txt"), "old\n").unwrap();
-        let s = salvage_wip(input(&root, Some("ISS-10"))).await;
+        let s = salvage_wip(input(&root, "ISS-10-mine")).await;
         assert_eq!(s.outcome, Outcome::Refused, "{s:?}");
         let d = s.detail.unwrap();
-        assert!(d.contains("ISS-10"), "{d}");
+        assert!(d.contains("ISS-10-mine"), "{d}");
         assert!(d.contains("ISS-99-theirs"), "{d}");
         cleanup(&root);
     }
@@ -562,7 +547,7 @@ mod tests {
         let theirs = add_worktree(&root, "ISS-99-theirs").await;
         std::fs::write(theirs.join("stale.txt"), "old\n").unwrap();
         std::fs::write(mine.join("new.txt"), "x\n").unwrap();
-        let s = salvage_wip(input(&root, Some("ISS-3"))).await;
+        let s = salvage_wip(input(&root, "ISS-3-mine")).await;
         assert_eq!(s.branch.as_deref(), Some("ISS-3-mine"), "{s:?}");
         let out = Command::new("git")
             .args(["status", "--porcelain"])
@@ -577,22 +562,38 @@ mod tests {
         cleanup(&root);
     }
 
+    /// Replaces the old "several dirty and no key to choose" refusal. That arm
+    /// existed because a prefix match could hit more than one tree and it broke
+    /// the tie by mtime — which is how a stranger's branch got picked. An exact
+    /// branch match cannot tie, so the named tree wins outright.
     #[tokio::test]
-    async fn refuses_when_several_are_dirty_and_no_issue_key_narrows_them() {
+    async fn picks_the_named_tree_outright_when_several_are_dirty() {
         let (root, a) = repo("ambig", "ISS-4-a").await;
         let b = add_worktree(&root, "ISS-5-b").await;
         std::fs::write(a.join("x.txt"), "x\n").unwrap();
         std::fs::write(b.join("y.txt"), "y\n").unwrap();
-        let s = salvage_wip(input(&root, None)).await;
-        assert_eq!(s.outcome, Outcome::Refused, "{s:?}");
-        assert!(s.detail.unwrap().contains("2 dirty worktrees"));
+        let s = salvage_wip(input(&root, "ISS-5-b")).await;
+        assert_eq!(s.outcome, Outcome::Pushed, "{s:?}");
+        assert_eq!(s.branch.as_deref(), Some("ISS-5-b"));
+        cleanup(&root);
+    }
+
+    /// A master may name one agent for several issues; the branch it names is
+    /// then a word no issue key predicts, and salvage must still find it.
+    #[tokio::test]
+    async fn finds_a_tree_whose_name_no_issue_key_would_have_matched() {
+        let (root, wt) = repo("grouped", "catalog-sweep").await;
+        std::fs::write(wt.join("new.txt"), "x\n").unwrap();
+        let s = salvage_wip(input(&root, "catalog-sweep")).await;
+        assert_eq!(s.outcome, Outcome::Pushed, "{s:?}");
+        assert_eq!(s.branch.as_deref(), Some("catalog-sweep"));
         cleanup(&root);
     }
 
     #[tokio::test]
     async fn reports_none_on_a_clean_worktree_rather_than_an_empty_commit() {
         let (root, _wt) = repo("clean", "ISS-6-c").await;
-        let s = salvage_wip(input(&root, Some("ISS-6"))).await;
+        let s = salvage_wip(input(&root, "ISS-6-c")).await;
         assert_eq!(s.outcome, Outcome::None);
         assert!(s.sha.is_none());
         cleanup(&root);
@@ -603,7 +604,7 @@ mod tests {
         let (root, wt) = repo("ignored", "ISS-7-d").await;
         std::fs::write(wt.join(".gitignore"), ".env\n").unwrap();
         std::fs::write(wt.join(".env"), "SECRET=1\n").unwrap();
-        let s = salvage_wip(input(&root, Some("ISS-7"))).await;
+        let s = salvage_wip(input(&root, "ISS-7-d")).await;
         assert_eq!(s.outcome, Outcome::Pushed, "{s:?}");
         let out = Command::new("git")
             .args(["show", "--name-only", "--format=", "HEAD"])
@@ -622,7 +623,7 @@ mod tests {
         let (root, wt) = repo("nopush", "ISS-8-e").await;
         std::fs::write(wt.join("new.txt"), "x\n").unwrap();
         let _ = std::fs::remove_dir_all(root.with_extension("remote.git"));
-        let s = salvage_wip(input(&root, Some("ISS-8"))).await;
+        let s = salvage_wip(input(&root, "ISS-8-e")).await;
         assert_eq!(s.outcome, Outcome::CommittedNotPushed, "{s:?}");
         assert!(s.sha.is_some());
         assert!(s.detail.is_some());
@@ -642,7 +643,7 @@ mod tests {
             std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         std::fs::write(wt.join("new.txt"), "x\n").unwrap();
-        let s = salvage_wip(input(&root, Some("ISS-9"))).await;
+        let s = salvage_wip(input(&root, "ISS-9-f")).await;
         assert_eq!(s.outcome, Outcome::Pushed, "{s:?}");
         cleanup(&root);
     }
@@ -653,15 +654,6 @@ mod tests {
         let got = parse_worktrees(listing);
         assert_eq!(got.len(), 2);
         assert_eq!(got[1].branch, "ISS-1-x");
-    }
-
-    #[test]
-    fn matches_an_issue_key_only_on_a_segment_boundary() {
-        assert!(belongs_to_issue("ISS-862-runner-health", "ISS-862"));
-        assert!(belongs_to_issue("iss-862", "ISS-862"));
-        assert!(belongs_to_issue("feature/ISS-862-x", "ISS-862"));
-        assert!(!belongs_to_issue("ISS-8620-other", "ISS-862"));
-        assert!(!belongs_to_issue("ISS-86", "ISS-862"));
     }
 
     #[test]

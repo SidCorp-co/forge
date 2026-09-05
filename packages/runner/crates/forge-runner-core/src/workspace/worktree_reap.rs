@@ -1,9 +1,9 @@
-//! Reaping the per-issue worktrees nothing else removes.
+//! Reaping the agent worktrees nothing else removes.
 //!
-//! An agent working an issue creates its own checkout under
-//! `<repo>/.claude/worktrees/<slug>` — that is Claude Code's own convention,
-//! not `worktree::create`'s `.worktrees/`, so neither the runner nor any skill
-//! has ever removed one. They accumulate for the life of the box.
+//! Two directories, from two different conventions, and nothing used to remove
+//! either: `<repo>/.claude/worktrees/<slug>` is Claude Code's own, and
+//! `<repo>/.worktrees/<branch>` is what `worktree::create` cuts for a job. They
+//! accumulate for the life of the box.
 //!
 //! Measured 2026-08-20: ubuntu6 reached 100% disk (342M free) with 64 stale
 //! worktrees holding 29G; ubuntu2/3/5 held another 12G between them. A full
@@ -26,9 +26,10 @@ use tokio::process::Command;
 // age gate carry the safety on its own if a git probe below ever misreads.
 pub const MIN_AGE: Duration = Duration::from_secs(14 * 24 * 3600);
 
-/// Where the agent puts its per-issue checkouts.
-// cm:edge naming -> packages/runner/crates/forge-runner-core/src/workspace/worktree.rs — that module owns `.worktrees/` (the runner's own), this one `.claude/worktrees/` (the agent's). Two different directories; do not merge them.
-const AGENT_WORKTREES: &str = ".claude/worktrees";
+/// Every directory a checkout can be cut into, relative to the repo root.
+// cm:edge naming -> packages/runner/crates/forge-runner-core/src/workspace/worktree.rs — that module owns `.worktrees/` and names each tree after the branch. They stay two directories with one sweep: `.claude/worktrees/` is Claude Code's convention and is not ours to rename.
+// cm:guard `.worktrees/` MUST stay in this list now that a master names its own agents. Until 2026-09-05 core derived every branch from the issue key, so an issue reused one checkout however many stages it ran and the naming was the ceiling on how many could exist. A master invents a name per pass, so nothing bounds them — and unreaped worktrees are a liveness problem, not tidiness: ubuntu6 reached 100% disk (342M free) on 2026-08-20 with 64 stale trees holding 29G, which fails every job on the box.
+const WORKTREE_ROOTS: [&str; 2] = [".claude/worktrees", ".worktrees"];
 
 async fn git(dir: &Path, args: &[&str]) -> Option<std::process::Output> {
     Command::new("git")
@@ -68,25 +69,26 @@ fn older_than(p: &Path, age: Duration) -> bool {
 
 /// Reap one repo's stale agent worktrees. Returns the paths removed.
 pub async fn reap_repo(repo: &Path, min_age: Duration) -> Vec<PathBuf> {
-    let dir = repo.join(AGENT_WORKTREES);
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return Vec::new();
-    };
     let mut removed = Vec::new();
-    for e in entries.flatten() {
-        let p = e.path();
-        if !p.is_dir() || !older_than(&p, min_age) || holds_work(&p).await {
+    for root in WORKTREE_ROOTS {
+        let Ok(entries) = std::fs::read_dir(repo.join(root)) else {
             continue;
-        }
-        let ok = git(
-            repo,
-            &["worktree", "remove", "--force", &p.to_string_lossy()],
-        )
-        .await
-        .is_some_and(|o| o.status.success())
-            || std::fs::remove_dir_all(&p).is_ok();
-        if ok && !p.exists() {
-            removed.push(p);
+        };
+        for e in entries.flatten() {
+            let p = e.path();
+            if !p.is_dir() || !older_than(&p, min_age) || holds_work(&p).await {
+                continue;
+            }
+            let ok = git(
+                repo,
+                &["worktree", "remove", "--force", &p.to_string_lossy()],
+            )
+            .await
+            .is_some_and(|o| o.status.success())
+                || std::fs::remove_dir_all(&p).is_ok();
+            if ok && !p.exists() {
+                removed.push(p);
+            }
         }
     }
     if !removed.is_empty() {
@@ -110,7 +112,22 @@ mod tests {
 
     /// A repo with one agent worktree. `NOW` as `min_age` isolates the git
     /// predicates from the age gate, which its own test covers.
+    /// The runner's own lane, `.worktrees/<branch>` — unswept until 2026-09-05
+    /// and unbounded since the master began naming its own agents.
+    #[tokio::test]
+    async fn reaps_the_runners_own_worktree_lane_too() {
+        let (repo, _wt) = repo_with_worktree_in("runner-lane", WORKTREE_ROOTS[1]).await;
+        let removed = reap_repo(&repo, NOW).await;
+        assert_eq!(removed.len(), 1, "{removed:?}");
+        assert!(removed[0].to_string_lossy().contains("/.worktrees/"));
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
     async fn repo_with_worktree(tag: &str) -> (PathBuf, PathBuf) {
+        repo_with_worktree_in(tag, WORKTREE_ROOTS[0]).await
+    }
+
+    async fn repo_with_worktree_in(tag: &str, root: &str) -> (PathBuf, PathBuf) {
         let repo = std::env::temp_dir().join(format!(
             "forge-wt-reap-{tag}-{}-{:?}",
             std::process::id(),
@@ -137,7 +154,7 @@ mod tests {
         .await;
         run(&repo, &["push", "-u", "origin", "main"]).await;
 
-        let wt = repo.join(AGENT_WORKTREES).join(format!("iss-{tag}"));
+        let wt = repo.join(root).join(format!("iss-{tag}"));
         std::fs::create_dir_all(wt.parent().unwrap()).unwrap();
         run(
             &repo,

@@ -47,6 +47,10 @@ pub struct ClaimArgs {
     pub job_id: String,
     #[arg(long)]
     pub session_id: String,
+    /// Your name for the agent that will run this job. Becomes its git branch
+    /// and its worktree; reuse one name to put several jobs in one checkout.
+    #[arg(long)]
+    pub agent: String,
 }
 
 #[derive(ClapArgs)]
@@ -116,7 +120,8 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
             let Some(sock) = control::socket_path() else {
                 anyhow::bail!("cannot resolve the runner control socket path");
             };
-            let out = match control::request_claim(&sock, &a.job_id, &a.session_id).await {
+            let out = match control::request_claim(&sock, &a.job_id, &a.session_id, &a.agent).await
+            {
                 Ok(out) => out,
                 Err(e) => anyhow::bail!(
                     "no runner daemon answered at {} ({e}) — start the service before claiming",

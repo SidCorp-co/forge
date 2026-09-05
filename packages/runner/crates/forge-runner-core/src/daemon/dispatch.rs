@@ -375,14 +375,10 @@ pub async fn handle(
     // `origin_remote:`/`work_tree:`/`repo_path:` sub-variants are load-bearing —
     // core's classifier (`packages/core/src/pipeline/failure-classifier.ts`)
     // pattern-matches on this exact string to pick failureKind (ISS-808).
-    // cm:guard the workspace refresh below shares this gate deliberately — it fast-forwards a git checkout, so it is as meaningless on a repo-less project as the preflight is. Splitting them would send a `website` project into `git fetch` on a folder with no remote. Only create a worktree when core explicitly hands us a feature branch (e.g. code/fix stages). Triage/plan/review run in the repo root. Never fall back to the binding's base branch — that branch is already checked out in the main worktree, so `git worktree add` would refuse it.
-    let worktree_branch = ja
-        .payload
-        .get("worktreeBranch")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string);
-    let owns_root = worktree_branch.is_none();
+    // cm:guard the workspace refresh below shares this gate deliberately — it fast-forwards a git checkout, so it is as meaningless on a repo-less project as the preflight is. Splitting them would send a `website` project into `git fetch` on a folder with no remote.
+    // cm:guard the branch is the MASTER'S agent name, and every claimed job gets one. Core's `worktreeBranch` payload is gone: it derived the name from the issue key, which cannot express a master grouping two issues into one agent, and its merge-stage exemption had been unreachable since ISS-897 left `drive` as the only dispatched type. Never reintroduce a fallback here — an empty name means the claim gate let an unnamed agent through, and the honest answer is that bug, not a job quietly writing the repo root.
+    let worktree_branch = Some(ja.agent_name.clone());
+    let owns_root = false;
 
     let mut workspace_notice: Option<String> = None;
     let mut worktree_start_point: Option<String> = None;
@@ -515,11 +511,11 @@ pub async fn handle(
         _ => ja.prompt_string.clone(),
     };
 
-    // cm:guard salvage is offered only to a job that serves an ISSUE. Without `issueKey` it cannot tell the job's checkout from a stale one — dev1 carried five agent worktrees on 2026-08-26, two dirty since 2026-08-12 — and a `pm`/`interactive` job has no branch of its own to preserve anything on.
-    let salvage_ctx = ja.issue_key.clone().map(|issue_key| SalvageCtx {
+    // cm:guard salvage is offered to EVERY claimed job, and the condition it used to carry is gone on purpose. It was "only a job with an `issueKey`", because without core's `worktreeBranch` such a job ran in the root and had no branch of its own to preserve anything on. Every claim now names an agent and gets that agent's worktree, so the old test would refuse to preserve work that demonstrably exists.
+    let salvage_ctx = Some(SalvageCtx {
         repo_root: resolved.repo_path.clone(),
         base_branch: resolved.base_branch.clone(),
-        issue_key,
+        agent_branch: ja.agent_name.clone(),
         attempt: ja.attempts.unwrap_or(0),
     });
 
@@ -587,13 +583,11 @@ pub async fn handle(
     Ok(())
 }
 
-/// What a failed job needs before its working copy can be preserved. The
-/// checkout is not named here: `salvage` finds the agent's own worktree for
-/// this issue, because the agent, not the runner, is what cut it.
+/// What a failed job needs before its working copy can be preserved.
 struct SalvageCtx {
     repo_root: PathBuf,
     base_branch: Option<String>,
-    issue_key: String,
+    agent_branch: String,
     attempt: u32,
 }
 
@@ -692,7 +686,7 @@ async fn consume(
                 tracing::info!("[job {job_id}] failed: {err}");
             }
         }
-        // cm:guard say it at ERROR and say what it means, because this is the one outcome the box cannot repair. The agent process is still running and is left to exit on its own — it is a one-shot child, not a resident session `close` can reach — so its slot reads free while a claude is still on the box. That is a bounded inaccuracy and it is strictly better than what it replaces: a slot held forever behind an endless 403 loop. The master rebuild owns the process handle and is where killing it belongs.
+        // cm:guard say it at ERROR and say what it means, because this is the one outcome the box cannot repair. The agent process is still running and is left to exit on its own — it is a one-shot child, not a resident session `close` can reach — so its slot reads free while a claude is still on the box. That is a bounded inaccuracy and it is strictly better than what it replaces: a slot held forever behind an endless 403 loop. Killing it is OWED and nothing does it yet: the daemon spawns the job and drops the child, so no code on this box holds a handle to kill. The master does not hold one either — it claims through the daemon and never sees the process — so a claim that this belongs to the master rebuild would be wrong; whoever closes this adds the handle to the in-flight map first.
         Some(Terminal::Disowned(why)) => {
             tracing::error!(
                 "[job {job_id}] core no longer routes this job to this box ({why}) — abandoning it; the agent process is left to exit on its own"
@@ -718,7 +712,7 @@ async fn salvage_for(
     let s = salvage::salvage_wip(salvage::SalvageInput {
         repo_root: &ctx.repo_root,
         base_branch: ctx.base_branch.as_deref(),
-        issue_key: Some(ctx.issue_key.as_str()),
+        agent_branch: &ctx.agent_branch,
         job_id,
         attempt: ctx.attempt,
         failure: err,
@@ -782,7 +776,7 @@ mod tests {
                 "sessionMode": session_mode,
             }))
             .expect("a preparation must parse");
-        prepared.into_claimed(None, None)
+        prepared.into_claimed(None, None, "test-agent".into())
     }
 
     fn unrefreshed(foreign_work: bool) -> refresh::WorkspaceGit {

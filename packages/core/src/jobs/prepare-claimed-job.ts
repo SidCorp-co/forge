@@ -14,8 +14,7 @@
 
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { devices, issueLabels, issues, jobs, labels, projects, runners } from '../db/schema.js';
-import { worktreeBranchPayload } from '../issues/merged-at.js';
+import { issueLabels, issues, jobs, labels, projects, runners } from '../db/schema.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { logger } from '../logger.js';
 import { injectAfterInvocation, injectTurnLevelRules } from '../prompt/user.js';
@@ -220,26 +219,14 @@ export async function prepareClaimedJob(args: {
   const model = stageOverrides.model ?? job.modelTier ?? 'default';
   const repoPath = await loadRepoPath(job.projectId);
 
-  const [project, deviceRow, issueRow] = await Promise.all([
+  const [project, issueRow] = await Promise.all([
     sessionSettingsOf(job.projectId),
-    db
-      .select({ v: devices.agentVersion })
-      .from(devices)
-      .where(eq(devices.id, args.deviceId))
-      .limit(1),
     job.issueId
       ? db.select({ issSeq: issues.issSeq }).from(issues).where(eq(issues.id, job.issueId)).limit(1)
       : Promise.resolve([]),
   ]);
-  // cm:edge contract -> packages/runner/crates/forge-runner-core/src/workspace/salvage.rs — the runner matches `issueKey` against the branches of the agent's own worktrees to find the one worth salvaging when this job fails. Without it the runner declines to salvage rather than guess between checkouts, so dropping it silently disables the feature.
+  // cm:guard `issueKey` no longer names any checkout. It used to be the agent's branch, and salvage found the tree by matching it; since the master names its own agent the branch is the master's word and salvage matches that exactly, so this is now prompt/display context only. Do not rebuild a branch name from it anywhere — a master that groups two issues into one agent has a branch no issue key predicts.
   const issueKey = issueRow[0]?.issSeq == null ? null : `ISS-${issueRow[0].issSeq}`;
-  const worktree = worktreeBranchPayload({
-    status: ((job.payload as { stageStatus?: unknown } | null)?.stageStatus ?? null) as never,
-    agentConfig: project.agentConfig,
-    featureBranch: issueKey,
-    runnerVersion: deviceRow[0]?.v ?? null,
-  });
-
   await persistPromptSnapshot({
     jobId: job.id,
     systemPrompt,
@@ -267,7 +254,6 @@ export async function prepareClaimedJob(args: {
     promptString,
     payload: {
       ...((job.payload ?? {}) as Record<string, unknown>),
-      ...worktree,
       ...buildOverridesPayload(stageOverrides),
       ...(issueKey ? { issueKey } : {}),
       ...(resume.priorClaudeSessionId ? { claudeSessionId: resume.priorClaudeSessionId } : {}),

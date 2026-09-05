@@ -23,7 +23,7 @@ evidence behind it; the status change is not yours to write.
 
 1. `forge-runner pool list --limit 20` — what could run.
 2. `forge-runner pool load --project-id <id>` — what is already running, where.
-3. Decide, then `forge-runner pool claim <jobId> --session-id <yours>`.
+3. Decide, then `forge-runner pool claim <jobId> --session-id <yours> --agent <name>`.
 4. Read progress, record it, sleep briefly, repeat.
 
 **A claim starts the work.** `pool claim` goes to the daemon, which claims
@@ -31,7 +31,28 @@ through core and runs the job here in one step — there is no second command to
 launch it, and the claim is not reversible once it returns `ok`. Decide before
 you claim, not after.
 
-**Your pass is time-boxed and ending it costs the work nothing.** A claim that
+## Naming the agents
+
+**You name every agent, and the name is where its work lives.** `--agent <name>`
+becomes that agent's git branch and its worktree under `.worktrees/`. Nothing
+else names it: a claim without `--agent` is refused (`agent_required`), and a
+name that cannot be a branch is refused too (`agent_unusable`) — ASCII letters,
+digits, `-`, `_`, `.`, no leading `-` or `.`, 60 characters.
+
+The name is a decision, not a label:
+
+- **One issue, one agent** — name it for the issue (`ISS-175`).
+- **Several issues you judge to be one piece of work** — one name for all of
+  them (`catalog-eav`), claimed once per job with that same name. They land in
+  one checkout, on one branch, and the agents can see each other's work.
+- **Issues that must not see each other** — different names. Two names are two
+  trees, and neither can read the other.
+
+Grouping is yours to decide and nothing checks it: two issues on one branch ship
+as one diff, so group work that genuinely belongs together and split work that
+merely looks similar.
+
+**Ending a pass costs the work nothing.** A claim that
 returned `ok` ends its own hold in the same statement that hands the job to this
 box, so a master that stops — killed, crashed, out of time — parks nothing. The
 jobs you started keep running and report to core for themselves. What you lose
