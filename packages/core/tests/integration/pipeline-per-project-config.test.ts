@@ -304,6 +304,21 @@ describe('ISS-107 per-project pipeline & skill configuration (epic)', () => {
     ).toEqual([{ type: 'drive', skillName: 'issue-flow' }]);
   });
 
+  // cm:guard the three rungs ISS-895 deleted must enqueue NOTHING, and they are named one by one rather than covered by the walk above — the walk goes `in_progress → released → closed`, which never touches them, so it would stay green with a staged rung dispatching beside it.
+  // cm:guard what actually holds this is the ENTRY-STATUS SHORT-CIRCUIT in `pipeline/orchestrator.ts`, not `autonomousStepFor`. Measured 2026-09-05 by planting a `status === 'approved'` arm in `autonomousStepFor` alone: this test stayed GREEN, because the transition handler returns before ever consulting it. It goes red only when the short-circuit is widened too — so a future edit that keeps the short-circuit and re-adds a resolver arm will NOT be caught here, and the falsification that matters is on the orchestrator line.
+  it.each(['approved', 'developed', 'testing'] as const)(
+    'enqueues nothing at the deleted staged rung %s',
+    async (rung) => {
+      const { owner, project } = await seedProject();
+      let issue = await insertOpenIssue(project.id, owner.id);
+
+      issue = await drive(issue, rung, owner.id);
+
+      expect(issue.status).toBe(rung);
+      expect(await jobsFor(issue.id)).toEqual([]);
+    },
+  );
+
   // cm:guard the driver skill name reaches the agent as TEXT in the prompt and is never resolved from `skill_registrations` — the fixture registers eight `forge-*` skills precisely so a resolver that started reading them would produce a different skillName here and go red.
   it('names the plugin skill, not a registered one, however many are registered', async () => {
     const { owner, project } = await seedProject();
