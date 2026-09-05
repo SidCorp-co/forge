@@ -369,6 +369,13 @@ describe('memory write/get/delete integration (Phase 0)', () => {
   // ---------- GET ----------
 
   describe('GET /api/memory', () => {
+    const seedRow = (projectId: string, token: string, source: string, sourceRef: string) =>
+      app.request('/api/memory', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ projectId, source, sourceRef, textContent: `body ${sourceRef}` }),
+      });
+
     it('401 without token', async () => {
       const res = await app.request(`/api/memory?projectId=${randomUUID()}`);
       expect(res.status).toBe(401);
@@ -392,20 +399,7 @@ describe('memory write/get/delete integration (Phase 0)', () => {
       const { projectId, token } = await seedMember();
       // Seed 3 rows via POST so they get realistic createdAt spread.
       for (const i of [1, 2, 3]) {
-        const r = await app.request('/api/memory', {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            projectId,
-            source: 'note',
-            sourceRef: `n-${i}`,
-            textContent: `body ${i}`,
-          }),
-        });
-        expect(r.status).toBe(201);
+        expect((await seedRow(projectId, token, 'note', `n-${i}`)).status).toBe(201);
       }
 
       const res = await app.request(`/api/memory?projectId=${projectId}`, {
@@ -421,26 +415,8 @@ describe('memory write/get/delete integration (Phase 0)', () => {
 
     it('source filter narrows results', async () => {
       const { projectId, token } = await seedMember();
-      await app.request('/api/memory', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          projectId,
-          source: 'note',
-          sourceRef: 'n-1',
-          textContent: 't',
-        }),
-      });
-      await app.request('/api/memory', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          projectId,
-          source: 'knowledge',
-          sourceRef: 'k-1',
-          textContent: 'a distinct convention',
-        }),
-      });
+      await seedRow(projectId, token, 'note', 'n-1');
+      await seedRow(projectId, token, 'knowledge', 'k-1');
 
       const res = await app.request(`/api/memory?projectId=${projectId}&source=knowledge`, {
         headers: { authorization: `Bearer ${token}` },
@@ -448,6 +424,22 @@ describe('memory write/get/delete integration (Phase 0)', () => {
       const rows = ((await res.json()) as { items: Array<{ source: string }> }).items;
       expect(rows.length).toBe(1);
       expect(rows[0]?.source).toBe('knowledge');
+    });
+
+    // cm:guard ISS-876: an undeclared query key is STRIPPED by zValidator, not rejected, so a filter missing from `listQuerySchema` answers with the whole store and a `total` that counts it — indistinguishable from a match. Assert the narrowing AND the total.
+    it('sourceRef filter narrows results and the total', async () => {
+      const { projectId, token } = await seedMember();
+      for (const ref of ['keep-me', 'other-1', 'other-2']) {
+        await seedRow(projectId, token, 'note', ref);
+      }
+
+      const res = await app.request(`/api/memory?projectId=${projectId}&sourceRef=keep-me`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { items: Array<{ sourceRef: string }>; total: number };
+      expect(body.items.map((r) => r.sourceRef)).toEqual(['keep-me']);
+      expect(body.total).toBe(1);
     });
   });
 

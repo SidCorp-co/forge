@@ -13,6 +13,8 @@ import { runMemoryGet } from './get-service.js';
 const listQuerySchema = paginationSchema.extend({
   projectId: z.uuid(),
   source: z.enum(memorySources).optional(),
+  // cm:guard ISS-876 every field `runMemoryGet` filters on must be declared here — zValidator STRIPS an undeclared key silently, so `?sourceRef=x` used to return the whole store with `total` counting every row and no error, which reads as "nothing matched that ref" only if you never look at the count
+  sourceRef: z.string().trim().min(1).max(512).optional(),
   // cm:guard a query string carries no boolean — the literal must be parsed here, or `?includeArchived=true` arrives as the truthy string "true" on every request and the archived rows leak into the default read
   includeArchived: z
     .enum(['true', 'false'])
@@ -38,13 +40,14 @@ memoryListRoutes.get(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const { projectId, source, limit, offset, includeArchived } = c.req.valid('query');
+    const { projectId, source, sourceRef, limit, offset, includeArchived } = c.req.valid('query');
     const userId = c.get('userId');
     await assertProjectAccess(projectId, userId, 'viewer');
 
     const { rows, total } = await runMemoryGet({
       projectId,
       ...(source ? { source } : {}),
+      ...(sourceRef ? { sourceRef } : {}),
       includeArchived,
       limit,
       offset,

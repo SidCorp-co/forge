@@ -644,6 +644,29 @@
 
 ### Fixed
 
+- A memory write under a new `sourceRef` no longer destroys an unrelated note, and the forge-dev note
+  store no longer lies about which day it holds (ISS-876, superseding closed ISS-861). The near-identical
+  dedup absorb was unreachable for a refinement of an existing record — `findNearDuplicate` returns null
+  on an exact-key hit — and reachable ONLY for a write under a brand-new ref, precisely the case where
+  the caller has stated this is a NEW record. It then redirected that write onto a row nobody had named.
+  On forge-dev it overwrote 4 of 6 dated summary rows across two unrelated schedules, and the
+  `supersededSnapshotRef` it handed back pointed at a row inserted with `archived_at` set, which every
+  read surface filtered out — the agent that caused the loss was given an id it could not dereference.
+  The probe now only REPORTS (`nearDuplicateOf` + `dedupeScore`) and the write always lands on the ref
+  the caller named; refining another record means re-issuing the write under that exact key. Snapshot
+  rows already minted stay reachable through `forge_memory.get`/`GET /api/memory` with
+  `includeArchived: true`, every row carrying `archivedAt` so a recovered one is never read as live.
+  The code shipped on 2026-08-30 in `68946d5e3` and this entry is its record — it went in unlogged.
+  The data repair is new: 16 summaries that survived only in an archived row now live at a ref of
+  their own (`dream-daily-review-2026-08-03` … `-08-25`, `doc-sync-2026-08-17`), three squatted refs
+  hold their own originals again, and `dream-daily-review-2026-07-15` — the one whose original was
+  never archived at all — says so instead of answering with 2026-08-24's summary.
+
+- `GET /api/memory?sourceRef=…` filters by that ref instead of returning the whole store (found while
+  repairing ISS-876). `runMemoryGet` has always supported the filter, but `listQuerySchema` never
+  declared it, so `zValidator` stripped the key silently: the response carried every row in the project
+  with `total` counting all of them and no error, which reads as a match unless the caller checks the count.
+
 - The embedding backfill also re-embeds knowledge entries (found while shipping ISS-907). A knowledge
   entry saved during an embeddings outage was stored without a vector "for backfill", but the
   five-minute sweep only read memories, so the entry stayed keyword-only until its body changed; on
