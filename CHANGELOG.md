@@ -623,6 +623,23 @@
 
 ### Fixed
 
+- A job whose only claimable box was rate-limited burned all thirty retry attempts instead of
+  holding. The claim floor that requires a runner able to name its agent (`0.11.0`) was enforced in
+  TypeScript at the claim and nowhere in SQL, so `onlineCapableDeviceIds`, `fresh_capable_runners`
+  and the picker all counted a below-floor box as a healthy device. The retry engine therefore
+  believed a usable device existed, never reached `all_devices_exhausted`, and rotated onto a box
+  whose every claim core refused with `runner_too_old`. The floor is now one predicate
+  (`claimCapableSql`) that both halves read, so a box that cannot claim is invisible to selection
+  and an all-limited fleet defers on the self-clearing hold as designed. Found on epodsystem on
+  2026-09-05, the day the floor shipped with only one half.
+
+- The master swept every 30 seconds while its account was rate-limited, spending a pass a minute on
+  work it could not start. `GET /api/devices/me/runners` now reports the remaining seconds on the
+  limit and the reason, and the master stretches its poll to at most five minutes when *every*
+  project it serves is limited — one limited project never slows a healthy sibling. This is a
+  backoff and deliberately not a skip: core clears a limit only when a job succeeds, so a master
+  that stopped sweeping would remove the only thing able to clear the stamp.
+
 - **A session's `/agents` row no longer blames the box for a death it did not cause.** A queued job
   whose box was busy with the shared checkout posted nothing while it waited, so the 120-second claim
   hop failed the session `queue_timeout`; the job was then reaped `session_lost` *because* its session

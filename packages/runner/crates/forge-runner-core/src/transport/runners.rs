@@ -34,6 +34,18 @@ pub struct MeRunner {
     /// which is the expensive path this field exists to retire.
     #[serde(default)]
     pub workspace_setup: Option<String>,
+    /// Seconds core says remain on this runner's rate limit: `None` when it is
+    /// not limited (and on a core that predates the field), `0` once expired.
+    ///
+    /// Advisory pacing only — see `daemon::master`.
+    // cm:guard the ABSENT case must stay PERMISSIVE here, the opposite of `kind` above and deliberately so. This field may only ever slow a sweep down; if it is ever allowed to STOP one, the fleet cannot self-heal, because core clears the limit only when a job SUCCEEDS and no job can succeed while the master sits idle. Measured 2026-09-05: forge-vm cleared its own `usage_limit` by running two jobs to completion while the stamp still stood.
+    // cm:edge contract -> packages/core/src/devices/routes.ts — core computes this against ITS clock so the runner needs neither a datetime parser nor a skew correction; a change to a raw instant here puts both back.
+    #[serde(default)]
+    pub rate_limited_for_seconds: Option<u64>,
+    /// Why core limited this runner (`usage_limit`, `auth`, …). Reported in the
+    /// pass log so an operator can tell a 5-hour window from a dead credential.
+    #[serde(default)]
+    pub limit_reason: Option<String>,
 }
 
 /// List the projects this device is assigned to. `401` maps to a clear

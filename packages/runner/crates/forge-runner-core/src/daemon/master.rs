@@ -28,6 +28,10 @@ const POLL_INTERVAL: Duration = Duration::from_secs(30);
 // cm:guard what this must NOT go back to claiming is that core reclaims anything when it fires: since `fd1265751` a claim ends its own hold in the statement that stamps, so a killed master leaves nothing behind to reclaim — the jobs it started keep running and report for themselves.
 const MASTER_MAX_RUNTIME: Duration = Duration::from_secs(600);
 
+/// Sweep spacing once every project this box serves is rate-limited.
+// cm:guard this is a BACKOFF, never a blackout, and the distinction is the whole design. Core clears a limit only when a job SUCCEEDS (`clearRunnerLimit`), so a master that declines to sweep while limited removes the only thing that can clear the stamp, and an operator who fixes the account out of band is left watching an idle fleet forever. Slowing down costs a few minutes of latency; stopping costs the self-heal.
+const LIMITED_POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
+
 /// The prompt that starts a pass. Deliberately thin: the skill is the process.
 // cm:guard name the skill and STOP. Restating its rules here creates a second copy of the master's process, and the copies drift in silence because nothing compares them — the skill file is where a reader looks and this string is what a master is actually told. The two ship together (see the include_str edge below), so there is no version where inlining the rules here is even the safer half.
 fn pass_prompt(project: &str, base_branch: Option<&str>, issue_keys: &[String]) -> String {
@@ -106,10 +110,10 @@ pub async fn run(
     gate: Arc<MasterGate>,
     mut cancel: tokio::sync::watch::Receiver<bool>,
 ) {
-    let mut tick = tokio::time::interval(POLL_INTERVAL);
+    let mut delay = POLL_INTERVAL;
     loop {
         tokio::select! {
-            _ = tick.tick() => sweep(&client, &cfg, &gate).await,
+            _ = tokio::time::sleep(delay) => delay = sweep(&client, &cfg, &gate).await,
             _ = cancel.changed() => { if *cancel.borrow() { break; } }
         }
     }
@@ -128,14 +132,47 @@ fn accepts_new_work(status: &str) -> bool {
     !matches!(status, "draining" | "disabled")
 }
 
-async fn sweep(client: &CoreClient, cfg: &Config, gate: &Arc<MasterGate>) {
+/// How long to wait before the next sweep, given what core just reported.
+///
+/// Fast by default; stretched only when EVERY project that would take work is
+/// rate-limited, so one limited project never slows down a healthy one.
+// cm:guard the stretch requires ALL of them, and `any` here would be a throughput bug rather than a pacing one: this box serves several projects, and one account hitting its window would idle the rest for five minutes at a time.
+// cm:guard `Some(0)` counts as NOT limited. An expired stamp is the normal steady state, because core only clears the column on a successful job — treating a lapsed limit as live is how a backoff becomes permanent.
+fn next_poll_delay(served: &[runners::MeRunner]) -> Duration {
+    let mut soonest: Option<u64> = None;
+    for r in served.iter().filter(|r| accepts_new_work(&r.status)) {
+        match r.rate_limited_for_seconds {
+            Some(secs) if secs > 0 => {
+                soonest = Some(soonest.map_or(secs, |s: u64| s.min(secs)));
+            }
+            _ => return POLL_INTERVAL,
+        }
+    }
+    match soonest {
+        None => POLL_INTERVAL,
+        Some(secs) => Duration::from_secs(secs).clamp(POLL_INTERVAL, LIMITED_POLL_INTERVAL),
+    }
+}
+
+async fn sweep(client: &CoreClient, cfg: &Config, gate: &Arc<MasterGate>) -> Duration {
     let served = match runners::list_me(client).await {
         Ok(rs) => rs,
         Err(e) => {
             tracing::warn!("[master] cannot read this box's projects: {e}");
-            return;
+            return POLL_INTERVAL;
         }
     };
+    let delay = next_poll_delay(&served);
+    if delay > POLL_INTERVAL {
+        for r in served.iter().filter(|r| accepts_new_work(&r.status)) {
+            tracing::info!(
+                "[master] {}: rate-limited ({}) — still sweeping, next pass in {}s",
+                r.slug,
+                r.limit_reason.as_deref().unwrap_or("unknown"),
+                delay.as_secs()
+            );
+        }
+    }
 
     for runner in &served {
         if !accepts_new_work(&runner.status) {
@@ -191,6 +228,7 @@ async fn sweep(client: &CoreClient, cfg: &Config, gate: &Arc<MasterGate>) {
             spawn_master(&prompt, &cwd, &slug).await;
         });
     }
+    delay
 }
 
 /// The master's own process, versioned with this binary.
@@ -269,6 +307,65 @@ async fn spawn_master(prompt: &str, cwd: &std::path::Path, slug: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn served(entries: &[(&str, Option<u64>)]) -> Vec<runners::MeRunner> {
+        entries
+            .iter()
+            .map(|(status, limited)| runners::MeRunner {
+                project_id: "p".into(),
+                runner_id: "r".into(),
+                slug: "s".into(),
+                base_branch: None,
+                repo_path: None,
+                branch: None,
+                status: (*status).into(),
+                kind: None,
+                workspace_setup: None,
+                rate_limited_for_seconds: *limited,
+                limit_reason: None,
+            })
+            .collect()
+    }
+
+    // cm:guard this is the test that has to fail if anyone turns the backoff into a skip. A limited fleet must still be swept, because core clears the limit only on a job that SUCCEEDS — the delay may grow, but it is bounded and the sweep always happens.
+    #[test]
+    fn a_limited_fleet_is_slowed_down_and_never_stopped() {
+        let d = next_poll_delay(&served(&[("online", Some(3600))]));
+        assert!(d > POLL_INTERVAL, "a limited fleet should back off");
+        assert!(
+            d <= LIMITED_POLL_INTERVAL,
+            "the backoff must stay bounded: {d:?}"
+        );
+    }
+
+    // cm:guard one limited project must not slow down a healthy sibling — this box serves several, and `any` in place of `all` would idle the rest five minutes at a time.
+    #[test]
+    fn one_limited_project_does_not_slow_a_healthy_one() {
+        let mixed = served(&[("online", Some(3600)), ("online", None)]);
+        assert_eq!(next_poll_delay(&mixed), POLL_INTERVAL);
+    }
+
+    // cm:guard an EXPIRED stamp is the normal steady state, not a live limit: core clears the column only on a successful job, so reading a lapsed limit as live turns the backoff permanent.
+    #[test]
+    fn an_expired_limit_polls_at_full_speed() {
+        assert_eq!(
+            next_poll_delay(&served(&[("online", Some(0))])),
+            POLL_INTERVAL
+        );
+    }
+
+    // cm:guard an older core sends no field at all, and absent must mean "poll normally" — the permissive direction, opposite to `kind`. A cautious default here would idle every box talking to a core that predates the field.
+    #[test]
+    fn a_core_that_does_not_report_limits_polls_at_full_speed() {
+        assert_eq!(next_poll_delay(&served(&[("online", None)])), POLL_INTERVAL);
+    }
+
+    // cm:guard a drained runner must not hold the whole box at full speed, nor drag it into a backoff: it is not a candidate for work at all, so it is excluded before the decision.
+    #[test]
+    fn a_drained_runner_is_not_counted_either_way() {
+        let mix = served(&[("draining", None), ("online", Some(3600))]);
+        assert!(next_poll_delay(&mix) > POLL_INTERVAL);
+    }
 
     #[test]
     fn a_pass_ends_before_the_poll_that_would_start_the_next_one_is_useful() {

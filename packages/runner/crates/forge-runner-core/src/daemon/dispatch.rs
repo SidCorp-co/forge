@@ -932,6 +932,8 @@ mod tests {
             status: "online".into(),
             kind: Some("standard".into()),
             workspace_setup: None,
+            rate_limited_for_seconds: None,
+            limit_reason: None,
         }
     }
 
