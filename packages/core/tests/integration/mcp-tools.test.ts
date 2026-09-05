@@ -1,6 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -11,6 +9,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { connectClientAsDevice, parseToolResult } from '../helpers/mcp-harness.js';
 
 // Phase 2.5-F4 integration — MCP tools end-to-end. Device-authed clients
 // connect via InMemoryTransport (same machinery MCP uses, but loopback) and
@@ -30,8 +29,6 @@ function hotVector(hotIdx: number, mag = 1): number[] {
 describe('F4 MCP tools integration', () => {
   let harness: TestDatabase;
   let issueDeviceToken: typeof import('../../src/auth/deviceToken.js').issueDeviceToken;
-  let verifyDeviceToken: typeof import('../../src/auth/deviceToken.js').verifyDeviceToken;
-  let createMcpServer: typeof import('../../src/mcp/server.js').createMcpServer;
   let embeddingsMod: typeof import('../../src/embeddings/index.js');
 
   beforeAll(async () => {
@@ -50,12 +47,9 @@ describe('F4 MCP tools integration', () => {
     process.env.EMBEDDINGS_BASE_URL ??= 'https://stub.invalid';
     process.env.EMBEDDINGS_API_KEY ??= 'stub-key';
 
-    const serverMod = await import('../../src/mcp/server.js');
     const deviceTokenMod = await import('../../src/auth/deviceToken.js');
     embeddingsMod = await import('../../src/embeddings/index.js');
-    createMcpServer = serverMod.createMcpServer;
     issueDeviceToken = deviceTokenMod.issueDeviceToken;
-    verifyDeviceToken = deviceTokenMod.verifyDeviceToken;
   }, 120_000);
 
   afterAll(async () => {
@@ -76,26 +70,6 @@ describe('F4 MCP tools integration', () => {
       role,
     });
     return { user, project };
-  }
-
-  async function connectClientAsDevice(deviceToken: string) {
-    const device = await verifyDeviceToken(deviceToken);
-    if (!device) throw new Error('test device token did not verify');
-    const ctx = { principal: { kind: 'device' as const, device }, device, projectSlug: null };
-    const server = createMcpServer(ctx);
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    await server.connect(serverTransport);
-    const client = new Client({ name: 'test', version: '0.0.0' });
-    await client.connect(clientTransport);
-    return {
-      client,
-      server,
-      device,
-      close: async () => {
-        await client.close();
-        await server.close();
-      },
-    };
   }
 
   function stubEmbedding(vec: number[]) {
@@ -140,12 +114,6 @@ describe('F4 MCP tools integration', () => {
       RETURNING id
     `);
     return (rows[0] as { id: string }).id;
-  }
-
-  function parseToolResult(res: { content: Array<{ type: string; text: string }> }): unknown {
-    const first = res.content[0];
-    if (!first || first.type !== 'text') throw new Error('expected text content');
-    return JSON.parse(first.text);
   }
 
   it('tools/list: includes the known tools with input schemas', async () => {
