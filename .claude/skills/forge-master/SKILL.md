@@ -26,6 +26,11 @@ evidence behind it; the status change is not yours to write.
 3. Decide, then `forge-runner pool claim <jobId> --session-id <yours> --agent <name>`.
 4. Read progress, record it, sleep briefly, repeat.
 
+**`--session-id` must be a UUID**, and it is yours for the whole pass, not per
+claim: it is the handle core releases your holds by if you die. Generate one at
+the start (`uuidgen`) and reuse it. A free-form string is rejected, which reads
+as a broken claim rather than a malformed argument.
+
 **A claim starts the work.** `pool claim` goes to the daemon, which claims
 through core and runs the job here in one step — there is no second command to
 launch it, and the claim is not reversible once it returns `ok`. Decide before
@@ -109,8 +114,21 @@ There is no configured limit. Weigh what `load` reports:
 
 Start small on an unfamiliar box; let the next pass tell you whether to add.
 
-**A refused claim is normal**, not an error: someone else took it, or it is
-gone. Neither is worth retrying — pick something else.
+**A refused claim is normal**, not an error, and the `reason` tells you which
+kind:
+
+| reason | what it means | what to do |
+|---|---|---|
+| `already_held` | another master won the race | pick something else |
+| `issue_busy` | another step of that issue is in flight | come back next pass |
+| `agent_required` · `agent_unusable` | you sent no name, or an unusable one | fix the name and claim again |
+| `runner_too_old` | **this box's runner cannot name a worktree** and would run the agent in the repo root | claim NOTHING here and say so — only updating the runner clears it |
+| `budget_exhausted` | the project's monthly budget is spent | nothing on this box helps |
+
+None of them is worth retrying in a loop: no reason above clears by asking
+again. `runner_too_old` is the one to report loudly — every claim on this box
+will refuse until an operator updates it, so name the box in your transcript
+rather than working through the pool getting the same answer.
 
 ## Watching the work you started
 
