@@ -8,7 +8,7 @@
 
 use super::CoreClient;
 use crate::error::{Error, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 /// One `(device × project)` assignment as returned by `/me/runners`. Field
 /// casing mirrors the core JSON (camelCase) — keep in lockstep with the
@@ -40,7 +40,7 @@ pub struct MeRunner {
     /// Advisory pacing only — see `daemon::master`.
     // cm:guard the ABSENT case must stay PERMISSIVE here, the opposite of `kind` above and deliberately so. This field may only ever slow a sweep down; if it is ever allowed to STOP one, the fleet cannot self-heal, because core clears the limit only when a job SUCCEEDS and no job can succeed while the master sits idle. Measured 2026-09-05: forge-vm cleared its own `usage_limit` by running two jobs to completion while the stamp still stood.
     // cm:edge contract -> packages/core/src/devices/routes.ts — core computes this against ITS clock so the runner needs neither a datetime parser nor a skew correction; a change to a raw instant here puts both back.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_seconds")]
     pub rate_limited_for_seconds: Option<u64>,
     /// Why core limited this runner (`usage_limit`, `auth`, …). Reported in the
     /// pass log so an operator can tell a 5-hour window from a dead credential.
@@ -130,5 +130,57 @@ mod tests {
                        "repoPath":"/srv/store","branch":null,"status":"online","kind":"website"}"#;
         let parsed: MeRunner = serde_json::from_str(json).expect("payload must parse");
         assert_eq!(parsed.kind.as_deref(), Some("website"));
+    }
+}
+
+/// Read the limit window as `Some(seconds)`, or `None` for anything else.
+///
+/// Deliberately total: no shape of this field may fail the parse.
+// cm:guard `#[serde(default)]` covers an ABSENT field and nothing else, and that gap is fleet-wide rather than cosmetic. A wrong type here — `"3600"` for `3600`, a float, a negative — fails the WHOLE `Vec<MeRunner>` parse, so `list_me` errors, `served` comes back empty, and every project on this box stops claiming behind a single `warn!`. That is the STOP this field's own guard forbids, reached through the type system instead of the logic. Mapping every unexpected shape to `None` makes the permissive promise structural rather than a property of today's JSON encoder.
+fn lenient_seconds<'de, D: Deserializer<'de>>(d: D) -> std::result::Result<Option<u64>, D::Error> {
+    let raw = serde_json::Value::deserialize(d)?;
+    Ok(match raw {
+        serde_json::Value::Number(n) => {
+            n.as_u64().or_else(|| n.as_f64().map(|f| f.max(0.0) as u64))
+        }
+        serde_json::Value::String(s) => s.parse::<u64>().ok(),
+        _ => None,
+    })
+}
+
+#[cfg(test)]
+mod limit_field_tests {
+    use super::*;
+
+    fn one(json: &str) -> Vec<MeRunner> {
+        serde_json::from_str(json).expect("a runner list must survive any limit shape")
+    }
+
+    const BASE: &str = r#""projectId":"p","runnerId":"r","slug":"s","status":"online""#;
+
+    // cm:guard the assertion is that the LIST still parses, not that the number is right. A wrong type on this one advisory field would otherwise fail the whole Vec, empty `served`, and stop every project on the box from claiming behind a single warn! — the exact STOP this field must never cause.
+    #[test]
+    fn no_shape_of_the_limit_field_can_stop_the_box() {
+        for shape in [
+            "3600", "\"3600\"", "null", "true", "-5", "3600.7", "\"soon\"",
+        ] {
+            let json = format!("[{{{BASE},\"rateLimitedForSeconds\":{shape}}}]");
+            assert_eq!(one(&json).len(), 1, "shape {shape} killed the list");
+        }
+    }
+
+    #[test]
+    fn a_core_that_omits_the_field_still_parses() {
+        let r = one(&format!("[{{{BASE}}}]"));
+        assert_eq!(r[0].rate_limited_for_seconds, None);
+    }
+
+    // cm:guard a number and its string form must agree, because which one arrives depends on the JSON encoder rather than on any decision here.
+    #[test]
+    fn a_number_and_its_string_form_mean_the_same_wait() {
+        let n = one(&format!("[{{{BASE},\"rateLimitedForSeconds\":3600}}]"));
+        let t = one(&format!("[{{{BASE},\"rateLimitedForSeconds\":\"3600\"}}]"));
+        assert_eq!(n[0].rate_limited_for_seconds, Some(3600));
+        assert_eq!(t[0].rate_limited_for_seconds, n[0].rate_limited_for_seconds);
     }
 }
