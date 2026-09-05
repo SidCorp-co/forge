@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flow · agent-execution — a claimed job becomes a running agent</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, sans-serif; max-width: 62rem;
+         margin: 2rem auto; padding: 0 1.2rem; }
+  h1 { font-size: 1.5rem; margin-bottom: .2rem; }
+  h2 { font-size: 1.1rem; margin-top: 2rem; }
+  p.sub { opacity: .75; margin-top: 0; }
+  table { border-collapse: collapse; width: 100%; margin-top: .6rem; }
+  th, td { text-align: left; padding: .35rem .6rem; border-bottom: 1px solid #8884; vertical-align: top; }
+  code { font-size: .92em; }
+  .board { border: 1px solid #8884; border-radius: 6px; padding: 1rem; margin-top: .8rem; overflow-x: auto; }
+</style>
+</head>
+<body>
+
+<h1>agent-execution</h1>
+<p class="sub">How a claimed job becomes a running agent, and what ends it.
+  Module: <code>agent-execution</code>. Sources: <code>packages/runner/.../daemon/{master,control,terminal}.rs</code>,
+  <code>packages/core/src/devices/{claim,master-session,master-reaper}.ts</code>.</p>
+
+<h2>The hops</h2>
+<div class="board"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant TX as tmux (master's parent)
+  participant M as master (resident session)
+  participant D as forge-runner daemon
+  participant C as core
+  participant A as agent (job process)
+
+  Note over D,C: every 30s, per served project
+  D->>C: POST /me/master-session {projectId, name}
+  C-->>D: agent_sessions row — THE identity heldBy carries
+  D->>TX: has-session =forge-master-slug ?
+  alt no pane
+    D->>TX: new-session + pipe-pane >> transcript.log
+    D->>M: standing brief (once)
+  end
+  D->>C: GET /me/pool?projectId
+  D->>M: paste-buffer + Enter — the pass prompt
+  M->>D: control.sock {op:prepare, jobId, sessionId, agent}
+  D->>C: POST /me/pool/prepare
+  C-->>D: job row + job token — job stays queued and HELD
+  M->>D: control.sock {op:start, jobId, sessionId}
+  D->>C: POST /me/pool/start
+  C-->>D: stamped dispatched + deviceId + runnerId; hold CLEARED
+  D->>A: spawn in .worktrees/&lt;agent&gt;
+  A->>C: job_events (seq...) · complete / fail
+</pre></div>
+
+<h2>What happens when it goes wrong</h2>
+<table>
+  <tr><th>Failure</th><th>Who notices</th><th>What is done about it</th></tr>
+  <tr>
+    <td>Master pane vanishes (crash, <code>tmux kill-session</code>, box reboot)</td>
+    <td>The daemon, next sweep (≤30s) — <code>master.rs::supervise</code></td>
+    <td><code>POST /me/pool/release</code> with no <code>jobId</code> returns every hold that session
+        had, then <code>/me/master-session/close</code> ends the row. The next sweep starts a fresh
+        master. Nothing it had already <em>started</em> is affected: a started job holds no hold.</td>
+  </tr>
+  <tr>
+    <td>Master alive but prints nothing after a prompt</td>
+    <td>The daemon, at <code>MASTER_SILENCE_CEILING</code> (10 min of transcript with no growth)</td>
+    <td>Kill the pane, then the same release-and-close path. A master that is idle <em>without</em>
+        having been prompted is not touched — residency is legal, silence-after-asking is not.</td>
+  </tr>
+  <tr>
+    <td>The whole box vanishes (power, network partition)</td>
+    <td>Core, at <code>MASTER_HOLD_TIMEOUT_MS</code> (3 min)</td>
+    <td><code>reapDeadMasterHolds</code> sweeps every minute and judges by the session heartbeat.
+        This arm is the only one that works when nothing local is left to notice.</td>
+  </tr>
+  <tr>
+    <td><code>prepare</code> succeeds and <code>start</code> never comes</td>
+    <td>The daemon, at <code>PREPARE_TTL</code> (2 min), then core's reaper at 3</td>
+    <td><code>control::reap_preparations</code> releases the hold. The two bounds are ordered on
+        purpose: the process that took the job is the one that hands it back, and the reaper is the
+        backstop for the process itself dying.</td>
+  </tr>
+  <tr>
+    <td><code>start</code> arrives after the reaper took the hold</td>
+    <td>Core, in the stamp's <code>WHERE</code></td>
+    <td>Refused <code>hold_lost</code>; the daemon drops the spawn. The job stays plain
+        <code>queued</code> and claimable — never stamped onto a box with no process on it.</td>
+  </tr>
+  <tr>
+    <td>Agent alive and not progressing</td>
+    <td>The master, reading <code>job_events?sinceSeq</code></td>
+    <td>Nothing automatic. The master decides and reports; core decides retry. This is the one
+        detection that has no daemon-side arm, which is why the agent keeps its structured stdout
+        and does <em>not</em> get a tmux pane of its own.</td>
+  </tr>
+  <tr>
+    <td>Runner build too old to name its agent</td>
+    <td>Core, at <code>prepare</code></td>
+    <td>Refused <code>runner_too_old</code> before any hold is taken. <code>/me/pool/claim</code>,
+        the pre-ISS-919 one-shot verb, answers the same thing to every caller — it is a named
+        refusal rather than a second live path.</td>
+  </tr>
+</table>
+
+<h2>The two rules a reader most often gets wrong</h2>
+<table>
+  <tr>
+    <td><b>The stamp ends the hold, in one statement.</b></td>
+    <td>Past <code>start</code>, the job is not <code>queued</code> and no release can reach it. That
+        is why no release path may ever unwind a dispatch stamp — one that did re-queued two live
+        agents' jobs underneath them (epodsystem, 2026-09-05).</td>
+  </tr>
+  <tr>
+    <td><b>The master writes nothing in the checkout it stands in.</b></td>
+    <td>It holds the base branch; every agent works in a worktree cut from
+        <code>origin/&lt;base&gt;</code>. That is what makes a detached master safe here where a
+        detached <em>drive</em> agent would not be.</td>
+  </tr>
+</table>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({ startOnLoad: true, theme: dark ? 'dark' : 'neutral' });
+</script>
+</body>
+</html>

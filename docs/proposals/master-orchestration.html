@@ -111,7 +111,7 @@ sequenceDiagram
   R->>C: <b>core QUYẾT trạng thái issue</b>
   </pre></div>
 
-  <h2>3 · Năm quyết định chịu lực</h2>
+  <h2>3 · Sáu quyết định chịu lực</h2>
 
   <h3>① Master ở <code>agent_sessions</code>, subagent ở <code>jobs</code></h3>
   <div class="callout g">
@@ -172,6 +172,24 @@ sequenceDiagram
     trần chính sách mà là <b>sự thật về cái máy</b>, và master không đứng ở chỗ nhìn thấy nó.
     <p style="margin:8px 0 0">Từ chối <b>không</b> tính là fail của job: hết chỗ là chuyện bình
     thường, tính vào retry budget thì một box bận đốt hết lượt thử của issue.</p>
+  </div>
+
+
+  <h3>⑥ Master là <b>terminal session</b>, subagent thì không — ISS-919</h3>
+  <div class="callout g">
+    Quyết định ① nói master <em>ở</em> <code>agent_sessions</code>. Nó không nói <b>ai là cha</b> của
+    tiến trình. Đây là câu trả lời: <b>tmux</b>, không phải daemon.
+    <p style="margin:8px 0 0">Master chạy trong một session tmux tên
+    <code>forge-master-&lt;slug&gt;</code>: người thật <code>tmux attach</code> vào đúng cái pane mà
+    core gửi tin nhắn tới, tiến trình sống qua một lần restart <code>forge-runner</code>, pane được
+    <code>pipe-pane</code> vào một transcript <b>append</b> (trước đây truncate mỗi pass), và mỗi
+    pass sau pass đầu không còn cold start.</p>
+    <p style="margin:8px 0 0"><b>Subagent thì KHÔNG — từ chối có giá, nói thẳng ra đây.</b> Một pane
+    cho subagent giết mất stdout có cấu trúc mà <code>job_events</code> được parse ra từ đó — mà
+    <code>job_events</code>+<code>sinceSeq</code> chính là tín hiệu ca ① của §5 sống nhờ. Nên
+    subagent nhận <b>nửa còn lại</b>: có TÊN và <b>gọi tới được</b>
+    (<code>session_inbox</code> + ack <code>delivered</code>/<code>gone</code>, cùng đường ray master
+    dùng), chứ không có pane. Đổi pane lấy sự mù là đổi ngược.</p>
   </div>
 
   <h2>4 · Bộ công cụ của master</h2>
@@ -237,23 +255,35 @@ forge-runner <b>report</b>   ISS-912 --state working|done|failed --evidence …<
 flowchart LR
   X1["<b>subagent treo</b><br/><small>sống mà không tiến</small>"]:::x --> Y1["MASTER<br/>seq đứng yên"]:::ok
   X2["<b>subagent chết</b>"]:::x --> Y2["MASTER<br/>nó spawn nên nó biết"]:::ok
-  X3["<b>master chết</b>"]:::x --> Y3["RUNNER<br/>socket đứt — tức thì"]:::ok
+  X3["<b>master chết</b>"]:::x --> Y3["RUNNER<br/>pane tmux biến mất — 1 sweep"]:::ok
   X4["<b>runner chết</b>"]:::x --> Y4["CORE<br/>heartbeat tắt — đã có"]:::ok
   classDef x fill:#fbeef1,stroke:#8a3b52,stroke-width:2px,color:#6b2a3d;
   classDef ok fill:#eaf5ef,stroke:#1f6f4a,stroke-width:2px,color:#14502f;
   </pre></div>
-  <p class="cap" style="margin-top:12px">Mỗi lớp được lớp dưới quan sát, lớp dưới cùng đã có cơ chế. Ca ① mô hình cũ không bắt được. Ca ③ nhanh hơn <b>một bậc độ lớn</b> so với thiết kế hai lớp — runner ngay cạnh master, không chờ heartbeat 3 phút.</p>
-
-  <h2>6 · Ràng buộc phải thiết kế quanh nó</h2>
+  <p class="cap" style="margin-top:12px">Mỗi lớp được lớp dưới quan sát, lớp dưới cùng đã có cơ chế. Ca ① mô hình cũ không bắt được.</p>
   <div class="callout">
-    <b><code>SESSION_IDLE_TIMEOUT</code> = 10 phút, hằng số.</b> Master “giao việc rồi ngồi đợi”
-    <b>tự chết trước khi subagent đầu tiên xong</b>. Master phải là <b>vòng lặp có nhịp</b>: đọc
-    <code>sinceSeq</code> → <code>load</code> → ghi nhận → ngủ ngắn → lặp. Mỗi vòng một turn, và
-    turn là thứ reset đồng hồ.
-    <p style="margin:8px 0 0">Tình cờ đúng: master không nói gì 10 phút thì cũng không đang monitor
-    gì. <b>Cảnh báo phase 3:</b> cho hằng số này một reader per-project thì giá trị <code>0</code>
-    hiểu theo nghĩa đen sẽ tắt hẳn cơ chế thu hồi duy nhất của box — một project tự tắt được thứ
-    bảo vệ mọi project khác trên cùng máy.</p>
+    <b>Ca ③ đã đổi chỗ ở — ISS-919.</b> Master không còn là con của daemon nên master chết
+    <em>không rớt socket nào cả</em>. Cái nó vẫn làm là <b>thôi tồn tại như một session tmux</b>, và
+    đó là thứ <code>daemon/master.rs::supervise</code> soi mỗi sweep: pane mất ⇒ nhả hết hold của
+    session đó (<code>pool::release</code>) rồi đóng row. Một sweep (30s) thay vì ba phút của reaper
+    — vẫn nhanh hơn hẳn thiết kế hai lớp, chỉ là đo bằng thứ khác. <b>Reaper 3 phút của core vẫn ở
+    nguyên</b>: một box mất điện không thông báo gì hết, cho cả socket lẫn tmux.
+  </div>
+
+  <h2>6 · Ràng buộc phải thiết kế quanh nó — ĐÃ GỠ, và cái gì thay chỗ</h2>
+  <div class="callout">
+    <b>Trước:</b> <code>SESSION_IDLE_TIMEOUT</code> = 10 phút, hằng số. Master “giao việc rồi ngồi
+    đợi” <b>tự chết trước khi subagent đầu tiên xong</b>, nên §6 phải bắt master thành <b>vòng lặp
+    có nhịp</b> — không phải vì nhịp tốt, mà vì im lặng thì bị giết.
+    <p style="margin:8px 0 0"><b>Sau ISS-919:</b> hằng số đó không quản được tiến trình mà daemon
+    không làm cha, nên nó <b>mất luôn cả hai vai</b> — cả ràng buộc lẫn lớp bảo vệ. Thứ thay chỗ là
+    <code>MASTER_SILENCE_CEILING</code> = 10 phút, và nó đo <b>một thứ khác</b>: im lặng
+    <em>sau khi đã bị prompt</em>. Master rảnh giữa hai pass thì im lặng là đúng và không bị đụng
+    tới; master được đưa pool rồi không in ra gì suốt 10 phút là tiến trình đã dừng — đo trên dev1
+    2026-09-05, pass 1-2 job mất 30-88s và 3-4 job mất 75-112s, in ra liên tục suốt.</p>
+    <p style="margin:8px 0 0"><b>Master không còn buộc phải tick.</b> Nó vẫn nên đọc
+    <code>sinceSeq</code> để bắt subagent treo (ca ① §5) — nhưng vì nó muốn thấy, không vì đồng hồ.
+    Cảnh báo cũ về reader per-project của hằng số này hết hiệu lực cùng hằng số.</p>
   </div>
 
   <h2>7 · Cái giá — nói thẳng</h2>
@@ -275,7 +305,8 @@ flowchart LR
     <tr><td class="k">2</td><td>CLI <code>pool·claim·release·load·report</code></td><td>runner</td><td>—</td></tr>
     <tr><td class="k">3</td><td>Endpoint pool (quan hệ thô) · claim (job token) · <b>load</b></td><td>core</td><td>—</td></tr>
     <tr><td class="k">4</td><td><b>Socket đứt ⇒ nhả job</b></td><td>runner</td><td><b>mắt xích chịu lực</b></td></tr>
-    <tr><td class="k">5</td><td>Skill master: đọc issue · gom nhóm · chọn số lượng · nhịp</td><td>policy</td><td>—</td></tr>
+    <tr><td class="k">5</td><td>Skill master: đọc issue · gom nhóm · chọn số lượng · nhịp</td><td>policy</td><td><b>xong</b> — ISS-919 bỏ “nhịp”, xem ⑥/§6</td></tr>
+    <tr><td class="k">5b</td><td><b>Master resident trên tmux</b> · tách <code>claim</code> thành <code>prepare</code>/<code>start</code> · <code>agent_sessions</code> cho master · detector + ceiling mới</td><td>runner+core</td><td>ISS-919 — <code>runner-v0.12.0</code></td></tr>
     <tr><td class="k">6</td><td>Schedule dựng master định kỳ</td><td>policy</td><td>thay “ping check master”</td></tr>
     <tr><td class="k">7</td><td><b>Xoá</b>: push · L2 + 3 mirror · <code>maxConcurrentIssues</code> · dispatch tick</td><td>core</td><td>sau cùng, khi pool chạy thật</td></tr>
   </table>
@@ -297,7 +328,13 @@ flowchart LR
 
   <h2>10 · Còn phải chốt</h2>
   <ol class="q">
-    <li><b>Master một-cho-mỗi-repo hay mỗi-box?</b> Giữ base branch ⇒ nghiêng <b>mỗi (box, repo)</b>. Socket phải phân biệt được ai đang nói, và <code>heldBy</code> phải mang được danh tính đó.</li>
+    <li><b>Master một-cho-mỗi-repo hay mỗi-box? — CHỐT (ISS-919): mỗi (box, project).</b> Danh tính
+    là <b>row <code>agent_sessions</code></b> mà runner đăng ký qua
+    <code>POST /api/devices/me/master-session</code>, và <code>heldBy</code> mang đúng uuid đó — nên
+    <code>master-reaper</code> LEFT JOIN ra được một row có heartbeat, thay vì rơi xuống nhánh xử
+    theo tuổi. Ranh giới nằm ở <b>hai chỗ sống lâu hơn tiến trình daemon</b>: tmux từ chối trùng tên
+    session, và core từ chối row master thứ hai còn sống cho cùng (device, project). Map trong
+    daemon còn lại chỉ là cache — restart là nó rỗng trong khi mọi master vẫn chạy.</li>
     <li><b>Bao lâu không có <code>seq</code> mới thì coi là kẹt?</b> Review im 5 phút là bình thường, code thì không ⇒ <b>master tự quyết theo loại việc</b>, đừng thành hằng số mới.</li>
     <li><b>Master ngắt subagent thì job row đi đâu?</b> <em>Đề nghị</em>: master <code>report failed</code> + lý do, core quyết retry/fail. Master không tự ghi terminal.</li>
     <li><b>Subagent đọc được <code>job_events</code> của nhau không?</b> <em>Nghiêng về không</em> lúc đầu — đó là đường để hai subagent thoả thuận sau lưng master.</li>

@@ -21,7 +21,8 @@ import {
 let harness: TestDatabase;
 let mods: {
   readPool: typeof import('../../src/devices/pool.js').readPool;
-  claimJobForMaster: typeof import('../../src/devices/claim.js').claimJobForMaster;
+  prepareJobForMaster: typeof import('../../src/devices/claim.js').prepareJobForMaster;
+  startJobForMaster: typeof import('../../src/devices/claim.js').startJobForMaster;
   releaseJobFromMaster: typeof import('../../src/devices/claim.js').releaseJobFromMaster;
   releaseAllHeldBySession: typeof import('../../src/devices/claim.js').releaseAllHeldBySession;
   readDeviceLoad: typeof import('../../src/devices/load.js').readDeviceLoad;
@@ -29,6 +30,8 @@ let mods: {
   readFleetLoad: typeof import('../../src/devices/load.js').readFleetLoad;
   reapDeadMasterHolds: typeof import('../../src/devices/master-reaper.js').reapDeadMasterHolds;
   releaseHoldsForSession: typeof import('../../src/devices/master-reaper.js').releaseHoldsForSession;
+  ensureMasterSession: typeof import('../../src/devices/master-session.js').ensureMasterSession;
+  closeMasterSession: typeof import('../../src/devices/master-session.js').closeMasterSession;
 };
 
 beforeAll(async () => {
@@ -41,9 +44,11 @@ beforeAll(async () => {
   const claim = await import('../../src/devices/claim.js');
   const load = await import('../../src/devices/load.js');
   const reaper = await import('../../src/devices/master-reaper.js');
+  const masterSession = await import('../../src/devices/master-session.js');
   mods = {
     readPool: pool.readPool,
-    claimJobForMaster: claim.claimJobForMaster,
+    prepareJobForMaster: claim.prepareJobForMaster,
+    startJobForMaster: claim.startJobForMaster,
     releaseJobFromMaster: claim.releaseJobFromMaster,
     releaseAllHeldBySession: claim.releaseAllHeldBySession,
     readDeviceLoad: load.readDeviceLoad,
@@ -51,12 +56,29 @@ beforeAll(async () => {
     readFleetLoad: load.readFleetLoad,
     reapDeadMasterHolds: reaper.reapDeadMasterHolds,
     releaseHoldsForSession: reaper.releaseHoldsForSession,
+    ensureMasterSession: masterSession.ensureMasterSession,
+    closeMasterSession: masterSession.closeMasterSession,
   };
 }, 60_000);
 
 afterAll(async () => {
   if (harness) await harness.cleanup();
 });
+
+/**
+ * Both acts of one claim, in the order a runner performs them.
+ *
+ * Written out rather than wrapped in production code on purpose: the whole
+ * point of ISS-919 B2 is that nothing in core composes these two, so a helper
+ * that lived in `claim.ts` would be the single verb the split removed.
+ */
+async function take(jobId: string, deviceId: string, sessionId: string) {
+  const prepared = await mods.prepareJobForMaster({ jobId, deviceId, sessionId });
+  if (!prepared.ok) return prepared;
+  const started = await mods.startJobForMaster({ jobId, deviceId, sessionId });
+  if (!started.ok) return started;
+  return prepared;
+}
 
 beforeEach(async () => {
   await truncateAll(harness.db);
@@ -144,11 +166,7 @@ describe('master pool', () => {
       )
     `);
 
-    const refused = await mods.claimJobForMaster({
-      jobId: second,
-      deviceId: device.id,
-      sessionId: randomUUID(),
-    });
+    const refused = await take(second, device.id, randomUUID());
     expect(refused.ok).toBe(false);
     expect(refused.ok === false && refused.reason).toBe('issue_busy');
 
@@ -158,33 +176,21 @@ describe('master pool', () => {
 
   it('separates a busy issue from a job another master already took', async () => {
     const { device, job } = await seed();
-    const taken = await mods.claimJobForMaster({
-      jobId: job,
-      deviceId: device.id,
-      sessionId: randomUUID(),
-    });
+    const taken = await take(job, device.id, randomUUID());
     expect(taken.ok).toBe(true);
 
-    const second = await mods.claimJobForMaster({
-      jobId: job,
-      deviceId: device.id,
-      sessionId: randomUUID(),
-    });
+    const second = await take(job, device.id, randomUUID());
     expect(second.ok === false && second.reason).toBe('already_held');
 
-    const missing = await mods.claimJobForMaster({
-      jobId: randomUUID(),
-      deviceId: device.id,
-      sessionId: randomUUID(),
-    });
+    const missing = await take(randomUUID(), device.id, randomUUID());
     expect(missing.ok === false && missing.reason).toBe('not_found');
   });
 
   it('lets exactly one of two masters claim the same job', async () => {
     const { device, job } = await seed();
     const [a, b] = await Promise.all([
-      mods.claimJobForMaster({ jobId: job, deviceId: device.id, sessionId: randomUUID() }),
-      mods.claimJobForMaster({ jobId: job, deviceId: device.id, sessionId: randomUUID() }),
+      take(job, device.id, randomUUID()),
+      take(job, device.id, randomUUID()),
     ]);
 
     expect([a, b].filter((r) => r.ok)).toHaveLength(1);
@@ -195,11 +201,7 @@ describe('master pool', () => {
   // cm:guard the pool must hide a job for BOTH reasons it can be unavailable, and they are now different rows: a claimed job is hidden because it is no longer `queued`, a mid-claim one because somebody holds it. Testing only the first would pass against a pool that ignores `held_by` entirely, and two masters would then prepare the same job.
   it('hides a claimed job, and hides a mid-claim hold too', async () => {
     const { device, job } = await seed();
-    const claimed = await mods.claimJobForMaster({
-      jobId: job,
-      deviceId: device.id,
-      sessionId: randomUUID(),
-    });
+    const claimed = await take(job, device.id, randomUUID());
     expect(claimed.ok).toBe(true);
     expect(
       (await mods.readPool({ deviceId: device.id, limit: 20 })).find((i) => i.jobId === job),
@@ -329,11 +331,7 @@ describe('master pool — reaping, load and preparation', () => {
               ${job}, 1, NULL)
     `);
 
-    const result = await mods.claimJobForMaster({
-      jobId: retry,
-      deviceId: device.id,
-      sessionId: randomUUID(),
-    });
+    const result = await take(retry, device.id, randomUUID());
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -355,11 +353,7 @@ describe('master pool — reaping, load and preparation', () => {
   it('stamps the job onto the box, in the four columns the runner is gated by', async () => {
     const { device, job, project } = await seed();
 
-    const result = await mods.claimJobForMaster({
-      jobId: job,
-      deviceId: device.id,
-      sessionId: randomUUID(),
-    });
+    const result = await take(job, device.id, randomUUID());
     expect(result.ok).toBe(true);
 
     const [row] = (await harness.db.execute(sql`
@@ -382,11 +376,7 @@ describe('master pool — reaping, load and preparation', () => {
     await harness.db.execute(
       sql`UPDATE devices SET agent_version = '0.10.5' WHERE id = ${device.id}`,
     );
-    const result = await mods.claimJobForMaster({
-      jobId: job,
-      deviceId: device.id,
-      sessionId: randomUUID(),
-    });
+    const result = await take(job, device.id, randomUUID());
     expect(result).toEqual({ ok: false, reason: 'runner_too_old' });
     const [row] = (await harness.db.execute(
       sql`SELECT status, held_by, device_id FROM jobs WHERE id = ${job}`,
@@ -399,11 +389,7 @@ describe('master pool — reaping, load and preparation', () => {
   it('keeps the stamp when the reaper sweeps a claim old enough to look abandoned', async () => {
     const { device, job } = await seed();
 
-    const result = await mods.claimJobForMaster({
-      jobId: job,
-      deviceId: device.id,
-      sessionId: randomUUID(),
-    });
+    const result = await take(job, device.id, randomUUID());
     expect(result.ok).toBe(true);
 
     await harness.db.execute(sql`
@@ -425,7 +411,7 @@ describe('master pool — reaping, load and preparation', () => {
     const { device, job } = await seed();
     const session = randomUUID();
 
-    await mods.claimJobForMaster({ jobId: job, deviceId: device.id, sessionId: session });
+    await take(job, device.id, session);
 
     expect(await mods.releaseJobFromMaster({ jobId: job, sessionId: session })).toBe(false);
     expect(await mods.releaseAllHeldBySession(session)).toBe(0);

@@ -1767,6 +1767,44 @@
 
 ### Changed
 
+- **The master, and the way it takes work, stop being one-shot.** The per-project master agent was
+  a `claude -p` child of the runner daemon: killed and restarted every 30-second pass, unreachable
+  by a human, inventing its own session id so core had no record it existed, and writing its
+  reasoning to a `last-pass.log` that the next pass truncated. Measured 2026-09-05 on forge-vm — the
+  master's account of why it claimed ISS-917 was gone three minutes later.
+
+  It is now a **resident tmux session** named `forge-master-<slug>`, parented by the multiplexer
+  rather than by the daemon. An operator can `tmux attach -t forge-master-forge-dev` and watch it
+  work, or `forge-runner master say <slug> "<text>"` and type at it; core can address the same pane
+  through the existing `session_inbox` with its `delivered`/`gone` ack. It survives a
+  `forge-runner` restart, its transcript appends instead of truncating
+  (`forge-runner master log <slug>`), and every pass after the first starts from context it already
+  has.
+
+  Taking a job and starting it are now two acts (`pool prepare` / `pool start` / `pool discard`;
+  `pool claim` is the first two composed). A master can hold a preparation, look at it and hand it
+  back — the single irreversible verb it replaced made that impossible. The job stays `queued` and
+  held in between, so every release path that already existed covers the gap, and the daemon returns
+  a preparation nobody started after two minutes.
+
+  Two protections had to be rebuilt because the daemon is no longer the parent. A dead master used
+  to be detected by its control socket dropping; it is now detected by its tmux session no longer
+  existing, checked every sweep, which returns its holds in ≤30s instead of core's three-minute
+  reaper. And `SESSION_IDLE_TIMEOUT`, which killed a master for sitting still, is replaced by a
+  ceiling on silence *after a prompt* — a resident master between passes is idle on purpose and is
+  no longer reaped for it.
+
+  The agents the master starts are deliberately NOT pane-hosted, and the price is stated rather than
+  skipped: a pane costs the structured stdout `job_events` is parsed from, and `job_events` is the
+  only way anyone sees a subagent that is alive and not progressing. They get the addressable half
+  instead. Recorded as decision ⑥ in `docs/proposals/master-orchestration.html`, with §5 case ③,
+  §6 and §10's first open question corrected in the same commit.
+
+  Ships as `runner-v0.12.0`; a box without `tmux` starts no master and says so (`forge-runner
+  doctor` checks for it). A runner below the split answers `runner_too_old` at
+  `POST /api/devices/me/pool/claim`, which is a named refusal an operator can act on rather than a
+  second live path.
+
 - **`pnpm verify` runs its checks in parallel, and `tsc` stops recompiling the world.** 66s to
   28.4s, with no check narrowed and none removed. Two causes, both measured 2026-09-06 on 12 cores:
   the runner was a plain `for` loop over 20 independent child processes, and `packages/core`'s

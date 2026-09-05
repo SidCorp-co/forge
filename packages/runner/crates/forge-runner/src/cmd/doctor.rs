@@ -32,6 +32,8 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
 
     failed |= !check_bin("claude", "Claude Code CLI");
     failed |= !check_bin("git", "git");
+    // cm:guard tmux is REQUIRED, not advisory. Since ISS-919 a master is a tmux session, and a box without it starts no master at all — it sits online, heartbeats, reports healthy and never runs a single job. This line is where an operator finds that out in ten seconds instead of by noticing a quiet project.
+    failed |= !check_bin("tmux", "tmux (hosts the master session)");
 
     let cfg_path = Config::path()?;
     if cfg_path.exists() {
