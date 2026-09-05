@@ -841,7 +841,7 @@
   gone; verified on `mcp/tools/forge-issues.ts` — a code edit alone reports *37 still frozen*, and
   deleting one frozen comment clears it.
 
-  Priced (`cm:hack ISS-849` on `debtOf`): a block whose frozen keys were *all* rewrapped is charged
+  Priced (`cm:hack codemap ISS-9` on `debtOf`): a block whose frozen keys were *all* rewrapped is charged
   1 rather than the count it held, so rewrapping a two-comment block beside a code edit lowers the
   debt by one and passes. Closing that needs the baseline to record each block's key count, which is
   a re-freeze; until then the loophole is narrow, deliberate, and named in the code. The plugin's

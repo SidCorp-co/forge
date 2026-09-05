@@ -48,13 +48,33 @@ Nothing validates the text, so this is the only test. Three things make one carr
 2. **The mechanism that makes it non-obvious.** In `dispatch-gates.ts`, "write the identifiers
    LITERALLY" only earns its place because the next sentence says *why*: Drizzle renders a column
    reference inside a raw `sql` template unqualified. Without that, it reads as taste.
-3. **Evidence, when the rule came from an incident.** A date, a measured number, the `ISS-`.
-   `Measured on forge-beta 2026-08-11: 3 journal entries … have no bookkeeping row` can be
-   re-checked, and dates it.
+3. **A citation, when the rule came from an incident.** An `ISS-`, a date, a measured number —
+   whichever is shortest. Its job is to stop the next reader deleting the rule as probably-obsolete,
+   and a pointer does that in twelve characters.
+
+**Cite the incident; do not retell it.** This is the correction, and it has a measurement behind
+it. On 2026-09-06 this repo held 1,721 guards averaging 306 characters: **65% of those characters
+sat after the em-dash**, 26% were past-tense narrative, 22% cited an `ISS-`, 16% carried a date.
+Roughly 152 KB was invariant and 277 KB was story. Over the five weeks since adoption, policed
+prose fell 3,127 lines (~203 KB) while annotations added ~527 KB — **203 KB removed, 591 KB
+added**. Prose was not deleted, it changed channel, and the channel it moved into is the one
+loaded into an agent's context before every edit of the file (511 KB across 599 files today;
+`db/schema.ts` alone is 12 KB before you read a line of code).
+
+So the incident belongs where incidents already live — `CHANGELOG.md`, git, the tracker — and the
+guard names it. `— a stale kind on a non-waiting issue renders as a live banner (ISS-807)` carries
+the same weight as the paragraph it replaces and costs a tenth of it. Write the rule, the
+consequence, and the pointer. Anything a reader would call *the story* is the part to cut.
 
 What does not earn one, with live examples from this repo: `cm:why issue lookup`,
 `cm:why pendingSkillUpdates`, `cm:why shipped once`. Those are labels, not reasons — the compiler
-already names the code. **Under ~30 characters, an annotation is almost always deletable.**
+already names the code. **Under ~30 characters, an annotation is almost always deletable — and
+past roughly 200, look for the paragraph that should have been a citation.**
+
+**A cited ISS- must exist and must be the right one.** Measured 2026-09-06: a `cm:hack` written
+that morning cited `ISS-849`, which turned out to be a live notification-dedup issue with nothing
+to do with it. An exit condition pointing at somebody else's work is worse than one pointing at
+nothing, because it looks checked.
 
 Pick by consumer, not by taste. `cm:guard` is **injected into the agent's context before it edits
 the file**; `cm:edge` drives `cm impact`; **`cm:why` has no consumer at all** — nothing reads it,
