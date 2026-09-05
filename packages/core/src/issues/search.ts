@@ -22,6 +22,7 @@ import {
   buildOriginCondition,
   hydrateCreatorsForIssues,
 } from './creator.js';
+import { resolveModuleIdsTolerant } from './label-service.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
@@ -38,8 +39,7 @@ const searchQuerySchema = z
       .union([z.enum(issueStatuses), z.array(z.enum(issueStatuses))])
       .optional()
       .transform(coerceArray),
-    // ISS-236 — exclude one or more statuses (used by the web list page to
-    // hide drafts from the default "all open" view).
+    // cm:why the web list's default "all open" view is built on this — it hides drafts by exclusion rather than by enumerating every other status, so a status added later shows up there without a change here (ISS-236)
     statusNot: z
       .union([z.enum(issueStatuses), z.array(z.enum(issueStatuses))])
       .optional()
@@ -50,6 +50,11 @@ const searchQuerySchema = z
       .transform(coerceArray),
     label: z
       .union([z.uuid(), z.array(z.uuid())])
+      .optional()
+      .transform(coerceArray),
+    // cm:why ISS-593 — `module` takes a NAME or a uuid while `label` above stays uuid-only: a module is the thing a person types, and web-v2 (ISS-594) sends the name it displays
+    module: z
+      .union([z.string().trim().min(1), z.array(z.string().trim().min(1))])
       .optional()
       .transform(coerceArray),
     assignee: z.uuid().optional(),
@@ -228,6 +233,24 @@ searchRoutes.get(
             .select({ one: sql`1` })
             .from(issueLabels)
             .where(and(eq(issueLabels.issueId, issues.id), inArray(issueLabels.labelId, labelIds))),
+        ),
+      );
+    }
+
+    if (q.module && q.module.length > 0) {
+      // cm:guard an unresolvable module short-circuits to NO rows — falling through would drop the narrowing and hand the caller every issue in the project as "the module's issues"
+      const moduleIds = await resolveModuleIdsTolerant(projectId, q.module);
+      if (moduleIds.length === 0) {
+        return c.json(listResponse(c, [], 0, { limit: q.limit, offset: q.offset }));
+      }
+      conditions.push(
+        exists(
+          db
+            .select({ one: sql`1` })
+            .from(issueLabels)
+            .where(
+              and(eq(issueLabels.issueId, issues.id), inArray(issueLabels.labelId, moduleIds)),
+            ),
         ),
       );
     }

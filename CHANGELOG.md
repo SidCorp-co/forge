@@ -11,6 +11,32 @@
 
 ### Added
 
+- **Modules: a taxonomy an issue can be filed under, and one primary module per issue.** A module
+  IS a label — `labels.kind` is the only thing telling them apart — so every path that already
+  attaches, filters and lists labels carries modules with no second table and no second attach
+  path. Modules add `parentId` (a hierarchy, self-referencing) and `description`, and get a colour
+  assigned when created without one.
+
+  An issue's **primary** module is `issue_labels.is_primary` and nothing else: no column on
+  `issues`, no separate row. Send it as `labels: [{ labelId: "<name or uuid>", isPrimary: true }]`
+  alongside the plain strings both REST and `forge_issues` already took; a new primary replaces the
+  old one inside the same transaction that rewrites the label set, so no caller clears the old
+  designation first. At most one per issue, and it must be a module —
+  `MULTIPLE_PRIMARY` / `PRIMARY_NOT_MODULE`, refused before anything is written, with
+  `issue_labels_primary_uq` as the database's own backstop for a writer that bypasses the service.
+  An existing label can be promoted to a module; demoting one back is refused while it still
+  parents another module or is some issue's primary (`MODULE_IN_USE`), or while it carries a parent
+  of its own (`PARENT_ON_NON_MODULE`) — none of the three has a database constraint that would
+  catch it.
+
+  Filter by it with `?module=<name|uuid>` on the issue search endpoint and `filters.module` on
+  `forge_issues.list`. Both match MODULE labels only: the name of a plain label returns no issues
+  rather than quietly behaving as `?label`, which stays uuid-only and unchanged. Every `labels[]`
+  read now reports `kind` and `isPrimary` per entry (`ModuleAttribution` in `@forge/contracts`).
+  Migration `0210` is additive in every statement — existing labels read back as `kind='label'`,
+  existing attachments as `is_primary=false`. Drawn in
+  `docs/flows/issue-work-module-attribution.html`. (ISS-593)
+
 - **`pnpm test:changed` — the local loop, wired to nothing.** Runs the tests a change reaches
   (`vitest list --changed` against the same `baseRev()` the drain gate uses, so a push straight to
   `main` does not select an empty diff) plus every test that scans the source tree rather than
