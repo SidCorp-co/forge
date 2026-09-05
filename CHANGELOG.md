@@ -439,7 +439,7 @@
 - **The staged lane, and everything that only it read (ISS-895).** `PIPELINE_STEPS` — the nine-rung
   status × jobType × toggle × skill table — and the six maps derived from it are gone, with the
   eight staged skill bodies, the 178 `skills` rows that carried them, and their
-  `skill_registrations` (migration `0208`). ISS-897 had already stripped the toggles that gated the
+  `skill_registrations` (migration `0209`). ISS-897 had already stripped the toggles that gated the
   lane, so the branch was unreachable before this; what it left behind was a table, a job-type
   scope, a stall guard and an alarm that each looked live and could not fire.
 
