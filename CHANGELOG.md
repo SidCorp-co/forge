@@ -806,6 +806,35 @@
 
 ### Fixed
 
+- **A withdrawn runner still took jobs.** `readPool` joined `runners` only to prove a binding
+  existed and read nothing else from the row; `claimJobForMaster` checked the agent version and
+  nothing about the box. So `runners.status` — which has carried `draining` and `disabled` since the
+  table existed — gated no code on the claim path: `forge_runners drain`, `forge_runners retire` and
+  the status PATCH all wrote a column nothing consulted. Proved by planting the fix's own tests
+  against the old code: a `disabled` runner's claim returned `ok: true`.
+
+  Admission is now one predicate in `devices/pool-admission.ts`, read twice on purpose. The pool
+  excludes a withdrawn box, and the claim refuses it again by name — `runner_withdrawn`,
+  `device_disabled`, `runner_unbound` — because a master holds its page of pool rows across the
+  round trip, so an operator draining mid-flight is only caught on the second reading. A silent
+  empty pool and a named refusal are the same transcript to an operator whose box went quiet, and
+  only one of them can be acted on.
+
+  It excludes `disabled`/`draining` rather than requiring `online`: the heartbeat mirror is what
+  writes `online`, so requiring it would hand a live runner an empty pool whenever that mirror
+  lagged. A master reading the pool is alive by definition — the poll is the proof — so admission is
+  a permission question, not a liveness one.
+
+  Third half, and without it the other two are theatre: the heartbeat mirror preserved `disabled`
+  and overwrote `draining`, so a drain had a ~30-second life. That is the same defect fixed for
+  `disabled` on 2026-08-14 (retired 08:19:29, online again 08:19:59) and left standing for its twin,
+  invisible because nothing read either. The mirror now preserves both, and the guard names
+  `pool-admission.ts` as the authority on which statuses withdraw a box.
+
+  Project settings → Runners carries the switch: **Takes jobs from the pool**. Off drains — work
+  already running finishes, nothing new is offered or claimed. A retired (`disabled`) runner shows
+  the toggle locked with the reason, because that one is undone by re-registering, not by a click.
+
 - **A stale coverage report answered for code that no longer existed.** `check-flow-coverage`
   treats the integration coverage report as the authoritative evidence that a `cm:flow` step is
   defended. It handled an ABSENT report (skip locally, fail under `--require-sources`) and had

@@ -7,6 +7,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { ADMITTED_RUNNER } from './pool-admission.js';
 
 export type PoolRelation = {
   kind: string;
@@ -55,6 +56,7 @@ const RELATIONS = sql`
  */
 // cm:guard the exclusions here are exactly the conditions under which a claim CANNOT succeed — queued under a live run, unheld, off cooldown, no in-flight sibling for the issue. Do NOT add a dependency filter, a project cap, or an ordering by priority: those are routing judgements the master owns, and a pool that pre-decides them is the kernel deciding routing again, which is the whole thing this replaces.
 // cm:edge lockstep -> packages/core/src/devices/claim.ts — the sibling-job NOT EXISTS below must stay identical to L1 in `claimJobForMaster`. Looser here offers work every claim refuses; tighter hides work a master could have taken, and neither failure says a word.
+// cm:edge lockstep -> packages/core/src/devices/pool-admission.ts — `ADMITTED_RUNNER` is the same predicate `claimJobForMaster` answers by name; the join above proves a BINDING exists and says nothing about whether an operator has withdrawn the box.
 export async function readPool(args: {
   deviceId: string;
   projectId?: string | undefined;
@@ -72,6 +74,7 @@ export async function readPool(args: {
     JOIN runners r ON r.project_id = j.project_id AND r.device_id = ${args.deviceId}
     LEFT JOIN issues i ON i.id = j.issue_id
     WHERE j.status = 'queued'
+      AND ${ADMITTED_RUNNER}
       AND pr.status IN ('running', 'paused')
       AND j.held_by IS NULL
       AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())

@@ -47,11 +47,16 @@ export const runnersApi = {
 			body: JSON.stringify({ deviceId, repoPath }),
 		}),
 
-	/** `PATCH /api/projects/:projectId/runners/:runnerId` — set per-device repo path/branch, or replace the pool labels. */
+	/** `PATCH /api/projects/:projectId/runners/:runnerId` — per-device repo path/branch, the pool labels, or pool admission via `status`. */
 	patchRunner: (
 		projectId: string,
 		runnerId: string,
-		body: { repoPath?: string | null; branch?: string | null; labels?: string[] },
+		body: {
+			repoPath?: string | null;
+			branch?: string | null;
+			labels?: string[];
+			status?: "online" | "offline" | "draining" | "disabled";
+		},
 	) =>
 		apiClient<{ id: string }>(`/projects/${projectId}/runners/${runnerId}`, {
 			method: "PATCH",
@@ -109,8 +114,7 @@ export const runnersApi = {
 			}),
 		}),
 
-	// === Project-centric (the project Runners screen) ===
-
+	
 	/** `GET /api/projects/:id/runners` — the device pools serving THIS project. */
 	listProjectRunners: (projectId: string) =>
 		apiClient<ProjectRunner[]>(`/projects/${projectId}/runners`),

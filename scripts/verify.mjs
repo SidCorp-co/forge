@@ -245,7 +245,7 @@ function assertEveryCheckProvesScan() {
   process.exit(2);
 }
 
-// cm:guard the verdict rules live HERE, in one copy, and `runCheck` only feeds them a status and the captured output — a second copy inside the spawn callback is how a fail-closed rule gets fixed on one path and left on the other, and the two paths are indistinguishable in the report
+// cm:guard one copy of the verdict rules — a second inside the spawn callback gets a fail-closed rule fixed on one path only, and the report cannot tell the two apart
 function verdict(check, status, out) {
   if (status === 2) return { ...check, code: 2, out, why: 'checker reported it could not run' };
 

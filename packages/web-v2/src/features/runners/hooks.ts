@@ -167,6 +167,35 @@ export function usePatchRunner(deviceId: string) {
 	});
 }
 
+// cm:edge contract -> packages/core/src/devices/pool-admission.ts — `draining` is one of the statuses that withdraw a box from the pool; renaming it there without this leaves a switch that writes a value nothing excludes on
+/** Take a runner out of the pool, or put it back. */
+export function useSetRunnerAdmission(projectId: string) {
+	const qc = useQueryClient();
+	const { toast } = useToast();
+	return useMutation({
+		mutationFn: ({ runnerId, admit }: { runnerId: string; admit: boolean }) =>
+			runnersApi.patchRunner(projectId, runnerId, {
+				status: admit ? "online" : "draining",
+			}),
+		onSuccess: (_d, v) => {
+			qc.invalidateQueries({ queryKey: ["projects", projectId, "runners"] });
+			toast({
+				title: v.admit ? "Runner back in the pool" : "Runner drained",
+				description: v.admit
+					? undefined
+					: "Jobs already running finish. No new job is offered or claimed.",
+				tone: "success",
+			});
+		},
+		onError: (err) =>
+			toast({
+				title: "Save failed",
+				description: formatApiError(err),
+				tone: "error",
+			}),
+	});
+}
+
 export function useSetRunnerLabels(projectId: string) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
@@ -208,7 +237,6 @@ export function useUnbindRunner(deviceId: string) {
 	});
 }
 
-// === Project-centric hooks (the project Runners screen) ===
 
 /**
  * Device pools serving a project. Keyed `['projects', id, 'runners']`. The WS
