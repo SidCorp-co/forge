@@ -45,6 +45,11 @@ export function inRerankHoldout(): boolean {
   return randomInt(RERANK_HOLDOUT_ONE_IN) === 0;
 }
 
+// cm:guard the model is shown the text that MATCHED — the passage on a chunked project, the whole row otherwise — and the cache key hashes the same string; showing the row head on a chunked project demoted the exact-passage hit out of the top 8 in 2 of 4 live passes on forge-dev and 1→4 / 1→5 on forge-plugin (2026-09-05, ISS-913), because a 75k-character issue was judged by its first paragraph while the query matched passage 76
+export function shownText(hit: MemoryHit): string {
+  return hit.matchedChunk?.text ?? hit.text;
+}
+
 export function buildRerankPrompt(query: string, texts: string[]): string {
   const blocks = texts.map((t, i) => `[${i + 1}]\n${t.slice(0, CANDIDATE_CHARS)}`).join('\n\n');
   return [
@@ -93,7 +98,7 @@ export function rerankCacheKey(model: string, query: string, hits: MemoryHit[]):
   h.update(model).update('|').update(query);
   for (const hit of hits) {
     h.update('|').update(hit.id).update(':');
-    h.update(createHash('sha256').update(hit.text).digest('hex'));
+    h.update(createHash('sha256').update(shownText(hit)).digest('hex'));
   }
   return h.digest('hex');
 }
@@ -135,10 +140,7 @@ async function orderFromModel(query: string, hits: MemoryHit[]): Promise<number[
   const cached = cacheGet(key, now);
   if (cached) return cached;
   const raw = await callFastModel(
-    buildRerankPrompt(
-      query,
-      hits.map((h) => h.text),
-    ),
+    buildRerankPrompt(query, hits.map(shownText)),
     maxTokensFor(hits.length),
     { model },
   );

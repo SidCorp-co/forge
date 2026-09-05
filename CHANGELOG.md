@@ -658,6 +658,11 @@
   reach — so the box reads one slot freer than it is, which is bounded and is strictly better than a
   slot held forever behind an endless retry.
 
+- Retrieval v3 rerank on a chunked project (ISS-913). The fast model is now shown the passage that
+  matched the query, not the first 600 characters of the whole memory, so a fact found deep in a long
+  issue is no longer pushed down the list by a reranker that never saw it. The rerank cache is keyed on
+  the same text. Flat projects are unchanged.
+
 - **Chat turns no longer queue for a duplex session permit.** A chat turn waited for one of the
   box's session permits, and the wait had no timeout. Queued behind parked pipeline sessions it was
   killed by core's 90s `no_client_ack` sweeper — measured on forge-beta session `1af837da`
