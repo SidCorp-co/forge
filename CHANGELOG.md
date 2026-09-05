@@ -1391,6 +1391,15 @@
   looks like it worked. Salvage is also offered to every claimed job now, not only one serving an
   issue, because every job has a worktree of its own.
 
+- **A runner's status is now a real drain switch, and until this it was a silent no-op.** Moving a
+  project from one box to another needs "stop taking new work, finish what you have", and nothing
+  provided it: `GET /me/runners` returned `status`, `MeRunner` parsed it, and no code on either side
+  read it — so `forge_runners retire`, and every status change, left the box claiming exactly as
+  before. A master now skips a project whose runner on this box is `draining` or `disabled`, logging
+  which, and jobs already running are untouched because nothing kills them. `offline` deliberately
+  still takes work: the heartbeat writes it and it lags a live box, so gating on `online` would have
+  a box refuse its own work over a stale row.
+
 - **The worktree reaper now sweeps `.worktrees/` as well as `.claude/worktrees/`.** It walked only
   the second. That was survivable while core derived every branch from the issue key — an issue
   reused one checkout however many stages it ran, so the naming was the ceiling on how many could

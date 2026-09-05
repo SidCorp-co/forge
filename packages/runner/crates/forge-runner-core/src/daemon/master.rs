@@ -117,6 +117,17 @@ pub async fn run(
 
 /// One look at every project this device serves.
 // cm:guard the project list comes from `/me/runners`, NEVER from `config.toml` bindings. Core is the source of truth for what a device serves and for where the checkout lives (`resolve_repo` reads the local binding only as a fallback), and the two disagree in practice: dev1 serves epodsystem-core with no local binding for it at all, so a sweep driven by the config file would leave that project's pool unread forever with nothing reporting why.
+/// Whether a project's runner row on this box still wants new work.
+///
+/// The drain an operator reaches for when moving a project onto another box:
+/// set the runner `draining` (or `disabled`), and this box stops STARTING work
+/// while everything already running finishes untouched.
+// cm:guard only an EXPLICIT stop counts, and `offline` deliberately does not. That status is written by the heartbeat and lags a live box by up to its interval, so gating on `online` would have a box refuse its own work over a stale row. Two statuses mean an operator decided; every other value, known or added later, keeps working.
+// cm:guard this is the ONLY thing that reads the status, and until 2026-09-05 nothing did: `/me/runners` returned it, `MeRunner` parsed it, and no code looked. `retire` and every status change were therefore silent no-ops against a box that kept claiming — measured on epodsystem while moving it off dev1. Core cannot enforce this instead: `pool.ts` joins `runners` on (project, device) with no status filter, and adding one there would hide work from a master rather than let the box decline it.
+fn accepts_new_work(status: &str) -> bool {
+    !matches!(status, "draining" | "disabled")
+}
+
 async fn sweep(client: &CoreClient, cfg: &Config, gate: &Arc<MasterGate>) {
     let served = match runners::list_me(client).await {
         Ok(rs) => rs,
@@ -127,6 +138,14 @@ async fn sweep(client: &CoreClient, cfg: &Config, gate: &Arc<MasterGate>) {
     };
 
     for runner in &served {
+        if !accepts_new_work(&runner.status) {
+            tracing::info!(
+                "[master] {}: runner is {} — taking no new work; anything already running finishes",
+                runner.slug,
+                runner.status
+            );
+            continue;
+        }
         let project_id = runner.project_id.clone();
         let Some(run) = gate.try_enter(&project_id) else {
             continue;
@@ -260,6 +279,17 @@ mod tests {
     }
 
     // cm:guard the gate is per PROJECT, and the second assertion is the whole test: a gate that merely blocked a second entry would pass with a box-wide flag, and every project after the first would then go unserved for as long as any one master ran.
+    #[test]
+    fn a_drained_runner_takes_no_new_work_and_a_stale_offline_row_still_does() {
+        assert!(!accepts_new_work("draining"));
+        assert!(!accepts_new_work("disabled"));
+        assert!(accepts_new_work("online"));
+        // The heartbeat writes `offline` and lags a live box; refusing here
+        // would have a box decline its own work over a stale row.
+        assert!(accepts_new_work("offline"));
+        assert!(accepts_new_work("something-core-added-later"));
+    }
+
     #[test]
     fn one_master_per_project_and_projects_do_not_block_each_other() {
         let gate = MasterGate::new();

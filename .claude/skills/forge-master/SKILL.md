@@ -48,9 +48,26 @@ The name is a decision, not a label:
 - **Issues that must not see each other** — different names. Two names are two
   trees, and neither can read the other.
 
-Grouping is yours to decide and nothing checks it: two issues on one branch ship
-as one diff, so group work that genuinely belongs together and split work that
-merely looks similar.
+**Grouping is yours and nothing checks it, so price it before you do it.** Two
+issues under one name land on ONE branch and ship as ONE diff — the review for
+either sees both, and neither can be merged without the other. That is a real
+decision about how the work ships, not a convenience. Group only when you would
+be willing to defend "these land together"; when in doubt, two names, because
+splitting later means redoing work and merging later costs nothing.
+
+**Reuse the name an issue's work already has.** Nothing carries your last pass's
+choice forward, and naming the same issue differently this pass cuts a SECOND
+tree from the base branch — the first one's commits then sit on a branch no
+review looks at. Before you name anything, look at what already exists:
+
+```
+git worktree list          # every checkout on this box, and its branch
+git branch --list          # branches that outlived their worktree
+```
+
+An issue whose work is already on `catalog-eav` keeps `catalog-eav`, whatever
+you would have called it starting fresh. Only work with no tree yet gets a new
+name.
 
 **Ending a pass costs the work nothing.** A claim that
 returned `ok` ends its own hold in the same statement that hands the job to this
@@ -104,6 +121,22 @@ ordinary, a code step going silent that long is not.
 
 When one is genuinely stuck: stop it, release the job, and say why. The kernel
 decides whether it retries.
+
+**Stopping one is yours to do by hand.** Nothing on this box holds a handle to
+an agent's process — the daemon spawns it and lets go — so there is no command
+that kills it for you. You are a terminal on the same box, so you are the only
+thing that can: find the process by the worktree it is sitting in, and stop it.
+
+```
+pgrep -af claude | while read -r pid _; do
+  printf '%s %s\n' "$pid" "$(readlink /proc/"$pid"/cwd)"
+done
+```
+
+The one whose cwd is `.worktrees/<name>` is that agent. Kill it, then release
+the job. Two rules: never kill a process you cannot place in a worktree you
+named, and never kill your own session — check the pid you found is not yours.
+A wrong kill takes an agent that was working.
 
 ## Ending a pass
 
