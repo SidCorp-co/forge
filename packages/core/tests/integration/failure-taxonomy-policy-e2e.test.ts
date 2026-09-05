@@ -4,7 +4,7 @@
  * suite; this file does not re-derive them. It proves the ORIGINAL five incident
  * shapes are closed on the real schema + query shapes, and that two children
  * compose through the ONE shared seam (`onlineCapableDeviceIds` /
- * `selectRunnerForJob`) rather than merely passing in isolation.
+ * `onlineCapableDeviceIds`) rather than merely passing in isolation.
  *
  * One test per face:
  *   - ISS-757 org spend-cap storm → per-account exhaustion, rotates immediately,
@@ -51,7 +51,6 @@ type Mods = {
   maybeQuarantineRunner: typeof RunnersQuarantine.maybeQuarantineRunner;
   RUNNER_QUARANTINE_STREAK: typeof RunnersQuarantine.RUNNER_QUARANTINE_STREAK;
   RUNNER_QUARANTINE_TTL_MS: typeof RunnersQuarantine.RUNNER_QUARANTINE_TTL_MS;
-  selectRunnerForJob: typeof RunnersSelect.selectRunnerForJob;
   onlineCapableDeviceIds: typeof RunnersSelect.onlineCapableDeviceIds;
   finalizeScheduleSessionFailure: typeof AgentSessionsSessionFailure.finalizeScheduleSessionFailure;
   writeBackScheduleLastStatus: typeof SchedulesService.writeBackScheduleLastStatus;
@@ -101,7 +100,6 @@ beforeAll(async () => {
     maybeQuarantineRunner: quarantineMod.maybeQuarantineRunner,
     RUNNER_QUARANTINE_STREAK: quarantineMod.RUNNER_QUARANTINE_STREAK,
     RUNNER_QUARANTINE_TTL_MS: quarantineMod.RUNNER_QUARANTINE_TTL_MS,
-    selectRunnerForJob: selectMod.selectRunnerForJob,
     onlineCapableDeviceIds: selectMod.onlineCapableDeviceIds,
     finalizeScheduleSessionFailure: sessionFailureMod.finalizeScheduleSessionFailure,
     writeBackScheduleLastStatus: scheduleServiceMod.writeBackScheduleLastStatus,
@@ -300,10 +298,7 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
       project.id,
       owner.id,
     );
-    const { runnerId: healthyRunnerId, deviceId: healthyDeviceId } = await seedRunner(
-      project.id,
-      owner.id,
-    );
+    const { deviceId: healthyDeviceId } = await seedRunner(project.id, owner.id);
 
     const check = 'push_credentials';
     const priorCount = mods.RUNNER_QUARANTINE_STREAK - 1;
@@ -332,18 +327,10 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     expect(runnerRow?.quarantined_until).toBeTruthy();
     expect(runnerRow?.quarantine_reason).toBe(`preflight_failed: ${check}`);
 
-    // Hard exclusion survives the wrap-around: simulate a retry chain that
-    // has already "tried" both devices (excludeDeviceIds covers the fleet),
-    // triggering the retry wrap-around that resets excludeDeviceIds to `[]`.
-    // The quarantined device must still not come back.
-    const picked = await mods.selectRunnerForJob({
-      projectId: project.id,
-      requiredCapabilities: {},
-      excludeDeviceIds: [brokenDeviceId, healthyDeviceId],
-      skipPrimary: true,
-    });
-    expect(picked?.id).toBe(healthyRunnerId);
-    expect(picked?.id).not.toBe(brokenRunnerId);
+    // cm:guard the quarantine must be a HARD exclusion from the candidate set, not a preference the retry engine may fall back through. A rotation handed a quarantined device offers work the claim then refuses, every round, and the queue burns its attempts against a box already known broken.
+    const candidates = await mods.onlineCapableDeviceIds(project.id, {});
+    expect(candidates).toContain(healthyDeviceId);
+    expect(candidates).not.toContain(brokenDeviceId);
 
     // A DIFFERING failure does not extend the streak.
     const { runnerId: otherRunnerId } = await seedRunner(project.id, owner.id);

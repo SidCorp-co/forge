@@ -1,18 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { effectiveDeviceCap, REPO_LOCK_MIN_RUNNER } from './device-cap.js';
+import { AGENT_NAMING_MIN_RUNNER, atLeastVersion } from './device-cap.js';
 
-// cm:guard this function is the only thing between a raised cap and a box whose runner cannot hold the repo-root lock. Every case below must keep resolving to 1 on the "not proven new enough" side; relaxing one to accept the configured value re-opens exactly the corruption the lock exists to prevent.
-describe('effectiveDeviceCap', () => {
-  it('honours the configured cap on a runner at the floor', () => {
-    expect(effectiveDeviceCap(4, REPO_LOCK_MIN_RUNNER)).toBe(4);
+// cm:guard every "not proven new enough" case below must stay FALSE. The claim refuses a below-floor box outright rather than degrading it, so relaxing one of these does not cost throughput — it hands the retry engine a candidate that can never claim, and the queue burns all 30 attempts without ever reaching `all_devices_exhausted`.
+describe('atLeastVersion', () => {
+  it('accepts a runner exactly at the floor', () => {
+    expect(atLeastVersion(AGENT_NAMING_MIN_RUNNER, AGENT_NAMING_MIN_RUNNER)).toBe(true);
   });
 
-  it('honours it above the floor', () => {
-    expect(effectiveDeviceCap(3, '0.11.0')).toBe(3);
+  it('accepts one above the floor', () => {
+    expect(atLeastVersion('0.11.1', AGENT_NAMING_MIN_RUNNER)).toBe(true);
   });
 
-  it('holds an older runner at 1 however high the column is set', () => {
-    expect(effectiveDeviceCap(8, '0.10.4')).toBe(1);
+  it('refuses one below the floor', () => {
+    expect(atLeastVersion('0.10.5', AGENT_NAMING_MIN_RUNNER)).toBe(false);
+  });
+
+  it('compares each part numerically, not as text', () => {
+    expect(atLeastVersion('0.9.0', '0.11.0')).toBe(false);
+    expect(atLeastVersion('0.11.0', '0.9.0')).toBe(true);
   });
 
   it.each([
@@ -20,19 +25,9 @@ describe('effectiveDeviceCap', () => {
     ['never reported', undefined],
     ['unparseable', 'nightly'],
     ['not three parts', '0.11'],
-  ])('holds a box at 1 when the version is %s', (_label, version) => {
-    expect(effectiveDeviceCap(6, version as string | null | undefined)).toBe(1);
-  });
-
-  it.each([
-    ['null', null],
-    ['zero', 0],
-    ['negative', -3],
-  ])('floors a %s column at 1 rather than stopping the box', (_label, configured) => {
-    expect(effectiveDeviceCap(configured as number | null, '0.11.0')).toBe(1);
-  });
-
-  it('truncates a fractional column instead of comparing a float', () => {
-    expect(effectiveDeviceCap(2.9, '0.11.0')).toBe(2);
+  ])('refuses a box whose version is %s', (_label, version) => {
+    expect(atLeastVersion(version as string | null | undefined, AGENT_NAMING_MIN_RUNNER)).toBe(
+      false,
+    );
   });
 });

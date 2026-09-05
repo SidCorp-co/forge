@@ -132,17 +132,10 @@ runnerRoutes.get(
   },
 );
 
-// Active-runner snapshot for a project — every runner with its CURRENT in-flight
-// job (status dispatched|running) mapped to the issue + stage it is executing,
-// or null when idle. Powers the project dashboard "Active runners" card and the
-// per-row "running ISS-X (stage)" line on the Runners screen. Read-only; any
-// project member.
-//
-// Registered BEFORE `/:id` so the static `/active` segment is never captured as
-// an id param. Cap is 1 job per runner (RUNNER_CAP_PER_RUNNER), so runner→job is
-// at most 1:1. Orphan jobs whose parent pipeline_run is terminal are excluded
-// (ISS-258), mirroring the dispatcher's runner-load gate so a stale row never
-// shows a runner as "busy".
+// cm:why powers the project dashboard's "Active runners" card and the per-row "running ISS-X (stage)" line on the Runners screen — two surfaces that break together, which is the only thing about this route the SQL below does not already say
+// cm:guard registered BEFORE `/:id` so the static `/active` segment is never captured as an id param — a single-segment route declared above this one silently swallows it, and the symptom is a 404 that looks like a missing endpoint rather than a shadowed one.
+// cm:guard `current` reports ONE job while a box may now be running several at once: core enforces no ceiling since the master began claiming from the pool, and the runner's own `duplex_max_sessions` defaults to 3. This endpoint shows the first and drops the rest, so never read that collapse as evidence a runner holds one job. Correcting it is a response-shape change (`current` → a list) reaching web-v2's runner types and project page, deliberately not folded into the kernel change that surfaced it.
+// cm:why orphan jobs whose parent pipeline_run is terminal are excluded (ISS-258) so a stale row never shows a runner as busy
 const activeQuery = z.object({ projectId: z.uuid() });
 
 runnerRoutes.get(
@@ -193,9 +186,7 @@ runnerRoutes.get(
       ORDER BY r.name ASC, j.dispatched_at ASC NULLS LAST
     `);
 
-    // RUNNER_CAP_PER_RUNNER = 1 means at most one surviving active job per
-    // runner; keep the first non-null job we see. The Map also dedups
-    // defensively if the cap ever rises.
+    // cm:guard this Map keeps the FIRST non-null job per runner and silently drops any others, which is a real shortfall now that a box may run several at once (see the shortfall note on this route). Do not read the collapse as evidence a runner holds one job — it is evidence this endpoint reports one.
     const byRunner = new Map<string, (typeof rows)[number]>();
     for (const row of rows) {
       const existing = byRunner.get(row.runner_id);

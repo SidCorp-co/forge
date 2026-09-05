@@ -9,7 +9,7 @@ vi.mock('../config/env.js', () => ({
 vi.mock('../db/client.js', () => ({ db: {} }));
 vi.mock('../pipeline/enqueue-helper.js', () => ({ insertAndEnqueueJob: vi.fn() }));
 vi.mock('../pipeline/runs.js', () => ({ openOneShotRun: vi.fn() }));
-vi.mock('../runners/select.js', () => ({ selectRunnerForJob: vi.fn() }));
+vi.mock('../runners/select.js', () => ({ onlineCapableDeviceIds: vi.fn() }));
 
 const { buildSmokeCanaryPrompt, computeTier1Entries, planSmokeCanaries, summarizeTier2Jobs } =
   await import('./smoke-verify.js');

@@ -17,7 +17,7 @@ import { logger } from '../logger.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { readProjectBranches } from '../projects/service.js';
-import { selectRunnerForJob } from '../runners/select.js';
+import { onlineCapableDeviceIds } from '../runners/select.js';
 import { resolveReleaseChannel, resolveReleaseDeviceIds, resolveReleasePlan } from './channel.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 import { ReleaseBranchesUndeclaredError, releaseBranches } from './plan.js';
@@ -151,8 +151,9 @@ export async function createReleaseBatch(
     throw new ReleasePoolEmptyError(plan.releaseRunnerLabel);
   }
 
-  const runner = await selectRunnerForJob({ projectId, requiredCapabilities: {}, allowDeviceIds });
-  if (!runner) throw new NoRunnerOnlineError();
+  // cm:guard this asks LIVENESS, never routing — it must stay a count, because the box that ends up running the batch is whichever master claims it, and a preflight that named a device here would be predicting a decision core no longer makes. `allowDeviceIds` still narrows it: the question is "is anyone in the release pool alive", not "who".
+  const releasePool = await onlineCapableDeviceIds(projectId, {}, { allowDeviceIds });
+  if (releasePool.length === 0) throw new NoRunnerOnlineError();
 
   const { baseBranch, productionBranch, productionMergePlanned } = releaseBranches(
     (await readProjectBranches(projectId)) ?? { baseBranch: null, productionBranch: null },

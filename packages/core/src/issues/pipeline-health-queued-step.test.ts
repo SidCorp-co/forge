@@ -36,8 +36,7 @@ function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
     issue: { id: 'iss-903', status: 'in_progress', mergedAt: null, waitingKind: null },
     sessions: [],
     jobs: [],
-    runnerInFlight: new Map(),
-    runnerPool: { total: 1, withCapacity: 1 },
+    runnerPool: { total: 1 },
     lastTickAt: null,
     now: NOW,
     ...over,
@@ -62,7 +61,7 @@ function queuedJob(over: Record<string, unknown> = {}) {
 describe('pipelineHealth.queuedStep', () => {
   it('names the queued step for the incident shape: no session, empty runner pool', () => {
     const out = classifyPipelineHealthForIssue(
-      baseInput({ jobs: [queuedJob()], runnerPool: { total: 0, withCapacity: 0 } }),
+      baseInput({ jobs: [queuedJob()], runnerPool: { total: 0 } }),
     );
     expect(out.activeSession).toBeUndefined();
     expect(out.waitingOn?.reason).toBe('runner_stale');

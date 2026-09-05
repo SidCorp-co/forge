@@ -192,14 +192,15 @@ fn default_duplex_max_sessions() -> u32 {
 /// `device_max_concurrent = 0`, and warning the whole fleet about its own
 /// defaults is noise nobody reads.
 // cm:guard warn, NEVER refuse to start. These keys were serialized into every config file this tool has ever written, so a hard failure here is a fleet-wide outage on upgrade — the opposite of the loud break, which is meant to stop a WRONG action, not every action.
-// cm:edge contract -> packages/core/src/runners/device-cap.ts#effectiveDeviceCap — this warning text promises core owns the cap, and that is now `devices.max_concurrent` resolved against the runner's version. If the knob moves again, this message has to move with it or it sends operators somewhere that no longer decides.
+// cm:edge contract -> packages/core/src/devices/claim.ts — this warning text tells the operator WHERE the ceiling now lives, and it must name this box, not core: core stopped deciding a box's job count when the master began claiming from the pool, so a message pointing at core sends them to a knob that decides nothing. The guard on that claim is the record of why.
 fn warn_on_retired_concurrency_keys(raw: &str, path: &std::path::Path) {
-    const CORE_OWNS_IT: &str = "pipeline concurrency is decided by core, per device";
+    const RUNNER_OWNS_IT: &str =
+        "pipeline concurrency is decided by this runner — see `duplex_max_sessions`";
     // cm:guard `chat_max_concurrent` is the one retired key whose value was LOAD-BEARING, so its warning must name the key that replaced it. Say only "no longer read" here and an operator who raised it to 8 is told their line is inert while the ceiling it used to lift silently sits at the default 3.
     const CHAT_UNCAPPED: &str = "chat no longer has a concurrency limit at all, and the duplex          process ceiling this number used to size now reads `duplex_max_sessions`";
     for (key, tool_written_default, why) in [
-        ("max_concurrent", "1", CORE_OWNS_IT),
-        ("device_max_concurrent", "0", CORE_OWNS_IT),
+        ("max_concurrent", "1", RUNNER_OWNS_IT),
+        ("device_max_concurrent", "0", RUNNER_OWNS_IT),
         ("chat_max_concurrent", "3", CHAT_UNCAPPED),
     ] {
         let Some(value) = toml_scalar_in_runner_table(raw, key) else {

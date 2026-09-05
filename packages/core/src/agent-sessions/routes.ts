@@ -575,7 +575,7 @@ agentSessionRoutes.patch(
     if (patch.title !== undefined) updates.title = patch.title;
     if (patch.status !== undefined) updates.status = patch.status;
     if (patch.claudeSessionId !== undefined) updates.claudeSessionId = patch.claudeSessionId;
-    // cm:guard DEVICE principal only, for the same reason `toolCallCount` is. `awaiting_input` exempts a session from the heartbeat hop, so a project member who could set it could park any session outside the quiet clock forever — an un-reapable `running` row holding a runner slot at RUNNER_CAP_PER_RUNNER = 1.
+    // cm:guard DEVICE principal only, for the same reason `toolCallCount` is. `awaiting_input` exempts a session from the heartbeat hop, so a project member who could set it could park any session outside the quiet clock forever — an un-reapable `running` row holding one of the box's few duplex session slots.
     if (patch.runtimeState !== undefined && c.get('principal') === 'device') {
       updates.runtimeState = patch.runtimeState;
     }

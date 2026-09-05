@@ -23,7 +23,7 @@ export type PipelineWaitingReason =
   | 'retry_cooldown'
   | 'stale_trigger'
   | 'runner_stale'
-  | 'runner_full';
+  | 'runner_too_old';
 
 // cm:edge contract -> packages/core/src/db/schema.ts — mirrors `waitingKinds`; a value here that core cannot store renders a banner nothing can produce, and the reverse leaves an authored kind falling through to generic copy
 export type WaitingCause = 'needs_decision' | 'needs_resource';

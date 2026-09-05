@@ -3,8 +3,8 @@
 // Phase 2 exempted `awaiting_input` from the heartbeat hop, which is right — a
 // session waiting on a human is not wedged. But it left the park bounded by
 // exactly one thing: the runner's own idle ceiling. If that runner dies while a
-// session is parked, nothing on this side ever closes the row, and at
-// RUNNER_CAP_PER_RUNNER = 1 the slot is gone until someone notices by hand.
+// session is parked, nothing on this side ever closes the row, and one of the
+// box's few duplex slots is gone until someone notices by hand.
 //
 // This is NOT a policy knob. It fires only when the runner failed to honour its
 // own deadline, which is why the bound is residency PLUS a grace — core and the

@@ -107,9 +107,9 @@ describe('countInFlightForRunner', () => {
 });
 
 describe('the `held` asymmetry (RFC 0002)', () => {
-  // cm:guard assert BOTH arms together, never one alone — `held` in the issue-busy arm only stops a second job for the same issue, while `held` absent from `device_load` is the entire reason it may wait indefinitely; add it to that CTE and one held job burns a runner slot forever, which is the `waiting` park RFC 0002 deletes, moved one axis down
+  // cm:guard assert BOTH halves together, never one alone — `held` in the issue-busy arm only stops a second job for the same issue, while NO load count existing anywhere in this builder is the entire reason a held job may wait indefinitely; reintroduce a load CTE that counts `held` and one held job occupies a box forever, which is the `waiting` park RFC 0002 deletes, moved one axis down
   // cm:edge lockstep -> packages/core/src/devices/claim.ts — L1 there lists the same three statuses, and it is the arm that actually REFUSES rather than merely explains; a status added here and not there reports a block the claim does not enforce
-  it('sits in the issue-busy arm but NOT in device_load', async () => {
+  it('sits in the issue-busy arm, and no CTE counts load at all', async () => {
     dbExecute.mockResolvedValueOnce([]);
     await gateReasonsForQueuedJobs('p1');
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
@@ -117,15 +117,13 @@ describe('the `held` asymmetry (RFC 0002)', () => {
     const issueBusy = text.match(
       /FROM\s+jobs\s+other[\s\S]*?other\.status\s+IN\s*\(([^)]*)\)/,
     )?.[1];
-    const deviceLoad = text.match(/device_load\s+AS\s*\(([\s\S]*?)\)\s*,/)?.[1];
 
-    // cm:guard keep these positive assertions — a regex that stopped matching leaves the slice `undefined`, and the `not.toContain` below then passes on nothing, so the test would go green precisely when the SQL it guards was rewritten
+    // cm:guard keep this positive assertion — a regex that stopped matching leaves the slice `undefined`, and the `toContain` below then passes on nothing, so the test would go green precisely when the SQL it guards was rewritten
     expect(issueBusy).toBeTruthy();
-    expect(deviceLoad).toBeTruthy();
-    expect(deviceLoad).toContain("'dispatched'");
-
     expect(issueBusy).toContain("'held'");
-    expect(deviceLoad).not.toContain("'held'");
+
+    expect(text).not.toMatch(/device_load/);
+    expect(text).not.toMatch(/\bin_flight\b/);
   });
 });
 
@@ -181,8 +179,9 @@ describe('assertDispatchable', () => {
     expect(text).not.toMatch(/'release_decompose_pending'/);
     // cm:why the decompose parent gate was removed with the lifecycle in 2026-09; a CASE arm reappearing under either name is a mechanism nobody decided to bring back
     expect(text).not.toMatch(/'decompose_children_pending'/);
+    // cm:why `runner_full` belongs with these two: core enforces no job ceiling since the master began claiming from the pool, so the arm could only report a hold nothing applies — an operator sent to wait for a slot that was never occupied. A capacity arm reappearing here is the kernel deciding capacity again.
+    expect(text).not.toMatch(/'runner_full'/);
     expect(text).toMatch(/'runner_stale'/);
-    expect(text).toMatch(/'runner_full'/);
     expect(text).toMatch(/'runner_too_old'/);
   });
 
@@ -192,9 +191,9 @@ describe('assertDispatchable', () => {
     await assertDispatchable('j1');
     const text = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
     expect(text.indexOf("'runner_stale'")).toBeLessThan(text.indexOf("'runner_too_old'"));
-    expect(text.indexOf("'runner_too_old'")).toBeLessThan(text.indexOf("'runner_full'"));
-    // cm:guard the capacity arm must ALSO be claim-scoped, or a fleet of below-floor boxes at capacity reports `runner_full` — "wait for a runner to free" about runners that will never take the job.
-    expect(text).toMatch(/claim_capable\s+AND\s+in_flight\s*<\s*cap/);
+    // cm:guard the CTE must carry NO capacity column at all. `cap` and `in_flight` were the two the deleted arm read, and re-adding either is how a capacity arm gets written back: the column arrives first, looking harmless, and the CASE follows.
+    expect(text).not.toMatch(/\bin_flight\b/);
+    expect(text).not.toMatch(/\bAS cap\b/);
   });
 
   it('SQL joins jobs/issues/pipeline_runs the way both readers do', async () => {
@@ -222,7 +221,6 @@ describe('assertDispatchable', () => {
     const asserterSql = collectSqlFragments(dbExecute.mock.calls[0]?.[0]);
 
     const signatures = [
-      /device_load\s+AS\s*\(/,
       /fresh_capable_runners\s+AS\s*\(/,
       /r\.last_seen_at\s*>\s*now\(\)/,
       /FROM\s+agent_sessions\s+s/,
@@ -237,6 +235,9 @@ describe('assertDispatchable', () => {
     // cm:guard assert the ABSENCE of `running_ids` on both sides — that CTE existed only to count a project's concurrent issues against a cap, and the cap is what this design removed; a reader that reintroduces it has put the ceiling back where the master cannot see it
     expect(reasonsSql).not.toMatch(/running_ids/);
     expect(asserterSql).not.toMatch(/running_ids/);
+    // cm:guard `device_load` goes with `running_ids` for the same reason one axis over — it counted a box's jobs against a cap core no longer enforces, so a reader that brings it back has put a ceiling where neither the master nor the runner can see it
+    expect(reasonsSql).not.toMatch(/device_load/);
+    expect(asserterSql).not.toMatch(/device_load/);
   });
 });
 
@@ -276,17 +277,17 @@ describe('gateReasonsForQueuedJobs', () => {
 });
 
 describe('freshRunnerAvailability', () => {
-  it('returns the two runner counts', async () => {
-    dbExecute.mockResolvedValueOnce([{ total: 3, with_capacity: 1 }]);
+  it('returns the claim-capable runner count and nothing else', async () => {
+    dbExecute.mockResolvedValueOnce([{ total: 3 }]);
 
-    expect(await freshRunnerAvailability('p1')).toEqual({ total: 3, withCapacity: 1 });
+    expect(await freshRunnerAvailability('p1')).toEqual({ total: 3 });
   });
 
-  // cm:guard an empty pool must read as 0/0, never as an absent row the caller coerces to "available" — pipelineHealth turns total>0 into "waiting for a slot" and total===0 into "no runner is online", opposite verdicts
+  // cm:guard an empty pool must read as 0, never as an absent row the caller coerces to "available" — pipelineHealth turns total===0 into "no runner is online" and anything else into no reason at all, opposite verdicts
   it('reads an empty result as no runners at all', async () => {
     dbExecute.mockResolvedValueOnce([]);
 
-    expect(await freshRunnerAvailability('p1')).toEqual({ total: 0, withCapacity: 0 });
+    expect(await freshRunnerAvailability('p1')).toEqual({ total: 0 });
   });
 
   // cm:guard it must read `fresh_capable_runners`, not a local copy of the availability WHERE — a second copy is how pipelineHealth came to disagree with the gate and report nothing for 11 jobs stuck behind dead runners

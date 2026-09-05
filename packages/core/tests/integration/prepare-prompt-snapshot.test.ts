@@ -8,7 +8,7 @@
  * dedupe to a single blob row.
  *
  * ISS-267: the legacy device path was removed; the suite now seeds an online
- * `claude-code` runner so `selectRunnerForJob` resolves it. The snapshot
+ * `claude-code` runner so the candidate query resolves it. The snapshot
  * helper is invoked identically regardless of dispatch path.
  */
 

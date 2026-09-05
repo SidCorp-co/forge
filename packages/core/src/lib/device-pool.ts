@@ -8,7 +8,7 @@ import { dispatchLivenessMs } from './dispatch-liveness.js';
  *
  * Resolution order:
  *  1. The freshest online `claude-code` runner row for this project (mirrors
- *     `selectRunnerForJob` filters: status='online',
+ *     `onlineCapableDeviceIds` filters: status='online',
  *     last_seen_at within the dispatch-liveness window), preferring a
  *     HEALTHY runner (no future `rate_limited_until`, `limit_reason` not
  *     `auth`) over a limited one — a limited runner is still returned when it

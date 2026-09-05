@@ -103,7 +103,7 @@ describe("WAITING_REASON_SHORT", () => {
     "retry_cooldown",
     "stale_trigger",
     "runner_stale",
-    "runner_full",
+    "runner_too_old",
   ];
 
   it("covers every reason with a chip-length label", () => {
@@ -123,7 +123,7 @@ describe("gate tone", () => {
 		expect(needs("runner_stale")).toBe(true);
 		expect(needs("run_not_running")).toBe(true);
 		expect(needs("retry_cooldown")).toBe(false);
-		expect(needs("runner_full")).toBe(false);
+		expect(needs("runner_too_old")).toBe(true);
 		expect(needs("stale_trigger")).toBe(false);
 		expect(needs("issue_busy")).toBe(false);
 	});

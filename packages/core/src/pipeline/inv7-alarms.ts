@@ -118,7 +118,7 @@ export const QUEUED_STALL_ALARM_MS = (() => {
 /**
  * Jobs the dispatcher says it could run, that have not run.
  */
-// cm:guard the test is ABSENCE from `gateReasonsForQueuedJobs`, and nothing else. A job the map explains — `runner_stale`, `runner_full`, `blocked_by`, `project_cap` — is queued for a reason and must stay silent: waiting for a runner is the normal state of a queue, and an alarm that fires on it is one operators learn to ignore. Only "the picker offers this job and it still has not moved" has no innocent reading; that is the picker-offers/selector-rejects deadlock, measured 2026-08-14 at 11 jobs queued 6-22 days across 5 projects with no surface able to say why.
+// cm:guard the test is ABSENCE from `gateReasonsForQueuedJobs`, and nothing else. A job the map explains — `runner_stale`, `runner_too_old`, `blocked_by`, `project_cap` — is queued for a reason and must stay silent: waiting for a runner is the normal state of a queue, and an alarm that fires on it is one operators learn to ignore. Only "the picker offers this job and it still has not moved" has no innocent reading; that is the picker-offers/selector-rejects deadlock, measured 2026-08-14 at 11 jobs queued 6-22 days across 5 projects with no surface able to say why.
 // cm:guard alarm ONLY (RFC 0002 INV-7) — never cancel, re-queue or re-dispatch here. A plain `queued` job holds NO capacity (`running_ids` counts it only while `retry_after_at > now()`, and `issueBusyJob` only counts dispatched/running/held), so nothing is freed by killing it and a wrong reap deletes real work.
 export async function alarmStalledQueuedJobs(now: Date = new Date()): Promise<Inv7AlarmResult> {
   const cutoffIso = new Date(now.getTime() - QUEUED_STALL_ALARM_MS).toISOString();
@@ -163,7 +163,7 @@ export async function alarmStalledQueuedJobs(now: Date = new Date()): Promise<In
         title: `${label} has been ready to run for over ${minutes}m and has not started`,
         summary: `The \`${row.job_type}\` step has been queued since ${row.created_at} and every dispatch gate passes — no dependency, no busy issue, no project cap, and a runner is online with a free slot. The picker is offering this job to a selector that keeps declining it, so nothing in the pipeline will move this issue on its own.`,
         nextStep:
-          "Compare the picker and the selector: a runner counted as available by the gate but filtered out by `selectRunnerForJob` produces exactly this. Check the runner's labels, capabilities and required device against what the job asks for.",
+          "Compare the gate and the candidate query: a runner counted as available by the gate but filtered out by `onlineCapableDeviceIds` produces exactly this. Check the runner's labels, capabilities and required device against what the job asks for.",
         action: 'Nothing is blocking it and nothing will start it — it needs you.',
       });
       alerted++;

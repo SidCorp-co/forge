@@ -10,13 +10,11 @@
 
 import type { JobType } from '../db/schema.js';
 import type { RunnerAvailability } from '../jobs/queued-gates.js';
-import { runnerSupportsJobType } from '../jobs/queued-gates.js';
 import { TRIGGER_STATUS_BY_JOB_TYPE, WORKING_STATUS_BY_JOB_TYPE } from '../pipeline/registry.js';
 import type {
   PipelineHealth,
   PipelineHealthJob,
   PipelineHealthQueuedStep,
-  PipelineHealthRunnerSat,
 } from './pipeline-health-types.js';
 
 /** ISS-903 — the queued candidate as a human surface reads it. Unconditional:
@@ -94,39 +92,11 @@ export function staleTriggerWaitingOn(
 /** The runner-layer (L4/L5) `waitingOn` for a queued candidate, or `null`. */
 // cm:guard report the EMPTY pool before a saturated one — "no runner is online" and "every runner is busy" read almost identically in the UI but need opposite actions (bring a host back vs. wait), and the empty-pool arm is the one that was missing while 11 jobs sat behind dead runners for up to 22 days
 export function runnerWaitingOn(
-  candidate: PipelineHealthJob,
   sinceIso: string,
-  runnerInFlight: ReadonlyMap<string, PipelineHealthRunnerSat>,
   runnerPool: RunnerAvailability,
 ): PipelineHealth['waitingOn'] {
   if (runnerPool.total === 0) {
     return { reason: 'runner_stale', since: sinceIso, details: { freshRunners: 0 } };
-  }
-
-  const sat = candidate.runnerId ? runnerInFlight.get(candidate.runnerId) : undefined;
-  if (
-    candidate.runnerId &&
-    sat &&
-    sat.inFlight >= sat.cap &&
-    runnerSupportsJobType(
-      sat.type as Parameters<typeof runnerSupportsJobType>[0],
-      candidate.type as Parameters<typeof runnerSupportsJobType>[1],
-    )
-  ) {
-    return {
-      reason: 'runner_full',
-      since: sinceIso,
-      details: { runnerId: candidate.runnerId, cap: sat.cap, inFlight: sat.inFlight },
-    };
-  }
-
-  // cm:why the pinned-runner branch above only covers a candidate that ALREADY has a runner_id; an unpinned job whose whole pool is busy fails the picker's pool-coarse EXISTS with nothing said about it here
-  if (runnerPool.withCapacity === 0) {
-    return {
-      reason: 'runner_full',
-      since: sinceIso,
-      details: { freshRunners: runnerPool.total, runnersWithCapacity: 0 },
-    };
   }
 
   return undefined;

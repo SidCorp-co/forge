@@ -236,7 +236,7 @@ type StarvedProject = {
  * (`buildBarrierFragments`, the same builder both readers use)
  * per candidate project — both halves: the barrier predicates AND the
  * `fresh_capable_runners` CTE that decides runner health — then adds the two
- * clauses the picker leaves to `selectRunnerForJob`: the per-job capability
+ * clauses the picker leaves to the candidate query: the per-job capability
  * match and the per-stage device pool. Those two are why an offered job can
  * still be unplaceable, so leaving them out is how starvation reads `ok`. The
  * candidate pre-filter is a cheap cross-tenant scan, so on healthy data (no old
@@ -263,12 +263,13 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
       livenessSeconds,
     });
     // cm:guard take runner health from the SSOT `fresh_capable_runners` CTE, never a hand-rolled copy of its clauses — the copy that used to live here drifted twice (main added `limit_reason <> 'auth'` and the `provision_status` gate without this file), and each missing clause counts a runner the dispatcher will never use as available, so real starvation reads `ok` and the alert meant to catch a wedged queue is what hides it.
-    // cm:edge lockstep -> packages/core/src/runners/select.ts — the `capabilities @>` join is the ONE clause `selectRunnerForJob` applies that the picker's CTE does not, and it must stay: a job no runner is capable of is offered by the picker, rejected by the selector, and spins queued with no gate reason for any UI to show (measured 2026-08-14: 11 jobs across 5 projects sat 6-22 days in exactly that state). Surfacing that is A3's whole reason to exist.
+    // cm:edge lockstep -> packages/core/src/runners/select.ts — the `capabilities @>` join is the ONE clause `onlineCapableDeviceIds` applies that the picker's CTE does not, and it must stay: a job no runner is capable of passes every gate here and is still unclaimable, sitting with no reason for any UI to show (measured 2026-08-14: 11 jobs across 5 projects sat 6-22 days in exactly that state). Surfacing that is A3's whole reason to exist.
     // cm:guard nullif BEFORE coalesce on requiredCapabilities — `->` on a JSON null yields jsonb 'null', not SQL NULL, so a bare coalesce leaves `@> 'null'` matching nothing and every job carrying `requiredCapabilities: null` reads as starved while dispatcher.ts (`?? {}`) places it fine
     // cm:edge lockstep -> packages/core/src/jobs/stage-overrides.ts — the `pool` lateral reads the per-stage device pool from exactly the path resolveStageOverrides reads, keyed by the job's own `payload.stageStatus`; a pool naming only offline devices wedges a queue with every gate passing, which is the shape A3 exists to name
     // cm:guard compare the pool CASE-INSENSITIVELY and never cast an element to `uuid` — `z.uuid()` accepts uppercase hex and nothing normalizes it, while `::text` on a uuid column always renders lowercase, so a bare text compare matches zero runners here and every runner in runners/select.ts (which binds a parameter against the uuid column, and so parses case-insensitively): a moving queue would read `runner_starved`, and at three such projects A3 goes crit and pages every platform admin. Casting the ELEMENT instead throws on any malformed entry, which 500s the GET and the sweeper swallows into zeros — `lower()` on both sides is the one form with neither failure.
     // cm:guard the pool arm needs BOTH `IS NULL` and `jsonb_typeof(...) <> 'array'`, in that order — no pool configured is SQL NULL, on which `jsonb_typeof` returns NULL, so a typeof-only arm evaluates the whole OR to NULL and every healthy project reads as starved; and an `IS NULL`-only arm lets `jsonb_array_length` THROW on a scalar, which the sweeper's try/catch swallows into zeros while the GET 500s.
-    // cm:guard keep BOTH of those clauses: they are the two `selectRunnerForJob` applies that `fresh_capable_runners` does not, so a job can pass every picker gate and still be unplaceable — drop either and genuine starvation reports `ok`
+    // cm:guard keep BOTH of those clauses: they are the two `onlineCapableDeviceIds` applies that `fresh_capable_runners` does not, so a job can pass every picker gate and still be unclaimable — drop either and genuine starvation reports `ok`
+    // cm:guard there is deliberately NO capacity term here. A busy box still claims — core enforces no ceiling — so requiring a free slot would report every project whose runners are working as STARVED, which is the opposite of the wedge A3 exists to name and would page every platform admin at three such projects.
     const rows = await db.execute<{
       queued_count: number;
       oldest_queued_at: PgTimestamp | null;
@@ -297,7 +298,6 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
           SELECT 1 FROM fresh_capable_runners fcr
           JOIN runners rr ON rr.id = fcr.id
           WHERE fcr.claim_capable
-            AND fcr.in_flight < fcr.cap
             AND rr.capabilities @> coalesce(nullif(j.payload -> 'requiredCapabilities', 'null'::jsonb), '{}'::jsonb)
             AND (
               pool.device_ids IS NULL

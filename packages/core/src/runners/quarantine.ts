@@ -1,7 +1,7 @@
 // Durable per-runner quarantine (ISS-825, third slice of the ISS-812 epic).
 //
 // The device circuit breaker (`getTrippedDeviceIds` in select.ts) trips
-// correctly but its exclude set is a SOFT preference both `selectRunnerForJob`
+// correctly but its exclude set is a SOFT preference both the candidate query
 // wrap-arounds deliberately discard when every device is tripped ("better to
 // try than to wedge") — the right trade for a transient fault, wrong for a box
 // whose git push credentials are permanently broken. Quarantine is durable

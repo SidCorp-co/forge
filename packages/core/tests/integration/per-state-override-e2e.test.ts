@@ -106,8 +106,7 @@ describe('ISS-194 per-state override end-to-end', () => {
     const project = await createTestProject(harness.db, owner.id);
     const device = await createTestDevice(harness.db, owner.id, { status: 'online' });
     await harness.db.execute(sql`UPDATE devices SET last_seen_at = now() WHERE id = ${device.id}`);
-    // Online claude-code runner bound to the device so `selectRunnerForJob`
-    // resolves it via the standby step (no defaultDeviceId pin needed).
+    // cm:why the runner must be online AND bound to the device or the candidate query returns nothing, and the override under test would pass for the wrong reason
     const runnerId = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO runners (id, project_id, type, device_id, name, capabilities, status, last_seen_at)

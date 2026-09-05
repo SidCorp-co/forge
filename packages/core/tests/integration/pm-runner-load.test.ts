@@ -107,7 +107,7 @@ describe('readRunnerLoad', () => {
     expect(load).toHaveLength(2);
     expect(byId.get(busy)?.inFlight).toBe(2);
     expect(byId.get(idle)?.inFlight).toBe(0);
-    expect(byId.get(busy)?.capacity).toBe(1);
+    for (const r of load) expect(r).not.toHaveProperty('capacity');
   });
 
   // cm:guard the count must not leak across runners. A GROUP BY dropped from the query returns ONE row for the whole fleet, and the map lookup then hands that single total to whichever runner id happens to be on it — every other runner reads as idle, and the PM dispatches onto a full box.

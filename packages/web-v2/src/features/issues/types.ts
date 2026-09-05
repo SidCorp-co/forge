@@ -222,8 +222,7 @@ export type WaitingReason =
   | "retry_cooldown"
   | "stale_trigger"
   | "runner_stale"
-  | "runner_too_old"
-  | "runner_full";
+  | "runner_too_old";
 
 // cm:edge contract -> packages/core/src/db/schema.ts — mirrors `waitingKinds`, the AUTHORED kind an agent or human writes alongside `status='waiting'`; it is never derived, so an absent kind must render the generic copy rather than a guessed one
 export type WaitingCause = "needs_decision" | "needs_resource";

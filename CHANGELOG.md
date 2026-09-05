@@ -422,6 +422,35 @@
 
 ### Removed
 
+- **The last of the push path, and the last ceiling core could name.** `selectRunnerForJob` and its
+  three private arms (pin / least-loaded / standby) are deleted. Its only two remaining callers —
+  the release-batch preflight and the skill smoke-verify dispatch — never used the runner it
+  returned; both asked "is anyone alive" and threw `NO_RUNNER_ONLINE` otherwise, so both now ask
+  `onlineCapableDeviceIds`, which answers that question without predicting a routing decision core
+  no longer makes.
+
+  With the selector went the last reader of `devices.max_concurrent`: `effectiveDeviceCap`,
+  `deviceCapSql`, the `device_load` CTE and the `runner_full` gate reason. Keeping that reason would
+  have been the worse half of the trade — nothing in core has refused a claim on capacity since the
+  master began claiming from the pool, and the real ceiling (`duplex_max_sessions`, RAM, the
+  repo-root lock) lives on the runner where core cannot see it, so `runner_full` could only report a
+  hold nothing enforced and send an operator to wait for a slot that was never occupied. It is gone
+  from `GateSkipReason`, from `PipelineWaitingReason`, and from web-v2's hand-mirror of it; rows
+  written before today still render neutrally through `LEGACY_NEUTRAL_REASONS`. `forge_pm.runner_load`
+  drops its `capacity` field for the same reason and reports the raw `inFlight` count alone. The
+  column itself stays, unread, with a guard on the schema saying so — dropping it is a migration, not
+  a deletion.
+
+  The runner's own retired-key warning said *"pipeline concurrency is decided by core, per device"*
+  and now says it is decided by the runner, naming `duplex_max_sessions`. That sentence was shipped
+  to every operator who upgraded past a config carrying `max_concurrent`.
+
+  **Known shortfall, priced rather than fixed:** `GET /api/runners/active` returns a single `current`
+  job per runner, and a box may now be running several at once — it shows the first and drops the
+  rest. Correcting it is a response-shape change reaching web-v2's runner types and project page, so
+  it is deliberately not folded into the kernel change that surfaced it. The guard on the route says
+  so at the collapse.
+
 - **Core no longer pushes work at a runner, and there is no concurrency cap left in it.** The
   central picker, the dispatch tick, the pg-boss dispatcher and the `job.assigned` frame are gone,
   along with the per-project `pipelineConfig.maxConcurrentIssues` (migration `0205` strips the key

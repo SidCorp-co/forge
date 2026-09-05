@@ -230,7 +230,7 @@ export async function finalizeFailedJob(
   // cm:why ISS-806 — stamp the box BEFORE any retry decision: a retry re-targets another device, so `updated.runnerId` only names the failing box until then
   await attributeFailureToRunner(updated.runnerId, opts.error);
 
-  // cm:why ISS-825 — MUST be awaited before the retry decision: onlineCapableDeviceIds/selectRunnerForJob read quarantinedUntil for THIS retry, same ordering contract as stampRunnerLimit below
+  // cm:why ISS-825 — MUST be awaited before the retry decision: onlineCapableDeviceIds reads quarantinedUntil for THIS retry, same ordering contract as stampRunnerLimit below
   await maybeQuarantineRunner(updated.runnerId, updated.projectId, updated.id, opts.error);
 
   // cm:why retryAfter's canonical source is failureMeta (via classifyFailure below), not jobs.retryAfterAt — that column is only the retry engine's flat cooldown on the *next* attempt's row, never this failed one

@@ -245,7 +245,7 @@ export async function resolveResumePolicy(args: {
 /**
  * ISS-887 — the resume decision is not final until a device has been chosen.
  *
- * `resolveResumePolicy` runs BEFORE `selectRunnerForJob`, so it can only propose a pin. Step 1 of
+ * `resolveResumePolicy` runs BEFORE the claim, so it can only propose a pin. Step 1 of
  * `pickRunner` returns null when the pinned runner is offline, stale or incapable and falls
  * through to primary/standby — the job lands on a box that does not hold the prior session's CLI
  * file. Until this ran, nothing re-read the session id afterwards: it reached the runner payload

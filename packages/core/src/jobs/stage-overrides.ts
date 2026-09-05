@@ -40,7 +40,7 @@ export interface StageOverrides {
   /**
    * Per-state runner pool. Null (or an empty list, normalized to null here)
    * means the whole project fleet is eligible — the dispatcher passes this
-   * straight to `selectRunnerForJob` as `allowDeviceIds`.
+   * straight to `onlineCapableDeviceIds` as `allowDeviceIds`.
    */
   deviceIds: string[] | null;
   /**

@@ -25,7 +25,7 @@ import { agentSessions, type IssueStatus, issues } from '../db/schema.js';
 import { freshRunnerAvailability } from '../jobs/queued-gates.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
-import { loadActiveJobsByIssue, loadPinnedRunnerSaturation } from './pipeline-health-loaders.js';
+import { loadActiveJobsByIssue } from './pipeline-health-loaders.js';
 import {
   heldWaitingOn,
   queuedStepOf,
@@ -45,7 +45,6 @@ export type {
   PipelineHealth,
   PipelineHealthJob,
   PipelineHealthQueuedStep,
-  PipelineHealthRunnerSat,
   PipelineHealthSession,
   PipelineWaitingReason,
   WaitingCause,
@@ -78,7 +77,7 @@ export function resetLastTickAtForTest(): void {
  * this for every requested issue id.
  */
 export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHealth {
-  const { issue, sessions, jobs: issueJobs, runnerInFlight, runnerPool, lastTickAt } = input;
+  const { issue, sessions, jobs: issueJobs, runnerPool, lastTickAt } = input;
 
   const queuedJobs = issueJobs.filter((j) => j.status === 'queued');
   const activeJobs = issueJobs.filter((j) => j.status !== 'queued');
@@ -115,7 +114,7 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
   if (!candidate) return out;
   const sinceIso = candidate.queuedAt.toISOString();
 
-  // cm:guard this arm belongs FIRST among the queued reasons, matching the CASE in dispatch-gates.ts — a paused or terminal parent run makes every later gate moot, and reporting `project_full` or `runner_full` for it sends the reader after a slot that would change nothing
+  // cm:guard this arm belongs FIRST among the queued reasons, matching the CASE in dispatch-gates.ts — a paused or terminal parent run makes every later gate moot, and reporting `project_full` for it sends the reader after a slot that would change nothing
   if (candidate.pipelineRunStatus && candidate.pipelineRunStatus !== 'running') {
     out.waitingOn = {
       reason: 'run_not_running',
@@ -152,7 +151,7 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     return out;
   }
 
-  const runnerWait = runnerWaitingOn(candidate, sinceIso, runnerInFlight, runnerPool);
+  const runnerWait = runnerWaitingOn(sinceIso, runnerPool);
   if (runnerWait) {
     out.waitingOn = runnerWait;
     return out;
@@ -222,8 +221,6 @@ export async function hydratePipelineHealthForIssues(
 
   const jobsByIssue = await loadActiveJobsByIssue(projectId, ids);
 
-  const runnerInFlight = await loadPinnedRunnerSaturation(jobsByIssue);
-
   const runnerPool = await freshRunnerAvailability(projectId);
   const lastTickAt = getLastTickAt(projectId);
 
@@ -239,7 +236,6 @@ export async function hydratePipelineHealthForIssues(
       },
       sessions: sessionsByIssue.get(issueId) ?? [],
       jobs: jobsByIssue.get(issueId) ?? [],
-      runnerInFlight,
       runnerPool,
       lastTickAt,
     });

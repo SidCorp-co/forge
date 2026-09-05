@@ -11,7 +11,7 @@ import {
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { PIPELINE_STEPS } from '../pipeline/registry.js';
 import { openOneShotRun } from '../pipeline/runs.js';
-import { selectRunnerForJob } from '../runners/select.js';
+import { onlineCapableDeviceIds } from '../runners/select.js';
 import { loadProjectSkillSyncStatus, type ProjectSkillSyncStatus } from './effective.js';
 
 /**
@@ -387,7 +387,7 @@ export function planSmokeCanaries(args: {
  * Dispatch one `smoke` canary job per registered stage (optionally narrowed to
  * `stages`). Each canary rides the NORMAL pipeline machinery end to end:
  * one-shot `kind='system'` run (`openOneShotRun`) → `insertAndEnqueueJob` →
- * pg-boss → dispatcher (`selectRunnerForJob`) → runner → lifecycle routes.
+ * pg-boss → the job pool → a master's claim → runner → lifecycle routes.
  * Terminal status therefore flips only via `applyKernelTransition` (I2), and
  * the one-shot run auto-closes via `closeRunIfOneShot` when the job ends.
  * Skip rules live in `planSmokeCanaries`.
@@ -400,8 +400,8 @@ export async function dispatchSmokeCanaries(args: {
   const { projectId, userId } = args;
 
   // Fail fast with an honest reason instead of parking jobs in `queued`.
-  const runner = await selectRunnerForJob({ projectId, requiredCapabilities: {} });
-  if (!runner) throw new NoRunnerOnlineError();
+  const capable = await onlineCapableDeviceIds(projectId, {});
+  if (capable.length === 0) throw new NoRunnerOnlineError();
 
   const tier1 = await loadSmokeVerifyTier1(projectId);
 

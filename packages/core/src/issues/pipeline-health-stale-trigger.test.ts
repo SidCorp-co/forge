@@ -29,8 +29,7 @@ function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
     issue: { id: 'iss-1', status: 'approved', mergedAt: null, waitingKind: null },
     sessions: [],
     jobs: [],
-    runnerInFlight: new Map(),
-    runnerPool: { total: 1, withCapacity: 1 },
+    runnerPool: { total: 1 },
     lastTickAt: null,
     ...over,
   };

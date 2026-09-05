@@ -150,7 +150,7 @@ export const stageConfigSchema = z.object({
   // Budget caps (consumed by dispatcher pre-flight + in-flight kill paths).
   budget: budgetConfigSchema.optional(),
   // cm:why per-state runner pool: unset/empty = whole fleet (pre-pool behaviour), one element = a hard pin, and every other selection rule still applies WITHIN the pool rather than being replaced by it
-  // cm:edge contract -> packages/core/src/runners/select.ts — apply the pool INSIDE the candidate queries next to rate_limited_until, never as an exclude set: both wrap-arounds in selectRunnerForJob deliberately clear excludeDeviceIds
+  // cm:edge contract -> packages/core/src/runners/select.ts — apply the pool INSIDE the candidate query next to rate_limited_until, never as an exclude set: the retry rotation deliberately clears its exclusions when a round wraps, which would evaporate a pool expressed that way
   // cm:guard an all-busy/all-limited pool leaves the job queued — never widen the pool to place it, or the operator loses the guarantee that a stage ran where they pinned it
   deviceIds: z.array(z.uuid()).max(20).optional(),
 });
@@ -248,7 +248,7 @@ export const pipelineConfigSchema = z
     lockedSkills: z.union([z.boolean(), z.array(z.string())]).optional(),
     // cm:guard ships ABSENT, which reads as `print`. Duplex is opt-in per project on purpose: it inverts the runner's terminal model (claude_code.rs tears the child down RESULT_EXIT_GRACE after the FIRST result line), so a project flipped here is running a different process lifecycle, not a tuned one.
     sessionMode: z.enum(['print', 'duplex']).optional(),
-    // cm:guard NO READER on the runner side yet, so the declared default of 0 is in force nowhere — the ceiling actually enforced is `SESSION_IDLE_TIMEOUT` (claude_code.rs). Only core reads this today, as the residency backstop in jobs/park-deadline.ts. Giving it the runner reader means 0 becomes the fleet default and turns residency OFF for every project that has not opted in, which is why it lands with the phase 5 flip and not before: raising it trades a held slot (RUNNER_CAP_PER_RUNNER = 1) for the park fast path, so it is a capacity decision, never a latency tweak.
+    // cm:guard NO READER on the runner side yet, so the declared default of 0 is in force nowhere — the ceiling actually enforced is `SESSION_IDLE_TIMEOUT` (claude_code.rs). Only core reads this today, as the residency backstop in jobs/park-deadline.ts. Giving it the runner reader means 0 becomes the fleet default and turns residency OFF for every project that has not opted in, which is why it lands with the phase 5 flip and not before: raising it trades a held duplex slot for the park fast path, so it is a capacity decision, never a latency tweak.
     sessionResidencySeconds: z.number().int().min(0).max(3600).optional(),
   })
   .superRefine((cfg, ctx) => {

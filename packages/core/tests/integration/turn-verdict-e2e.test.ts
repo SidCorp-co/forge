@@ -3,7 +3,7 @@
  *
  * ISS-873 phase 3. The runner asks this once per duplex turn and does exactly
  * one of two things with the answer: finish the job, or stay resident holding a
- * runner slot at RUNNER_CAP_PER_RUNNER = 1. So the two directions are not
+ * one of the box's few duplex session slots. So the two directions are not
  * symmetric — a wrong `false` wedges a slot until the residency backstop, while
  * a wrong `true` finishes a job that is retryable.
  *

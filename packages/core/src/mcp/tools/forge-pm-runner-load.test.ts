@@ -59,8 +59,8 @@ describe('forge_pm.runner_load', () => {
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
-  // cm:edge contract -> packages/core/src/jobs/queued-gates.ts — `capacity` must report the uniform RUNNER_CAP_PER_RUNNER and NEVER a row's legacy `capabilities.maxConcurrent`: the dispatcher stopped reading that override in ISS-232 Phase 4, so surfacing it here would tell an operator this runner takes N jobs at once while dispatch still gives it one.
-  it('returns runner list with capacity=1 + inFlight', async () => {
+  // cm:guard the payload carries the raw `inFlight` count and NO capacity field. Core enforces no ceiling since the master began claiming from the pool, so any headroom reported here would be a limit nothing applies — the operator reads the count and concludes, this tool does not conclude for them.
+  it('returns runner list with inFlight and no capacity field', async () => {
     const tool = forgePmRunnerLoadTool(ctx);
     const memberCheck = [{ orgId: 'org-1', memberRole: 'member', orgRole: null }];
     queue.push(
@@ -83,12 +83,11 @@ describe('forge_pm.runner_load', () => {
     );
 
     const result = (await tool.handler({ projectId: PROJECT_ID })) as {
-      runners: Array<{ id: string; capacity: number; inFlight: number }>;
+      runners: Array<{ id: string; inFlight: number }>;
     };
     expect(result.runners).toHaveLength(2);
-    expect(result.runners[0]?.capacity).toBe(1);
     expect(result.runners[0]?.inFlight).toBe(1);
-    expect(result.runners[1]?.capacity).toBe(1);
     expect(result.runners[1]?.inFlight).toBe(0);
+    for (const r of result.runners) expect(r).not.toHaveProperty('capacity');
   });
 });

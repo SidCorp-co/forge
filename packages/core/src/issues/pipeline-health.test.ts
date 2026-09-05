@@ -34,8 +34,7 @@ function baseInput(over: Partial<ClassifyInput> = {}): ClassifyInput {
     issue: { id: 'iss-1', status: 'approved', mergedAt: null, waitingKind: null },
     sessions: [],
     jobs: [],
-    runnerInFlight: new Map(),
-    runnerPool: { total: 1, withCapacity: 1 },
+    runnerPool: { total: 1 },
     lastTickAt: null,
     ...over,
   };
@@ -135,15 +134,12 @@ describe('classifyPipelineHealthForIssue', () => {
     expect(out.waitingOn?.details.holdReason).toBe('all_devices_exhausted');
   });
 
-  it('classifies runner_full when the candidate runner is saturated', () => {
+  // cm:guard a busy box is NOT a reason to wait and must never become one again. Core stopped deciding how many jobs a box may hold when the master began claiming from the pool, so `runner_full` could only name a hold nothing enforces — an operator sent to wait for a slot that was never occupied. Reintroducing any capacity arm here puts that lie back.
+  it('reports no reason for a pinned runner that already has work — a busy box still claims', () => {
     const out = classifyPipelineHealthForIssue(
-      baseInput({
-        jobs: [job({ runnerId: 'rnr-1', type: 'plan' })],
-        runnerInFlight: new Map([['rnr-1', { type: 'claude-code', cap: 1, inFlight: 1 }]]),
-      }),
+      baseInput({ jobs: [job({ runnerId: 'rnr-1', type: 'plan' })] }),
     );
-    expect(out.waitingOn?.reason).toBe('runner_full');
-    expect(out.waitingOn?.details).toEqual({ runnerId: 'rnr-1', cap: 1, inFlight: 1 });
+    expect(out.waitingOn).toBeUndefined();
   });
 
   it('reports queuedAt for queued-and-unblocked jobs', () => {
@@ -178,7 +174,7 @@ describe('classifyPipelineHealthForIssue — the two gates that never clear them
   it('reports run_not_running ahead of every other queued gate', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({
-        runnerPool: { total: 0, withCapacity: 0 },
+        runnerPool: { total: 0 },
         jobs: [job({ pipelineRunStatus: 'paused' })],
       }),
     );
@@ -189,20 +185,18 @@ describe('classifyPipelineHealthForIssue — the two gates that never clear them
     const out = classifyPipelineHealthForIssue(
       baseInput({
         jobs: [job({ runnerId: 'rnr-1' })],
-        runnerInFlight: new Map([['rnr-1', { type: 'claude-code', cap: 1, inFlight: 1 }]]),
-        runnerPool: { total: 0, withCapacity: 0 },
+        runnerPool: { total: 0 },
       }),
     );
     expect(out.waitingOn?.reason).toBe('runner_stale');
     expect(out.waitingOn?.details).toEqual({ freshRunners: 0 });
   });
 
-  it('classifies runner_full pool-wide for an unpinned candidate when every runner is busy', () => {
+  it('reports no reason pool-wide when every runner is alive and busy', () => {
     const out = classifyPipelineHealthForIssue(
-      baseInput({ jobs: [job()], runnerPool: { total: 2, withCapacity: 0 } }),
+      baseInput({ jobs: [job()], runnerPool: { total: 2 } }),
     );
-    expect(out.waitingOn?.reason).toBe('runner_full');
-    expect(out.waitingOn?.details).toEqual({ freshRunners: 2, runnersWithCapacity: 0 });
+    expect(out.waitingOn).toBeUndefined();
   });
 });
 

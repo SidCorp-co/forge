@@ -162,7 +162,7 @@ describe('the residency deadline', () => {
     expect(await sweep()).toBe(0);
   });
 
-  // cm:guard the point of the hop is CAPACITY, not a tidier row. Closing the session while its job stays `running` leaks the runner slot exactly as before at RUNNER_CAP_PER_RUNNER = 1 — this pair is the only assertion that the park hop buys anything.
+  // cm:guard the point of the hop is CAPACITY, not a tidier row. Closing the session while its job stays `running` leaks the duplex slot exactly as before — this pair is the only assertion that the park hop buys anything.
   it('lets the session-lost hop open a kill on the job it was holding', async () => {
     await session({ quietMinutes: 20, withJob: true });
     expect(await jobKillOpened()).toBe(false);

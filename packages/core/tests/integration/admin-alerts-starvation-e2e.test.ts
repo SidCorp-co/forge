@@ -146,7 +146,7 @@ describe('A3 runner starvation (ISS-652)', () => {
     expect(findAlert(body, 'A3')?.status).toBe('ok');
   });
 
-  // cm:guard the per-stage device pool is applied by selectRunnerForJob and by NOTHING in the picker's CTE, so a pool naming only devices that are gone leaves every gate passing and the job unplaceable — a wedge with no gate reason for any UI to show, which is the case A3 exists to name
+  // cm:guard the per-stage device pool is applied by onlineCapableDeviceIds and by NOTHING in the picker's CTE, so a pool naming only devices that are gone leaves every gate passing and the job unplaceable — a wedge with no gate reason for any UI to show, which is the case A3 exists to name
   it('fires when the stage device pool names no runner the project has', async () => {
     const owner = await createTestUser(ctx.harness.db);
     const project = await createTestProject(ctx.harness.db, owner.id);
@@ -215,26 +215,16 @@ describe('A3 runner starvation (ISS-652)', () => {
   });
 
   // cm:why cap=2 so issue B PASSES project_cap and the sole runner being full is the only thing left holding it — genuine capacity starvation, which no upstream gate clears
-  it('fires when a job past project_cap still has no free runner slot', async () => {
+  // cm:guard a BUSY runner is not a starved queue, and this is the case that proves A3 knows the difference. Core enforces no ceiling — a box already running a job still claims the next one — so a capacity term in A3's runner EXISTS would report every project whose runners are working, page every platform admin at three of them, and bury the wedge the alert exists to name. The fixture is the alarming one with only the runner's load changed.
+  it('stays ok when the only runner is healthy but already running a job', async () => {
     const owner = await createTestUser(ctx.harness.db);
     const project = await createTestProject(ctx.harness.db, owner.id);
-    await ctx.harness.db.execute(sql`
-      UPDATE projects
-      SET agent_config = '{"pipelineConfig":{"maxConcurrentIssues":2}}'::jsonb
-      WHERE id = ${project.id}
-    `);
     const runnerId = await fx.insertRunner({ projectId: project.id, status: 'online' });
     await seedTwoIssuesOneBusyRunner(fx, project.id, owner.id, runnerId);
 
     const token = await ctx.adminToken();
     const { body } = await getAlerts(ctx, token);
-    expect(findAlert(body, 'A3')?.status).not.toBe('ok');
-
-    await ctx.harness.db.execute(
-      sql`UPDATE jobs SET status = 'done' WHERE runner_id = ${runnerId}`,
-    );
-    const { body: cleared } = await getAlerts(ctx, token);
-    expect(findAlert(cleared, 'A3')?.status).toBe('ok');
+    expect(findAlert(body, 'A3')?.status).toBe('ok');
   });
 
   // cm:guard the discriminating case for `held_by`: a job a master has already claimed is NOT starved — a master is holding it precisely because it means to run it, and counting that as "no usable runner" alarms on the healthy path. The fixture is otherwise identical to the alarming one, so a pass proves the hold is replayed rather than the runner state alone being read.

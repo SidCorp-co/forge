@@ -730,7 +730,7 @@ describe("deriveBlockerState", () => {
 			"retry_cooldown",
 			"stale_trigger",
 			"runner_stale",
-			"runner_full",
+			"runner_too_old",
 		] as const) {
 			const b = deriveBlockerState(
 				blockerIssue({ status: "in_progress" }),

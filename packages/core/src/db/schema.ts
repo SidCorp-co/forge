@@ -426,7 +426,7 @@ export const devices = pgTable(
     capabilities: jsonb('capabilities'),
     // cm:guard chat is NOT counted against this — it runs off the jobs table with its own budget on the runner (`[runner] chat_max_concurrent`) and never takes a `job.assigned` slot, so folding the two together would let a burst of chats starve the pipeline (ISS-321).
     // cm:guard the unit is the DEVICE and must stay there: the resource a job consumes is one Claude process on one machine, so a box bound to 20 projects at cap 3 runs 3 jobs total, not 3 per project. It is compared against `countInFlightForDevice`, never against the per-binding count that feeds the load reports.
-    // cm:guard raising this above 1 is only safe on a runner new enough to hold the repo-root lock (`daemon/repo_lock.rs`). Core deploys in one step while the fleet updates on its own clock, so the effective cap is resolved per runner at dispatch against REPO_LOCK_MIN_RUNNER — an old box silently keeps 1 rather than being trusted with a number it cannot honour.
+    // cm:guard NOTHING IN CORE READS THIS. How many jobs a box may hold is the runner's decision (`[runner] duplex_max_sessions`, RAM, the repo-root lock in `daemon/repo_lock.rs`), and core deliberately stopped having an opinion when the master began claiming from the pool — `devices/claim.ts` carries the guard saying why. Wiring a reader back onto this column re-introduces the kernel ceiling that design removed, and a ceiling core cannot see the real value of can only be wrong.
     maxConcurrent: integer('max_concurrent').notNull().default(1),
     // ISS-305 — non-secret label recording that a git push credential was
     // auto-provisioned for this device at login time (e.g. 'https-helper' or
@@ -928,7 +928,7 @@ export const runners = pgTable(
     limitReason: text('limit_reason', { enum: runnerLimitReasons }),
     rateLimitedUntil: timestamp('rate_limited_until', { withTimezone: true }),
     limitDetail: text('limit_detail'),
-    // cm:why durable hard-exclusion alongside rateLimitedUntil so it survives both selectRunnerForJob wrap-arounds (excludeDeviceIds is discarded there); self-heals on expiry, cleared on the next success
+    // cm:why durable hard-exclusion alongside rateLimitedUntil so it survives a retry round wrapping (the rotation clears its exclude set there); self-heals on expiry, cleared on the next success
     quarantinedUntil: timestamp('quarantined_until', { withTimezone: true }),
     quarantineReason: text('quarantine_reason'),
     // Per (device × project) workspace provisioning state. NULL = not yet
@@ -2133,7 +2133,7 @@ export const terminalAgentSessionStatuses = [
 ] as const satisfies readonly AgentSessionStatus[];
 
 // cm:guard `status` and `runtimeState` answer different questions and must never be collapsed: `status` is the JOB's lifecycle (a `running` session may be mid-turn or parked on stdin), `runtimeState` is the PROCESS's, and it is the only one that distinguishes a session waiting for input from one still working. Print-mode sessions leave it NULL — a NULL here means "this runner never reported, infer nothing", which is not the same as `working`.
-// cm:guard `awaiting_input` is exempt from the loop-monitor QUIET-TIMEOUT only — it still HOLDS ITS RUNNER SLOT the entire time it is parked, exactly like `working`, and the residency window is what bounds it instead. Reading this as slot-exempt is the misreading that leaks a runner permanently: RUNNER_CAP_PER_RUNNER = 1, and once the quiet clock no longer applies, the residency deadline is the only thing that will ever reap a parked duplex session.
+// cm:guard `awaiting_input` is exempt from the loop-monitor QUIET-TIMEOUT only — it still HOLDS ITS RUNNER SLOT the entire time it is parked, exactly like `working`, and the residency window is what bounds it instead. Reading this as slot-exempt is the misreading that leaks a duplex session permanently: the box's `duplex_max_sessions` is a small number (3 by default) and core enforces no ceiling of its own, so once the quiet clock no longer applies the residency deadline is the only thing that will ever reap a parked session.
 export const sessionRuntimeStates = [
   'starting',
   'working',
@@ -2144,7 +2144,7 @@ export const sessionRuntimeStates = [
 export type SessionRuntimeState = (typeof sessionRuntimeStates)[number];
 
 // cm:edge contract -> packages/contracts/src/failure-causes.ts — ISS-877 made that module the single taxonomy for core, web-v2 and the MCP metric; this alias exists so the schema keeps naming its own column's vocabulary, not so a second list can grow here
-// cm:guard dispatcher gate skips (issue_busy / waiting_on_dep / project_full / runner_full / manual_hold) are NOT members and must never be added — ISS-162 made them stateless, recomputed by the picker every tick, so persisting one on the session row revives a gate state that goes stale the moment the condition clears
+// cm:guard dispatcher gate skips (issue_busy / waiting_on_dep / project_full / manual_hold) are NOT members and must never be added — ISS-162 made them stateless, recomputed by the picker every tick, so persisting one on the session row revives a gate state that goes stale the moment the condition clears
 export const agentSessionFailureReasons = FAILURE_CAUSES;
 export type AgentSessionFailureReason = FailureCause;
 

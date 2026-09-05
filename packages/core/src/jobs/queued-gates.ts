@@ -29,7 +29,7 @@ import {
   TRIGGER_STATUS_BY_JOB_TYPE,
   WORKING_STATUS_BY_JOB_TYPE,
 } from '../pipeline/registry.js';
-import { claimCapableSql, deviceCapSql } from '../runners/device-cap.js';
+import { claimCapableSql } from '../runners/device-cap.js';
 import { countInFlightForOneRunner } from './in-flight.js';
 
 export type GateSkipReason =
@@ -40,7 +40,6 @@ export type GateSkipReason =
   | 'issue_busy'
   | 'stale_trigger'
   // cm:guard every member here must be a string `buildGateReasonCase` can actually return, and every string it returns must be a member — `assertDispatchable` casts the raw CASE result into this union unchecked, so a mismatch is invisible to tsc. A name that outlives its arm is the failure mode: `release_decompose_pending` sat here for months naming an arm that never existed, and `observability/hold-metrics.ts` keyed its counter Map by a value outside its own key type.
-  | 'runner_full'
   | 'runner_too_old'
   | 'runner_stale';
 
@@ -85,7 +84,7 @@ export async function countInFlightForRunner(runnerId: string): Promise<number> 
 }
 
 export interface BarrierFragments {
-  /** Shared CTE chunk: `device_load`, `fresh_capable_runners`.
+  /** Shared CTE chunk: `fresh_capable_runners`.
    *  Caller prefixes with `WITH ${ctes}` (and may comma-append more CTEs). */
   ctes: SQL;
   /** Gate predicates as failing-form SQL fragments. The picker negates each
@@ -136,35 +135,18 @@ export function buildBarrierFragments(args: {
 }): BarrierFragments {
   const { projectIdRef, livenessSeconds } = args;
 
-  // cm:guard `cap` and `in_flight` are BOTH per device, and neither may drift back to the binding. A job consumes one Claude process on one machine, so a box bound to 20 projects at cap 3 runs 3 jobs in total — pairing a device cap with a per-binding count would authorise 20x that while every gate read as if it were holding.
-  // cm:edge lockstep -> packages/core/src/runners/device-cap.ts#effectiveDeviceCap — the SQL half of the cap decision; the locked claim allocates on the TS half, so a SQL expression more generous than the TS one offers work the claim refuses every tick, forever, with no gate reason
-  const ctes = sql`    device_load AS (
-      -- ISS-258 -- exclude jobs whose parent pipeline_run is terminal so an
-      -- orphan (cascade missed, manual SQL fix, partial-outage state drift)
-      -- never burns the runner cap slot. The cascade in pipeline/runs.ts
-      -- is the primary fix; this is defence in depth.
-      SELECT j.device_id, COUNT(*)::int AS in_flight
-      FROM jobs j
-      LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
-      WHERE j.device_id IS NOT NULL
-        AND j.status IN ('dispatched','running')
-        AND (pr.id IS NULL OR pr.status IN ('running','paused'))
-      GROUP BY j.device_id
-    ),
-    fresh_capable_runners AS (
+  // cm:guard this CTE answers "is a usable box ALIVE", never "does it have room". Core stopped deciding how many jobs a box may hold when the master began claiming from the pool (`devices/claim.ts`), and the real ceiling — `duplex_max_sessions`, RAM, the repo lock — lives on the runner where core cannot see it. So a capacity arm here could only report a hold nothing enforces, which is worse than reporting none: `runner_full` named exactly that from 2026-09-05 back.
+  const ctes = sql`    fresh_capable_runners AS (
       SELECT r.id,
-             ${deviceCapSql('d')} AS cap,
              -- cm:guard carried as a COLUMN and not a WHERE clause, so the reason arms can tell "no box at all" from "a box too old to claim". Every reader asking "is there a usable runner" MUST therefore say WHERE claim_capable; one that forgets counts a box the claim refuses outright ("runner_too_old") and re-opens the picker-offers/selector-rejects deadlock this CTE carries three other guards about.
-             ${claimCapableSql('d')} AS claim_capable,
-             COALESCE(dl.in_flight, 0) AS in_flight
+             ${claimCapableSql('d')} AS claim_capable
       FROM runners r
       JOIN devices d ON d.id = r.device_id
-      LEFT JOIN device_load dl ON dl.device_id = r.device_id
       WHERE r.project_id = ${projectIdRef}
         AND r.status = 'online'
         AND r.last_seen_at IS NOT NULL
         AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
-        -- cm:guard every clause runners/select.ts filters on MUST appear here too, or the pair deadlocks silently: the picker counts the runner as available and declares the job dispatchable, selectRunnerForJob then filters it out and returns null, handleDispatch skips, and the job spins "queued" with NO gate reason for any UI to show. Measured 2026-08-14: 11 jobs across 5 projects sat 6-22 days in exactly that state.
+        -- cm:guard every clause runners/select.ts filters on MUST appear here too, or the two disagree silently: this gate reports the job as dispatchable while the candidate query excludes the only box, so the job sits with NO reason for any UI to show. Measured 2026-08-14: 11 jobs across 5 projects sat 6-22 days in exactly that state, back when a selector rejected what the picker offered.
         AND (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
         -- cm:guard an auth limit has NO reset time by design ("rate_limited_until" stays NULL, nothing parseable to wait for), so the time predicate above passes it and an auth-dead runner reads as healthy. It must be excluded by NAME, and no widening of quarantine removes that need: "maybeQuarantineRunner" only counts failures "classifyBoxFault" recognises, and an expired OAuth session is neither a preflight check nor an unclaimed dispatch — the runner claims the job, starts the agent, and the agent dies on the credential. That is how device dev1-ai013 took 421 jobs in 5.5h with "quarantined_until" still NULL.
         AND r.limit_reason IS DISTINCT FROM 'auth'
@@ -175,9 +157,9 @@ export function buildBarrierFragments(args: {
         -- Device turn-off gate — MUST mirror runners/select.ts
         -- (NOT_DISABLED_DEVICE). Without it the picker/asserter counts a runner
         -- on a disabled device as available and declares the job dispatchable,
-        -- but selectRunnerForJob filters that runner out, returns null,
-        -- handleDispatch skips, and the job spins queued forever (picker offers,
-        -- selector rejects). A disabled device's runner can keep heartbeating
+        -- but the candidate query filters that runner out, so the job sits
+        -- queued while this gate reports it ready. A disabled device's runner
+        -- can keep heartbeating
         -- (status stays online), so status alone does not cover this.
         AND NOT EXISTS (
           SELECT 1 FROM devices d
@@ -210,7 +192,7 @@ export function buildBarrierFragments(args: {
         AND (s.metadata->>'issueId') = j.issue_id::text
         AND (j.agent_session_id IS NULL OR s.id <> j.agent_session_id)
     )`,
-    // cm:guard `held` belongs HERE and NOT in `device_load` — the asymmetry is the whole design (RFC 0002): absent from the load count it consumes no runner slot and may wait indefinitely, present here it stops a second job being enqueued for the same issue while the first waits
+    // cm:guard `held` belongs HERE and NOT in the pool's claimable set — the asymmetry is the whole design (RFC 0002): invisible to the pool it occupies no box and may wait indefinitely, present here it stops a second job being enqueued for the same issue while the first waits
     // cm:edge lockstep -> packages/core/src/db/schema.ts — the `jobs_active_unique` partial index is the DB-level twin of this predicate; a status listed in one must be listed in the other or `enqueue` inserts the duplicate this gate refuses to dispatch
     issueBusyJob: sql`EXISTS (
       SELECT 1 FROM jobs other
@@ -261,9 +243,6 @@ function buildGateReasonCase(predicates: BarrierFragments['predicates']): SQL {
         WHEN NOT EXISTS (SELECT 1 FROM fresh_capable_runners) THEN 'runner_stale'
         WHEN NOT EXISTS (SELECT 1 FROM fresh_capable_runners WHERE claim_capable)
           THEN 'runner_too_old'
-        WHEN NOT EXISTS (
-          SELECT 1 FROM fresh_capable_runners WHERE claim_capable AND in_flight < cap
-        ) THEN 'runner_full'
         ELSE NULL
       END`;
 }
@@ -303,8 +282,6 @@ export interface RunnerAvailability {
   /** Runners the picker considers selectable at all (online, fresh, not
    *  rate-limited, device not disabled). Zero ⇒ gate reason `runner_stale`. */
   total: number;
-  /** Of those, how many have a free slot. Zero ⇒ gate reason `runner_full`. */
-  withCapacity: number;
 }
 
 /**
@@ -319,14 +296,12 @@ export async function freshRunnerAvailability(projectId: string): Promise<Runner
     projectIdRef: sql`${projectId}`,
     livenessSeconds: Math.floor(dispatchLivenessMs() / 1000),
   });
-  const rows = await db.execute<{ total: number; with_capacity: number }>(sql`
+  const rows = await db.execute<{ total: number }>(sql`
     WITH ${ctes}
-    SELECT COUNT(*) FILTER (WHERE claim_capable)::int AS total,
-           COUNT(*) FILTER (WHERE claim_capable AND in_flight < cap)::int AS with_capacity
+    SELECT COUNT(*) FILTER (WHERE claim_capable)::int AS total
     FROM fresh_capable_runners
   `);
-  const row = rows[0];
-  return { total: Number(row?.total ?? 0), withCapacity: Number(row?.with_capacity ?? 0) };
+  return { total: Number(rows[0]?.total ?? 0) };
 }
 
 /**

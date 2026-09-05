@@ -173,7 +173,7 @@ describe('PATCH /api/agent-sessions/:id — who may say a session is parked', ()
     expect(persisted()?.runtimeState).toBe('awaiting_input');
   });
 
-  // cm:guard the security half. `awaiting_input` is the one value that exempts a row from the heartbeat hop, so a member who could assert it could hold a runner slot at RUNNER_CAP_PER_RUNNER = 1 indefinitely with a plain PATCH.
+  // cm:guard the security half. `awaiting_input` is the one value that exempts a row from the heartbeat hop, so a member who could assert it could hold one of the box's few duplex session slots indefinitely with a plain PATCH.
   it('ignores the same claim from a project member', async () => {
     seedRunningSession();
     const res = await patchAsMember({ runtimeState: 'awaiting_input' });

@@ -21,7 +21,7 @@ export type PipelineWaitingReason =
   | 'retry_cooldown'
   | 'stale_trigger'
   | 'runner_stale'
-  | 'runner_full';
+  | 'runner_too_old';
 
 /**
  * Why an issue is at `status='waiting'` — AUTHORED by whoever parked it, never
@@ -87,17 +87,10 @@ export interface PipelineHealthJob {
   retryAfterAt?: Date | null;
 }
 
-export interface PipelineHealthRunnerSat {
-  type: string;
-  cap: number;
-  inFlight: number;
-}
-
 export interface ClassifyInput {
   issue: { id: string; status: string; mergedAt: Date | null; waitingKind: WaitingKind | null };
   sessions: PipelineHealthSession[];
   jobs: PipelineHealthJob[];
-  runnerInFlight: ReadonlyMap<string, PipelineHealthRunnerSat>;
   /** From `freshRunnerAvailability` — the picker's own runner-pool counts. */
   runnerPool: RunnerAvailability;
   lastTickAt: Date | null;

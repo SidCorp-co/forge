@@ -8,11 +8,11 @@
  * the incident that mirror came from.
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { jobs, pipelineRuns, runners } from '../db/schema.js';
+import { jobs, pipelineRuns } from '../db/schema.js';
 import { extractStageStatus } from '../jobs/stage-overrides.js';
-import type { PipelineHealthJob, PipelineHealthRunnerSat } from './pipeline-health-types.js';
+import type { PipelineHealthJob } from './pipeline-health-types.js';
 
 /**
  * Q3 — the issue's live jobs, bucketed by issue id.
@@ -64,52 +64,4 @@ export async function loadActiveJobsByIssue(
     byIssue.set(r.issueId, bucket);
   }
   return byIssue;
-}
-
-// cm:edge lockstep -> packages/core/src/runners/device-cap.ts#effectiveDeviceCap — the health view's idea of capacity has to be the dispatcher's, or the UI reports headroom the gate will not grant. Both are per DEVICE now, so two bindings of one box share one number rather than each claiming it.
-function runnerDefaultConcurrency(_runnerType: string): number {
-  return 1;
-}
-
-/**
- * Q6 — in-flight load on the runners that queued candidates are pinned to.
- * Empty when no candidate has a `runner_id` (nothing to be saturated).
- */
-// cm:guard count only `dispatched|running` here — this mirrors the gate's `runner_load` CTE, where `held` is deliberately absent because a held job has released its slot; adding it reports `runner_full` for a runner that is in fact free
-export async function loadPinnedRunnerSaturation(
-  jobsByIssue: ReadonlyMap<string, PipelineHealthJob[]>,
-): Promise<Map<string, PipelineHealthRunnerSat>> {
-  const candidateRunnerIds = new Set<string>();
-  for (const list of jobsByIssue.values()) {
-    for (const j of list) {
-      if (j.status === 'queued' && j.runnerId) candidateRunnerIds.add(j.runnerId);
-    }
-  }
-  const out = new Map<string, PipelineHealthRunnerSat>();
-  if (candidateRunnerIds.size === 0) return out;
-
-  const ids = [...candidateRunnerIds];
-  const runnerRows = await db
-    .select({ id: runners.id, type: runners.type, capabilities: runners.capabilities })
-    .from(runners)
-    .where(inArray(runners.id, ids));
-  const inFlightRows = await db
-    .select({ runnerId: jobs.runnerId, count: sql<string>`COUNT(*)::text` })
-    .from(jobs)
-    .where(and(inArray(jobs.runnerId, ids), inArray(jobs.status, ['dispatched', 'running'])))
-    .groupBy(jobs.runnerId);
-
-  const inFlightByRunner = new Map<string, number>();
-  for (const r of inFlightRows) {
-    if (r.runnerId) inFlightByRunner.set(r.runnerId, Number(r.count));
-  }
-  for (const r of runnerRows) {
-    const caps = (r.capabilities ?? {}) as Record<string, unknown>;
-    const cap =
-      typeof caps.maxConcurrent === 'number' && caps.maxConcurrent > 0
-        ? caps.maxConcurrent
-        : runnerDefaultConcurrency(r.type);
-    out.set(r.id, { type: r.type, cap, inFlight: inFlightByRunner.get(r.id) ?? 0 });
-  }
-  return out;
 }

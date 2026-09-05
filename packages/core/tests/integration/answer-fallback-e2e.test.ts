@@ -9,7 +9,7 @@
  *
  * Two directions, and they are not symmetric. Sending to a session that is gone
  * loses the answer until the episode resolves; dispatching while the session is
- * alive wedges the only runner slot at RUNNER_CAP_PER_RUNNER = 1. So the send
+ * alive wedges one of the box's few duplex session slots. So the send
  * is tried first and the transition is the fallback — and the fallback is
  * reached ONLY through `gone`, never through `unknown`.
  */
