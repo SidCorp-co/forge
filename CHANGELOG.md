@@ -1391,6 +1391,16 @@
   looks like it worked. Salvage is also offered to every claimed job now, not only one serving an
   issue, because every job has a worktree of its own.
 
+- **A claim from a runner older than 0.11.0 is now refused by name.** Deleting `worktreeBranch` left
+  a version skew that fails silently in the worst direction: an older runner resolves no branch,
+  takes the `owns_root` path, and runs the agent **in the repo root on the project's base branch** —
+  committing unreviewed work onto `main` while the job reports success. Found live on dev1 the same
+  day, with core deployed against binaries still on 0.10.5. `prepareClaimedJob` now reads the box's
+  reported version and throws `runner_too_old` naming it; the hold is released first, so the job
+  stays claimable for a box that can take it. The check sits on the claim rather than in the pool
+  listing deliberately — hiding the work would leave an old box idle with no reason recorded
+  anywhere, where a refusal lands in the master's own transcript.
+
 - **A runner's status is now a real drain switch, and until this it was a silent no-op.** Moving a
   project from one box to another needs "stop taking new work, finish what you have", and nothing
   provided it: `GET /me/runners` returned `status`, `MeRunner` parsed it, and no code on either side

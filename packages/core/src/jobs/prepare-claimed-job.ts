@@ -14,7 +14,7 @@
 
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issueLabels, issues, jobs, labels, projects, runners } from '../db/schema.js';
+import { devices, issueLabels, issues, jobs, labels, projects, runners } from '../db/schema.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { logger } from '../logger.js';
 import { injectAfterInvocation, injectTurnLevelRules } from '../prompt/user.js';
@@ -157,12 +157,47 @@ async function applyCarveout(
  */
 // cm:guard call this AFTER the claim transaction commits, never inside it. Both writes at the end go through the module-level `db` rather than a passed `tx`, so a preparation placed inside would survive a rollback and leave a session row plus a prompt snapshot for a hold that never landed.
 // cm:guard the device is an ARGUMENT and is never re-picked here. The master already decided which box runs this, and a second opinion about the device is how the session row and the process that starts end up describing different machines.
+/** First runner release whose claim carries the master's `--agent` name. */
+export const AGENT_NAMING_MIN_RUNNER = '0.11.0';
+
+function atLeast(version: string | null | undefined, min: string): boolean {
+  if (!version) return false;
+  const a = version.split('.').map(Number);
+  const b = min.split('.').map(Number);
+  if (a.length !== 3 || a.some(Number.isNaN)) return false;
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] as number) !== (b[i] as number)) return (a[i] as number) > (b[i] as number);
+  }
+  return true;
+}
+
+/**
+ * Refuse a claim from a box that cannot name the agent's worktree.
+ */
+// cm:guard REFUSE, never fall back. Core stopped sending `worktreeBranch` on 2026-09-05, so a runner below this floor resolves no branch, takes the `owns_root` path, and runs the agent IN THE REPO ROOT on the project's base branch — an agent committing unreviewed work onto `main`, which is the exact outcome salvage's root exclusion exists to prevent. It is silent: the job succeeds and reports normally. Measured the same day on dev1, where core deployed the new rule against binaries still on 0.10.5.
+// cm:guard the floor is checked HERE rather than in the pool listing on purpose. Hiding the work would leave an old box idle with no reason given anywhere; refusing the claim puts the version in the master's own transcript, which is where an operator is already looking when a box stops taking work.
+async function refuseRunnerTooOldToNameItsAgent(deviceId: string): Promise<void> {
+  const [device] = await db
+    .select({ v: devices.agentVersion })
+    .from(devices)
+    .where(eq(devices.id, deviceId))
+    .limit(1);
+  if (atLeast(device?.v ?? null, AGENT_NAMING_MIN_RUNNER)) return;
+  throw new Error(
+    `runner_too_old: this box reports forge-runner ${device?.v ?? 'unknown'} and ` +
+      `${AGENT_NAMING_MIN_RUNNER} is required to name an agent's worktree; ` +
+      'update the runner — a claim here would run the agent in the repo root',
+  );
+}
+
 export async function prepareClaimedJob(args: {
   jobId: string;
   deviceId: string;
 }): Promise<PreparedJob> {
   const [job] = await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1);
   if (!job) throw new Error(`prepare: job ${args.jobId} not found`);
+
+  await refuseRunnerTooOldToNameItsAgent(args.deviceId);
 
   const [runner] = await db
     .select({ id: runners.id, type: runners.type })

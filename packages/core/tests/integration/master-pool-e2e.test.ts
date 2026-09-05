@@ -73,7 +73,7 @@ async function seed() {
   const job = randomUUID();
 
   await harness.db.execute(sql`
-    UPDATE devices SET agent_version = '0.10.5', last_seen_at = now() WHERE id = ${device.id}
+    UPDATE devices SET agent_version = '0.11.0', last_seen_at = now() WHERE id = ${device.id}
   `);
   await harness.db.execute(sql`
     UPDATE projects SET repo_path = '/tmp/pool-test' WHERE id = ${project.id}
@@ -376,6 +376,23 @@ describe('master pool — reaping, load and preparation', () => {
   });
 
   // cm:guard THE regression, and the second half is the whole assertion. A claim that leaves the hold set is a claim the reaper can undo underneath a live agent: measured on epodsystem 2026-09-05, jobs f7f4bce4 and 8b8b7be4 were re-queued with device_id NULL while their agents ran on, and every event they posted came back 403 at 2/s with nothing able to stop them. It needs no dead master — the session-less arm judges by `held_at` age alone, and `runner.start` is documented to block for minutes.
+  // cm:guard this test is the only thing between a version skew and unreviewed work on `main`. A box below the floor resolves no worktree branch, takes the `owns_root` path, runs the agent IN THE REPO ROOT on the base branch, and reports success — silent in the worst direction. Raising the floor without keeping a case at the old version turns the refusal back into that.
+  it('refuses a claim from a runner too old to name its agent, and leaves the job claimable', async () => {
+    const { device, job } = await seed();
+    await harness.db.execute(
+      sql`UPDATE devices SET agent_version = '0.10.5' WHERE id = ${device.id}`,
+    );
+    await expect(
+      mods.claimJobForMaster({ jobId: job, deviceId: device.id, sessionId: randomUUID() }),
+    ).rejects.toThrow(/runner_too_old/);
+    const [row] = (await harness.db.execute(
+      sql`SELECT status, held_by, device_id FROM jobs WHERE id = ${job}`,
+    )) as unknown as Array<Record<string, unknown>>;
+    expect(row?.status).toBe('queued');
+    expect(row?.held_by).toBeNull();
+    expect(row?.device_id).toBeNull();
+  });
+
   it('keeps the stamp when the reaper sweeps a claim old enough to look abandoned', async () => {
     const { device, job } = await seed();
 
