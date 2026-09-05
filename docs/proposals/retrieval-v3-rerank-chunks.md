@@ -108,6 +108,8 @@ for a planted pair of lists with one shared id. It goes red by deleting the `ove
 
 **Shipped in ISS-905** (with phase 3): `memory/rerank.ts`, the required `surface` argument on `runMemorySearch`, `RERANK_MODEL`, the one-in-five holdout drawn per eligible search, and `hitIds` on every hybrid agent analytics row so the exit criterion below can be computed by joining to `memories.last_verified_at`.
 
+**Corrected in ISS-913** (2026-09-05): the reranker is shown the passage that matched (`matchedChunk.text`) on a chunked project, not the row head, and its cache key hashes that text. Measured before the fix on forge-beta: with RRF alone the exact-passage hit was rank 1 on every pass; reranked, forge-dev dropped a 75k-character hit out of the top 8 in 2 of 4 passes and forge-plugin demoted two rank-1 hits to 4 and 5 — the model was judging a document by its first 600 characters while the query matched passage 76.
+
 **Model — owner decision 2026-09-04: the reranker is `cx/gpt-5.6-luna`**, the system-job fast
 model, not a native cross-encoder. That changes the client: there is no `/rerank` wire to call, so
 the rerank is one **listwise** chat completion through `memory/llm.ts:callFastModel`, the same

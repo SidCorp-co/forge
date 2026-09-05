@@ -108,7 +108,9 @@ flowchart TB
   `forge_memory.search` (which the chat toolset registers too) and `forge_knowledge` search pass
   `agent`, `POST /api/memory/search` passes `web`. With `retrievalRerank` on, an agent's `hybrid`
   search fuses `3 × topK` candidates (cap 50) and `rerank.ts:rerankHits` asks the fast model
-  (`RERANK_MODEL`, else `LITELLM_FAST_MODEL`) for one listwise order; the response says
+  (`RERANK_MODEL`, else `LITELLM_FAST_MODEL`) for one listwise order — showing it, per candidate, the
+  text that matched (`rerank.ts:shownText`: the matched passage on a chunked project, the row otherwise,
+  cut at 600 characters), which is also what the rerank cache key hashes; the response says
   `reranked: true`, each hit carries `rerankPosition`, and `score` stays the RRF value, so callers read
   the list in order rather than sorting by score. Prose, an out-of-range index or a failed call keep
   the RRF order with `reranked: false` and never throw; an omitted candidate is appended, never dropped.
