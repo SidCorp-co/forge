@@ -1395,11 +1395,13 @@
   a version skew that fails silently in the worst direction: an older runner resolves no branch,
   takes the `owns_root` path, and runs the agent **in the repo root on the project's base branch** —
   committing unreviewed work onto `main` while the job reports success. Found live on dev1 the same
-  day, with core deployed against binaries still on 0.10.5. `prepareClaimedJob` now reads the box's
-  reported version and throws `runner_too_old` naming it; the hold is released first, so the job
-  stays claimable for a box that can take it. The check sits on the claim rather than in the pool
-  listing deliberately — hiding the work would leave an old box idle with no reason recorded
-  anywhere, where a refusal lands in the master's own transcript.
+  day, with core deployed against binaries still on 0.10.5. The claim now reads the box's reported
+  version and answers `{ ok: false, reason: 'runner_too_old' }` — an ordinary refusal on a 200, like
+  `already_held`, checked before the hold so there is nothing to give back and the job stays
+  claimable for a box that can take it. Not an error: a throw would reach the master as a bare 500
+  with the reason nowhere, and an operator whose box has gone quiet reads that reason in the
+  master's own transcript. The check sits on the claim rather than the pool listing for the same
+  reason — hiding the work would leave an old box idle with nothing anywhere saying why.
 
 - **A runner's status is now a real drain switch, and until this it was a silent no-op.** Moving a
   project from one box to another needs "stop taking new work, finish what you have", and nothing
