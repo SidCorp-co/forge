@@ -31,6 +31,11 @@ playwright/.cache
 # the first worktree job and make the next refresh read a tracked edit as someone's uncommitted work.
 .worktrees
 
+# The `forge` CLI's project marker, written into whatever directory it is run from. Local, not
+# repo config: the slug pins this checkout to one Forge project, so committing it would ship
+# `forge-dev` to every clone of a repo other projects also point at.
+/.forge.json
+
 # OS
 .DS_Store
 Thumbs.db
