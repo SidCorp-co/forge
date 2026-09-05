@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 use crate::config::Config;
 use crate::daemon::dispatch::resolve_repo;
 use crate::daemon::terminal;
-use crate::runner::process::resolve_claude_bin;
+use crate::runner::process::{mcp_tool_timeout_default, resolve_claude_bin};
 use crate::transport::{master as master_api, pool, runners, CoreClient};
 
 /// How often the box asks whether any work exists.
@@ -350,6 +350,15 @@ fn master_argv() -> Vec<String> {
     ]
 }
 
+/// The environment a master's pane needs that a tmux session does not inherit.
+// cm:guard `MCP_TOOL_TIMEOUT` must be carried here explicitly. Every other spawn on this box gets it from `build_command`, which a tmux session does not go through — and Claude Code's own default is ~28h, so one hung MCP call would wedge a master's turn for the rest of the day with the silence ceiling reading it as a healthy pause it cannot distinguish. The operator's own value wins, exactly as it does on the other path.
+fn master_env() -> Vec<(String, String)> {
+    match mcp_tool_timeout_default(std::env::var_os("MCP_TOOL_TIMEOUT").as_deref()) {
+        Some(v) => vec![("MCP_TOOL_TIMEOUT".into(), v.into())],
+        None => Vec::new(),
+    }
+}
+
 /// Make sure this project has a live, registered master, and return its id.
 // cm:guard register with core on EVERY sweep, not only when the pane is created. The row is what `jobs.held_by` carries, so a cached id would keep claiming onto a session core had already reaped — holds nobody can see, under an identity nobody is beating for. `ensureMasterSession` is idempotent precisely so this can be unconditional.
 async fn ensure_master(
@@ -403,7 +412,7 @@ async fn ensure_master(
         &name,
         &resolved.repo_path,
         &master_argv(),
-        &[],
+        &master_env(),
         transcript.as_deref(),
     )
     .await
@@ -665,6 +674,20 @@ mod tests {
             !line.contains(" -p "),
             "a resident master takes no -p: {line}"
         );
+    }
+
+    // cm:guard a tmux session inherits the client environment and `-e` can only SET, never unset — so every variable the master needs that `build_command` would have given it has to be listed here, and the ones it must NOT have are removed by the `sh` line instead. Dropping either half is silent: the master runs, and behaves differently.
+    #[test]
+    fn the_pane_carries_the_mcp_timeout_and_respects_an_operator_override() {
+        let env = master_env();
+        match std::env::var_os("MCP_TOOL_TIMEOUT") {
+            Some(v) if !v.is_empty() => assert!(env.is_empty(), "an operator value must win"),
+            _ => {
+                assert_eq!(env.len(), 1);
+                assert_eq!(env[0].0, "MCP_TOOL_TIMEOUT");
+                assert!(env[0].1.parse::<u64>().is_ok(), "{:?}", env[0].1);
+            }
+        }
     }
 
     // cm:guard the standing brief and the pass prompt must stay SEPARATE, and this is the assertion that fails if they are folded back together: re-sending the brief every 30 seconds is the cold start this change removed, arriving as tokens instead of as a process.

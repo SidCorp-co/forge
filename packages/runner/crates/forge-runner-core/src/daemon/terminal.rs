@@ -128,6 +128,7 @@ pub async fn ensure(
             String::from_utf8_lossy(&out.stderr).trim()
         )));
     }
+    // cm:guard `pipe-pane` can only attach to a pane that already exists, so anything the process prints in the milliseconds before this line is NOT in the transcript. That is the startup banner and nothing a master decides, and it is stated here rather than left for a reader to discover from a transcript that begins mid-sentence.
     if let Some(path) = transcript {
         pipe_pane(name, path).await;
     }
@@ -277,8 +278,15 @@ mod tests {
         let created = ensure(
             &name,
             &dir,
-            &["cat".to_string()],
-            &[("FORGE_TERMINAL_TEST".into(), "1".into())],
+            &[
+                "sh".to_string(),
+                "-c".to_string(),
+                // Echo each line back WITH the env value, rather than printing it
+                // at startup: `pipe-pane` attaches after the process is running.
+                "while IFS= read -r l; do printf '%s env=%s\\n' \"$l\" \"$FORGE_TERMINAL_TEST\"; done"
+                    .to_string(),
+            ],
+            &[("FORGE_TERMINAL_TEST".into(), "carried".into())],
             Some(&log),
         )
         .await
@@ -286,7 +294,7 @@ mod tests {
         assert!(created, "a fresh name must create a session");
         assert!(alive(&name).await, "it must be findable by its exact name");
         assert!(
-            !ensure(&name, &dir, &["cat".to_string()], &[], Some(&log))
+            !ensure(&name, &dir, &["true".to_string()], &[], Some(&log))
                 .await
                 .expect("a second ensure must succeed"),
             "ensure is idempotent: the second call creates nothing"
@@ -304,6 +312,11 @@ mod tests {
                 break;
             }
         }
+        // cm:guard the env assertion is not incidental: a tmux session inherits the CLIENT environment and `-e` is the only way to set one on it, so a dropped `-e` would leave the master running with the daemon's `CLAUDECODE` and without `MCP_TOOL_TIMEOUT` — both silent, both changing how it behaves.
+        assert!(
+            seen.contains("env=carried"),
+            "the -e value must reach the pane: {seen:?}"
+        );
         assert!(seen.contains("first line"), "transcript was: {seen:?}");
         assert!(
             seen.contains("second line"),
