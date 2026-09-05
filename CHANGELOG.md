@@ -11,6 +11,10 @@
 
 ### Added
 
+- `forge-runner` 0.11.1. Carries the master's rate-limit backoff and the pre-spawn heartbeat fix.
+  The claim floor stays at 0.11.0 — it is a per-feature floor naming the first build that can name
+  its agent, not a "must be current" check, so this release does not strand anything.
+
 - Retrieval v3, phase 2b (ISS-908). Project Settings gains a **Memory** tab. A project admin sees the
   project's memory model and, when it is flat, the estimate for switching to chunked (memories,
   characters, passages, embedding calls, minutes) with a *Switch to chunked* button. While the reindex

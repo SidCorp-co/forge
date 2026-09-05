@@ -15,7 +15,7 @@ export const REPO_LOCK_MIN_RUNNER = '0.10.5';
 
 /** First runner release whose claim carries the master's `--agent` name. */
 // cm:guard this module must stay a LEAF — drizzle only, no `db/client.js`. The test factory reads this floor to build a device the claim will accept, and a transitive db import validates env at load time, before a harness has set any: the suite then dies at collection with "Invalid environment" and never runs.
-// cm:edge lockstep -> packages/runner/Cargo.toml — same rule as the floor above: it may only rise to a runner release that has actually been cut, or every box reads as too old and is refused `runner_too_old`
+// cm:edge lockstep -> packages/runner/Cargo.toml — it may only name a build that already EXISTS somewhere the fleet can reach: a published tag, or a version boxes are demonstrably reporting. Never one merely bumped in Cargo.toml and not yet cut — that refuses the whole fleet `runner_too_old` at once, with no upgrade available to satisfy it, and the only symptom is every project going quiet. 0.11.0 is deliberately kept here rather than raised with the 0.11.1 cut: this is a per-FEATURE floor, so it names the first build carrying `--agent` naming, and raising it to each new release would strand boxes over changes the claim does not need.
 export const AGENT_NAMING_MIN_RUNNER = '0.11.0';
 
 /** Whether a reported runner version is at or above `min` (`a.b.c`). */
