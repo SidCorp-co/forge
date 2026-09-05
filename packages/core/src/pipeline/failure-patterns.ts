@@ -66,6 +66,10 @@ export const BOX_SATURATION_PATTERNS: ReadonlyArray<RegExp> = [/\bsession_permit
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — `handle` writes this token when `locks.acquire` times out
 export const REPO_CONTENTION_PATTERNS: ReadonlyArray<RegExp> = [/\brepo_lock_timeout\b/i];
 
+// cm:guard the catch-all for the preflight prefixes `TERMINAL_INFRA_PATTERNS` does NOT name — `push_credentials:` today, and whatever `preflight.rs` adds next. Same diagnosis, `infra`, and the retry `TRANSIENT` used to give it (ISS-451: a broken checkout or an unreachable push remote is an environment fault by construction), but it has to live up here: preflight runs after the pre-spawn beat starts, so with `TRANSIENT` below the cc-startup signal a 20s `ls-remote` timeout was landing as `agent_startup_failed` on a job that never spawned (ISS-920).
+// cm:guard matched AFTER `TERMINAL_INFRA_PATTERNS` and never before it — this pattern subsumes all three of those, so reversing the two makes `origin_remote`/`work_tree`/`repo_path` retry forever against a repo-less project, which is the whole thing ISS-808 made terminal.
+export const PREFLIGHT_PATTERNS: ReadonlyArray<RegExp> = [/\bpreflight[ _-]?failed\b/i];
+
 export const TRANSIENT_PATTERNS: ReadonlyArray<RegExp> = [
   /\bECONN(RESET|REFUSED|ABORTED)\b/i,
   /\bEPIPE\b|\bnetwork[ _-]?error\b/i,
@@ -73,8 +77,6 @@ export const TRANSIENT_PATTERNS: ReadonlyArray<RegExp> = [
   /\b429\b|\brate[ _-]?limit/i,
   /runner (offline|stale|disconnected)/i,
   /pg-?boss[ _-]?(error|timeout)/i,
-  // cm:why ISS-451 (C5) — a pre-claim preflight failure (missing repo, bad git tree, unreachable push remote, missing hooks path) is an environment problem by construction, so it is `infra` even though it looks like a project error
-  /\bpreflight[ _-]?failed\b/i,
 ];
 
 // cm:guard ISS-450 — a TEXT fallback only, for callers that could not derive structured `signals`; prefer the signal, because a CLI that dies during startup retries uselessly on the SAME device and only `transient-cc` routes it to an immediate different-device failover

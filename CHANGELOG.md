@@ -832,11 +832,13 @@
   are matched above the cc-startup signal, because a job that died in either wait never spawned
   and so carries that signal by construction — below it they would have been unreachable.
 
-  **`preflight_failed` was already losing that race**, and this fixes it too. `TERMINAL_INFRA`
-  sat below the same signal, so ISS-808's deliberately terminal verdict — a project with no git
-  repo cannot fix a missing work tree by retrying anywhere — was being converted to a cross-box
-  failover whenever preflight took longer than one 25s heartbeat, which the lock wait, a
-  re-provision and the setup agent all guarantee. It moves up with the other two.
+  **`preflight_failed` was already losing that race**, and this fixes it too. Every preflight
+  verdict sat below the same signal, so ISS-808's deliberately terminal one — a project with no
+  git repo cannot fix a missing work tree by retrying anywhere — was being converted to a
+  cross-box failover, and the prefixes outside that terminal three, `push_credentials` among
+  them, were landing as `agent_startup_failed` on jobs that never started. Preflight takes
+  longer than one 25s heartbeat whenever the lock wait, a re-provision, the setup agent or a 20s
+  `ls-remote` timeout is in play, which is most of the time. All four move up together.
 
   One trade-off, priced: `SESSION_PERMIT_WAIT` is the DEFAULT residency window, and
   `sessionResidencySeconds` is per-project and allowed up to an hour. A project that raises it

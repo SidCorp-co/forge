@@ -29,6 +29,7 @@ import {
   DUPLEX_SESSION_PATTERNS,
   PERMANENT_PATTERNS,
   PERMISSION_PATTERNS,
+  PREFLIGHT_PATTERNS,
   REPO_CONTENTION_PATTERNS,
   TERMINAL_INFRA_PATTERNS,
   TIMEOUT_PATTERNS,
@@ -103,8 +104,8 @@ interface ClassifyInput {
  * returns a verdict — never throws, never `unknown`.
  *
  * Match order: structured `meta.error.type` → runner token → the three
- * pre-spawn verdicts (TERMINAL_INFRA / BOX_SATURATION / REPO_CONTENTION, all
- * above the cc-startup signal) → spend-cap →
+ * pre-spawn verdicts (TERMINAL_INFRA / PREFLIGHT / BOX_SATURATION /
+ * REPO_CONTENTION, all above the cc-startup signal) → spend-cap →
  * usage/session limit → cc-startup signal → PERMISSION (infra) →
  * DUPLEX_SESSION (infra) → TIMEOUT → PERMANENT (code) → TRANSIENT (infra) →
  * CC_STARTUP text fallback → infra + needsReview. Permission/timeout precede
@@ -183,12 +184,23 @@ function classifyKind(
     return { kind: runnerKind, cause: textCause, reason: reasonExcerpt, meta };
   }
 
-  // cm:guard the three pre-spawn verdicts are matched HERE, above the cc-startup signal, and moving any of them down makes it unreachable rather than merely late: none of these jobs ever spawned, and the pre-spawn heartbeat leaves every one looking exactly like a startup death to `deriveCcStartupSignals`, which counts ALL job events (ISS-920). `TERMINAL_INFRA` was below it and was silently being converted from `terminal` to a cross-box `failover` — ISS-808's whole point is that a repo-less project cannot fix those by retrying anywhere.
+  // cm:guard the four pre-spawn verdicts are matched HERE, above the cc-startup signal, and moving any of them down makes it unreachable rather than merely late: none of these jobs ever spawned, and the pre-spawn heartbeat leaves every one looking exactly like a startup death to `deriveCcStartupSignals`, which counts ALL job events (ISS-920). Every preflight prefix belongs in this group — the three terminal ones AND the catch-all — because a `push_credentials` timeout was still landing as `agent_startup_failed` after the first three moved up.
   for (const pat of TERMINAL_INFRA_PATTERNS) {
     if (pat.test(text)) {
       return {
         kind: 'infra',
         action: 'terminal',
+        cause: 'workspace_preflight_failed',
+        reason: reasonExcerpt || 'workspace preflight (pattern match)',
+        meta,
+      };
+    }
+  }
+
+  for (const pat of PREFLIGHT_PATTERNS) {
+    if (pat.test(text)) {
+      return {
+        kind: 'infra',
         cause: 'workspace_preflight_failed',
         reason: reasonExcerpt || 'workspace preflight (pattern match)',
         meta,

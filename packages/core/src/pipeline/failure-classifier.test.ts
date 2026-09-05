@@ -167,9 +167,7 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
   });
 
   it('classifies "runner stale" as infra (transient patterns)', () => {
-    // The "runner (offline|stale|disconnected)" branch lives in the
-    // transient→infra bucket; mixed phrasings like "runner stale heartbeat"
-    // can legitimately land on either side of the split and are not asserted.
+    // cm:why only the bare phrasing is asserted — "runner stale heartbeat" straddles the transient and timeout buckets and may legitimately land on either side of the split.
     expect(classifyFailure({ error: 'runner stale' }).kind).toBe('infra');
   });
 
@@ -433,6 +431,17 @@ describe('failure-classifier — a full box says the box is full (ISS-920)', () 
     });
     expect(r.kind).toBe('infra');
     expect(r.action).toBe('terminal');
+    expect(r.cause).toBe('workspace_preflight_failed');
+  });
+
+  // cm:guard `push_credentials` is the preflight prefix TERMINAL_INFRA does not name, so it rides the catch-all — which was the LAST table still below the signal. `LS_REMOTE_TIMEOUT` alone is 20s against a 25s beat, so this is the common case, not the corner.
+  it('a preflight prefix outside the terminal three still reads as a preflight fault', () => {
+    const r = classifyFailure({
+      error: 'preflight_failed: push_credentials: ls-remote timed out after 20s',
+      signals: { diedBeforeFirstToolUse: true, sessionMessageCount: 0 },
+    });
+    expect(r.kind).toBe('infra');
+    expect(r.action).toBe('retry');
     expect(r.cause).toBe('workspace_preflight_failed');
   });
 
