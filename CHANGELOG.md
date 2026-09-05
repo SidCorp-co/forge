@@ -492,6 +492,10 @@
   signal; `forge_skills.adopt` remains the one way to take a newer template, by hand, when someone
   asks for it.
 
+  *Superseded the same day: the eleven `cm:ignore CM013` lines described below were removed once
+  the counter was fixed (see Fixed → "A debt that could not fall by one"). The paragraph stands as
+  the record of what was traded and for how long.*
+
   Six of those files carry a `cm:ignore CM013` this change added, and it is an amnesty with a
   price. The drain gate that landed hours earlier (ISS-844) asks for one frozen comment per edited
   file, and its counter cannot see one paid: `debtOf`'s `blockAlive` coarsening counts every frozen
@@ -784,6 +788,31 @@
   set is now 59.
 
 ### Fixed
+
+- **A debt that could not fall by one was a wall, not a debt.** `CM013` asks an edited file to pay
+  one of its frozen comments, and its counter could not see one paid. `debtOf` OR'd a single
+  per-FILE `blockAlive` into every frozen key, so a file was charged its whole frozen count while
+  *any* of its comment blocks survived. Measured on `packages/core/src/skills/builtin-seed.ts`
+  2026-09-05: deleting 1 of its 19 frozen comments left the debt at 19, deleting 4 left 19, and only
+  deleting all 19 paid. The gate asked for one comment and would take nothing less than the file,
+  which is how eleven `cm:ignore CM013` lines went into two commits in a single afternoon — an
+  escape hatch spent as routine is a gate switching itself off.
+
+  Fixed upstream in `forge-pipeline-skills` (codemap 0.16.1, vendored here): ISS-21's reflow credit
+  is kept but charged per **block** — a rewrapped block keeps its block key while every line key
+  under it changes, so it stands in for the frozen prose it still holds and costs one, not the
+  file's total. Both call sites still compute it from the analysis alone, which is what lets
+  `cm verify`'s debt line and the rule keep agreeing without a base revision. All eleven ignores are
+  gone; verified on `mcp/tools/forge-issues.ts` — a code edit alone reports *37 still frozen*, and
+  deleting one frozen comment clears it.
+
+  Priced (`cm:hack ISS-849` on `debtOf`): a block whose frozen keys were *all* rewrapped is charged
+  1 rather than the count it held, so rewrapping a two-comment block beside a code edit lowers the
+  debt by one and passes. Closing that needs the baseline to record each block's key count, which is
+  a re-freeze; until then the loophole is narrow, deliberate, and named in the code. The plugin's
+  golden corpus could not see any of this — every drain case lived in a one-block file, where a paid
+  comment always takes its block key with it — so two cases now use a two-block file, and the
+  payment one fails on the old counter naming its own rule.
 
 - **Revoking a device was impossible for an OAuth-only owner.** `DELETE /api/devices/:id` sat behind
   `requireFreshAuth(5)`, and the only thing that stamps `last_fresh_auth_at` is

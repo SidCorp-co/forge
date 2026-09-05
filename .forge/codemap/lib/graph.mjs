@@ -1,4 +1,4 @@
-// @generated codemap 0.16.0 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.16.1 — vendored by `cm install`; edit the plugin, not this.
 // The declared-edge graph: flows, edges, guards, hacks — plus the checks that keep it from
 // rotting (codemap/1 §7 referential + structural tiers) and the impact query.
 

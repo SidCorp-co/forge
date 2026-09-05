@@ -1,4 +1,4 @@
-// @generated codemap 0.16.0 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.16.1 — vendored by `cm install`; edit the plugin, not this.
 // Which diagnostics from a `cm verify --json` report actually block an edit.
 //
 // Split out of hook-post-edit.mjs so metrics.mjs can ask the same question when it reconciles a

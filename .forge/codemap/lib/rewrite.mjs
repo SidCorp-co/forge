@@ -1,4 +1,4 @@
-// @generated codemap 0.16.0 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.16.1 — vendored by `cm install`; edit the plugin, not this.
 // codemap/1 §4 / principle 6 — the tool owns the format, so it owns the rewrite.
 //
 // The first implementation re-found the annotation with /(^|\s)(\/\/|#|--)\s*cm:.*$/ and counted every

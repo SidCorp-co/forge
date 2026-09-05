@@ -1,4 +1,4 @@
-// @generated codemap 0.16.0 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.16.1 — vendored by `cm install`; edit the plugin, not this.
 // codemap/1 §3 §4 §7 — grammar, canonical form, diagnostics.
 
 export const TAGS = ['flow', 'edge', 'guard', 'hack', 'why'];

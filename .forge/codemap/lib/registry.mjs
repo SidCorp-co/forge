@@ -1,4 +1,4 @@
-// @generated codemap 0.16.0 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.16.1 — vendored by `cm install`; edit the plugin, not this.
 // codemap/1 §8 — registry, baseline, path selection.
 //
 // JSON rather than YAML so the whole framework runs on a bare `node` with zero dependencies:

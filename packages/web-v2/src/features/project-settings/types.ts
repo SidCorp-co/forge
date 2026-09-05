@@ -1,4 +1,3 @@
-// cm:ignore CM013 — unpayable as written: `debtOf`'s blockAlive coarsening (.forge/codemap/lib/drain.mjs) counts EVERY frozen key while any frozen block survives, so a file's debt reads unchanged until it reaches zero. Measured 2026-09-05 on effective.ts: deleting 1 of 19 left 19, deleting 4 left 19, deleting all 19 paid. Derivable prose was still deleted here; this line goes when the plugin counts per-key.
 import type { UxPreset, UxRuleGroup, UxRuleSource, UxStackProfile } from "@forge/contracts";
 
 export type {

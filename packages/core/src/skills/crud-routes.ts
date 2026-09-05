@@ -1,4 +1,3 @@
-// cm:ignore CM013 — unpayable as written: `debtOf`'s blockAlive coarsening (.forge/codemap/lib/drain.mjs) counts EVERY frozen key while any frozen block survives, so a file's debt reads unchanged until it reaches zero. Measured on this file 2026-09-05: deleting 1 frozen comment left the count at 19, deleting 4 left 19, deleting all 19 paid. Derivable prose was still deleted here; this line goes when the plugin counts per-key.
 import { zValidator } from '@hono/zod-validator';
 import { and, asc, eq, inArray, or, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
