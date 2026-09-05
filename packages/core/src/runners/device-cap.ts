@@ -13,6 +13,23 @@ import { sql } from 'drizzle-orm';
 // cm:edge lockstep -> packages/runner/Cargo.toml — this string names a runner release; it may only rise to a version that has actually been cut and published, or every box reads as too old and the whole fleet silently falls back to cap 1
 export const REPO_LOCK_MIN_RUNNER = '0.10.5';
 
+/** First runner release whose claim carries the master's `--agent` name. */
+// cm:guard this module must stay a LEAF — drizzle only, no `db/client.js`. The test factory reads this floor to build a device the claim will accept, and a transitive db import validates env at load time, before a harness has set any: the suite then dies at collection with "Invalid environment" and never runs.
+// cm:edge lockstep -> packages/runner/Cargo.toml — same rule as the floor above: it may only rise to a runner release that has actually been cut, or every box reads as too old and is refused `runner_too_old`
+export const AGENT_NAMING_MIN_RUNNER = '0.11.0';
+
+/** Whether a reported runner version is at or above `min` (`a.b.c`). */
+export function atLeastVersion(version: string | null | undefined, min: string): boolean {
+  if (!version) return false;
+  const a = version.split('.').map(Number);
+  const b = min.split('.').map(Number);
+  if (a.length !== 3 || a.some(Number.isNaN)) return false;
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] as number) !== (b[i] as number)) return (a[i] as number) > (b[i] as number);
+  }
+  return true;
+}
+
 const MIN_PARTS = REPO_LOCK_MIN_RUNNER.split('.').map(Number);
 
 function atLeast(version: string | null | undefined, min: number[]): boolean {

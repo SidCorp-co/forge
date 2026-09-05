@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { OrgMemberRole, ProjectMemberRole } from '../../src/db/schema.js';
+import { AGENT_NAMING_MIN_RUNNER } from '../../src/runners/device-cap.js';
 import type { TestDb } from './db.js';
 
 /**
@@ -208,6 +209,8 @@ export interface CreateTestDeviceOverrides {
   name?: string;
   platform?: TestDevice['platform'];
   status?: TestDevice['status'];
+  /** Runner release this box reports. Defaults to the claim floor. */
+  agentVersion?: string | null;
 }
 
 export async function createTestDevice(
@@ -222,12 +225,15 @@ export async function createTestDevice(
     platform: overrides.platform ?? 'linux',
     status: overrides.status ?? 'online',
   };
+  // cm:guard default to the CLAIM FLOOR, not a literal. A device with no version is below the floor, so every claim from a factory-made box is refused `runner_too_old` — which is invisible in a test that asserts something further down the claim, like the budget gate (measured 2026-09-05: 4 budget-check-e2e tests). Bind it to the constant so raising the floor cannot silently re-break them; a test that wants an OLD box sets agent_version itself.
+  const agentVersion =
+    overrides.agentVersion === undefined ? AGENT_NAMING_MIN_RUNNER : overrides.agentVersion;
   const tokenHash = `!test-device-hash-${device.id}`;
   const tokenPrefix = device.id.slice(0, 8);
 
   await db.execute(sql`
-    INSERT INTO devices (id, owner_id, name, platform, token_hash, token_prefix, status)
-    VALUES (${device.id}, ${device.ownerId}, ${device.name}, ${device.platform}, ${tokenHash}, ${tokenPrefix}, ${device.status})
+    INSERT INTO devices (id, owner_id, name, platform, token_hash, token_prefix, status, agent_version)
+    VALUES (${device.id}, ${device.ownerId}, ${device.name}, ${device.platform}, ${tokenHash}, ${tokenPrefix}, ${device.status}, ${agentVersion})
   `);
 
   return device;

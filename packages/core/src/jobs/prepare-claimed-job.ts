@@ -18,6 +18,7 @@ import { devices, issueLabels, issues, jobs, labels, projects, runners } from '.
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { logger } from '../logger.js';
 import { injectAfterInvocation, injectTurnLevelRules } from '../prompt/user.js';
+import { AGENT_NAMING_MIN_RUNNER, atLeastVersion } from '../runners/device-cap.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
 import { loadPriorAttempts, renderPriorAttemptsBlock } from './prior-attempts.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
@@ -157,20 +158,6 @@ async function applyCarveout(
  */
 // cm:guard call this AFTER the claim transaction commits, never inside it. Both writes at the end go through the module-level `db` rather than a passed `tx`, so a preparation placed inside would survive a rollback and leave a session row plus a prompt snapshot for a hold that never landed.
 // cm:guard the device is an ARGUMENT and is never re-picked here. The master already decided which box runs this, and a second opinion about the device is how the session row and the process that starts end up describing different machines.
-/** First runner release whose claim carries the master's `--agent` name. */
-export const AGENT_NAMING_MIN_RUNNER = '0.11.0';
-
-function atLeast(version: string | null | undefined, min: string): boolean {
-  if (!version) return false;
-  const a = version.split('.').map(Number);
-  const b = min.split('.').map(Number);
-  if (a.length !== 3 || a.some(Number.isNaN)) return false;
-  for (let i = 0; i < 3; i++) {
-    if ((a[i] as number) !== (b[i] as number)) return (a[i] as number) > (b[i] as number);
-  }
-  return true;
-}
-
 /**
  * Can this box name the agent's worktree, or would it run in the repo root?
  */
@@ -181,7 +168,7 @@ export async function canNameItsAgent(deviceId: string): Promise<boolean> {
     .from(devices)
     .where(eq(devices.id, deviceId))
     .limit(1);
-  return atLeast(device?.v ?? null, AGENT_NAMING_MIN_RUNNER);
+  return atLeastVersion(device?.v ?? null, AGENT_NAMING_MIN_RUNNER);
 }
 
 export async function prepareClaimedJob(args: {
