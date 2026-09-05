@@ -236,6 +236,12 @@ const FLUSH_INTERVAL: Duration = Duration::from_millis(500);
 /// (`PIPELINE_HEARTBEAT_TIMEOUT_MS`, min 30s) and matches desktop parity
 /// (`packages/dev/src/hooks/use-web-socket.ts`). See ISS-285.
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(25);
+/// How long the pre-spawn phase may keep claiming progress before it goes quiet.
+// cm:guard the beat must be BOUNDED, and it must go quiet rather than fail the job. It asserts "setup is progressing" with nothing checking that setup still is, so an unbounded one keeps a wedged fetch or a leaked repo lock looking alive forever — the silent stall this heartbeat's own reaper exists to catch. Going quiet hands the verdict to core's heartbeat hop, which owns terminality; failing from here would race a `runner.start` that may still succeed and leave a terminal job with a live agent under it.
+const PRE_SPAWN_MAX_TICKS: u32 = 24;
+/// How long a job may wait for another job on this box to finish with the repo.
+// cm:guard a bounded wait, because `locks.acquire` has no deadline of its own: a leaked guard parks every later job on the box forever, and the failure names the wrong thing (a dead agent) at whatever reaper notices first.
+const REPO_LOCK_WAIT: Duration = Duration::from_secs(15 * 60);
 
 /// Read the on-disk `.hash` markers from `<repo>/.claude/skills/*/` to build
 /// the `skillsRanWith` map sent to the server at ACK time (ISS-798).
@@ -360,14 +366,49 @@ pub async fn handle(
     let slug = resolved.slug;
 
     // cm:guard hold the root from HERE until the session owns a tree of its own. `measure` runs `workspace::refresh` (fetch · checkout -- · merge --ff-only) on the ROOT for every job, worktree lane included, and `runner.start` adds the worktree to the root's `.git` — two jobs doing that at once write one index. This guard, not the core-side cap, is what makes a per-device cap above 1 safe.
-    // cm:guard the wait sits BEFORE `lifecycle::ack` on purpose, and must stay there. Unacked, a job that queues behind a busy root is still core's to re-dispatch elsewhere; move the acquire after the ack and the same wait becomes a silent post-ack stall that the 3-minute session reaper answers by killing it.
+    // cm:guard the heartbeat MUST start before this wait, not after it. Core flips a session `queued -> running` on its first job event, and the claim hop fails a session still `queued` 120s after dispatch — so a job queued behind a busy root posted nothing and was reaped as if the box were dead. Measured on epodsystem 2026-09-05: 61 sessions. The premise this guard used to carry (leave it unacked so core can re-dispatch elsewhere) died with the push dispatcher; under the pool a job is claimed by the box that will run it, and nothing re-routes it.
+    let pre_spawn_beat = AbortOnDrop({
+        let client = client.clone();
+        let job_id = job_id.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(HEARTBEAT_INTERVAL);
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            tick.tick().await;
+            for _ in 0..PRE_SPAWN_MAX_TICKS {
+                tick.tick().await;
+                let beat = [JobEventInput::new(
+                    "progress",
+                    serde_json::json!({ "heartbeat": true, "phase": "pre-spawn" }),
+                )];
+                if let Err(e) = post_job_events(&client, &job_id, &beat).await {
+                    tracing::debug!("[job {job_id}] pre-spawn heartbeat: {e}");
+                }
+            }
+            tracing::warn!(
+                "[job {job_id}] still not spawned after the pre-spawn budget — going quiet so the heartbeat reaper can judge it"
+            );
+        })
+    });
     if locks.is_busy(&resolved.repo_path) {
         tracing::info!(
             "[job {job_id}] waiting for the repo root {} — another job on this box holds it",
             resolved.repo_path.display()
         );
     }
-    let repo_guard = locks.acquire(&resolved.repo_path).await;
+    let repo_guard =
+        match tokio::time::timeout(REPO_LOCK_WAIT, locks.acquire(&resolved.repo_path)).await {
+            Ok(g) => g,
+            Err(_) => {
+                let msg = format!(
+                    "repo_lock_timeout: {} is still held after {}s",
+                    resolved.repo_path.display(),
+                    REPO_LOCK_WAIT.as_secs()
+                );
+                tracing::error!("[job {job_id}] {msg}");
+                let _ = lifecycle::fail(client, &job_id, &msg).await;
+                return Ok(());
+            }
+        };
 
     // ISS-451 (ISS-442 C5, invariant I6): fail fast BEFORE claiming the job
     // when the repo / push credentials / hooks are broken, instead of a
@@ -546,28 +587,9 @@ pub async fn handle(
     };
 
     // cm:guard the session heartbeat loop in `consume` starts only after the process spawns, and `runner.start` can block for minutes before that — a duplex job waits on the session semaphore while parked `awaiting_input` sessions hold every permit, and `worktree::create` on a large repo is not instant. Core reaps a silent session at 3 minutes: sidpeak release job 483387d4 (2026-09-03) waited 4.5 min for a permit after ack, was killed as `session_lost` and answered the kill probe `not_found`. Beat from ack until `start` returns, or the wait is indistinguishable from a dead runner.
-    let pre_spawn_beat = {
-        let client = client.clone();
-        let job_id = job_id.clone();
-        tokio::spawn(async move {
-            let mut tick = tokio::time::interval(HEARTBEAT_INTERVAL);
-            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-            tick.tick().await;
-            loop {
-                tick.tick().await;
-                let beat = [JobEventInput::new(
-                    "progress",
-                    serde_json::json!({ "heartbeat": true, "phase": "pre-spawn" }),
-                )];
-                if let Err(e) = post_job_events(&client, &job_id, &beat).await {
-                    tracing::debug!("[job {job_id}] pre-spawn heartbeat: {e}");
-                }
-            }
-        })
-    };
     let (tx, rx) = mpsc::channel::<RunnerEvent>(200);
     let started = runner.start(spec, tx).await;
-    pre_spawn_beat.abort();
+    drop(pre_spawn_beat);
     // cm:guard release only for a lane that got its own worktree. `start` returning means the tree exists and the process is spawned, so this job's writes have left the root — but a stage with no `worktreeBranch` (`pm`, `interactive`) runs its whole session IN the root, and handing the root to a second job underneath it rewrites files the agent is reading.
     if !owns_root {
         drop(repo_guard);
@@ -581,6 +603,16 @@ pub async fn handle(
 
     consume(client, &job_id, rx, salvage_ctx).await;
     Ok(())
+}
+
+/// A background task that must not outlive the scope that started it.
+// cm:guard this exists because the pre-spawn heartbeat now starts BEFORE the repo lock, and every `preflight_failed` path between there and `runner.start` returns early. A bare `JoinHandle` leaks a task that keeps posting `phase: pre-spawn` events for a job that already failed — which reads on the timeline as a dead job still making progress.
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
 }
 
 /// What a failed job needs before its working copy can be preserved.
