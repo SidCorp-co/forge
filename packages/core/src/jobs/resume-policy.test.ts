@@ -17,7 +17,7 @@ vi.mock('../runners/select.js', () => ({ getTrippedDeviceIds: trippedDeviceIds }
 
 vi.mock('./session-resume.js', () => ({
   estimateIssueContextTokens: vi.fn(async () => 0),
-  loadResumeBounds: vi.fn(async () => ({ maxResumeTokens: 0, maxResumeReopenCycles: 0 })),
+  loadResumeBounds: vi.fn(async () => ({ maxResumeTokens: 0 })),
 }));
 
 vi.mock('../observability/hold-metrics.js', () => ({ recordResumeDrop: vi.fn() }));
@@ -87,10 +87,7 @@ beforeEach(() => {
   vi.mocked(recordResumeDrop).mockClear();
   trippedDeviceIds.mockResolvedValue([]);
   vi.mocked(estimateIssueContextTokens).mockResolvedValue(0);
-  vi.mocked(loadResumeBounds).mockResolvedValue({
-    maxResumeTokens: 0,
-    maxResumeReopenCycles: 0,
-  });
+  vi.mocked(loadResumeBounds).mockResolvedValue({ maxResumeTokens: 0 });
 });
 
 describe('resolveResumePolicy — retry resume window', () => {
@@ -269,10 +266,7 @@ describe('resolveResumePolicy — a first dispatch has nothing to drop', () => {
   });
 
   it('records NOTHING even under a bound that a retry would have tripped', async () => {
-    vi.mocked(loadResumeBounds).mockResolvedValue({
-      maxResumeTokens: 150_000,
-      maxResumeReopenCycles: 3,
-    });
+    vi.mocked(loadResumeBounds).mockResolvedValue({ maxResumeTokens: 150_000 });
     vi.mocked(estimateIssueContextTokens).mockResolvedValue(363_000);
 
     const out = await resolve({
@@ -289,10 +283,7 @@ describe('resolveResumePolicy — a first dispatch has nothing to drop', () => {
 // cm:guard the bounds apply to the RETRY path and must keep applying there — it is the one path that still has a transcript to continue, so a bound that stopped being read would let an attempt resume past the peak that already forced a compaction.
 describe('resolveResumePolicy — the bounds a retry is judged against', () => {
   it('names the token bound when the issue outgrew maxResumeTokens', async () => {
-    vi.mocked(loadResumeBounds).mockResolvedValue({
-      maxResumeTokens: 150_000,
-      maxResumeReopenCycles: 3,
-    });
+    vi.mocked(loadResumeBounds).mockResolvedValue({ maxResumeTokens: 150_000 });
     vi.mocked(estimateIssueContextTokens).mockResolvedValue(363_000);
     parentAttempt({ ranOn: 'dev-a' });
     selectQueue.push([{ reopenCount: 0 }]);
@@ -308,11 +299,9 @@ describe('resolveResumePolicy — the bounds a retry is judged against', () => {
     expect(recordResumeDrop).toHaveBeenCalledWith('resume_bound_tokens');
   });
 
-  it('names the reopen bound when the token bound holds but the cycles do not', async () => {
-    vi.mocked(loadResumeBounds).mockResolvedValue({
-      maxResumeTokens: 150_000,
-      maxResumeReopenCycles: 3,
-    });
+  // cm:guard the reopen-cycles bound this replaced was deleted by ISS-895: it compared `reopen_count` — a column this lane never moves — so it evaluated 0 for every issue and could not fire. A bound that cannot fire and a bound that holds report the same thing.
+  it('does not drop the resume on reopen count, which this lane never moves', async () => {
+    vi.mocked(loadResumeBounds).mockResolvedValue({ maxResumeTokens: 150_000 });
     vi.mocked(estimateIssueContextTokens).mockResolvedValue(1_000);
     parentAttempt({ ranOn: 'dev-a' });
     selectQueue.push([{ reopenCount: 4 }]);
@@ -323,14 +312,12 @@ describe('resolveResumePolicy — the bounds a retry is judged against', () => {
       agentConfig: undefined,
     });
 
-    expect(out.record.dropReason).toBe('resume_bound_reopen_cycles');
+    expect(out.record.dropReason).toBeNull();
+    expect(out.record.resumed).toBe(true);
   });
 
-  it('BOUNDARY: exactly AT both bounds still resumes and records nothing', async () => {
-    vi.mocked(loadResumeBounds).mockResolvedValue({
-      maxResumeTokens: 150_000,
-      maxResumeReopenCycles: 3,
-    });
+  it('BOUNDARY: exactly AT the token bound still resumes and records nothing', async () => {
+    vi.mocked(loadResumeBounds).mockResolvedValue({ maxResumeTokens: 150_000 });
     vi.mocked(estimateIssueContextTokens).mockResolvedValue(150_000);
     parentAttempt({ ranOn: 'dev-a' });
     selectQueue.push([{ reopenCount: 3 }]);

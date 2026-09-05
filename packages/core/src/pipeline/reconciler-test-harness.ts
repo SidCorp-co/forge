@@ -3,9 +3,8 @@
  *
  * `runReconcilerOnce` issues its queries through `db.execute` with no way to
  * name them, so the fake routes on the SQL text and each pass gets its own
- * queue. Two test files drive the same tick from opposite ends — the staged
- * passes and the autonomous ones — and duplicating this router would let the
- * two copies disagree about which pass a query belongs to.
+ * queue. Two test files drive the same tick, and duplicating this router would
+ * let the two copies disagree about which pass a query belongs to.
  */
 
 import { vi } from 'vitest';
@@ -15,17 +14,7 @@ export interface StuckRow {
   project_id: string;
   status: string;
   created_by: string | null;
-  mode: string | null;
   reopen_count: number;
-}
-
-export interface WedgeRow {
-  id: string;
-  project_id: string;
-  status: string;
-  reopen_count: number;
-  created_by: string | null;
-  job_type: string;
 }
 
 export interface AutonomousWedgeRow {
@@ -38,7 +27,6 @@ export interface AutonomousWedgeRow {
 
 export const stuckQueue: StuckRow[][] = [];
 export const staleCountQueue: Array<Array<{ count: string | number }>> = [];
-export const wedgeQueue: WedgeRow[][] = [];
 export const autonomousWedgeQueue: AutonomousWedgeRow[][] = [];
 export const jobsQueue: Array<Array<{ one: number }>> = [];
 
@@ -60,13 +48,9 @@ function templateText(q: unknown): string {
 
 export const dbExecute = vi.fn(async (q: unknown) => {
   const firstSql = templateText(q);
-  // cm:guard match on agent_config AND lateral together, never either alone: the stuck-issue query reads `agent_config` too (it carries the project's mode) and the ISS-598 wedge query has its own LATERAL, so a single-key router swallows one of the three and its tests then assert on rows the pass never saw. Only the ISS-890 query has both.
-  if (/agent_config/i.test(firstSql) && /lateral/i.test(firstSql)) {
+  // cm:guard the ISS-890 wedge query also selects FROM issues, so it must be routed off its LATERAL join BEFORE the generic issues check below, or the stuck-issue branch swallows it and its tests assert on rows the pass never saw. The third arm this router used to carry (the ISS-598 staged wedge, disambiguated from this one by `agent_config`) went with that pass in ISS-895 — which is why `lateral` alone is now unambiguous.
+  if (/lateral/i.test(firstSql)) {
     return autonomousWedgeQueue.shift() ?? [];
-  }
-  // cm:guard the ISS-598 wedge query also selects FROM issues, so it must be routed off its pipeline_runs / LATERAL join BEFORE the generic issues check below, or the stuck-issue branch swallows it.
-  if (/pipeline_runs/i.test(firstSql) || /lateral/i.test(firstSql)) {
-    return wedgeQueue.shift() ?? [];
   }
   if (/from\s+issues/i.test(firstSql)) {
     return stuckQueue.shift() ?? [];
@@ -82,7 +66,6 @@ export const dbExecute = vi.fn(async (q: unknown) => {
 });
 
 export const reEnqueueMock = vi.fn(async () => undefined);
-export const stallGuardMock = vi.fn(async () => ({ stalled: false }));
 export const capMock = vi.fn(async () => ({
   capped: false,
   runId: 'run-a1' as string | null,
@@ -94,14 +77,11 @@ export const sentryAddBreadcrumb = vi.fn();
 export function resetHarness(): void {
   stuckQueue.length = 0;
   staleCountQueue.length = 0;
-  wedgeQueue.length = 0;
   autonomousWedgeQueue.length = 0;
   jobsQueue.length = 0;
   dbExecute.mockClear();
   reEnqueueMock.mockReset();
   reEnqueueMock.mockResolvedValue(undefined);
-  stallGuardMock.mockReset();
-  stallGuardMock.mockResolvedValue({ stalled: false });
   capMock.mockReset();
   capMock.mockResolvedValue({ capped: false, runId: 'run-a1' });
   recordRescueMock.mockReset();
@@ -115,6 +95,5 @@ export function resetHarness(): void {
 export function seedIdle(): void {
   stuckQueue.push([]);
   staleCountQueue.push([{ count: 0 }]);
-  wedgeQueue.push([]);
   autonomousWedgeQueue.push([]);
 }

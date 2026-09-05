@@ -43,7 +43,6 @@ import { pipelineConfigHttpError } from './pipeline-config-http.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
 import { projectRunnerRoutes } from './runners-routes.js';
 import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
-import { skillsBootstrapRoutes } from './skills-bootstrap-routes.js';
 import { mergeStateContext, stateContextSchema } from './state-context.js';
 
 export const createProjectSchema = z.object({
@@ -789,13 +788,6 @@ projectRoutes.get(
     return c.json(resolved);
   },
 );
-
-// ISS-2A / ISS-453 — POST /:id/skills/bootstrap. The template sets, presets,
-// and idempotent bootstrap workflow are skills-domain logic and live in
-// ../skills/bootstrap-service.ts; the thin HTTP delegate lives in
-// ./skills-bootstrap-routes.ts. Mounted here so it inherits this router's
-// auth middleware exactly as before the split.
-projectRoutes.route('/', skillsBootstrapRoutes);
 
 // ISS-733 — POST /:id/onboard. The "Build Project Brain" trigger; the thin
 // HTTP delegate lives in ./onboard-routes.ts.

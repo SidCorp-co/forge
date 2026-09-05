@@ -39,43 +39,43 @@ describe('loadResumeBounds (ISS-580)', () => {
   it('returns defaults when project has no pipelineConfig', async () => {
     selectLimitResults.push([{ agentConfig: null }]);
     const bounds = await loadResumeBounds('p-1');
-    expect(bounds).toEqual({ maxResumeTokens: 150_000, maxResumeReopenCycles: 3 });
+    expect(bounds).toEqual({ maxResumeTokens: 150_000 });
   });
 
   it('returns defaults when pipelineConfig is missing the new fields', async () => {
     selectLimitResults.push([{ agentConfig: { pipelineConfig: { enabled: true } } }]);
     const bounds = await loadResumeBounds('p-1');
-    expect(bounds).toEqual({ maxResumeTokens: 150_000, maxResumeReopenCycles: 3 });
+    expect(bounds).toEqual({ maxResumeTokens: 150_000 });
   });
 
   it('returns configured values when both fields are present', async () => {
     selectLimitResults.push([
       {
         agentConfig: {
-          pipelineConfig: { maxResumeTokens: 200_000, maxResumeReopenCycles: 5 },
+          pipelineConfig: { maxResumeTokens: 200_000 },
         },
       },
     ]);
     const bounds = await loadResumeBounds('p-1');
-    expect(bounds).toEqual({ maxResumeTokens: 200_000, maxResumeReopenCycles: 5 });
+    expect(bounds).toEqual({ maxResumeTokens: 200_000 });
   });
 
   it('treats 0 as a valid (gate-disabled) value', async () => {
     selectLimitResults.push([
       {
         agentConfig: {
-          pipelineConfig: { maxResumeTokens: 0, maxResumeReopenCycles: 0 },
+          pipelineConfig: { maxResumeTokens: 0 },
         },
       },
     ]);
     const bounds = await loadResumeBounds('p-1');
-    expect(bounds).toEqual({ maxResumeTokens: 0, maxResumeReopenCycles: 0 });
+    expect(bounds).toEqual({ maxResumeTokens: 0 });
   });
 
   it('falls back to defaults on DB error', async () => {
     limitSpy.mockRejectedValueOnce(new Error('db down'));
     const bounds = await loadResumeBounds('p-1');
-    expect(bounds).toEqual({ maxResumeTokens: 150_000, maxResumeReopenCycles: 3 });
+    expect(bounds).toEqual({ maxResumeTokens: 150_000 });
   });
 });
 

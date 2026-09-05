@@ -120,12 +120,13 @@ export const issuesApi = {
   /** `GET /api/projects/:projectId/labels` — label filter option source (ISS-586). */
   labels: (projectId: string) => apiClient<IssueLabel[]>(`/projects/${projectId}/labels`),
 
-  /** `POST /api/issues/:id/run-pipeline-step` — kick the pipeline (409 if a job
-   *  is already active). `stage` optional. */
-  runPipelineStep: (id: string, stage?: string) =>
+  /** `POST /api/issues/:id/run-pipeline-step` — hand the issue to the driver
+   *  (409 if a job is already active, or if it is not at the entry status).
+   *  Takes no body: there is one lane and one step to run. */
+  runPipelineStep: (id: string) =>
     apiClient<unknown>(`/issues/${id}/run-pipeline-step`, {
       method: "POST",
-      body: JSON.stringify(stage ? { stage } : {}),
+      body: "{}",
     }),
 };
 

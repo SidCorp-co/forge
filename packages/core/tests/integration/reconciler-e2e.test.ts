@@ -69,21 +69,17 @@ describe('ISS-196 reconciler (real Postgres)', () => {
     // updated_at intentionally older than 60s — qualifies as stuck.
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, title, status, created_by_id, updated_at)
-      VALUES (${issueId}, ${project.id}, 'stale', 'confirmed', ${user.id}, now() - interval '5 minutes')
+      VALUES (${issueId}, ${project.id}, 'stale', 'open', ${user.id}, now() - interval '5 minutes')
     `);
 
     // Verify the reconciler's SELECT (in-list builder) finds this row. We hit
     // the same SQL by importing the module's internal helper isn't worth it;
     // instead, re-run the parameterised IN-list query directly to prove the
     // shape postgres-js accepts.
-    const { AUTO_DISPATCH_STATUSES } = await import('../../src/pipeline/registry.js');
-    const statusList = sql.join(
-      AUTO_DISPATCH_STATUSES.map((s) => sql`${s}`),
-      sql`, `,
-    );
+    const { AUTONOMOUS_ENTRY_STATUS } = await import('../../src/pipeline/autonomous-mode.js');
     const rows = await harness.db.execute<{ id: string }>(sql`
       SELECT i.id FROM issues i
-      WHERE i.status IN (${statusList})
+      WHERE i.status = ${AUTONOMOUS_ENTRY_STATUS}
         AND i.updated_at < now() - interval '60 seconds'
     `);
     expect(rows.map((r) => r.id)).toContain(issueId);

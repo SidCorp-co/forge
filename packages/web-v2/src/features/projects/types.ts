@@ -111,17 +111,6 @@ export interface CreatedProject {
 }
 
 /**
- * Response of `POST /api/projects/:id/skills/bootstrap` (ISS-2A / ISS-453) —
- * mirrors the bootstrap route in `packages/core/src/projects/routes.ts`.
- * 201 on first run, 200 with `alreadyBootstrapped: true` on re-runs (idempotent).
- */
-export interface BootstrapResult {
-  alreadyBootstrapped: boolean;
-  skillsBound: number;
-  pipelineEnabled: boolean;
-}
-
-/**
  * Response of `POST /api/projects/:id/onboard` (ISS-733) — the "Build
  * Project Brain" trigger. `sessionId` is the freshly-created chat session
  * running `forge-onboard` as turn 1; the caller navigates there to continue

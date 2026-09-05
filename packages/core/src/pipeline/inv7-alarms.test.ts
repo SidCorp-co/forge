@@ -42,7 +42,6 @@ vi.mock('../logger.js', () => ({
 
 const {
   alarmAgedHolds,
-  alarmChurningIssues,
   alarmPausedRunsWithQueuedWork,
   alarmRejectionStreaks,
   alarmStalledQueuedJobs,
@@ -139,52 +138,6 @@ describe('alarmAgedHolds', () => {
   });
 });
 
-describe('alarmChurningIssues', () => {
-  const churnRow = {
-    issue_id: 'iss-2',
-    project_id: 'proj-1',
-    iss_seq: 55,
-    title: 'Login redirect 500s',
-    reopen_count: 6,
-    threshold: 5,
-  };
-
-  it('surfaces the count and the threshold without asserting the rounds were wasted', async () => {
-    dbExecute.mockResolvedValueOnce([churnRow]);
-
-    const res = await alarmChurningIssues();
-
-    expect(res.alerted).toBe(1);
-    expect(wedge().title).toContain('6 times');
-    expect(wedge().summary).toContain('not a verdict');
-    expect(wedge().summary).toContain('churn');
-  });
-
-  // cm:guard `entity` must stay `issue` here — the dedup key is `wedge:<entityId>`, so an issue id passed under `entity:'job'` still dedupes correctly while telling every consumer a job id that does not exist
-  it('keys the wedge on the issue, since no job is stuck', async () => {
-    dbExecute.mockResolvedValueOnce([churnRow]);
-
-    await alarmChurningIssues();
-
-    expect(wedge().entity).toBe('issue');
-    expect(wedge().entityId).toBe('iss-2');
-  });
-
-  it('names nothing blocked — the alert is visibility only', async () => {
-    dbExecute.mockResolvedValueOnce([churnRow]);
-
-    await alarmChurningIssues();
-
-    expect(wedge().action).toContain('nothing is blocked');
-  });
-
-  it('emits nothing when no issue has reached its threshold', async () => {
-    const res = await alarmChurningIssues();
-
-    expect(res.alerted).toBe(0);
-    expect(emitWedgeMock).not.toHaveBeenCalled();
-  });
-});
 
 describe('alarmStalledQueuedJobs', () => {
   const candidate = {
@@ -257,7 +210,7 @@ describe('alarmRejectionStreaks', () => {
     expect(wedge().reason).toBe('rejection_streak:5/5');
   });
 
-  // cm:guard the copy must name WHICH count reached the threshold — `noProgressRounds` backs total reopens in `alarmChurningIssues` and consecutive rejections here, and a wedge that prints only the number leaves the reader unable to tell whether five rounds were wasted or five different blockers were fixed
+  // cm:guard the copy must name WHICH count reached the threshold. This is the only reader of `noProgressRounds` since ISS-895 deleted `alarmChurningIssues`, whose total-reopens count was frozen at 0 in this lane — a wedge that prints only the number leaves the reader unable to tell whether five rounds were wasted or five different blockers were fixed
   it('says it counted consecutive rejections, not total rounds', async () => {
     dbExecute.mockResolvedValueOnce([streakRow]);
 
@@ -279,7 +232,7 @@ describe('alarmRejectionStreaks', () => {
     expect(wedge().nextStep).toContain('it believes');
   });
 
-  // cm:guard the entity must be the RUN under the `rounds:` namespace — `alarmChurningIssues` already emits under `wedge:<issueId>`, and sharing that key would let either pass silence the other while an approve resolved the wrong one
+  // cm:guard the entity must be the RUN under the `rounds:` namespace, and it stays that way now that `alarmChurningIssues` (which emitted under `wedge:<issueId>`) is gone — a re-keyed emit would collide with any future issue-keyed pass and let one silence the other while an approve resolved the wrong one
   it('keys the wedge on the run, never on the issue id', async () => {
     dbExecute.mockResolvedValueOnce([streakRow]);
 

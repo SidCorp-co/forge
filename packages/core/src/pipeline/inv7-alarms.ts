@@ -342,7 +342,7 @@ export async function alarmRejectionStreaks(): Promise<Inv7AlarmResult> {
       entityId: reviewRoundsWedgeEntityId(row.run_id),
       reason: `rejection_streak:${row.streak}/${row.threshold}`,
       title: `${label} has been sent back by review ${row.streak} times in a row`,
-      // cm:guard name the COUNT, not just the number — `noProgressRounds` backs two different counts (total reopens in `alarmChurningIssues`, consecutive rejections here), and a reader who cannot tell which one fired cannot tell whether the rounds were wasted
+      // cm:guard name the COUNT, not just the number — `noProgressRounds` is advice a reader has to judge, and "5 rounds" alone cannot say whether five rejections repeated one failure or fixed five different ones. It backed a second count (total reopens) until ISS-895 deleted `alarmChurningIssues`; naming the count is what keeps a future second reader from silently inheriting this one's copy.
       summary: `"${row.title ?? label}" has reached this project's \`noProgressRounds\` (${row.threshold}) counted as CONSECUTIVE review rejections — ${row.streak} rounds since the last approval, from the reviewer's own verdicts rather than anything the driver reported about itself. Rounds that each fix a different blocker are normal work, and an approval resets this to zero; ${row.streak} in a row without one is the stop signal the number exists for.`,
       nextStep:
         "Read the findings on the last few `request_changes` verdicts. If they keep naming the same defect, park the issue at `waiting` with what has been tried; if each round names something new, no action. The agent's own `sessionContext.churn` ledger says what it believes changed each round.",

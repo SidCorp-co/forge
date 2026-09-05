@@ -8,7 +8,6 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// cm:why queued by call order: the plan_required rule's own `issues.plan` read, then (only if blank) `isPlanStageLive`'s `projects.agentConfig` read
 const queue: unknown[][] = [];
 vi.mock('../db/client.js', () => ({
   db: {
@@ -26,15 +25,7 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const resolverStages = vi.fn<() => Promise<Set<string>>>(async () => new Set(['clarified']));
-vi.mock('../pipeline/skill-mapping.js', () => ({
-  createProjectSkillResolver: () => ({ stages: resolverStages }),
-}));
-
-// ISS-786 child B — real evidence collection is unit-tested in
-// `pipeline/work-evidence.test.ts`; here we only exercise the rule's
-// wiring (status gate, actorType/skip scope, error shape). Defaults to
-// "evidence found" (null) so the plan_required tests above are unaffected.
+// cm:why the mock returns null (= evidence found) by default because this suite owns the rule's WIRING — status gate, actorType/skip scope, error shape — while `pipeline/work-evidence.test.ts` owns what counts as evidence; a suite that re-tested both would go red twice for one change.
 const findMissingWorkEvidenceMock = vi.fn<() => Promise<string | null>>(async () => null);
 vi.mock('../pipeline/work-evidence.js', () => ({
   findMissingWorkEvidence: (...args: unknown[]) => findMissingWorkEvidenceMock(...(args as [])),
@@ -62,106 +53,6 @@ describe('isBlankPlan', () => {
   });
 });
 
-describe('checkTransitionEvidence — plan_required rule', () => {
-  it('blocks a device transition to approved with a blank plan on a plan-stage-live project', async () => {
-    setup(planRow(null), projectRow({ enabled: true }));
-    const violation = await checkTransitionEvidence({
-      issue: ISSUE,
-      toStatus: 'approved',
-      agency: 'agent',
-      skip: false,
-    });
-    expect(violation).toEqual({
-      code: 'PLAN_REQUIRED',
-      detail: 'issue has no plan written — write the issue plan before advancing to approved',
-      details: { issueId: 'iss-1' },
-    });
-  });
-
-  it('allows a user actor even with a blank plan (device-only enforcement)', async () => {
-    const violation = await checkTransitionEvidence({
-      issue: ISSUE,
-      toStatus: 'approved',
-      agency: 'human',
-      skip: false,
-    });
-    expect(violation).toBeNull();
-  });
-
-  it('allows options.skip:true (auto-skip/failover chain unaffected)', async () => {
-    const violation = await checkTransitionEvidence({
-      issue: ISSUE,
-      toStatus: 'approved',
-      agency: 'agent',
-      skip: true,
-    });
-    expect(violation).toBeNull();
-  });
-
-  it('allows a non-blank plan', async () => {
-    setup(planRow('a real plan'));
-    const violation = await checkTransitionEvidence({
-      issue: ISSUE,
-      toStatus: 'approved',
-      agency: 'agent',
-      skip: false,
-    });
-    expect(violation).toBeNull();
-  });
-
-  it('allows when the project has no clarified stage registered', async () => {
-    resolverStages.mockResolvedValueOnce(new Set());
-    setup(planRow(null), projectRow({ enabled: true }));
-    const violation = await checkTransitionEvidence({
-      issue: ISSUE,
-      toStatus: 'approved',
-      agency: 'agent',
-      skip: false,
-    });
-    expect(violation).toBeNull();
-  });
-
-  it('allows when states.clarified.enabled is explicitly false', async () => {
-    setup(planRow(null), projectRow({ enabled: true, states: { clarified: { enabled: false } } }));
-    const violation = await checkTransitionEvidence({
-      issue: ISSUE,
-      toStatus: 'approved',
-      agency: 'agent',
-      skip: false,
-    });
-    expect(violation).toBeNull();
-  });
-
-  it('ignores transitions to any status other than approved', async () => {
-    const violation = await checkTransitionEvidence({
-      issue: ISSUE,
-      toStatus: 'developed',
-      agency: 'agent',
-      skip: false,
-    });
-    expect(violation).toBeNull();
-  });
-
-  // cm:guard a broken rule check must never freeze a legitimate transition
-  it('fails open when the plan read throws', async () => {
-    const { db } = await import('../db/client.js');
-    // biome-ignore lint/suspicious/noExplicitAny: test-only mock override
-    const original = (db as any).select;
-    // biome-ignore lint/suspicious/noExplicitAny: test-only mock override
-    (db as any).select = () => {
-      throw new Error('connection reset');
-    };
-    const violation = await checkTransitionEvidence({
-      issue: ISSUE,
-      toStatus: 'approved',
-      agency: 'agent',
-      skip: false,
-    });
-    expect(violation).toBeNull();
-    // biome-ignore lint/suspicious/noExplicitAny: test-only mock override
-    (db as any).select = original;
-  });
-});
 
 describe('checkTransitionEvidence — no_work_evidence rule', () => {
   beforeEach(() => {

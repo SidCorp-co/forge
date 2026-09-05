@@ -6,9 +6,7 @@ import {
   resetHarness,
   sentryAddBreadcrumb,
   staleCountQueue,
-  stallGuardMock,
   stuckQueue,
-  wedgeQueue,
 } from './reconciler-test-harness.js';
 
 vi.mock('../db/client.js', async () => {
@@ -18,10 +16,6 @@ vi.mock('../db/client.js', async () => {
 vi.mock('./orchestrator.js', async () => {
   const h = await import('./reconciler-test-harness.js');
   return { reEnqueueForIssue: (...a: unknown[]) => h.reEnqueueMock(...(a as [])) };
-});
-vi.mock('./stage-stall-guard.js', async () => {
-  const h = await import('./reconciler-test-harness.js');
-  return { checkStageStallAndPause: (...a: unknown[]) => h.stallGuardMock(...(a as [])) };
 });
 vi.mock('./autonomous-rescue-cap.js', async () => {
   const h = await import('./reconciler-test-harness.js');
@@ -55,7 +49,6 @@ describe('rescue accounting', () => {
         project_id: 'proj-1',
         status: 'confirmed',
         created_by: 'o',
-        mode: 'staged',
         reopen_count: 0,
       },
     ]);
@@ -80,7 +73,6 @@ describe('reconciler', () => {
         project_id: 'proj-1',
         status: 'confirmed',
         created_by: 'owner-1',
-        mode: 'staged',
         reopen_count: 0,
       },
       {
@@ -88,7 +80,6 @@ describe('reconciler', () => {
         project_id: 'proj-1',
         status: 'approved',
         created_by: 'owner-1',
-        mode: 'staged',
         reopen_count: 0,
       },
     ]);
@@ -118,7 +109,6 @@ describe('reconciler', () => {
         project_id: 'proj-2',
         status: 'reopen',
         created_by: null,
-        mode: 'staged',
         reopen_count: 0,
       },
     ]);
@@ -155,7 +145,6 @@ describe('reconciler', () => {
         project_id: 'proj-3',
         status: 'confirmed',
         created_by: 'o',
-        mode: 'staged',
         reopen_count: 0,
       },
       {
@@ -163,7 +152,6 @@ describe('reconciler', () => {
         project_id: 'proj-3',
         status: 'confirmed',
         created_by: 'o',
-        mode: 'staged',
         reopen_count: 0,
       },
     ]);
@@ -177,36 +165,6 @@ describe('reconciler', () => {
     expect(reEnqueueMock).toHaveBeenCalledTimes(2);
   });
 
-  it('ISS-626 — skips re-enqueue and does not count a rescue when the stage stall guard trips', async () => {
-    stuckQueue.push([
-      {
-        id: 'iss-stall',
-        project_id: 'proj-s',
-        status: 'clarified',
-        created_by: 'owner-s',
-        mode: 'staged',
-        reopen_count: 0,
-      },
-      {
-        id: 'iss-ok',
-        project_id: 'proj-s',
-        status: 'clarified',
-        created_by: 'owner-s',
-        mode: 'staged',
-        reopen_count: 0,
-      },
-    ]);
-    staleCountQueue.push([{ count: 0 }]);
-    // First issue is stalled (capped) → skipped; second proceeds normally.
-    stallGuardMock.mockResolvedValueOnce({ stalled: true });
-
-    const result = await runReconcilerOnce();
-
-    expect(result.rescued).toBe(1);
-    expect(stallGuardMock).toHaveBeenCalledTimes(2);
-    expect(reEnqueueMock).toHaveBeenCalledTimes(1);
-    expect(reEnqueueMock).toHaveBeenCalledWith(expect.objectContaining({ issueId: 'iss-ok' }));
-  });
 
   it('returns zero rescues when no issues are stuck', async () => {
     stuckQueue.push([]);
@@ -220,114 +178,3 @@ describe('reconciler', () => {
   });
 });
 
-describe('in-flight wedge reset (ISS-598)', () => {
-  it('rolls a code wedge (in_progress, latest job done) back to approved', async () => {
-    stuckQueue.push([]);
-    staleCountQueue.push([{ count: 0 }]);
-    wedgeQueue.push([
-      {
-        id: 'iss-w1',
-        project_id: 'proj-w',
-        status: 'in_progress',
-        reopen_count: 0,
-        created_by: 'owner-w',
-        job_type: 'code',
-      },
-    ]);
-
-    const result = await runReconcilerOnce();
-
-    expect(result.reset).toBe(1);
-    expect(applyStatusTransitionMock).toHaveBeenCalledTimes(1);
-    expect(applyStatusTransitionMock).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'iss-w1', status: 'in_progress', reopenCount: 0 }),
-      'approved',
-      expect.objectContaining({ id: 'owner-w', ownerId: 'owner-w' }),
-      expect.objectContaining({ reason: 'reconciler_inflight_wedge_reset', skip: true }),
-    );
-    expect(sentryAddBreadcrumb).toHaveBeenCalledWith(
-      expect.objectContaining({
-        category: 'pipeline.reconciler.inflight_wedge_reset',
-        data: expect.objectContaining({ from: 'in_progress', to: 'approved', jobType: 'code' }),
-      }),
-    );
-  });
-
-  it('rolls a fix wedge back to reopen (its own trigger status)', async () => {
-    stuckQueue.push([]);
-    staleCountQueue.push([{ count: 0 }]);
-    wedgeQueue.push([
-      {
-        id: 'iss-w2',
-        project_id: 'proj-w',
-        status: 'in_progress',
-        reopen_count: 2,
-        created_by: 'owner-w',
-        job_type: 'fix',
-      },
-    ]);
-
-    const result = await runReconcilerOnce();
-
-    expect(result.reset).toBe(1);
-    expect(applyStatusTransitionMock).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'iss-w2' }),
-      'reopen',
-      expect.anything(),
-      expect.anything(),
-    );
-  });
-
-  it('skips a row whose latest job type does not own the current in-flight status', async () => {
-    stuckQueue.push([]);
-    staleCountQueue.push([{ count: 0 }]);
-    // job_type review has no workingStatus → must never be reset even if the
-    // query somehow returned it.
-    wedgeQueue.push([
-      {
-        id: 'iss-w3',
-        project_id: 'proj-w',
-        status: 'in_progress',
-        reopen_count: 0,
-        created_by: 'owner-w',
-        job_type: 'review',
-      },
-    ]);
-
-    const result = await runReconcilerOnce();
-
-    expect(result.reset).toBe(0);
-    expect(applyStatusTransitionMock).not.toHaveBeenCalled();
-  });
-
-  it('does not throw when a reset races a real transition — continues to the next row', async () => {
-    stuckQueue.push([]);
-    staleCountQueue.push([{ count: 0 }]);
-    wedgeQueue.push([
-      {
-        id: 'iss-w4',
-        project_id: 'proj-w',
-        status: 'in_progress',
-        reopen_count: 0,
-        created_by: 'o',
-        job_type: 'code',
-      },
-      {
-        id: 'iss-w5',
-        project_id: 'proj-w',
-        status: 'in_progress',
-        reopen_count: 0,
-        created_by: 'o',
-        job_type: 'code',
-      },
-    ]);
-    applyStatusTransitionMock.mockRejectedValueOnce(
-      new Error('STALE_TRANSITION: issue status changed concurrently'),
-    );
-
-    const result = await runReconcilerOnce();
-
-    expect(result.reset).toBe(1);
-    expect(applyStatusTransitionMock).toHaveBeenCalledTimes(2);
-  });
-});

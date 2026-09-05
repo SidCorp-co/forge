@@ -117,26 +117,27 @@ beforeEach(() => {
 });
 
 describe('forge_step_start', () => {
-  it('flips trigger → working for code (approved → in_progress) and returns the bundle', async () => {
+  // cm:guard the four flip cases this replaced (trigger→working for code, fix re-entry, resume idempotence, never-stomp) asserted a status write that ISS-895 removed with the staged step table. Re-adding any of them means core is stamping a status again, which is the prompt-layer discipline this tool was built not to break.
+  it('returns the bundle and never touches status', async () => {
     const tool = forgeStepStartTool(ctx);
     loadIssue.mockResolvedValue(makeIssue());
     queueHappyPath({ comments: [{ documentId: 'c1', body: 'triage note' }] });
 
-    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<
+    const result = (await tool.handler({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      stage: 'drive',
+    })) as Record<
       string,
       // biome-ignore lint/suspicious/noExplicitAny: test readback
       any
     >;
 
-    expect(applyStatusTransition).toHaveBeenCalledTimes(1);
-    expect(applyStatusTransition).toHaveBeenCalledWith(
-      expect.objectContaining({ id: ISSUE_ID }),
-      'in_progress',
-      fakeDevice,
-    );
-    expect(result.stage).toBe('code'); // derived from trigger status, no input needed
-    expect(result.statusChanged).toBe(true);
-    expect(result.issue.status).toBe('in_progress');
+    expect(applyStatusTransition).not.toHaveBeenCalled();
+    expect(result.stage).toBe('drive');
+    expect(result.statusChanged).toBe(false);
+    expect(result.statusNote).toMatch(/no status flip/);
+    expect(result.issue.status).toBe('approved');
     expect(result.comments).toHaveLength(1);
     expect(result.handoffs).toHaveLength(1);
   });
@@ -146,7 +147,7 @@ describe('forge_step_start', () => {
     loadIssue.mockResolvedValue(makeIssue());
     queueHappyPath({ comments: [{ documentId: 'c1', body: 'has a screenshot' }] });
 
-    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<
+    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID, stage: 'drive' })) as Record<
       string,
       // biome-ignore lint/suspicious/noExplicitAny: test readback
       any
@@ -156,79 +157,17 @@ describe('forge_step_start', () => {
     expect(result.comments[0].attachments).toEqual([]);
   });
 
-  it('is idempotent on resume — already at working status, no transition', async () => {
-    const tool = forgeStepStartTool(ctx);
-    loadIssue.mockResolvedValue(makeIssue({ status: 'in_progress' }));
-    queueHappyPath();
 
-    const result = (await tool.handler({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      stage: 'code',
-    })) as { statusChanged: boolean; statusNote?: string };
 
-    expect(applyStatusTransition).not.toHaveBeenCalled();
-    expect(result.statusChanged).toBe(false);
-    expect(result.statusNote).toMatch(/already at 'in_progress'/);
-  });
 
-  it('fix re-entry flips reopen → in_progress', async () => {
-    const tool = forgeStepStartTool(ctx);
-    loadIssue.mockResolvedValue(makeIssue({ status: 'reopen' }));
-    queueHappyPath();
 
-    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as {
-      stage: string;
-      statusChanged: boolean;
-    };
-    expect(result.stage).toBe('fix');
-    expect(result.statusChanged).toBe(true);
-    expect(applyStatusTransition).toHaveBeenCalledWith(
-      expect.anything(),
-      'in_progress',
-      fakeDevice,
-    );
-  });
-
-  it('steps without a working status check in without touching status', async () => {
+  it('refuses by name when `stage` is omitted, at every status', async () => {
     const tool = forgeStepStartTool(ctx);
     loadIssue.mockResolvedValue(makeIssue({ status: 'open' }));
-    queueHappyPath();
-
-    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as {
-      stage: string;
-      statusChanged: boolean;
-      statusNote?: string;
-    };
-    expect(result.stage).toBe('triage');
-    expect(result.statusChanged).toBe(false);
-    expect(result.statusNote).toMatch(/no in-flight status/);
-    expect(applyStatusTransition).not.toHaveBeenCalled();
-  });
-
-  it('never stomps an issue that is not at the trigger status', async () => {
-    const tool = forgeStepStartTool(ctx);
-    loadIssue.mockResolvedValue(makeIssue({ status: 'needs_info' }));
-    queueHappyPath();
-
-    const result = (await tool.handler({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      stage: 'code',
-    })) as { statusChanged: boolean; statusNote?: string };
-
-    expect(applyStatusTransition).not.toHaveBeenCalled();
-    expect(result.statusChanged).toBe(false);
-    expect(result.statusNote).toMatch(/not flipped/);
-  });
-
-  it('requires explicit stage when the status alone is ambiguous', async () => {
-    const tool = forgeStepStartTool(ctx);
-    loadIssue.mockResolvedValue(makeIssue({ status: 'in_progress' }));
     queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 
     await expect(tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })).rejects.toThrow(
-      /BAD_REQUEST.*pass `stage`/,
+      /BAD_REQUEST: `stage` is required/,
     );
   });
 
@@ -252,7 +191,7 @@ describe('forge_step_start', () => {
     );
     queueHappyPath({ project: { baseBranch: 'develop', productionBranch: 'main' } });
 
-    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as {
+    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID, stage: 'drive' })) as {
       branchConfig: { baseBranch: string | null; targetBranch: string | null };
     };
     expect(result.branchConfig.baseBranch).toBe('iss-99-integration');
@@ -269,7 +208,7 @@ describe('forge_step_start', () => {
     }));
     queueHappyPath({ comments: fatComments });
 
-    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<
+    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID, stage: 'drive' })) as Record<
       string,
       // biome-ignore lint/suspicious/noExplicitAny: test readback
       any
@@ -301,7 +240,7 @@ describe('forge_step_start', () => {
     const small = Array.from({ length: 5 }, (_, i) => ({ documentId: `c${i}`, body: `note ${i}` }));
     queueHappyPath({ comments: small });
 
-    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<
+    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID, stage: 'drive' })) as Record<
       string,
       // biome-ignore lint/suspicious/noExplicitAny: test readback
       any
@@ -319,7 +258,7 @@ describe('forge_step_start', () => {
     heavyFieldChars.mockReturnValue(10); // well under threshold
     queueHappyPath();
 
-    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<
+    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID, stage: 'drive' })) as Record<
       string,
       // biome-ignore lint/suspicious/noExplicitAny: test readback
       any
@@ -338,7 +277,7 @@ describe('forge_step_start', () => {
     heavyFieldChars.mockReturnValue(6000); // over 2000 threshold
     queueHappyPath();
 
-    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<
+    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID, stage: 'drive' })) as Record<
       string,
       // biome-ignore lint/suspicious/noExplicitAny: test readback
       any
@@ -360,7 +299,7 @@ describe('forge_step_start', () => {
     heavyFieldChars.mockReturnValue(0);
     loadIssue.mockResolvedValue(makeIssue({ plan: longPlan }));
     queueHappyPath();
-    const fullResult = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<
+    const fullResult = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID, stage: 'drive' })) as Record<
       string,
       unknown
     >;
@@ -370,7 +309,7 @@ describe('forge_step_start', () => {
     heavyFieldChars.mockReturnValue(5500);
     loadIssue.mockResolvedValue(makeIssue({ plan: longPlan }));
     queueHappyPath();
-    const leanResult = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID })) as Record<
+    const leanResult = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID, stage: 'drive' })) as Record<
       string,
       unknown
     >;
@@ -384,7 +323,7 @@ describe('forge_step_start', () => {
 
     // Exactly at threshold (2000) → full body (≤ 2000 = NOT over)
     heavyFieldChars.mockReturnValue(2000);
-    loadIssue.mockResolvedValueOnce(makeIssue({ status: 'open' })); // status=open → no transition
+    loadIssue.mockResolvedValueOnce(makeIssue({ status: 'open' }));
     queueHappyPath();
     const atThreshold = (await tool.handler({
       projectId: PROJECT_ID,
@@ -395,7 +334,7 @@ describe('forge_step_start', () => {
 
     // One over threshold (2001) → manifest
     heavyFieldChars.mockReturnValue(2001);
-    loadIssue.mockResolvedValueOnce(makeIssue({ status: 'open' })); // fresh object
+    loadIssue.mockResolvedValueOnce(makeIssue({ status: 'open' }));
     queueHappyPath();
     const overThreshold = (await tool.handler({
       projectId: PROJECT_ID,

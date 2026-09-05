@@ -147,8 +147,8 @@ export function useTransitionIssue() {
 }
 
 export function useRunPipelineStep() {
-  return useIssueMutation((args: { id: string; stage?: string }) =>
-    issuesApi.runPipelineStep(args.id, args.stage), { successMessage: "Pipeline step queued" });
+  return useIssueMutation((args: { id: string }) =>
+    issuesApi.runPipelineStep(args.id), { successMessage: "Pipeline step queued" });
 }
 
 // ─── Bulk update (ISS-463) ──────────────────────────────────────────────────

@@ -1,20 +1,17 @@
 /**
- * ISS-786 [Epic] — composed walk of the four `VISION: state-never-lies` state-integrity
- * guards against real Postgres. Every guard already has unit coverage that
- * mocks the query builder (and, for A/B/C, a real-DB test of its own
- * predicate); none of them exercises the SEQUENCE an issue actually walks:
- * an agent tries to fabricate its way past a human-gated bounce (A), the
- * state-machine writer refuses a plan-less `approved` (C), the same writer
- * refuses a `developed` with no code evidence (B), and the reconciler-side
- * no-op-loop cap names a verified cause instead of asserting one (D). This
- * file drives that sequence end to end on one issue, through the real
- * `transitionIssueStatus` writer and the real dispatch-side guards — not
- * through mocks — so a regression that only shows up when the guards compose
- * (e.g. one guard's fail-open swallowing another's violation) has somewhere
- * to fail.
+ * ISS-786 [Epic] — the `VISION: state-never-lies` write-side evidence guard
+ * against real Postgres.
+ *
+ * This file drove a composed A→C→B→D walk until ISS-895 removed the staged
+ * lane and three of the four guards with it: A and C read
+ * `skill_registrations` to decide whether a stage was live, and D
+ * (`stage-stall-guard.ts`) paused a run when one STAGE looped — neither
+ * question exists in a lane whose whole walk is one step. What survives is B:
+ * the writer refuses `developed` with no recorded code evidence, and fails
+ * open when the read itself cannot succeed. Both properties need a real DB —
+ * the unit suite mocks the query builder.
  */
 
-import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -26,7 +23,7 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-describe('ISS-786 state-integrity guards — composed A→C→B→D walk', () => {
+describe('ISS-786 state-integrity — work-evidence guard on a real DB', () => {
   let harness: TestDatabase;
 
   beforeAll(async () => {
@@ -59,93 +56,24 @@ describe('ISS-786 state-integrity guards — composed A→C→B→D walk', () =>
     return { id: row.id, reopenCount: row.reopen_count };
   }
 
-  async function _insertComment(
-    issueId: string,
-    authorId: string,
-    opts: { authorDeviceId: string | null; createdAt: Date },
-  ): Promise<void> {
-    await harness.db.execute(sql`
-      INSERT INTO comments (issue_id, author_id, author_device_id, body, created_at)
-      VALUES (
-        ${issueId}, ${authorId}, ${opts.authorDeviceId}, 'x',
-        ${opts.createdAt.toISOString()}::timestamptz
-      )
-    `);
-  }
-
-  // Real resolver, real DB: `isPlanStageLive` (transition-evidence.ts) requires
-  // a `skill_registrations` row for stage 'clarified', mirroring
-  // pipeline-per-project-config.test.ts:121,164 — without it C's guard is a
-  // correct no-op and `PLAN_REQUIRED` can never fire.
-  async function registerPlanStageSkill(projectId: string, registeredBy: string): Promise<void> {
-    const skillId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO skills (id, name, description, scope, prompt, source, content_hash)
-      VALUES (${skillId}, 'forge-plan', 'integration: forge-plan', 'global', 'noop', 'builtin', ${`hash-${skillId}`})
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO skill_registrations (project_id, skill_id, stage, registered_by)
-      VALUES (${projectId}, ${skillId}, 'clarified', ${registeredBy})
-    `);
-  }
-
-  async function _logTransition(
-    issueId: string,
-    actorId: string,
-    from: string,
-    to: string,
-    at: Date,
-  ): Promise<void> {
-    await harness.db.execute(sql`
-      INSERT INTO activity_log (issue_id, actor_type, actor_id, action, payload, created_at)
-      VALUES (${issueId}, 'device', ${actorId}, 'issue.statusChanged',
-              ${JSON.stringify({ from, to })}::jsonb, ${at.toISOString()}::timestamptz)
-    `);
-  }
-
-  it('walks C (plan-less approved refused) -> B (evidence-less developed refused) -> D (verified-cause stall)', async () => {
+  it('refuses `developed` with zero code evidence, then allows it once a branch is recorded', async () => {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
     const device = await createTestDevice(harness.db, owner.id);
-    await registerPlanStageSkill(project.id, owner.id);
 
     const { transitionIssueStatus } = await import('../../src/issues/apply-transition.js');
-    const { checkStageStallAndPause } = await import('../../src/pipeline/stage-stall-guard.js');
 
     const issue = await insertIssue({
       projectId: project.id,
       ownerId: owner.id,
-      status: 'clarified',
+      status: 'approved',
+      plan: 'do the thing',
     });
-
-    // ---- C: the writer refuses `approved` while the plan is blank ----
     const actor = { type: 'device' as const, id: device.id, ownerId: owner.id };
 
     await expect(
       transitionIssueStatus(
-        { id: issue.id, projectId: project.id, status: 'clarified', reopenCount: 0 },
-        'approved',
-        actor,
-      ),
-    ).rejects.toMatchObject({ code: 'PLAN_REQUIRED' });
-
-    await harness.db.execute(sql`UPDATE issues SET plan = 'do the thing' WHERE id = ${issue.id}`);
-    const approved = await transitionIssueStatus(
-      { id: issue.id, projectId: project.id, status: 'clarified', reopenCount: 0 },
-      'approved',
-      actor,
-    );
-    expect(approved.status).toBe('approved');
-
-    // ---- B: the writer refuses `developed` with zero recorded code evidence ----
-    await expect(
-      transitionIssueStatus(
-        {
-          id: issue.id,
-          projectId: project.id,
-          status: 'approved',
-          reopenCount: approved.reopenCount,
-        },
+        { id: issue.id, projectId: project.id, status: 'approved', reopenCount: 0 },
         'developed',
         actor,
       ),
@@ -158,86 +86,22 @@ describe('ISS-786 state-integrity guards — composed A→C→B→D walk', () =>
       WHERE id = ${issue.id}
     `);
     const developed = await transitionIssueStatus(
-      {
-        id: issue.id,
-        projectId: project.id,
-        status: 'approved',
-        reopenCount: approved.reopenCount,
-      },
+      { id: issue.id, projectId: project.id, status: 'approved', reopenCount: 0 },
       'developed',
       actor,
     );
     expect(developed.status).toBe('developed');
-
-    // ---- D: the stage-stall guard verifies a cause instead of asserting one ----
-    // `developed` maps to job type `review` (registry.ts). Three consecutive
-    // `done` review jobs with no advance, and no device recorded on them,
-    // reproduce the no-op loop this guard bounds — with no skill-sync signal
-    // to check, verifySkillSyncCause must report `unverified`, not a
-    // confident diagnosis it never checked.
-    const runRows = await harness.db.execute<{ id: string }>(sql`
-      INSERT INTO pipeline_runs (project_id, issue_id, kind, status, current_step)
-      VALUES (${project.id}, ${issue.id}, 'issue', 'running', 'developed')
-      RETURNING id
-    `);
-    const runId = (runRows[0] as { id: string }).id;
-
-    for (let i = 0; i < 3; i++) {
-      await harness.db.execute(sql`
-        INSERT INTO jobs (project_id, issue_id, pipeline_run_id, created_by, type, status)
-        VALUES (${project.id}, ${issue.id}, ${runId}, ${owner.id}, 'review', 'done')
-      `);
-    }
-
-    const stallResult = await checkStageStallAndPause({
-      projectId: project.id,
-      issueId: issue.id,
-      status: 'developed',
-    });
-    expect(stallResult).toEqual({ stalled: true });
-
-    const pausedRunRows = await harness.db.execute<{ status: string; metadata: unknown }>(sql`
-      SELECT status, metadata FROM pipeline_runs WHERE id = ${runId}
-    `);
-    const pausedRun = pausedRunRows[0] as { status: string; metadata: { pauseReason?: string } };
-    expect(pausedRun.status).toBe('paused');
-    expect(pausedRun.metadata.pauseReason).toBe('stage_stalled:developed');
-
-    const commentRows = await harness.db.execute<{ body: string }>(sql`
-      SELECT body FROM comments WHERE issue_id = ${issue.id} ORDER BY created_at DESC LIMIT 1
-    `);
-    const stallComment = commentRows[0] as { body: string };
-    // Verified-cause branch: no device recorded on the stalled jobs, so the
-    // cause is named as unverified rather than confidently misdiagnosed.
-    expect(stallComment.body).toContain('Could not verify a cause');
-    expect(stallComment.body).toContain('**Current state:**');
-    expect(stallComment.body).toContain('**Exits:**');
   });
 
-  it('fails open end to end: a broken DB read never freezes the composed sequence', async () => {
-    // Each guard's own unit suite already forces its query to throw and
-    // asserts fail-open in isolation (transition-evidence.test.ts,
-    // stage-stall-guard.test.ts). This checks the property that actually
-    // matters operationally: a lookup for an issue that does not exist at all
-    // (the sharpest "the read cannot succeed" case available without mocking
-    // the DB client) still lets every guard return its safe default instead
-    // of throwing out of the guard itself.
-    const { checkStageStallAndPause } = await import('../../src/pipeline/stage-stall-guard.js');
+  // cm:guard fail-open is the property, not an accident: a broken read here must return the safe default rather than throw, or one unreadable row freezes every write on the issue.
+  it('fails open: a lookup that cannot succeed returns null instead of throwing', async () => {
     const { checkTransitionEvidence } = await import('../../src/issues/transition-evidence.js');
-    const ghostIssueId = '00000000-0000-0000-0000-000000000000';
-    const ghostProjectId = '00000000-0000-0000-0000-000000000000';
+    const ghostId = '00000000-0000-0000-0000-000000000000';
 
     await expect(
-      checkStageStallAndPause({
-        projectId: ghostProjectId,
-        issueId: ghostIssueId,
-        status: 'developed',
-      }),
-    ).resolves.toEqual({ stalled: false });
-    await expect(
       checkTransitionEvidence({
-        issue: { id: ghostIssueId, projectId: ghostProjectId },
-        toStatus: 'approved',
+        issue: { id: ghostId, projectId: ghostId },
+        toStatus: 'developed',
         agency: 'agent',
         skip: false,
       }),

@@ -171,7 +171,8 @@ describe('assertDispatchable', () => {
     expect(text).not.toMatch(/'manual_hold'/);
     expect(text).toMatch(/'retry_cooldown'/);
     expect(text).toMatch(/'issue_busy'/);
-    expect(text).toMatch(/'stale_trigger'/);
+    // cm:why asserting the ABSENCE of `stale_trigger` is what keeps ISS-895 done: the arm was scoped to `TRIGGER_STATUS_BY_JOB_TYPE`, i.e. the staged step types, and `drive` was deliberately outside it — so on the one lane that is left the arm could never match a job that exists. Re-adding it would stamp the driver stale the moment its own agent moved the issue, and nothing re-enqueues at any status but the entry one.
+    expect(text).not.toMatch(/'stale_trigger'/);
     // cm:why asserting the ABSENCE of these two is the point: `blocked_by` and `project_cap` were the gates this design deleted, and a CASE arm reappearing under either name is a routing decision moving back into the kernel
     expect(text).not.toMatch(/'blocked_by'/);
     expect(text).not.toMatch(/'project_cap'/);
@@ -225,7 +226,6 @@ describe('assertDispatchable', () => {
       /r\.last_seen_at\s*>\s*now\(\)/,
       /FROM\s+agent_sessions\s+s/,
       /FROM\s+jobs\s+other/,
-      /payload->>'stageStatus'/,
     ];
     for (const re of signatures) {
       expect(reasonsSql, `reasons reader missing ${re}`).toMatch(re);

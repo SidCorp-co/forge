@@ -7,7 +7,6 @@ import {
   REGISTRY_PIPELINE_RUN_KINDS,
   REGISTRY_PIPELINE_RUN_STATUSES,
   REGISTRY_RUNNER_TYPES,
-  REGISTRY_STEP_TOGGLE_KEYS,
 } from '@forge/contracts';
 import { describe, expect, it } from 'vitest';
 import {
@@ -20,96 +19,19 @@ import {
   pipelineRunStatuses,
   runnerTypes,
 } from '../db/schema.js';
-import {
-  getPipelineRegistry,
-  MANUAL_ONLY_JOB_TYPES,
-  PIPELINE_REGISTRY_VERSION,
-  PIPELINE_STEPS,
-  RUNNER_CAPABILITIES,
-  STATUS_TO_JOB_TYPE,
-  STATUS_TO_SKILL,
-  WORKING_STATUS_BY_JOB_TYPE,
-} from './registry.js';
-import { STATUS_TO_JOB_TYPE as MAPPING_RE_EXPORT } from './skill-mapping.js';
-import { transitions } from './state-machine.js';
+import { getPipelineRegistry, PIPELINE_REGISTRY_VERSION, RUNNER_CAPABILITIES } from './registry.js';
 
-describe('PIPELINE_STEPS literal sanity', () => {
-  it('skillName always follows the forge-${jobType} convention', () => {
-    for (const step of PIPELINE_STEPS) {
-      expect(step.skillName).toBe(`forge-${step.jobType}`);
-    }
-  });
-
-  it('has the eight automatable steps in the expected order (pass/staging retired)', () => {
-    expect(PIPELINE_STEPS.map((s) => s.status)).toEqual([
-      'open',
-      'confirmed',
-      'clarified',
-      'approved',
-      'developed',
-      'testing',
-      'reopen',
-      'released',
-    ]);
-  });
-
-  it('clarify sits on the happy path: confirmed → clarify, clarified → plan', () => {
-    expect(STATUS_TO_JOB_TYPE.confirmed?.type).toBe('clarify');
-    expect(STATUS_TO_JOB_TYPE.clarified?.type).toBe('plan');
-    // needs_info is a human-gated bounce state — nothing dispatches there.
-    expect(STATUS_TO_JOB_TYPE.needs_info).toBeUndefined();
-  });
-
-  it('MANUAL_ONLY_JOB_TYPES is empty after clarify promotion (ISS-171)', () => {
-    expect(MANUAL_ONLY_JOB_TYPES).toEqual([]);
-    const types = PIPELINE_STEPS.map((s) => s.jobType);
-    expect(types).toContain('clarify');
-  });
-});
-
-describe('PIPELINE_STEPS enum parity', () => {
-  it('every step.status is a known IssueStatus', () => {
-    for (const step of PIPELINE_STEPS) {
-      expect(issueStatuses).toContain(step.status);
-    }
-  });
-
-  it('every step.jobType is a known JobType', () => {
-    for (const step of PIPELINE_STEPS) {
-      expect(jobTypes).toContain(step.jobType);
-    }
-  });
-
-  it('every step.toggle is in REGISTRY_STEP_TOGGLE_KEYS', () => {
-    for (const step of PIPELINE_STEPS) {
-      expect(REGISTRY_STEP_TOGGLE_KEYS).toContain(step.toggle);
-    }
-  });
-});
-
-describe('derivation parity', () => {
-  it('skill-mapping re-exports the same STATUS_TO_JOB_TYPE instance', () => {
-    expect(MAPPING_RE_EXPORT).toBe(STATUS_TO_JOB_TYPE);
-  });
-
-  it('STATUS_TO_JOB_TYPE matches PIPELINE_STEPS row-for-row', () => {
-    for (const step of PIPELINE_STEPS) {
-      expect(STATUS_TO_JOB_TYPE[step.status]).toEqual({
-        type: step.jobType,
-        toggle: step.toggle,
-      });
-    }
-    expect(Object.keys(STATUS_TO_JOB_TYPE).sort()).toEqual(
-      PIPELINE_STEPS.map((s) => s.status).sort(),
-    );
-  });
-
-  it('STATUS_TO_SKILL matches PIPELINE_STEPS row-for-row', () => {
-    for (const step of PIPELINE_STEPS) {
-      expect(STATUS_TO_SKILL[step.status]).toBe(step.skillName);
-    }
-  });
-});
+const STAGED_JOB_TYPES: readonly JobType[] = [
+  'triage',
+  'clarify',
+  'plan',
+  'code',
+  'review',
+  'test',
+  'staging',
+  'fix',
+  'release',
+];
 
 describe('contracts ↔ core enum parity', () => {
   it('REGISTRY_ISSUE_STATUSES mirrors core issueStatuses', () => {
@@ -122,10 +44,6 @@ describe('contracts ↔ core enum parity', () => {
 
   it('REGISTRY_RUNNER_TYPES mirrors core runnerTypes', () => {
     expect([...REGISTRY_RUNNER_TYPES]).toEqual([...runnerTypes]);
-  });
-
-  it('REGISTRY_STEP_TOGGLE_KEYS mirrors PIPELINE_STEPS toggles', () => {
-    expect([...REGISTRY_STEP_TOGGLE_KEYS]).toEqual(PIPELINE_STEPS.map((s) => s.toggle));
   });
 
   it('REGISTRY_ISSUE_PRIORITIES mirrors core issuePriorities', () => {
@@ -146,49 +64,18 @@ describe('contracts ↔ core enum parity', () => {
 });
 
 describe('getPipelineRegistry()', () => {
-  it('returns the four-key payload with version 5', () => {
+  it('returns the two-key payload at version 6', () => {
     const payload = getPipelineRegistry();
     expect(payload.version).toBe(PIPELINE_REGISTRY_VERSION);
-    expect(payload.version).toBe(5);
-    expect(payload.steps).toBe(PIPELINE_STEPS);
+    expect(payload.version).toBe(6);
     expect(payload.runnerCapabilities).toBe(RUNNER_CAPABILITIES);
-    expect(payload.manualOnlyJobTypes).toBe(MANUAL_ONLY_JOB_TYPES);
+    expect(Object.keys(payload).sort()).toEqual(['runnerCapabilities', 'version']);
   });
 
   it('parses cleanly against the @forge/contracts schema', () => {
-    const payload = getPipelineRegistry();
-    const json = JSON.parse(JSON.stringify(payload));
+    const json = JSON.parse(JSON.stringify(getPipelineRegistry()));
     const parsed = pipelineRegistryResponseSchema.parse(json);
-    expect(parsed.version).toBe(5);
-    expect(parsed.steps).toHaveLength(8);
-    expect(parsed.manualOnlyJobTypes).toEqual([]);
-  });
-});
-
-describe('workingStatus (registry v3, sparse by design)', () => {
-  it('only code + fix flip to an in-flight status; both reuse in_progress', () => {
-    const withWorking = PIPELINE_STEPS.filter((s) => s.workingStatus !== null);
-    expect(withWorking.map((s) => s.jobType).sort()).toEqual(['code', 'fix']);
-    for (const step of withWorking) expect(step.workingStatus).toBe('in_progress');
-  });
-
-  it('workingStatus never equals the trigger status and is a known IssueStatus', () => {
-    for (const step of PIPELINE_STEPS) {
-      if (step.workingStatus === null) continue;
-      expect(step.workingStatus).not.toBe(step.status);
-      expect(issueStatuses).toContain(step.workingStatus);
-    }
-  });
-
-  it('the strict transition matrix allows trigger → working for every pair', () => {
-    for (const step of PIPELINE_STEPS) {
-      if (step.workingStatus === null) continue;
-      expect(transitions[step.status]).toContain(step.workingStatus);
-    }
-  });
-
-  it('WORKING_STATUS_BY_JOB_TYPE derives from PIPELINE_STEPS', () => {
-    expect(WORKING_STATUS_BY_JOB_TYPE).toEqual({ code: 'in_progress', fix: 'in_progress' });
+    expect(parsed.version).toBe(6);
   });
 });
 
@@ -203,42 +90,37 @@ describe('GET /api/pipeline/registry', () => {
     const res = await app.fetch(new Request('http://localhost/api/pipeline/registry'));
     expect(res.status).toBe(200);
 
-    const body = await res.json();
-    const parsed = pipelineRegistryResponseSchema.parse(body);
-    expect(parsed.steps).toHaveLength(8);
-    expect(parsed.version).toBe(5);
-    expect(parsed.manualOnlyJobTypes).toEqual([]);
+    const parsed = pipelineRegistryResponseSchema.parse(await res.json());
+    expect(parsed.version).toBe(6);
     expect(parsed.runnerCapabilities['claude-code']).toEqual([
-      'plan',
-      'code',
-      'review',
-      'fix',
-      'triage',
-      'test',
-      'staging',
-      'release',
-      'clarify',
+      'drive',
       'smoke',
       'release_batch',
       'reconcile',
       'verify_skill',
-      'drive',
     ]);
   });
 });
 
-describe('RUNNER_CAPABILITIES covers every dispatchable job type', () => {
-  // cm:why `pm` bypasses the gate entirely (own queue) and `custom` is operator-defined with no canonical runner — every other type reaches `runnerSupportsJobType` and must be claimable
-  const EXEMPT: readonly JobType[] = ['pm', 'custom'];
-
+describe('RUNNER_CAPABILITIES', () => {
   // cm:guard this is the ONLY check on the array contents — `RUNNER_CAPABILITIES` is a Record keyed by runner type, so TypeScript verifies the two KEYS and never the lists inside them. `drive` was absent for the whole of phase 3 and every dispatch failed `runner_unsupported_type`, permanently, with no runner ever selected.
-  it('every job type is claimable by some runner, or explicitly exempt', () => {
+  it('every job type is claimable by some runner, or explicitly unenqueueable', () => {
+    // cm:why `pm` bypasses the gate entirely (own queue) and `custom` is operator-defined with no canonical runner — every other non-staged type reaches `runnerSupportsJobType` and must be claimable
+    const EXEMPT: readonly JobType[] = ['pm', 'custom'];
     const claimable = new Set(Object.values(RUNNER_CAPABILITIES).flat());
-    const orphans = jobTypes.filter((t) => !claimable.has(t) && !EXEMPT.includes(t));
+    const orphans = jobTypes.filter(
+      (t) => !claimable.has(t) && !EXEMPT.includes(t) && !STAGED_JOB_TYPES.includes(t),
+    );
     expect(orphans).toEqual([]);
   });
 
-  // cm:edge contract -> packages/core/src/pipeline/autonomous-dispatch.ts — AUTONOMOUS_JOB_TYPE; spelled literally because importing that module pulls in db/client.js, which validates env at import and would make this hermetic suite need a database
+  // cm:guard the staged types stay OUT, and this is what says so. They survive in `jobTypes` because ~30k historical `jobs` rows hold them and a read of one must stay representable (ISS-895); absence here is the whole mechanism that makes them unenqueueable — a runner handed one fails it `runner_unsupported_type`, which is the loud refusal. Adding one back silently re-opens a lane whose skills, step table and dispatch gate no longer exist.
+  it('no staged job type is claimable by any runner', () => {
+    const claimable = new Set(Object.values(RUNNER_CAPABILITIES).flat());
+    expect(STAGED_JOB_TYPES.filter((t) => claimable.has(t))).toEqual([]);
+  });
+
+  // cm:edge contract -> packages/core/src/pipeline/autonomous-mode.ts — AUTONOMOUS_JOB_TYPE; spelled literally because importing that module pulls in db/client.js, which validates env at import and would make this hermetic suite need a database
   it('the autonomous driver runs on claude-code', () => {
     expect(RUNNER_CAPABILITIES['claude-code']).toContain('drive');
   });

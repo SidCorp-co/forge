@@ -7,10 +7,10 @@
 // lowercase/digits/hyphens, name 1–200). On success we invalidate `['projects']`
 // (done by the hook) and move to step 2 — "Set up pipeline" — which saves
 // repoPath/baseBranch/productionBranch through the EXISTING project PATCH
-// (`useUpdateProject`), seeds the stage-mapped skills + Balanced preset via the
-// idempotent bootstrap endpoint, and surfaces the runner-bind checklist.
-// `pipelineConfig.states` is owned server-side by bootstrap — the client never
-// sends a partial pipelineConfig. "Skip for now" routes straight to the project.
+// (`useUpdateProject`) and surfaces the runner-bind checklist. It sends no
+// pipelineConfig: the server's defaults apply until Settings writes one.
+// "Skip for now" routes straight to the project.
+
 import { type FormEvent, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -23,8 +23,8 @@ import { ApiError } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
 import { useToast } from '@/providers/toast-provider';
 import { SLUG_RE, slugify } from '@/lib/slug';
-import { useBootstrapProject, useCreateProject, useOnboardProject } from '../hooks';
-import type { BootstrapResult, CreatedProject } from '../types';
+import { useCreateProject, useOnboardProject } from '../hooks';
+import type { CreatedProject } from '../types';
 
 export { slugify };
 
@@ -56,11 +56,10 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
   const [repoPath, setRepoPath] = useState('');
   const [baseBranch, setBaseBranch] = useState('main');
   const [productionBranch, setProductionBranch] = useState('main');
-  const [seedResult, setSeedResult] = useState<BootstrapResult | null>(null);
+  const [repoSaved, setRepoSaved] = useState(false);
   const [seedError, setSeedError] = useState<string | null>(null);
   const [onboardError, setOnboardError] = useState<string | null>(null);
   const update = useUpdateProject(created?.id);
-  const bootstrap = useBootstrapProject(created?.id);
   const onboard = useOnboardProject(created?.id);
 
   // Reset the whole form each time the dialog opens — never leak a prior draft
@@ -77,7 +76,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
       setRepoPath('');
       setBaseBranch('main');
       setProductionBranch('main');
-      setSeedResult(null);
+      setRepoSaved(false);
       setSeedError(null);
       setOnboardError(null);
       create.reset();
@@ -147,9 +146,8 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
   }
 
   /**
-   * Save the repo fields through the existing project PATCH, then seed skills +
-   * the Balanced preset via the idempotent bootstrap endpoint. The bootstrap
-   * route owns `pipelineConfig.states` — no pipelineConfig is sent from here.
+   * Save the repo fields through the existing project PATCH. Nothing else is
+   * provisioned here.
    */
   async function onSeed() {
     if (!created) return;
@@ -163,13 +161,13 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
       if (norm(productionBranch)) patch.productionBranch = norm(productionBranch);
       if (Object.keys(patch).length > 0) await update.mutateAsync(patch);
 
-      setSeedResult(await bootstrap.mutateAsync());
+      setRepoSaved(true);
     } catch (err) {
       setSeedError(formatApiError(err));
     }
   }
 
-  const seeding = update.isPending || bootstrap.isPending;
+  const seeding = update.isPending;
 
   /**
    * ISS-733 — "Build Project Brain": open a fresh chat session that runs
@@ -199,15 +197,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
       {created ? (
         <div className="flex h-full flex-col gap-4">
           {seedError && <Banner tone="danger">{seedError}</Banner>}
-          {seedResult && (
-            <Banner tone="success">
-              {seedResult.alreadyBootstrapped
-                ? 'Pipeline skills were already seeded for this project.'
-                : `Seeded ${seedResult.skillsBound} pipeline skills — pipeline ${
-                    seedResult.pipelineEnabled ? 'enabled' : 'disabled'
-                  }.`}
-            </Banner>
-          )}
+          {repoSaved && <Banner tone="success">Repository settings saved.</Banner>}
 
           <Field
             label="Repository path"
@@ -245,15 +235,13 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
             <Button
               variant="primary"
               loading={seeding}
-              disabled={!!seedResult}
               onClick={onSeed}
               className="min-h-11"
             >
-              Seed pipeline skills (Balanced)
+              Save repository settings
             </Button>
             <p className="fg-body-sm mt-1.5 text-subtle">
-              Saves the repository settings, binds the stage-mapped forge skills, and applies the
-              Balanced pipeline preset. Safe to re-run; everything stays editable in Settings.
+              Safe to re-run; everything stays editable in Settings.
             </p>
           </div>
 
@@ -276,7 +264,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
             </ol>
           </div>
 
-          {seedResult && (
+          {repoSaved && (
             <div className="border-t border-line-subtle pt-4">
               <span className="fg-label">Build the Project Brain</span>
               {onboardError && (
@@ -303,7 +291,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
           )}
 
           <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
-            {seedResult ? (
+            {repoSaved ? (
               <Button type="button" variant="primary" onClick={finish}>
                 Go to project
               </Button>

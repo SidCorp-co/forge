@@ -186,7 +186,6 @@ describe('summarizeTier2Jobs', () => {
 describe('planSmokeCanaries', () => {
   const tier1 = (over: Partial<SmokeTier1Entry>): SmokeTier1Entry => ({
     stage: 'open',
-    jobType: 'triage',
     skillId: 'id-forge-triage',
     skillName: 'forge-triage',
     status: 'PASS',
@@ -197,7 +196,8 @@ describe('planSmokeCanaries', () => {
     ...over,
   });
 
-  it('dispatches registered stages, skips unregistered + already-active ones', () => {
+  // cm:guard `not_registered` left with the staged lane (ISS-895): tier-1 now walks the project's own registration rows, so a stage with no row produces no ENTRY at all rather than a FAIL entry. The unresolvable case that survives is a row whose skill has no project-scoped copy — `no_project_skill` — and it must still be skipped rather than dispatched.
+  it('dispatches resolvable stages, skips unresolvable + already-active ones', () => {
     const plan = planSmokeCanaries({
       tier1: [
         tier1({ stage: 'open' }),
@@ -206,7 +206,7 @@ describe('planSmokeCanaries', () => {
           skillId: null,
           skillName: null,
           status: 'FAIL',
-          reason: 'not_registered',
+          reason: 'no_project_skill',
         }),
         tier1({ stage: 'testing', skillName: 'forge-test', skillId: 'id-forge-test' }),
       ],
@@ -214,7 +214,7 @@ describe('planSmokeCanaries', () => {
     });
     expect(plan.toDispatch).toEqual([{ stage: 'open', skillName: 'forge-triage' }]);
     expect(plan.skipped).toEqual([
-      { stage: 'approved', reason: 'not_registered' },
+      { stage: 'approved', reason: 'no_project_skill' },
       { stage: 'testing', reason: 'canary_already_active' },
     ]);
   });

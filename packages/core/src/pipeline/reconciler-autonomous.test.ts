@@ -10,7 +10,6 @@ import {
   sentryAddBreadcrumb,
   staleCountQueue,
   stuckQueue,
-  wedgeQueue,
 } from './reconciler-test-harness.js';
 
 vi.mock('../db/client.js', async () => {
@@ -20,10 +19,6 @@ vi.mock('../db/client.js', async () => {
 vi.mock('./orchestrator.js', async () => {
   const h = await import('./reconciler-test-harness.js');
   return { reEnqueueForIssue: (...a: unknown[]) => h.reEnqueueMock(...(a as [])) };
-});
-vi.mock('./stage-stall-guard.js', async () => {
-  const h = await import('./reconciler-test-harness.js');
-  return { checkStageStallAndPause: (...a: unknown[]) => h.stallGuardMock(...(a as [])) };
 });
 vi.mock('./autonomous-rescue-cap.js', async () => {
   const h = await import('./reconciler-test-harness.js');
@@ -52,7 +47,6 @@ describe('autonomous driver wedge reset (ISS-890)', () => {
   function seedIdle(): void {
     stuckQueue.push([]);
     staleCountQueue.push([{ count: 0 }]);
-    wedgeQueue.push([]);
   }
 
   it('rolls a driver wedge at in_progress back to the entry status', async () => {
@@ -141,34 +135,6 @@ describe('autonomous driver wedge reset (ISS-890)', () => {
     expect(recordRescueMock).toHaveBeenCalledWith('run-a1');
   });
 
-  it('keeps the ISS-598 and ISS-890 wedge counts apart', async () => {
-    stuckQueue.push([]);
-    staleCountQueue.push([{ count: 0 }]);
-    wedgeQueue.push([
-      {
-        id: 'iss-w9',
-        project_id: 'proj-w',
-        status: 'in_progress',
-        reopen_count: 0,
-        created_by: 'owner-w',
-        job_type: 'code',
-      },
-    ]);
-    autonomousWedgeQueue.push([
-      {
-        id: 'iss-a1',
-        project_id: 'proj-a',
-        status: 'in_progress',
-        reopen_count: 2,
-        created_by: 'owner-a',
-      },
-    ]);
-
-    const result = await runReconcilerOnce();
-
-    expect(result.reset).toBe(1);
-    expect(result.autonomousReset).toBe(1);
-  });
 });
 
 describe('the rescue cap on the open path (ISS-890 extra fix)', () => {
@@ -179,12 +145,10 @@ describe('the rescue cap on the open path (ISS-890 extra fix)', () => {
         project_id: 'proj-o',
         status: 'open',
         created_by: 'owner-o',
-        mode: 'autonomous',
         reopen_count: 1,
       },
     ]);
     staleCountQueue.push([{ count: 0 }]);
-    wedgeQueue.push([]);
     autonomousWedgeQueue.push([]);
   }
 
@@ -240,25 +204,4 @@ describe('the rescue cap on the open path (ISS-890 extra fix)', () => {
     expect(recordRescueMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard the staged control is what keeps this cap off the pipeline it was never built for: `checkStageStallAndPause` already owns that path, and consulting both would cap a staged run twice on different evidence.
-  it('never consults the autonomous cap on a staged project', async () => {
-    stuckQueue.push([
-      {
-        id: 'iss-s1',
-        project_id: 'proj-s',
-        status: 'approved',
-        created_by: 'owner-s',
-        mode: 'staged',
-        reopen_count: 0,
-      },
-    ]);
-    staleCountQueue.push([{ count: 0 }]);
-    wedgeQueue.push([]);
-    autonomousWedgeQueue.push([]);
-
-    const result = await runReconcilerOnce();
-
-    expect(result.rescued).toBe(1);
-    expect(capMock).not.toHaveBeenCalled();
-  });
 });

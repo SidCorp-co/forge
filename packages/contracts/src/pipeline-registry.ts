@@ -84,35 +84,13 @@ export const REGISTRY_PIPELINE_RUN_KINDS = [
 	"system",
 ] as const;
 
-export const REGISTRY_STEP_TOGGLE_KEYS = [
-	"autoTriage",
-	"autoClarify",
-	"autoPlan",
-	"autoCode",
-	"autoReview",
-	"autoTest",
-	"autoFix",
-	"autoRelease",
-] as const;
-
-export const pipelineStepSchema = z.object({
-	status: z.enum(REGISTRY_ISSUE_STATUSES),
-	jobType: z.enum(REGISTRY_JOB_TYPES),
-	toggle: z.enum(REGISTRY_STEP_TOGGLE_KEYS),
-	skillName: z.string().min(1),
-	/** In-flight status the step's agent flips to at start (sparse; registry v3). */
-	workingStatus: z.enum(REGISTRY_ISSUE_STATUSES).nullable(),
-});
-export type PipelineStep = z.infer<typeof pipelineStepSchema>;
-
+// cm:guard `steps`, `manualOnlyJobTypes` and the eight `auto*` toggle keys left with the staged lane (ISS-895) and must not come back here alone: this schema is what a client PARSES, so re-adding a required key the server no longer sends makes every registry read throw. The nine staged job types stay in REGISTRY_JOB_TYPES because ~30k historical `jobs` rows hold them and a client must still render one.
 export const pipelineRegistryResponseSchema = z.object({
 	version: z.number().int().positive(),
-	steps: z.array(pipelineStepSchema),
 	runnerCapabilities: z.record(
 		z.enum(REGISTRY_RUNNER_TYPES),
 		z.array(z.enum(REGISTRY_JOB_TYPES)),
 	),
-	manualOnlyJobTypes: z.array(z.enum(REGISTRY_JOB_TYPES)),
 });
 export type PipelineRegistryResponse = z.infer<
 	typeof pipelineRegistryResponseSchema

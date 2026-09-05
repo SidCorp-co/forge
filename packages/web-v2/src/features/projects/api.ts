@@ -3,7 +3,6 @@
 // `packages/core/src/projects/routes.ts` for ISS-288.
 import { apiClient } from '@/lib/api/client';
 import type {
-  BootstrapResult,
   CreatedProject,
   CreateProjectInput,
   OnboardResult,
@@ -34,17 +33,10 @@ export const projectApi = {
   /** `GET /api/projects/:id` — full project detail (members/labels/devices). */
   getById: (id: string) => apiClient<ProjectDetail>(`/projects/${id}`),
 
-  /** `POST /api/projects/:id/skills/bootstrap` — seed the stage-mapped
-   *  `forge-*` skills + the Balanced pipeline preset (ISS-453 onboarding).
-   *  Idempotent: re-running returns `alreadyBootstrapped: true`. The server
-   *  owns `pipelineConfig.states` — never send a partial config from here. */
-  bootstrap: (id: string) =>
-    apiClient<BootstrapResult>(`/projects/${id}/skills/bootstrap`, { method: 'POST' }),
-
   /** `POST /api/projects/:id/onboard` — the "Build Project Brain" trigger
    *  (ISS-733): opens a fresh chat session that runs `forge-onboard` as its
-   *  first turn. Requires the project to already be bootstrapped (the skill
-   *  is seeded there). Returns the new session id to open in chat. */
+   *  first turn. Requires the project to own an install-only `forge-onboard`
+   *  copy. Returns the new session id to open in chat. */
   onboard: (id: string) =>
     apiClient<OnboardResult>(`/projects/${id}/onboard`, { method: 'POST' }),
 };

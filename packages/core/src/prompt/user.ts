@@ -567,7 +567,7 @@ export function buildJobPromptString(args: {
   }
 
   // cm:guard append this LAST, after every body block — an agent reads top-down and acts on what it read most recently, so a termination contract placed above the work is one it has stopped holding by the time it finishes.
-  // cm:guard fork on `drive`, and `jobType` is a sound proxy for the lane because `autonomousStepFor` is the ONLY producer of that type and `stageEnum` on `POST /:id/run-pipeline-step` excludes it — a drive job cannot be enqueued outside the autonomous lane. The staged block sends the agent to "the next state in the Pipeline Rules ladder", which this mode does not have, and offers `waiting` and `reopen`, which `issues/autonomous-park.ts` then rewrites on every session.
+  // cm:guard fork on `drive`, and `jobType` is a sound proxy for the lane because `autonomousStepFor` is the ONLY producer of that type and `POST /:id/run-pipeline-step` takes no stage at all — a drive job cannot be enqueued outside the autonomous lane. The staged block sends the agent to "the next state in the Pipeline Rules ladder", which this mode does not have, and offers `waiting` and `reopen`, which `issues/autonomous-park.ts` then rewrites on every session.
   if (handoffsEnabled && isHandoffStep(args.jobType) && args.handoffScope) {
     lines.push(
       '',

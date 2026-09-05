@@ -287,37 +287,29 @@ describe('stageConfigSchema per-state overrides', () => {
 });
 
 describe('resume policy', () => {
-  // ISS-580 — maxResumeTokens + maxResumeReopenCycles
-  it('accepts maxResumeTokens and maxResumeReopenCycles as optional non-negative integers', () => {
-    const parsed = pipelineConfigSchema.parse({
-      maxResumeTokens: 200_000,
-      maxResumeReopenCycles: 5,
-    });
-    expect(parsed.maxResumeTokens).toBe(200_000);
-    expect(parsed.maxResumeReopenCycles).toBe(5);
+  // cm:guard `maxResumeReopenCycles` was dropped from this schema by ISS-895 and must stay out. The schema STRIPS unknown keys, so re-adding the assertion without re-adding the key would fail here rather than silently — but re-adding the KEY is the real risk: it would restore a settings knob backing a bound that reads `reopen_count`, a column this lane never moves.
+  it('accepts maxResumeTokens as an optional non-negative integer', () => {
+    expect(pipelineConfigSchema.parse({ maxResumeTokens: 200_000 }).maxResumeTokens).toBe(200_000);
   });
 
-  it('accepts 0 for maxResumeTokens and maxResumeReopenCycles (gate disabled)', () => {
-    const parsed = pipelineConfigSchema.parse({
-      maxResumeTokens: 0,
-      maxResumeReopenCycles: 0,
-    });
-    expect(parsed.maxResumeTokens).toBe(0);
-    expect(parsed.maxResumeReopenCycles).toBe(0);
+  it('accepts 0 for maxResumeTokens (gate disabled)', () => {
+    expect(pipelineConfigSchema.parse({ maxResumeTokens: 0 }).maxResumeTokens).toBe(0);
   });
 
   it('rejects negative maxResumeTokens', () => {
     expect(() => pipelineConfigSchema.parse({ maxResumeTokens: -1 })).toThrow();
   });
 
-  it('rejects negative maxResumeReopenCycles', () => {
-    expect(() => pipelineConfigSchema.parse({ maxResumeReopenCycles: -1 })).toThrow();
+  it('strips maxResumeReopenCycles rather than carrying a knob nothing reads', () => {
+    const parsed = pipelineConfigSchema.parse({ maxResumeReopenCycles: 5 }) as Record<
+      string,
+      unknown
+    >;
+    expect(parsed.maxResumeReopenCycles).toBeUndefined();
   });
 
-  it('fields are absent (undefined) when not configured', () => {
-    const parsed = pipelineConfigSchema.parse({ enabled: true });
-    expect(parsed.maxResumeTokens).toBeUndefined();
-    expect(parsed.maxResumeReopenCycles).toBeUndefined();
+  it('maxResumeTokens is absent (undefined) when not configured', () => {
+    expect(pipelineConfigSchema.parse({ enabled: true }).maxResumeTokens).toBeUndefined();
   });
 });
 

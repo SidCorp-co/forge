@@ -6,12 +6,13 @@
 // changed nothing. The number survives as orientation the agent reads and
 // judges against; nothing here blocks a dispatch or writes a status.
 //
-// One number, three readers, two counts. The prompt prints it to the agent.
-// `alarmChurningIssues` measures it against TOTAL reopens, which only move on a
-// `reopen` transition — staged mode. `alarmRejectionStreaks` measures it against
-// CONSECUTIVE review rejections in one run — autonomous mode, where no reopen
-// ever happens and the first count is frozen. Which count fired is named in each
-// wedge, because a reader who cannot tell them apart cannot judge the rounds.
+// One number, two readers. The prompt prints it to the agent, and
+// `alarmRejectionStreaks` measures it against CONSECUTIVE review rejections in
+// one run. A third reader, `alarmChurningIssues`, measured it against TOTAL
+// reopens — `reopen_count` only moves on entry into `reopen`, a transition this
+// lane never performs, so ISS-895 deleted the pass rather than leave it frozen
+// at 0. The wedge still names WHICH count fired, because that is what tells a
+// reader whether the rounds were wasted.
 
 export const DEFAULT_NO_PROGRESS_ROUNDS = 5;
 

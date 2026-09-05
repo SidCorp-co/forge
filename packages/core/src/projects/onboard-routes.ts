@@ -51,9 +51,7 @@ projectOnboardRoutes.post(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    // Same gate as skills/bootstrap: this kicks off a conversation that can
-    // end up proposing projectFacts/pipelineConfig changes, so treat starting
-    // it as a project-setup action.
+    // cm:why admin, not member: this opens a conversation that can end up proposing projectFacts / pipelineConfig changes, so starting it is a project-setup action rather than a read.
     const access = await loadProjectAccess(id, userId);
     assertProjectRole(access, 'admin', 'project admin required');
 
@@ -64,15 +62,12 @@ projectOnboardRoutes.post(
       .limit(1);
     if (!project) throw new HTTPException(404, { message: 'project not found' });
 
-    // Only proceed when the project actually owns an install_only forge-onboard
-    // copy (seeded by bootstrap) — a project bootstrapped before ISS-733, or
-    // whose bootstrap silently skipped it (missing global template on an old
-    // server build), gets a clear error instead of a slash-command that
-    // resolves to nothing on the runner.
+    // cm:guard refuse by name when the project owns no install_only `forge-onboard` copy — the copy is adopted by a domain-template apply, and starting the session anyway hands the runner a slash-command that resolves to nothing, which reads to the operator as the chat being broken rather than the skill being absent.
     const effective = await resolveRegisteredEffectiveSkills(project.id);
     if (!effective.some((s) => s.name === ONBOARD_SKILL_NAME && s.installOnly)) {
       throw new HTTPException(503, {
-        message: 'forge-onboard is not installed for this project — re-run pipeline bootstrap',
+        message:
+          'forge-onboard is not installed for this project — apply a domain template to adopt it',
         cause: { code: 'ONBOARD_SKILL_MISSING' },
       });
     }

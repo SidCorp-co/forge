@@ -25,13 +25,11 @@ vi.mock('./wedge.js', () => ({
 }));
 
 const alarmAgedHoldsMock = vi.fn(async (_now?: Date) => ({ alerted: 0 }));
-const alarmChurningIssuesMock = vi.fn(async () => ({ alerted: 0 }));
 const alarmStalledQueuedJobsMock = vi.fn(async (_now?: Date) => ({ alerted: 0 }));
 const alarmPausedRunsWithQueuedWorkMock = vi.fn(async (_now?: Date) => ({ alerted: 0 }));
 const alarmRejectionStreaksMock = vi.fn(async () => ({ alerted: 0 }));
 vi.mock('./inv7-alarms.js', () => ({
   alarmAgedHolds: (now?: Date) => alarmAgedHoldsMock(now),
-  alarmChurningIssues: () => alarmChurningIssuesMock(),
   alarmPausedRunsWithQueuedWork: (now?: Date) => alarmPausedRunsWithQueuedWorkMock(now),
   alarmRejectionStreaks: () => alarmRejectionStreaksMock(),
   alarmStalledQueuedJobs: (now?: Date) => alarmStalledQueuedJobsMock(now),
@@ -192,7 +190,6 @@ describe('runPipelineSweep — watch-only alarm passes', () => {
   it('runs each alarm pass and exposes its count', async () => {
     const passes = [
       [alarmAgedHoldsMock, 'agedHolds', 2],
-      [alarmChurningIssuesMock, 'churningIssues', 1],
       [alarmStalledQueuedJobsMock, 'stalledQueuedJobs', 3],
       [alarmRejectionStreaksMock, 'rejectionStreaks', 4],
       [alarmPausedRunsWithQueuedWorkMock, 'pausedRunsWithQueuedWork', 5],

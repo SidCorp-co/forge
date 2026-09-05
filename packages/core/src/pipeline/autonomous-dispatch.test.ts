@@ -44,6 +44,11 @@ describe('autonomousStepFor', () => {
 
 describe('isAutonomous', () => {
   // cm:guard `null` and "a config that parsed" are NOT one case, and this is where that is proved. ISS-897 left one lane, so `mode` is gone and the only question left is whether the config could be read at all — `null` is a missing, archived or unparseable project and must answer false, because rewriting parks and cascading children on a project nobody can see is broken is the worse direction.
+  it('answers false only for an unreadable config', () => {
+    expect(isAutonomous(null)).toBe(false);
+    expect(isAutonomous({ enabled: true } as never)).toBe(true);
+    expect(isAutonomous({ enabled: false } as never)).toBe(true);
+  });
 });
 
 describe('dispatchAutonomous', () => {
