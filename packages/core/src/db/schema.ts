@@ -1349,14 +1349,11 @@ export const skills = pgTable(
     files: jsonb('files').notNull().default([]),
     changelog: jsonb('changelog').notNull().default([]),
     localGuide: text('local_guide'),
-    // ISS-605 template lineage: which global template this project copy was
-    // adopted from, and at which template version. NULL version on a row with
-    // a lineage id = adopted before tracking (unknown) — the drift sweep
-    // treats it as behind-template. Plain uuid (no FK): a deleted template
-    // must not cascade into project copies.
+    // cm:why lineage only — which template this copy came from and at which version. Nothing compares the two any more: the rebase lane that did was deleted with the staged pipeline, so a NULL version here is an unknown adoption, not a signal.
+    // cm:guard plain uuid, deliberately NO foreign key — deleting a global template must not cascade into the project copies that were adopted from it, which is the whole reason a copy exists.
     basedOnGlobalSkillId: uuid('based_on_global_skill_id'),
     basedOnGlobalVersion: integer('based_on_global_version'),
-    // cm:why permanent, queryable divergence — distinct from the version-lag signal behindTemplate; must suppress drift everywhere behindTemplate is computed (invariant 10, ISS-795 §10)
+    // cm:why a deliberate, queryable divergence from the template — the only reason left to record one, now that the version-lag signal it used to suppress is gone with the rebase lane
     pinned: boolean('pinned').notNull().default(false),
     pinnedReason: text('pinned_reason'),
     pinnedBy: text('pinned_by'),

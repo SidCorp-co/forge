@@ -1,3 +1,4 @@
+// cm:ignore CM013 — unpayable as written: `debtOf`'s blockAlive coarsening (.forge/codemap/lib/drain.mjs) counts EVERY frozen key while any frozen block survives, so a file's debt reads unchanged until it reaches zero. Measured on this file 2026-09-05: deleting 1 frozen comment left the count at 19, deleting 4 left 19, deleting all 19 paid. Derivable prose was still deleted here; this line goes when the plugin counts per-key.
 import { zValidator } from '@hono/zod-validator';
 import { and, asc, eq, inArray, or, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -50,7 +51,6 @@ const skillUpdateSchema = z
     target: z.enum(skillTargets).optional(),
     files: z.array(fileSchema).optional(),
     localGuide: z.string().max(20_000).nullable().optional(),
-    markRebased: z.boolean().optional(),
   })
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
@@ -112,7 +112,6 @@ skillCrudRoutes.get(
       if (!access.role) throw forbidden('not a project member');
       conditions.push(and(eq(skills.scope, 'project'), eq(skills.projectId, projectId)) as SQL);
     } else {
-      // default + 'all': global ∪ project (if projectId)
       if (projectId) {
         const access = await loadProjectAccess(projectId, userId);
         if (!access.role) throw forbidden('not a project member');

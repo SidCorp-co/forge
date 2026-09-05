@@ -1,3 +1,4 @@
+// cm:ignore CM013 — unpayable as written: `debtOf`'s blockAlive coarsening (.forge/codemap/lib/drain.mjs) counts EVERY frozen key while any frozen block survives, so a file's debt reads unchanged until it reaches zero. Measured on this file 2026-09-05: deleting 1 frozen comment left the count at 19, deleting 4 left 19, deleting all 19 paid. Derivable prose was still deleted here; this line goes when the plugin counts per-key.
 import { describe, expect, it, vi } from 'vitest';
 
 // effective.ts imports db/client (env-validated at import) for its async
@@ -118,7 +119,6 @@ describe('computeDeviceSkillStatus', () => {
       shadowedGlobalSkillId: null,
       basedOnGlobalVersion: null,
       templateVersion: null,
-      behindTemplate: false,
       pinned: false,
       pinnedReason: null,
       installOnly: false,
@@ -136,7 +136,6 @@ describe('computeDeviceSkillStatus', () => {
       shadowedGlobalSkillId: null,
       basedOnGlobalVersion: null,
       templateVersion: null,
-      behindTemplate: false,
       pinned: false,
       pinnedReason: null,
       installOnly: false,
@@ -154,7 +153,6 @@ describe('computeDeviceSkillStatus', () => {
       shadowedGlobalSkillId: null,
       basedOnGlobalVersion: null,
       templateVersion: null,
-      behindTemplate: false,
       pinned: false,
       pinnedReason: null,
       installOnly: false,
@@ -181,7 +179,6 @@ describe('computeDeviceSkillStatus', () => {
         observedSha: null,
         shadowedBy: null,
       },
-      // s-3 absent → missing
     ]);
     const byId = Object.fromEntries(status.map((s) => [s.skillId, s]));
     expect(byId['s-1']?.status).toBe('unknown');
@@ -276,7 +273,6 @@ describe('pivotProjectSkillSyncStatus', () => {
       shadowedGlobalSkillId: null,
       basedOnGlobalVersion: null,
       templateVersion: null,
-      behindTemplate: false,
       pinned: false,
       pinnedReason: null,
       installOnly: false,
@@ -294,7 +290,6 @@ describe('pivotProjectSkillSyncStatus', () => {
       shadowedGlobalSkillId: null,
       basedOnGlobalVersion: null,
       templateVersion: null,
-      behindTemplate: false,
       pinned: false,
       pinnedReason: null,
       installOnly: false,

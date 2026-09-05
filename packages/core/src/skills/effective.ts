@@ -1,3 +1,4 @@
+// cm:ignore CM013 — unpayable as written: `debtOf`'s blockAlive coarsening (.forge/codemap/lib/drain.mjs) counts EVERY frozen key while any frozen block survives, so a file's debt reads unchanged until it reaches zero. Measured on this file 2026-09-05: deleting 1 frozen comment left the count at 19, deleting 4 left 19, deleting all 19 paid. Derivable prose was still deleted here; this line goes when the plugin counts per-key.
 import { and, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { deviceSkills, devices, runners, skillRegistrations, skills } from '../db/schema.js';
@@ -54,20 +55,11 @@ export interface EffectiveSkill {
   shadowsGlobal: boolean;
   /** The same-name global's skill id (null when none). Catalog hint only. */
   shadowedGlobalSkillId: string | null;
-  /**
-   * ISS-605 template drift (catalog hints, project rows only). `templateVersion`
-   * = the same-name global's current version; `basedOnGlobalVersion` = the
-   * template version this copy was adopted at (null = unknown / pre-tracking);
-   * `behindTemplate` = a same-name global exists AND the copy's adopted version
-   * is unknown or older. Globals and unshadowed rows carry null/null/false.
-   */
+  // cm:guard adoption provenance on project rows only (globals and unshadowed rows carry null): `basedOnGlobalVersion` is the template version this copy was taken from, null when it predates tracking; `templateVersion` is what the template carries now. Nothing compares the two — the lane that did was deleted with the staged pipeline — so neither may be re-read as drift without a consumer that acts on it.
   basedOnGlobalVersion: number | null;
   templateVersion: number | null;
-  behindTemplate: boolean;
   /**
-   * ISS-802: intentional, permanent divergence from the template. Distinct
-   * from `behindTemplate` — a pinned row NEVER reports `behindTemplate=true`
-   * regardless of version lag (invariant 10, ISS-795 §10). Globals and
+   * ISS-802: intentional, permanent divergence from the template. Globals and
    * unshadowed rows carry `false`/`null`.
    */
   pinned: boolean;
@@ -143,7 +135,6 @@ export function computeEffectiveSkill(skill: SkillBodyRow): EffectiveSkill {
     shadowedGlobalSkillId: null,
     basedOnGlobalVersion: null,
     templateVersion: null,
-    behindTemplate: false,
     pinned: skill.pinned ?? false,
     pinnedReason: skill.pinnedReason ?? null,
     installOnly: skill.installOnly,
@@ -188,17 +179,10 @@ export function dedupEffectiveSkills(rows: SkillBodyRow[]): EffectiveSkill[] {
     const eff = computeEffectiveSkill(r);
     eff.shadowsGlobal = shadowed != null;
     eff.shadowedGlobalSkillId = shadowed?.id ?? null;
-    // ISS-605 drift hint: adopted-version unknown (pre-tracking) or older than
-    // the template's current version ⇒ behind.
     eff.basedOnGlobalVersion = r.basedOnGlobalVersion ?? null;
     eff.templateVersion = shadowed?.version ?? null;
     eff.pinned = r.pinned ?? false;
     eff.pinnedReason = r.pinnedReason ?? null;
-    // cm:guard a pinned row NEVER reports behindTemplate=true, regardless of version lag (ISS-795 §10 / invariant 10 — drift-as-noise gets muted)
-    eff.behindTemplate =
-      !eff.pinned &&
-      shadowed != null &&
-      (r.basedOnGlobalVersion == null || r.basedOnGlobalVersion < shadowed.version);
     result.push(eff);
   }
 

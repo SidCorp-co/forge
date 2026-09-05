@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Queue-based select mock (same style as skills/template-propagation.test.ts):
-// each db.select().from().where() consumes the next queued result; awaitable
-// directly and via .limit().
+// cm:guard the queue mock is order-sensitive: each db.select().from().where() consumes the NEXT queued result, awaited directly or via .limit(). A test that adds a query without queueing a row for it silently steals the next test's row instead of failing where the gap is.
 const selectQueue: unknown[][] = [];
 const labelInsertMock = vi.fn();
 const issueLabelInsertMock = vi.fn();

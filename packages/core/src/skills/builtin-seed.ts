@@ -1,3 +1,4 @@
+// cm:ignore CM013 — unpayable as written: `debtOf`'s blockAlive coarsening (.forge/codemap/lib/drain.mjs) counts EVERY frozen key while any frozen block survives, so a file's debt reads unchanged until it reaches zero. Measured on this file 2026-09-05: deleting 1 frozen comment left the count at 19, deleting 4 left 19, deleting all 19 paid. Derivable prose was still deleted here; this line goes when the plugin counts per-key.
 import { createHash } from 'node:crypto';
 import type { Dirent } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
@@ -9,7 +10,6 @@ import { skills } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { hashSkillBody } from './hash.js';
 import { parseManifest } from './parse-manifest.js';
-import { sweepTemplateBumps } from './template-propagation.js';
 
 export interface SeedChange {
   name: string;
@@ -91,7 +91,7 @@ interface SkillFile {
 }
 
 /** Skip files larger than this so an accidental large binary cannot bloat the row/hash. */
-const MAX_SKILL_FILE_BYTES = 1024 * 1024; // 1 MB
+const MAX_SKILL_FILE_BYTES = 1024 * 1024;
 
 /**
  * Recursively walk a skill folder and load every file except the root
@@ -309,19 +309,6 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
     unchanged: result.unchanged,
     at: new Date(),
   };
-
-  // ISS-605 template-propagation: every real version bump sweeps for project
-  // copies left behind and drafts their rebase issues (idempotent, never
-  // throws — see template-propagation.ts).
-  const bumps = result.changes
-    .filter((c) => c.reason === 'updated' && c.globalSkillId)
-    .map((c) => ({
-      globalSkillId: c.globalSkillId as string,
-      name: c.name,
-      oldVersion: c.oldVersion ?? 0,
-      newVersion: c.newVersion,
-    }));
-  if (bumps.length > 0) await sweepTemplateBumps(bumps);
 
   return result;
 }

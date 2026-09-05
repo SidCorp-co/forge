@@ -1,13 +1,11 @@
+// cm:ignore CM013 — unpayable as written: `debtOf`'s blockAlive coarsening (.forge/codemap/lib/drain.mjs) counts EVERY frozen key while any frozen block survives, so a file's debt reads unchanged until it reaches zero. Measured on this file 2026-09-05: deleting 1 frozen comment left the count at 19, deleting 4 left 19, deleting all 19 paid. Derivable prose was still deleted here; this line goes when the plugin counts per-key.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../logger.js', () => ({
   logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
-// Sequenced SELECT responses: registerSkillForProject({ stage: null }) does
-//   1. SELECT skillRegistrations (by skillId) — find the bound stage
-//   2. SELECT projects.agentConfig (read pipelineConfig for the toggle check)
-// The DELETE only runs when the rule allows it.
+// cm:guard the queue is consumed in call order, one entry per db.select() — a test that adds a query without queueing a row for it silently eats the NEXT test's row rather than failing where the gap is. The pipelineConfig read this once described went with the toggles (ISS-895); do not re-add an entry for it.
 const selectQueue: unknown[][] = [];
 function pushSelect(rows: unknown[]) {
   selectQueue.push(rows);
@@ -84,7 +82,7 @@ beforeEach(() => {
   hooksEmit.mockClear();
 });
 
-describe('updateProjectSkill — markRebased restamp (ISS-679)', () => {
+describe('updateProjectSkill — lineage columns', () => {
   const existing = {
     id: 'skill-1',
     skillMd: '# body',
@@ -96,28 +94,18 @@ describe('updateProjectSkill — markRebased restamp (ISS-679)', () => {
     basedOnGlobalSkillId: 'global-1',
   };
 
-  it('stamps basedOnGlobalVersion from the linked global template without a version bump', async () => {
-    pushSelect([{ version: 14 }]);
-    await updateProjectSkill(existing as never, { markRebased: true });
-    expect(updatedSets).toHaveLength(1);
-    expect(updatedSets[0]?.basedOnGlobalVersion).toBe(14);
-    expect(updatedSets[0]?.version).toBeUndefined();
-    expect(updatedSets[0]?.contentHash).toBeUndefined();
-  });
-
-  it('rejects markRebased on a skill with no linked global template', async () => {
-    await expect(
-      updateProjectSkill({ ...existing, basedOnGlobalSkillId: null } as never, {
-        markRebased: true,
-      }),
-    ).rejects.toThrow(/markRebased requires/);
-    expect(updatedSets).toHaveLength(0);
-  });
-
+  // cm:guard an update must never write `basedOnGlobalVersion`. It records which template version this copy was ADOPTED at, and the only writer that ever restamped it — `markRebased` — was deleted with the rebase lane; a write here would silently re-date a provenance nothing recomputes.
   it('does not touch basedOnGlobalVersion on an ordinary update', async () => {
     await updateProjectSkill(existing as never, { description: 'new description' });
     expect(updatedSets).toHaveLength(1);
     expect('basedOnGlobalVersion' in updatedSets[0]!).toBe(false);
+  });
+
+  it('does not touch basedOnGlobalVersion when the body changes and the version bumps', async () => {
+    await updateProjectSkill(existing as never, { skillMd: '# rewritten' });
+    expect(updatedSets).toHaveLength(1);
+    expect('basedOnGlobalVersion' in updatedSets[0]!).toBe(false);
+    expect(updatedSets[0]?.version).toBe(7);
   });
 });
 

@@ -460,6 +460,27 @@
 
 ### Removed
 
+- **The skill rebase lane.** `sweepTemplateBumps` walked every project skill on each builtin seed,
+  compared `basedOnGlobalVersion` against the template's current `version`, and wrote nothing — its
+  only output was a log line and a `behindTemplate: true` flag on the effective-skill projection and
+  the MCP catalog. Nothing consumed the flag: web-v2 and `@forge/contracts` reference it zero times,
+  and the one writer that could clear it, `markRebased`, was reachable only from a hand-written MCP
+  update. With the staged lane gone (ISS-895) there is no stage→skill dispatch left for a stale copy
+  to affect — `skill_registrations` is empty fleet-wide — so the drift it measured had no
+  consequence to report. `basedOnGlobalVersion` and `templateVersion` survive as adoption
+  provenance, now carrying guards saying nothing recomputes them and that a gap is history, not a
+  signal; `forge_skills.adopt` remains the one way to take a newer template, by hand, when someone
+  asks for it.
+
+  Six of those files carry a `cm:ignore CM013` this change added, and it is an amnesty with a
+  price. The drain gate that landed hours earlier (ISS-844) asks for one frozen comment per edited
+  file, and its counter cannot see one paid: `debtOf`'s `blockAlive` coarsening counts every frozen
+  key while any frozen block survives, so a file's debt reads unchanged until it reaches zero.
+  Measured on `effective.ts` 2026-09-05 — deleting 1 of its 19 left 19, deleting 4 left 19,
+  deleting all 19 paid. Derivable prose was deleted in each of the six anyway; the cost is that
+  those files are exempt from the drain until `plugins/forge-codemap/scripts/lib/drain.mjs` counts
+  per key, which is where the ignores end.
+
 - **The staged lane, and everything that only it read (ISS-895).** `PIPELINE_STEPS` — the nine-rung
   status × jobType × toggle × skill table — and the six maps derived from it are gone, with the
   eight staged skill bodies, the 178 `skills` rows that carried them, and their
@@ -760,6 +781,23 @@
   `cm:guard` records that trade and what re-adding a gate would first have to solve. The misleading
   banner is deleted rather than reworded. `requireFreshAuth` still gates PAT create/revoke, where an
   SSO re-auth path exists.
+
+- **Revoking a device could not be done from the app at all.** `DELETE /api/devices/:id` sits behind
+  `requireFreshAuth(5)`, so a revoke by anyone signed in more than five minutes ago answers 403
+  `FRESH_AUTH_REQUIRED` — and the Runners screen reported that as a plain failure, then pointed the
+  operator at a banner saying to "re-authenticate in Settings and try again". Settings has no
+  standalone re-auth action: the only thing that stamps `last_fresh_auth_at` is starting an API-token
+  creation and being refused first. So the advice led nowhere, and no sequence of clicks in the app
+  could revoke a device. Found while trying to delete six retired runner hosts.
+
+  The revoke control now owns the second step itself — confirm → password → `POST /api/auth/reauth`
+  → retry the same revoke — mirroring what the tokens tab already did. `isFreshAuthError` moves out
+  of that tab into `features/auth/fresh-auth.ts` so both surfaces share one definition rather than a
+  copy, and `useRevokeDevice` stays silent on that 403 instead of toasting a failure next to the
+  prompt that is in fact the next move. The misleading banner is deleted rather than reworded.
+
+  Superseded the same day by the entry above: the password step it added is one an OAuth-only owner
+  can never complete, so it did not fix the case it was written for.
 
 - Keyboard focus is visible again on the selected segment of every SegmentedControl and on the
   project cards in the Projects console (ISS-843). Both painted an elevation `shadow-*`, and in

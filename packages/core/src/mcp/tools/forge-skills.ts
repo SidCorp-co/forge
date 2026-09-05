@@ -71,7 +71,6 @@ const updateInputSchema = z
     files: z.array(skillFileMcpSchema).optional(),
     localGuide: z.string().max(20_000).nullable().optional(),
     installOnly: z.boolean().optional(),
-    markRebased: z.boolean().optional(),
   })
   .strict()
   .refine((o) => Object.keys(o).length > 2, { message: 'no fields to update' });
@@ -98,19 +97,9 @@ const pushInputSchema = z
 type SkillListRow = SkillRow & {
   shadowsGlobal: boolean;
   shadowedGlobalSkillId: string | null;
-  /** ISS-605 drift hints — see forge_skills.list description. */
+  // cm:guard adoption provenance, read by humans deciding whether to re-adopt — NOT a drift signal. Nothing compares it to `basedOnGlobalVersion` any more: the lane that did was deleted with the staged pipeline, so a gap here triggers nothing and must not be re-wired into one without a consumer that acts on it.
   templateVersion: number | null;
-  behindTemplate: boolean;
 };
-
-/** ISS-802: pinned rows never carry behindTemplate=true (invariant 10, ISS-795 §10). */
-function computeBehindTemplate(row: SkillRow, shadowed: SkillRow | undefined): boolean {
-  return (
-    !row.pinned &&
-    shadowed != null &&
-    (row.basedOnGlobalVersion == null || row.basedOnGlobalVersion < shadowed.version)
-  );
-}
 
 /**
  * Dedup the project-visible skills by NAME: a project-scoped skill shadows the
@@ -133,9 +122,7 @@ function dedupSkillsByName(rows: SkillRow[]): SkillListRow[] {
       ...r,
       shadowsGlobal: shadowed != null,
       shadowedGlobalSkillId: shadowed?.id ?? null,
-      // ISS-605 drift hints (project rows only).
       templateVersion: shadowed?.version ?? null,
-      behindTemplate: computeBehindTemplate(r, shadowed),
     });
   }
   for (const r of rows) {
@@ -146,7 +133,6 @@ function dedupSkillsByName(rows: SkillRow[]): SkillListRow[] {
       shadowsGlobal: false,
       shadowedGlobalSkillId: null,
       templateVersion: null,
-      behindTemplate: false,
     });
   }
   return out;
@@ -174,7 +160,6 @@ function toSkillListRow(row: SkillListRow): Record<string, unknown> {
     shadowedGlobalSkillId: row.shadowedGlobalSkillId,
     basedOnGlobalVersion: row.basedOnGlobalVersion ?? null,
     templateVersion: row.templateVersion,
-    behindTemplate: row.behindTemplate,
     pinned: row.pinned ?? false,
     pinnedReason: row.pinnedReason ?? null,
   };
@@ -183,7 +168,7 @@ function toSkillListRow(row: SkillListRow): Record<string, unknown> {
 export const forgeSkillsListTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_skills.list',
   description:
-    'Catalog of skills visible to a project, deduped by name. Returns a lightweight projection per skill (catalog metadata + dedup hints); the heavy bodies (skillMd, prompt, files, tools, manifest, changelog, localGuide) are OMITTED to stay under the response token cap — fetch a skill body via forge_skills.get / forge_skills.effective. Each row has `scope`: `project` rows are USABLE (installable/dispatchable); `global` rows are adoptable TEMPLATES that do nothing at runtime until adopted (forge_skills.adopt) into the project. `shadowsGlobal`/`shadowedGlobalSkillId` are catalog hints (a same-name global exists), never a runtime fallback. `behindTemplate: true` on a project row = its copy was adopted at an older (or untracked) template version (`basedOnGlobalVersion` vs `templateVersion`). It is a drift SIGNAL only — the per-project `skill-rebase` draft that used to carry the update was removed in 2026-08 (it suppressed every later bump for a project holding an unread draft); updates now flow through the reconcile pipeline (ISS-795). `pinned: true` marks a deliberately divergent copy: it never reports `behindTemplate` and is never reconciled. Requires device owner to be a project member.',
+    'Catalog of skills visible to a project, deduped by name. Returns a lightweight projection per skill (catalog metadata + dedup hints); the heavy bodies (skillMd, prompt, files, tools, manifest, changelog, localGuide) are OMITTED to stay under the response token cap — fetch a skill body via forge_skills.get / forge_skills.effective. Each row has `scope`: `project` rows are USABLE (installable/dispatchable); `global` rows are adoptable TEMPLATES that do nothing at runtime until adopted (forge_skills.adopt) into the project. `shadowsGlobal`/`shadowedGlobalSkillId` are catalog hints (a same-name global exists), never a runtime fallback. `basedOnGlobalVersion` and `templateVersion` are adoption provenance — the template version this copy was taken from, and the one the template carries now. A gap between them means only that the template moved on; nothing recomputes, flags or reconciles it, so treat it as history, and re-adopt (forge_skills.adopt) only when a human asks for the newer template. `pinned: true` marks a deliberately divergent copy. Requires device owner to be a project member.',
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId } = listInputSchema.parse(args);
@@ -278,7 +263,7 @@ export const forgeSkillsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
 export const forgeSkillsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skills.update',
   description:
-    'Update a project-scoped skill (name/description/skillMd/target/files/localGuide/installOnly). Bumps version + recomputes contentHash when the body or files change. Set installOnly:true to force-sync a manual / user-invocable utility skill to runners WITHOUT binding it to a pipeline stage — it enters the device manifest (forge_skills.push delivers it) but the dispatcher never auto-runs it. Set markRebased:true AFTER reconciling the copy with its global template (a skill-rebase): restamps basedOnGlobalVersion to the template’s current version so behindTemplate clears and the template-propagation sweep stops re-drafting; a markRebased-only call does NOT bump version. Requires owner/admin. Global skills are immutable templates and cannot be updated; create a same-name project skill to shadow one for this project.',
+    'Update a project-scoped skill (name/description/skillMd/target/files/localGuide/installOnly). Bumps version + recomputes contentHash when the body or files change. Set installOnly:true to force-sync a manual / user-invocable utility skill to runners WITHOUT binding it to a pipeline stage — it enters the device manifest (forge_skills.push delivers it) but the dispatcher never auto-runs it. Requires owner/admin. Global skills are immutable templates and cannot be updated; create a same-name project skill to shadow one for this project.',
   inputSchema: zodToMcpSchema(updateInputSchema),
   handler: async (args) => {
     const { projectId, skillId, ...patch } = updateInputSchema.parse(args);

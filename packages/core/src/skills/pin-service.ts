@@ -21,9 +21,8 @@ export interface SetSkillPinnedInput {
 
 /**
  * Mark (or clear) a project skill as `pinned` — intentional, permanent
- * divergence from its template that must never surface as `behindTemplate`
- * or drift-sweep noise (ISS-795 §10 / invariant 10). Writes the column and the
- * `skill.pinned` activity event in the SAME transaction (§9.11).
+ * divergence from its template. Writes the column and the `skill.pinned`
+ * activity event in the SAME transaction (§9.11).
  */
 export async function setSkillPinned(input: SetSkillPinnedInput): Promise<SkillRow> {
   if (input.pinned && !input.reason?.trim()) {

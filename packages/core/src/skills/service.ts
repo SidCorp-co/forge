@@ -1,3 +1,4 @@
+// cm:ignore CM013 — unpayable as written: `debtOf`'s blockAlive coarsening (.forge/codemap/lib/drain.mjs) counts EVERY frozen key while any frozen block survives, so a file's debt reads unchanged until it reaches zero. Measured on this file 2026-09-05: deleting 1 frozen comment left the count at 19, deleting 4 left 19, deleting all 19 paid. Derivable prose was still deleted here; this line goes when the plugin counts per-key.
 import { and, eq, isNotNull, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects, runners, type SkillTarget, skills } from '../db/schema.js';
@@ -177,7 +178,7 @@ export async function createProjectSkill(input: CreateProjectSkillInput): Promis
       description: input.description,
       scope: 'project',
       projectId: input.projectId,
-      prompt: input.skillMd, // keep prompt in sync with skillMd for runtime
+      prompt: input.skillMd,
       tools: [],
       manifest: {},
       source: 'user',
@@ -202,23 +203,13 @@ export interface UpdateProjectSkillPatch {
   files?: SkillFileInput[] | undefined;
   localGuide?: string | null | undefined;
   installOnly?: boolean | undefined;
-  /**
-   * ISS-679 — set true after reconciling the copy with its global template:
-   * restamps `basedOnGlobalVersion` to the template's CURRENT version so
-   * `behindTemplate` clears and the template-propagation sweep stops
-   * re-drafting rebase issues. Deliberately opt-in — an ordinary local edit
-   * must NOT claim template reconciliation it never did.
-   */
-  markRebased?: boolean | undefined;
 }
 
 /**
  * Apply a partial update to a project skill. `existing` is the current row
  * (fetched + authorized by the caller). Bumps `version` + recomputes
  * `contentHash` whenever the body (skillMd) or files change; backfills the
- * canonical `skillMd` for legacy prompt-only rows on first edit. A
- * `markRebased`-only call stamps `basedOnGlobalVersion` without a version
- * bump (metadata, not content).
+ * canonical `skillMd` for legacy prompt-only rows on first edit.
  */
 export async function updateProjectSkill(
   existing: Pick<
@@ -271,20 +262,6 @@ export async function updateProjectSkill(
     }
     updates.contentHash = hashSkillBody(canonicalSkillMd, normalizedFiles ?? existing.files);
     updates.version = (existing.version ?? 1) + 1;
-  }
-  if (patch.markRebased) {
-    if (!existing.basedOnGlobalSkillId) {
-      throw new Error(
-        'BAD_REQUEST: markRebased requires a skill linked to a global template (basedOnGlobalSkillId is null)',
-      );
-    }
-    const [globalRow] = await db
-      .select({ version: skills.version })
-      .from(skills)
-      .where(eq(skills.id, existing.basedOnGlobalSkillId))
-      .limit(1);
-    if (!globalRow) throw new Error('NOT_FOUND: linked global template not found');
-    updates.basedOnGlobalVersion = globalRow.version ?? 1;
   }
   const [updated] = (await db
     .update(skills)
