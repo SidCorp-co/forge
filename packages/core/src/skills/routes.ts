@@ -12,7 +12,6 @@ import { hooks } from '../pipeline/hooks.js';
 import { isMetaSkillName } from './meta-skills.js';
 import {
   registerSkillForProject,
-  SkillDeleteBlockedError,
   SkillNotProjectScopedError,
 } from './registration-service.js';
 import { getSkillForProject } from './service.js';
@@ -212,15 +211,6 @@ skillRegisterRoutes.post(
       });
       return c.json(result);
     } catch (err) {
-      if (err instanceof SkillDeleteBlockedError) {
-        throw new HTTPException(409, {
-          message: err.message,
-          cause: {
-            code: err.code,
-            details: { stage: err.stage, toggle: err.toggle },
-          },
-        });
-      }
       if (err instanceof SkillNotProjectScopedError) {
         throw new HTTPException(400, {
           message: err.message,
@@ -300,15 +290,6 @@ skillRegisterRoutes.delete(
         actorUserId: userId,
       });
     } catch (err) {
-      if (err instanceof SkillDeleteBlockedError) {
-        throw new HTTPException(409, {
-          message: err.message,
-          cause: {
-            code: err.code,
-            details: { stage: err.stage, toggle: err.toggle },
-          },
-        });
-      }
       throw err;
     }
     return c.json({ deleted: true, stage });

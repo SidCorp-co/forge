@@ -1,7 +1,7 @@
 // The comparison phase 5 has to answer (agent-driven pipeline).
 //
 // Two drivers now run side by side on one fleet, and the decision between them
-// is not a matter of taste: the staged path is already paid for, so autonomous
+// is not a matter of taste: the staged path was already paid for, so autonomous
 // has to win on both of the north-star metrics or it does not ship. A tie is a
 // loss. That is only a decision anyone can make if the two numbers are
 // computed the same way for both, from the same rows, on demand — not
@@ -58,6 +58,7 @@ type Raw = {
 // cm:guard both metrics are scoped to the issues that CLOSED in the window, not to the window's events — counting every intervention in the period against only the issues that finished in it inflates whichever driver happens to have long-running work open at the boundary
 // cm:guard metric ① from `created_at` alone CANNOT compare a driver switched on into an existing backlog: the pre-switch age is the OTHER driver's failure to pick the issue up, charged here to whichever driver finally did. Measured on getcontent 2026-08-21 — autonomous read 141.2h median against staged's 23m, and splitting the cohort gave 249.9h for the 11 issues born before the switch vs 0m for the 2 born after. Keep BOTH columns: drop the raw one and the number stops matching the north-star definition, trust it alone and the instrument reports the inverse of the truth.
 // cm:edge contract -> packages/core/drizzle/migrations/0117_intervention_events_view.sql — reads that view's project_id/issue_id/occurred_at; it is the only definition of what counts as a human reaching in
+// cm:guard HISTORY-ONLY since ISS-895 removed the staged lane. `'staged'` here labels jobs that really ran before 2026-08-31 and must keep labelling them; it is not a live branch and no new row can land in that column. Reading a bare `'autonomous'` count off this today is reading a cohort that has no comparison left — the comparison is the archive of a decision already made.
 export async function driverComparison(args: {
   days: number;
   projectIds: readonly string[];

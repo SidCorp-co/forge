@@ -62,7 +62,7 @@ vi.mock('../pipeline/hooks.js', () => ({
   hooks: { emit: hooksEmit },
 }));
 
-const { SkillDeleteBlockedError, SkillNotProjectScopedError, registerSkillForProject } =
+const { SkillNotProjectScopedError, registerSkillForProject } =
   await import('./registration-service.js');
 const {
   createProjectSkill,
@@ -120,26 +120,10 @@ describe('updateProjectSkill — markRebased restamp (ISS-679)', () => {
   });
 });
 
-describe('registerSkillForProject({ stage: null }) — SKILL_DELETE_BLOCKED_BY_AUTO_TOGGLE (ISS-238)', () => {
-  it('rejects with SkillDeleteBlockedError when the corresponding auto<Stage> toggle is on', async () => {
-    pushSelect([{ stage: 'developed' }]); // existing registration
-    pushSelect([{ agentConfig: { pipelineConfig: { autoReview: true } } }]); // toggle ON
-
-    await expect(
-      registerSkillForProject({
-        projectId: '00000000-0000-0000-0000-000000000001',
-        skillId: '00000000-0000-0000-0000-000000000002',
-        stage: null,
-        actorUserId: '00000000-0000-0000-0000-000000000003',
-      }),
-    ).rejects.toBeInstanceOf(SkillDeleteBlockedError);
-    expect(dbDelete).not.toHaveBeenCalled();
-    expect(hooksEmit).not.toHaveBeenCalled();
-  });
-
-  it('allows the unbind when the corresponding toggle is off', async () => {
+describe('registerSkillForProject({ stage: null }) — unbind', () => {
+  // cm:guard the ISS-238 auto-toggle refusal was deleted here by ISS-895 with the toggles themselves. It read `pipelineConfig[step.toggle]` off a step table that no longer exists, and ISS-897 had already made those keys unparseable — so the refusal could not fire, and a test asserting it was asserting the mock, not the code.
+  it('unbinds and emits, recording the stage it came from', async () => {
     pushSelect([{ stage: 'developed' }]);
-    pushSelect([{ agentConfig: { pipelineConfig: { autoReview: false } } }]);
 
     const result = await registerSkillForProject({
       projectId: '00000000-0000-0000-0000-000000000001',
@@ -155,9 +139,8 @@ describe('registerSkillForProject({ stage: null }) — SKILL_DELETE_BLOCKED_BY_A
     );
   });
 
-  it('allows the unbind when no current registration exists for that skill', async () => {
-    pushSelect([]); // no registration row → skip the toggle check
-    // No second SELECT — the toggle check is skipped when there is no row.
+  it('unbinds when no current registration exists for that skill', async () => {
+    pushSelect([]);
 
     const result = await registerSkillForProject({
       projectId: '00000000-0000-0000-0000-000000000001',
@@ -168,16 +151,8 @@ describe('registerSkillForProject({ stage: null }) — SKILL_DELETE_BLOCKED_BY_A
     expect(result.stage).toBeNull();
     expect(dbDelete).toHaveBeenCalledTimes(1);
   });
-
-  it('exposes structured error fields for transport layers', () => {
-    const err = new SkillDeleteBlockedError('developed', 'autoReview');
-    expect(err.code).toBe('SKILL_DELETE_BLOCKED_BY_AUTO_TOGGLE');
-    expect(err.stage).toBe('developed');
-    expect(err.toggle).toBe('autoReview');
-    expect(err.message).toContain("stage 'developed'");
-    expect(err.message).toContain("'autoReview=true'");
-  });
 });
+
 
 describe('registerSkillForProject(stage) — SKILL_NOT_PROJECT_SCOPED (single path)', () => {
   const base = {

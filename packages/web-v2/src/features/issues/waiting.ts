@@ -63,12 +63,6 @@ export const WAITING_REASON_COPY: Record<
 			"The step failed and is waiting out a 60-second cooldown before its next attempt.",
 		who: "No action — the retry fires itself. If the attempts keep failing, read the step's error rather than waiting.",
 	},
-	// cm:guard this is the one queued reason that means the ISSUE is fine — the step answers a trigger the issue has already left, so the copy must not read as "your issue is blocked". Saying so would send the reader looking for a blocker that moved on by definition, which is the mislabel this reason was added to avoid.
-	stale_trigger: {
-		reason:
-			"A queued step answers a trigger this issue has already moved past.",
-		who: "No action — the step is discarded on the next dispatch sweep and the current stage takes over.",
-	},
 	// cm:guard this must NOT read as an outage. The host is online and healthy; its runner build is simply older than the floor the claim enforces, so it is refused by name ("runner_too_old") on every attempt. Copy that says "offline or stale" — which is what this case reported before the reason existed — sends the operator to check heartbeats that are perfectly green, and the actual one-command fix goes unfound.
 	runner_too_old: {
 		reason:
@@ -86,7 +80,6 @@ export const WAITING_REASON_SHORT: Record<WaitingReason, string> = {
 	job_held: "Step held",
 	run_not_running: "Run paused",
 	retry_cooldown: "Retry cooldown",
-	stale_trigger: "Step superseded",
 	runner_stale: "No runner online",
 	runner_too_old: "Runner build too old",
 };
@@ -118,7 +111,6 @@ const GATE_NEEDS_ACTION: Record<Exclude<WaitingReason, "job_held">, boolean> = {
 	issue_busy: false,
 	run_not_running: true,
 	retry_cooldown: false,
-	stale_trigger: false,
 	runner_stale: true,
 	// cm:guard true, and it is the clearest true in this record: no reset arrives and no host comes back, because nothing is wrong with the host. A calm chip here means a project waits on a runner update nobody has been told to make.
 	runner_too_old: true,

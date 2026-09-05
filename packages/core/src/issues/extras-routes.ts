@@ -84,7 +84,6 @@ const BATCH_SKIP_BY_CODE = {
   TRANSITION_REASON_REQUIRED: 'transition_reason_required',
   WAITING_KIND_REQUIRED: 'waiting_kind_required',
   STALE_TRANSITION: 'stale',
-  PLAN_REQUIRED: 'plan_required',
   NO_WORK_EVIDENCE: 'no_work_evidence',
   RELEASE_RECORD_REQUIRED: 'release_record_required',
 } as const satisfies Record<TransitionErrorCode, string>;

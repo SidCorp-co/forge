@@ -96,7 +96,8 @@ function topLevelKeys(payload: string): string[] {
 describe('bundled skill field names', () => {
   it('names no issue field that the MCP surface dropped or never had', async () => {
     const files = await collectMarkdown(SKILLS_ROOT);
-    expect(files.length).toBeGreaterThan(10);
+    // cm:guard the floor tracks the corpus, and the corpus is five operator skills since ISS-895 deleted the eight staged bodies. A floor above what ships turns this gate from "no body names a dropped field" into "the walk is broken", which is the failure it was written to detect, inverted.
+    expect(files.length).toBeGreaterThan(4);
 
     const offences = files.flatMap(({ rel, text }) =>
       DROPPED_ISSUE_FIELDS.filter((field) => new RegExp(`\\b${field}\\b`).test(text)).map(
@@ -121,7 +122,8 @@ describe('bundled skill field names', () => {
         }
       }
     }
-    expect(seen.length).toBeGreaterThan(10);
+    // cm:guard NOT a floor on `seen`: the eight staged bodies were the only ones issuing `forge_issues.update` calls, so the corpus has zero payloads and any positive floor fails on a corpus that is simply correct. The walk is proven by the file count above; this assertion is the rule, and it fires on the first body that writes a key the schema rejects.
+    expect(files.length).toBeGreaterThan(4);
     expect(offences).toEqual([]);
   });
 });

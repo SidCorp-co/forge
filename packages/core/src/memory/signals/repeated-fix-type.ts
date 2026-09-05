@@ -1,5 +1,5 @@
 import { getProjectFixJobs } from './queries.js';
-import type { CandidateSignal } from './reopen-loop.js';
+import type { CandidateSignal } from './types.js';
 
 /** Normalise failure reason to a short bucket label (first meaningful token). */
 function reasonBucket(reason: string | null): string {

@@ -43,7 +43,7 @@ export const STRANDED_GRACE_MS = 6 * 60 * 60 * 1000;
  * without it "read" means "pinged again within the minute", every minute, for
  * the life of the park.
  */
-// cm:guard this MUST stay wider than the sweep interval (`pipeline/sweeper.ts`, 60s) by a large margin, and it is what bounds the autonomous arm below: that arm matches EVERY `waiting` park past the grace window rather than the rare merged-and-parked contradiction the staged arm needs, so the population this pass notifies about grew by roughly the number of parked issues on the fleet. A cooldown at or below the sweep interval reintroduces exactly the per-tick storm.
+// cm:guard this MUST stay wider than the sweep interval (`pipeline/sweeper.ts`, 60s) by a large margin, and it is what bounds the predicate below: that predicate matches EVERY `waiting` park past the grace window, i.e. roughly the number of parked issues on the fleet, rather than the rare merged-and-parked contradiction the deleted staged arm needed. A cooldown at or below the sweep interval reintroduces exactly the per-tick storm.
 export const STRANDED_RENOTIFY_MS = 24 * 60 * 60 * 1000;
 
 export interface StrandedIssuesResult {
@@ -62,7 +62,7 @@ export function strandedResolutionKey(issueId: string): string {
  * nothing coming for it. Best-effort: never throws — a failure here must not
  * abort the sweep.
  */
-// cm:guard the age is measured from `merged_at` on staged and from `updated_at` on autonomous, and the two are NOT interchangeable: an autonomous park has no merge to date it from, and dating a staged one by `updated_at` would restart the clock every time a comment or a label touched the row.
+// cm:guard the age is measured from `updated_at`, and the `merged_at` arm this used to carry alongside it went with the staged lane (ISS-895): a park in this lane has no merge to date it from, so a `merged_at`-only test would age nothing and this pass would report zero forever.
 export async function detectStrandedIssues(
   now: Date = new Date(),
   scope: { projectId?: string } = {},
@@ -85,14 +85,7 @@ export async function detectStrandedIssues(
       .where(
         and(
           eq(issues.status, 'waiting'),
-          or(
-            and(isNotNull(issues.mergedAt), lt(issues.mergedAt, cutoff)),
-            and(
-              // cm:edge contract -> packages/core/src/pipeline/autonomous-project.ts — the SAME mode question that `isAutonomousProject` answers, asked in SQL because this pass is one set-based scan over every project and an async per-row helper cannot appear in a `WHERE`. It must test NOT-staged, never `= 'autonomous'`: ISS-897 stripped the key from all 38 projects, and `resolveMode` answers autonomous for an absent one, so an equality test would have silently stopped surfacing every park on every project.
-              sql`coalesce(${projects.agentConfig}->'pipelineConfig'->>'mode', 'autonomous') <> 'staged'`,
-              lt(issues.updatedAt, cutoff),
-            ),
-          ),
+          lt(issues.updatedAt, cutoff),
           ...(scope.projectId ? [eq(issues.projectId, scope.projectId)] : []),
         ),
       );

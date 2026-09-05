@@ -277,62 +277,6 @@ export async function alarmPausedRunsWithQueuedWork(
   return { alerted };
 }
 
-interface ChurnRow extends Record<string, unknown> {
-  issue_id: string;
-  project_id: string;
-  iss_seq: number;
-  title: string;
-  reopen_count: number;
-  threshold: number;
-}
-
-/**
- * Issues whose `reopenCount` has reached the project's `noProgressRounds`.
- */
-// cm:guard the notification must NOT claim the rounds were wasted (RFC 0002 INV-8) — a TOTAL of reopens cannot tell "five rounds, five different blockers fixed" (ISS-801) from "five rounds, nothing changed", and a wedge that asserts the second is the cap's judgement smuggled back in as copy
-// cm:guard this pass sees STAGED projects only, and must not be "fixed" by widening the column — `reopen_count` moves solely on entry into `reopen` (issues/apply-transition.ts), a transition autonomous mode never performs, so on an autonomous project it is frozen at whatever staged mode left. Measured 2026-08-30: of 19 runs that went 5+ code rounds inside ONE autonomous run, 18 have reopen_count 0. `alarmRejectionStreaks` is that half; the two are complements, not duplicates.
-export async function alarmChurningIssues(): Promise<Inv7AlarmResult> {
-  const rows = await db.execute<ChurnRow>(sql`
-    SELECT i.id AS issue_id,
-           i.project_id,
-           i.iss_seq,
-           i.title,
-           i.reopen_count,
-           COALESCE(
-             (p.agent_config -> 'pipelineConfig' -> 'reopenPolicy' ->> 'noProgressRounds')::int,
-             ${DEFAULT_NO_PROGRESS_ROUNDS}
-           ) AS threshold
-    FROM issues i
-    JOIN projects p ON p.id = i.project_id
-    WHERE i.status NOT IN ('closed', 'released', 'draft')
-      AND i.reopen_count >= COALESCE(
-            (p.agent_config -> 'pipelineConfig' -> 'reopenPolicy' ->> 'noProgressRounds')::int,
-            ${DEFAULT_NO_PROGRESS_ROUNDS}
-          )
-  `);
-
-  for (const row of rows) {
-    await emitPipelineWedge({
-      projectId: row.project_id,
-      issueId: row.issue_id,
-      hop: 'dispatch',
-      entity: 'issue',
-      entityId: row.issue_id,
-      reason: `reopen_rounds:${row.reopen_count}/${row.threshold}`,
-      title: `ISS-${row.iss_seq} has been reopened ${row.reopen_count} times`,
-      summary: `"${row.title}" has reached this project's \`noProgressRounds\` (${row.threshold}) counted as TOTAL reopens. That is a number to look at, not a verdict: rounds that each fixed a different blocker are normal work. Read the issue's \`sessionContext.churn\` ledger — written by the agent — to see what each round changed.`,
-      nextStep:
-        'If the rounds are repeating the same failure with nothing new, park it at `waiting` with what has been tried. If they are progressing, no action.',
-      action: 'Read the churn ledger and decide; nothing is blocked.',
-    });
-  }
-
-  if (rows.length > 0) {
-    logger.info({ alerted: rows.length }, 'inv7: churning issues surfaced');
-  }
-  return { alerted: rows.length };
-}
-
 interface RejectionStreakRow extends Record<string, unknown> {
   run_id: string;
   project_id: string;

@@ -55,8 +55,6 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
     case 'WAITING_KIND_REQUIRED':
     case 'RELEASE_RECORD_REQUIRED':
       return new HTTPException(422, { message: err.detail, cause });
-    case 'PLAN_REQUIRED':
-      return new HTTPException(409, { message: err.detail, cause });
     case 'NO_WORK_EVIDENCE':
       return new HTTPException(409, { message: err.detail, cause });
     default:

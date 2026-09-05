@@ -38,7 +38,6 @@ import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { boss } from '../queue/boss.js';
 import {
   alarmAgedHolds,
-  alarmChurningIssues,
   alarmPausedRunsWithQueuedWork,
   alarmRejectionStreaks,
   alarmStalledQueuedJobs,
@@ -118,8 +117,6 @@ export interface SweepResult {
   stalledQueuedJobs: Inv7AlarmResult;
   /** ISS-879 — steps queued behind a run that is paused (alarm only). */
   pausedRunsWithQueuedWork: Inv7AlarmResult;
-  /** RFC 0002 INV-7 — issues at or past `noProgressRounds` in TOTAL reopens (alarm only). */
-  churningIssues: Inv7AlarmResult;
   /** Runs at or past `noProgressRounds` in CONSECUTIVE review rejections (alarm only). */
   rejectionStreaks: Inv7AlarmResult;
   /** ISS-764 — batch release claims orphaned by a terminal run (claim-subscriber backstop). */
@@ -191,8 +188,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   );
   // cm:why an ACTIVE reaper, not an alarm: a run paused by a mechanism this build no longer has is not a state anyone can act on — there is nothing left to clear the reason, so surfacing it would ask a human to do the resume every time
   const orphanedPauses = await runPass('resumeOrphanedPauses', () => resumeOrphanedPauses());
-  const churningIssues = await runPass('alarmChurningIssues', () => alarmChurningIssues());
-  // cm:why the same knob on the other axis: `reopen_count` only moves on a `reopen` transition, which autonomous mode never performs, so on an autonomous project the pass above is reading a frozen column and this one is the whole of the signal
+  // cm:guard the ONLY reader of `noProgressRounds` left. Its twin `alarmChurningIssues` counted TOTAL reopens, and `reopen_count` moves solely on entry into `reopen` — a transition this lane never performs, so ISS-895 deleted it rather than leaving an alarm frozen at 0. An alarm that cannot fire is worse than no alarm: it reads as evidence the condition is absent.
   const rejectionStreaks = await runPass('alarmRejectionStreaks', () => alarmRejectionStreaks());
 
   // cm:edge sideeffect -> packages/core/src/release-batch/claim-subscriber.ts — backstop for the pipelineRunStatusChanged hook: releases release_batch_run_id claims left behind if the subscriber threw or was skipped
@@ -232,7 +228,6 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     agedHolds: agedHolds as Inv7AlarmResult,
     stalledQueuedJobs: stalledQueuedJobs as Inv7AlarmResult,
     pausedRunsWithQueuedWork: pausedRunsWithQueuedWork as Inv7AlarmResult,
-    churningIssues: churningIssues as Inv7AlarmResult,
     rejectionStreaks: rejectionStreaks as Inv7AlarmResult,
     staleReleaseBatchClaims: staleReleaseBatchClaims as StaleReleaseBatchClaimsResult,
     strandedIssues: strandedIssues as StrandedIssuesResult,

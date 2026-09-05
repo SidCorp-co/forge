@@ -2,7 +2,6 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { skillRegistrations } from '../db/schema.js';
 import { defaultStatesConfig } from '../pipeline/pipeline-config-schema.js';
-import { STATUS_TO_JOB_TYPE } from '../pipeline/skill-mapping.js';
 import { readAgentConfig, writeAgentConfig } from '../projects/agent-config.js';
 import { resolveOrAdoptProjectSkill } from './service.js';
 
@@ -11,15 +10,8 @@ import { resolveOrAdoptProjectSkill } from './service.js';
 // preset (only when no preset is set yet), and returns the result. Re-running
 // the call after the project is already bootstrapped is a no-op.
 
-// ISS-453 — named skill template sets. Each entry is a stage→skill binding the
-// bootstrap materialises via clone-on-first-use. `forge-default` is derived
-// from STATUS_TO_JOB_TYPE so it reproduces the original inline loop exactly
-// (regression-safe); adding a set is a data entry here, not new code.
-const TEMPLATE_SETS: Record<string, ReadonlyArray<{ stage: string; skillName: string }>> = {
-  'forge-default': Object.entries(STATUS_TO_JOB_TYPE).flatMap(([status, mapping]) =>
-    mapping ? [{ stage: status, skillName: `forge-${mapping.type}` }] : [],
-  ),
-};
+// cm:guard EMPTY, and that is the state, not a stub waiting to be filled. The only set that ever existed was `forge-default`: the eight staged skills bound to the eight rungs, derived from `STATUS_TO_JOB_TYPE`. ISS-895 deleted the skill bodies and the step table together, so a set naming them would bind a project to rows the seeder no longer creates. `bootstrapProject` therefore refuses an unknown set by name (`UnknownTemplateSetError`) rather than binding nothing and reporting success.
+const TEMPLATE_SETS: Record<string, ReadonlyArray<{ stage: string; skillName: string }>> = {};
 
 // cm:guard the preset writes `enabled` and nothing else. It carried the eight `auto<Stage>` toggles until ISS-897 removed them from `pipelineConfigSchema`, which STRIPS unknown keys — so every bootstrap since would have written eight keys the very next settings save silently dropped, and a reader of this file would have believed the pipeline was configured by them.
 const BALANCED_PRESET = {

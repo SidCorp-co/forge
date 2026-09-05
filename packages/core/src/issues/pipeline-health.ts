@@ -31,7 +31,6 @@ import {
   queuedStepOf,
   retryCooldownWaitingOn,
   runnerWaitingOn,
-  staleTriggerWaitingOn,
 } from './pipeline-health-reasons.js';
 import type {
   ClassifyInput,
@@ -141,13 +140,6 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     : blockingJob && { blockingJobId: blockingJob.id, blockingJobType: blockingJob.type };
   if (busy) {
     out.waitingOn = { reason: 'issue_busy', since: sinceIso, details: busy };
-    return out;
-  }
-
-  // cm:guard this arm must sit exactly where `stale_trigger` sits in the dispatch CASE — after both issue_busy arms, before blocked_by. Reporting it earlier would claim a job is stale during the one window where a non-trigger status is legitimate (a sibling step mid-flight), and omitting it renders the issue idle-and-actionable for the up-to-a-tick window before `jobs/stale-trigger.ts` discards the job.
-  const stale = staleTriggerWaitingOn(candidate, issue.status, sinceIso);
-  if (stale) {
-    out.waitingOn = stale;
     return out;
   }
 

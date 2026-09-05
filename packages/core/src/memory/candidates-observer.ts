@@ -3,7 +3,6 @@ import type { HooksBus } from '../pipeline/hooks.js';
 import { boss } from '../queue/boss.js';
 import { upsertCandidate } from './candidates-accrual.js';
 import { extractHandoffGapRescue } from './signals/handoff-gap-rescue.js';
-import { extractReopenLoop } from './signals/reopen-loop.js';
 import { extractRepeatedFixType } from './signals/repeated-fix-type.js';
 
 export const MEMORY_CANDIDATES_QUEUE = 'memory-candidates';
@@ -21,7 +20,6 @@ export async function runCandidateMine(payload: MinePayload): Promise<void> {
 
   const [signalSets] = await Promise.all([
     Promise.all([
-      extractReopenLoop(runId, projectId, issueId),
       extractRepeatedFixType(runId, projectId, issueId),
       extractHandoffGapRescue(runId, projectId, issueId),
     ]),

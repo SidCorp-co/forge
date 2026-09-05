@@ -125,7 +125,6 @@ import {
 } from './pipeline/analytics-routes.js';
 import { registerAnswerResume } from './pipeline/answer-resume.js';
 import { hooks } from './pipeline/hooks.js';
-import { registerMissingSkillResume } from './pipeline/missing-skill-resume.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
 import { registerOutboxWorker, stopOutboxWorker } from './pipeline/outbox-worker.js';
 import { registerPausedRunWedgeResolve } from './pipeline/paused-run-wedge-resolve.js';
@@ -505,7 +504,6 @@ if (isMain) {
   registerAnswerResume(hooks);
   registerPhaseJournalClose(hooks);
   // cm:guard ISS-238 — register AFTER registerPipelineOrchestrator: this subscriber resumes a run whose missing skill was just registered and then re-enqueues, and that re-enqueue must walk through the orchestrator's own hooks, which are not on the bus yet if it is wired first
-  registerMissingSkillResume(hooks);
   registerPausedRunWedgeResolve(hooks);
 
   // ISS-196 — must run AFTER subscribers are wired so the worker's first

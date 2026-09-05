@@ -31,12 +31,6 @@ export const AUTONOMOUS_JOB_TYPE: JobType = 'drive';
 // cm:guard this name reaches the agent ONLY as text in the drive prompt — nothing in core or the runner resolves it. Since 2026-09-02 the skill is delivered by the `forge` Claude Code plugin (github.com/SidCorp-co/forge-plugin), installed on a device when a bound project designates it in `pipelineConfig.plugins` AND that box has `[plugins] enabled = true`; a project missing either dispatches a driver that is told to use a skill it does not have. `skill_registrations` never resolves this name and must not start to.
 export const AUTONOMOUS_SKILL_NAME = 'issue-flow';
 
-// cm:guard the ONLY place a STORED `mode` column is interpreted, and its readers are the two raw-SQL wedge passes (`reconciler.ts`, `stranded-issues.ts`) — nothing else. ISS-897 removed `mode` from `pipelineConfigSchema`, so a parsed config no longer carries one and `isAutonomous` cannot ask this question; a row written before the migration still can, which is the only reason this survives.
-// cm:guard flipped from staged to autonomous on 2026-09-02, measured not assumed: of 31 live projects 28 said `autonomous` EXPLICITLY, 0 said `staged`, and the 3 that said nothing had 12 jobs between them with none since 2026-08-11. Staged was never a choice anyone made; it was the answer nobody gave. The price is named in `forge-drive/SKILL.md`: `assertAutonomousReady` gates the WRITE that sets this key, so a project carrying the default has answered no contract, and the guarantee that skill used to make about `build-commands`/`test-commands` no longer holds. Flipping back means restoring that guarantee, not just this literal.
-export function resolveMode(mode: string | null | undefined): 'staged' | 'autonomous' {
-  return mode === 'staged' ? 'staged' : 'autonomous';
-}
-
 // cm:guard `null` is the WHOLE question now that ISS-897 left one lane, and it must keep meaning what it means: null is a project that is missing, archived or whose config did not parse — NOT a project that chose something else. Answering `true` there would rewrite parks and cascade children on a project nobody can see is broken. Do not simplify the call away at the call sites: the check is load-bearing precisely because it no longer looks like a choice.
 export function isAutonomous(cfg: PipelineConfig | null): boolean {
   return cfg !== null;

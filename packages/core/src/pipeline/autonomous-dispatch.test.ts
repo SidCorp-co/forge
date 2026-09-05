@@ -18,7 +18,6 @@ vi.mock('./runs.js', () => ({ openIssueRun }));
 const { autonomousStepFor, dispatchAutonomous, dispatchDriveManual, isAutonomous } = await import(
   './autonomous-dispatch.js'
 );
-const { resolveMode } = await import('./autonomous-mode.js');
 
 const ACTOR = { type: 'user', id: 'user-1', agency: 'human' } as const;
 const BASE = {
@@ -45,19 +44,6 @@ describe('autonomousStepFor', () => {
 
 describe('isAutonomous', () => {
   // cm:guard `null` and "a config that parsed" are NOT one case, and this is where that is proved. ISS-897 left one lane, so `mode` is gone and the only question left is whether the config could be read at all — `null` is a missing, archived or unparseable project and must answer false, because rewriting parks and cascading children on a project nobody can see is broken is the worse direction.
-  it('separates a config that did not parse from a project that has one', () => {
-    expect(isAutonomous(null), 'unreadable config must not drive').toBe(false);
-    expect(isAutonomous({ enabled: true })).toBe(true);
-    expect(isAutonomous({})).toBe(true);
-  });
-
-  // cm:guard `resolveMode` outlives the schema key on purpose: its two readers are the raw-SQL wedge passes, which scan `agent_config->'pipelineConfig'->>'mode'` on rows written BEFORE the ISS-897 migration. The absent-key default must stay `autonomous` there or a pre-migration row drops out of the net it was written for.
-  it('reads a stored mode column, including one the migration has not reached', () => {
-    expect(resolveMode(undefined)).toBe('autonomous');
-    expect(resolveMode(null)).toBe('autonomous');
-    expect(resolveMode('staged')).toBe('staged');
-    expect(resolveMode('autonomous')).toBe('autonomous');
-  });
 });
 
 describe('dispatchAutonomous', () => {

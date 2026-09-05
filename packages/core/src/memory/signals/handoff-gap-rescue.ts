@@ -1,5 +1,5 @@
 import { getHandoffsForRun } from './queries.js';
-import type { CandidateSignal } from './reopen-loop.js';
+import type { CandidateSignal } from './types.js';
 
 /** Returns true if the payload object has a non-empty unknowns/knownLimitations array. */
 function hasOpenItems(payload: unknown): boolean {

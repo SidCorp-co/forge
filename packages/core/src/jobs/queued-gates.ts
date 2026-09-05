@@ -14,9 +14,12 @@
  * Two invariants, both with a regression assertion in `dispatch-gates.test.ts`:
  * no temporal predicate beyond `valid_until`, the heartbeat, runner load and
  * `retry_after_at` (ISS-197) — a `gate_at + N seconds` debouncer trips it; and
- * no writes from either reader. ISS-789's `stale_trigger` is the one reason
- * that never clears by waiting, so the write ending such a job lives in
- * `jobs/stale-trigger.ts`, not here.
+ * no writes from either reader.
+ *
+ * ISS-789's `stale_trigger` arm and the sweep that ended the jobs it held were
+ * removed with the staged lane (ISS-895). Both were scoped to the job types
+ * that HAVE a trigger status, and `drive` — the only type this lane
+ * dispatches — never had one, so the arm could not match a job that exists.
  */
 
 import { eq, type SQL, sql } from 'drizzle-orm';
@@ -24,11 +27,7 @@ import { type Db, db } from '../db/client.js';
 import type { JobType, RunnerType } from '../db/schema.js';
 import { jobs } from '../db/schema.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
-import {
-  RUNNER_CAPABILITIES,
-  TRIGGER_STATUS_BY_JOB_TYPE,
-  WORKING_STATUS_BY_JOB_TYPE,
-} from '../pipeline/registry.js';
+import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
 import { claimCapableSql } from '../runners/device-cap.js';
 import { countInFlightForOneRunner } from './in-flight.js';
 
@@ -38,7 +37,6 @@ export type GateSkipReason =
   | 'pipeline_run_not_running'
   | 'retry_cooldown'
   | 'issue_busy'
-  | 'stale_trigger'
   // cm:guard every member here must be a string `buildGateReasonCase` can actually return, and every string it returns must be a member — `assertDispatchable` casts the raw CASE result into this union unchecked, so a mismatch is invisible to tsc. A name that outlives its arm is the failure mode: `release_decompose_pending` sat here for months naming an arm that never existed, and `observability/hold-metrics.ts` keyed its counter Map by a value outside its own key type.
   | 'runner_too_old'
   | 'runner_stale';
@@ -100,13 +98,6 @@ export interface BarrierFragments {
      *  not, e.g. an in-flight job whose agent_session row hasn't landed
      *  yet. */
     issueBusyJob: SQL;
-    /** L1b — the job's declared trigger (`payload.stageStatus`) is no longer
-     *  the issue's live status, so the stage would run on a trigger that has
-     *  moved on. Scoped to the staged pipeline step types (so the autonomous
-     *  `drive` job, which owns the issue's whole walk, is never caught) and
-     *  exempting each type's own in-flight `workingStatus` (so a code/fix
-     *  retry is never caught). */
-    staleTrigger: SQL;
   };
 }
 
@@ -167,24 +158,6 @@ export function buildBarrierFragments(args: {
         )
     )`;
 
-  // cm:guard key the allowance on the job TYPE, never on the stamped trigger — `POST /run-pipeline-step` exists to re-fire a stage WITHOUT bouncing the issue status, so it stamps `stageStatus = issue.status`; re-fire `code` at `developed`, the agent flips the issue to `in_progress`, and a trigger-keyed arm ('approved','in_progress') matches nothing while the real pair is ('developed','in_progress'). Same concept, same key, same reason as `JOB_TYPE_INFLIGHT_STATUS` in pipeline/recovery-verifier.ts.
-  // cm:edge lockstep -> packages/core/src/pipeline/recovery-verifier.ts — `JOB_TYPE_INFLIGHT_STATUS` is the failure-path twin of this allowance (both answer "is this retry still wanted?"); a type present in one and absent from the other means the retry engine keeps a job alive that this gate then discards
-  const workingStatusArms = Object.entries(WORKING_STATUS_BY_JOB_TYPE).map(
-    ([jobType, working]) => sql`(j.type = ${jobType} AND i.status::text = ${working})`,
-  );
-  const workingStatusAllowance =
-    workingStatusArms.length > 0
-      ? sql` AND NOT (${sql.join(workingStatusArms, sql` OR `)})`
-      : sql``;
-
-  // cm:guard scope the gate to job types that HAVE a trigger status, i.e. the staged pipeline steps — `drive` is the one that must stay out, and leaving it in is unrecoverable rather than merely wrong: the autonomous driver is stamped `stageStatus:'open'` yet owns the issue's WHOLE walk, so a retry clone or a released-from-hold successor reads as stale the moment the driver has moved the issue anywhere, and `dispatchAutonomous` enqueues at the entry status only — nothing re-creates the job, and the issue is left permanently dead with zero jobs.
-  // cm:edge lockstep -> packages/core/src/pipeline/recovery-verifier.ts — `JOB_TYPE_ENTRY_STATUS` is the twin of this scope (the same 8 keys, and `drive` absent from both for the reason above); NOT `JOB_TYPE_EXPECTED_EXIT_STATUS`, whose retired `staging: ['reopen']` entry names a type no status dispatches, so keying the scope off exit mappings would re-admit a type the registry has already dropped
-  const gatedJobTypes = Object.keys(TRIGGER_STATUS_BY_JOB_TYPE);
-  const stageJobTypeScope = sql`j.type IN (${sql.join(
-    gatedJobTypes.map((t) => sql`${t}`),
-    sql`, `,
-  )})`;
-
   const predicates = {
     issueBusySession: sql`EXISTS (
       SELECT 1 FROM agent_sessions s
@@ -200,14 +173,6 @@ export function buildBarrierFragments(args: {
         AND other.id <> j.id
         AND other.status IN ('dispatched','running','held')
     )`,
-    // cm:guard eligibility is the PRESENCE of `payload.stageStatus`, i.e. the enqueuer declaring which trigger this job answers — widening it to every job would reap the ones nothing declared a trigger for (`pm`, `custom`, PM-dispatched steps), and `j.issue_id IS NOT NULL` is what keeps the smoke canaries out (skills/smoke-verify.ts stamps a stage but inserts with a null issue).
-    // cm:guard this arm must be read STRICTLY AFTER both issue_busy arms in `buildGateReasonCase` — a sibling job mid-flight is exactly when the issue legitimately sits at a status that is nobody's trigger, so judging staleness first turns "another step is working" into a discard of the step queued behind it.
-    // cm:edge lockstep -> packages/core/src/jobs/stale-trigger.ts — that sweep is what makes this gate terminal instead of a permanent hide: `jobs_active_unique` covers `queued`, so a stale job merely skipped by the picker blocks the replacement job for the same (issue, type) forever.
-    staleTrigger: sql`j.issue_id IS NOT NULL
-      AND ${stageJobTypeScope}
-      AND (j.payload->>'stageStatus') IS NOT NULL
-      AND i.status IS NOT NULL
-      AND i.status::text <> (j.payload->>'stageStatus')${workingStatusAllowance}`,
   };
 
   return { ctes, predicates };
@@ -230,7 +195,7 @@ export function buildBarrierFragments(args: {
  * {@link gateReasonsForQueuedJobs}. Expects `j`, `r` and
  * `fresh_capable_runners` in scope.
  */
-// cm:guard both readers MUST take the CASE from here — the arm order IS the answer (issue_busy before the stale-trigger arm before the two runner arms), so a second copy reports a different "most specific reason" for the same job and the two surfaces start contradicting each other.
+// cm:guard both readers MUST take the CASE from here — the arm order IS the answer (issue_busy before the two runner arms), so a second copy reports a different "most specific reason" for the same job and the two surfaces start contradicting each other.
 function buildGateReasonCase(predicates: BarrierFragments['predicates']): SQL {
   return sql`
       CASE
@@ -239,7 +204,6 @@ function buildGateReasonCase(predicates: BarrierFragments['predicates']): SQL {
         WHEN j.retry_after_at IS NOT NULL AND j.retry_after_at > now() THEN 'retry_cooldown'
         WHEN ${predicates.issueBusySession} THEN 'issue_busy'
         WHEN ${predicates.issueBusyJob} THEN 'issue_busy'
-        WHEN ${predicates.staleTrigger} THEN 'stale_trigger'
         WHEN NOT EXISTS (SELECT 1 FROM fresh_capable_runners) THEN 'runner_stale'
         WHEN NOT EXISTS (SELECT 1 FROM fresh_capable_runners WHERE claim_capable)
           THEN 'runner_too_old'

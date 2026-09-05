@@ -510,8 +510,8 @@ export const API_ONLY_KEYS: ApiOnlyKey[] = [
 		reason: "Prompt field/truncation tuning — an advanced knob, deferred to ISS-814.",
 	},
 	{
-		key: "maxResumeTokens / maxResumeReopenCycles",
-		reason: "Session-resume budget guards (ISS-580) — project-level, not per-stage; deferred to ISS-814.",
+		key: "maxResumeTokens",
+		reason: "Session-resume budget guard (ISS-580) — project-level, not per-stage; deferred to ISS-814.",
 	},
 	{
 		key: "recoveryMaxAttempts / recoveryWindowHours / recoveryByFailureKind",

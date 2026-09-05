@@ -11,13 +11,8 @@
 
 import { eq } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
-import { issues, projects } from '../db/schema.js';
+import { issues } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { pipelineConfigSchema } from '../pipeline/pipeline-config-schema.js';
-import {
-  createProjectSkillResolver,
-  type ProjectSkillResolver,
-} from '../pipeline/skill-mapping.js';
 import { findMissingWorkEvidence } from '../pipeline/work-evidence.js';
 import type { ActorAgency } from './actor-agency.js';
 import type { TransitionErrorCode, TransitionIssueRow } from './apply-transition.js';
@@ -40,64 +35,8 @@ export interface TransitionEvidenceContext {
 
 type EvidenceRule = (ctx: TransitionEvidenceContext) => Promise<TransitionEvidenceViolation | null>;
 
-/**
- * Is the project's plan stage live — `clarified` not explicitly disabled AND
- * a skill is registered for it? Fails open (returns false — "not live", so
- * the caller's blank-plan check never fires) on any read error, matching the
- * `bounce-replay-guard.ts` / `empty-reopen-guard.ts` convention. Reused by
- * the `considerEnqueue` dispatch-side backstop (orchestrator.ts), which
- * passes its already-memoized resolver to avoid a second
- * `skill_registrations` load per hook fire.
- */
-// cm:guard fails OPEN — a broken read here must never block a legitimate approval
-export async function isPlanStageLive(
-  projectId: string,
-  resolver?: Pick<ProjectSkillResolver, 'stages'>,
-): Promise<boolean> {
-  try {
-    const [project] = await db
-      .select({ agentConfig: projects.agentConfig })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    if (!project) return false;
-    const ac = (project.agentConfig as { pipelineConfig?: unknown } | null) ?? {};
-    const parsed = pipelineConfigSchema.safeParse(ac.pipelineConfig ?? {});
-    if (!parsed.success) return false;
-    const stages = await (resolver ?? createProjectSkillResolver(projectId)).stages();
-    return stages.has('clarified');
-  } catch (err) {
-    logger.warn(
-      { err, projectId },
-      'transition-evidence: plan-stage-live check failed, treating as not live',
-    );
-    return false;
-  }
-}
-
 export const isBlankPlan = (plan: string | null | undefined): boolean =>
   !plan || plan.trim().length === 0;
-
-/**
- * Requirement 1 (ISS-819) — `approved` must not be reachable with a blank
- * plan when the project's plan stage is live. Projects with no plan stage
- * (or one explicitly disabled) are unaffected.
- */
-const planRequiredRule: EvidenceRule = async (ctx) => {
-  if (ctx.toStatus !== 'approved') return null;
-  const [row] = await (ctx.executor ?? db)
-    .select({ plan: issues.plan })
-    .from(issues)
-    .where(eq(issues.id, ctx.issue.id))
-    .limit(1);
-  if (!row || !isBlankPlan(row.plan)) return null;
-  if (!(await isPlanStageLive(ctx.issue.projectId))) return null;
-  return {
-    code: 'PLAN_REQUIRED',
-    detail: 'issue has no plan written — write the issue plan before advancing to approved',
-    details: { issueId: ctx.issue.id },
-  };
-};
 
 /**
  * Statuses that assert "code exists". `closed`/`released` are deliberately
@@ -124,7 +63,7 @@ const noWorkEvidenceRule: EvidenceRule = async (ctx) => {
   };
 };
 
-const RULES: readonly EvidenceRule[] = [planRequiredRule, noWorkEvidenceRule];
+const RULES: readonly EvidenceRule[] = [noWorkEvidenceRule];
 
 // cm:guard fails OPEN on any internal error — a broken content guard must never freeze the writer
 export async function checkTransitionEvidence(

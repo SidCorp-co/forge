@@ -15,7 +15,6 @@ import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, projects, skillRegistrations, skills } from '../db/schema.js';
 import { hooks } from '../pipeline/hooks.js';
-import { PIPELINE_STEPS } from '../pipeline/registry.js';
 import { recordSkillActivityEvent } from './activity.js';
 
 export interface RegisterSkillInput {
@@ -29,18 +28,6 @@ export interface RegisterSkillResult {
   projectId: string;
   skillId: string;
   stage: IssueStatus | null;
-}
-
-export class SkillDeleteBlockedError extends Error {
-  readonly code = 'SKILL_DELETE_BLOCKED_BY_AUTO_TOGGLE';
-  readonly stage: IssueStatus;
-  readonly toggle: string;
-  constructor(stage: IssueStatus, toggle: string) {
-    super(`SKILL_DELETE_BLOCKED_BY_AUTO_TOGGLE: stage '${stage}' has '${toggle}=true'`);
-    this.name = 'SkillDeleteBlockedError';
-    this.stage = stage;
-    this.toggle = toggle;
-  }
 }
 
 /**
@@ -64,7 +51,6 @@ export async function registerSkillForProject(
   const { projectId, skillId, stage, actorUserId } = input;
 
   if (stage === null) {
-    // cm:guard ISS-238 — refuse the unbind while the matching `auto<Stage>` toggle is ON, at this surface rather than downstream. Silently unbinding produces the "enabled without skill" state the orchestrator guard pauses on, so the pipeline stops later with no trace of what caused it; failing here forces the operator to flip the toggle first, which is the decision they actually have to make.
     const [reg] = await db
       .select({ stage: skillRegistrations.stage })
       .from(skillRegistrations)
@@ -72,25 +58,6 @@ export async function registerSkillForProject(
         and(eq(skillRegistrations.projectId, projectId), eq(skillRegistrations.skillId, skillId)),
       )
       .limit(1);
-    if (reg) {
-      const step = PIPELINE_STEPS.find((s) => s.status === reg.stage);
-      if (step) {
-        const [project] = await db
-          .select({ agentConfig: projects.agentConfig })
-          .from(projects)
-          .where(eq(projects.id, projectId))
-          .limit(1);
-        const ac = (project?.agentConfig ?? {}) as { pipelineConfig?: Record<string, unknown> };
-        const pipeline = ac.pipelineConfig ?? {};
-        const v = (pipeline as Record<string, unknown>)[step.toggle];
-        const on =
-          v === true ||
-          (typeof v === 'object' && v !== null && (v as { enabled?: boolean }).enabled !== false);
-        if (on) {
-          throw new SkillDeleteBlockedError(reg.stage as IssueStatus, step.toggle);
-        }
-      }
-    }
 
     await db.transaction(async (tx) => {
       await tx

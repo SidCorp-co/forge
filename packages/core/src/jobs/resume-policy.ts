@@ -28,6 +28,7 @@ import type { StageOverrides } from './stage-overrides.js';
  * counting it would drown the losses that matter. `ResumeRecord.dropReason === null` with
  * `priorClaudeSessionId === null` is that case.
  */
+// cm:guard `resume_bound_reopen_cycles` is HISTORY-ONLY since ISS-895 — nothing writes it and nothing may start to. It stays in the union because `agent_sessions.metadata.resume.dropReason` holds it on rows written before the bound was removed, and `forge_metrics_session_failures` reads those rows back; drop the member and a historical row deserialises into a value its own type says is impossible.
 export type ResumeDropReason =
   | 'stage_pool'
   | 'resume_bound_tokens'
@@ -100,8 +101,9 @@ async function loadParentAttempt(job: typeof jobs.$inferSelect): Promise<{
   }
 }
 
-/** ISS-580 — drop the resume when the issue's accumulated context or its reopen count has
- *  outgrown the project's bound. Returns the drop reason, or null when both bounds hold. */
+// cm:guard the reopen-cycles half of this bound was deleted by ISS-895 and must not be restored on `reopen_count`. That column moves solely on entry into `reopen`, a transition this lane never performs, so `overCycles` was evaluating a number frozen at 0 for every issue — the bound was OFF and reported nothing, which reads identically to a bound that held. A replacement must count something this lane actually produces (code rounds inside one run), not resurrect the column.
+/** ISS-580 — drop the resume when the issue's accumulated context has outgrown the
+ *  project's bound. Returns the drop reason, or null when the bound holds. */
 async function exceedsResumeBounds(args: {
   job: typeof jobs.$inferSelect;
   issueId: string;
@@ -109,34 +111,14 @@ async function exceedsResumeBounds(args: {
 }): Promise<ResumeDropReason | null> {
   const bounds = await loadResumeBounds(args.job.projectId, args.agentConfig);
   const estTokens = await estimateIssueContextTokens(args.issueId);
-  let reopenCount = 0;
-  try {
-    const [issueRow] = await db
-      .select({ reopenCount: issues.reopenCount })
-      .from(issues)
-      .where(eq(issues.id, args.issueId))
-      .limit(1);
-    reopenCount = issueRow?.reopenCount ?? 0;
-  } catch (err) {
-    logger.warn(
-      { err, jobId: args.job.id, issueId: args.issueId },
-      'resume-policy: failed to read reopenCount, treating as 0',
-    );
-  }
-  const overTokens = bounds.maxResumeTokens > 0 && estTokens > bounds.maxResumeTokens;
-  const overCycles = bounds.maxResumeReopenCycles > 0 && reopenCount > bounds.maxResumeReopenCycles;
-  if (!overTokens && !overCycles) return null;
-  const reason: ResumeDropReason = overTokens
-    ? 'resume_bound_tokens'
-    : 'resume_bound_reopen_cycles';
+  if (!(bounds.maxResumeTokens > 0 && estTokens > bounds.maxResumeTokens)) return null;
+  const reason: ResumeDropReason = 'resume_bound_tokens';
   logger.info(
     {
       jobId: args.job.id,
       issueId: args.issueId,
       estTokens,
-      reopenCount,
       maxResumeTokens: bounds.maxResumeTokens,
-      maxResumeReopenCycles: bounds.maxResumeReopenCycles,
       reason,
     },
     'resume-policy: resume bound exceeded — dispatching fresh session',
@@ -144,7 +126,7 @@ async function exceedsResumeBounds(args: {
   if (isSentryEnabled()) {
     Sentry.addBreadcrumb({
       category: 'pipeline.resume_bound',
-      data: { reason, estTokens, reopenCount },
+      data: { reason, estTokens },
     });
   }
   return reason;

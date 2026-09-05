@@ -11,16 +11,16 @@ import { projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 
 const DEFAULT_MAX_RESUME_TOKENS = 150_000;
-const DEFAULT_MAX_RESUME_REOPEN_CYCLES = 3;
 
 export interface ResumeBounds {
   maxResumeTokens: number;
-  maxResumeReopenCycles: number;
 }
 
 /**
- * ISS-580 — load the project's session-resume bounds from pipelineConfig.
- * Defaults to 150k tokens / 3 reopen cycles when absent or on DB error.
+ * ISS-580 — load the project's session-resume bound from pipelineConfig.
+ * Defaults to 150k tokens when absent or on DB error. The `maxResumeReopenCycles`
+ * half went with the staged lane (ISS-895): it was measured against `reopen_count`,
+ * a column this lane never moves.
  * Mirrors the loadOnResumeFailPolicy pattern from handle-resume-failed.ts.
  *
  * Pass `cachedAgentConfig` (already fetched by the caller) to skip the DB
@@ -47,17 +47,10 @@ export async function loadResumeBounds(
       typeof pc.maxResumeTokens === 'number' && Number.isFinite(pc.maxResumeTokens)
         ? pc.maxResumeTokens
         : DEFAULT_MAX_RESUME_TOKENS;
-    const maxCycles =
-      typeof pc.maxResumeReopenCycles === 'number' && Number.isFinite(pc.maxResumeReopenCycles)
-        ? pc.maxResumeReopenCycles
-        : DEFAULT_MAX_RESUME_REOPEN_CYCLES;
-    return { maxResumeTokens: maxTokens, maxResumeReopenCycles: maxCycles };
+    return { maxResumeTokens: maxTokens };
   } catch (err) {
     logger.warn({ err, projectId }, 'session-resume: failed to load resume bounds, using defaults');
-    return {
-      maxResumeTokens: DEFAULT_MAX_RESUME_TOKENS,
-      maxResumeReopenCycles: DEFAULT_MAX_RESUME_REOPEN_CYCLES,
-    };
+    return { maxResumeTokens: DEFAULT_MAX_RESUME_TOKENS };
   }
 }
 

@@ -220,7 +220,6 @@ export type WaitingReason =
   | "job_held"
   | "run_not_running"
   | "retry_cooldown"
-  | "stale_trigger"
   | "runner_stale"
   | "runner_too_old";
 

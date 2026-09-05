@@ -221,7 +221,6 @@ export const pipelineConfigSchema = z
     states: statesConfigSchema,
     // cm:why ISS-580 — a resume carries the prior session's whole context, so past a peak the fresh session plus its handoff is cheaper and no less informed; 0 disables the bound, absent means 150000 tokens / 3 reopen cycles (jobs/resume-policy.ts)
     maxResumeTokens: z.number().int().min(0).optional(),
-    maxResumeReopenCycles: z.number().int().min(0).optional(),
     // cm:guard advisory ONLY (RFC 0002 INV-8) — this replaced `REOPEN_CAP`, and the whole point is that nothing in core reads it to make a decision. It is rendered into the agent's `## Project Config` block and judged by the agent; a dispatch gate or transition that branches on it re-creates the cap that parked issues which were making progress.
     reopenPolicy: z
       .object({

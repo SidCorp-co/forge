@@ -292,7 +292,6 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
         AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())
         AND NOT (${predicates.issueBusySession})
         AND NOT (${predicates.issueBusyJob})
-        AND NOT (${predicates.staleTrigger})
         AND j.held_by IS NULL
         AND NOT EXISTS (
           SELECT 1 FROM fresh_capable_runners fcr

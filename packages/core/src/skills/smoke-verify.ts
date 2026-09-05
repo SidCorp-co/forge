@@ -9,7 +9,6 @@ import {
   skills,
 } from '../db/schema.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
-import { PIPELINE_STEPS } from '../pipeline/registry.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { loadProjectSkillSyncStatus, type ProjectSkillSyncStatus } from './effective.js';
@@ -41,7 +40,6 @@ import { loadProjectSkillSyncStatus, type ProjectSkillSyncStatus } from './effec
 export type SmokeVerifyStatus = 'PASS' | 'FAIL';
 
 export type SmokeTier1Reason =
-  | 'not_registered' // no skill_registrations row for the stage
   | 'no_project_skill' // registration resolves to no usable project-scoped skill
   | 'no_bound_runner' // project has no claude-code runner device at all
   | 'no_device_report' // no device ever reported an install (desktop never does)
@@ -49,7 +47,6 @@ export type SmokeTier1Reason =
 
 export interface SmokeTier1Entry {
   stage: IssueStatus;
-  jobType: JobType;
   skillId: string | null;
   skillName: string | null;
   status: SmokeVerifyStatus;
@@ -88,8 +85,6 @@ export interface StageRegistrationRow {
   skillScope: 'global' | 'project';
 }
 
-const STAGE_ORDER = new Map<string, number>(PIPELINE_STEPS.map((s, i) => [s.status, i]));
-
 /**
  * Compute the per-stage tier-1 entries from the registration rows + the
  * skill-major device sync status. Pure (no DB) so every branch is
@@ -103,28 +98,17 @@ export function computeTier1Entries(args: {
   now?: Date;
 }): SmokeTier1Entry[] {
   const checkedAt = (args.now ?? new Date()).toISOString();
-  const regByStage = new Map(args.registrations.map((r) => [r.stage, r]));
   const syncByName = new Map(args.sync.skills.map((s) => [s.name, s]));
 
-  return PIPELINE_STEPS.map((step) => {
+  // cm:guard walk the project's OWN registration rows, never a fixed stage table. The nine-rung `PIPELINE_STEPS` this used to iterate was the staged lane and went with it (ISS-895); iterating a fixed list would report `not_registered` for every stage on every project — a report that is all FAIL is read as broken tooling, not as a finding.
+  const ordered = [...args.registrations].sort((a, b) => a.stage.localeCompare(b.stage));
+
+  return ordered.map((reg) => {
     const base = {
-      stage: step.status,
-      jobType: step.jobType,
+      stage: reg.stage as IssueStatus,
       checkedAt,
       evidenceAt: null as string | null,
     };
-
-    const reg = regByStage.get(step.status);
-    if (!reg) {
-      return {
-        ...base,
-        skillId: null,
-        skillName: null,
-        status: 'FAIL' as const,
-        reason: 'not_registered' as const,
-        detail: 'no skill is registered for this stage',
-      };
-    }
 
     const entry = syncByName.get(reg.skillName);
     if (!entry) {
@@ -266,12 +250,7 @@ export function summarizeTier2Jobs(rows: SmokeJobRowLite[]): SmokeTier2Entry[] {
       checkedAt: toIso(row.finishedAt),
     });
   }
-  // Stable pipeline-ladder order for the UI; unknown stages sort last.
-  out.sort(
-    (a, b) =>
-      (STAGE_ORDER.get(a.stage) ?? Number.MAX_SAFE_INTEGER) -
-      (STAGE_ORDER.get(b.stage) ?? Number.MAX_SAFE_INTEGER),
-  );
+  out.sort((a, b) => a.stage.localeCompare(b.stage));
   return out;
 }
 
@@ -371,7 +350,7 @@ export function planSmokeCanaries(args: {
   for (const entry of args.tier1) {
     if (want && !want.has(entry.stage)) continue;
     if (!entry.skillName) {
-      plan.skipped.push({ stage: entry.stage, reason: entry.reason ?? 'not_registered' });
+      plan.skipped.push({ stage: entry.stage, reason: entry.reason ?? 'no_project_skill' });
       continue;
     }
     if (args.activeStages.has(entry.stage)) {

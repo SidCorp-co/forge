@@ -1,190 +1,37 @@
-// Pipeline SSOT. PIPELINE_STEPS is the only place the status × jobType ×
-// toggle × skill mapping is written down. Other constants
-// (STATUS_TO_JOB_TYPE, STATUS_TO_SKILL, STEP_TOGGLE_KEYS) derive from it;
-// the HTTP endpoint at /api/pipeline/registry serializes the same payload.
+// Pipeline SSOT for the one lane this pipeline has.
+//
+// Until ISS-895 this file held `PIPELINE_STEPS`: a nine-rung status × jobType ×
+// toggle × skill table, plus six maps derived from it. That table WAS the
+// staged lane. ISS-897 stripped the toggles that gated it and collapsed the
+// orchestrator onto `dispatchAutonomous`; ISS-895 removed the table itself,
+// the eight skill bodies it named, and every reader that resolved a step
+// through it. What is left is the runner capability map, which is about job
+// types a runner may be handed — not about a walk between statuses.
 //
 // Cycle constraint: this file imports types from `../db/schema.js` only.
 // It MUST NOT import from `@forge/contracts` (contracts → core is the
 // established direction) and MUST NOT import values from
 // `./pipeline-config-schema.js` — that would form a runtime cycle.
 
-import type { IssueStatus, JobType, RunnerType } from '../db/schema.js';
+import type { JobType, RunnerType } from '../db/schema.js';
 
-export const PIPELINE_REGISTRY_VERSION = 5;
-
-// `workingStatus` — the in-flight status the step's agent flips the issue to
-// when it BEGINS work (via `forge_step_start`), so the board shows in-flight
-// progress without inventing new enum values. Sparse by design: only steps
-// whose in-flight state already exists in `issueStatuses` get one; null means
-// the trigger status doubles as the in-flight signal (short steps — visibility
-// comes from `pipeline_runs.currentStep`). `test` stays null because its
-// trigger `testing` IS the in-flight status already.
-export const PIPELINE_STEPS = [
-  {
-    status: 'open',
-    jobType: 'triage',
-    toggle: 'autoTriage',
-    skillName: 'forge-triage',
-    workingStatus: null,
-  },
-  // Clarify-on-happy-path: clarify runs AFTER triage confirms the issue
-  // (reproduce the bug / verify UX before planning) and exits to `clarified`,
-  // where plan picks up. needs_info is a human-gated bounce state again — no
-  // pipeline step dispatches there.
-  {
-    status: 'confirmed',
-    jobType: 'clarify',
-    toggle: 'autoClarify',
-    skillName: 'forge-clarify',
-    workingStatus: null,
-  },
-  {
-    status: 'clarified',
-    jobType: 'plan',
-    toggle: 'autoPlan',
-    skillName: 'forge-plan',
-    workingStatus: null,
-  },
-  {
-    status: 'approved',
-    jobType: 'code',
-    toggle: 'autoCode',
-    skillName: 'forge-code',
-    workingStatus: 'in_progress',
-  },
-  {
-    status: 'developed',
-    jobType: 'review',
-    toggle: 'autoReview',
-    skillName: 'forge-review',
-    workingStatus: null,
-  },
-  {
-    status: 'testing',
-    jobType: 'test',
-    toggle: 'autoTest',
-    skillName: 'forge-test',
-    workingStatus: null,
-  },
-  // NOTE: the former `pass` / forge-staging "staging-deploy" step was retired.
-  // Staging deploy now happens inside forge-code, and the single production
-  // approval GATE is the `tested` status (default `mode:'manual'`; see
-  // `state-machine.ts` classifySkippable + defaultStatesConfig). `pass`/`staging`
-  // remain in the status enum for back-compat but have NO pipeline step.
-  {
-    status: 'reopen',
-    jobType: 'fix',
-    toggle: 'autoFix',
-    skillName: 'forge-fix',
-    workingStatus: 'in_progress',
-  },
-  {
-    status: 'released',
-    jobType: 'release',
-    toggle: 'autoRelease',
-    skillName: 'forge-release',
-    workingStatus: null,
-  },
-] as const satisfies readonly {
-  status: IssueStatus;
-  jobType: JobType;
-  toggle: string;
-  skillName: string;
-  workingStatus: IssueStatus | null;
-}[];
-
-export type PipelineStep = (typeof PIPELINE_STEPS)[number];
-
-// Derived from PIPELINE_STEPS so adding a step adds its toggle key
-// automatically. `pipeline-config-schema.ts` re-exports this for the Zod
-// enum tuple it needs.
-export type StepToggleKey = PipelineStep['toggle'];
-
-// Human-gated job types with no auto-dispatch path. Empty since ISS-171
-// promoted 'clarify' to a first-class step (now on the happy path at
-// `confirmed`); kept exported because the FE renders this list.
-export const MANUAL_ONLY_JOB_TYPES: readonly JobType[] = [];
-
-// ISS-196 — statuses that auto-dispatch a job. Derived from PIPELINE_STEPS
-// so adding a step here automatically expands the reconciler's rescue set.
-export const AUTO_DISPATCH_STATUSES: readonly IssueStatus[] = PIPELINE_STEPS.map((s) => s.status);
-
-// Canonical runner→job-type map. A static FE duplicate historically lived in
-// v1 `packages/web/src/features/pipeline/runner-capabilities.ts`; it was
-// removed with v1 (ISS-397) and web-v2 has no copy, so this is now the sole
-// source. The test suite still asserts the values stay self-consistent.
-// `smoke` (ISS-455) is the skill smoke-verify canary — a plain prompt run with
-// no step semantics, so every runner type that can run a pipeline step can run
-// it; without the entry the dispatcher would permanently fail the job as
-// `runner_unsupported_type`.
+export const PIPELINE_REGISTRY_VERSION = 6;
 
 // cm:guard TypeScript checks the KEYS of this Record, never the array contents, so a job type missing from a list compiles and then fails every dispatch permanently with `runner_unsupported_type`. `drive` shipped that way and burned two jobs on KineTrak (2026-08-20); registry.test.ts now asserts the membership the compiler cannot.
-// cm:why release_batch has no PIPELINE_STEPS entry (dispatched explicitly via the batch-release REST endpoint, not a trigger status) but still needs a RUNNER_CAPABILITIES entry or the dispatcher fails it runner_unsupported_type
-// cm:why reconcile / verify_skill have no PIPELINE_STEPS entry — dispatched by the reconcile service directly, not by a trigger status (ISS-801).
+// cm:guard the nine staged types (`triage` `clarify` `plan` `code` `review` `test` `staging` `fix` `release`) were removed here by ISS-895 and must not come back. They survive in `jobTypes` because ~30k historical `jobs` rows hold them and a read of one must stay representable; being ABSENT here is what makes them unenqueueable — a runner handed one now fails it `runner_unsupported_type`, which is the loud refusal, not a regression.
+// cm:why release_batch is dispatched explicitly via the batch-release REST endpoint, and reconcile / verify_skill by the reconcile service — none has a trigger status, and all three still need an entry here or the dispatcher fails them runner_unsupported_type.
 export const RUNNER_CAPABILITIES: Record<RunnerType, readonly JobType[]> = {
-  'claude-code': [
-    'plan',
-    'code',
-    'review',
-    'fix',
-    'triage',
-    'test',
-    'staging',
-    'release',
-    'clarify',
-    'smoke',
-    'release_batch',
-    'reconcile',
-    'verify_skill',
-    'drive',
-  ],
+  'claude-code': ['drive', 'smoke', 'release_batch', 'reconcile', 'verify_skill'],
 };
-
-export interface JobTypeMapping {
-  type: JobType;
-  toggle: StepToggleKey;
-}
-
-export const STATUS_TO_JOB_TYPE: Partial<Record<IssueStatus, JobTypeMapping>> = Object.fromEntries(
-  PIPELINE_STEPS.map((s) => [s.status, { type: s.jobType, toggle: s.toggle }]),
-) as Partial<Record<IssueStatus, JobTypeMapping>>;
-
-export const STATUS_TO_SKILL: Partial<Record<IssueStatus, string>> = Object.fromEntries(
-  PIPELINE_STEPS.map((s) => [s.status, s.skillName]),
-) as Partial<Record<IssueStatus, string>>;
-
-/** Per-step in-flight status (sparse — see PIPELINE_STEPS.workingStatus). */
-export const WORKING_STATUS_BY_JOB_TYPE: Partial<Record<JobType, IssueStatus>> = Object.fromEntries(
-  PIPELINE_STEPS.filter((s) => s.workingStatus !== null).map((s) => [s.jobType, s.workingStatus]),
-) as Partial<Record<JobType, IssueStatus>>;
-
-/**
- * Trigger status → the in-flight status that step's agent flips the issue to
- * (sparse — only code/fix have one). Keyed by trigger status rather than job
- * type for callers that only know where the issue sits, not which job runs.
- */
-export const WORKING_STATUS_BY_STATUS: Partial<Record<IssueStatus, IssueStatus>> =
-  Object.fromEntries(
-    PIPELINE_STEPS.filter((s) => s.workingStatus !== null).map((s) => [s.status, s.workingStatus]),
-  ) as Partial<Record<IssueStatus, IssueStatus>>;
-
-/** Trigger status for a step (the status whose transition dispatches it). */
-export const TRIGGER_STATUS_BY_JOB_TYPE: Partial<Record<JobType, IssueStatus>> = Object.fromEntries(
-  PIPELINE_STEPS.map((s) => [s.jobType, s.status]),
-) as Partial<Record<JobType, IssueStatus>>;
 
 export interface PipelineRegistryPayload {
   version: number;
-  steps: readonly PipelineStep[];
   runnerCapabilities: Record<RunnerType, readonly JobType[]>;
-  manualOnlyJobTypes: readonly JobType[];
 }
 
 export function getPipelineRegistry(): PipelineRegistryPayload {
   return {
     version: PIPELINE_REGISTRY_VERSION,
-    steps: PIPELINE_STEPS,
     runnerCapabilities: RUNNER_CAPABILITIES,
-    manualOnlyJobTypes: MANUAL_ONLY_JOB_TYPES,
   };
 }

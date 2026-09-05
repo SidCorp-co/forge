@@ -9,7 +9,6 @@ import { MetaSkillReservedError } from '../../skills/meta-skills.js';
 import {
   listSkillRegistrations,
   registerSkillForProject,
-  SkillDeleteBlockedError,
   SkillNotProjectScopedError,
 } from '../../skills/registration-service.js';
 import {
@@ -222,11 +221,6 @@ export const forgeSkillsRegisterTool: DeviceScopedMcpToolFactory = (device) => (
     try {
       return await registerSkillForProject({ ...input, actorUserId: device.ownerId });
     } catch (err) {
-      if (err instanceof SkillDeleteBlockedError) {
-        throw new Error(
-          `BAD_REQUEST: ${err.code}: stage '${err.stage}' has '${err.toggle}=true'. Disable the toggle in pipelineConfig before clearing the registration.`,
-        );
-      }
       if (err instanceof SkillNotProjectScopedError) {
         throw new Error(
           `BAD_REQUEST: ${err.code}: only a project skill may be registered. Adopt the global template into this project first (forge_skills.adopt), then register the resulting project skill.`,

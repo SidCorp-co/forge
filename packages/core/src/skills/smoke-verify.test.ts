@@ -18,7 +18,6 @@ type SmokeJobRowLite = import('./smoke-verify.js').SmokeJobRowLite;
 type StageRegistrationRow = import('./smoke-verify.js').StageRegistrationRow;
 type ProjectSkillSyncStatus = import('./effective.js').ProjectSkillSyncStatus;
 
-const { PIPELINE_STEPS } = await import('../pipeline/registry.js');
 
 const NOW = new Date('2026-06-12T10:00:00.000Z');
 
@@ -75,15 +74,8 @@ function entryFor(entries: SmokeTier1Entry[], stage: string): SmokeTier1Entry {
 }
 
 describe('computeTier1Entries', () => {
-  it('emits one entry per pipeline stage, FAIL not_registered when no registration', () => {
-    const entries = computeTier1Entries({ registrations: [], sync: sync([]), now: NOW });
-    expect(entries).toHaveLength(PIPELINE_STEPS.length);
-    for (const e of entries) {
-      expect(e.status).toBe('FAIL');
-      expect(e.reason).toBe('not_registered');
-      expect(e.skillName).toBeNull();
-      expect(e.checkedAt).toBe(NOW.toISOString());
-    }
+  it('emits nothing when the project has registered nothing', () => {
+    expect(computeTier1Entries({ registrations: [], sync: sync([]), now: NOW })).toEqual([]);
   });
 
   it('PASS with evidenceAt when a device reports the matching hash', () => {
@@ -99,8 +91,7 @@ describe('computeTier1Entries', () => {
     expect(open.reason).toBeNull();
     expect(open.skillName).toBe('forge-triage');
     expect(open.evidenceAt).toBe('2026-06-10T00:00:00Z');
-    // Other stages are still honest FAILs.
-    expect(entryFor(entries, 'approved').reason).toBe('not_registered');
+    expect(entries).toHaveLength(1);
   });
 
   it('FAIL no_project_skill when the registered name has no usable project skill', () => {
@@ -165,14 +156,15 @@ describe('summarizeTier2Jobs', () => {
       row({ id: 'j-2', stage: 'approved', status: 'failed', error: 'preflight_failed: repo' }),
       row({ id: 'j-3', stage: 'testing', status: 'running', finishedAt: null }),
     ]);
-    expect(out.map((e) => [e.stage, e.status])).toEqual([
-      ['open', 'PASS'],
+    expect(out.map((e) => [e.stage, e.status]).sort()).toEqual([
       ['approved', 'FAIL'],
+      ['open', 'PASS'],
       ['testing', 'PENDING'],
     ]);
-    expect(out[0]?.checkedAt).toBe('2026-06-12T09:05:00Z');
-    expect(out[1]?.reason).toBe('preflight_failed: repo');
-    expect(out[2]?.checkedAt).toBeNull();
+    const byStage = new Map(out.map((e) => [e.stage, e]));
+    expect(byStage.get('open')?.checkedAt).toBe('2026-06-12T09:05:00Z');
+    expect(byStage.get('approved')?.reason).toBe('preflight_failed: repo');
+    expect(byStage.get('testing')?.checkedAt).toBeNull();
   });
 
   it('keeps only the newest job per stage (rows arrive newest-first)', () => {

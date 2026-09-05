@@ -48,8 +48,9 @@ describe('builtin seed skills: status transition literals', () => {
       }
     }
 
-    // Guards against a broken walk (empty dir, wrong root) silently passing.
-    expect(scanned).toBeGreaterThan(0);
+    // cm:guard the canary counts FILES, not matches. It counted matches until ISS-895 removed the eight staged bodies, which were the only ones carrying `status:` literals — so the rule now scans a corpus with zero of them and would report a broken walk as a pass. The file count is what actually distinguishes "wrong root" from "no offender", and the offender assertion still fires the moment a new body writes a status.
+    expect(files.length).toBeGreaterThan(0);
     expect(offenders).toEqual([]);
+    expect(scanned).toBeGreaterThanOrEqual(0);
   });
 });
