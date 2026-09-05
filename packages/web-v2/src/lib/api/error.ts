@@ -83,8 +83,36 @@ function joinStageLabels(statuses: string[]): string {
  * message. Falls back to {@link formatApiError} for non-ApiError values and any
  * code without a dedicated message (so behaviour never regresses).
  */
+/**
+ * The zod-level refusals `PATCH /pipeline-config` raises through its validator
+ * rather than through a typed pipeline-config code.
+ *
+ * `zValidator` answers `BAD_REQUEST` with `z.flattenError`'s
+ * `{ formErrors, fieldErrors }`, so the message a `superRefine` wrote is sitting
+ * in `fieldErrors[<top-level key>]` — readable, already naming the settings it
+ * is about, and otherwise thrown away behind "Invalid input".
+ */
+// cm:edge contract -> packages/core/src/pipeline/pipeline-config-schema.ts — a `ctx.addIssue` whose `path` starts with a key NOT listed here renders as the generic BAD_REQUEST string; the two must be extended together or the operator gets "please check the fields" for a rule that named itself
+const ZOD_REFUSAL_KEYS = ['poolBacklog', 'intakeGate', 'mcpServers', 'states'];
+
+function zodRefusal(details: unknown): string | null {
+  if (!details || typeof details !== 'object') return null;
+  const fieldErrors = (details as { fieldErrors?: unknown }).fieldErrors;
+  if (!fieldErrors || typeof fieldErrors !== 'object') return null;
+  for (const key of ZOD_REFUSAL_KEYS) {
+    const msgs = (fieldErrors as Record<string, unknown>)[key];
+    if (Array.isArray(msgs) && typeof msgs[0] === 'string') return msgs[0];
+  }
+  return null;
+}
+
 export function formatPipelineConfigError(err: unknown): string {
   if (!(err instanceof ApiError)) return formatApiError(err);
+
+  if (err.code === 'BAD_REQUEST') {
+    const refusal = zodRefusal(err.details);
+    if (refusal) return refusal;
+  }
 
   switch (err.code) {
     case 'MISSING_SKILL_FOR_ENABLED_STAGE':

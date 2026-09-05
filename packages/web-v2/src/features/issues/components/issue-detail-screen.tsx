@@ -43,6 +43,7 @@ import {
   deriveBlockerState,
   deriveStageOutcomes,
   parseChecklist,
+  statusLabelFor,
   statusToChip,
   statusToRun,
   statusToStage,
@@ -337,7 +338,11 @@ export function IssueDetailScreen({
           <div className="flex flex-wrap items-center gap-2">
             <MonoTag hue="cobalt">{issue.displayId}</MonoTag>
             {/* Issue lifecycle (pill) vs live agent run (squared, agent glyph). */}
-            <StatusChip status={statusToChip(issue.status)} />
+            {/* cm:guard label with the TRUE lifecycle status, never the bucket's own word. `statusToChip` folds `draft`, `open`, `confirmed`, `clarified` and `approved` all onto `queued`, so the bare chip told a reader the pipeline had a draft queued when nothing was working it — the exact confusion ISS-917 admits statuses to a backlog to make legible. Every other issue-domain chip already passes this. */}
+            <StatusChip
+              status={statusToChip(issue.status)}
+              label={statusLabelFor(issue.status)}
+            />
             {runChip && (
               <StatusChip
                 status={runChip}

@@ -22,6 +22,7 @@ import { isFeatureOff, usePipelineConfig, useUpdatePipelineConfig } from "../hoo
 import { McpServersSection } from "./mcp-servers-section";
 import { IntakeGateSection } from "./intake-gate-section";
 import { KnowledgePromotionSection } from "./knowledge-promotion-section";
+import { PoolBacklogSection } from "./pool-backlog-section";
 import { StagePermissionsSection } from "./stage-permissions-section";
 import { RunnerPoolsSection } from "./runner-pools-section";
 import { AgentConfigSection } from "./agent-config-section";
@@ -223,6 +224,7 @@ export function PipelineTab({
         <RunnerPoolsSection projectId={projectId} config={server} canEdit={canEdit} />
 
         <IntakeGateSection projectId={projectId} config={server} canEdit={canEdit} />
+        <PoolBacklogSection projectId={projectId} config={server} canEdit={canEdit} />
         <KnowledgePromotionSection projectId={projectId} config={server} canEdit={canEdit} />
 
         <AgentConfigSection projectId={projectId} />

@@ -31,6 +31,26 @@ export const REGISTRY_ISSUE_STATUSES = [
 	"dropped",
 ] as const;
 
+// ISS-917 — statuses a project MAY admit to its master's pool backlog. Core
+// derives this by subtracting `AUTONOMOUS_DRIVER_STATUSES` from `issueStatuses`
+// (a driver status already carries a run and a job, so a backlog row at one
+// could never be promoted). Hardcoded here for the same reason the tuple above
+// is, and held to core by the same parity test.
+// cm:edge contract -> packages/core/src/pipeline/autonomous-mode.ts#BACKLOG_ADMISSIBLE_STATUSES — parity asserted in packages/core/src/pipeline/registry.test.ts; a status that becomes a driver status must leave this tuple in the same change or the settings screen offers a value the config schema rejects
+export const REGISTRY_BACKLOG_ADMISSIBLE_STATUSES = [
+	"confirmed",
+	"clarified",
+	"waiting",
+	"approved",
+	"developed",
+	"testing",
+	"tested",
+	"released",
+	"reopen",
+	"on_hold",
+	"draft",
+] as const;
+
 export const REGISTRY_JOB_TYPES = [
 	"triage",
 	"clarify",

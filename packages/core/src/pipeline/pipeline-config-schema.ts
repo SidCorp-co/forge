@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BACKLOG_ADMISSIBLE_STATUSES } from './autonomous-mode.js';
 import {
   INTEGRATION_SERVER_NAMES,
   isKnownMcpServerName,
@@ -156,6 +157,25 @@ export const stageConfigSchema = z.object({
 
 export type StageConfig = z.infer<typeof stageConfigSchema>;
 
+/**
+ * ISS-917 — per-project pool admission. Declares which issue statuses a master
+ * agent may SEE as a backlog beside the claimable pool, and how many rows it
+ * may read at once.
+ *
+ * Absent or `statuses: []` is today's behaviour exactly: no backlog, and
+ * `GET /api/devices/me/pool` answers with the same `items` it always did.
+ */
+// cm:guard visibility ONLY. Admitting a status here must never enqueue anything: a backlog row carries no job, and turning one into work is `POST /me/pool/promote`, which re-checks the entry gate. The obvious alternative — making `AUTONOMOUS_ENTRY_STATUS` per-project so `draft` dispatches — deletes the `draft` affordance instead of extending the pool, makes `AUTONOMOUS_INFLIGHT_STATUSES` (and therefore wedge detection) per-project, and breaks the STAGE_NAMES contract that every stage name is a driver status. It was considered and rejected on the issue; do not re-derive it.
+// cm:edge contract -> packages/core/src/devices/backlog.ts — the only reader; a status admitted here appears there and nowhere else
+export const poolBacklogSchema = z
+  .object({
+    statuses: z.array(z.enum(BACKLOG_ADMISSIBLE_STATUSES as [string, ...string[]])).max(16),
+    limit: z.number().int().min(1).max(100).optional(),
+  })
+  .strict();
+
+export type PoolBacklogConfig = z.infer<typeof poolBacklogSchema>;
+
 export const statesConfigSchema = z
   .partialRecord(z.enum(STAGE_NAMES), stageConfigSchema)
   .optional();
@@ -223,6 +243,10 @@ export const pipelineConfigSchema = z
       })
       .strict()
       .optional(),
+    // ISS-917 — statuses whose issues a master may SEE but not claim. See
+    // `poolBacklogSchema` above; the refusal pairing it with `intakeGate`
+    // lives in the `superRefine` at the bottom of this object.
+    poolBacklog: poolBacklogSchema.optional(),
     // ISS-108 Phase 1 / ISS-110 Phase 3 — per-stage enable/mode toggle. When
     // `states[X].enabled === false`, the orchestrator auto-transitions past
     // `X` (soft-skip) rather than dispatching a job. Cycle/dead-end detection
@@ -283,6 +307,21 @@ export const pipelineConfigSchema = z
         });
       }
     };
+    // ISS-917 B5 — `intakeGate` exists to park EVERY arriving issue at `draft`
+    // so a human approves it. A master that may promote drafts is that human,
+    // so the pair is a contradiction and must be unrepresentable rather than
+    // discovered at dispatch time on a live project. Refused in the SCHEMA so
+    // REST `PATCH /pipeline-config` and MCP `forge_config` both hit it, and
+    // neither ordering of the two writes can leave the pair stored.
+    if (cfg.intakeGate?.enabled === true && cfg.poolBacklog?.statuses?.includes('draft')) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['poolBacklog', 'statuses'],
+        message:
+          'intakeGate is on, which parks every new issue at `draft` for a human to approve — so `draft` cannot also be admitted to `poolBacklog.statuses`, which lets a master approve it instead. Turn off `intakeGate`, or admit a status other than `draft`.',
+      });
+    }
+
     checkMcpServers(cfg.mcpServers, ['mcpServers']);
     if (cfg.states) {
       for (const [stageName, stageCfg] of Object.entries(cfg.states)) {

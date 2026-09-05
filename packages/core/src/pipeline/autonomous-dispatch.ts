@@ -87,7 +87,7 @@ export interface DispatchAutonomousArgs {
  */
 // cm:guard only the two knobs that name a HUMAN decision belong here. The per-step `auto*` toggles (autoTriage, autoCode…) name stages this mode does not have, so reading one as "may the driver start" would invent a meaning the operator never set.
 // cm:guard this is the ONLY entry gate since ISS-897 left one lane. `orchestrator.ts` used to re-apply the same two checks below the autonomous branch for the staged path, and a second copy is what let the two disagree about what "require a human" meant per project; every caller now reaches dispatch through `dispatchAutonomous`, so a check added here needs no twin and must not grow one.
-function isEntryGateClosed(cfg: PipelineConfig | null): boolean {
+export function isEntryGateClosed(cfg: PipelineConfig | null): boolean {
   const entry = cfg?.states?.[AUTONOMOUS_ENTRY_STATUS as StageName];
   return entry?.enabled === false || entry?.mode === 'manual';
 }

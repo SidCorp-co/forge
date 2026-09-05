@@ -29,6 +29,9 @@ pub enum Command {
     Release(ReleaseArgs),
     /// Raw occupancy: this box, its project, the project's fleet.
     Load(LoadArgs),
+    /// Turn one backlog issue into work: move it to the entry status so a
+    /// `drive` job exists, then claim that job as usual.
+    Promote(PromoteArgs),
 }
 
 #[derive(ClapArgs)]
@@ -62,6 +65,12 @@ pub struct ReleaseArgs {
 }
 
 #[derive(ClapArgs)]
+pub struct PromoteArgs {
+    /// The backlog issue's id, as `pool list` printed it.
+    pub issue_id: String,
+}
+
+#[derive(ClapArgs)]
 pub struct LoadArgs {
     #[arg(long)]
     pub project_id: Option<String>,
@@ -82,14 +91,25 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
 
     match args.cmd {
         Command::List(a) => {
-            let items = pool::pool(&c, a.limit, a.project_id.as_deref()).await?;
+            let view = pool::pool(&c, a.limit, a.project_id.as_deref()).await?;
+            let items = view.items;
+            let backlog = view.backlog;
             if a.json {
-                println!("{}", serde_json::to_string_pretty(&items)?);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "items": items,
+                        "backlog": backlog,
+                    }))?
+                );
+                return Ok(());
+            }
+            if items.is_empty() && backlog.is_empty() {
+                println!("pool is empty");
                 return Ok(());
             }
             if items.is_empty() {
                 println!("pool is empty");
-                return Ok(());
             }
             for e in &items {
                 let key = e.issue_key.as_deref().unwrap_or("-");
@@ -114,6 +134,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
                 }
                 println!("      job {}", e.job_id);
             }
+            print_backlog(&backlog);
         }
         // cm:guard the claim goes to the LOCAL DAEMON, never straight to core. The daemon holds the repo lock and the in-flight map in memory, so a claim made from this process would take a lock the daemon cannot see and start a job it cannot cancel, reap or salvage. If the daemon is not running, refusing here is the correct answer — there is nothing on this box that could run the job anyway.
         Command::Claim(a) => {
@@ -131,6 +152,19 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
             println!("{}", serde_json::to_string_pretty(&out)?);
             // cm:guard a refusal exits NON-ZERO so a shell-driven master can branch on it, but the refusal itself is ordinary — it means another master won the race or the box is full, never that anything is broken.
             if !out.ok {
+                std::process::exit(1);
+            }
+        }
+        // cm:guard promote goes to CORE, not the daemon — the opposite of `claim` directly above, and for the opposite reason: nothing starts here, so there is no repo lock and no in-flight map to be outside of. It returns a jobId the master then claims through the daemon exactly as it claims anything else.
+        Command::Promote(a) => {
+            let out = pool::promote(&c, &a.issue_id).await?;
+            println!("{}", serde_json::to_string_pretty(&out)?);
+            if !out.ok {
+                eprintln!(
+                    "promote refused ({}): {}",
+                    out.reason.as_deref().unwrap_or("?"),
+                    out.detail.as_deref().unwrap_or("no detail")
+                );
                 std::process::exit(1);
             }
         }
@@ -152,6 +186,39 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+// cm:guard print the backlog as its OWN block, under its own heading, never interleaved with the claimable rows. A master scanning one list cannot tell which rows carry a job, and `pool claim <issueId>` is the mistake that costs it a turn.
+// cm:guard the same rule the pool rows follow: raw status and merge stamp, and NO promote/leave verdict. Deciding which draft is worth pulling up now is exactly the judgement this surface exists to hand the master, and a CLI that pre-answers it is the gate this design deleted, reappearing in the display layer.
+fn print_backlog(backlog: &[pool::BacklogEntry]) {
+    if backlog.is_empty() {
+        return;
+    }
+    println!();
+    println!(
+        "backlog ({} visible, not claimable — `pool promote <issueId>` to make one work)",
+        backlog.len()
+    );
+    for e in backlog {
+        println!(
+            "{}  {:<10} {:<9} {:>5.0}m  {}",
+            e.issue_key.as_deref().unwrap_or("-"),
+            e.status,
+            e.priority.as_deref().unwrap_or("-"),
+            e.age_minutes,
+            e.title.as_deref().unwrap_or("")
+        );
+        for r in &e.relations {
+            println!(
+                "      {} {} — status={} merged={}",
+                r.kind,
+                r.depends_on_key.as_deref().unwrap_or("?"),
+                r.blocker_status.as_deref().unwrap_or("?"),
+                r.blocker_merged_at.as_deref().unwrap_or("never")
+            );
+        }
+        println!("      issue {}", e.issue_id);
+    }
 }
 
 // cm:guard walk BOTH the device and every fleet entry. The fleet list is what a master reads when it spreads a batch over several boxes, so a fault printed only for the local device is invisible exactly when it decides where else the work goes.

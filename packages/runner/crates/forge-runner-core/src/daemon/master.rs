@@ -34,7 +34,12 @@ const LIMITED_POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
 /// The prompt that starts a pass. Deliberately thin: the skill is the process.
 // cm:guard name the skill and STOP. Restating its rules here creates a second copy of the master's process, and the copies drift in silence because nothing compares them — the skill file is where a reader looks and this string is what a master is actually told. The two ship together (see the include_str edge below), so there is no version where inlining the rules here is even the safer half.
-fn pass_prompt(project: &str, base_branch: Option<&str>, issue_keys: &[String]) -> String {
+fn pass_prompt(
+    project: &str,
+    base_branch: Option<&str>,
+    issue_keys: &[String],
+    backlog_keys: &[String],
+) -> String {
     let mut out = format!(
         "Use the `forge-master` skill. You are the master for project `{project}` on this box: \
 read the pool, decide what runs and how much, claim through `forge-runner pool claim`, and end \
@@ -51,6 +56,19 @@ agent you start works in a worktree cut from `origin/{base}`, never in this tree
         out.push_str("- ");
         out.push_str(id);
         out.push('\n');
+    }
+    // cm:guard name the backlog as a SEPARATE list and say what it is not. Folded into the list above, a master reads `pool claim <issueId>` as the next step and burns its turn on a refusal; the two lists answer different questions, and the prompt is where that distinction has to survive.
+    if !backlog_keys.is_empty() {
+        out.push_str(
+            "\nBacklog — declared visible, NOT claimable. No job and no run exists for these; \
+`forge-runner pool promote <issueId>` is what turns one into work, and whether any of them is \
+worth pulling up now is your call:\n",
+        );
+        for id in backlog_keys {
+            out.push_str("- ");
+            out.push_str(id);
+            out.push('\n');
+        }
     }
     out.push_str(
         "\nYou NAME every agent you start: `forge-runner pool claim <jobId> --session-id <id> \
@@ -188,14 +206,17 @@ async fn sweep(client: &CoreClient, cfg: &Config, gate: &Arc<MasterGate>) -> Dur
             continue;
         };
 
-        let items = match pool::pool(client, 20, Some(&project_id)).await {
-            Ok(items) => items,
+        let view = match pool::pool(client, 20, Some(&project_id)).await {
+            Ok(view) => view,
             Err(e) => {
                 tracing::warn!("[master] pool unreadable for {}: {e}", runner.slug);
                 continue;
             }
         };
-        if items.is_empty() {
+        let items = view.items;
+        let backlog = view.backlog;
+        // cm:guard a declared backlog alone is reason enough to start a pass. Gating on `items` only means a project whose entire content is a backlog never gets a master, so the promote path it opted into fires nowhere — the knob would be configurable, savable and dead.
+        if items.is_empty() && backlog.is_empty() {
             continue;
         }
 
@@ -215,12 +236,23 @@ async fn sweep(client: &CoreClient, cfg: &Config, gate: &Arc<MasterGate>) -> Dur
         keys.sort();
         keys.dedup();
 
-        let prompt = pass_prompt(&resolved.slug, resolved.base_branch.as_deref(), &keys);
+        let mut backlog_keys: Vec<String> =
+            backlog.iter().filter_map(|b| b.issue_key.clone()).collect();
+        backlog_keys.sort();
+        backlog_keys.dedup();
+
+        let prompt = pass_prompt(
+            &resolved.slug,
+            resolved.base_branch.as_deref(),
+            &keys,
+            &backlog_keys,
+        );
         let cwd = resolved.repo_path.clone();
         let slug = resolved.slug.clone();
         tracing::info!(
-            "[master] {slug}: {} job(s) claimable — starting a pass in {}",
+            "[master] {slug}: {} job(s) claimable, {} backlog row(s) — starting a pass in {}",
             items.len(),
+            backlog.len(),
             cwd.display()
         );
         tokio::spawn(async move {
@@ -439,7 +471,7 @@ mod tests {
     // cm:guard the prompt names the skill and does not restate it. A test that only checked for non-empty prose would pass a prompt that inlined the whole process, which is the drift this guards.
     #[test]
     fn the_prompt_points_at_the_skill_rather_than_repeating_it() {
-        let p = pass_prompt("forge-dev", Some("main"), &["ISS-901".into()]);
+        let p = pass_prompt("forge-dev", Some("main"), &["ISS-901".into()], &[]);
         assert!(p.contains("forge-master"));
         assert!(p.contains("ISS-901"));
         assert!(p.contains("releasing"));
@@ -448,14 +480,36 @@ mod tests {
     // cm:guard a master must be told which project it is and which branch its agents cut from, because it stands in a checkout that looks identical whatever project it belongs to. Without the base branch a master has to guess a start point, and `worktree::create` documents what guessing costs: a branch cut from whatever the tree happened to sit on, anhome 2026-08-15.
     #[test]
     fn the_prompt_names_the_project_and_its_base_branch() {
-        let p = pass_prompt("epodsystem-core", Some("develop"), &[]);
+        let p = pass_prompt("epodsystem-core", Some("develop"), &[], &[]);
         assert!(p.contains("epodsystem-core"));
         assert!(p.contains("origin/develop"));
     }
 
+    // cm:guard the two lists must stay TOLD APART in the prompt. A master that reads a backlog key as claimable spends its turn on `pool claim <issueId>`, which core refuses as `not_found` — and the refusal names the job, not the mistake, so nothing in the transcript says why.
+    #[test]
+    fn the_prompt_separates_the_backlog_from_the_claimable_pool() {
+        let p = pass_prompt(
+            "forge-dev",
+            Some("main"),
+            &["ISS-901".into()],
+            &["ISS-917".into()],
+        );
+        assert!(p.contains("ISS-901"));
+        assert!(p.contains("ISS-917"));
+        assert!(p.contains("NOT claimable"));
+        assert!(p.contains("pool promote"));
+    }
+
+    #[test]
+    fn a_prompt_with_no_backlog_says_nothing_about_one() {
+        let p = pass_prompt("forge-dev", Some("main"), &["ISS-901".into()], &[]);
+        assert!(!p.contains("Backlog"));
+        assert!(!p.contains("pool promote"));
+    }
+
     #[test]
     fn a_project_with_no_base_branch_still_gets_a_usable_prompt() {
-        let p = pass_prompt("some-site", None, &["ISS-1".into()]);
+        let p = pass_prompt("some-site", None, &["ISS-1".into()], &[]);
         assert!(p.contains("some-site"));
         assert!(!p.contains("origin/"));
     }

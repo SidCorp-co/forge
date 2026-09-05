@@ -52,16 +52,50 @@ pub struct PoolEntry {
     pub relations: Vec<PoolRelation>,
 }
 
+/// One issue a project has declared VISIBLE to its master without making it
+/// work: no job, no run, nothing claimable. Turning one into work is
+/// `promote`, and nothing else here can.
+// cm:guard there is no `job_id` on this type and there must never be one — the whole point of the sibling `backlog` key is that a row here cannot be handed to `pool claim`, and a field that made it look claimable would put that mistake one typo away.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BacklogEntry {
+    pub issue_id: String,
+    #[serde(default)]
+    pub issue_key: Option<String>,
+    #[serde(default)]
+    pub project_id: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub priority: Option<String>,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub age_minutes: f64,
+    #[serde(default)]
+    pub relations: Vec<PoolRelation>,
+}
+
+/// What core answered: claimable work, and the declared backlog beside it.
+// cm:guard `backlog` carries `#[serde(default)]` so a core that predates ISS-917 (or a project with no `poolBacklog`) decodes to an empty vec rather than a parse error. Same rule as every other field here: a runner must survive talking to a core older OR newer than itself.
 #[derive(Debug, Deserialize)]
 struct PoolResponse {
     items: Vec<PoolEntry>,
+    #[serde(default)]
+    backlog: Vec<BacklogEntry>,
 }
 
-pub async fn pool(
-    client: &CoreClient,
-    limit: u32,
-    project_id: Option<&str>,
-) -> Result<Vec<PoolEntry>> {
+/// Claimable work and the declared backlog, as one read.
+pub struct PoolView {
+    pub items: Vec<PoolEntry>,
+    pub backlog: Vec<BacklogEntry>,
+}
+
+pub async fn pool(client: &CoreClient, limit: u32, project_id: Option<&str>) -> Result<PoolView> {
     let mut url = client.url(&format!("/api/devices/me/pool?limit={limit}"));
     if let Some(p) = project_id {
         url.push_str(&format!("&projectId={p}"));
@@ -71,7 +105,37 @@ pub async fn pool(
         .json()
         .await
         .map_err(|e| Error::Other(format!("pool decode: {e}")))?;
-    Ok(parsed.items)
+    Ok(PoolView {
+        items: parsed.items,
+        backlog: parsed.backlog,
+    })
+}
+
+/// The outcome of asking core to turn one backlog row into work.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PromoteOutcome {
+    pub ok: bool,
+    #[serde(default)]
+    pub job_id: Option<String>,
+    #[serde(default)]
+    pub issue_key: Option<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+/// Move one backlog issue to the entry status so it becomes claimable.
+// cm:guard promote goes STRAIGHT TO CORE, unlike `claim`, and that difference is deliberate: it starts no process, takes no repo lock and touches no in-flight map, so routing it through the daemon would buy nothing and make a master on a box whose daemon is down unable to do a thing the box never needed to be up for.
+// cm:guard a refusal is `ok:false` on a 200 and must not be retried in a loop — `entry_gated` clears only when a human edits the project config, and `issue_busy` only when another master's work ends.
+pub async fn promote(client: &CoreClient, issue_id: &str) -> Result<PromoteOutcome> {
+    let url = client.url("/api/devices/me/pool/promote");
+    let body = serde_json::json!({ "issueId": issue_id });
+    let resp = post(client, &url, body).await?;
+    resp.json()
+        .await
+        .map_err(|e| Error::Other(format!("promote decode: {e}")))
 }
 
 /// What core prepared for a claimed job: identity, prompt, and the settings the
@@ -306,6 +370,42 @@ mod tests {
         assert_eq!(entry.job_id, "j1");
         assert_eq!(entry.job_type, "code");
         assert!(entry.relations.is_empty());
+    }
+
+    // cm:guard the reason this test exists: a core that has never heard of ISS-917 sends no `backlog` key at all, and a fleet that could not decode that response would be every box failing every pool read at once, with the error inside serde.
+    #[test]
+    fn a_response_without_a_backlog_key_still_parses() {
+        let raw = serde_json::json!({ "items": [] });
+        let parsed: PoolResponse = serde_json::from_value(raw).unwrap();
+        assert!(parsed.backlog.is_empty());
+    }
+
+    #[test]
+    fn a_backlog_entry_keeps_its_status_and_carries_no_job() {
+        let raw = serde_json::json!({
+            "issueId": "i1", "issueKey": "ISS-917", "projectId": "p1",
+            "status": "draft", "priority": "high", "ageMinutes": 12.0,
+            "relations": [{ "kind": "blocks", "dependsOnKey": "ISS-900",
+                            "blockerStatus": "closed", "blockerMergedAt": null,
+                            "edgeValidUntil": null }]
+        });
+        let e: BacklogEntry = serde_json::from_value(raw).unwrap();
+        assert_eq!(e.status, "draft");
+        assert_eq!(e.issue_key.as_deref(), Some("ISS-917"));
+        assert_eq!(e.relations.len(), 1);
+        assert_eq!(e.relations[0].blocker_status.as_deref(), Some("closed"));
+    }
+
+    #[test]
+    fn a_refused_promote_parses_as_a_named_reason() {
+        let raw = serde_json::json!({
+            "ok": false, "reason": "entry_gated",
+            "detail": "states.open is set to manual"
+        });
+        let out: PromoteOutcome = serde_json::from_value(raw).unwrap();
+        assert!(!out.ok);
+        assert_eq!(out.reason.as_deref(), Some("entry_gated"));
+        assert!(out.job_id.is_none());
     }
 
     #[test]
