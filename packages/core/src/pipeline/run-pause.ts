@@ -2,9 +2,11 @@
  * Single writer for the pause/resume axis of `pipeline_runs.status`
  * (running ⇄ paused). Terminal transitions stay in `lifecycle/transition.ts`
  * (kernel chokepoint); this module is the equivalent chokepoint for the
- * non-terminal pause axis so every pause/resume — operator REST, the
- * missing-skill guard, the stage-stall guard, the skill-registered
- * auto-resume — emits the SAME side effects:
+ * non-terminal pause axis so every pause/resume emits the SAME side effects.
+ * ISS-895 removed the machine writers (the missing-skill guard, the stage-stall
+ * guard and the skill-registered auto-resume were all staged-lane), so the only
+ * live writer is operator REST — the contract stands because historical rows
+ * still carry their reasons and every reader below still has to answer for them:
  *
  *  - `pipelineRunStatusChanged` hook (Sentry breadcrumb + memory observer)
  *  - `pipeline_run.status_changed` WS broadcast to the project room
@@ -64,14 +66,13 @@ async function emitRunPauseTransition(
  * Machine pause kinds a MACHINE clears: something in this build watches for the
  * condition and resumes the run without anyone being asked.
  */
-// cm:guard a kind here is a PROMISE that code resumes it — add one only together with its resume path, and DELETE it in the same commit as the mechanism it belongs to. RFC 0002 removed the reopen cap and left `reopen_cap:*` runs frozen with no owner: measured 2026-08-14, forge-dev ISS-576 and ISS-652 had been paused since 2026-08-11, their queued triage jobs invisible to the picker (which requires `r.status='running'`), so clicking "open" on the issue did nothing at all and no alarm anywhere fired.
-// cm:edge lockstep -> packages/core/src/pipeline/missing-skill-resume.ts — that subscriber IS `missing_skill`'s promise; delete it and the kind belongs below, not here
-export const MACHINE_RESUMED_PAUSE_KINDS = ['missing_skill'] as const;
+// cm:guard EMPTY, and empty is the correct state, not an oversight. A kind here is a PROMISE that code resumes it, and `missing_skill` was that promise until ISS-895 deleted `missing-skill-resume.ts` with the staged lane — a run still paused on it is now freed by `resumeOrphanedPauses`, which frees every kind ABSENT from `LIVE_PAUSE_REASON_KINDS`, and that is the whole reason it exists. RFC 0002 removed the reopen cap and left `reopen_cap:*` runs frozen with no owner: measured 2026-08-14, forge-dev ISS-576 and ISS-652 had been paused since 2026-08-11, their queued triage jobs invisible to the picker (which requires `r.status='running'`), so clicking "open" did nothing and no alarm fired. Add a kind here only together with its resume path.
+export const MACHINE_RESUMED_PAUSE_KINDS: readonly string[] = [];
 
 /**
  * Machine pause kinds only a PERSON clears.
  */
-// cm:why `stage_stalled` was in one undifferentiated list with `missing_skill` for months, which made the promise above read as true of it — and it is not: no subscriber, sweeper or route resumes a `stage_stalled:*` run anywhere in this repo, only the operator resume endpoint. Measured 2026-08-30, a getcontent run had been paused 23 days on it. The split is what lets `alarmPausedRunsWithQueuedWork` tell an operator which of the two they are looking at instead of guessing.
+// cm:guard `stage_stalled` stays listed even though ISS-895 deleted the guard that wrote it: it is what keeps a run ALREADY paused on it out of `resumeOrphanedPauses`, which would otherwise resume a stall an operator was still looking at. Measured 2026-08-30, a getcontent run had been paused 23 days on one. Being here is also what makes `alarmPausedRunsWithQueuedWork` say "a person must act" rather than promising a resume nothing performs.
 export const HUMAN_RESUMED_PAUSE_KINDS = ['stage_stalled'] as const;
 
 /**

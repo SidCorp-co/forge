@@ -12,7 +12,7 @@
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, issues, jobs } from '../db/schema.js';
+import { agentSessions, jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { recordResumeDrop } from '../observability/hold-metrics.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';

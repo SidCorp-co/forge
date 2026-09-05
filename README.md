@@ -117,13 +117,15 @@ See [docs/architecture/system-overview.md](docs/architecture/system-overview.md)
 2. **Bind a project to a device.** Project → Settings → Runtime → pick a
    device from your pool. First bind prompts for the repo's local path and
    runs `git clone` if needed. One device active at a time per project.
-3. **An issue arrives.** Via webhook or created in the dashboard. Pipeline
-   enqueues the first stage (`forge-triage`) as a job.
+3. **An issue arrives.** Via webhook or created in the dashboard. At `open`
+   the pipeline enqueues one `drive` job — the driver owns the issue's whole
+   walk, from reading it to shipping it.
 4. **The dispatcher picks a device.** Job pushed over WebSocket to the
    project's active device. Device spawns `claude` locally, streams stdout /
    tool calls / diffs back to the server.
-5. **You watch and gate.** Dashboard streams events real-time. Approve the
-   plan, reject the diff, move it along. Finished jobs advance the pipeline.
+5. **You watch, and answer when asked.** Dashboard streams events real-time.
+   The driver moves the issue itself and parks at `needs_info` when it needs a
+   human; your answer restarts it.
 6. **The server keeps receipts.** Every job has a full event log retained
    30 days after termination. Issues persist.
 

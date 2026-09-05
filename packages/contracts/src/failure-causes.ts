@@ -186,8 +186,9 @@ export const FAILURE_CAUSE_PRESENTATION: Record<FailureCause, FailureCausePresen
 
 /**
  * Strings that reach `failure_reason` on a live row without being causes.
- * Every one of them is now historical: they were the central dispatcher's SKIP
- * reasons, and that dispatcher is gone — nothing writes these any more. They
+ * Every one of them is now historical: most were the central dispatcher's SKIP
+ * reasons and that dispatcher is gone; `stale_trigger` was the staged lane's
+ * discard sweep, removed with the lane by ISS-895. Nothing writes these. They
  * are NOT aliased into the taxonomy on purpose (a skipped dispatch was never a
  * failure, and giving it a cause would put it in the failure count), but rows
  * carrying them outlive the code that wrote them, so the UI must still read
@@ -199,4 +200,5 @@ export const LEGACY_NEUTRAL_REASONS: ReadonlySet<string> = new Set([
   'project_full',
   'runner_full',
   'no_worker_online',
+  'stale_trigger',
 ]);

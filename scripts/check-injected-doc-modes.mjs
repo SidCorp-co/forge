@@ -31,7 +31,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCES = {
   constant: 'packages/core/src/pipeline/autonomous-mode.ts',
   schema: 'packages/core/src/db/schema.ts',
-  steps: 'packages/contracts/src/pipeline-registry.ts',
+  steps: 'packages/core/src/pipeline/registry.ts',
 };
 
 // cm:guard the fact openers must keep matching `export const` as well as `render:`, because the tier-1 MANDATORY text — the only text injected into every job rather than fetched on demand — reaches the registry through `render: () => PIPELINE_RULES_TEXT` and lives in a top-level const; matching `render:` alone extracted 12 bodies and read green while the two `→ approved` claims in that constant went unseen.
@@ -66,17 +66,31 @@ function arrayLiterals(src, declRe, rel, what) {
   return out;
 }
 
-// cm:guard derive the staged step names from the TOGGLE KEYS, never list them here. `REGISTRY_STEP_TOGGLE_KEYS` is what `pipelineConfig` actually switches, so a step added there without a toggle is a step no project can turn off — and a hand-copied list would let this gate go quiet about a step the fleet had already started running.
+// cm:guard derive the retired step names, never list them here. This read `REGISTRY_STEP_TOGGLE_KEYS` until ISS-895 deleted the toggles with the staged lane; the successor derivation is `jobTypes` MINUS what a runner may claim minus the two that bypass the gate, which is exactly the set of types that exist in the enum but can no longer be enqueued — i.e. the steps this pipeline does not have. That is the set R2 is for, and it keeps self-updating: a type dropped from `RUNNER_CAPABILITIES` joins it automatically, so the gate cannot go quiet about a step the fleet stopped running.
+// cm:edge contract -> packages/core/src/pipeline/registry.ts — RUNNER_CAPABILITIES; a claude-code entry added there silently narrows this vocabulary, which is correct (a claimable type IS a step this pipeline has) but must stay a deliberate edit
+const GATE_BYPASSING_JOB_TYPES = ['pm', 'custom'];
+
 function stepVocabulary() {
-  const toggles = read(SOURCES.steps);
-  const m = /export const REGISTRY_STEP_TOGGLE_KEYS = \[([^\]]*)\]/.exec(toggles);
-  if (m === null) throw new CannotRun(`${SOURCES.steps}: REGISTRY_STEP_TOGGLE_KEYS not found`);
-  const staged = [...m[1].matchAll(/"auto([A-Z]\w*)"/g)].map((x) => x[1].toLowerCase());
-  if (staged.length === 0) throw new CannotRun(`${SOURCES.steps}: no auto* toggle keys`);
+  const all = arrayLiterals(
+    read(SOURCES.schema),
+    /export const jobTypes = \[([^\]]*)\]/,
+    SOURCES.schema,
+    'jobTypes',
+  );
+  const caps = read(SOURCES.steps);
+  const m = /'claude-code':\s*\[([^\]]*)\]/.exec(caps);
+  if (m === null) throw new CannotRun(`${SOURCES.steps}: RUNNER_CAPABILITIES claude-code not found`);
+  const claimable = [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]);
+  if (claimable.length === 0) throw new CannotRun(`${SOURCES.steps}: no claimable job types`);
+
+  const retired = all.filter(
+    (t) => !claimable.includes(t) && !GATE_BYPASSING_JOB_TYPES.includes(t),
+  );
+  if (retired.length === 0) throw new CannotRun(`${SOURCES.schema}: no retired job types`);
 
   const drive = /export const AUTONOMOUS_JOB_TYPE[^=]*=\s*'([a-z_]+)'/.exec(read(SOURCES.constant));
   if (drive === null) throw new CannotRun(`${SOURCES.constant}: AUTONOMOUS_JOB_TYPE not found`);
-  return [...staged, drive[1]];
+  return [...retired, drive[1]];
 }
 
 function main() {

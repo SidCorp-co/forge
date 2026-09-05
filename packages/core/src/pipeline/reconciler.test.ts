@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  applyStatusTransitionMock,
   jobsQueue,
   reEnqueueMock,
   resetHarness,
@@ -165,7 +164,6 @@ describe('reconciler', () => {
     expect(reEnqueueMock).toHaveBeenCalledTimes(2);
   });
 
-
   it('returns zero rescues when no issues are stuck', async () => {
     stuckQueue.push([]);
     staleCountQueue.push([{ count: 0 }]);
@@ -177,4 +175,3 @@ describe('reconciler', () => {
     expect(reEnqueueMock).not.toHaveBeenCalled();
   });
 });
-

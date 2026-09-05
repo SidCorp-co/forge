@@ -35,13 +35,13 @@ const { checkTransitionEvidence, isBlankPlan } = await import('./transition-evid
 
 const ISSUE = { id: 'iss-1', projectId: 'proj-1' };
 
-function setup(...batches: unknown[][]) {
+function _setup(...batches: unknown[][]) {
   queue.length = 0;
   queue.push(...batches);
 }
 
-const planRow = (plan: string | null) => [{ plan }];
-const projectRow = (pipelineConfig: unknown) => [{ agentConfig: { pipelineConfig } }];
+const _planRow = (plan: string | null) => [{ plan }];
+const _projectRow = (pipelineConfig: unknown) => [{ agentConfig: { pipelineConfig } }];
 
 describe('isBlankPlan', () => {
   it.each([null, undefined, '', '   ', '\n\t'])('treats %j as blank', (v) => {
@@ -52,7 +52,6 @@ describe('isBlankPlan', () => {
     expect(isBlankPlan(v)).toBe(false);
   });
 });
-
 
 describe('checkTransitionEvidence — no_work_evidence rule', () => {
   beforeEach(() => {

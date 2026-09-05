@@ -3,7 +3,6 @@ import { db } from '../db/client.js';
 import {
   type IssueStatus,
   type JobStatus,
-  type JobType,
   jobs,
   skillRegistrations,
   skills,

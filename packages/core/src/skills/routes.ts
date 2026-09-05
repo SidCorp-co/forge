@@ -10,10 +10,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
 import { isMetaSkillName } from './meta-skills.js';
-import {
-  registerSkillForProject,
-  SkillNotProjectScopedError,
-} from './registration-service.js';
+import { registerSkillForProject, SkillNotProjectScopedError } from './registration-service.js';
 import { getSkillForProject } from './service.js';
 import { computeSkillDiff } from './sync.js';
 
@@ -282,16 +279,12 @@ skillRegisterRoutes.delete(
       .limit(1);
     if (!row) return c.json({ deleted: false, stage });
 
-    try {
-      await registerSkillForProject({
-        projectId,
-        skillId: row.skillId,
-        stage: null,
-        actorUserId: userId,
-      });
-    } catch (err) {
-      throw err;
-    }
+    await registerSkillForProject({
+      projectId,
+      skillId: row.skillId,
+      stage: null,
+      actorUserId: userId,
+    });
     return c.json({ deleted: true, stage });
   },
 );

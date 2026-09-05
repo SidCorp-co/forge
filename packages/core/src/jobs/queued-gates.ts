@@ -16,11 +16,8 @@
  * `retry_after_at` (ISS-197) — a `gate_at + N seconds` debouncer trips it; and
  * no writes from either reader.
  *
- * ISS-789's `stale_trigger` arm and the sweep that ended the jobs it held were
- * removed with the staged lane (ISS-895). Both were scoped to the job types
- * that HAVE a trigger status, and `drive` — the only type this lane
- * dispatches — never had one, so the arm could not match a job that exists.
  */
+// cm:guard `stale_trigger` and the sweep that ended the jobs it held must not come back. ISS-789 scoped both to the job types that HAVE a trigger status; ISS-895 left one type, `drive`, which never had one — and re-adding the arm would stamp the driver stale the moment its own agent moves the issue, with nothing re-enqueuing at any status but the entry one.
 
 import { eq, type SQL, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';

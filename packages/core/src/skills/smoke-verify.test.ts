@@ -18,7 +18,6 @@ type SmokeJobRowLite = import('./smoke-verify.js').SmokeJobRowLite;
 type StageRegistrationRow = import('./smoke-verify.js').StageRegistrationRow;
 type ProjectSkillSyncStatus = import('./effective.js').ProjectSkillSyncStatus;
 
-
 const NOW = new Date('2026-06-12T10:00:00.000Z');
 
 const DEVICE = {

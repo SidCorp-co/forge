@@ -147,7 +147,11 @@ describe('forge_step_start', () => {
     loadIssue.mockResolvedValue(makeIssue());
     queueHappyPath({ comments: [{ documentId: 'c1', body: 'has a screenshot' }] });
 
-    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID, stage: 'drive' })) as Record<
+    const result = (await tool.handler({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      stage: 'drive',
+    })) as Record<
       string,
       // biome-ignore lint/suspicious/noExplicitAny: test readback
       any
@@ -156,10 +160,6 @@ describe('forge_step_start', () => {
     expect(result.issue.attachments).toEqual([]);
     expect(result.comments[0].attachments).toEqual([]);
   });
-
-
-
-
 
   it('refuses by name when `stage` is omitted, at every status', async () => {
     const tool = forgeStepStartTool(ctx);
@@ -191,7 +191,11 @@ describe('forge_step_start', () => {
     );
     queueHappyPath({ project: { baseBranch: 'develop', productionBranch: 'main' } });
 
-    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID, stage: 'drive' })) as {
+    const result = (await tool.handler({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      stage: 'drive',
+    })) as {
       branchConfig: { baseBranch: string | null; targetBranch: string | null };
     };
     expect(result.branchConfig.baseBranch).toBe('iss-99-integration');
@@ -208,7 +212,11 @@ describe('forge_step_start', () => {
     }));
     queueHappyPath({ comments: fatComments });
 
-    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID, stage: 'drive' })) as Record<
+    const result = (await tool.handler({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      stage: 'drive',
+    })) as Record<
       string,
       // biome-ignore lint/suspicious/noExplicitAny: test readback
       any
@@ -240,7 +248,11 @@ describe('forge_step_start', () => {
     const small = Array.from({ length: 5 }, (_, i) => ({ documentId: `c${i}`, body: `note ${i}` }));
     queueHappyPath({ comments: small });
 
-    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID, stage: 'drive' })) as Record<
+    const result = (await tool.handler({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      stage: 'drive',
+    })) as Record<
       string,
       // biome-ignore lint/suspicious/noExplicitAny: test readback
       any
@@ -258,7 +270,11 @@ describe('forge_step_start', () => {
     heavyFieldChars.mockReturnValue(10); // well under threshold
     queueHappyPath();
 
-    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID, stage: 'drive' })) as Record<
+    const result = (await tool.handler({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      stage: 'drive',
+    })) as Record<
       string,
       // biome-ignore lint/suspicious/noExplicitAny: test readback
       any
@@ -277,7 +293,11 @@ describe('forge_step_start', () => {
     heavyFieldChars.mockReturnValue(6000); // over 2000 threshold
     queueHappyPath();
 
-    const result = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID, stage: 'drive' })) as Record<
+    const result = (await tool.handler({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      stage: 'drive',
+    })) as Record<
       string,
       // biome-ignore lint/suspicious/noExplicitAny: test readback
       any
@@ -299,20 +319,22 @@ describe('forge_step_start', () => {
     heavyFieldChars.mockReturnValue(0);
     loadIssue.mockResolvedValue(makeIssue({ plan: longPlan }));
     queueHappyPath();
-    const fullResult = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID, stage: 'drive' })) as Record<
-      string,
-      unknown
-    >;
+    const fullResult = (await tool.handler({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      stage: 'drive',
+    })) as Record<string, unknown>;
     const fullSize = JSON.stringify(fullResult.issue).length;
 
     // Large issue: heavyFieldChars returns 5500 → serializeManifestWithAttachments
     heavyFieldChars.mockReturnValue(5500);
     loadIssue.mockResolvedValue(makeIssue({ plan: longPlan }));
     queueHappyPath();
-    const leanResult = (await tool.handler({ projectId: PROJECT_ID, issueId: ISSUE_ID, stage: 'drive' })) as Record<
-      string,
-      unknown
-    >;
+    const leanResult = (await tool.handler({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      stage: 'drive',
+    })) as Record<string, unknown>;
     const leanSize = JSON.stringify(leanResult.issue).length;
 
     expect(leanSize).toBeLessThan(fullSize);

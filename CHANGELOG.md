@@ -436,6 +436,30 @@
 
 ### Removed
 
+- **The staged lane, and everything that only it read (ISS-895).** `PIPELINE_STEPS` — the nine-rung
+  status × jobType × toggle × skill table — and the six maps derived from it are gone, with the
+  eight staged skill bodies, the 178 `skills` rows that carried them, and their
+  `skill_registrations` (migration `0208`). ISS-897 had already stripped the toggles that gated the
+  lane, so the branch was unreachable before this; what it left behind was a table, a job-type
+  scope, a stall guard and an alarm that each looked live and could not fire.
+
+  Removed with it: `POST /api/projects/:id/skills/bootstrap` and its Balanced preset — it bound
+  stage→skill registrations and nothing else, so the create-project wizard's second step now saves
+  the repository settings and stops there; `forge_pm.dispatch`, which now refuses by name rather
+  than enqueuing a job type no runner accepts; `forge_step_start`'s status flip, which read the step
+  table (it says so in `statusNote` on every call, and `stage` is now required because nothing
+  derives it); the `stale_trigger` dispatch-gate arm and its sweep, both scoped to job types that
+  have a trigger status, which `drive` never had; `alarmChurningIssues`, which counted a
+  `reopen_count` this lane never moves and so was frozen at 0; the stage-stall guard; the resume
+  bound on reopen cycles, for the same frozen-column reason; and `steps` / `manualOnlyJobTypes` from
+  the `GET /api/pipeline/registry` payload (version 6).
+
+  The nine staged job types and the seven staged issue statuses stay in the enums: ~30k historical
+  `jobs` rows hold them and a read of one must stay representable. Absence from `RUNNER_CAPABILITIES`
+  is what makes them unenqueueable now — a runner handed one fails it `runner_unsupported_type`,
+  which is the loud refusal. 16 issues stranded on a staged status were re-parked to `needs_info`
+  with their prior status recorded in `metadata.iss895.priorStatus`; `released` was left alone.
+
 - **The last of the push path, and the last ceiling core could name.** `selectRunnerForJob` and its
   three private arms (pin / least-loaded / standby) are deleted. Its only two remaining callers —
   the release-batch preflight and the skill smoke-verify dispatch — never used the runner it

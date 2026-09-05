@@ -17,7 +17,7 @@
 // deliberate human park and only a human may leave it. The whole point is to
 // tell that human a decision is owed.
 
-import { and, eq, gte, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, eq, gte, isNull, lt, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, notifications, projects } from '../db/schema.js';
 import { logger } from '../logger.js';

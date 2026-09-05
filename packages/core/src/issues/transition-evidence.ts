@@ -9,9 +9,7 @@
  * rule (`no_work_evidence`).
  */
 
-import { eq } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
-import { issues } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { findMissingWorkEvidence } from '../pipeline/work-evidence.js';
 import type { ActorAgency } from './actor-agency.js';

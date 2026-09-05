@@ -101,7 +101,6 @@ describe("WAITING_REASON_SHORT", () => {
     "job_held",
     "run_not_running",
     "retry_cooldown",
-    "stale_trigger",
     "runner_stale",
     "runner_too_old",
   ];
@@ -124,7 +123,6 @@ describe("gate tone", () => {
 		expect(needs("run_not_running")).toBe(true);
 		expect(needs("retry_cooldown")).toBe(false);
 		expect(needs("runner_too_old")).toBe(true);
-		expect(needs("stale_trigger")).toBe(false);
 		expect(needs("issue_busy")).toBe(false);
 	});
 

@@ -62,8 +62,9 @@ vi.mock('../pipeline/hooks.js', () => ({
   hooks: { emit: hooksEmit },
 }));
 
-const { SkillNotProjectScopedError, registerSkillForProject } =
-  await import('./registration-service.js');
+const { SkillNotProjectScopedError, registerSkillForProject } = await import(
+  './registration-service.js'
+);
 const {
   createProjectSkill,
   updateProjectSkill,
@@ -99,9 +100,9 @@ describe('updateProjectSkill — markRebased restamp (ISS-679)', () => {
     pushSelect([{ version: 14 }]);
     await updateProjectSkill(existing as never, { markRebased: true });
     expect(updatedSets).toHaveLength(1);
-    expect(updatedSets[0]!.basedOnGlobalVersion).toBe(14);
-    expect(updatedSets[0]!.version).toBeUndefined();
-    expect(updatedSets[0]!.contentHash).toBeUndefined();
+    expect(updatedSets[0]?.basedOnGlobalVersion).toBe(14);
+    expect(updatedSets[0]?.version).toBeUndefined();
+    expect(updatedSets[0]?.contentHash).toBeUndefined();
   });
 
   it('rejects markRebased on a skill with no linked global template', async () => {
@@ -152,7 +153,6 @@ describe('registerSkillForProject({ stage: null }) — unbind', () => {
     expect(dbDelete).toHaveBeenCalledTimes(1);
   });
 });
-
 
 describe('registerSkillForProject(stage) — SKILL_NOT_PROJECT_SCOPED (single path)', () => {
   const base = {

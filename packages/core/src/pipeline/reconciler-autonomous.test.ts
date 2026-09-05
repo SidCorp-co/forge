@@ -134,7 +134,6 @@ describe('autonomous driver wedge reset (ISS-890)', () => {
     expect(result.autonomousReset).toBe(1);
     expect(recordRescueMock).toHaveBeenCalledWith('run-a1');
   });
-
 });
 
 describe('the rescue cap on the open path (ISS-890 extra fix)', () => {
@@ -203,5 +202,4 @@ describe('the rescue cap on the open path (ISS-890 extra fix)', () => {
     expect(result.rescued).toBe(1);
     expect(recordRescueMock).not.toHaveBeenCalled();
   });
-
 });

@@ -53,9 +53,9 @@ flowchart TB
 
 ## Guards
 
-- **A global skill is never registered or dispatched.** `global` is a read-only template; choosing
-  it for a stage materialises a project-owned clone and registers *that*. The `cm:guard` is on
-  `core/src/skills/service.ts` and `core/src/skills/bootstrap-service.ts`.
+- **A global skill is never registered or dispatched.** `global` is a read-only template; adopting
+  it materialises a project-owned clone and registers *that*. The `cm:guard` is on
+  `core/src/skills/service.ts` and `core/src/domain-templates/apply.ts`.
 - **Project facts land on disk.** `projectFacts` values are spliced verbatim into the
   device-installed `SKILL.md`, so they are never a place for secrets — test credentials live in the
   project's credential store.

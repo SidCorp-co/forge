@@ -4,7 +4,7 @@ Start from this skeleton. Delete sections that don't apply. Keep the body lean (
 
 ```markdown
 ---
-name: forge-<stage-or-purpose>
+name: forge-<purpose>
 description: "<one line: what it does + when Forge dispatches it + trigger phrases>. Also use when the pipeline needs to move an issue from <fromStatus> to <toStatus>."
 user_invocable: true
 arguments: "documentId"
@@ -20,15 +20,15 @@ arguments: "documentId"
 ## Workflow
 
 ### Step 1: Check in & read context
-Call forge_step_start; read the issue + upstream comments/handoff. (Don't restate the status ladder — the preamble carries it.)
+Call forge_step_start with the `stage` you are checking in as; read the issue + comments/handoff. (Don't restate the status vocabulary — the preamble carries it.)
 
 ### Step 2…N: <intent-level steps>
 - Write WHAT to do, not the exact commands. Infer build/test/deploy from the repo or the project's deploy model.
-- Name only NON-inferable policy: gitflow/merge model, deploy gate, domain heuristics, stage exits that differ from the default ladder.
+- Name only NON-inferable policy: gitflow/merge model, deploy gate, domain heuristics.
 - For long checklists/templates → "see references/<name>.md".
 
 ### Final step: comment, then set status LAST
-Post the stage comment, then transition status as the LAST action (it triggers the next stage).
+Post the comment, then transition status as the LAST action.
 ```
 
 ## Notes

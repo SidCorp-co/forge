@@ -23,9 +23,9 @@ vi.mock('../jobs/hold.js', () => ({
     reason === 'verify_unavailable',
 }));
 
-// cm:edge contract -> packages/core/src/pipeline/run-pause.ts — this stub must keep MACHINE_RESUMED_PAUSE_KINDS' membership; importing the real module pulls ws/server.js, whose load-time env validation throws under vitest. run-pause.test.ts owns the real predicate and paused-run-queued-work-e2e.test.ts exercises it unmocked — this stub only has to agree with both.
+// cm:edge contract -> packages/core/src/pipeline/run-pause.ts — this stub must keep MACHINE_RESUMED_PAUSE_KINDS' membership, which ISS-895 emptied: no kind resumes itself in this build, so the stub answers false for everything. Importing the real module pulls ws/server.js, whose load-time env validation throws under vitest. run-pause.test.ts owns the real predicate and paused-run-queued-work-e2e.test.ts exercises it unmocked — this stub only has to agree with both.
 vi.mock('./run-pause.js', () => ({
-  pauseResumesItself: (reason: string | null) => (reason ?? '').startsWith('missing_skill'),
+  pauseResumesItself: (_reason: string | null) => false,
 }));
 
 const gateReasons = vi.fn(async (_projectId: string) => new Map<string, string>());
@@ -137,7 +137,6 @@ describe('alarmAgedHolds', () => {
     expect(wedge().title).not.toContain('ISS-');
   });
 });
-
 
 describe('alarmStalledQueuedJobs', () => {
   const candidate = {

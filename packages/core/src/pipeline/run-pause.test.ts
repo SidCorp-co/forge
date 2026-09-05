@@ -144,7 +144,8 @@ describe('pause-reason vocabulary', () => {
   // cm:guard `reopen_cap` must stay unrecognised — RFC 0002 deleted that mechanism, and this assertion is what keeps a future edit from re-registering a kind whose resume path no longer exists
   it('a retired kind is not live, and neither is a bare or empty reason', () => {
     expect(isLivePauseReason('reopen_cap:developed')).toBe(false);
-    expect(isLivePauseReason('missing_skill')).toBe(true);
+    expect(isLivePauseReason('missing_skill')).toBe(false);
+    expect(isLivePauseReason('stage_stalled')).toBe(true);
     expect(isLivePauseReason('')).toBe(false);
     expect(isLivePauseReason(null)).toBe(false);
     expect(isLivePauseReason(undefined)).toBe(false);
@@ -170,14 +171,14 @@ describe('resumeOrphanedPauses', () => {
     expect(updateSet).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard a live kind must be left alone — its own resume path owns it, and racing that path here would resume a run the guard is still waiting to clear
+  // cm:guard a live kind must be left alone. `stage_stalled` has no machine that clears it and never did — it is live because a PERSON is owed the look, and resuming it from a sweep takes that look away from them. `missing_skill` was the other live kind until ISS-895 deleted its resume path; it is now correctly freed by the case above.
   it('leaves a run paused for a reason that still has an owner', async () => {
     selectWhere.mockResolvedValueOnce([
       {
         id: 'run-8',
         projectId: 'p1',
         issueId: 'i1',
-        metadata: { pauseReason: 'missing_skill:plan' },
+        metadata: { pauseReason: 'stage_stalled:developed' },
       },
     ]);
 
@@ -201,8 +202,9 @@ describe('resumeOrphanedPauses', () => {
 });
 
 describe('pauseResumesItself (ISS-879)', () => {
-  it('is true only for a kind with a resume path in this build', () => {
-    expect(pauseResumesItself('missing_skill:open')).toBe(true);
+  // cm:guard NO kind may answer true here while `MACHINE_RESUMED_PAUSE_KINDS` is empty. `missing_skill` answered true until ISS-895 deleted `missing-skill-resume.ts` with the staged lane; a surface told "it resumes on its own" about a pause nothing resumes is the aged-hold failure repeated on the run axis, so this asserts the retired kind now answers false alongside the ones that always did.
+  it('is false for every kind while no kind has a resume path in this build', () => {
+    expect(pauseResumesItself('missing_skill:open')).toBe(false);
     expect(pauseResumesItself('stage_stalled:released')).toBe(false);
     expect(pauseResumesItself('reopen_cap:3')).toBe(false);
   });
@@ -214,14 +216,14 @@ describe('pauseResumesItself (ISS-879)', () => {
     expect(pauseResumesItself('')).toBe(false);
   });
 
-  // cm:guard splitting the list must not change which kinds `resumeOrphanedPauses` frees — it frees every kind ABSENT from LIVE_PAUSE_REASON_KINDS, so this asserts the union is still exactly the two, in both directions
+  // cm:guard the union is what `resumeOrphanedPauses` frees the complement of, so it is asserted in both directions. `missing_skill` LEFT it with ISS-895 — that is the point: a run still paused on a kind whose mechanism is gone gets freed one sweep later instead of sitting frozen, which is the `reopen_cap:*` failure this pass was built for. `stage_stalled` stays because a human is still owed the look.
   it('leaves LIVE_PAUSE_REASON_KINDS the exact union of the two halves', () => {
     expect([...LIVE_PAUSE_REASON_KINDS]).toEqual([
       ...MACHINE_RESUMED_PAUSE_KINDS,
       ...HUMAN_RESUMED_PAUSE_KINDS,
     ]);
-    expect([...LIVE_PAUSE_REASON_KINDS].sort()).toEqual(['missing_skill', 'stage_stalled']);
+    expect([...LIVE_PAUSE_REASON_KINDS].sort()).toEqual(['stage_stalled']);
     expect(isLivePauseReason('stage_stalled:released')).toBe(true);
-    expect(isLivePauseReason('missing_skill:open')).toBe(true);
+    expect(isLivePauseReason('missing_skill:open')).toBe(false);
   });
 });
