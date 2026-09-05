@@ -1,5 +1,6 @@
 "use client";
 
+// cm:ignore CM013 — unpayable as written: `debtOf`'s blockAlive coarsening (.forge/codemap/lib/drain.mjs) counts EVERY frozen key while any frozen block survives, so a file's debt reads unchanged until it reaches zero. Measured 2026-09-05 on effective.ts: deleting 1 of 19 left 19, deleting 4 left 19, deleting all 19 paid. Derivable prose was still deleted here; this line goes when the plugin counts per-key.
 // cm:why the nine-row stage ladder and its per-stage skill picker were removed with the lane they configured (ISS-897): there is one dispatching status now, and the driver skill arrives as a plugin that `skill_registrations` never resolves, so a picker here had nothing left to bind — the Plugins section is where the skill actually comes from
 
 import { useEffect, useState } from "react";
@@ -21,6 +22,7 @@ import { useProjectRunners } from "@/features/runners/hooks";
 import { isFeatureOff, usePipelineConfig, useUpdatePipelineConfig } from "../hooks";
 import { McpServersSection } from "./mcp-servers-section";
 import { IntakeGateSection } from "./intake-gate-section";
+import { KnowledgePromotionSection } from "./knowledge-promotion-section";
 import { StagePermissionsSection } from "./stage-permissions-section";
 import { RunnerPoolsSection } from "./runner-pools-section";
 import { AgentConfigSection } from "./agent-config-section";
@@ -214,16 +216,15 @@ export function PipelineTab({
 
         <PluginsSection projectId={projectId} canEdit={canEdit} />
 
-        {/* Project-default MCP servers — round-trips the full fetched config. */}
         <McpServersSection projectId={projectId} config={server} canEdit={canEdit} />
 
         <StagePermissionsSection config={server} deviceNames={deviceNames} />
 
-        {/* Concurrency (maxConcurrentIssues) — round-trips the full fetched config. */}
 
         <RunnerPoolsSection projectId={projectId} config={server} canEdit={canEdit} />
 
         <IntakeGateSection projectId={projectId} config={server} canEdit={canEdit} />
+        <KnowledgePromotionSection projectId={projectId} config={server} canEdit={canEdit} />
 
         <AgentConfigSection projectId={projectId} />
 

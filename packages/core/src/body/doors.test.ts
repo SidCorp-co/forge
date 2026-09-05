@@ -40,7 +40,7 @@ const KERNEL_AUTHORED = [
   'issues/extras-routes.ts',
   'issues/merged-at.ts',
   'jobs/budget-check.ts',
-  'memory/consolidation.ts',
+  'memory/knowledge-promotion.ts',
   'pipeline/autonomous-rescue-comment.ts',
   'pipeline/decomposition-subscribers.ts',
   'pipeline/missing-skill-guard.ts',

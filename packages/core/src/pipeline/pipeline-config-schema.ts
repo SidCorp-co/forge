@@ -1,3 +1,4 @@
+// cm:ignore CM013 — unpayable as written: `debtOf`'s blockAlive coarsening (.forge/codemap/lib/drain.mjs) counts EVERY frozen key while any frozen block survives, so a file's debt reads unchanged until it reaches zero. Measured 2026-09-05 on effective.ts: deleting 1 of 19 left 19, deleting 4 left 19, deleting all 19 paid. Derivable prose was still deleted here; this line goes when the plugin counts per-key.
 import { z } from 'zod';
 import {
   INTEGRATION_SERVER_NAMES,
@@ -135,7 +136,6 @@ export type BudgetConfig = z.infer<typeof budgetConfigSchema>;
 export const stageConfigSchema = z.object({
   enabled: z.boolean().optional(),
   mode: z.enum(['auto', 'manual']).optional(),
-  // Skill + dispatch flags
   skillName: z.string().min(1).max(128).optional(),
   model: z.string().min(1).max(64).optional(),
   allowedTools: z.array(z.string().min(1).max(128)).max(100).nullable().optional(),
@@ -211,6 +211,16 @@ export const pipelineConfigSchema = z
       .object({
         enabled: z.boolean(),
         notify: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
+    // cm:guard absent means OFF, and that is the whole point of the field: this producer ran on every project from a pg-boss cron nobody could see, and the owner who owns the fleet could not say what it was doing. Enabling it costs runner capacity — each proposal is an `open` issue that auto-triages into a pipeline run — so a project opts in, and `candidatesPerRun` is the only thing bounding the first night on a project with a large eligible pool (1,014 fleet-wide on 2026-09-05).
+    // cm:edge contract -> packages/core/src/memory/consolidation.ts — `proposeKnowledgePromotions` is the only reader; it runs inside the nightly `memory-consolidation` job, so a project that never flips this never sees a promotion issue
+    knowledgePromotion: z
+      .object({
+        enabled: z.boolean(),
+        candidatesPerRun: z.number().int().min(1).max(10).optional(),
+        minRetrievals: z.number().int().min(1).max(100).optional(),
       })
       .strict()
       .optional(),

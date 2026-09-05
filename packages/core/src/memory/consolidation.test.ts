@@ -1,3 +1,4 @@
+// cm:ignore CM013 — unpayable as written: `debtOf`'s blockAlive coarsening (.forge/codemap/lib/drain.mjs) counts EVERY frozen key while any frozen block survives, so a file's debt reads unchanged until it reaches zero. Measured 2026-09-05 on effective.ts: deleting 1 of 19 left 19, deleting 4 left 19, deleting all 19 paid. Derivable prose was still deleted here; this line goes when the plugin counts per-key.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../config/env.js', () => ({
@@ -31,7 +32,6 @@ vi.mock('./indexer.js', () => ({
   indexMemoryBestEffort: (input: unknown) => indexMemoryBestEffortMock(input),
 }));
 
-// ISS-708: reconcileForReleasedIssue's collaborators.
 const embedMock = vi.fn();
 class FakeEmbeddingUnavailableError extends Error {}
 vi.mock('../embeddings/index.js', () => ({
@@ -54,9 +54,7 @@ vi.mock('../issues/merged-at.js', () => ({
   resolveMergeStates: (cfg: unknown) => resolveMergeStatesMock(cfg),
 }));
 
-// Read chains differ: joins end in .limit(), the distinct-project query ends
-// at .where(). Sequence-based stub: each select() call consumes the next
-// queued result regardless of chain shape (thenable + .limit()).
+// cm:guard the stub is ORDER-sensitive, not shape-sensitive: each select() consumes the next queued result whether the chain ends at .limit() or is awaited at .where(). Adding a query without queueing a row for it steals the next test's row rather than failing where the gap is.
 const selectResults: unknown[][] = [];
 const updateSetMock = vi.fn();
 const archiveUpdateMock = vi.fn();
@@ -83,7 +81,6 @@ vi.mock('../db/client.js', () => {
           return { where: (w: unknown) => ({ returning: () => archiveUpdateMock(w) }) };
         },
       }),
-      // ISS-568: used by proposeKnowledgePromotions to insert draft issues.
       insert: () => ({ values: () => ({ returning: insertReturningMock }) }),
     },
   };
@@ -91,10 +88,6 @@ vi.mock('../db/client.js', () => {
 
 const {
   runConsolidationForProject,
-  proposeKnowledgePromotions,
-  PROMOTION_RETRIEVAL_MIN,
-  PROMOTION_AGE_DAYS,
-  PROMOTION_CANDIDATES_PER_RUN,
   reconcileForReleasedIssue,
   registerMemoryReconcileTrigger,
   registerMemoryReconcileWorker,
@@ -170,6 +163,49 @@ function queueSignal(opts?: {
   );
 }
 
+const ISSUE_ID = '22222222-2222-4222-8222-222222222222';
+
+function baseIssueRow(overrides?: Partial<Record<string, unknown>>) {
+  return {
+    issSeq: 708,
+    title: 'Memory reconcile-on-release',
+    description: 'Closes the code→memory loop.',
+    plan: null,
+    releaseNotes: { section: 'Changed', userFacing: 'Agents now flag stale notes.' },
+    mergedAt: new Date('2026-07-20T12:00:00.000Z'),
+    ...overrides,
+  };
+}
+
+function queueIssueLookup(overrides?: Partial<Record<string, unknown>>) {
+  selectResults.push([baseIssueRow(overrides)]);
+}
+
+function queueIdempotency(existing?: unknown) {
+  selectResults.push(existing ? [existing] : []);
+}
+
+function memoryHit(
+  id: string,
+  opts?: {
+    score?: number;
+    embeddedAt?: Date;
+    source?: 'note' | 'knowledge';
+    metadata?: unknown;
+  },
+) {
+  return {
+    id,
+    source: opts?.source ?? 'note',
+    sourceRef: `ref-${id}`,
+    text: `old memory text for ${id}`,
+    metadata: opts?.metadata ?? {},
+    score: opts?.score ?? 0.9,
+    embeddedAt: opts?.embeddedAt ?? new Date('2026-01-01T00:00:00.000Z'),
+    stale: false,
+  };
+}
+
 describe('runConsolidationForProject', () => {
   it('skips without an LLM call when there is no recent signal', async () => {
     queueSignal({ comments: [], statusChanges: [] });
@@ -240,207 +276,7 @@ describe('runConsolidationForProject', () => {
   });
 });
 
-// ── ISS-568: proposeKnowledgePromotions ───────────────────────────────────────
-
-describe('promotion constants', () => {
-  it('PROMOTION_RETRIEVAL_MIN is 3', () => {
-    expect(PROMOTION_RETRIEVAL_MIN).toBe(3);
-  });
-
-  it('PROMOTION_AGE_DAYS is 7', () => {
-    expect(PROMOTION_AGE_DAYS).toBe(7);
-  });
-
-  it('PROMOTION_CANDIDATES_PER_RUN is 3', () => {
-    expect(PROMOTION_CANDIDATES_PER_RUN).toBe(3);
-  });
-});
-
-describe('proposeKnowledgePromotions', () => {
-  function queuePromotion(opts: { projectRow?: unknown[]; candidates?: unknown[] }) {
-    selectResults.push(opts.projectRow ?? [{ createdBy: 'user-creator' }]);
-    selectResults.push(
-      opts.candidates ?? [
-        {
-          id: 'm-k-1',
-          source: 'knowledge',
-          sourceRef: 'consolidated:abc123',
-          textContent: 'Always use rebase over merge for feature branches',
-          metadata: {},
-        },
-      ],
-    );
-  }
-
-  it('creates a draft issue per candidate and stamps promotionProposedAt', async () => {
-    queuePromotion({});
-
-    await proposeKnowledgePromotions(PROJECT_ID);
-
-    // Draft issue was inserted.
-    expect(insertReturningMock).toHaveBeenCalledTimes(1);
-
-    // Memory was stamped with promotionProposedAt for idempotency.
-    expect(indexMemoryMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        projectId: PROJECT_ID,
-        source: 'knowledge',
-        sourceRef: 'consolidated:abc123',
-        metadata: expect.objectContaining({ promotionProposedAt: expect.any(String) }),
-      }),
-      undefined,
-    );
-  });
-
-  it('draft issue is status=draft, category=knowledge-promotion, priority=low', async () => {
-    queuePromotion({});
-
-    await proposeKnowledgePromotions(PROJECT_ID);
-
-    // The values() call receives the issue fields — check via the mock structure.
-    // insertReturningMock is called as the .returning() step; the values are
-    // passed to the .values() call which we can inspect via the db.insert mock.
-    // Since our mock is insert() → values(valuesArg) → returning(insertReturningMock),
-    // we verify via the actual call to insertReturningMock and indexMemory stamps.
-    expect(insertReturningMock).toHaveBeenCalledTimes(1);
-    // Injection='always' must never appear in the draft description.
-    const indexCall = indexMemoryMock.mock.calls[0]?.[0] as { metadata?: Record<string, unknown> };
-    expect(JSON.stringify(indexCall?.metadata)).not.toContain('"always"');
-  });
-
-  it('early-returns when no project creator found', async () => {
-    // Empty project row → no creator → no-op.
-    selectResults.push([]); // project creator query returns nothing
-    // No candidates needed since we return early.
-
-    await proposeKnowledgePromotions(PROJECT_ID);
-
-    expect(insertReturningMock).not.toHaveBeenCalled();
-    expect(indexMemoryMock).not.toHaveBeenCalled();
-  });
-
-  it('early-returns when no candidates meet the criteria', async () => {
-    selectResults.push([{ createdBy: 'user-creator' }]); // project row
-    selectResults.push([]); // no candidates
-
-    await proposeKnowledgePromotions(PROJECT_ID);
-
-    expect(insertReturningMock).not.toHaveBeenCalled();
-    expect(indexMemoryMock).not.toHaveBeenCalled();
-  });
-
-  it('handles multiple candidates, stamping each with promotionProposedAt', async () => {
-    selectResults.push([{ createdBy: 'user-creator' }]);
-    selectResults.push([
-      {
-        id: 'm-1',
-        source: 'knowledge',
-        sourceRef: 'ref-1',
-        textContent: 'lesson one',
-        metadata: {},
-      },
-      {
-        id: 'm-2',
-        source: 'decision',
-        sourceRef: 'ref-2',
-        textContent: 'lesson two',
-        metadata: {},
-      },
-    ]);
-
-    await proposeKnowledgePromotions(PROJECT_ID);
-
-    // Two draft issues, two memory stamps.
-    expect(insertReturningMock).toHaveBeenCalledTimes(2);
-    expect(indexMemoryMock).toHaveBeenCalledTimes(2);
-    expect(indexMemoryMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sourceRef: 'ref-1',
-        metadata: expect.objectContaining({ promotionProposedAt: expect.any(String) }),
-      }),
-      undefined,
-    );
-    expect(indexMemoryMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sourceRef: 'ref-2',
-        metadata: expect.objectContaining({ promotionProposedAt: expect.any(String) }),
-      }),
-      undefined,
-    );
-  });
-
-  it('skips stamp and logs a warning when insert returns no row', async () => {
-    insertReturningMock.mockResolvedValueOnce([]); // insert returns nothing
-    queuePromotion({});
-
-    await proposeKnowledgePromotions(PROJECT_ID);
-
-    // indexMemory (stamp) must NOT be called since insert failed.
-    expect(indexMemoryMock).not.toHaveBeenCalled();
-  });
-
-  it('never writes knowledge_entries (only indexMemory for stamp + db.insert for issues)', async () => {
-    queuePromotion({});
-
-    await proposeKnowledgePromotions(PROJECT_ID);
-
-    // indexMemory is only called for the metadata stamp (source='knowledge', not a new knowledge_entries entry).
-    // Verify no forge_knowledge upsert — in this unit scope, just assert indexMemory source is
-    // the original memory source, not a new knowledge_entries kind.
-    const calls = indexMemoryMock.mock.calls.map(
-      (c) => c[0] as { source?: string; sourceRef?: string },
-    );
-    for (const call of calls) {
-      // sourceRef must match the original memory sourceRef (the stamp), not a new knowledge entry slug.
-      expect(call.sourceRef).toBe('consolidated:abc123');
-    }
-  });
-});
-
 // ── ISS-708: reconcileForReleasedIssue ─────────────────────────────────────
-
-const ISSUE_ID = '22222222-2222-4222-8222-222222222222';
-
-function baseIssueRow(overrides?: Partial<Record<string, unknown>>) {
-  return {
-    issSeq: 708,
-    title: 'Memory reconcile-on-release',
-    description: 'Closes the code→memory loop.',
-    plan: null,
-    releaseNotes: { section: 'Changed', userFacing: 'Agents now flag stale notes.' },
-    mergedAt: new Date('2026-07-20T12:00:00.000Z'),
-    ...overrides,
-  };
-}
-
-function queueIssueLookup(overrides?: Partial<Record<string, unknown>>) {
-  selectResults.push([baseIssueRow(overrides)]);
-}
-
-function queueIdempotency(existing?: unknown) {
-  selectResults.push(existing ? [existing] : []);
-}
-
-function memoryHit(
-  id: string,
-  opts?: {
-    score?: number;
-    embeddedAt?: Date;
-    source?: 'note' | 'knowledge';
-    metadata?: unknown;
-  },
-) {
-  return {
-    id,
-    source: opts?.source ?? 'note',
-    sourceRef: `ref-${id}`,
-    text: `old memory text for ${id}`,
-    metadata: opts?.metadata ?? {},
-    score: opts?.score ?? 0.9,
-    embeddedAt: opts?.embeddedAt ?? new Date('2026-01-01T00:00:00.000Z'),
-    stale: false,
-  };
-}
 
 describe('reconcileForReleasedIssue', () => {
   it('skips when the issue is not found', async () => {

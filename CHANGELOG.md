@@ -11,6 +11,26 @@
 
 ### Added
 
+- **Knowledge promotion is a per-project toggle, and its proposals now arrive as work.** The one
+  automatic path from durable memory into the curated knowledge store ran on every project from a
+  pg-boss cron with no switch, no row in the `schedules` table and no mention on any settings page —
+  measured 2026-09-05, the fleet owner could not say what it was doing. It is now
+  `pipelineConfig.knowledgePromotion`, absent means off, and Project settings → Pipeline carries the
+  toggle plus the two numbers that set the rate (`candidatesPerRun`, `minRetrievals`), with the
+  nightly hour and the capacity cost written on the panel rather than discoverable afterwards. Each
+  proposal now names the config that produced it and where to turn it off.
+
+  Proposals are filed at `open`, not `draft`. Of the 71 filed while it was silent, 8 were worked —
+  5 of them on 2026-09-05, each verified against live code and written into `knowledge_entries` —
+  and 63 sat until a sweep closed them, because a draft has no owner and nothing ages it. `open`
+  auto-triages into a pipeline run, which is why the opt-in above ships off: on a project with a
+  large eligible pool (1,014 memories fleet-wide met the bar) `candidatesPerRun` is the only bound on
+  the first night.
+
+  The code moved out of `memory/consolidation.ts` into `memory/knowledge-promotion.ts` — the file was
+  at its frozen size budget, and the concern was never consolidation's. Two architecture gates
+  (`one-create-path`, `body/doors`) named the old path and caught the move.
+
 - The codemap baseline drains when a file is edited, not only when it is annotated (ISS-844). The
   gate froze 12,454 comments across 965 files at onboarding and then blocked only prose that was
   NEW; the one path by which the frozen total could fall was *siting* — prose sharing a block with a

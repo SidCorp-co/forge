@@ -1,3 +1,4 @@
+// cm:ignore CM013 — unpayable as written: `debtOf`'s blockAlive coarsening (.forge/codemap/lib/drain.mjs) counts EVERY frozen key while any frozen block survives, so a file's debt reads unchanged until it reaches zero. Measured 2026-09-05 on effective.ts: deleting 1 of 19 left 19, deleting 4 left 19, deleting all 19 paid. Derivable prose was still deleted here; this line goes when the plugin counts per-key.
 import type { UxPreset, UxRuleGroup, UxRuleSource, UxStackProfile } from "@forge/contracts";
 
 export type {
@@ -216,9 +217,7 @@ export interface ProjectAgentConfig {
 	[key: string]: unknown;
 }
 
-// ── UX Contract (ISS-574/578) — "choose, not write" rules + preset layer ───
-// Mirrors `packages/core/src/db/schema.ts` (uxContractRules/uxFindings enums)
-// and `packages/core/src/projects/ux-contract-presets.ts` (UxStackProfile).
+// cm:edge contract -> packages/core/src/projects/ux-contract-presets.ts — the UxStackProfile union and the rule/finding enums are hand-mirrored here; a value added on one side typechecks and then fails at the column or renders as an unknown badge
 
 export const UX_RULE_GROUPS = [
 	"designSystem",
@@ -294,6 +293,17 @@ export interface PipelineConfig {
 	 * `intakeGate` in core `pipeline/pipeline-config-schema.ts`.
 	 */
 	intakeGate?: { enabled: boolean; notify?: boolean };
+	/**
+	 * Per-project knowledge promotion. When enabled, the nightly memory
+	 * consolidation job (03:00 UTC) files up to `candidatesPerRun` `open` issues
+	 * proposing durable memories for the curated knowledge store. Absent = off.
+	 * Mirrors `knowledgePromotion` in core `pipeline/pipeline-config-schema.ts`.
+	 */
+	knowledgePromotion?: {
+		enabled: boolean;
+		candidatesPerRun?: number;
+		minRetrievals?: number;
+	};
 	/**
 	 * When true, production Coolify deploys auto-dispatch on release instead of
 	 * parking at the manual human-confirm gate (mirrors `autoProdDeploy` in core
