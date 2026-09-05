@@ -633,6 +633,22 @@
 
 ### Fixed
 
+- A scheduled run that died mid-flight recorded a disposition it never got, and its lost window
+  went unreported (ISS-875). The failure classifier's reason is a class *and* a predicted
+  disposition — `usage/session limit → cross-device failover` — and the schedule path stamped both
+  onto the row before the failover ran, so the row asserted a cross-device failover whatever came
+  back. Two things now hold. The refusal to re-run a session that may already have committed work
+  lives in `redispatchScheduleSessionOnFailover` itself rather than in one caller's `WHERE` clause,
+  so a session that attached with anything but a proven `toolCallCount: 0` is refused whichever
+  caller reaches it — previously the second caller had no such predicate, and only the absence of a
+  free device stopped the 2026-08-28 Dream run creating its issue twice. And the attempt writes the
+  disposition it actually settled on back over the prediction, keeping the class and replacing only
+  the clause after the arrow: `no failover (session had attached and run tool calls; side effects
+  preserved)`, `no failover (no other device was available)`, or the device a real re-dispatch
+  landed on. A run abandoned that way now raises a `schedule_report` warning at the operator,
+  because the recovery the old comment named — the next cron firing — does not exist for a schedule
+  whose prompt scans a fixed trailing window: that day's review is simply never written.
+
 - The driver was told a stage that never runs would write its changelog line (ISS-910). The
   injected `release-notes-format` fact said *"forge-release appends this to the changelog at
   close"* on every stage it applies to, including `drive` — where nothing dispatches after the
