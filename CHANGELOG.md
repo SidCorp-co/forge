@@ -640,7 +640,7 @@
   set on the issue and never on `CHANGELOG.md`, and `check-release-record.mjs` is a
   no-silent-loss ratchet, so an entry that was never written was never lost. The sentence now
   forks on the stage, the way the same fact already forks for the transport, and tells a driver
-  it writes the line itself.
+  that no later stage appends it — the changelog line, on a project that keeps one, is its own.
 
 - A job whose only claimable box was rate-limited burned all thirty retry attempts instead of
   holding. The claim floor that requires a runner able to name its agent (`0.11.0`) was enforced in
