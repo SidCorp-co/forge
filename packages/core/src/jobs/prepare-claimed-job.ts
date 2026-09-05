@@ -172,22 +172,16 @@ function atLeast(version: string | null | undefined, min: string): boolean {
 }
 
 /**
- * Refuse a claim from a box that cannot name the agent's worktree.
+ * Can this box name the agent's worktree, or would it run in the repo root?
  */
-// cm:guard REFUSE, never fall back. Core stopped sending `worktreeBranch` on 2026-09-05, so a runner below this floor resolves no branch, takes the `owns_root` path, and runs the agent IN THE REPO ROOT on the project's base branch — an agent committing unreviewed work onto `main`, which is the exact outcome salvage's root exclusion exists to prevent. It is silent: the job succeeds and reports normally. Measured the same day on dev1, where core deployed the new rule against binaries still on 0.10.5.
-// cm:guard the floor is checked HERE rather than in the pool listing on purpose. Hiding the work would leave an old box idle with no reason given anywhere; refusing the claim puts the version in the master's own transcript, which is where an operator is already looking when a box stops taking work.
-async function refuseRunnerTooOldToNameItsAgent(deviceId: string): Promise<void> {
+// cm:guard a box below this floor MUST be refused, never served. Core stopped sending `worktreeBranch` on 2026-09-05, so an older runner resolves no branch, takes the `owns_root` path, and runs the agent IN THE REPO ROOT on the project's base branch — committing unreviewed work onto `main` while the job reports success. That is the outcome salvage's root exclusion exists to prevent, reached by a path salvage never sees. Measured the same day, with core deployed against dev1 and forge-vm both on 0.10.5.
+export async function canNameItsAgent(deviceId: string): Promise<boolean> {
   const [device] = await db
     .select({ v: devices.agentVersion })
     .from(devices)
     .where(eq(devices.id, deviceId))
     .limit(1);
-  if (atLeast(device?.v ?? null, AGENT_NAMING_MIN_RUNNER)) return;
-  throw new Error(
-    `runner_too_old: this box reports forge-runner ${device?.v ?? 'unknown'} and ` +
-      `${AGENT_NAMING_MIN_RUNNER} is required to name an agent's worktree; ` +
-      'update the runner — a claim here would run the agent in the repo root',
-  );
+  return atLeast(device?.v ?? null, AGENT_NAMING_MIN_RUNNER);
 }
 
 export async function prepareClaimedJob(args: {
@@ -196,8 +190,6 @@ export async function prepareClaimedJob(args: {
 }): Promise<PreparedJob> {
   const [job] = await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1);
   if (!job) throw new Error(`prepare: job ${args.jobId} not found`);
-
-  await refuseRunnerTooOldToNameItsAgent(args.deviceId);
 
   const [runner] = await db
     .select({ id: runners.id, type: runners.type })

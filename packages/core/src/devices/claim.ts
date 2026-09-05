@@ -13,7 +13,11 @@ import { jobs } from '../db/schema.js';
 import { endJobForBudgetBreach } from '../jobs/budget-breach.js';
 import { checkMonthlyBudget, shouldEmitWarn } from '../jobs/budget-check.js';
 import { mintJobToken } from '../jobs/job-token.js';
-import { type PreparedJob, prepareClaimedJob } from '../jobs/prepare-claimed-job.js';
+import {
+  canNameItsAgent,
+  type PreparedJob,
+  prepareClaimedJob,
+} from '../jobs/prepare-claimed-job.js';
 import { hooks } from '../pipeline/hooks.js';
 
 export type ClaimResult =
@@ -26,7 +30,13 @@ export type ClaimResult =
     }
   | {
       ok: false;
-      reason: 'not_found' | 'already_held' | 'issue_busy' | 'budget_exhausted' | 'hold_lost';
+      reason:
+        | 'not_found'
+        | 'already_held'
+        | 'issue_busy'
+        | 'budget_exhausted'
+        | 'hold_lost'
+        | 'runner_too_old';
     };
 
 /**
@@ -43,6 +53,11 @@ export async function claimJobForMaster(args: {
   deviceId: string;
   sessionId: string;
 }): Promise<ClaimResult> {
+  // cm:guard a version skew is a REFUSAL, not an error, and it is checked before the hold so there is nothing to give back. Throwing instead would reach the master as a bare 500 with the reason nowhere — this route's own rule is that a refused claim answers 200 with `ok:false`, and an operator whose box has gone quiet reads that reason in the master's transcript. Like every other refusal it must not be retried in a loop: only updating the runner clears it.
+  if (!(await canNameItsAgent(args.deviceId))) {
+    return { ok: false, reason: 'runner_too_old' };
+  }
+
   // cm:guard the token is minted AFTER this transaction commits, never inside it. `mintJobToken` writes through the module-level `db` rather than the passed `tx`, so a mint placed inside would survive a rollback — a live credential for a job whose hold never landed, with nothing left pointing at it to revoke.
   const claimed = await db.transaction(async (tx) => {
     const held = await tx
