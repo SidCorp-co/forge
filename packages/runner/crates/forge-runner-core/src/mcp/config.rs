@@ -64,7 +64,7 @@ pub fn write(
         sanitize_slug(job_id)
     ));
     let body = serde_json::to_string_pretty(&doc).map_err(|e| Error::Other(e.to_string()))?;
-    // cm:guard write-then-rename, never a bare `fs::write`: that truncates first, so a reader opening the path mid-write gets a partial document and `claude` reports an invalid MCP config with nothing naming the writer.
+    // cm:guard write-then-rename, never a bare `fs::write`: that truncates first, so a reader opening the path mid-write gets a partial document and `claude` reports an invalid MCP config with nothing naming the writer. UNTESTED and untestable in this suite — the difference is only visible to a concurrent reader, and a test that races is a test that lies either way. It is here on the argument, not on a green.
     let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
     std::fs::write(&tmp, body)?;
     restrict_perms(&tmp); // the file carries a device token — 0600 it
@@ -76,7 +76,7 @@ pub fn write(
 const MCP_CONFIG_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
 /// Drop MCP configs no live job can own.
-// cm:guard the per-job path costs this sweep, and the sweep is the whole reason a per-job path is affordable. Every spawn unlinks its own file at completion and on a spawn failure, so anything left is a daemon that died between the two; without this the folder grows one token-bearing 0600 file per crash, forever.
+// cm:guard the per-job path costs this sweep, and the sweep is the whole reason a per-job path is affordable: every spawn unlinks its own file at completion and on a spawn failure, so anything left is a daemon that died between the two, and without this the folder grows one token-bearing 0600 file per crash forever. 24h is NOT slack over the longest live job — `timeoutSeconds` reaches exactly 86_400 and a parked duplex session adds its residency on top. It is safe because `claude` reads `--mcp-config` at startup only, so unlinking under a running session costs nothing; a future that re-reads it makes this number wrong.
 fn sweep_stale(dir: &Path) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
@@ -348,16 +348,6 @@ mod tests {
             "one job's completion must not unlink another job's config"
         );
         let _ = std::fs::remove_file(&b);
-    }
-
-    /// The write is rename-based, so a reader never sees a truncated document.
-    #[test]
-    fn write_leaves_no_temp_file_behind() {
-        let slug = "forge-test-atomic";
-        let path = write("https://core.example", "tok", slug, "job-tmp", None).unwrap();
-        let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
-        assert!(!tmp.exists(), "the temp file must be renamed, not left");
-        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

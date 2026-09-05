@@ -69,7 +69,6 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
     });
 
     it('[MCP_INIT_FAILED] still wins as infra (runner token beats usage-limit check)', () => {
-      // MCP init failures should not be reclassified as transient-cc.
       const r = classifyFailure({
         error: '[MCP_INIT_FAILED] forge(failed) did not connect at startup',
       });
@@ -423,6 +422,18 @@ describe('failure-classifier — a full box says the box is full (ISS-920)', () 
     });
     expect(r.cause).toBe('box_session_saturated');
     expect(r.action).toBe('failover');
+  });
+
+  // cm:guard the same signal takes ISS-808's terminal preflight verdict, which is why that table moved up with the two new ones: a `website` project cannot fix a missing work tree by failing over to another box, and `transient-cc` is exactly that instruction.
+  it('a preflight failure stays terminal under the signal that a slow preflight always sets', () => {
+    const signals = { diedBeforeFirstToolUse: true, sessionMessageCount: 0 };
+    const r = classifyFailure({
+      error: 'preflight_failed: work_tree /srv/x is not a git work tree',
+      signals,
+    });
+    expect(r.kind).toBe('infra');
+    expect(r.action).toBe('terminal');
+    expect(r.cause).toBe('workspace_preflight_failed');
   });
 
   it('a repo-lock timeout is root contention and NOT saturation', () => {

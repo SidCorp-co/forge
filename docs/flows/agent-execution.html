@@ -107,7 +107,8 @@ Owner: <code>packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs</co
     <td><code>infra</code> / <code>retry</code>, cause <code>repo_root_contention</code></td></tr>
 <tr><td>Checkout unusable, no origin, no work tree</td><td><code>measure</code></td>
     <td><code>preflight_failed: origin_remote|work_tree|repo_path</code></td>
-    <td><code>infra</code> / <code>terminal</code>; three in a row quarantine the box</td></tr>
+    <td><code>infra</code> / <code>terminal</code> — matched above the cc-startup signal for the
+        same reason the two below are; three in a row quarantine the box</td></tr>
 <tr><td><code>git worktree add</code> refuses</td><td>end of the lock band</td>
     <td><code>failed to start job: git worktree add failed: …</code></td>
     <td>not a box fault — deliberately outside the <code>preflight_failed:</code> namespace</td></tr>

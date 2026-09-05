@@ -829,7 +829,7 @@ impl Runner for ClaudeCodeRunner {
             None
         };
 
-        // cm:guard written AFTER the permit, and the ordering is load-bearing. `forge-mcp-<slug>.json` is one file per PROJECT, and the completion task unlinks it; while the root lock spanned this whole function two jobs on one repo could not overlap here, and ISS-920 removed that accident. Writing it while parked on the permit would let a sibling's completion unlink the path this spawn is about to name, which core reads back as `agent_startup_failed: MCP config file not found`.
+        // cm:guard written AFTER the permit. The sibling-unlink hazard that first moved it here is gone — `mcp/config.rs` gives each JOB its own path — but the ordering still earns its place: a spawn that dies at `session_permit_saturated` leaves no token-bearing 0600 file on disk at all, and there is nothing to unlink on a path that was never written.
         let slug = spec.project_slug.as_deref().unwrap_or("");
         let mcp_path = mcp::config::write(
             &self.core_url,

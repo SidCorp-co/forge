@@ -832,6 +832,12 @@
   are matched above the cc-startup signal, because a job that died in either wait never spawned
   and so carries that signal by construction — below it they would have been unreachable.
 
+  **`preflight_failed` was already losing that race**, and this fixes it too. `TERMINAL_INFRA`
+  sat below the same signal, so ISS-808's deliberately terminal verdict — a project with no git
+  repo cannot fix a missing work tree by retrying anywhere — was being converted to a cross-box
+  failover whenever preflight took longer than one 25s heartbeat, which the lock wait, a
+  re-provision and the setup agent all guarantee. It moves up with the other two.
+
   One trade-off, priced: `SESSION_PERMIT_WAIT` is the DEFAULT residency window, and
   `sessionResidencySeconds` is per-project and allowed up to an hour. A project that raises it
   gets jobs failing at 600s that a longer wait would have served — they fail over rather than die,
