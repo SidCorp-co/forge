@@ -41,14 +41,17 @@ export {
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: text('email').notNull().unique(),
-  // Nullable since 0037: OAuth-only users have no local password. The
-  // /auth/local handler rejects rows with a null hash so password-less
-  // accounts cannot be brute-forced via the email/password endpoint.
+  /**
+   * Nullable since 0037: OAuth-only users have no local password. `/auth/local`
+   * rejects a null hash, so a password-less account cannot be brute-forced
+   * through the email/password endpoint.
+   */
   passwordHash: text('password_hash'),
   emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
-  // Last time the user re-entered their password via POST /api/auth/reauth.
-  // Drives the requireFreshAuth() middleware; nullable for users that have
-  // never re-authed (treated as stale → forces a prompt). See migration 0065.
+  /**
+   * Last `POST /api/auth/reauth`. Drives `requireFreshAuth()`; null for a user
+   * who never re-authed, which reads as stale and forces a prompt (0065).
+   */
   lastFreshAuthAt: timestamp('last_fresh_auth_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -84,8 +87,7 @@ export const deviceLoginCodes = pgTable(
     deviceLabel: text('device_label').notNull(),
     devicePlatform: text('device_platform').notNull(),
     deviceHostname: text('device_hostname'),
-    // Stable machine id (sha256 of /etc/machine-id) carried init→approve→issue
-    // so browser-approve login dedups by machine like the paste-code flow.
+    /** sha256 of `/etc/machine-id`, carried init→approve→issue so browser-approve dedups by machine like the paste-code flow. */
     machineId: text('machine_id'),
     createdIp: text('created_ip'),
     createdUserAgent: text('created_user_agent'),
@@ -124,20 +126,23 @@ export const userPreferences = pgTable('user_preferences', {
     .references(() => users.id, { onDelete: 'cascade' }),
   theme: text('theme').notNull().default('system'),
   language: text('language').notNull().default('en'),
-  // Notification delivery preference: when false, suppress in-app `mention`
-  // notifications for this user (gated in createNotification). `mention` is the
-  // only user-initiated notification type currently produced, so it is the only
-  // honest opt-out we expose — no fake controls for unimplemented channels.
+  /**
+   * False suppresses in-app `mention` notifications (gated in `createNotification`).
+   * `mention` is the only user-initiated type produced, so it is the only opt-out
+   * offered — no controls for channels that do not exist.
+   */
   notifyOnMention: boolean('notify_on_mention').notNull().default(true),
-  // Identity of the newest "What's New" entry this user has seen (the changelog
-  // version, or `unreleased:<hash>` for the moving [Unreleased] section). Drives
-  // the nav badge: shown while this differs from the current top entry. Nullable
-  // — absent means the user has never opened the feed (ISS-384).
+  /**
+   * Newest "What's New" entry seen: a changelog version, or `unreleased:<hash>`
+   * for the moving [Unreleased] section. The nav badge shows while this differs
+   * from the top entry; null means the feed was never opened (ISS-384).
+   */
   lastSeenWhatsNew: text('last_seen_whats_new'),
-  // The org the user is currently "working in" (ISS-469 global org switcher).
-  // Nullable — null means no explicit choice yet; the client resolves that to
-  // the personal org. `set null` on org delete so a removed org clears the
-  // pointer rather than blocking the delete or dangling.
+  /**
+   * The org being "worked in" (ISS-469). Null means no explicit choice and the
+   * client resolves it to the personal org; `set null` on org delete so a removed
+   * org clears the pointer rather than blocking the delete or dangling.
+   */
   activeOrgId: uuid('active_org_id').references(() => organizations.id, {
     onDelete: 'set null',
   }),
