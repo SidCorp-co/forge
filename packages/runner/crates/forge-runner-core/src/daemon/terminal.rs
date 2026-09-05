@@ -274,6 +274,8 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("temp dir");
         let log = dir.join("transcript.log");
         let name = session_name("forge-test", &format!("t{}", std::process::id()));
+        // cm:guard kill FIRST as well as last. A panic anywhere below leaves a live tmux session behind on a shared box — measured while building this, three of them survived failing runs — and tmux refuses to create a name that already exists, so the leak turns the next run red for a reason that has nothing to do with the code.
+        let _ = kill(&name).await;
 
         let created = ensure(
             &name,
