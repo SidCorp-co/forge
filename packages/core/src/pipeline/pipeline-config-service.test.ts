@@ -99,3 +99,69 @@ describe('updatePipelineConfig — round-trips', () => {
     expect(result.pipelineConfig.lockedSkills).toEqual(['forge-drive']);
   });
 });
+
+// cm:why ISS-917 AC3 / B5 — the schema's `superRefine` sees ONE document. A patch carrying half of a forbidden pair passes on its own, so without a merged-doc re-validation the pair reaches storage in two writes and the rule the schema declares is enforceable only against operators who write it in one.
+describe('updatePipelineConfig — CONFIG_CONFLICT (merged-document rules)', () => {
+  const PROJECT = '00000000-0000-0000-0000-000000000001';
+
+  it('refuses intakeGate:true landing on a stored draft backlog, naming both settings', async () => {
+    pushSelect([{ agentConfig: { pipelineConfig: { poolBacklog: { statuses: ['draft'] } } } }]);
+
+    await expect(
+      updatePipelineConfig({
+        projectId: PROJECT,
+        patch: { intakeGate: { enabled: true } } as never,
+      }),
+    ).rejects.toMatchObject({ name: 'PipelineConfigError', code: 'CONFIG_CONFLICT' });
+    expect(dbExecute).not.toHaveBeenCalled();
+  });
+
+  it('refuses a draft backlog landing on a stored intakeGate — the other ordering', async () => {
+    pushSelect([{ agentConfig: { pipelineConfig: { intakeGate: { enabled: true } } } }]);
+
+    await expect(
+      updatePipelineConfig({
+        projectId: PROJECT,
+        patch: { poolBacklog: { statuses: ['draft'] } } as never,
+      }),
+    ).rejects.toMatchObject({ name: 'PipelineConfigError', code: 'CONFIG_CONFLICT' });
+    expect(dbExecute).not.toHaveBeenCalled();
+  });
+
+  it('names both settings in the message an operator reads', async () => {
+    pushSelect([{ agentConfig: { pipelineConfig: { intakeGate: { enabled: true } } } }]);
+    const err: unknown = await updatePipelineConfig({
+      projectId: PROJECT,
+      patch: { poolBacklog: { statuses: ['draft'] } } as never,
+    }).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(PipelineConfigError);
+    const conflict = err as InstanceType<typeof PipelineConfigError>;
+    expect(conflict.message).toContain('intakeGate');
+    expect(conflict.message).toContain('draft');
+    expect(conflict.details.path).toBe('poolBacklog.statuses');
+  });
+
+  it('lets the legal half through (a non-draft status beside an on intake gate)', async () => {
+    pushSelect([{ agentConfig: { pipelineConfig: { intakeGate: { enabled: true } } } }]);
+    pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
+    await expect(
+      updatePipelineConfig({
+        projectId: PROJECT,
+        patch: { poolBacklog: { statuses: ['on_hold'] } } as never,
+      }),
+    ).resolves.toBeTruthy();
+    expect(dbExecute).toHaveBeenCalled();
+  });
+
+  // cm:guard a config already unparseable is NOT this write's doing. Refusing here would answer an unrelated edit with a rule the operator did not break, and leave them no edit that succeeds — including the one that fixes it.
+  it('does not refuse when the STORED config was already invalid', async () => {
+    pushSelect([{ agentConfig: { pipelineConfig: { poolBacklog: { statuses: ['open'] } } } }]);
+    pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
+    await expect(
+      updatePipelineConfig({ projectId: PROJECT, patch: { enabled: true } as never }),
+    ).resolves.toBeTruthy();
+  });
+});

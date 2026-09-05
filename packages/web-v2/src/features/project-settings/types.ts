@@ -1,4 +1,9 @@
-import type { UxPreset, UxRuleGroup, UxRuleSource, UxStackProfile } from "@forge/contracts";
+import type {
+	UxPreset,
+	UxRuleGroup,
+	UxRuleSource,
+	UxStackProfile,
+} from "@forge/contracts";
 
 export type {
 	ApplyUxPresetInput,
@@ -14,10 +19,7 @@ export type {
 	UxToggleSettings,
 } from "@forge/contracts";
 
-// ── Project facts (ISS-521) — the per-project "rules" layer ─────────────────
-// Mirrors `GET/PATCH /api/projects/:id/project-facts` in core routes.ts. The
-// always-inject tier (projectFactsConfig) flags a fact for verbatim injection
-// into every agent prompt.
+// cm:edge contract -> packages/core/src/projects/routes.ts — the project-facts shapes below mirror `GET/PATCH /api/projects/:id/project-facts`; the `alwaysInject` tier is what puts a fact verbatim into every agent prompt, so a key renamed on one side silently stops injecting rather than failing
 
 /** Per-key config map; `alwaysInject` flags a fact for verbatim injection. */
 export type ProjectFactsConfig = Record<string, { alwaysInject?: boolean }>;
@@ -155,7 +157,11 @@ export interface PipelineStateConfig {
 	mcpServers?: Record<string, unknown>;
 	systemPrompt?: { mode?: "append" | "replace"; extras?: string | null };
 	userPromptPolicy?: Record<string, unknown>;
-	budget?: { perRunUsd?: number; perMonthUsd?: number; action?: "warn" | "pause" };
+	budget?: {
+		perRunUsd?: number;
+		perMonthUsd?: number;
+		action?: "warn" | "pause";
+	};
 	/** Runner pool — the only devices this stage's jobs may land on. Empty/absent = whole fleet. */
 	deviceIds?: string[];
 	[key: string]: unknown;
@@ -197,7 +203,11 @@ export interface ReleaseReadiness {
  *  `stateContextEntrySchema` in core `projects/state-context.ts`. */
 export interface StateContextEntry {
 	modelOverride?: string | null;
-	budget?: { perRunUsd?: number; perMonthUsd?: number; action?: "warn" | "pause" };
+	budget?: {
+		perRunUsd?: number;
+		perMonthUsd?: number;
+		action?: "warn" | "pause";
+	};
 	blocks?: Record<string, unknown>;
 	[key: string]: unknown;
 }
@@ -358,7 +368,10 @@ export const MCP_CATALOG: Record<
 export const MCP_CATALOG_NAMES = Object.keys(MCP_CATALOG);
 
 // cm:edge naming -> packages/core/src/pipeline/pipeline-config-schema.ts — the same four STAGE_NAMES keys, same order; a stage added there needs a row here or the screen renders its raw status
-export const PIPELINE_STATUS_ROWS: ReadonlyArray<{ status: string; label: string }> = [
+export const PIPELINE_STATUS_ROWS: ReadonlyArray<{
+	status: string;
+	label: string;
+}> = [
 	{ status: "open", label: "Queued" },
 	{ status: "in_progress", label: "Running" },
 	{ status: "needs_info", label: "Needs a human" },
@@ -410,12 +423,21 @@ export function humanizeToolName(raw: string): HumanizedToolName {
 		const parts = raw.split("__");
 		const server = parts[1] ?? null;
 		let rest = parts.slice(2).join("__");
-		if (server && rest.startsWith(`${server}_`)) rest = rest.slice(server.length + 1);
+		if (server && rest.startsWith(`${server}_`))
+			rest = rest.slice(server.length + 1);
 		const words = rest.split("_").filter(Boolean);
-		return { label: words.length > 0 ? toSentenceCase(words) : rest, server, raw };
+		return {
+			label: words.length > 0 ? toSentenceCase(words) : rest,
+			server,
+			raw,
+		};
 	}
 	const words = splitPascalCase(raw);
-	return { label: words.length > 0 ? toSentenceCase(words) : raw, server: null, raw };
+	return {
+		label: words.length > 0 ? toSentenceCase(words) : raw,
+		server: null,
+		raw,
+	};
 }
 
 /** One stage row worth rendering on the Stage permissions section — carries
@@ -439,7 +461,9 @@ function stageHasOverride(sc: PipelineStateConfig): boolean {
 /** Every `states[status]` that carries a permission-relevant override, in
  *  ladder order — a status outside `PIPELINE_STATUS_ROWS` still renders,
  *  labelled with its raw key, so a future `StageName` is never silently dropped. */
-export function summarizeStageConfig(cfg: PipelineConfig): StagePermissionRow[] {
+export function summarizeStageConfig(
+	cfg: PipelineConfig,
+): StagePermissionRow[] {
 	const states = (cfg.states ?? {}) as Record<string, PipelineStateConfig>;
 	const rows: StagePermissionRow[] = [];
 	const seen = new Set<string>();
@@ -488,7 +512,12 @@ export function denylistBaseline(rows: StagePermissionRow[]): DenylistDiff[] {
 		const tools = new Set(row.config.disallowedTools ?? []);
 		const missing = [...baseline].filter((t) => !tools.has(t));
 		const extra = [...tools].filter((t) => !baseline.has(t));
-		return { status: row.status, isOutlier: missing.length > 0 || extra.length > 0, extra, missing };
+		return {
+			status: row.status,
+			isOutlier: missing.length > 0 || extra.length > 0,
+			extra,
+			missing,
+		};
 	});
 }
 
@@ -508,7 +537,8 @@ export const API_ONLY_KEYS: ApiOnlyKey[] = [
 	},
 	{
 		key: "states[*].permissionMode",
-		reason: "Controls the Claude CLI's own approval mode — an operational lever, deferred to ISS-814.",
+		reason:
+			"Controls the Claude CLI's own approval mode — an operational lever, deferred to ISS-814.",
 	},
 	{
 		key: "states[*].timeoutSeconds",
@@ -516,19 +546,23 @@ export const API_ONLY_KEYS: ApiOnlyKey[] = [
 	},
 	{
 		key: "states[*].budget",
-		reason: "Per-stage spend caps (perRunUsd/perMonthUsd) — deferred to ISS-814.",
+		reason:
+			"Per-stage spend caps (perRunUsd/perMonthUsd) — deferred to ISS-814.",
 	},
 	{
 		key: "states[*].systemPrompt",
-		reason: "Raw prompt override (append/replace) — high blast radius, deferred pending a dedicated review surface.",
+		reason:
+			"Raw prompt override (append/replace) — high blast radius, deferred pending a dedicated review surface.",
 	},
 	{
 		key: "states[*].userPromptPolicy",
-		reason: "Prompt field/truncation tuning — an advanced knob, deferred to ISS-814.",
+		reason:
+			"Prompt field/truncation tuning — an advanced knob, deferred to ISS-814.",
 	},
 	{
 		key: "maxResumeTokens",
-		reason: "Session-resume budget guard (ISS-580) — project-level, not per-stage; deferred to ISS-814.",
+		reason:
+			"Session-resume budget guard (ISS-580) — project-level, not per-stage; deferred to ISS-814.",
 	},
 	{
 		key: "recoveryMaxAttempts / recoveryWindowHours / recoveryByFailureKind",

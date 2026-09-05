@@ -75,8 +75,7 @@ export async function readBacklogAdmissions(args: {
     .filter((a): a is BacklogAdmission => a !== null);
 }
 
-// Same blocker facts `readPool` returns, keyed off the issue rather than a job:
-// raw status and merge stamp, never a computed `satisfied`.
+// cm:guard the same blocker facts `readPool` returns, keyed off the issue rather than a job — raw status and merge stamp, NEVER a computed `satisfied`: deciding whether a blocker is settled is the master's judgement, and a backlog that pre-answers it is the kernel routing again through a second door.
 const RELATIONS = sql`
   COALESCE((
     SELECT json_agg(json_build_object(

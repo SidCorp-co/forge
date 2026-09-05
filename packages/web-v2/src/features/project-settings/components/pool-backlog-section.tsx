@@ -12,7 +12,8 @@
 // shallow PATCH merge.
 
 import { useEffect, useState } from "react";
-import { REGISTRY_BACKLOG_ADMISSIBLE_STATUSES } from "@forge/contracts";
+// cm:guard the SUBPATH, never the `@forge/contracts` barrel. The barrel re-exports with `.js` specifiers Next cannot resolve, so a type-only import from it is erased and compiles while a VALUE import from it fails the web-v2 build — which is exactly what this line did until it was pointed here.
+import { REGISTRY_BACKLOG_ADMISSIBLE_STATUSES } from "@forge/contracts/pipeline-registry";
 import { Banner, Button, Checkbox, Toggle } from "@/design";
 import { statusLabel } from "@/features/issues/derive";
 import type { IssueStatus } from "@/features/issues/types";
@@ -53,8 +54,7 @@ export function PoolBacklogSection({
 		statuses.length !== seededStatuses.length ||
 		statuses.some((s) => !seededStatuses.includes(s));
 
-	// The one pairing core refuses outright. Shown BEFORE the save so the reason
-	// reads as a rule of the product rather than a rejected request.
+	// cm:why the one pairing core refuses outright, shown BEFORE the save so the reason reads as a rule of the product rather than as a rejected request
 	const conflict = intakeGateOn && statuses.includes("draft");
 
 	function toggleStatus(status: string, on: boolean) {
@@ -75,19 +75,17 @@ export function PoolBacklogSection({
 		<div className="mt-6 border-t border-line pt-5">
 			<h3 className="fg-label text-fg">Master backlog</h3>
 			<p className="fg-body-sm mb-1 text-muted">
-				A master agent normally sees only work the pipeline has already
-				queued. Admit a status here and its issues also show up as a{" "}
+				A master agent normally sees only work the pipeline has already queued.
+				Admit a status here and its issues also show up as a{" "}
 				<strong>backlog</strong> — visible and readable, so the master can
 				decide whether any of them is worth pulling up now.
 			</p>
-			{/* The single most misreadable thing about this knob, so it is stated
-			    plainly rather than implied by the word "backlog". */}
 			<p className="fg-body-sm mb-3 text-muted">
 				<strong>Admitting a status does not make it run.</strong> A backlog
 				issue has no job and cannot be claimed. A master turns one into work
 				with an explicit promote, which goes through the same{" "}
-				<em>Start queued issues automatically</em> gate as everything else —
-				so if that is off, nothing here can start either.
+				<em>Start queued issues automatically</em> gate as everything else — so
+				if that is off, nothing here can start either.
 			</p>
 
 			<div className="flex flex-col gap-3">
@@ -116,9 +114,7 @@ export function PoolBacklogSection({
 									onChange={(on) => toggleStatus(s, on)}
 									disabled={!canEdit}
 									label={
-										<span className="fg-body-sm text-fg">
-											{statusLabel(s)}
-										</span>
+										<span className="fg-body-sm text-fg">{statusLabel(s)}</span>
 									}
 								/>
 							))}
@@ -147,10 +143,10 @@ export function PoolBacklogSection({
 			{conflict && (
 				<div className="mt-3">
 					<Banner tone="attention">
-						Intake gate is on, which parks every new issue at Draft for a
-						human to approve. A master that may promote drafts is that
-						human, so Draft can&rsquo;t also be admitted here — turn the
-						intake gate off, or drop Draft from this list.
+						Intake gate is on, which parks every new issue at Draft for a human
+						to approve. A master that may promote drafts is that human, so Draft
+						can&rsquo;t also be admitted here — turn the intake gate off, or
+						drop Draft from this list.
 					</Banner>
 				</div>
 			)}

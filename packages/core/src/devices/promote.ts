@@ -16,8 +16,8 @@ import { db } from '../db/client.js';
 import { devices, jobs, pipelineRuns } from '../db/schema.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
-import { AUTONOMOUS_ENTRY_STATUS, AUTONOMOUS_JOB_TYPE } from '../pipeline/autonomous-mode.js';
 import { isEntryGateClosed } from '../pipeline/autonomous-dispatch.js';
+import { AUTONOMOUS_ENTRY_STATUS, AUTONOMOUS_JOB_TYPE } from '../pipeline/autonomous-mode.js';
 import { reEnqueueForIssue } from '../pipeline/orchestrator.js';
 import { pipelineConfigSchema } from '../pipeline/pipeline-config-schema.js';
 
@@ -78,7 +78,11 @@ async function loadPromotable(deviceId: string, issueId: string): Promise<Loaded
 
 /** Any job at all, or an open run — the two shapes that mean work already exists. */
 async function workAlreadyExists(issueId: string): Promise<boolean> {
-  const [job] = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.issueId, issueId)).limit(1);
+  const [job] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(eq(jobs.issueId, issueId))
+    .limit(1);
   if (job) return true;
   const [run] = await db
     .select({ id: pipelineRuns.id })
@@ -108,6 +112,7 @@ async function findDriveJob(issueId: string): Promise<string | null> {
  */
 // cm:guard the entry gate is checked BEFORE the status moves, and that ordering is the whole no-orphan guarantee: `dispatchAutonomous` answers a closed gate by enqueuing nothing, so moving first would leave the issue at `open` with no run, no job and nothing saying why — exactly the wedge shape ISS-890 measured.
 // cm:edge lockstep -> packages/core/src/pipeline/autonomous-dispatch.ts — `isEntryGateClosed` is THE gate and this must keep calling it rather than re-reading `states.open`; a second copy is what let the two disagree about what "require a human" means per project.
+// cm:edge ordering -> packages/core/src/issues/apply-transition.ts — a master's decision is the SECOND way an issue enters the `dispatch` flow (the first is a human or a step moving the status), and it joins at that flow's own first step: the move to the entry status is an ordinary transition, so trigger, outbox, sweep and gates are the path every other dispatch takes. The one difference is the synchronous `reEnqueueForIssue` below, which races the outbox hook on purpose so this caller has an id to hand back.
 export async function promoteFromBacklog(args: {
   deviceId: string;
   issueId: string;
@@ -125,7 +130,8 @@ export async function promoteFromBacklog(args: {
     return {
       ok: false,
       reason: 'backlog_disabled',
-      detail: 'this project declares no `pipelineConfig.poolBacklog.statuses`, so it has no backlog',
+      detail:
+        'this project declares no `pipelineConfig.poolBacklog.statuses`, so it has no backlog',
     };
   }
   if (!loaded.admitted.includes(loaded.status)) {
