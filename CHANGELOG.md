@@ -454,11 +454,20 @@
   bound on reopen cycles, for the same frozen-column reason; and `steps` / `manualOnlyJobTypes` from
   the `GET /api/pipeline/registry` payload (version 6).
 
-  The nine staged job types and the seven staged issue statuses stay in the enums: ~30k historical
+  The nine staged job types and the seven staged issue statuses stay in the enums: 29,874 historical
   `jobs` rows hold them and a read of one must stay representable. Absence from `RUNNER_CAPABILITIES`
   is what makes them unenqueueable now — a runner handed one fails it `runner_unsupported_type`,
-  which is the loud refusal. 16 issues stranded on a staged status were re-parked to `needs_info`
-  with their prior status recorded in `metadata.iss895.priorStatus`; `released` was left alone.
+  which is the loud refusal.
+
+  What the migration touches, measured on forge-beta 2026-09-05: 16 issues stranded on a staged
+  status across 7 projects are re-parked to `needs_info` with their prior status recorded in
+  `metadata.iss895.priorStatus` (`released`, whose 79 rows are the release-batch park, is left
+  alone); the 4 queued `triage` jobs left under paused runs are cancelled, because no runner may
+  claim that type any more and `jobs_active_unique` would let one dead row block its own
+  replacement forever. The price of emptying `MACHINE_RESUMED_PAUSE_KINDS` is named rather than
+  discovered: 5 runs paused on `missing_skill:*` — whose resume path was deleted here — are freed
+  by `resumeOrphanedPauses` on the first sweep after deploy, which is exactly what that pass exists
+  for, and the migration cancels their queued work first so they come back to a clean queue.
 
 - **The last of the push path, and the last ceiling core could name.** `selectRunnerForJob` and its
   three private arms (pin / least-loaded / standby) are deleted. Its only two remaining callers —
