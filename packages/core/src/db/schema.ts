@@ -1186,6 +1186,8 @@ export const labels = pgTable(
   (t) => ({
     projectNameUq: uniqueIndex('labels_project_id_name_uq').on(t.projectId, t.name),
     parentIdx: index('labels_parent_id_idx').on(t.parentId),
+    // cm:guard the CHECK is the backstop, not a duplicate of the TS enum: `text(..., { enum })` is compile-time only and emits no constraint, so any path that inserts a label without going through `labels/routes.ts` can write a kind that is neither — and such a row filters as no module and renders as no label. Same reason `comments_format_chk` and `issues_complexity_chk` exist.
+    kindChk: check('labels_kind_chk', sql`${t.kind} IN ('label', 'module')`),
   }),
 );
 

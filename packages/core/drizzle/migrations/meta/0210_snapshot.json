@@ -1,5 +1,5 @@
 {
-  "id": "00844f2d-0ace-4264-8082-5937b9885027",
+  "id": "71d0acea-fb70-492d-aa83-57f2408a1838",
   "prevId": "979c9f14-dd5d-4e1b-bb4a-f9584a093bb1",
   "version": "7",
   "dialect": "postgresql",
@@ -5950,7 +5950,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "labels_kind_chk": {
+          "name": "labels_kind_chk",
+          "value": "\"labels\".\"kind\" IN ('label', 'module')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.mcp_audit_log": {

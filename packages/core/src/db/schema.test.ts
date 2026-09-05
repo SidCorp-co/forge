@@ -265,7 +265,7 @@ describe('db/schema — jobs', () => {
     expect(byCol.get('retry_of')?.onDelete).toBe('set null');
     expect(byCol.get('runner_id')?.onDelete).toBe('set null');
     expect(byCol.get('pipeline_run_id')?.onDelete).toBe('restrict');
-      expect(byCol.get('system_prompt_hash')?.reference().foreignTable).toBe(promptBlobs);
+    expect(byCol.get('system_prompt_hash')?.reference().foreignTable).toBe(promptBlobs);
   });
 
   it('status defaults to queued and enum matches jobStatuses', () => {

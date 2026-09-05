@@ -137,6 +137,12 @@ a deliberate one. Two of the four checks (<code>MULTIPLE_PRIMARY</code>,
   <td>at most one <code>is_primary</code> row per issue, against any writer</td>
   <td>two primary modules on one issue, and no query can say which is the issue's</td>
 </tr>
+<tr>
+  <td><code>labels_kind_chk</code><br><span class="m">migration 0210</span></td>
+  <td><code>kind</code> is <code>label</code> or <code>module</code> and nothing else</td>
+  <td>a row that filters as no module and renders as no label, reported by nothing —
+      <code>text(col,{enum})</code> is a compile-time type and emits no constraint</td>
+</tr>
 </table>
 
 <h2>Reading it back</h2>

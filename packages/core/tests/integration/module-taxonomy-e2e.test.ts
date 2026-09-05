@@ -485,3 +485,15 @@ describe('ISS-593 · parentId belongs to modules only', () => {
     });
   });
 });
+
+describe('ISS-593 · labels_kind_chk', () => {
+  // cm:guard `text(col,{enum})` emits no constraint, so this CHECK is the only thing stopping a writer that skips `labels/routes.ts` — a row with a third kind filters as no module and renders as no label, and nothing reports it
+  it('refuses a kind that is neither label nor module, at the database', async () => {
+    await expect(
+      harness.db.execute(sql`
+        INSERT INTO labels (id, project_id, name, color, kind)
+        VALUES (${randomUUID()}, ${project.id}, 'weird', '#aabbcc', 'component')
+      `),
+    ).rejects.toThrow(/labels_kind_chk/);
+  });
+});

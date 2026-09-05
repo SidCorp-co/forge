@@ -34,7 +34,8 @@
   rather than quietly behaving as `?label`, which stays uuid-only and unchanged. Every `labels[]`
   read now reports `kind` and `isPrimary` per entry (`ModuleAttribution` in `@forge/contracts`).
   Migration `0210` is additive in every statement — existing labels read back as `kind='label'`,
-  existing attachments as `is_primary=false`. Drawn in
+  existing attachments as `is_primary=false` — and carries `labels_kind_chk`, because
+  `text(col,{enum})` is a compile-time type and emits no constraint of its own. Drawn in
   `docs/flows/issue-work-module-attribution.html`. (ISS-593)
 
 - **`pnpm test:changed` — the local loop, wired to nothing.** Runs the tests a change reaches

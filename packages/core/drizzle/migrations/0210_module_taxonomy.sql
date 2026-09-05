@@ -17,4 +17,5 @@ ALTER TABLE "labels" ADD COLUMN "parent_id" uuid;--> statement-breakpoint
 ALTER TABLE "labels" ADD COLUMN "description" text;--> statement-breakpoint
 ALTER TABLE "labels" ADD CONSTRAINT "labels_parent_id_labels_id_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."labels"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "issue_labels_primary_uq" ON "issue_labels" USING btree ("issue_id") WHERE is_primary = true;--> statement-breakpoint
-CREATE INDEX "labels_parent_id_idx" ON "labels" USING btree ("parent_id");
+CREATE INDEX "labels_parent_id_idx" ON "labels" USING btree ("parent_id");--> statement-breakpoint
+ALTER TABLE "labels" ADD CONSTRAINT "labels_kind_chk" CHECK ("labels"."kind" IN ('label', 'module'));
