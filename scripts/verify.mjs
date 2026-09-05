@@ -18,7 +18,7 @@
 // Modes: (none) full run · --ci-parity only the parity proof · --no-advisory
 // Exit: 0 clean · 1 violations · 2 a check could not run.
 
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -67,7 +67,7 @@ const CHECKS = [
     scanned: /: (\d+) step\(s\) across/,
     unit: 'flow steps',
     // cm:guard the skip is only legitimate because CI runs this WITH --require-sources after producing the reports, and ci-parity proves that step exists. Drop it there and this becomes a check that never runs anywhere.
-    skipIf: /skipped — no coverage report/,
+    skipIf: /skipped — (no|stale) coverage report/,
   },
   {
     // cm:guard WHOLE TREE, never `--since`. A scoped run walks the diff against origin/main, and for a commit pushed straight to `main` that diff is EMPTY — cm prints its success line over zero files and this script forwards a green. 15 CM001 errors reached main that way before anyone looked. Legacy prose is frozen by content in the baseline, so a whole-tree run costs nothing and has no blind spot; if it ever goes red on untouched files, the baseline is stale, not the rule.
@@ -245,22 +245,14 @@ function assertEveryCheckProvesScan() {
   process.exit(2);
 }
 
-function runCheck(check, base) {
-  const cmd = check.cmd.map((a) => (a === '@@MERGE_BASE@@' ? base : a));
-  if (cmd.includes('@@MERGE_BASE@@') || (check.scopeMayBeEmpty && base === null)) {
-    return { ...check, code: 2, why: 'origin/main not available — cannot scope the diff' };
-  }
-  const argv = check.json ? [...cmd, '--json'] : cmd;
-  const r = spawnSync(argv[0], argv.slice(1), { cwd: ROOT, encoding: 'utf8' });
-  const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
-
-  if (r.error) return { ...check, code: 2, out, why: `could not spawn: ${r.error.message}` };
-  if (r.status === 2) return { ...check, code: 2, out, why: 'checker reported it could not run' };
+// cm:guard the verdict rules live HERE, in one copy, and `runCheck` only feeds them a status and the captured output — a second copy inside the spawn callback is how a fail-closed rule gets fixed on one path and left on the other, and the two paths are indistinguishable in the report
+function verdict(check, status, out) {
+  if (status === 2) return { ...check, code: 2, out, why: 'checker reported it could not run' };
 
   if (check.skipIf?.test(out)) {
     return {
       ...check,
-      code: r.status ?? 0,
+      code: status ?? 0,
       out,
       note: 'skipped — prerequisite absent locally, CI runs it',
     };
@@ -273,9 +265,54 @@ function runCheck(check, base) {
       return { ...check, code: 2, out, why: 'scanned 0 files — a scope nobody could compute' };
     }
     const note = n === 0 ? 'no diff against origin/main — nothing to scope' : undefined;
-    return { ...check, code: r.status ?? 1, out, files: n, note };
+    return { ...check, code: status ?? 1, out, files: n, note };
   }
-  return { ...check, code: r.status ?? 1, out };
+  return { ...check, code: status ?? 1, out };
+}
+
+function runCheck(check, base) {
+  const cmd = check.cmd.map((a) => (a === '@@MERGE_BASE@@' ? base : a));
+  if (cmd.includes('@@MERGE_BASE@@') || (check.scopeMayBeEmpty && base === null)) {
+    return Promise.resolve({
+      ...check,
+      code: 2,
+      why: 'origin/main not available — cannot scope the diff',
+    });
+  }
+  const argv = check.json ? [...cmd, '--json'] : cmd;
+  return new Promise((done) => {
+    const child = spawn(argv[0], argv.slice(1), { cwd: ROOT });
+    let out = '';
+    child.stdout.on('data', (d) => {
+      out += d;
+    });
+    child.stderr.on('data', (d) => {
+      out += d;
+    });
+    child.on('error', (err) =>
+      done({ ...check, code: 2, out, why: `could not spawn: ${err.message}` }),
+    );
+    child.on('close', (status) => done(verdict(check, status, out)));
+  });
+}
+
+// cm:guard results stay in CHECKS order however the processes finish — the report reads as an ordered list of axes and `ci-parity` reads off the same array, so landing order would shuffle both
+// cm:why the width is bounded rather than firing all 20: measured 2026-09-06 on 12 cores, serial 41.9s, width 4 32.6s, width 6 28.4s, width 12 28.4s — flat past 6, because tsc is itself multi-core and conformance-levels re-spawns eleven checkers
+async function runAll(checks, base, width) {
+  const results = new Array(checks.length);
+  const tty = process.stdout.isTTY;
+  let next = 0;
+  let landed = 0;
+  const worker = async () => {
+    for (let i = next++; i < checks.length; i = next++) {
+      results[i] = await runCheck(checks[i], base);
+      landed += 1;
+      if (tty) process.stdout.write(`  … ${landed}/${checks.length} checks${' '.repeat(20)}\r`);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(width, checks.length) }, worker));
+  if (tty) process.stdout.write(`${' '.repeat(48)}\r`);
+  return results;
 }
 
 function advisory(base) {
@@ -495,13 +532,8 @@ if (base === null) {
 }
 
 console.log(`verify: ${CHECKS.length} checks against ${base.slice(0, 8)}`);
-const tty = process.stdout.isTTY;
-const results = [];
-for (const check of CHECKS) {
-  if (tty) process.stdout.write(`  … ${check.label}${' '.repeat(24)}\r`);
-  results.push(runCheck(check, base));
-}
-if (tty) process.stdout.write(`${' '.repeat(48)}\r`);
+const WIDTH = Number(process.env.VERIFY_CONCURRENCY) || 6;
+const results = await runAll(CHECKS, base, WIDTH);
 
 const adv = args.includes('--no-advisory') ? null : advisory(base);
 const drift = args.includes('--no-advisory') ? null : lockstepDrift(base);

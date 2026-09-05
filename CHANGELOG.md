@@ -11,6 +11,23 @@
 
 ### Added
 
+- **`pnpm test:changed` — the local loop, wired to nothing.** Runs the tests a change reaches
+  (`vitest list --changed` against the same `baseRev()` the drain gate uses, so a push straight to
+  `main` does not select an empty diff) plus every test that scans the source tree rather than
+  importing it. On a typical commit that is 125 of 447 core files in 41s, against 112s for the lot.
+
+  The second lane is why this is a script and not a vitest flag. Measured 2026-09-06: the graph
+  selection for `memory/knowledge-promotion.ts` is 3 files and misses `issues/one-create-path.test.ts`
+  and `body/doors.test.ts` — the exact two gates that file's own commit had to edit, because they
+  enforce an allowlist by walking the tree and nothing imports them into any graph. 14 such files in
+  core, 2 in web, 4.5s for all of them. The lane is derived by scanning for that coupling, never
+  kept as a list, so a tree-scanning test added later joins it the first time the command runs.
+
+  It is deliberately not a gate: no entry in verify's `CHECKS`, no step in `ci.yml`, no line in
+  `CI_COVERAGE`, and it prints that it is not a green on every run including a passing one. Over
+  half a package's suite selected, it runs the whole suite instead and says so — a fast path that
+  quietly becomes the slow one is worse than none.
+
 - **Knowledge promotion is a per-project toggle, and its proposals now arrive as work.** The one
   automatic path from durable memory into the curated knowledge store ran on every project from a
   pg-boss cron with no switch, no row in the `schedules` table and no mention on any settings page —
@@ -788,6 +805,24 @@
   set is now 59.
 
 ### Fixed
+
+- **A stale coverage report answered for code that no longer existed.** `check-flow-coverage`
+  treats the integration coverage report as the authoritative evidence that a `cm:flow` step is
+  defended. It handled an ABSENT report (skip locally, fail under `--require-sources`) and had
+  nothing at all for a stale one, so an old report read exactly like a current one. Measured
+  2026-09-06: `pnpm verify` was green on *"6 settled end-to-end"* from a report dated 2026-08-31 —
+  taken before the staged lane was deleted — with the unit report beside it dated 2026-08-13.
+  Regenerating both changed the numbers it prints (`release/reap` went `e2e=7` to `e2e=5`), which is
+  what the six days of silence had been worth.
+
+  A source now declares in `.forge/conformance.json` the `scope` its report claims to measure, and a
+  report older than that scope is unusable evidence. Where that is fatal differs on purpose: CI
+  produces the report in the same job, so `--require-sources` fails on a stale one; locally stale is
+  the normal state — every edit outdates it — so it degrades to the same skip an absent report takes
+  and says which file outdated it. A local gate that demanded a three-minute coverage rebuild before
+  every `verify` would be deleted rather than obeyed. The floor is the scope's last commit time
+  maxed with working-tree mtimes: mtimes alone call every report stale after a `git checkout`,
+  commit time alone misses the uncommitted edits a local run is made of.
 
 - **A debt that could not fall by one was a wall, not a debt.** `CM013` asks an edited file to pay
   one of its frozen comments, and its counter could not see one paid. `debtOf` OR'd a single
@@ -1731,6 +1766,24 @@
   parked or blocked — there is still no limit on how many rounds an issue may take. (ISS-878)
 
 ### Changed
+
+- **`pnpm verify` runs its checks in parallel, and `tsc` stops recompiling the world.** 66s to
+  28.4s, with no check narrowed and none removed. Two causes, both measured 2026-09-06 on 12 cores:
+  the runner was a plain `for` loop over 20 independent child processes, and `packages/core`'s
+  typecheck config had no `incremental`, so every run was a cold compile of 2,711 files (22.5s cold,
+  3.1s warm). Concurrency is bounded at 6 and tunable with `VERIFY_CONCURRENCY` — serial 41.9s,
+  width 4 32.6s, width 6 28.4s, width 12 28.4s, flat past 6 because `tsc` is itself multi-core.
+  Results stay in `CHECKS` order however the processes land, because the report and the ci-parity
+  proof both read that array by index. The build-info file sits under `node_modules/.cache/`, which
+  is already ignored.
+
+  What was NOT done, and why: scoping the checks to the diff. The guard on `codemap prose` records
+  what that costs — a scoped run on a push straight to `main` has an empty diff, cm prints its
+  success line over zero files, and 15 CM001 errors reached `main` that way. `archmap` and the
+  referential tier have the same shape: a graph built from one file makes an illegal edge legal, and
+  a dangling `cm:edge` is attributed to the annotated file and dropped when that file is outside the
+  diff. The time was in running things twice and running them one at a time, not in what they read.
+
 
 - The autonomous driver's preamble tells it to recall, when to capture, and where a defect goes
   (ISS-790). Three of that issue's five wanted behaviours were agent behaviours with nothing behind

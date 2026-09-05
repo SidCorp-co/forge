@@ -21,7 +21,7 @@
 // Exit: 0 clean · 1 a step regressed to uncovered · 2 could not run.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -97,9 +97,60 @@ function toolStepCount(cfg, flow) {
   return seen.size;
 }
 
+// cm:edge lockstep -> .forge/conformance.json — every entry in `checkers.flow-coverage.sources` declares the `scope` its report claims to measure; a source added there without one fails below rather than being trusted whole
+// cm:guard the floor is the scope's last COMMIT time, maxed with working-tree mtimes — neither alone is enough. mtimes alone call every report stale after a `git checkout` moves files whose content is older than the report; commit time alone misses uncommitted edits, which is the state a local `verify` runs in.
+/** When the code this report claims to measure last changed, and which file says so. */
+function newestSourceChange(scopeRel) {
+  const abs = join(ROOT, scopeRel);
+  if (!existsSync(abs)) die(`source scope "${scopeRel}" does not exist`);
+
+  const r = spawnSync('git', ['log', '-1', '--format=%ct', '--', scopeRel], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  });
+  const committed = r.status === 0 && r.stdout.trim() ? Number(r.stdout.trim()) * 1000 : 0;
+  let at = committed;
+  let what = `${scopeRel} (last commit)`;
+
+  const walk = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const child = join(dir, e.name);
+      if (e.isDirectory()) {
+        walk(child);
+        continue;
+      }
+      if (!e.isFile() || !e.name.endsWith('.ts')) continue;
+      const m = statSync(child).mtimeMs;
+      if (m > at) {
+        at = m;
+        what = child.slice(ROOT.length + 1);
+      }
+    }
+  };
+  walk(abs);
+  return { at, what };
+}
+
 function loadSource(src) {
   const abs = join(ROOT, src.path);
   if (!existsSync(abs)) return { ...src, missing: true };
+  if (!src.scope) die(`source "${src.label}" declares no scope in ${CONFIG_PATH}`);
+
+  // cm:guard a report OLDER than the code it measures must exit 2, never report its rows — this gate reads coverage as evidence a flow step is defended, and a stale report answers for code that no longer exists. Measured 2026-09-06: `verify` was green on "6 settled end-to-end" from a report dated 2026-08-31, taken before the staged lane was deleted. The absent case was already handled by `missing`; the stale case read exactly like a current one.
+  const producedAt = statSync(abs).mtimeMs;
+  const newest = newestSourceChange(src.scope);
+  if (producedAt < newest.at) {
+    const day = (ms) => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
+    const detail =
+      `${src.path} is STALE — produced ${day(producedAt)}, but ${newest.what} changed ` +
+      `${day(newest.at)}. It cannot say what today's code covers.\n` +
+      `  regenerate: ${src.produce ?? '(no producer declared)'}`;
+    // cm:guard stale is unusable evidence either way; only WHERE it is fatal differs. CI produces the report in the same job (ci.yml, `test:integration:coverage` immediately before this), so a stale one there is an anomaly and `--require-sources` fails on it. Locally stale is the NORMAL state — every edit outdates the report — so it degrades to the same skip an absent report takes. Making the local run fatal would mean a 3-minute coverage rebuild before every `verify`, and a gate that expensive gets deleted rather than obeyed.
+    if (requireSources) die(detail);
+    console.log(`check-flow-coverage: skipped — stale coverage report.\n  ${detail}`);
+    return { ...src, missing: true, stale: true };
+  }
+
   try {
     return { ...src, data: JSON.parse(readFileSync(abs, 'utf8')) };
   } catch (err) {

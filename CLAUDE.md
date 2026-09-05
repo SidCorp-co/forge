@@ -43,6 +43,12 @@ you push, and read that block rather than grepping the `ok`/`red` lines past it.
 used to say verify "runs every check CI runs"; that sentence put a red commit on `main` on
 2026-09-01 — refactoring a mocked call path passed all 21 checks and failed `pnpm test` on CI.
 
+**`pnpm test:changed` is the loop, never the proof.** It runs the tests the change reaches plus the
+14 that scan the source tree instead of importing it — 125 of 447 core files in 41s on a typical
+commit, against 112s for the lot. It is wired to nothing: no gate reads it, and it prints that it is
+not a green on every run, because `vitest`'s graph follows imports and a test that reaches its
+subject by URL, table name or file path is not in it. `pnpm test` before you push, always.
+
 From the repo root, turbo fans out: `pnpm dev` / `pnpm build` / `pnpm test` / `pnpm typecheck` /
 `pnpm lint`. Per package (from inside `packages/<pkg>/`):
 
