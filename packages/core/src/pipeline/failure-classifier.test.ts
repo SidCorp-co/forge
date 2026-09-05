@@ -3,7 +3,7 @@ import { CLASSIFIER_VERSION, classifyFailure, deriveActionFromKind } from './fai
 
 describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
   it('returns CLASSIFIER_VERSION on every result so callers can pin it', () => {
-    expect(CLASSIFIER_VERSION).toBe(10);
+    expect(CLASSIFIER_VERSION).toBe(11);
     expect(classifyFailure({}).version).toBe(CLASSIFIER_VERSION);
     expect(classifyFailure({ error: 'whatever' }).version).toBe(CLASSIFIER_VERSION);
   });
@@ -34,8 +34,7 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
     });
 
     it('the runner token wins over the cc-startup message-count heuristic', () => {
-      // An MCP-init death also looks like diedBeforeFirstToolUse; the explicit
-      // runner token must still route it to infra, not transient-cc.
+      // cm:why an MCP-init death also looks like `diedBeforeFirstToolUse`, so this asserts the token wins over the heuristic rather than agreeing with it by luck.
       const r = classifyFailure({
         error: '[MCP_INIT_FAILED] forge(failed) did not connect at startup',
         signals: { diedBeforeFirstToolUse: true, sessionMessageCount: 1 },
@@ -382,5 +381,34 @@ describe('duplex session channel failures (RFC 0003)', () => {
     const r = classifyFailure({ error: 'session_checkpoint_deadline_exceeded' });
     expect(r.kind).toBe('infra');
     expect(r.action).toBe('retry');
+  });
+});
+
+describe('failure-classifier — a full box says the box is full (ISS-920)', () => {
+  // cm:guard the literal the runner renders, not an approximation — `acquire_session_permit`'s own test pins the same bytes, and the digits are why: a cap or wait rendering as 503 would be claimed by TRANSIENT_PATTERNS' /\\b50[0-9]\\b/ if this bucket sat behind it.
+  const SATURATED =
+    'session_permit_saturated: all 3 duplex permits on this box held after 600s; ' +
+    'holders: codemap, forge-dev, forge-dev';
+
+  it('routes a saturated box to failover, not to a retry on the same box', () => {
+    const r = classifyFailure({ error: SATURATED });
+    expect(r.kind).toBe('infra');
+    expect(r.action).toBe('failover');
+    expect(r.cause).toBe('box_session_saturated');
+    expect(r.meta?.needsReview).toBeUndefined();
+  });
+
+  it('keeps the holders in the reason an operator reads', () => {
+    expect(classifyFailure({ error: SATURATED }).reason).toContain('holders: codemap');
+  });
+
+  // cm:why the permit wait no longer runs under the root lock, so a lock timeout can only mean a sibling genuinely spent the wait in preflight or `git worktree add` — a different event with a different cause.
+  it('a repo-lock timeout is root contention and NOT saturation', () => {
+    const r = classifyFailure({
+      error: 'repo_lock_timeout: /home/forge/projects/codemap is still held after 600s',
+    });
+    expect(r.cause).toBe('repo_root_contention');
+    expect(r.meta?.needsReview).toBeUndefined();
+    expect(r.kind).toBe('infra');
   });
 });

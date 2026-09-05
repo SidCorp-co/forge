@@ -22,6 +22,7 @@
 import { isSpendLimitError, isUsageLimitError } from '../runners/limit-detect.js';
 import type { FailureCause } from './failure-causes.js';
 import {
+  BOX_SATURATION_PATTERNS,
   CC_STARTUP_PATTERNS,
   causeForMetaErrorType,
   causeForText,
@@ -36,7 +37,7 @@ import { parseRetryAfter, readRetryAfterHeader } from './retry-after-parser.js';
 
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — the runner's plain error string is its only routing lever
 // cm:guard bump CLASSIFIER_VERSION on any pattern change, and keep specific buckets ahead of the transient fallthrough
-export const CLASSIFIER_VERSION = 10;
+export const CLASSIFIER_VERSION = 11;
 
 export type FailureKind = 'code' | 'infra' | 'transient-cc' | 'timeout';
 
@@ -102,7 +103,7 @@ interface ClassifyInput {
  *
  * Match order: structured `meta.error.type` → runner token → spend-cap →
  * usage/session limit → cc-startup signal → PERMISSION (infra) →
- * DUPLEX_SESSION (infra) → TIMEOUT →
+ * DUPLEX_SESSION (infra) → BOX_SATURATION (infra, failover) → TIMEOUT →
  * TERMINAL_INFRA (infra, terminal) → PERMANENT (code) → TRANSIENT (infra) →
  * CC_STARTUP text fallback → infra + needsReview. Permission/timeout precede
  * the broader buckets because their patterns are more specific.
@@ -174,12 +175,7 @@ function classifyKind(
     }
   }
 
-  // ISS-479 — explicit runner failureReason tokens are AUTHORITATIVE: the
-  // runner observed the actual process exit, so its verdict beats the
-  // message-count heuristic below (e.g. an MCP-init failure dies with no tool
-  // use, which the heuristic would mislabel transient-cc; the runner says
-  // infra). [RESULT_ERROR] intentionally returns null here so the provider
-  // message in its detail still flows to the PERMANENT/TRANSIENT patterns.
+  // cm:guard the runner's token beats the message-count heuristic below, because the runner watched the process exit — an MCP-init death has no tool use and the heuristic calls that `transient-cc` (ISS-479). `[RESULT_ERROR]` returns null on purpose so the provider message in its detail still reaches the PERMANENT/TRANSIENT tables.
   const runnerKind = classifyRunnerToken(text);
   if (runnerKind) {
     return { kind: runnerKind, cause: textCause, reason: reasonExcerpt, meta };
@@ -195,10 +191,7 @@ function classifyKind(
     };
   }
 
-  // ISS-596 — usage/session limit → immediate cross-device failover. Checked
-  // after runner tokens (so [MCP_INIT_FAILED]/[SIGNAL_KILLED] still win) but
-  // before the cc-startup signal so a limit error that also looks like a
-  // startup death correctly routes to the failover policy.
+  // cm:guard after the runner tokens and before the cc-startup signal, both deliberately: `[MCP_INIT_FAILED]` must still win, and a limit error that also looks like a startup death must route to failover rather than to the same box (ISS-596).
   if (isUsageLimitError(text)) {
     return {
       kind: 'transient-cc',
@@ -239,6 +232,18 @@ function classifyKind(
         kind: 'infra',
         cause: 'duplex_channel_failed',
         reason: reasonExcerpt || 'duplex session channel failure',
+        meta,
+      };
+    }
+  }
+
+  for (const pat of BOX_SATURATION_PATTERNS) {
+    if (pat.test(text)) {
+      return {
+        kind: 'infra',
+        action: 'failover',
+        cause: 'box_session_saturated',
+        reason: reasonExcerpt || 'box session permits saturated',
         meta,
       };
     }
@@ -347,8 +352,6 @@ function extractMetaMessage(meta: Record<string, unknown> | null): string | null
 
 function extractRetryAfter(meta: Record<string, unknown> | null): Date | null {
   if (!meta) return null;
-  // Common shapes: `{ headers: {...} }`, `{ response: { headers: {...} } }`,
-  // or `{ error: { headers: {...} } }`. Probe each.
   const candidates: Array<Record<string, unknown> | undefined> = [];
   const direct = (meta as { headers?: unknown }).headers;
   if (direct && typeof direct === 'object') {

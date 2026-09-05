@@ -1,0 +1,148 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · agent-execution — a claimed job becomes a running agent</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --lock:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .lock { color:var(--lock); font-weight:600; }
+  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
+  text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
+  text.m { font-size:11px; fill:var(--mut); }
+  text.t { font:600 12px ui-monospace,Menlo,monospace; }
+  .box { fill:#fff; stroke:var(--line); }
+  .lockband { fill:#fdf6e7; stroke:#e8d9b4; }
+  .exit { fill:#fdf0f3; stroke:#e3c2cb; }
+  .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
+  .arrowbad { stroke:var(--bad); stroke-width:1.2; fill:none; marker-end:url(#b); stroke-dasharray:4 3; }
+</style>
+<main>
+
+<h1>agent-execution — a claimed job becomes a running agent</h1>
+<p class="sub">One <code>drive</code> job on a runner box, from the moment the pool hands it over to
+the moment a <code>claude</code> process is alive — and the two exits that kill it on the way.
+Owner: <code>packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs</code>.</p>
+
+<h2>The order, and where the locks sit</h2>
+<svg viewBox="0 0 880 520" role="img" aria-label="Sequence of a claimed job becoming a running agent">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a3b52"/></marker>
+  </defs>
+
+  <rect class="box" x="20" y="16" width="300" height="34" rx="4"/>
+  <text class="t" x="34" y="38">pool claim → dispatch::handle</text>
+  <text class="m" x="330" y="38">the box owns this job now; nothing re-routes it</text>
+
+  <path class="arrow" d="M170,50 L170,74"/>
+  <rect class="box" x="20" y="74" width="300" height="34" rx="4"/>
+  <text class="t" x="34" y="96">pre-spawn heartbeat starts</text>
+  <text class="m" x="330" y="90">before the lock, never after — core fails a session</text>
+  <text class="m" x="330" y="105">that is still <tspan font-family="monospace">queued</tspan> 120s after dispatch</text>
+
+  <path class="arrow" d="M170,108 L170,132"/>
+
+  <rect class="lockband" x="10" y="132" width="480" height="216" rx="6"/>
+  <text class="t" x="24" y="152" fill="#a06a1f">repo-root lock held — one lexical block</text>
+  <text class="m" x="24" y="167">everything that writes the root's .git or index, and nothing else</text>
+
+  <rect class="box" x="34" y="180" width="270" height="30" rx="4"/>
+  <text class="t" x="46" y="200">measure: preflight + refresh</text>
+  <path class="arrow" d="M169,210 L169,230"/>
+  <rect class="box" x="34" y="230" width="270" height="30" rx="4"/>
+  <text class="t" x="46" y="250">setup agent (only if findings)</text>
+  <path class="arrow" d="M169,260 L169,282"/>
+  <rect class="box" x="34" y="282" width="270" height="30" rx="4"/>
+  <text class="t" x="46" y="302">worktree::create — git worktree add</text>
+
+  <path class="arrowbad" d="M304,195 L560,195"/>
+  <rect class="exit" x="560" y="178" width="300" height="34" rx="4"/>
+  <text class="t" x="572" y="199">preflight_failed: …</text>
+
+  <path class="arrowbad" d="M170,132 L170,120 L560,120 L560,138"/>
+  <rect class="exit" x="560" y="138" width="300" height="34" rx="4"/>
+  <text class="t" x="572" y="153">repo_lock_timeout after 600s</text>
+  <text class="m" x="572" y="230">a sibling spent the whole wait in this band.</text>
+  <text class="m" x="572" y="245">cause repo_root_contention · infra · retry</text>
+
+  <path class="arrow" d="M169,312 L169,348"/>
+  <text class="m" x="182" y="340">lock released HERE — the closing brace</text>
+
+  <rect class="box" x="20" y="360" width="300" height="34" rx="4"/>
+  <text class="t" x="34" y="382">ack + workspace notice → core</text>
+
+  <path class="arrow" d="M170,394 L170,418"/>
+  <rect class="box" x="20" y="418" width="300" height="34" rx="4"/>
+  <text class="t" x="34" y="440">runner.start → duplex permit</text>
+
+  <path class="arrowbad" d="M320,435 L560,435"/>
+  <rect class="exit" x="560" y="418" width="300" height="34" rx="4"/>
+  <text class="t" x="572" y="439">session_permit_saturated</text>
+  <text class="m" x="560" y="470">all N permits held for 600s. cause box_session_saturated ·</text>
+  <text class="m" x="560" y="485">infra · FAILOVER — the next attempt goes to another box</text>
+
+  <path class="arrow" d="M170,452 L170,476"/>
+  <rect class="box" x="20" y="476" width="300" height="34" rx="4"/>
+  <text class="t" x="34" y="498">mcp config → spawn → consume</text>
+</svg>
+
+<h2>What goes wrong, and what it says</h2>
+<table>
+<thead><tr><th>Failure</th><th>Where</th><th>Text on the wire</th><th>What core does</th></tr></thead>
+<tbody>
+<tr><td>A sibling holds the root past 600s</td><td>entering the lock band</td>
+    <td><code>repo_lock_timeout: &lt;path&gt; is still held after 600s</code></td>
+    <td><code>infra</code> / <code>retry</code>, cause <code>repo_root_contention</code></td></tr>
+<tr><td>Checkout unusable, no origin, no work tree</td><td><code>measure</code></td>
+    <td><code>preflight_failed: origin_remote|work_tree|repo_path</code></td>
+    <td><code>infra</code> / <code>terminal</code>; three in a row quarantine the box</td></tr>
+<tr><td><code>git worktree add</code> refuses</td><td>end of the lock band</td>
+    <td><code>failed to start job: git worktree add failed: …</code></td>
+    <td>not a box fault — deliberately outside the <code>preflight_failed:</code> namespace</td></tr>
+<tr><td>Every duplex permit on the box is held</td><td><code>runner.start</code>, lock already released</td>
+    <td><code>session_permit_saturated: all N duplex permits on this box held after 600s; holders: …</code></td>
+    <td><code>infra</code> / <code>failover</code>, cause <code>box_session_saturated</code></td></tr>
+<tr><td>Nothing spawned inside the beat budget</td><td>the heartbeat task</td>
+    <td>the beat stops; core's reaper judges the silence</td>
+    <td><code>session_lost</code></td></tr>
+</tbody>
+</table>
+
+<h2>The rule the shape encodes</h2>
+<div class="rule">
+<p><b>No unbounded wait while holding a lock another job needs.</b> The root lock is per-repo; the
+permit ceiling is per-box. Nesting them made one project's claims kill another project's queue,
+and the error named the lock (ISS-920: 7 <code>repo_lock_timeout</code> in 30 minutes on
+<code>codemap</code>, while <code>forge-dev</code> held two of three permits).</p>
+<p>Two properties keep it un-nested, and both are load-bearing:</p>
+<ul>
+  <li>The lock band is a <b>lexical block</b> in <code>dispatch::handle</code>. The compiler
+      releases it, not a <code>drop</code> call somebody can move.</li>
+  <li><code>ClaudeCodeRunner::start</code> touches <b>nothing in the root</b>. Putting root work
+      back inside it re-nests the lock around the permit wait, whatever the block looks like.</li>
+</ul>
+<p>The permit wait is bounded too, at one residency window — but a bound is not what makes this
+safe. For the whole of a bound the lock would still be held and the siblings would still die,
+just sooner.</p>
+</div>
+
+<h2>Read this before</h2>
+<p>Changing what <code>dispatch::handle</code> does under the lock, moving anything into or out of
+<code>ClaudeCodeRunner::start</code>, or touching <code>REPO_LOCK_WAIT</code> /
+<code>SESSION_PERMIT_WAIT</code> / <code>PRE_SPAWN_BEAT_BUDGET</code> — those three are derived from
+each other and the build fails if the ordering breaks.</p>
+
+<p><a href="index.html">← all flows</a></p>
+</main>

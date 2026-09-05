@@ -58,6 +58,10 @@ export const DUPLEX_SESSION_PATTERNS: ReadonlyArray<RegExp> = [
   /\bsession_checkpoint_deadline_exceeded\b/i,
 ];
 
+// cm:guard one token, and it sits AHEAD of TIMEOUT/TRANSIENT in the classifier for a reason specificity alone does not give: the runner renders a permit count and a wait into this string, and `TRANSIENT_PATTERNS`' `\b50[0-9]\b` would claim a box whose cap or wait happened to render as 503. Diagnosis `infra`, policy `failover`: the box is full, so the next attempt belongs on a DIFFERENT box — `retry` spends its tries on the semaphore that just refused, which is the spin ISS-920 B3 exists to break.
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — `acquire_session_permit` writes this token and its test asserts the whole rendered line, so a reword there is a red test here
+export const BOX_SATURATION_PATTERNS: ReadonlyArray<RegExp> = [/\bsession_permit_saturated\b/i];
+
 export const TRANSIENT_PATTERNS: ReadonlyArray<RegExp> = [
   /\bECONN(RESET|REFUSED|ABORTED)\b/i,
   /\bEPIPE\b|\bnetwork[ _-]?error\b/i,
@@ -67,6 +71,8 @@ export const TRANSIENT_PATTERNS: ReadonlyArray<RegExp> = [
   /pg-?boss[ _-]?(error|timeout)/i,
   // cm:why ISS-451 (C5) — a pre-claim preflight failure (missing repo, bad git tree, unreachable push remote, missing hooks path) is an environment problem by construction, so it is `infra` even though it looks like a project error
   /\bpreflight[ _-]?failed\b/i,
+  // cm:guard this row is what CLEARS `needsReview`, and that is its whole job — `infra`/`retry` is where the classifier's fallback already sent it, but the fallback marks a POLICY gap, so 7 lock timeouts in 30 minutes sat in the operator review queue as an unwritten rule rather than as the known transient they are (forge-vm, 2026-09-05, ISS-920). `\btimeout\b` never reached it: `_t` is not a word boundary.
+  /\brepo_lock_timeout\b/i,
 ];
 
 // cm:guard ISS-450 — a TEXT fallback only, for callers that could not derive structured `signals`; prefer the signal, because a CLI that dies during startup retries uselessly on the SAME device and only `transient-cc` routes it to an immediate different-device failover
@@ -147,6 +153,9 @@ export const CAUSE_RULES: ReadonlyArray<CauseRule> = [
   { cause: 'agent_startup_failed', test: re(/cc-startup-death/i) },
   { cause: 'workspace_disk_full', test: re(/no space left|\bENOSPC\b/i) },
   { cause: 'workspace_preflight_failed', test: re(/preflight[ _-]?failed/i) },
+  { cause: 'box_session_saturated', test: re(/\bsession_permit_saturated\b/i) },
+  // cm:guard `repo_lock_timeout` is NOT `box_session_saturated`, however alike the two looked before ISS-920. The permit wait no longer runs under the root lock, so a lock timeout now means a sibling genuinely spent `REPO_LOCK_WAIT` in preflight, the setup agent or `git worktree add` — mapping it to saturation would bake in the causality the fix removed.
+  { cause: 'repo_root_contention', test: re(/\brepo_lock_timeout\b/i) },
   {
     cause: 'duplex_channel_failed',
     test: re(/session_send_failed|session_ack_timeout|session_checkpoint_deadline_exceeded/i),

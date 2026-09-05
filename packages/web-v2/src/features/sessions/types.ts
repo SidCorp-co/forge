@@ -206,6 +206,8 @@ export const FAILURE_REASON_LABEL: Record<SessionFailureReason, string> = {
   agent_killed: "Agent killed",
   workspace_preflight_failed: "Checkout not usable",
   workspace_disk_full: "Runner disk full",
+  repo_root_contention: "Runner repo busy",
+  box_session_saturated: "Runner at session capacity",
   runner_unreachable: "Runner unreachable",
   duplex_channel_failed: "Session channel failed",
   session_lost: "Session lost",
@@ -250,6 +252,10 @@ export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
   agent_killed: "Something killed the agent process — check the runner logs.",
   workspace_preflight_failed: "The runner's checkout is unusable — fix the repo path or remote.",
   workspace_disk_full: "The runner is out of disk — free space, then Retry.",
+  repo_root_contention:
+    "Another job on that runner held the repo for ten minutes — Retry once it is free.",
+  box_session_saturated:
+    "That runner had no session slot free — the job moves to another box on its own.",
   runner_unreachable: "The runner never picked it up — check it's online, then Retry.",
   duplex_channel_failed: "The session channel dropped — a fresh session is the next step.",
   session_lost: "The session died without reporting — Retry to re-dispatch.",
@@ -319,7 +325,7 @@ export function deriveLiveness(
 ): LivenessResult {
   const naResult: LivenessResult = { state: "na", sinceHeartbeatMs: null, reapInMs: null };
   if (session.status !== "running") return naResult;
-  // A headless runner never heartbeats an interactive chat — don't grade it.
+  // cm:guard an interactive chat is never graded on liveness: a headless runner does not heartbeat one, so grading it would report every idle chat window as a dead session.
   if (isInteractiveSession(session)) return naResult;
 
   const lastSignal = session.lastHeartbeatAt ?? session.startedAt ?? session.updatedAt;

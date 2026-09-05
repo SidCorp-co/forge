@@ -806,6 +806,30 @@
 
 ### Fixed
 
+- **A job waiting for a duplex permit killed another project's jobs, and blamed the lock.**
+  `dispatch.rs` took the repo-root lock, called `runner.start`, and released it only when that
+  returned — but `start` awaited the box's duplex session semaphore with no deadline, so the root
+  lock was held across an unbounded queue. Every sibling job for that repo then died at
+  `REPO_LOCK_WAIT` (600s) saying `repo_lock_timeout`, went back to the pool, was claimed again and
+  met the same wall. Measured on forge-vm 2026-09-05: 7 timeouts in 30 minutes, all on `codemap`,
+  whose pool never drained across four master passes — while the permits were held by `forge-dev`
+  jobs a resident master had claimed 24 seconds earlier, with nothing in any record connecting the
+  two.
+
+  The two waits no longer nest. `git worktree add` — the only root-touching work `start` ever did —
+  moves into `dispatch::handle`, inside a lexical block that also binds the lock guard, so the
+  compiler releases the root before the permit is asked for. The permit wait itself is now bounded
+  by `SESSION_PERMIT_WAIT` (10 min, one residency window) and fails as
+  `session_permit_saturated: all N duplex permits on this box held after 600s; holders: <projects>`
+  — which core classifies `infra` + **failover**, so the job goes to a different box instead of
+  re-claiming the semaphore that just refused it. `PRE_SPAWN_BEAT_BUDGET` still derives from the
+  waits rather than being picked, now from both of them.
+
+  Two causes join the taxonomy with it: `box_session_saturated` for the above, and
+  `repo_root_contention` for `repo_lock_timeout` — which is now a different event, meaning a
+  sibling genuinely spent ten minutes in preflight or `git worktree add`, and which had been
+  landing in the operator review queue as `unclassified` because no policy rule claimed it.
+
 - **A withdrawn runner still took jobs.** `readPool` joined `runners` only to prove a binding
   existed and read nothing else from the row; `claimJobForMaster` checked the agent version and
   nothing about the box. So `runners.status` — which has carried `draining` and `disabled` since the

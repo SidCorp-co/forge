@@ -13,13 +13,13 @@ use crate::config::Config;
 use crate::daemon::repo_lock::RepoLocks;
 use crate::daemon::{preflight, setup_agent};
 use crate::error::{Error, Result};
-use crate::runner::claude_code::ClaudeCodeRunner;
+use crate::runner::claude_code::{ClaudeCodeRunner, SESSION_PERMIT_WAIT};
 use crate::runner::{JobSpec, Runner, RunnerEvent, ToolPhase};
 use crate::transport::events::{self, post_job_events, JobEventInput};
 use crate::transport::pool::ClaimedJob;
 use crate::transport::runners::{self, MeRunner};
 use crate::transport::{lifecycle, CoreClient};
-use crate::workspace::{provision, refresh, salvage, skill_sync};
+use crate::workspace::{provision, refresh, salvage, skill_sync, worktree};
 
 /// Resolved working dir for one assigned project. The server (`/me/runners`)
 /// is the source of truth for `repo_path`; `config.toml` is only a local
@@ -240,14 +240,19 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(25);
 // cm:guard a bounded wait, because `locks.acquire` has no deadline of its own: a leaked guard parks every later job on the box forever, and the failure names the wrong thing (a dead agent) at whatever reaper notices first.
 const REPO_LOCK_WAIT: Duration = Duration::from_secs(10 * 60);
 
+/// Every wait a job may sit through before its process exists.
+// cm:guard both terms, never one. Since ISS-920 the permit wait runs AFTER the lock is released rather than inside it, so a budget derived from `REPO_LOCK_WAIT` alone under-counts the pre-spawn phase by a whole `SESSION_PERMIT_WAIT`.
+const PRE_SPAWN_WAITS: Duration =
+    Duration::from_secs(REPO_LOCK_WAIT.as_secs() + SESSION_PERMIT_WAIT.as_secs());
+
 /// How long the pre-spawn phase may keep claiming progress before it goes quiet.
-// cm:guard the runner must give up BEFORE core condemns, and these two numbers are what decide that — so derive them, never pick them apart. Core fails a session 180s after the last beat, so a beat budget shorter than the runner's own deadline inverts the order: the beat stops, core fails the job and routes it to retry, and THEN `locks.acquire` returns and an agent spawns under a job that is already terminal and already re-queued elsewhere. That is the two-agents-one-worktree shape, reached from the opposite direction. The budget therefore covers the whole lock wait plus a post-lock allowance for preflight, skill sync and `git worktree add`.
-const PRE_SPAWN_BEAT_BUDGET: Duration = Duration::from_secs(REPO_LOCK_WAIT.as_secs() + 15 * 60);
+// cm:guard the runner must give up BEFORE core condemns, and these numbers are what decide that — so derive them, never pick them apart. Core fails a session 180s after the last beat, so a beat budget shorter than the runner's own deadlines inverts the order: the beat stops, core fails the job and routes it to retry, and THEN the wait returns and an agent spawns under a job that is already terminal and already re-queued elsewhere — the two-agents-one-worktree shape from the opposite direction. The budget covers every wait plus an allowance for preflight, skill sync and `git worktree add`.
+const PRE_SPAWN_BEAT_BUDGET: Duration = Duration::from_secs(PRE_SPAWN_WAITS.as_secs() + 15 * 60);
 const PRE_SPAWN_MAX_TICKS: u32 =
     (PRE_SPAWN_BEAT_BUDGET.as_secs() / HEARTBEAT_INTERVAL.as_secs()) as u32;
 
 // cm:guard the ordering above is load-bearing enough to fail the BUILD rather than a review: a beat that runs out first is the ghost-agent shape, and nothing at runtime would name it.
-const _: () = assert!(PRE_SPAWN_BEAT_BUDGET.as_secs() > REPO_LOCK_WAIT.as_secs());
+const _: () = assert!(PRE_SPAWN_BEAT_BUDGET.as_secs() > PRE_SPAWN_WAITS.as_secs());
 
 /// Read the on-disk `.hash` markers from `<repo>/.claude/skills/*/` to build
 /// the `skillsRanWith` map sent to the server at ACK time (ISS-798).
@@ -371,7 +376,7 @@ pub async fn handle(
     };
     let slug = resolved.slug;
 
-    // cm:guard hold the root from HERE until the session owns a tree of its own. `measure` runs `workspace::refresh` (fetch · checkout -- · merge --ff-only) on the ROOT for every job, worktree lane included, and `runner.start` adds the worktree to the root's `.git` — two jobs doing that at once write one index. This guard, not the core-side cap, is what makes a per-device cap above 1 safe.
+    // cm:guard hold the root for exactly the work that writes it — `measure`'s `workspace::refresh` (fetch · checkout -- · merge --ff-only) and `worktree::create`'s `git worktree add`, two jobs doing either at once writing one index. This guard, not the core-side cap, is what makes a per-device cap above 1 safe. It ends at the block below and must not be widened to cover the spawn again (ISS-920).
     // cm:guard the heartbeat MUST start before this wait, not after it. Core flips a session `queued -> running` on its first job event, and the claim hop fails a session still `queued` 120s after dispatch — so a job queued behind a busy root posted nothing and was reaped as if the box were dead. Measured on epodsystem 2026-09-05: 61 sessions. The premise this guard used to carry (leave it unacked so core can re-dispatch elsewhere) died with the push dispatcher; under the pool a job is claimed by the box that will run it, and nothing re-routes it.
     let pre_spawn_beat = AbortOnDrop({
         let client = client.clone();
@@ -401,134 +406,156 @@ pub async fn handle(
             resolved.repo_path.display()
         );
     }
-    let repo_guard =
-        match tokio::time::timeout(REPO_LOCK_WAIT, locks.acquire(&resolved.repo_path)).await {
-            Ok(g) => g,
-            Err(_) => {
-                let msg = format!(
-                    "repo_lock_timeout: {} is still held after {}s",
-                    resolved.repo_path.display(),
-                    REPO_LOCK_WAIT.as_secs()
-                );
-                tracing::error!("[job {job_id}] {msg}");
-                let _ = lifecycle::fail(client, &job_id, &msg).await;
-                return Ok(());
-            }
-        };
-
-    // ISS-451 (ISS-442 C5, invariant I6): fail fast BEFORE claiming the job
-    // when the repo / push credentials / hooks are broken, instead of a
-    // 40-minute mid-run discovery. The `preflight_failed` prefix and its
-    // `origin_remote:`/`work_tree:`/`repo_path:` sub-variants are load-bearing —
-    // core's classifier (`packages/core/src/pipeline/failure-classifier.ts`)
-    // pattern-matches on this exact string to pick failureKind (ISS-808).
-    // cm:guard the workspace refresh below shares this gate deliberately — it fast-forwards a git checkout, so it is as meaningless on a repo-less project as the preflight is. Splitting them would send a `website` project into `git fetch` on a folder with no remote.
-    // cm:guard the branch is the MASTER'S agent name, and every claimed job gets one. Core's `worktreeBranch` payload is gone: it derived the name from the issue key, which cannot express a master grouping two issues into one agent, and its merge-stage exemption had been unreachable since ISS-897 left `drive` as the only dispatched type. Never reintroduce a fallback here — an empty name means the claim gate let an unnamed agent through, and the honest answer is that bug, not a job quietly writing the repo root.
-    let worktree_branch = Some(ja.agent_name.clone());
-    let owns_root = false;
-
-    let mut workspace_notice: Option<String> = None;
-    let mut worktree_start_point: Option<String> = None;
-    if requires_preflight(&ja.job_type, resolved.kind.as_deref()) {
-        let measured = match measure(
-            &resolved.repo_path,
-            resolved.base_branch.as_deref(),
-            owns_root,
-        )
-        .await
-        {
-            Ok(m) => Ok(m),
-            // cm:guard re-provision, then MEASURE again — never trust the provision status. It reports `ready` from the runner's own view of a sweep that may have hit `needs_manual_setup` for a reason no re-run changes (an occupied folder, no repo URL), and a job that proceeded on that word would run in the same broken tree it just failed on.
-            Err(err) if is_reprovisionable(&err) => match resolved.runner_id.as_deref() {
-                Some(runner_id) => {
-                    tracing::warn!(
-                        "[job {job_id}] {err} — re-provisioning the workspace before giving up"
+    // cm:guard the guard is bound INSIDE this block and nowhere else, so the compiler releases the root at the closing brace. It used to live to the end of `handle`, which put it around `runner.start` and therefore around an unbounded wait for a duplex permit: 7 sibling jobs on one repo died at `repo_lock_timeout` in 30 minutes on forge-vm, 2026-09-05, blaming a lock for a full box (ISS-920). Widening this block back past the worktree is that defect. The `_` prefix only silences the unused warning — a named `_x` still drops at the brace, where a bare `_` would drop at once and hold nothing.
+    let (effective_repo, workspace_notice) = {
+        let _repo_guard =
+            match tokio::time::timeout(REPO_LOCK_WAIT, locks.acquire(&resolved.repo_path)).await {
+                Ok(g) => g,
+                Err(_) => {
+                    // cm:edge contract -> packages/core/src/pipeline/failure-patterns.ts — matched there as `repo_root_contention`. Since ISS-920 this can no longer mean a full box: it means a sibling genuinely spent 600s in preflight, the setup agent or `git worktree add`.
+                    let msg = format!(
+                        "repo_lock_timeout: {} is still held after {}s",
+                        resolved.repo_path.display(),
+                        REPO_LOCK_WAIT.as_secs()
                     );
-                    provision::reprovision(client, cfg, runner_id).await;
-                    measure(
-                        &resolved.repo_path,
-                        resolved.base_branch.as_deref(),
-                        owns_root,
-                    )
-                    .await
+                    tracing::error!("[job {job_id}] {msg}");
+                    let _ = lifecycle::fail(client, &job_id, &msg).await;
+                    return Ok(());
                 }
-                None => Err(err),
-            },
-            Err(err) => Err(err),
-        };
-        let (mut findings, mut git_state) = match measured {
-            Ok(m) => m,
-            Err(err) => {
-                let msg = format!("preflight_failed: {err}");
-                tracing::error!("[job {job_id}] {msg}");
-                let _ = lifecycle::fail(client, &job_id, &msg).await;
-                return Ok(());
-            }
-        };
-        tracing::info!("[job {job_id}] {}", refresh::describe(&git_state));
+            };
 
-        // cm:guard when the workspace is wrong the job now RUNS anyway, so this repair-then-notice pair is the only mitigation left — drop it and a stage silently judges current code against an old checkout, which is the defect refresh.rs exists for. This lane used to fail the job with `preflight_failed: workspace_refresh`; a retry cannot check out a branch, so one wrong branch on ubuntu5 (anhome, 2026-08-15) became 4 identical 7-second failures over 8h, a box quarantine and a held job.
-        let mut setup_summary: Option<String> = None;
-        if !findings.is_empty() {
-            let outcome = setup_agent::run(
-                &resolved.repo_path,
-                &findings,
-                git_state.base_branch.as_deref(),
-                resolved.workspace_setup.as_deref(),
-            )
-            .await;
-            tracing::info!(
-                "[job {job_id}] setup agent ok={} — {}",
-                outcome.ok,
-                outcome.summary.lines().next().unwrap_or("")
-            );
-            setup_summary = Some(outcome.summary);
-            // Re-measure rather than believe the summary. A setup agent that
-            // broke the checkout must fail the job here, not hand a stage a tree
-            // that no longer has a work tree.
-            match measure(
+        // ISS-451 (ISS-442 C5, invariant I6): fail fast BEFORE claiming the job
+        // when the repo / push credentials / hooks are broken, instead of a
+        // 40-minute mid-run discovery. The `preflight_failed` prefix and its
+        // `origin_remote:`/`work_tree:`/`repo_path:` sub-variants are load-bearing —
+        // core's classifier (`packages/core/src/pipeline/failure-classifier.ts`)
+        // pattern-matches on this exact string to pick failureKind (ISS-808).
+        // cm:guard the workspace refresh below shares this gate deliberately — it fast-forwards a git checkout, so it is as meaningless on a repo-less project as the preflight is. Splitting them would send a `website` project into `git fetch` on a folder with no remote.
+        // cm:guard the worktree branch is `ja.agent_name` and never a fallback. Core's `worktreeBranch` payload is gone; an empty name means the claim gate let an unnamed agent through, and a fallback would hide that bug behind a job quietly writing the repo root (ISS-897).
+        let owns_root = false;
+
+        let mut workspace_notice: Option<String> = None;
+        let mut worktree_start_point: Option<String> = None;
+        if requires_preflight(&ja.job_type, resolved.kind.as_deref()) {
+            let measured = match measure(
                 &resolved.repo_path,
                 resolved.base_branch.as_deref(),
                 owns_root,
             )
             .await
             {
-                Ok((f, g)) => {
-                    findings = f;
-                    git_state = g;
-                }
+                Ok(m) => Ok(m),
+                // cm:guard re-provision, then MEASURE again — never trust the provision status. It reports `ready` from the runner's own view of a sweep that may have hit `needs_manual_setup` for a reason no re-run changes (an occupied folder, no repo URL), and a job that proceeded on that word would run in the same broken tree it just failed on.
+                Err(err) if is_reprovisionable(&err) => match resolved.runner_id.as_deref() {
+                    Some(runner_id) => {
+                        tracing::warn!(
+                            "[job {job_id}] {err} — re-provisioning the workspace before giving up"
+                        );
+                        provision::reprovision(client, cfg, runner_id).await;
+                        measure(
+                            &resolved.repo_path,
+                            resolved.base_branch.as_deref(),
+                            owns_root,
+                        )
+                        .await
+                    }
+                    None => Err(err),
+                },
+                Err(err) => Err(err),
+            };
+            let (mut findings, mut git_state) = match measured {
+                Ok(m) => m,
                 Err(err) => {
                     let msg = format!("preflight_failed: {err}");
-                    tracing::error!("[job {job_id}] after setup agent: {msg}");
+                    tracing::error!("[job {job_id}] {msg}");
                     let _ = lifecycle::fail(client, &job_id, &msg).await;
                     return Ok(());
                 }
+            };
+            tracing::info!("[job {job_id}] {}", refresh::describe(&git_state));
+
+            // cm:guard when the workspace is wrong the job now RUNS anyway, so this repair-then-notice pair is the only mitigation left — drop it and a stage silently judges current code against an old checkout, which is the defect refresh.rs exists for. This lane used to fail the job with `preflight_failed: workspace_refresh`; a retry cannot check out a branch, so one wrong branch on ubuntu5 (anhome, 2026-08-15) became 4 identical 7-second failures over 8h, a box quarantine and a held job.
+            let mut setup_summary: Option<String> = None;
+            if !findings.is_empty() {
+                let outcome = setup_agent::run(
+                    &resolved.repo_path,
+                    &findings,
+                    git_state.base_branch.as_deref(),
+                    resolved.workspace_setup.as_deref(),
+                )
+                .await;
+                tracing::info!(
+                    "[job {job_id}] setup agent ok={} — {}",
+                    outcome.ok,
+                    outcome.summary.lines().next().unwrap_or("")
+                );
+                setup_summary = Some(outcome.summary);
+                // Re-measure rather than believe the summary. A setup agent that
+                // broke the checkout must fail the job here, not hand a stage a tree
+                // that no longer has a work tree.
+                match measure(
+                    &resolved.repo_path,
+                    resolved.base_branch.as_deref(),
+                    owns_root,
+                )
+                .await
+                {
+                    Ok((f, g)) => {
+                        findings = f;
+                        git_state = g;
+                    }
+                    Err(err) => {
+                        let msg = format!("preflight_failed: {err}");
+                        tracing::error!("[job {job_id}] after setup agent: {msg}");
+                        let _ = lifecycle::fail(client, &job_id, &msg).await;
+                        return Ok(());
+                    }
+                }
             }
+
+            // cm:guard the foreign-work branch wins over the worktree warning, and it fires whether or not this lane owns the root. Suppressing the finding without saying anything leaves a stage reading a tree it cannot explain; the point is to move the fact from a repair queue to a sentence, not to delete it.
+            let root_warning = if git_state.foreign_work {
+                Some(foreign_work_text(
+                    git_state.detail.as_deref().unwrap_or("uncommitted changes"),
+                ))
+            } else {
+                (!owns_root && !git_state.refreshed).then(|| {
+                    root_warning_text(
+                        &refresh::describe(&git_state),
+                        git_state.base_branch.as_deref(),
+                    )
+                })
+            };
+            if !findings.is_empty() || root_warning.is_some() || setup_summary.is_some() {
+                workspace_notice = Some(workspace_notice_text(
+                    &findings,
+                    root_warning.as_deref(),
+                    setup_summary.as_deref(),
+                    git_state.base_branch.as_deref(),
+                ));
+            }
+            worktree_start_point = start_point_for(&git_state);
         }
 
-        // cm:guard the foreign-work branch wins over the worktree warning, and it fires whether or not this lane owns the root. Suppressing the finding without saying anything leaves a stage reading a tree it cannot explain; the point is to move the fact from a repair queue to a sentence, not to delete it.
-        let root_warning = if git_state.foreign_work {
-            Some(foreign_work_text(
-                git_state.detail.as_deref().unwrap_or("uncommitted changes"),
-            ))
-        } else {
-            (!owns_root && !git_state.refreshed).then(|| {
-                root_warning_text(
-                    &refresh::describe(&git_state),
-                    git_state.base_branch.as_deref(),
-                )
-            })
+        // cm:guard the worktree is created HERE, under the root lock, and moved out of `ClaudeCodeRunner::start` to get it there (ISS-920). `git worktree add` writes the root's `.git`, so two jobs on one root doing it at once write one index — that is the whole reason this lock exists. Moving it back into `start` re-nests the lock around the permit wait.
+        // cm:guard the message stays `failed to start job:` and must not become `preflight_failed:`. `classifyBoxFault` keys the quarantine streak on that prefix, so three bad agent names in a row would take the box off the project for an hour (`runners/quarantine.ts`, streak 3).
+        let effective_repo = match worktree::create(
+            &resolved.repo_path.to_string_lossy(),
+            &ja.agent_name,
+            worktree_start_point.as_deref(),
+        )
+        .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                let msg = format!("failed to start job: {e}");
+                tracing::error!("[job {job_id}] {msg}");
+                let _ = lifecycle::fail(client, &job_id, &msg).await;
+                return Ok(());
+            }
         };
-        if !findings.is_empty() || root_warning.is_some() || setup_summary.is_some() {
-            workspace_notice = Some(workspace_notice_text(
-                &findings,
-                root_warning.as_deref(),
-                setup_summary.as_deref(),
-                git_state.base_branch.as_deref(),
-            ));
-        }
-        worktree_start_point = start_point_for(&git_state);
-    }
+        (effective_repo, workspace_notice)
+    };
 
     // ISS-449 (Decision B): explicit claim ack once preflight passes.
     // Best-effort — the server falls back to treating the first job_event as
@@ -572,7 +599,7 @@ pub async fn handle(
         project_slug: Some(slug.clone()),
         issue_id: ja.issue_id.clone(),
         step: ja.job_type.clone(),
-        repo_path: resolved.repo_path.clone(),
+        repo_path: effective_repo,
         prompt,
         system_prompt: ja.system_prompt.clone(),
         model: ja.model.clone(),
@@ -581,8 +608,6 @@ pub async fn handle(
         permission_mode: ja.permission_mode.clone(),
         timeout_seconds: ja.timeout_seconds,
         mcp_servers_override: ja.mcp_servers_override.clone(),
-        worktree_branch,
-        worktree_start_point,
         // cm:guard OPT-IN, and the default direction is the whole safety of it: only the literal `"duplex"` flips a job, so a project that never set `pipelineConfig.sessionMode`, a core that does not send the field, and a value nobody recognises all stay print. The fleet-wide default flip is phase 5 and is bounded by a measured release, not by this line.
         duplex: ja.session_mode.as_deref() == Some("duplex"),
         counts_against_session_cap: true,
@@ -592,14 +617,10 @@ pub async fn handle(
         pat_token: ja.pat_token.clone(),
     };
 
-    // cm:guard the session heartbeat loop in `consume` starts only after the process spawns, and `runner.start` can block for minutes before that — a duplex job waits on the session semaphore while parked `awaiting_input` sessions hold every permit, and `worktree::create` on a large repo is not instant. Core reaps a silent session at 3 minutes: sidpeak release job 483387d4 (2026-09-03) waited 4.5 min for a permit after ack, was killed as `session_lost` and answered the kill probe `not_found`. Beat from ack until `start` returns, or the wait is indistinguishable from a dead runner.
+    // cm:guard beat from ack until `start` returns, or the wait reads as a dead runner. `consume`'s own heartbeat starts only after the process spawns, and `start` still blocks for up to `SESSION_PERMIT_WAIT` on the session semaphore; core reaps a silent session at 3 minutes (job 483387d4, 2026-09-03, killed `session_lost` 4.5 min into a permit wait).
     let (tx, rx) = mpsc::channel::<RunnerEvent>(200);
     let started = runner.start(spec, tx).await;
     drop(pre_spawn_beat);
-    // cm:guard release only for a lane that got its own worktree. `start` returning means the tree exists and the process is spawned, so this job's writes have left the root — but a stage with no `worktreeBranch` (`pm`, `interactive`) runs its whole session IN the root, and handing the root to a second job underneath it rewrites files the agent is reading.
-    if !owns_root {
-        drop(repo_guard);
-    }
     if let Err(e) = started {
         let msg = format!("failed to start job: {e}");
         tracing::error!("[job {job_id}] {msg}");
