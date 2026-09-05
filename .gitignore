@@ -48,6 +48,14 @@ __pycache__
 !.claude/rules/
 .claude/rules/*
 !.claude/rules/*.md
+# `forge-master` is the ONE skill the runner binary embeds with `include_str!`, so it is source,
+# not local config: untracked, the runner does not build from a clean clone. Only this skill is
+# un-ignored — opening all of `.claude/skills/` would commit every skill a box happens to install.
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/forge-master/
+.claude/skills/forge-master/*
+!.claude/skills/forge-master/*.md
 
 # IDE
 .idea

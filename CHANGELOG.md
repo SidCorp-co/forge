@@ -1372,6 +1372,18 @@
 
 ### Changed
 
+- **A master now belongs to a project, not to a box, and stands in that project's checkout.** The
+  daemon asked core for one box-wide pool and started a single master for all of it, in a directory
+  of its own. It now asks `/me/runners` which projects this device serves — core, not `config.toml`,
+  because the two disagree in practice — reads each project's pool separately, and starts at most one
+  master per project, in that project's own checkout on its base branch, told which project it is and
+  which branch its agents cut from. Projects no longer queue behind each other. The `forge-master`
+  skill drops two claims that stopped being true: that a master starts subagents itself (the daemon
+  starts the job as part of the claim) and that a dying master parks the jobs it holds (since
+  `fd1265751` a claim ends its own hold, so a master that stops parks nothing). A box-level ceiling on
+  total claude processes is still owed — `duplex_max_sessions` bounds duplex pipeline jobs alone, and
+  a master takes no permit.
+
 - **A box now takes its own work; nothing pushes it.** Core keeps jobs `queued` and offers them at
   `GET /api/devices/me/pool`; the runner daemon polls that every 30 seconds and, whenever anything is
   claimable, spawns one master — a Claude session running the `forge-master` skill — which decides

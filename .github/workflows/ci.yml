@@ -241,6 +241,10 @@ jobs:
               - '.github/workflows/ci.yml'
             runner:
               - 'packages/runner/**'
+              # daemon/master.rs embeds this file with include_str!, so editing the master's
+              # process changes the binary. Without this line a skill-only PR skips the runner
+              # job, and a skipped job passes ci-passed — the change ships unbuilt and untested.
+              - '.claude/skills/forge-master/SKILL.md'
               - '.github/workflows/ci.yml'
             docs:
               - 'docs/**'
