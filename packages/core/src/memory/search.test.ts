@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 // DATABASE_URL; the RRF tests are pure and never touch it.
 vi.mock('../db/client.js', () => ({ db: {} }));
 
-const { reciprocalRankFusion, deriveMemoryStaleness } = await import('./search.js');
+const { reciprocalRankFusion, deriveMemoryStaleness, HYBRID_ALPHA } = await import('./search.js');
 type MemoryHit = import('./search.js').MemoryHit;
 
 function hit(id: string, score: number): MemoryHit {
@@ -89,5 +89,34 @@ describe('deriveMemoryStaleness', () => {
     expect(deriveMemoryStaleness({ staleSince: '2026-07-01', supersededBy: 42 })).toEqual({
       stale: true,
     });
+  });
+});
+
+describe('the keyword arm survives the cut at the shipped weights (ISS-907)', () => {
+  const semanticOf = (n: number) =>
+    Array.from({ length: n }, (_, i) => hit(`s${i + 1}`, 1 - i / 100));
+  const weights = [HYBRID_ALPHA, 1 - HYBRID_ALPHA];
+
+  it('a hit ranked first by the keyword arm alone is inside the fused top 8 when the semantic arm returns 8 others', () => {
+    const fused = reciprocalRankFusion([semanticOf(8), [hit('k1', 0.9)]], weights, 8);
+    expect(fused.map((h) => h.id)).toContain('k1');
+  });
+
+  it('and inside the pool of 24 when the semantic arm returns 24 others', () => {
+    const fused = reciprocalRankFusion([semanticOf(24), [hit('k1', 0.9)]], weights, 24);
+    expect(fused.map((h) => h.id)).toContain('k1');
+  });
+
+  it('at the former 0.7/0.3 weights the same hit was cut from both — the arithmetic the constant encodes', () => {
+    expect(
+      reciprocalRankFusion([semanticOf(8), [hit('k1', 0.9)]], [0.7, 0.3], 8).map((h) => h.id),
+    ).not.toContain('k1');
+    expect(
+      reciprocalRankFusion([semanticOf(24), [hit('k1', 0.9)]], [0.7, 0.3], 24).map((h) => h.id),
+    ).not.toContain('k1');
+  });
+
+  it('the weights are equal', () => {
+    expect(HYBRID_ALPHA).toBe(0.5);
   });
 });

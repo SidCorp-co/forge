@@ -15,6 +15,8 @@ vi.mock('./llm.js', () => ({
 
 const {
   applyRerankOrder,
+  buildRerankPrompt,
+  maxTokensFor,
   parseRerankOutput,
   rerankCacheKey,
   rerankHits,
@@ -178,5 +180,31 @@ describe('rerankPoolSize', () => {
     expect(rerankPoolSize(10)).toBe(30);
     expect(rerankPoolSize(20)).toBe(50);
     expect(rerankPoolSize(1)).toBe(3);
+  });
+});
+
+describe('the candidate cap — 1,500 characters shown, not 600 (ISS-914)', () => {
+  it('cuts a 2,000-character candidate at exactly its first 1,500', () => {
+    const text = `${'a'.repeat(1499)}B${'c'.repeat(500)}`;
+    const prompt = buildRerankPrompt('q', [text]);
+    expect(prompt).toContain(`${'a'.repeat(1499)}B`);
+    expect(prompt).not.toContain(`${'a'.repeat(1499)}Bc`);
+  });
+
+  it('shows a 900-character candidate whole', () => {
+    const text = 'z'.repeat(900);
+    expect(buildRerankPrompt('q', [text])).toContain(text);
+  });
+
+  it('two hits identical through 600 characters and different after get different cache keys', () => {
+    const head = 'h'.repeat(600);
+    const a = { ...hit('a', 0.5), text: `${head} first tail` };
+    const b = { ...hit('a', 0.5), text: `${head} second tail` };
+    expect(rerankCacheKey('m', 'q', [a])).not.toBe(rerankCacheKey('m', 'q', [b]));
+  });
+
+  it('the output budget depends on the candidate count only', () => {
+    expect(maxTokensFor(8)).toBe(48);
+    expect(maxTokensFor(24)).toBe(112);
   });
 });

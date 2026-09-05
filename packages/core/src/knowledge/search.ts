@@ -2,6 +2,7 @@ import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
 import { knowledgeEntries } from '../db/schema.js';
+import { identifierTsQuery } from '../db/schema-types.js';
 
 export interface KnowledgeHit {
   id: string;
@@ -61,6 +62,7 @@ export async function keywordSearchKnowledge(
   if (!trimmed) return [];
 
   const tsQuery = sql`websearch_to_tsquery('english', ${trimmed})`;
+  const identQuery = identifierTsQuery(trimmed);
   const rows = await db
     .select({
       id: knowledgeEntries.id,
@@ -70,19 +72,27 @@ export async function keywordSearchKnowledge(
       body: knowledgeEntries.body,
       injection: knowledgeEntries.injection,
       confidence: knowledgeEntries.confidence,
-      rank: sql<number>`ts_rank(${knowledgeEntries.textSearch}, ${tsQuery})`.as('rank'),
+      rank: sql<number>`ts_rank(${knowledgeEntries.textSearch}, ${tsQuery}) + ts_rank(${knowledgeEntries.identSearch}, ${identQuery})`.as(
+        'rank',
+      ),
     })
     .from(knowledgeEntries)
-    .where(and(...baseWhere(projectId), sql`${knowledgeEntries.textSearch} @@ ${tsQuery}`))
+    .where(
+      and(
+        ...baseWhere(projectId),
+        sql`(${knowledgeEntries.textSearch} @@ ${tsQuery} OR ${knowledgeEntries.identSearch} @@ ${identQuery})`,
+      ),
+    )
     .orderBy(desc(sql`rank`))
     .limit(k);
   return rows.map((r) => ({ ...r, score: Number(r.rank) }));
 }
 
 const RRF_K = 60;
-const HYBRID_ALPHA = 0.7;
+// cm:guard equal weights for the same reason as memory/search.ts:HYBRID_ALPHA — at 0.7/0.3 a hit only the keyword arm found never survived the cut to topK (ISS-907)
+export const HYBRID_ALPHA = 0.5;
 
-function rrfFuse(lists: KnowledgeHit[][], weights: number[], limit: number): KnowledgeHit[] {
+export function rrfFuse(lists: KnowledgeHit[][], weights: number[], limit: number): KnowledgeHit[] {
   const scoreMap = new Map<string, { score: number; hit: KnowledgeHit }>();
   for (let li = 0; li < lists.length; li++) {
     const list = lists[li] ?? [];

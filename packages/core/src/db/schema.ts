@@ -19,6 +19,10 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
+
+export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
+
 import { BODY_FORMATS } from '../body/formats.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
 import type { ReleaseNotes } from '../issues/release-notes.js';
@@ -33,24 +37,6 @@ export {
   actorAgencies,
   actorTypes,
 } from './schema-activity.js';
-
-/**
- * pgvector column type. Dimension is fixed per column — the `memories.embedding`
- * column below uses `vector(1536)` per ADR 0011. Stored as a bracketed string on
- * the wire (`[0.1,0.2,...]`), deserialised to number[] by the driver.
- */
-export const pgVector = (dim: number) =>
-  customType<{ data: number[]; driverData: string }>({
-    dataType() {
-      return `vector(${dim})`;
-    },
-    toDriver(v) {
-      return `[${v.join(',')}]`;
-    },
-    fromDriver(v) {
-      return typeof v === 'string' ? (JSON.parse(v) as number[]) : (v as number[]);
-    },
-  });
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -1091,6 +1077,9 @@ export const issues = pgTable(
     releaseBatchRunId: uuid('release_batch_run_id').references(() => pipelineRuns.id, {
       onDelete: 'set null',
     }),
+    identSearch: identSearchColumn(
+      (): SQL => sql`left(${issues.title} || ' ' || coalesce(${issues.description}, ''), 100000)`,
+    ),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1106,6 +1095,7 @@ export const issues = pgTable(
     projectSourceExternalIdUq: uniqueIndex('issues_project_source_external_id_uq')
       .on(t.projectId, t.source, t.externalId)
       .where(sql`external_id IS NOT NULL`),
+    identSearchIdx: index('issues_ident_search_idx').using('gin', t.identSearch),
     releaseBatchRunIdIdx: index('issues_release_batch_run_id_idx')
       .on(t.releaseBatchRunId)
       .where(sql`release_batch_run_id IS NOT NULL`),
@@ -1547,19 +1537,6 @@ export const memorySources = [
 ] as const;
 export type MemorySource = (typeof memorySources)[number];
 
-export const MEMORY_EMBEDDING_DIM = 1536;
-
-/**
- * Postgres full-text search vector. Generated column — never written by the
- * app; Postgres derives it from `text_content`. Read via `@@` / `ts_rank` in
- * the keyword retrieval strategy (memory-v2 phase 1).
- */
-export const tsVector = customType<{ data: string; driverData: string }>({
-  dataType() {
-    return 'tsvector';
-  },
-});
-
 export const memories = pgTable(
   'memories',
   {
@@ -1594,6 +1571,7 @@ export const memories = pgTable(
     textSearch: tsVector('text_search').generatedAlwaysAs(
       (): SQL => sql`to_tsvector('english', left(${memories.textContent}, 100000))`,
     ),
+    identSearch: identSearchColumn((): SQL => sql`left(${memories.textContent}, 100000)`),
     embeddedAt: timestamp('embedded_at', { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1611,6 +1589,7 @@ export const memories = pgTable(
       sql`"embedding" vector_cosine_ops`,
     ),
     textSearchIdx: index('memories_text_search_idx').using('gin', t.textSearch),
+    identSearchIdx: index('memories_ident_search_idx').using('gin', t.identSearch),
   }),
 );
 
@@ -1718,6 +1697,9 @@ export const knowledgeEntries = pgTable(
       (): SQL =>
         sql`to_tsvector('english', left(${knowledgeEntries.title} || ' ' || ${knowledgeEntries.body}, 100000))`,
     ),
+    identSearch: identSearchColumn(
+      (): SQL => sql`left(${knowledgeEntries.title} || ' ' || ${knowledgeEntries.body}, 100000)`,
+    ),
     metadata: jsonb('metadata').notNull().default({}),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1731,6 +1713,7 @@ export const knowledgeEntries = pgTable(
       sql`"embedding" vector_cosine_ops`,
     ),
     textSearchIdx: index('knowledge_entries_text_search_idx').using('gin', t.textSearch),
+    identSearchIdx: index('knowledge_entries_ident_search_idx').using('gin', t.identSearch),
   }),
 );
 

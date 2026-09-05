@@ -14,7 +14,8 @@ import type { MemoryHit } from './search.js';
 export const RERANK_POOL_FACTOR = 3;
 export const RERANK_POOL_CAP = 50;
 export const RERANK_HOLDOUT_ONE_IN = 5;
-const CANDIDATE_CHARS = 600;
+// cm:guard 1,500, not 600 — a chunk passage runs to ~1,400 characters and the model ranks what it is shown; at 600 it judged passages by their opening and demoted the exact hit on 8–13 of 40 tail-fact questions per project, at 1,500 on 2–8 (six live corpora, 2026-09-05, ISS-914). A pool of 24 is ~36k characters of prompt, which the fast model in use accepts; a model that cannot is a model-choice decision, never a reason to lower this silently. `maxTokensFor` depends on the candidate count only and is untouched
+const CANDIDATE_CHARS = 1500;
 const CACHE_TTL_MS = 5 * 60_000;
 const CACHE_MAX = 500;
 
@@ -129,7 +130,7 @@ export function resetRerankCache(): void {
   cache.clear();
 }
 
-function maxTokensFor(count: number): number {
+export function maxTokensFor(count: number): number {
   return Math.max(32, count * 4 + 16);
 }
 

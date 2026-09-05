@@ -12,6 +12,7 @@ import {
   jobs,
   usageRecords,
 } from '../db/schema.js';
+import { identifierTsQuery } from '../db/schema-types.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -194,6 +195,7 @@ searchRoutes.get(
         or(
           sql`${issues.title} ILIKE ${pattern} ESCAPE '\\'`,
           sql`${issues.description} ILIKE ${pattern} ESCAPE '\\'`,
+          sql`${issues.identSearch} @@ ${identifierTsQuery(q.q)}`,
         )!,
       );
     }
