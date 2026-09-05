@@ -265,8 +265,7 @@ describe('db/schema — jobs', () => {
     expect(byCol.get('retry_of')?.onDelete).toBe('set null');
     expect(byCol.get('runner_id')?.onDelete).toBe('set null');
     expect(byCol.get('pipeline_run_id')?.onDelete).toBe('restrict');
-    // S1.1 — content-addressable system prompt blob.
-    expect(byCol.get('system_prompt_hash')?.reference().foreignTable).toBe(promptBlobs);
+      expect(byCol.get('system_prompt_hash')?.reference().foreignTable).toBe(promptBlobs);
   });
 
   it('status defaults to queued and enum matches jobStatuses', () => {
@@ -447,9 +446,10 @@ describe('db/schema — comments', () => {
 
 describe('db/schema — labels', () => {
   it('project_id cascades', () => {
-    const cfg = getTableConfig(labels);
-    expect(cfg.foreignKeys).toHaveLength(1);
-    expect(cfg.foreignKeys[0]?.onDelete).toBe('cascade');
+    const fk = getTableConfig(labels).foreignKeys.find((f) =>
+      f.reference().columns.some((c) => c.name === 'project_id'),
+    );
+    expect(fk?.onDelete).toBe('cascade');
   });
 
   it('has unique composite index on (project_id, name)', () => {

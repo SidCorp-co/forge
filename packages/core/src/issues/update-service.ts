@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, issues } from '../db/schema.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
+import type { ResolvedLabelAttach } from './label-service.js';
 import type { IssueRow } from './read-service.js';
 
 export type IssueUpdateInput = {
@@ -9,11 +10,11 @@ export type IssueUpdateInput = {
   /** Plain column writes, already filtered through `collectIssueFieldUpdates`. */
   updates: Record<string, unknown>;
   /**
-   * Replace-set. `undefined` leaves labels untouched; `[]` clears them. Ids
-   * only — resolve names through `label-service` BEFORE calling, so an unknown
-   * label fails outside the transaction rather than rolling one back.
+   * Replace-set. `undefined` leaves labels untouched; `[]` clears them. Resolved rows only —
+   * run them through `label-service` BEFORE calling, so an unknown label or an illegal
+   * primary fails outside the transaction rather than rolling one back.
    */
-  labelIds?: string[] | undefined;
+  labelIds?: ResolvedLabelAttach[] | undefined;
   actor: Actor;
 };
 
@@ -38,11 +39,14 @@ export async function updateIssueFields(input: IssueUpdateInput): Promise<IssueR
         .from(issueLabels)
         .where(eq(issueLabels.issueId, issueId));
       const oldSet = new Set(existing.map((r) => r.labelId));
-      const newSet = new Set(labelIds);
+      const newSet = new Set(labelIds.map((l) => l.labelId));
 
+      // cm:guard the delete and the re-insert are what make a primary swap atomic — the old primary row is gone before the new one lands, so `issue_labels_primary_uq` never sees two true rows for the issue and no caller has to clear the old designation first.
       await tx.delete(issueLabels).where(eq(issueLabels.issueId, issueId));
       if (labelIds.length > 0) {
-        await tx.insert(issueLabels).values(labelIds.map((labelId) => ({ issueId, labelId })));
+        await tx
+          .insert(issueLabels)
+          .values(labelIds.map((l) => ({ issueId, labelId: l.labelId, isPrimary: l.isPrimary })));
       }
 
       for (const labelId of [...newSet].filter((l) => !oldSet.has(l))) {

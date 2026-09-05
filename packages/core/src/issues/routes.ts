@@ -30,7 +30,12 @@ import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { AttachmentError } from './attachment-service.js';
 import { createIssue, IssueCreateError } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
-import { LabelResolutionError, resolveLabelIdsForWrite } from './label-service.js';
+import {
+  LabelResolutionError,
+  PrimaryModuleError,
+  type ResolvedLabelAttach,
+  resolveLabelIdsForWrite,
+} from './label-service.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
@@ -58,6 +63,17 @@ export {
 
 import { ReleaseNotesSchema } from './release-notes.js';
 
+// cm:guard the object arm's `labelId` accepts a NAME or a uuid, exactly as the bare string does — both arms go through `resolveLabelIdsForWrite`, so a caller can never have one value mean an id here and a name there. `isPrimary` is legal only on a `kind='module'` label; the resolver refuses the rest with PRIMARY_NOT_MODULE / MULTIPLE_PRIMARY.
+const labelAttachItemSchema = z.union([
+  z.string().trim().min(1),
+  z
+    .object({
+      labelId: z.string().trim().min(1),
+      isPrimary: z.boolean().optional(),
+    })
+    .strict(),
+]);
+
 export const issueCreateSchema = z
   .object({
     title: z.string().trim().min(1).max(500),
@@ -68,7 +84,7 @@ export const issueCreateSchema = z
     complexity: z.enum(issueComplexities).nullable().optional(),
     reportedBy: z.string().trim().min(1).max(200).nullable().optional(),
     assigneeId: z.uuid().nullable().optional(),
-    labels: z.array(z.string().trim().min(1)).max(100).optional(),
+    labels: z.array(labelAttachItemSchema).max(100).optional(),
     attachments: z.array(attachmentInputSchema).max(10).optional(),
     detectorKey: z.string().trim().min(1).max(120).optional(),
     relations: z.array(issueRelationInputSchema).max(20).optional(),
@@ -79,9 +95,6 @@ export const issueCreateSchema = z
 
 export type IssueCreateInput = z.infer<typeof issueCreateSchema>;
 
-// ISS-130 — `status` is accepted at create only for the narrow allow-list
-// {open, on_hold}; all post-creation status changes still go through the F4
-// transition endpoint (state-machine guard + activity entry).
 export const issuePatchSchema = z
   .object({
     title: z.string().trim().min(1).max(500).optional(),
@@ -93,7 +106,7 @@ export const issuePatchSchema = z
     plan: z.string().max(200_000).nullable().optional(),
     acceptanceCriteria: z.string().max(100_000).nullable().optional(),
     assigneeId: z.uuid().nullable().optional(),
-    labels: z.array(z.string().trim().min(1)).max(100).optional(),
+    labels: z.array(labelAttachItemSchema).max(100).optional(),
     metadata: issueMetadataSchema.optional(),
     releaseNotes: ReleaseNotesSchema.nullable().optional(),
     // cm:guard these two were MCP-only until the CLI needed them, and they are the reason `sessionContextSchema` is imported rather than re-declared: `sessionContext.branch` is what `pipeline/work-evidence.ts` reads as proof that work exists, so an agent that cannot write it here cannot satisfy the very evidence gate this surface now enforces. Widening it to REST also hands it to a browser session, which is deliberate — a person may edit it, and the ISS-820 verified-claim walk still applies to them.
@@ -200,6 +213,9 @@ function toHttpCreateError(err: unknown): unknown {
       cause: { code: 'INVALID_LABELS', details: { missing: err.missing } },
     });
   }
+  if (err instanceof PrimaryModuleError) {
+    return new HTTPException(400, { message: err.message, cause: { code: err.code } });
+  }
   if (err instanceof AttachmentError) {
     return new HTTPException(400, { message: err.message, cause: { code: err.code } });
   }
@@ -232,7 +248,13 @@ issueProjectRoutes.get(
     if (!issue) throw notFound('issue not found');
 
     const labelRows = await db
-      .select({ id: labels.id, name: labels.name, color: labels.color })
+      .select({
+        id: labels.id,
+        name: labels.name,
+        color: labels.color,
+        kind: labels.kind,
+        isPrimary: issueLabels.isPrimary,
+      })
       .from(issueLabels)
       .innerJoin(labels, eq(labels.id, issueLabels.labelId))
       .where(eq(issueLabels.issueId, issue.id));
@@ -369,7 +391,13 @@ issueRoutes.get(
     if (!access.role) throw forbidden('not a project member');
 
     const labelRows = await db
-      .select({ id: labels.id, name: labels.name, color: labels.color })
+      .select({
+        id: labels.id,
+        name: labels.name,
+        color: labels.color,
+        kind: labels.kind,
+        isPrimary: issueLabels.isPrimary,
+      })
       .from(issueLabels)
       .innerJoin(labels, eq(labels.id, issueLabels.labelId))
       .where(eq(issueLabels.issueId, id));
@@ -464,7 +492,7 @@ issueRoutes.patch(
 
     if (patch.assigneeId) await assertAssigneeIsMember(issue.projectId, patch.assigneeId);
     // cm:guard `undefined` means "no change" and `[]` means "clear every label" — collapsing the two makes an unrelated PATCH silently wipe the issue's labels
-    let resolvedLabelIds: string[] | undefined;
+    let resolvedLabelIds: ResolvedLabelAttach[] | undefined;
     if (patch.labels !== undefined) {
       try {
         resolvedLabelIds = await resolveLabelIdsForWrite(issue.projectId, patch.labels);

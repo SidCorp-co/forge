@@ -30,7 +30,11 @@ import {
 } from './attachment-service.js';
 import { claimDetectorKey, isValidDetectorKey } from './detector-key.js';
 import { applyIntakeGate, finalizeIntake } from './intake-gate.js';
-import { resolveLabelIdsForWrite } from './label-service.js';
+import {
+  type LabelAttachInput,
+  type ResolvedLabelAttach,
+  resolveLabelIdsForWrite,
+} from './label-service.js';
 import {
   type AppliedIssueRelation,
   flushIssueRelationEffects,
@@ -72,7 +76,7 @@ export type CreateIssueInput = {
   reportedBy?: string | null | undefined;
   assigneeId?: string | null | undefined;
   status?: string | undefined;
-  labels?: readonly string[] | undefined;
+  labels?: readonly LabelAttachInput[] | undefined;
   attachments?: readonly Base64AttachmentInput[] | undefined;
   detectorKey?: string | null | undefined;
   relations?: readonly IssueRelationInput[] | undefined;
@@ -109,7 +113,7 @@ export type CreateIssueResult =
   | {
       deduped: false;
       issue: IssueCreateRow;
-      labelIds: string[];
+      labelIds: ResolvedLabelAttach[];
       relations: AppliedIssueRelation[];
       attachments: PersistedIssueAttachment[];
       attachmentErrors: AttachmentErrorEntry[];
@@ -200,9 +204,13 @@ export async function createIssue(
     if (!inserted) throw new Error('issues: insert returned no row');
 
     if (labelIds.length > 0) {
-      await tx
-        .insert(issueLabels)
-        .values(labelIds.map((labelId) => ({ issueId: inserted.id, labelId })));
+      await tx.insert(issueLabels).values(
+        labelIds.map((l) => ({
+          issueId: inserted.id,
+          labelId: l.labelId,
+          isPrimary: l.isPrimary,
+        })),
+      );
     }
     const pendingRelations = await writeIssueRelations(
       { actor: writer.actor, createdById: writer.createdById },
@@ -252,7 +260,7 @@ export async function createIssue(
       category: created.category,
       reportedBy: created.reportedBy,
       assigneeId: created.assigneeId,
-      labels: labelIds,
+      labels: labelIds.map((l) => l.labelId),
     },
   });
 

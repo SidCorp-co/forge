@@ -1457,6 +1457,13 @@
       "when": 1791504000000,
       "tag": "0209_drop_staged_lane",
       "breakpoints": true
+    },
+    {
+      "idx": 210,
+      "version": "7",
+      "when": 1791590400000,
+      "tag": "0210_module_taxonomy",
+      "breakpoints": true
     }
   ]
 }

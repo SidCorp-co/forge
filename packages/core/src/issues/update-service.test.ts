@@ -48,6 +48,8 @@ vi.mock('../pipeline/activity.js', () => ({
 const { IssueUpdateNotFound, updateIssueFields } = await import('./update-service.js');
 
 const ISSUE_ID = '11111111-1111-4111-8111-111111111111';
+/** A non-primary attach — this suite is about the activity delta, not the primary module. */
+const attach = (labelId: string) => ({ labelId, isPrimary: false });
 const ACTOR = {
   type: 'device' as const,
   id: '22222222-2222-4222-8222-222222222222',
@@ -116,7 +118,7 @@ describe('updateIssueFields', () => {
     await updateIssueFields({
       issueId: ISSUE_ID,
       updates: {},
-      labelIds: ['KEEP', 'NEW'],
+      labelIds: [attach('KEEP'), attach('NEW')],
       actor: ACTOR,
     });
 
@@ -133,7 +135,12 @@ describe('updateIssueFields', () => {
   it('reads the existing label set with no row cap', async () => {
     existingLabels = [{ labelId: 'KEEP' }];
 
-    await updateIssueFields({ issueId: ISSUE_ID, updates: {}, labelIds: ['KEEP'], actor: ACTOR });
+    await updateIssueFields({
+      issueId: ISSUE_ID,
+      updates: {},
+      labelIds: [attach('KEEP')],
+      actor: ACTOR,
+    });
 
     expect(
       txSelectLimit,

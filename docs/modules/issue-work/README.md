@@ -23,7 +23,7 @@ flowchart LR
 |---|---|
 | The issue row and its write path | `core/src/issues/`, `schema.ts:issues` |
 | Discussion and audit trail | `core/src/comments/`, `schema.ts:activityLog` |
-| Labels | `core/src/labels/`, `schema.ts:labels` |
+| Labels and modules | `core/src/labels/`, `schema.ts:labels` |
 | Relations between issues | `schema.ts:issueDependencies`, `schema.ts:issueDependencyKinds` |
 | Human sub-work under an issue | `core/src/tasks/`, `schema.ts:tasks` |
 | Inbound creation from outside | `core/src/webhooks/`, `core/src/mcp/tools/` |
@@ -38,9 +38,16 @@ flowchart LR
 | `issues.category` | free text — no closed set |
 | `issues.reportedBy` | set by webhook/MCP imports; `NULL` when `createdById` already names the actor |
 | `schema.ts:issueDependencyKinds` | `blocks` · `relates` · `duplicates` · `parent` · `decomposes` |
+| `schema.ts:labelKinds` | `label` · `module` — a module IS a label, told apart only by this column |
 
 ## Guards
 
+- **An issue's primary module is `issue_labels.is_primary`, and nothing else.** No column on
+  `issues`, no second table; a client reads the issue's `labels[]` and picks the entry flagged
+  `isPrimary`. At most one per issue, held by `issue_labels_primary_uq` and by
+  `resolveLabelIdsForWrite`, which also refuses a primary that is not `kind='module'` — SQL cannot
+  see `labels.kind` from a junction row, so that half has no database backstop. Drawn in
+  [`docs/flows/issue-work-module-attribution.html`](../../flows/issue-work-module-attribution.html).
 - **Only `kind='blocks'` gates dispatch.** An edge `(from=A, to=B, 'blocks')` means A must reach a
   terminal status before B may dispatch, and cross-project edges are legal. Every other kind —
   `relates`, `duplicates`, `parent`, `decomposes` — is metadata a dispatch path must never read. The
