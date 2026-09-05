@@ -262,6 +262,18 @@ async fn sweep(client: &CoreClient, cfg: &Config, masters: &Arc<Masters>) -> Dur
         }
         supervise(client, masters, &runner.project_id, &runner.slug).await;
 
+        let items = match pool::pool(client, 20, Some(&runner.project_id)).await {
+            Ok(items) => items,
+            Err(e) => {
+                tracing::warn!("[master] pool unreadable for {}: {e}", runner.slug);
+                continue;
+            }
+        };
+        // cm:guard an EMPTY pool starts no master, and that bound survives residency. A resident session is a `claude` process that lives until something ends it, and nothing counts it — `duplex_max_sessions` covers duplex pipeline jobs alone, so a box serving six projects would carry six permanent processes for however many of them never have work. A master that already exists is kept and still supervised; residency is for a project doing something, not for every row `/me/runners` returns.
+        if items.is_empty() && masters.get(&runner.project_id).is_none() {
+            continue;
+        }
+
         let resolved = match resolve_repo(&served, cfg, &runner.project_id) {
             Ok(r) => r,
             Err(slug) => {
@@ -278,13 +290,6 @@ async fn sweep(client: &CoreClient, cfg: &Config, masters: &Arc<Masters>) -> Dur
             continue;
         };
 
-        let items = match pool::pool(client, 20, Some(&runner.project_id)).await {
-            Ok(items) => items,
-            Err(e) => {
-                tracing::warn!("[master] pool unreadable for {}: {e}", runner.slug);
-                continue;
-            }
-        };
         if items.is_empty() {
             continue;
         }

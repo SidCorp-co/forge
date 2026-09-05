@@ -60,7 +60,14 @@ export async function ensureMasterSession(args: {
       ),
     )
     .limit(1);
-  if (live) return { sessionId: live.id, name: args.name, created: false };
+  if (live) {
+    // cm:guard the reuse path MUST bump the heartbeat, and this is the only thing that does. The runner re-registers every sweep precisely so a living master keeps beating; without this write `reapDeadMasterHolds` releases a healthy master's holds after three minutes of it working perfectly, and the master then starts a second agent on work core has already offered to somebody else.
+    await db
+      .update(agentSessions)
+      .set({ lastHeartbeatAt: new Date(), updatedAt: new Date() })
+      .where(eq(agentSessions.id, live.id));
+    return { sessionId: live.id, name: args.name, created: false };
+  }
 
   const run = await openOneShotRun({
     projectId: args.projectId,

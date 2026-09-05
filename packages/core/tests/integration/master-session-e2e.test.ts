@@ -269,6 +269,36 @@ describe('the master session', () => {
     expect(await mods.reapDeadMasterHolds()).toBe(1);
   });
 
+  // cm:guard THE regression this test exists for: re-registration is the ONLY thing that bumps a resident master's heartbeat, because the runner calls it every sweep for exactly that reason. Without the bump a master that is working perfectly goes silent to core after three minutes, `reapDeadMasterHolds` takes its holds, and the next master starts a second agent on work this one is already holding. It went red here before the write landed.
+  it('bumps the heartbeat when the runner re-registers, so a working master keeps its holds', async () => {
+    const { device, project, job } = await seed();
+    const master = await mods.ensureMasterSession({
+      deviceId: device.id,
+      projectId: project.id,
+      name: 'forge-master-p',
+    });
+    await mods.prepareJobForMaster({
+      jobId: job,
+      deviceId: device.id,
+      sessionId: master.sessionId,
+    });
+    await harness.db.execute(sql`
+      UPDATE jobs SET held_at = now() - interval '10 minutes' WHERE id = ${job}
+    `);
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET last_heartbeat_at = now() - interval '10 minutes'
+      WHERE id = ${master.sessionId}
+    `);
+
+    const again = await mods.ensureMasterSession({
+      deviceId: device.id,
+      projectId: project.id,
+      name: 'forge-master-p',
+    });
+    expect(again.sessionId).toBe(master.sessionId);
+    expect(await mods.reapDeadMasterHolds()).toBe(0);
+  });
+
   // cm:guard every paired runner in the fleet holds a valid device token, so a close that did not check ownership would let one box terminate another box's master and take its work.
   it('refuses to close a master session belonging to another device', async () => {
     const { device, project } = await seed();
