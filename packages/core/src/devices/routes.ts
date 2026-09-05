@@ -23,7 +23,6 @@ import { assertOrgAccess, assertProjectRole, loadProjectAccess } from '../lib/au
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { readPluginDesignations, unionPluginDesignations } from '../plugins/designation.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
@@ -254,13 +253,12 @@ deviceOwnerRoutes.patch(
   },
 );
 
-// Soft revoke — sets status='revoked' (preserves history; auth middleware
-// already rejects revoked tokens) and removes every runner row bound to this
-// device so the dispatcher stops considering it. ISS-172 Slice A unified the
-// project_devices pool into `runners`, so this is the only cleanup needed.
+// cm:why soft revoke, not a delete — the row is history, and the auth middleware already rejects a revoked token, so nothing is gained by losing the record of a box that once ran jobs
+// cm:why dropping the `runners` rows is the ONLY pool cleanup owed: ISS-172 Slice A folded `project_devices` into `runners`, so there is no second table to sweep
+// cm:guard deliberately NOT behind `requireFreshAuth` — that gate stamps `users.last_fresh_auth_at`, and `POST /api/auth/reauth` refuses any account whose `passwordHash` is NULL, which is every OAuth-only owner. It therefore did not slow those owners down, it made revoking impossible for them: measured 2026-09-05, a GitHub-authed owner could not delete six retired hosts by any sequence of clicks. Ownership below is the authorization; the confirmation that the right box is being revoked belongs in the UI, which types the device name back.
+// cm:edge contract -> packages/web-v2/src/features/runners/components/revoke-device-control.tsx — that control is the whole confirmation step now, so a guard re-added here must first have a path an OAuth-only owner can actually complete.
 deviceOwnerRoutes.delete(
   '/devices/:id',
-  requireFreshAuth(5),
   zValidator('param', deviceIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),

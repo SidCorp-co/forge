@@ -720,19 +720,22 @@
 
 ### Fixed
 
-- **Revoking a device could not be done from the app at all.** `DELETE /api/devices/:id` sits behind
-  `requireFreshAuth(5)`, so a revoke by anyone signed in more than five minutes ago answers 403
-  `FRESH_AUTH_REQUIRED` — and the Runners screen reported that as a plain failure, then pointed the
-  operator at a banner saying to "re-authenticate in Settings and try again". Settings has no
-  standalone re-auth action: the only thing that stamps `last_fresh_auth_at` is starting an API-token
-  creation and being refused first. So the advice led nowhere, and no sequence of clicks in the app
-  could revoke a device. Found while trying to delete six retired runner hosts.
+- **Revoking a device was impossible for an OAuth-only owner.** `DELETE /api/devices/:id` sat behind
+  `requireFreshAuth(5)`, and the only thing that stamps `last_fresh_auth_at` is
+  `POST /api/auth/reauth` — which refuses any account whose `passwordHash` is NULL. So for every
+  owner signed in through GitHub the gate did not add a step, it removed the action: no sequence of
+  clicks in the app could revoke a device, and the Runners screen answered the 403 with a banner
+  pointing at a Settings tab that has no standalone re-auth control. Found by a GitHub-authed owner
+  trying to delete six retired runner hosts.
 
-  The revoke control now owns the second step itself — confirm → password → `POST /api/auth/reauth`
-  → retry the same revoke — mirroring what the tokens tab already did. `isFreshAuthError` moves out
-  of that tab into `features/auth/fresh-auth.ts` so both surfaces share one definition rather than a
-  copy, and `useRevokeDevice` stays silent on that 403 instead of toasting a failure next to the
-  prompt that is in fact the next move. The misleading banner is deleted rather than reworded.
+  The gate is removed from that route — ownership was always the authorization — and the
+  confirmation moves to where it belongs: the Revoke control now asks for the device's name typed
+  back, exactly, before it will fire. The match is deliberately strict (no lowercasing, no prefix,
+  no trimming beyond the ends) because two hosts in this fleet are called `ubuntu6` and
+  `ubuntu6 (barlow)`. This trades a stolen-session guard for one against a misclick; the route's
+  `cm:guard` records that trade and what re-adding a gate would first have to solve. The misleading
+  banner is deleted rather than reworded. `requireFreshAuth` still gates PAT create/revoke, where an
+  SSO re-auth path exists.
 
 - Keyboard focus is visible again on the selected segment of every SegmentedControl and on the
   project cards in the Projects console (ISS-843). Both painted an elevation `shadow-*`, and in

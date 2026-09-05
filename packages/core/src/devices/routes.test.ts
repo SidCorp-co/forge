@@ -552,17 +552,14 @@ describe('DELETE /api/devices/:id (soft revoke + pool cleanup)', () => {
     expect(res.status).toBe(404);
   });
 
-  it('403 FRESH_AUTH_REQUIRED when fresh-auth gate rejects', async () => {
-    const { HTTPException } = await import('hono/http-exception');
-    freshAuthHandler.mockImplementationOnce(async () => {
-      throw new HTTPException(403, {
-        message: 'fresh authentication required',
-        cause: { code: 'FRESH_AUTH_REQUIRED' },
-      });
-    });
+  // cm:guard the revoke must NOT sit behind a fresh-auth stamp: `POST /api/auth/reauth` refuses every account whose `passwordHash` is NULL, so an OAuth-only owner could never earn one and revoking was impossible for them by any sequence of clicks. Re-adding the gate reddens this; ownership is the authorization.
+  it('revokes for an owner who could never satisfy a fresh-auth stamp', async () => {
+    selectLimit.mockResolvedValueOnce([{ ownerId: 'u-1', status: 'online' }]);
+    freshAuthHandler.mockClear();
     const app = buildApp();
     const res = await app.fetch(req(`/api/devices/${ID}`, { method: 'DELETE', token: 'user-jwt' }));
-    expect(res.status).toBe(403);
-    expect(dbTransaction).not.toHaveBeenCalled();
+    expect(res.status).toBe(204);
+    expect(dbTransaction).toHaveBeenCalled();
+    expect(freshAuthHandler).not.toHaveBeenCalled();
   });
 });
