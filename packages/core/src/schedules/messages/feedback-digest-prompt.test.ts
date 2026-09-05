@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildFeedbackDigestPrompt,
+  DIGEST_DETECTOR_KEY,
   FEEDBACK_LIST_LIMIT,
   MAX_CLUSTERS_PER_DIGEST,
   MAX_DIGEST_ISSUES_PER_RUN,
@@ -19,6 +20,14 @@ describe('feedback-digest constants', () => {
 
   it('FEEDBACK_LIST_LIMIT is 200', () => {
     expect(FEEDBACK_LIST_LIMIT).toBe(200);
+  });
+
+  it('DIGEST_DETECTOR_KEY is the fixed fleet-backlog key', () => {
+    expect(DIGEST_DETECTOR_KEY).toBe('feedback-digest/fleet-backlog');
+  });
+
+  it('DIGEST_DETECTOR_KEY carries no date or window, so it cannot drift per run', () => {
+    expect(DIGEST_DETECTOR_KEY).not.toMatch(/\d/);
   });
 });
 
@@ -65,6 +74,27 @@ describe('buildFeedbackDigestPrompt', () => {
 
   it('prohibits forge_feedback action=review', () => {
     expect(prompt).toContain('NEVER call `forge_feedback action=review`');
+  });
+
+  it('puts the detectorKey inside the create call the agent copies, not merely in the prose', () => {
+    const open = prompt.indexOf('forge_issues.create({');
+    expect(open).toBeGreaterThan(-1);
+    const createBlock = prompt.slice(open, prompt.indexOf('})', open));
+    expect(createBlock).toContain(`detectorKey: "${DIGEST_DETECTOR_KEY}"`);
+  });
+
+  it('tells the agent to comment on the existing issue when the create is deduped', () => {
+    expect(prompt).toContain('deduped:true');
+    expect(prompt).toContain('existingIssueId');
+    expect(prompt).toContain('forge_comments action=create');
+  });
+
+  it('forbids minting a variant key to dodge the dedupe', () => {
+    expect(prompt.toLowerCase()).toContain('do not mint a variant key');
+  });
+
+  it('no longer carries the prose dedupe rule the detectorKey replaced', () => {
+    expect(prompt).not.toContain('overlapping report set');
   });
 
   it('prohibits filing at status=open', () => {

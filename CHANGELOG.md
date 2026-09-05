@@ -633,6 +633,12 @@
 
 ### Fixed
 
+- The fleet feedback digest no longer files a near-duplicate issue every week. Its create call now
+  carries a fixed `detectorKey`, so the kernel keeps at most one open digest and later runs comment
+  on it instead of filing again. It had been deduping by asking the agent to read the backlog for an
+  overlapping window first — the same prose rule that produced 7 near-identical drafts on the daily
+  sweep, and the first real digest run filed with no key at all.
+
 - A scheduled run that died mid-flight recorded a disposition it never got, and its lost window
   went unreported (ISS-875). The failure classifier's reason is a class *and* a predicted
   disposition — `usage/session limit → cross-device failover` — and the schedule path stamped both

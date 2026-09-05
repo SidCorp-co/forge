@@ -26,6 +26,10 @@ export const MAX_CLUSTERS_PER_DIGEST = 10;
 /** `limit` passed to `forge_feedback list` when pulling the fleet backlog. */
 export const FEEDBACK_LIST_LIMIT = 200;
 
+/** `detectorKey` every digest issue carries, so the kernel keeps at most one open. */
+// cm:guard this string is the dedupe identity and must never change or be varied per run — the kernel guarantees at most one non-closed issue per (project, detectorKey), and a key that drifts by date or window silently turns that guarantee off. Prose dedupe was tried here first and measurably failed on the same schedule family: Dream's own prompt records 7 near-identical CHANGELOG drafts between 2026-07-15 and 2026-08-04, and this builder repeated the mistake — its first real run on 2026-09-05 filed a digest with `detector_key: null`.
+export const DIGEST_DETECTOR_KEY = 'feedback-digest/fleet-backlog';
+
 // ── Prompt builder ────────────────────────────────────────────────────────────
 
 /**
@@ -74,12 +78,29 @@ If there is at least one unreviewed report, create exactly ONE draft issue via \
 forge_issues.create({
   projectId: "${projectId}",
   status: "draft",            // ALWAYS draft — never open
+  detectorKey: "${DIGEST_DETECTOR_KEY}",
   title: "Fleet feedback digest: <N unreviewed across M projects>",
   description: <see format below>,
   category: "feedback-digest",
   priority: "low",
 })
 \`\`\`
+
+### The create may come back deduped — that is the normal path, not an error
+
+\`detectorKey\` makes the kernel guarantee **at most one non-closed digest issue** on this project.
+Once a digest is already open, your create writes nothing and returns
+\`{deduped:true, existingIssueId, existingIssueDisplayId}\`.
+
+**That is your signal to comment on \`existingIssueId\` instead** (\`forge_comments action=create\`),
+with this run's counts and any cluster that is new or has grown since the last comment. The standing
+digest issue is a living rollup: one issue, one comment per run, closed by a human when the backlog
+is triaged.
+
+Do NOT mint a variant key, add a date to the key, or file under a different category to get a fresh
+issue. A later week's backlog is the SAME finding with new numbers — that is exactly what a comment
+is for. Prose dedupe was tried on this schedule family and failed: it produced 7 near-identical
+drafts in three weeks.
 
 **Draft issue description format:**
 
@@ -105,7 +126,7 @@ If ZERO unreviewed reports are found, do NOT create an issue — output that exp
 - List at most **${MAX_CLUSTERS_PER_DIGEST} clusters** in the digest body — note any overflow rather than silently dropping it.
 - NEVER call \`forge_feedback action=review\` yourself. Propose only — a human decides what's addressed.
 - NEVER create the digest issue at \`status="open"\` — that auto-triages and burns a pipeline run for what is only a summary.
-- Skip filing if an existing open/draft digest issue already covers the same reporting window (check forge-dev for a recent \`feedback-digest\` category issue with an overlapping report set before creating a duplicate).
+- ALWAYS pass \`detectorKey: "${DIGEST_DETECTOR_KEY}"\`. The kernel is what stops duplicates; a create without the key files a second digest however carefully you read the backlog first.
 
 ---
 
@@ -115,7 +136,7 @@ Output a brief summary of what you found and did:
 
 - How many unreviewed reports were scanned (and whether the response was truncated)
 - How many clusters identified (by target/severity)
-- Whether a draft issue was created (and its id/title), or why not (zero backlog / duplicate digest already open)
+- Whether a draft issue was created (id/title), a comment was added to the standing digest (which issue), or neither (zero backlog)
 
 ---
 
