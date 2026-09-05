@@ -34,7 +34,7 @@ export type GateSkipReason =
   | 'pipeline_run_not_running'
   | 'retry_cooldown'
   | 'issue_busy'
-  // cm:guard every member here must be a string `buildGateReasonCase` can actually return, and every string it returns must be a member — `assertDispatchable` casts the raw CASE result into this union unchecked, so a mismatch is invisible to tsc. A name that outlives its arm is the failure mode: `release_decompose_pending` sat here for months naming an arm that never existed, and `observability/hold-metrics.ts` keyed its counter Map by a value outside its own key type.
+  // cm:guard every member here must be a string `buildGateReasonCase` can actually return, and every string it returns must be a member — `assertDispatchable` casts the raw CASE result into this union unchecked, so a mismatch is invisible to tsc. A name that outlives its arm is the failure mode: `release_decompose_pending` sat here for months naming an arm that never existed, and `blocked_by`/`project_cap` outlived their arms in the `forge_jobs.list` tool description and in `alarmStalledQueuedJobs`'s own guard until ISS-765 read them back against this CASE.
   | 'runner_too_old'
   | 'runner_stale';
 

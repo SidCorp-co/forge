@@ -118,7 +118,7 @@ export const QUEUED_STALL_ALARM_MS = (() => {
 /**
  * Jobs the dispatcher says it could run, that have not run.
  */
-// cm:guard the test is ABSENCE from `gateReasonsForQueuedJobs` and nothing else — a job the map explains (`runner_stale`, `runner_too_old`, `blocked_by`, `project_cap`) is queued for a reason and must stay silent, because an alarm on the normal state of a queue is one operators learn to ignore. Only picker-offers/selector-rejects has no innocent reading (measured 2026-08-14: 11 jobs queued 6-22 days across 5 projects, no surface able to say why).
+// cm:guard the test is ABSENCE from `gateReasonsForQueuedJobs` and nothing else — a job the map explains (`runner_stale`, `runner_too_old`, `retry_cooldown`, `issue_busy`) is queued for a reason and must stay silent, because an alarm on the normal state of a queue is one operators learn to ignore. Only picker-offers/selector-rejects has no innocent reading (measured 2026-08-14: 11 jobs queued 6-22 days across 5 projects, no surface able to say why).
 // cm:guard alarm ONLY (RFC 0002 INV-7) — never cancel, re-queue or re-dispatch here. A plain `queued` job holds NO capacity (`running_ids` counts it only while `retry_after_at > now()`, and `issueBusyJob` only counts dispatched/running/held), so nothing is freed by killing it and a wrong reap deletes real work.
 export async function alarmStalledQueuedJobs(now: Date = new Date()): Promise<Inv7AlarmResult> {
   const cutoffIso = new Date(now.getTime() - QUEUED_STALL_ALARM_MS).toISOString();
