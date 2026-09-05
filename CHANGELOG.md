@@ -952,6 +952,21 @@
   `update::apply` gates on `is_newer(manifest.version, CURRENT_VERSION)` — so a re-cut `0.11.1`
   would have reached no box already on `0.11.1`, and the fix would have been merged, released and
   still absent from every runner it was written for.
+- **Coolify deploys go out as POST, before the GET stops being a deploy.** `client.ts` triggered
+  every deploy with `GET /api/v1/deploy?uuid=&force=`. Upstream `0633b543` (2026-07-19, released in
+  v4.2.0) repointed that route at a stub returning **405 `This endpoint has changed to a POST
+  request.`** — the path still resolves, so the failure would have arrived as a 405 on every deploy
+  of every one of the 13 Coolify connections at once, on whichever day someone upgraded the
+  instance. `manage.musetools.com` is still on ≤ v4.1.x: 5,392 outbound deliveries `ok`, the last on
+  2026-09-05, so nothing is red today.
+
+  The route was `Route::match(['get','post'], '/deploy')` before that commit, so POST is accepted by
+  every version in the field and this is one method swap, not a fallback pair. `client.test.ts`
+  asserted `init.method === 'GET'` — a green test pinning the shape that was scheduled to break; it
+  now asserts POST, with a second case proving a 405 surfaces as a `CoolifyApiError` still carrying
+  Coolify's own message. The same commit did this to `applications/{uuid}/start|restart|stop`,
+  `servers/{uuid}/validate` and `enable`/`disable`; Forge calls none of those yet, and the `cm:guard`
+  on `deploy` names them so the next one added starts on POST.
 
 - **A withdrawn runner still took jobs.** `readPool` joined `runners` only to prove a binding
   existed and read nothing else from the row; `claimJobForMaster` checked the agent version and
