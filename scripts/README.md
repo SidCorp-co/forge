@@ -2,7 +2,7 @@
 
 Project-level utilities. Each script has a comment header explaining its contract. A checker whose verdict is worth testing keeps that half in `lib/` — the CLI spawns, reads the tree and exits, none of which a test can call.
 
-## Fourteen gates, six axes
+## Fifteen gates, six axes
 
 Each gate sits in `ci-passed`'s `needs` **and** is named in its result loop. Both halves are
 load-bearing: `ci-passed` runs `if: always()`, so a job listed in `needs` but absent from the loop
@@ -17,8 +17,9 @@ to 84, the two length rules to 143 — and each stopped drifting the day it was 
 a sibling that stopped blocking, which is the whole failure mode here. `form` is gated four times
 (biome for `core`'s rules · `check-size-budget` for the length baseline biome cannot hold ·
 `check-lint-budget` for `web-v2` and `core` · a bare `biome check scripts` for the checkers themselves),
-`behaviour` three times (reachability · signal · flow coverage) and `knowledge` four (couplings ·
-the autonomous status standard · honest costs · the mode-qualification of injected docs).
+`behaviour` three times (reachability · signal · flow coverage) and `knowledge` five (couplings ·
+the baseline draining on the files a change edits · the autonomous status standard · honest costs ·
+the mode-qualification of injected docs).
 
 **`record` is the axis that was missing.** The other five each own a property of the code, and on
 2026-08-28 commit `3df9a8e9` removed 1,034 lines from `CHANGELOG.md` inside a commit about dangling
@@ -32,6 +33,7 @@ passed, because the external record of what shipped belonged to none of them.
 | lint debt | `check-lint-budget` — `conformance` | per (file, rule) biome violations in `web-v2` and `core`, frozen; drained on touch where a scope asks for it | which rules exist — each package's `biome.json` declares them |
 | checkers | `biome check scripts` — `conformance` | the files in `scripts/` that implement every other gate | anything under `packages/` |
 | knowledge | `cm verify` — `codemap` | `cm:` couplings, prose discipline, module headers | anything a tool can derive |
+| baseline drain | `check-codemap-drain` — `codemap` | whether a change that edited a file with frozen comment debt paid any of it (`CM013`) | what counts as prose, and the whole-tree prose verdict — the vendored checker owns both |
 | injected docs | `check-injected-doc-modes` — `codemap` | that a status transition in a guide body or a mandatory fact names the pipeline mode it belongs to | whether the prose around a qualified transition is true; a project's own `projectFacts`, which live in the DB |
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs | whether the price stated is honest — that is review's |
 | relations | `archmap check` — `archmap` | which module may depend on which | how a file is written |
@@ -344,6 +346,57 @@ Modes: `--all` (CI, in the always-on `conformance` job; also `pnpm --filter web-
 `--update-baseline` (`--accept-emptied-scope` to confirm a scope really did drain to zero).
 `--staged` exists for a pre-commit hook but **no hook runs it today**: `.githooks/pre-commit` runs
 `check-source-language` and `check-test-signal` and nothing else. The gate is the `conformance` job.
+
+## check-codemap-drain.mjs — the codemap baseline drains on the files a change edits
+
+The rule itself is **not this repo's**. `cm init` froze 12,454 comments across 965 files and the
+prose gate blocked only text that was NEW; the one path by which the frozen total could fall was
+*siting* — prose sharing a comment block with a `cm:` annotation, which is reported regardless of the
+baseline. Siting fires only when an author reaches for a tag, so a file could be refactored,
+extended and rewritten for years with its frozen count untouched, and codemap's own SPEC said so in
+its own words: *"Without this exception the baseline has no path that ever reduces."*
+
+`CM013`, in the vendored checker from **0.16.0**, asks what siting cannot: this change altered what
+the file *does* and paid none of that file's frozen debt — why is the count still the same? Deleting
+or rewording one comment satisfies it. Baseline behaviour is owned upstream in
+`SidCorp-co/forge-pipeline-skills`, so the rule landed there and arrived here as a pin bump — never
+patch `.forge/codemap/lib/` in place, the weekly `codemap-upgrade` workflow re-vendors over it.
+
+This script is the wiring, and it exists rather than a fourth `cm verify` step for two reasons:
+
+- **the prose gate must stay whole-tree.** A scoped prose run on a push straight to `main` diffs
+  `origin/main` against itself, walks zero files and prints its success line — 15 `CM001` errors
+  reached `main` that way. `CM013` is the opposite case: it *needs* a base revision, because
+  "edited" has no meaning without one. Two scopes, two steps.
+- **an empty diff is not an empty scope.** `verify.mjs` turns a zero scan into exit `2`, and a
+  docs-only branch legitimately touches no source file. So the `scanned` count this reports is the
+  **baseline's** file count, never the diff's. Zero there means the baseline is absent or in the
+  pre-0.2 count format, which is precisely the state that must fail closed: without a readable
+  baseline nothing can tell inherited debt from debt this change introduced.
+
+The base revision comes from `lib/baseline-ratchet.mjs`'s `baseRev` — merge-base with `origin/main`,
+falling back to `HEAD~1` when they are equal — and the resolved sha is printed, because an unstated
+base reads identically to a base nobody computed. Unlike `check-lint-budget`'s drain, nothing is
+skipped on `main`: `HEAD~1` there is the previous `main` commit, so the change that just landed is
+the one measured.
+
+**What costs nothing, and why each is structural rather than an exemption list:** a reflow, a rewrap,
+a reindent and a repo-wide formatter run — the rule compares both revisions' code with comments
+stripped and whitespace normalized, so only an edit that changed what the file does can trigger it. A
+file move — the new path has no baseline entry to drain, the same reasoning `check-lint-budget`'s
+drain reaches from its own path-keyed baseline. A whole-tree run, and the mid-edit hook: the unit is
+a change, so the commit (`--staged`) and the PR (`--since`) are where it holds, and a rule that
+stopped an agent mid-keystroke to demand unrelated cleanup is one somebody switches off.
+
+Exit `0` clean · `1` an edited file paid nothing · `2` could not run (no baseline, no vendored
+checker, no base revision, or `cm` itself could not run — its exit `2` is forwarded, never read as
+a clean diff).
+
+**Priced.** A PR that edits one of the 965 baselined files now owes one comment's cleanup in each.
+Measured on this repo's history at the time it landed: a single-commit PR owes about 4, a five-commit
+range about 20. It ends at a file's zero. The per-file escape is `cm:ignore CM013 — <reason>`, read
+from **anywhere** in the file because the anchor line moves as the prose above it does; the repo-wide
+one is `enforce.drain: false` in `.forge/codemap.json`.
 
 ## check-branch-name.sh
 

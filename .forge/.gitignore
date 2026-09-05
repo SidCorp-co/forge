@@ -12,3 +12,9 @@ knowledge.json
 
 # Anything a tool writes per machine.
 *.local.*
+
+# `cm metrics`' event log and its pending-block file, written by the PostToolUse hook on whichever
+# machine ran the edit (codemap 0.15.0+, lib/metrics.mjs). Per-session telemetry, not a rule, and
+# committing it would conflict on every parallel agent — but unignored it is untracked output that a
+# release step's `git status --porcelain` reads as someone's interrupted work.
+.codemap-metrics/

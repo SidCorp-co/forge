@@ -95,6 +95,15 @@ const CHECKS = [
     scanned: /^honest-costs: (\d+) document/m,
     unit: 'documents',
   },
+  // cm:guard this is NOT a second copy of `codemap prose` with a narrower scope — that gate is whole-tree for a measured reason (see its own guard), while CM013 asks whether a CHANGE paid any of its file's frozen debt, which a whole-tree run cannot ask at all because "edited" has no meaning without a base revision. Deleting this entry does not narrow the prose gate; it removes the only path by which the 12,454 frozen comments ever drain from work that was happening anyway.
+  {
+    axis: 'knowledge',
+    label: 'codemap drain',
+    // cm:edge naming -> scripts/check-codemap-drain.mjs — parses that script's success line
+    cmd: ['node', 'scripts/check-codemap-drain.mjs'],
+    scanned: /^codemap-drain: (\d+) file\(s\) frozen/m,
+    unit: 'baselined files',
+  },
   {
     axis: 'knowledge',
     label: 'codemap referential',
@@ -189,6 +198,7 @@ const CI_COVERAGE = {
   'node scripts/check-test-signal.mjs --all': 'verify',
   'node scripts/check-size-budget.mjs --all': 'verify',
   'node scripts/check-lint-budget.mjs --all': 'verify',
+  'node scripts/check-codemap-drain.mjs': 'verify',
   'node scripts/conformance-status.mjs': 'verify',
   'node scripts/conformance-audit.mjs': 'verify',
   'node scripts/verify.mjs --ci-parity': 'verify, as its own final check',

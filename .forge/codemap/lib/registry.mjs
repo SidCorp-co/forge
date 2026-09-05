@@ -1,4 +1,4 @@
-// @generated codemap 0.13.0 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.16.0 — vendored by `cm install`; edit the plugin, not this.
 // codemap/1 §8 — registry, baseline, path selection.
 //
 // JSON rather than YAML so the whole framework runs on a bare `node` with zero dependencies:
@@ -29,7 +29,7 @@ export const DEFAULT_REGISTRY = {
   specVersion: SPEC_VERSION,
   flows: [],
   externals: [],
-  enforce: { grammar: true, include: ['**'], exclude: DEFAULT_EXCLUDE },
+  enforce: { grammar: true, drain: true, include: ['**'], exclude: DEFAULT_EXCLUDE },
   languages: {},
 };
 
@@ -241,15 +241,21 @@ export function toolVersion() {
 }
 
 /**
- * The file's content at HEAD, or null when git cannot answer (no commit, untracked, no repo).
+ * The file's content at one revision, or null when git cannot answer (no such ref, the path did not
+ * exist there, untracked, no repo).
  *
- * `cm baseline` uses it to tell "pre-existing" from "written seconds ago". null means the question is
- * unanswerable, and the caller then treats the file as new rather than as legacy.
+ * null is "unanswerable", never "empty": both callers read it as "this file is new at that revision"
+ * and then decline to reason about its past, rather than treating an absent blob as a blank one.
  */
-export function headBlob(root, relPath) {
+export function blobAt(root, ref, relPath) {
   try {
-    return execFileSync('git', ['-C', root, 'show', `HEAD:${relPath}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    return execFileSync('git', ['-C', root, 'show', `${ref}:${relPath}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   } catch { return null; }
+}
+
+/** `cm baseline` uses this to tell "pre-existing" from "written seconds ago". */
+export function headBlob(root, relPath) {
+  return blobAt(root, 'HEAD', relPath);
 }
 
 /** Files that differ from HEAD, plus untracked ones — the only files that CAN carry a new comment. */

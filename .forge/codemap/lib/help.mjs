@@ -1,4 +1,4 @@
-// @generated codemap 0.13.0 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.16.0 — vendored by `cm install`; edit the plugin, not this.
 // `cm help` — the guidebook, shipped inside the tool.
 //
 // It lives here rather than in the plugin's skill because the checker is what a project vendors
@@ -36,6 +36,9 @@ export const VERBS = [
   ['new external', '<name>', 'declare an out-of-tree system a cm:edge may target  [--description "..."]'],
   ['onboard', '', 'read this repo and print the setup steps for it  [--json] [--prompt]'],
   ['doctor', '', 'versions, registry, baseline — and whether CI gates on an older checker'],
+  ['metrics show', '', 'local north-star counters: blocks held vs circumvented, annotation trend  [--json]'],
+  ['metrics reconcile', '', 'sweep pending blocks the hook never saw resolved (for the weekly bot)'],
+  ['metrics send', '[--endpoint <url>] [--yes]', 'opt-in send of the show --json payload; no --yes previews only'],
   ['codes', '', 'diagnostic reference (same as: cm help codes)'],
   ['help', '[topic]', 'this guidebook'],
   ['version', '', 'tool version + spec version'],
@@ -176,7 +179,12 @@ structural in CI; advisory is warning-only, cannot change the exit code, and is 
 ${table(rows).join('\n')}
 
   Last resort, on the line above:  <leader> cm:ignore <CODE> — <reason>
-  Both the code and the reason are mandatory; a bare ignore is itself an error.`;
+  Both the code and the reason are mandatory; a bare ignore is itself an error.
+
+  CM013 is the one grammar code the edit hook does NOT raise: it asks whether a CHANGE paid any of its
+  file's frozen debt, and a change is not a thing that exists mid-keystroke. It needs a base revision
+  (cm verify --since <ref>, or --staged), so the commit and the PR are where it holds. Its ignore is
+  read from anywhere in the file, because its anchor line moves as the prose above it does.`;
 }
 
 function baseline() {
@@ -200,17 +208,36 @@ gets flagged. Reformatting, moving code and deleting old comments are all free.
   cm baseline refuses to freeze a comment that is not in git HEAD. Freezing what you wrote a minute ago
   is not onboarding legacy, it is clearing a diagnostic; --include-new does it anyway and says so.
 
-THE ONE EXCEPTION, or the total never falls
+TWO WAYS THE TOTAL FALLS
 
-Prose sharing a comment block with a cm: annotation is NOT frozen — it is reported regardless of the
-baseline. Annotating a site means you have just read it, so the noise there is yours. Prose you never
-touched stays frozen.
+Neither is a migration. Both ask the same question — did the person who just worked here leave the
+noise behind? — at the two scales where it has an answer.
+
+1. THE SITE (any run). Prose sharing a comment block with a cm: annotation is NOT frozen — it is
+   reported regardless of the baseline. Annotating a site means you have just read it, so the noise
+   there is yours. Prose you never touched stays frozen.
 
   Contiguous standalone comment lines form one block. A trailing comment on a code line does not.
   CM011 is excluded: it measures a header's length, not one comment's text, so no site can own it.
 
   A frozen key is dropped only when its text is GONE from the file. Sited prose is still in the file,
   so it stays frozen — the annotation that sited it may be removed later.
+
+2. THE FILE (CM013, on a run with a base revision). Siting only ever fires when an author reaches for
+   a tag, so a file could be refactored for years with its frozen count untouched. CM013 asks the
+   question siting cannot: this edit changed what the file DOES and paid none of its frozen debt —
+   why is the count still the same? Delete or reword one comment, and it is satisfied.
+
+  It needs a base revision to know what "edited" means: cm verify --since <ref>, or --staged. A
+  whole-tree run has no edit set and never raises it, and neither does the edit hook — the unit is a
+  change, not a keystroke.
+
+  A reflow, a rewrap, a reindent and a repo-wide formatter run are all free, and not by exemption: the
+  rule compares the file's CODE with the comments stripped and the whitespace normalized, so only an
+  edit that changed what the file does can trigger it. A file move is free too — the new path has no
+  baseline entry, so there is no debt there to drain.
+
+  Off with enforce.drain: false, or per file with cm:ignore CM013 — <reason> anywhere in it.
 
 DEBT, NOT ABSOLUTION
 
@@ -220,7 +247,7 @@ DEBT, NOT ABSOLUTION
   cm baseline                re-freeze from scratch
 
 Legacy is frozen, never migrated. Mass-deleting old comments is a separate, reviewable change, and
-cm will not do it for you.`;
+cm will not do it for you. What CM013 asks for is one comment per file you were editing anyway.`;
 }
 
 function languages() {
@@ -314,7 +341,8 @@ SCOPING A RUN
   cm verify <paths...>               explicit paths; resolved against the CWD first, then the repo root
   cm verify --tier grammar           one tier: all | grammar | referential | structural | advisory
   cm verify --tier advisory          warning-only evidence check (CM301), off in --tier all unless
-                                     the registry sets enforce.advisory — see §7.1 for why
+                                     the registry sets enforce.advisory — reads archmap's real import
+                                     graph when vendored at .forge/archmap — see §7.1 for why
 
 READING A BIG RUN
 

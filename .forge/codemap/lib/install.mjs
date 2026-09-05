@@ -1,4 +1,4 @@
-// @generated codemap 0.13.0 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.16.0 — vendored by `cm install`; edit the plugin, not this.
 // `cm install` — put the tool IN the project, so the rules hold without the plugin.
 //
 // Until this existed, every enforcement path ran out of the plugin: the hooks are plugin hooks, and

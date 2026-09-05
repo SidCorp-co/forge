@@ -21,7 +21,7 @@
     },
     "knowledge": {
       "level": 2,
-      "gate": "cm verify + check-honest-costs + check-injected-doc-modes",
+      "gate": "cm verify + cm drain + check-honest-costs + check-injected-doc-modes",
       "owns": "cm: couplings, prose discipline, module headers; whether a document asking to be adopted prices what adopting it costs; whether a doc injected into every session names the pipeline mode its status transitions belong to",
       "baseline": {
         "path": ".forge/codemap-baseline.json",

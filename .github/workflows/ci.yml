@@ -152,13 +152,22 @@ jobs:
   # can never turn this red on its own. Bumping it is a commit here; the
   # codemap-upgrade workflow opens that PR.
   #
-  # Two steps on purpose, and the second is NOT redundant:
-  #   1. --since <merge-base>  scopes the PROSE tier to the lines this PR touched.
-  #   2. whole-tree graph tiers. On a scoped run cm attributes a dangling-edge error
-  #      to the file carrying the annotation and drops it when that file is outside
-  #      the diff — so deleting or moving a cm:edge TARGET would pass step 1 silently
-  #      whenever the annotated file is untouched. ~1s on the whole tree.
-  # fetch-depth: 0 because an unresolvable --since ref is exit 2 (gate could not run),
+  # Four steps, none redundant. This comment used to claim step 1 was
+  # `--since <merge-base>` over the prose tier; it never was, and the scoped run
+  # is now its own script for the opposite reason to the one that comment gave.
+  #   1. whole-tree, all tiers. WHOLE TREE on purpose: a scoped prose run on a
+  #      push straight to main diffs origin/main against itself, walks zero files
+  #      and prints a success line — 15 CM001 errors reached main that way. Legacy
+  #      prose is frozen by content, so a whole-tree run costs nothing.
+  #   2. the DRAIN rule (CM013), which is the one thing step 1 structurally cannot
+  #      ask: whether a change paid any of the frozen debt on the files it edited.
+  #      It needs a base revision, and it gets it from baseRev() rather than a bare
+  #      merge-base — same fail-open shape as above, same fix (HEAD~1 fallback).
+  #   3-4. whole-tree graph tiers. On a scoped run cm attributes a dangling-edge
+  #      error to the file carrying the annotation and drops it when that file is
+  #      outside the diff — so deleting or moving a cm:edge TARGET would pass a
+  #      scoped run silently whenever the annotated file is untouched. ~1s.
+  # fetch-depth: 0 because an unresolvable base ref is exit 2 (gate could not run),
   # and a shallow checkout has no origin/main to merge-base against.
   codemap:
     runs-on: ubuntu-latest
@@ -170,6 +179,7 @@ jobs:
         with:
           node-version: '22'
       - run: .forge/codemap/cm verify
+      - run: node scripts/check-codemap-drain.mjs
       - run: .forge/codemap/cm verify --tier referential
       - run: .forge/codemap/cm verify --tier structural
       # Knowledge axis, node and nothing else, so it rides this job rather than adding an entry to

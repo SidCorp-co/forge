@@ -38,10 +38,12 @@ const PROBES = {
     also: [{ from: 'alsoBaseline', probe: ['node', 'scripts/check-lint-budget.mjs', '--all'] }],
   },
   knowledge: {
-    gate: 'cm verify + check-honest-costs + check-injected-doc-modes',
+    gate: 'cm verify + cm drain + check-honest-costs + check-injected-doc-modes',
     probe: ['.forge/codemap/cm', 'verify', '--tier', 'referential'],
     // cm:why `from: 'none'` for the same reason test-reachability uses it — this checker has no baseline and must not borrow codemap's, which would report it as debt-frozen when it is at zero
     also: [
+      // cm:why the drain checker DOES read codemap's baseline, and its default `from` is right: it is the one checker whose whole subject is that file draining, so borrowing it is not borrowing
+      { probe: ['node', 'scripts/check-codemap-drain.mjs'] },
       { from: 'none', probe: ['node', 'scripts/check-honest-costs.mjs'] },
       { from: 'none', probe: ['node', 'scripts/check-injected-doc-modes.mjs'] },
     ],

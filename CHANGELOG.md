@@ -11,6 +11,30 @@
 
 ### Added
 
+- The codemap baseline drains when a file is edited, not only when it is annotated (ISS-844). The
+  gate froze 12,454 comments across 965 files at onboarding and then blocked only prose that was
+  NEW; the one path by which the frozen total could fall was *siting* — prose sharing a block with a
+  `cm:` annotation — which fires only when an author reaches for a tag. So a file could be
+  refactored, extended and rewritten for years with its frozen count never moving, and codemap's own
+  SPEC said as much in its own words: "Without this exception the baseline has no path that ever
+  reduces". `CM013`, new in the vendored checker at 0.16.0, asks what siting cannot: this change
+  altered what the file *does* and paid none of that file's frozen debt — why is the count still the
+  same? Deleting or rewording one comment satisfies it.
+
+  Reflow, rewrap, reindent, a repo-wide formatter run and a file move all cost nothing, and not by
+  exemption: the rule compares the two revisions' code with comments stripped and whitespace
+  normalized, and a move's new path has no baseline entry to drain. It never fires on a whole-tree
+  run, which has no notion of "edited", nor in the mid-edit hook — the unit is a change, so the
+  commit (`--staged`) and the PR (`--since`) are where it holds.
+
+  **Priced:** a PR that edits one of those 965 files now owes one comment's cleanup in each. Measured
+  on this repo's own recent history, a single-commit PR owes about 4 and a five-commit range about
+  20. It ends at a file's zero. Per-file escape `cm:ignore CM013 — <reason>`, read from anywhere in
+  the file; repo-wide `enforce.drain: false`. The rule itself is upstream in
+  `SidCorp-co/forge-pipeline-skills` at `codemap-v0.16.0`, since that is where baseline behaviour is
+  owned; here it is the pin bump plus `scripts/check-codemap-drain.mjs`, wired into `pnpm verify` and
+  the `codemap` CI job.
+
 - A memory body a later write replaced is kept and readable (ISS-790). After ISS-876 removed the
   dedup absorb, an exact-key re-write became the only path by which one memory row's text replaces
   another's — and it is the path both agent preambles instruct ("reusing a `sourceRef` refines the

@@ -1,4 +1,4 @@
-// @generated codemap 0.13.0 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.16.0 — vendored by `cm install`; edit the plugin, not this.
 // codemap/1 §6 — language profiles.
 //
 // docPolicy decides what happens to ORDINARY comments, and is the reason this framework can be

@@ -1,4 +1,4 @@
-// @generated codemap 0.13.0 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.16.0 — vendored by `cm install`; edit the plugin, not this.
 // Comment scanner. Line-by-line state machine — enough to keep comment leaders inside string
 // literals from being mistaken for comments, without pretending to be a real lexer.
 //

@@ -211,6 +211,7 @@ is scoped — a one-file graph made a legal two-step flow report `CM103`/`CM201`
 | `CM010` | grammar | new `TODO`/`FIXME` introduced (§3). Marker-shaped only — at the start of a comment, or followed by `:`/`(` — so identifiers like `TC-XXX` are not flagged |
 | `CM011` | grammar | module header longer than `headerMaxLines` (§4.1) |
 | `CM012` | grammar | `cm:edge` kind and target parse, but the rationale follows with no ` — ` (§4). Split from `CM005`, which blamed the `->` that was already correct |
+| `CM013` | grammar | the file was edited and paid none of its frozen prose debt (§8). The one grammar code the edit hook does not raise — it needs a base revision, so it holds at the commit and the PR |
 | `CM101` | referential | flow not declared in the registry (§8) |
 | `CM102` | referential | `cm:edge` target does not exist |
 | `CM103` | referential | `after:` names a step that does not exist |
@@ -239,25 +240,40 @@ and the annotation then documents an intention rather than the code.
 That question must stay **weak**, because several kinds are deliberately reference-free: `naming` IS a
 string, `sideeffect` happens in SQL or a cron, and a `contract` across a process boundary is
 HTTP-mediated. So the tier is warning-only, never gating (it cannot change the exit code), and narrow:
-only `contract` and `lockstep`, only with a `#symbol`, only when neither file names the other. Evidence
-is a basename match, biased toward silence — a generic stem matches easily and the check says nothing.
+only `contract` and `lockstep`, only with a `#symbol`, only when neither file names the other.
 
-It is **off by default**, and the measurement says it should stay that way. Two production repos
-(2 234 and 3 277 files, 204 edges, 69 of them anchored) reported **40** `CM301` before two structural
-corrections and **5** after; of those 5, **one** was actionable — an edge whose anchor is a slug string,
-so its kind should be `naming` (§5) rather than `contract`. The other four are the shape the check cannot
-see: two sides that must implement the SAME RULE with nothing linking them (a frontend predicate and a
-backend selector; the same SQL ordering in two loaders). For those, the absence of a reference is not
-drift — it is the normal state of the most valuable edge in the repo, which inverts the check's premise.
+Evidence comes in two tiers, strongest first. When the repo has archmap (a sibling tool, see
+NORTH-STAR §8) vendored at `.forge/archmap`, `graph.mjs` reads its exported import graph (`archmap
+graph --json`) and asks whether the two files are actually wired together at all — a real edge, not a
+guess. Everywhere else the fallback is a basename match, biased toward silence — a generic stem
+matches easily and the check says nothing.
 
-The two corrections were bugs rather than thresholds, and both are cases where evidence *cannot* exist:
+It stays **off by default** regardless of archmap: `enforce.advisory` in the registry, or an explicit
+`--tier advisory`, is still the only thing that turns it on. Archmap's presence never flips that
+default — `archmap graph` is a full-repo static analysis (measured ~15s on a 1600+ file repo), and
+`cm verify` with no `--tier` is exactly what the `PostToolUse` hook runs on every single-file edit
+(§4.1); making that call on every edit in an archmap-vendored repo turns each one into a multi-second
+stall. A repo opts in once its own FP rate is measured — the same registry flag as before, now backed
+by real evidence instead of a guess when archmap happens to be vendored too.
+
+The basename-only measurement, kept for scale: two production repos (2 234 and 3 277 files, 204 edges,
+69 of them anchored) reported **40** `CM301` before two structural corrections and **5** after; of
+those 5, **one** was actionable — an edge whose anchor is a slug string, so its kind should be `naming`
+(§5) rather than `contract`. The other four are the shape the check cannot see: two sides that must
+implement the SAME RULE with nothing linking them (a frontend predicate and a backend selector; the
+same SQL ordering in two loaders). For those, the absence of a reference is not drift — it is the
+normal state of the most valuable edge in the repo, which inverts the check's premise. Re-measured
+against those same 5 with archmap's real graph: **0** were suppressed — archmap independently confirms
+none of the five has an import edge either, which is what the manual analysis above already found by
+hand. The two structural corrections were bugs rather than thresholds, and both are cases where
+evidence *cannot* exist:
 
 - a pair of files in **different languages** (26 of 36 hits in one repo) — Go cannot import a `.ts` file
 - **Go**, which names the imported package DIRECTORY and never the file (10 of 10 same-language hits
   there), so a filename-only test warned on every correctly wired Go edge
 
-Measure before flipping it on for a repo, and expect the answer to depend on how that repo's edges are
-shaped:
+Measure before flipping `enforce.advisory` on for a repo with no archmap, and expect the answer to
+depend on how that repo's edges are shaped:
 
 ```bash
 cm verify --tier advisory --json | jq '[.diags[] | select(.code=="CM301")] | length'
@@ -273,7 +289,7 @@ cm verify --tier advisory --json | jq '[.diags[] | select(.code=="CM301")] | len
   "specVersion": "codemap/1",
   "flows": [{ "name": "job-dispatch", "description": "issue → dispatched job" }],
   "externals": [{ "name": "laravel-app", "description": "the PHP original this service replaces" }],
-  "enforce": { "grammar": true, "include": ["**"], "exclude": ["**/*.test.ts"] },
+  "enforce": { "grammar": true, "drain": true, "include": ["**"], "exclude": ["**/*.test.ts"] },
   "languages": { "sql": { "enforce": false } }
 }
 ```
@@ -332,16 +348,37 @@ author for a comment they did not write is the wrong half of the trade. The edit
 A frozen key is dropped only when its text is **gone from the file**. Sited prose (below) is still in the
 file, so it stays frozen: it is reported anyway, and the annotation that sited it may be removed later.
 
-**Sited prose is never frozen.** A `CM001`/`CM010` violation sharing a comment block with a `cm:`
-annotation is reported regardless of the baseline. Contiguous standalone comment lines form one
-block; a trailing comment on a code line is not part of one. `CM011` is excluded — it measures a
-header's length, not one comment's text, so no site can own it.
+The baseline has two paths that reduce it, and they are the same question asked at two scales: did
+the person who just worked here leave the noise behind? Without either, legacy prose is spared
+forever, annotations only accrete, and a repo ends with more comments than before onboarding.
 
-Without this exception the baseline has no path that ever reduces: legacy prose is spared forever,
-annotations only accrete, and a repo ends with more comments than before onboarding. The rule is
-narrow on purpose — an author who annotates a site has just read it, so the noise there is theirs;
-prose they never touched stays frozen. `cm sweep` lists what the baseline is hiding, and
-`cm sweep --prune-baseline` drops keys matching nothing, so paid-off debt stops being counted.
+**The site: sited prose is never frozen.** A `CM001`/`CM010` violation sharing a comment block with a
+`cm:` annotation is reported regardless of the baseline. Contiguous standalone comment lines form one
+block; a trailing comment on a code line is not part of one. `CM011` is excluded — it measures a
+header's length, not one comment's text, so no site can own it. The rule is narrow on purpose — an
+author who annotates a site has just read it, so the noise there is theirs; prose they never touched
+stays frozen.
+
+**The file: `CM013`.** Siting fires only when an author reaches for a tag, so a file with frozen debt
+could be refactored, extended and rewritten for years with its frozen count never moving. `CM013`
+asks what siting cannot: this change altered what the file *does* and paid none of that file's frozen
+debt — why is the count still the same? Deleting or rewording one comment satisfies it.
+
+It is raised only on a run that has a base revision (`--since <ref>`, or `--staged` ⇒ `HEAD`), because
+"edited" has no meaning without one. A whole-tree or single-path `cm verify` never raises it, and
+neither does the edit hook: the unit is a change, not a keystroke, and a rule that stopped an author
+mid-edit to demand unrelated cleanup is the mistake the hook's own `--changed-lines` scoping already
+records paying once.
+
+Reflow, rewrap, reindent and a repo-wide formatter run are free — not by exemption, but because the
+rule compares the two revisions' *code* with comments stripped and whitespace normalized, so only an
+edit that changed what the file does can trigger it. A file move is free for the same structural
+reason the rest of §8 is: the new path has no baseline entry, so there is no debt there to drain.
+`enforce.drain: false` turns it off; `cm:ignore CM013 — <reason>` does so for one file, and is read
+from anywhere in that file because the anchor line moves as the prose above it does.
+
+`cm sweep` lists what the baseline is hiding, and `cm sweep --prune-baseline` drops keys matching
+nothing, so paid-off debt stops being counted.
 
 ## §9 Stability
 
@@ -369,3 +406,56 @@ report a rewrite it did not perform (it once could not rewrite a CRLF line at al
 - Deprecation: a removed form warns for one minor with a codemod available before it errors.
 - Escape hatch: `cm:ignore <CODE> — <reason>` on the line above. The code and the reason are both
   mandatory; a bare ignore is itself an error.
+
+## §10 Metrics (ISS-3)
+
+ISS-3's own framing of the number that matters: how many times a `cm:` annotation blocked a real
+mistake before it shipped, not how many files/annotations/tests exist (that count is distinct from
+NORTH-STAR.md §5's external-adoption north star; §5 item 5 points here). Scale metrics rising while
+that number sits at zero looks exactly like success — the trap that killed the repos before this
+one. `cm metrics` is the counter, local by default.
+
+**Where it lives.** `.forge/.codemap-metrics/` — an events log (`events.jsonl`, append-only) and a
+pending-block state file (`pending.json`). Never inside `.forge/codemap/` (that tree is vendored and
+committed by `cm install`); never touched by any `cm install`/`cm init` file list. Nothing here is
+ever written to the repo's `.gitignore` automatically — that would be editing a file this tool did
+not create, which no other command in this codebase does either.
+
+**Shape, not content.** An installed repo may hold real customer data, so every event carries only:
+a timestamp, an event kind, a diagnostic `tier`, a list of `codes`, and (for `block`/`held`/
+`circumvented`) the repo-relative `file` path. Never a diagnostic's `message`/`fix` text, never the
+comment that triggered it. `annotation-snapshot` and `registry-snapshot` events carry counts and
+booleans only — never an annotation's own text, never an author's name in the shape that could ever
+be sent (only the count of distinct authors).
+
+**Held vs circumvented — counted separately, never merged into one "resolved" bucket.** The
+PostToolUse hook already decides what blocks (`scripts/lib/blocking.mjs`, the same predicate on both
+sides of this line so the two can never disagree); every block appends a `block` event and opens a
+pending entry keyed by `(file, code, line)` — line-level, not code-level, because a repo can carry
+more than one instance of the same code in one file (frozen legacy prose is the common case), and a
+coarser key let a genuine fix of one instance hide forever behind an unrelated, never-blocked other
+one (ISS-3 review round 1). The NEXT time that exact `(code, line)` is recomputed — the next hook
+invocation on the file, or a `cm metrics reconcile` sweep of the whole pending set:
+
+- it is no longer present → **held**, decided from presence ALONE, regardless of whether a commit
+  landed on the file since. The author fixed it; committing that fix is the ordinary, desired flow
+  and must never be misread as evasion just because a commit happened to follow the block.
+- it is STILL present AND a commit landed on the file since the block fired (checked via
+  `git log --since`, with a 1s buffer past the block's timestamp for git's own second-granularity) →
+  **circumvented**. The flagged content shipped once already, still unfixed — a client-side hook with
+  no server-side gate is exactly the failure mode this exists to catch.
+- still present, no commit since → still pending, no event fires. A file the checker itself cannot
+  verify is left pending too, never guessed at either way.
+
+Held is checked before circumvented, never the other way round: checking "did a commit land" first
+would read the ordinary fix-then-commit sequence as evasion on every single genuine fix.
+
+`cm metrics reconcile` exists because a file committed and never touched through the hook again (the
+common shape of "routed around it entirely") would otherwise never reconcile — the weekly upgrade bot
+NORTH-STAR §5 already wants can run it.
+
+**Local sink, sending is opt-in.** `cm metrics show [--json]` reads the local log only; nothing it
+does can reach the network. `cm metrics send --endpoint <url> [--yes]` builds the exact same payload
+`show --json` prints — one function, `buildPayload`, so there is no separate "preview" that could
+drift from what actually goes out — and only performs the POST when BOTH `--endpoint` and `--yes` are
+given. Either one missing prints the payload and stops. There is no default endpoint.

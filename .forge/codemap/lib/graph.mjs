@@ -1,10 +1,11 @@
-// @generated codemap 0.13.0 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.16.0 — vendored by `cm install`; edit the plugin, not this.
 // The declared-edge graph: flows, edges, guards, hacks — plus the checks that keep it from
 // rotting (codemap/1 §7 referential + structural tiers) and the impact query.
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { diag, baselineKey } from './parse.mjs';
+import { connected } from './archmap.mjs';
 
 const trim = (t) => (t.length > 60 ? `${t.slice(0, 57)}...` : t);
 
@@ -104,16 +105,17 @@ export function referentialDiags(g, { root, reg }) {
  * process boundary is HTTP-mediated — so it is warning-only, never gating, and narrow by construction:
  * only `contract` and `lockstep`, only with a `#symbol`, only when NEITHER file names the other.
  *
- * Evidence is a basename match, not an import graph, and it is biased toward silence: a generic name
- * (`index`, `types`) matches easily and the check stays quiet. A false negative costs nothing; a false
- * positive is what gets a warning tier switched off.
+ * Two tiers of evidence, cheapest first: an archmap import edge (real, when archmap is vendored), then
+ * a basename match (a guess, everywhere else). Both are biased toward silence: a generic name (`index`,
+ * `types`) matches easily and the check stays quiet. A false negative costs nothing; a false positive is
+ * what gets a warning tier switched off.
  */
 // cm:guard a pair of files in different languages CANNOT reference each other — measured, that was 26 of
 //   36 hits in one repo, so firing there is a bug in the check and not a threshold to tune (§7.1)
 const FAMILY = { ts: 'js', tsx: 'js', js: 'js', jsx: 'js', mjs: 'js', cjs: 'js', go: 'go', php: 'php', py: 'py', rs: 'rs' };
 const family = (p) => FAMILY[p.split('.').pop()] ?? null;
 
-export function advisoryDiags(g, { root, baseline = {} }) {
+export function advisoryDiags(g, { root, baseline = {}, importGraph } = {}) {
   const out = [];
   const cache = new Map();
   const stem = (p) => p.split('/').pop().replace(/\.\w+$/, '');
@@ -135,6 +137,9 @@ export function advisoryDiags(g, { root, baseline = {} }) {
     if (e.external || !['contract', 'lockstep'].includes(e.kind)) continue;
     const [path, anchor] = e.target.split('#');
     if (!anchor || path === e.file) continue;
+    // cm:why checked BEFORE the language-family guard — archmap only ever emits same-language
+    //   edges, so a hit here is stronger evidence than a name match and short-circuits the guess
+    if (importGraph && connected(importGraph, e.file, path)) continue;
     const fam = family(e.file);
     if (!fam || fam !== family(path)) continue;
     const target = readTarget(root, path, cache);

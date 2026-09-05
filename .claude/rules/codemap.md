@@ -63,17 +63,26 @@ with no args, or the `codemap` skill.
 
 ## How the gate is scoped
 
-`.forge/codemap/cm` is vendored (codemap 0.12.0) and is the authority — it wins over a `cm` on
+`.forge/codemap/cm` is vendored (codemap 0.16.0) and is the authority — it wins over a `cm` on
 PATH, which wins over the plugin's bundled copy. Config: `.forge/codemap.json` (flow vocabulary +
-enforcement scope) · `.forge/codemap-baseline.json` (12,558 legacy comments across 986 files frozen
+enforcement scope) · `.forge/codemap-baseline.json` (12,454 legacy comments across 965 files frozen
 by CONTENT — a comment is flagged only when its text is new, so a reflow or a move is not a
 violation).
 
-The `codemap` CI job runs the prose tier scoped to the PR's changed lines
-(`--since $(git merge-base origin/main HEAD)`) plus the referential and structural tiers
-whole-tree — the second part is load-bearing: a scoped run attributes a dangling `cm:edge` to the
-annotated file and drops it when that file is outside the diff. Post-baseline prose is at 0, so
-anything the gate reports is something you just added.
+The `codemap` CI job runs the prose tier **whole-tree**, plus the referential and structural tiers
+whole-tree. Both halves are load-bearing. Scoping prose to the PR's changed lines is what an earlier
+version of this paragraph described and it is wrong: on a push straight to `main` that diff is empty,
+cm prints its success line over zero files, and 15 `CM001` errors landed that way. And a scoped run
+attributes a dangling `cm:edge` to the annotated file, dropping it when that file is outside the
+diff. Post-baseline prose is at 0, so anything the gate reports is something you just added.
+
+**`CM013` — the one rule that IS scoped, and the one the edit hook never raises.** A change that
+altered what a file *does* while paying none of that file's frozen debt is an error: delete or reword
+one of its frozen comments (`.forge/codemap/cm sweep <file>` lists them), or convert one to
+`cm:guard`/`cm:why`. It needs a base revision, so it holds at the commit (`--staged`) and in CI
+(`scripts/check-codemap-drain.mjs`), never mid-keystroke. Reflow, reindent, a formatter run and a
+file move all cost nothing. A file whose comments genuinely may not be touched says so once, anywhere
+in it: `cm:ignore CM013 — <reason>`.
 
 Bump with `cm install --upgrade`; `.github/workflows/codemap-upgrade.yml` opens that PR weekly, and
 `cm doctor` shows any skew. Spec: `.forge/codemap/SPEC.md`.

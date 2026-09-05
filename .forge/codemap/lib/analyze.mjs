@@ -1,4 +1,4 @@
-// @generated codemap 0.13.0 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.16.0 — vendored by `cm install`; edit the plugin, not this.
 // Per-file analysis: comments -> annotations + grammar diagnostics (codemap/1 §7 grammar tier).
 //
 // `proseKeys` is the file's answer to "what prose text do I contain" — the set the baseline is built
@@ -173,8 +173,37 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
       ...proseKeys, ...blockKeys,
       ...annotations.flatMap((a) => [a.text, a.wrap].filter(Boolean).map((t) => baselineKey(t))),
     ])],
+    // cm:edge contract -> plugins/forge-codemap/scripts/lib/drain.mjs — CM013 compares this across two
+    //   revisions to tell a code edit from a reflow, so it must ignore everything a reflow can change
+    codeShape: codeShape(lines, comments),
     skipped: null,
   };
+}
+
+/**
+ * The file with every comment removed and its whitespace normalized, hashed — "what does this file
+ * DO", stripped of everything a comment edit or a formatter can move.
+ *
+ * CM013's exemption for reflow is this identity holding across two revisions, not a special case in
+ * the rule: rewrapping prose, reindenting code and running a formatter all leave it untouched, and
+ * only an edit that changed what the file does can make it differ. A rule that instead asked "did the
+ * comments move" would bill a repo-wide `fmt` run for every file it touched, and that is the shape
+ * that gets a gate switched off.
+ */
+function codeShape(lines, comments) {
+  const out = lines.slice();
+  for (const c of comments) {
+    if (c.firstOnLine !== false) {
+      for (let l = c.line; l <= c.endLine; l++) out[l - 1] = '';
+      continue;
+    }
+    // cm:guard a trailing comment shares its line with CODE, so the line is cut at the leader, never
+    //   blanked — blanking it drops the code and reads as a code change on the next revision
+    // cm:why only line comments carry `col` (lib/scan.mjs), and without one the line is left whole:
+    //   a trailing block-comment edit then costs, which is stricter than needed but never wrong
+    if (c.kind === 'line' && c.col !== undefined) out[c.line - 1] = out[c.line - 1].slice(0, c.col);
+  }
+  return baselineKey(out.filter((l) => l.trim() !== '').join('\n'));
 }
 
 // cm:why the baseline spares legacy prose everywhere except a block its author has just annotated: that

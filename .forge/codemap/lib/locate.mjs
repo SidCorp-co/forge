@@ -1,4 +1,4 @@
-// @generated codemap 0.13.0 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.16.0 — vendored by `cm install`; edit the plugin, not this.
 // Which `cm` the hooks drive.
 //
 // The project's own copy wins. A repo that ran `cm install` carries the tool it was onboarded with,

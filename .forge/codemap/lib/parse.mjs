@@ -1,4 +1,4 @@
-// @generated codemap 0.13.0 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.16.0 — vendored by `cm install`; edit the plugin, not this.
 // codemap/1 §3 §4 §7 — grammar, canonical form, diagnostics.
 
 export const TAGS = ['flow', 'edge', 'guard', 'hack', 'why'];
@@ -48,6 +48,7 @@ const CODES = {
   CM010: { tier: 'grammar', section: '§3', message: 'new TODO/FIXME introduced', fix: 'the tracker owns outstanding work — file an issue at draft status; use cm:hack ISS-<n> until:<cond> only for a workaround that is in the code right now' },
   CM011: { tier: 'grammar', section: '§4.1', message: 'module header is too long', fix: 'a header orients a reader in a few lines; move the rest to docs/ and leave a pointer' },
   CM012: { tier: 'grammar', section: '§4', message: 'cm:edge target is followed by prose with no " — "', fix: 'put " — " before the rationale: cm:edge <kind> -> <target> — <why they are coupled>' },
+  CM013: { tier: 'grammar', section: '§8', message: 'this file was edited and paid none of its frozen prose debt', fix: 'you are already reading this file — delete or reword one of its frozen comments (`cm sweep <file>` lists them), or convert one to cm:why / cm:guard. A file nobody may clean up says so once: cm:ignore CM013 — <reason>' },
   CM101: { tier: 'referential', section: '§8', message: 'flow is not declared in the registry', fix: 'run: cm new flow <name> (closed vocabulary keeps typos from forking the graph)' },
   CM102: { tier: 'referential', section: '§4', message: 'cm:edge target does not exist', fix: 'fix the path, or if the target moved, update the edge — a dangling edge is drift, not documentation' },
   CM103: { tier: 'referential', section: '§4', message: 'after: names a step that does not exist', fix: 'point at a real <step> of the same flow' },
