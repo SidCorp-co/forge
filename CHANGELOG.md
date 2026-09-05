@@ -623,6 +623,22 @@
 
 ### Fixed
 
+- **A session's `/agents` row no longer blames the box for a death it did not cause.** A queued job
+  whose box was busy with the shared checkout posted nothing while it waited, so the 120-second claim
+  hop failed the session `queue_timeout`; the job was then reaped `session_lost` *because* its session
+  was terminal, and the mirror that copies a job's outcome back onto its session overwrote the cause
+  with that consequence. Measured on epodsystem 2026-09-05: 61 of 84 failed sessions read
+  `session_lost` (origin `transport` — "the runner went quiet") while `kernel_transitions` held
+  `queue_timeout` for every one of them, written 90 seconds earlier. Both halves are fixed. The mirror
+  refuses to overwrite a reason already on the row when the job's error is a sweeper marker
+  (`session_lost`, `dispatch_unclaimed`, `stale`) — a real diagnosis arriving from the job row, such as
+  `provider_spend_cap`, still lands, so ISS-877's recovery is untouched. And the runner starts its
+  pre-spawn heartbeat *before* it waits for the repo lock rather than after, so a job queueing behind
+  a busy root reports what it is actually doing instead of looking dead. That wait is now bounded too,
+  and the heartbeat's budget is derived from the same deadline with a compile-time assertion, because a
+  runner that gives up after core condemns spawns an agent under a job that has already been retried
+  elsewhere.
+
 - **A claim no longer keeps a hold the reaper can undo underneath a running agent.** Claiming a job
   stamped it onto the box but left `held_by` set, and the master-hold reaper — whose session-less arm
   judges by `held_at` age alone — then unwound that stamp back to `queued` with `device_id` NULL while

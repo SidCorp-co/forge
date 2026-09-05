@@ -236,12 +236,18 @@ const FLUSH_INTERVAL: Duration = Duration::from_millis(500);
 /// (`PIPELINE_HEARTBEAT_TIMEOUT_MS`, min 30s) and matches desktop parity
 /// (`packages/dev/src/hooks/use-web-socket.ts`). See ISS-285.
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(25);
-/// How long the pre-spawn phase may keep claiming progress before it goes quiet.
-// cm:guard the beat must be BOUNDED, and it must go quiet rather than fail the job. It asserts "setup is progressing" with nothing checking that setup still is, so an unbounded one keeps a wedged fetch or a leaked repo lock looking alive forever — the silent stall this heartbeat's own reaper exists to catch. Going quiet hands the verdict to core's heartbeat hop, which owns terminality; failing from here would race a `runner.start` that may still succeed and leave a terminal job with a live agent under it.
-const PRE_SPAWN_MAX_TICKS: u32 = 24;
 /// How long a job may wait for another job on this box to finish with the repo.
 // cm:guard a bounded wait, because `locks.acquire` has no deadline of its own: a leaked guard parks every later job on the box forever, and the failure names the wrong thing (a dead agent) at whatever reaper notices first.
-const REPO_LOCK_WAIT: Duration = Duration::from_secs(15 * 60);
+const REPO_LOCK_WAIT: Duration = Duration::from_secs(10 * 60);
+
+/// How long the pre-spawn phase may keep claiming progress before it goes quiet.
+// cm:guard the runner must give up BEFORE core condemns, and these two numbers are what decide that — so derive them, never pick them apart. Core fails a session 180s after the last beat, so a beat budget shorter than the runner's own deadline inverts the order: the beat stops, core fails the job and routes it to retry, and THEN `locks.acquire` returns and an agent spawns under a job that is already terminal and already re-queued elsewhere. That is the two-agents-one-worktree shape, reached from the opposite direction. The budget therefore covers the whole lock wait plus a post-lock allowance for preflight, skill sync and `git worktree add`.
+const PRE_SPAWN_BEAT_BUDGET: Duration = Duration::from_secs(REPO_LOCK_WAIT.as_secs() + 15 * 60);
+const PRE_SPAWN_MAX_TICKS: u32 =
+    (PRE_SPAWN_BEAT_BUDGET.as_secs() / HEARTBEAT_INTERVAL.as_secs()) as u32;
+
+// cm:guard the ordering above is load-bearing enough to fail the BUILD rather than a review: a beat that runs out first is the ghost-agent shape, and nothing at runtime would name it.
+const _: () = assert!(PRE_SPAWN_BEAT_BUDGET.as_secs() > REPO_LOCK_WAIT.as_secs());
 
 /// Read the on-disk `.hash` markers from `<repo>/.claude/skills/*/` to build
 /// the `skillsRanWith` map sent to the server at ACK time (ISS-798).
@@ -384,8 +390,8 @@ pub async fn handle(
                     tracing::debug!("[job {job_id}] pre-spawn heartbeat: {e}");
                 }
             }
-            tracing::warn!(
-                "[job {job_id}] still not spawned after the pre-spawn budget — going quiet so the heartbeat reaper can judge it"
+            tracing::error!(
+                "[job {job_id}] still not spawned after the pre-spawn budget — going quiet so the heartbeat reaper can judge it. The repo-lock deadline should have fired first; if it did not, setup itself is wedged."
             );
         })
     });
