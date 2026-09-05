@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Forge flow diagrams</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --gap:#8a3b52; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:60rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  .done { color:var(--acc); font-weight:600; }
+  .gap  { color:var(--gap); }
+  ul { padding-left:1.1rem; } li { margin:.3rem 0; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; }
+</style>
+<main>
+
+<h1>Flow diagrams</h1>
+<p class="sub">One file per flow. A flow is something that <em>moves</em> — a request across
+processes, a lifecycle, a decision path. Not a box diagram of what exists; <code>docs/modules/</code>
+already owns structure.</p>
+
+<h2>Rules</h2>
+<div class="rule">
+<ul>
+  <li><b>Backfilled by the work, never as a project.</b> An issue that touches a feature or module
+      backfills that flow in the same change. Nobody is assigned to draw the missing ones.</li>
+  <li><b>One flow per file</b>, named <code>&lt;domain&gt;-&lt;flow&gt;.html</code>, and listed in the
+      table below in the same commit. A file not in the table is unreachable and counts as missing.</li>
+  <li><b>Show the mechanism.</b> The test is whether a reader who has not seen the code can say what
+      happens when it goes wrong. A diagram that only names the components has not earned its file.</li>
+  <li><b>Pick the form from the question</b> — sequence when the point is who talks to whom and in
+      what order; state machine when the point is which transitions are legal; flowchart when the
+      point is where a decision forks. Inline SVG or a <code>&lt;pre class="mermaid"&gt;</code> block,
+      self-contained, opens from disk with no build step.</li>
+  <li><b>Delete rather than carry.</b> A flow the code no longer performs is removed in the change
+      that discovers it — not marked stale.</li>
+</ul>
+</div>
+
+<h2>Flows</h2>
+<table>
+<thead><tr><th>Flow</th><th>Answers</th><th>Module</th><th>State</th></tr></thead>
+<tbody>
+<tr><td colspan="4" class="gap">None backfilled yet. The rows below are the worklist, seeded from
+<code>docs/modules/</code> — each becomes a link when a change touching that domain draws it.</td></tr>
+<tr><td>agent-execution</td><td>How a claimed job becomes a running agent, and what ends it</td><td>agent-execution</td><td class="gap">missing</td></tr>
+<tr><td>control-observability</td><td>How a fault on a box reaches an operator</td><td>control-observability</td><td class="gap">missing</td></tr>
+<tr><td>human-routing</td><td>How a question reaches a human and the answer gets back</td><td>human-routing</td><td class="gap">missing</td></tr>
+<tr><td>issue-work</td><td>How an issue becomes a landed diff</td><td>issue-work</td><td class="gap">missing</td></tr>
+<tr><td>knowledge-memory-skills</td><td>How something learned is written, found again, and delivered</td><td>knowledge-memory-skills</td><td class="gap">missing</td></tr>
+<tr><td>lifecycle-pipeline</td><td>How a run and its jobs open, advance and close without orphans</td><td>lifecycle-pipeline</td><td class="gap">missing</td></tr>
+<tr><td>organization-access</td><td>How a principal resolves to what it may touch</td><td>organization-access</td><td class="gap">missing</td></tr>
+</tbody>
+</table>
+
+<h2>Read when · Updated by</h2>
+<table>
+<thead><tr><th>Read when</th><th>Updated by</th></tr></thead>
+<tbody>
+<tr><td>You need to know what happens across processes before changing one of them</td>
+    <td>Any change that alters the order, the hops, or the failure paths of a flow listed above</td></tr>
+<tr><td>A failure crosses a boundary and you cannot tell which side owns it</td>
+    <td>The change that discovers a flow here is wrong — corrected or deleted, never annotated</td></tr>
+</tbody>
+</table>
+
+</main>
