@@ -656,6 +656,13 @@
   hit is first on 5–22 points more of them (six projects, 2026-09-05). Nothing else about rerank
   changes.
 
+- The fleet feedback digest silently under-counted the backlog. `forge_feedback action=list` is
+  capped by response SIZE, and the digest made one call and reported whatever came back — two runs
+  an hour apart over the same data said "≥91 across 11 projects" and "42+ across 10", and only the
+  first had happened to enumerate. It now narrows by target, then severity, then kind, then project
+  until every cell returns `hasMore:false`, reports the total as a floor rather than a count, and
+  names any cell it still cannot page past.
+
 - The fleet feedback digest no longer files a near-duplicate issue every week. Its create call now
   carries a fixed `detectorKey`, so the kernel keeps at most one open digest and later runs comment
   on it instead of filing again. It had been deduping by asking the agent to read the backlog for an

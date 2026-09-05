@@ -58,7 +58,16 @@ Pull unreviewed \`forge_feedback\` reports fleet-wide, cluster them, and propose
 
 Call \`forge_feedback\` with \`action="list"\`, \`scope="all"\`, \`filters.reviewed=false\`, \`limit=${FEEDBACK_LIST_LIMIT}\`. This unions every project you own or are a member of and returns \`projectId\`/\`projectSlug\` on each row.
 
-If the response carries \`truncated:true\`, note that in your report — the digest covers the most recent reports only, not the full backlog.
+**One call is not the backlog.** The response is capped by SIZE, so a single pass silently returns
+a subset and looks complete either way — measured 2026-09-05, two runs an hour apart over the same
+data reported **≥91 across 11 projects** and **42+ across 10**, and only the first had enumerated.
+
+So whenever the response carries \`truncated:true\` or \`hasMore:true\`, **narrow and repeat until every
+cell closes**: split by \`target\`, then by \`severity\` within a target that is still capped, then by
+\`kind\`, then by \`projectId\`. A cell is done when it returns \`hasMore:false\`. Report the total as a
+FLOOR (\`≥N\`), never a count, and name any cell that still returns \`hasMore:true\` with no filter
+dimension left to split on — that is a real gap in the list tool and the reader must know the
+shortfall exists rather than trusting a number that looks whole.
 
 ---
 

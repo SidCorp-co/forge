@@ -93,6 +93,22 @@ describe('buildFeedbackDigestPrompt', () => {
     expect(prompt.toLowerCase()).toContain('do not mint a variant key');
   });
 
+  it('tells the agent to enumerate past the size cap rather than trust one call', () => {
+    expect(prompt).toContain('hasMore:false');
+    expect(prompt.toLowerCase()).toContain('one call is not the backlog');
+  });
+
+  it('names every filter dimension the enumeration narrows by, in order', () => {
+    const step1 = prompt.slice(prompt.indexOf('## STEP 1'), prompt.indexOf('## STEP 2'));
+    for (const dimension of ['`target`', '`severity`', '`kind`', '`projectId`']) {
+      expect(step1).toContain(dimension);
+    }
+  });
+
+  it('requires the total be reported as a floor, not a count', () => {
+    expect(prompt).toMatch(/FLOOR \(`≥N`\), never a count/);
+  });
+
   it('no longer carries the prose dedupe rule the detectorKey replaced', () => {
     expect(prompt).not.toContain('overlapping report set');
   });
