@@ -26,10 +26,16 @@ Record the couplings no tool can see, as one-line annotations on line comments (
 | `// cm:why <text>` | one-line rationale |
 
 **One line means one line, however long.** `cm fmt` does not join a wrapped annotation — measured
-2026-08-25, it normalizes 0 of them — so a continuation `//` line stays prose and the prose tier
-flags it. Write the whole rule on the single `//` that carries the `cm:` verb, at 300 characters if
-that is what it takes. And an annotation makes you the owner of the comment block it lands in:
-delete the legacy restatement glued to it, or the file comes back red on comments you never wrote.
+2026-08-25, it normalizes 0 of them — and §4 lets an annotation wrap onto exactly ONE following
+line, so the second continuation is prose and the tier flags it while the first is adopted in
+silence. That first line is a one-line blind spot under every annotation: measured 2026-09-06,
+`// Read the pool and return the rows.` directly under a `cm:edge` passes both the whole-tree and
+the `--staged` run, and the identical comment two lines away is CM001. 21 lines sit in that slot
+across first-party code today and all 21 are genuine continuations — the hole is real and unused,
+which is the moment to know about it. Write the whole rule on the single `//` that carries the
+`cm:` verb, at 300 characters if that is what it takes. And an annotation makes you the owner of
+the comment block it lands in: delete the legacy restatement glued to it, or the file comes back
+red on comments you never wrote.
 
 ## What earns an annotation
 
