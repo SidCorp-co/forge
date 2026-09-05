@@ -2,7 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects, type RunnerType, runners } from '../db/schema.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
-import { deviceCapSql } from './device-cap.js';
+import { CLAIM_CAPABLE_DEVICE, deviceCapSql } from './device-cap.js';
 import type { RequiredCapabilities, Runner } from './types.js';
 
 /**
@@ -421,6 +421,7 @@ async function findHealthyByDevice(
         ${NOT_AUTH_LIMITED}
         ${WORKSPACE_READY}
         ${NOT_DISABLED_DEVICE}
+        ${CLAIM_CAPABLE_DEVICE}
         ${poolClause(allowDeviceIds)}
       ORDER BY last_seen_at DESC, id ASC
       LIMIT 1
@@ -485,6 +486,7 @@ async function findStandby(
         ${NOT_AUTH_LIMITED}
         ${WORKSPACE_READY}
         ${NOT_DISABLED_DEVICE}
+        ${CLAIM_CAPABLE_DEVICE}
         ${poolClause(extra.allowDeviceIds)}
         ${exclusionClause}
         ${retryExclusionClause}
@@ -554,6 +556,7 @@ async function pickLeastLoadedFreeRunner(
         ${WORKSPACE_READY}
         AND COALESCE(rl.in_flight, 0) < ${deviceCapSql('dv')}
         ${NOT_DISABLED_DEVICE}
+        ${CLAIM_CAPABLE_DEVICE}
         ${poolClause(opts.allowDeviceIds, sql`r.device_id`)}
         ${retryExclusionClause}
       ORDER BY
@@ -607,6 +610,7 @@ export async function onlineCapableDeviceIds(
         ${limitClause}
         ${WORKSPACE_READY}
         ${NOT_DISABLED_DEVICE}
+        ${CLAIM_CAPABLE_DEVICE}
         ${poolClause(opts?.allowDeviceIds)}
       ORDER BY device_id ASC
     `,

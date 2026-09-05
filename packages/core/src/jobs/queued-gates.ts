@@ -29,7 +29,7 @@ import {
   TRIGGER_STATUS_BY_JOB_TYPE,
   WORKING_STATUS_BY_JOB_TYPE,
 } from '../pipeline/registry.js';
-import { deviceCapSql } from '../runners/device-cap.js';
+import { claimCapableSql, deviceCapSql } from '../runners/device-cap.js';
 import { countInFlightForOneRunner } from './in-flight.js';
 
 export type GateSkipReason =
@@ -169,6 +169,8 @@ export function buildBarrierFragments(args: {
         AND (r.quarantined_until IS NULL OR r.quarantined_until <= now())
         -- cm:guard mirrors WORKSPACE_READY in runners/select.ts — NULL is a legacy row that predates the column and stays eligible; only an explicit non-ready value blocks
         AND (r.provision_status IS NULL OR r.provision_status = 'ready')
+        -- cm:guard mirrors "claimCapableSql" in runners/device-cap.ts — a box below the claim floor is refused OUTRIGHT ("runner_too_old"), never degraded, so counting it here declares dispatchable a job no runner on that box can ever take. Backticks are forbidden in this CTE: it is a template literal, and one backtick in a comment ends it.
+        AND ${claimCapableSql('d')}
         -- Device turn-off gate — MUST mirror runners/select.ts
         -- (NOT_DISABLED_DEVICE). Without it the picker/asserter counts a runner
         -- on a disabled device as available and declares the job dispatchable,

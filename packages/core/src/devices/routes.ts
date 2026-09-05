@@ -28,6 +28,7 @@ import { hooks } from '../pipeline/hooks.js';
 import { readPluginDesignations, unionPluginDesignations } from '../plugins/designation.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { mirrorHeartbeatToRunners } from './heartbeat-runner-mirror.js';
+import { listDeviceAssignments } from './me-runners.js';
 import { redeemPairingCode } from './pair.js';
 
 const badRequest = (details: unknown) =>
@@ -458,26 +459,7 @@ deviceAuthRoutes.post(
 deviceAuthRoutes.get('/me/runners', requireDevice(), async (c) => {
   const device = c.get('device');
   if (device.status === 'revoked') throw unauth();
-
-  const rows = await db
-    .select({
-      projectId: runners.projectId,
-      runnerId: runners.id,
-      slug: projects.slug,
-      baseBranch: projects.baseBranch,
-      repoPath: runners.repoPath,
-      branch: runners.branch,
-      status: runners.status,
-      // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/runners.rs — `MeRunner.kind` deserializes this field, and `requires_preflight` decides from it whether a job runs the git preflight at all. Dropping it here does not fail any type check: the runner defaults a missing field to None and then REQUIRES preflight, so a storefront project silently goes back to failing every job on `origin_remote`.
-      kind: projects.kind,
-      // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/setup_agent.rs — the setup agent's procedure comes from here and nowhere else. Same silent-failure shape as `kind` above: the runner defaults it to None and falls back to deriving the procedure per job, so dropping this field costs tokens on every repair instead of failing anything.
-      workspaceSetup: projects.workspaceSetup,
-    })
-    .from(runners)
-    .innerJoin(projects, eq(projects.id, runners.projectId))
-    .where(and(eq(runners.deviceId, device.id), eq(runners.type, 'claude-code')));
-
-  return c.json(rows);
+  return c.json(await listDeviceAssignments(device.id));
 });
 
 // cm:why a plugin installs at device scope, so the union of the bound projects is the only resolvable unit (plugins/designation.ts)

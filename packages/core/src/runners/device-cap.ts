@@ -77,3 +77,26 @@ export function deviceCapSql(alias: string) {
     ELSE 1
   END`;
 }
+
+/**
+ * Whether the `devices` row at `alias` is at or above `AGENT_NAMING_MIN_RUNNER`,
+ * as a SQL predicate.
+ */
+// cm:guard this predicate and `canNameItsAgent` are ONE decision in two languages and must refuse the same rows. The claim is the only thing enforcing the floor, and it refuses OUTRIGHT (`runner_too_old`) rather than degrading — so a query that counts a below-floor box as healthy hands the retry engine a candidate that can never take the job: the queue never reaches `all_devices_exhausted`, never holds, and burns all 30 attempts against a box structurally incapable of claiming. Measured on epodsystem 2026-09-05, the day the floor landed with a TypeScript half and no SQL half.
+// cm:guard the regex gate makes NULL and free text fall to FALSE, and that direction is mandatory HERE though it is the opposite of `deviceCapSql`, which resolves the unknown to a working cap 1. There is no safe degraded claim: a box that cannot name its agent must be invisible to selection, not merely capped.
+export function claimCapableSql(alias: string) {
+  const version = sql.raw(`${alias}.agent_version`);
+  const floor = sql.raw(`ARRAY[${AGENT_NAMING_MIN_RUNNER.split('.').join(',')}]`);
+  return sql`${version} ~ '^[0-9]+\.[0-9]+\.[0-9]+$'
+    AND string_to_array(${version}, '.')::int[] >= ${floor}`;
+}
+
+/**
+ * The same floor as an `AND` fragment for a query that has no `devices` join,
+ * written against a bare `device_id` so it resolves whether the enclosing query
+ * aliases `runners` or not — the same shape as `NOT_DISABLED_DEVICE`.
+ */
+// cm:edge lockstep -> packages/core/src/jobs/queued-gates.ts — `fresh_capable_runners` must carry this floor too (via `claimCapableSql`, which its `devices` join can take directly), or the picker declares dispatchable what the selector then refuses and the job spins `queued` with no gate reason
+export const CLAIM_CAPABLE_DEVICE = sql`AND EXISTS (
+  SELECT 1 FROM devices d WHERE d.id = device_id AND ${claimCapableSql('d')}
+)`;

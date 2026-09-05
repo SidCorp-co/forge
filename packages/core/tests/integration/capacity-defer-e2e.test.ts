@@ -208,4 +208,22 @@ describe('capacity deferral E2E', () => {
     const ev = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
     expect(ev.reason).toBe('no capable device is online');
   });
+  // cm:guard a box BELOW the claim floor belongs in the same deferral as offline and rate-limited, because the claim refuses it outright (`runner_too_old`) rather than degrading — it can never take the work, so counting it as a usable device hands the retry engine a candidate that cannot claim and the job burns all 30 attempts instead of holding. This is the third member of the same proposition the two cases above pin; the floor landed on 2026-09-05 with a TypeScript half and no SQL half, and epodsystem paid for it the same day.
+  it('defers the same way when the only live box is below the claim floor', async () => {
+    await harness.db.execute(
+      sql`UPDATE devices SET agent_version = '0.10.5' WHERE id = ${deviceId}`,
+    );
+    const job = await failedJob({ round: 2, target: deviceId, tries: 3, done: [] });
+
+    const res = await mods.scheduleAutoRetryWithVerify(job as never, 'spend-limit');
+
+    expect(res.scheduled).toBe(true);
+    const [clone] = await harness.db.execute<{ payload: Record<string, unknown> }>(
+      sql`SELECT payload FROM jobs WHERE retry_of = ${job.id as string}`,
+    );
+    expect(clone).toBeTruthy();
+    const rotation = clone?.payload._autoRetry as { round: number };
+    expect(rotation.round).toBe(2);
+    expect(emitWedgeMock).toHaveBeenCalledTimes(1);
+  });
 });
