@@ -720,6 +720,20 @@
 
 ### Fixed
 
+- **Revoking a device could not be done from the app at all.** `DELETE /api/devices/:id` sits behind
+  `requireFreshAuth(5)`, so a revoke by anyone signed in more than five minutes ago answers 403
+  `FRESH_AUTH_REQUIRED` — and the Runners screen reported that as a plain failure, then pointed the
+  operator at a banner saying to "re-authenticate in Settings and try again". Settings has no
+  standalone re-auth action: the only thing that stamps `last_fresh_auth_at` is starting an API-token
+  creation and being refused first. So the advice led nowhere, and no sequence of clicks in the app
+  could revoke a device. Found while trying to delete six retired runner hosts.
+
+  The revoke control now owns the second step itself — confirm → password → `POST /api/auth/reauth`
+  → retry the same revoke — mirroring what the tokens tab already did. `isFreshAuthError` moves out
+  of that tab into `features/auth/fresh-auth.ts` so both surfaces share one definition rather than a
+  copy, and `useRevokeDevice` stays silent on that 403 instead of toasting a failure next to the
+  prompt that is in fact the next move. The misleading banner is deleted rather than reworded.
+
 - A memory write under a new `sourceRef` no longer destroys an unrelated note, and the forge-dev note
   store no longer lies about which day it holds (ISS-876, superseding closed ISS-861). The near-identical
   dedup absorb was unreachable for a refinement of an existing record — `findNearDuplicate` returns null

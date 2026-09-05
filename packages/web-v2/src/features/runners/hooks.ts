@@ -1,6 +1,7 @@
 "use client";
 
 import { ApiError } from "@/lib/api/client";
+import { isFreshAuthError } from "@/features/auth/fresh-auth";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -31,12 +32,15 @@ export function useRevokeDevice() {
 			qc.invalidateQueries({ queryKey: ["devices", "me"] });
 			toast({ title: "Device revoked", tone: "success" });
 		},
-		onError: (err) =>
+		// cm:guard stay SILENT on a fresh-auth refusal — `RevokeDeviceControl` turns that 403 into the password step, and a toast here would announce a failure next to the prompt that is in fact the next move. Every other error still surfaces.
+		onError: (err) => {
+			if (isFreshAuthError(err)) return;
 			toast({
 				title: "Revoke failed",
 				description: formatApiError(err),
 				tone: "error",
-			}),
+			});
+		},
 	});
 }
 

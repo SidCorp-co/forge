@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { formatRelativeTime } from "@/lib/utils/format";
 import {
-  Banner,
   Button,
   Card,
   CardContent,
@@ -30,7 +29,8 @@ import { useActiveOrg } from "@/features/orgs/active-org";
 import { formatApiError } from "@/lib/api/error";
 import { userRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { useDevices, useInitPairing, useRevokeDevice, useSetDeviceDisabled } from "../hooks";
+import { useDevices, useInitPairing, useSetDeviceDisabled } from "../hooks";
+import { RevokeDeviceControl } from "./revoke-device-control";
 import { deviceHealth, type DeviceRow } from "../types";
 import { DeviceDetail } from "./device-detail";
 
@@ -151,7 +151,6 @@ export function RunnersScreen() {
   // pair, then assign the device to a project to see it here.
   const { activeOrgId } = useActiveOrg();
   const devices = useDevices(activeOrgId);
-  const revoke = useRevokeDevice();
   const toggleDisabled = useSetDeviceDisabled();
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -276,23 +275,11 @@ export function RunnersScreen() {
                       </TD>
                       <TD className="text-right">
                         {confirmId === d.id ? (
-                          <span className="inline-flex items-center gap-2">
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              icon="trash"
-                              loading={revoke.isPending}
-                              onClick={() => {
-                                revoke.mutate(d.id);
-                                setConfirmId(null);
-                              }}
-                            >
-                              Confirm
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => setConfirmId(null)}>
-                              Cancel
-                            </Button>
-                          </span>
+                          <RevokeDeviceControl
+                            deviceId={d.id}
+                            deviceName={d.name}
+                            onDone={() => setConfirmId(null)}
+                          />
                         ) : (
                           <span className="inline-flex items-center gap-1">
                             <Button
@@ -343,11 +330,6 @@ export function RunnersScreen() {
           )}
         </CardContent>
       </Card>
-
-      <Banner tone="info">
-        Revoking requires a recent sign-in. If revoke fails with an auth error, re-authenticate in
-        Settings and try again.
-      </Banner>
 
       <DeviceDetail device={detailDevice} onClose={() => setDetailId(null)} />
     </PageContainer>

@@ -34,7 +34,7 @@ import {
 } from "@/design";
 import { reauthStartUrl } from "@/features/auth/oauth-api";
 import { useProjects } from "@/features/projects/hooks";
-import { ApiError } from "@/lib/api/client";
+import { isFreshAuthError } from "@/features/auth/fresh-auth";
 import { formatApiError } from "@/lib/api/error";
 import { useAuth } from "@/providers/auth-provider";
 import { useToast } from "@/providers/toast-provider";
@@ -53,10 +53,6 @@ function fmtDate(iso: string | null): string {
   return Number.isNaN(d.getTime())
     ? "—"
     : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-}
-
-function isFreshAuthError(err: unknown): boolean {
-  return err instanceof ApiError && (err.code === "FRESH_AUTH_REQUIRED" || err.status === 403);
 }
 
 // Where the SSO reauth round-trip returns to (this tab).
