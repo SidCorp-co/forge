@@ -11,6 +11,17 @@
 
 ### Added
 
+- Retrieval v3, phase 4 (ISS-907). Keyword search understands identifiers. `LITELLM_API` finds a memory
+  that says `LITELLM_API_URL`, `cascade` finds `runs-cascade.ts`, `memory/rerank.ts` finds the full
+  path, and `transition` finds `applyKernelTransition` — across memories, memory passages, knowledge
+  entries and the issue search. One immutable Postgres function splits camelCase, `_`, `/`, `.`, `:`
+  and `-` into words behind a generated `ident_search` column on the four tables (migration `0207`,
+  which rewrites them once), and the keyword strategy matches English or identifier and ranks by the
+  sum. Hybrid search now weights its two arms equally: at the old 0.7 / 0.3 a hit found only by the
+  keyword arm could never reach the top 8 or the rerank pool, which is why identifier lookups landed
+  in the top 8 on 20–53% of queries across six projects and land on 93–100% now, with no change to
+  natural-language queries.
+
 - `forge_issues list` accepts a `complexity` filter (ISS-912). The field was already returned by
   `get` and on every list row, but nothing could narrow by it: the filter was absent from the input
   schema and, once added there, still dropped by the hand-copied mapping into the list service — a
@@ -632,6 +643,12 @@
   set is now 59.
 
 ### Fixed
+
+- The reranker is shown 1,500 characters of each candidate instead of 600 (ISS-914). A chunk passage
+  runs to about 1,400 characters, so at 600 the model ranked a passage by its opening and demoted the
+  exact hit on 8–13 of 40 tail-fact questions per project; at 1,500 it does so on 2–8, and the true
+  hit is first on 5–22 points more of them (six projects, 2026-09-05). Nothing else about rerank
+  changes.
 
 - The fleet feedback digest no longer files a near-duplicate issue every week. Its create call now
   carries a fixed `detectorKey`, so the kernel keeps at most one open digest and later runs comment

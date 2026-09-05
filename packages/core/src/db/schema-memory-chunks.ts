@@ -8,7 +8,8 @@
 
 import { type SQL, sql } from 'drizzle-orm';
 import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
-import { MEMORY_EMBEDDING_DIM, memories, pgVector, tsVector } from './schema.js';
+import { memories } from './schema.js';
+import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
 // cm:guard a sibling table, never a re-key of `memories` — `get`, `decay`, `consolidation`, `feedback`, the candidates and the near-duplicate probe all read one row per natural key and none of them knows this table exists; a chunk is reachable ONLY through the search arm's join on the parent's `chunked_at` and `chunk_generation`, so nothing here may be selected without that join
 export const memoryChunks = pgTable(
@@ -27,6 +28,9 @@ export const memoryChunks = pgTable(
       (): SQL =>
         sql`to_tsvector('english', ${memoryChunks.contextPrefix} || ' ' || ${memoryChunks.textContent})`,
     ),
+    identSearch: identSearchColumn(
+      (): SQL => sql`${memoryChunks.contextPrefix} || ' ' || ${memoryChunks.textContent}`,
+    ),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -36,6 +40,7 @@ export const memoryChunks = pgTable(
       sql`"embedding" vector_cosine_ops`,
     ),
     textSearchIdx: index('memory_chunks_text_search_idx').using('gin', t.textSearch),
+    identSearchIdx: index('memory_chunks_ident_search_idx').using('gin', t.identSearch),
   }),
 );
 

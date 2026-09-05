@@ -1,6 +1,7 @@
 import { and, desc, eq, exists, gte, ilike, inArray, lt, ne, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issueLabels, issues } from '../db/schema.js';
+import { identifierTsQuery } from '../db/schema-types.js';
 import { resolveLabelIdsTolerant } from './label-service.js';
 
 export type IssueListFilters = {
@@ -53,7 +54,11 @@ export async function listIssueRows(
   if (filters?.updatedAfter) conds.push(gte(issues.updatedAt, filters.updatedAfter));
   if (filters?.search) {
     const q = `%${filters.search}%`;
-    const orExpr = or(ilike(issues.title, q), ilike(issues.description, q));
+    const orExpr = or(
+      ilike(issues.title, q),
+      ilike(issues.description, q),
+      sql`${issues.identSearch} @@ ${identifierTsQuery(filters.search)}`,
+    );
     if (orExpr) conds.push(orExpr);
   }
 

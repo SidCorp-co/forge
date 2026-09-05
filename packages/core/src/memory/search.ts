@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm
 import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
 import { type MemoryModel, type MemorySource, memories } from '../db/schema.js';
+import { identifierTsQuery } from '../db/schema-types.js';
 
 interface BaseSearchInput {
   projectId: string;
@@ -145,8 +146,11 @@ export async function keywordSearchMemories(input: KeywordSearchInput): Promise<
   const topK = clampTopK(input.topK);
 
   const tsQuery = sql`websearch_to_tsquery('english', ${trimmed})`;
+  const identQuery = identifierTsQuery(trimmed);
   const whereClauses = baseWhereClauses(input);
-  whereClauses.push(sql`${memories.textSearch} @@ ${tsQuery}`);
+  whereClauses.push(
+    sql`(${memories.textSearch} @@ ${tsQuery} OR ${memories.identSearch} @@ ${identQuery})`,
+  );
 
   const rows = await db
     .select({
@@ -156,7 +160,9 @@ export async function keywordSearchMemories(input: KeywordSearchInput): Promise<
       text: memories.textContent,
       metadata: memories.metadata,
       embeddedAt: memories.embeddedAt,
-      rank: sql<number>`ts_rank(${memories.textSearch}, ${tsQuery})`.as('rank'),
+      rank: sql<number>`ts_rank(${memories.textSearch}, ${tsQuery}) + ts_rank(${memories.identSearch}, ${identQuery})`.as(
+        'rank',
+      ),
     })
     .from(memories)
     .where(and(...whereClauses))
@@ -210,18 +216,28 @@ async function chunkedSearch(
 ): Promise<MemoryHit[]> {
   const topK = clampTopK(input.topK);
   const filters = literalFilters(input);
+  const trimmedQuery = kind === 'keyword' ? (input as KeywordSearchInput).query.trim() : '';
   const q =
     kind === 'semantic'
       ? sql`${`[${(input as SearchInput).queryVec.join(',')}]`}::vector`
-      : sql`websearch_to_tsquery('english', ${(input as KeywordSearchInput).query.trim()})`;
+      : sql`websearch_to_tsquery('english', ${trimmedQuery})`;
+  const qi = identifierTsQuery(trimmedQuery);
   const chunkMeasure =
-    kind === 'semantic' ? sql`c.embedding <=> ${q}` : sql`ts_rank(c.text_search, ${q})`;
+    kind === 'semantic'
+      ? sql`c.embedding <=> ${q}`
+      : sql`ts_rank(c.text_search, ${q}) + ts_rank(c.ident_search, ${qi})`;
   const flatMeasure =
-    kind === 'semantic' ? sql`m.embedding <=> ${q}` : sql`ts_rank(m.text_search, ${q})`;
+    kind === 'semantic'
+      ? sql`m.embedding <=> ${q}`
+      : sql`ts_rank(m.text_search, ${q}) + ts_rank(m.ident_search, ${qi})`;
   const chunkMatch =
-    kind === 'semantic' ? sql`AND c.embedding IS NOT NULL` : sql`AND c.text_search @@ ${q}`;
+    kind === 'semantic'
+      ? sql`AND c.embedding IS NOT NULL`
+      : sql`AND (c.text_search @@ ${q} OR c.ident_search @@ ${qi})`;
   const flatMatch =
-    kind === 'semantic' ? sql`AND m.embedding IS NOT NULL` : sql`AND m.text_search @@ ${q}`;
+    kind === 'semantic'
+      ? sql`AND m.embedding IS NOT NULL`
+      : sql`AND (m.text_search @@ ${q} OR m.ident_search @@ ${qi})`;
   const agg = kind === 'semantic' ? sql`MIN` : sql`MAX`;
   const bestFirst = kind === 'semantic' ? sql`ASC` : sql`DESC`;
 
@@ -270,7 +286,8 @@ async function chunkedSearch(
 /** Standard RRF constant — higher k flattens the advantage of top ranks. */
 const RRF_K = 60;
 /** Dense-vector weight in hybrid fusion (keyword gets `1 - alpha`). */
-const HYBRID_ALPHA = 0.7;
+// cm:guard the two arms are weighted EQUALLY on purpose — at 0.7/0.3 with k=60 a hit the keyword arm ranked first and the semantic arm never returned scored 0.3/61 = 0.0049, below the semantic rank-8 at 0.7/68 = 0.0103 and the rank-24 rerank pool at 0.7/84 = 0.0083, so nothing found only by the keyword arm ever reached the caller and the identifier arm (ISS-907) would have found rows nobody saw; measured 2026-09-05 on six live corpora, equal weights put 93–100% of identifier lookups in the top 8 and changed nothing on natural-language queries, where the keyword arm is empty on 85–95% of them. `reciprocalRankFusion` tests pin the survival of a keyword-only rank 1 at topK 8 and pool 24
+export const HYBRID_ALPHA = 0.5;
 
 /**
  * Reciprocal Rank Fusion — merge ranked lists by rank, not score, so the

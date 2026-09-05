@@ -59,9 +59,23 @@ flowchart TB
 - **Project facts land on disk.** `projectFacts` values are spliced verbatim into the
   device-installed `SKILL.md`, so they are never a place for secrets — test credentials live in the
   project's credential store.
-- **Memory retrieval is hybrid.** `memories` carries both a pgvector embedding and a generated
-  `tsvector`; the keyword strategy reads the latter via `@@` / `ts_rank`. The tsvector is a generated
-  column — never written by the app.
+- **Memory retrieval is hybrid, and the keyword arm has two halves.** `memories` carries a pgvector
+  embedding and two generated `tsvector` columns, never written by the app: `text_search`
+  (English-stemmed) and `ident_search` (ISS-907), the same text with camelCase, `_`, `/`, `.`, `:` and
+  `-` split into `simple`-config words by the one immutable SQL function `forge_identifier_words`
+  (migration `0207`; `schema-types.ts:identSearchColumn`). The keyword strategy matches
+  `text_search @@ websearch_to_tsquery('english', q) OR ident_search @@ phraseto_tsquery('simple',
+  forge_identifier_words(q))` and ranks by the sum, so `LITELLM_API` finds `LITELLM_API_URL`,
+  `cascade` finds `runs-cascade.ts` and `memory/rerank.ts` finds the full path, while `ISS-26` stays a
+  phrase and does not match `iss` and `26` apart. `memory_chunks`, `knowledge_entries` and `issues`
+  carry the same column; `knowledge/search.ts:keywordSearchKnowledge` and both issue text matches
+  (`issues/search.ts`, `issues/list-service.ts`) OR the identifier arm in the same way.
+- **Hybrid fuses the two arms with equal weights.** `search.ts:reciprocalRankFusion` at `HYBRID_ALPHA`
+  0.5, k = 60. At the former 0.7 / 0.3 a hit the keyword arm ranked first and the semantic arm never
+  returned scored 0.3/61, below the semantic rank 8 at 0.7/68 and rank 24 at 0.7/84, so nothing found
+  only by the keyword arm ever reached the caller; measured on six live corpora (2026-09-05) equal
+  weights put 93–100% of identifier lookups in the top 8 and changed nothing on natural-language
+  queries. `knowledge/search.ts:rrfFuse` carries the same constant.
 - **Every hybrid search says what each list contributed.** `search-service.ts:buildRetrievalMetadata`
   writes `semanticHits`, `keywordHits` and `overlap` into `retrieval_analytics.metadata` beside
   `strategy` / `requestedStrategy`; semantic-only and keyword-only rows carry none of the three, so
@@ -110,7 +124,7 @@ flowchart TB
   search fuses `3 × topK` candidates (cap 50) and `rerank.ts:rerankHits` asks the fast model
   (`RERANK_MODEL`, else `LITELLM_FAST_MODEL`) for one listwise order — showing it, per candidate, the
   text that matched (`rerank.ts:shownText`: the matched passage on a chunked project, the row otherwise,
-  cut at 600 characters), which is also what the rerank cache key hashes; the response says
+  cut at 1,500 characters — ISS-914; at 600 the model judged a ~1,400-character passage by its opening), which is also what the rerank cache key hashes; the response says
   `reranked: true`, each hit carries `rerankPosition`, and `score` stays the RRF value, so callers read
   the list in order rather than sorting by score. Prose, an out-of-range index or a failed call keep
   the RRF order with `reranked: false` and never throw; an omitted candidate is appended, never dropped.

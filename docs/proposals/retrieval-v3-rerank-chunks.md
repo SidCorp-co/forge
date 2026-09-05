@@ -8,7 +8,7 @@ Found: 2026-09-04, reading `forge-agents/forge/strapi/src/services/{embeddings,a
 `memory/search-service.ts:runMemorySearch` offers three strategies over one table. `semantic` is
 cosine over `memories.embedding` (HNSW). `keyword` is `websearch_to_tsquery` over the generated
 `memories.text_search` (GIN). `hybrid` runs both and fuses by Reciprocal Rank Fusion
-(`memory/search.ts:reciprocalRankFusion`, k=60, dense 0.7 / keyword 0.3). Every call logs a row to
+(`memory/search.ts:reciprocalRankFusion`, k=60; dense 0.7 / keyword 0.3 until ISS-907 made them 0.5 / 0.5 — see phase 4). Every call logs a row to
 `retrieval_analytics` and bumps `retrieval_count` on the hits; `decay.ts` archives unused
 agent-curated rows; `feedback-service.ts` lets an agent confirm or retire a hit.
 
@@ -107,6 +107,8 @@ for a planted pair of lists with one shared id. It goes red by deleting the `ove
 ## Phase 1 — rerank behind hybrid
 
 **Shipped in ISS-905** (with phase 3): `memory/rerank.ts`, the required `surface` argument on `runMemorySearch`, `RERANK_MODEL`, the one-in-five holdout drawn per eligible search, and `hitIds` on every hybrid agent analytics row so the exit criterion below can be computed by joining to `memories.last_verified_at`.
+
+**Corrected in ISS-914** (2026-09-05): the reranker is shown 1,500 characters of each candidate, not 600. On a local read-only mirror of six forge-beta projects, 40 synthetic tail-fact questions each, chunked hybrid pool 24, the same prompt at 600 vs 1,500 gave hit@1 58→65, 43→65, 38→50, 50→70, 58→65 and 50→63, and the reranker demoting the true hit fell from 8/13/11/8/10/9 cases to 3/5/8/2/7/2.
 
 **Corrected in ISS-913** (2026-09-05): the reranker is shown the passage that matched (`matchedChunk.text`) on a chunked project, not the row head, and its cache key hashes that text. Measured before the fix on forge-beta: with RRF alone the exact-passage hit was rank 1 on every pass; reranked, forge-dev dropped a 75k-character hit out of the top 8 in 2 of 4 passes and forge-plugin demoted two rank-1 hits to 4 and 5 — the model was judging a document by its first 600 characters while the query matched passage 76.
 
@@ -373,6 +375,8 @@ one hit; flag on → two, B carrying `via.relation:'blocks'`. Red by returning b
 
 ## Phase 4 — identifier-aware keyword matching, only with evidence
 
+**Shipped in ISS-907** (2026-09-05). The evidence arrived a different way than the gate below expected: a search-quality trial on a local read-only mirror of six forge-beta projects (60 live-log queries, 40 synthetic tail-fact questions and up to 30 identifier lookups per project) showed identifier lookups landing in the top 8 on 20–53% of queries, and every zero-hit search on forge-dev and forge-plugin in 14 days was a keyword search for a path or identifier. It also showed a second cause the phase had not named: RRF at 0.7 / 0.3 with k=60 scores a keyword-only rank 1 (0.3/61) below the semantic rank 8 (0.7/68), so the identifier arm alone would have found rows nobody saw. Shipped: `forge_identifier_words` (IMMUTABLE, migration `0207`), the generated `ident_search` column on the four tables (named `ident_search`, not `text_search_ident`), the OR arm on the memory, knowledge and issue keyword matches, and `HYBRID_ALPHA` 0.5 in memory and knowledge search. The issue search keeps its substring on `description` until the issue FTS work (unmerged) lands. Re-fusing the trial's saved arm lists at 0.5 / 0.5 put 93–100% of identifier truths in the top 8 on all six projects with no change on the natural-language sets.
+
 Gate: phase 0's breakdown over two weeks on `forge-dev` shows `keywordHits` contributing hits that
 `semanticHits` missed in more than a small fraction of hybrid calls (the number is chosen when the
 table exists, not now), **and** the `forge issues --search` / `forge_memory_search` logs show
@@ -395,7 +399,7 @@ If not, this phase is deleted from the proposal, not carried.
 | 1 rerank (luna, listwise) (ISS-905, with phase 3) | 0 | `memory/rerank.ts` | none | medium |
 | 2 chunked model (ISS-906) | 0 | `memory/chunker.ts`, `memory/chunk-reindex.ts` | `memory_chunks`, `memories.chunk_generation`, `memories.chunked_at` | large |
 | 3 relation expansion (ISS-905, with phase 1) | 0 | 0 | none | small |
-| 4 identifier tsvector (ISS-907, opened only on evidence) | 0's evidence | 0 | 4 generated columns | medium, conditional |
+| 4 identifier tsvector (ISS-907, shipped 2026-09-05) | 0's evidence | `db/schema-types.ts` | `forge_identifier_words` + 4 generated columns (`0207`) | medium |
 
 Phase 0 owns the only flag migration and is the single `blocks` edge every other phase carries.
 Phases 1, 2 and 3 are otherwise independent and may ship in any order; 1 and 3 are the cheap ones.
