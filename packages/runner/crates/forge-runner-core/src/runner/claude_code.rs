@@ -96,16 +96,18 @@ fn takes_session_permit(spec: &JobSpec) -> bool {
 
 /// How long a spawn may wait for one of the box's duplex session permits.
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — `PRE_SPAWN_BEAT_BUDGET` is derived from this plus `REPO_LOCK_WAIT`, so the runner still gives up before core condemns the session. Change this and that budget moves with it; the `const _: () = assert!` over there fails the build if it stops.
-// cm:guard equal to `SESSION_IDLE_TIMEOUT` on purpose. A permit is released by a session ending or by its residency deadline expiring, so a wait longer than one residency window cannot learn anything new, and a shorter one fails jobs a parked session was about to release. Both halves are the reason — a number picked for either alone drifts the moment the other changes.
+// cm:guard equal to `SESSION_IDLE_TIMEOUT` on purpose: a permit is released by a session ending or by its residency deadline, so a wait shorter than a residency window fails jobs a parked session was about to release, and a longer one learns nothing.
+// cm:hack ISS-920 until:`sessionResidencySeconds` is set above 600 on any project — that value is per-project and `pipeline-config-schema.ts` allows up to 3600, so this bound is only the DEFAULT residency window, not every one. Priced: a project that raises the key gets jobs failing `session_permit_saturated` after 600s that would have got a permit at 900s. They fail over rather than die, and on a one-box pool that is a capacity-outage notification. Nothing sets the key today; the first project that does moves this number or derives it from the resolved value.
 pub const SESSION_PERMIT_WAIT: Duration = SESSION_IDLE_TIMEOUT;
 
 /// Take a duplex session permit, or fail naming the box that is full.
 ///
 /// Split out of [`Runner::start`] so the bound can be tested without spawning
 /// `claude`: the wait is the whole behaviour, and the only way to exercise it
-/// through `start` is to hold real sessions.
+/// through `start` is to hold real sessions. What that seam does NOT pin is the
+/// wiring — that `start` passes `SESSION_PERMIT_WAIT` and not something else.
 // cm:guard the failure text is the ONLY routing lever this has. `session_permit_saturated` is matched by `packages/core/src/pipeline/failure-patterns.ts`, which routes it `infra` + `failover` + `box_session_saturated` — so the job goes to a DIFFERENT box instead of re-claiming this one and meeting the same full semaphore (ISS-920 B3). Rewording the prefix silently returns it to `unclassified`, and the spin comes back.
-// cm:guard `holders` is a SNAPSHOT taken by the caller before this is entered, never read from inside. Reading `self.sessions` while parked on `self.session_sem` orders the two locks against every path that takes them the other way round.
+// cm:guard `holders` is a SNAPSHOT taken by the caller BEFORE the wait, never re-read from inside, and both halves are deliberate: reading `self.sessions` while parked on `self.session_sem` would order the two locks against every path that takes them the other way, and the useful figure is who was on the ceiling when this job queued — not who happens to hold it ten minutes later.
 async fn acquire_session_permit(
     sem: Arc<tokio::sync::Semaphore>,
     cap: usize,
@@ -833,6 +835,7 @@ impl Runner for ClaudeCodeRunner {
             &self.core_url,
             &self.device_token,
             slug,
+            &spec.job_id,
             spec.mcp_servers_override.as_ref(),
         )?;
         let args = build_args(&spec, &mcp_path.to_string_lossy(), &prompt);

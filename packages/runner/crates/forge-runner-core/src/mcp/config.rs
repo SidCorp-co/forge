@@ -13,6 +13,7 @@ pub fn write(
     core_url: &str,
     device_token: &str,
     project_slug: &str,
+    job_id: &str,
     override_servers: Option<&Value>,
 ) -> Result<PathBuf> {
     let mcp_url = format!("{}/mcp", core_url.trim_end_matches('/'));
@@ -51,19 +52,45 @@ pub fn write(
 
     let doc = serde_json::json!({ "mcpServers": servers });
 
-    // Stable, reused path inside a dedicated Forge folder — NOT a per-run UUID in
-    // the shared `/tmp` root. The runner keeps all its state under
-    // `~/.config/forge-runner/` (credentials, config, skills-cache); the per-job
-    // MCP config lives beside them in `mcp/`, one file per project slug, simply
-    // overwritten by the next same-slug run. So the runner neither scatters
-    // `/tmp/forge-mcp-*.json` files nor accumulates one per run. For a given slug
-    // the content is deterministic (same core_url + device token + per-project
-    // overrides), so a rare concurrent same-slug writer produces identical bytes.
-    let path = mcp_config_dir().join(format!("forge-mcp-{}.json", sanitize_slug(project_slug)));
+    // The runner keeps all its state under `~/.config/forge-runner/` (credentials,
+    // config, skills-cache); the per-job MCP config lives beside them in `mcp/`,
+    // never as a UUID in the shared `/tmp` root.
+    // cm:guard one file per JOB, not per slug, and the unlink at completion is why. A shared per-slug path was safe only while the repo-root lock serialised same-project spawns through `runner.start`; ISS-920 released that lock earlier on purpose, so a sibling's completion would unlink the path this job is about to hand `claude` — read back as `agent_startup_failed: MCP config file not found`.
+    let dir = mcp_config_dir();
+    sweep_stale(&dir);
+    let path = dir.join(format!(
+        "forge-mcp-{}-{}.json",
+        sanitize_slug(project_slug),
+        sanitize_slug(job_id)
+    ));
     let body = serde_json::to_string_pretty(&doc).map_err(|e| Error::Other(e.to_string()))?;
-    std::fs::write(&path, body)?;
-    restrict_perms(&path); // the file carries a device token — 0600 it
+    // cm:guard write-then-rename, never a bare `fs::write`: that truncates first, so a reader opening the path mid-write gets a partial document and `claude` reports an invalid MCP config with nothing naming the writer.
+    let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
+    std::fs::write(&tmp, body)?;
+    restrict_perms(&tmp); // the file carries a device token — 0600 it
+    std::fs::rename(&tmp, &path)?;
     Ok(path)
+}
+
+/// Age past which an MCP config left behind by a crashed daemon is removed.
+const MCP_CONFIG_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+/// Drop MCP configs no live job can own.
+// cm:guard the per-job path costs this sweep, and the sweep is the whole reason a per-job path is affordable. Every spawn unlinks its own file at completion and on a spawn failure, so anything left is a daemon that died between the two; without this the folder grows one token-bearing 0600 file per crash, forever.
+fn sweep_stale(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let stale = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .map(|t| t.elapsed().is_ok_and(|age| age > MCP_CONFIG_MAX_AGE))
+            .unwrap_or(false);
+        if stale {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
 }
 
 /// Dedicated folder for the runner's per-job MCP configs:
@@ -289,14 +316,14 @@ mod tests {
     }
 
     #[test]
-    fn write_uses_stable_slug_path_not_uuid() {
+    fn write_uses_a_stable_named_path_not_a_uuid() {
         let slug = "forge-test-stable-slug-xyz";
-        let p1 = write("https://core.example", "tok", slug, None).unwrap();
-        let p2 = write("https://core.example", "tok", slug, None).unwrap();
-        assert_eq!(p1, p2, "same slug must resolve to the same reused path");
+        let p1 = write("https://core.example", "tok", slug, "job-a", None).unwrap();
+        let p2 = write("https://core.example", "tok", slug, "job-a", None).unwrap();
+        assert_eq!(p1, p2, "the same job must resolve to the same path");
         assert_eq!(
             p1.file_name().unwrap().to_str().unwrap(),
-            "forge-mcp-forge-test-stable-slug-xyz.json"
+            "forge-mcp-forge-test-stable-slug-xyz-job-a.json"
         );
         let doc: Value = serde_json::from_str(&std::fs::read_to_string(&p1).unwrap()).unwrap();
         assert_eq!(
@@ -304,6 +331,33 @@ mod tests {
             "https://core.example/mcp"
         );
         let _ = std::fs::remove_file(&p1);
+    }
+
+    /// Two jobs on one project overlap inside `runner.start` since ISS-920, and
+    /// each unlinks its config when it finishes. A shared path would let the
+    /// first one home delete the file the second is about to hand `claude`.
+    #[test]
+    fn two_jobs_on_one_project_do_not_share_a_config_file() {
+        let slug = "forge-test-two-jobs";
+        let a = write("https://core.example", "tok", slug, "job-a", None).unwrap();
+        let b = write("https://core.example", "tok", slug, "job-b", None).unwrap();
+        assert_ne!(a, b);
+        let _ = std::fs::remove_file(&a);
+        assert!(
+            b.exists(),
+            "one job's completion must not unlink another job's config"
+        );
+        let _ = std::fs::remove_file(&b);
+    }
+
+    /// The write is rename-based, so a reader never sees a truncated document.
+    #[test]
+    fn write_leaves_no_temp_file_behind() {
+        let slug = "forge-test-atomic";
+        let path = write("https://core.example", "tok", slug, "job-tmp", None).unwrap();
+        let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
+        assert!(!tmp.exists(), "the temp file must be renamed, not left");
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
@@ -319,6 +373,7 @@ mod tests {
             "https://core.example",
             "tok",
             "skip-non-object-slug",
+            "job-skip",
             Some(&overrides),
         )
         .unwrap();

@@ -227,7 +227,7 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
     });
 
     it('structured signal takes precedence over text patterns', () => {
-      // Text alone would land on infra (transient patterns); the signal wins.
+      // cm:why the text alone lands on infra via the transient patterns, so this asserts the signal overrides it rather than agreeing with it.
       const r = classifyFailure({
         error: 'network error during startup',
         signals: { diedBeforeFirstToolUse: true, sessionMessageCount: 1 },
@@ -403,6 +403,28 @@ describe('failure-classifier — a full box says the box is full (ISS-920)', () 
   });
 
   // cm:why the permit wait no longer runs under the root lock, so a lock timeout can only mean a sibling genuinely spent the wait in preflight or `git worktree add` — a different event with a different cause.
+  // cm:guard the SIGNAL is what this pins, and without it the whole bucket is dead code: a job that dies in either pre-spawn wait never spawned, and the heartbeat leaves `deriveCcStartupSignals` reading `total > 0, toolCalls === 0` — so `classifyFailure` was taking the cc-startup branch for every real occurrence while a signal-free test said otherwise.
+  it('survives the cc-startup signal a job that never spawned always carries', () => {
+    const signals = { diedBeforeFirstToolUse: true, sessionMessageCount: 0 };
+    expect(classifyFailure({ error: SATURATED, signals }).cause).toBe('box_session_saturated');
+    expect(classifyFailure({ error: SATURATED, signals }).action).toBe('failover');
+    expect(
+      classifyFailure({ error: 'repo_lock_timeout: /srv/x is still held after 600s', signals })
+        .cause,
+    ).toBe('repo_root_contention');
+  });
+
+  // cm:why the holder list is project slugs, so the routed text carries a value nobody validates — `store-403` would otherwise be claimed by PERMISSION_PATTERNS' /\b(401|403)\b/ and routed `retry`, back onto the box that just refused.
+  it('a project slug that looks like an HTTP status does not change the routing', () => {
+    const r = classifyFailure({
+      error:
+        'session_permit_saturated: all 503 duplex permits on this box held after 600s; ' +
+        'holders: store-403, store-401',
+    });
+    expect(r.cause).toBe('box_session_saturated');
+    expect(r.action).toBe('failover');
+  });
+
   it('a repo-lock timeout is root contention and NOT saturation', () => {
     const r = classifyFailure({
       error: 'repo_lock_timeout: /home/forge/projects/codemap is still held after 600s',

@@ -828,7 +828,14 @@
   Two causes join the taxonomy with it: `box_session_saturated` for the above, and
   `repo_root_contention` for `repo_lock_timeout` — which is now a different event, meaning a
   sibling genuinely spent ten minutes in preflight or `git worktree add`, and which had been
-  landing in the operator review queue as `unclassified` because no policy rule claimed it.
+  landing in the operator review queue as `unclassified` because no policy rule claimed it. Both
+  are matched above the cc-startup signal, because a job that died in either wait never spawned
+  and so carries that signal by construction — below it they would have been unreachable.
+
+  One trade-off, priced: `SESSION_PERMIT_WAIT` is the DEFAULT residency window, and
+  `sessionResidencySeconds` is per-project and allowed up to an hour. A project that raises it
+  gets jobs failing at 600s that a longer wait would have served — they fail over rather than die,
+  and no project sets the key today. The first one that does moves the number.
 
 - **A withdrawn runner still took jobs.** `readPool` joined `runners` only to prove a binding
   existed and read nothing else from the row; `claimJobForMaster` checked the agent version and

@@ -29,6 +29,7 @@ import {
   DUPLEX_SESSION_PATTERNS,
   PERMANENT_PATTERNS,
   PERMISSION_PATTERNS,
+  REPO_CONTENTION_PATTERNS,
   TERMINAL_INFRA_PATTERNS,
   TIMEOUT_PATTERNS,
   TRANSIENT_PATTERNS,
@@ -101,9 +102,10 @@ interface ClassifyInput {
  * human-readable reason, and an optional Retry-After timestamp. Always
  * returns a verdict — never throws, never `unknown`.
  *
- * Match order: structured `meta.error.type` → runner token → spend-cap →
+ * Match order: structured `meta.error.type` → runner token →
+ * BOX_SATURATION / REPO_CONTENTION (both above the cc-startup signal) → spend-cap →
  * usage/session limit → cc-startup signal → PERMISSION (infra) →
- * DUPLEX_SESSION (infra) → BOX_SATURATION (infra, failover) → TIMEOUT →
+ * DUPLEX_SESSION (infra) → TIMEOUT →
  * TERMINAL_INFRA (infra, terminal) → PERMANENT (code) → TRANSIENT (infra) →
  * CC_STARTUP text fallback → infra + needsReview. Permission/timeout precede
  * the broader buckets because their patterns are more specific.
@@ -181,6 +183,30 @@ function classifyKind(
     return { kind: runnerKind, cause: textCause, reason: reasonExcerpt, meta };
   }
 
+  // cm:guard the two pre-spawn verdicts are matched HERE, above the cc-startup signal, and moving either down makes it unreachable rather than merely late: a job that died in the repo-lock or permit wait never spawned, and the pre-spawn heartbeat leaves it looking exactly like a startup death to `deriveCcStartupSignals` (ISS-920).
+  for (const pat of BOX_SATURATION_PATTERNS) {
+    if (pat.test(text)) {
+      return {
+        kind: 'infra',
+        action: 'failover',
+        cause: 'box_session_saturated',
+        reason: reasonExcerpt || 'box session permits saturated',
+        meta,
+      };
+    }
+  }
+
+  for (const pat of REPO_CONTENTION_PATTERNS) {
+    if (pat.test(text)) {
+      return {
+        kind: 'infra',
+        cause: 'repo_root_contention',
+        reason: reasonExcerpt || 'repo root held by a sibling job',
+        meta,
+      };
+    }
+  }
+
   // cm:why ISS-823 — org/account spend-cap is per-account (evidence: CLASSIFIER_VERSION 7), so it fails over with exhaustion memory instead of going terminal
   if (isSpendLimitError(text)) {
     return {
@@ -201,11 +227,7 @@ function classifyKind(
     };
   }
 
-  // ISS-450 — structured cc-startup-death signal (preferred source). The
-  // caller derives it from the job's event stream: the CLI spawned but died
-  // with ≤3 assistant messages and no tool use (ISS-402 skill-registration
-  // glitch class). Checked before the text passes so a generic error string
-  // from a startup death still routes to the immediate-failover policy.
+  // cm:guard this branch is broad and it must stay BELOW every verdict that names a job which never spawned. `deriveCcStartupSignals` counts ALL job events, not assistant messages, so a heartbeat is enough to satisfy it — the pre-spawn beat put every ISS-920 permit and repo-lock failure through here. It sits above the text patterns on purpose (ISS-450: a generic error string from a real startup death must still reach immediate failover), which is why the two pre-spawn tables go above it rather than below.
   if (signals?.diedBeforeFirstToolUse === true && (signals.sessionMessageCount ?? 0) <= 3) {
     return {
       kind: 'transient-cc',
@@ -232,18 +254,6 @@ function classifyKind(
         kind: 'infra',
         cause: 'duplex_channel_failed',
         reason: reasonExcerpt || 'duplex session channel failure',
-        meta,
-      };
-    }
-  }
-
-  for (const pat of BOX_SATURATION_PATTERNS) {
-    if (pat.test(text)) {
-      return {
-        kind: 'infra',
-        action: 'failover',
-        cause: 'box_session_saturated',
-        reason: reasonExcerpt || 'box session permits saturated',
         meta,
       };
     }

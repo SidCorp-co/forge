@@ -407,7 +407,7 @@ pub async fn handle(
         );
     }
     // cm:guard the guard is bound INSIDE this block and nowhere else, so the compiler releases the root at the closing brace. It used to live to the end of `handle`, which put it around `runner.start` and therefore around an unbounded wait for a duplex permit: 7 sibling jobs on one repo died at `repo_lock_timeout` in 30 minutes on forge-vm, 2026-09-05, blaming a lock for a full box (ISS-920). Widening this block back past the worktree is that defect. The `_` prefix only silences the unused warning — a named `_x` still drops at the brace, where a bare `_` would drop at once and hold nothing.
-    let (effective_repo, workspace_notice) = {
+    let (effective_repo, workspace_notice, skills_ran_with) = {
         let _repo_guard =
             match tokio::time::timeout(REPO_LOCK_WAIT, locks.acquire(&resolved.repo_path)).await {
                 Ok(g) => g,
@@ -431,7 +431,6 @@ pub async fn handle(
         // core's classifier (`packages/core/src/pipeline/failure-classifier.ts`)
         // pattern-matches on this exact string to pick failureKind (ISS-808).
         // cm:guard the workspace refresh below shares this gate deliberately — it fast-forwards a git checkout, so it is as meaningless on a repo-less project as the preflight is. Splitting them would send a `website` project into `git fetch` on a folder with no remote.
-        // cm:guard the worktree branch is `ja.agent_name` and never a fallback. Core's `worktreeBranch` payload is gone; an empty name means the claim gate let an unnamed agent through, and a fallback would hide that bug behind a job quietly writing the repo root (ISS-897).
         let owns_root = false;
 
         let mut workspace_notice: Option<String> = None;
@@ -538,6 +537,7 @@ pub async fn handle(
         }
 
         // cm:guard the worktree is created HERE, under the root lock, and moved out of `ClaudeCodeRunner::start` to get it there (ISS-920). `git worktree add` writes the root's `.git`, so two jobs on one root doing it at once write one index — that is the whole reason this lock exists. Moving it back into `start` re-nests the lock around the permit wait.
+        // cm:guard the branch is `ja.agent_name` and never a fallback. Core's `worktreeBranch` payload is gone; an empty name means the claim gate let an unnamed agent through, and a fallback would hide that bug behind a job quietly writing the repo root (ISS-897).
         // cm:guard the message stays `failed to start job:` and must not become `preflight_failed:`. `classifyBoxFault` keys the quarantine streak on that prefix, so three bad agent names in a row would take the box off the project for an hour (`runners/quarantine.ts`, streak 3).
         let effective_repo = match worktree::create(
             &resolved.repo_path.to_string_lossy(),
@@ -554,17 +554,18 @@ pub async fn handle(
                 return Ok(());
             }
         };
-        (effective_repo, workspace_notice)
+        // cm:guard this reads `<root>/.claude/skills/*/.hash`, so it belongs inside the lock: a sibling's `workspace::refresh` (`git checkout --`, `merge --ff-only`) can move those files, and `skillsRanWith` would then name hashes this job did not run with. It is the only root read left after the worktree exists (ISS-920).
+        let skills_ran_with = read_skills_ran_with(&resolved.repo_path);
+        (effective_repo, workspace_notice, skills_ran_with)
     };
 
     // ISS-449 (Decision B): explicit claim ack once preflight passes.
     // Best-effort — the server falls back to treating the first job_event as
     // the ack, so an ack failure must never abort the job.
     //
-    // ISS-798: read .hash markers from <repo>/.claude/skills/*/ to populate
-    // skills_ran_with — the actual skill hashes this job will execute with,
-    // accounting for user-level shadows already detected during sync.
-    let skills_ran_with = read_skills_ran_with(&resolved.repo_path);
+    // ISS-798: `skills_ran_with` is read under the lock above — the actual skill
+    // hashes this job will execute with, accounting for user-level shadows
+    // already detected during sync.
     if let Err(e) = lifecycle::ack(client, &job_id, skills_ran_with).await {
         tracing::warn!("[job {job_id}] ack: {e}");
     }
