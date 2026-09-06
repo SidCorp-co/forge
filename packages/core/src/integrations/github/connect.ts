@@ -16,6 +16,10 @@ export interface ConnectState {
   projectId: string;
   userId: string;
   environment: string;
+  /** Org that will own the credential, when the operator chose an org-owned
+   *  App. Absent = personal. The choice is made at connect time but spent in
+   *  the callback, which sees nothing but this state. */
+  orgId?: string;
 }
 
 // cm:guard the state carries the USER and is checked against the session on the way back — without that, the callback is a CSRF hole: an attacker who gets a signed state for their own App can have a victim's browser convert it and bind the attacker's App to the victim's project.
@@ -46,7 +50,13 @@ export function verifyConnectState(
   }
   if (typeof parsed.exp !== 'number' || parsed.exp < nowMs) return null;
   if (!parsed.projectId || !parsed.userId) return null;
-  return { projectId: parsed.projectId, userId: parsed.userId, environment: parsed.environment };
+  // cm:guard this return is a WHITELIST, not a pass-through — a field added to ConnectState and not named here is signed, survives the round trip, and is then silently dropped on the way back. `orgId` decides who owns the credential, so losing it would quietly make every org-owned App personal.
+  return {
+    projectId: parsed.projectId,
+    userId: parsed.userId,
+    environment: parsed.environment,
+    ...(parsed.orgId ? { orgId: parsed.orgId } : {}),
+  };
 }
 
 /**

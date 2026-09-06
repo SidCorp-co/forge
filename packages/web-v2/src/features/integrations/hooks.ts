@@ -87,8 +87,19 @@ export function useProbeRocketchatRooms(projectId: string | undefined) {
  *  callback, so a refetch here would only re-read the same empty list. */
 export function useGitHubConnect(projectId: string | undefined) {
   return useMutation({
-    mutationFn: (params: { org?: string; environment?: string }) =>
+    mutationFn: (params: { org?: string; environment?: string; orgId?: string }) =>
       integrationsApi.githubConnect(projectId as string, params),
+  });
+}
+
+export function useGitHubRepositories(
+  projectId: string | undefined,
+  connectionId: string | undefined,
+) {
+  return useQuery({
+    queryKey: ["integrations", "github-repos", projectId, connectionId],
+    queryFn: () => integrationsApi.githubRepositories(projectId as string, connectionId as string),
+    enabled: !!projectId && !!connectionId,
   });
 }
 
@@ -234,7 +245,6 @@ export function useRetryDelivery(
   });
 }
 
-// === ISS-401/C — owner-scoped connection hooks ===
 // Connections belong to the authenticated principal, NOT a project, so these
 // keys are NOT project-scoped: a single `['integration-connections']` cache
 // entry serves every project view. The event-router invalidates this exact key

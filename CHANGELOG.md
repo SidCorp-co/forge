@@ -43,6 +43,16 @@
   GitHub is the first provider that has both, and the previous either/or would have left its card
   offering only the link that navigates away from the screen that connects the App.
 
+  **One App serves the whole organization, not one per project.** The App is the credential; the
+  repository a project uses belongs to that project's binding, and `owner`/`repo` were already
+  declared binding-tier keys that nothing had ever filled in — which is why a per-project App was
+  the only thing keeping two projects apart. A project that finds an App already connected now
+  picks a repository from what that App's installations actually granted, and the binding records
+  the repository and the installation that reaches it: no approval screen, no second private key,
+  no second webhook secret. Creating a separate App stays one click away for the case that needs
+  one, and the first connect asks whether the credential belongs to you or to the organization —
+  org-owned requires org admin, the same gate the generic connection create applies.
+
 - **`/admin` answers "who is using Forge, and what needs me right now".** The Operator Ops Console
   overview was an empty state; it now renders the deployment from the four `/api/admin/*` endpoints
   ISS-651 and ISS-652 shipped. A KPI row (open alerts, jobs in flight, active workspaces, spend this

@@ -17,6 +17,7 @@ import type {
   IntegrationTestResult,
   IntegrationsStatus,
   GitHubConnectStart,
+  GitHubRepositoriesResponse,
   McpPreviewResponse,
   RocketchatRoom,
   UpdateIntegrationInput,
@@ -93,16 +94,28 @@ export const integrationsApi = {
   /** `POST .../integrations/github/connect` — begin the GitHub App manifest
    *  flow. Read-only on the server: it signs a state and builds the manifest,
    *  and the credential exists only once GitHub redirects to the callback. */
-  githubConnect: (projectId: string, params: { org?: string; environment?: string }) => {
+  githubConnect: (
+    projectId: string,
+    params: { org?: string; environment?: string; orgId?: string },
+  ) => {
     const qs = new URLSearchParams();
     if (params.org) qs.set("org", params.org);
     if (params.environment) qs.set("environment", params.environment);
+    if (params.orgId) qs.set("orgId", params.orgId);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return apiClient<GitHubConnectStart>(
       `/projects/${projectId}/integrations/github/connect${suffix}`,
       { method: "POST" },
     );
   },
+
+  /** `GET .../integrations/github/repositories?connectionId=` — what the App's
+   *  installations actually granted. The picker source; a project may only bind
+   *  a repository that appears here. */
+  githubRepositories: (projectId: string, connectionId: string) =>
+    apiClient<GitHubRepositoriesResponse>(
+      `/projects/${projectId}/integrations/github/repositories?connectionId=${encodeURIComponent(connectionId)}`,
+    ),
 
   /** `POST .../integrations/rocketchat/rooms` — rooms the bot is a member of
    *  (name picker source). Pass `integrationId` to use the stored credential,
@@ -119,7 +132,6 @@ export const integrationsApi = {
     ),
 };
 
-// === ISS-401/C — owner-scoped connection CRUD ===
 // Connections are the credential, owned by the authenticated principal (NOT a
 // project) — these routes carry NO `:projectId` and the list is scoped server-
 // side by the auth `userId`. Secrets are write-only inputs; responses only ever

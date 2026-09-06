@@ -42,8 +42,7 @@ export type {
   SentrySecretsInput,
   RocketchatConfigInput,
   RocketchatSecretsInput,
-  // === ISS-401/C — connection/binding cutover ===
-  // The project-facing binding summary + the owner-facing connection summary,
+    // The project-facing binding summary + the owner-facing connection summary,
   // plus the connection CRUD request/response envelopes. All exclude secret
   // bytes by construction (only `hasSecrets`/`integrationSecretSet` booleans).
   BindingSummary,
@@ -112,6 +111,22 @@ export type { BindingSummary as IntegrationSummary } from "@forge/contracts";
  * the manifest callback, and `manifest` is the App definition GitHub renders for
  * approval.
  */
+/** One repository an installation of the App actually granted. `installationId`
+ *  rides along because a binding needs both: the installation mints the token,
+ *  the repository is what the project points at. */
+export interface InstallationRepo {
+  installationId: number;
+  account: string;
+  owner: string;
+  repo: string;
+  fullName: string;
+}
+
+export interface GitHubRepositoriesResponse {
+  repositories: InstallationRepo[];
+  truncated: boolean;
+}
+
 export interface GitHubConnectStart {
   postUrl: string;
   state: string;

@@ -16,6 +16,7 @@ import { HTTPException } from 'hono/http-exception';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
+import { loadOrgRole, orgRoleAtLeast } from '../../lib/authz.js';
 import { logger } from '../../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import {
@@ -23,9 +24,16 @@ import {
   assertProjectMember,
   assertVaultConfigured,
   badRequest,
+  forbidden,
   notFound,
 } from '../route-helpers.js';
-import { createBinding, createConnection, listActiveBindingsForProjectProvider } from '../store.js';
+import {
+  createBinding,
+  createConnection,
+  decryptConnectionSecrets,
+  listActiveBindingsForProjectProvider,
+  listConnectionsForPrincipalUser,
+} from '../store.js';
 import {
   buildAppManifest,
   convertManifestCode,
@@ -34,6 +42,7 @@ import {
   verifyConnectState,
 } from './connect.js';
 import { findBindingOwningInstallation } from './install-resolve.js';
+import { listInstallationRepositories } from './repositories.js';
 
 // cm:guard these are TWO apps because they mount at different prefixes: the project-scoped one under `/api/projects`, the callbacks under `/api`. Folding the callbacks into the first would put them at `/api/projects/integrations/...`, where `integrations` is read as a `:projectId` by every sibling route.
 export const githubConnectRoutes = new Hono<{ Variables: AuthVars }>();
@@ -93,13 +102,26 @@ githubConnectRoutes.post('/:projectId/integrations/github/connect', async (c) =>
   const url = new URL(c.req.url);
   const org = url.searchParams.get('org');
   const environment = url.searchParams.get('environment') ?? 'prod';
+  const orgId = url.searchParams.get('orgId') ?? undefined;
+
+  // cm:edge contract -> packages/core/src/integrations/connection-routes.ts — the same org-admin gate the generic connection create applies; an App shared by every project in an org may not be created by a member who could not create the connection directly.
+  if (orgId) {
+    const orgRole = await loadOrgRole(orgId, userId);
+    if (!orgRole) throw notFound('org');
+    if (!orgRoleAtLeast(orgRole, 'admin')) throw forbidden();
+  }
 
   const api = apiBaseUrl();
   assertApiOriginReachable(c, api);
 
   return c.json({
     postUrl: manifestPostUrl(org),
-    state: signConnectState(stateSecret(), { projectId, userId, environment }),
+    state: signConnectState(stateSecret(), {
+      projectId,
+      userId,
+      environment,
+      ...(orgId ? { orgId } : {}),
+    }),
     manifest: buildAppManifest({
       appName: `Forge — ${project.name}`,
       webBaseUrl: webBaseUrl(),
@@ -107,6 +129,29 @@ githubConnectRoutes.post('/:projectId/integrations/github/connect', async (c) =>
       projectSlug: project.slug,
     }),
   });
+});
+
+// cm:guard list from the INSTALLATIONS, never from an account's repositories — an App reaches only what its operator granted it, so an account-wide list would offer repositories the binding then fails on, and the failure would arrive at the first webhook rather than at the picker.
+githubConnectRoutes.get('/:projectId/integrations/github/repositories', async (c) => {
+  const projectId = c.req.param('projectId');
+  const userId = c.get('userId');
+  assertAdmin(await assertProjectMember(projectId, userId));
+
+  const connectionId = c.req.query('connectionId');
+  if (!connectionId) throw badRequest({ connectionId: 'required' });
+
+  const connection = (await listConnectionsForPrincipalUser(userId)).find(
+    (x) => x.id === connectionId && x.provider === 'github',
+  );
+  if (!connection) throw notFound('connection');
+
+  const { appId, privateKey } = decryptConnectionSecrets<{
+    appId?: string;
+    privateKey?: string;
+  }>(connection);
+  if (!appId || !privateKey) throw badRequest({ connectionId: 'the App was never converted' });
+
+  return c.json(await listInstallationRepositories({ appId, privateKey }));
 });
 
 githubCallbackRoutes.get('/integrations/github/manifest-callback', async (c) => {
@@ -126,8 +171,10 @@ githubCallbackRoutes.get('/integrations/github/manifest-callback', async (c) => 
 
   const app = await convertManifestCode({ code });
 
+  // cm:guard one App serves EVERY project bound to it — `owner`/`repo` are binding-tier keys (integrations/provider-schemas.ts), so the repository a project uses lives on its binding and never on the App. Minting an App per project puts the scope in the wrong place and costs a private key, a webhook secret and an approval screen each time.
   const connection = await createConnection({
-    ownerId: userId,
+    ownerType: state.orgId ? 'org' : 'user',
+    ownerId: state.orgId ?? userId,
     provider: 'github',
     displayName: app.slug ? `GitHub App ${app.slug}` : 'GitHub App',
     config: {},
