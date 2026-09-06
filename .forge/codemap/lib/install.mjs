@@ -1,4 +1,4 @@
-// @generated codemap 0.16.1 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.19.0 — vendored by `cm install`; edit the plugin, not this.
 // `cm install` — put the tool IN the project, so the rules hold without the plugin.
 //
 // Until this existed, every enforcement path ran out of the plugin: the hooks are plugin hooks, and
@@ -69,8 +69,8 @@ export function install({ root, version, gitHook, force }) {
 
   // The spec is part of what is installed: every diagnostic cites a §section, and a contributor
   // without the plugin has nowhere else to read it.
-  // plugin layout keeps SPEC.md a level above scripts/; a vendored copy keeps it beside cm.mjs
-  const spec = [resolve(SCRIPTS, '..', 'SPEC.md'), join(SCRIPTS, 'SPEC.md')].find((p) => existsSync(p));
+  // the repo keeps SPEC.md in spec/, a level above cli/; a vendored copy keeps it beside cm.mjs
+  const spec = [resolve(SCRIPTS, '..', 'spec', 'SPEC.md'), resolve(SCRIPTS, '..', 'SPEC.md'), join(SCRIPTS, 'SPEC.md')].find((p) => existsSync(p));
   if (spec && resolve(spec) !== resolve(join(dir, 'SPEC.md'))) {
     copyFileSync(spec, join(dir, 'SPEC.md'));
     files.push('.forge/codemap/SPEC.md');

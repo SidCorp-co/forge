@@ -333,8 +333,10 @@ no un-onboarded legacy tree is ever blocked. Onboarding is a per-repo decision, 
 installing.
 
 `.forge/codemap-baseline.json` freezes pre-existing prose **by content**: per file, the set of
-hashes of the normalized comment texts. A violation is suppressed when its text is already in that
-set, so legacy code is frozen rather than migrated (principle 7). Regenerate with `cm baseline`.
+hashes of the normalized comment texts, plus — per `b:`-prefixed block key in that set — the number
+of line keys the block froze, read by CM013 (§8, below) and otherwise inert. A violation is
+suppressed when its text is already in that set, so legacy code is frozen rather than migrated
+(principle 7). Regenerate with `cm baseline`.
 
 The first design counted comments per file and failed on contact: adding three lines to a file with
 eighty frozen comments surfaced all eighty, because a count cannot say *which* comment is new. The
@@ -376,6 +378,14 @@ edit that changed what the file does can trigger it. A file move is free for the
 reason the rest of §8 is: the new path has no baseline entry, so there is no debt there to drain.
 `enforce.drain: false` turns it off; `cm:ignore CM013 — <reason>` does so for one file, and is read
 from anywhere in that file because the anchor line moves as the prose above it does.
+
+A rewrap that touches every line of a frozen block is not free the way a whole-file reflow is: the
+block's own key is reflow-invariant (it hashes the block's full text, whitespace-normalized) and
+survives, but each line's own key changes, so the baseline also records how many line keys the block
+froze. A rewrapped block is charged that count, not a flat one, so merging or re-splitting a frozen
+block's lines cannot pay CM013 on its own. A baseline written before this was tracked has no count
+for a block it already froze, and credits it 1 (today's behaviour) until it is re-frozen with
+`cm baseline`.
 
 `cm sweep` lists what the baseline is hiding, and `cm sweep --prune-baseline` drops keys matching
 nothing, so paid-off debt stops being counted.

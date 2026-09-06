@@ -19,6 +19,8 @@ import { isValidDetectorKey } from '../../issues/detector-key.js';
 import {
   LabelResolutionError,
   listIssueLabels,
+  PrimaryModuleError,
+  type ResolvedLabelAttach,
   resolveLabelIdsForWrite,
 } from '../../issues/label-service.js';
 import { type IssueListRow, listIssueRows } from '../../issues/list-service.js';
@@ -55,6 +57,9 @@ import { buildListEnvelope, overfetch } from './list-envelope.js';
 function toMcpIssueError(err: unknown): unknown {
   // cm:guard the refusal reaches the agent with the ELEMENT, ATTRIBUTE and legal set intact — that named message is what it corrects from on the next call, and a generic BAD_REQUEST leaves it guessing
   if (err instanceof BodyInvalidError) return new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
+  if (err instanceof PrimaryModuleError) {
+    return new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
+  }
   if (err instanceof LabelResolutionError) {
     return new Error(
       `BAD_REQUEST: one or more labels do not exist in this project (no auto-create): ${err.missing.join(', ')}`,
@@ -93,7 +98,6 @@ const filtersSchema = z
     createdAfter: z.string().optional(),
     createdBefore: z.string().optional(),
     updatedAfter: z.string().optional(),
-    // listTasks: filter tasks by parent issue UUID + optional task status.
     // `taskStatus` is named separately from the issue-level `status` so a
     // listTasks call cannot accidentally match against issue.status.
     issue: z.uuid().optional(),
@@ -101,6 +105,10 @@ const filtersSchema = z
     // Label filter: accepts a label name OR uuid (or an array of either).
     // Names are resolved to ids server-side; unknown names short-circuit to empty.
     label: z
+      .union([z.string().trim().min(1), z.array(z.string().trim().min(1)).max(50)])
+      .optional(),
+    // cm:why ISS-593 — same name|uuid shape as `label`, resolved against `kind='module'` only, so the name of a plain label matches nothing rather than silently behaving as `label`
+    module: z
       .union([z.string().trim().min(1), z.array(z.string().trim().min(1)).max(50)])
       .optional(),
   })
@@ -163,13 +171,19 @@ const dataObject = z
     reason: z.string().trim().min(1).max(10_000).optional(),
     // cm:guard say WHICH kind whenever you write `waiting` (RFC 0002 INV-5) — core never derives it, so an omitted kind leaves the board rendering "a human is needed" with no hint of what is being asked; it is cleared automatically on any exit
     waitingKind: z.enum(waitingKinds).optional(),
-    // ISS-633 — plain label attach/detach. Accepts label NAMES or UUIDs,
-    // resolved server-side (strict: unknown -> BAD_REQUEST, no auto-create).
-    // REPLACE-SET semantics mirroring REST: this is the full desired label
-    // set for the issue — [] clears all, undefined means "no change". Read
-    // an issue's current `labels[]` (get/step_start) before sending a delta
-    // to avoid clobbering the existing set.
-    labels: z.array(z.string().trim().min(1)).max(50).optional(),
+    // cm:guard REPLACE-SET, not additive — `[]` clears every label and `undefined` means no change, so a caller that has not read the issue's current `labels[]` clobbers the set it did not send (ISS-633)
+    // cm:guard the object arm mirrors REST's `labelAttachItemSchema` exactly — `labelId` takes a NAME or a uuid like the bare string, `isPrimary` is legal only on a module, and both arms resolve through `resolveLabelIdsForWrite`, so the two surfaces cannot drift apart
+    labels: z
+      .array(
+        z.union([
+          z.string().trim().min(1),
+          z
+            .object({ labelId: z.string().trim().min(1), isPrimary: z.boolean().optional() })
+            .strict(),
+        ]),
+      )
+      .max(50)
+      .optional(),
   })
   .strict();
 
@@ -467,7 +481,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'plan/acceptanceCriteria/sessionContext/releaseNotes) ' +
     'to stay under the response token cap; fetch the full body with action=get. ' +
     'list supports filters.label (a label name or uuid, or an array of either — ' +
-    'OR semantics; unknown names return an empty set). ' +
+    'OR semantics; unknown names return an empty set) and filters.module (ISS-593 — the same ' +
+    'shape, matched against MODULE labels only, so a plain label name returns an empty set). ' +
     'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. ' +
     'Token discipline: use list (projection) to browse/triage many issues, and ' +
     'get for the single full issue you are about to work on. When forge_step_start ' +
@@ -511,7 +526,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'parent issue. ' +
     'Relations (ISS-571, ISS-868): data.relations (optional array, max 20) is applied by ' +
     'BOTH create and update, and works with a personal access token — unlike ' +
-    'forge_project_pm set_dependency, which needs a paired device. Edges commit before ' +
+    'forge_project_pm set_dependency. Edges commit before ' +
     // cm:edge naming -> packages/core/src/issues/relations-service.ts — this prose spells the kind vocabulary out for the agent, so it is a second copy of RELATION_KINDS that no type checks; the guard there forbids widening, and if that ever changes this sentence is the other half
     'the dispatch trigger (issueCreated on create, the status transition on update), so ' +
     'the dispatcher cannot pick the issue up ahead of its blocker. Each entry takes kind ' +
@@ -530,11 +545,17 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'On update this is a REPLACE-SET, NOT additive: it is the full desired label set for ' +
     'the issue — [] clears every label, and omitting data.labels leaves labels unchanged. ' +
     "Read the issue's current labels[] (present on get/create/update responses and the " +
-    'forge_step_start bundle) before sending a delta, or you will clobber the existing set.',
+    'forge_step_start bundle) before sending a delta, or you will clobber the existing set. ' +
+    'Modules (ISS-593): a module is a label with kind:"module", and every labels[] entry reports ' +
+    "its kind and isPrimary. To set the issue's primary module send that entry as an object — " +
+    '{ labelId: "<module name or uuid>", isPrimary: true } — alongside the plain strings; at most ' +
+    'one entry may be primary and it must be a module, or the write is refused with ' +
+    'PRIMARY_NOT_MODULE / MULTIPLE_PRIMARY and nothing is written. A new primary replaces the old ' +
+    'one atomically; omit isPrimary everywhere to leave the issue without a primary module.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    const { device, principal } = ctx;
+    const { principal } = ctx;
 
     // cm:guard `data` is ONE shared schema across all 11 actions, so a field only `create`/`update` apply is accepted and dropped by the other nine — refuse it by name here rather than returning 200 on a write that did nothing (ISS-868). `transition` is the dangerous one: it wakes considerEnqueue→dispatch, so a discarded `blocks` edge ships the dependent ahead of its blocker.
     if (
@@ -575,6 +596,12 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
                 : Array.isArray(f.label)
                   ? f.label
                   : [f.label],
+            module:
+              f?.module === undefined || f.module === null
+                ? undefined
+                : Array.isArray(f.module)
+                  ? f.module
+                  : [f.module],
           },
           overfetch(issuesLimit),
         );
@@ -623,9 +650,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           result = await createIssue(
             { ...input.data, projectId, title: input.data.title },
             {
-              createdById: device.ownerId,
+              createdById: principal.userId,
               createdVia: 'mcp',
-              actor: principalHookActor(principal, device),
+              actor: principalHookActor(principal),
             },
           );
         } catch (err) {
@@ -664,7 +691,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         // ISS-633 — resolve + strictly validate label names/uuids BEFORE the
         // tx (mirrors REST PATCH's assertLabelsInProject running before its
         // own tx). `undefined` means "no change"; `[]` clears every label.
-        let labelIds: string[] | undefined;
+        let labelIds: ResolvedLabelAttach[] | undefined;
         if (input.data.labels !== undefined) {
           try {
             labelIds = await resolveLabelIdsForWrite(issue.projectId, input.data.labels);
@@ -697,20 +724,20 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             issueId: issue.id,
             updates,
             labelIds,
-            actor: { type: 'device', id: device.id, agency: 'agent' },
+            actor: principalHookActor(principal),
           });
         }
 
         // cm:edge ordering -> packages/core/src/jobs/queued-gates.ts — relations commit BEFORE the transition below, for the same reason create commits them before issueCreated: the transition is what wakes considerEnqueue→dispatch, so a blocks edge written after it misses the first tick and the dependent ships ahead of its blocker. This order is also the SAFE side of a partial failure, which is why the two writes are deliberately not one transaction: edges landed + transition failed leaves an extra `blocks` edge holding a job, which a human can retract, where the reverse ships a dependent ahead of its blocker and cannot be undone.
         const r = await applyIssueRelations(
-          { actor: principalHookActor(principal, device), createdById: device.ownerId },
+          { actor: principalHookActor(principal), createdById: principal.userId },
           issue.projectId,
           issue.id,
           input.data.relations,
         );
 
         if (input.data.status && input.data.status !== issue.status) {
-          await transitionIssueStatus(issue, input.data.status, principalActor(principal, device), {
+          await transitionIssueStatus(issue, input.data.status, principalActor(principal), {
             transitionReason: input.data.reason ?? input.data.note,
             waitingKind: input.data.waitingKind,
           });
@@ -735,7 +762,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!target) throw new Error('BAD_REQUEST: data.status is required for transition');
         const issue = await loadIssue(input.documentId);
         await assertPrincipalIsWriter(principal, issue.projectId);
-        await transitionIssueStatus(issue, target, principalActor(principal, device), {
+        await transitionIssueStatus(issue, target, principalActor(principal), {
           transitionReason: input.data?.reason ?? input.data?.note,
           waitingKind: input.data?.waitingKind,
         });
@@ -768,9 +795,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
               ? { mergedAt: parseDate(input.data.mergedAt, 'mergedAt') }
               : {}),
             actor: {
-              agency: actorAgency(principalActor(principal, device)),
-              commentAuthorId: device.ownerId,
-              hookActor: principalHookActor(principal, device),
+              agency: actorAgency(principalActor(principal)),
+              commentAuthorId: principal.userId,
+              hookActor: principalHookActor(principal),
             },
           });
           // cm:guard report the ACTION under `action`, never by overwriting `status` — `merged`/`unmarked` are not `issueStatuses` members, so a caller read a lifecycle value that cannot exist (§10)
@@ -818,7 +845,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           priority: data.taskPriority,
           isAgentTask: data.isAgentTask,
           acceptanceCriteria: data.taskAcceptanceCriteria ?? null,
-          actor: { type: 'device', id: device.id, agency: 'agent' },
+          actor: principalHookActor(principal),
         });
 
         return { task: serializeTask(created) };
@@ -842,12 +869,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           updates.acceptanceCriteria = data.taskAcceptanceCriteria;
         }
 
-        const updated = await updateTaskRow(
-          row,
-          updates,
-          { type: 'device', id: device.id, agency: 'agent' },
-          ['acceptanceCriteria'],
-        );
+        const updated = await updateTaskRow(row, updates, principalHookActor(principal), [
+          'acceptanceCriteria',
+        ]);
         if (!updated) throw new Error('NOT_FOUND: task not found');
 
         return { task: serializeTask(updated) };
@@ -859,7 +883,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
         const row = await loadTaskForAccess(input.documentId);
         await assertPrincipalIsWriter(principal, row.projectId);
-        await deleteTaskRow(row, { type: 'device', id: device.id, agency: 'agent' });
+        await deleteTaskRow(row, principalHookActor(principal));
         return { deleted: true, documentId: input.documentId };
       }
     }

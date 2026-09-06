@@ -11,9 +11,8 @@
  */
 
 import { z } from 'zod';
-import type { Device } from '../../auth/deviceToken.js';
 import { pipelineRunStatuses } from '../../db/schema.js';
-import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
+import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { countRunJobsByStatus, listPipelineRuns, readPipelineRun } from '../../pipeline/runs.js';
 import {
   cancelPipelineRun,
@@ -26,11 +25,11 @@ import {
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   type McpContext,
+  principalAgency,
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
 import { buildListEnvelope, overfetch } from './list-envelope.js';
-import { assertDeviceOwnerIsMember } from './project-authz.js';
 
 export const pipelineRunsListInputSchema = z
   .object({
@@ -55,10 +54,10 @@ async function loadRunForPrincipal(principal: McpPrincipal, runId: string) {
 }
 
 export async function pipelineRunsListHandler(
-  device: Device,
+  principal: McpPrincipal,
   input: z.infer<typeof pipelineRunsListInputSchema>,
 ) {
-  await assertDeviceOwnerIsMember(device, input.projectId);
+  await assertPrincipalIsMember(principal, input.projectId);
 
   const runsLimit = input.limit ?? 50;
   const rows = await listPipelineRuns({
@@ -114,6 +113,7 @@ export async function pipelineRunsCancelHandler(
   await assertPrincipalIsWriter(principal, loaded.projectId);
   return cancelPipelineRun(input.runId, {
     actorUserId: principalUserId(principal),
+    actorAgency: principalAgency(principal),
     ...(input.parkIssue !== undefined ? { parkIssue: input.parkIssue } : {}),
   });
 }

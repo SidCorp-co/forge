@@ -41,6 +41,7 @@ function externalRepoUrl(card: StatusCard): string | null {
   return null;
 }
 
+// cm:guard Manage must render whenever the card is drillable, even beside a repo link — GitHub became drillable and its card carries `remoteUrl`, so an either/or leaves the only affordance shown navigating AWAY from the one screen that can connect the App
 function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => void }) {
   const lastSync = formatRelativeTime(card.lastSyncAt);
   const repoUrl = externalRepoUrl(card);
@@ -90,23 +91,26 @@ function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => vo
             <span className="fg-body-sm text-subtle">
               {lastSync ? `synced ${lastSync}` : "no sync data"}
             </span>
-            {repoUrl ? (
-              <a
-                href={repoUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent hover:underline"
-                onClick={(e) => e.stopPropagation()}
-              >
-                Open repo
-                <Icon name="arrowRight" size={13} />
-              </a>
-            ) : clickable ? (
-              <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent">
-                Manage
-                <Icon name="arrowRight" size={13} />
-              </span>
-            ) : null}
+            <span className="inline-flex items-center gap-3">
+              {repoUrl ? (
+                <a
+                  href={repoUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Open repo
+                  <Icon name="arrowRight" size={13} />
+                </a>
+              ) : null}
+              {clickable ? (
+                <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent">
+                  Manage
+                  <Icon name="arrowRight" size={13} />
+                </span>
+              ) : null}
+            </span>
           </div>
         </div>
       </CardContent>
@@ -263,9 +267,6 @@ export function ProjectIntegrationsPanel({ projectId }: { projectId: string }) {
 
           <McpServersPanel projectId={projectId} />
 
-          {/* Drill-in: provider cards open an adaptive connection detail drawer
-              (config + Test/Rotate/Disconnect, plus delivery log when the
-              adapter declares hasDeliveryLog). ISS-402. */}
           <ConnectionDetailDrawer
             projectId={projectId}
             card={selectedCard}

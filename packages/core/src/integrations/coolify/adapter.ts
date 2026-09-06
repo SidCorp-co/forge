@@ -1,31 +1,26 @@
 import { logger } from '../../logger.js';
 import { isSentryEnabled, Sentry } from '../../observability/sentry.js';
-import { closeRun, setCurrentStepForce } from '../../pipeline/runs.js';
-import { verifyHmacSignature } from '../../webhooks/hmac.js';
 import {
-  findInboundByDeploymentUuid,
-  findOutboundByDeploymentUuid,
-  listDispatchedOutboundForRun,
-  recordDelivery,
-  updateDelivery,
-} from '../deliveries.js';
+  DEPLOY_CONFIRM_WINDOW_MS,
+  type DeployConfirmationStatus,
+  replaceDispatchHoldWithTargets,
+} from '../../pipeline/deploy-confirmations.js';
+import { recordDelivery, updateDelivery } from '../deliveries.js';
 import { getAdapter, registerAdapter } from '../registry.js';
 import { findConnectionById, updateConnection } from '../store.js';
 import type {
   HealthCheckResult,
-  InboundDispatchInput,
-  InboundDispatchResult,
   IntegrationAdapter,
   OutboundDispatchInput,
   OutboundDispatchResult,
 } from '../types.js';
 import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
-import { CoolifyApiError } from './client.js';
+import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyForbidden } from './client.js';
+import { enqueueCoolifyConfirm } from './confirm.js';
 import { buildClient } from './log-fetch.js';
-import type { CoolifyConfig, CoolifySecrets, CoolifyWebhookPayload } from './types.js';
+import type { CoolifyConfig, CoolifySecrets } from './types.js';
 
 const BREADCRUMB_OUT = 'integration.coolify.dispatch';
-const BREADCRUMB_IN = 'integration.coolify.inbound';
 
 interface DeployPayload extends Record<string, unknown> {
   /** `null` for a run-less resource redeploy (no pipeline run to advance). */
@@ -38,13 +33,50 @@ interface DeployPayload extends Record<string, unknown> {
   resourceUuid: string;
 }
 
+interface CoolifyFailureVerdict {
+  health: 'needs_reauth' | 'needs_scope' | 'error';
+  /** Operator-facing sentence for a 403; `null` leaves the raw error message. */
+  message: string | null;
+  route: string | null;
+  missingAbility: string | null;
+}
+
+/**
+ * Which health state a failed Coolify call earns. 401 and 403 are DIFFERENT
+ * conditions and the only place they can still be told apart is here, at the
+ * call that failed (ISS-924).
+ */
+// cm:guard 403 is NOT `needs_reauth`. Coolify answers 401 for a token it does not recognise and 403 for one it recognises and refuses this route, so collapsing them tells the operator to re-enter a working credential and re-entering it reproduces the state exactly. The same guard is on `github/adapter.ts` for the same reason.
+function classifyCoolifyFailure(err: unknown): CoolifyFailureVerdict {
+  const status = err instanceof CoolifyApiError ? err.status : null;
+  const route = err instanceof CoolifyApiError ? err.route : null;
+  if (status === 401) {
+    return { health: 'needs_reauth', message: null, route, missingAbility: null };
+  }
+  if (status === 403 && err instanceof CoolifyApiError) {
+    return {
+      health: 'needs_scope',
+      message: describeCoolifyForbidden(err),
+      route,
+      missingAbility: coolifyAbilityForRoute(route),
+    };
+  }
+  return { health: 'error', message: null, route, missingAbility: null };
+}
+
+/** The message a failure is recorded and reported under. */
+function describeCoolifyFailure(err: unknown): string {
+  const verdict = classifyCoolifyFailure(err);
+  if (verdict.message) return verdict.message;
+  return err instanceof Error ? err.message : 'unknown error';
+}
+
 export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> = {
   provider: 'coolify',
-  // Deploy / 2-way archetype: outbound deploy + inbound webhook, env split,
-  // prod confirm gate, delivery audit log.
+  // cm:guard `canReceiveWebhook` is FALSE and repairing it is not the fix (ISS-922): Coolify's `SendWebhookJob` posts with no headers and no signature, so it can satisfy neither half of the `/in/:slug` contract. `confirm.ts` polls the deployment instead.
   capabilities: {
     canDispatch: true,
-    canReceiveWebhook: true,
+    canReceiveWebhook: false,
     injectsMcp: false,
     hasEnvironments: true,
     prodConfirmGate: true,
@@ -59,9 +91,7 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
       if (targets.length === 0) {
         throw new Error('coolify: no deploy targets configured');
       }
-      // Verify every configured target resolves to a real Coolify application —
-      // a stale/wrong resourceUuid is the classic "deploys the wrong repo" trap,
-      // so we surface it per-target rather than only checking the first.
+      // cm:guard resolve EVERY target, never just the first — a stale resourceUuid is the "deploys the wrong repo" trap, and a healthcheck that stops at target one reports green for a binding whose second app does not exist.
       const names: string[] = [];
       for (const t of targets) {
         const res = await client.getResource(t.resourceUuid);
@@ -85,15 +115,11 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
         diagnostics: { durationMs, targetCount: targets.length },
       } satisfies HealthCheckResult;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'unknown error';
       const status = err instanceof CoolifyApiError ? err.status : null;
-      // A 401/403 here means the API token was rejected even after buildClient
-      // already retried any valid previous token (ISS-405 rotation window), so
-      // the operator must re-enter the credential — surface needs_reauth rather
-      // than a generic error (ISS-409). Any other status stays error.
-      const healthStatus = status === 401 || status === 403 ? 'needs_reauth' : 'error';
+      const verdict = classifyCoolifyFailure(err);
+      const message = verdict.message ?? (err instanceof Error ? err.message : 'unknown error');
       await updateConnection(ctx.connectionId, {
-        lastHealthStatus: healthStatus,
+        lastHealthStatus: verdict.health,
         lastHealthAt: new Date(),
       });
       logger.warn(
@@ -106,9 +132,13 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
         'coolify: healthcheck failed',
       );
       return {
-        status: healthStatus,
+        status: verdict.health,
         message,
-        diagnostics: { httpStatus: status },
+        diagnostics: {
+          httpStatus: status,
+          ...(verdict.route ? { route: verdict.route } : {}),
+          ...(verdict.missingAbility ? { missingAbility: verdict.missingAbility } : {}),
+        },
       } satisfies HealthCheckResult;
     }
   },
@@ -143,16 +173,21 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
     }
 
     const client = buildClient(ctx);
+    const confirmDeadlineAt = new Date(Date.now() + DEPLOY_CONFIRM_WINDOW_MS).toISOString();
     let firstDeliveryId = '';
     let firstDeploymentUuid: string | undefined;
     let totalDurationMs = 0;
     const failures: { targetLabel: string; message: string; status: number | null }[] = [];
 
-    // Fan out one deploy per target (e.g. BE + FE as separate Coolify apps).
-    // Each target is its own delivery row so the inbound webhook can map each
-    // deployment_uuid back to its run, and the run only advances once ALL
-    // targets report success (see handleInbound). The per-target requestId
-    // suffix keeps the (binding, requestId) unique index collision-free.
+    // cm:edge lockstep -> packages/core/src/pipeline/deploy-confirmations.ts — one hold per target is what makes "the run is proven when EVERY target is" a fact rather than a comment; a fan-out that records a single hold proves the run on its first target.
+    const confirmations: {
+      deliveryId: string;
+      targetLabel: string;
+      deploymentUuid: string | null;
+      status: DeployConfirmationStatus;
+      detail?: string;
+    }[] = [];
+
     for (const target of targets) {
       const targetRequestId = input.requestId ? `${input.requestId}:${target.id}` : undefined;
       const deliveryId = await recordDelivery({
@@ -212,11 +247,29 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
           durationMs,
           completedAt: new Date(),
         });
+        confirmations.push({
+          deliveryId,
+          targetLabel: target.label,
+          deploymentUuid,
+          status: 'pending',
+        });
+        await enqueueCoolifyConfirm(
+          {
+            jobKind: 'coolify.confirm',
+            bindingId: ctx.bindingId,
+            runId,
+            deliveryId,
+            deploymentUuid,
+            targetLabel: target.label,
+            deadlineAt: confirmDeadlineAt,
+          },
+          { startAfterSeconds: 0 },
+        );
       } catch (err) {
         const durationMs = Date.now() - started;
         totalDurationMs += durationMs;
-        const message = err instanceof Error ? err.message : 'unknown error';
         const status = err instanceof CoolifyApiError ? err.status : null;
+        const message = describeCoolifyFailure(err);
         await updateDelivery(deliveryId, {
           status: 'failed',
           errorMessage: message,
@@ -225,17 +278,39 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
           durationMs,
           completedAt: new Date(),
         });
-        // Revocation discovered during a deploy (not just the healthcheck): a
-        // 401/403 means the token was rejected, so flag needs_reauth (ISS-409).
-        if (status === 401 || status === 403) {
+        // cm:guard the deploy route wants `api.ability:deploy` and the healthcheck only ever wants `read`, so a read-scoped token passes Test-connection and is first refused HERE — this site must write the same verdict the healthcheck would, which is why both go through `classifyCoolifyFailure` (ISS-924)
+        const verdict = classifyCoolifyFailure(err);
+        if (verdict.health !== 'error') {
           await updateConnection(ctx.connectionId, {
-            lastHealthStatus: 'needs_reauth',
+            lastHealthStatus: verdict.health,
             lastHealthAt: new Date(),
           });
         }
+        confirmations.push({
+          deliveryId,
+          targetLabel: target.label,
+          deploymentUuid: null,
+          status: 'failed',
+          detail: message,
+        });
         failures.push({ targetLabel: target.label, message, status });
         // Keep deploying the remaining targets — a BE failure shouldn't strand
         // an FE deploy. Aggregate failure is raised after the loop.
+      }
+    }
+
+    if (runId) {
+      const held = await replaceDispatchHoldWithTargets({
+        runId,
+        bindingId: ctx.bindingId,
+        targets: confirmations,
+        ...(input.requestId ? { requestId: input.requestId } : {}),
+      });
+      if (!held) {
+        logger.error(
+          { runId, bindingId: ctx.bindingId, targets: confirmations.length },
+          'coolify deploy: the run went terminal mid-dispatch and refused its confirmation holds — this deploy will be polled and audited, but no run can witness its outcome',
+        );
       }
     }
 
@@ -275,121 +350,11 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
     };
   },
 
-  async handleInbound(ctx, input: InboundDispatchInput): Promise<InboundDispatchResult> {
-    const signature =
-      input.headers['x-coolify-signature-256'] ??
-      input.headers['x-hub-signature-256'] ??
-      input.headers['x-forge-signature-256'] ??
-      null;
-
-    if (!ctx.integrationSecret) {
-      throw new Error('coolify: integration has no signing secret configured');
-    }
-    if (!verifyHmacSignature(ctx.integrationSecret, input.rawBody, signature)) {
-      throw new Error('coolify: signature verification failed');
-    }
-
-    const payload = input.payload as CoolifyWebhookPayload;
-    const deploymentUuid = payload?.deployment_uuid;
-    if (!deploymentUuid) {
-      throw new Error('coolify webhook: deployment_uuid missing from payload');
-    }
-
-    const deliveryId = await recordDelivery({
-      bindingId: ctx.bindingId,
-      direction: 'inbound',
-      eventName: payload.event ?? 'coolify.unknown',
-      payload,
-      requestId: deploymentUuid,
-      status: 'ok',
-    });
-
-    if (isSentryEnabled()) {
-      Sentry.addBreadcrumb({
-        category: BREADCRUMB_IN,
-        level: 'info',
-        message: `coolify webhook: ${payload.event ?? '<no event>'}`,
-        data: {
-          connectionId: ctx.connectionId,
-          bindingId: ctx.bindingId,
-          environment: ctx.environment,
-          deploymentUuid,
-          status: payload.status ?? null,
-        },
-      });
-    }
-
-    // Locate the original outbound delivery whose Coolify response carried
-    // this deployment_uuid. We extract runId from its payload to advance
-    // the right pipeline run.
-    const outbound = await findOutboundByDeploymentUuid(ctx.bindingId, deploymentUuid);
-    if (!outbound) {
-      logger.warn(
-        { bindingId: ctx.bindingId, deploymentUuid },
-        'coolify webhook: no matching outbound delivery — possibly fired for a deploy from another tool',
-      );
-      return { deliveryId, actions: 0 };
-    }
-
-    const outboundPayload = outbound.payload as Partial<DeployPayload> | null;
-    const runId = outboundPayload?.runId;
-    if (!runId) {
-      logger.warn(
-        { bindingId: ctx.bindingId, deploymentUuid },
-        'coolify webhook: matched outbound delivery has no runId — cannot advance pipeline',
-      );
-      return { deliveryId, actions: 0 };
-    }
-
-    // The issue state-machine closes the run before this point, so we stamp
-    // currentStep with the forced variant. closeRun is still called for the
-    // edge case where the run is somehow still open (e.g. webhook arrives
-    // before the release skill finalises the issue transition).
-    //
-    // Multi-target aggregation: a binding may deploy several apps (BE + FE) for
-    // one run, so this webhook is for ONE target. Fail-fast on any target's
-    // failure; only mark the run `done` once EVERY dispatched target has a
-    // successful inbound webhook.
-    let actions = 0;
-    const isFailure = payload.status === 'failed' || payload.event === 'deploy.failed';
-    const isSuccess = payload.status === 'success' || payload.event === 'deploy.succeeded';
-
-    if (isFailure) {
-      await setCurrentStepForce(runId, 'release.deploy.failed');
-      await closeRun(runId, 'failed');
-      return { deliveryId, actions: 1 };
-    }
-
-    if (isSuccess) {
-      const dispatched = await listDispatchedOutboundForRun(ctx.bindingId, runId);
-      const expectedUuids = dispatched
-        .map((d) => (d.response as { deployment_uuid?: string } | null)?.deployment_uuid)
-        .filter((u): u is string => typeof u === 'string' && u.length > 0);
-
-      // Count how many expected targets have a recorded successful inbound. The
-      // current webhook's inbound delivery is already persisted above, so it is
-      // included in this scan — no special-casing of the current uuid needed.
-      let succeeded = 0;
-      for (const uuid of expectedUuids) {
-        const inb = await findInboundByDeploymentUuid(ctx.bindingId, uuid);
-        const p = (inb?.payload ?? null) as CoolifyWebhookPayload | null;
-        if (p && (p.status === 'success' || p.event === 'deploy.succeeded')) succeeded++;
-      }
-      const total = Math.max(expectedUuids.length, 1);
-
-      if (succeeded >= total) {
-        await setCurrentStepForce(runId, 'release.deploy.done');
-        await closeRun(runId, 'completed');
-      } else {
-        await setCurrentStepForce(runId, `release.deploy.in_flight (${succeeded}/${total})`);
-      }
-      return { deliveryId, actions: 1 };
-    }
-
-    // Non-terminal progress event for this target.
-    await setCurrentStepForce(runId, `release.deploy.${payload.status ?? 'progress'}`);
-    actions++;
-    return { deliveryId, actions };
+  // cm:guard REFUSE, never accept-and-drop (ISS-922). Coolify's `SendWebhookJob` sends no event header and no signature, so nothing can reach here through `/in/:slug`; a body that somehow does is a provider Forge has not read, and answering it 200 would be a second, unproven writer of run-terminal state beside `confirm.ts`.
+  async handleInbound() {
+    throw new Error(
+      'coolify: inbound webhooks are not supported — Coolify sends no signed callback, so a deploy is confirmed by polling `GET /api/v1/deployments/{uuid}` (see integrations/coolify/confirm.ts)',
+    );
   },
 };
 

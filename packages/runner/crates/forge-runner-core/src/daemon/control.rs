@@ -9,6 +9,12 @@
 //!
 //! So the CLI does not claim — it asks here, and the daemon claims and starts
 //! the work in one place.
+//!
+//! Two ops, not one (ISS-919 B2). `prepare` takes the job row and the job token
+//! and starts NOTHING; `start` is the spawn. A master can hold a preparation,
+//! decide against it and hand it back, which the single irreversible verb this
+//! replaced made impossible. The daemon holds the preparation in between and
+//! owes the release either way — `Preparations` below is where that debt lives.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -26,7 +32,6 @@ use crate::daemon::repo_lock::RepoLocks;
 #[cfg(unix)]
 use crate::daemon::InflightGuard;
 use crate::runner::claude_code::ClaudeCodeRunner;
-#[cfg(unix)]
 use crate::transport::pool;
 use crate::transport::CoreClient;
 
@@ -40,16 +45,22 @@ pub fn socket_path() -> Option<PathBuf> {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum Request {
-    /// Claim one job and start it here.
+    /// Take one job — job row and job token — WITHOUT starting anything.
     // cm:guard the FIELDS need their own `rename_all` — the one on the enum renames variants, not fields. Without it these read `job_id`/`session_id` while the CLI sends camelCase, and every claim comes back "undecodable request".
     #[serde(rename_all = "camelCase")]
-    Claim {
+    Prepare {
         job_id: String,
         session_id: String,
         // cm:guard the master NAMES the agent, and the name is the worktree branch — core no longer sends one. Keep this `Option` rather than making serde require it: a missing name must come back as `agent_required`, which tells a master what to do, where a required field fails the whole frame as "undecodable request" and names nothing.
         #[serde(default)]
         agent: Option<String>,
     },
+    /// Start a job this session already prepared.
+    #[serde(rename_all = "camelCase")]
+    Start { job_id: String, session_id: String },
+    /// Hand back a preparation that will never start.
+    #[serde(rename_all = "camelCase")]
+    Discard { job_id: String, session_id: String },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -84,6 +95,90 @@ pub struct Control {
     pub cfg: Config,
     pub locks: RepoLocks,
     pub inflight: Arc<std::sync::atomic::AtomicUsize>,
+    /// Jobs taken and not yet started. See [`Preparations`].
+    pub prepared: Preparations,
+}
+
+/// How long a preparation may sit before this daemon hands it back.
+// cm:guard STRICTLY below core's `MASTER_HOLD_TIMEOUT_MS` (3 minutes), so the daemon that holds the preparation is the one that releases it and the reaper stays the backstop. Above it and the reaper wins the race: the hold comes back while this map still believes it owns the job, and `start` then stamps a job core has already offered to somebody else.
+pub const PREPARE_TTL: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// The preparations this daemon is holding on a master's behalf.
+///
+/// B2's debt made explicit: a `prepare` that never becomes a `start` owes the
+/// release, and the only process that knows it happened is this one.
+// cm:guard the sweep must release through CORE (`pool::release`), not merely drop the entry. Forgetting the map is invisible; forgetting the HOLD parks claimable work on a master that never ran it, which is the exact failure B2 names and the reason a new verb was allowed at all.
+#[derive(Clone, Default)]
+pub struct Preparations(Arc<std::sync::Mutex<std::collections::HashMap<String, Held>>>);
+
+pub struct Held {
+    session_id: String,
+    job: pool::ClaimedJob,
+    at: std::time::Instant,
+}
+
+impl Preparations {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn put(&self, job: pool::ClaimedJob, session_id: &str) {
+        let mut map = self.0.lock().expect("preparations poisoned");
+        map.insert(
+            job.job_id.clone(),
+            Held {
+                session_id: session_id.to_string(),
+                job,
+                at: std::time::Instant::now(),
+            },
+        );
+    }
+
+    // cm:guard the session id is checked HERE, not by the caller. A `start` naming a job another master prepared would spawn that master's work under this one's name, and core cannot catch it: the two look identical on the wire because both hold a valid device token on the same box.
+    fn take(&self, job_id: &str, session_id: &str) -> Option<pool::ClaimedJob> {
+        let mut map = self.0.lock().expect("preparations poisoned");
+        match map.get(job_id) {
+            Some(h) if h.session_id == session_id => map.remove(job_id).map(|h| h.job),
+            _ => None,
+        }
+    }
+
+    fn expired(&self, ttl: std::time::Duration) -> Vec<(String, String)> {
+        let mut map = self.0.lock().expect("preparations poisoned");
+        let now = std::time::Instant::now();
+        let stale: Vec<String> = map
+            .iter()
+            .filter(|(_, h)| now.duration_since(h.at) >= ttl)
+            .map(|(k, _)| k.clone())
+            .collect();
+        stale
+            .into_iter()
+            .filter_map(|k| map.remove(&k).map(|h| (k, h.session_id)))
+            .collect()
+    }
+}
+
+/// Give back every preparation nobody started, forever.
+// cm:guard this loop is not optional bookkeeping — it is the half of B2 that keeps the split from parking work. A daemon that offered `prepare` without it would let a master take ten jobs, start two and strand eight until core's reaper noticed, three minutes at a time.
+pub async fn reap_preparations(
+    client: CoreClient,
+    prepared: Preparations,
+    mut cancel: tokio::sync::watch::Receiver<bool>,
+) {
+    let mut tick = tokio::time::interval(std::time::Duration::from_secs(15));
+    loop {
+        tokio::select! {
+            _ = tick.tick() => {
+                for (job_id, session_id) in prepared.expired(PREPARE_TTL) {
+                    tracing::warn!(
+                        "[control] preparation for job {job_id} was never started — returning it to the pool"
+                    );
+                    let _ = pool::release(&client, Some(&job_id), &session_id).await;
+                }
+            }
+            _ = cancel.changed() => { if *cancel.borrow() { break; } }
+        }
+    }
 }
 
 /// Serve until `cancel` flips.
@@ -146,11 +241,13 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
         return;
     }
     let reply = match serde_json::from_str::<Request>(&line) {
-        Ok(Request::Claim {
+        Ok(Request::Prepare {
             job_id,
             session_id,
             agent,
-        }) => claim_and_start(&ctl, &job_id, &session_id, agent.as_deref()).await,
+        }) => prepare(&ctl, &job_id, &session_id, agent.as_deref()).await,
+        Ok(Request::Start { job_id, session_id }) => start(&ctl, &job_id, &session_id).await,
+        Ok(Request::Discard { job_id, session_id }) => discard(&ctl, &job_id, &session_id).await,
         Err(e) => ClaimReply::refused(format!("undecodable request: {e}")),
     };
     let mut out = serde_json::to_string(&reply).unwrap_or_else(|_| "{\"ok\":false}".into());
@@ -159,9 +256,9 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
 }
 
 #[cfg(unix)]
-/// Claim through core, then run the job here.
-// cm:guard a preparation that arrives and does not start MUST be released. Core clears a hold on `releaseJobFromMaster` or the 3-minute reaper and nothing else, so returning early on a spawn failure without the release parks a claimable job on a master that never ran it.
-async fn claim_and_start(
+/// Take the job through core and hold it here. Nothing is spawned.
+// cm:guard a preparation that arrives and does not start MUST be released. Core clears a hold on `releaseJobFromMaster` or the 3-minute reaper and nothing else, so every early return below either never took the hold or gives it back, and anything that lands in `ctl.prepared` is owed to `reap_preparations`.
+async fn prepare(
     ctl: &Arc<Control>,
     job_id: &str,
     session_id: &str,
@@ -173,9 +270,9 @@ async fn claim_and_start(
         Some(a) => return ClaimReply::refused(format!("agent_unusable: {a}")),
         None => return ClaimReply::refused("agent_required"),
     };
-    let outcome = match pool::claim(&ctl.client, job_id, session_id).await {
+    let outcome = match pool::prepare(&ctl.client, job_id, session_id).await {
         Ok(o) => o,
-        Err(e) => return ClaimReply::refused(format!("claim failed: {e}")),
+        Err(e) => return ClaimReply::refused(format!("prepare failed: {e}")),
     };
     if !outcome.ok {
         return ClaimReply::refused(outcome.reason.unwrap_or_else(|| "refused".into()));
@@ -187,7 +284,41 @@ async fn claim_and_start(
     };
 
     let agent_session_id = prepared.agent_session_id.clone();
-    let job = prepared.into_claimed(outcome.job_token, outcome.issue_key.clone(), agent);
+    let issue_key = outcome.issue_key.clone();
+    let job = prepared.into_claimed(outcome.job_token, outcome.issue_key, agent);
+    let held_job_id = job.job_id.clone();
+    ctl.prepared.put(job, session_id);
+
+    ClaimReply {
+        ok: true,
+        job_id: Some(held_job_id),
+        agent_session_id,
+        issue_key,
+        reason: None,
+    }
+}
+
+#[cfg(unix)]
+/// Stamp the prepared job onto this box and run it.
+// cm:guard the spawn happens only AFTER core stamps, and a refused stamp leaves the preparation gone from this map with the hold given back — never a process running against a job core still calls `queued`. The one ordering that must not be inverted: spawn-then-stamp leaves a live agent whose every event comes back 403, which is the epodsystem wedge with the two halves swapped.
+async fn start(ctl: &Arc<Control>, job_id: &str, session_id: &str) -> ClaimReply {
+    let Some(job) = ctl.prepared.take(job_id, session_id) else {
+        return ClaimReply::refused("not_prepared");
+    };
+    match pool::start(&ctl.client, job_id, session_id).await {
+        Ok(o) if o.ok => {}
+        Ok(o) => {
+            let _ = pool::release(&ctl.client, Some(job_id), session_id).await;
+            return ClaimReply::refused(o.reason.unwrap_or_else(|| "refused".into()));
+        }
+        Err(e) => {
+            let _ = pool::release(&ctl.client, Some(job_id), session_id).await;
+            return ClaimReply::refused(format!("start failed: {e}"));
+        }
+    }
+
+    let agent_session_id = job.agent_session_id.clone();
+    let issue_key = job.issue_key.clone();
     let started_job_id = job.job_id.clone();
 
     let (client, runner, cfg, locks) = (
@@ -208,8 +339,25 @@ async fn claim_and_start(
         ok: true,
         job_id: Some(started_job_id),
         agent_session_id,
-        issue_key: outcome.issue_key,
+        issue_key,
         reason: None,
+    }
+}
+
+#[cfg(unix)]
+/// A master changing its mind: hand the preparation back now.
+// cm:guard release even when the map has no entry. A master that retries a discard after a timeout must not be told the job is still held, and `releaseJobFromMaster` is a no-op on a job this session does not hold — so the unconditional call is both safe and the only one that cannot leave a hold behind.
+async fn discard(ctl: &Arc<Control>, job_id: &str, session_id: &str) -> ClaimReply {
+    ctl.prepared.take(job_id, session_id);
+    match pool::release(&ctl.client, Some(job_id), session_id).await {
+        Ok(_) => ClaimReply {
+            ok: true,
+            job_id: Some(job_id.to_string()),
+            agent_session_id: None,
+            issue_key: None,
+            reason: None,
+        },
+        Err(e) => ClaimReply::refused(format!("release failed: {e}")),
     }
 }
 
@@ -225,31 +373,90 @@ fn is_usable_branch_name(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
 }
 
-/// Ask a running daemon to claim and start one job.
+/// Ask a running daemon to take one job without starting it.
 #[cfg(not(unix))]
-pub async fn request_claim(
+pub async fn request_prepare(
     _path: &std::path::Path,
     _job_id: &str,
     _session_id: &str,
     _agent: &str,
 ) -> std::io::Result<ClaimReply> {
-    Err(std::io::Error::other(
+    Err(no_socket())
+}
+
+/// Ask a running daemon to start a job this session prepared.
+#[cfg(not(unix))]
+pub async fn request_start(
+    _path: &std::path::Path,
+    _job_id: &str,
+    _session_id: &str,
+) -> std::io::Result<ClaimReply> {
+    Err(no_socket())
+}
+
+/// Ask a running daemon to hand a preparation back.
+#[cfg(not(unix))]
+pub async fn request_discard(
+    _path: &std::path::Path,
+    _job_id: &str,
+    _session_id: &str,
+) -> std::io::Result<ClaimReply> {
+    Err(no_socket())
+}
+
+#[cfg(not(unix))]
+fn no_socket() -> std::io::Error {
+    std::io::Error::other(
         "the master control socket needs a unix socket; this platform cannot claim work",
-    ))
+    )
 }
 
 #[cfg(unix)]
-pub async fn request_claim(
+pub async fn request_prepare(
     path: &std::path::Path,
     job_id: &str,
     session_id: &str,
     agent: &str,
 ) -> std::io::Result<ClaimReply> {
+    ask(
+        path,
+        serde_json::json!({
+            "op": "prepare", "jobId": job_id, "sessionId": session_id, "agent": agent
+        }),
+    )
+    .await
+}
+
+#[cfg(unix)]
+pub async fn request_start(
+    path: &std::path::Path,
+    job_id: &str,
+    session_id: &str,
+) -> std::io::Result<ClaimReply> {
+    ask(
+        path,
+        serde_json::json!({ "op": "start", "jobId": job_id, "sessionId": session_id }),
+    )
+    .await
+}
+
+#[cfg(unix)]
+pub async fn request_discard(
+    path: &std::path::Path,
+    job_id: &str,
+    session_id: &str,
+) -> std::io::Result<ClaimReply> {
+    ask(
+        path,
+        serde_json::json!({ "op": "discard", "jobId": job_id, "sessionId": session_id }),
+    )
+    .await
+}
+
+#[cfg(unix)]
+async fn ask(path: &std::path::Path, body: serde_json::Value) -> std::io::Result<ClaimReply> {
     let stream = UnixStream::connect(path).await?;
     let mut reader = BufReader::new(stream);
-    let body = serde_json::json!({
-        "op": "claim", "jobId": job_id, "sessionId": session_id, "agent": agent
-    });
     let mut line = serde_json::to_string(&body).unwrap_or_default();
     line.push('\n');
     reader.get_mut().write_all(line.as_bytes()).await?;
@@ -264,10 +471,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_claim_request_parses_in_the_shape_the_cli_sends() {
-        let raw = r#"{"op":"claim","jobId":"j1","sessionId":"s1","agent":"catalog-sweep"}"#;
+    fn a_prepare_request_parses_in_the_shape_the_cli_sends() {
+        let raw = r#"{"op":"prepare","jobId":"j1","sessionId":"s1","agent":"catalog-sweep"}"#;
         match serde_json::from_str::<Request>(raw).expect("must parse") {
-            Request::Claim {
+            Request::Prepare {
                 job_id,
                 session_id,
                 agent,
@@ -276,7 +483,36 @@ mod tests {
                 assert_eq!(job_id, "j1");
                 assert_eq!(session_id, "s1");
             }
+            other => panic!("wrong variant: {other:?}"),
         }
+    }
+
+    // cm:guard the two ops must stay SEPARATE on the wire, which is the whole of B2. A `start` that carried an agent name would be a claim wearing two words, and the master could no longer take a job, look at it and hand it back.
+    #[test]
+    fn start_and_discard_name_a_job_this_session_already_holds() {
+        match serde_json::from_str::<Request>(r#"{"op":"start","jobId":"j1","sessionId":"s1"}"#)
+            .expect("must parse")
+        {
+            Request::Start { job_id, session_id } => {
+                assert_eq!((job_id.as_str(), session_id.as_str()), ("j1", "s1"));
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+        match serde_json::from_str::<Request>(r#"{"op":"discard","jobId":"j1","sessionId":"s1"}"#)
+            .expect("must parse")
+        {
+            Request::Discard { job_id, .. } => assert_eq!(job_id, "j1"),
+            other => panic!("wrong variant: {other:?}"),
+        }
+    }
+
+    // cm:guard the daemon must release what it holds BEFORE core's three-minute reaper does, or the reaper hands the job to somebody else while this map still believes it owns it — and the next `start` stamps a job that is already running one box over.
+    #[test]
+    fn the_daemon_gives_a_preparation_back_before_cores_reaper_would() {
+        assert!(
+            PREPARE_TTL < std::time::Duration::from_secs(180),
+            "PREPARE_TTL must stay under core's MASTER_HOLD_TIMEOUT_MS"
+        );
     }
 
     // cm:guard a refusal must serialise WITHOUT the success fields rather than with nulls — the master reads this JSON, and a `jobId: null` beside `ok: false` reads as a job that exists and failed rather than a claim that never landed.
@@ -293,9 +529,10 @@ mod tests {
     /// prevent, and nothing replaces it but this.
     #[test]
     fn a_claim_with_no_agent_name_still_parses_so_it_can_be_refused_by_name() {
-        let raw = r#"{"op":"claim","jobId":"j1","sessionId":"s1"}"#;
+        let raw = r#"{"op":"prepare","jobId":"j1","sessionId":"s1"}"#;
         match serde_json::from_str::<Request>(raw).expect("must parse") {
-            Request::Claim { agent, .. } => assert!(agent.is_none()),
+            Request::Prepare { agent, .. } => assert!(agent.is_none()),
+            other => panic!("wrong variant: {other:?}"),
         }
     }
 

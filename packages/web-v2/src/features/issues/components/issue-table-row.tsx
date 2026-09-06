@@ -17,7 +17,7 @@ import {
   openBlockingRefs,
 } from "../derive";
 import { useIssueDeps } from "../hooks";
-import type { IssueDependencyEdge, IssueStatus } from "../types";
+import type { IssueDependencyEdge, IssueStatus, ModuleAttribution } from "../types";
 
 export interface RowActions {
   patch: (args: { id: string; body: PatchIssueInput }) => void;
@@ -35,9 +35,8 @@ export interface RowSelection {
   onToggle: (next: boolean) => void;
 }
 
-// Option lists keep the raw enum `value` (server contract) but show humanized
-// labels (`PRIORITY_LABELS`/`COMPLEXITY_LABELS` from derive). Imported by both
-// the table and the properties rail, so both render professional text.
+/** Shared by the table and the properties rail: the raw enum as `value`, the humanized
+ *  `PRIORITY_LABELS`/`COMPLEXITY_LABELS` as the text, so neither surface shows a wire value. */
 export const PRIORITY_OPTIONS: SelectOption[] = [
   { value: "critical", label: PRIORITY_LABELS.critical },
   { value: "high", label: PRIORITY_LABELS.high },
@@ -209,6 +208,31 @@ export function DepBadges({ id, slug }: { id: string; slug: string }) {
  *  old per-row `useIssueCost` lazy fetch was a 25-request N+1 whose silent
  *  failures rendered as "—" exactly like a real zero. `<$0.01` marks a
  *  non-zero cost that would otherwise round down to a misleading dash. */
+/**
+ * A row's PRIMARY module (ISS-594), or an em dash when it has none.
+ *
+ * Reads `row.modules`, which core sends primary-first under `?withModules=1`. The colour is the
+ * module's own, carried as a dot rather than as the pill's fill: a module colour is arbitrary
+ * project data and cannot be relied on to contrast with the pill's text.
+ */
+// cm:edge contract -> packages/core/src/issues/search.ts — `modules` exists only when the caller opts in with `withModules=1`; `issuesApi.search` always does, and a caller that stops would silently blank this column
+export function ModuleCell({ modules }: { modules: ModuleAttribution[] | undefined }) {
+  const primary = modules?.find((m) => m.isPrimary);
+  if (!primary) return <span className="fg-caption text-muted">—</span>;
+  const extra = (modules?.length ?? 0) - 1;
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5" title={primary.name}>
+      <span
+        aria-hidden
+        className="h-2 w-2 shrink-0 rounded-full border border-line"
+        style={{ background: primary.color }}
+      />
+      <span className="fg-body-sm truncate text-fg">{primary.name}</span>
+      {extra > 0 && <span className="fg-caption text-muted">+{extra}</span>}
+    </span>
+  );
+}
+
 export function CostCell({ value }: { value: number | undefined }) {
   const cost = value ?? 0;
   const text = cost <= 0 ? "—" : cost < 0.01 ? "<$0.01" : `$${cost.toFixed(2)}`;

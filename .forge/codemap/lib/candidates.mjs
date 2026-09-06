@@ -1,4 +1,4 @@
-// @generated codemap 0.16.1 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.19.0 — vendored by `cm install`; edit the plugin, not this.
 // Hooks run on every edit, so they must not walk a monorepo. `git grep` narrows the repo to the
 // handful of files that actually carry annotations in a few milliseconds; the full walk is only a
 // fallback for non-git trees.

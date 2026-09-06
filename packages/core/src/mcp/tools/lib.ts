@@ -1,15 +1,10 @@
 import { z } from 'zod';
-import type { Device } from '../../auth/deviceToken.js';
-import { actorAgency, type DeviceLite, type TransitionActor } from '../../issues/actor-agency.js';
+import { type ActorAgency, actorAgency, type TransitionActor } from '../../issues/actor-agency.js';
+import { resolveMachineTokenDeviceId } from '../../jobs/active-job-context.js';
 import { loadVisibleProjectIds } from '../../lib/authz.js';
-import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
+import type { McpPrincipal } from '../../middleware/require-pat.js';
 import type { Actor } from '../../pipeline/activity.js';
-import {
-  assertDeviceOwnerIsAdmin,
-  assertDeviceOwnerIsMember,
-  assertDeviceOwnerIsWriter,
-  loadUserProjectRoleFlags,
-} from './project-authz.js';
+import { loadUserProjectRoleFlags } from './project-authz.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './project-scope.js';
 
 /** The shape every registered MCP tool has, whatever produced it. */
@@ -23,30 +18,16 @@ export interface McpTool {
 /**
  * Per-request context passed to tool factories.
  *
- * `device` is non-null only when the principal is a paired device — kept on
- * the context for legacy device-only tools (forge_pm_*, forge_jobs.*, etc.)
- * that were written before PAT auth existed. Newer tools should branch on
- * `principal.kind` directly via {@link assertPrincipalIsMember}.
- *
  * `projectSlug` is the optional `X-Forge-Project-Slug` header — tools that
  * scope by project resolve it via {@link resolveProjectIdFromSlug}.
  */
+// cm:guard there is NO device on this context and a new tool may not reintroduce one. Until ISS-931 it carried a `device` that `mcp/handler.ts` fabricated for every PAT — a row with a token id in its `id` column and `__pat_synthetic__` for a name — and the membership helpers it fed read only `ownerId`, so the 14 tools taking it never consulted the PAT `projectIds` allowlist. Gate through `assertPrincipalIsMember`/`assertPrincipalIsWriter`, which read the principal and DO consult it.
 export type McpContext = {
   principal: McpPrincipal;
-  /**
-   * Always set so legacy device-only tool factories keep their signatures.
-   * For PAT principals this is a synthesized stub whose `ownerId` is the
-   * PAT user — the membership helpers below only read `ownerId`. PAT users
-   * have no `id` that maps to a real `devices` row, so checks that pivot on
-   * `device.id` (e.g. `assertPmActor` querying `runners.deviceId = device.id`)
-   * naturally fail for them. That is the desired behaviour — PM tools
-   * require a real claude-code runner, which only paired devices can host.
-   */
-  device: Device;
   projectSlug: string | null;
   /**
-   * ISS-497 — the project a project-level PAT is bound to (NULL for
-   * user-level tokens and device principals). Threaded from
+   * ISS-497 — the project a project-level PAT is bound to (NULL for a
+   * user-level token). Threaded from
    * `principal.boundProjectId` in `handler.ts` so the effective-project
    * resolution (arg > slug > boundProjectId) and `metaProjectId()` share a
    * single source of truth. Optional so the many minimal test contexts that
@@ -70,15 +51,8 @@ export type McpContext = {
 };
 
 /**
- * Device-scoped MCP tool — receives the authenticated `Device` at build time
- * so the handler can enforce project membership.
- */
-export type DeviceScopedMcpToolFactory = (device: Device) => McpTool;
-
-/**
- * Context-scoped MCP tool — receives the full {@link McpContext} (device +
- * optional project slug). Use for tools that resolve project from the
- * `X-Forge-Project-Slug` header rather than an explicit args field.
+ * Context-scoped MCP tool — receives the full {@link McpContext}. The only
+ * factory shape there is.
  */
 export type ContextScopedMcpToolFactory = (ctx: McpContext) => McpTool;
 
@@ -90,26 +64,18 @@ export function zodToMcpSchema(schema: z.ZodTypeAny): Record<string, unknown> {
 }
 
 /**
- * Principal-aware membership check (ISS-150). Wraps the device-scoped
- * helper above and adds the PAT path:
- *   - device principal → existing assertDeviceOwnerIsMember
- *   - PAT principal → check `projectIds` allowlist AND the underlying user
- *     is a member of the project.
+ * Membership check (ISS-150): the token's `projectIds` allowlist AND the
+ * underlying user being a member of the project.
  *
- * On scope-allowlist miss for a PAT, we throw `NOT_FOUND` instead of
- * `FORBIDDEN` so a probing caller cannot enumerate the project namespace
- * via an existence-leaking 403. The MCP error mapper in `server.ts`
- * translates this to a generic `isError: true` response.
+ * On scope-allowlist miss we throw `NOT_FOUND` instead of `FORBIDDEN` so a
+ * probing caller cannot enumerate the project namespace via an
+ * existence-leaking 403. The MCP error mapper in `server.ts` translates this
+ * to a generic `isError: true` response.
  */
 export async function assertPrincipalIsMember(
   principal: McpPrincipal,
   projectId: string,
 ): Promise<void> {
-  if (principal.kind === 'device') {
-    await assertDeviceOwnerIsMember(principal.device, projectId);
-    return;
-  }
-  // PAT principal — check the effective allowlist (bound project fences here).
   const allow = patEffectiveProjectIds(principal);
   if (allow !== null && !allow.includes(projectId)) {
     throw new Error('NOT_FOUND: project not found or not accessible');
@@ -130,10 +96,6 @@ export async function assertPrincipalIsWriter(
   principal: McpPrincipal,
   projectId: string,
 ): Promise<void> {
-  if (principal.kind === 'device') {
-    await assertDeviceOwnerIsWriter(principal.device, projectId);
-    return;
-  }
   const allow = patEffectiveProjectIds(principal);
   if (allow !== null && !allow.includes(projectId)) {
     throw new Error('NOT_FOUND: project not found or not accessible');
@@ -148,19 +110,14 @@ export async function assertPrincipalIsWriter(
 }
 
 /**
- * Admin gate. For PAT principals this ALSO requires the `admin` scope on the
- * token — the single enforcement point for the scope (it was declared since
- * ISS-150 but never checked; pre-0106 tokens are grandfathered by migration).
- * Device tokens carry no scopes: a paired desktop acts as the user.
+ * Admin gate. Also requires the `admin` scope on the token — the single
+ * enforcement point for the scope (it was declared since ISS-150 but never
+ * checked; pre-0106 tokens are grandfathered by migration).
  */
 export async function assertPrincipalIsAdmin(
   principal: McpPrincipal,
   projectId: string,
 ): Promise<void> {
-  if (principal.kind === 'device') {
-    await assertDeviceOwnerIsAdmin(principal.device, projectId);
-    return;
-  }
   const allow = patEffectiveProjectIds(principal);
   if (allow !== null && !allow.includes(projectId)) {
     throw new Error('NOT_FOUND: project not found or not accessible');
@@ -175,34 +132,50 @@ export async function assertPrincipalIsAdmin(
   }
 }
 
-/**
- * Resolve a principal to the underlying user id — device principals expose
- * `device.ownerId`, PAT principals carry `userId` directly. Used by tools
- * that need to check user-level attributes or scope by ownership.
- */
+/** The user a principal acts as. */
 export function principalUserId(principal: McpPrincipal): string {
-  return principal.kind === 'device' ? principal.device.ownerId : principal.userId;
+  return principal.userId;
 }
 
 /**
  * Who this MCP call records as having acted.
  *
  * Attribution follows the token's owner — a person holding a PAT is written
- * down as that person, not as the synthetic device the PAT is carried on.
- * Everything downstream that branches on `actor.type` then lands correctly on
- * its own: the ISS-812 fabrication guard skips a human and covers an agent,
- * and `publishIssueStatusChange` names a user id that exists.
+ * down as that person. Everything downstream that branches on `actor.type`
+ * then lands correctly on its own: the ISS-812 fabrication guard skips a human
+ * and covers an agent, and `publishIssueStatusChange` names a user id that
+ * exists.
  */
-// cm:guard branch on `agency`, NEVER on `kind`. A `kind === 'pat'` test reads the agent-driven chat surface (chat/tools/principal.ts) as a human and hands it the ISS-812 exemption — the guard added because agents were fabricating evidence. `agency` is the only field that separates the two.
-export function principalActor(principal: McpPrincipal, device: DeviceLite): TransitionActor {
-  return principal.kind === 'pat' && principal.agency === 'human'
+// cm:guard branch on `agency` and on nothing else. Since ISS-931 every `/mcp` principal is a PAT, so a `kind`-shaped test would now read EVERY caller as a human and hand all of them the ISS-812 exemption — the guard added because agents were fabricating evidence. `agency` is the only field that separates a person's token from a `job:`/`session:` one.
+// cm:why the agent branch's `id` is the TOKEN id, which matches no `devices` row. That is not new and is not a thing this function can fix: it is the exact value `mcp/handler.ts` used to fabricate (`stubDeviceForPat(userId, tokenId)` set `id: tokenId`), kept identical when ISS-931 deleted the stub so no attribution moved with it. Whether an agent MCP write should be `{type:'user', agency:'agent'}` instead is a live question about `actor-resolution.ts:isAgent` and `outbox-worker.ts`, not a rename.
+export function principalActor(principal: McpPrincipal): TransitionActor {
+  return principal.agency === 'human'
     ? { type: 'user', id: principal.userId }
-    : { type: 'device', id: device.id, ownerId: device.ownerId };
+    : { type: 'device', id: principal.tokenId, ownerId: principal.userId };
+}
+
+/**
+ * The `devices` row that stands for the agent behind this call, or `null` when
+ * a person's own PAT made it.
+ */
+// cm:guard the `jobs` hop lives HERE rather than in the tool that wants it. `forge-comments.ts` reached a 7th module the moment it resolved the job off the token itself, which is one past `no-coordinator-blob`'s limit of 6 in `.arch.json`; this file already owns every other principal-to-attribution mapping (`principalActor`, `principalHookActor`, `principalAgency`), so the hop belongs beside them and a second tool needing the marker calls this instead of importing `jobs` again.
+export function principalAuthorDeviceId(principal: McpPrincipal): Promise<string | null> {
+  return resolveMachineTokenDeviceId(principal.machine);
+}
+
+/**
+ * Who was at the keyboard for this MCP call, as the kernel audit records it.
+ *
+ * Distinct from {@link principalActor}, which answers who OWNS the write. The
+ * token's `job:`/`session:` name prefix already decided this.
+ */
+export function principalAgency(principal: McpPrincipal): ActorAgency {
+  return principal.agency;
 }
 
 /** The same decision, in the shape the hooks bus and `activity_log` take. */
-export function principalHookActor(principal: McpPrincipal, device: DeviceLite): Actor {
-  const actor = principalActor(principal, device);
+export function principalHookActor(principal: McpPrincipal): Actor {
+  const actor = principalActor(principal);
   // cm:guard derive through `actorAgency`, not by re-testing `type === 'device'` here — that spelling is right ONLY because `principalActor` above already routes an agent-held PAT into the device branch. Loosen that mapping so an agent keeps `type:'user'` and a local test silently starts recording every agent write as a human, whereas this call follows it.
   return { type: actor.type, id: actor.id, agency: actorAgency(actor) };
 }

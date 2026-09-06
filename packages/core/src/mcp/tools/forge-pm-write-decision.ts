@@ -8,8 +8,8 @@
  */
 
 import { z } from 'zod';
-import type { Device } from '../../auth/deviceToken.js';
 import { modelTiers } from '../../db/schema.js';
+import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { PM_DECISION_CAUSES, writePmDecision } from '../../pm/decisions-service.js';
 import { assertPmActor } from './project-authz.js';
 
@@ -42,9 +42,9 @@ export const pmWriteDecisionInputSchema = z
   .strict();
 
 export async function pmWriteDecisionHandler(
-  device: Device,
+  principal: McpPrincipal,
   input: z.infer<typeof pmWriteDecisionInputSchema>,
 ) {
-  await assertPmActor(device, input.projectId);
+  await assertPmActor(principal);
   return writePmDecision(input);
 }

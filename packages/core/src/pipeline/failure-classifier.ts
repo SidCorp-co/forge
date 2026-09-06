@@ -22,12 +22,15 @@
 import { isSpendLimitError, isUsageLimitError } from '../runners/limit-detect.js';
 import type { FailureCause } from './failure-causes.js';
 import {
+  BOX_SATURATION_PATTERNS,
   CC_STARTUP_PATTERNS,
   causeForMetaErrorType,
   causeForText,
   DUPLEX_SESSION_PATTERNS,
   PERMANENT_PATTERNS,
   PERMISSION_PATTERNS,
+  PREFLIGHT_PATTERNS,
+  REPO_CONTENTION_PATTERNS,
   TERMINAL_INFRA_PATTERNS,
   TIMEOUT_PATTERNS,
   TRANSIENT_PATTERNS,
@@ -36,7 +39,7 @@ import { parseRetryAfter, readRetryAfterHeader } from './retry-after-parser.js';
 
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — the runner's plain error string is its only routing lever
 // cm:guard bump CLASSIFIER_VERSION on any pattern change, and keep specific buckets ahead of the transient fallthrough
-export const CLASSIFIER_VERSION = 10;
+export const CLASSIFIER_VERSION = 11;
 
 export type FailureKind = 'code' | 'infra' | 'transient-cc' | 'timeout';
 
@@ -100,10 +103,11 @@ interface ClassifyInput {
  * human-readable reason, and an optional Retry-After timestamp. Always
  * returns a verdict — never throws, never `unknown`.
  *
- * Match order: structured `meta.error.type` → runner token → spend-cap →
+ * Match order: structured `meta.error.type` → runner token → the three
+ * pre-spawn verdicts (TERMINAL_INFRA / PREFLIGHT / BOX_SATURATION /
+ * REPO_CONTENTION, all above the cc-startup signal) → spend-cap →
  * usage/session limit → cc-startup signal → PERMISSION (infra) →
- * DUPLEX_SESSION (infra) → TIMEOUT →
- * TERMINAL_INFRA (infra, terminal) → PERMANENT (code) → TRANSIENT (infra) →
+ * DUPLEX_SESSION (infra) → TIMEOUT → PERMANENT (code) → TRANSIENT (infra) →
  * CC_STARTUP text fallback → infra + needsReview. Permission/timeout precede
  * the broader buckets because their patterns are more specific.
  */
@@ -174,12 +178,7 @@ function classifyKind(
     }
   }
 
-  // ISS-479 — explicit runner failureReason tokens are AUTHORITATIVE: the
-  // runner observed the actual process exit, so its verdict beats the
-  // message-count heuristic below (e.g. an MCP-init failure dies with no tool
-  // use, which the heuristic would mislabel transient-cc; the runner says
-  // infra). [RESULT_ERROR] intentionally returns null here so the provider
-  // message in its detail still flows to the PERMANENT/TRANSIENT patterns.
+  // cm:guard the runner's token beats the message-count heuristic below, because the runner watched the process exit — an MCP-init death has no tool use and the heuristic calls that `transient-cc` (ISS-479). `[RESULT_ERROR]` returns null on purpose so the provider message in its detail still reaches the PERMANENT/TRANSIENT tables.
   const runnerKind = classifyRunnerToken(text);
   if (runnerKind) {
     return { kind: runnerKind, cause: textCause, reason: reasonExcerpt, meta };
@@ -195,10 +194,7 @@ function classifyKind(
     };
   }
 
-  // ISS-596 — usage/session limit → immediate cross-device failover. Checked
-  // after runner tokens (so [MCP_INIT_FAILED]/[SIGNAL_KILLED] still win) but
-  // before the cc-startup signal so a limit error that also looks like a
-  // startup death correctly routes to the failover policy.
+  // cm:guard after the runner tokens and before the cc-startup signal, both deliberately: `[MCP_INIT_FAILED]` must still win, and a limit error that also looks like a startup death must route to failover rather than to the same box (ISS-596).
   if (isUsageLimitError(text)) {
     return {
       kind: 'transient-cc',
@@ -208,11 +204,55 @@ function classifyKind(
     };
   }
 
-  // ISS-450 — structured cc-startup-death signal (preferred source). The
-  // caller derives it from the job's event stream: the CLI spawned but died
-  // with ≤3 assistant messages and no tool use (ISS-402 skill-registration
-  // glitch class). Checked before the text passes so a generic error string
-  // from a startup death still routes to the immediate-failover policy.
+  // cm:guard the two limit branches above stay AHEAD of the four pre-spawn verdicts below, and that ordering is not cosmetic. Those four match their token ANYWHERE in the blob, and the blob is `note` plus the transcript tail, so a spend-capped account whose agent output happens to contain `preflight failed` would route `infra`/`retry` on the same box instead of the per-account failover its exhaustion memory needs. Before ISS-920 the preflight patterns sat in TRANSIENT, below here; moving them up must not take the limits with them.
+  // cm:guard the four pre-spawn verdicts are matched HERE, above the cc-startup signal, and moving any of them down makes it unreachable rather than merely late: none of these jobs ever spawned, and the pre-spawn heartbeat leaves every one looking exactly like a startup death to `deriveCcStartupSignals`, which counts ALL job events (ISS-920). Every preflight prefix belongs in this group — the three terminal ones AND the catch-all — because a `push_credentials` timeout was still landing as `agent_startup_failed` after the first three moved up.
+  for (const pat of TERMINAL_INFRA_PATTERNS) {
+    if (pat.test(text)) {
+      return {
+        kind: 'infra',
+        action: 'terminal',
+        cause: 'workspace_preflight_failed',
+        reason: reasonExcerpt || 'workspace preflight (pattern match)',
+        meta,
+      };
+    }
+  }
+
+  for (const pat of PREFLIGHT_PATTERNS) {
+    if (pat.test(text)) {
+      return {
+        kind: 'infra',
+        cause: 'workspace_preflight_failed',
+        reason: reasonExcerpt || 'workspace preflight (pattern match)',
+        meta,
+      };
+    }
+  }
+
+  for (const pat of BOX_SATURATION_PATTERNS) {
+    if (pat.test(text)) {
+      return {
+        kind: 'infra',
+        action: 'failover',
+        cause: 'box_session_saturated',
+        reason: reasonExcerpt || 'box session permits saturated',
+        meta,
+      };
+    }
+  }
+
+  for (const pat of REPO_CONTENTION_PATTERNS) {
+    if (pat.test(text)) {
+      return {
+        kind: 'infra',
+        cause: 'repo_root_contention',
+        reason: reasonExcerpt || 'repo root held by a sibling job',
+        meta,
+      };
+    }
+  }
+
+  // cm:guard this branch is broad and it must stay BELOW every verdict that names a job which never spawned. `deriveCcStartupSignals` counts ALL job events, not assistant messages, so one heartbeat satisfies it — which is how it was taking every permit failure, every repo-lock timeout and every `preflight_failed` (ISS-920). It sits above the remaining text patterns on purpose (ISS-450: a generic string from a real startup death must still reach immediate failover), so a new verdict about a job that never spawned goes above this line, not below.
   if (signals?.diedBeforeFirstToolUse === true && (signals.sessionMessageCount ?? 0) <= 3) {
     return {
       kind: 'transient-cc',
@@ -250,18 +290,6 @@ function classifyKind(
         kind: 'timeout',
         cause: textCause,
         reason: reasonExcerpt || 'timeout (pattern match)',
-        meta,
-      };
-    }
-  }
-
-  for (const pat of TERMINAL_INFRA_PATTERNS) {
-    if (pat.test(text)) {
-      return {
-        kind: 'infra',
-        action: 'terminal',
-        cause: 'workspace_preflight_failed',
-        reason: reasonExcerpt || 'workspace preflight (pattern match)',
         meta,
       };
     }
@@ -347,8 +375,6 @@ function extractMetaMessage(meta: Record<string, unknown> | null): string | null
 
 function extractRetryAfter(meta: Record<string, unknown> | null): Date | null {
   if (!meta) return null;
-  // Common shapes: `{ headers: {...} }`, `{ response: { headers: {...} } }`,
-  // or `{ error: { headers: {...} } }`. Probe each.
   const candidates: Array<Record<string, unknown> | undefined> = [];
   const direct = (meta as { headers?: unknown }).headers;
   if (direct && typeof direct === 'object') {

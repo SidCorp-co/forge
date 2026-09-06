@@ -9,12 +9,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { connectClientAsDevice, parseToolResult } from '../helpers/mcp-harness.js';
-
-// Phase 2.5-F4 integration — MCP tools end-to-end. Device-authed clients
-// connect via InMemoryTransport (same machinery MCP uses, but loopback) and
-// exercise tools/list + tools/call against real Postgres with pgvector.
-// Embeddings service is stubbed so no external LiteLLM needed.
+import { connectClientAsPat, parseToolResult } from '../helpers/mcp-harness.js';
 
 const DIM = 1536;
 // cm:edge contract -> packages/core/src/issues/release-record-required.ts — a device close with no releaseNotes is refused, and every close in this file goes over MCP as a device
@@ -28,7 +23,7 @@ function hotVector(hotIdx: number, mag = 1): number[] {
 
 describe('F4 MCP tools integration', () => {
   let harness: TestDatabase;
-  let issueDeviceToken: typeof import('../../src/auth/deviceToken.js').issueDeviceToken;
+  let mintPat: typeof import('../../src/auth/pat.js').mintPat;
   let embeddingsMod: typeof import('../../src/embeddings/index.js');
 
   beforeAll(async () => {
@@ -47,9 +42,9 @@ describe('F4 MCP tools integration', () => {
     process.env.EMBEDDINGS_BASE_URL ??= 'https://stub.invalid';
     process.env.EMBEDDINGS_API_KEY ??= 'stub-key';
 
-    const deviceTokenMod = await import('../../src/auth/deviceToken.js');
+    const patMod = await import('../../src/auth/pat.js');
     embeddingsMod = await import('../../src/embeddings/index.js');
-    issueDeviceToken = deviceTokenMod.issueDeviceToken;
+    mintPat = patMod.mintPat;
   }, 120_000);
 
   afterAll(async () => {
@@ -118,12 +113,8 @@ describe('F4 MCP tools integration', () => {
 
   it('tools/list: includes the known tools with input schemas', async () => {
     const { user } = await seedProject('admin');
-    const { plaintext } = await issueDeviceToken({
-      ownerId: user.id,
-      name: 'd',
-      platform: 'linux',
-    });
-    const ctx = await connectClientAsDevice(plaintext);
+    const { plaintext } = await mintPat({ userId: user.id, name: 'test-cli' });
+    const ctx = await connectClientAsPat(plaintext);
     try {
       const res = await ctx.client.listTools();
       // The surface has grown well beyond the original five tools; assert the
@@ -157,12 +148,8 @@ describe('F4 MCP tools integration', () => {
     });
     stubEmbedding(hotVector(0));
 
-    const { plaintext } = await issueDeviceToken({
-      ownerId: user.id,
-      name: 'd',
-      platform: 'linux',
-    });
-    const ctx = await connectClientAsDevice(plaintext);
+    const { plaintext } = await mintPat({ userId: user.id, name: 'test-cli' });
+    const ctx = await connectClientAsPat(plaintext);
     try {
       const res = await ctx.client.callTool({
         name: 'forge_memory.search',
@@ -181,15 +168,11 @@ describe('F4 MCP tools integration', () => {
     }
   });
 
-  it('forge_memory.search: device not on project → FORBIDDEN via isError', async () => {
+  it('forge_memory.search: caller not on project → not-found via isError', async () => {
     const { project } = await seedProject('admin');
     const stranger = await createTestUser(harness.db);
-    const { plaintext } = await issueDeviceToken({
-      ownerId: stranger.id,
-      name: 'd',
-      platform: 'linux',
-    });
-    const ctx = await connectClientAsDevice(plaintext);
+    const { plaintext } = await mintPat({ userId: stranger.id, name: 'stranger-cli' });
+    const ctx = await connectClientAsPat(plaintext);
     try {
       const res = (await ctx.client.callTool({
         name: 'forge_memory.search',
@@ -198,7 +181,7 @@ describe('F4 MCP tools integration', () => {
       expect(res.isError).toBe(true);
       // The server strips the FORBIDDEN: prefix before returning the human
       // message to the caller (see server.ts error path), so match the text.
-      expect(res.content[0]?.text).toMatch(/not a member/i);
+      expect(res.content[0]?.text).toMatch(/not found or not accessible/i);
     } finally {
       await ctx.close();
     }
@@ -206,12 +189,8 @@ describe('F4 MCP tools integration', () => {
 
   it('forge_memory.search: invalid arguments → isError (zod parse)', async () => {
     const { user } = await seedProject('admin');
-    const { plaintext } = await issueDeviceToken({
-      ownerId: user.id,
-      name: 'd',
-      platform: 'linux',
-    });
-    const ctx = await connectClientAsDevice(plaintext);
+    const { plaintext } = await mintPat({ userId: user.id, name: 'test-cli' });
+    const ctx = await connectClientAsPat(plaintext);
     try {
       const res = (await ctx.client.callTool({
         name: 'forge_memory.search',
@@ -230,12 +209,8 @@ describe('F4 MCP tools integration', () => {
     await insertSkill(project.id, 'project-a-custom', 'project');
     await insertSkill(otherProject.id, 'project-b-custom', 'project');
 
-    const { plaintext } = await issueDeviceToken({
-      ownerId: user.id,
-      name: 'd',
-      platform: 'linux',
-    });
-    const ctx = await connectClientAsDevice(plaintext);
+    const { plaintext } = await mintPat({ userId: user.id, name: 'test-cli' });
+    const ctx = await connectClientAsPat(plaintext);
     try {
       const res = await ctx.client.callTool({
         name: 'forge_skills.list',
@@ -256,12 +231,8 @@ describe('F4 MCP tools integration', () => {
     const otherProject = await createTestProject(harness.db, user.id, { slug: 'other2' });
     const foreignSkillId = await insertSkill(otherProject.id, 'foreign', 'project');
 
-    const { plaintext } = await issueDeviceToken({
-      ownerId: user.id,
-      name: 'd',
-      platform: 'linux',
-    });
-    const ctx = await connectClientAsDevice(plaintext);
+    const { plaintext } = await mintPat({ userId: user.id, name: 'test-cli' });
+    const ctx = await connectClientAsPat(plaintext);
     try {
       const res = await ctx.client.callTool({
         name: 'forge_skills.get',
@@ -274,15 +245,16 @@ describe('F4 MCP tools integration', () => {
     }
   });
 
-  it('forge_skills.register: admin device succeeds', async () => {
+  // cm:guard the registering token must carry the `admin` SCOPE as well as the project role, and this is the only place in the suite that says so. A paired device carried no scopes at all, so `assertPrincipalIsAdmin`'s scope half was skipped for it and the project role was the whole gate; since ISS-931 every `/mcp` caller is a PAT and both halves apply. Drop `admin` from this mint and the failure is `this token lacks the admin scope`, which is the change working, not a regression.
+  it('forge_skills.register: an admin-scoped PAT held by a project admin succeeds', async () => {
     const { user, project } = await seedProject('admin');
     const skillId = await insertSkill(project.id, 'r-skill');
-    const { plaintext } = await issueDeviceToken({
-      ownerId: user.id,
-      name: 'd',
-      platform: 'linux',
+    const { plaintext } = await mintPat({
+      userId: user.id,
+      name: 'test-cli',
+      scopes: ['read', 'write', 'admin'],
     });
-    const ctx = await connectClientAsDevice(plaintext);
+    const ctx = await connectClientAsPat(plaintext);
     try {
       const res = await ctx.client.callTool({
         name: 'forge_skills.register',
@@ -301,7 +273,7 @@ describe('F4 MCP tools integration', () => {
     }
   });
 
-  it('forge_skills.register: member device → FORBIDDEN isError', async () => {
+  it('forge_skills.register: admin scope is not enough without the project role', async () => {
     const owner = await seedProject('admin');
     const memberUser = await createTestUser(harness.db);
     await createTestProjectMember(harness.db, {
@@ -310,19 +282,18 @@ describe('F4 MCP tools integration', () => {
       role: 'member',
     });
     const skillId = await insertSkill(owner.project.id, 'r2');
-    const { plaintext } = await issueDeviceToken({
-      ownerId: memberUser.id,
-      name: 'member-dev',
-      platform: 'linux',
+    const { plaintext } = await mintPat({
+      userId: memberUser.id,
+      name: 'member-cli',
+      scopes: ['read', 'write', 'admin'],
     });
-    const ctx = await connectClientAsDevice(plaintext);
+    const ctx = await connectClientAsPat(plaintext);
     try {
       const res = (await ctx.client.callTool({
         name: 'forge_skills.register',
         arguments: { projectId: owner.project.id, skillId, stage: 'approved' },
       })) as { isError?: boolean; content: Array<{ text: string }> };
       expect(res.isError).toBe(true);
-      // FORBIDDEN: prefix is stripped before returning to the caller.
       expect(res.content[0]?.text).toMatch(/project admin/i);
     } finally {
       await ctx.close();
@@ -331,12 +302,12 @@ describe('F4 MCP tools integration', () => {
 
   it('forge_skills.register: unknown skill → NOT_FOUND isError', async () => {
     const { user, project } = await seedProject('admin');
-    const { plaintext } = await issueDeviceToken({
-      ownerId: user.id,
-      name: 'd',
-      platform: 'linux',
+    const { plaintext } = await mintPat({
+      userId: user.id,
+      name: 'test-cli',
+      scopes: ['read', 'write', 'admin'],
     });
-    const ctx = await connectClientAsDevice(plaintext);
+    const ctx = await connectClientAsPat(plaintext);
     try {
       const res = (await ctx.client.callTool({
         name: 'forge_skills.register',
@@ -347,7 +318,6 @@ describe('F4 MCP tools integration', () => {
         },
       })) as { isError?: boolean; content: Array<{ text: string }> };
       expect(res.isError).toBe(true);
-      // NOT_FOUND: prefix is stripped before returning to the caller.
       expect(res.content[0]?.text).toMatch(/not found/i);
     } finally {
       await ctx.close();
@@ -363,12 +333,8 @@ describe('F4 MCP tools integration', () => {
 
   it('forge_issues: list reflects a fresh status/updatedAt/mergedAt immediately after transition + mark_merged', async () => {
     const { user, project } = await seedProject('admin');
-    const { plaintext } = await issueDeviceToken({
-      ownerId: user.id,
-      name: 'd',
-      platform: 'linux',
-    });
-    const ctx = await connectClientAsDevice(plaintext);
+    const { plaintext } = await mintPat({ userId: user.id, name: 'test-cli' });
+    const ctx = await connectClientAsPat(plaintext);
     try {
       const createRes = await ctx.client.callTool({
         name: 'forge_issues',
@@ -432,12 +398,8 @@ describe('F4 MCP tools integration', () => {
 
   it('forge_issues: list filters={statusNot:"closed"} excludes an issue closed immediately beforehand', async () => {
     const { user, project } = await seedProject('admin');
-    const { plaintext } = await issueDeviceToken({
-      ownerId: user.id,
-      name: 'd',
-      platform: 'linux',
-    });
-    const ctx = await connectClientAsDevice(plaintext);
+    const { plaintext } = await mintPat({ userId: user.id, name: 'test-cli' });
+    const ctx = await connectClientAsPat(plaintext);
     try {
       const createRes = await ctx.client.callTool({
         name: 'forge_issues',
@@ -473,12 +435,8 @@ describe('F4 MCP tools integration', () => {
 
   it('forge_issues: get returns the fresh row immediately after a write', async () => {
     const { user, project } = await seedProject('admin');
-    const { plaintext } = await issueDeviceToken({
-      ownerId: user.id,
-      name: 'd',
-      platform: 'linux',
-    });
-    const ctx = await connectClientAsDevice(plaintext);
+    const { plaintext } = await mintPat({ userId: user.id, name: 'test-cli' });
+    const ctx = await connectClientAsPat(plaintext);
     try {
       const createRes = await ctx.client.callTool({
         name: 'forge_issues',
@@ -513,12 +471,12 @@ describe('F4 MCP tools integration', () => {
   it('forge_skills.register: stage=null clears the binding', async () => {
     const { user, project } = await seedProject('admin');
     const skillId = await insertSkill(project.id, 'r3');
-    const { plaintext } = await issueDeviceToken({
-      ownerId: user.id,
-      name: 'd',
-      platform: 'linux',
+    const { plaintext } = await mintPat({
+      userId: user.id,
+      name: 'test-cli',
+      scopes: ['read', 'write', 'admin'],
     });
-    const ctx = await connectClientAsDevice(plaintext);
+    const ctx = await connectClientAsPat(plaintext);
     try {
       await ctx.client.callTool({
         name: 'forge_skills.register',

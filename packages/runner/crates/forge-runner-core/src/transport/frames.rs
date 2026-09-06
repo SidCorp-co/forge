@@ -2,7 +2,10 @@
 
 use serde::Deserialize;
 
-/// A job-scoped PAT minted by core for the life of one job.
+/// A machine-minted PAT that lives exactly as long as the work it was minted
+/// for: a `job:` token for the life of one job, a `session:` token for the life
+/// of one agent session (ISS-927). Named `JobToken` for the first of those and
+/// kept that way — the type is about redaction, not about which one it holds.
 // cm:guard the redacting `Debug` is the whole point of the newtype — `ClaimedJob` and `JobSpec` both derive `Debug`, so the day someone adds a `tracing::debug!("{job:?}")` a plain `String` here writes a live credential into the daemon log and into Sentry. Keep the manual impl; deriving `Debug` on this type silently undoes it.
 #[derive(Clone, Deserialize)]
 #[serde(transparent)]

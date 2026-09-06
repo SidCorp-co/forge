@@ -3,7 +3,7 @@
  * speak for. Split out of `lib.ts` — see the header on `project-authz.ts`.
  */
 
-import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
+import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { findProjectIdBySlug } from '../../projects/service.js';
 
 /**

@@ -1,22 +1,25 @@
 "use client";
 
+// web-v2 feature module: project-settings — React Query hooks. Every mutation invalidates the
+// SHARED keys `['project', id]` and `['projects']` rather than a key of its own: those are what
+// the dashboard, the console and the WS reconnect-replay read, and a private key updates none.
+
 import { ApiError } from "@/lib/api/client";
 import { formatApiError, formatPipelineConfigError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
-// web-v2 feature module: project-settings — React Query hooks. Mutations
-// invalidate the shared project keys (`['project', id]` + `['projects']`) the
-// `projects` feature already uses, so the dashboard/console reflect edits and
-// the WS reconnect-replay (keyed `['projects']`) keeps live updates working.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { projectSettingsApi } from "./api";
 import type {
 	ApplyUxPresetInput,
+	LabelCreateInput,
+	LabelPatchInput,
 	MemoryModel,
 	MemoryModelStatus,
 	PipelineConfig,
 	PluginDesignation,
 	ProjectFactsPatch,
 	ProjectUpdateInput,
+	StateContextEntry,
 	UxContractRulePatch,
 } from "./types";
 
@@ -90,7 +93,7 @@ export function usePipelineConfig(id: string | undefined) {
 		queryKey: ["project", id, "pipeline-config"],
 		queryFn: () => projectSettingsApi.getPipelineConfig(id as string),
 		enabled: !!id,
-		// FEATURE_OFF / FORBIDDEN won't resolve by retrying — surface immediately.
+		// cm:why FEATURE_OFF and FORBIDDEN are both terminal, so a retry only delays the empty-state the caller branches on
 		retry: false,
 	});
 }
@@ -136,6 +139,29 @@ export function useUpdatePlugins(id: string | undefined) {
 		onError: (err) =>
 			toast({
 				title: "Couldn't save plugins",
+				description: formatApiError(err),
+				tone: "error",
+			}),
+	});
+}
+
+/** Per-jobType `agentConfig.stateContext`, through the scoped field on
+ *  `PATCH /api/projects/:id`. The server merges per jobType — an entry sent as
+ *  `null` is removed, one omitted is untouched — so a patch carries only the
+ *  jobTypes it changes and sibling agentConfig keys survive server-side. */
+export function useUpdateStateContext(id: string | undefined) {
+	const qc = useQueryClient();
+	const { toast } = useToast();
+	return useMutation({
+		mutationFn: (stateContext: Record<string, StateContextEntry | null>) =>
+			projectSettingsApi.update(id as string, { stateContext }),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: ["project", id] });
+			toast({ title: "Per-job context saved", tone: "success" });
+		},
+		onError: (err) =>
+			toast({
+				title: "Couldn't save per-job context",
 				description: formatApiError(err),
 				tone: "error",
 			}),
@@ -319,16 +345,42 @@ export function useCreateLabel(id: string | undefined) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
 	return useMutation({
-		mutationFn: ({ name, color }: { name: string; color: string }) =>
-			projectSettingsApi.createLabel(id as string, name, color),
+		mutationFn: (body: LabelCreateInput) =>
+			projectSettingsApi.createLabel(id as string, body),
+		onSuccess: (_row, body) => {
+			qc.invalidateQueries({ queryKey: ["project", id, "labels"] });
+			qc.invalidateQueries({ queryKey: ["project", id] });
+			toast({
+				title: body.kind === "module" ? "Module created" : "Label created",
+				tone: "success",
+			});
+		},
+		onError: (err, body) =>
+			toast({
+				title: body.kind === "module" ? "Couldn't create module" : "Couldn't create label",
+				description: formatApiError(err),
+				tone: "error",
+			}),
+	});
+}
+
+/** Rename / recolour / re-parent / re-describe a label or module (`PATCH /api/labels/:id`). */
+export function useUpdateLabel(id: string | undefined) {
+	const qc = useQueryClient();
+	const { toast } = useToast();
+	return useMutation({
+		mutationFn: (args: { labelId: string; patch: LabelPatchInput }) =>
+			projectSettingsApi.updateLabel(args.labelId, args.patch),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["project", id, "labels"] });
 			qc.invalidateQueries({ queryKey: ["project", id] });
-			toast({ title: "Label created", tone: "success" });
+			// cm:why the issues caches hold the module NAME on every row and in the filter's options, so a rename that skipped them would leave the old name on screen until the next refetch
+			qc.invalidateQueries({ queryKey: ["issues"] });
+			toast({ title: "Saved", tone: "success" });
 		},
 		onError: (err) =>
 			toast({
-				title: "Couldn't create label",
+				title: "Couldn't save",
 				description: formatApiError(err),
 				tone: "error",
 			}),
@@ -343,11 +395,12 @@ export function useDeleteLabel(id: string | undefined) {
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["project", id, "labels"] });
 			qc.invalidateQueries({ queryKey: ["project", id] });
-			toast({ title: "Label deleted", tone: "success" });
+			qc.invalidateQueries({ queryKey: ["issues"] });
+			toast({ title: "Deleted", tone: "success" });
 		},
 		onError: (err) =>
 			toast({
-				title: "Couldn't delete label",
+				title: "Couldn't delete",
 				description: formatApiError(err),
 				tone: "error",
 			}),

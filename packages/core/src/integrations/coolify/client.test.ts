@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CoolifyApiError, CoolifyClient } from './client.js';
+import {
+  CoolifyApiError,
+  CoolifyClient,
+  coolifyAbilityForRoute,
+  describeCoolifyForbidden,
+} from './client.js';
 
 function makeFetch(handler: (req: { url: string; init: RequestInit }) => Response) {
   return vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -9,13 +14,12 @@ function makeFetch(handler: (req: { url: string; init: RequestInit }) => Respons
 }
 
 describe('CoolifyClient', () => {
-  it('deploys via GET /api/v1/deploy with uuid+force query params (no body)', async () => {
+  it('deploys via POST /api/v1/deploy with uuid+force query params (no body)', async () => {
     const fetchImpl = makeFetch(({ url, init }) => {
       expect(url).toBe('https://coolify.example/api/v1/deploy?uuid=res-uuid&force=false');
-      expect(init.method).toBe('GET');
+      expect(init.method).toBe('POST');
       expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok-abc');
       expect(init.body).toBeUndefined();
-      // Coolify v4 returns a deployments[] array.
       return new Response(
         JSON.stringify({ deployments: [{ deployment_uuid: 'dep-1', message: 'queued' }] }),
         { status: 200, headers: { 'content-type': 'application/json' } },
@@ -28,6 +32,25 @@ describe('CoolifyClient', () => {
     });
     const res = await client.deploy({ resourceUuid: 'res-uuid' });
     expect(res.deployments?.[0]?.deployment_uuid).toBe('dep-1');
+  });
+
+  it("surfaces Coolify's method-changed 405 as a CoolifyApiError carrying its message", async () => {
+    const fetchImpl = makeFetch(
+      () =>
+        new Response(JSON.stringify({ message: 'This endpoint has changed to a POST request.' }), {
+          status: 405,
+          headers: { allow: 'POST', 'content-type': 'application/json' },
+        }),
+    );
+    const client = new CoolifyClient({
+      baseUrl: 'https://coolify.example',
+      apiToken: 'tok',
+      fetchImpl,
+    });
+    const err = await client.deploy({ resourceUuid: 'r' }).catch((e) => e);
+    expect(err).toBeInstanceOf(CoolifyApiError);
+    expect(err.status).toBe(405);
+    expect(err.body).toContain('changed to a POST request');
   });
 
   it('falls back to previousApiToken on 401', async () => {
@@ -55,6 +78,34 @@ describe('CoolifyClient', () => {
     expect(res.deployments?.[0]?.deployment_uuid).toBe('d-2');
   });
 
+  it('does NOT fall back to previousApiToken on 403 (ISS-924)', async () => {
+    let attempt = 0;
+    const fetchImpl = makeFetch(() => {
+      attempt++;
+      return new Response('forbidden', { status: 403 });
+    });
+    const client = new CoolifyClient({
+      baseUrl: 'https://coolify.example',
+      apiToken: 'current-tok',
+      previousApiToken: 'previous-tok',
+      fetchImpl,
+    });
+    await expect(client.deploy({ resourceUuid: 'r' })).rejects.toBeInstanceOf(CoolifyApiError);
+    expect(attempt).toBe(1);
+  });
+
+  it('carries the route that produced the error', async () => {
+    const fetchImpl = makeFetch(() => new Response('forbidden', { status: 403 }));
+    const client = new CoolifyClient({
+      baseUrl: 'https://coolify.example',
+      apiToken: 'tok',
+      fetchImpl,
+    });
+    const err = await client.deploy({ resourceUuid: 'r' }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CoolifyApiError);
+    expect((err as CoolifyApiError).route).toBe('POST /api/v1/deploy');
+  });
+
   it('throws CoolifyApiError on non-2xx other than 401', async () => {
     const fetchImpl = makeFetch(() => new Response('boom', { status: 500 }));
     const client = new CoolifyClient({
@@ -69,7 +120,6 @@ describe('CoolifyClient', () => {
     const fetchImpl = makeFetch(({ url, init }) => {
       expect(url).toBe('https://coolify.example/api/v1/resources');
       expect(init.method).toBe('GET');
-      // Coolify v4 /resources is list-only — returns an array.
       return new Response(
         JSON.stringify([
           { uuid: 'other-uuid', name: 'api', status: 'running' },
@@ -149,5 +199,37 @@ describe('CoolifyClient', () => {
       status: 404,
       message: expect.stringContaining('not found'),
     });
+  });
+});
+
+describe('coolify 403 diagnosis (ISS-924)', () => {
+  it('maps each route this client calls to its Coolify v4 ability', () => {
+    expect(coolifyAbilityForRoute('POST /api/v1/deploy')).toBe('deploy');
+    expect(coolifyAbilityForRoute('GET /api/v1/resources')).toBe('read');
+    expect(coolifyAbilityForRoute('GET /api/v1/deployments/abc')).toBe('read');
+    expect(coolifyAbilityForRoute('GET /api/v1/applications/abc/logs')).toBe('read');
+  });
+
+  it('returns null for a route it has no row for, rather than guessing one', () => {
+    expect(coolifyAbilityForRoute('GET /api/v1/servers')).toBeNull();
+    expect(coolifyAbilityForRoute(null)).toBeNull();
+  });
+
+  it('names the ability and the route, and says replacing the token will not help', () => {
+    const msg = describeCoolifyForbidden(
+      new CoolifyApiError(403, 'forbidden', undefined, 'POST /api/v1/deploy'),
+    );
+    expect(msg).toContain('POST /api/v1/deploy');
+    expect(msg).toContain('api.ability:deploy');
+    expect(msg).toContain('Widen');
+    expect(msg).toContain('replacing it will not change this');
+  });
+
+  it('still says something useful for an unmapped route', () => {
+    const msg = describeCoolifyForbidden(
+      new CoolifyApiError(403, 'forbidden', undefined, 'GET /api/v1/servers'),
+    );
+    expect(msg).toContain('GET /api/v1/servers');
+    expect(msg).toContain('the ability that route requires');
   });
 });

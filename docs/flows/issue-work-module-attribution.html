@@ -1,0 +1,219 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · issue-work-module-attribution — a label becomes an issue's primary module</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --lock:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .lock { color:var(--lock); font-weight:600; }
+  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
+  text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
+  text.m { font-size:11px; fill:var(--mut); }
+  text.t { font:600 12px ui-monospace,Menlo,monospace; }
+  .box { fill:#fff; stroke:var(--line); }
+  .lockband { fill:#fdf6e7; stroke:#e8d9b4; }
+  .exit { fill:#fdf0f3; stroke:#e3c2cb; }
+  .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
+  .arrowbad { stroke:var(--bad); stroke-width:1.2; fill:none; marker-end:url(#b); stroke-dasharray:4 3; }
+</style>
+<main>
+
+<h1>issue-work-module-attribution — a label becomes an issue's primary module</h1>
+<p class="sub">One <code>labels[]</code> write, from the request body to the junction rows, and the
+four points at which it is refused. A module <em>is</em> a label (<code>labels.kind='module'</code>),
+so this is the ordinary label-attach path with one extra claim riding on it: which of those labels
+is the issue's <strong>primary</strong> module. Owner:
+<code>packages/core/src/issues/label-service.ts</code>. The last section covers the hop before the
+request: how an agent comes to know the project has modules at all.</p>
+
+<h2>Where a write is refused, and what has been written when it is</h2>
+<svg viewBox="0 0 900 560" role="img" aria-label="Decision path of a labels[] write carrying a primary module">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a3b52"/></marker>
+  </defs>
+
+  <rect class="box" x="20" y="16" width="330" height="34" rx="4"/>
+  <text class="t" x="34" y="38">PATCH /api/issues/:id  ·  forge_issues.update</text>
+  <text class="m" x="360" y="38">labels[]: a string, or {labelId, isPrimary}</text>
+
+  <path class="arrow" d="M185,50 L185,80"/>
+  <rect class="box" x="20" y="80" width="330" height="34" rx="4"/>
+  <text class="t" x="34" y="102">zod: labelAttachItemSchema</text>
+  <text class="m" x="360" y="102">both arms accept a NAME or a uuid — the shape only</text>
+  <path class="arrowbad" d="M350,97 L560,97"/>
+  <rect class="exit" x="560" y="80" width="320" height="34" rx="4"/>
+  <text class="t bad" x="574" y="102">400 BAD_REQUEST</text>
+  <text class="m" x="700" y="102">nothing written</text>
+
+  <path class="arrow" d="M185,114 L185,144"/>
+  <rect class="lockband" x="20" y="144" width="330" height="48" rx="4"/>
+  <text class="t" x="34" y="166">resolveLabelIdsForWrite</text>
+  <text class="m" x="34" y="183">counts primaries BEFORE the lookup</text>
+  <path class="arrowbad" d="M350,168 L560,168"/>
+  <rect class="exit" x="560" y="144" width="320" height="34" rx="4"/>
+  <text class="t bad" x="574" y="166">MULTIPLE_PRIMARY</text>
+  <text class="m" x="720" y="166">nothing written</text>
+
+  <path class="arrow" d="M185,192 L185,222"/>
+  <rect class="lockband" x="20" y="222" width="330" height="48" rx="4"/>
+  <text class="t" x="34" y="244">one SELECT: id, name, kind</text>
+  <text class="m" x="34" y="261">every value must resolve in THIS project</text>
+  <path class="arrowbad" d="M350,246 L560,246"/>
+  <rect class="exit" x="560" y="222" width="320" height="34" rx="4"/>
+  <text class="t bad" x="574" y="244">INVALID_LABELS + missing[]</text>
+  <text class="m" x="760" y="244">nothing written</text>
+
+  <path class="arrow" d="M185,270 L185,300"/>
+  <rect class="lockband" x="20" y="300" width="330" height="48" rx="4"/>
+  <text class="t" x="34" y="322">isPrimary ⟹ row.kind = 'module'</text>
+  <text class="m" x="34" y="339">the check SQL cannot make from this row</text>
+  <path class="arrowbad" d="M350,324 L560,324"/>
+  <rect class="exit" x="560" y="300" width="320" height="34" rx="4"/>
+  <text class="t bad" x="574" y="322">PRIMARY_NOT_MODULE</text>
+  <text class="m" x="740" y="322">nothing written</text>
+
+  <path class="arrow" d="M185,348 L185,378"/>
+  <rect class="box" x="20" y="378" width="330" height="62" rx="4"/>
+  <text class="t" x="34" y="400">updateIssueFields — ONE transaction</text>
+  <text class="m" x="34" y="417">DELETE every issue_labels row for the issue,</text>
+  <text class="m" x="34" y="432">then INSERT the resolved set with is_primary</text>
+
+  <path class="arrow" d="M185,440 L185,470"/>
+  <rect class="lockband" x="20" y="470" width="330" height="48" rx="4"/>
+  <text class="t" x="34" y="492">issue_labels_primary_uq</text>
+  <text class="m" x="34" y="509">partial unique index — the last line of defence</text>
+  <path class="arrowbad" d="M350,494 L560,494"/>
+  <rect class="exit" x="560" y="470" width="320" height="34" rx="4"/>
+  <text class="t bad" x="574" y="492">23505 → transaction rolls back</text>
+  <text class="m" x="760" y="492">nothing written</text>
+
+  <text class="m" x="380" y="415">the DELETE is why a primary swap is atomic:</text>
+  <text class="m" x="380" y="430">the old true row is gone before the new one lands,</text>
+  <text class="m" x="380" y="445">so the index never sees two</text>
+</svg>
+
+<div class="rule">
+<strong>Every refusal above happens before or inside the transaction, so a rejected write leaves
+the issue exactly as it was.</strong> That is the property to preserve: an attach that partly
+applied would leave an issue labelled with a module nobody chose, and no reader could tell it from
+a deliberate one. Two of the four checks (<code>MULTIPLE_PRIMARY</code>,
+<code>PRIMARY_NOT_MODULE</code>) exist only because SQL cannot see <code>labels.kind</code> from an
+<code>issue_labels</code> row — which is also why the index below them is not redundant with them.
+</div>
+
+<h2>What each layer owns, and what happens when it is bypassed</h2>
+<table>
+<tr><th>Layer</th><th>Holds</th><th>Bypassed ⇒</th></tr>
+<tr>
+  <td><code>labelAttachItemSchema</code><br><span class="m">issues/routes.ts, mcp/tools/forge-issues.ts</span></td>
+  <td>the payload shape, on both surfaces</td>
+  <td>a 500 from a resolver reading a field that is not there</td>
+</tr>
+<tr>
+  <td><code>resolveLabelIdsForWrite</code><br><span class="m">issues/label-service.ts</span></td>
+  <td>at most one primary; a primary is a module; every value resolves in this project</td>
+  <td>the index catches the count, and <span class="bad">nothing at all</span> catches a plain
+      label marked primary</td>
+</tr>
+<tr>
+  <td><code>updateIssueFields</code><br><span class="m">issues/update-service.ts</span></td>
+  <td>the delete-then-insert that makes a swap atomic, and the activity rows for the delta</td>
+  <td>a swap that transiently holds two primaries and trips the index on a legal write</td>
+</tr>
+<tr>
+  <td><code>issue_labels_primary_uq</code><br><span class="m">migration 0210</span></td>
+  <td>at most one <code>is_primary</code> row per issue, against any writer</td>
+  <td>two primary modules on one issue, and no query can say which is the issue's</td>
+</tr>
+<tr>
+  <td><code>labels_kind_chk</code><br><span class="m">migration 0210</span></td>
+  <td><code>kind</code> is <code>label</code> or <code>module</code> and nothing else</td>
+  <td>a row that filters as no module and renders as no label, reported by nothing —
+      <code>text(col,{enum})</code> is a compile-time type and emits no constraint</td>
+</tr>
+</table>
+
+<h2>Reading it back</h2>
+<p>Every surface that lists an issue's labels reports <code>kind</code> and <code>isPrimary</code>
+per entry (<code>listIssueLabels</code>, REST issue detail, <code>by-display</code>), and
+<code>ModuleAttribution</code> in <code>@forge/contracts</code> is that entry's shape. There is no
+other source for an issue's primary module — no column on <code>issues</code>, no second table — so
+a client that wants it reads the array and picks the <code>isPrimary</code> one.</p>
+<p class="sub">Filtering by module (<code>?module=</code>, <code>filters.module</code>) resolves the
+name or uuid against <code>kind='module'</code> labels only and then reuses the ordinary label
+EXISTS-join. An unresolved module returns <strong>no issues</strong>, never every issue: dropping
+the narrowing would hand the caller the whole project and read as "nothing matched".</p>
+
+<h2>Where the write comes from — how an agent learns there is a taxonomy at all</h2>
+<p class="sub">Everything above starts at a <code>labels[]</code> payload. This is the hop before
+it: nothing in the product asks a human to attribute an issue, so on a Forge project the writer is
+almost always a pipeline agent, and an agent only writes what its prompt told it exists. Owner:
+<code>packages/core/src/prompt/facts/resolve.ts</code>.</p>
+
+<svg viewBox="0 0 900 300" role="img" aria-label="How the module taxonomy reaches a pipeline agent's prompt">
+  <defs>
+    <marker id="c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/></marker>
+    <marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a3b52"/></marker>
+  </defs>
+
+  <rect class="box" x="20" y="16" width="300" height="34" rx="4"/>
+  <text class="t" x="34" y="38">a job is dispatched for this project</text>
+
+  <path class="arrow" style="marker-end:url(#c)" d="M170,50 L170,80"/>
+  <rect class="box" x="20" y="80" width="300" height="34" rx="4"/>
+  <text class="t" x="34" y="102">loadProjectFactInputs</text>
+  <text class="m" x="330" y="102">reads the project row, then listProjectModules</text>
+
+  <path class="arrow" style="marker-end:url(#c)" d="M170,114 L170,144"/>
+  <rect class="lockband" x="20" y="144" width="300" height="48" rx="4"/>
+  <text class="t" x="34" y="166">fact.relevant(ctx) — modules.length &gt; 0</text>
+  <text class="m" x="34" y="183">the only gate; render() is never asked</text>
+  <path class="arrowbad" style="marker-end:url(#d)" d="M320,168 L560,168"/>
+  <rect class="exit" x="560" y="144" width="320" height="48" rx="4"/>
+  <text class="t bad" x="574" y="166">no section in the prompt</text>
+  <text class="m" x="574" y="183">a project with no taxonomy pays nothing</text>
+
+  <path class="arrow" style="marker-end:url(#c)" d="M170,192 L170,222"/>
+  <rect class="box" x="20" y="222" width="300" height="62" rx="4"/>
+  <text class="t" x="34" y="244">## Forge context → ### The issue's</text>
+  <text class="t" x="34" y="261">primary module</text>
+  <text class="m" x="34" y="277">names the modules and the isPrimary payload</text>
+
+  <path class="arrow" style="marker-end:url(#c)" d="M320,253 L560,253"/>
+  <rect class="box" x="560" y="222" width="320" height="62" rx="4"/>
+  <text class="t" x="574" y="244">the agent decides, and writes</text>
+  <text class="m" x="574" y="261">forge_issues.update → the path above,</text>
+  <text class="m" x="574" y="277">or writes nothing when it is unsure</text>
+</svg>
+
+<div class="rule">
+<strong>The taxonomy's existence is the switch.</strong> There is no per-project flag for module
+attribution and no setting to turn it on: a project acquires the prompt section the moment its
+first <code>kind='module'</code> label exists, and loses it if the last one is deleted. That is
+deliberate — an instruction to attribute, sent to a project with nothing to attribute to, is an
+invitation to invent a module, and an invented primary is worse than none because the filters and
+the reports are counted from it.
+</div>
+
+<p>Two things this hop deliberately does <strong>not</strong> do. It does not write an attribution:
+Forge never guesses an issue's module, so an issue whose agent was unsure stays unattributed, which
+is a legal state at every status. And it does not reach the mandatory preamble — that text is
+byte-identical across projects for the prompt cache, so a per-project section could only ever live
+in the contextual, project-resolved tier.</p>
+
+</main>

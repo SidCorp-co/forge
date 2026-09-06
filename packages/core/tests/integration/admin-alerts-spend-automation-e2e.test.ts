@@ -5,6 +5,7 @@
  * shape of what is EXCLUDED is the whole correctness question.
  */
 
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type AlertApp, findAlert, getAlerts, setupAlertApp } from '../helpers/alert-app.js';
 import { type AlertFixtures, alertFixtures } from '../helpers/alert-fixtures.js';
@@ -31,6 +32,92 @@ describe('A4 spend spike + A5 automation failures (ISS-652)', () => {
     const owner = await createTestUser(ctx.harness.db);
     return createTestProject(ctx.harness.db, owner.id);
   }
+
+  /** Writes the singleton `admin_thresholds` row the alert engine reads per call. */
+  async function setThresholds(patch: Record<string, unknown>): Promise<void> {
+    const cols = Object.keys(patch);
+    const setList = sql.join(
+      cols.map((c) => sql`${sql.raw(`"${c}"`)} = ${patch[c]}`),
+      sql`, `,
+    );
+    const colList = sql.join(
+      cols.map((c) => sql.raw(`"${c}"`)),
+      sql`, `,
+    );
+    const valList = sql.join(
+      cols.map((c) => sql`${patch[c]}`),
+      sql`, `,
+    );
+    await ctx.harness.db.execute(sql`
+      INSERT INTO admin_thresholds (id, ${colList}) VALUES ('singleton', ${valList})
+      ON CONFLICT (id) DO UPDATE SET ${setList}
+    `);
+  }
+
+  // cm:guard ISS-654 — `computeAlerts` must read `admin_thresholds` on EVERY call. This pair is the only evidence that it does: the same rows classify differently once the row is written, which a process-lifetime read of the config cannot produce.
+  it('A4 follows the configured spend_spike_multiple, not a constant', async () => {
+    const project = await newProject();
+    await fx.insertUsage({ projectId: project.id, cost: 24, recordedAgoHours: 0.5 });
+    await fx.insertUsage({ projectId: project.id, cost: 8, recordedAgoHours: 1.5 });
+
+    // cm:guard one token per test — `adminToken()` INSERTs the admin user, so a second call inside one test collides on the unique email and the failure reads as an alert-engine bug
+    const token = await ctx.adminToken();
+
+    expect(findAlert((await getAlerts(ctx, token)).body, 'A4')?.status).toBe('warn');
+
+    await setThresholds({ spend_spike_multiple: 10 });
+
+    expect(findAlert((await getAlerts(ctx, token)).body, 'A4')?.status).toBe('ok');
+  });
+
+  // cm:guard the ceiling arm reads a trailing 24h, never the ratio arm's 1-hour window — comparing an hour of spend to a day's allowance never fires.
+  it('A4 fires crit on the daily ceiling even when the ratio arm reads ok', async () => {
+    const project = await newProject();
+    // cm:why flat across both ratio windows on purpose — ratio 1.0 reads `ok`, so anything this test sees fire came from the ceiling arm and nowhere else
+    await fx.insertUsage({ projectId: project.id, cost: 60, recordedAgoHours: 0.5 });
+    await fx.insertUsage({ projectId: project.id, cost: 60, recordedAgoHours: 1.5 });
+    await fx.insertUsage({ projectId: project.id, cost: 60, recordedAgoHours: 10 });
+
+    const token = await ctx.adminToken();
+    expect(findAlert((await getAlerts(ctx, token)).body, 'A4')?.status).toBe('ok');
+
+    await setThresholds({ spend_ceiling_usd_day: 100 });
+
+    const after = findAlert((await getAlerts(ctx, token)).body, 'A4');
+    expect(after?.status).toBe('crit');
+    expect(after?.detail).toContain('ceiling');
+  });
+
+  it('A4 warns at 80% of the ceiling, before the breach', async () => {
+    const project = await newProject();
+    await fx.insertUsage({ projectId: project.id, cost: 42, recordedAgoHours: 0.5 });
+    await fx.insertUsage({ projectId: project.id, cost: 42, recordedAgoHours: 1.5 });
+    await setThresholds({ spend_ceiling_usd_day: 100 });
+
+    const a4 = findAlert((await getAlerts(ctx, await ctx.adminToken())).body, 'A4');
+    expect(a4?.status).toBe('warn');
+  });
+
+  it('A5 follows the configured schedule_fail_streak, not a constant', async () => {
+    const project = await newProject();
+    const scheduleId = await fx.insertPromptSchedule(project.id);
+    for (const createdAgoMinutes of [2, 1]) {
+      await fx.insertPromptSession({
+        projectId: project.id,
+        scheduleId,
+        status: 'failed',
+        createdAgoMinutes,
+      });
+    }
+
+    const token = await ctx.adminToken();
+
+    await setThresholds({ schedule_fail_streak: 3 });
+    expect(findAlert((await getAlerts(ctx, token)).body, 'A5')?.status).toBe('ok');
+
+    await setThresholds({ schedule_fail_streak: 2 });
+    expect(findAlert((await getAlerts(ctx, token)).body, 'A5')?.status).toBe('warn');
+  });
 
   it('A4 fires crit for a project whose current-window spend ratio clears the crit threshold', async () => {
     const project = await newProject();

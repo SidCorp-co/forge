@@ -23,8 +23,14 @@ pub struct Args {
 pub enum Command {
     /// What work this box could take. Reads only — takes nothing.
     List(ListArgs),
-    /// Take one job for a master session.
+    /// Take one job and start it: `prepare` then `start`, in that order.
     Claim(ClaimArgs),
+    /// Take one job WITHOUT starting it — job row and job token only.
+    Prepare(ClaimArgs),
+    /// Start a job this session already prepared.
+    Start(HeldArgs),
+    /// Hand a preparation back to the pool without ever starting it.
+    Discard(HeldArgs),
     /// Hand a job back, or everything a session holds.
     Release(ReleaseArgs),
     /// Raw occupancy: this box, its project, the project's fleet.
@@ -54,6 +60,13 @@ pub struct ClaimArgs {
     /// and its worktree; reuse one name to put several jobs in one checkout.
     #[arg(long)]
     pub agent: String,
+}
+
+#[derive(ClapArgs)]
+pub struct HeldArgs {
+    pub job_id: String,
+    #[arg(long)]
+    pub session_id: String,
 }
 
 #[derive(ClapArgs)]
@@ -137,20 +150,60 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
             print_backlog(&backlog);
         }
         // cm:guard the claim goes to the LOCAL DAEMON, never straight to core. The daemon holds the repo lock and the in-flight map in memory, so a claim made from this process would take a lock the daemon cannot see and start a job it cannot cancel, reap or salvage. If the daemon is not running, refusing here is the correct answer — there is nothing on this box that could run the job anyway.
+        // cm:guard `claim` is prepare-then-start over the SAME two socket ops the primitives use, never a third daemon verb. The one irreversible op is what ISS-919 B2 removed; re-adding it here so the common case is one round trip would put it straight back, one layer up, where no test of the split can see it.
         Command::Claim(a) => {
-            let Some(sock) = control::socket_path() else {
-                anyhow::bail!("cannot resolve the runner control socket path");
-            };
-            let out = match control::request_claim(&sock, &a.job_id, &a.session_id, &a.agent).await
-            {
-                Ok(out) => out,
-                Err(e) => anyhow::bail!(
-                    "no runner daemon answered at {} ({e}) — start the service before claiming",
-                    sock.display()
-                ),
-            };
-            println!("{}", serde_json::to_string_pretty(&out)?);
-            // cm:guard a refusal exits NON-ZERO so a shell-driven master can branch on it, but the refusal itself is ordinary — it means another master won the race or the box is full, never that anything is broken.
+            let sock = socket()?;
+            let out = ask(
+                "prepare",
+                control::request_prepare(&sock, &a.job_id, &a.session_id, &a.agent).await,
+                &sock,
+            )?;
+            if !out.ok {
+                report(&out)?;
+                std::process::exit(1);
+            }
+            let out = ask(
+                "start",
+                control::request_start(&sock, &a.job_id, &a.session_id).await,
+                &sock,
+            )?;
+            report(&out)?;
+            if !out.ok {
+                std::process::exit(1);
+            }
+        }
+        Command::Prepare(a) => {
+            let sock = socket()?;
+            let out = ask(
+                "prepare",
+                control::request_prepare(&sock, &a.job_id, &a.session_id, &a.agent).await,
+                &sock,
+            )?;
+            report(&out)?;
+            if !out.ok {
+                std::process::exit(1);
+            }
+        }
+        Command::Start(a) => {
+            let sock = socket()?;
+            let out = ask(
+                "start",
+                control::request_start(&sock, &a.job_id, &a.session_id).await,
+                &sock,
+            )?;
+            report(&out)?;
+            if !out.ok {
+                std::process::exit(1);
+            }
+        }
+        Command::Discard(a) => {
+            let sock = socket()?;
+            let out = ask(
+                "discard",
+                control::request_discard(&sock, &a.job_id, &a.session_id).await,
+                &sock,
+            )?;
+            report(&out)?;
             if !out.ok {
                 std::process::exit(1);
             }
@@ -219,6 +272,30 @@ fn print_backlog(backlog: &[pool::BacklogEntry]) {
         }
         println!("      issue {}", e.issue_id);
     }
+}
+
+fn socket() -> anyhow::Result<std::path::PathBuf> {
+    control::socket_path()
+        .ok_or_else(|| anyhow::anyhow!("cannot resolve the runner control socket path"))
+}
+
+fn ask(
+    op: &str,
+    result: std::io::Result<control::ClaimReply>,
+    sock: &std::path::Path,
+) -> anyhow::Result<control::ClaimReply> {
+    result.map_err(|e| {
+        anyhow::anyhow!(
+            "no runner daemon answered {op} at {} ({e}) — start the service before claiming",
+            sock.display()
+        )
+    })
+}
+
+// cm:guard a refusal exits NON-ZERO so a shell-driven master can branch on it, but the refusal itself is ordinary — it means another master won the race or the box is full, never that anything is broken.
+fn report(out: &control::ClaimReply) -> anyhow::Result<()> {
+    println!("{}", serde_json::to_string_pretty(out)?);
+    Ok(())
 }
 
 // cm:guard walk BOTH the device and every fleet entry. The fleet list is what a master reads when it spreads a batch over several boxes, so a fault printed only for the local device is invisible exactly when it decides where else the work goes.

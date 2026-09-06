@@ -13,8 +13,14 @@ import { z } from 'zod';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { readBacklog } from './backlog.js';
-import { claimJobForMaster, releaseAllHeldBySession, releaseJobFromMaster } from './claim.js';
+import {
+  prepareJobForMaster,
+  releaseAllHeldBySession,
+  releaseJobFromMaster,
+  startJobForMaster,
+} from './claim.js';
 import { readDeviceLoad, readFleetLoad, readProjectLoad } from './load.js';
+import { closeMasterSession, ensureMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
 import { promoteFromBacklog } from './promote.js';
 
@@ -70,16 +76,46 @@ const claimBodySchema = z.object({
   sessionId: z.string().uuid(),
 });
 
+// cm:guard the old one-shot `/me/pool/claim` is GONE, and this refusal is what replaces it rather than a second live path. A runner that predates the ISS-919 split would receive a preparation and start nothing, parking claimable work on a master that never ran it; `runner_too_old` is a reason the master prints and an operator can act on, where silently composing prepare+start here would leave the box looking correct and the split unenforced.
 devicePoolRoutes.post(
   '/me/pool/claim',
   requireDevice(),
   zValidator('json', claimBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
+  async (c) => c.json({ ok: false, reason: 'runner_too_old' as const }),
+);
+
+/**
+ * Take a job without starting it (ISS-919 B2).
+ *
+ * The job comes back `queued` and held, with its token and preparation. The
+ * caller owes `/me/pool/start` or a release.
+ */
+devicePoolRoutes.post(
+  '/me/pool/prepare',
+  requireDevice(),
+  zValidator('json', claimBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
   async (c) => {
     const { jobId, sessionId } = c.req.valid('json');
-    const result = await claimJobForMaster({ jobId, deviceId: c.get('device').id, sessionId });
-    // cm:guard a refused claim answers 200 with `ok:false`, NOT 4xx. A busy issue and a lost race are ordinary outcomes a master handles by choosing differently; making them errors invites a retry loop against a condition retrying cannot change.
+    const result = await prepareJobForMaster({ jobId, deviceId: c.get('device').id, sessionId });
+    // cm:guard a refused preparation answers 200 with `ok:false`, NOT 4xx. A busy issue and a lost race are ordinary outcomes a master handles by choosing differently; making them errors invites a retry loop against a condition retrying cannot change.
+    return c.json(result);
+  },
+);
+
+/** Hand a prepared job to the process now starting it. */
+devicePoolRoutes.post(
+  '/me/pool/start',
+  requireDevice(),
+  zValidator('json', claimBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { jobId, sessionId } = c.req.valid('json');
+    const result = await startJobForMaster({ jobId, deviceId: c.get('device').id, sessionId });
     return c.json(result);
   },
 );
@@ -127,5 +163,47 @@ devicePoolRoutes.get(
 
     // cm:guard report raw counts and NEVER a recommendation field like `canTakeMore`. That number would be core deciding batch size again — the ceiling this design removed, wearing a helpful name — and a master reading it would stop weighing the facts that made it.
     return c.json({ device, project, fleet });
+  },
+);
+
+const masterSessionBodySchema = z.object({
+  projectId: z.string().uuid(),
+  name: z.string().min(1).max(120),
+});
+
+/**
+ * Register (or re-find) this box's resident master for one project — B1's
+ * bound, in the one place both halves can see it.
+ */
+devicePoolRoutes.post(
+  '/me/master-session',
+  requireDevice(),
+  zValidator('json', masterSessionBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId, name } = c.req.valid('json');
+    const session = await ensureMasterSession({ deviceId: c.get('device').id, projectId, name });
+    return c.json(session);
+  },
+);
+
+const masterCloseBodySchema = z.object({
+  sessionId: z.string().uuid(),
+  reason: z.string().min(1).max(500),
+});
+
+/** The runner reporting a master it watched die (ISS-919 B3). */
+// cm:guard closing the row and releasing the holds are TWO calls the runner makes in order, and this is deliberately only the first. `POST /me/pool/release` is the other, and it must be able to run for a session whose close already landed — a box that crashes between them leaves holds the three-minute reaper still collects, where one fused endpoint that failed halfway would leave neither half knowing which happened.
+devicePoolRoutes.post(
+  '/me/master-session/close',
+  requireDevice(),
+  zValidator('json', masterCloseBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { sessionId, reason } = c.req.valid('json');
+    const closed = await closeMasterSession({ deviceId: c.get('device').id, sessionId, reason });
+    return c.json({ closed });
   },
 );

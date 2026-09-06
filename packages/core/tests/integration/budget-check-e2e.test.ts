@@ -25,15 +25,16 @@ import {
 } from '../helpers/index.js';
 
 type Mods = {
-  claimJobForMaster: typeof import('../../src/devices/claim.js').claimJobForMaster;
+  prepareJobForMaster: typeof import('../../src/devices/claim.js').prepareJobForMaster;
   hooks: typeof import('../../src/pipeline/hooks.js').hooks;
   __resetBudgetWarnDedup: typeof import('../../src/jobs/budget-check.js').__resetBudgetWarnDedup;
   CLASSIFIER_VERSION: typeof import('../../src/pipeline/failure-classifier.js').CLASSIFIER_VERSION;
 };
 
-/** Claim as a master would, with a fresh session id each time. */
+/** Take as a master would, with a fresh session id each time. */
+// cm:guard the budget is checked in the PREPARE act, so this stops at prepare deliberately. Composing a start here would assert the cap through a path the cap does not sit on, and a budget check that moved to `startJobForMaster` would still pass this file green.
 async function claim(jobId: string) {
-  return mods.claimJobForMaster({ jobId, deviceId: seededDeviceId, sessionId: randomUUID() });
+  return mods.prepareJobForMaster({ jobId, deviceId: seededDeviceId, sessionId: randomUUID() });
 }
 
 /** Claim, and assert the cap turned it away rather than the job simply failing. */
@@ -70,7 +71,7 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     const budgetMod = await import('../../src/jobs/budget-check.js');
     const classifierMod = await import('../../src/pipeline/failure-classifier.js');
     mods = {
-      claimJobForMaster: claimMod.claimJobForMaster,
+      prepareJobForMaster: claimMod.prepareJobForMaster,
       hooks: hooksMod.hooks,
       __resetBudgetWarnDedup: budgetMod.__resetBudgetWarnDedup,
       CLASSIFIER_VERSION: classifierMod.CLASSIFIER_VERSION,
@@ -90,8 +91,6 @@ describe('W2.3.2 monthly budget gate E2E', () => {
   afterEach(() => {
     mods.hooks.reset();
   });
-
-  // ---------- helpers ---------------------------------------------------
 
   async function seedProjectWithBudget(opts: {
     perMonthUsd: number;

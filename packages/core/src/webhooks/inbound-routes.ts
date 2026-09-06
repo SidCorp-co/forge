@@ -10,17 +10,10 @@ import {
 } from '../integrations/store.js';
 import type { IntegrationProvider } from '../integrations/types.js';
 import { logger } from '../logger.js';
-import { handleGitHubEvent } from './github-adapter.js';
 import { verifyHmacSignature } from './hmac.js';
 
-// Coolify-style provider signature headers, in priority order. The router
-// uses these to disambiguate which integration row (e.g. staging vs prod)
-// a webhook belongs to when multiple rows are active for the same provider.
-const PROVIDER_SIGNATURE_HEADERS = [
-  'x-coolify-signature-256',
-  'x-hub-signature-256',
-  'x-forge-signature-256',
-] as const;
+// cm:guard every header here belongs to a provider that actually SIGNS its webhooks — `x-coolify-signature-256` went with the Coolify inbound path (ISS-922) because Coolify sends no signature at all, and an entry for a provider that signs nothing only makes an unreachable branch look reachable.
+const PROVIDER_SIGNATURE_HEADERS = ['x-hub-signature-256', 'x-forge-signature-256'] as const;
 
 const badRequest = (details: unknown, code = 'BAD_REQUEST') =>
   new HTTPException(400, { message: 'Invalid input', cause: { code, details } });
@@ -32,7 +25,7 @@ const notFound = () =>
 // Header → adapter provider lookup. Order matters only when a request
 // carries multiple provider headers — first match wins.
 const PROVIDER_HEADER_MAP: Array<{ header: string; provider: IntegrationProvider }> = [
-  { header: 'x-coolify-event', provider: 'coolify' },
+  { header: 'x-github-event', provider: 'github' },
 ];
 
 export const webhookInboundRoutes = new Hono();
@@ -51,18 +44,13 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
     .limit(1);
   if (!project) throw notFound();
 
-  // Adapter dispatch happens BEFORE the legacy GitHub path so registered
-  // providers get their scoped integrationSecret (not projects.webhookSecret).
-  // Only triggers when a provider header is present, so the legacy
-  // GitHub/generic test cases are untouched.
+  // cm:guard a provider header claims the request for its adapter and the generic path below never sees it — so registering an adapter is what MOVES a provider off `projects.webhookSecret` onto the binding's own `integrationSecret`. Adding a header here without an adapter turns every one of that provider's deliveries into ADAPTER_NOT_REGISTERED rather than falling through.
   for (const map of PROVIDER_HEADER_MAP) {
     if (!c.req.header(map.header)) continue;
     const adapter = getAdapter(map.provider);
     if (!adapter) throw badRequest({ provider: map.provider }, 'ADAPTER_NOT_REGISTERED');
 
-    // Multi-env disambiguation across active bindings: verify the inbound
-    // signature against each binding's own integrationSecret and dispatch on
-    // the one that matches (tells a staging-Coolify webhook apart from prod).
+    // cm:why multi-env disambiguation: the signature is verified against each binding's own integrationSecret and dispatched on the one that matches, which is what tells a staging delivery apart from a prod one.
     const candidatePairs = await listActiveBindingsForProjectProvider(project.id, map.provider);
     if (candidatePairs.length === 0) {
       throw badRequest({ provider: map.provider }, 'INTEGRATION_NOT_CONFIGURED');
@@ -118,8 +106,7 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
     }
   }
 
-  // Legacy GitHub + generic path, preserved verbatim so the existing
-  // inbound-routes.test.ts regression test continues to pass.
+  // cm:guard the generic path accepts a signed body and DOES NOTHING with it — keep it that way. It exists so a provider can be pointed here while its adapter is being written, and `actions: 0` in the response is the only thing telling an operator the payload was dropped. Anything that starts acting on a body here is a second inbound path, which is what registering an adapter is for.
   if (!project.secret) {
     throw badRequest({ slug: 'webhook not enabled' }, 'WEBHOOK_DISABLED');
   }
@@ -130,29 +117,10 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
     throw unauthorized('INVALID_SIGNATURE');
   }
 
-  let payload: unknown;
   try {
-    payload = rawBody.length > 0 ? JSON.parse(rawBody) : {};
+    if (rawBody.length > 0) JSON.parse(rawBody);
   } catch {
     throw badRequest({ body: 'invalid json' });
-  }
-
-  const githubEvent = c.req.header('x-github-event');
-  if (githubEvent) {
-    try {
-      const result = await handleGitHubEvent(
-        project.id,
-        githubEvent,
-        payload as Parameters<typeof handleGitHubEvent>[2],
-      );
-      return c.json({ accepted: true, handler: 'github', actions: result.actions });
-    } catch (err) {
-      logger.error({ err, slug, event: githubEvent }, 'github-adapter: handler threw');
-      throw new HTTPException(500, {
-        message: 'handler failed',
-        cause: { code: 'HANDLER_FAILED' },
-      });
-    }
   }
 
   logger.info({ slug, bytes: rawBody.length }, 'webhook: generic receive');

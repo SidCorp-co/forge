@@ -16,13 +16,17 @@ import type { StatusCard } from "./types";
  *  - `disabled`   — the integration EXISTS but is switched off (previously
  *                   rendered "Not connected", indistinguishable from unset).
  *  - `unverified` — active but never health-checked (previously rendered
- *                   Degraded, which read as a live problem). */
+ *                   Degraded, which read as a live problem).
+ *  ISS-924 added `needs_scope` — the provider RECOGNISES the credential and
+ *  refuses the route it was used on. Re-entering the same credential reproduces
+ *  it exactly, so it must not render as `needs_reauth`. */
 export type DirectoryStatus =
   | "connected"
   | "degraded"
   | "error"
   | "not_connected"
   | "needs_reauth"
+  | "needs_scope"
   | "disabled"
   | "unverified";
 
@@ -40,13 +44,14 @@ export const DEFAULT_CAPABILITIES: IntegrationCapabilities = {
 
 /** The provider keys that resolve to a connection/binding the user can drill
  *  into (Test / Rotate / Disconnect + delivery log). Other status cards
- *  (github, runners, postgres, …) are read-only telemetry. */
+ *  (runners, postgres, …) are read-only telemetry. */
 export const DRILLABLE_PROVIDERS = [
   "coolify",
   "postman",
   "epodsystem",
   "sentry",
   "rocketchat",
+  "github",
 ] as const;
 export type DrillableProvider = (typeof DRILLABLE_PROVIDERS)[number];
 
@@ -115,9 +120,9 @@ export function groupCardsByProvider(cards: StatusCard[]): ProviderCardGroup[] {
  * unconfigured card stays `not_connected`.
  */
 export function deriveDirectoryStatus(card: Pick<StatusCard, "status" | "meta">): DirectoryStatus {
-  // needs_reauth wins over breaker/bucket — F4 surfaces the credential-rejected
-  // signal verbatim on `lastHealthStatus` (ISS-408/F3 + ISS-409/F4 contract).
+  // cm:guard both credential states are read from the RAW lastHealthStatus and win over the server bucket and the breaker — the bucket collapses them to `attention` and cannot be un-collapsed here, and they name two different operator actions (ISS-408/F3, ISS-409/F4, ISS-924)
   if (card.meta?.lastHealthStatus === "needs_reauth") return "needs_reauth";
+  if (card.meta?.lastHealthStatus === "needs_scope") return "needs_scope";
   const breakerOpen = card.meta?.breakerOpen === true;
   switch (card.status) {
     case "connected":
@@ -129,7 +134,6 @@ export function deriveDirectoryStatus(card: Pick<StatusCard, "status" | "meta">)
     case "disabled":
       return "disabled";
     case "unverified":
-      // A tripped breaker is a live problem even before the first healthcheck.
       return breakerOpen ? "degraded" : "unverified";
     default:
       return "not_connected";
@@ -149,6 +153,7 @@ export function deriveConnectionStatus(connection: {
 }): DirectoryStatus {
   if (!connection.active) return "disabled";
   if (connection.lastHealthStatus === "needs_reauth") return "needs_reauth";
+  if (connection.lastHealthStatus === "needs_scope") return "needs_scope";
   if (connection.breakerOpenedAt !== null) return "degraded";
   if (!connection.lastHealthStatus) return "unverified";
   const s = connection.lastHealthStatus.toLowerCase();
@@ -178,6 +183,13 @@ export const DIRECTORY_STATUS_META: Record<
   needs_reauth: {
     icon: "lock",
     label: "Needs re-auth",
+    fg: "var(--amberw-700)",
+    bg: "var(--amberw-50)",
+  },
+  // cm:guard needs_scope must never share needs_reauth's label — one says replace the credential, the other says the credential is fine and its permissions are not, and an operator who reads the wrong one does work that reproduces the state exactly (ISS-924)
+  needs_scope: {
+    icon: "lock",
+    label: "Needs wider scope",
     fg: "var(--amberw-700)",
     bg: "var(--amberw-50)",
   },

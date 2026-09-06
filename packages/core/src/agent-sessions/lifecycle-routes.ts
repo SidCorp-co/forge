@@ -72,9 +72,7 @@ export async function loadProjectBySlug(slug: string) {
   return row ?? null;
 }
 
-// NOTE: no auth middleware here — the aggregator (`routes.ts`) applies
-// `requireUserOrDevice() + assertEmailVerified()` once for the whole
-// `/api/agent-sessions` surface before mounting this router.
+// cm:guard NO auth middleware here on purpose: `routes.ts` applies `requireUserOrDevice() + assertEmailVerified()` once for the whole `/api/agent-sessions` surface before mounting this router. Adding a second gate here is not belt-and-braces — it would run BEFORE the aggregator's for any route mounted ahead of it, and a device principal that this router fenced differently from the aggregator is two answers to one question.
 export const agentSessionLifecycleRoutes = new Hono<{ Variables: AuthVars }>();
 
 agentSessionLifecycleRoutes.post(
@@ -299,7 +297,7 @@ agentSessionLifecycleRoutes.post(
       ),
       fromStatus: session.status,
       reason: 'user_cancelled',
-      actor: { type: 'user', id: userId },
+      actor: { type: 'user', id: userId, agency: c.get('agency') ?? 'human' },
       source: 'session-cancel',
     });
     if (!updated) {

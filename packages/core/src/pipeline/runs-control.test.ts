@@ -20,9 +20,7 @@ const updateSet = vi.fn(() => ({ where: updateWhere }));
 
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
-// ISS-411 — parkIssueOnCancel runs `select().from(issues).innerJoin(projects)
-// .where().limit(1)`, so the `from` stub must offer both the `where` (run
-// lookup) and `innerJoin` (issue+owner lookup) chains.
+// cm:why the `from` stub offers BOTH `where` and `innerJoin`: `parkIssueOnCancel` and the run lookup share this mock and take different chains off it, so a stub shaped for one silently returns undefined for the other rather than failing.
 const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, innerJoin: selectInnerJoin }));
 
@@ -166,7 +164,7 @@ describe('cancelPipelineRun', () => {
     // which calls `.returning()`; supply the flipped session rows it audits.
     updateReturning.mockResolvedValueOnce([{ id: 'sess-1' }, { id: 'sess-2' }]);
 
-    const result = await cancelPipelineRun(RUN_ID);
+    const result = await cancelPipelineRun(RUN_ID, { actorAgency: 'human' });
 
     expect(result.run.status).toBe('cancelled');
     expect(result.cancelledJobIds).toEqual(['job-1', 'job-2', 'job-3']);
@@ -197,7 +195,7 @@ describe('cancelPipelineRun', () => {
     jobsCancelledReturning([{ id: 'job-1', agentSessionId: null, deviceId: 'dev-X' }]);
     // No third updateReturning consumed — confirms agent_sessions update was skipped.
 
-    const result = await cancelPipelineRun(RUN_ID);
+    const result = await cancelPipelineRun(RUN_ID, { actorAgency: 'human' });
 
     expect(result.cancelledJobIds).toEqual(['job-1']);
     expect(result.abortedSessionIds).toEqual([]);
@@ -212,7 +210,7 @@ describe('cancelPipelineRun', () => {
     updateReturning.mockResolvedValueOnce([]); // CAS lost
     selectLimit.mockResolvedValueOnce([runRow('cancelled')]);
 
-    const result = await cancelPipelineRun(RUN_ID);
+    const result = await cancelPipelineRun(RUN_ID, { actorAgency: 'human' });
 
     expect(result.run.status).toBe('cancelled');
     expect(result.cancelledJobIds).toEqual([]);
@@ -222,13 +220,15 @@ describe('cancelPipelineRun', () => {
   it('throws CONFLICT on a completed run', async () => {
     updateReturning.mockResolvedValueOnce([]);
     selectLimit.mockResolvedValueOnce([runRow('completed')]);
-    await expect(cancelPipelineRun(RUN_ID)).rejects.toThrow(/CONFLICT: run already completed/);
+    await expect(cancelPipelineRun(RUN_ID, { actorAgency: 'human' })).rejects.toThrow(
+      /CONFLICT: run already completed/,
+    );
   });
 
   it('throws NOT_FOUND for a missing run', async () => {
     updateReturning.mockResolvedValueOnce([]);
     selectLimit.mockResolvedValueOnce([]);
-    await expect(cancelPipelineRun(RUN_ID)).rejects.toThrow(/NOT_FOUND/);
+    await expect(cancelPipelineRun(RUN_ID, { actorAgency: 'human' })).rejects.toThrow(/NOT_FOUND/);
   });
 
   // ISS-411 — operator cancel must be authoritative: the linked issue is parked
@@ -246,7 +246,7 @@ describe('cancelPipelineRun', () => {
       },
     ]);
 
-    const result = await cancelPipelineRun(RUN_ID);
+    const result = await cancelPipelineRun(RUN_ID, { actorAgency: 'human' });
 
     expect(result.issueParked).toBe(true);
     expect(transitionIssueStatusSpy).toHaveBeenCalledTimes(1);
@@ -276,7 +276,7 @@ describe('cancelPipelineRun', () => {
       },
     ]);
 
-    await cancelPipelineRun(RUN_ID, { actorUserId: 'human-7' });
+    await cancelPipelineRun(RUN_ID, { actorUserId: 'human-7', actorAgency: 'human' });
 
     const [, , actorArg] = transitionIssueStatusSpy.mock.calls[0] as [
       unknown,
@@ -291,7 +291,7 @@ describe('cancelPipelineRun', () => {
     updateReturning.mockResolvedValueOnce([runRow('cancelled', { finishedAt: new Date() })]);
     updateReturning.mockResolvedValueOnce([]);
 
-    const result = await cancelPipelineRun(RUN_ID, { parkIssue: false });
+    const result = await cancelPipelineRun(RUN_ID, { parkIssue: false, actorAgency: 'human' });
 
     expect(result.issueParked).toBe(false);
     expect(transitionIssueStatusSpy).not.toHaveBeenCalled();
@@ -310,7 +310,7 @@ describe('cancelPipelineRun', () => {
       },
     ]);
 
-    await cancelPipelineRun(RUN_ID);
+    await cancelPipelineRun(RUN_ID, { actorAgency: 'human' });
 
     expect(transitionIssueStatusSpy).not.toHaveBeenCalled();
   });
@@ -321,7 +321,7 @@ describe('cancelPipelineRun', () => {
     ]);
     updateReturning.mockResolvedValueOnce([]);
 
-    await cancelPipelineRun(RUN_ID);
+    await cancelPipelineRun(RUN_ID, { actorAgency: 'human' });
 
     expect(transitionIssueStatusSpy).not.toHaveBeenCalled();
   });

@@ -5,9 +5,12 @@ import {
   getIssueContexts,
   writeIssueContext,
 } from '../../pipeline/issue-context-store.js';
-import type { DeviceScopedMcpToolFactory } from './lib.js';
-import { zodToMcpSchema } from './lib.js';
-import { assertDeviceOwnerIsMember, assertDeviceOwnerIsWriter } from './project-authz.js';
+import {
+  assertPrincipalIsMember,
+  assertPrincipalIsWriter,
+  type ContextScopedMcpToolFactory,
+  zodToMcpSchema,
+} from './lib.js';
 
 /**
  * MCP tools for step-handoff persistence (proposal Y). Thin wrappers over
@@ -47,14 +50,14 @@ const deleteInputSchema = z.object({
  * step. Agents call this at the end of each handoff-emitting state before
  * emitting `DONE`. Upsert is keyed on `(issueId, step, attempt)`.
  */
-export const forgeStepHandoffWriteTool: DeviceScopedMcpToolFactory = (device) => ({
+export const forgeStepHandoffWriteTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_step_handoff.write',
   description:
-    "Upsert a step handoff (structured pipeline-state output) for an issue. Stores `payload` under `kind='handoff'` keyed on (issueId, step, attempt). Validates payload via the per-step discriminated schema. Requires the device owner to be a project member.",
+    "Upsert a step handoff (structured pipeline-state output) for an issue. Stores `payload` under `kind='handoff'` keyed on (issueId, step, attempt). Validates payload via the per-step discriminated schema. Requires project membership.",
   inputSchema: zodToMcpSchema(writeInputSchema),
   handler: async (args) => {
     const input = writeInputSchema.parse(args);
-    await assertDeviceOwnerIsWriter(device, input.projectId);
+    await assertPrincipalIsWriter(principal, input.projectId);
     return writeIssueContext({ ...input, kind: 'handoff' });
   },
 });
@@ -64,14 +67,14 @@ export const forgeStepHandoffWriteTool: DeviceScopedMcpToolFactory = (device) =>
  * dispatcher pre-fetch path; also useful for ad-hoc agent queries when
  * inspecting prior state output. Defaults to latest-first by createdAt.
  */
-export const forgeStepHandoffGetTool: DeviceScopedMcpToolFactory = (device) => ({
+export const forgeStepHandoffGetTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_step_handoff.get',
   description:
-    'List step handoffs for an issue. Filter by pipelineRunId and/or `steps` allow-list. Returns rows sorted by createdAt (default desc). Requires the device owner to be a project member.',
+    'List step handoffs for an issue. Filter by pipelineRunId and/or `steps` allow-list. Returns rows sorted by createdAt (default desc). Requires project membership.',
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const input = getInputSchema.parse(args);
-    await assertDeviceOwnerIsMember(device, input.projectId);
+    await assertPrincipalIsMember(principal, input.projectId);
     const rows = await getIssueContexts({ ...input, kind: 'handoff' });
     return { rows };
   },
@@ -82,14 +85,14 @@ export const forgeStepHandoffGetTool: DeviceScopedMcpToolFactory = (device) => (
  * `{deleted: boolean}`. Rarely needed by agents; included for parity with
  * the memory tool family and operator manual recovery.
  */
-export const forgeStepHandoffDeleteTool: DeviceScopedMcpToolFactory = (device) => ({
+export const forgeStepHandoffDeleteTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_step_handoff.delete',
   description:
-    'Delete a step handoff by (issueId, step, attempt). Idempotent — returns {deleted: false} when no row matches. Requires the device owner to be a project member.',
+    'Delete a step handoff by (issueId, step, attempt). Idempotent — returns {deleted: false} when no row matches. Requires project membership.',
   inputSchema: zodToMcpSchema(deleteInputSchema),
   handler: async (args) => {
     const input = deleteInputSchema.parse(args);
-    await assertDeviceOwnerIsWriter(device, input.projectId);
+    await assertPrincipalIsWriter(principal, input.projectId);
     const n = await deleteIssueContext({ ...input, kind: 'handoff' });
     return { deleted: n > 0 };
   },

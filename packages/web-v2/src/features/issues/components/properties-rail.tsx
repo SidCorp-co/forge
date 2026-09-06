@@ -5,7 +5,7 @@
 // signal), the ISS-<seq> branch convention, and dependency edges (rendered as
 // clickable `ISS-X` badges linking to the related issue — ISS-331).
 
-import { Avatar, Badge, MonoTag, Stat } from "@/design";
+import { Avatar, Badge, Button, MonoTag, Stat } from "@/design";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
 import { IssueRefBadge } from "./issue-ref-badge";
 import { InlineSelect, StatusEdit } from "./inline-edit-cell";
@@ -113,6 +113,8 @@ interface PropertiesRailProps {
   pending: boolean;
   onPatch: (body: { priority?: IssuePriority; complexity?: IssueComplexity | null }) => void;
   onTransition: (toStatus: IssueStatus) => void;
+  /** Open the module picker. Absent for a reader who cannot write. */
+  onEditModules?: (() => void) | undefined;
 }
 
 export function PropertiesRail({
@@ -123,15 +125,19 @@ export function PropertiesRail({
   pending,
   onPatch,
   onTransition,
+  onEditModules,
 }: PropertiesRailProps) {
+  // cm:why modules and plain labels arrive in ONE `labels[]` told apart by `kind` (ISS-593), and split into two rows here because they answer two different questions
+  const modules = (issue.labels ?? []).filter((l) => l.kind === "module");
+  const plainLabels = (issue.labels ?? []).filter((l) => l.kind !== "module");
+  const primaryModule = modules.find((m) => m.isPrimary);
+  const secondaryModules = modules.filter((m) => !m.isPrimary);
   const incoming = deps?.incoming ?? [];
   const outgoing = deps?.outgoing ?? [];
   const isDecompose = (e: IssueDependencyEdge) => e.kind === "decomposes" || e.kind === "parent";
   const blockedBy = incoming.filter((e) => e.kind === "blocks");
   const blocks = outgoing.filter((e) => e.kind === "blocks");
-  // Decompose edges run parent→child: an incoming one points at this issue's
-  // epic (Parent), an outgoing one at a child (Subtasks). System-owned —
-  // display-only, no edit affordance.
+  // cm:why a decompose edge runs parent→child, so INCOMING is this issue's epic and OUTGOING is a child — reading the direction the other way swaps Parent and Subtasks on the screen
   const parents = incoming.filter(isDecompose);
   const subtasks = outgoing.filter(isDecompose);
   const duplicates = [...incoming, ...outgoing].filter((e) => e.kind === "duplicates");
@@ -181,10 +187,27 @@ export function PropertiesRail({
           <span className="fg-caption">—</span>
         )}
       </Row>
-      {issue.labels && issue.labels.length > 0 && (
+      <Row label="Module">
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          {primaryModule ? (
+            <MonoTag hue="cobalt">{primaryModule.name}</MonoTag>
+          ) : (
+            secondaryModules.length === 0 && <span className="fg-caption">—</span>
+          )}
+          {secondaryModules.map((m) => (
+            <MonoTag key={m.id}>{m.name}</MonoTag>
+          ))}
+          {onEditModules && (
+            <Button variant="ghost" size="sm" icon="settings" onClick={onEditModules}>
+              Edit
+            </Button>
+          )}
+        </div>
+      </Row>
+      {plainLabels.length > 0 && (
         <Row label="Labels">
           <div className="flex flex-wrap justify-end gap-1.5">
-            {issue.labels.map((l) => (
+            {plainLabels.map((l) => (
               <MonoTag key={l.id}>{l.name}</MonoTag>
             ))}
           </div>

@@ -43,6 +43,12 @@ you push, and read that block rather than grepping the `ok`/`red` lines past it.
 used to say verify "runs every check CI runs"; that sentence put a red commit on `main` on
 2026-09-01 — refactoring a mocked call path passed all 21 checks and failed `pnpm test` on CI.
 
+**`pnpm test:changed` is the loop, never the proof.** It runs the tests the change reaches plus the
+14 that scan the source tree instead of importing it — 125 of 447 core files in 41s on a typical
+commit, against 112s for the lot. It is wired to nothing: no gate reads it, and it prints that it is
+not a green on every run, because `vitest`'s graph follows imports and a test that reaches its
+subject by URL, table name or file path is not in it. `pnpm test` before you push, always.
+
 From the repo root, turbo fans out: `pnpm dev` / `pnpm build` / `pnpm test` / `pnpm typecheck` /
 `pnpm lint`. Per package (from inside `packages/<pkg>/`):
 
@@ -125,6 +131,24 @@ three disclosed honestly and moved on. Nobody lied and nobody fixed it. "Pre-exi
 "untouched" and "out of scope" are reasons to **record**, never reasons to go quiet, and never
 reasons to go green.
 
+### The one carve-out: forge-plugin is reached by issue, never by diff
+
+**A defect in `github.com/SidCorp-co/forge-plugin` leaves as an issue on the `forge-plugin`
+project, and you do not edit that repo from a job in this one.** The `forge` CLI, the session
+hooks and `plugin/skills/issue-flow` live there; a verb that refuses wrongly, a missing way out, a
+skill naming something this repo no longer has — all of it files there and is named in your
+comment under `Extra fixes:` as **reported**, not fixed.
+
+This is the single exception to *fix-it-now*, and it is a boundary rather than an amnesty: the two
+repos ship on different clocks, and a change landing there from here is a change none of this
+repo's fifteen gates has seen and none of that repo's reviewers asked for. The defect still leaves
+your hands owned — it leaves owned by a row somebody can open, which is exactly what
+`file-instead-of-fix` refuses everywhere else and requires here.
+
+The pair is not symmetric. Nothing in this repo can gate that one: a change to the five driver
+statuses, the drive prompt or the phase endpoints has a second half over there, and the
+`cm:guard`s naming it are the only record of the coupling.
+
 ## Green is a claim about one proposition
 
 **A green check is evidence for exactly one thing: that assertion held in the runtime that ran
@@ -151,12 +175,20 @@ line number — a line number is stale the moment anything above it moves, and s
 
 ## Invariants
 
-- **No child `jobs` row stays non-terminal under a terminal `pipeline_run`** — one orphan wedges a
-  runner slot. Three defences in lockstep (close-cascade, loop monitor, pool exclusion), plus
-  `held` as a deliberate fourth shape that is NOT an orphan. New code that flips
-  `pipeline_runs.status` terminal MUST route through a cascade-calling helper. The `cm:guard` and
-  the two `cm:edge lockstep` live on `packages/core/src/pipeline/runs-cascade.ts`; the four hops and
-  their thresholds are modelled in `packages/core/src/jobs/loop-monitor.ts`.
+- **A `pipeline_run` and its child `jobs` reach terminal together, in BOTH directions.** Read one
+  way only and the other one leaks in silence: defending the forward half alone left 98 of 114
+  live runs `running` with every job terminal, across 18 projects, presenting as in-flight work no
+  box was doing (ISS-923).
+  - *Forward — no child `jobs` row stays non-terminal under a terminal `pipeline_run`*: one orphan
+    wedges a runner slot. Three defences in lockstep (close-cascade, loop monitor, pool exclusion),
+    plus `held` as a deliberate fourth shape that is NOT an orphan. The `cm:guard` and the
+    `cm:edge lockstep` set lives on `packages/core/src/pipeline/runs-cascade.ts`; the four hops and
+    their thresholds are modelled in `packages/core/src/jobs/loop-monitor.ts`.
+  - *Inverse — no `pipeline_run` stays non-terminal once every child job is terminal*:
+    `packages/core/src/pipeline/runs-concluded.ts`, driven from the sweeper tick, closing on the
+    LAST job's outcome so a run whose last job failed never closes `completed`.
+  - New code that flips `pipeline_runs.status` terminal MUST route through a cascade-calling
+    helper — on either axis, there is exactly one writer.
 - **A migration's `when` in `drizzle/migrations/meta/_journal.json` must exceed EVERY `created_at`
   already in the target DB** — drizzle reads the single highest `created_at` once and skips lower
   entries **silently, forever**, so the container starts and serves new code against an old schema

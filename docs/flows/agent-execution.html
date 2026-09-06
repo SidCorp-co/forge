@@ -1,0 +1,277 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · agent-execution — a claimed job becomes a running agent</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --lock:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
+  .lock { color:var(--lock); font-weight:600; }
+  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
+  text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
+  text.m { font-size:11px; fill:var(--mut); }
+  text.t { font:600 12px ui-monospace,Menlo,monospace; }
+  .box { fill:#fff; stroke:var(--line); }
+  .lockband { fill:#fdf6e7; stroke:#e8d9b4; }
+  .exit { fill:#fdf0f3; stroke:#e3c2cb; }
+  .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
+  .arrowbad { stroke:var(--bad); stroke-width:1.2; fill:none; marker-end:url(#b); stroke-dasharray:4 3; }
+</style>
+<main>
+
+<h1>agent-execution — a claimed job becomes a running agent</h1>
+<p class="sub">One <code>drive</code> job on a runner box, from the master that decides to take it
+to the moment a <code>claude</code> process is alive — and every exit that kills it on the way.
+Owner: <code>packages/runner/crates/forge-runner-core/src/daemon/{master,control,terminal,dispatch}.rs</code>,
+<code>packages/core/src/devices/{claim,master-session,master-reaper}.ts</code>.</p>
+
+<h2>Who takes the job, and where that decision lives</h2>
+<p>The master is a <b>resident tmux session</b> named <code>forge-master-&lt;slug&gt;</code>, not a
+print process the daemon spawns per pass. Its identity is its <code>agent_sessions</code> row — the
+same uuid <code>jobs.held_by</code> carries — and taking a job is <b>two acts</b>, not one:
+<code>prepare</code> takes the hold and hands back a job token with no process started;
+<code>start</code> stamps the dispatch, and that stamp is what ends the hold.</p>
+<div class="board"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant TX as tmux (master's parent)
+  participant M as master (resident session)
+  participant D as forge-runner daemon
+  participant C as core
+  participant A as agent (job process)
+
+  Note over D,C: every sweep, per served project
+  D->>C: GET /me/runners
+  C-->>D: repoPath · baseBranch · kind · workspaceSetup · masterPolicy
+  D->>C: POST /me/master-session {projectId, name}
+  C-->>D: agent_sessions row — THE identity held_by carries
+  D->>TX: has-session =forge-master-slug ?
+  alt no pane
+    D->>TX: new-session + pipe-pane >> transcript.log (append-only)
+    D->>M: standing brief (once) = skill name + base branch + masterPolicy
+  end
+  D->>C: GET /me/pool?projectId
+  D->>M: paste-buffer + Enter — the pass prompt
+  M->>D: control.sock {op:prepare, jobId, sessionId, agent}
+  D->>C: POST /me/pool/prepare
+  C-->>D: job row + job token — job stays queued and HELD
+  M->>D: control.sock {op:start, jobId, sessionId}
+  D->>C: POST /me/pool/start
+  C-->>D: stamped dispatched + deviceId + runnerId; hold CLEARED
+  D->>A: dispatch::handle — the lock band below
+  A->>C: job_events (seq...) · complete / fail
+</pre></div>
+<p><b>The brief is assembled by the daemon, never fetched by the master.</b> A master holds no
+device token and makes no <code>/me/*</code> call — it is a tmux-parented session started outside
+the job path — so anything it must be told has to arrive on <code>/me/runners</code>, which the
+daemon already reads every sweep. <code>masterPolicy</code> is the project's
+<code>master-policy</code> fact: the owner's standing instruction, spliced verbatim into the brief
+and outranking the shipped <code>forge-master</code> skill wherever they differ. It is the only
+part of the brief that is <em>not</em> in the binary, which is why editing it needs no runner
+release and no restart — the next master this box starts is briefed with the new text (ISS-929).
+Before it existed, that instruction lived only in whatever a human had typed into the pane, and
+died with the session.</p>
+
+<p>The agent stays a daemon child on purpose. A tmux pane would cost the structured stdout
+<code>job_events</code> is parsed from, and <code>job_events?sinceSeq</code> is the exact signal the
+master needs to see an agent that is alive and not progressing. So an agent is <b>named and
+addressable</b> (<code>forge-runner agent list|send</code>, the session inbox and its ack) rather
+than pane-hosted — the price paid, and what it buys.</p>
+
+<h2>The order, and where the locks sit</h2>
+<svg viewBox="0 0 880 520" role="img" aria-label="Sequence of a claimed job becoming a running agent">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a3b52"/></marker>
+  </defs>
+
+  <rect class="box" x="20" y="16" width="300" height="34" rx="4"/>
+  <text class="t" x="34" y="38">pool start → dispatch::handle</text>
+  <text class="m" x="330" y="38">the stamp ended the hold; the box owns this job now</text>
+
+  <path class="arrow" d="M170,50 L170,74"/>
+  <rect class="box" x="20" y="74" width="300" height="34" rx="4"/>
+  <text class="t" x="34" y="96">pre-spawn heartbeat starts</text>
+  <text class="m" x="330" y="90">before the lock, never after — core fails a session</text>
+  <text class="m" x="330" y="105">that is still <tspan font-family="monospace">queued</tspan> 120s after dispatch</text>
+
+  <path class="arrow" d="M170,108 L170,132"/>
+
+  <rect class="lockband" x="10" y="132" width="480" height="216" rx="6"/>
+  <text class="t" x="24" y="152" fill="#a06a1f">repo-root lock held — one lexical block</text>
+  <text class="m" x="24" y="167">everything that writes the root's .git or index, and nothing else</text>
+
+  <rect class="box" x="34" y="180" width="270" height="30" rx="4"/>
+  <text class="t" x="46" y="200">measure: preflight + refresh</text>
+  <path class="arrow" d="M169,210 L169,230"/>
+  <rect class="box" x="34" y="230" width="270" height="30" rx="4"/>
+  <text class="t" x="46" y="250">setup agent (only if findings)</text>
+  <path class="arrow" d="M169,260 L169,282"/>
+  <rect class="box" x="34" y="282" width="270" height="30" rx="4"/>
+  <text class="t" x="46" y="302">worktree::create — git worktree add</text>
+
+  <path class="arrowbad" d="M304,195 L560,195"/>
+  <rect class="exit" x="560" y="178" width="300" height="34" rx="4"/>
+  <text class="t" x="572" y="199">preflight_failed: …</text>
+
+  <path class="arrowbad" d="M170,132 L170,120 L560,120 L560,138"/>
+  <rect class="exit" x="560" y="138" width="300" height="34" rx="4"/>
+  <text class="t" x="572" y="153">repo_lock_timeout after 600s</text>
+  <text class="m" x="572" y="230">a sibling spent the whole wait in this band.</text>
+  <text class="m" x="572" y="245">cause repo_root_contention · infra · retry</text>
+
+  <path class="arrow" d="M169,312 L169,348"/>
+  <text class="m" x="182" y="340">lock released HERE — the closing brace</text>
+
+  <rect class="box" x="20" y="360" width="300" height="34" rx="4"/>
+  <text class="t" x="34" y="382">ack + workspace notice → core</text>
+
+  <path class="arrow" d="M170,394 L170,418"/>
+  <rect class="box" x="20" y="418" width="300" height="34" rx="4"/>
+  <text class="t" x="34" y="440">runner.start → duplex permit</text>
+
+  <path class="arrowbad" d="M320,435 L560,435"/>
+  <rect class="exit" x="560" y="418" width="300" height="34" rx="4"/>
+  <text class="t" x="572" y="439">session_permit_saturated</text>
+  <text class="m" x="560" y="470">all N permits held for 600s. cause box_session_saturated ·</text>
+  <text class="m" x="560" y="485">infra · failover · box_session_saturated — named, not yet routed</text>
+
+  <path class="arrow" d="M170,452 L170,476"/>
+  <rect class="box" x="20" y="476" width="300" height="34" rx="4"/>
+  <text class="t" x="34" y="498">mcp config → spawn → consume</text>
+</svg>
+
+<h2>What goes wrong, and what it says</h2>
+<table>
+<thead><tr><th>Failure</th><th>Where</th><th>Text on the wire</th><th>What core does</th></tr></thead>
+<tbody>
+<tr><td>A sibling holds the root past 600s</td><td>entering the lock band</td>
+    <td><code>repo_lock_timeout: &lt;path&gt; is still held after 600s</code></td>
+    <td><code>infra</code> / <code>retry</code>, cause <code>repo_root_contention</code></td></tr>
+<tr><td>Checkout unusable, no origin, no work tree</td><td><code>measure</code></td>
+    <td><code>preflight_failed: origin_remote|work_tree|repo_path</code></td>
+    <td><code>infra</code> / <code>terminal</code> — retrying cannot fix a project with no git
+        repo; three in a row quarantine the box</td></tr>
+<tr><td>Push credentials dead or slow</td><td><code>measure</code></td>
+    <td><code>preflight_failed: push_credentials</code></td>
+    <td><code>infra</code> / <code>retry</code> — the catch-all for prefixes the terminal three do
+        not name; also quarantines on a streak of three</td></tr>
+<tr><td><code>git worktree add</code> refuses</td><td>end of the lock band</td>
+    <td><code>failed to start job: git worktree add failed: …</code></td>
+    <td>not a box fault — deliberately outside the <code>preflight_failed:</code> namespace</td></tr>
+<tr><td>Every duplex permit on the box is held</td><td><code>runner.start</code>, lock already released</td>
+    <td><code>session_permit_saturated: all N duplex permits on this box held after 600s; holders at wait start: …</code></td>
+    <td><code>infra</code> / <code>failover</code>, cause <code>box_session_saturated</code>. The action names the intent; on the pool path it does not move the job — see <a href="../proposals/pool-cannot-route-around-a-full-box.md">the proposal</a>.</td></tr>
+<tr><td>Nothing spawned inside the beat budget</td><td>the heartbeat task</td>
+    <td>the beat stops; core's reaper judges the silence</td>
+    <td><code>session_lost</code></td></tr>
+<tr><td>The project has no <code>master-policy</code> fact, or core predates the field</td>
+    <td>nowhere — <code>masterPolicy</code> arrives <code>null</code> and the runner reads it as <code>None</code></td>
+    <td>the brief is byte-identical to what every project got before ISS-929</td>
+    <td>deliberately silent: the shipped <code>forge-master</code> skill holds the defaults, and
+        "no policy" is the normal state for every project but the ones whose owner wrote one</td></tr>
+<tr><td>Master pane vanishes (crash, <code>tmux kill-session</code>, box reboot)</td>
+    <td>the daemon's next sweep — <code>master.rs</code> watches <code>tmux has-session</code></td>
+    <td><code>POST /me/pool/release</code> with no <code>jobId</code>, then
+        <code>/me/master-session/close</code></td>
+    <td>every hold that session had goes back to the pool at once, without waiting out the 3-minute
+        reaper; the next sweep starts a fresh master — up to <code>MASTER_DEATH_LIMIT</code>. What it
+        had already <em>started</em> is untouched — a started job holds no hold</td></tr>
+<tr><td>The fresh master dies too — or never starts — three times inside 10 minutes</td>
+    <td>the daemon's death tally, per project (<code>master.rs</code>)</td>
+    <td>no further start for 30 minutes, one <code>DEGRADED</code> line per sweep naming the project
+        and the next attempt; then exactly one probe, and a probe that dies re-opens it at once</td>
+    <td>a deterministic death (an unanswered workspace-trust dialog in the pane, ISS-928) used to be
+        respawned twice a minute forever. A backoff and not a latch: an operator who repairs the box
+        out of band gets the probe without restarting the daemon. Other projects are untouched — the
+        tally is per project</td></tr>
+<tr><td>Master alive but its transcript stops growing after a prompt</td>
+    <td>the daemon, at <code>MASTER_SILENCE_CEILING</code></td>
+    <td>pane killed, then the same release-and-close path</td>
+    <td>the ceiling that replaces <code>SESSION_IDLE_TIMEOUT</code> for a process the daemon does not
+        parent. A master idle <em>without</em> having been prompted is not touched — residency is
+        legal, silence after asking is not</td></tr>
+<tr><td>The whole box vanishes (power, network partition)</td>
+    <td>core, at <code>MASTER_HOLD_TIMEOUT_MS</code> (3 min)</td>
+    <td><code>reapDeadMasterHolds</code>, judging by the session heartbeat</td>
+    <td>the only arm that works when nothing local is left to notice it</td></tr>
+<tr><td><code>prepare</code> succeeded and <code>start</code> never came</td>
+    <td>the daemon, at <code>PREPARE_TTL</code>; core's reaper behind it</td>
+    <td><code>control::reap_preparations</code> releases the hold</td>
+    <td>ordered on purpose: the process that took the job hands it back, and the reaper is the
+        backstop for that process itself dying</td></tr>
+<tr><td><code>start</code> arrives after the reaper took the hold</td>
+    <td>core, in the stamp's <code>WHERE</code></td>
+    <td><code>hold_lost</code> — the daemon drops the spawn</td>
+    <td>the job stays plain <code>queued</code> and claimable; never stamped onto a box with no
+        process on it</td></tr>
+<tr><td>Runner build too old to name its own agent</td>
+    <td>core, at <code>prepare</code></td>
+    <td><code>runner_too_old</code>, before any hold is taken — and the pre-ISS-919
+        <code>/me/pool/claim</code> answers the same thing to every caller</td>
+    <td>a named refusal rather than a second live path kept alive beside the one that replaced it</td></tr>
+<tr><td>Agent alive and not progressing</td>
+    <td>the master, reading <code>job_events?sinceSeq</code></td>
+    <td>nothing automatic — the master reports, core decides</td>
+    <td>the one detection with no daemon-side arm, and the reason the agent keeps its structured
+        stdout instead of a pane</td></tr>
+</tbody>
+</table>
+
+<h2>The rule the shape encodes</h2>
+<div class="rule">
+<p><b>Every verdict on this page is matched above the cc-startup signal branch in
+<code>classifyKind</code>, and that is not a detail.</b> Each of these jobs died before a process
+existed, and the pre-spawn heartbeat above posts a job event every 25s — which is all
+<code>deriveCcStartupSignals</code> needs to call it a startup death. A verdict added below that
+branch is unreachable, not merely late. A new failure on this path goes above it.</p>
+<p><b>No unbounded wait while holding a lock another job needs.</b> The root lock is per-repo; the
+permit ceiling is per-box. Nesting them made one project's claims kill another project's queue,
+and the error named the lock (ISS-920: 7 <code>repo_lock_timeout</code> in 30 minutes on
+<code>codemap</code>, while <code>forge-dev</code> held two of three permits).</p>
+<p>Two properties keep it un-nested, and both are load-bearing:</p>
+<ul>
+  <li>The lock band is a <b>lexical block</b> in <code>dispatch::handle</code>. The compiler
+      releases it, not a <code>drop</code> call somebody can move.</li>
+  <li><code>ClaudeCodeRunner::start</code> touches <b>nothing in the root</b>. Putting root work
+      back inside it re-nests the lock around the permit wait, whatever the block looks like.</li>
+</ul>
+<p>The permit wait is bounded too, at one residency window — but a bound is not what makes this
+safe. For the whole of a bound the lock would still be held and the siblings would still die,
+just sooner.</p>
+</div>
+
+<div class="rule">
+<p><b>The stamp ends the hold, in one statement.</b> Past <code>start</code> the job is not
+<code>queued</code> and no release path can reach it. That is why no release may ever unwind a
+dispatch stamp — one that did re-queued two live agents' jobs underneath them (epodsystem,
+2026-09-05). It is also the bound on B3: a master that dies between reading the pool and claiming
+parks nothing, because a claim that succeeds has already ended its own hold.</p>
+<p><b>The master writes nothing in the checkout it stands in.</b> It holds the base branch; every
+agent it starts works in a worktree cut from <code>origin/&lt;base&gt;</code>. That is what makes a
+detached master safe here where a detached <em>drive</em> agent would not be — do not weaken it to
+make anything else easier.</p>
+</div>
+
+<h2>Read this before</h2>
+<p>Changing what <code>dispatch::handle</code> does under the lock, moving anything into or out of
+<code>ClaudeCodeRunner::start</code>, or touching <code>REPO_LOCK_WAIT</code> /
+<code>SESSION_PERMIT_WAIT</code> / <code>PRE_SPAWN_BEAT_BUDGET</code> — those three are derived from
+each other and the build fails if the ordering breaks.</p>
+
+<p><a href="index.html">← all flows</a></p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>

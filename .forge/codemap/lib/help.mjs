@@ -1,4 +1,4 @@
-// @generated codemap 0.16.1 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.19.0 — vendored by `cm install`; edit the plugin, not this.
 // `cm help` — the guidebook, shipped inside the tool.
 //
 // It lives here rather than in the plugin's skill because the checker is what a project vendors
@@ -39,6 +39,7 @@ export const VERBS = [
   ['metrics show', '', 'local north-star counters: blocks held vs circumvented, annotation trend  [--json]'],
   ['metrics reconcile', '', 'sweep pending blocks the hook never saw resolved (for the weekly bot)'],
   ['metrics send', '[--endpoint <url>] [--yes]', 'opt-in send of the show --json payload; no --yes previews only'],
+  ['pr-comment', '--base <ref>', 'PR comment: a lockstep edge with one side changed, or a guard line the diff crossed  [--dry-run]'],
   ['codes', '', 'diagnostic reference (same as: cm help codes)'],
   ['help', '[topic]', 'this guidebook'],
   ['version', '', 'tool version + spec version'],
@@ -52,7 +53,7 @@ function table(rows, gap = 2) {
 }
 
 function specPath() {
-  return [resolve(SCRIPTS, '..', 'SPEC.md'), join(SCRIPTS, 'SPEC.md')].find((p) => existsSync(p)) ?? null;
+  return [resolve(SCRIPTS, '..', 'spec', 'SPEC.md'), resolve(SCRIPTS, '..', 'SPEC.md'), join(SCRIPTS, 'SPEC.md')].find((p) => existsSync(p)) ?? null;
 }
 
 function verbs() {
@@ -356,10 +357,12 @@ RECIPES
 
   CI            .forge/codemap/cm verify --since $(git merge-base origin/main HEAD)
   CI (no vendor) git clone --depth 1 --branch codemap-v<x.y.z> <repo> /tmp/cm
-                 node /tmp/cm/plugins/forge-codemap/scripts/cm.mjs verify   (pin a TAG, never a branch)
-  staying current  cm doctor  ·  cm install --upgrade  ·  agent-setup/codemap-upgrade.yml opens the PR
+                 node /tmp/cm/cli/cm.mjs verify                      (pin a TAG, never a branch)
+  staying current  cm doctor  ·  cm install --upgrade  ·  adapters/ci/codemap-upgrade.yml opens the PR
   pre-commit    .forge/codemap/cm verify --staged --tier grammar     (cm install --git-hook writes it)
   agent-side    cm verify --fix --json <file>                        what the PostToolUse hook runs
+  PR comment    cm pr-comment --base $(git merge-base origin/main HEAD)   adapters/ci/pr-comment.yml
+                Advisory only — never gates. One comment, updated in place; silent with nothing to say.
 
   In a shallow clone the base ref is often not fetched — that is an exit 2, not a clean tree.
   git fetch --deepen 50 (or fetch-depth: 0) before the gate.

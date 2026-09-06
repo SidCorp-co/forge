@@ -21,6 +21,10 @@ import type {
 
 export const ISSUES_PAGE_SIZE = 25;
 
+/** One entry of a `labels` write. A bare string attaches by name or uuid, not primary. */
+// cm:edge contract -> packages/core/src/issues/label-service.ts#LabelAttachInput — the union arms and their meaning are that type's; `isPrimary` on a plain label is refused with PRIMARY_NOT_MODULE
+export type LabelAttach = string | { labelId: string; isPrimary?: boolean };
+
 export interface PatchIssueInput {
   priority?: IssuePriority;
   complexity?: IssueComplexity | null;
@@ -64,18 +68,21 @@ export const issuesApi = {
     params.set("offset", String((page - 1) * pageSize));
     params.set("sort", opts.sort ?? "createdAt:desc");
     params.set("withAgentSessions", "1");
-    // ISS-437 — server-side per-issue cost rollup on the same response (one
-    // grouped query) instead of the old per-row cost-summary N+1.
+    // cm:why one grouped query on this response replaced a per-row cost-summary N+1 (ISS-437) — dropping the flag brings the N+1 back rather than losing a column
     params.set("withCost", "1");
     // ISS-700 — same grouped-query pattern for the latest-failed-job info
     // backing the Failed-badge tooltip (no per-row/hover fetch).
     params.set("withFailureInfo", "1");
     // cm:why carries the queued step + its gate, without which a queued-but-undispatched row renders as actively worked
     params.set("withPipelineHealth", "1");
+    // cm:why ISS-594 — the row's module attributions, and the only source for the list's Module cell: the search response carries no labels otherwise
+    params.set("withModules", "1");
     if (opts.q) params.set("q", opts.q);
     if (opts.priority) params.set("priority", opts.priority);
     if (opts.createdBy) params.set("createdBy", opts.createdBy);
     if (opts.label) params.set("label", opts.label);
+    // cm:why ISS-594 — a SEPARATE param from `label`: core resolves `module` against `kind='module'` rows only, so sending a module id as `label` would match plain labels of the same name
+    if (opts.module) params.set("module", opts.module);
     const { status, statusNot, origin } = filterToQueryParams(opts.filter ?? "all");
     for (const s of status ?? []) params.append("status", s);
     for (const s of statusNot ?? []) params.append("statusNot", s);
@@ -119,6 +126,20 @@ export const issuesApi = {
 
   /** `GET /api/projects/:projectId/labels` — label filter option source (ISS-586). */
   labels: (projectId: string) => apiClient<IssueLabel[]>(`/projects/${projectId}/labels`),
+
+  /**
+   * `PATCH /api/issues/:id` — REPLACE the issue's whole label set.
+   *
+   * `labels` is a full replacement, not a delta: every label the issue keeps must be resent, and
+   * `[]` clears them all. The object form designates the primary module; a bare string attaches a
+   * label as non-primary.
+   */
+  // cm:guard the caller must merge the issue's existing non-module labels into `labels` — sending only the modules DELETES every plain label on the issue, and the server cannot tell that from a deliberate clear
+  setLabels: (id: string, labels: LabelAttach[]) =>
+    apiClient<IssueRow>(`/issues/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ labels }),
+    }),
 
   /** `POST /api/issues/:id/run-pipeline-step` — hand the issue to the driver
    *  (409 if a job is already active, or if it is not at the entry status).

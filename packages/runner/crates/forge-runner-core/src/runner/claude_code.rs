@@ -20,7 +20,7 @@ use super::process::{build_command, graceful_kill};
 use super::{FailureKind, JobSpec, Runner, RunnerEvent, RunnerKind, RunnerStatus, SessionId};
 use crate::error::{Error, Result};
 use crate::mcp;
-use crate::workspace::worktree;
+use crate::transport::frames::JobToken;
 
 /// One `--input-format stream-json` user message, newline-terminated.
 // cm:guard the CLI accepts exactly this envelope and rejects a bare string — verified on claude 2.1.251, 2026-08-29. A malformed line is not an error: the process stays alive with nothing to answer, so the turn hangs until the job timeout with no diagnosis anywhere.
@@ -63,7 +63,11 @@ struct Session {
     model: Option<String>,
     head_sha: Option<String>,
     // cm:guard the permit is held by the SESSION, not by the turn — that is invariant 3 of ISS-873. A turn-scoped permit bounds turns, and once a process outlives its turn the same count bounds nothing: three abandoned resident sessions would sit at zero held permits while three processes ran.
-    _permit: Option<tokio::sync::OwnedSemaphorePermit>,
+    permit: Option<tokio::sync::OwnedSemaphorePermit>,
+    /// Which project this session is spent on, for naming the holders when the
+    /// box's permits run out.
+    // cm:guard read together with `permit` and never alone — a chat session sits in this map holding NO permit (`counts_against_session_cap: false`), so a holder list built from the slug alone names projects that are not on the ceiling and hides the one that is (ISS-920 B4).
+    project_slug: Option<String>,
 }
 
 /// The current turn's event sink. Shared by the stdout reader, the completion
@@ -86,9 +90,59 @@ const SESSION_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 // cm:edge lockstep -> packages/core/src/jobs/park-deadline.ts — core's backstop resolves the SAME field with a COALESCE onto the same default, and fires at that value plus a grace. Resolving `0` differently here is what would make the two race: core reaping a park this side still considers live, with `residency_expired` no longer meaning "the runner is gone".
 // cm:guard `Some(0)` means "use the default", NOT "no residency". The config key defaults to 0 and no project has set it, so reading 0 literally would turn residency off for the entire fleet the moment this reader shipped — a regression against the phase 1b const it replaces, and exactly why ISS-873 moved this reader out of phase 3.
 /// Whether this spawn must hold one of the box's duplex session permits.
-// cm:guard the cap covers duplex PIPELINE jobs ONLY. Chat opts out at the spec (`counts_against_session_cap: false`) and must keep doing so: the wait below has no timeout, so a chat turn queued behind parked pipeline sessions is killed by core's 90s `no_client_ack` sweeper before it ever spawns (session 1af837da, 2026-09-04). Widening this to `spec.duplex` alone restores that.
+// cm:guard the cap covers duplex PIPELINE jobs ONLY. Chat opts out at the spec (`counts_against_session_cap: false`) and must keep doing so. The reason is the SWEEPER, not the shape of the wait: core kills a chat turn that has not acked in 90s, and `SESSION_PERMIT_WAIT` is 600s, so a chat turn queued behind parked pipeline sessions dies before it ever spawns whether the wait is bounded or not (session 1af837da, 2026-09-04). ISS-920 gave the wait a bound and that argument did not move — widening this to `spec.duplex` alone still restores the defect.
 fn takes_session_permit(spec: &JobSpec) -> bool {
     spec.duplex && spec.counts_against_session_cap
+}
+
+/// How long a spawn may wait for one of the box's duplex session permits.
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — `PRE_SPAWN_BEAT_BUDGET` is derived from this plus `REPO_LOCK_WAIT`, so the runner still gives up before core condemns the session. Change this and that budget moves with it; the `const _: () = assert!` over there fails the build if it stops.
+// cm:guard equal to `SESSION_IDLE_TIMEOUT` on purpose: a permit is released by a session ending or by its residency deadline, so a wait shorter than a residency window fails jobs a parked session was about to release, and a longer one learns nothing.
+// cm:hack ISS-920 until:`sessionResidencySeconds` is set above 600 on any project — that value is per-project and `pipeline-config-schema.ts` allows up to 3600, so this bound is only the DEFAULT residency window, not every one. Priced: a project that raises the key gets jobs failing `session_permit_saturated` after 600s that would have got a permit at 900s. Nothing sets the key today; the first project that does moves this number or derives it from the resolved value.
+pub const SESSION_PERMIT_WAIT: Duration = SESSION_IDLE_TIMEOUT;
+
+/// Take a duplex session permit, or fail naming the box that is full.
+///
+/// Split out of [`Runner::start`] so the bound can be tested without spawning
+/// `claude`: the wait is the whole behaviour, and the only way to exercise it
+/// through `start` is to hold real sessions. What that seam does NOT pin is the
+/// wiring — that `start` passes `SESSION_PERMIT_WAIT` and not something else.
+// cm:guard the failure text is the ONLY routing lever this has. `session_permit_saturated` is matched by `packages/core/src/pipeline/failure-patterns.ts`, which names the cause `box_session_saturated` and the action `failover`; rewording the prefix silently returns it to `unclassified` and the job goes back to the pool carrying nothing. What `failover` does NOT do, on this project's pool path, is move the job: `readPool` selects on `status`/`held_by`/`retry_after_at` and its own guard forbids adding routing, so `_autoRetry.target` is read only by `resume-policy.ts` on the push dispatcher, and the saturated box may claim the clone again. What this buys is a NAMED cause on the job row where `repo_lock_timeout` + `unclassified` used to be — B3's "distinguishable by whoever re-claims", not B3's "cannot spin". Making a master act on it is the pool-routing work the issue puts out of scope.
+// cm:guard `holders` is a SNAPSHOT taken by the caller BEFORE the wait, never re-read from inside, and both halves are deliberate: reading `self.sessions` while parked on `self.session_sem` would order the two locks against every path that takes them the other way. The rendered text says `at wait start` for the same reason — ten minutes later the set can be entirely different, and an operator reading it as "now" would go looking for the wrong jobs.
+async fn acquire_session_permit(
+    sem: Arc<tokio::sync::Semaphore>,
+    cap: usize,
+    wait: Duration,
+    job_id: &str,
+    holders: Vec<String>,
+) -> Result<tokio::sync::OwnedSemaphorePermit> {
+    if let Ok(permit) = sem.clone().try_acquire_owned() {
+        return Ok(permit);
+    }
+    // cm:guard a parked `awaiting_input` session keeps its permit until its residency deadline, so "no permit" here usually means the ceiling is spent on sessions doing nothing — say so, or the job's silence reads as a hang.
+    tracing::warn!(
+        "[job {job_id}] waiting for a duplex session slot — all {cap} permits held by {} (parked awaiting_input sessions keep theirs until residency ends)",
+        describe_holders(&holders)
+    );
+    match tokio::time::timeout(wait, sem.acquire_owned()).await {
+        Ok(Ok(permit)) => Ok(permit),
+        Ok(Err(e)) => Err(Error::Other(format!("session semaphore closed: {e}"))),
+        Err(_) => Err(Error::Other(format!(
+            "session_permit_saturated: all {cap} duplex permits on this box held after {}s; holders at wait start: {}",
+            wait.as_secs(),
+            describe_holders(&holders)
+        ))),
+    }
+}
+
+/// The holder list as it goes into a log line and into the failure text.
+// cm:guard one renderer for both, because the failure string is asserted byte-for-byte by core's classifier tests and the log line is what an operator greps. Two formatters is two things to keep in step.
+// cm:guard holders go LAST and that costs something: core's `reasonExcerpt` cuts at 200 chars, so on a box raised to `duplex_max_sessions: 10` the tail of the slug list is dropped from `agent_sessions.failureDetail`. Priced rather than reordered — the prefix is what every rule in `failure-patterns.ts` keys on and it has to survive the same cut, `jobs.error` keeps the full text either way, and the log line above is uncut. Moving holders to the front to save them would put untrusted project slugs where the classifier reads its token.
+fn describe_holders(holders: &[String]) -> String {
+    if holders.is_empty() {
+        return "no session this runner still tracks".to_string();
+    }
+    holders.join(", ")
 }
 
 fn resolve_residency(configured: Option<u64>) -> Duration {
@@ -472,6 +526,43 @@ pub struct ClaudeCodeRunner {
     // cm:edge contract -> packages/runner/crates/forge-runner-core/src/config.rs — sized from `duplex_max_sessions`, and it counts live duplex PROCESSES spawned by PIPELINE jobs only. Chat is exempt (`counts_against_session_cap: false`) since 2026-09-04, so this number no longer bounds the box's total claude processes — an abandoned chat session is reaped by its residency ceiling and by nothing else.
     session_sem: Arc<tokio::sync::Semaphore>,
     session_cap: usize,
+    // cm:guard a permit is taken well before its `Session` row lands — `mcp::config::write`, `cmd.spawn` and the first stdin write all sit between them — so `self.sessions` ALONE under-reports the ceiling exactly when it matters. On 2026-09-05 three jobs were claimed within 24 seconds of each other; every one of them would have been invisible here, and the loser would have been told `holders at wait start: no session this runner still tracks` while the box was full. This map is the other half, and `permit_holders` reads both.
+    pending_permits: Arc<std::sync::Mutex<HashMap<String, String>>>,
+}
+
+/// A permit taken but not yet visible as a `Session`, kept countable meanwhile.
+///
+/// Registers on construction and deregisters on `Drop`, so every early return
+/// between the permit and the session row — a failed MCP config write, a spawn
+/// that never happens — clears the entry without a cleanup path of its own.
+struct PendingPermit {
+    map: Arc<std::sync::Mutex<HashMap<String, String>>>,
+    job_id: String,
+}
+
+impl PendingPermit {
+    fn register(
+        map: &Arc<std::sync::Mutex<HashMap<String, String>>>,
+        job_id: &str,
+        slug: Option<&str>,
+    ) -> Self {
+        if let Ok(mut m) = map.lock() {
+            m.insert(job_id.to_string(), slug.unwrap_or("?").to_string());
+        }
+        Self {
+            map: map.clone(),
+            job_id: job_id.to_string(),
+        }
+    }
+}
+
+impl Drop for PendingPermit {
+    // cm:guard `std::sync::Mutex` and not tokio's, precisely so this can run in `Drop`. Nothing awaits while it is held, so it cannot block the runtime, and a tokio mutex would need a detached task here — which is a cleanup that can be dropped on shutdown, i.e. a leak in the one place that exists to prevent one.
+    fn drop(&mut self) {
+        if let Ok(mut m) = self.map.lock() {
+            m.remove(&self.job_id);
+        }
+    }
 }
 
 impl ClaudeCodeRunner {
@@ -486,7 +577,29 @@ impl ClaudeCodeRunner {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             session_sem: Arc::new(tokio::sync::Semaphore::new(session_cap.max(1))),
             session_cap: session_cap.max(1),
+            pending_permits: Arc::new(std::sync::Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Project slugs of everything currently holding a duplex permit.
+    ///
+    /// One project's claims can exhaust a box-level ceiling that another
+    /// project's jobs then fail on, and neither side can see the other from its
+    /// own records (ISS-920 B4). This is what puts the holders in the loser's
+    /// failure text.
+    async fn permit_holders(&self) -> Vec<String> {
+        let mut slugs: Vec<String> = {
+            let map = self.sessions.lock().await;
+            map.values()
+                .filter(|s| s.permit.is_some())
+                .map(|s| s.project_slug.clone().unwrap_or_else(|| "?".to_string()))
+                .collect()
+        };
+        if let Ok(pending) = self.pending_permits.lock() {
+            slugs.extend(pending.values().cloned());
+        }
+        slugs.sort();
+        slugs
     }
 }
 
@@ -714,15 +827,11 @@ impl Runner for ClaudeCodeRunner {
     async fn start(&self, spec: JobSpec, tx: mpsc::Sender<RunnerEvent>) -> Result<SessionId> {
         let job_id = spec.job_id.clone();
 
-        // Resolve repo (worktree if a branch was requested).
-        let repo = spec.repo_path.to_string_lossy().to_string();
-        let effective_repo = match spec.worktree_branch.as_deref() {
-            Some(branch) => worktree::create(&repo, branch, spec.worktree_start_point.as_deref())
-                .await?
-                .to_string_lossy()
-                .to_string(),
-            None => repo,
-        };
+        // cm:guard NOTHING here may touch the repo ROOT. `worktree::create` used to run at this
+        // point and it was the only caller that did; the dispatcher holds the root lock across
+        // this whole call, so every root read left here re-nests that lock around the permit wait
+        // below (ISS-920). `spec.repo_path` arrives already resolved by the caller.
+        let effective_repo = spec.repo_path.to_string_lossy().to_string();
 
         // No skill seeding at job start: the job consumes whatever is already
         // in `<worktree>/.claude/skills/`, delivered ahead of time by the disk
@@ -737,16 +846,6 @@ impl Runner for ClaudeCodeRunner {
             .clone()
             .ok_or_else(|| Error::Other("job has no prompt".into()))?;
 
-        // MCP config (Forge server + overrides) → temp file.
-        let slug = spec.project_slug.as_deref().unwrap_or("");
-        let mcp_path = mcp::config::write(
-            &self.core_url,
-            &self.device_token,
-            slug,
-            spec.mcp_servers_override.as_ref(),
-        )?;
-        let args = build_args(&spec, &mcp_path.to_string_lossy(), &prompt);
-
         let invoked_with_resume = spec.resume_id.is_some();
         // ISS-570 hard-fail on a down `forge` server is scoped to reconciler-driven
         // issue jobs (see mcp_failure_is_fatal). Chat / schedule runs carry no
@@ -758,26 +857,40 @@ impl Runner for ClaudeCodeRunner {
             .map(Duration::from_secs);
 
         // cm:guard acquired BEFORE the spawn and held by the session, so the ceiling counts processes. Acquiring after would let every caller spawn first and queue second, which bounds nothing.
+        // cm:guard and acquired with NO repo lock held — that is the other half, and it lives in `daemon/dispatch.rs`, which now releases the root before it calls this (ISS-920). The wait below is bounded, but a bound is not what makes this safe: for the whole of a bound the lock would still be held and the siblings would still die, just sooner.
         let session_permit = if takes_session_permit(&spec) {
-            let sem = self.session_sem.clone();
-            let permit = match sem.clone().try_acquire_owned() {
-                Ok(p) => p,
-                Err(_) => {
-                    // cm:guard a parked `awaiting_input` session keeps its permit until its residency deadline, so "no permit" here usually means the ceiling is spent on sessions doing nothing — say so, or the job's silence reads as a hang.
-                    tracing::warn!(
-                        "[job {}] waiting for a duplex session slot — all {} permits held (parked awaiting_input sessions keep theirs until residency ends)",
-                        spec.job_id,
-                        self.session_cap
-                    );
-                    sem.acquire_owned()
-                        .await
-                        .map_err(|e| Error::Other(format!("session semaphore closed: {e}")))?
-                }
-            };
-            Some(permit)
+            Some(
+                acquire_session_permit(
+                    self.session_sem.clone(),
+                    self.session_cap,
+                    SESSION_PERMIT_WAIT,
+                    &spec.job_id,
+                    self.permit_holders().await,
+                )
+                .await?,
+            )
         } else {
             None
         };
+        // Countable from HERE, not from the session insertion far below.
+        let pending_permit = session_permit.is_some().then(|| {
+            PendingPermit::register(
+                &self.pending_permits,
+                &spec.job_id,
+                spec.project_slug.as_deref(),
+            )
+        });
+
+        // cm:guard written AFTER the permit. The sibling-unlink hazard that first moved it here is gone — `mcp/config.rs` gives each JOB its own path — but the ordering still earns its place: a spawn that dies at `session_permit_saturated` leaves no token-bearing 0600 file on disk at all, and there is nothing to unlink on a path that was never written.
+        let slug = spec.project_slug.as_deref().unwrap_or("");
+        let mcp_path = mcp::config::write(
+            &self.core_url,
+            spec.pat_token.as_ref().map(JobToken::expose),
+            slug,
+            &spec.job_id,
+            spec.mcp_servers_override.as_ref(),
+        )?;
+        let args = build_args(&spec, &mcp_path.to_string_lossy(), &prompt);
         let turn_started = Arc::new(tokio::sync::Notify::new());
         let turn_done = Arc::new(tokio::sync::Notify::new());
         let residency_secs = spec.session_residency_seconds;
@@ -860,9 +973,13 @@ impl Runner for ClaudeCodeRunner {
                 is_issue_job,
                 model: spec.model.clone(),
                 head_sha: None,
-                _permit: session_permit,
+                permit: session_permit,
+                project_slug: spec.project_slug.clone(),
             },
         );
+        // The session row is now the countable record; hand over rather than
+        // let both report the same permit.
+        drop(pending_permit);
 
         // Shared outcome written incrementally so it survives a reader abort.
         let outcome: Arc<Mutex<Outcome>> = Arc::new(Mutex::new(Outcome::default()));
@@ -1321,8 +1438,6 @@ mod tests {
             permission_mode: None,
             timeout_seconds: None,
             mcp_servers_override: None,
-            worktree_branch: None,
-            worktree_start_point: None,
             resume_id: None,
             agent_session_id: None,
             duplex,
@@ -1412,6 +1527,118 @@ mod tests {
             turn_done: Arc::new(tokio::sync::Notify::new()),
             rx,
         }
+    }
+
+    /// The bound exists so a full box FAILS instead of parking a job forever, and
+    /// the pre-fix code parked it while holding the repo root lock (ISS-920).
+    ///
+    /// `start_paused` makes the 600s wait cost nothing: the only thing this path
+    /// awaits is the semaphore and the timer, so the clock auto-advances.
+    #[tokio::test(start_paused = true)]
+    async fn a_saturated_box_fails_the_spawn_instead_of_waiting_forever() {
+        let sem = Arc::new(tokio::sync::Semaphore::new(2));
+        let _held = sem.clone().acquire_many_owned(2).await.unwrap();
+
+        let started = tokio::time::Instant::now();
+        // cm:guard the OUTER timeout is what makes this test falsifiable. Delete the
+        // bound inside `acquire_session_permit` — the exact regression named above —
+        // and the inner future has no timer left, so under `start_paused` the clock
+        // stops advancing and the test HANGS rather than failing. This timer keeps
+        // advancing, so the removal comes back as a red naming its own rule.
+        let err = tokio::time::timeout(
+            SESSION_PERMIT_WAIT + Duration::from_secs(60),
+            acquire_session_permit(
+                sem,
+                2,
+                SESSION_PERMIT_WAIT,
+                "job-1",
+                vec!["codemap".into(), "forge-dev".into()],
+            ),
+        )
+        .await
+        .expect("the permit wait must be bounded — an unbounded wait is the whole defect")
+        .expect_err("a fully held semaphore must not hand out a permit");
+
+        // cm:guard both directions, and the upper one is the test. `>=` alone passes on a
+        // wait of a day, which is the pre-fix shape this exists to catch; the paused clock
+        // makes the equality exact.
+        assert_eq!(
+            started.elapsed(),
+            SESSION_PERMIT_WAIT,
+            "the wait must be the bound — no longer, and not a fail-fast either"
+        );
+        // cm:guard assert the WHOLE rendered string, not the prefix. It is the input
+        // `packages/core/src/pipeline/failure-patterns.ts` classifies, and a digit run
+        // like `503` in it would match `provider_overloaded` before the saturation
+        // bucket is ever consulted.
+        assert_eq!(
+            err.to_string(),
+            "session_permit_saturated: all 2 duplex permits on this box held after 600s; \
+             holders at wait start: codemap, forge-dev"
+        );
+    }
+
+    /// One project's claims can exhaust a box-level ceiling another project's jobs
+    /// then fail on, with nothing in either record connecting the two (ISS-920 B4).
+    #[tokio::test(start_paused = true)]
+    async fn the_failure_names_the_projects_holding_the_permits() {
+        let sem = Arc::new(tokio::sync::Semaphore::new(1));
+        let _held = sem.clone().acquire_owned().await.unwrap();
+        let err = acquire_session_permit(
+            sem,
+            1,
+            SESSION_PERMIT_WAIT,
+            "job-2",
+            vec!["someone-elses-project".into()],
+        )
+        .await
+        .expect_err("no permit was free");
+        assert!(
+            err.to_string()
+                .contains("holders at wait start: someone-elses-project"),
+            "the loser must be told who is on the ceiling, got: {err}"
+        );
+    }
+
+    /// A permit that IS free is handed over with no wait at all — the bound must
+    /// not become a delay on the common path.
+    #[tokio::test(start_paused = true)]
+    async fn a_free_permit_is_taken_immediately() {
+        let sem = Arc::new(tokio::sync::Semaphore::new(1));
+        let started = tokio::time::Instant::now();
+        let permit = acquire_session_permit(sem, 1, SESSION_PERMIT_WAIT, "job-3", Vec::new())
+            .await
+            .expect("a free permit");
+        assert_eq!(started.elapsed(), Duration::ZERO);
+        drop(permit);
+    }
+
+    /// The holder list is the only thing an operator sees when the box is full, so
+    /// "nobody" must read as a sentence rather than as an empty tail.
+    #[test]
+    fn an_empty_holder_list_still_says_something() {
+        assert_eq!(describe_holders(&[]), "no session this runner still tracks");
+    }
+
+    /// The incident's own shape: jobs claimed seconds apart, each holding a permit
+    /// but none of them far enough through `start` to have a `Session` row yet. Read
+    /// `self.sessions` alone and the loser is told the box is held by nobody.
+    #[tokio::test]
+    async fn a_permit_held_before_its_session_row_exists_still_counts_as_a_holder() {
+        let runner = ClaudeCodeRunner::new("http://core.invalid", "tok", 3);
+        assert!(runner.permit_holders().await.is_empty());
+
+        let a = PendingPermit::register(&runner.pending_permits, "job-a", Some("codemap"));
+        let b = PendingPermit::register(&runner.pending_permits, "job-b", Some("forge-dev"));
+        assert_eq!(runner.permit_holders().await, vec!["codemap", "forge-dev"]);
+
+        drop(a);
+        assert_eq!(runner.permit_holders().await, vec!["forge-dev"]);
+        drop(b);
+        assert!(
+            runner.permit_holders().await.is_empty(),
+            "an early return between the permit and the session row must not leak a holder"
+        );
     }
 
     async fn never_ending() -> tokio::task::JoinHandle<()> {
@@ -1661,7 +1888,8 @@ mod tests {
                 is_issue_job: true,
                 model: None,
                 head_sha: None,
-                _permit: None,
+                permit: None,
+                project_slug: None,
             },
         );
         (runner, rx, turn_done)

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   cardProvider,
   DEFAULT_CAPABILITIES,
+  DIRECTORY_STATUS_META,
   deriveConnectionStatus,
   deriveDirectoryStatus,
   getCapabilities,
@@ -56,8 +57,6 @@ describe("deriveDirectoryStatus", () => {
         card({ status: "attention", meta: { lastHealthStatus: "needs_reauth" } }),
       ),
     ).toBe("needs_reauth");
-    // Wins over an error bucket too — credentials rejected reads as actionable,
-    // not generic failure.
     expect(
       deriveDirectoryStatus(card({ status: "error", meta: { lastHealthStatus: "needs_reauth" } })),
     ).toBe("needs_reauth");
@@ -68,12 +67,28 @@ describe("deriveDirectoryStatus", () => {
         card({ status: "connected", meta: { lastHealthStatus: "needs_reauth" } }),
       ),
     ).toBe("needs_reauth");
-    // Wins over breaker too — needs_reauth is a more specific actionable state.
+    // cm:guard a credential verdict outranks an open breaker — the breaker is a symptom of the refusals and showing Degraded hides the one thing the operator can act on
     expect(
       deriveDirectoryStatus(
         card({ status: "connected", meta: { breakerOpen: true, lastHealthStatus: "needs_reauth" } }),
       ),
     ).toBe("needs_reauth");
+  });
+
+  it("renders needs_scope as its own state, never needs_reauth (ISS-924)", () => {
+    expect(
+      deriveDirectoryStatus(card({ status: "error", meta: { lastHealthStatus: "needs_scope" } })),
+    ).toBe("needs_scope");
+    expect(
+      deriveDirectoryStatus(
+        card({ status: "attention", meta: { lastHealthStatus: "needs_scope" } }),
+      ),
+    ).toBe("needs_scope");
+    expect(
+      deriveDirectoryStatus(
+        card({ status: "connected", meta: { breakerOpen: true, lastHealthStatus: "needs_scope" } }),
+      ),
+    ).toBe("needs_scope");
   });
 
   it("does not light needs_reauth for other lastHealthStatus values", () => {
@@ -106,6 +121,14 @@ describe("deriveConnectionStatus", () => {
     expect(deriveConnectionStatus(conn({ lastHealthStatus: "needs_reauth" }))).toBe(
       "needs_reauth",
     );
+    expect(deriveConnectionStatus(conn({ lastHealthStatus: "needs_scope" }))).toBe("needs_scope");
+  });
+
+  it("gives needs_scope a label of its own, so the two credential states never read alike", () => {
+    expect(DIRECTORY_STATUS_META.needs_scope.label).not.toBe(
+      DIRECTORY_STATUS_META.needs_reauth.label,
+    );
+    expect(DIRECTORY_STATUS_META.needs_scope.icon).toBeTruthy();
   });
 
   it("disabled wins over health; breaker wins over ok", () => {
@@ -142,7 +165,7 @@ describe("isProviderCard / cardProvider", () => {
     expect(isProviderCard("coolify:staging")).toBe(true);
     expect(isProviderCard("postman")).toBe(true);
     expect(isProviderCard("epodsystem")).toBe(true);
-    expect(isProviderCard("github")).toBe(false);
+    expect(isProviderCard("github")).toBe(true);
     expect(isProviderCard("runners")).toBe(false);
   });
 

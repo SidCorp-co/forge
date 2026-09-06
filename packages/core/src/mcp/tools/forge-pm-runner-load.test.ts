@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -32,18 +32,17 @@ const { pmRunnerLoadHandler, pmRunnerLoadInputSchema } = await import('./forge-p
 // cm:why these cases used to run through the deprecated `forge_pm.<action>` shim factory, which was deleted once nothing named it; the handler and its schema are what `forge_project_pm` actually dispatches into, so the coverage moves down one layer instead of leaving with the shim — for runner_load, dispatch and write_decision this file is still the only place that behaviour is tested
 const forgePmRunnerLoadTool = (c: typeof ctx) => ({
   handler: async (args: unknown) =>
-    pmRunnerLoadHandler(c.device, pmRunnerLoadInputSchema.parse(args)),
+    pmRunnerLoadHandler(c.principal, pmRunnerLoadInputSchema.parse(args)),
 });
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const OWNER_ID = '44444444-4444-4444-8444-444444444444';
 const DEVICE_ID = '55555555-5555-4555-8555-555555555555';
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID);
 
 const ctx = {
-  principal: { kind: 'device' as const, device: fakeDevice },
-  device: fakeDevice,
+  principal: fakePrincipal,
   projectSlug: null,
 };
 
@@ -53,10 +52,10 @@ beforeEach(() => {
 });
 
 describe('forge_pm.runner_load', () => {
-  it('rejects non-member', async () => {
+  it('rejects a non-member as not-found (existence-hiding)', async () => {
     const tool = forgePmRunnerLoadTool(ctx);
     queue.push([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
-    await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
+    await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
   // cm:guard the payload carries the raw `inFlight` count and NO capacity field. Core enforces no ceiling since the master began claiming from the pool, so any headroom reported here would be a limit nothing applies — the operator reads the count and concludes, this tool does not conclude for them.

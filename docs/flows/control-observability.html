@@ -1,0 +1,180 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · control-observability — a fault on a box reaches an operator</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --warn:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .warn { color:var(--warn); font-weight:600; }
+  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
+  text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
+  text.m { font-size:11px; fill:var(--mut); }
+  text.t { font:600 12px ui-monospace,Menlo,monospace; }
+  .box { fill:#fff; stroke:var(--line); }
+  .push { fill:#f2f7f4; stroke:#c3ddcf; }
+  .pull { fill:#f5f4fb; stroke:#d2cfe6; }
+  .act { fill:#fdf0f3; stroke:#e3c2cb; }
+  .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
+  .arrowdim { stroke:var(--mut); stroke-width:1.1; fill:none; marker-end:url(#b); stroke-dasharray:4 3; }
+</style>
+<main>
+
+<h1>control-observability — a fault on a box reaches an operator</h1>
+<p class="sub">A job wedges on a runner. This is every hop from that row going stale to a person
+seeing it and reaping it, and what each hop does when it fails. Owners:
+<code>packages/core/src/admin/alert-queries.ts</code> (the one detector),
+<code>packages/web-v2/src/features/operator/</code> (the screen).</p>
+
+<div class="rule"><strong>One detector, two deliveries.</strong> <code>computeAlerts()</code> is
+called by the pull route <em>and</em> by the sweeper — and, since ISS-654, by
+<code>GET /api/admin/overview</code> for the <code>openAlerts</code> KPI too. None of the three
+inlines its own query, so the bell, the tile and the feed cannot disagree about whether something is
+wrong. A sixth alert added to one of them and not the others is not a thing that can happen.</div>
+
+<div class="rule"><strong>Every threshold is a row, not a redeploy.</strong> Each call to
+<code>computeAlerts()</code> re-reads the single <code>admin_thresholds</code> row through
+<code>admin/thresholds.ts</code>, so a <code>PUT /api/admin/thresholds</code> lands on the next
+sweeper tick with nothing restarted. The table ships empty and the declared defaults stand in, which
+is why a deploy that never writes it behaves exactly as before. Crit is <em>derived</em> from the
+configured warn threshold — spend 2×, schedule streak +2, delivery rate 1.6× — so an operator cannot
+invert the pair.</div>
+
+<h2>The hops</h2>
+<svg viewBox="0 0 900 470" role="img" aria-label="A stuck job reaching an operator by both the push and the pull path, and the reap that clears it">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6b645c"/></marker>
+  </defs>
+
+  <rect class="box" x="20" y="24" width="200" height="52" rx="5"/>
+  <text x="34" y="46" class="t">jobs.dispatched_at</text>
+  <text x="34" y="64" class="m">agent died; row never moved</text>
+
+  <rect class="box" x="290" y="24" width="230" height="52" rx="5"/>
+  <text x="304" y="46" class="t">computeAlerts()</text>
+  <text x="304" y="64" class="m">A2: dispatched|running &gt; stuckJobSeconds</text>
+  <path class="arrow" d="M220,50 L288,50"/>
+
+  <rect class="push" x="590" y="8" width="290" height="84" rx="5"/>
+  <text x="604" y="30" class="t">alert-sweeper.ts (push)</text>
+  <text x="604" y="48" class="m">writes notifications, one row per</text>
+  <text x="604" y="64" class="m">platform admin, keyed ops-alert:A2</text>
+  <text x="604" y="82" class="m">auto-resolves when the alert clears</text>
+  <path class="arrow" d="M520,44 L588,40"/>
+
+  <rect class="pull" x="590" y="112" width="290" height="66" rx="5"/>
+  <text x="604" y="134" class="t">GET /api/admin/alerts</text>
+  <text x="604" y="152" class="m">requireAdmin — ADMIN_EMAILS only</text>
+  <text x="604" y="170" class="m">entities[].ref = the job id</text>
+  <path class="arrow" d="M520,58 L588,140"/>
+
+  <rect class="box" x="590" y="206" width="290" height="66" rx="5"/>
+  <text x="604" y="228" class="t">features/operator — alert-feed</text>
+  <text x="604" y="246" class="m">sorted crit &gt; warn &gt; ok</text>
+  <text x="604" y="264" class="m">A2 job entities carry Reap</text>
+  <path class="arrow" d="M735,178 L735,204"/>
+
+  <rect class="act" x="590" y="300" width="290" height="66" rx="5"/>
+  <text x="604" y="322" class="t">POST /api/jobs/:id/cancel</text>
+  <text x="604" y="340" class="m">member role OR ADMIN_EMAILS</text>
+  <text x="604" y="358" class="m">cancelJob: job_events intervention</text>
+  <path class="arrow" d="M735,272 L735,298"/>
+
+  <rect class="box" x="290" y="300" width="230" height="66" rx="5"/>
+  <text x="304" y="322" class="t">roomManager.publish</text>
+  <text x="304" y="340" class="m">job.cancelled →</text>
+  <text x="304" y="358" class="m">project:&lt;projectId&gt;</text>
+  <path class="arrow" d="M588,333 L522,333"/>
+
+  <rect class="box" x="290" y="394" width="230" height="60" rx="5"/>
+  <text x="304" y="416" class="t">routeEvent</text>
+  <text x="304" y="434" class="m">invalidate ['admin','ops']</text>
+  <path class="arrow" d="M405,366 L405,392"/>
+  <path class="arrowdim" d="M520,424 C700,424 735,410 735,368"/>
+  <text x="560" y="446" class="m">the feed refetches; the reaped row is gone</text>
+</svg>
+
+<h2>Tier 3 — the hops with nobody at the end</h2>
+<p>Three sweeper passes clear their own conditions rather than reporting them, because the fault has
+no action a human could take that the system cannot. Each is best-effort: it logs and skips a row it
+cannot handle, and never aborts the tick.</p>
+<pre>
+  pipeline-sweeper tick
+        |
+        |-- runners/ghost-reaper.ts   offline &gt; ghostRunnerOfflineDays,
+        |                             no dispatched/running job, no live session
+        |                             --&gt; setRunnerStatus('disabled', reason:'ghost')
+        |                                 (a flag, never a DELETE — the row carries job attribution
+        |                                  and the uptime timeline; a returning box re-onlines itself
+        |                                  on its next heartbeat)
+        |
+        |-- pipeline/runs-concluded.ts reapConcludedRuns / reapJoblessRuns
+                                      phantom runs --&gt; terminal, via closeRun
+                                      (docs/flows/lifecycle-pipeline.html has the predicates)
+</pre>
+
+<h2>What each hop does when it fails</h2>
+<table>
+  <tr><th>Hop</th><th>Fails how</th><th>What the operator sees</th></tr>
+  <tr>
+    <td><code>computeAlerts()</code></td>
+    <td>a query throws</td>
+    <td>The GET 500s and the feed shows its own <code>ErrorState</code> with a retry. The sweeper
+      swallows the throw into zeros instead, so the <span class="bad">push half goes quiet while the
+      pull half says so</span> — the screen is the honest one.</td>
+  </tr>
+  <tr>
+    <td><code>GET /admin/alerts</code></td>
+    <td>caller is not on <code>ADMIN_EMAILS</code></td>
+    <td>403 <code>ADMIN_ONLY</code>. The <code>/admin</code> route is already 307'd away by
+      <code>src/middleware.ts</code> before this, so in practice only a direct API call sees it.</td>
+  </tr>
+  <tr>
+    <td>the feed</td>
+    <td>one of the four panels rejects</td>
+    <td>That panel alone renders its error and retry. The other three keep their data —
+      <span class="warn">a whole-screen error would cost three working panels to report one broken
+      endpoint</span>.</td>
+  </tr>
+  <tr>
+    <td><code>POST /jobs/:id/cancel</code></td>
+    <td>job already terminal</td>
+    <td>409 <code>NOT_CANCELLABLE</code> → error toast. The alert clears on the next refetch anyway,
+      because the job that raised it is no longer stuck.</td>
+  </tr>
+  <tr>
+    <td>the WS room</td>
+    <td>socket down, or <code>subscribe.denied</code></td>
+    <td>Nothing arrives and nothing says so. The reap's own
+      <code>invalidateQueries(['admin','ops'])</code> is why the screen still updates for the action
+      the operator just took — <span class="bad">the live path is the bonus, never the mechanism</span>.</td>
+  </tr>
+</table>
+
+<h2>The two things nothing type-checks</h2>
+<div class="rule">
+  <p><strong>The room list.</strong> <code>pipeline_run.status_changed</code> publishes to
+  <code>project:&lt;projectId&gt;</code> and to no cross-tenant room. The console therefore joins one
+  room per project it lists, and <code>ws/server.ts</code> <code>canSubscribe</code> admits a
+  <code>project:</code> room on project role <em>or</em> the <code>ADMIN_EMAILS</code> allow-list.
+  Drop that second arm and every room past the operator's own memberships answers
+  <code>subscribe.denied</code>: the numbers stay cross-tenant, the refresh quietly does not.</p>
+  <p><strong>The query key.</strong> <code>routeEvent</code> invalidates by prefix. Every operator
+  query is keyed <code>['admin','ops', …]</code> and nothing enforces that but
+  <code>features/operator/hooks.live.test.tsx</code>, which drives the real hooks and the real router
+  rather than restating either key.</p>
+</div>
+
+</main>

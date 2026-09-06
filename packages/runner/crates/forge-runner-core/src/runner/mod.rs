@@ -45,6 +45,8 @@ pub struct JobSpec {
     pub issue_id: Option<String>,
     /// Pipeline step: triage|clarify|plan|code|review|test|release|fix|pm|custom.
     pub step: String,
+    /// The directory the session runs in, already resolved by the caller.
+    // cm:guard the worktree is created by the CALLER, not here, and this field is where it lands. `JobSpec` used to carry `worktree_branch`/`worktree_start_point` and `ClaudeCodeRunner::start` did the `git worktree add` itself — which put the only root-touching work of a spawn inside a call the dispatcher was holding the repo-root lock across, and the permit wait after it (ISS-920). Two fields saying where a job runs is also two answers to one question. A caller that wants a worktree calls `workspace::worktree::create` under whatever lock protects the root and passes the result here.
     pub repo_path: PathBuf,
     pub prompt: Option<String>,
     pub system_prompt: Option<String>,
@@ -54,10 +56,6 @@ pub struct JobSpec {
     pub permission_mode: Option<String>,
     pub timeout_seconds: Option<u64>,
     pub mcp_servers_override: Option<serde_json::Value>,
-    pub worktree_branch: Option<String>,
-    /// Commit-ish a NEW `worktree_branch` is cut from — `origin/<base>` when the
-    /// daemon resolved one. `None` falls back to the main worktree's HEAD.
-    pub worktree_start_point: Option<String>,
     /// `claudeSessionId` from core — the single source of truth for resume.
     pub resume_id: Option<String>,
     pub agent_session_id: Option<String>,

@@ -26,6 +26,7 @@ import { markUntrusted } from '../../prompt/sanitize.js';
 import {
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
+  principalAuthorDeviceId,
   principalHookActor,
   zodToMcpSchema,
 } from './lib.js';
@@ -38,9 +39,10 @@ import { buildListEnvelope, overfetch } from './list-envelope.js';
  *
  * `documentId` is the comment UUID; `filters.issue` is the issue UUID.
  *
- * Authorship follows the credential: a device principal is written down as
- * that device, and every other principal as the person whose token it is.
- * A comment carries no self-declared "an agent wrote this" marker.
+ * Authorship follows the credential: `authorId` is the person whose token it
+ * is, and `authorDeviceId` marks the comment as an agent's — resolved from the
+ * `job:`/`session:` name a machine token carries, so a person's PAT leaves it
+ * null. A comment carries no self-declared "an agent wrote this" marker.
  */
 
 const filtersSchema = z.object({ issue: z.uuid() }).strict().optional();
@@ -86,7 +88,7 @@ function serialize(
     documentId: row.id,
     issueId: row.issueId,
     authorId: row.authorId,
-    // cm:guard SECOND HALF IN forge-plugin `plugin/src/flow/earned.mjs` — `answered()` asks whether a PERSON replied after a park, and this field is what it asks with now that `is_ai` is gone: non-null means a device token wrote it. Drop it from this projection and every screen the driver parks on becomes unanswerable, because the agent's own comments would read as a person's.
+    // cm:guard SECOND HALF IN forge-plugin `plugin/src/flow/earned.mjs` — `answered()` asks whether a PERSON replied after a park, and this field is what it asks with now that `is_ai` is gone: non-null means an agent wrote it. Drop it from this projection and every screen the driver parks on becomes unanswerable, because the agent's own comments would read as a person's. Since ISS-931 the value comes from the caller's `job:`/`session:` token rather than from a device principal, which is why a PAT-authored agent comment is marked at all — it never was before.
     authorDeviceId: row.authorDeviceId ?? null,
     // ISS-532: comment bodies are untrusted (anyone can post) and reach the
     // agent verbatim via this MCP surface — frame as DATA, never instructions.
@@ -125,7 +127,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Create requires data.issue + data.body. Update requires documentId + data.body (use it to ' +
     'place a <forge-artifact id="…"> once the attachment exists, or to correct a refused body). ' +
     'Delete requires documentId. All actions ' +
-    'enforce project membership via the device principal. Body shape — see guide writing-an-issue: outcome first, trace underneath; mermaid fences render, and an attached .html renders inline. ' +
+    'enforce project membership via the calling principal. Body shape — see guide writing-an-issue: outcome first, trace underneath; mermaid fences render, and an attached .html renders inline. ' +
     'Attachments: for anything bigger than a tiny snippet use the forge_uploads tool ' +
     '(presigned-URL pattern) instead of base64 — base64 in data.attachments[] is slow ' +
     'and burns context tokens. Workflow: (1) create the comment to get its id; (2) call ' +
@@ -137,11 +139,11 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    const { device, principal } = ctx;
+    const { principal } = ctx;
 
     // cm:guard a refused body must reach the agent as BAD_REQUEST with the ELEMENT, ATTRIBUTE and legal set still in the message. That named message is the whole reason this gate produces compliance where a guide produced 14-28%: an agent told only "invalid body" has nothing to change on its next call.
     try {
-      return await run(device, principal, input);
+      return await run(principal, input);
     } catch (err) {
       if (err instanceof BodyInvalidError) {
         throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
@@ -151,11 +153,7 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
   },
 });
 
-async function run(
-  device: { id: string; ownerId: string },
-  principal: Principal,
-  input: ToolInput,
-): Promise<unknown> {
+async function run(principal: Principal, input: ToolInput): Promise<unknown> {
   switch (input.action) {
     case 'list':
       return listAction(principal, input);
@@ -197,14 +195,15 @@ async function run(
         }
       }
 
-      // cm:guard ISS-519 — authorId stays the human owner (device posts on their behalf); authorDeviceId is the AGENT marker, device-principal only — a PAT principal's stub device (stubDeviceForPat) must never be written here (ISS-638)
+      // cm:guard ISS-519 — `authorId` stays the human owner; `authorDeviceId` is the AGENT marker and is resolved from the caller's OWN TOKEN (`job:`/`session:` → the job's or session's `device_id`), never from a principal. A PAT's synthetic device id used to be the hazard here (ISS-638); since ISS-931 there is no synthetic device, and the hazard inverted — a null on an agent's comment makes it read as a person's to `answered()` in forge-plugin.
+      const authorDeviceId = await principalAuthorDeviceId(principal);
       let inserted: CommentRow | undefined;
       let bodyWarnings: string[] = [];
       try {
         const written = await insertComment({
           issueId,
-          authorId: device.ownerId,
-          authorDeviceId: principal.kind === 'device' ? device.id : null,
+          authorId: principal.userId,
+          authorDeviceId,
           body,
           format: input.data?.format,
           parentId: input.data?.parentId ?? null,
@@ -228,7 +227,7 @@ async function run(
       await hooks.emit('commentCreated', {
         issueId,
         projectId,
-        actor: principalHookActor(principal, device),
+        actor: principalHookActor(principal),
         commentId: inserted.id,
         body: inserted.body,
         parentId: inserted.parentId,
@@ -248,8 +247,8 @@ async function run(
             name: d.name,
             mime: d.mime,
             bytes: d.bytes,
-            uploaderId: device.ownerId,
-            uploaderDeviceId: principal.kind === 'device' ? device.id : null,
+            uploaderId: principal.userId,
+            uploaderDeviceId: authorDeviceId,
           });
           persistedAttachments.push(row);
         } catch (err) {
@@ -286,22 +285,17 @@ async function run(
       }
       const comment = await loadCommentForAccess(input.documentId);
 
-      // Author can always delete their own comment; otherwise require
-      // project owner. Mirrors REST `DELETE /api/comments/:id` semantics
-      // with one tightening: an author who has since left the project can
-      // still delete on REST, but here we also require current membership
-      // — MCP traffic comes from device principals, so a stale device on
-      // an ex-member should not be able to mutate the project.
+      // cm:guard the membership check is deliberately STRICTER than REST `DELETE /api/comments/:id`, which lets an author who has since left the project delete anyway: an agent's token outlives its owner's membership, so a comment written by an ex-member's credential must not still mutate. Dropping this to match REST is a widening, not a de-duplication.
       await assertPrincipalIsWriter(principal, comment.projectId);
-      if (comment.authorId !== device.ownerId) {
-        await assertCommentDeletePermission(device.ownerId, comment.projectId);
+      if (comment.authorId !== principal.userId) {
+        await assertCommentDeletePermission(principal.userId, comment.projectId);
       }
 
       await deleteComment(input.documentId);
       await hooks.emit('commentDeleted', {
         issueId: comment.issueId,
         projectId: comment.projectId,
-        actor: principalHookActor(principal, device),
+        actor: principalHookActor(principal),
         commentId: comment.id,
       });
 
@@ -331,7 +325,7 @@ async function listAction(principal: Principal, input: ToolInput): Promise<unkno
   });
 }
 
-// cm:why `update` exists so an agent can place a `<forge-artifact id>` at all (ISS-898 UC5): an attachment needs a comment id to target, so the id the body must reference does not exist until after the create. It writes through the comments service rather than REST `PATCH /api/comments/:id`, which is `requireAuth()` and refuses a device principal.
+// cm:why `update` exists so an agent can place a `<forge-artifact id>` at all (ISS-898 UC5): an attachment needs a comment id to target, so the id the body must reference does not exist until after the create. It writes through the comments service rather than REST `PATCH /api/comments/:id`, which is `requireAuth()` and is not on the MCP plane.
 async function updateAction(principal: Principal, input: ToolInput): Promise<unknown> {
   if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for update');
   const body = input.data?.body;

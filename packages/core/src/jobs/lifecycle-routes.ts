@@ -6,10 +6,11 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { jobEvents, jobs, skills } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { assertPlatformAdmin } from '../middleware/require-admin.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
 import { clearRunnerLimit } from '../runners/apply-runner-limit.js';
@@ -79,11 +80,7 @@ const killAckBodySchema = z
 
 const RUNNABLE_STATUSES = new Set(['dispatched', 'running']);
 
-// ISS-378 — `jobs.error` markers written by the SERVER-side reapers (never by
-// a real runner /fail): the orphan reconcilers + stale-detector. A successful
-// late /complete for a job carrying one of these means the runner actually
-// finished but its report was lost (e.g. to a core outage) and a sweep reaped
-// the row first — so the success is reconcilable, not a conflict.
+// cm:guard these markers are written by SERVER-side reapers only — the orphan reconcilers and the stale-detector — never by a real runner `/fail` (ISS-378). That is what makes a late successful `/complete` on a job carrying one reconcilable rather than a conflict: the runner did finish, its report was lost (a core outage), and a sweep reaped the row first. Add a marker a runner CAN write and this list starts forgiving a genuine contradiction.
 
 async function loadJob(jobId: string) {
   const row = await readJob(jobId);
@@ -193,7 +190,6 @@ jobLifecycleDeviceRoutes.post(
       return row;
     });
     if (!updated) {
-      // Terminal or concurrently acked — idempotent OK, report current state.
       const fresh = await loadJob(id);
       return c.json({
         jobId: fresh.id,
@@ -559,7 +555,9 @@ jobLifecycleUserRoutes.post(
 
     const job = await loadJob(id);
     const access = await loadProjectAccess(job.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    // cm:edge contract -> packages/web-v2/src/features/operator/components/alert-feed.tsx — the A2 reap button posts here for a job in ANY tenant, so a platform admin who is a member of nothing still has to pass; a second `/api/admin/jobs/:id/reap` would be a duplicate cancel path, and `cancelJob` is the one that writes the audited `job_events` row
+    // cm:guard the fallback belongs on THIS route and not on `/:id/resume` — reap is the only action the Operator Ops Console ships, and a widening nothing calls is one nobody notices going wrong
+    if (!projectRoleAtLeast(access.role, 'member')) await assertPlatformAdmin(userId);
 
     // Optional `{ reason }` body; tolerate an empty/absent body (the cancel
     // button sends none) by defaulting to {} before schema-validating.
@@ -570,6 +568,7 @@ jobLifecycleUserRoutes.post(
     try {
       const result = await cancelJob(id, {
         actorUserId: userId,
+        actorAgency: restActor(c).agency,
         reason: parsedBody.data.reason ?? 'manual cancel (REST)',
         source: 'rest',
       });

@@ -10,7 +10,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -45,12 +45,11 @@ const OWNER_ID = '44444444-4444-4444-8444-444444444444';
 const DEVICE_ID = '55555555-5555-4555-8555-555555555555';
 const ROOT_ID = '66666666-6666-4666-8666-666666666666';
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID);
 
-function makeDeviceCtx() {
+function makeAdminCtx() {
   return {
-    principal: { kind: 'device' as const, device: fakeDevice },
-    device: fakeDevice,
+    principal: fakePrincipal,
     projectSlug: null,
   };
 }
@@ -61,8 +60,8 @@ beforeEach(() => {
 });
 
 describe('forge_project_pm (action=snapshot)', () => {
-  it('routes to the pmSnapshot handler when device owner is project member', async () => {
-    const tool = forgeProjectPmTool(makeDeviceCtx());
+  it('routes to the pmSnapshot handler when the caller is a project member', async () => {
+    const tool = forgeProjectPmTool(makeAdminCtx());
     const memberCheck = [{ orgId: 'org-1', memberRole: 'member', orgRole: null }];
     const counts: unknown[] = [];
     const activeJobs: unknown[] = [];
@@ -79,11 +78,11 @@ describe('forge_project_pm (action=snapshot)', () => {
     expect(result.queuedCount).toBe(0);
   });
 
-  it('re-applies project-member auth — non-member is rejected with FORBIDDEN', async () => {
-    const tool = forgeProjectPmTool(makeDeviceCtx());
+  it('re-applies project-member auth — a non-member is rejected as not-found', async () => {
+    const tool = forgeProjectPmTool(makeAdminCtx());
     queue.push([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
     await expect(tool.handler({ action: 'snapshot', projectId: PROJECT_ID })).rejects.toThrow(
-      /FORBIDDEN/,
+      /NOT_FOUND/,
     );
   });
 });
@@ -91,7 +90,7 @@ describe('forge_project_pm (action=snapshot)', () => {
 describe('forge_project_pm (action=graph)', () => {
   // cm:guard `truncated` and `remainingNodes` are a CONTRACT, not a hint: the project-wide branch caps at 200 nodes, and a caller that reads a capped graph as complete draws a dependency conclusion from a subset it cannot tell is a subset (ISS-145)
   it('returns truncated:true + remainingNodes when count exceeds the cap', async () => {
-    const tool = forgeProjectPmTool(makeDeviceCtx());
+    const tool = forgeProjectPmTool(makeAdminCtx());
     const stubNodes = Array.from({ length: 200 }, (_, i) => ({
       id: `${i}`.padStart(8, '0'),
       status: 'open',
@@ -115,7 +114,7 @@ describe('forge_project_pm (action=graph)', () => {
 
   // cm:guard depth=5 must PARSE — the cap was raised from 4 in ISS-145, and a schema that still rejects 5 fails as a validation error the caller reads as their own mistake
   it('accepts depth=5 at the input boundary', async () => {
-    const tool = forgeProjectPmTool(makeDeviceCtx());
+    const tool = forgeProjectPmTool(makeAdminCtx());
     queue.push(
       [{ orgId: 'org-1', memberRole: 'member', orgRole: null }],
       // cm:guard five BFS iterations ask FOUR queries each — deps forward, deps reverse, children, parents — so the twenty empty entries below are one per query, not padding. Change the walk's query count without changing this many and the final nodeRows entry is read as an edge list.
@@ -151,7 +150,7 @@ describe('forge_project_pm (action=graph)', () => {
   });
 
   it('rejects depth=6 at the input boundary', async () => {
-    const tool = forgeProjectPmTool(makeDeviceCtx());
+    const tool = forgeProjectPmTool(makeAdminCtx());
     await expect(
       tool.handler({
         action: 'graph',
@@ -165,14 +164,14 @@ describe('forge_project_pm (action=graph)', () => {
 
 describe('forge_project_pm — required-field validation', () => {
   it('dispatch without issueId throws BAD_REQUEST', async () => {
-    const tool = forgeProjectPmTool(makeDeviceCtx());
+    const tool = forgeProjectPmTool(makeAdminCtx());
     await expect(
       tool.handler({ action: 'dispatch', projectId: PROJECT_ID, jobType: 'code', reason: 'r' }),
     ).rejects.toThrow(/BAD_REQUEST: issueId is required for dispatch/);
   });
 
   it('set_dependency without fromIssueId throws BAD_REQUEST', async () => {
-    const tool = forgeProjectPmTool(makeDeviceCtx());
+    const tool = forgeProjectPmTool(makeAdminCtx());
     await expect(
       tool.handler({
         action: 'set_dependency',
@@ -183,15 +182,16 @@ describe('forge_project_pm — required-field validation', () => {
     ).rejects.toThrow(/BAD_REQUEST: fromIssueId is required for set_dependency/);
   });
 
-  it('write_decision without summary throws BAD_REQUEST', async () => {
-    const tool = forgeProjectPmTool(makeDeviceCtx());
+  // cm:guard `write_decision` is refused on the CREDENTIAL before any field is checked, so there is deliberately no required-field case for it. A refusal naming `summary` to a caller who cannot use the action with every field supplied is the wrong condition (ISS-787/ISS-868).
+  it('write_decision refuses on the credential before it asks for summary', async () => {
+    const tool = forgeProjectPmTool(makeAdminCtx());
     await expect(
       tool.handler({
         action: 'write_decision',
         projectId: PROJECT_ID,
         cause: 'job-failed',
       }),
-    ).rejects.toThrow(/BAD_REQUEST: summary is required for write_decision/);
+    ).rejects.toThrow(/PM_REQUIRES_DEVICE/);
   });
 });
 
@@ -208,13 +208,13 @@ describe('forge_project_pm — action-level auth (cross-tenant)', () => {
         scopes: ['read', 'write'],
         projectIds: ['99999999-9999-4999-8999-999999999999'],
         boundProjectId: null,
+        machine: null,
       },
-      device: fakeDevice,
       projectSlug: null,
     });
     queue.push([{ ownerId: 'other-owner' }], []);
     await expect(tool.handler({ action: 'snapshot', projectId: PROJECT_ID })).rejects.toThrow(
-      /FORBIDDEN/,
+      /NOT_FOUND/,
     );
   });
 });

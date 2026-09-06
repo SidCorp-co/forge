@@ -3,7 +3,7 @@ import { CLASSIFIER_VERSION, classifyFailure, deriveActionFromKind } from './fai
 
 describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
   it('returns CLASSIFIER_VERSION on every result so callers can pin it', () => {
-    expect(CLASSIFIER_VERSION).toBe(10);
+    expect(CLASSIFIER_VERSION).toBe(11);
     expect(classifyFailure({}).version).toBe(CLASSIFIER_VERSION);
     expect(classifyFailure({ error: 'whatever' }).version).toBe(CLASSIFIER_VERSION);
   });
@@ -34,8 +34,7 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
     });
 
     it('the runner token wins over the cc-startup message-count heuristic', () => {
-      // An MCP-init death also looks like diedBeforeFirstToolUse; the explicit
-      // runner token must still route it to infra, not transient-cc.
+      // cm:why an MCP-init death also looks like `diedBeforeFirstToolUse`, so this asserts the token wins over the heuristic rather than agreeing with it by luck.
       const r = classifyFailure({
         error: '[MCP_INIT_FAILED] forge(failed) did not connect at startup',
         signals: { diedBeforeFirstToolUse: true, sessionMessageCount: 1 },
@@ -70,7 +69,6 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
     });
 
     it('[MCP_INIT_FAILED] still wins as infra (runner token beats usage-limit check)', () => {
-      // MCP init failures should not be reclassified as transient-cc.
       const r = classifyFailure({
         error: '[MCP_INIT_FAILED] forge(failed) did not connect at startup',
       });
@@ -169,9 +167,7 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
   });
 
   it('classifies "runner stale" as infra (transient patterns)', () => {
-    // The "runner (offline|stale|disconnected)" branch lives in the
-    // transient→infra bucket; mixed phrasings like "runner stale heartbeat"
-    // can legitimately land on either side of the split and are not asserted.
+    // cm:why only the bare phrasing is asserted — "runner stale heartbeat" straddles the transient and timeout buckets and may legitimately land on either side of the split.
     expect(classifyFailure({ error: 'runner stale' }).kind).toBe('infra');
   });
 
@@ -228,7 +224,7 @@ describe('failure-classifier (v3 taxonomy — ISS-450)', () => {
     });
 
     it('structured signal takes precedence over text patterns', () => {
-      // Text alone would land on infra (transient patterns); the signal wins.
+      // cm:why the text alone lands on infra via the transient patterns, so this asserts the signal overrides it rather than agreeing with it.
       const r = classifyFailure({
         error: 'network error during startup',
         signals: { diedBeforeFirstToolUse: true, sessionMessageCount: 1 },
@@ -382,5 +378,97 @@ describe('duplex session channel failures (RFC 0003)', () => {
     const r = classifyFailure({ error: 'session_checkpoint_deadline_exceeded' });
     expect(r.kind).toBe('infra');
     expect(r.action).toBe('retry');
+  });
+});
+
+describe('failure-classifier — a full box says the box is full (ISS-920)', () => {
+  // cm:guard the literal the runner renders, not an approximation — `acquire_session_permit`'s own test pins the same bytes, and the digits are why: a cap or wait rendering as 503 would be claimed by TRANSIENT_PATTERNS' /\\b50[0-9]\\b/ if this bucket sat behind it.
+  const SATURATED =
+    'session_permit_saturated: all 3 duplex permits on this box held after 600s; ' +
+    'holders at wait start: codemap, forge-dev, forge-dev';
+
+  it('routes a saturated box to failover, not to a retry on the same box', () => {
+    const r = classifyFailure({ error: SATURATED });
+    expect(r.kind).toBe('infra');
+    expect(r.action).toBe('failover');
+    expect(r.cause).toBe('box_session_saturated');
+    expect(r.meta?.needsReview).toBeUndefined();
+  });
+
+  // cm:guard neither verdict has a CAUSE_RULES row and neither needs one, because `reason` IS the excerpt and the token survives the 200-char cut at the front — this pins that round-trip, and without it a reword that pushes the token past the cut drops the session lane to `unclassified` in silence, the way 88 `cc-startup-death` rows did.
+  it('round-trips its own reason, which is why neither cause needs a CAUSE_RULES row', () => {
+    for (const error of [SATURATED, 'repo_lock_timeout: /srv/x is still held after 600s']) {
+      const first = classifyFailure({ error });
+      const second = classifyFailure({ error: first.reason });
+      expect(second.cause).toBe(first.cause);
+    }
+  });
+
+  it('does not let a spend-capped account be claimed by a preflight phrase in its transcript', () => {
+    const r = classifyFailure({
+      error: "preflight failed while the agent was talking\nYou've hit your monthly spend limit",
+    });
+    expect(r.cause).toBe('provider_spend_cap');
+  });
+
+  it('keeps the holders in the reason an operator reads', () => {
+    expect(classifyFailure({ error: SATURATED }).reason).toContain(
+      'holders at wait start: codemap',
+    );
+  });
+
+  // cm:why the permit wait no longer runs under the root lock, so a lock timeout can only mean a sibling genuinely spent the wait in preflight or `git worktree add` — a different event with a different cause.
+  // cm:guard the SIGNAL is what this pins, and without it the whole bucket is dead code: a job that dies in either pre-spawn wait never spawned, and the heartbeat leaves `deriveCcStartupSignals` reading `total > 0, toolCalls === 0` — so `classifyFailure` was taking the cc-startup branch for every real occurrence while a signal-free test said otherwise.
+  it('survives the cc-startup signal a job that never spawned always carries', () => {
+    const signals = { diedBeforeFirstToolUse: true, sessionMessageCount: 0 };
+    expect(classifyFailure({ error: SATURATED, signals }).cause).toBe('box_session_saturated');
+    expect(classifyFailure({ error: SATURATED, signals }).action).toBe('failover');
+    expect(
+      classifyFailure({ error: 'repo_lock_timeout: /srv/x is still held after 600s', signals })
+        .cause,
+    ).toBe('repo_root_contention');
+  });
+
+  // cm:why the holder list is project slugs, so the routed text carries a value nobody validates — `store-403` would otherwise be claimed by PERMISSION_PATTERNS' /\b(401|403)\b/ and routed `retry`, back onto the box that just refused.
+  it('a project slug that looks like an HTTP status does not change the routing', () => {
+    const r = classifyFailure({
+      error:
+        'session_permit_saturated: all 503 duplex permits on this box held after 600s; ' +
+        'holders at wait start: store-403, store-401',
+    });
+    expect(r.cause).toBe('box_session_saturated');
+    expect(r.action).toBe('failover');
+  });
+
+  // cm:guard the same signal takes ISS-808's terminal preflight verdict, which is why that table moved up with the two new ones: a `website` project cannot fix a missing work tree by failing over to another box, and `transient-cc` is exactly that instruction.
+  it('a preflight failure stays terminal under the signal that a slow preflight always sets', () => {
+    const signals = { diedBeforeFirstToolUse: true, sessionMessageCount: 0 };
+    const r = classifyFailure({
+      error: 'preflight_failed: work_tree /srv/x is not a git work tree',
+      signals,
+    });
+    expect(r.kind).toBe('infra');
+    expect(r.action).toBe('terminal');
+    expect(r.cause).toBe('workspace_preflight_failed');
+  });
+
+  // cm:guard `push_credentials` is the preflight prefix TERMINAL_INFRA does not name, so it rides the catch-all — which was the LAST table still below the signal. `LS_REMOTE_TIMEOUT` alone is 20s against a 25s beat, so this is the common case, not the corner.
+  it('a preflight prefix outside the terminal three still reads as a preflight fault', () => {
+    const r = classifyFailure({
+      error: 'preflight_failed: push_credentials: ls-remote timed out after 20s',
+      signals: { diedBeforeFirstToolUse: true, sessionMessageCount: 0 },
+    });
+    expect(r.kind).toBe('infra');
+    expect(r.action).toBe('retry');
+    expect(r.cause).toBe('workspace_preflight_failed');
+  });
+
+  it('a repo-lock timeout is root contention and NOT saturation', () => {
+    const r = classifyFailure({
+      error: 'repo_lock_timeout: /home/forge/projects/codemap is still held after 600s',
+    });
+    expect(r.cause).toBe('repo_root_contention');
+    expect(r.meta?.needsReview).toBeUndefined();
+    expect(r.kind).toBe('infra');
   });
 });

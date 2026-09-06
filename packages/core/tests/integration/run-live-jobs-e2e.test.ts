@@ -17,13 +17,14 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
-  createTestDevice,
   createTestProject,
   createTestUser,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+
+type McpPrincipal = import('../../src/middleware/require-pat.js').McpPrincipal;
 
 type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
@@ -76,7 +77,16 @@ describe('run liveJobs E2E (ISS-789)', () => {
   async function seed(jobStatuses: string[]) {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
-    const device = await createTestDevice(harness.db, owner.id);
+    const principal: McpPrincipal = {
+      kind: 'pat',
+      agency: 'human',
+      userId: owner.id,
+      tokenId: randomUUID(),
+      scopes: ['read', 'write'],
+      projectIds: null,
+      boundProjectId: null,
+      machine: null,
+    };
     const runId = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
@@ -90,12 +100,15 @@ describe('run liveJobs E2E (ISS-789)', () => {
                 '{}'::jsonb, now(), ${owner.id})
       `);
     }
-    return { runId, projectId: project.id, device, owner };
+    return { runId, projectId: project.id, principal, owner };
   }
 
-  async function liveViaMcp(device: unknown, projectId: string): Promise<number | undefined> {
-    // biome-ignore lint/suspicious/noExplicitAny: handler takes the real Device row
-    const res = (await mods.pipelineRunsListHandler(device as any, { projectId } as never)) as {
+  // cm:guard pass the REAL principal type, never a cast — these calls used to hand `pipelineRunsListHandler` a `devices` row behind `as any`, so when ISS-931 changed the parameter to `McpPrincipal` typecheck stayed silent and every case in this file failed in CI with `NOT_FOUND` out of `assertPrincipalIsMember` reading an undefined `userId`.
+  async function liveViaMcp(
+    principal: McpPrincipal,
+    projectId: string,
+  ): Promise<number | undefined> {
+    const res = (await mods.pipelineRunsListHandler(principal, { projectId })) as {
       runs: { liveJobs?: number }[];
     };
     return res.runs[0]?.liveJobs;
@@ -118,20 +131,17 @@ describe('run liveJobs E2E (ISS-789)', () => {
   // cm:guard the production bug this file exists for — a run with one dispatched job reported liveJobs 0 while the independent jobCounts path reported {dispatched: 1}
   it('counts a dispatched job on all three surfaces, agreeing with jobCounts', async () => {
     const s = await seed(['dispatched']);
-    const got = await mods.pipelineRunsGetHandler(
-      { kind: 'device', device: s.device } as never,
-      { runId: s.runId } as never,
-    );
+    const got = await mods.pipelineRunsGetHandler(s.principal, { runId: s.runId });
     expect((got as { jobCounts: Record<string, number> }).jobCounts.dispatched).toBe(1);
 
-    await expect(liveViaMcp(s.device, s.projectId)).resolves.toBe(1);
+    await expect(liveViaMcp(s.principal, s.projectId)).resolves.toBe(1);
     await expect(liveViaRest(s.runId)).resolves.toBe(1);
     await expect(liveViaDetail(s.runId)).resolves.toBe(1);
   });
 
   it.each([['queued'], ['running']])('counts a %s job on all three surfaces', async (status) => {
     const s = await seed([status]);
-    await expect(liveViaMcp(s.device, s.projectId)).resolves.toBe(1);
+    await expect(liveViaMcp(s.principal, s.projectId)).resolves.toBe(1);
     await expect(liveViaRest(s.runId)).resolves.toBe(1);
     await expect(liveViaDetail(s.runId)).resolves.toBe(1);
   });
@@ -140,7 +150,7 @@ describe('run liveJobs E2E (ISS-789)', () => {
     'does not count a terminal %s job',
     async (status) => {
       const s = await seed([status]);
-      await expect(liveViaMcp(s.device, s.projectId)).resolves.toBe(0);
+      await expect(liveViaMcp(s.principal, s.projectId)).resolves.toBe(0);
       await expect(liveViaRest(s.runId)).resolves.toBe(0);
       await expect(liveViaDetail(s.runId)).resolves.toBe(0);
     },
@@ -148,14 +158,14 @@ describe('run liveJobs E2E (ISS-789)', () => {
 
   it('counts only the non-terminal ones in a mixed run', async () => {
     const s = await seed(['done', 'failed', 'dispatched', 'queued', 'done']);
-    await expect(liveViaMcp(s.device, s.projectId)).resolves.toBe(2);
+    await expect(liveViaMcp(s.principal, s.projectId)).resolves.toBe(2);
     await expect(liveViaRest(s.runId)).resolves.toBe(2);
     await expect(liveViaDetail(s.runId)).resolves.toBe(2);
   });
 
   it('reports 0, not null, for a run with no jobs at all', async () => {
     const s = await seed([]);
-    await expect(liveViaMcp(s.device, s.projectId)).resolves.toBe(0);
+    await expect(liveViaMcp(s.principal, s.projectId)).resolves.toBe(0);
     await expect(liveViaRest(s.runId)).resolves.toBe(0);
     await expect(liveViaDetail(s.runId)).resolves.toBe(0);
   });

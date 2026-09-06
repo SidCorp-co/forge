@@ -13,7 +13,7 @@ import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './a
 
 const UNKNOWN_LABEL = 'Unknown';
 
-// cm:guard derive `isAgent` from the actor TYPE; do NOT read `activity_log.actor_agency` here yet — every row written before 2026-09-02 carries that column's `human` DEFAULT, runner writes included, so a feed wired to it would drop the agent marker across all of history. It becomes readable once the owner's agent-identification change decides what the pre-column rows mean. The writing rules are on `pipeline/activity.ts`.
+// cm:guard `isAgent` here is the TYPE-derived FLOOR, and it stays type-derived. The per-row `actor_agency` read lives in `issues/activity-routes.ts:isAgentForRow`, which ORs it over this value — it belongs there and not here because this resolver's map is keyed on `(type, id)` while agency varies row by row for the same person. Never replace this with a column read: on its own the column drops the agent marker across every row written before migration 0193, which is what the owner's 2026-09-02 deferral was protecting. The writing rules are on `pipeline/activity.ts`.
 function unknownActor(type: ActorType, id: string): ResolvedActor {
   return {
     type,

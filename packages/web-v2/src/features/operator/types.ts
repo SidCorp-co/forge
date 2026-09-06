@@ -1,5 +1,19 @@
-/* Operator Ops Console — foundation types. Local mirror of the core
-   `/api/admin/whoami` response; nothing in @forge/contracts yet (ISS-650). */
+/* Operator Ops Console — types. The four cross-tenant response shapes come
+   from `@forge/contracts` (ISS-653), which is the module's only non-local
+   dependency under ISS-649's A->C isolation invariant. `OperatorWhoami` stays
+   local: core declares that two-field answer inline in `admin/routes.ts` and
+   there is no interface to lift. */
+
+export type {
+  AdminAdoptionBucket,
+  AdminAlert,
+  AdminAlertEntity,
+  AdminAlertId,
+  AdminAlertStatus,
+  AdminGlanceMetric,
+  AdminOverview,
+  AdminWorkspaceRow,
+} from "@forge/contracts";
 
 export type OperatorSectionKey =
   | "overview"
@@ -8,6 +22,12 @@ export type OperatorSectionKey =
   | "pipeline"
   | "growth"
   | "mcp-logs";
+
+/** The three windows `GET /api/admin/overview` and `/workspaces` accept. */
+export type OperatorWindow = "24h" | "7d" | "30d";
+
+/** The three orderings `GET /api/admin/workspaces` accepts. */
+export type OperatorWorkspaceSort = "runs" | "spend" | "leadTime";
 
 export interface OperatorWhoami {
   isAdmin: boolean;

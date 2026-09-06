@@ -22,6 +22,7 @@ import {
   buildOriginCondition,
   hydrateCreatorsForIssues,
 } from './creator.js';
+import { listModulesForIssues, resolveModuleIdsTolerant } from './label-service.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
@@ -38,8 +39,7 @@ const searchQuerySchema = z
       .union([z.enum(issueStatuses), z.array(z.enum(issueStatuses))])
       .optional()
       .transform(coerceArray),
-    // ISS-236 — exclude one or more statuses (used by the web list page to
-    // hide drafts from the default "all open" view).
+    // cm:why the web list's default "all open" view is built on this — it hides drafts by exclusion rather than by enumerating every other status, so a status added later shows up there without a change here (ISS-236)
     statusNot: z
       .union([z.enum(issueStatuses), z.array(z.enum(issueStatuses))])
       .optional()
@@ -52,6 +52,11 @@ const searchQuerySchema = z
       .union([z.uuid(), z.array(z.uuid())])
       .optional()
       .transform(coerceArray),
+    // cm:why ISS-593 — `module` takes a NAME or a uuid while `label` above stays uuid-only: a module is the thing a person types, and web-v2 (ISS-594) sends the name it displays
+    module: z
+      .union([z.string().trim().min(1), z.array(z.string().trim().min(1))])
+      .optional()
+      .transform(coerceArray),
     assignee: z.uuid().optional(),
     // cm:why a uuid here means that person's non-agent-channel rows ONLY — see buildCreatedByCondition
     createdBy: z.union([z.uuid(), z.literal('agent')]).optional(),
@@ -61,7 +66,6 @@ const searchQuerySchema = z
     sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
     limit: z.coerce.number().int().min(1).max(200).default(50),
     offset: z.coerce.number().int().min(0).default(0),
-    // ISS-128 — opt-in hydration of `agentSessions[]` + derived `agentStatus`.
     withAgentSessions: z.coerce.boolean().optional().default(false),
     // ISS-437 — opt-in per-issue `estimatedCost` rollup (one grouped query for
     // the whole page; replaces the web list's per-row cost-summary N+1).
@@ -71,6 +75,8 @@ const searchQuerySchema = z
     withFailureInfo: z.coerce.boolean().optional().default(false),
     // cm:why opt-in like withCost/withFailureInfo: it costs ~9 batched round trips, and the callers that need it are the board and the issues list, where a queued-but-undispatched issue otherwise renders as actively worked
     withPipelineHealth: z.coerce.boolean().optional().default(false),
+    // cm:why ISS-594 — the ONLY way a list row learns its modules: this response serializes the raw `issues` row, which has no label columns, and the alternative for web-v2's module cell was one `GET /issues/:id` per row
+    withModules: z.coerce.boolean().optional().default(false),
   })
   .strict();
 
@@ -232,6 +238,24 @@ searchRoutes.get(
       );
     }
 
+    if (q.module && q.module.length > 0) {
+      // cm:guard an unresolvable module short-circuits to NO rows — falling through would drop the narrowing and hand the caller every issue in the project as "the module's issues"
+      const moduleIds = await resolveModuleIdsTolerant(projectId, q.module);
+      if (moduleIds.length === 0) {
+        return c.json(listResponse(c, [], 0, { limit: q.limit, offset: q.offset }));
+      }
+      conditions.push(
+        exists(
+          db
+            .select({ one: sql`1` })
+            .from(issueLabels)
+            .where(
+              and(eq(issueLabels.issueId, issues.id), inArray(issueLabels.labelId, moduleIds)),
+            ),
+        ),
+      );
+    }
+
     const where = conditions.length === 1 ? conditions[0] : and(...conditions);
 
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(issues).where(where);
@@ -286,6 +310,15 @@ searchRoutes.get(
       serialized = serialized.map((r) => ({
         ...r,
         pipelineHealth: healthMap.get(r.id as string) ?? { stage: r.status },
+      }));
+    }
+
+    // cm:guard every row gets the key when the flag is on, `[]` included — a row that omits it is indistinguishable from a row whose hydration failed, and the cell would render a module the issue does not have on the next page's cache hit
+    if (q.withModules && serialized.length > 0) {
+      const moduleMap = await listModulesForIssues(serialized.map((r) => r.id as string));
+      serialized = serialized.map((r) => ({
+        ...r,
+        modules: moduleMap.get(r.id as string) ?? [],
       }));
     }
 

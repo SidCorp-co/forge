@@ -3,12 +3,18 @@
 // Project settings → Labels. List + create (name + #rrggbb color) + delete.
 // Core enforces `color` matches /^#[0-9a-f]{6}$/i, so a native colour input
 // (which always emits #rrggbb) is the simplest valid control.
-import { useState } from "react";
+// Modules are labels too (`kind: 'module'`, ISS-593) and come back on the same
+// endpoint. They are filtered out here and edited in the Modules tab instead —
+// a module's parent and description have no control on this screen, so editing
+// one here could only ever be a partial edit.
+
+import { useMemo, useState } from "react";
 import {
   Badge,
   Button,
   Card,
   CardContent,
+  ConfirmDialog,
   EmptyState,
   ErrorState,
   IconButton,
@@ -16,6 +22,7 @@ import {
   Skeleton,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import type { ProjectLabel } from "../types";
 import { useCreateLabel, useDeleteLabel, useLabels } from "../hooks";
 
 const DEFAULT_COLOR = "#6b7280";
@@ -27,12 +34,18 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
 
   const [name, setName] = useState("");
   const [color, setColor] = useState(DEFAULT_COLOR);
+  const [pendingDelete, setPendingDelete] = useState<ProjectLabel | null>(null);
+
+  const plainLabels = useMemo(
+    () => (labelsQ.data ?? []).filter((l) => l.kind !== "module"),
+    [labelsQ.data],
+  );
 
   function add() {
     const trimmed = name.trim();
     if (!trimmed) return;
     create.mutate(
-      { name: trimmed, color },
+      { name: trimmed, color, kind: "label" },
       { onSuccess: () => { setName(""); setColor(DEFAULT_COLOR); } },
     );
   }
@@ -49,11 +62,11 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
           </div>
         ) : labelsQ.isError ? (
           <ErrorState message={formatApiError(labelsQ.error)} onRetry={() => labelsQ.refetch()} />
-        ) : (labelsQ.data ?? []).length === 0 ? (
+        ) : plainLabels.length === 0 ? (
           <EmptyState title="No labels yet" message="Create a label to organize issues." mascot={false} />
         ) : (
           <ul className="space-y-1.5">
-            {labelsQ.data!.map((label) => (
+            {plainLabels.map((label) => (
               <li
                 key={label.id}
                 className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
@@ -62,16 +75,16 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
                   <span
                     aria-hidden
                     className="h-3 w-3 shrink-0 rounded-full border border-line"
-                    style={{ background: label.color ?? "transparent" }}
+                    style={{ background: label.color }}
                   />
                   <span className="truncate text-fg">{label.name}</span>
-                  {label.color && <Badge tone="neutral">{label.color}</Badge>}
+                  <Badge tone="neutral">{label.color}</Badge>
                 </span>
                 {canEdit && (
                   <IconButton
                     icon="trash"
                     aria-label={`Delete label ${label.name}`}
-                    onClick={() => remove.mutate(label.id)}
+                    onClick={() => setPendingDelete(label)}
                     disabled={remove.isPending}
                   />
                 )}
@@ -112,6 +125,20 @@ export function LabelsTab({ projectId, canEdit }: { projectId: string; canEdit: 
             </Button>
           </div>
         )}
+
+        <ConfirmDialog
+          open={pendingDelete !== null}
+          title="Delete label"
+          message={`${pendingDelete?.name ?? ""} is removed from every issue carrying it. This cannot be undone.`}
+          confirmLabel="Delete"
+          tone="danger"
+          loading={remove.isPending}
+          onConfirm={() => {
+            if (!pendingDelete) return;
+            remove.mutate(pendingDelete.id, { onSettled: () => setPendingDelete(null) });
+          }}
+          onClose={() => setPendingDelete(null)}
+        />
       </CardContent>
     </Card>
   );

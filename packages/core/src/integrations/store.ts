@@ -124,13 +124,7 @@ export async function listActiveBindingsForProjectProvider(
           eq(integrationConnections.active, true),
         ),
       )
-      // Oldest binding first — the MCP resolvers inject row [0] into the single
-      // `mcpServers.<provider>` slot, so the pick must be DETERMINISTIC
-      // (ISS-431): without an ORDER BY the winner was whatever the planner
-      // returned, and adding a second binding could silently flip which
-      // credential agents receive. Oldest-first keeps the originally
-      // configured binding stable; the mcp-preview `shadowed` reason mirrors
-      // this same ordering.
+      // cm:guard never drop this ORDER BY — the MCP resolvers inject row [0] into the single `mcpServers.<provider>` slot, so an unordered pick lets a newly added second binding silently flip which credential agents receive (ISS-431); mcp-preview's `shadowed` reason mirrors oldest-first
       .orderBy(asc(integrationBindings.createdAt))
   );
 }
@@ -365,6 +359,30 @@ export async function listBindingsForProject(projectId: string): Promise<Binding
     )
     .where(eq(integrationBindings.projectId, projectId))
     .orderBy(desc(integrationBindings.createdAt));
+}
+
+/**
+ * Bindings of MANY connections in one round trip, keyed by connection id.
+ * Connection rows only, no join: the directory already holds the connections
+ * it asked about.
+ */
+// cm:guard one query for the whole page, never one per card — the connections directory renders every credential a principal can see (17 on forge-beta today), and a per-card fetch is an N+1 that also arrives out of order
+export async function listBindingsByConnectionIds(
+  connectionIds: string[],
+): Promise<Map<string, IntegrationBindingRow[]>> {
+  const out = new Map<string, IntegrationBindingRow[]>();
+  if (connectionIds.length === 0) return out;
+  const rows = await db
+    .select()
+    .from(integrationBindings)
+    .where(inArray(integrationBindings.connectionId, connectionIds))
+    .orderBy(desc(integrationBindings.createdAt));
+  for (const row of rows) {
+    const list = out.get(row.connectionId);
+    if (list) list.push(row);
+    else out.set(row.connectionId, [row]);
+  }
+  return out;
 }
 
 /** All bindings (+ connections) for one connection, any active state, newest first. */

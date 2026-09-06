@@ -27,7 +27,7 @@ import { BODY_FORMATS } from '../body/formats.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
 import type { ReleaseNotes } from '../issues/release-notes.js';
 import { FAILURE_CAUSES, type FailureCause } from '../pipeline/failure-causes.js';
-import { activityLog } from './schema-activity.js';
+import { activityLog, actorAgencies } from './schema-activity.js';
 
 // cm:edge naming -> packages/core/src/db/schema-activity.ts — re-exported so that `activity_log` moving out of this file is invisible to its ten importers. Drop this line and every one of them breaks at once; that is the only reason it is here, not a licence to grow it into a barrel.
 export {
@@ -41,14 +41,17 @@ export {
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: text('email').notNull().unique(),
-  // Nullable since 0037: OAuth-only users have no local password. The
-  // /auth/local handler rejects rows with a null hash so password-less
-  // accounts cannot be brute-forced via the email/password endpoint.
+  /**
+   * Nullable since 0037: OAuth-only users have no local password. `/auth/local`
+   * rejects a null hash, so a password-less account cannot be brute-forced
+   * through the email/password endpoint.
+   */
   passwordHash: text('password_hash'),
   emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
-  // Last time the user re-entered their password via POST /api/auth/reauth.
-  // Drives the requireFreshAuth() middleware; nullable for users that have
-  // never re-authed (treated as stale → forces a prompt). See migration 0065.
+  /**
+   * Last `POST /api/auth/reauth`. Drives `requireFreshAuth()`; null for a user
+   * who never re-authed, which reads as stale and forces a prompt (0065).
+   */
   lastFreshAuthAt: timestamp('last_fresh_auth_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -84,8 +87,7 @@ export const deviceLoginCodes = pgTable(
     deviceLabel: text('device_label').notNull(),
     devicePlatform: text('device_platform').notNull(),
     deviceHostname: text('device_hostname'),
-    // Stable machine id (sha256 of /etc/machine-id) carried init→approve→issue
-    // so browser-approve login dedups by machine like the paste-code flow.
+    /** sha256 of `/etc/machine-id`, carried init→approve→issue so browser-approve dedups by machine like the paste-code flow. */
     machineId: text('machine_id'),
     createdIp: text('created_ip'),
     createdUserAgent: text('created_user_agent'),
@@ -124,20 +126,23 @@ export const userPreferences = pgTable('user_preferences', {
     .references(() => users.id, { onDelete: 'cascade' }),
   theme: text('theme').notNull().default('system'),
   language: text('language').notNull().default('en'),
-  // Notification delivery preference: when false, suppress in-app `mention`
-  // notifications for this user (gated in createNotification). `mention` is the
-  // only user-initiated notification type currently produced, so it is the only
-  // honest opt-out we expose — no fake controls for unimplemented channels.
+  /**
+   * False suppresses in-app `mention` notifications (gated in `createNotification`).
+   * `mention` is the only user-initiated type produced, so it is the only opt-out
+   * offered — no controls for channels that do not exist.
+   */
   notifyOnMention: boolean('notify_on_mention').notNull().default(true),
-  // Identity of the newest "What's New" entry this user has seen (the changelog
-  // version, or `unreleased:<hash>` for the moving [Unreleased] section). Drives
-  // the nav badge: shown while this differs from the current top entry. Nullable
-  // — absent means the user has never opened the feed (ISS-384).
+  /**
+   * Newest "What's New" entry seen: a changelog version, or `unreleased:<hash>`
+   * for the moving [Unreleased] section. The nav badge shows while this differs
+   * from the top entry; null means the feed was never opened (ISS-384).
+   */
   lastSeenWhatsNew: text('last_seen_whats_new'),
-  // The org the user is currently "working in" (ISS-469 global org switcher).
-  // Nullable — null means no explicit choice yet; the client resolves that to
-  // the personal org. `set null` on org delete so a removed org clears the
-  // pointer rather than blocking the delete or dangling.
+  /**
+   * The org being "worked in" (ISS-469). Null means no explicit choice and the
+   * client resolves it to the personal org; `set null` on org delete so a removed
+   * org clears the pointer rather than blocking the delete or dangling.
+   */
   activeOrgId: uuid('active_org_id').references(() => organizations.id, {
     onDelete: 'set null',
   }),
@@ -163,21 +168,12 @@ export const refreshTokens = pgTable(
   }),
 );
 
-// Every project belongs to exactly ONE org (`projects.org_id` NOT NULL). Each
-// user gets a personal org at signup (and via the 0106 backfill); team orgs are
-// created explicitly. Org owner/admin derive an implicit project `admin` role
-// on every project in the org; org `member` derives NOTHING — project access
-// for plain members still requires a project_members row (or being in a
-// project of an org they admin). The single resolution rule lives in
-// `lib/authz.ts effectiveProjectRole` — do not re-implement it.
+// cm:guard org role does NOT imply project access on its own: owner/admin derive an implicit project `admin`, plain `member` derives nothing and still needs a `project_members` row. Resolve it through `lib/authz.ts effectiveProjectRole` — a second implementation grants or denies differently and nothing compares the two.
 
 export const orgMemberRoles = ['owner', 'admin', 'member'] as const;
 export type OrgMemberRole = (typeof orgMemberRoles)[number];
 
-// Soft "working lens(es)" an org owner/admin assigns to a member — orthogonal to
-// the permission `role`. Multi-valued; shapes ONLY how the interactive agent
-// answers (altitude/voice), never permissions. Empty = default (product /
-// non-technical voice). See prompt/system.ts buildChatPreamble.
+// cm:guard a lens shapes ONLY how the interactive agent answers (altitude and voice) and NEVER permissions — it is orthogonal to `role`, so a gate that reads a lens grants access an org admin never assigned; empty means the default product voice, not the absence of a right
 export const memberLenses = ['technical', 'product'] as const;
 export type MemberLens = (typeof memberLenses)[number];
 
@@ -187,8 +183,7 @@ export const organizations = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     slug: text('slug').notNull().unique(),
     name: text('name').notNull(),
-    // Personal orgs are auto-created (one per user, partial-unique below),
-    // cannot be deleted, and are the default target for project creation.
+    // cm:guard one per user, held by the partial unique index below and by nothing in the application — a second personal org for a user is an insert error, not a validation message, and code that creates orgs must be ready for that.
     isPersonal: boolean('is_personal').notNull().default(false),
     createdBy: uuid('created_by')
       .notNull()
@@ -822,6 +817,8 @@ export const kernelTransitions = pgTable(
     toStatus: text('to_status').notNull(),
     reason: text('reason'),
     actorType: text('actor_type', { enum: kernelTransitionActorTypes }).notNull(),
+    // cm:guard the SECOND actor axis, and it is not a refinement of the first. `actor_type` answers who OWNS the write (a job or session token transitions under its creator, so `user` is true); `actor_agency` answers who was at the keyboard. They disagree for exactly the rows the ISS-786/812 gates exist to catch, and nothing type-checks that a writer keeps them in step — `KernelActor.agency` is required for that reason, so the compiler names an omitting call site instead of letting it record the default. Same shape as `activity_log.actor_agency` (ISS-927 finished the axis that migration 0193 started).
+    actorAgency: text('actor_agency', { enum: actorAgencies }).notNull().default('human'),
     actorId: uuid('actor_id'),
     source: text('source').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1164,6 +1161,10 @@ export const comments = pgTable(
   }),
 );
 
+// cm:why ISS-593 — a module IS a label rather than a table of its own, so every path that already attaches, filters and lists labels carries modules for free; `kind` is the only thing that separates them.
+export const labelKinds = ['label', 'module'] as const;
+export type LabelKind = (typeof labelKinds)[number];
+
 export const labels = pgTable(
   'labels',
   {
@@ -1173,10 +1174,18 @@ export const labels = pgTable(
       .references(() => projects.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     color: text('color').notNull(),
+    // cm:guard `text(col,{enum})` with a DEFAULT, matching `issues.status` — the default is load-bearing: every row that existed before ISS-593 and every insert that predates the widened schema must read back as a plain label, never as a module.
+    kind: text('kind', { enum: labelKinds }).notNull().default('label'),
+    // cm:why modules only — a self-referencing parent gives the taxonomy its hierarchy without a second table. Cycle-freedom is NOT expressible here and is enforced in `labels/module-service.ts`; the FK only guarantees the parent exists.
+    parentId: uuid('parent_id').references((): AnyPgColumn => labels.id, { onDelete: 'set null' }),
+    description: text('description'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     projectNameUq: uniqueIndex('labels_project_id_name_uq').on(t.projectId, t.name),
+    parentIdx: index('labels_parent_id_idx').on(t.parentId),
+    // cm:guard the CHECK is the backstop, not a duplicate of the TS enum: `text(..., { enum })` is compile-time only and emits no constraint, so any path that inserts a label without going through `labels/routes.ts` can write a kind that is neither — and such a row filters as no module and renders as no label. Same reason `comments_format_chk` and `issues_complexity_chk` exist.
+    kindChk: check('labels_kind_chk', sql`${t.kind} IN ('label', 'module')`),
   }),
 );
 
@@ -1189,10 +1198,14 @@ export const issueLabels = pgTable(
     labelId: uuid('label_id')
       .notNull()
       .references(() => labels.id, { onDelete: 'cascade' }),
+    // cm:why ISS-593 — the issue's PRIMARY module, and the single source of truth for it: no column on `issues`, no second table. A plain label is never primary; that half is the service layer's, because SQL cannot see `labels.kind` from this row.
+    isPrimary: boolean('is_primary').notNull().default(false),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.issueId, t.labelId] }),
     labelIdx: index('issue_labels_label_id_idx').on(t.labelId),
+    // cm:guard the DB backstop for "at most one primary module per issue" — the service layer enforces the same rule with a typed error, and this index is what holds when a writer bypasses it. Partial, so the false rows (all of them, by default) are not indexed.
+    primaryUq: uniqueIndex('issue_labels_primary_uq').on(t.issueId).where(sql`is_primary = true`),
   }),
 );
 
@@ -1306,6 +1319,12 @@ export const issueAttachmentsRelations = relations(issueAttachments, ({ one }) =
 
 export const labelsRelations = relations(labels, ({ one, many }) => ({
   project: one(projects, { fields: [labels.projectId], references: [projects.id] }),
+  parent: one(labels, {
+    fields: [labels.parentId],
+    references: [labels.id],
+    relationName: 'labelHierarchy',
+  }),
+  children: many(labels, { relationName: 'labelHierarchy' }),
   issues: many(issueLabels),
 }));
 
@@ -2296,10 +2315,8 @@ export const sessionAttachmentsRelations = relations(sessionAttachments, ({ one 
   }),
 }));
 
-// v1 EPIC 5 (ISS-274) — per-project chat/runtime config. One row per project,
-// upserted via PUT /api/app-config/:projectId. `chatProviderId` is free-form
-// text until EPIC 1 (ISS-270) ships the chat-provider registry that validates
-// it; consumers must fall back to env defaults when the provider is unknown.
+// cm:guard `app_config` is keyed one row PER PROJECT — fleet-wide operator policy has no row here and belongs in `admin_thresholds` instead (ISS-654)
+// cm:guard `chatProviderId` is free-form text with no registry validating it, so every consumer must fall back to the env default on an unknown provider rather than trusting the column (ISS-270)
 export const memoryModels = ['flat', 'chunked'] as const;
 export type MemoryModel = (typeof memoryModels)[number];
 

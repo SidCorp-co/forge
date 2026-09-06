@@ -26,6 +26,46 @@ type WorkspaceRow = {
 };
 type WorkspaceList = { items: WorkspaceRow[] };
 
+/** A job past A2's stale window at `dispatched` — the status the replaced
+ *  running-only approximation of `openAlerts` could not see. */
+async function seedStuckDispatchedJob(harness: TestDatabase): Promise<void> {
+  const owner = await createTestUser(harness.db);
+  const project = await createTestProject(harness.db, owner.id);
+  const runId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
+    VALUES (${runId}, ${project.id}, 'system', 'running', now())
+  `);
+  await harness.db.execute(sql`
+    INSERT INTO jobs (id, project_id, pipeline_run_id, type, status, created_by, queued_at, dispatched_at)
+    VALUES (${randomUUID()}, ${project.id}, ${runId}, 'drive', 'dispatched', ${owner.id},
+            now() - interval '3 hours', now() - interval '2 hours')
+  `);
+}
+
+async function insertIssue(
+  harness: TestDatabase,
+  args: { projectId: string; createdById: string; status?: string; issSeq?: number },
+) {
+  const id = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
+    VALUES (${id}, ${args.projectId}, ${args.issSeq ?? 1}, ${'t'}, ${args.status ?? 'open'}, ${args.createdById})
+  `);
+  return id;
+}
+
+async function insertActivity(
+  harness: TestDatabase,
+  args: { issueId: string; actorId: string; action: string; payload: object; createdAt?: string },
+) {
+  const created = args.createdAt ? sql`${args.createdAt}::timestamptz` : sql`now()`;
+  await harness.db.execute(sql`
+    INSERT INTO activity_log (id, issue_id, actor_type, actor_id, action, payload, created_at)
+    VALUES (${randomUUID()}, ${args.issueId}, ${'user'}, ${args.actorId}, ${args.action}, ${JSON.stringify(args.payload)}::jsonb, ${created})
+  `);
+}
+
 describe('admin aggregate routes (ISS-651)', () => {
   let harness: TestDatabase;
   let app: Hono<{ Variables: RequestIdVars }>;
@@ -46,9 +86,7 @@ describe('admin aggregate routes (ISS-651)', () => {
     process.env.APP_BASE_URL ??= 'http://localhost:3000';
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
-    // env.ts freezes `env` at first import — this MUST be set before the
-    // dynamic import below (unblocks ISS-816's admin-credential gap for
-    // THIS suite; see the plan handoff).
+    // cm:guard `env.ts` freezes `env` at first import, so ADMIN_EMAILS must be set BEFORE the dynamic import below — set it after and requireAdmin reads an empty allow-list and every case in this file 403s (ISS-816)
     process.env.ADMIN_EMAILS = ADMIN_EMAIL;
 
     const { adminAggregateRoutes } = await import('../../src/admin/aggregate-routes.js');
@@ -80,35 +118,6 @@ describe('admin aggregate routes (ISS-651)', () => {
   async function adminToken() {
     const admin = await verifiedUser(ADMIN_EMAIL);
     return signUserToken(admin.id);
-  }
-
-  async function insertIssue(args: {
-    projectId: string;
-    createdById: string;
-    status?: string;
-    issSeq?: number;
-  }) {
-    const id = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
-      VALUES (${id}, ${args.projectId}, ${args.issSeq ?? 1}, ${'t'}, ${args.status ?? 'open'}, ${args.createdById})
-    `);
-    return id;
-  }
-
-  async function insertActivity(args: {
-    issueId: string;
-    actorId: string;
-    action: string;
-    payload: object;
-    createdAt?: string;
-  }) {
-    const id = randomUUID();
-    const created = args.createdAt ? sql`${args.createdAt}::timestamptz` : sql`now()`;
-    await harness.db.execute(sql`
-      INSERT INTO activity_log (id, issue_id, actor_type, actor_id, action, payload, created_at)
-      VALUES (${id}, ${args.issueId}, ${'user'}, ${args.actorId}, ${args.action}, ${JSON.stringify(args.payload)}::jsonb, ${created})
-    `);
   }
 
   describe('auth gate', () => {
@@ -171,6 +180,17 @@ describe('admin aggregate routes (ISS-651)', () => {
         expect(Array.isArray(glance?.spark)).toBe(true);
       }
       expect(body.glance.leadTimeMinutes?.spark).toHaveLength(24);
+    });
+    // cm:guard ISS-654 — `openAlerts` is the count of non-`ok` alerts from the SHARED `computeAlerts`, not a second definition. The approximation it replaced counted `status='running'` jobs only, so a job stuck at `dispatched` — which A2 reports and an operator has to act on — left the tile reading "0 · nothing needs you" above a red alert row.
+    it('counts a `dispatched` stuck job, which the running-only approximation could not see', async () => {
+      await seedStuckDispatchedJob(harness);
+
+      const res = await app.request('/api/admin/overview?window=24h', {
+        headers: { authorization: `Bearer ${await adminToken()}` },
+      });
+      const body = (await res.json()) as { kpis: { openAlerts: number } };
+
+      expect(body.kpis.openAlerts).toBeGreaterThanOrEqual(1);
     });
 
     it('cross-tenant: activeWorkspaces + spend span every project', async () => {
@@ -263,7 +283,7 @@ describe('admin aggregate routes (ISS-651)', () => {
         INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
         VALUES (${randomUUID()}, ${projectB.id}, ${'system'}, ${'completed'}, now())
       `);
-      await insertIssue({ projectId: projectA.id, createdById: owner.id, status: 'open' });
+      await insertIssue(harness, { projectId: projectA.id, createdById: owner.id, status: 'open' });
 
       const token = await adminToken();
       const res = await app.request('/api/admin/workspaces?window=7d&sort=runs&limit=10', {
@@ -306,9 +326,9 @@ describe('admin aggregate routes (ISS-651)', () => {
     it('computes medianLeadTimeMin from the first in_progress/approved transition', async () => {
       const owner = await verifiedUser('leadtime-owner@test.forge.local');
       const project = await createTestProject(harness.db, owner.id);
-      const issueId = await insertIssue({ projectId: project.id, createdById: owner.id });
+      const issueId = await insertIssue(harness, { projectId: project.id, createdById: owner.id });
 
-      await insertActivity({
+      await insertActivity(harness, {
         issueId,
         actorId: owner.id,
         action: 'issue.statusChanged',

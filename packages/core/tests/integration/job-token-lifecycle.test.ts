@@ -25,7 +25,7 @@ let applyKernelTransition: typeof import('../../src/lifecycle/transition.js').ap
 let verifyPat: typeof import('../../src/auth/pat.js').verifyPat;
 let countActivePatsForUser: typeof import('../../src/auth/pat.js').countActivePatsForUser;
 let mintPat: typeof import('../../src/auth/pat.js').mintPat;
-let authenticatePat: typeof import('../../src/middleware/require-pat-or-device.js').authenticatePat;
+let authenticatePat: typeof import('../../src/middleware/require-pat.js').authenticatePat;
 let principalActor: typeof import('../../src/mcp/tools/lib.js').principalActor;
 let dbMod: typeof import('../../src/db/client.js');
 let schema: typeof import('../../src/db/schema.js');
@@ -51,7 +51,7 @@ beforeAll(async () => {
     import('../../src/auth/pat.js'),
     import('../../src/db/client.js'),
     import('../../src/db/schema.js'),
-    import('../../src/middleware/require-pat-or-device.js'),
+    import('../../src/middleware/require-pat.js'),
     import('../../src/mcp/tools/lib.js'),
   ]);
   authenticatePat = mw.authenticatePat;
@@ -213,9 +213,7 @@ describe('the token dies with the job, by every route a job can end', () => {
 
 describe('a job token authenticates as an agent, not as the human who owns it', () => {
   // cm:guard assert through `principalActor`, not on `agency` — the field is not the gate. `mark_merged` and `checkTransitionEvidence` both branch on `principalActor(...).type === 'device'`, so that expression IS the ISS-786/812 scope decision and is the only thing worth pinning. A test that asserted `agency === 'agent'` would stay green through a `principalActor` that ignored the field entirely.
-  const gateApplies = (principal: unknown) =>
-    principalActor(principal as never, { id: randomUUID(), ownerId: randomUUID() } as never)
-      .type === 'device';
+  const gateApplies = (principal: unknown) => principalActor(principal as never).type === 'device';
 
   const ctx = () =>
     ({ header: () => undefined, req: { header: () => undefined } }) as unknown as Parameters<

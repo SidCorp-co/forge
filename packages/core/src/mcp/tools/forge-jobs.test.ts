@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakeContext, makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -77,7 +77,7 @@ const ISSUE_ID = '33333333-3333-4333-8333-333333333333';
 const OWNER_ID = '44444444-4444-4444-8444-444444444444';
 const DEVICE_ID = '55555555-5555-4555-8555-555555555555';
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID);
 
 const baseJobRow = {
   id: JOB_ID,
@@ -125,8 +125,8 @@ const mockJobThenMember = (over: Record<string, unknown> = {}) => {
 };
 
 describe('forge_jobs.list', () => {
-  it('lists jobs scoped by project + filters when device owner is member', async () => {
-    const tool = forgeJobsListTool(fakeDevice);
+  it('lists jobs scoped by project + filters when the caller is a member', async () => {
+    const tool = forgeJobsListTool(makeFakeContext(fakePrincipal));
     mockMemberThenJobs([baseJobRow]);
 
     const result = (await tool.handler({
@@ -142,18 +142,18 @@ describe('forge_jobs.list', () => {
 
   // cm:guard the gate reason must reach the CALLER, not just exist server-side — `queued` is the status of a job about to run AND of one blocked for weeks, and every diagnosis of the latter before this went through a hand-written database script
   it('attaches gateReason to queued rows', async () => {
-    const tool = forgeJobsListTool(fakeDevice);
+    const tool = forgeJobsListTool(makeFakeContext(fakePrincipal));
     mockMemberThenJobs([baseJobRow]);
-    gateReasonsMock.mockResolvedValueOnce(new Map([[JOB_ID, 'blocked_by']]));
+    gateReasonsMock.mockResolvedValueOnce(new Map([[JOB_ID, 'runner_stale']]));
 
     const result = (await tool.handler({ projectId: PROJECT_ID })) as JobsPage;
 
     expect(gateReasonsMock).toHaveBeenCalledWith(PROJECT_ID);
-    expect(result.jobs[0]?.gateReason).toBe('blocked_by');
+    expect(result.jobs[0]?.gateReason).toBe('runner_stale');
   });
 
   it('reports gateReason null for a queued job that is merely awaiting its turn', async () => {
-    const tool = forgeJobsListTool(fakeDevice);
+    const tool = forgeJobsListTool(makeFakeContext(fakePrincipal));
     mockMemberThenJobs([baseJobRow]);
     gateReasonsMock.mockResolvedValueOnce(new Map());
 
@@ -164,7 +164,7 @@ describe('forge_jobs.list', () => {
 
   // cm:guard skip the gate query when nothing is queued — a terminal-only page must not pay for a scan whose every answer would be omitted anyway
   it('does not query gates when no row is queued', async () => {
-    const tool = forgeJobsListTool(fakeDevice);
+    const tool = forgeJobsListTool(makeFakeContext(fakePrincipal));
     mockMemberThenJobs([{ ...baseJobRow, status: 'done' as const }]);
 
     const result = (await tool.handler({ projectId: PROJECT_ID })) as JobsPage;
@@ -173,15 +173,15 @@ describe('forge_jobs.list', () => {
     expect(result.jobs[0]).not.toHaveProperty('gateReason');
   });
 
-  it('rejects non-member with FORBIDDEN', async () => {
-    const tool = forgeJobsListTool(fakeDevice);
+  it('rejects a non-member as not-found (existence-hiding)', async () => {
+    const tool = forgeJobsListTool(makeFakeContext(fakePrincipal));
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
 
-    await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
+    await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
   it('projects a body-free column set (no payload/promptBlocks/failureMeta/userPromptSnapshot/error)', async () => {
-    const tool = forgeJobsListTool(fakeDevice);
+    const tool = forgeJobsListTool(makeFakeContext(fakePrincipal));
     mockMemberThenJobs([baseJobRow]);
 
     await tool.handler({ projectId: PROJECT_ID });
@@ -194,7 +194,7 @@ describe('forge_jobs.list', () => {
   });
 
   it('caps the total response size and flags truncation for a large list', async () => {
-    const tool = forgeJobsListTool(fakeDevice);
+    const tool = forgeJobsListTool(makeFakeContext(fakePrincipal));
     mockMember();
     const fatRows = Array.from({ length: 200 }, (_, i) => ({
       ...baseJobRow,
@@ -219,7 +219,7 @@ describe('forge_jobs.list', () => {
   });
 
   it('returns the plain { jobs } shape when under the size budget', async () => {
-    const tool = forgeJobsListTool(fakeDevice);
+    const tool = forgeJobsListTool(makeFakeContext(fakePrincipal));
     mockMemberThenJobs([baseJobRow, { ...baseJobRow, id: JOB_ID2 }]);
 
     const result = (await tool.handler({ projectId: PROJECT_ID })) as {
@@ -234,8 +234,7 @@ describe('forge_jobs.list', () => {
 
 function makeDeviceCtx() {
   return {
-    principal: { kind: 'device' as const, device: fakeDevice },
-    device: fakeDevice,
+    principal: fakePrincipal,
     projectSlug: null,
   };
 }
@@ -249,13 +248,13 @@ const makePatCtx = (projectIds: string[] | null) => ({
     scopes: ['read', 'write'],
     projectIds,
     boundProjectId: null,
+    machine: null,
   },
-  device: fakeDevice,
   projectSlug: null,
 });
 
 describe('forge_jobs.get', () => {
-  it('returns the job + agentSessionId when device owner is member', async () => {
+  it('returns the job + agentSessionId when the caller is a member', async () => {
     const tool = forgeJobsGetTool(makeDeviceCtx());
     mockJobThenMember();
 
@@ -272,15 +271,13 @@ describe('forge_jobs.get', () => {
     await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
-  it('throws FORBIDDEN cross-project', async () => {
+  it('answers not-found cross-project (existence-hiding)', async () => {
     const tool = forgeJobsGetTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([{ ...baseJobRow, projectId: OTHER_PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // not a member
-    await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/FORBIDDEN/);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
+    await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
-  // ISS-150 review #1 re-review — PAT projectIds allowlist regression on
-  // jobId-resolved access.
   it('returns NOT_FOUND for a PAT when the job’s project is outside the allowlist', async () => {
     const tool = forgeJobsGetTool(makePatCtx([OTHER_PROJECT_ID]));
     selectLimit.mockResolvedValueOnce([baseJobRow]);
@@ -368,11 +365,11 @@ describe('forge_jobs.events', () => {
     await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
-  it('throws FORBIDDEN cross-project', async () => {
+  it('answers not-found cross-project (existence-hiding)', async () => {
     const tool = forgeJobsEventsTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([{ ...baseJobRow, projectId: OTHER_PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // not a member
-    await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/FORBIDDEN/);
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
+    await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
   it('returns NOT_FOUND for a PAT when the job’s project is outside the allowlist', async () => {
@@ -402,6 +399,7 @@ describe('forge_jobs.cancel', () => {
     expect(result.cancellationRequested).toBe(true);
     expect(cancelJobMock).toHaveBeenCalledWith(JOB_ID, {
       actorUserId: OWNER_ID,
+      actorAgency: 'human',
       reason: 'stuck ghost job',
       source: 'mcp',
     });

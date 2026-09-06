@@ -31,6 +31,26 @@ import {
   type StageOverrides,
 } from './stage-overrides.js';
 
+/**
+ * The runner row that will actually host this job, refused by name when absent.
+ */
+// cm:guard refuse by NAME rather than falling back to any runner of the project. A prepared job whose session row points at a different box than the process that runs it is the silent substitution `CLAUDE.md` forbids: the operator loses the diff, not ten minutes.
+// cm:guard ONE derivation for both halves of the split claim. `prepareClaimedJob` reads it to build the session row and `startJobForMaster` reads it again to stamp `jobs.runner_id`, and a second copy of this predicate is how the two come to name different boxes for one job.
+export async function resolveRunnerForDevice(
+  projectId: string,
+  deviceId: string,
+): Promise<{ id: string; type: string }> {
+  const [runner] = await db
+    .select({ id: runners.id, type: runners.type })
+    .from(runners)
+    .where(and(eq(runners.projectId, projectId), eq(runners.deviceId, deviceId)))
+    .limit(1);
+  if (!runner) {
+    throw new Error(`prepare: device ${deviceId} has no runner bound to project ${projectId}`);
+  }
+  return runner;
+}
+
 export interface PreparedJob {
   // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — identity travels WITH the preparation, never from the runner's own pool read. A pool entry is a snapshot the master may have been holding for minutes; rebuilding the job's identity from it is the mismatch `prepareClaimedJob` refuses one guard down, arriving by a different door.
   jobId: string;
@@ -178,17 +198,7 @@ export async function prepareClaimedJob(args: {
   const [job] = await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1);
   if (!job) throw new Error(`prepare: job ${args.jobId} not found`);
 
-  const [runner] = await db
-    .select({ id: runners.id, type: runners.type })
-    .from(runners)
-    .where(and(eq(runners.projectId, job.projectId), eq(runners.deviceId, args.deviceId)))
-    .limit(1);
-  // cm:guard refuse by NAME rather than falling back to any runner of the project. A prepared job whose session row points at a different box than the process that runs it is the silent substitution `CLAUDE.md` forbids: the operator loses the diff, not ten minutes.
-  if (!runner) {
-    throw new Error(
-      `prepare: device ${args.deviceId} has no runner bound to project ${job.projectId}`,
-    );
-  }
+  const runner = await resolveRunnerForDevice(job.projectId, args.deviceId);
 
   const overrides = await resolveStageOverrides(job.projectId, job.payload);
   const proposedResume = await resolveResumePolicy({ job, overrides, agentConfig: undefined });

@@ -2,30 +2,15 @@
  * ISS-447 (ISS-442 C1) — the SINGLE writer of terminal status across the three
  * kernel tables (`jobs`, `agent_sessions`, `pipeline_runs`).
  *
- * Invariant I2: a terminal flip can ONLY happen through `applyKernelTransition`.
- * Because the function ALWAYS writes a `kernel_transitions` audit row in the
- * same executor as the status UPDATE, a new code path physically cannot land a
- * terminal status without leaving an audit trail. The `lifecycle.transition`
- * guard test (transition-guard.test.ts) fails the build if any file outside
- * this module does `.update(jobs|agentSessions|pipelineRuns).set({ status:
- * <terminal> })`, so the chokepoint cannot silently drift.
- *
- * The function is deliberately a thin PRIMITIVE: it performs the guarded CAS
- * write (caller supplies the `where` predicate, which MUST include the status
- * guard) plus the audit row, and returns the updated rows. All downstream
- * side-effects (cross-table cascade fan-out, WS broadcasts, hooks, dispatch
- * re-tick) stay in the callers exactly as before — so behaviour is preserved
- * and only the WRITE + AUDIT are centralised. Pass a transaction handle when
- * the flip must be atomic with a cascade or a sibling write (cancel audit,
- * run-close cascade); pass `db` for a standalone single-statement flip.
- *
- * `reason='pipeline_completed'` is the cascade's SUCCESS sentinel (a terminal
- * pipeline step set its issue terminal as its last action while its own
- * job/session was still active). `resolvePipelineCompletedTarget` maps that
- * sentinel to the success terminal on the JOB axis (`done`, mirroring the
- * ISS-352 session branch → `completed`) so a succeeded step is never recorded
- * as `cancelled`/`failed` (ISS-444 amendment 2).
+ * A thin PRIMITIVE by design: the guarded CAS write plus the audit row, and
+ * nothing else. Every downstream side-effect (cascade fan-out, WS broadcast,
+ * hooks, dispatch re-tick) stays in the caller.
  */
+// cm:guard invariant I2 — the audit row is written in the SAME executor as the status UPDATE, which is what makes a terminal status physically unable to land without a trail. `transition-guard.test.ts` scans the tree for `.update(jobs|agentSessions|pipelineRuns).set({ status: <terminal literal> })` outside this module and fails the build on one.
+// cm:guard the guard test reads a status LITERAL, so a caller writing a VARIABLE status is invisible to it — `PATCH /api/agent-sessions/:id` is exactly that and is a real second terminal writer on the session axis. Anything hung on this chokepoint for sessions (the ISS-675 escalation bridge, the ISS-927 token revoke) needs a second half in `agent-sessions/routes.ts`, and no gate will tell you if you forget.
+// cm:guard the caller supplies `where` and it MUST carry the prior-status guard — the CAS is the only thing stopping two writers double-flipping, and a predicate without it matches every row.
+// cm:guard pass a `tx` when the flip must be atomic with a cascade or a sibling write (cancel audit, run-close cascade); `db` is for a standalone single-statement flip. Passing `db` inside a transaction that later rolls back leaves the audit row behind describing a status nothing holds.
+// cm:why `reason='pipeline_completed'` is the cascade's SUCCESS sentinel — a terminal pipeline step set its issue terminal while its own job/session was still active — so `resolvePipelineCompletedTarget` maps it to `done`/`completed` and a succeeded step is never recorded as `cancelled`/`failed` (ISS-444 amendment 2, ISS-352).
 
 import type { SQL } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
@@ -38,6 +23,7 @@ import {
   pipelineRuns,
   type terminalAgentSessionStatuses,
 } from '../db/schema.js';
+import type { ActorAgency } from '../issues/actor-agency.js';
 import { logger } from '../logger.js';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -48,10 +34,24 @@ export type KernelExecutor = Tx | Db;
 
 export type KernelEntity = 'job' | 'session' | 'run';
 export type KernelActorType = 'user' | 'system' | 'runner' | 'sweeper';
-export interface KernelActor {
-  type: KernelActorType;
-  /** Bare uuid (no FK). NULL for system/sweeper actors with no principal. */
-  id?: string | null;
+
+// cm:guard `agency` is required on a `user` actor and ABSENT on every other kind, and that asymmetry is the point. `system`, `sweeper` and `runner` are machines by construction — there is no honest `human` answer for them and no call site should be able to write one. `user` is the only type where both answers are possible, because a job or session token transitions under its creator: `actor_type` says the write is that person's and is true, while `actor_agency` says a machine typed it and is also true. Making the field required there is what stops a new call site recording the column's `'human'` DEFAULT, which reads as plausible and which nobody reports.
+export type KernelActor =
+  | {
+      type: 'user';
+      /** Bare uuid (no FK). */
+      id?: string | null;
+      agency: ActorAgency;
+    }
+  | {
+      type: Exclude<KernelActorType, 'user'>;
+      /** Bare uuid (no FK). NULL for system/sweeper actors with no principal. */
+      id?: string | null;
+    };
+
+/** The stored agency for an actor: a machine kind is `agent`, a user carries its own answer. */
+function agencyOf(actor: KernelActor): ActorAgency {
+  return actor.type === 'user' ? actor.agency : 'agent';
 }
 
 type JobRow = typeof jobs.$inferSelect;
@@ -169,6 +169,7 @@ export async function applyKernelTransition(
         toStatus: args.to,
         reason: args.reason ?? null,
         actorType: args.actor.type,
+        actorAgency: agencyOf(args.actor),
         actorId: args.actor.id ?? null,
         source: args.source,
       })),
@@ -185,9 +186,10 @@ export async function applyKernelTransition(
       for (const row of updated as SessionRow[]) {
         fireEscalationBridge(row);
         fireAgentChatBridge(row);
+        fireSessionTokenRevoke(row);
       }
     }
-    // cm:guard revoke rides on THIS chokepoint and nowhere else, because this module is the only writer of a terminal job status — the `lifecycle.transition` guard test fails the build on a terminal `.update(jobs)` anywhere outside it. That is what makes the token's lifetime provably the job's: cancel, cascade, loop-monitor reap, park reap and the happy finish all land here, so no new terminal path can ship a token that outlives its job without first breaking a gate.
+    // cm:guard the JOB revoke rides on THIS chokepoint and nowhere else, because this module is the only writer of a terminal job status — the `lifecycle.transition` guard test fails the build on a terminal `.update(jobs)` anywhere outside it. That is what makes the token's lifetime provably the job's: cancel, cascade, loop-monitor reap, park reap and the happy finish all land here, so no new terminal path can ship a token that outlives its job without first breaking a gate.
     if (args.entity === 'job') {
       for (const row of updated as JobRow[]) fireJobTokenRevoke(row);
     }
@@ -209,6 +211,15 @@ function fireJobTokenRevoke(row: JobRow): void {
     .then((mod) => mod.revokeJobToken(row.id))
     .catch((err) => {
       logger.error({ err, jobId: row.id }, 'lifecycle.transition: job-token revoke failed');
+    });
+}
+
+// cm:edge lockstep -> packages/core/src/agent-sessions/routes.ts — unlike the JOB revoke above, this chokepoint is NOT sufficient on its own. The runner's happy-path completion writes `agent_sessions.status` directly in `PATCH /:id`, so that handler fires the same revoke, and the pair must stay in step: deleting either one leaves a live write-scoped credential behind a whole class of finished sessions. The `lifecycle.transition` guard test cannot protect this the way it protects the job axis — it scans for a status LITERAL and that handler writes `patch.status`, a variable — so the only thing holding the pair together is this note and the test that plants a normal completion.
+function fireSessionTokenRevoke(row: SessionRow): void {
+  void import('../agent-sessions/session-token.js')
+    .then((mod) => mod.revokeSessionToken(row.id))
+    .catch((err) => {
+      logger.error({ err, sessionId: row.id }, 'lifecycle.transition: session-token revoke failed');
     });
 }
 

@@ -48,7 +48,8 @@ export function autonomousStepFor(
 }
 
 // cm:guard the runId MUST be in the prompt — every phase endpoint takes it as a path segment, and the agent has no other way to learn its own run without spending a call on the pipeline-runs list route. It named `forge_phase` until 2026-09-02; the argument survived the move to REST, the tool did not.
-// cm:guard CROSS-REPO coupling, so no `cm:edge` can hold it: the other side is `plugin/skills/issue-flow/SKILL.md` in github.com/SidCorp-co/forge-plugin. that skill and this prompt are read in one context and must name ONE way to reach Forge and ONE status vocabulary. The bundled predecessor and this prompt disagreed until 2026-09-02 (skill said CLI, prompt said `forge_issues` / `forge_config` / `forge_phase`) and the agent believed the prompt — 4,806 `forge_step_start` and 4,268 `forge_step_handoff.write` MCP calls, every one on an autonomous project. The skill now lives in another repo, so nothing here can gate the pair; this line is the only record of the coupling.
+// cm:guard the phase example IS the phase vocabulary: `phase_journal.phase` is free-form and no gate reads it, so whatever name this literal shows is what lands in the table. It read `phase-1` from 2026-09-02 until ISS-921 and 542 rows landed named `phase-0`..`phase-8`, which no reader can interpret and which do not mean the same step run to run. Keep a descriptive name, keep BOTH example lines on the SAME name, and never reintroduce an ordinal — `autonomous-dispatch.test.ts` fails on the digit, not on the wording.
+// cm:guard CROSS-REPO coupling, so no `cm:edge` can hold it: the other side is `guides/skills/issue-flow/guide.md` in github.com/SidCorp-co/forge-plugin, which the agent reads via `forge guide issue-flow` (the bundled `SKILL.md` only delegates to it, re-checked 2026-09-06). that skill and this prompt are read in one context and must name ONE way to reach Forge and ONE status vocabulary. The bundled predecessor and this prompt disagreed until 2026-09-02 (skill said CLI, prompt said `forge_issues` / `forge_config` / `forge_phase`) and the agent believed the prompt — 4,806 `forge_step_start` and 4,268 `forge_step_handoff.write` MCP calls, every one on an autonomous project. The skill now lives in another repo, so nothing here can gate the pair; this line is the only record of the coupling.
 function buildDrivePrompt(args: { issueId: string; projectId: string; runId: string }): string {
   return [
     `Drive issue ${args.issueId} to completion with the \`${AUTONOMOUS_SKILL_NAME}\` skill.`,
@@ -67,8 +68,13 @@ function buildDrivePrompt(args: { issueId: string; projectId: string; runId: str
     'session and that is where you continue.',
     '',
     `    forge-runner api pipeline-runs/${args.runId}/resume-point`,
-    `    forge-runner api pipeline-runs/${args.runId}/phases -X POST -d '{"phase":"phase-1"}'`,
-    `    forge-runner api pipeline-runs/${args.runId}/phases/end -X POST -d '{"phase":"phase-1","attempt":1,"outcome":"ok"}'`,
+    `    forge-runner api pipeline-runs/${args.runId}/phases -X POST -d '{"phase":"understand"}'`,
+    `    forge-runner api pipeline-runs/${args.runId}/phases/end -X POST -d '{"phase":"understand","attempt":1,"outcome":"ok"}'`,
+    '',
+    'Name the phase for the step it is, in words, never by its number: nothing can say what a row',
+    'named `phase-4` was, and two runs need not have meant the same step by it. Reuse the name an',
+    'earlier run used for the same step so the two aggregate — `understand`, `plan`, `code`,',
+    '`review`, `ship` are already in the journal.',
   ].join('\n');
 }
 

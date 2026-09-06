@@ -19,7 +19,7 @@ import { personalAccessTokens } from '../db/schema.js';
 import {
   generatePatPlaintext,
   isPatValid,
-  jobTokenNameLike,
+  machineTokenNameLikes,
   PAT_PREFIX_LEN,
   patEnvForNodeEnv,
   patPrefixOf,
@@ -39,8 +39,7 @@ export interface MintPatInput {
   name: string;
   scopes?: string[] | undefined;
   projectIds?: string[] | null | undefined;
-  // ISS-497 — bind the token to exactly one project (project-level token).
-  // Mutually exclusive with a multi-project `projectIds` (enforced at the REST layer).
+  // cm:edge contract -> packages/core/src/pat/routes.ts — mutual exclusion with `projectIds` is enforced at the REST layer ONLY, so a direct caller of `mintPat` can set both and no type says otherwise. `mintJobToken` and `mintSessionToken` are such callers; both set this and leave `projectIds` unset.
   boundProjectId?: string | null | undefined;
   expiresAt?: Date | null | undefined;
   rateLimitMax?: number | null | undefined;
@@ -272,7 +271,7 @@ export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null
 }
 
 /** Count active PATs for a user. Used for the per-user cap. */
-// cm:why job tokens are minted under the same user and MUST NOT count: a fleet running ten jobs would otherwise eat the cap and the user could no longer create a token of their own, with an error naming a limit they never approached.
+// cm:why machine-minted tokens are created under the same user and MUST NOT count: a fleet running ten jobs and a box running scheduled sessions would otherwise eat the cap, and the user could no longer create a token of their own, with an error naming a limit they never approached. Reads the whole family (`job:`, `session:`), never one member — see `auth/pat-format.ts`.
 export async function countActivePatsForUser(userId: string): Promise<number> {
   const rows = await db
     .select({ id: personalAccessTokens.id })
@@ -281,7 +280,7 @@ export async function countActivePatsForUser(userId: string): Promise<number> {
       and(
         eq(personalAccessTokens.userId, userId),
         isNull(personalAccessTokens.revokedAt),
-        not(like(personalAccessTokens.name, jobTokenNameLike)),
+        ...machineTokenNameLikes.map((p) => not(like(personalAccessTokens.name, p))),
       ),
     );
   return rows.length;

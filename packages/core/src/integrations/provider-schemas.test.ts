@@ -70,6 +70,15 @@ describe('the release channel on a coolify production binding', () => {
     expect(tiers.connection).toEqual({});
   });
 
+  // cm:guard the three github keys travel TOGETHER or the binding is useless: adapter.ts reads owner, repo and installationId in one destructure, so a split that keeps two of them produces a binding that names a repository it cannot mint a token for — a bind that succeeds and a healthcheck that never can
+  it('keeps all three github keys on the binding, installationId included', () => {
+    const cfg = { installationId: 159473037, owner: 'SidCorp-co', repo: 'forge' };
+    const parsed = configSchemaForProvider('github').parse(cfg) as Record<string, unknown>;
+    const tiers = splitProviderConfig('github', parsed);
+    expect(tiers.binding).toEqual(cfg);
+    expect(tiers.connection).toEqual({});
+  });
+
   it('still leaves baseUrl with the credential', () => {
     const tiers = splitProviderConfig('coolify', {
       baseUrl: 'https://coolify.example.test',

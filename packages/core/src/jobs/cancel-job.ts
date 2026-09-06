@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
+import type { ActorAgency } from '../issues/actor-agency.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -38,6 +39,8 @@ export class JobCancelError extends Error {
 export interface CancelJobOptions {
   /** User id of the acting principal — recorded in the audit event. */
   actorUserId: string;
+  // cm:guard REQUIRED, not defaulted: `actorUserId` alone cannot answer whether a person or an agent asked for this cancel, and `kernel_transitions.actor_agency` defaults to `'human'`. A cancel arriving on a `job:`/`session:` token is an agent cancelling an agent's work, and a default would record it as an operator's decision — which is exactly the row a later reader would trust.
+  actorAgency: ActorAgency;
   /** Human/automation-supplied reason — recorded in the audit event. */
   reason: string;
   /** Which surface invoked the cancel. */
@@ -93,7 +96,7 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
         where: and(eq(jobs.id, jobId), eq(jobs.status, previousStatus)),
         fromStatus: previousStatus,
         reason: opts.reason,
-        actor: { type: 'user', id: opts.actorUserId },
+        actor: { type: 'user', id: opts.actorUserId, agency: opts.actorAgency },
         source: 'cancel',
       });
       if (!row) return null;
@@ -119,7 +122,6 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
       data: { jobId: updated.id, status: 'cancelled' },
     });
 
-    // ISS-164 — keep pipeline-health rollups current.
     if (updated.issueId) {
       await publishPipelineHealthChanged(updated.projectId, [updated.issueId]);
     }
@@ -131,7 +133,6 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
     };
   }
 
-  // Dispatched/running → mark request, push to device, let /complete finalize.
   const updated = await db.transaction(async (tx) => {
     const [row] = await tx
       .update(jobs)

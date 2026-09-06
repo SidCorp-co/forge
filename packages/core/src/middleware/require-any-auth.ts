@@ -1,29 +1,26 @@
 /**
- * Combined-auth middleware for endpoints that the web UI, MCP runners, and
- * automation scripts all need to call (notably attachment uploads).
+ * Combined-auth middleware for endpoints that the web UI and automation
+ * scripts both need to call (notably attachment uploads).
  *
  * Accepts a Bearer token that may be:
  *   - a user JWT (web session)
  *   - a Personal Access Token (`forge_pat_*`), fenced exactly as `requireAuth`
  *     fences one — see `beginPatRequest`
- *   - a legacy device token
  *
  * Falls back to the `forge_auth` cookie when no Bearer header is present so
  * browser uploads continue to work without code changes.
  *
  * Sets `c.set('userId')` regardless of which path matched, so handlers using
  * `c.get('userId')` work unchanged. Does NOT call `assertEmailVerified()` —
- * PAT and device tokens are issued after verification, so it is implicit; a
- * user-JWT caller needing strict semantics adds a second middleware.
+ * a PAT is issued after verification, so it is implicit; a user-JWT caller
+ * needing strict semantics adds a second middleware.
  */
 
-import type { Context, MiddlewareHandler } from 'hono';
+import type { MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { verifyDeviceToken } from '../auth/deviceToken.js';
 import { verifyUserToken } from '../auth/jwt.js';
 import { isPatLike } from '../auth/pat-format.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { readBearerToken } from './bearer.js';
 import { beginPatRequest, withPatScope } from './pat-rest-surface.js';
 
@@ -33,17 +30,8 @@ export type AnyAuthVars = { userId: string; agency?: ActorAgency };
 const unauth = (message: string) =>
   new HTTPException(401, { message, cause: { code: 'UNAUTHENTICATED' } });
 
-// cm:guard FIVE middlewares verify a device token and exactly ONE of them — `requireAnyAuth` — hands the device its owner's account authority by setting `userId = device.ownerId`; `requireAuth` rejects devices outright and `requireUserOrDevice`, `requireDevice` and `requirePatOrDevice` (`/mcp`) all make the device its own principal with `userId` left unset so `loadProjectAccess` fails closed. Measured 2026-09-01: that one exception is the whole disagreement, so choosing a middleware for a new route chooses whether the caller gets ambient owner authority. Pick `requireAnyAuth` only if you mean that, and say so.
-// cm:guard this probe is the EVIDENCE that lets the branch below be deleted, so do not remove it before the branch it measures. Reading the runner in Rust found no caller — it downloads only session attachments, which go to `requireUserOrDevice` — but a negative established by grepping one repo is not a fact: the agent's MCP config carries a device token in plaintext, so a skill, an operator script or the desktop app can be a caller that no Rust grep can see. Delete the branch when this has been silent across real jobs and chat turns, never on the strength of the source read alone.
-function reportDeviceOnDataPlane(c: Context, deviceId: string): void {
-  if (!isSentryEnabled()) return;
-  Sentry.captureMessage('auth.device_token_on_data_plane', {
-    level: 'warning',
-    tags: { route: c.req.routePath, method: c.req.method },
-    extra: { deviceId, path: c.req.path },
-  });
-}
-
+// cm:guard FOUR middlewares verify a device token, and NONE of them hands the device its owner's account authority. Until ISS-927 this one did — `c.set('userId', device.ownerId)` — and it was the single place in the codebase where a credential silently became a person. `requireAuth` rejects devices outright and `requireUserOrDevice` and `requireDevice` make the device its own principal with `userId` left unset so `loadProjectAccess` fails closed; `/mcp` refuses a device outright since ISS-931. There is no longer a middleware to pick when you "mean" ambient owner authority, because the answer is now to give the caller a token: a job gets `job:<id>` at claim, an unattended session gets `session:<id>` at `agent:start`. If a new caller class appears with neither, mint it one — do not restore this branch.
+// cm:why what retired the device branch was NOT the silence of the Sentry probe that used to sit here. That probe asked "is anyone still calling this?", and its own guard warned that a negative from grepping one repo is not a fact — the MCP config carries a device token in plaintext, so a skill or an operator script could always have been the caller it could not see. The branch is gone because the caller class it served now holds a real, scoped, revocable token, which makes the question the probe was asking moot rather than answered. A caller that still presents a device token here now gets 401, which is a loud break naming itself, and that is the intended outcome (ISS-927).
 export function requireAnyAuth(): MiddlewareHandler<{ Variables: AnyAuthVars }> {
   return async (c, next) => {
     const token = readBearerToken(c);
@@ -56,21 +44,13 @@ export function requireAnyAuth(): MiddlewareHandler<{ Variables: AnyAuthVars }> 
       return withPatScope(scope, () => next());
     }
 
-    // User JWT path — try first since web uploads are the most common case
+    let claims: Awaited<ReturnType<typeof verifyUserToken>>;
     try {
-      const claims = await verifyUserToken(token);
-      c.set('userId', claims.sub);
-      await next();
-      return;
+      claims = await verifyUserToken(token);
     } catch {
-      // fall through to device-token path
+      throw unauth('invalid token');
     }
-
-    const device = await verifyDeviceToken(token);
-    if (!device) throw unauth('invalid token');
-    reportDeviceOnDataPlane(c, device.id);
-    c.set('userId', device.ownerId);
-    c.set('agency', 'agent');
+    c.set('userId', claims.sub);
     await next();
   };
 }

@@ -89,21 +89,9 @@ export interface CoolifyDeploymentLogLine {
  */
 export interface CoolifyDeploymentResponse {
   deployment_uuid?: string;
-  status?: string; // 'queued' | 'in_progress' | 'finished' | 'failed' | 'cancelled' | ...
+  // cm:edge contract -> packages/core/src/integrations/coolify/confirm.ts — the string values here are classified there, and a Coolify version that renames one is read as non-terminal until the deadline rather than as success.
+  status?: string;
   logs?: string | CoolifyDeploymentLogLine[];
   commit?: string;
   id?: number;
-}
-
-/**
- * Shape Coolify posts to /in/:slug. Fields beyond status + deployment_uuid
- * are best-effort — Coolify's payload evolves across versions; the adapter
- * only relies on those two.
- */
-export interface CoolifyWebhookPayload {
-  event: 'deploy.started' | 'deploy.succeeded' | 'deploy.failed' | string;
-  deployment_uuid?: string;
-  application_uuid?: string;
-  status?: 'success' | 'failed' | 'in_progress' | string;
-  message?: string;
 }

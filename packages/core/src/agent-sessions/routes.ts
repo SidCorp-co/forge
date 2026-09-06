@@ -11,6 +11,7 @@ import {
   agentSessionTurns,
   issues,
   sessionRuntimeStates,
+  terminalAgentSessionStatuses,
   usageRecords,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
@@ -52,6 +53,7 @@ import {
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
 import { detectUnexpandedSkillFailure, finalizeScheduleSessionFailure } from './session-failure.js';
+import { onTerminalPatch, revokeSessionToken } from './terminal-effects.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
 
@@ -64,10 +66,7 @@ const listQuerySchema = z
     metadataType: z.string().min(1).max(100).optional(),
     // cm:edge naming -> packages/web-v2/src/features/issues — same shape one level down: a jsonb filter on `metadata.issueId`, which the issue-detail "Agent Sessions" tab sends to scope the list to one issue.
     issueId: z.uuid().optional(),
-    // ISS-465 archive filter. Default excludes metadata.archived='true' so
-    // archived chats drop out of the active history without affecting
-    // pipeline/pm rows (whose metadata has no `archived` key — IS DISTINCT
-    // FROM keeps them). Pass ?archived=true to read the archived set.
+    // cm:guard the default exclusion must be `IS DISTINCT FROM 'true'`, never `<> 'true'`: pipeline and pm rows have no `archived` key at all, so a plain inequality is NULL for them and drops every one of them out of the active history (ISS-465).
     archived: z.enum(['true', 'false']).optional(),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(200).default(50),
@@ -108,22 +107,13 @@ const relayBodySchema = z
   })
   .strict();
 
-// cm:edge contract -> packages/core/src/lifecycle/transition.ts#SessionTransitionArgs — mirrors that
-//   type's `to` enum (ISS-675); a terminal status added there but not here never fires the bridge below
-const TERMINAL_SESSION_STATUSES: ReadonlySet<AgentSessionStatus> = new Set([
-  'completed',
-  'failed',
-  'completed_via_recovery',
-  'cancelled_stale',
-]);
-
-// `broadcastSession` is imported from `./broadcast.ts` so per-turn handlers can
-// share the same fan-out shape (project room + owning device room).
+// cm:why derived from the schema constant, never restated. This used to be a hand-written copy of the same four statuses carrying a `cm:edge` asking the next editor to remember both — and it now gates the session-token revoke as well as the two bridges, so a drifted copy would leave a live credential behind rather than merely a silent room. A note asking someone to remember is not a mechanism; sharing the array is.
+const TERMINAL_SESSION_STATUSES: ReadonlySet<AgentSessionStatus> = new Set(
+  terminalAgentSessionStatuses,
+);
 
 export const agentSessionRoutes = new Hono<{ Variables: AuthVars }>();
-// Dual-auth: user JWT (web/desktop) OR device token (a CLI runner streaming a
-// chat reply back via PATCH /:id). Non-device routes still authorize via
-// `loadProjectAccess(_, userId)`, which fails closed for a device principal.
+// cm:guard the ONE wildcard for this whole surface, and it stays the only one — every router mounted below inherits it, and a second `use('*')` here would flatten into the same linear chain and run ahead of this for some routes (the ISS-706 shape). Dual-auth because the runner streams chat replies back through `PATCH /:id` with a device token; every other route authorizes via `loadProjectAccess(_, userId)`, which fails closed for a device principal because `userId` is left unset.
 agentSessionRoutes.use('*', requireUserOrDevice(), assertEmailVerified());
 
 // Static-path lifecycle handlers (start / send / abort / cancel / build-prompt
@@ -801,36 +791,13 @@ agentSessionRoutes.patch(
       messages: patch.messages ?? existing.messages,
     });
 
-    // ISS-675 — this PATCH is the runner's happy-path completion write (a
-    // direct db.update, NOT applyKernelTransition — see lifecycle/transition.ts
-    // for the other terminal writers). An escalation session's completion
-    // bridge must fire from here too, or a class of escalations (the runner
-    // finishing normally) would hang silent. Best-effort: never fail the
-    // runner's PATCH over a room-reply problem.
+    // cm:guard the REVOKE reads the PERSISTED `updated.status`; the bridges below read the REPORTED `patch.status`. The split is deliberate and is NOT a bug fix — every rewrite core performs today maps one terminal status onto another (ISS-733 skill-not-synced, `audit_ran_blind`), so the two agree and no test can tell them apart. It is priced as hardening in one direction: a `...Once` bridge that fires on a status core did not accept sends a duplicate room reply, while a revoke that does kills the credential of a session still running. `writeBackScheduleLastStatus` above already reads the persisted value for its own version of this reason. The condition that would end the split is a rewrite mapping a terminal report onto a NON-terminal status — none exists, and if one is added it belongs here first.
+    if (TERMINAL_SESSION_STATUSES.has(updated.status)) {
+      await revokeSessionToken(id);
+    }
+
     if (patch.status !== undefined && TERMINAL_SESSION_STATUSES.has(patch.status)) {
-      const meta = updated.metadata as { escalation?: unknown; agentChat?: unknown } | null;
-      if (meta?.escalation) {
-        try {
-          const { deliverEscalationReplyOnce } = await import(
-            '../integrations/rocketchat/escalation-bridge.js'
-          );
-          await deliverEscalationReplyOnce(updated);
-        } catch (err) {
-          logger.error({ err, sessionId: updated.id }, 'agent-sessions: escalation bridge failed');
-        }
-      }
-      // ISS-727 — the `agent`-mode counterpart: same happy-path completion
-      // gate, distinct metadata marker, distinct bridge module.
-      if (meta?.agentChat) {
-        try {
-          const { deliverAgentChatReplyOnce } = await import(
-            '../integrations/rocketchat/agent-chat-bridge.js'
-          );
-          await deliverAgentChatReplyOnce(updated);
-        } catch (err) {
-          logger.error({ err, sessionId: updated.id }, 'agent-sessions: agent-chat bridge failed');
-        }
-      }
+      await onTerminalPatch(updated);
     }
 
     return c.json(updated);

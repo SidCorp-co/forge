@@ -15,8 +15,7 @@ const searchBodySchema = z.object({
   query: z.string().trim().min(1).max(4000),
   topK: z.number().int().min(1).max(50).default(10),
   sourceFilter: z.array(z.enum(memorySources)).optional(),
-  // semantic stays the default: its scores are cosine similarity, which
-  // existing consumers threshold on. hybrid/keyword scores are RRF/ts_rank.
+  // cm:edge contract -> packages/core/src/mcp/tools/forge-memory.ts — the MCP tool declares this same schema and nothing type-checks the two against each other; `semantic` is the default on both because its scores are cosine similarity and existing consumers threshold on them, where hybrid and keyword answer RRF ranks and ts_rank. Declaring the field is half the contract: this route validated it and did not forward it to `runMemorySearch` for as long as it existed, so a caller asking for `hybrid` was answered `semantic` and told so (fixed 2026-09-06, ISS-894).
   strategy: z.enum(memorySearchStrategies).default('semantic'),
 });
 
@@ -27,7 +26,7 @@ const badRequest = (details: unknown) =>
   });
 
 export const memorySearchRoutes = new Hono<{ Variables: AuthVars }>();
-// rateLimit after requireAuth so the bucket keys on the authenticated user.
+// cm:edge ordering -> packages/core/src/middleware/rate-limit.ts — `rateLimit` reads the authenticated user to key its bucket, so it MUST be mounted after `requireAuth`; ahead of it `getUserId` finds nothing and the rule falls back to the IP dimension, so every caller behind one address — a whole runner box — shares a single bucket.
 memorySearchRoutes.use(
   '/search',
   requireAuth(),
@@ -52,6 +51,7 @@ memorySearchRoutes.post(
         query: body.query,
         topK: body.topK,
         sourceFilter: body.sourceFilter,
+        strategy: body.strategy,
         surface: 'web',
       });
     } catch (err) {

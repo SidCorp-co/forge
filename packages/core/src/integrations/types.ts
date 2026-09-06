@@ -6,6 +6,7 @@ export type IntegrationProvider =
   | 'epodsystem'
   | 'sentry'
   | 'rocketchat'
+  | 'github'
   // cm:why `agent` has no adapter on purpose — nothing is integrated. It is a release CHANNEL declaration (which box may ship, how to prove it shipped, how to undo it), and the deploy itself is the project's own script run by the release session. Every adapter lookup already guards `if (!adapter)`, so the absence is a supported shape, not a gap.
   | 'agent';
 
@@ -16,6 +17,7 @@ export const INTEGRATION_PROVIDERS = [
   'epodsystem',
   'sentry',
   'rocketchat',
+  'github',
   'agent',
 ] as const satisfies readonly IntegrationProvider[];
 
@@ -43,12 +45,20 @@ export interface AdapterContext<
 }
 
 /**
- * `needs_reauth` (ISS-409 / F4): the stored credential was rejected (HTTP
- * 401/403, or an epodsystem GraphQL auth error) AND the ISS-405 previous-
- * credential rotation fallback did not recover — the operator must re-enter the
- * credential. Distinct from `error`, which covers transient/other failures.
+ * `needs_reauth` (ISS-409 / F4): the provider does NOT RECOGNISE the stored
+ * credential — HTTP 401, or an epodsystem GraphQL auth error — AND the ISS-405
+ * previous-credential rotation fallback did not recover. The operator must
+ * re-enter the credential.
+ *
+ * `needs_scope` (ISS-924): the provider recognises the credential and REFUSES
+ * this route — HTTP 403. The credential is valid and re-entering it reproduces
+ * the state exactly; the fix is to widen what the credential is allowed to do.
+ * The message names the missing permission and the route that wanted it.
+ *
+ * `error` covers transient and other failures.
  */
-export type HealthStatus = 'ok' | 'degraded' | 'error' | 'needs_reauth';
+// cm:guard 401 and 403 are different verdicts and must never be collapsed into one — a 403 mapped to `needs_reauth` sends the operator to replace a credential that works, and re-entering it reproduces the state exactly (ISS-924)
+export type HealthStatus = 'ok' | 'degraded' | 'error' | 'needs_reauth' | 'needs_scope';
 
 export interface HealthCheckResult {
   status: HealthStatus;

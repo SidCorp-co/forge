@@ -1,5 +1,5 @@
 /**
- * The project-role gate every MCP tool passes through, device side.
+ * The project-role gate every MCP tool passes through.
  *
  * `lib.ts` carried these next to the schema plumbing and the principal gates
  * until it reached seven modules and archmap's `no-coordinator-blob` said so.
@@ -8,12 +8,12 @@
  * take (`lib.ts`).
  */
 
-import type { Device } from '../../auth/deviceToken.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
-import { readDeviceClaudeCodeCapabilities } from '../../runners/select.js';
+import type { McpPrincipal } from '../../middleware/require-pat.js';
+import { PM_ACTIONS } from './pm-actions.js';
 
 /**
- * Effective-role lookup shared by the device and PAT paths. Returns `null`
+ * Effective-role lookup behind the principal gates in `lib.ts`. Returns `null`
  * when the project does not exist. `isMember` = any effective role (viewer
  * counts — use for READ tools); `isWriter` = member or admin (use for
  * mutating tools — viewer is read-only); `isAdmin` = effective project admin
@@ -32,61 +32,31 @@ export async function loadUserProjectRoleFlags(
   };
 }
 
-// cm:guard FIVE middlewares verify a device token and exactly ONE of them — `requireAnyAuth` — hands the device its owner's account authority by setting `userId = device.ownerId`; `requireAuth` rejects devices outright and `requireUserOrDevice`, `requireDevice` and `requirePatOrDevice` (`/mcp`) all make the device its own principal with `userId` left unset so `loadProjectAccess` fails closed. Measured 2026-09-01: that one exception is the whole disagreement, so choosing a middleware for a new route chooses whether the caller gets ambient owner authority. Pick `requireAnyAuth` only if you mean that, and say so.
-/**
- * Throw if the device's owner is not a member (or owner) of the project.
- * Surfaced to the MCP caller as an `isError: true` tool result — see the
- * `server.ts` error path.
- */
-export async function assertDeviceOwnerIsMember(device: Device, projectId: string): Promise<void> {
-  const role = await loadUserProjectRoleFlags(device.ownerId, projectId);
-  if (!role) throw new Error('FORBIDDEN: project not found or not accessible');
-  if (!role.isMember) {
-    throw new Error('FORBIDDEN: device owner is not a member of this project');
-  }
-}
+// cm:guard DERIVE the PAT-reachable list, never retype it — this refusal is the one place that names the actions a caller CAN reach, so a hand-written copy tells callers a newly device-only action still works while every test stays green.
+// cm:edge contract -> packages/core/src/mcp/tools/pm-actions.ts — PM_ACTIONS is the enum this complement is taken against, and DEVICE_ONLY_PM_ACTIONS the set removed from it
+const patReachablePmActions = PM_ACTIONS.filter((a) => a !== 'dispatch' && a !== 'write_decision');
 
 /**
- * Throw if the device's owner cannot WRITE (effective role below `member` —
- * viewer is read-only across the MCP surface too).
- */
-export async function assertDeviceOwnerIsWriter(device: Device, projectId: string): Promise<void> {
-  const role = await loadUserProjectRoleFlags(device.ownerId, projectId);
-  if (!role) throw new Error('FORBIDDEN: project not found or not accessible');
-  if (!role.isWriter) {
-    throw new Error('FORBIDDEN: requires project member access (viewer is read-only)');
-  }
-}
-
-/**
- * Throw if the device's owner is not an effective project admin.
- */
-export async function assertDeviceOwnerIsAdmin(device: Device, projectId: string): Promise<void> {
-  const role = await loadUserProjectRoleFlags(device.ownerId, projectId);
-  if (!role) throw new Error('FORBIDDEN: project not found or not accessible');
-  if (!role.isAdmin) {
-    throw new Error('FORBIDDEN: requires project admin access');
-  }
-}
-
-/**
- * Gate for `forge_pm.*` write tools (Epic 3, ISS-19). Caller must:
- *   1. be a member of the project, AND
- *   2. own a `claude-code` runner whose `capabilities.pm` is `true`.
+ * Gate for the two `forge_project_pm` actions that act on runner state (Epic
+ * 3, ISS-19): `dispatch` and `write_decision`. They need a `runners` row whose
+ * `capabilities.pm` is `true` — the explicit opt-in that lets one `claude-code`
+ * runner be the PM agent for a project — and that row is keyed on a paired
+ * device's id.
  *
- * The `capabilities.pm` flag is the explicit opt-in that lets a single
- * `claude-code` runner act as the PM agent for the project. The
- * `runners_device_type_uq` partial unique index pins at most one
- * `claude-code` runner per device, so toggling the flag on that row is the
- * only path to enable PM tools for the device.
+ * Since ISS-931 no device authenticates `/mcp`, so this refuses every caller
+ * that reaches it. It refuses BY NAME rather than falling back, and the
+ * message says what a caller can do instead.
  */
-export async function assertPmActor(device: Device, projectId: string): Promise<void> {
-  await assertDeviceOwnerIsWriter(device, projectId);
-  const caps = await readDeviceClaudeCodeCapabilities(device.id);
-  if (!caps) {
-    throw new Error('FORBIDDEN: device has no claude-code runner registered');
-  }
-  if (caps.pm !== true) {
-    throw new Error('FORBIDDEN: PM tools require runner capabilities.pm=true');
-  }
+// cm:guard this refuses unconditionally and that is the intended state, not a bug to "fix" by widening the gate. `capabilities.pm` is a deliberate per-runner opt-in and a PAT cannot hold it; letting a token through here would be inventing an authorization policy nobody approved. The two actions have no REST twin either (`pm/read-routes.ts` covers snapshot/graph/runner_load only) — that residual is recorded in `docs/proposals/pm-dispatch-has-no-rest-twin.md`. Lifetime device traffic when this landed: 5 calls, last 2026-08-08.
+export async function assertPmActor(principal: McpPrincipal): Promise<void> {
+  throw new Error(
+    'FORBIDDEN: PM_REQUIRES_DEVICE — this action acts on runner state (a `runners` row ' +
+      'with capabilities.pm=true, keyed on a paired device) and /mcp no longer ' +
+      'authenticates a device token at all, so it is not reachable over MCP. ' +
+      `These forge_project_pm actions do work here: ${patReachablePmActions.join(', ')}. ` +
+      'To set or retract a blocks/relates edge, use forge_issues create/update with ' +
+      'data.relations (retract by re-sending the same edge with validUntil in the past), ' +
+      'and read edges back from forge_issues get. ' +
+      `Caller: ${principal.machine ? `${principal.machine.kind} token` : 'personal access token'}.`,
+  );
 }

@@ -144,6 +144,29 @@ describe('step-duration view parity E2E', () => {
     expect(rows[0]).toMatchObject({ duration_seconds: null, cost_usd: 3.5 });
   });
 
+  // cm:guard the ONLY thing separating the two phase-name eras (ISS-921). A date cannot do it — the fix was a seed, not a gate, so an ordinal written next week must still read as unnamed. Both halves are asserted here or a regex that matches everything, or nothing, passes silently.
+  it('marks an ordinal phase name unnamed and a descriptive one named', async () => {
+    const declare = async (phase: string) =>
+      harness.db.execute(sql`
+        INSERT INTO phase_journal (id, project_id, run_id, issue_id, phase, attempt, source,
+                                   outcome, started_at, ended_at)
+        VALUES (${randomUUID()}, ${projectId}, ${runId}, ${issueId}, ${phase}, 1, 'agent',
+                'ok', now() - make_interval(mins => 10), now())
+      `);
+    await declare('phase-4');
+    await declare('implement');
+    await declare('phase-4-implement');
+
+    const rows = await harness.db.execute(sql`
+      SELECT step, step_named FROM phase_step_durations WHERE run_id = ${runId} ORDER BY step
+    `);
+    expect([...rows]).toEqual([
+      { step: 'implement', step_named: true },
+      { step: 'phase-4', step_named: false },
+      { step: 'phase-4-implement', step_named: true },
+    ]);
+  });
+
   it('reports the attempt number the old view could not express', async () => {
     await insertStep('code', 'done', 60, 50);
     await insertStep('review', 'failed', 45, 40);

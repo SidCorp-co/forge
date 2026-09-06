@@ -26,6 +26,8 @@ export async function mirrorHeartbeatToRunners(
 ): Promise<HeartbeatRunnerTransition[]> {
   // cm:why ISS-381 2.3 — `prev` snapshots status BEFORE the UPDATE so a steady-state tick updates last_seen_at for every binding yet emits no runner_events row; only offline→online is audited
   // cm:guard the ONLY thing a heartbeat proves is that the runner daemon is alive — keep this predicate purely TIME-BASED. It once also matched `limit_reason='auth'`, which erased the auth stamp ~30s after every failure, so no dispatch gate ever saw it: device dev1-ai013 burned 421 jobs in 5.5h on an expired Claude OAuth session (measured forge-beta 2026-08-14, one failure every ~47s = the heartbeat period). A live daemon and a valid OAuth session are different facts.
+  // cm:guard every status in NON_ADMITTED_RUNNER_STATUSES must survive a beat — a heartbeat proves the daemon is alive and says nothing about whether an operator withdrew the box, so overwriting one here gives the switch a ~30s life and the pool silently readmits the runner (2026-08-14: retire at 08:19:29, online again at 08:19:59; `draining` had the same defect until it was read at all).
+  // cm:edge lockstep -> packages/core/src/devices/pool-admission.ts — that list is the authority on which statuses withdraw a box; a status added there and not preserved here is erased before it can exclude anything.
   const lapsed = sql`rate_limited_until IS NOT NULL AND rate_limited_until <= now()`;
   const rows = (await db.execute(sql`
       WITH prev AS (
@@ -36,11 +38,12 @@ export async function mirrorHeartbeatToRunners(
       upd AS (
         UPDATE runners
         SET last_seen_at = now(), updated_at = now(),
-            -- cm:guard "disabled" is an operator decision and MUST survive a beat — this
-            -- column was set unconditionally, so "forge_runners retire" was undone within
-            -- one heartbeat (measured 2026-08-14: retired 08:19:29, online again 08:19:59),
-            -- which left no MCP-reachable way to remove a bad runner at all.
-            status = CASE WHEN status = 'disabled' THEN 'disabled' ELSE 'online' END,
+            -- an operator's withdrawal MUST survive a beat: this column was set
+            -- unconditionally, so "forge_runners retire" was undone within one
+            -- heartbeat (2026-08-14: retired 08:19:29, online again 08:19:59).
+            -- "disabled" was spared then and "draining" was not, so drain had the
+            -- same 30-second life until the pool learned to read either.
+            status = CASE WHEN status IN ('disabled', 'draining') THEN status ELSE 'online' END,
             limit_reason = CASE WHEN ${lapsed} THEN NULL ELSE limit_reason END,
             rate_limited_until = CASE WHEN ${lapsed} THEN NULL ELSE rate_limited_until END,
             limit_detail = CASE WHEN ${lapsed} THEN NULL ELSE limit_detail END,

@@ -1,9 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// Importing the real adapters transitively pulls db/client.js, which parses the
-// runtime env at import time. Mock it so this pure-capabilities test needs no
-// DATABASE_URL/JWT_SECRET (matches the resolver.test.ts pattern).
+// cm:why the coolify adapter's import path reaches db/client.js and, since ISS-922 put the deploy-confirmation enqueue on it, queue/boss.js — both parse the runtime env at import time, so a pure-capabilities test still needs the env stubbed.
 vi.mock('../db/client.js', () => ({ db: {} }));
+vi.mock('../config/env.js', () => ({
+  env: {
+    NODE_ENV: 'test',
+    DATABASE_URL: 'postgres://localhost/stub',
+    JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
+    DEVICE_TOKEN_PEPPER: 'test-pepper',
+  },
+}));
 
 const { coolifyAdapter } = await import('./coolify/adapter.js');
 const { epodsystemAdapter } = await import('./epodsystem/adapter.js');
@@ -22,7 +28,7 @@ const ARCHETYPES: Record<string, { adapter: IntegrationAdapter; caps: Integratio
     adapter: coolifyAdapter as IntegrationAdapter,
     caps: {
       canDispatch: true,
-      canReceiveWebhook: true,
+      canReceiveWebhook: false,
       injectsMcp: false,
       hasEnvironments: true,
       prodConfirmGate: true,
@@ -68,7 +74,7 @@ describe('integration adapter capabilities', () => {
         expect(c.canReceiveWebhook).toBe(false);
         expect(c.hasDeliveryLog).toBe(false);
       }
-      // A delivery log only makes sense when the provider dispatches or receives.
+      // cm:guard the OR is load-bearing and coolify is the shape that proves it — since ISS-922 it receives nothing and still keeps its delivery log on the strength of dispatch alone, so narrowing this to canReceiveWebhook would delete an audit trail.
       if (c.hasDeliveryLog) {
         expect(c.canDispatch || c.canReceiveWebhook).toBe(true);
       }

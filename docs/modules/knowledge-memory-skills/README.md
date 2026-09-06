@@ -123,6 +123,18 @@ flowchart TB
   and *Resume*; completed offers *Switch back to flat* behind a type-to-confirm whose copy names the
   seven-day purge. A 409 is drawn as "A reindex is already running." and never retried; buttons render
   only for a project admin or org owner/admin, the server's 403 being the second fence.
+- **Knowledge search has two transports and one service.** `forge_knowledge` action=search and
+  `POST /api/projects/:id/knowledge/search` (`knowledge/routes.ts`) both call
+  `knowledge/unified-search.ts:runUnifiedSearch` with the same four fields — `query`, `topK`,
+  `scope` (`knowledge` | `memory` | `all`), `strategy` — so a client leaving MCP for the REST data
+  plane keeps the capability rather than losing it (ISS-930). The route is `POST` because
+  `GET .../knowledge/search` is already the `/:slug` entry handler. Neither transport takes
+  `sourceFilter`; that is `POST /api/memory/search`'s alone, and `runUnifiedSearch` has no such
+  parameter to pass on. Both are member-gated. On an embeddings outage the knowledge arm degrades
+  to keyword and says `degraded: true`; what still throws is the memory arm at `strategy: semantic`
+  (`search-service.ts` degrades only `hybrid`), and that is the one path the REST route answers
+  `503 EMBEDDING_UNAVAILABLE` on — the MCP action reports it as `UNAVAILABLE:`.
+
 - **Every memory search names its surface, and only `agent` is ever reranked.**
   `search-service.ts:runMemorySearch` requires `surface: 'agent' | 'web'`; the MCP tool
   `forge_memory.search` (which the chat toolset registers too) and `forge_knowledge` search pass

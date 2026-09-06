@@ -7,14 +7,16 @@ import { enqueueCoolifyDispatch } from '../integrations/queue.js';
 import { listActiveBindingsForProjectProvider } from '../integrations/store.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
-import { setCurrentStepForce } from './runs.js';
+import { openDeployDispatchHold } from './deploy-confirmations.js';
+import { RELEASE_DEPLOY_IN_FLIGHT_STEP, setCurrentStep } from './runs.js';
 
 /**
  * Substep markers stamped onto pipelineRuns.currentStep so the UI / WS
  * observers can render the deploy state without a state-machine change.
+ * The in-flight / failed / done trio lives in `runs.ts` beside the gate that
+ * writes it; these two are dispatch-side only.
  */
 export const RELEASE_DEPLOY_PENDING = 'release.deploy.pending_human';
-export const RELEASE_DEPLOY_IN_FLIGHT = 'release.deploy.in_flight';
 export const RELEASE_DEPLOY_SKIPPED = 'release.deploy.skipped';
 
 export interface DispatchOutcome {
@@ -54,6 +56,33 @@ async function projectAutoProdDeploy(projectId: string): Promise<boolean> {
   }
 }
 
+/**
+ * A deploy asked for after its run already went terminal cannot be proved by
+ * that run: the confirmation hold is refused on a closed run, and stamping the
+ * deploy substeps on one is what produced 50 rows reading
+ * `status='completed'` beside `current_step='release.deploy.in_flight'`
+ * (measured 2026-09-06). The deploy still happens; what stops is the pretence
+ * that the run witnesses it.
+ */
+// cm:why ISS-922 requirement 3 — this log line is the whole of "be loud when it sees a deployment it cannot place", and it is an ERROR because a run that cannot witness its own deploy is a hole in the evidence chain, not a curiosity.
+function reportUnwitnessedDeploy(runId: string, issueId: string | null, bindingId?: string): void {
+  logger.error(
+    { runId, issueId, ...(bindingId ? { bindingId } : {}) },
+    'coolify dispatch: the run is terminal and refused the confirmation hold — this deploy will be polled and audited, but no run can witness its outcome',
+  );
+}
+
+// cm:guard the check at dispatch entry and the refused-hold check are BOTH needed: this one names the common case before any work happens, and the hold's own return value catches the run that closes in the window between them. Drop either and a deploy goes unwitnessed in silence, which is the defect ISS-922 exists to end.
+async function warnIfRunAlreadyTerminal(runId: string, issueId: string | null): Promise<void> {
+  const [row] = await db
+    .select({ status: pipelineRuns.status })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  if (!row || row.status === 'running' || row.status === 'paused') return;
+  reportUnwitnessedDeploy(runId, issueId);
+}
+
 // cm:flow release/deploy after:reap — job completion, not the close, is what dispatches the deploy; a prod binding parks for a human unless pipelineConfig.autoProdDeploy is on
 export async function tryDispatchCoolifyRelease(args: {
   projectId: string;
@@ -71,11 +100,12 @@ export async function tryDispatchCoolifyRelease(args: {
   allowProd?: boolean;
 }): Promise<DispatchOutcome> {
   const { projectId, issueId, runId, integrationId, allowProd = true } = args;
+  await warnIfRunAlreadyTerminal(runId, issueId);
   let pairs = await listActiveBindingsForProjectProvider(projectId, 'coolify');
   if (integrationId) pairs = pairs.filter((p) => p.binding.id === integrationId);
   if (!allowProd) pairs = pairs.filter((p) => p.binding.environment !== 'prod');
   if (pairs.length === 0) {
-    await setCurrentStepForce(runId, RELEASE_DEPLOY_SKIPPED);
+    await setCurrentStep(runId, RELEASE_DEPLOY_SKIPPED);
     return {
       dispatched: false,
       pendingHumanConfirm: false,
@@ -86,7 +116,6 @@ export async function tryDispatchCoolifyRelease(args: {
 
   const dispatched: string[] = [];
   let pendingHumanConfirm = false;
-  // Per-project opt-in to skip the prod human-confirm gate (auto like staging).
   const autoProd = await projectAutoProdDeploy(projectId);
 
   for (const { binding } of pairs) {
@@ -110,7 +139,15 @@ export async function tryDispatchCoolifyRelease(args: {
     // lookup. (Coolify-side, the adapter force-rebuilds so the build is fresh.)
     const requestId = `${runId}:${binding.id}:${Date.now()}-${randomUUID().slice(0, 8)}`;
 
-    await setCurrentStepForce(runId, RELEASE_DEPLOY_IN_FLIGHT);
+    await setCurrentStep(runId, RELEASE_DEPLOY_IN_FLIGHT_STEP);
+    // cm:edge ordering -> packages/core/src/pipeline/deploy-confirmations.ts — the hold is opened BEFORE the enqueue, never after: between enqueueing a deploy and the adapter learning its deployment_uuid the run can close, and a hold written after that window lands on a terminal run and is dropped.
+    const held = await openDeployDispatchHold({
+      runId,
+      bindingId: binding.id,
+      requestId,
+      targetLabel: `${binding.environment} deploy`,
+    });
+    if (!held) reportUnwitnessedDeploy(runId, issueId, binding.id);
     await enqueueCoolifyDispatch({
       jobKind: 'coolify.dispatch',
       bindingId: binding.id,
@@ -150,10 +187,10 @@ export async function tryDispatchCoolifyRelease(args: {
  * main now" that isn't tied to any issue. Keeps `tryDispatchCoolifyRelease`
  * run-centric and untouched.
  *
- * Enqueues with `runId=null` + a synthetic per-attempt requestId (no
- * `setCurrentStepForce` — there is no run to stamp). The adapter records the
- * outbound delivery with runId:null; the inbound webhook then no-ops (it can't
- * map a run), so a run-less deploy simply won't advance any pipeline.
+ * Enqueues with `runId=null` + a synthetic per-attempt requestId (there is no
+ * run to stamp and no hold to open). The adapter records the outbound delivery
+ * with runId:null and `confirm.ts` still polls the deployment to a terminal
+ * outcome and audits it — a run-less deploy is proved, it just advances no run.
  *
  * Prod is never auto-dispatched: a prod integration returns
  * `pendingHumanConfirm` without enqueueing. (The confirm-prod-deploy endpoint
@@ -254,7 +291,7 @@ async function markPendingHumanConfirm(input: {
     })
     .where(eq(pipelineRuns.id, input.runId));
 
-  await setCurrentStepForce(input.runId, RELEASE_DEPLOY_PENDING);
+  await setCurrentStep(input.runId, RELEASE_DEPLOY_PENDING);
 
   logger.info(
     { bindingId: input.bindingId, runId: input.runId },
@@ -322,7 +359,7 @@ export async function confirmPendingProdDeploy(
     .set({ metadata: { ...md, [GATE_METADATA_KEY]: gates }, updatedAt: new Date() })
     .where(eq(pipelineRuns.id, run.id));
 
-  await setCurrentStepForce(run.id, RELEASE_DEPLOY_IN_FLIGHT);
+  await setCurrentStep(run.id, RELEASE_DEPLOY_IN_FLIGHT_STEP);
 
   // Same idempotency guard as the staging loop (ISS-242): a confirmed prod
   // deploy already enqueued for this `:confirmed` requestId must not fire
@@ -330,6 +367,13 @@ export async function confirmPendingProdDeploy(
   const confirmedRequestId = `${run.id}:${bindingId}:confirmed`;
   const existing = await findDeliveryByRequestId(bindingId, confirmedRequestId);
   if (!existing) {
+    const held = await openDeployDispatchHold({
+      runId: run.id,
+      bindingId,
+      requestId: confirmedRequestId,
+      targetLabel: 'prod deploy',
+    });
+    if (!held) reportUnwitnessedDeploy(run.id, gate.issueId, bindingId);
     await enqueueCoolifyDispatch({
       jobKind: 'coolify.dispatch',
       bindingId,
@@ -348,12 +392,14 @@ export async function confirmPendingProdDeploy(
  *
  * Both the auto-subscriber (below) and the agent-driven `forge_coolify_deploy
  * → deploy` MCP tool need to map an `issueId` to its pipeline run before
- * dispatching, and neither has the runId in hand: by the time a deploy is
- * triggered the issue state-machine has already transitioned to a terminal
- * status (`released` / `closed`) and closed the run, so a status filter would
- * silently skip every deploy. The runId is used purely as a tracking key for
- * the deploy_uuid → run mapping; downstream helpers (setCurrentStep, closeRun)
- * are no-ops on terminal runs, so taking a closed run here is safe.
+ * dispatching, and neither has the runId in hand. A status filter would skip
+ * every deploy, so the most recent run is taken regardless of status.
+ *
+ * ISS-922 corrected what this function's result MEANS. It used to say that
+ * taking a closed run was safe *because* the downstream helpers no-op on
+ * terminal runs; that reasoning is what let a `completed` run wear
+ * `release.deploy.in_flight`. A terminal run is now an explicit hole in the
+ * evidence chain, reported by `warnIfRunAlreadyTerminal`, not a free pass.
  */
 export async function resolveLatestIssueRunId(issueId: string): Promise<string | null> {
   const [run] = await db

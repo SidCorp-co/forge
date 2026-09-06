@@ -36,11 +36,13 @@ import {
   assertVaultConfigured,
   badRequest,
   buildCreatedBindingResponse,
+  defaultConnectionDisplayName,
   forbidden,
   notFound,
   reloadRocketChatIfNeeded,
   summarizeBinding,
   summarizeConnection,
+  summarizeConnectionWithUsage,
   TEST_PROBE_TIMEOUT_MS,
 } from './route-helpers.js';
 import {
@@ -49,6 +51,7 @@ import {
   createConnection,
   findConnectionById,
   type IntegrationConnectionRow,
+  listBindingsByConnectionIds,
   listBindingsForConnection,
   listConnectionsForPrincipalUser,
   softDeleteConnection,
@@ -63,16 +66,34 @@ async function loadManageableConnection(
   const connection = await findConnectionById(id);
   if (!connection) throw notFound('connection');
   if (connection.ownerType === 'user') {
-    // Treat a connection owned by someone else as not-found (don't leak existence).
+    // cm:guard answer not-found, never forbidden, for another user's connection — a 403 confirms the id exists, and these ids are handed out by every list this principal cannot see
     if (connection.ownerId !== userId) throw notFound('connection');
     return connection;
   }
-  // Org-owned: managing (update/rotate/delete/bind) requires org admin; a
-  // plain org member sees it in lists but reads a truthful 403 here, and a
-  // non-member reads not-found.
   const orgRole = await loadOrgRole(connection.ownerId, userId);
   if (!orgRole) throw notFound('connection');
   if (!orgRoleAtLeast(orgRole, 'admin')) throw forbidden();
+  return connection;
+}
+
+/**
+ * Reading a connection, as opposed to managing it. Every principal the list
+ * route shows a connection to can also read it here; only WRITING is gated on
+ * org admin.
+ */
+// cm:guard read routes gate on THIS, write routes on loadManageableConnection — the two sets differ by exactly the org member who is not an admin, and gating a read on the manage check is what made "Projects using this connection" answer 404 to a member looking at a card the same session had just listed
+async function loadVisibleConnection(
+  id: string,
+  userId: string,
+): Promise<IntegrationConnectionRow> {
+  const connection = await findConnectionById(id);
+  if (!connection) throw notFound('connection');
+  if (connection.ownerType === 'user') {
+    if (connection.ownerId !== userId) throw notFound('connection');
+    return connection;
+  }
+  const orgRole = await loadOrgRole(connection.ownerId, userId);
+  if (!orgRole) throw notFound('connection');
   return connection;
 }
 
@@ -82,7 +103,10 @@ integrationConnectionsRoutes.use('*', requireAuth(), assertEmailVerified());
 integrationConnectionsRoutes.get('/', async (c) => {
   const userId = c.get('userId');
   const rows = await listConnectionsForPrincipalUser(userId);
-  return c.json({ items: rows.map(summarizeConnection) });
+  const bindings = await listBindingsByConnectionIds(rows.map((r) => r.id));
+  return c.json({
+    items: rows.map((r) => summarizeConnectionWithUsage(r, bindings.get(r.id) ?? [])),
+  });
 });
 
 integrationConnectionsRoutes.post(
@@ -105,7 +129,8 @@ integrationConnectionsRoutes.post(
       ownerType: body.orgId ? 'org' : 'user',
       ownerId: body.orgId ?? userId,
       provider: body.provider,
-      displayName: body.displayName ?? null,
+      displayName:
+        body.displayName ?? defaultConnectionDisplayName(body.provider, body.config ?? {}),
       config: body.config,
       secrets: body.secrets,
     });
@@ -200,7 +225,7 @@ integrationConnectionsRoutes.post(
 integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
-  await loadManageableConnection(id, userId);
+  await loadVisibleConnection(id, userId);
   const pairs = await listBindingsForConnection(id);
   return c.json({ items: pairs.map(summarizeBinding) });
 });

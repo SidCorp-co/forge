@@ -2,11 +2,12 @@
 // agent-facing tools can stamp issue/run/job provenance server-side instead of
 // trusting the agent to supply it.
 //
-// The MCP context carries no job or session id (see McpContext in lib.ts), so
-// the only handle is the calling device: find that device's non-terminal agent
-// session, join to the job it backs, and take the most recently dispatched one.
+// The handle is the CALLER'S OWN TOKEN. A machine credential is named
+// `job:<jobId>` or `session:<sessionId>` (auth/pat-format.ts), so the job is
+// identified exactly rather than guessed from which box is busy.
 
 import { and, desc, eq, inArray } from 'drizzle-orm';
+import type { MachineTokenRef } from '../auth/pat-format.js';
 import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
 
@@ -23,30 +24,54 @@ export type ActiveJobContext = {
   issueId: string | null;
   /** The job's type — `review`, `test`, `code`, … — recorded as the emitting stage. */
   stage: string;
+  /** The box the job was dispatched to, for the columns that still record one. */
+  deviceId: string | null;
+  agentSessionId: string | null;
 };
 
 /**
- * The in-flight pipeline job for `deviceId`, or `null` when the caller is not
- * running inside one (interactive sessions, PAT callers, schedule/steward runs
- * that have no job row).
+ * The pipeline job a machine token was minted for, or `null` when the caller
+ * holds a person's PAT (no `job:`/`session:` name) or the job/session has since
+ * gone terminal.
  *
- * A runner whose cap allows more than one concurrent job can have several
- * in-flight at once; without a job id on the MCP context there is no way to
- * tell which one is calling, so the most recently dispatched wins.
+ * A `job:` token answers directly. A `session:` token — an unattended chat or
+ * schedule session — answers through the job that session backs, if any; a
+ * steward or interactive session legitimately has none.
  */
-export async function resolveActiveJobContext(deviceId: string): Promise<ActiveJobContext | null> {
+// cm:why keyed on the token and not on `devices.id` any more (ISS-931). The device lookup had to take "the most recently dispatched job on that box" because the MCP context carried no job id, so a runner at concurrency 3 attributed a tool call to whichever of its three jobs was newest. The token names one job, so there is nothing left to guess — and it is the same reason a session PAT can reach this at all, having no device to look up.
+export async function resolveMachineTokenContext(
+  ref: MachineTokenRef | null,
+): Promise<ActiveJobContext | null> {
+  if (!ref) return null;
+  if (ref.kind === 'job') {
+    const [row] = await db
+      .select({
+        jobId: jobs.id,
+        runId: jobs.pipelineRunId,
+        issueId: jobs.issueId,
+        stage: jobs.type,
+        deviceId: jobs.deviceId,
+        agentSessionId: jobs.agentSessionId,
+      })
+      .from(jobs)
+      .where(and(eq(jobs.id, ref.id), inArray(jobs.status, IN_FLIGHT_JOB_STATUSES)))
+      .limit(1);
+    return row ?? null;
+  }
   const [row] = await db
     .select({
       jobId: jobs.id,
       runId: jobs.pipelineRunId,
       issueId: jobs.issueId,
       stage: jobs.type,
+      deviceId: jobs.deviceId,
+      agentSessionId: jobs.agentSessionId,
     })
     .from(agentSessions)
     .innerJoin(jobs, eq(jobs.agentSessionId, agentSessions.id))
     .where(
       and(
-        eq(agentSessions.deviceId, deviceId),
+        eq(agentSessions.id, ref.id),
         inArray(agentSessions.status, ACTIVE_SESSION_STATUSES),
         inArray(jobs.status, IN_FLIGHT_JOB_STATUSES),
       ),
@@ -54,4 +79,29 @@ export async function resolveActiveJobContext(deviceId: string): Promise<ActiveJ
     .orderBy(desc(jobs.dispatchedAt))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * The device a machine token's session is running on, for the columns that
+ * still record one. `null` for a person's PAT, and for a session with no
+ * device row (a cloud/schedule session).
+ */
+export async function resolveMachineTokenDeviceId(
+  ref: MachineTokenRef | null,
+): Promise<string | null> {
+  if (!ref) return null;
+  if (ref.kind === 'session') {
+    const [row] = await db
+      .select({ deviceId: agentSessions.deviceId })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, ref.id))
+      .limit(1);
+    return row?.deviceId ?? null;
+  }
+  const [row] = await db
+    .select({ deviceId: jobs.deviceId })
+    .from(jobs)
+    .where(eq(jobs.id, ref.id))
+    .limit(1);
+  return row?.deviceId ?? null;
 }

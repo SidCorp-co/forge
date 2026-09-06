@@ -1,8 +1,8 @@
 {
   "$comment": "Per-checker configuration for this repo. Each checker falls back to its own defaults when its key is absent, so deleting a block degrades to the built-in behaviour rather than to an empty scope. What lives here is what changes between repos: layout, thresholds, and the regexes that name one stack's idioms. What stays in code is the rule itself.",
   "profile": "hardened",
-  "$profile": "The shape this repo claims to hold, not the tools it uses: baseline = one axis measures \u00b7 standard = two axes block, both meta-checks present \u00b7 hardened = every declared axis blocks and every gate job is asserted. A profile is a claim someone else can fail you on, which is the only kind worth writing down.",
-  "$baselines": "Level 2 means `baseline the old, block the new`, so an axis at 2 must name WHERE its debt is frozen and WHICH direction counts as improvement \u2014 otherwise the frozen number is a photograph nobody can compare against. `improves`: down = a per-key number may only decrease \u00b7 shrink = a set may only lose members \u00b7 tighten = a status may only move to the stricter value. The direction lives here rather than inside the baseline file because `--update-baseline` rewrites those files, and a rule that a re-freeze can silently drop is not a rule.",
+  "$profile": "The shape this repo claims to hold, not the tools it uses: baseline = one axis measures · standard = two axes block, both meta-checks present · hardened = every declared axis blocks and every gate job is asserted. A profile is a claim someone else can fail you on, which is the only kind worth writing down.",
+  "$baselines": "Level 2 means `baseline the old, block the new`, so an axis at 2 must name WHERE its debt is frozen and WHICH direction counts as improvement — otherwise the frozen number is a photograph nobody can compare against. `improves`: down = a per-key number may only decrease · shrink = a set may only lose members · tighten = a status may only move to the stricter value. The direction lives here rather than inside the baseline file because `--update-baseline` rewrites those files, and a rule that a re-freeze can silently drop is not a rule.",
   "axes": {
     "form": {
       "level": 2,
@@ -70,14 +70,14 @@
       "level": 3,
       "gate": "check-release-record",
       "owns": "whether the external record of what shipped keeps the heading its readers parse for, and whether an entry once published can be removed without saying so",
-      "$why": "The other five axes each own a property of the CODE. On 2026-08-28 commit 3df9a8e9 removed 1,034 lines from CHANGELOG.md inside a docs-pointer commit whose message never named the file; twelve gates ran and every one passed, because the record was nobody's. No baseline: it starts at zero debt, and a removal is declared per-instance in .forge/changelog-amnesty.json rather than frozen in bulk \u2014 a public record is edited one line at a time or not at all.",
+      "$why": "The other five axes each own a property of the CODE. On 2026-08-28 commit 3df9a8e9 removed 1,034 lines from CHANGELOG.md inside a docs-pointer commit whose message never named the file; twelve gates ran and every one passed, because the record was nobody's. No baseline: it starts at zero debt, and a removal is declared per-instance in .forge/changelog-amnesty.json rather than frozen in bulk — a public record is edited one line at a time or not at all.",
       "baseline": null
     }
   },
   "checkers": {
     "archmap": {
       "maxUnresolvableEdges": 200,
-      "$comment": "Ceiling on edges `arch check` cannot resolve. Measured 2026-08-23: 171, all of them node_modules subpath exports (hono/http-exception and friends), which belong to no module and so cannot violate a contract. It was 997 until `.arch.json` declared a tsConfig \u2014 841 of those were web-v2's `@/*` alias, and an unresolvable edge is DROPPED, so three locked contracts over that package were being checked against an empty graph. Audit rule R7 fails if it climbs back."
+      "$comment": "Ceiling on edges `arch check` cannot resolve. Measured 2026-08-23: 171, all of them node_modules subpath exports (hono/http-exception and friends), which belong to no module and so cannot violate a contract. It was 997 until `.arch.json` declared a tsConfig — 841 of those were web-v2's `@/*` alias, and an unresolvable edge is DROPPED, so three locked contracts over that package were being checked against an empty graph. Audit rule R7 fails if it climbs back."
     },
     "lint-budget": {
       "$comment": "Registering a class is this list plus one `--update-baseline` run — no second script, no second baseline file. That is the whole claim ISS-833 made for a shared ratchet, and `packages/core` is the proof of it: its `warn`-severity rules produced 280 diagnostics that nothing counted, because biome exits 0 on a warning. A scope with no `drain` block is freeze-only.",
@@ -127,13 +127,13 @@
         ".md"
       ],
       "brandTokens": [
-        "Pok\u00e9mon",
-        "caf\u00e9",
-        "na\u00efve",
-        "r\u00e9sum\u00e9",
-        "clich\u00e9",
-        "fa\u00e7ade",
-        "jalape\u00f1o"
+        "Pokémon",
+        "café",
+        "naïve",
+        "résumé",
+        "cliché",
+        "façade",
+        "jalapeño"
       ]
     },
     "test-signal": {
@@ -164,13 +164,15 @@
           "label": "e2e",
           "path": "packages/core/coverage/integration/coverage-final.json",
           "authoritative": true,
-          "produce": "pnpm --filter @forge/core test:integration:coverage"
+          "produce": "pnpm --filter @forge/core test:integration:coverage",
+          "scope": "packages/core/src"
         },
         {
           "label": "unit",
           "path": "packages/core/coverage/unit/coverage-final.json",
           "authoritative": false,
-          "produce": "pnpm --filter @forge/core test:coverage"
+          "produce": "pnpm --filter @forge/core test:coverage",
+          "scope": "packages/core/src"
         }
       ]
     }

@@ -1,6 +1,11 @@
-// web-v2 feature module: runners/devices — REST surface. All calls go through
-// the shared `apiClient`. Routes verified against
-// `packages/core/src/devices/{routes,login-routes}.ts`.
+// web-v2 feature module: runners/devices — REST surface, all of it through the
+// shared `apiClient`. It spans THREE core route files, not one:
+// `devices/{routes,login-routes}.ts` (pairing, device state),
+// `projects/runners-routes.ts` (bind, repo path, labels) and
+// `runners/routes.ts` (status, activity). Each fences a different credential
+// and validates a different `.strict()` body, so a call verified against the
+// wrong one of the three compiles, ships, and 400s.
+
 import { apiClient } from "@/lib/api/client";
 import type {
 	ActiveRunnersSnapshot,
@@ -47,11 +52,15 @@ export const runnersApi = {
 			body: JSON.stringify({ deviceId, repoPath }),
 		}),
 
-	/** `PATCH /api/projects/:projectId/runners/:runnerId` — set per-device repo path/branch, or replace the pool labels. */
+	/** `PATCH /api/projects/:projectId/runners/:runnerId` — per-device repo path/branch, or the pool labels. */
 	patchRunner: (
 		projectId: string,
 		runnerId: string,
-		body: { repoPath?: string | null; branch?: string | null; labels?: string[] },
+		body: {
+			repoPath?: string | null;
+			branch?: string | null;
+			labels?: string[];
+		},
 	) =>
 		apiClient<{ id: string }>(`/projects/${projectId}/runners/${runnerId}`, {
 			method: "PATCH",
@@ -109,8 +118,7 @@ export const runnersApi = {
 			}),
 		}),
 
-	// === Project-centric (the project Runners screen) ===
-
+	
 	/** `GET /api/projects/:id/runners` — the device pools serving THIS project. */
 	listProjectRunners: (projectId: string) =>
 		apiClient<ProjectRunner[]>(`/projects/${projectId}/runners`),
@@ -131,6 +139,16 @@ export const runnersApi = {
 	 */
 	getRunnerActivity: (runnerId: string, limit = 15) =>
 		apiClient<RunnerActivity>(`/runners/${runnerId}/activity?limit=${limit}`),
+
+	// cm:edge contract -> packages/core/src/runners/routes.ts — `runners.status` is writable ONLY here: this route hands it to `setRunnerStatus`, which audits the transition into `runner_events`. The project-scoped PATCH next to it takes repoPath/branch/labels under a `.strict()` schema that REJECTS `status` with a 400, so admission sent there fails for every credential (it did, silently behind a toast, until 2026-09-06). Session-only by design — a PAT gets 403 and cannot withdraw a box.
+	patchRunnerStatus: (
+		runnerId: string,
+		status: "online" | "offline" | "draining" | "disabled",
+	) =>
+		apiClient<{ runner: { id: string; status: string } }>(
+			`/runners/${runnerId}`,
+			{ method: "PATCH", body: JSON.stringify({ status }) },
+		),
 
 	/** `GET /api/projects/:id/git-credential` — resolved org-pool key reference. */
 	getGitCredential: (projectId: string) =>
