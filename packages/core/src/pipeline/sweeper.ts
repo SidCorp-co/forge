@@ -78,7 +78,6 @@ export interface OrphanReconcileResult {
 }
 
 export interface OneShotRunReapResult {
-  // job-less system/interactive runs closed because no live session remained.
   reaped: number;
 }
 
@@ -729,8 +728,8 @@ export async function reapOrphanedIssueRuns(
   let reaped = 0;
   for (const row of candidates) {
     try {
-      await closeOpenRunForIssue(row.issue_id, 'completed');
-      reaped++;
+      // cm:guard count only what actually closed — `closeOpenRunForIssue` returns `deferred` while a dispatched deploy is unconfirmed (ISS-922); the run is revisited next tick and closes on the deploy's real outcome.
+      if ((await closeOpenRunForIssue(row.issue_id, 'completed')) === 'settled') reaped++;
     } catch (err) {
       logger.error(
         { err, runId: row.id, issueId: row.issue_id },

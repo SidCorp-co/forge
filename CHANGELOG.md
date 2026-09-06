@@ -952,6 +952,40 @@
 
 ### Fixed
 
+- **A release run no longer reports `completed` on the evidence that somebody asked for a deploy.**
+  Measured on the fleet 2026-09-06: `integration_deliveries` held 5,408 outbound rows and **zero**
+  inbound ones since 2026-05-27, `release.deploy.done` had been stamped **zero** times, and **50
+  runs sat at `status='completed'` while their own `current_step` still read
+  `release.deploy.in_flight`** — the run contradicting itself in one row. The one mechanism that
+  would have checked, an inbound Coolify webhook, was unreachable by construction: Coolify's
+  `SendWebhookJob` does `Http::withOptions(...)->post($url, $payload)` with no event header and no
+  signature, and `POST /in/:slug` requires both.
+
+  A deploy now writes a **confirmation hold per target** onto its run, and `closeRun` /
+  `closeOpenRunForIssue` ask that hold before writing `completed`. Every target confirmed → the run
+  closes as asked. A deploy Coolify reports failed, or one still unconfirmed 30 minutes after
+  dispatch → the run closes **`failed`**, with `current_step` naming the target and the reason. A
+  deploy genuinely still in flight → **the close is deferred**, not weakened: the run stays
+  `running` at `release.deploy.in_flight (k/n)`, which is true, and the confirmation performs the
+  close when the last target lands. The outcome is read by polling
+  `GET /api/v1/deployments/{uuid}` — a client that already existed and had only ever been called
+  when a human asked — and every terminal read writes an inbound-direction delivery row, so the
+  audit log carries both directions again from a source that exists.
+
+  The unreachable path was **removed, not repaired**: `coolifyAdapter.handleInbound` now refuses by
+  name, `canReceiveWebhook` is `false`, the `x-coolify-event` and `x-coolify-signature-256` entries
+  are gone from the inbound router, and the settings screen no longer tells an operator to paste a
+  signing secret into a Coolify field that does not exist. Repairing it would have added a second
+  writer of run-terminal state for a message Coolify cannot send. The GitHub inbound adapter, which
+  does send `x-github-event` and does sign `x-hub-signature-256`, is untouched.
+
+  Bounded by construction, and the bound is the trade: 30 minutes is below the 60 of
+  `RESULT_QUIET_MINUTES`, so the gate always resolves before the sweeper's window opens and two
+  mechanisms never decide one run's outcome. The price is that a build slower than 30 minutes fails
+  its run; it ends when a project can declare its own deadline. A deploy asked for after its run
+  already closed — 81 of 4,247 measured — is reported at ERROR level instead of being stamped onto
+  a run that cannot witness it. (ISS-922)
+
 - **The GitHub App manifest sent GitHub three URLs this core does not serve.** `buildAppManifest`
   built `redirect_url`, `setup_url` and `hook_attributes.url` from `APP_BASE_URL`, which is the WEB
   frontend — `env.ts` says so, and `auth/email.ts` already resolves the same split for verification

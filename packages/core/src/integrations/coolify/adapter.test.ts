@@ -8,28 +8,23 @@ vi.mock('../store.js', () => ({
   buildContextFromBinding: vi.fn(),
 }));
 
-// Stub the modules whose import chains pull in the db client / env (not needed
-// for the healthcheck path) so this suite runs without a configured database.
+// cm:why the db client and env are stubbed because the adapter's import chain reaches both, not because this suite uses them — the healthcheck path under test touches neither.
 vi.mock('../../config/env.js', () => ({ env: { NODE_ENV: 'test' } }));
 vi.mock('../../db/client.js', () => ({ db: {} }));
 const recordDeliveryMock = vi.fn();
-const findOutboundMock = vi.fn();
-const listDispatchedMock = vi.fn();
-const findInboundMock = vi.fn();
 vi.mock('../deliveries.js', () => ({
   recordDelivery: (...a: unknown[]) => recordDeliveryMock(...(a as [])),
   updateDelivery: vi.fn(),
-  findOutboundByDeploymentUuid: (...a: unknown[]) => findOutboundMock(...(a as [])),
-  listDispatchedOutboundForRun: (...a: unknown[]) => listDispatchedMock(...(a as [])),
-  findInboundByDeploymentUuid: (...a: unknown[]) => findInboundMock(...(a as [])),
 }));
-const closeRunMock = vi.fn();
-const setCurrentStepForceMock = vi.fn();
-vi.mock('../../pipeline/runs.js', () => ({
-  closeRun: (...a: unknown[]) => closeRunMock(...(a as [])),
-  setCurrentStepForce: (...a: unknown[]) => setCurrentStepForceMock(...(a as [])),
+const replaceHoldsMock = vi.fn(async (_args: unknown) => true);
+vi.mock('../../pipeline/deploy-confirmations.js', () => ({
+  DEPLOY_CONFIRM_WINDOW_MS: 1_800_000,
+  replaceDispatchHoldWithTargets: (args: unknown) => replaceHoldsMock(args),
 }));
-vi.mock('../../webhooks/hmac.js', () => ({ verifyHmacSignature: () => true }));
+const enqueueConfirmMock = vi.fn();
+vi.mock('./confirm.js', () => ({
+  enqueueCoolifyConfirm: (...a: unknown[]) => enqueueConfirmMock(...(a as [])),
+}));
 const breakerAllowsDispatchMock = vi.fn(async () => ({ allow: true, halfOpen: false }));
 const maybeResetBreakerMock = vi.fn();
 vi.mock('./circuit-breaker.js', () => ({
@@ -43,6 +38,7 @@ vi.mock('../../observability/sentry.js', () => ({
 }));
 
 const { coolifyAdapter } = await import('./adapter.js');
+const { logger } = await import('../../logger.js');
 
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 const CONN_ID = 'conn-cf-1';
@@ -175,74 +171,134 @@ describe('coolifyAdapter.dispatchOutbound — health follows real deploy outcome
   });
 });
 
-describe('coolifyAdapter.handleInbound — multi-target run aggregation', () => {
+describe('coolifyAdapter — the deploy is held until Coolify confirms it (ISS-922)', () => {
   const RUN_ID = 'run-multi-1';
 
-  function inboundCtx() {
+  function twoTargetCtx() {
     return {
       projectId: PROJECT_ID,
       connectionId: CONN_ID,
       bindingId: BINDING_ID,
       environment: 'staging',
-      integrationSecret: 'whsec_test',
-      config: { baseUrl: 'https://coolify.example', targets: [] },
-      secrets: {},
+      config: {
+        baseUrl: 'https://coolify.example',
+        targets: [
+          { id: 't-be', label: 'Backend', resourceUuid: 'res-be' },
+          { id: 't-fe', label: 'Frontend', resourceUuid: 'res-fe' },
+        ],
+      },
+      secrets: { apiToken: 'cf' },
       // biome-ignore lint/suspicious/noExplicitAny: adapter ctx generics resolved at registration
     } as any;
   }
 
-  function webhook(deploymentUuid: string, status: 'success' | 'failed') {
-    const body = JSON.stringify({
-      event: `deploy.${status === 'success' ? 'succeeded' : 'failed'}`,
-      deployment_uuid: deploymentUuid,
-      status,
-    });
-    return {
-      headers: { 'x-coolify-signature-256': 'sha256=x' },
-      rawBody: body,
-      payload: JSON.parse(body),
-    };
-  }
-
   beforeEach(() => {
-    recordDeliveryMock.mockResolvedValue('inb-1');
-    // The webhook's deployment maps back to its outbound delivery → run.
-    findOutboundMock.mockResolvedValue({ payload: { runId: RUN_ID } });
-    // Two targets dispatched for this run.
-    listDispatchedMock.mockResolvedValue([
-      { response: { deployment_uuid: 'dep-be' } },
-      { response: { deployment_uuid: 'dep-fe' } },
+    findConnectionByIdMock.mockResolvedValue({ id: CONN_ID, active: true });
+    recordDeliveryMock.mockImplementation(
+      async () => `del-${recordDeliveryMock.mock.calls.length}`,
+    );
+  });
+
+  it('opens one hold per target and one confirmation poll per deployment', async () => {
+    let n = 0;
+    globalThis.fetch = vi.fn(async () => {
+      n += 1;
+      return new Response(JSON.stringify({ deployment_uuid: `dep-${n}` }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await coolifyAdapter.dispatchOutbound(twoTargetCtx(), {
+      eventName: 'release.requested',
+      payload: { runId: RUN_ID },
+      requestId: 'req-1',
+    });
+
+    expect(enqueueConfirmMock).toHaveBeenCalledTimes(2);
+    expect(replaceHoldsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: RUN_ID,
+        requestId: 'req-1',
+        targets: [
+          expect.objectContaining({
+            targetLabel: 'Backend',
+            deploymentUuid: 'dep-1',
+            status: 'pending',
+          }),
+          expect.objectContaining({
+            targetLabel: 'Frontend',
+            deploymentUuid: 'dep-2',
+            status: 'pending',
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('a target that never got a deployment_uuid is already a FAILED hold, not a pending one', async () => {
+    let n = 0;
+    globalThis.fetch = vi.fn(async () => {
+      n += 1;
+      return n === 1
+        ? new Response(JSON.stringify({ deployment_uuid: 'dep-be' }), { status: 200 })
+        : new Response('boom', { status: 500 });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      coolifyAdapter.dispatchOutbound(twoTargetCtx(), {
+        eventName: 'release.requested',
+        payload: { runId: RUN_ID },
+        requestId: 'req-2',
+      }),
+    ).rejects.toThrow(/coolify deploy failed for 1\/2/);
+
+    const holds = replaceHoldsMock.mock.calls[0]?.[0] as {
+      targets: { targetLabel: string; status: string }[];
+    };
+    expect(holds.targets).toEqual([
+      expect.objectContaining({ targetLabel: 'Backend', status: 'pending' }),
+      expect.objectContaining({ targetLabel: 'Frontend', status: 'failed' }),
     ]);
   });
 
-  it('does NOT close the run until every target reports success (1/2)', async () => {
-    // Only the BE target has a successful inbound so far.
-    findInboundMock.mockImplementation(async (_bid: string, uuid: string) =>
-      uuid === 'dep-be' ? { payload: { status: 'success' } } : null,
+  it('writes the target holds even when the dispatch carried no requestId — a run with no holds reads as proven', async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response(JSON.stringify({ deployment_uuid: 'dep-x' }), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    await coolifyAdapter.dispatchOutbound(twoTargetCtx(), {
+      eventName: 'release.requested',
+      payload: { runId: RUN_ID },
+    });
+
+    expect(replaceHoldsMock).toHaveBeenCalledTimes(1);
+    const args = replaceHoldsMock.mock.calls[0]?.[0] as { requestId?: string; targets: unknown[] };
+    expect(args.requestId).toBeUndefined();
+    expect(args.targets).toHaveLength(2);
+  });
+
+  it('reports at ERROR level when the run went terminal mid-dispatch and refused the holds', async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response(JSON.stringify({ deployment_uuid: 'dep-y' }), { status: 200 }),
+    ) as unknown as typeof fetch;
+    replaceHoldsMock.mockResolvedValueOnce(false);
+    const errorSpy = vi.spyOn(logger, 'error').mockReturnValue(undefined as never);
+
+    await coolifyAdapter.dispatchOutbound(twoTargetCtx(), {
+      eventName: 'release.requested',
+      payload: { runId: RUN_ID },
+      requestId: 'req-3',
+    });
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: RUN_ID }),
+      expect.stringContaining('no run can witness its outcome'),
     );
-
-    const res = await coolifyAdapter.handleInbound(inboundCtx(), webhook('dep-be', 'success'));
-
-    expect(res.actions).toBe(1);
-    expect(setCurrentStepForceMock).toHaveBeenCalledWith(RUN_ID, 'release.deploy.in_flight (1/2)');
-    expect(closeRunMock).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 
-  it('closes the run completed once all targets succeeded (2/2)', async () => {
-    findInboundMock.mockResolvedValue({ payload: { status: 'success' } });
-
-    await coolifyAdapter.handleInbound(inboundCtx(), webhook('dep-fe', 'success'));
-
-    expect(setCurrentStepForceMock).toHaveBeenCalledWith(RUN_ID, 'release.deploy.done');
-    expect(closeRunMock).toHaveBeenCalledWith(RUN_ID, 'completed');
-  });
-
-  it('fails the run fast on any target failure', async () => {
-    await coolifyAdapter.handleInbound(inboundCtx(), webhook('dep-be', 'failed'));
-
-    expect(setCurrentStepForceMock).toHaveBeenCalledWith(RUN_ID, 'release.deploy.failed');
-    expect(closeRunMock).toHaveBeenCalledWith(RUN_ID, 'failed');
-    // Fail-fast: no need to scan siblings.
-    expect(listDispatchedMock).not.toHaveBeenCalled();
+  it('handleInbound REFUSES by name rather than accepting a body it cannot have verified', async () => {
+    await expect(
+      // biome-ignore lint/suspicious/noExplicitAny: refusal takes no meaningful args
+      (coolifyAdapter as any).handleInbound(),
+    ).rejects.toThrow(/inbound webhooks are not supported/);
   });
 });

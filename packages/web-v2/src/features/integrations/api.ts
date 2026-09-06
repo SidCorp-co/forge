@@ -67,12 +67,6 @@ export const integrationsApi = {
       { method: "PATCH", body: JSON.stringify(body) },
     ),
 
-  /** `POST .../rotate-secret` — mint a new HMAC webhook secret (returned once). */
-  rotateSecret: (projectId: string, id: string) =>
-    apiClient<{ integration: IntegrationSummary; integrationSecret: string }>(
-      `/projects/${projectId}/integrations/${id}/rotate-secret`,
-      { method: "POST" },
-    ),
 
   /** `POST .../confirm-prod-deploy` — release the prod deploy gate. */
   confirmProdDeploy: (projectId: string, id: string) =>
@@ -87,7 +81,6 @@ export const integrationsApi = {
       `/projects/${projectId}/integrations/${id}/deliveries`,
     ),
 
-  // === ISS-408 / F3 — re-dispatch a failed outbound delivery ===
 
   /** `POST .../deliveries/:deliveryId/retry` — re-enqueue with a fresh requestId
    *  (202). Server gates on `direction==='outbound' && status==='failed'`. */
@@ -164,7 +157,6 @@ export const integrationConnectionsApi = {
       method: "POST",
     }),
 
-  // === ISS-408 / F3 — bindings for a connection + bind-existing flow ===
 
   /** `GET /api/integration-connections/:id/bindings` — every (project, env)
    *  binding fed by this connection. Used by the connection-detail drawer's

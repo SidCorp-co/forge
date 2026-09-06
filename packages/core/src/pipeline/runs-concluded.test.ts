@@ -5,7 +5,7 @@ vi.mock('../config/env.js', () => ({ env: { NODE_ENV: 'test' } }));
 const dbExecute = vi.fn(async (..._args: unknown[]) => [] as Array<Record<string, unknown>>);
 vi.mock('../db/client.js', () => ({ db: { execute: (...a: unknown[]) => dbExecute(...a) } }));
 
-const closeRunMock = vi.fn(async (..._args: unknown[]) => undefined);
+const closeRunMock = vi.fn(async (..._args: unknown[]) => 'settled' as const);
 vi.mock('./runs.js', () => ({ closeRun: (...a: unknown[]) => closeRunMock(...a) }));
 
 const loggerInfo = vi.fn();
