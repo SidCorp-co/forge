@@ -2426,6 +2426,36 @@
 
 ### Changed
 
+- **The rule that decides which MCP tools may be deleted stopped being a count nobody can spend,
+  and the list of tools it protects was measured against the copy of the `forge` CLI the fleet
+  actually runs.** The rule gated a deletion on a tool's *device* call count reaching zero. Since
+  ISS-931 nothing writes a non-null `device_id` — `mcp/server.ts` stamps it NULL on every audit
+  row — so every tool's number is frozen non-zero and can never fall. What that number fed was a
+  clause asking whether the callers a tool *had* could reach its replacement, and those callers
+  are un-upgraded runner boxes, which `requirePat` now answers 401 on every `/mcp` call whatever
+  is registered. The gate protected a population the same change had already made unreachable,
+  keyed on a number that could not move: it would never have opened, and the remaining waves of
+  the MCP shrink would not have been blocked so much as unable to finish.
+
+  The gate is now *no caller that can still reach `/mcp` loses the tool*, which has two halves.
+  The first is the `forge` CLI the boxes run — it holds a PAT, so ISS-931 did not take its access
+  away, and its calls are indistinguishable from any other token traffic in the audit log. Its end
+  state is observable and is a version rather than a judgement: `src/tracker/rest.mjs` present in
+  the installed plugin on every box. The second is everything else on a token, which still needs
+  the database.
+
+  Re-measuring the first half against the artifact installed on a runner box (forge-plugin
+  3.35.140) corrected the protected list in both directions. `forge_memory.search`,
+  `forge_projects.get` and `forge_projects.list` are called by that CLI and had been filed *free
+  to go*; deleting any of them would have broken `forge` on every box. `forge_projects.create` was
+  listed as blocked and has no call site in it at all. `forge_memory.search` also has a caller no
+  audit query would have found: the runner writes "Recall memory FIRST — `forge_memory_search`"
+  into every project workspace's orientation text.
+
+  No tool is deleted by this change. `docs/architecture/agent-surface.md` carries the rule,
+  `docs/flows/mcp-tool-deletion.html` draws the decision path, and ISS-946 carries the fact that
+  the second half cannot be evaluated from a runner box at all. (ISS-894)
+
 - **An agent session authenticates `/mcp` with its own job token, and a device token no longer
   authenticates `/mcp` at all.** Two credential species reached the MCP transport, and one of them
   was a fiction: for every PAT call, core fabricated a `Device` row — a token id in its `id` column

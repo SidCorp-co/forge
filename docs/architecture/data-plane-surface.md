@@ -38,6 +38,13 @@ is the live example. Read the mount and its middleware, not the prefix alone.
 
 ## Reachable over REST today
 
+**A row here is not permission to delete the tool.** It answers "does a REST twin exist", which is
+one input to the deletion rule in [agent-surface.md](agent-surface.md) and not the rule. Nine of
+these tools are called by the `forge` CLI the fleet still runs, which calls the TOOL and not the
+route — `forge_memory.search` and `forge_projects.get`/`.list` among them, all three of which had
+been read off this table as free to go. Check that page's fleet-upgrade row before removing
+anything.
+
 | MCP tool | REST | 
 |---|---|
 | `forge_issues` list | `/api/projects/:id/issues` — **there is no `GET /api/issues`**; the collection is project-scoped only |

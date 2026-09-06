@@ -1,0 +1,158 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · mcp-tool-deletion — a tool leaves the registry, or is refused by name</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --lock:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
+</style>
+<main>
+
+<h1>mcp-tool-deletion — a tool leaves the registry, or is refused by name</h1>
+<p class="sub">The decision path one MCP tool walks on its way out of
+<code>REGISTERED_TOOLS</code>, after <code>ISS-931</code> left <code>/mcp</code> with a single
+credential species. Owner: <code>packages/core/src/mcp/registered-tools.ts</code>,
+<code>packages/core/src/mcp/server.ts</code>,
+<code>packages/core/src/middleware/require-pat.ts</code>. The rule in prose:
+<code>docs/architecture/agent-surface.md</code>.</p>
+
+<h2>Why this flow changed shape</h2>
+<p>Until <code>ISS-931</code> the gate was one number: a tool was clear when its
+<code>mcp_audit_log</code> <em>device</em> count was zero. That number no longer moves.
+<code>mcp/server.ts</code> stamps <code>device_id</code> NULL on every row it writes, so every
+tool's device count is frozen at whatever it reached — and the clause that number fed asked
+whether the callers a tool <em>had</em> could reach its replacement. Those callers are
+un-upgraded runner boxes, which <code>requirePat</code> now answers 401 on <em>every</em>
+<code>/mcp</code> call, whatever is registered. <span class="bad">A gate keyed on a number that
+can never fall, protecting a population the same change already made unreachable, never
+opens.</span> The shrink would not have been blocked under it; it would have been unable to
+finish.</p>
+
+<p>So the question moved from <em>who called this</em> to <em>who can still call this</em>. There
+are exactly two answers, and only one of them is in the database.</p>
+
+<div class="board"><pre class="mermaid">
+flowchart TD
+  START["a wave picks a tool<br/>out of REGISTERED_TOOLS"] --> KEEP{"on the<br/>keep-forever list?"}
+  KEEP -->|"forge_step_start · forge_uploads<br/>forge_phase · forge_step_handoff.*"| NEVER["STOP — stays.<br/>session lifecycle, not data query"]
+  KEEP -->|no| FENCE{"resolves<br/>no project?"}
+  FENCE -->|"forge_orgs.* · forge_collaborators"| FENCED["STOP — stays.<br/>a project-scoped PAT here is an<br/>account-scoped credential in disguise"]
+  FENCE -->|no| H1{"HALF 1 — named by the<br/>forge CLI the FLEET runs?"}
+
+  H1 -->|"yes · 9 tools"| REFUSE1["REFUSE BY NAME<br/>blocked on a fleet upgrade"]
+  H1 -->|no| H2{"HALF 2 — any other caller<br/>still on a token?"}
+
+  H2 -->|"token_id rows · skills.skill_md<br/>· runner orientation text"| REFUSE2["REFUSE BY NAME<br/>name the caller, do not widen a filter"]
+  H2 -->|"zero, and measured"| TWIN{"does the replacement route<br/>accept a forge_pat_*?"}
+  H2 -->|"cannot be measured<br/>from a box"| STOP2["STOP — do not estimate.<br/>ISS-946"]
+
+  TWIN -->|no| REFUSE3["REFUSE BY NAME<br/>the /api/skill-facts shape:<br/>a twin behind the wrong middleware<br/>is not a replacement"]
+  TWIN -->|yes| DELETE["DELETE — registry, factory,<br/>server registration, CHANGELOG.<br/>Never deprecate: two paths is two paths"]
+
+  DEV["device count"] -.->|"frozen history since ISS-931.<br/>reads as: which tools the<br/>un-upgraded fleet leaned on"| H1
+
+  classDef stop fill:#f7ecef,stroke:#8a3b52,color:#5c2436;
+  classDef go fill:#e9f3ec,stroke:#1f6f4a,color:#17402c;
+  classDef note fill:#fbf5e8,stroke:#a06a1f,color:#6b4712;
+  class NEVER,FENCED,REFUSE1,REFUSE2,REFUSE3,STOP2 stop;
+  class DELETE go;
+  class DEV note;
+</pre></div>
+
+<h2>Half 1 is a version, and it is readable from a box</h2>
+<p>The <code>forge</code> CLI is built in <a
+href="https://github.com/SidCorp-co/forge-plugin">forge-plugin</a>, not here, so this repo cannot
+see which tools it names. <code>ISS-508</code> moved every verb to a path under <code>/api</code>;
+the fleet has not installed that build. The copy on a runner box is the authority, and it is a
+directory you can grep:</p>
+
+<div class="rule">
+<code>~/.config/forge-runner/marketplaces/sidcorp-co__forge-plugin/plugin</code> — version
+<b>3.35.140</b>, carrying <code>src/tracker/rpc.mjs</code> and <b>no</b>
+<code>src/tracker/rest.mjs</code>. <b>When <code>rest.mjs</code> is present on every box, half 1
+is discharged for all nine tools at once.</b> That is the observable end state; there is no issue
+to wait on.
+</div>
+
+<p>This CLI holds a <code>forge_pat_prd_*</code> — a PAT, not a device token — so
+<code>requirePat</code> admits it. <span class="bad"><code>ISS-931</code> did not take its access
+away, and its calls land as <code>token_id</code> traffic that a device split cannot see.</span>
+The nine, with the call site in the installed copy:</p>
+
+<table>
+<thead><tr><th>Tool</th><th>Where the installed 3.35.140 copy calls it</th></tr></thead>
+<tbody>
+<tr><td><code>forge_issues</code></td><td><code>src/tracker/issues.mjs</code> and six siblings — 34 references</td></tr>
+<tr><td><code>forge_knowledge</code></td><td>10 references</td></tr>
+<tr><td><code>forge_guide</code></td><td><code>src/guides/guides.mjs</code> — 7 references</td></tr>
+<tr><td><code>forge_comments</code></td><td><code>src/tracker/comments.mjs</code> — 6 references</td></tr>
+<tr><td><code>forge_project_pm</code></td><td>4 references</td></tr>
+<tr><td><code>forge_config</code></td><td><code>src/tracker/project-config.mjs:54</code></td></tr>
+<tr><td><code>forge_memory.search</code></td><td><code>src/tracker/neighbours.mjs:8</code></td></tr>
+<tr><td><code>forge_projects.list</code></td><td><code>src/tracker/rpc.mjs:262</code></td></tr>
+<tr><td><code>forge_projects.get</code></td><td><code>src/tracker/project-config.mjs:118</code></td></tr>
+</tbody>
+</table>
+
+<p>The last three were filed <em>free to go</em> until this was measured, and
+<code>forge_projects.create</code> was listed as blocked with <b>zero</b> call sites in the
+installed copy. Deleting <code>forge_memory.search</code> on the old list would have broken every
+box's <code>forge</code> — the <code>7f0c5a56</code> shape, where six tools went on a bad
+measurement and the fleet read <code>not_found</code> at 09:07 the same day.</p>
+
+<h2>Half 2 has a source the database does not hold</h2>
+<p><code>forge_memory.search</code> has a second live caller that no audit query would have
+surfaced: <code>packages/runner/crates/forge-runner-core/src/workspace/orientation.rs</code> writes
+<em>"Recall memory FIRST — <code>forge_memory_search({...})</code>"</em> into every project
+workspace's orientation. Every agent on every box is told to call it by name, in text this repo
+ships. <span class="bad">Grep the runner's bundled prose as well as the tables.</span></p>
+
+<div class="rule">
+<b>Half 2 cannot be finished from a runner box.</b> It needs whole-table
+<code>mcp_audit_log</code> counts, and the only route over that table is
+<code>GET /api/pat/:id/audit</code> — one token, last-N rows — with <code>/api/pat</code> off
+<code>PAT_ALLOWED_PREFIXES</code> by design. An agent session that reaches this node stops and does
+not estimate. <code>ISS-946</code> decides whether the fence grows a read-only aggregate or the
+rule stops being written against a number no agent can read.
+</div>
+
+<h2>What refuses, and what must never happen instead</h2>
+<table>
+<thead><tr><th>Node</th><th>Refusal</th><th>The failure it exists to prevent</th></tr></thead>
+<tbody>
+<tr><td>half 1</td><td>blocked on a fleet upgrade</td>
+    <td>Deleting a tool the fleet's CLI names. The caller does not degrade — it reads
+    <code>not_found</code> mid-run, on a box nobody is watching</td></tr>
+<tr><td>half 2</td><td>name the caller</td>
+    <td>Widening a filter, or keeping the tool quietly registered. Both leave two live paths,
+    which is the condition this whole shrink exists to remove</td></tr>
+<tr><td>half 2, unmeasurable</td><td>stop, do not estimate</td>
+    <td>A green that means nothing. The runtime could not represent the failure, so a pass is not
+    weak evidence — it is none</td></tr>
+<tr><td>replacement twin</td><td>wrong middleware</td>
+    <td><code>/api/skill-facts</code>: <code>forge_skill_facts.get</code> had 23 callers and
+    <code>requireAuth()</code> answered them 401. A mounted route is not a reachable one</td></tr>
+</tbody>
+</table>
+
+<p>One thing the deletion cannot honour, and the commit says so rather than pretending otherwise:
+three <code>cm:guard</code>s in <code>mcp/server.ts</code> record that callers pin to
+<code>tools/list</code> order. Those guards govern <em>insertion</em> — a new tool is appended, not
+spliced in. A deletion shifts every index below it and there is no position that leaves the tail
+where it was. A caller that pins by index is already broken.</p>
+
+<p><a href="index.html">← all flows</a></p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>
