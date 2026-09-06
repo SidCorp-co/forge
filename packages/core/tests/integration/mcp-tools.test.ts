@@ -245,10 +245,15 @@ describe('F4 MCP tools integration', () => {
     }
   });
 
-  it('forge_skills.register: admin device succeeds', async () => {
+  // cm:guard the registering token must carry the `admin` SCOPE as well as the project role, and this is the only place in the suite that says so. A paired device carried no scopes at all, so `assertPrincipalIsAdmin`'s scope half was skipped for it and the project role was the whole gate; since ISS-931 every `/mcp` caller is a PAT and both halves apply. Drop `admin` from this mint and the failure is `this token lacks the admin scope`, which is the change working, not a regression.
+  it('forge_skills.register: an admin-scoped PAT held by a project admin succeeds', async () => {
     const { user, project } = await seedProject('admin');
     const skillId = await insertSkill(project.id, 'r-skill');
-    const { plaintext } = await mintPat({ userId: user.id, name: 'test-cli' });
+    const { plaintext } = await mintPat({
+      userId: user.id,
+      name: 'test-cli',
+      scopes: ['read', 'write', 'admin'],
+    });
     const ctx = await connectClientAsPat(plaintext);
     try {
       const res = await ctx.client.callTool({
@@ -268,7 +273,7 @@ describe('F4 MCP tools integration', () => {
     }
   });
 
-  it('forge_skills.register: member device → FORBIDDEN isError', async () => {
+  it('forge_skills.register: admin scope is not enough without the project role', async () => {
     const owner = await seedProject('admin');
     const memberUser = await createTestUser(harness.db);
     await createTestProjectMember(harness.db, {
@@ -277,7 +282,11 @@ describe('F4 MCP tools integration', () => {
       role: 'member',
     });
     const skillId = await insertSkill(owner.project.id, 'r2');
-    const { plaintext } = await mintPat({ userId: memberUser.id, name: 'member-cli' });
+    const { plaintext } = await mintPat({
+      userId: memberUser.id,
+      name: 'member-cli',
+      scopes: ['read', 'write', 'admin'],
+    });
     const ctx = await connectClientAsPat(plaintext);
     try {
       const res = (await ctx.client.callTool({
@@ -285,7 +294,6 @@ describe('F4 MCP tools integration', () => {
         arguments: { projectId: owner.project.id, skillId, stage: 'approved' },
       })) as { isError?: boolean; content: Array<{ text: string }> };
       expect(res.isError).toBe(true);
-      // FORBIDDEN: prefix is stripped before returning to the caller.
       expect(res.content[0]?.text).toMatch(/project admin/i);
     } finally {
       await ctx.close();
@@ -294,7 +302,11 @@ describe('F4 MCP tools integration', () => {
 
   it('forge_skills.register: unknown skill → NOT_FOUND isError', async () => {
     const { user, project } = await seedProject('admin');
-    const { plaintext } = await mintPat({ userId: user.id, name: 'test-cli' });
+    const { plaintext } = await mintPat({
+      userId: user.id,
+      name: 'test-cli',
+      scopes: ['read', 'write', 'admin'],
+    });
     const ctx = await connectClientAsPat(plaintext);
     try {
       const res = (await ctx.client.callTool({
@@ -306,7 +318,6 @@ describe('F4 MCP tools integration', () => {
         },
       })) as { isError?: boolean; content: Array<{ text: string }> };
       expect(res.isError).toBe(true);
-      // NOT_FOUND: prefix is stripped before returning to the caller.
       expect(res.content[0]?.text).toMatch(/not found/i);
     } finally {
       await ctx.close();
@@ -460,7 +471,11 @@ describe('F4 MCP tools integration', () => {
   it('forge_skills.register: stage=null clears the binding', async () => {
     const { user, project } = await seedProject('admin');
     const skillId = await insertSkill(project.id, 'r3');
-    const { plaintext } = await mintPat({ userId: user.id, name: 'test-cli' });
+    const { plaintext } = await mintPat({
+      userId: user.id,
+      name: 'test-cli',
+      scopes: ['read', 'write', 'admin'],
+    });
     const ctx = await connectClientAsPat(plaintext);
     try {
       await ctx.client.callTool({
