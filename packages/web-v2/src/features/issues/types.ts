@@ -275,6 +275,26 @@ export interface PipelineHealth {
   lastTickAt?: string;
   /** Only set when `stage === "waiting"`. */
   waitingCause?: { kind: WaitingCause };
+  /** ISS-853 — the issue's paused pipeline run. Present whatever the issue's own
+   *  status says and whether or not a step is queued behind it, which is the
+   *  whole point: `waitingOn` reaches a pause only through a queued job. */
+  pausedRun?: PipelineHealthPausedRun;
+}
+
+/** ISS-853 — core's `PipelineHealthPausedRun`, hand-mirrored like the rest of
+ *  this interface. `resumer` is who ENDS the pause and the only thing the
+ *  banner's copy may branch on; core derives it in `run-pause.ts#describePause`
+ *  from the kind lists that module owns. */
+// cm:edge lockstep -> packages/core/src/pipeline/run-pause.ts — `PauseResumer` is the authority on this union; a fourth resumer added there and not here arrives as an unrecognised string and `pausedRunView` in ./waiting falls through to the sweeper case, which is the one that tells the reader nobody needs to act
+export type PauseResumer = "operator" | "machine" | "sweeper";
+
+export interface PipelineHealthPausedRun {
+  runId: string;
+  pauseReason: string | null;
+  kind: string | null;
+  detail: string | null;
+  resumer: PauseResumer;
+  since: string;
 }
 
 /** One step-handoff row from `GET /api/issue-step-contexts` (kind=handoff).

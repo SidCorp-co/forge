@@ -1,0 +1,154 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · lifecycle-run-state-operator-surface — a run stops, and a person finds out</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; margin:1rem 0; overflow-x:auto; }
+  .bad { color:var(--bad); font-weight:600; }
+</style>
+<main>
+
+<h1>lifecycle-run-state-operator-surface — a run stops, and a person finds out</h1>
+<p class="sub">Two ways a <code>pipeline_run</code> stops moving, and the two screens that have to
+say so. <code>lifecycle-pipeline</code> owns how a run and its jobs open, advance and reach terminal
+without orphans; this file starts where that one ends — at a run that is <em>paused</em> or a step
+that <em>failed</em> — and follows the row to the sentence a human reads. The test it exists to
+answer: <b>when nothing is happening, what does the screen say, and can the reader do anything
+about it from there?</b></p>
+
+<h2>The two stops, and the two surfaces that own them</h2>
+<div class="board"><pre class="mermaid">
+flowchart TB
+  subgraph db["Postgres"]
+    R[("pipeline_runs<br/>status · metadata.pauseReason")]
+    J[("jobs<br/>status · failure_reason")]
+    S[("agent_sessions<br/>failure_reason · failure_detail")]
+  end
+
+  subgraph core["@forge/core"]
+    RP["run-pause.ts<br/>pauseRun · resumeRun · <b>describePause</b>"]
+    PH["issues/pipeline-health.ts<br/>classifyPipelineHealthForIssue"]
+    PL["pipeline-health-loaders.ts<br/>Q3 jobs · <b>Q4 paused runs</b>"]
+    RR["pipeline/runs-rollup.ts<br/>attempts[] + the session join"]
+    FC["pipeline/failure-causes.ts — 35 causes<br/>failure-classifier.ts — CLASSIFIER_VERSION 11"]
+  end
+
+  subgraph web["web-v2"]
+    BD["issues/derive.ts<br/>deriveBlockerState"]
+    BB["BlockerBanner<br/>issue detail"]
+    AF["pipeline/activity.ts<br/>deriveActivityFeed"]
+    AT["ActivityTab<br/>run detail"]
+  end
+
+  R --> PL --> PH --> BD --> BB
+  RP -. "kind · detail · resumer" .-> PL
+  J --> RR --> AF --> AT
+  S --> RR
+  FC -. "resolveFailureCause<br/>FAILURE_CAUSE_PRESENTATION" .-> AF
+</pre></div>
+
+<div class="rule">
+<b>Two questions, two payload fields, and they are not interchangeable.</b>
+<code>pipelineHealth.waitingOn</code> answers <em>why has this queued step not dispatched</em>;
+<code>pipelineHealth.pausedRun</code> answers <em>why is the run not running</em>. An issue with no
+queued job still has the second question, which is exactly the hole ISS-853 closed: the
+<code>run_not_running</code> gate reaches a paused run <b>only</b> through a queued candidate, and
+<code>classifyPipelineHealthForIssue</code> returns above that arm when there is none.
+</div>
+
+<h2>Pause → banner: where it used to go dark</h2>
+<div class="board"><pre class="mermaid">
+flowchart TB
+  P["operator pauses the run<br/>POST /api/pipeline-runs/:id/pause"] --> RUN["pipeline_runs.status = 'paused'<br/>metadata.pauseReason (machine pauses only)"]
+  RUN --> Q4["Q4 loadPausedRunsByIssue<br/>reads pipeline_runs BY ISSUE, not through jobs"]
+  Q4 --> DP{"describePause(reason)"}
+  DP -->|"no reason"| OP["resumer = operator"]
+  DP -->|"kind in LIVE_PAUSE_REASON_KINDS"| OP
+  DP -->|"kind in MACHINE_RESUMED_PAUSE_KINDS"| MA["resumer = machine"]
+  DP -->|"kind retired from this build"| SW["resumer = sweeper"]
+  OP --> BAN["Banner: names the kind, tone attention,<br/><b>Resume run</b>"]
+  MA --> CALM["Banner: names the condition, tone info,<br/>no action"]
+  SW --> CALM2["Banner: 'a reason this build retired',<br/>the sweeper frees it — no action"]
+  BAN -->|click| RES["POST /api/pipeline-runs/:id/resume<br/>resumeRun clears pauseReason"]
+  RES --> INV["invalidate ['issue', id] → pausedRun gone"]
+</pre></div>
+
+<div class="rule">
+<b>Whose resume is promised is the whole of the copy.</b> <code>MACHINE_RESUMED_PAUSE_KINDS</code>
+is empty in this build and <code>resumeOrphanedPauses</code> frees every kind absent from
+<code>LIVE_PAUSE_REASON_KINDS</code> on the next sweeper tick, so only two arms are reachable today:
+an operator's pause, and a retired kind the sweeper is about to clear. A banner that offered
+<em>Resume run</em> for the second would be asking a person to do a sweep's work; one that stayed
+silent on the first is the defect ISS-853 was filed for. The branch is taken in core, once, and
+web-v2 never re-splits the reason string.
+</div>
+
+<h2>Failure → feed: sixteen deaths, however many causes there were</h2>
+<div class="board"><pre class="mermaid">
+flowchart TB
+  A["attempt N fails"] --> RRJ["runs-rollup.ts leftJoin agent_sessions<br/>carries failureCause + failureDetail"]
+  RRJ --> RC["resolveFailureCause(raw)"]
+  RC -->|"a member of FAILURE_CAUSES"| C1["the cause itself"]
+  RC -->|"job_failed · usage_limit · ws-publish-failed"| C2["LEGACY_CAUSE_ALIAS"]
+  RC -->|"free text or unknown token"| C3["unclassified — rendered, never hidden"]
+  C1 --> SIG
+  C2 --> SIG
+  C3 --> SIG["signature = jobType · status · cause · outcome · device · detail"]
+  SIG -->|"identical to the line above"| FOLD["fold: repeats += 1, positions += N"]
+  SIG -->|"anything differs"| NEW["a new line — a device failover or a second cause stays visible"]
+  FOLD --> ROW["one line, ×N, the folded positions on a focusable note"]
+  NEW --> ROW
+</pre></div>
+
+<div class="rule">
+<b>The fold is on the whole signature, never on the step.</b> Collapsing by <code>jobType</code>
+alone is the defect, not the fix: it would hide a device failover and a second cause inside the
+count. And <code>unclassified</code> is a first-class member with a rendered line — an invisible
+unclassified rate is how <code>job_failed</code> rotted across 1,787 rows before ISS-877 split it.
+</div>
+
+<h2>What goes wrong, and what the reader sees</h2>
+<table>
+<thead><tr><th>Failure</th><th>What the surface does</th><th>Where</th></tr></thead>
+<tbody>
+<tr><td>The run is paused and the issue's status was never moved</td>
+    <td>The banner names the pause and offers the resume; the issue does not read as healthy</td>
+    <td><code>derive.ts#deriveBlockerState</code>, first arm</td></tr>
+<tr><td>The run is paused <em>and</em> a human is owed an answer (<code>needs_info</code>)</td>
+    <td>The pause wins. The question stays in the comments; "Provide info" would promise a resume the pause forbids</td>
+    <td>same arm, above <code>needs_info</code></td></tr>
+<tr><td>A pause kind core adds after this build shipped</td>
+    <td>Reads as <code>sweeper</code> — calm, no action. The lockstep edge on <code>types.ts</code> is what stops that being wrong for long</td>
+    <td><code>waiting.ts#PAUSED_RUN_COPY</code></td></tr>
+<tr><td>The resume call fails</td>
+    <td>An error toast with <code>formatApiError</code>; the banner stays, because the pause is still real</td>
+    <td><code>pipeline/hooks.ts#useRunControl</code></td></tr>
+<tr><td>An attempt failed with a cause this build has no label for</td>
+    <td><code>unclassified</code>, with its remedy line — counted, never a silent fallback</td>
+    <td><code>activity.ts#causeOf</code></td></tr>
+<tr><td>An attempt never finished</td>
+    <td>Queued / dispatched / running / held each say what they are; the feed does not go dark</td>
+    <td><code>activity.ts#openOutcome</code></td></tr>
+</tbody>
+</table>
+
+<div class="rule">
+<b>Neither surface takes input.</b> VISION §5: the primary surface is a lifecycle a team can audit,
+not a conversation. Both screens answer with <em>how the record renders</em> — the feed has no text
+box, and the banner's only control is a verb the API already had.
+</div>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>

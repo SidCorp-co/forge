@@ -253,3 +253,57 @@ describe('lastTickAt heartbeat', () => {
     expect(getLastTickAt('p-2')).toBeNull();
   });
 });
+
+describe('ISS-853 — a paused run reaches the payload with nothing queued behind it', () => {
+  const pausedRun = {
+    runId: 'run-1',
+    pauseReason: null,
+    kind: null,
+    detail: null,
+    resumer: 'operator' as const,
+    since: '2026-09-06T10:00:00.000Z',
+  };
+
+  it('carries pausedRun for an issue with NO jobs at all', () => {
+    const out = classifyPipelineHealthForIssue(baseInput({ jobs: [], pausedRun }));
+    expect(out.pausedRun).toEqual(pausedRun);
+    expect(out.waitingOn).toBeUndefined();
+  });
+
+  it('carries pausedRun at every status, including the ones that show no banner today', () => {
+    for (const status of ['approved', 'in_progress', 'needs_info', 'waiting', 'developed']) {
+      const out = classifyPipelineHealthForIssue(
+        baseInput({ issue: { id: 'iss-1', status, mergedAt: null, waitingKind: null }, pausedRun }),
+      );
+      expect(out.pausedRun, status).toEqual(pausedRun);
+    }
+  });
+
+  it('carries pausedRun past the held-job early return, which sits above every queued arm', () => {
+    const out = classifyPipelineHealthForIssue(
+      baseInput({
+        jobs: [
+          { ...job({ id: 'j-held', status: 'held' }), failureReason: 'retry_rounds_exhausted' },
+        ],
+        pausedRun,
+      }),
+    );
+    expect(out.waitingOn?.reason).toBe('job_held');
+    expect(out.pausedRun).toEqual(pausedRun);
+  });
+
+  it('carries pausedRun alongside run_not_running rather than instead of it', () => {
+    const out = classifyPipelineHealthForIssue(
+      baseInput({
+        jobs: [job({ id: 'j-q', status: 'queued', pipelineRunStatus: 'paused' })],
+        pausedRun,
+      }),
+    );
+    expect(out.waitingOn?.reason).toBe('run_not_running');
+    expect(out.pausedRun).toEqual(pausedRun);
+  });
+
+  it('omits the key entirely when no run is paused', () => {
+    expect(classifyPipelineHealthForIssue(baseInput()).pausedRun).toBeUndefined();
+  });
+});

@@ -31,12 +31,14 @@ import {
 } from "@/design";
 import { STAGES, type StageKey } from "@/design/stages";
 import type { StatusKey } from "@/design/status";
+import { useResumeRun } from "@/features/pipeline/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -140,7 +142,14 @@ export function IssueDetailScreen({
   const patch = usePatchIssue();
   const { requestTransition, dialog: reasonDialog, isPending: transitionPending } =
     useGuardedTransition();
-  const pending = patch.isPending || transitionPending;
+  const qc = useQueryClient();
+  // cm:why the shared run-control hook already owns the endpoint and both toasts; only the issue query needs an extra invalidation, because a resume changes this issue's `pipelineHealth.pausedRun` and that key is not in the hook's own list
+  const resumeRun = useResumeRun();
+  const onResumeRun = (runId: string) =>
+    resumeRun.mutate(runId, {
+      onSuccess: () => qc.invalidateQueries({ queryKey: ["issue", id] }),
+    });
+  const pending = patch.isPending || transitionPending || resumeRun.isPending;
 
   const issue = issueQ.data;
   const checklist = useMemo(() => {
@@ -203,12 +212,8 @@ export function IssueDetailScreen({
   const onApprove = () => requestTransition(id, "approved", { successMessage: "Issue approved" });
   const onBannerResume = () =>
     requestTransition(id, "reopen", { successMessage: "Issue resumed" });
-  const onReopen = () => onTransition("reopen");
 
-  // ISS-377 — these are pure derivations (not hooks), so they sit safely after
-  // the loading/error early-returns. `deriveBlockerState` is the SINGLE join of
-  // status / pipelineHealth.waitingOn / blocks edges (AC#2); for needs_info the
-  // newest comment is the question to answer.
+  // cm:guard the derivations below sit AFTER the loading/error early-returns on purpose — they are plain function calls, not hooks, so no hook order changes with them; moving a real hook down here is what would break
   const runStatus = statusToRun(issue.status, issue.agentStatus);
   // The needs_info question is the MOST RECENT comment (the API returns the
   // comment tree oldest-first, so the triggering question is the last top-level
@@ -429,8 +434,8 @@ export function IssueDetailScreen({
               pending={pending || !canWrite}
               onApprove={onApprove}
               onResume={onBannerResume}
+              onResumeRun={onResumeRun}
               onProvideInfo={focusComments}
-              onReopen={onReopen}
             />
           )}
 

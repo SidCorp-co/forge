@@ -9,7 +9,7 @@ import {
 	STATUS_KEY_TONE,
 	type StatusKey,
 } from "@/design/status";
-import { gateView } from "./waiting";
+import { gateView, pausedRunView } from "./waiting";
 import type {
 	CommentKind,
 	GroupBy,
@@ -502,8 +502,6 @@ export function parseChecklist(
 	return items;
 }
 
-// ─── ISS-377: blocker banner · live-agent heartbeat · per-stage outcomes ─────
-
 /** Heartbeat staleness threshold. Mirrors core's sweeper
  *  `HEARTBEAT_TIMEOUT_MS_DEFAULT = 3*60_000` (`pipeline/sweeper.ts`, env
  *  `PIPELINE_HEARTBEAT_TIMEOUT_MS`). Not env-readable from the FE, so kept in
@@ -530,9 +528,9 @@ export type BlockerCtaKind =
 	| "approve"
 	| "provide-info"
 	| "resume"
+	| "resume-run"
 	| "open-blocker"
-	| "none"
-	| "reopen";
+	| "none";
 
 /** A blocking dependency endpoint, ready to render as a clickable ISS-x chip. */
 export interface BlockingRef {
@@ -551,6 +549,9 @@ export interface BlockerState {
 	reason: string;
 	whoMustAct: string;
 	cta: { label: string; kind: BlockerCtaKind };
+	/** The paused `pipeline_runs.id` the `resume-run` CTA acts on. Set only
+	 *  alongside that kind. */
+	runId?: string;
 	/** The actual question to answer, for `needs_info`. */
 	question?: string;
 	/** Open `blocks` issues this one is waiting on. */
@@ -585,7 +586,6 @@ export function openBlockingRefs(
 		}));
 }
 
-
 /**
  * Derive the single blocker verdict for an issue, or `null` when it is actively
  * progressing. Precedence (richest signal first): needs_info →
@@ -605,7 +605,21 @@ export function deriveBlockerState(
 ): BlockerState | null {
 	const blockingRefs = openBlockingRefs(deps);
 
-	// 1. needs_info — a human owes an answer.
+	// cm:guard ISS-853 — this arm is FIRST, above needs_info and both waiting kinds, and moving it down re-hides the pause: while a run is paused NOTHING dispatches whatever the issue's status says, so every arm below would show a CTA ("Approve", "Provide info") promising movement that cannot happen. The cost is named in the plan: an issue that is both `needs_info` and paused shows the pause, and the question stays in the comments below.
+	const paused = pausedRunView(pipelineHealth?.pausedRun);
+	if (paused) {
+		return {
+			tone: paused.needsAction ? "attention" : "info",
+			reason: paused.reason,
+			whoMustAct: paused.who,
+			cta: paused.needsAction
+				? { label: "Resume run", kind: "resume-run" }
+				: { label: "", kind: "none" },
+			...(paused.needsAction ? { runId: paused.runId } : {}),
+			...(blockingRefs.length ? { blockingRefs } : {}),
+		};
+	}
+
 	if (issue.status === "needs_info") {
 		return {
 			tone: "attention",
@@ -646,7 +660,6 @@ export function deriveBlockerState(
 		};
 	}
 
-	// 4. on_hold status — deliberately paused via the state machine.
 	if (issue.status === "on_hold") {
 		return {
 			tone: "attention",
@@ -686,7 +699,6 @@ export function deriveBlockerState(
 		};
 	}
 
-	// 6. Open `blocks` edge with no health signal — still blocked-by an open issue.
 	if (blockingRefs.length) {
 		return {
 			tone: "info",
@@ -789,7 +801,6 @@ export function deriveStageOutcomes(
 		}
 	}
 
-
 	// Duration + cost per stage, scoped to the MOST-RECENT run for that stage so a
 	// reopened issue (multiple runs of the same step) doesn't double-count. Within
 	// the chosen run, sum across attempts. ISS-377 review fix.
@@ -865,8 +876,6 @@ export function deriveStageOutcomes(
 	}
 	return cells;
 }
-
-// ─── ISS-376: session-group continuity (resumed / fresh) ────────────────────
 
 /** Known session-group keys → humanized labels. The label set is data-driven:
  *  any unknown key (a project may define its own groups) gets a Title-Case

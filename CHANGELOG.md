@@ -11,6 +11,23 @@
 
 ### Added
 
+- **An issue whose pipeline run is paused now says so on its own screen, whatever its status
+  says.** A run can be paused while the issue underneath it keeps displaying the stage it reached —
+  `approved`, say — so the screen said nothing at all and the work read as in progress. It was not,
+  and nobody was coming. The pause reached that screen through one door only: the gate on a
+  *queued step*. An issue with no queued step had no door, which is most of them once the step that
+  was running finished.
+
+  The issue screen now reads the run directly. The banner names which pause is holding it — an
+  operator's, or a machine reason with the stage it names — says who ends it, and offers **Resume
+  run** for the ones a person ends. A pause this build has retired says so plainly and does not ask
+  anyone to act, because the sweeper frees it on its next tick; promising a resume nobody performs
+  is the failure this replaces, on the other side.
+
+  The banner outranks the others deliberately. While a run is paused nothing dispatches, so
+  "Approve" or "Provide info" would promise movement that cannot happen — an issue that is both
+  waiting on a person and paused shows the pause, and the question stays in the comments below.
+
 - **An agent working an issue on a project that keeps modules is now told they exist, and how to
   set the issue's primary one.** ISS-593 made a module a label with `kind='module'` and gave an
   issue a primary through `issue_labels.is_primary`, but nothing told the agents doing the work:
@@ -1131,6 +1148,11 @@
   set is now 59.
 
 ### Fixed
+
+- **A collapsed run of identical attempts now says which attempts it stands for, without a
+  mouse.** The Activity feed folds sixteen identical deaths into one line carrying `×16`, and the
+  attempt numbers behind that count lived only in a hover tooltip on a badge nothing could focus.
+  The sentence is now carried in the row itself, so a screen reader is told which attempts folded.
 
 - **`POST /api/memory/search` ignored the `strategy` you asked for and told you it had honoured
   it.** The route validated `strategy` in its body schema and then never passed it to

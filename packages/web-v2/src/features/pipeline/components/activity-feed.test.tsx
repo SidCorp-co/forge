@@ -162,3 +162,20 @@ describe("ActivityTab — VISION §5 boundary", () => {
     expect(screen.getByRole("button", { name: "Failures" })).toBeInTheDocument();
   });
 });
+
+describe("the collapsed-repeat badge is reachable without a mouse", () => {
+  // cm:guard the tooltip is the POINTER copy of this sentence; assert the sr-only one, because that is the copy a reader with no pointer gets and the only one that can silently disappear
+  it("names which attempts folded, without needing a pointer", () => {
+    render(
+      <ActivityTab
+        run={run([attempt(), attempt(), attempt()])}
+        loading={false}
+        error={null}
+        onRetry={() => {}}
+      />,
+    );
+    const note = screen.getByText("Attempts 1, 2, 3 were identical.");
+    expect(note).toHaveClass("sr-only");
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+});
