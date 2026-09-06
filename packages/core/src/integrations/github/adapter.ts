@@ -24,6 +24,7 @@ import type {
   InboundDispatchResult,
   IntegrationAdapter,
 } from '../types.js';
+import { GitHubAuthError, installationToken } from './app-auth.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
 
 const PROBE_TIMEOUT_MS = 8000;
@@ -39,11 +40,11 @@ export const githubAdapter: IntegrationAdapter<GitHubConfig, GitHubSecrets> = {
     hasDeliveryLog: true,
   },
 
-  // cm:guard 403 is NOT `needs_reauth` — GitHub answers 401 for a token it does not recognise and 403 for one it does recognise and refuses (missing scope, SSO not authorised, repo not visible). Collapsing them tells the operator to replace a credential that is fine, and re-entering the same token reproduces the state exactly. This is the mislabel ISS-924 files against the coolify adapter; do not reproduce it here.
+  // cm:guard 403 is NOT `needs_reauth` — GitHub answers 401 for a credential it does not recognise and 403 for one it does recognise and refuses (permission not granted to the App, SSO not authorised). Collapsing them tells the operator to reconnect when what they must do is grant a permission, and reconnecting reproduces the state exactly. This is the mislabel ISS-924 files against the coolify adapter; do not reproduce it here.
   async healthcheck(ctx: AdapterContext<GitHubConfig, GitHubSecrets>): Promise<HealthCheckResult> {
-    const { owner, repo } = ctx.config ?? {};
+    const { owner, repo, installationId } = ctx.config ?? {};
     const base = (ctx.config?.apiBaseUrl ?? GITHUB_API_BASE).replace(/\/+$/, '');
-    const token = ctx.secrets?.token;
+    const { appId, privateKey } = ctx.secrets ?? {};
 
     const finish = async (status: HealthCheckResult['status'], message?: string) => {
       await updateConnection(ctx.connectionId, {
@@ -53,12 +54,18 @@ export const githubAdapter: IntegrationAdapter<GitHubConfig, GitHubSecrets> = {
       return message === undefined ? { status } : { status, message };
     };
 
-    if (!token) return finish('error', 'no GitHub token configured');
+    if (!appId || !privateKey)
+      return finish('error', 'this connection holds no GitHub App credential');
+    if (!installationId) return finish('error', 'the App is not installed for this binding');
     if (!owner || !repo) return finish('error', 'no owner/repo configured for this binding');
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
     try {
+      const token = await installationToken({
+        appId,
+        privateKey,
+        installationId,
+        ...(ctx.config?.apiBaseUrl ? { apiBaseUrl: ctx.config.apiBaseUrl } : {}),
+      });
       const res = await fetch(
         `${base}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
         {
@@ -67,21 +74,20 @@ export const githubAdapter: IntegrationAdapter<GitHubConfig, GitHubSecrets> = {
             Accept: 'application/vnd.github+json',
             'X-GitHub-Api-Version': '2022-11-28',
           },
-          signal: controller.signal,
+          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
         },
       );
-      if (res.status === 401) {
-        return finish('needs_reauth', 'GitHub does not recognise this token (HTTP 401)');
-      }
       if (res.status === 403) {
-        const scopes = res.headers.get('x-oauth-scopes');
         return finish(
           'error',
-          `GitHub refused this token for ${owner}/${repo} (HTTP 403). The token is valid; widen its scope or authorise it for the org${scopes ? ` — it currently carries: ${scopes}` : ''}.`,
+          `the App is installed but not permitted on ${owner}/${repo} (HTTP 403) — grant the permission on the installation rather than reconnecting`,
         );
       }
       if (res.status === 404) {
-        return finish('error', `${owner}/${repo} is not visible to this token (HTTP 404)`);
+        return finish(
+          'error',
+          `${owner}/${repo} is not among the repositories this App was installed on`,
+        );
       }
       if (!res.ok) return finish('error', `GitHub returned HTTP ${res.status}`);
       const body = (await res.json()) as { full_name?: string; default_branch?: string };
@@ -91,12 +97,17 @@ export const githubAdapter: IntegrationAdapter<GitHubConfig, GitHubSecrets> = {
       });
       return {
         status: 'ok',
-        diagnostics: { repository: body.full_name, defaultBranch: body.default_branch },
+        diagnostics: {
+          repository: body.full_name,
+          defaultBranch: body.default_branch,
+          installationId,
+        },
       };
     } catch (err) {
+      if (err instanceof GitHubAuthError) {
+        return finish(err.status === 401 ? 'needs_reauth' : 'error', err.message);
+      }
       return finish('error', err instanceof Error ? err.message : String(err));
-    } finally {
-      clearTimeout(timer);
     }
   },
 
@@ -121,7 +132,18 @@ export const githubAdapter: IntegrationAdapter<GitHubConfig, GitHubSecrets> = {
       throw new Error('github: signature verification failed');
     }
 
-    const payload = input.payload as Parameters<typeof handleGitHubEvent>[2] & { action?: string };
+    const payload = input.payload as Parameters<typeof handleGitHubEvent>[2] & {
+      action?: string;
+      repository?: { full_name?: string };
+    };
+
+    // cm:guard match the repository before acting — a GitHub App signs every installation's deliveries with ONE webhook secret, so a valid signature proves the App sent it and says NOTHING about which binding it belongs to. Without this check the router's "first binding whose secret verifies" would hand a second repo's events to the first repo's binding, silently and with a 200.
+    const arrived = payload?.repository?.full_name;
+    const expected =
+      ctx.config?.owner && ctx.config?.repo ? `${ctx.config.owner}/${ctx.config.repo}` : null;
+    if (arrived && expected && arrived.toLowerCase() !== expected.toLowerCase()) {
+      throw new Error(`github webhook: delivery is for ${arrived}, this binding is ${expected}`);
+    }
     const guid = input.headers['x-github-delivery'];
     const deliveryId = await recordDelivery({
       bindingId: ctx.bindingId,

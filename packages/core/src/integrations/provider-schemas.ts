@@ -17,8 +17,7 @@ import { assertVaultConfigured, badRequest } from './route-helpers.js';
 
 export const environmentSchema = z.enum(integrationEnvironments);
 
-// A deploy target = one Coolify application. `id` is server-assigned when
-// omitted (a stable key mapping an outbound deploy to its inbound webhook).
+// cm:why `id` is server-assigned when omitted so it stays STABLE across config edits — it is the key mapping an outbound deploy to the target it was for, so regenerating it would orphan deliveries already recorded against the old one
 const coolifyTargetSchema = z
   .object({
     id: z.string().min(1).max(64).optional(),
@@ -184,17 +183,19 @@ const rocketchatSecretsSchema = z.object({
   userId: z.string().min(1).max(200),
 });
 
-// cm:guard the webhook signing secret is `integrationSecret` on the binding, NOT a field here — `secrets` holds the API credential only. An operator pastes the former into GitHub and the latter comes from GitHub, so a schema that carried both would invite the two to be swapped, and a swap authenticates nothing while looking configured.
 const githubConfigBase = z.object({
+  installationId: z.number().int().positive().optional(),
   owner: z.string().min(1).max(200).optional(),
   repo: z.string().min(1).max(200).optional(),
   apiBaseUrl: z.string().url().max(500).optional(),
   ...releaseChannelFields,
 });
 
-// cm:guard ONE credential field here on purpose. Opening a pull request and approving one need DIFFERENT identities — GitHub refuses a review of `event: APPROVE` from the PR's own author — so the approve verb brings a second token when it lands and has a consumer. Adding it now would ship a field nothing reads and no operator could be told what to put in.
+// cm:guard every field here is WRITTEN BY GitHub, never typed by an operator — the app-manifest conversion returns `id`, `pem` and `webhook_secret` together, so a connection carrying some of them is a half-finished authorization, not a mis-typed form. `webhookSecret` belongs to the App and is copied onto each binding's `integrationSecret`; that is why the adapter must match the repository itself rather than letting the signature pick the binding.
 const githubSecretsSchema = z.object({
-  token: z.string().min(8).max(2000),
+  appId: z.string().min(1).max(50),
+  privateKey: z.string().min(100).max(20000),
+  webhookSecret: z.string().min(8).max(500),
 });
 
 // cm:why the release channel `agent` is declared here rather than left as free-text: the REST create path validates through the discriminated union below, so a provider absent from it cannot be created at all — `provider` being a `text` column only means no MIGRATION is needed. It carries no credential and has no adapter because nothing is integrated: the deploy is the project's own script, run by the release session on a box that already holds the key.
@@ -354,7 +355,7 @@ function secretsSchemaForProvider(provider: RotatingProvider): z.ZodTypeAny {
 function primaryFieldForProvider(provider: RotatingProvider): string {
   if (provider === 'coolify') return 'apiToken';
   if (provider === 'sentry' || provider === 'rocketchat') return 'authToken';
-  if (provider === 'github') return 'token';
+  if (provider === 'github') return 'privateKey';
   return 'apiKey';
 }
 

@@ -283,13 +283,17 @@ export interface RocketchatSecretsInput {
   userId: string;
 }
 export interface GithubConfigInput {
+  installationId?: number;
   owner?: string;
   repo?: string;
   /** GitHub Enterprise only; absent means api.github.com. */
   apiBaseUrl?: string;
 }
+/** All three come back from the app-manifest conversion; none is typed by hand. */
 export interface GithubSecretsInput {
-  token: string;
+  appId: string;
+  privateKey: string;
+  webhookSecret: string;
 }
 
 
@@ -446,8 +450,7 @@ export interface BindingResponse {
   health?: IntegrationHealthResult | null;
 }
 
-// These list routes return a bare `{ items }` object (not the X-Total-Count +
-// bare-array convention `ListResponse<T>` wraps), so they declare `items` only.
+// cm:why these list routes answer with a bare `{ items }` object rather than the X-Total-Count + bare-array convention `ListResponse<T>` wraps, so the envelopes below declare `items` and nothing else
 
 /** List envelope for connections (`GET /integration-connections`). */
 export interface ConnectionListResponse {

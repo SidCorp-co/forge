@@ -50,9 +50,26 @@
   `integrationSecret`, delivery log and healthcheck, reached by `x-github-event` like any other
   provider. A delivery signed with the project's old `webhookSecret` is now refused — there is a
   test that asserts exactly that, because it is the break, and it fails with `expected 200 to be
-  401` if the routing entry is removed. The healthcheck separates GitHub's 401 (token not
-  recognised) from its 403 (token recognised, scope or SSO refused) instead of calling both
-  `needs_reauth`; ISS-924 files the same mislabel against the Coolify adapter.
+  401` if the routing entry is removed.
+
+  **The credential is a GitHub App, not a pasted token.** The app-manifest flow returns `id`, `pem`
+  and `webhook_secret` to Forge's own redirect, so nothing is typed by hand; a repository call
+  carries an installation access token minted from a JWT signed with that key
+  (`POST /app/installations/{id}/access_tokens`, one hour, cached until five minutes before it
+  lapses). The JWT backdates `iat` by a minute because GitHub rejects one issued in its own future,
+  which a box with a slightly fast clock produces and which surfaces as an unexplained 401 on a
+  credential that is fine.
+
+  That App signs every installation's deliveries with **one** webhook secret, so a valid signature
+  proves the App sent the event and says nothing about which binding it belongs to. The adapter
+  therefore matches `repository.full_name` against the binding and refuses by name when they
+  differ — without it, the router's "first binding whose secret verifies" would hand one repo's
+  events to another's binding silently, behind a 200.
+
+  Failures are told apart rather than collapsed into `needs_reauth`: 401 on the JWT is a wrong App
+  id or key, 404 is an App that is not installed on that account, and 403 on the repository is an
+  installation missing a permission — three different things for the operator to do. ISS-924 files
+  the same mislabel against the Coolify adapter.
 
   Opening and reviewing pull requests is not in this change and is refused by name until it lands.
 
