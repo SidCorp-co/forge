@@ -26,6 +26,7 @@ use crate::transport::provision::{self, Provision};
 use crate::transport::CoreClient;
 use crate::workspace::orientation;
 use crate::workspace::skill_sync;
+use crate::workspace::trust;
 
 /// Pull all queued provisions and process them sequentially (one device, low
 /// volume). Errors are logged, never propagated, so a single bad row can't wedge
@@ -216,6 +217,8 @@ async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, rep
     if let Err(e) = orientation::write_orientation(repo_path, &p.project_id, &p.slug) {
         tracing::warn!("[provision] write orientation failed: {e}");
     }
+    // cm:guard the workspace is pre-trusted HERE, where the box first owns the path, and not only in `daemon::master`. A master pane is started every sweep and this runs once per provision, so the source fix is the cheap one and the master's is the retrofit for every box provisioned before this shipped.
+    trust::pre_trust_logged(repo_path, &p.slug);
 
     report(client, &p.runner_id, "ready", None).await;
     tracing::info!(

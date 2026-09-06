@@ -11,6 +11,28 @@
 
 ### Added
 
+- **A master that cannot start is stopped being restarted, and a fresh box never meets the
+  workspace-trust dialog.** `ensure_master` respawned a dead master on every 30-second sweep with
+  nothing counting how many times it had already done so, so a session that died deterministically
+  burned the box's core loop twice a minute while the project's pool sat unread. On forge-vm
+  (2026-09-06) the deterministic death was Claude Code's workspace-trust prompt: it is shown in a
+  TTY only, `-p` and the SDK skip it, and a resident master lives in a tmux pane — which is a TTY —
+  so the pane held an unanswered prompt and ended. Two halves, both in the runner:
+
+  Three master deaths inside ten minutes now stop the respawn for thirty, with a `DEGRADED` line
+  per sweep naming the project, the tally and when the box will try again. The tally is per project,
+  so one broken checkout cannot idle the others, and it is a backoff rather than a latch: after the
+  cooldown the box tries exactly once, and a probe that dies re-opens it immediately instead of
+  buying another run of three. An operator who repairs the box out of band gets that probe without
+  restarting the daemon.
+
+  And the runner now pre-accepts the trust dialog for the checkout it owns — at provision, where the
+  box first takes the path, and again immediately before a master pane starts, which covers every box
+  provisioned before this shipped. It writes `hasTrustDialogAccepted` into Claude Code's own config
+  JSON, only when that path is not already trusted, atomically and keeping the file's mode; a config
+  it cannot parse is refused rather than replaced. Reaching the fleet needs a `runner-v*` release.
+  (ISS-928)
+
 - **An unattended agent session holds its own credential, and it dies when the session does.**
   A scheduled run, a RocketChat escalation and a RocketChat agent chat all open an agent session
   with nobody at the keyboard. Until now none of them had a credential of its own: the mint Forge

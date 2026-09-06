@@ -169,8 +169,16 @@ than pane-hosted — the price paid, and what it buys.</p>
     <td><code>POST /me/pool/release</code> with no <code>jobId</code>, then
         <code>/me/master-session/close</code></td>
     <td>every hold that session had goes back to the pool at once, without waiting out the 3-minute
-        reaper; the next sweep starts a fresh master. What it had already <em>started</em> is
-        untouched — a started job holds no hold</td></tr>
+        reaper; the next sweep starts a fresh master — up to <code>MASTER_DEATH_LIMIT</code>. What it
+        had already <em>started</em> is untouched — a started job holds no hold</td></tr>
+<tr><td>The fresh master dies too, three times inside 10 minutes</td>
+    <td>the daemon's death tally, per project (<code>master.rs</code>)</td>
+    <td>no further start for 30 minutes, one <code>DEGRADED</code> line per sweep naming the project
+        and the next attempt; then exactly one probe, and a probe that dies re-opens it at once</td>
+    <td>a deterministic death (an unanswered workspace-trust dialog in the pane, ISS-928) used to be
+        respawned twice a minute forever. A backoff and not a latch: an operator who repairs the box
+        out of band gets the probe without restarting the daemon. Other projects are untouched — the
+        tally is per project</td></tr>
 <tr><td>Master alive but its transcript stops growing after a prompt</td>
     <td>the daemon, at <code>MASTER_SILENCE_CEILING</code></td>
     <td>pane killed, then the same release-and-close path</td>
