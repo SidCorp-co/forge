@@ -1,0 +1,155 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · master-pool-admission — what a master may see, and what it may start</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .warn { border-left-color:var(--bad); }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
+</style>
+<main>
+
+<h1>master-pool-admission — what a master may see, and what it may start</h1>
+<p class="sub">Two surfaces answer two different questions, and the whole design is that they never
+become one. The <b>pool</b> answers &ldquo;what may I claim right now&rdquo;; the <b>backlog</b>
+answers &ldquo;what exists that nobody has decided about yet&rdquo;. Owner:
+<code>packages/core/src/devices/</code> (<code>pool.ts</code>, <code>backlog.ts</code>,
+<code>promote.ts</code>, <code>pool-routes.ts</code>),
+<code>packages/core/src/pipeline/pipeline-config-schema.ts</code>,
+<code>packages/runner/crates/forge-runner-core/src/daemon/master.rs</code>.</p>
+
+<h2>One read, two lists</h2>
+<p>A claimable row is a <code>queued</code> job under a live <code>pipeline_run</code>. A backlog row
+is an <em>issue</em> at a status the project declared in <code>pipelineConfig.poolBacklog.statuses</code>
+&mdash; it has no job, no run, and no <code>jobId</code> field at all. A project that declared nothing
+issues no second query and gets <code>backlog: []</code>, which is every project on the fleet but
+forge-dev.</p>
+
+<div class="board"><pre class="mermaid">
+flowchart TD
+  R["forge-runner daemon sweep<br/>master.rs:sweep — every 30s"] --> P["GET /api/devices/me/pool?limit&amp;projectId<br/>requireDevice — the device's own bindings only"]
+  P --> A["devices/pool.ts:readPool<br/>queued jobs under a live run"]
+  P --> B{"project declared<br/>poolBacklog.statuses?"}
+  B -- "absent / empty" --> B0["backlog: [] — no second query at all"]
+  B -- "declared" --> B1["devices/backlog.ts:readBacklog<br/>issues AT those statuses"]
+  B1 --> B2["exclude any issue that already<br/>carries a job or an open run"]
+  B2 --> B3["raw blocker facts, same shape readPool returns<br/>NO jobId field on any row"]
+  A --> RESP["{ items: [...], backlog: [...] }<br/>siblings, never merged"]
+  B0 --> RESP
+  B3 --> RESP
+  RESP --> M["master.rs:pass_prompt<br/>two headed lists in one prompt"]
+</pre></div>
+
+<div class="rule">The two lists are told apart in the prompt itself, not just in the response. A
+master that reads a backlog key as claimable spends its turn on <code>pool claim &lt;issueId&gt;</code>,
+which core refuses as <code>not_found</code> &mdash; and that refusal names the job rather than the
+mistake, so nothing in the transcript says why. An older runner that has never heard of the key
+ignores it and keeps parsing <code>items</code> unchanged.</div>
+
+<h2>Promotion &mdash; the only way a backlog row becomes work</h2>
+<p>Promote does not run anything. It moves the issue to the entry status and lets the dispatch every
+other caller already uses produce the run and the <code>drive</code> job, then hands back that job's
+id so the master claims it through the path it was already using. Every refusal is an ordinary
+outcome on HTTP 200.</p>
+
+<div class="board"><pre class="mermaid">
+flowchart TD
+  C["forge-runner pool promote &lt;issueId&gt;<br/>POST /me/pool/promote"] --> G1{"device bound to<br/>this project?"}
+  G1 -- no --> X1["200 { ok:false, reason:'not_found' }<br/>never borrows the owner's account authority"]
+  G1 -- yes --> G2{"poolBacklog declared?"}
+  G2 -- no --> X2["200 backlog_disabled"]
+  G2 -- yes --> G3{"issue AT an<br/>admitted status?"}
+  G3 -- no --> X3["200 not_in_backlog"]
+  G3 -- yes --> G4{"entry stage enabled<br/>AND mode != 'manual'?"}
+  G4 -- no --> X4["200 entry_gated<br/>ISSUE HAS NOT MOVED"]
+  G4 -- yes --> G5{"job or open run<br/>already for this issue?"}
+  G5 -- yes --> X5["200 issue_busy<br/>never a second drive job"]
+  G5 -- no --> T["applyStatusTransition → entry status<br/>device actor, agency:'agent'"]
+  T --> E["reEnqueueForIssue — synchronously<br/>the async outbox hook cannot hand back an id;<br/>the unique index makes the later hook a no-op"]
+  E --> Q{"queued drive job<br/>appeared?"}
+  Q -- yes --> OK["200 { ok:true, jobId }<br/>→ master claims it through /me/pool/claim"]
+  Q -- "no, and NO run was opened" --> RB["restore the prior status<br/>200 dispatch_failed — no orphan"]
+  Q -- "no, but a run WAS opened" --> LV["leave it at the entry status WITH its run<br/>200 dispatch_failed, detail says the reconciler owns it"]
+</pre></div>
+
+<div class="rule warn"><b>The entry gate is checked BEFORE anything moves.</b> That ordering is the
+invariant, not an optimisation: a gate read after the transition leaves an issue out of
+<code>draft</code> with no run and nothing explaining why. <code>manual</code> keeps meaning
+&ldquo;a human presses Run&rdquo; &mdash; admitting a status widens what a master may <em>see</em>,
+never what it may <em>decide</em>. Promotion must not be routed through the manual-run path, which
+bypasses that gate deliberately and for a different reason.</div>
+
+<h2>Where a contradiction is refused &mdash; at the config write, not at dispatch</h2>
+<p><code>intakeGate</code> exists so a <em>human</em> approves every arriving issue by moving it out
+of <code>draft</code>. A master that may promote drafts is that human. Declaring both is therefore
+unrepresentable, and the rule lives in the schema so REST and MCP <code>forge_config</code> are both
+covered by one copy.</p>
+
+<div class="board"><pre class="mermaid">
+sequenceDiagram
+  participant O as operator (UI / MCP / REST)
+  participant H as pipeline-config-http.ts
+  participant S as pipeline-config-schema.ts
+  participant V as pipeline-config-service.ts
+  participant D as projects.pipeline_config (jsonb)
+
+  O->>H: PATCH { poolBacklog: { statuses:['draft'] } }
+  H->>S: parse the PATCH
+  S-->>H: ok — the patch alone breaks no rule
+  H->>V: updatePipelineConfig(patch)
+  V->>V: merge patch onto the STORED document
+  V->>S: assertMergedConfigValid(merged)
+  S-->>V: superRefine: intakeGate.enabled && statuses includes 'draft'
+  V-->>O: 400 CONFIG_CONFLICT — the schema's own message, naming BOTH settings
+  Note over V,D: nothing is written
+</pre></div>
+
+<div class="rule">Validating the patch alone held the rule only against an operator who sent both
+halves at once, and fell to anyone who sent them one at a time in either order. The merged document
+is what is validated. A stored config that <em>already</em> fails the schema is not refused: this
+write did not cause it, and blocking there would answer an unrelated edit with a rule the operator
+did not break and leave them no edit that succeeds.</div>
+
+<h2>What each refusal means to an operator</h2>
+<table>
+<thead><tr><th>Reason</th><th>What actually happened</th><th>Retry helps?</th></tr></thead>
+<tbody>
+<tr><td><code>backlog_disabled</code></td><td>The project declared no <code>poolBacklog</code>.</td><td>No &mdash; a config change</td></tr>
+<tr><td><code>not_in_backlog</code></td><td>The issue is not at an admitted status (it may have moved since the read).</td><td>No</td></tr>
+<tr><td><code>entry_gated</code></td><td>The entry stage is disabled or <code>mode:'manual'</code>. The issue did not move.</td><td>No &mdash; a human presses Run</td></tr>
+<tr><td><code>issue_busy</code></td><td>A job or open run already exists &mdash; usually another master won the race.</td><td>No, and that is correct</td></tr>
+<tr><td><code>not_found</code></td><td>This device serves no such project.</td><td>No &mdash; a binding problem</td></tr>
+<tr><td><code>dispatch_failed</code></td><td>The transition landed and the enqueue did not. The <code>detail</code> says whether the status was restored or left with a run for the reconciler.</td><td>Read the detail first</td></tr>
+</tbody>
+</table>
+
+<div class="rule">All six are HTTP 200 with <code>ok:false</code>, the way a refused claim already
+answers. An entry-gated project and a race lost to another master are both normal; a 4xx would make
+each look like a broken route and invite a retry loop against a rule that will refuse forever.</div>
+
+<h2>Read this before</h2>
+<p>Adding a status to the admissible set &mdash; it is <em>derived</em> as
+<code>issueStatuses</code> minus <code>AUTONOMOUS_DRIVER_STATUSES</code>, never hand-written,
+because a driver status already carries a run and a job and would offer a row that can never be
+promoted. Adding a cross-field rule to <code>pipelineConfig</code> &mdash; put it in the schema and
+make sure the merged document is what gets validated, or it holds on one write and falls to two.
+Adding a key to the pool response &mdash; siblings only; a row with no job sitting in the array the
+master claims from invites a malformed claim. And adding a cap on how much a master may take: the
+<code>cm:guard</code> on <code>/api/devices/me/load</code> forbids a computed
+&ldquo;you may take N more&rdquo;, because batch size is the master's judgement and a ceiling in the
+kernel is the knob this design removed.</p>
+
+<p><a href="index.html">&larr; all flows</a></p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>

@@ -12,6 +12,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { readBacklog } from './backlog.js';
 import {
   prepareJobForMaster,
   releaseAllHeldBySession,
@@ -21,6 +22,7 @@ import {
 import { readDeviceLoad, readFleetLoad, readProjectLoad } from './load.js';
 import { closeMasterSession, ensureMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
+import { promoteFromBacklog } from './promote.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -42,8 +44,30 @@ devicePoolRoutes.get(
   async (c) => {
     const { limit, projectId } = c.req.valid('query');
     const deviceId = c.get('device').id;
-    const items = await readPool({ deviceId, projectId, limit });
-    return c.json({ items, count: items.length });
+    const [items, backlog] = await Promise.all([
+      readPool({ deviceId, projectId, limit }),
+      readBacklog({ deviceId, projectId }),
+    ]);
+    // cm:guard ISS-917 — `backlog` is a SIBLING key and its rows must never be folded into `items`. A row with no `jobId` sitting in the array a master claims from is a malformed claim waiting to happen, and an older runner (which decodes only `items`) keeps parsing this response unchanged precisely because the new key is additive.
+    return c.json({ items, count: items.length, backlog, backlogCount: backlog.length });
+  },
+);
+
+const promoteBodySchema = z.object({
+  issueId: z.string().uuid(),
+});
+
+// cm:guard a refusal answers 200 with `ok:false` and a NAMED reason, exactly as a refused claim does. An entry-gated project and a race lost to another master are ordinary outcomes a master handles by choosing differently; making either an error invites a retry loop against a condition retrying cannot change, and `entry_gated` in particular clears only when a human edits the config.
+devicePoolRoutes.post(
+  '/me/pool/promote',
+  requireDevice(),
+  zValidator('json', promoteBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { issueId } = c.req.valid('json');
+    const result = await promoteFromBacklog({ deviceId: c.get('device').id, issueId });
+    return c.json(result);
   },
 );
 

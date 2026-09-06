@@ -11,6 +11,41 @@
 
 ### Added
 
+- **A master can see a declared backlog beside its claimable pool, and decide whether to pull one
+  up (ISS-917).** Until now a master saw only `queued` jobs under a live `pipeline_run`. A `draft`
+  issue has neither, so it was invisible to every master on the fleet and the only way to get one
+  worked was a human moving it to `open`. A project may now declare
+  `pipelineConfig.poolBacklog = { statuses, limit }` — the statuses whose issues appear to its
+  masters as a **backlog**: visible, readable, and not automatically worked. Absent or empty is
+  today's behaviour exactly, which is every other project on the fleet.
+
+  Admitting a status does NOT make it run. A backlog row carries no job and cannot be claimed;
+  `GET /api/devices/me/pool` answers it as a sibling `backlog` key that an older runner ignores,
+  never folded into `items`. Turning one into work is `POST /me/pool/promote` — it moves the issue
+  to the entry status and lets the dispatch every other caller uses produce the run and the `drive`
+  job, then hands back that job's id so the master claims it through the path it already used.
+
+  **Promotion does not bypass the entry gate.** With `states.open` disabled or set to
+  `mode: 'manual'`, promote refuses `entry_gated` and the issue does not move — `manual` keeps
+  meaning "a human presses Run". Admitting a status widens what a master may SEE, never what it may
+  decide. Every refusal (`entry_gated`, `not_in_backlog`, `issue_busy`, `not_found`,
+  `backlog_disabled`, `dispatch_failed`) is an ordinary outcome: HTTP 200 with `ok:false` and a
+  named reason, the way a refused claim already answers, because an entry-gated project and a race
+  lost to another master are both normal and neither should invite a retry loop.
+
+  Declaring `draft` while the project's `intakeGate` is on is refused at validation naming both
+  settings: the gate exists so a *human* approves every arriving issue, and a master that may
+  promote drafts is that human. The rule lives in the config schema, so REST and MCP `forge_config`
+  both hit it.
+
+  `forge-runner pool list` prints the backlog as its own block with each row's raw status, priority,
+  age and blocker facts and no promote/skip verdict, and `forge-runner pool promote <issueId>`
+  turns one into work. **The runner versions and ships separately** — a box needs a build carrying
+  this to see the block. Project settings → Pipeline carries the switch, the admitted statuses and
+  the row limit, and states in copy that admitting a status does not make it run. The judgement
+  itself — what makes one draft worth pulling up now versus leaving alone — is in the
+  `forge-master` skill beside the blocker table, as raw facts and no verdict.
+
 - **An agent working an issue on a project that keeps modules is now told they exist, and how to
   set the issue's primary one.** ISS-593 made a module a label with `kind='module'` and gave an
   issue a primary through `issue_labels.is_primary`, but nothing told the agents doing the work:
@@ -1131,6 +1166,23 @@
   set is now 59.
 
 ### Fixed
+
+- **A cross-field pipeline-config rule was enforceable on one write and bypassable by two.** The
+  `PATCH /projects/:id/pipeline-config` validator ran the schema over the PATCH, and the service
+  then merged that patch onto the stored document without re-validating the result. Any rule the
+  schema declares across two keys — the `intakeGate` + `poolBacklog` pairing added above is the
+  first, but nothing about the hole was specific to it — therefore held only against an operator
+  who wrote both halves at once, and fell to anyone who sent them one at a time in either order.
+  The merged document is now re-validated before it is stored, and the refusal arrives as
+  `CONFIG_CONFLICT` carrying the schema's own message, which already names both settings. A stored
+  config that ALREADY fails the schema is not refused: the write did not cause it, and blocking
+  there would answer an unrelated edit with a rule the operator did not break and leave them no
+  edit that succeeds.
+
+- An issue's chip on its detail screen read its bucket's word, not its status: `statusToChip` folds
+  `draft`, `open`, `confirmed`, `clarified` and `approved` all onto `queued`, so a `draft` — which
+  nothing is working — displayed as "Queued". It now carries its true lifecycle label, which is
+  what every other issue-domain chip already did.
 
 - **`POST /api/memory/search` ignored the `strategy` you asked for and told you it had honoured
   it.** The route validated `strategy` in its body schema and then never passed it to

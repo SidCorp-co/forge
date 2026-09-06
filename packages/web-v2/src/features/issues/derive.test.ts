@@ -107,6 +107,20 @@ describe("statusToChip", () => {
 		expect(statusToChip("released")).toBe("shipped");
 		expect(statusToChip("closed")).toBe("archived");
 	});
+	// cm:guard ISS-917 AC13 — the bucket is LOSSY on purpose and five statuses share `queued`, so anything rendering a chip must pass `statusLabelFor` as its label. A bare chip told a reader the pipeline had a draft "Queued" when nothing was working it, which is the confusion the pool backlog exists to make legible.
+	it("folds five distinct statuses onto queued, which is why the label is separate", () => {
+		for (const s of [
+			"draft",
+			"open",
+			"confirmed",
+			"clarified",
+			"approved",
+		] as const) {
+			expect(statusToChip(s)).toBe("queued");
+		}
+		expect(statusLabelFor("draft")).not.toBe(statusLabelFor("open"));
+		expect(statusLabelFor("draft")).toMatch(/draft/i);
+	});
 });
 
 describe("statusToTone (ISS-509 — chip↔dashboard color consistency)", () => {
@@ -123,7 +137,7 @@ describe("statusToTone (ISS-509 — chip↔dashboard color consistency)", () => 
 	});
 
 	it("never resolves a benign / blocked / idle status to the failure tone", () => {
-		// No ISSUE status is a real failure — only a failed job/session is red.
+		// cm:guard no ISSUE status is a real failure — red is reserved for a failed job or session. A lifecycle status painted red states as fact that something broke when nothing did, and `reopen` and `on_hold` are the two that kept being read that way.
 		for (const s of ISSUE_STATUSES) {
 			expect(statusToTone(s), s).not.toBe("failure");
 		}
@@ -710,7 +724,6 @@ describe("deriveBlockerState", () => {
 			expect(b?.reason).toContain("A human is needed");
 			expect(b?.reason).not.toContain("decision");
 		});
-
 	});
 
 	it("on_hold status → resume action", () => {
@@ -940,7 +953,7 @@ describe("deriveStageOutcomes", () => {
 		expect(cells.test.state).toBe("done");
 	});
 
-it("uses only the most-recent run's duration/cost (no double-count on reopen)", () => {
+	it("uses only the most-recent run's duration/cost (no double-count on reopen)", () => {
 		const cells = deriveStageOutcomes(
 			"code",
 			"running",

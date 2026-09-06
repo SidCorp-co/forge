@@ -21,6 +21,7 @@ import { useProjectRunners } from "@/features/runners/hooks";
 import { isFeatureOff, usePipelineConfig, useUpdatePipelineConfig } from "../hooks";
 import { McpServersSection } from "./mcp-servers-section";
 import { IntakeGateSection } from "./intake-gate-section";
+import { PoolBacklogSection } from "./pool-backlog-section";
 import { KnowledgePromotionSection } from "./knowledge-promotion-section";
 import { StagePermissionsSection } from "./stage-permissions-section";
 import { RunnerPoolsSection } from "./runner-pools-section";
@@ -227,6 +228,8 @@ export function PipelineTab({
         <RunnerPoolsSection projectId={projectId} config={server} canEdit={canEdit} />
 
         <IntakeGateSection projectId={projectId} config={server} canEdit={canEdit} />
+
+        <PoolBacklogSection projectId={projectId} config={server} canEdit={canEdit} />
         <KnowledgePromotionSection projectId={projectId} config={server} canEdit={canEdit} />
 
         <AgentConfigSection projectId={projectId} canEdit={canEdit} />

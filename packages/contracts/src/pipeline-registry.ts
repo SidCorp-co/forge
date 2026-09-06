@@ -31,6 +31,22 @@ export const REGISTRY_ISSUE_STATUSES = [
 	"dropped",
 ] as const;
 
+// cm:guard ISS-917 — the statuses a project MAY admit to its master's pool backlog: `issueStatuses` minus `AUTONOMOUS_DRIVER_STATUSES`, because a driver status already carries a run and a job by the time it holds it, so a backlog row at one could never be promoted. Hardcoded here for the same reason the tuple above is — contracts must not import core — and held to core by the parity test named below.
+// cm:edge contract -> packages/core/src/pipeline/autonomous-mode.ts#BACKLOG_ADMISSIBLE_STATUSES — parity asserted in packages/core/src/pipeline/registry.test.ts; a status that becomes a driver status must leave this tuple in the same change or the settings screen offers a value the config schema rejects
+export const REGISTRY_BACKLOG_ADMISSIBLE_STATUSES = [
+	"confirmed",
+	"clarified",
+	"waiting",
+	"approved",
+	"developed",
+	"testing",
+	"tested",
+	"released",
+	"reopen",
+	"on_hold",
+	"draft",
+] as const;
+
 export const REGISTRY_JOB_TYPES = [
 	"triage",
 	"clarify",
@@ -43,7 +59,7 @@ export const REGISTRY_JOB_TYPES = [
 	"fix",
 	"custom",
 	"pm",
-	// ISS-455 — skill smoke-verify canary (issue-less, one-shot 'system' run).
+	// cm:why ISS-455 — the skill smoke-verify canary, the one job type that runs with NO issue: a one-shot `system` run, so anything keying a job to an issue id must tolerate its absence here
 	"smoke",
 	"release_batch",
 	// cm:why ISS-801 — Update Pipeline stage ② (Reconcile): Master agent + verifier jobs
