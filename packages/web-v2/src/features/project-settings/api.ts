@@ -1,8 +1,8 @@
+// web-v2 feature module: project-settings — REST surface, verified against core (ISS-316).
+// The project detail itself is NOT here: `GET /api/projects/:id` lives in the `projects`
+// feature as `projectApi.getById` and is reached through `useProject`.
+
 import type { ProjectDetail } from "@/features/projects/types";
-// web-v2 feature module: project-settings — REST surface. All calls go through
-// the shared `apiClient` (no raw fetch). Routes verified against core for
-// ISS-316. The shared `GET /api/projects/:id` detail lives in the `projects`
-// feature (`projectApi.getById`) and is reused here via `useProject`.
 import { apiClient } from "@/lib/api/client";
 import type {
 	ApplyUxPresetInput,
@@ -10,6 +10,8 @@ import type {
 	ProjectFactsPatch,
 	ProjectFactsResponse,
 	ProjectInvitationRow,
+	LabelCreateInput,
+	LabelPatchInput,
 	ProjectLabel,
 	ProjectMemberRow,
 	PluginDesignation,
@@ -144,11 +146,19 @@ export const projectSettingsApi = {
 	listLabels: (id: string) =>
 		apiClient<ProjectLabel[]>(`/projects/${id}/labels`),
 
-	/** `POST /api/projects/:id/labels` — create a label. */
-	createLabel: (id: string, name: string, color: string) =>
+	/** `POST /api/projects/:id/labels` — create a label or a module (admin). */
+	createLabel: (id: string, body: LabelCreateInput) =>
 		apiClient<ProjectLabel>(`/projects/${id}/labels`, {
 			method: "POST",
-			body: JSON.stringify({ name, color }),
+			body: JSON.stringify(body),
+		}),
+
+	/** `PATCH /api/labels/:labelId` — rename / recolour / re-parent / re-describe
+	 *  (admin, top-level route). */
+	updateLabel: (labelId: string, patch: LabelPatchInput) =>
+		apiClient<ProjectLabel>(`/labels/${labelId}`, {
+			method: "PATCH",
+			body: JSON.stringify(patch),
 		}),
 
 	/** `DELETE /api/labels/:labelId` — delete a label (note: top-level route). */

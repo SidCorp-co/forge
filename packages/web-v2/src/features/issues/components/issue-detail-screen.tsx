@@ -1,5 +1,9 @@
 "use client";
 
+// web-v2 Issue detail (`/projects/[slug]/issues/[id]`, ISS-294). Live via WS on the keys
+// `['issue',id]` / `['comments',id]` / `['activities',id]` — the event-router invalidates
+// exactly those, so a query keyed anything else here stops updating and nothing reports it.
+
 import {
   Badge,
   Button,
@@ -34,10 +38,6 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
 import { useRouter } from "next/navigation";
-// web-v2 Issue detail (`/projects/[slug]/issues/[id]`). Simple + rich in one
-// derived layout: markdown description, AC checklist, collapsible agent plan,
-// full PipelineTracker, Comments/Activity/Tasks tabs, and a properties rail.
-// Live via WS (`['issue',id]` / `['comments',id]` / `['activities',id]`). ISS-294.
 import { useEffect, useMemo, useState } from "react";
 import {
   deriveBlockerState,
@@ -71,6 +71,7 @@ import { BlockerBanner } from "./blocker-banner";
 import { useGuardedTransition } from "./use-guarded-transition";
 import { CommentThread } from "./comment-thread";
 import { type LiveAgentState, LiveAgentPanel } from "./live-agent-panel";
+import { ModulePicker } from "./module-picker";
 import { PropertiesRail } from "./properties-rail";
 import { SessionGroupTimeline } from "./session-group-timeline";
 import { StepArtifactCard } from "./step-artifact-card";
@@ -123,6 +124,7 @@ export function IssueDetailScreen({
   const projectsQ = useProjects();
   const projectRole = projectsQ.data?.find((p) => p.id === projectId)?.role;
   const canWrite = projectRole !== "viewer";
+  const [modulePickerOpen, setModulePickerOpen] = useState(false);
 
   const issueQ = useIssue(id);
   const commentsQ = useComments(id);
@@ -626,6 +628,7 @@ export function IssueDetailScreen({
                 pending={pending || !canWrite}
                 onPatch={onPatch}
                 onTransition={onTransition}
+                onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
               />
             </CardContent>
           </Card>
@@ -640,10 +643,20 @@ export function IssueDetailScreen({
               pending={pending || !canWrite}
               onPatch={onPatch}
               onTransition={onTransition}
+              onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
             />
           </Collapsible>
         </div>
       </div>
+
+      <ModulePicker
+        open={modulePickerOpen}
+        onClose={() => setModulePickerOpen(false)}
+        issueId={issue.id}
+        projectId={projectId}
+        slug={slug}
+        labels={issue.labels ?? []}
+      />
     </PageContainer>
   );
 }

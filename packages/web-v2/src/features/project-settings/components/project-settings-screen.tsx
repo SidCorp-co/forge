@@ -29,6 +29,7 @@ import { BasicsTab } from "./basics-tab";
 import { IntegrationsTab } from "./integrations-tab";
 import { LabelsTab } from "./labels-tab";
 import { MembersTab } from "./members-tab";
+import { ModulesTab } from "./modules-tab";
 import { MemoryTab } from "./memory-tab";
 import { PipelineTab } from "./pipeline-tab";
 import { ProjectFactsTab } from "./project-facts-tab";
@@ -46,6 +47,7 @@ const TAB_VALUES = [
 	"memory",
 	"ux-contract",
 	"labels",
+	"modules",
 	"members",
 	"integrations",
 	"advanced",
@@ -62,6 +64,7 @@ const TABS: TabItem[] = [
 	{ value: "memory", label: "Memory" },
 	{ value: "ux-contract", label: "UX Contract" },
 	{ value: "labels", label: "Labels" },
+	{ value: "modules", label: "Modules" },
 	{ value: "members", label: "Members" },
 	{ value: "integrations", label: "Integrations" },
 	{ value: "advanced", label: "Advanced" },
@@ -169,8 +172,6 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 			/>
 
 			<PageContainer>
-				{/* Shell stays the shared wide column; form content capped (mirrors
-            the workspace SettingsScreen). */}
 				<div className="max-w-4xl">
 					{tab === "basics" && (
 						<BasicsTab project={project} canEdit={canEdit} />
@@ -207,6 +208,12 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 					)}
 					{tab === "labels" && (
 						<LabelsTab
+							projectId={project.id}
+							canEdit={canEdit || isProjectAdmin}
+						/>
+					)}
+					{tab === "modules" && (
+						<ModulesTab
 							projectId={project.id}
 							canEdit={canEdit || isProjectAdmin}
 						/>

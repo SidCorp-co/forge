@@ -22,7 +22,7 @@ import {
   buildOriginCondition,
   hydrateCreatorsForIssues,
 } from './creator.js';
-import { resolveModuleIdsTolerant } from './label-service.js';
+import { listModulesForIssues, resolveModuleIdsTolerant } from './label-service.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
@@ -66,7 +66,6 @@ const searchQuerySchema = z
     sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
     limit: z.coerce.number().int().min(1).max(200).default(50),
     offset: z.coerce.number().int().min(0).default(0),
-    // ISS-128 — opt-in hydration of `agentSessions[]` + derived `agentStatus`.
     withAgentSessions: z.coerce.boolean().optional().default(false),
     // ISS-437 — opt-in per-issue `estimatedCost` rollup (one grouped query for
     // the whole page; replaces the web list's per-row cost-summary N+1).
@@ -76,6 +75,8 @@ const searchQuerySchema = z
     withFailureInfo: z.coerce.boolean().optional().default(false),
     // cm:why opt-in like withCost/withFailureInfo: it costs ~9 batched round trips, and the callers that need it are the board and the issues list, where a queued-but-undispatched issue otherwise renders as actively worked
     withPipelineHealth: z.coerce.boolean().optional().default(false),
+    // cm:why ISS-594 — the ONLY way a list row learns its modules: this response serializes the raw `issues` row, which has no label columns, and the alternative for web-v2's module cell was one `GET /issues/:id` per row
+    withModules: z.coerce.boolean().optional().default(false),
   })
   .strict();
 
@@ -309,6 +310,15 @@ searchRoutes.get(
       serialized = serialized.map((r) => ({
         ...r,
         pipelineHealth: healthMap.get(r.id as string) ?? { stage: r.status },
+      }));
+    }
+
+    // cm:guard every row gets the key when the flag is on, `[]` included — a row that omits it is indistinguishable from a row whose hydration failed, and the cell would render a module the issue does not have on the next page's cache hit
+    if (q.withModules && serialized.length > 0) {
+      const moduleMap = await listModulesForIssues(serialized.map((r) => r.id as string));
+      serialized = serialized.map((r) => ({
+        ...r,
+        modules: moduleMap.get(r.id as string) ?? [],
       }));
     }
 

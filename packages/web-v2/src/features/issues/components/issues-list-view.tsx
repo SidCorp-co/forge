@@ -1,5 +1,10 @@
 "use client";
 
+// Issues List view (the "List" tab of the Issues screen, ISS-364/293). Filtering, sorting and
+// pagination are SERVER-side through the search endpoint — the rows on screen are one page, so
+// anything derived from `rows` describes the page and never the project. Live via WS on
+// `['issues','search']`, the one key the event-router invalidates.
+
 import {
   Badge,
   BoardRowSkeleton,
@@ -26,11 +31,6 @@ import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { usePathname } from "next/navigation";
-// Issues List view (the "List" tab of the redesigned Issues screen, ISS-364).
-// Server-side search / filter / sort / pagination via the search endpoint,
-// per-row lazy cost + dep badges, inline edit (transition + patch), pin-this-
-// view, and the desktop table / mobile card split. Live via WS
-// (`['issues','search']` invalidated by the event-router). ISS-293.
 //
 // URL-as-state (ISS-436): every filter (q / filter / priority / assignee /
 // groupBy / sort / page) is DERIVED from the live query string via
@@ -47,6 +47,7 @@ import {
   usePatchIssue,
   useProjectLabels,
   useProjectMembers,
+  useProjectModules,
 } from "../hooks";
 import {
   type GroupBy,
@@ -129,6 +130,7 @@ export function IssuesListView({
     : undefined;
   const createdBy = sp.get("createdBy") ?? "";
   const label = sp.get("label") ?? "";
+  const moduleId = sp.get("module") ?? "";
   const rawGroupBy = decodeFilter<GroupBy>(sp, "groupBy", "none");
   const groupBy = VALID_GROUP_BY.includes(rawGroupBy) ? rawGroupBy : "none";
   const sort = decodeFilter<IssueSort>(sp, "sort", "createdAt:desc");
@@ -217,12 +219,14 @@ export function IssuesListView({
     priority,
     createdBy: createdBy || undefined,
     label: label || undefined,
+    module: moduleId || undefined,
     sort,
     page,
     pageSize: ISSUES_PAGE_SIZE,
   });
   const membersQ = useProjectMembers(projectId);
   const labelsQ = useProjectLabels(projectId);
+  const modulesQ = useProjectModules(projectId);
   const patch = usePatchIssue();
   const {
     requestTransition,
@@ -240,12 +244,28 @@ export function IssuesListView({
     [membersQ.data],
   );
 
+  // cm:why plain labels only — a module has its own filter below, and offering the same row in
+  // both controls would let a reader set two filters that mean the same narrowing.
   const labelFilterOptions = useMemo<SelectOption[]>(
     () => [
       { value: "", label: "Label: any" },
-      ...(labelsQ.data ?? []).map((l) => ({ value: l.id, label: l.name })),
+      ...(labelsQ.data ?? [])
+        .filter((l) => l.kind !== "module")
+        .map((l) => ({ value: l.id, label: l.name })),
     ],
     [labelsQ.data],
+  );
+
+  const moduleFilterOptions = useMemo<SelectOption[]>(
+    () => [
+      { value: "", label: "Module: any" },
+      ...modulesQ.modules.map((m) => ({ value: m.id, label: m.name })),
+    ],
+    [modulesQ.modules],
+  );
+  const activeModuleName = useMemo(
+    () => modulesQ.modules.find((m) => m.id === moduleId)?.name ?? null,
+    [modulesQ.modules, moduleId],
   );
 
   const rows = useMemo(() => issuesQ.data?.items ?? [], [issuesQ.data]);
@@ -270,7 +290,7 @@ export function IssuesListView({
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on any view change, not on `selected` itself.
   useEffect(() => {
     setSelected(new Set());
-  }, [q, filter, priority, createdBy, label, sort, page]);
+  }, [q, filter, priority, createdBy, label, moduleId, sort, page]);
 
   const toggleRow = useCallback((id: string, next: boolean) => {
     setSelected((prev) => {
@@ -298,7 +318,8 @@ export function IssuesListView({
     [rows, selected],
   );
 
-  const isFiltered = q !== "" || filter !== "all" || !!priority || !!createdBy || !!label;
+  const isFiltered =
+    q !== "" || filter !== "all" || !!priority || !!createdBy || !!label || !!moduleId;
 
   // ── Mobile "Filters" SlideOver (<sm): the 5 advanced Selects collapse behind
   // a single trigger with an active-count badge so the header fits ~2 rows on
@@ -309,6 +330,7 @@ export function IssuesListView({
     (priority ? 1 : 0) +
     (createdBy ? 1 : 0) +
     (label ? 1 : 0) +
+    (moduleId ? 1 : 0) +
     (groupBy !== "none" ? 1 : 0) +
     (sort !== "createdAt:desc" ? 1 : 0);
 
@@ -362,6 +384,13 @@ export function IssuesListView({
             value={label}
             options={labelFilterOptions}
             onChange={(v) => setParams({ label: v, page: "" })}
+            className="w-44"
+          />
+          <Select
+            aria-label="Module filter"
+            value={moduleId}
+            options={moduleFilterOptions}
+            onChange={(v) => setParams({ module: v, page: "" })}
             className="w-44"
           />
           <Select
@@ -463,6 +492,13 @@ export function IssuesListView({
             className="w-full"
           />
           <Select
+            aria-label="Module filter"
+            value={moduleId}
+            options={moduleFilterOptions}
+            onChange={(v) => setParams({ module: v, page: "" })}
+            className="w-full"
+          />
+          <Select
             aria-label="Group by"
             value={groupBy}
             options={GROUP_OPTIONS}
@@ -503,16 +539,20 @@ export function IssuesListView({
 
       {!issuesQ.isLoading && !issuesQ.isError && rows.length === 0 && (
         <EmptyState
-          title={isFiltered ? "Nothing here" : "No issues yet"}
+          title={
+            moduleId ? "No issues in this module" : isFiltered ? "Nothing here" : "No issues yet"
+          }
           message={
-            createdBy
-              ? `No issues created by ${
-                  creatorFilterOptions.find((o) => o.value === createdBy)?.label.replace(/^Creator: /, "") ??
-                  "that creator"
-                }.`
-              : isFiltered
-                ? "No issues match this search or filter."
-                : "Issues for this project will appear here as work is filed."
+            moduleId
+              ? `No issues tagged to ${activeModuleName ?? "this module"}.`
+              : createdBy
+                ? `No issues created by ${
+                    creatorFilterOptions.find((o) => o.value === createdBy)?.label.replace(/^Creator: /, "") ??
+                    "that creator"
+                  }.`
+                : isFiltered
+                  ? "No issues match this search or filter."
+                  : "Issues for this project will appear here as work is filed."
           }
           mascot={!isFiltered}
           action={
@@ -526,6 +566,7 @@ export function IssuesListView({
                       priority: "",
                       createdBy: "",
                       label: "",
+                      module: "",
                       page: "",
                     }),
                 }
@@ -565,6 +606,7 @@ export function IssuesListView({
                         )}
                         <TH>ID</TH>
                         <TH>Issue</TH>
+                        <TH>Module</TH>
                         {/* ISS-436: ONE status column — lifecycle chip + live
                             agent indicator + mini stage tracker. The old
                             separate Pipeline/Status pair rendered the same two

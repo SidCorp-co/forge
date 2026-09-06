@@ -11,6 +11,27 @@
 
 ### Added
 
+- **Modules are visible, editable and filterable in the cloud UI.** The module taxonomy landed in
+  the database and over REST in ISS-593, and no screen could see it: a project's parts existed and
+  nobody could name one, attribute an issue to one, or ask which issues belonged to one. Three
+  surfaces now do.
+
+  **Project Settings → Modules** is the taxonomy itself: create, rename, recolour, describe,
+  re-parent and delete. The hierarchy is an indented list with a parent picker per row rather than a
+  drag-drop tree — the design system has no tree primitive, and the picker excludes each module's own
+  descendants so the one refusal a reader could otherwise walk into is never offered. Delete asks
+  first, and a module the server refuses to delete because issues still carry it says exactly that.
+
+  **The issue detail** gains a Module row and a picker: one primary module and any number of
+  secondary ones, saved as a single write. **The issues list** gains a Module filter — distinct from
+  the label filter, because the server resolves the two against different rows — and a Module cell
+  per row, with its own empty state naming the module rather than the generic "Nothing here".
+
+  One server change was needed to make the cell possible: `GET /projects/:id/issues/search` joined no
+  labels at all, so the list had no way to learn a row's modules short of a request per row.
+  `?withModules=1` hydrates them in one grouped query, primary first, alongside the `withCost` /
+  `withFailureInfo` / `withPipelineHealth` flags already there. (ISS-594)
+
 - **A project's owner can set a standing policy for its master, and it survives the session.**
   The forge-dev master ran on an instruction — an advisory session budget, which issues count as
   eligible, when to group work into one session, what to pay down alongside the change — that

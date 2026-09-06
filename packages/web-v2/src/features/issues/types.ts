@@ -73,6 +73,19 @@ export interface IssueFailureInfo {
  * `withPipelineHealth=1`; without it, per-row pipeline stage is derived from
  * `status` and a queued-but-undispatched step is invisible (ISS-903).
  */
+/** A label's taxonomy role. Modules ARE labels; `kind` is the only thing that separates them. */
+// cm:edge contract -> packages/core/src/db/schema.ts#labelKinds — a third kind added there and not here renders as neither a module nor a label
+export type LabelKind = "label" | "module";
+
+/** One module attributed to an issue. Primary first in every array core sends. */
+// cm:edge contract -> packages/core/src/issues/label-service.ts#ModuleAttribution — re-typed rather than imported, as every other core payload on this screen is
+export interface ModuleAttribution {
+  labelId: string;
+  name: string;
+  color: string;
+  isPrimary: boolean;
+}
+
 export interface IssueRow {
   id: string;
   projectId: string;
@@ -106,6 +119,9 @@ export interface IssueRow {
   /** ISS-903 — present when the search call opts in with
    *  `withPipelineHealth=1` (the list and the board both do). */
   pipelineHealth?: PipelineHealth;
+  /** ISS-594 — present when the search call opts in with `withModules=1` (the
+   *  list does). Primary first; `[]` when the issue has no module. */
+  modules?: ModuleAttribution[];
 }
 
 /** Project member row from `GET /api/projects/:projectId/members`. */
@@ -190,20 +206,27 @@ export interface IssueSearchOpts {
   createdBy?: string;
   /** Label uuid — maps to `?label=<id>` on the search endpoint (ISS-586). */
   label?: string;
+  /** Module label uuid — maps to `?module=<id>` (ISS-594). Distinct from
+   *  `label`: the server resolves it against `kind='module'` rows only. */
+  module?: string;
   sort?: IssueSort;
   page?: number;
   pageSize?: number;
 }
 
-// ─── Detail (Part B) ────────────────────────────────────────────────────────
-
 /** Full issue row from `GET /api/issues/:id` — includes `pipelineHealth`,
  *  joined `labels[]`, `mergedAt`, `reopenCount`, `metadata`, `plan`, AC. */
+// cm:edge contract -> packages/core/src/labels/routes.ts#labelColumns — `GET /projects/:id/labels` projects exactly these; the issue-detail join answers the same row plus `isPrimary` and without `projectId`
 export interface IssueLabel {
   id: string;
-  projectId: string;
+  projectId?: string;
   name: string;
-  color: string | null;
+  color: string;
+  kind: LabelKind;
+  parentId?: string | null;
+  description?: string | null;
+  /** Only on an issue's joined `labels[]` — true for the issue's primary module. */
+  isPrimary?: boolean;
 }
 
 export interface IssueDetail extends IssueRow {

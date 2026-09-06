@@ -189,3 +189,48 @@ export async function resolveModuleIdsTolerant(
     .limit(uuidValues.length + nameValues.length + 1);
   return [...new Set(rows.map((r) => r.id))];
 }
+
+/**
+ * ISS-594 — every issue's module attributions, for a page of issues at once.
+ *
+ * The list surface needs the primary module per row, and the search response carries no labels at
+ * all; a per-row read of `listIssueLabels` would be one request per row. Modules only: a plain
+ * label on the same junction is not an attribution and the list has no column for it.
+ */
+// cm:edge contract -> packages/contracts/src/rows.ts — this IS `ModuleAttribution`, re-declared rather than imported because `@forge/contracts` depends on `@forge/core` and not the other way round; a field added there and not here reaches no client
+export type ModuleAttribution = {
+  labelId: string;
+  name: string;
+  color: string;
+  isPrimary: boolean;
+};
+
+export async function listModulesForIssues(
+  issueIds: readonly string[],
+): Promise<Map<string, ModuleAttribution[]>> {
+  const out = new Map<string, ModuleAttribution[]>();
+  if (issueIds.length === 0) return out;
+
+  const rows = await db
+    .select({
+      issueId: issueLabels.issueId,
+      labelId: labels.id,
+      name: labels.name,
+      color: labels.color,
+      isPrimary: issueLabels.isPrimary,
+    })
+    .from(issueLabels)
+    .innerJoin(labels, eq(labels.id, issueLabels.labelId))
+    .where(and(inArray(issueLabels.issueId, [...issueIds]), eq(labels.kind, 'module')));
+
+  // cm:guard the primary sorts first within each issue — the list cell renders `modules[0]`, so an
+  // issue whose secondary happened to come back first would show the wrong module as its primary.
+  for (const r of rows) {
+    const list = out.get(r.issueId) ?? [];
+    const entry = { labelId: r.labelId, name: r.name, color: r.color, isPrimary: r.isPrimary };
+    if (r.isPrimary) list.unshift(entry);
+    else list.push(entry);
+    out.set(r.issueId, list);
+  }
+  return out;
+}

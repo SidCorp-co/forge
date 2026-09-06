@@ -1,0 +1,135 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · web-v2-module-taxonomy — a module reaches the screen and comes back as an attribution</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+</style>
+<main>
+
+<h1>web-v2-module-taxonomy — a module reaches the screen and comes back as an attribution</h1>
+<p class="sub">The browser half of module taxonomy. <code>issue-work-module-attribution</code> owns
+what the server does with a <code>labels[]</code> write and where it refuses one; this file owns how
+that write is composed, what the three screens read to compose it, and what the reader is told when
+the server says no. There is <strong>no <code>/modules</code> endpoint</strong> anywhere in this
+flow — every hop rides the labels routes, the issue PATCH, and the issues search.</p>
+
+<h2>The three surfaces and the one cache they share</h2>
+<div class="board"><pre class="mermaid">
+flowchart LR
+  subgraph browser["web-v2"]
+    MT["Project Settings → Modules<br/>modules-tab.tsx"]
+    MP["Issue detail → module picker<br/>module-picker.tsx"]
+    LV["Issues list → Module filter + cell<br/>issues-list-view.tsx"]
+    Q(["React Query<br/><code>['project', id, 'labels']</code>"])
+  end
+  subgraph core["@forge/core"]
+    L["labels/routes.ts"]
+    I["issues/routes.ts (PATCH)"]
+    S["issues/search.ts"]
+  end
+  MT -- "useLabels" --> Q
+  MP -- "useProjectModules<br/>(filters kind='module')" --> Q
+  LV -- "useProjectModules" --> Q
+  Q -- "GET /projects/:id/labels" --> L
+  MT -- "POST /projects/:id/labels<br/>PATCH · DELETE /labels/:id" --> L
+  MP -- "PATCH /issues/:id { labels }" --> I
+  LV -- "GET …/issues/search?module=&amp;withModules=1" --> S
+</pre></div>
+
+<div class="rule">
+<b>One fetch serves all three.</b> Core has no <code>?kind=</code> filter and no modules route, so
+<code>useProjectModules</code> is <code>useProjectLabels</code> narrowed on <code>kind</code> in the
+client. Adding a second endpoint would put the Labels tab and the Modules tab on two caches that can
+disagree about the same row — which one a rename reaches would then depend on which screen you were
+standing on.
+</div>
+
+<h2>Saving an attribution: the replace nobody sees</h2>
+<div class="board"><pre class="mermaid">
+sequenceDiagram
+  participant R as Reader
+  participant P as ModulePicker
+  participant B as buildModuleLabelWrite
+  participant C as PATCH /api/issues/:id
+  participant D as issue_labels
+  R->>P: ticks core (primary), web (secondary)
+  P->>B: current labels + moduleIds + primaryId
+  Note over B: the issue's PLAIN labels are prepended here
+  B->>C: labels: ["bug", "web", {labelId:"core", isPrimary:true}]
+  C->>C: resolveLabelIdsForWrite
+  alt refused
+    C-->>P: 400 PRIMARY_NOT_MODULE / MULTIPLE_PRIMARY
+    P->>R: error toast, formatApiError, drawer stays open
+  else accepted
+    C->>D: DELETE every row, INSERT the new set
+    C-->>P: 200
+    P->>R: success toast, drawer closes
+  end
+</pre></div>
+
+<div class="rule">
+<b class="bad">The failure this flow exists to prevent.</b> <code>PATCH /issues/:id</code> replaces the
+label set <em>wholesale</em> — <code>[]</code> means "clear them all", and the server cannot tell a
+payload that forgot the issue's plain labels from one that meant to drop them. A picker that sent
+only its modules would silently delete every <code>bug</code>, <code>ux</code> and
+<code>regression</code> on the issue, with a success toast.
+<code>buildModuleLabelWrite</code> (<code>features/issues/hooks.ts</code>) is the single point that
+merges them back in, and it is the reason that function is exported and unit-tested rather than
+inlined in the mutation.
+</div>
+
+<h2>Reading it back: two different questions, two different params</h2>
+<table>
+<thead><tr><th>Screen wants</th><th>Sends</th><th>Server resolves against</th><th>If it resolves to nothing</th></tr></thead>
+<tbody>
+<tr><td>Issues tagged to a module</td><td><code>?module=&lt;name|uuid&gt;</code></td><td><code>kind='module'</code> rows only</td><td>zero rows — never "filter dropped"</td></tr>
+<tr><td>Issues carrying a label</td><td><code>?label=&lt;uuid&gt;</code></td><td>any label row, uuid only</td><td>zero rows</td></tr>
+<tr><td>Each row's own modules</td><td><code>?withModules=1</code></td><td>the junction, joined to <code>kind='module'</code></td><td><code>[]</code> on the row, never a missing key</td></tr>
+</tbody>
+</table>
+
+<div class="rule">
+<b>Why the module column needed a server change.</b> The search response serialises the raw
+<code>issues</code> row and joins no labels at all — <code>withCost</code>,
+<code>withFailureInfo</code>, <code>withPipelineHealth</code> and <code>withAgentSessions</code> were
+the only hydrations it had. Without <code>withModules</code> the list's Module cell had exactly two
+options: one <code>GET /issues/:id</code> per row, or no column. The flag is the third (ISS-594).
+</div>
+
+<h2>Where the reader is told something, and where they are not</h2>
+<table>
+<thead><tr><th>Server says</th><th>Screen shows</th></tr></thead>
+<tbody>
+<tr><td><code>CIRCULAR_HIERARCHY</code></td><td>"That parent sits under this module — pick one above it." The parent control never offers a descendant, so this only fires on a race with another editor.</td></tr>
+<tr><td><code>PARENT_NOT_MODULE</code> · <code>PARENT_ON_NON_MODULE</code> · <code>INVALID_PARENT</code></td><td>Toast naming the cause; the row keeps its old parent.</td></tr>
+<tr><td><code>MODULE_IN_USE</code></td><td>"Other modules or issues still depend on this one." Raised on demoting a module that is a parent or a primary.</td></tr>
+<tr><td><code>LABEL_IN_USE</code> (409 on delete)</td><td>"Issues are still tagged with this — remove it from them first." The confirm step fires <em>before</em> the request, so the reader has already agreed to a delete the server then refuses.</td></tr>
+<tr><td><code>PRIMARY_NOT_MODULE</code> · <code>MULTIPLE_PRIMARY</code></td><td>Toast; the picker stays open with the reader's selection intact.</td></tr>
+<tr><td>Project has no modules</td><td>Not an error: the picker's <code>EmptyState</code> links to the Modules tab. A picker that rendered an empty list here would be a dead end.</td></tr>
+</tbody>
+</table>
+
+<div class="rule">
+<b>Delete is refused, not confirmed away.</b> <code>DELETE /labels/:id</code> answers 409
+<code>LABEL_IN_USE</code> whenever <em>any</em> issue carries the label, so "delete a module that has
+attributed issues" is not a thing the UI can do behind a confirm — the confirm guards the
+irreversible case (a module with no issues), and the 409 is what stops the rest. Detaching the
+module from its issues first is the only path, and the toast says so.
+</div>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>
