@@ -11,6 +11,27 @@
 
 ### Added
 
+- **Core now tells a box that a project has work, instead of the box finding out on its next
+  poll (ISS-933, wave 1).** Until now nothing pushed: the runner daemon read every project it
+  served on a 30-second timer, and that interval *was* the latency from an issue arriving to an
+  agent touching it. Core now publishes a `master.wake` frame on each bound box's device room when
+  an issue reaches `open`, `draft` or `released` — including an issue created directly at one of
+  them, which never passes through a transition and would otherwise have been the silent half.
+
+  The frame carries **no work**: no job, no token, no decision. It says "look now", and the box
+  reads the pool through the same call its timer already used and decides for itself, so there is
+  one path from "something might be there" to "the pool was read" rather than two.
+
+  **The timer stays, and that is deliberate.** The websocket publish is fire-and-forget with no
+  buffer and no replay, so a wake sent while a box is disconnected is gone with nothing recording
+  that it happened. The poll is what makes a lost wake cost latency instead of costing the work.
+  The third trigger covers the same hole from the other end: when the runner's socket comes back
+  up it reads the pool once, because every wake published while it was down is unrecoverable.
+
+  A burst coalesces rather than queueing — five issues arriving together produce one sweep, since
+  the sweep reads the whole pool rather than the issue a frame named. An older runner ignores an
+  event it does not know and keeps polling, so this ships without waiting for the fleet.
+
 - **An agent working an issue on a project that keeps modules is now told they exist, and how to
   set the issue's primary one.** ISS-593 made a module a label with `kind='module'` and gave an
   issue a primary through `issue_labels.is_primary`, but nothing told the agents doing the work:
