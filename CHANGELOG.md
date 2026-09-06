@@ -873,6 +873,29 @@
   and `forge_runners` MCP has `retire` but no enable, so a box withdrawn from a project stayed
   withdrawn. Un-retiring one meanwhile goes through `POST /api/projects/:id/runners`, whose upsert
   recomputes status from device freshness.
+- **A pipeline run now ends when its jobs do.** The repo stated and defended its orphan invariant in
+  one direction — no child job may stay non-terminal under a terminal run — and nothing at all
+  defended the inverse. The cascade fires when a run *closes*; nothing fired when the *last job* of
+  an open run finished, so a run whose jobs had all reached `done` simply stayed `running` forever.
+
+  Measured on the fleet 2026-09-06: **98 of 114** `running` runs across 18 projects had every child
+  job terminal, oldest 2026-05-26 and newest 2026-09-04 — a live leak, not a historical backlog.
+  Each one rendered as an in-flight pipeline no box was doing, and each recovery was a hand-driven
+  cancel plus transition.
+
+  `pipeline/runs-concluded.ts` is the missing detector, driven from the sweeper tick beside the two
+  run-axis reapers that could not reach these rows (`reapOrphanedOneShotRuns` requires a job-less
+  run; `reapOrphanedIssueRuns` requires a closed issue). It admits a `running` run only when it has
+  jobs, none of them is `queued`/`dispatched`/`running`/`held`, and none has been touched within
+  `RESULT_QUIET_MINUTES` — then closes it through the existing `closeRun` SSOT, so there is still
+  exactly one writer of a run's terminal status. The outcome is the **last** job's, so a run whose
+  last job failed cannot close `completed`, while a failure retried to success still can. Every
+  reap logs its run and project before the write, and the standing backlog drains on ordinary ticks
+  rather than through a migration.
+
+  The invariant is now written both ways in `CLAUDE.md`, and the whole lifecycle — both directions,
+  and what each symptom means when it goes wrong — is drawn in `docs/flows/lifecycle-pipeline.html`.
+
 
 - **A job waiting for a duplex permit killed another project's jobs, and blamed the lock.**
   `dispatch.rs` took the repo-root lock, called `runner.start`, and released it only when that

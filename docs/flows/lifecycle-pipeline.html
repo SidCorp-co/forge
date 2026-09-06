@@ -1,0 +1,141 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · lifecycle-pipeline — a run and its jobs reach terminal together</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --lock:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .lock { color:var(--lock); font-weight:600; }
+  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
+  text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
+  text.m { font-size:11px; fill:var(--mut); }
+  text.t { font:600 12px ui-monospace,Menlo,monospace; }
+  .box { fill:#fff; stroke:var(--line); }
+  .lockband { fill:#fdf6e7; stroke:#e8d9b4; }
+  .exit { fill:#fdf0f3; stroke:#e3c2cb; }
+  .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
+  .arrowbad { stroke:var(--bad); stroke-width:1.2; fill:none; marker-end:url(#b); stroke-dasharray:4 3; }
+</style>
+<main>
+<h1>lifecycle-pipeline</h1>
+<p class="sub">How a run and its jobs open, advance and close without orphans — and what closes the
+run when the jobs are already done.</p>
+
+<h2>The invariant, in both directions</h2>
+<div class="rule">
+<p>A <code>pipeline_run</code> and its child <code>jobs</code> must reach terminal
+<b>together</b>. The two directions fail differently and are defended by different code:</p>
+<ul>
+  <li><b>Forward</b> — an active job under a terminal run. Costs a runner slot: the pool counts it
+      against the box's in-flight cap and no lifecycle event will ever resolve it.</li>
+  <li><b>Inverse</b> — a <code>running</code> run whose jobs are all terminal. Costs nothing
+      mechanical, which is exactly why it went unnoticed: it makes the UI report work that no box
+      is doing, and every recovery was a hand-driven cancel + transition.</li>
+</ul>
+<p>Reading the invariant one way only is how 98 of 114 live runs across 18 projects ended up
+<code>running</code> with nothing in flight (ISS-923).</p>
+</div>
+
+<h2>Forward — the run closes first</h2>
+<pre>
+  issue reaches a terminal status
+        |
+        v
+  apply-transition.ts  --RUN_CLOSING_STATUSES-->  runs.ts closeOpenRunForIssue
+                                                        |
+                                        (same transaction)
+                                                        v
+                                       runs-cascade.ts cascadeCancelChildJobs
+                                                        |
+              +-----------------------------------------+
+              |                                         |
+   reason = pipeline_completed              reason = failed / cancelled
+   active jobs  -> done                     active jobs  -> cancelled
+   sessions     -> completed                sessions     -> failed
+              |                                         |
+              +--------------------+--------------------+
+                                   v
+                    requestKillsForCascade  (AFTER commit only)
+</pre>
+<p>Three defences in lockstep, plus a DB trigger as a bypass-proof fourth:</p>
+<table>
+<thead><tr><th>Defence</th><th>Where</th><th>What it catches</th></tr></thead>
+<tbody>
+<tr><td>close-cascade</td><td><code>pipeline/runs-cascade.ts</code></td><td>the jobs live at the moment the run closes</td></tr>
+<tr><td>loop monitor</td><td><code>jobs/loop-monitor.ts</code></td><td>a job that misses one of the four hops (dispatch, ack, heartbeat, result)</td></tr>
+<tr><td>pool exclusion</td><td><code>devices/pool.ts</code></td><td>an orphan the cascade missed is never offered to a master</td></tr>
+<tr><td>I1 trigger</td><td>migration <code>0113</code></td><td>an active child written under a terminal run at all — auto-cancelled, audited</td></tr>
+</tbody>
+</table>
+<p><code>held</code> is a deliberate fourth job shape and is <b>not</b> an orphan.</p>
+
+<h2>Inverse — the jobs finished first</h2>
+<p>Nothing runs when the LAST job of an open run goes terminal, so the run needs a detector rather
+than a hook. That detector is a sweeper pass; the terminal write itself still goes through the same
+<code>closeRun</code> SSOT, so there is never a second writer of a run's terminal status.</p>
+<pre>
+  pipeline-sweeper tick (pipeline/sweeper.ts)
+        |
+        |  ... reapOrphanedOneShotRuns    run has NO jobs, no live session
+        |  ... reapOrphanedIssueRuns      backing issue is closed / dropped
+        v
+  runs-concluded.ts reapConcludedRuns
+        |
+        |  admits a run only when ALL of:
+        |    status = 'running'          (never 'paused' — that is an operator's hold)
+        |    it HAS at least one job     (job-less runs belong to the pass above)
+        |    no job in queued | dispatched | running | held
+        |    no job touched within RESULT_QUIET_MINUTES
+        v
+  outcome := last job's status     done -> completed | failed -> failed | cancelled -> cancelled
+        |
+        v
+  runs.ts closeRun(runId, outcome)  -->  cascadeCancelChildJobs  (a no-op: nothing is active)
+</pre>
+
+<h2>When it goes wrong</h2>
+<table>
+<thead><tr><th>Symptom</th><th>What actually happened</th></tr></thead>
+<tbody>
+<tr><td>A run sits <code>running</code> for days with no live job</td>
+    <td>The inverse detector did not admit it. Check the four conditions above in order — the usual
+        answer is a job stuck at <code>queued</code>, which is a <i>different</i> defect and must not
+        be fixed by widening this pass.</td></tr>
+<tr><td>A run closed <code>completed</code> but its work failed</td>
+    <td>The outcome is read off the <b>last</b> job, so this means the last job was <code>done</code>.
+        A failure earlier in the run that was retried to success is a legitimate
+        <code>completed</code>; a last job at <code>failed</code> closing <code>completed</code> is a
+        real defect.</td></tr>
+<tr><td>A run closed while work was still coming</td>
+    <td>Only possible if the next job had not been INSERTed yet. <code>jobs/retry.ts</code> inserts
+        the clone at <code>queued</code> <i>before</i> the delayed enqueue precisely so a
+        backing-off retry always leaves a non-terminal job here.</td></tr>
+<tr><td>The run split into two rows across a gap</td>
+    <td>Expected, not damage. <code>runs.ts openIssueRun</code> opens a fresh run when none is open,
+        which is what makes closing a concluded run safe in the first place.</td></tr>
+</tbody>
+</table>
+
+<h2>Sources</h2>
+<table>
+<thead><tr><th>Step</th><th>Module</th></tr></thead>
+<tbody>
+<tr><td>open / close a run</td><td><code>packages/core/src/pipeline/runs.ts</code></td></tr>
+<tr><td>reap children on close</td><td><code>packages/core/src/pipeline/runs-cascade.ts</code></td></tr>
+<tr><td>reap a run whose children are done</td><td><code>packages/core/src/pipeline/runs-concluded.ts</code></td></tr>
+<tr><td>the four job hops</td><td><code>packages/core/src/jobs/loop-monitor.ts</code></td></tr>
+<tr><td>the tick that drives all of it</td><td><code>packages/core/src/pipeline/sweeper.ts</code></td></tr>
+</tbody>
+</table>
+
+</main>

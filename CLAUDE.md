@@ -157,12 +157,20 @@ line number — a line number is stale the moment anything above it moves, and s
 
 ## Invariants
 
-- **No child `jobs` row stays non-terminal under a terminal `pipeline_run`** — one orphan wedges a
-  runner slot. Three defences in lockstep (close-cascade, loop monitor, pool exclusion), plus
-  `held` as a deliberate fourth shape that is NOT an orphan. New code that flips
-  `pipeline_runs.status` terminal MUST route through a cascade-calling helper. The `cm:guard` and
-  the two `cm:edge lockstep` live on `packages/core/src/pipeline/runs-cascade.ts`; the four hops and
-  their thresholds are modelled in `packages/core/src/jobs/loop-monitor.ts`.
+- **A `pipeline_run` and its child `jobs` reach terminal together, in BOTH directions.** Read one
+  way only and the other one leaks in silence: defending the forward half alone left 98 of 114
+  live runs `running` with every job terminal, across 18 projects, presenting as in-flight work no
+  box was doing (ISS-923).
+  - *Forward — no child `jobs` row stays non-terminal under a terminal `pipeline_run`*: one orphan
+    wedges a runner slot. Three defences in lockstep (close-cascade, loop monitor, pool exclusion),
+    plus `held` as a deliberate fourth shape that is NOT an orphan. The `cm:guard` and the
+    `cm:edge lockstep` set lives on `packages/core/src/pipeline/runs-cascade.ts`; the four hops and
+    their thresholds are modelled in `packages/core/src/jobs/loop-monitor.ts`.
+  - *Inverse — no `pipeline_run` stays non-terminal once every child job is terminal*:
+    `packages/core/src/pipeline/runs-concluded.ts`, driven from the sweeper tick, closing on the
+    LAST job's outcome so a run whose last job failed never closes `completed`.
+  - New code that flips `pipeline_runs.status` terminal MUST route through a cascade-calling
+    helper — on either axis, there is exactly one writer.
 - **A migration's `when` in `drizzle/migrations/meta/_journal.json` must exceed EVERY `created_at`
   already in the target DB** — drizzle reads the single highest `created_at` once and skips lower
   entries **silently, forever**, so the container starts and serves new code against an old schema
