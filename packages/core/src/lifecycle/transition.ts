@@ -6,13 +6,13 @@
  * nothing else. Every downstream side-effect (cascade fan-out, WS broadcast,
  * hooks, dispatch re-tick) stays in the caller.
  */
-// cm:guard invariant I2 — the audit row is written in the SAME executor as the status UPDATE, which is what makes a terminal status physically unable to land without a trail. `transition-guard.test.ts` scans the tree for `.update(jobs|agentSessions|pipelineRuns).set({ status: <terminal literal> })` outside this module and fails the build on one.
+// cm:guard invariant I2 — the audit row is written in the same TRANSACTION as the status UPDATE, which is what makes a terminal status physically unable to land without a trail. A root-`db` executor is autocommit, so this module opens a transaction itself rather than letting the two statements commit separately; before ISS-884 they did, and a crash between them left an unaudited terminal flip written BY the audited path. `transition-guard.test.ts` scans the tree for `.update(jobs|agentSessions|pipelineRuns).set({ status: <terminal literal> })` outside this module and fails the build on one.
 // cm:guard the guard test reads a status LITERAL, so a caller writing a VARIABLE status is invisible to it — `PATCH /api/agent-sessions/:id` is exactly that and is a real second terminal writer on the session axis. Anything hung on this chokepoint for sessions (the ISS-675 escalation bridge, the ISS-927 token revoke) needs a second half in `agent-sessions/routes.ts`, and no gate will tell you if you forget.
 // cm:guard the caller supplies `where` and it MUST carry the prior-status guard — the CAS is the only thing stopping two writers double-flipping, and a predicate without it matches every row.
-// cm:guard pass a `tx` when the flip must be atomic with a cascade or a sibling write (cancel audit, run-close cascade); `db` is for a standalone single-statement flip. Passing `db` inside a transaction that later rolls back leaves the audit row behind describing a status nothing holds.
+// cm:guard pass a `tx` when the flip must be atomic with a cascade or a sibling write (cancel audit, run-close cascade); `db` is for a standalone flip. Either way this module opens a transaction of its own — a real one on `db`, a savepoint on a `tx` — so the executor decides what the flip is atomic WITH, never whether it is atomic at all. Passing `db` while inside a transaction that later rolls back still leaves the audit row behind describing a status nothing holds.
 // cm:why `reason='pipeline_completed'` is the cascade's SUCCESS sentinel — a terminal pipeline step set its issue terminal while its own job/session was still active — so `resolvePipelineCompletedTarget` maps it to `done`/`completed` and a succeeded step is never recorded as `cancelled`/`failed` (ISS-444 amendment 2, ISS-352).
 
-import type { SQL } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import {
   agentSessions,
@@ -116,6 +116,10 @@ export function resolvePipelineCompletedTarget<E extends KernelEntity, T extends
  * writes one `kernel_transitions` audit row per flipped entity. Returns the
  * updated rows (empty array when the CAS matched nothing — i.e. another writer
  * already owns the terminal state, or the guard excluded the row).
+ *
+ * The post-commit bridges fire OUTSIDE the write, because a token revoke or a
+ * chat delivery for a transition that then rolls back is a side-effect with no
+ * cause.
  */
 export async function applyKernelTransition(
   exec: KernelExecutor,
@@ -133,6 +137,38 @@ export async function applyKernelTransition(
   exec: KernelExecutor,
   args: JobTransitionArgs | SessionTransitionArgs | RunTransitionArgs,
 ): Promise<JobRow[] | SessionRow[] | RunRow[]> {
+  const updated = await exec.transaction((tx) => writeTransition(tx, args));
+
+  if (updated.length > 0) {
+    // cm:why ISS-675 — the bridges hang HERE rather than on their callers because this chokepoint catches every terminal session write except the runner's own happy-path `PATCH /:id`, and the callers (sweeper, cascade, cancel, dispatch-failure, …) are too many to wire individually without one drifting and hanging an escalation silent. Gated on a metadata marker, so it is a no-op for the overwhelming majority of session transitions.
+    if (args.entity === 'session') {
+      for (const row of updated as SessionRow[]) {
+        fireEscalationBridge(row);
+        fireAgentChatBridge(row);
+        fireSessionTokenRevoke(row);
+      }
+    }
+    // cm:guard the JOB revoke rides on THIS chokepoint and nowhere else, because this module is the only writer of a terminal job status — the `lifecycle.transition` guard test fails the build on a terminal `.update(jobs)` anywhere outside it. That is what makes the token's lifetime provably the job's: cancel, cascade, loop-monitor reap, park reap and the happy finish all land here, so no new terminal path can ship a token that outlives its job without first breaking a gate.
+    if (args.entity === 'job') {
+      for (const row of updated as JobRow[]) fireJobTokenRevoke(row);
+    }
+  }
+
+  return updated as JobRow[] | SessionRow[] | RunRow[];
+}
+
+/**
+ * The CAS UPDATE, the audit row, and the marker that tells the database these
+ * belong to one another. Always reached through `exec.transaction`, which opens
+ * a real transaction on the root `db` and a SAVEPOINT on a caller's `tx`, so the
+ * three statements are one atomic unit no matter which executor arrived.
+ */
+// cm:edge contract -> packages/core/drizzle/migrations/0214_unaudited_transition_detector.sql — `forge.kernel_txn` is read by `forge_detect_unaudited_transition`, which counts a terminal flip on `jobs`/`pipeline_runs` as a hand-written intervention when the marker is absent. Dropping this `set_config`, or setting it AFTER the UPDATE, charts every kernel flip this repo performs as manual SQL in the north-star metric.
+async function writeTransition(
+  exec: KernelExecutor,
+  args: JobTransitionArgs | SessionTransitionArgs | RunTransitionArgs,
+): Promise<Array<{ id: string }>> {
+  await exec.execute(sql`SELECT set_config('forge.kernel_txn', txid_current()::text, true)`);
   // drizzle's `.returning()` always yields an array; `?? []` only guards the
   // (test-double) case where a mock omits it, mirroring the prior call sites'
   // `updated ?? []` tolerance so a missing return can't crash the chokepoint.
@@ -174,28 +210,9 @@ export async function applyKernelTransition(
         source: args.source,
       })),
     );
-    // ISS-675 — this chokepoint is the ONLY reliable place to catch every
-    // terminal write to a session EXCEPT the runner's own happy-path PATCH
-    // /:id (a direct db.update, wired separately in agent-sessions/routes.ts).
-    // Callers of applyKernelTransition are too numerous and scattered (sweeper,
-    // cascade, cancel, dispatch-failure, …) to wire individually without one
-    // eventually drifting and hanging an escalation silent — see the ISS-675
-    // plan's top risk. Narrowly gated on a metadata marker so it is a no-op for
-    // the overwhelming majority of (non-escalation) session transitions.
-    if (args.entity === 'session') {
-      for (const row of updated as SessionRow[]) {
-        fireEscalationBridge(row);
-        fireAgentChatBridge(row);
-        fireSessionTokenRevoke(row);
-      }
-    }
-    // cm:guard the JOB revoke rides on THIS chokepoint and nowhere else, because this module is the only writer of a terminal job status — the `lifecycle.transition` guard test fails the build on a terminal `.update(jobs)` anywhere outside it. That is what makes the token's lifetime provably the job's: cancel, cascade, loop-monitor reap, park reap and the happy finish all land here, so no new terminal path can ship a token that outlives its job without first breaking a gate.
-    if (args.entity === 'job') {
-      for (const row of updated as JobRow[]) fireJobTokenRevoke(row);
-    }
   }
 
-  return updated as JobRow[] | SessionRow[] | RunRow[];
+  return updated;
 }
 
 /**

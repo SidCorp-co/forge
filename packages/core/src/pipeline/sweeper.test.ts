@@ -62,8 +62,10 @@ const selectWhere = vi.fn(async () => [] as Array<{ status: string }>);
 // cm:why two unrelated writers land in this one mock — the park-comment pass and `applyKernelTransition`'s audit row — so a test that asserts on call count instead of filtering by `body` passes or fails on the other one's behaviour.
 const dbInsertValues = vi.fn(async (..._args: unknown[]) => undefined);
 
-vi.mock('../db/client.js', () => ({
-  db: {
+vi.mock('../db/client.js', () => {
+  const dbStub: Record<string, unknown> = {
+    // cm:why applyKernelTransition reaches its write through `exec.transaction`
+    transaction: async <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(dbStub),
     execute: (...args: unknown[]) => dbExecute(...(args as [])),
     update: () => ({ set: () => ({ where: () => ({ returning: () => sessionsWhere() }) }) }),
     insert: () => ({ values: (...args: unknown[]) => dbInsertValues(...args) }),
@@ -72,8 +74,9 @@ vi.mock('../db/client.js', () => ({
         where: () => selectWhere(),
       }),
     }),
-  },
-}));
+  };
+  return { db: dbStub };
+});
 
 // cm:why mocked rather than exercised: resolveGateSettings ends in `.limit()`, which this file's `db.select` double does not model
 const resolveGateSettingsMock = vi.fn(async (_projectId: string) => ({
@@ -269,9 +272,9 @@ describe('alarmZombieSessions — demoted to alarm-only (ISS-449)', () => {
 
   it('a match is alarmed (loop-miss + wedge), never reaped', async () => {
     dbExecute
-      .mockResolvedValueOnce([{ id: 's-q', project_id: 'p1', pipeline_run_id: null }]) // queued
-      .mockResolvedValueOnce([]) // heartbeat
-      .mockResolvedValueOnce([]); // no-client
+      .mockResolvedValueOnce([{ id: 's-q', project_id: 'p1', pipeline_run_id: null }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
 
     const result = await alarmZombieSessions(new Date('2026-06-05T00:00:00Z'), {});
 

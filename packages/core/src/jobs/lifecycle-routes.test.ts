@@ -50,14 +50,7 @@ const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy })
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const dbSelect = vi.fn(() => ({ from: selectFrom }));
 
-const updateReturning = vi.fn();
-const updateWhere = vi.fn(() => ({ returning: updateReturning }));
-const updateSet = vi.fn(() => ({ where: updateWhere }));
-const dbUpdate = vi.fn(() => ({ set: updateSet }));
-
-// ISS-447 — the /complete, /fail and late-reclaim job flips now route through
-// applyKernelTransition(db, …), which writes the kernel_transitions audit row
-// on the same db handle right after the status UPDATE.
+// cm:why applyKernelTransition opens a transaction before its CAS (ISS-884), so EVERY job UPDATE this route makes — the flips, the ack, the kill-ack — lands on the `tx` double below, and the bare `db.update` chain this file used to carry became unreachable
 const dbInsertValues = vi.fn(async () => undefined);
 const dbInsert = vi.fn(() => ({ values: dbInsertValues }));
 
@@ -73,17 +66,24 @@ const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
 const txInsertValues = vi.fn(async (_v?: unknown) => undefined);
 const txAuditValues = vi.fn(async (_v?: unknown) => undefined);
 const txExecute = vi.fn(async () => [{ max_seq: 0 }]);
-const tx = {
+const tx: Record<string, unknown> = {
   update: vi.fn(() => ({ set: txUpdateSet })),
   insert: vi.fn(() => ({
     values: (v: unknown) => (Array.isArray(v) ? txAuditValues(v) : txInsertValues(v)),
   })),
   execute: txExecute,
+  // cm:why applyKernelTransition opens a transaction of its own on whatever executor it is handed — a real one on `db`, a savepoint on a `tx` — so a tx double owes one too
+  transaction: async <T>(cb: (t: unknown) => Promise<T>): Promise<T> => cb(tx),
 };
-const dbTransaction = vi.fn(async (cb: (t: typeof tx) => unknown) => cb(tx));
+const dbTransaction = vi.fn(async (cb: (t: unknown) => unknown) => cb(tx));
 
 vi.mock('../db/client.js', () => ({
-  db: { select: dbSelect, update: dbUpdate, insert: dbInsert, transaction: dbTransaction },
+  db: {
+    select: dbSelect,
+    insert: dbInsert,
+    transaction: dbTransaction,
+    execute: txExecute,
+  },
 }));
 
 const scheduleRetryMock = vi.fn(
@@ -164,7 +164,6 @@ beforeEach(() => {
   scheduleRetryMock.mockResolvedValue({ scheduled: false });
   selectLimit.mockReset();
   selectOrderBy.mockImplementation(() => ({ limit: selectLimit }));
-  updateReturning.mockReset();
   txUpdateReturning.mockReset();
   txExecute.mockResolvedValue([{ max_seq: 0 }]);
 });
@@ -288,7 +287,7 @@ describe('POST /:id/ack (device) — job.ran.with (ISS-798 fix)', () => {
 describe('POST /:id/complete (device)', () => {
   it('transitions to done on exitCode=0 and does NOT schedule retry', async () => {
     selectLimit.mockResolvedValueOnce([jobRow]); // loadJob
-    updateReturning.mockResolvedValueOnce([{ ...jobRow, status: 'done', exitCode: 0 }]);
+    txUpdateReturning.mockResolvedValueOnce([{ ...jobRow, status: 'done', exitCode: 0 }]);
 
     const r = await postAsDevice('complete', { exitCode: 0 });
     expect(r.status).toBe(200);
@@ -305,7 +304,7 @@ describe('POST /:id/complete (device)', () => {
   it('transitions to failed on exitCode=1 and schedules retry', async () => {
     selectLimit.mockResolvedValueOnce([jobRow]);
     const updatedRow = { ...jobRow, status: 'failed', exitCode: 1, error: 'crashed' };
-    updateReturning.mockResolvedValueOnce([updatedRow]);
+    txUpdateReturning.mockResolvedValueOnce([updatedRow]);
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: true, newJobId: 'j2', attempt: 2 });
 
     const r = await postAsDevice('complete', { exitCode: 1, error: 'crashed' });
@@ -321,7 +320,7 @@ describe('POST /:id/complete (device)', () => {
 
   it('transitions to cancelled on exitCode=-1', async () => {
     selectLimit.mockResolvedValueOnce([jobRow]);
-    updateReturning.mockResolvedValueOnce([{ ...jobRow, status: 'cancelled', exitCode: -1 }]);
+    txUpdateReturning.mockResolvedValueOnce([{ ...jobRow, status: 'cancelled', exitCode: -1 }]);
 
     const r = await postAsDevice('complete', { exitCode: -1 });
     expect(r.status).toBe(200);
@@ -352,7 +351,7 @@ describe('POST /:id/complete — idempotent late reconcile (ISS-378)', () => {
     const reaped = { ...jobRow, status: 'failed', error: 'session_lost' };
     selectLimit.mockResolvedValueOnce([reaped]); // loadJob
     selectLimit.mockResolvedValueOnce([]); // activeRetry probe → none
-    updateReturning.mockResolvedValueOnce([
+    txUpdateReturning.mockResolvedValueOnce([
       { ...reaped, status: 'done', exitCode: 0, error: null },
     ]);
 
@@ -375,7 +374,7 @@ describe('POST /:id/complete — idempotent late reconcile (ISS-378)', () => {
 
     const r = await postAsDevice('complete', { exitCode: 0 });
     expect(r.status).toBe(409);
-    expect(updateReturning).not.toHaveBeenCalled();
+    expect(txUpdateReturning).not.toHaveBeenCalled();
   });
 
   it('does NOT reconcile a real failure (non-synthetic error marker) → 409', async () => {
@@ -385,7 +384,7 @@ describe('POST /:id/complete — idempotent late reconcile (ISS-378)', () => {
 
     const r = await postAsDevice('complete', { exitCode: 0 });
     expect(r.status).toBe(409);
-    expect(updateReturning).not.toHaveBeenCalled();
+    expect(txUpdateReturning).not.toHaveBeenCalled();
   });
 });
 
@@ -393,7 +392,7 @@ describe('POST /:id/fail (device)', () => {
   it('transitions to failed and schedules retry', async () => {
     selectLimit.mockResolvedValueOnce([jobRow]);
     const updatedRow = { ...jobRow, status: 'failed', error: 'segfault' };
-    updateReturning.mockResolvedValueOnce([updatedRow]);
+    txUpdateReturning.mockResolvedValueOnce([updatedRow]);
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: true, newJobId: 'j3', attempt: 2 });
 
     const r = await postAsDevice('fail', { error: 'segfault' });
@@ -408,14 +407,14 @@ describe('POST /:id/fail (device)', () => {
 describe('POST /:id/fail — salvage (ISS-862 L1)', () => {
   function failWith(body: Record<string, unknown>) {
     selectLimit.mockResolvedValueOnce([jobRow]);
-    updateReturning.mockResolvedValueOnce([{ ...jobRow, status: 'failed' }]);
+    txUpdateReturning.mockResolvedValueOnce([{ ...jobRow, status: 'failed' }]);
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: false });
     return postAsDevice('fail', body);
   }
 
   // cm:guard find the update that CARRIES failureMeta rather than `.at(-1)` — the fail route is no longer the last writer on this mock: the kernel chokepoint now also revokes the job's token, and that `.set()` lands after it. `.at(-1)` read the revoke and reported the route had written nothing, which is a test that breaks on an unrelated write rather than on its own rule.
   const sets = () =>
-    updateSet.mock.calls.map((a) => (a as unknown[])[0] ?? {}) as Record<string, unknown>[];
+    txUpdateSet.mock.calls.map((a) => (a as unknown[])[0] ?? {}) as Record<string, unknown>[];
   const lastFailureMeta = () => [...sets()].reverse().find((s) => 'failureMeta' in s)?.failureMeta;
 
   it('accepts the exact object the runner emits and merges it into failure_meta', async () => {
@@ -660,7 +659,7 @@ describe('jobFailed / jobCompleted hook emits', () => {
 
   it('emits jobCompleted exactly once on exitCode=0, never jobFailed', async () => {
     selectLimit.mockResolvedValueOnce([jobRow]);
-    updateReturning.mockResolvedValueOnce([{ ...jobRow, status: 'done', exitCode: 0 }]);
+    txUpdateReturning.mockResolvedValueOnce([{ ...jobRow, status: 'done', exitCode: 0 }]);
     const r = await postAsDevice('complete', { exitCode: 0 });
     expect(r.status).toBe(200);
     expect(completedSpy).toHaveBeenCalledTimes(1);
@@ -672,7 +671,7 @@ describe('jobFailed / jobCompleted hook emits', () => {
 
   it('emits jobFailed with failureKind on exitCode=1', async () => {
     selectLimit.mockResolvedValueOnce([jobRow]);
-    updateReturning.mockResolvedValueOnce([
+    txUpdateReturning.mockResolvedValueOnce([
       {
         ...jobRow,
         status: 'failed',
@@ -694,7 +693,7 @@ describe('jobFailed / jobCompleted hook emits', () => {
 
   it('emits neither on exitCode=-1 (cancelled)', async () => {
     selectLimit.mockResolvedValueOnce([jobRow]);
-    updateReturning.mockResolvedValueOnce([{ ...jobRow, status: 'cancelled', exitCode: -1 }]);
+    txUpdateReturning.mockResolvedValueOnce([{ ...jobRow, status: 'cancelled', exitCode: -1 }]);
     const r = await postAsDevice('complete', { exitCode: -1 });
     expect(r.status).toBe(200);
     expect(failedSpy).not.toHaveBeenCalled();
@@ -703,7 +702,7 @@ describe('jobFailed / jobCompleted hook emits', () => {
 
   it('POST /:id/fail emits jobFailed with classified failureKind', async () => {
     selectLimit.mockResolvedValueOnce([jobRow]);
-    updateReturning.mockResolvedValueOnce([
+    txUpdateReturning.mockResolvedValueOnce([
       {
         ...jobRow,
         status: 'failed',

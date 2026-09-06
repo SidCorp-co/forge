@@ -267,9 +267,7 @@ export const projects = pgTable(
     orgId: uuid('org_id')
       .notNull()
       .references(() => organizations.id, { onDelete: 'restrict' }),
-    // Audit-only: who created the project. Carries NO authz semantics — the
-    // creator is granted a project_members `admin` row at create time and the
-    // effective role is always resolved via lib/authz.ts.
+    // cm:guard audit-only, and it carries NO authz semantics. The creator is granted a `project_members` admin row at create time and the effective role is always resolved through `lib/authz.ts`, so reading permission off this column reaches a different answer than every other caller.
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
@@ -827,6 +825,29 @@ export const kernelTransitions = pgTable(
     entityIdx: index('kernel_transitions_entity_idx').on(t.entity, t.entityId),
     createdAtIdx: index('kernel_transitions_created_at_idx').on(t.createdAt),
     reasonIdx: index('kernel_transitions_reason_idx').on(t.reason),
+  }),
+);
+
+// cm:why ISS-884 — the flips that never reached `kernel_transitions` at all, written ONLY by the `forge_detect_unaudited_transition` trigger when a terminal status lands on `jobs`/`pipeline_runs` in a transaction carrying no `forge.kernel_txn` marker. Denormalised with no FK to the flipped row on purpose: a hand that edits by SQL may delete by SQL, and the record of the intervention has to outlive the row it was performed on.
+// cm:edge contract -> packages/core/drizzle/migrations/0214_unaudited_transition_detector.sql — the trigger INSERTs this column list positionally through `EXECUTE ... USING`, so reordering or renaming a column here without editing that function writes the wrong value into the wrong column and no type-check sees it.
+// cm:guard nothing in TypeScript may INSERT here — a row this table holds means "no code wrote this flip", so a code path that writes one is claiming the opposite of what the row means. One index, and it is (project_id, detected_at): every read arrives through `issue_intervention_events`, which the analytics route filters by project and then by window, so an index on `detected_at` alone would be paid on every write and used by nothing.
+export const unauditedTransitions = pgTable(
+  'unaudited_transitions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    entity: text('entity', { enum: kernelTransitionEntities }).notNull(),
+    entityId: uuid('entity_id').notNull(),
+    projectId: uuid('project_id').notNull(),
+    issueId: uuid('issue_id'),
+    fromStatus: text('from_status'),
+    toStatus: text('to_status').notNull(),
+    dbUser: text('db_user').notNull(),
+    applicationName: text('application_name'),
+    clientAddr: text('client_addr'),
+    detectedAt: timestamp('detected_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    projectIdx: index('unaudited_transitions_project_idx').on(t.projectId, t.detectedAt),
   }),
 );
 

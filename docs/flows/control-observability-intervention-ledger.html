@@ -1,0 +1,116 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · intervention ledger — a status flip becomes a number in the north star</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .gap { border-left-color:var(--bad); }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
+</style>
+<main>
+
+<h1>intervention ledger — a status flip becomes a number in the north star</h1>
+<p class="sub">Every route by which a job or a run reaches a terminal status, and which of them the
+interventions-per-issue metric can see. The question this answers: <em>a person just cancelled
+something — does the number move, and under what name?</em> Owners:
+<code>packages/core/src/lifecycle/transition.ts</code> (the audited path),
+<code>packages/core/drizzle/migrations/0214_unaudited_transition_detector.sql</code> (the detector
+and the view), <code>packages/core/src/pipeline/analytics-routes.ts</code> (the read).</p>
+
+<h2>The fork that decides whether the flip is countable</h2>
+<p>There are exactly two ways a terminal status lands on <code>jobs</code> or
+<code>pipeline_runs</code>: through the application, or by a hand on a database connection. The
+first stamps a transaction-local marker; the second cannot. Everything below hangs off that one
+difference.</p>
+
+<div class="board"><pre class="mermaid">
+flowchart TD
+  OP(["a person decides to step in"]) --> ROUTE{"which route?"}
+
+  ROUTE -- "MCP forge_jobs.cancel · REST cancel/resume<br/>steer · inject · run cancel" --> APP["jobs/cancel-job.ts · resume-job.ts<br/>agent-sessions/steer-session.ts<br/>pipeline/runs-control.ts"]
+  APP --> CHOKE["lifecycle/transition.ts<br/>applyKernelTransition"]
+
+  ROUTE -- "psql: UPDATE jobs SET status='cancelled'" --> RAW["a hand on the connection.<br/>Reaches no TypeScript at all."]
+
+  CHOKE --> TXN["exec.transaction — real tx on db, SAVEPOINT on a caller's tx"]
+  TXN --> MARK["set_config('forge.kernel_txn', txid_current(), local)"]
+  MARK --> UPD["UPDATE … SET status = terminal<br/>(CAS on the prior status)"]
+  UPD --> AUD["INSERT kernel_transitions<br/>entity · from · to · actor · agency · source"]
+
+  UPD --> TRG{{"trigger trg_&lt;table&gt;_unaudited_transition<br/>AFTER UPDATE OF status,<br/>WHEN new status is terminal"}}
+  RAW --> TRG
+  TRG -- "forge.kernel_txn = txid_current()" --> SKIP["return NULL — the app wrote this"]
+  TRG -- "marker absent" --> DET["INSERT unaudited_transitions<br/>+ db_user · application_name · client_addr"]
+
+  AUD --> VIEW[("issue_intervention_events")]
+  DET --> VIEW
+  WEDGE["notifications type='pipeline_wedge'"] --> VIEW
+  JOBEV["job_events kind='intervention'<br/>written beside the flip, in the same tx"] --> VIEW
+  APP --> JOBEV
+
+  VIEW --> API["GET /api/pipeline/analytics/interventions<br/>rollup per issue + raw events"]
+  API --> NS(["interventions per issue closed"])
+</pre></div>
+
+<div class="rule"><strong>The marker is set before the UPDATE, never after.</strong> The trigger is
+<code>AFTER UPDATE</code> on the row, which fires before <code>applyKernelTransition</code> has
+inserted its <code>kernel_transitions</code> row — so the trigger cannot look for that row and has
+to be told. Move the <code>set_config</code> below the UPDATE and every kernel flip this repo
+performs is charted as manual SQL.</div>
+
+<div class="rule"><strong>Why the whole write is wrapped in a transaction.</strong> A
+transaction-local GUC does not survive autocommit, and twenty of the chokepoint's call sites pass
+the root <code>db</code>. Before ISS-884 those wrote the status and the audit row as two separate
+commits, so a crash between them left an unaudited terminal flip produced by the audited path — the
+metric's own instrument creating the hole it was measuring.</div>
+
+<h2>The four arms, and what each one can and cannot see</h2>
+<table>
+<thead><tr><th>Arm</th><th>Sees</th><th>Blind to</th></tr></thead>
+<tbody>
+<tr><td><code>wedge</code></td><td>a hop that stopped progressing and told a human</td><td>a wedge nobody was notified about</td></tr>
+<tr><td><code>manual_&lt;action&gt;</code></td><td>cancel · resume · answer · inject through an audited surface</td><td>an action whose <code>data.action</code> is unset — it reads as <code>manual_cancel</code></td></tr>
+<tr><td><code>user_run_flip</code></td><td>a run flipped terminal by a <code>user</code> actor</td><td>a run flipped by a <code>system</code>/<code>sweeper</code> actor on a person's behalf</td></tr>
+<tr><td><code>direct_sql</code></td><td>a terminal flip on <code>jobs</code>/<code>pipeline_runs</code> with no marker</td><td>everything in the next section</td></tr>
+</tbody>
+</table>
+
+<h2>Where the ruler still stops, deliberately</h2>
+<div class="rule gap">Each of these is excluded because including it would <em>overcount</em>, which
+ruins the number exactly as thoroughly as undercounting. They are edges of the instrument, not
+oversights.
+<ul>
+  <li><b><code>agent_sessions</code> is not instrumented.</b> The runner's own
+      <code>PATCH /api/agent-sessions/:id</code> writes a session status directly and legitimately,
+      with a variable rather than a literal — so it is invisible to the single-writer guard test too.
+      A trigger there would count every ordinary session completion as an intervention.</li>
+  <li><b>Non-terminal flips are not detected.</b> <code>queued→dispatched</code>,
+      <code>dispatched→running</code>, a <code>held</code> requeue and a run pause are ordinary code
+      paths that stamp no marker. A hand-written <code>failed→queued</code> re-dispatch is therefore
+      still uncounted; catching it would mean charting every dispatch as manual SQL.</li>
+  <li><b>Row deletion is not detected.</b> The retention sweeper deletes jobs legitimately.</li>
+  <li><b>No person is named.</b> A psql session carries a database role and an
+      <code>application_name</code>, not a Forge user id, and no reason. <code>direct_sql</code>
+      answers <em>how many</em> and <em>on which issue</em>; it cannot answer <em>who</em> or
+      <em>why</em>.</li>
+</ul>
+</div>
+
+<div class="rule"><strong>Manual SQL is never blocked.</strong> It is sometimes the only way to free
+a stuck fleet, so the trigger only observes: it returns <code>NULL</code> from an
+<code>AFTER</code> trigger and cannot refuse the write. Counting was the deliverable; preventing was
+explicitly not.</div>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>
