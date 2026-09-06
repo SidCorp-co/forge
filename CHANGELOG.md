@@ -24,6 +24,24 @@
   reported nothing. With a ceiling set, A4 warns at 80% of a trailing 24 hours and goes crit at the
   ceiling, and the alert says which of the two arms fired. The table ships empty and the declared
   defaults stand in, so a deploy that never writes it behaves exactly as it did before. (ISS-654)
+- **GitHub is connectable from the UI.** The backend for the App-manifest flow shipped some time
+  ago — three routes, an adapter, a signed connect state — and nothing ever called them. The web UI
+  classified `github` as read-only telemetry, so the only GitHub affordance in project settings was
+  a card showing a repo URL, and there was no path to a connection at all. Project settings →
+  Integrations now opens a GitHub section that creates the App: pick an organization (blank for
+  your personal account) and an environment, and Forge hands GitHub a manifest naming the
+  permissions it asks for, which the screen lists before you leave. GitHub creates the App, the
+  callback stores the credential, and you land on its install page to choose repositories.
+
+  The handshake has one shape that must not be refactored away, and it carries a guard: the
+  manifest goes to GitHub as a **top-level form POST**, never `fetch`. GitHub reads `manifest` from
+  a form submission, and the redirect back to the callback authenticates on the `forge_auth`
+  cookie, which is `SameSite=Lax` and so rides a real navigation and nothing else. A background
+  request would resolve and connect nobody.
+
+  A card that is drillable now shows **Manage** even when it also links out to the repository.
+  GitHub is the first provider that has both, and the previous either/or would have left its card
+  offering only the link that navigates away from the screen that connects the App.
 
 - **`/admin` answers "who is using Forge, and what needs me right now".** The Operator Ops Console
   overview was an empty state; it now renders the deployment from the four `/api/admin/*` endpoints

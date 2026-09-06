@@ -11,6 +11,7 @@ import type { BindingSummary, IntegrationEnvironment, StatusCard } from "../type
 import { CoolifySection } from "./coolify-section";
 import { DeliveryLogViewer } from "./delivery-log-viewer";
 import { EpodsystemSection } from "./epodsystem-section";
+import { GitHubSection } from "./github-section";
 import { PostmanSection } from "./postman-section";
 import { RocketchatSection } from "./rocketchat-section";
 import { SentrySection } from "./sentry-section";
@@ -33,6 +34,7 @@ function ProviderSection({ provider, projectId }: { provider: DrillableProvider;
   if (provider === "postman") return <PostmanSection projectId={projectId} />;
   if (provider === "sentry") return <SentrySection projectId={projectId} />;
   if (provider === "rocketchat") return <RocketchatSection projectId={projectId} />;
+  if (provider === "github") return <GitHubSection projectId={projectId} />;
   return <EpodsystemSection projectId={projectId} />;
 }
 
@@ -168,8 +170,6 @@ function DeliveryLogPane({
     () => (list.data?.items ?? []).filter((i) => i.provider === provider),
     [list.data, provider],
   );
-  // hasEnvironments providers can carry one binding per environment; otherwise
-  // there is a single binding for the provider.
   const binding = hasEnvironments ? rows.find((r) => r.environment === env) : rows[0];
 
   return (
