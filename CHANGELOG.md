@@ -834,6 +834,32 @@
 
 ### Fixed
 
+- **Half the phase journal recorded numbers nobody can read back, because the drive prompt's
+  example said `phase-1`.** `phase_journal.phase` is free vocabulary and no gate reads it — both
+  deliberate — so the worked example in `buildDrivePrompt` is the whole specification. It carried
+  the literal `phase-1` from 2026-09-02, agents copied it, and 542 rows landed named `phase-0`
+  through `phase-8` across every autonomous project on the instance. `phase-4` cost 6.8 hours on
+  forge-dev alone and nothing can say what it was; worse, two runs' `phase-4` need not have been
+  the same step, so every aggregate over them summed unlike things.
+
+  The example now reads `understand` — a name 161 existing rows already use for that step, so
+  autonomous rows aggregate with staged ones instead of forming a second bucket — and three lines
+  beside it say to name the phase for the step in words, never by its number, reusing the name an
+  earlier run used. Nothing gates the column and nothing should: a gate on the name would turn a
+  free vocabulary into a contract the agent can break by being descriptive. The unit test asserts
+  the digit, not the wording.
+
+  The 542 rows are **not** rewritten. What step each was is not recoverable, and guessing would put
+  invented data in the one table that exists to be evidence. They are told apart by pattern rather
+  than by date: `phase_step_durations` gains `step_named`, false exactly when the name matches
+  `^phase-[0-9]+$`. A boundary date would have been wrong — the fix is a seed, not a gate, so a
+  session on a stale plugin can still write an ordinal next week and a date-based reader would
+  count it as readable.
+
+  The other half is `guides/skills/issue-flow/guide.md` in `SidCorp-co/forge-plugin`, whose
+  headings are `## Phase 4 — Implement` and which is read in the same context window. No gate in
+  this repo can hold that pair; the `cm:guard` on `buildDrivePrompt` is the only record of it.
+
 - **The Pool admission toggle now reaches the route that can write `runners.status`.** It sent
   `{status}` to `PATCH /api/projects/:id/runners/:runnerId`, whose body schema is `.strict()` over
   repoPath/branch/labels — so every attempt to withdraw or readmit a box came back `400
