@@ -43,6 +43,8 @@ const EnvSchema = z.object({
   RATE_LIMIT_MEMORY_WRITE_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_MEMORY_SEARCH_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_MEMORY_SEARCH_WINDOW_MS: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_KNOWLEDGE_SEARCH_MAX: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_KNOWLEDGE_SEARCH_WINDOW_MS: z.coerce.number().int().positive().optional(),
   EMBEDDINGS_BASE_URL: z.url().optional(),
   EMBEDDINGS_API_KEY: z.string().min(1).optional(),
   EMBEDDINGS_MODEL: z.string().min(1).default('text-embedding-3-small'),

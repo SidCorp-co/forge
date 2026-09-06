@@ -15,11 +15,10 @@ const DEFAULTS = {
   // cm:why 32^7 + a 10-min TTL already makes guessing a code infeasible; these two caps exist for the other attack — an anonymous `init` caller filling device_login_codes with pending rows.
   deviceLoginInit: { windowMs: 60 * 60_000, max: 20, by: 'ip' },
   deviceLoginApprove: { windowMs: 60 * 60_000, max: 10, by: 'ip' },
-  // memory-v2 phase 0 — both endpoints embed caller-supplied text via the
-  // embeddings provider, so an unthrottled member means unbounded LiteLLM
-  // spend. Keyed by user id (requireAuth sets it); falls back to IP.
+  // cm:guard these three all embed caller-supplied text through the shared embeddings provider, so an unthrottled member is unbounded LiteLLM spend — a new route that embeds needs its own bucket here, keyed by user id (requireAuth sets it, falling back to IP), and never a shared one, or one store's traffic spends another's budget.
   memoryWrite: { windowMs: 60_000, max: 30, by: 'user' },
   memorySearch: { windowMs: 60_000, max: 60, by: 'user' },
+  knowledgeSearch: { windowMs: 60_000, max: 60, by: 'user' },
 } as const satisfies Record<string, RateLimitRule>;
 
 function resolve(
@@ -70,5 +69,10 @@ export const RULES: Record<keyof typeof DEFAULTS, RateLimitRule> = {
     DEFAULTS.memorySearch,
     env.RATE_LIMIT_MEMORY_SEARCH_MAX,
     env.RATE_LIMIT_MEMORY_SEARCH_WINDOW_MS,
+  ),
+  knowledgeSearch: resolve(
+    DEFAULTS.knowledgeSearch,
+    env.RATE_LIMIT_KNOWLEDGE_SEARCH_MAX,
+    env.RATE_LIMIT_KNOWLEDGE_SEARCH_WINDOW_MS,
   ),
 };

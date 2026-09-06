@@ -41,7 +41,8 @@ is the live example. Read the mount and its middleware, not the prefix alone.
 | `forge_issues` mark_merged / unmark | `POST` / `DELETE /api/issues/:id/merge` |
 | `forge_comments` create / list | `/api/issues/:id/comments` — `/api/comments/:id` is edit, delete and replies only, and has no collection route |
 | `forge_memory.*` (5) | `/api/memory` |
-| `forge_knowledge` | `/api/knowledge`, `/api/knowledge-edges`, `/api/projects/:id/knowledge` |
+| `forge_knowledge` list / get / upsert / delete | `/api/knowledge`, `/api/knowledge-edges`, `/api/projects/:id/knowledge[/:slug]` |
+| `forge_knowledge` search | `POST /api/projects/:id/knowledge/search` — body `{query, topK?, scope?, strategy?}`, the action's own fields with its own defaults (`knowledge`, 10, `semantic`). **`POST`, because `GET` on that path is the `/:slug` handler and answers *knowledge entry not found*.** There is no `sourceFilter`: the MCP action never had one either — that argument is `POST /api/memory/search`'s, and `runUnifiedSearch` takes no such parameter |
 | `forge_config` | `/api/projects/:id/pipeline-config` |
 | `forge_skills.*` (11) | `/api/skills`, `/api/projects/:projectId/skills` |
 | `forge_skill_facts.*` (2) | `/api/skill-facts` |
