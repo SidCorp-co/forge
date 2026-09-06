@@ -18,8 +18,7 @@ const forbidden = (message: string) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-// Project-member gate for the per-project cost analytics endpoints. 404 when
-// the project does not exist so we don't leak existence to non-members.
+// cm:guard a non-member gets 404, NEVER 403, and the two cases are deliberately indistinguishable: a 403 would confirm the project exists and make this route an enumeration oracle over every project id. "Fixing" the status code to be more accurate is what opens it.
 async function assertProjectMember(projectId: string, userId: string): Promise<void> {
   const access = await effectiveProjectRole(userId, projectId);
   if (!access) throw notFound('project not found');
@@ -83,7 +82,10 @@ pipelineAnalyticsRoutes.get(
           AND ${activityLog.createdAt} >= now() - (${days}::int * interval '1 day')
           AND ${issues.projectId} IN ${projectIds}`,
       )
-      .groupBy(issues.projectId, sql`date_trunc('day', ${activityLog.createdAt} AT TIME ZONE 'UTC')`)
+      .groupBy(
+        issues.projectId,
+        sql`date_trunc('day', ${activityLog.createdAt} AT TIME ZONE 'UTC')`,
+      )
       .orderBy(sql`date_trunc('day', ${activityLog.createdAt} AT TIME ZONE 'UTC')`);
 
     return c.json(
