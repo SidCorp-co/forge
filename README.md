@@ -11,37 +11,7 @@
 
 ## Architecture
 
-```mermaid
-flowchart LR
-  B["browser<br/>web-v2 · Next.js"]
-  M["MCP client<br/>desktop · third-party"]
-
-  subgraph BOX["runner box — your machine"]
-    D["forge-runner<br/>Rust daemon"]
-    A["agent session<br/>claude in a git worktree"]
-    P["forge-plugin<br/>SKILLS · CLI · HOOKS"]
-    D -->|spawns| A
-    A --- P
-  end
-
-  subgraph CORE["forge — control plane · packages/core"]
-    API["API · REST /api/*"]
-    MCP["MCP · JSON-RPC /mcp"]
-    WS["WS · events /ws"]
-    SVC["shared policy + services"]
-    DB[("Postgres 17 · pgvector")]
-    API --> SVC
-    MCP --> SVC
-    WS --> SVC
-    SVC --> DB
-  end
-
-  B -->|"REST + WS · JWT"| API
-  M -->|"session / PAT"| MCP
-  D -->|"WS · device token"| WS
-  D -->|"forge-runner api · $FORGE_PAT"| API
-  P -->|"jsonrpc tools/call"| MCP
-```
+<img src="docs/assets/architecture.svg" alt="Forge architecture: a browser and MCP clients reach the control plane over REST, MCP and WebSocket; a runner box on your machine runs the forge-runner daemon, which spawns a Claude agent session carrying the forge-plugin skills, CLI and hooks." width="100%">
 
 Three boundaries hold the shape:
 
