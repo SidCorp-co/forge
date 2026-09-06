@@ -12,7 +12,8 @@
  * "skill pushed the merge" and "status transition committed" leaves
  * merged_at NULL — children stay blocked, which is correct (the merge may
  * not have made it to origin). Skill operators are responsible for
- * verifying the push BEFORE issuing the transition.
+ * verifying the push BEFORE issuing the transition — the merge protocol
+ * lives in the driver's own skill, not in a prompt block this repo builds.
  */
 
 import { and, eq, isNull, sql } from 'drizzle-orm';

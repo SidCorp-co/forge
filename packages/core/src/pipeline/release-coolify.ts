@@ -75,6 +75,12 @@ async function warnIfRunAlreadyTerminal(runId: string, issueId: string | null): 
   reportUnwitnessedDeploy(runId, issueId);
 }
 
+/**
+ * Enqueue a Coolify deploy for each active binding of this project, called
+ * after a release-type job completes. A prod binding is parked for a human
+ * unless the project opted into `autoProdDeploy`; a project with no binding
+ * at all returns `reason: 'no-integration'` and stamps the skipped substep.
+ */
 // cm:flow release/deploy after:reap — job completion, not the close, is what dispatches the deploy; a prod binding parks for a human unless pipelineConfig.autoProdDeploy is on
 export async function tryDispatchCoolifyRelease(args: {
   projectId: string;
