@@ -1,0 +1,130 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · knowledge-memory-skills — something learned is written, found again, and delivered</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
+</style>
+<main>
+
+<h1>knowledge-memory-skills — something learned is written, found again, and delivered</h1>
+<p class="sub">The path a fact takes from the write that records it to the prompt or the search hit
+that returns it, and every place it can arrive without a vector. Owner:
+<code>packages/core/src/knowledge/</code>, <code>packages/core/src/memory/</code>,
+<code>packages/core/src/embeddings/</code>, <code>packages/core/src/prompt/facts/</code>.</p>
+
+<h2>The write, and the row that arrives without a vector</h2>
+<p>A knowledge upsert embeds inline, and an embeddings outage does not fail it — the row lands with
+<code>embedding = NULL</code> and is keyword-only until the backfill sweeps it. That is the whole
+reason a five-minute job exists on the other side.</p>
+
+<div class="board"><pre class="mermaid">
+flowchart TD
+  W1["PUT /api/projects/:id/knowledge/:slug<br/>or forge_knowledge action=upsert"] --> W2["knowledge/service.ts:upsertKnowledgeEntry"]
+  W2 --> W3["knowledgeEmbedText(title, body)<br/>cut at MAX_EMBED_CHARS"]
+  W3 --> W4{"embed() ok?"}
+  W4 -- yes --> W5["INSERT … ON CONFLICT (project, slug)<br/>embedding = the new vector"]
+  W4 -- "EmbeddingUnavailableError" --> W6["degraded: true<br/>embedding = NULL, body kept"]
+  W6 --> W7["memory/embedding-backfill.ts<br/>runEmbeddingBackfill — every 5 min<br/>memories first, then knowledge_entries"]
+  W7 -- "re-embeds knowledgeEmbedInput,<br/>the SAME string the upsert used" --> W5
+  W5 --> DB[("knowledge_entries<br/>embedding + text_search + ident_search")]
+  W6 --> DB
+</pre></div>
+
+<div class="rule">The backfill must embed the string the upsert would have embedded, or a
+backfilled entry ranks differently from a freshly written one forever. The <code>cm:guard</code>
+sits on <code>knowledge/service.ts:knowledgeEmbedInput</code>, which is why both callers name that
+one function rather than rebuilding the text.</div>
+
+<h2>Found again — two transports, one service</h2>
+<p>Search is where the two stores meet. <code>runUnifiedSearch</code> queries each store
+independently and blends nothing: scores are not comparable across stores, so every hit carries
+<code>origin</code> and the caller decides. Since ISS-930 it is reachable from both transports, so a
+client leaving MCP for the REST data plane keeps the capability instead of losing it.</p>
+
+<div class="board"><pre class="mermaid">
+flowchart TD
+  T1["forge_knowledge action=search<br/>(MCP, /mcp)"] --> U["knowledge/unified-search.ts<br/>runUnifiedSearch<br/>{query, topK, scope, strategy}"]
+  T2["POST /api/projects/:id/knowledge/search<br/>(REST, member-gated, 60/min per user)"] --> U
+  T3["POST /api/memory/search<br/>— the memory store's own route,<br/>and the only one taking sourceFilter"] --> M
+  U --> S{"strategy"}
+  S -- keyword --> K["keywordSearchKnowledge<br/>text_search OR ident_search, ranks summed"]
+  S -- "semantic / hybrid" --> E{"embed(query) ok?"}
+  E -- "no" --> D["degraded: true<br/>both arms fall back to keyword"]
+  E -- yes --> V["searchKnowledge (cosine/HNSW)<br/>or hybridSearchKnowledge<br/>rrfFuse at HYBRID_ALPHA 0.5, k=60"]
+  U -- "scope: memory | all" --> M["memory/search-service.ts<br/>runMemorySearch(surface: 'agent')"]
+  M -- "semantic + provider down" --> X["throws → REST answers<br/>503 EMBEDDING_UNAVAILABLE"]
+  M -- "hybrid + provider down" --> D
+  K --> R["{ knowledge[], memory[], degraded? }<br/>each hit labelled origin"]
+  V --> R
+  D --> R
+  M --> R
+</pre></div>
+
+<div class="rule"><code>GET /api/projects/:id/knowledge/search</code> is <b>not</b> this route — that
+path belongs to the <code>/:slug</code> entry handler and answers <em>knowledge entry not found</em>.
+The method is what keeps the two apart, with no ordering rule to preserve. Six probed paths and
+their answers are recorded on ISS-930.</div>
+
+<h2>Delivered — the half that never searches</h2>
+<p>An entry marked <code>injection: 'always'</code> is not retrieved at all: it is spliced into the
+prompt before the agent runs, and only the <code>on_demand</code> ones wait to be asked for.</p>
+
+<div class="board"><pre class="mermaid">
+flowchart LR
+  P1["prompt/facts/resolve.ts"] --> P2["selectAlwaysInjectFromKnowledge(projectId)<br/>injection='always', archivedAt IS NULL<br/>ordered by orderIndex, then slug"]
+  P1 --> P3["selectOnDemandSlugsFromKnowledge(projectId)<br/>the names only — bodies are fetched<br/>by the agent that asks"]
+  P2 --> P4["spliced into the dispatched prompt"]
+  P3 --> P5["listed so an agent knows what it may ask for"]
+  P5 -.-> T1b["forge_knowledge get / the REST :slug route"]
+</pre></div>
+
+<h2>When it goes wrong</h2>
+<table>
+<thead><tr><th>Symptom</th><th>What it is</th></tr></thead>
+<tbody>
+<tr><td>A newly written entry is never returned by a semantic search</td>
+    <td>It was written during an embeddings outage and carries <code>embedding = NULL</code>. It is
+    keyword-reachable now and vector-reachable within five minutes, when
+    <code>runEmbeddingBackfill</code> next runs. Until 2026-09-05 that sweep read only
+    <code>memories</code> and such an entry stayed vectorless until its body changed.</td></tr>
+<tr><td>A search answers 200 with <code>degraded: true</code></td>
+    <td>The provider was unreachable and the query ran keyword-only. The results are real, just
+    not semantic — not an error, and not something to retry.</td></tr>
+<tr><td>A search answers 503 <code>EMBEDDING_UNAVAILABLE</code></td>
+    <td>The memory arm at <code>strategy: semantic</code>, which does not degrade —
+    <code>search-service.ts</code> degrades <code>hybrid</code> only. A knowledge-scoped search does
+    not reach this path.</td></tr>
+<tr><td><code>GET .../knowledge/search</code> answers <em>knowledge entry not found</em></td>
+    <td>Working as designed: that is the <code>/:slug</code> handler with the slug
+    <code>search</code>. The search route is a <code>POST</code>.</td></tr>
+<tr><td>A CLI off MCP cannot search knowledge at all</td>
+    <td>It predates ISS-930, or it is pinned to a core older than that route. There is deliberately
+    no MCP fallback — a silent second transport is a precedence rule and a report that has to
+    explain which one ran.</td></tr>
+</tbody>
+</table>
+
+<h2>Read this before</h2>
+<p>Adding an argument to knowledge search — the two transports are a
+<code>cm:edge contract</code> pair and both must take it, or a client migrating between them loses
+a capability without a single test going red. Changing what the upsert embeds — the backfill embeds
+the same string and the pair is only visible in ranking, months later. And adding a store to
+<code>runUnifiedSearch</code>: scores are per-store by construction, so a new one arrives as its own
+labelled list, never merged into an existing one.</p>
+
+<p><a href="index.html">← all flows</a></p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>

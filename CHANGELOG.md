@@ -33,6 +33,16 @@
   it cannot parse is refused rather than replaced. Reaching the fleet needs a `runner-v*` release.
   (ISS-928)
 
+- **Project knowledge is searchable over REST, so a client that leaves MCP keeps the capability.**
+  `POST /api/projects/:id/knowledge/search` takes `{query, topK?, scope?, strategy?}` — the
+  `forge_knowledge` search action's own fields, defaults and bounds — and answers from the same
+  `runUnifiedSearch` service, so the two transports cannot drift into different results. It is a
+  `POST` because `GET` on that path is already the `/:slug` entry handler and answers *knowledge
+  entry not found*, which is one of six paths ISS-930 probed live before filing. `sourceFilter` is
+  deliberately absent: the MCP action never had one either, and that argument belongs to
+  `POST /api/memory/search`. Member-gated, rate-limited at 60/min per user like memory search,
+  because both spend on the same embeddings provider. (ISS-930)
+
 - **An unattended agent session holds its own credential, and it dies when the session does.**
   A scheduled run, a RocketChat escalation and a RocketChat agent chat all open an agent session
   with nobody at the keyboard. Until now none of them had a credential of its own: the mint Forge

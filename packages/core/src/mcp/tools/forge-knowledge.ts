@@ -114,6 +114,7 @@ export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
       return { deleted: removed > 0 };
     }
 
+    // cm:edge contract -> packages/core/src/knowledge/routes.ts — `POST /api/projects/:id/knowledge/search` is this action's REST twin and takes the same four fields; an argument added here without being added there is a capability a client loses by changing transport (ISS-930).
     if (action === 'search') {
       if (!input.query) throw new Error('BAD_REQUEST: query is required for action=search');
       await assertPrincipalIsMember(ctx.principal, projectId);
