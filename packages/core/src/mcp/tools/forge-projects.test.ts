@@ -247,7 +247,6 @@ describe('forge_projects.create', () => {
     // apiKey MUST be returned — caller needs it for widget install / device
     // pairing (matches REST POST /api/projects).
     expect(res.project.apiKey).toBe('fk_abc123def456');
-    // creator is seeded as a project ADMIN (no 'owner' role anymore)
     expect(captured.memberValues).toMatchObject({
       userId: OWNER_ID,
       projectId: NEW_PROJECT_ID,
@@ -529,7 +528,7 @@ describe('forge_projects.update', () => {
     expect(updateImpl).not.toHaveBeenCalled();
   });
 
-  it('non-existent project is refused with NOT_FOUND for both device and PAT', async () => {
+  it('a non-existent project is refused with NOT_FOUND, bound token or not', async () => {
     // Device path
     mockAccess(null);
     const deviceTool = forgeProjectsUpdateTool(patCtx());

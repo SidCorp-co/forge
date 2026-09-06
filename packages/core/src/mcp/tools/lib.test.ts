@@ -13,7 +13,6 @@ vi.mock('../../config/env.js', () => ({
   },
 }));
 
-// db mock — only `resolveProjectIdFromSlug` touches it (select→from→where→limit).
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
@@ -146,7 +145,7 @@ describe('principalActor — who a write is recorded as', () => {
   });
 
   // cm:guard the ONLY field this may branch on is `agency`. Since ISS-931 every `/mcp` principal is `kind:'pat'`, so a `kind`-shaped test would read a job token as a human and hand it the ISS-812 exemption — plant `kind` in the implementation and this case is what goes red.
-  it('records an agent-held token as a device, though it carries a pat principal', () => {
+  it('records an agent-held token under the device actor shape, though it carries a pat principal', () => {
     expect(principalActor({ ...pat, agency: 'agent' })).toEqual({
       type: 'device',
       id: 'tok-1',

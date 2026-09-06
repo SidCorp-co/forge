@@ -91,8 +91,7 @@ describe('forge_memory.write tool', () => {
     });
   });
 
-  it('writes when the device owner is a project member', async () => {
-    // 1st db.select: project ownership lookup → owner matches.
+  it('writes when the caller is a project member', async () => {
     limit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     runMemoryWriteMock.mockResolvedValueOnce({
       id: 'm-1',
@@ -175,7 +174,7 @@ describe('forge_memory.get tool', () => {
     });
   });
 
-  it('returns rows + total when device owner is a member', async () => {
+  it('returns rows + total when the caller is a member', async () => {
     limit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     runMemoryGetMock.mockResolvedValueOnce({
       rows: [{ id: 'm-1', projectId: PROJECT_ID, source: 'step_handoff' }],

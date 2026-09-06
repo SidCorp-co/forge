@@ -129,14 +129,13 @@ describe('forge_comments tool', () => {
     await expect(tool.handler({ action: 'list' })).rejects.toThrow(/BAD_REQUEST/);
   });
 
-  it('list returns comments when device owner is member', async () => {
+  it('list returns comments when the caller is a member', async () => {
     const tool = forgeCommentsTool({
       principal: fakePrincipal,
       projectSlug: null,
     });
     // 1. loadIssueProjectId
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
-    // 2. assertDeviceOwnerIsMember → project owned by device owner
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     // 3. comment list query
     selectLimit.mockResolvedValueOnce([baseCommentRow]);
@@ -329,7 +328,6 @@ describe('forge_comments tool', () => {
     selectLimit.mockResolvedValueOnce([
       { id: COMMENT_ID, issueId: ISSUE_ID, authorId: OWNER_ID, projectId: PROJECT_ID },
     ]);
-    // membership check (author path uses assertDeviceOwnerIsMember)
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     deleteWhere.mockResolvedValueOnce(undefined);
 

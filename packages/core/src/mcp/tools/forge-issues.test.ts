@@ -262,7 +262,6 @@ describe('forge_issues tool', () => {
     });
     // 1. resolveProjectIdFromSlug → projects.id
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    // 2. assertDeviceOwnerIsMember → projects.ownerId (matches device.ownerId)
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     // 3. issue list query
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
@@ -407,7 +406,6 @@ describe('forge_issues tool', () => {
     });
     // 1. resolveProjectIdFromSlug
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    // 2. assertDeviceOwnerIsMember
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     // 3. issue list (uuid filter → no name-resolution query)
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
@@ -428,7 +426,6 @@ describe('forge_issues tool', () => {
     });
     // 1. resolveProjectIdFromSlug
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    // 2. assertDeviceOwnerIsMember
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     // 3. label name resolution: returns one resolved id
     selectLimit.mockResolvedValueOnce([{ id: LABEL_ID }]);
@@ -451,7 +448,6 @@ describe('forge_issues tool', () => {
     });
     // 1. resolveProjectIdFromSlug
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    // 2. assertDeviceOwnerIsMember
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     // 3. label name resolution: unknown → no rows
     selectLimit.mockResolvedValueOnce([]);
@@ -472,7 +468,6 @@ describe('forge_issues tool', () => {
     });
     // 1. resolveProjectIdFromSlug
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
-    // 2. assertDeviceOwnerIsMember
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     // 3. name resolution returns LABEL_ID (the same uuid already in uuidValues → deduped)
     selectLimit.mockResolvedValueOnce([{ id: LABEL_ID }, { id: LABEL_ID_2 }]);
@@ -512,14 +507,13 @@ describe('forge_issues tool', () => {
     await expect(tool.handler({ action: 'get' })).rejects.toThrow(/BAD_REQUEST/);
   });
 
-  it('get returns serialized issue when device owner is member', async () => {
+  it('get returns serialized issue when the caller is a member', async () => {
     const tool = forgeIssuesTool({
       principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     // 1. loadIssue → issues row
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
-    // 2. assertDeviceOwnerIsMember → project owner row (owned by device.ownerId)
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
     const result = (await tool.handler({ action: 'get', documentId: ISSUE_ID })) as {

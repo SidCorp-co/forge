@@ -108,7 +108,7 @@ beforeEach(() => {
 });
 
 describe('forge_project_pipeline_runs (action=list)', () => {
-  it('returns runs filtered by issueId/status when device owner is member', async () => {
+  it('returns runs filtered by issueId/status when the caller is a member', async () => {
     const tool = forgeProjectPipelineRunsTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     selectLimit.mockResolvedValueOnce([baseRun]);

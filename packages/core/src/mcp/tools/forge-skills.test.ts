@@ -9,7 +9,6 @@ vi.mock('../../config/env.js', () => ({
   },
 }));
 
-// db.select chain — only used by assertDeviceOwnerIsMember (effectiveProjectRole).
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));

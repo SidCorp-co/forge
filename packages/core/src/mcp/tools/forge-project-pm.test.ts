@@ -60,7 +60,7 @@ beforeEach(() => {
 });
 
 describe('forge_project_pm (action=snapshot)', () => {
-  it('routes to the pmSnapshot handler when device owner is project member', async () => {
+  it('routes to the pmSnapshot handler when the caller is a project member', async () => {
     const tool = forgeProjectPmTool(makeAdminCtx());
     const memberCheck = [{ orgId: 'org-1', memberRole: 'member', orgRole: null }];
     const counts: unknown[] = [];

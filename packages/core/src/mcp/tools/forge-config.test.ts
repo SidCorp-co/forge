@@ -60,7 +60,6 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
       projectSlug: null,
     });
 
-    // assertDeviceOwnerIsMember: ownerId match short-circuits the membership query.
     selectLimit
       .mockResolvedValueOnce([memberAccessRow]) // assertPrincipalIsMember: effective-role lookup
       .mockResolvedValueOnce([

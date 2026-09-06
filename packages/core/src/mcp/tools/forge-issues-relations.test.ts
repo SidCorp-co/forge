@@ -326,7 +326,7 @@ it('get returns the edges on both sides of the issue', async () => {
   expect(result.relations.blockedBy[0]).toMatchObject({ edgeId: 'dep-id-1', expired: false });
 });
 
-it('attributes the edge to the PAT user, not to the synthetic device standing in for it', async () => {
+it('attributes the edge to the PAT user — the synthetic device that used to stand in for it is gone', async () => {
   const PAT_USER = '55555555-5555-4555-8555-555555555555';
   stageUpdate();
   selectLimit.mockResolvedValueOnce([memberAccessRow]);

@@ -125,7 +125,7 @@ const mockJobThenMember = (over: Record<string, unknown> = {}) => {
 };
 
 describe('forge_jobs.list', () => {
-  it('lists jobs scoped by project + filters when device owner is member', async () => {
+  it('lists jobs scoped by project + filters when the caller is a member', async () => {
     const tool = forgeJobsListTool(makeFakeContext(fakePrincipal));
     mockMemberThenJobs([baseJobRow]);
 
@@ -254,7 +254,7 @@ const makePatCtx = (projectIds: string[] | null) => ({
 });
 
 describe('forge_jobs.get', () => {
-  it('returns the job + agentSessionId when device owner is member', async () => {
+  it('returns the job + agentSessionId when the caller is a member', async () => {
     const tool = forgeJobsGetTool(makeDeviceCtx());
     mockJobThenMember();
 

@@ -61,7 +61,7 @@ beforeEach(() => {
 });
 
 describe('forge_agent_sessions.list', () => {
-  it('returns sessions filtered by issueId/status when device owner is member', async () => {
+  it('returns sessions filtered by issueId/status when the caller is a member', async () => {
     const tool = forgeAgentSessionsListTool(makeFakeContext(fakePrincipal));
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     selectLimit.mockResolvedValueOnce([baseSessionRow]); // sessions query
@@ -124,7 +124,6 @@ describe('forge_agent_sessions.list', () => {
 
     await tool.handler({ projectId: PROJECT_ID });
 
-    // last db.select() call is the sessions list projection
     const lastCall = selectSpy.mock.calls.at(-1) as unknown[] | undefined;
     const projection = lastCall?.[0] as Record<string, unknown> | undefined;
     expect(projection).toBeDefined();

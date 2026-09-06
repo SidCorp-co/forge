@@ -164,7 +164,7 @@ describe('forge_pm.set_dependency', () => {
   });
 
   // cm:guard the `runners` table must NOT be consulted here. Re-adding a `capabilities.pm` requirement locks out exactly the caller this tool exists for — a plan-pipeline agent on a claude-code runner, which never carries the PM flag — and it fails as FORBIDDEN, which reads as a permissions problem rather than a gate that should not be there (ISS-131).
-  it('admits a non-PM device that owns the project (ISS-131 gate relaxation)', async () => {
+  it('admits a project owner with no PM capability (ISS-131 gate relaxation)', async () => {
     const tool = forgePmSetDependencyTool(ctx);
     pushMemberOk();
     queue.push([
