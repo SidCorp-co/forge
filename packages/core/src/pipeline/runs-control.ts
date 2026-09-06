@@ -3,29 +3,15 @@
  *
  * REST handlers (`pipeline/runs-routes.ts`) and MCP tools
  * (`mcp/tools/forge-pipeline-runs.ts`) both call into these helpers so the
- * transition semantics live in one place. The dispatcher gate added in
- * ISS-101 already filters by `r.status = 'running'`, so flipping
- * `pipeline_runs.status` to `paused` or `cancelled` is the only mutation
- * needed to stop new jobs being picked. Cancel additionally cascades the
- * status onto queued/dispatched jobs of the run and notifies the device
- * room so any actively running agent session aborts cleanly.
- *
- * Status table:
- *   running   → pause  → paused  (broadcast)
- *   running   → resume → no-op   (return current)
- *   running   → cancel → cancelled + cascade jobs + abort device (broadcast)
- *   paused    → pause  → no-op   (return current)
- *   paused    → resume → running (broadcast)
- *   paused    → cancel → cancelled + cascade jobs (broadcast)
- *   cancelled → cancel → no-op   (idempotent)
- *   cancelled → pause/resume → CONFLICT
- *   completed | failed → any    → CONFLICT
+ * transition semantics live in one place.
  */
+// cm:guard flipping `pipeline_runs.status` to `paused` or `cancelled` is the ONLY mutation needed to stop new jobs being picked, because the ISS-101 dispatcher gate already filters on `r.status = 'running'`. A second stop mechanism added here would be a state the dispatcher does not read.
+// cm:guard the transitions this file refuses are as load-bearing as the ones it performs: `completed`/`failed` reject every verb, and `cancelled` rejects pause/resume while staying idempotent under cancel. Widening any of those turns a terminal run back into a live one, which the cascade has already finished cleaning up after.
 
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
-import type { TransitionActor } from '../issues/actor-agency.js';
+import type { ActorAgency, TransitionActor } from '../issues/actor-agency.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -55,8 +41,10 @@ export type CancelPipelineRunResult = {
 };
 
 export interface CancelPipelineRunOptions {
-  /** The human who asked. Recorded on the run flip AND the issue park. */
+  /** The user the cancel is attributed to. Recorded on the run flip AND the issue park. */
   actorUserId?: string;
+  // cm:guard REQUIRED even though `actorUserId` is optional — the two answer different questions and only one of them has a safe default. An absent user id records `null`, which is honest; an absent agency records `'human'`, which is a claim.
+  actorAgency: ActorAgency;
   /**
    * Park the linked issue at `on_hold`. Defaults to TRUE — "stop working on
    * this" is the common intent and the historical behaviour.
@@ -184,7 +172,7 @@ async function parkIssueOnCancel(run: PipelineRunRow, actorUserId?: string): Pro
  */
 export async function cancelPipelineRun(
   runId: string,
-  opts: CancelPipelineRunOptions = {},
+  opts: CancelPipelineRunOptions,
 ): Promise<CancelPipelineRunResult> {
   const cancelNow = new Date();
 
@@ -196,7 +184,11 @@ export async function cancelPipelineRun(
       where: and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
       fromStatus: 'open',
       reason: FAILURE_REASON_PIPELINE_CANCELLED,
-      actor: { type: 'user', ...(opts.actorUserId ? { id: opts.actorUserId } : {}) },
+      actor: {
+        type: 'user',
+        agency: opts.actorAgency,
+        ...(opts.actorUserId ? { id: opts.actorUserId } : {}),
+      },
       source: 'runs-control',
     });
 

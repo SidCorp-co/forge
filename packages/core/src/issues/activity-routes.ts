@@ -7,6 +7,7 @@ import { db } from '../db/client.js';
 import { activityLog, issues } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import type { ActorAgency } from './actor-agency.js';
 import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './actor-identity.js';
 import { resolveActors } from './actor-resolution.js';
 
@@ -32,11 +33,24 @@ const notFound = (message: string) =>
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
+// cm:why one column list, three readers. It was written out three times and `actor_agency` would have had to be added to each — the ISS-927 read path is exactly the kind of column a copy quietly misses, and a feed that reads `human` because one query forgot to select the field is indistinguishable from a feed that is right.
+const ACTIVITY_ROW_COLUMNS = {
+  id: activityLog.id,
+  issueId: activityLog.issueId,
+  action: activityLog.action,
+  actorType: activityLog.actorType,
+  actorAgency: activityLog.actorAgency,
+  actorId: activityLog.actorId,
+  payload: activityLog.payload,
+  createdAt: activityLog.createdAt,
+} as const;
+
 type ActivityRow = {
   id: string;
   issueId: string;
   action: string;
   actorType: string;
+  actorAgency: ActorAgency;
   actorId: string;
   payload: unknown;
   createdAt: Date;
@@ -44,11 +58,13 @@ type ActivityRow = {
 
 type ActivityRowWithActor = ActivityRow & { actor: ResolvedActor | null };
 
-// ISS-519 — resolve each row's (actorType, actorId) to a display identity and
-// attach it as `actor`. The raw actorType/actorId stay on the row for
-// back-compat. Only the known actor types ('user' | 'device') are resolvable;
-// any other value (defensive) leaves actor null and the FE falls back to the
-// raw actorType.
+// cm:guard `isAgent` is decided PER ROW, not per actor, and that is why it is applied here rather than inside `resolveActors`. That resolver's map is keyed on `(type, id)` and one person's rows legitimately differ: the same user id is a human at the keyboard on one row and a job or session token on the next. Folding agency into the map would let the last row of a batch decide the marker for all of them.
+function isAgentForRow(row: ActivityRow, resolved: ResolvedActor): boolean {
+  // cm:guard the `||` is what protects history, and removing it silently rewrites the past. Every row written before migration 0193 carries this column's `'human'` DEFAULT — runner writes included — so reading the column ALONE would drop the agent marker across all of it. The type test is the pre-column answer and stays as the floor; the column can only ever add agents, never remove one. This is the narrowing that lets the read path ship without reversing the owner's 2026-09-02 deferral, which existed for exactly this risk.
+  return row.actorAgency === 'agent' || resolved.isAgent;
+}
+
+// cm:guard the raw `actorType`/`actorId` stay on the row alongside `actor`, and an unresolvable pair leaves `actor` null rather than a placeholder — the FE renders the raw type in that case, so inventing an `Unknown` actor here would hide a broken reference behind something that looks resolved.
 async function attachActors(rows: ActivityRow[]): Promise<ActivityRowWithActor[]> {
   const refs: ActorRef[] = [];
   for (const r of rows) {
@@ -57,13 +73,13 @@ async function attachActors(rows: ActivityRow[]): Promise<ActivityRowWithActor[]
     }
   }
   const resolved = await resolveActors(refs);
-  return rows.map((r) => ({
-    ...r,
-    actor:
+  return rows.map((r) => {
+    const base =
       (r.actorType === 'user' || r.actorType === 'device') && r.actorId
         ? (resolved.get(actorKey(r.actorType as ActorType, r.actorId)) ?? null)
-        : null,
-  }));
+        : null;
+    return { ...r, actor: base ? { ...base, isAgent: isAgentForRow(r, base) } : null };
+  });
 }
 
 function envelope(rows: ActivityRowWithActor[], limit: number) {
@@ -106,13 +122,7 @@ issueActivityRoutes.get(
 
     const rows = await db
       .select({
-        id: activityLog.id,
-        issueId: activityLog.issueId,
-        action: activityLog.action,
-        actorType: activityLog.actorType,
-        actorId: activityLog.actorId,
-        payload: activityLog.payload,
-        createdAt: activityLog.createdAt,
+        ...ACTIVITY_ROW_COLUMNS,
       })
       .from(activityLog)
       .where(where)
@@ -184,13 +194,7 @@ issueActivityRoutes.patch(
       .set({ payload: nextPayload })
       .where(eq(activityLog.id, activityId))
       .returning({
-        id: activityLog.id,
-        issueId: activityLog.issueId,
-        action: activityLog.action,
-        actorType: activityLog.actorType,
-        actorId: activityLog.actorId,
-        payload: activityLog.payload,
-        createdAt: activityLog.createdAt,
+        ...ACTIVITY_ROW_COLUMNS,
       });
     if (!updated) throw notFound('activity not found');
     const [withActor] = await attachActors([updated as ActivityRow]);
@@ -243,13 +247,7 @@ projectActivityRoutes.get(
 
     const rows = await db
       .select({
-        id: activityLog.id,
-        issueId: activityLog.issueId,
-        action: activityLog.action,
-        actorType: activityLog.actorType,
-        actorId: activityLog.actorId,
-        payload: activityLog.payload,
-        createdAt: activityLog.createdAt,
+        ...ACTIVITY_ROW_COLUMNS,
       })
       .from(activityLog)
       .innerJoin(issues, eq(issues.id, activityLog.issueId))
@@ -261,3 +259,6 @@ projectActivityRoutes.get(
     return c.json(envelope(withActors, limit));
   },
 );
+
+// cm:why exported for the test and nothing else. `attachActors` is where the ISS-927 agent marker is decided, and reaching it through a route would need a DB, a project, a member and a JWT to assert a pure mapping — a cost that buys nothing, since the route's own auth and query are covered elsewhere.
+export const __testing = { attachActors };

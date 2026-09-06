@@ -51,13 +51,38 @@ export function patPrefixOf(token: string): string {
   return token.slice(0, PAT_PREFIX_LEN);
 }
 
-// cm:guard the `job:` name prefix is LOAD-BEARING, and it lives here for the same reason `forge_pat_` does: three modules decide real behaviour on it and none of them may spell it themselves. It is how `countActivePatsForUser` keeps a fleet's job tokens off the owner's cap, how a dispatch's revoke finds the row without storing a job id on the PAT table, and — since it is the only column separating an agent's credential from a person's — how `authenticatePat` decides `agency`, which is what the ISS-786/812 evidence gates read. A fourth copy of the literal is how one of those three goes quietly wrong.
+// cm:guard the machine-token name prefixes are LOAD-BEARING, and they live here for the same reason `forge_pat_` does: three modules decide real behaviour on them and none of them may spell one itself. They are how `countActivePatsForUser` keeps a fleet's machine tokens off the owner's cap, how a dispatch's revoke finds the row without storing a job or session id on the PAT table, and — since the name is the only column separating an agent's credential from a person's — how `authenticatePat` decides `agency`, which is what the ISS-786/812 evidence gates read. A fourth copy of a literal is how one of those three goes quietly wrong.
+// cm:guard ADDING a species to this family means adding it to `MACHINE_TOKEN_NAME_PREFIXES`, and nothing else. Every one of the three consumers reads the family, never a member: that is the whole reason `session:` (ISS-927) cost one line here instead of three edits that could each have been forgotten. A prefix that is minted but left out of this array is a machine credential the cap counts, the revoke sweep misses and `authenticatePat` stamps `human` — which is the exact bypass ISS-894 paid to patch.
 const JOB_TOKEN_NAME_PREFIX = 'job:';
+const SESSION_TOKEN_NAME_PREFIX = 'session:';
+
+/** Every name prefix that marks a token as machine-minted rather than a person's. */
+export const MACHINE_TOKEN_NAME_PREFIXES = [
+  JOB_TOKEN_NAME_PREFIX,
+  SESSION_TOKEN_NAME_PREFIX,
+] as const;
+
+/** SQL `LIKE` patterns matching every machine-minted token name. */
+export const machineTokenNameLikes = MACHINE_TOKEN_NAME_PREFIXES.map((p) => `${p}%`);
 
 /** SQL `LIKE` pattern matching every job-minted token name. */
 export const jobTokenNameLike = `${JOB_TOKEN_NAME_PREFIX}%`;
 
 export const jobTokenNameFor = (jobId: string) => `${JOB_TOKEN_NAME_PREFIX}${jobId}`;
 
+export const sessionTokenNameFor = (sessionId: string) =>
+  `${SESSION_TOKEN_NAME_PREFIX}${sessionId}`;
+
 export const isJobTokenName = (name: string | null | undefined): boolean =>
   typeof name === 'string' && name.startsWith(JOB_TOKEN_NAME_PREFIX);
+
+export const isSessionTokenName = (name: string | null | undefined): boolean =>
+  typeof name === 'string' && name.startsWith(SESSION_TOKEN_NAME_PREFIX);
+
+/**
+ * True for any token a machine minted for itself — a dispatched job or an
+ * unattended agent session. This, not `isJobTokenName`, is what the PAT cap,
+ * the hand-mint refusal and the `agency` stamp read.
+ */
+export const isMachineTokenName = (name: string | null | undefined): boolean =>
+  typeof name === 'string' && MACHINE_TOKEN_NAME_PREFIXES.some((p) => name.startsWith(p));

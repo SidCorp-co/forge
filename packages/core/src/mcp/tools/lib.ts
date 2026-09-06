@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import type { Device } from '../../auth/deviceToken.js';
-import { actorAgency, type DeviceLite, type TransitionActor } from '../../issues/actor-agency.js';
+import {
+  type ActorAgency,
+  actorAgency,
+  type DeviceLite,
+  type TransitionActor,
+} from '../../issues/actor-agency.js';
 import { loadVisibleProjectIds } from '../../lib/authz.js';
 import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
 import type { Actor } from '../../pipeline/activity.js';
@@ -109,7 +114,6 @@ export async function assertPrincipalIsMember(
     await assertDeviceOwnerIsMember(principal.device, projectId);
     return;
   }
-  // PAT principal — check the effective allowlist (bound project fences here).
   const allow = patEffectiveProjectIds(principal);
   if (allow !== null && !allow.includes(projectId)) {
     throw new Error('NOT_FOUND: project not found or not accessible');
@@ -198,6 +202,18 @@ export function principalActor(principal: McpPrincipal, device: DeviceLite): Tra
   return principal.kind === 'pat' && principal.agency === 'human'
     ? { type: 'user', id: principal.userId }
     : { type: 'device', id: device.id, ownerId: device.ownerId };
+}
+
+/**
+ * Who was at the keyboard for this MCP call, as the kernel audit records it.
+ *
+ * Distinct from {@link principalActor}, which answers who OWNS the write. A
+ * device principal is a machine by construction; a PAT carries the answer the
+ * `job:`/`session:` name prefix already decided.
+ */
+// cm:guard read `principal.agency`, never re-derive it from `kind` — `chat/tools/principal.ts` builds `kind:'pat'` for an agent-driven surface, so a `kind === 'pat' ? human : agent` test hands every agent chat write the ISS-812 exemption. This is the same rule `principalActor` above carries, and it is stated twice because the two functions are read independently.
+export function principalAgency(principal: McpPrincipal): ActorAgency {
+  return principal.kind === 'pat' ? principal.agency : 'agent';
 }
 
 /** The same decision, in the shape the hooks bus and `activity_log` take. */

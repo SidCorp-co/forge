@@ -26,6 +26,7 @@ import {
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   type McpContext,
+  principalAgency,
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
@@ -114,6 +115,7 @@ export async function pipelineRunsCancelHandler(
   await assertPrincipalIsWriter(principal, loaded.projectId);
   return cancelPipelineRun(input.runId, {
     actorUserId: principalUserId(principal),
+    actorAgency: principalAgency(principal),
     ...(input.parkIssue !== undefined ? { parkIssue: input.parkIssue } : {}),
   });
 }

@@ -4,7 +4,7 @@
 //! the desktop app already fulfils. Core resolves an online `claude-code`
 //! runner via `findAvailableDeviceForProject`, opens a one-shot
 //! `pipeline_run kind='interactive'`, and publishes:
-//!   - `agent:start` `{ sessionId, prompt, projectSlug, repoPath, systemPrompt, model }`
+//!   - `agent:start` `{ sessionId, prompt, projectSlug, repoPath, systemPrompt, model, sessionToken }`
 //!   - `agent:send`  `{ sessionId, message, claudeSessionId, repoPath, projectSlug, model }`
 //!   - `agent:abort` `{ sessionId }`
 //!
@@ -19,8 +19,9 @@
 //! pipeline slot, and since 2026-09-04 no budget of its own either: a turn
 //! never queues. Its residency ceiling is the only bound.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
@@ -33,6 +34,7 @@ use crate::error::{Error, Result};
 use crate::runner::claude_code::ClaudeCodeRunner;
 use crate::runner::{JobSpec, Runner, RunnerEvent};
 use crate::transport::agent_sessions::{self, SessionPatch};
+use crate::transport::frames::JobToken;
 use crate::transport::CoreClient;
 use crate::workspace::refresh;
 
@@ -71,6 +73,11 @@ struct StartFrame {
     mcp_servers_override: Option<serde_json::Value>,
     #[serde(default)]
     attachments: Option<Vec<AttachmentRef>>,
+    /// The session-scoped PAT core minted for this session (ISS-927). Optional
+    /// because a mint that fails must not stop the session dispatching, and
+    /// because a session whose owner row is gone has no principal to mint for.
+    #[serde(default)]
+    session_token: Option<String>,
 }
 
 /// `agent:send` payload (a follow-up turn on an existing session).
@@ -106,6 +113,39 @@ struct Turn {
     /// Temp dir holding this turn's downloaded attachments; removed after the
     /// turn completes. `None` when the turn carried no attachments.
     attachment_dir: Option<PathBuf>,
+    /// The session's own credential, exported to `claude` as `$FORGE_PAT`.
+    session_token: Option<JobToken>,
+}
+
+// cm:guard the token arrives ONCE, on `agent:start`, and every later turn of the session reads it from here. Core does not re-send it on `agent:send` and must not be made to: a re-mint revokes the credential an in-flight turn is spending. A migration or a re-pin cold-starts the session, which sends a fresh `agent:start` and overwrites this entry — that is the only way an entry is ever replaced.
+// cm:edge lockstep -> packages/core/src/agent-sessions/chat-turn.ts — the mint happens on the cold-start branch there, so this map is populated exactly when that branch runs. Move the mint onto `agent:send` and every session ends up holding a token this map has already forgotten.
+static SESSION_TOKENS: OnceLock<Mutex<HashMap<String, JobToken>>> = OnceLock::new();
+
+fn session_tokens() -> &'static Mutex<HashMap<String, JobToken>> {
+    SESSION_TOKENS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn remember_session_token(session_id: &str, token: Option<String>) {
+    let Some(token) = token.filter(|t| !t.is_empty()) else {
+        return;
+    };
+    if let Ok(mut map) = session_tokens().lock() {
+        map.insert(session_id.to_string(), JobToken::new(token));
+    }
+}
+
+fn session_token_for(session_id: &str) -> Option<JobToken> {
+    session_tokens()
+        .lock()
+        .ok()
+        .and_then(|m| m.get(session_id).cloned())
+}
+
+// cm:guard forgetting here is HYGIENE, not the revoke. The credential dies because core revokes it on the session's terminal write — both of them, the kernel chokepoint and the runner's own happy-path PATCH. This map only stops a long-lived daemon accumulating one entry per session it ever served; a daemon that skipped it would leak memory, never authority.
+fn forget_session_token(session_id: &str) {
+    if let Ok(mut map) = session_tokens().lock() {
+        map.remove(session_id);
+    }
 }
 
 /// Download a turn's attachments to a fresh temp dir, authenticated with the
@@ -235,6 +275,8 @@ pub async fn handle_start(
         Some((dir, paths)) => (augment_prompt(&prompt, &paths), Some(dir)),
         None => (prompt, None),
     };
+    remember_session_token(&f.session_id, f.session_token);
+    let session_token = session_token_for(&f.session_id);
     run_turn(
         client,
         runner,
@@ -248,6 +290,7 @@ pub async fn handle_start(
             resume_id: None,
             mcp_servers_override: f.mcp_servers_override,
             attachment_dir,
+            session_token,
         },
     )
     .await
@@ -289,6 +332,10 @@ pub async fn handle_send(
             resume_id: f.claude_session_id.filter(|s| !s.is_empty()),
             mcp_servers_override: f.mcp_servers_override,
             attachment_dir,
+            // The session's token was delivered on `agent:start`; a follow-up
+            // never carries one, and re-minting per turn would revoke the
+            // credential the previous turn may still be spending.
+            session_token: session_token_for(&f.session_id),
         },
     )
     .await
@@ -300,6 +347,7 @@ pub async fn handle_abort(runner: Arc<ClaudeCodeRunner>, session_id: &str) {
     if let Err(e) = runner.abort(&session_id.to_string()).await {
         tracing::debug!("[chat {session_id}] abort: {e}");
     }
+    forget_session_token(session_id);
 }
 
 /// The spawn spec for one chat turn.
@@ -328,8 +376,8 @@ fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
         counts_against_session_cap: false,
         // cm:guard chat takes the DEFAULT and no project value, because the field is `pipelineConfig.sessionResidencySeconds` and chat has no pipeline behind it. A chat session's residency is bounded by the same const it always was; giving it a pipeline project's number would make a project setting silently change how long an unrelated chat window stays warm.
         session_residency_seconds: None,
-        // cm:guard chat gets NO job token, and that is not an omission: the mint is keyed on a `jobs` row's `created_by`, and a chat session has no job. Handing chat a token would need its own principal and its own revoke trigger, neither of which exists — so chat keeps using whatever `$FORGE_PAT` the operator provisioned.
-        pat_token: None,
+        // cm:guard chat now DOES get a token, and this line is the one that was waiting on ISS-927. It used to say chat could not have one because the mint is keyed on a `jobs` row's `created_by` and a chat session has no job — true, and the reason the 8 cron schedules held a device token permanently. The missing pieces named there, "its own principal and its own revoke trigger", are the session's `user_id` and the pair of terminal writers core revokes on. `None` here is now only the honest answer for a session core could not mint for, never the design.
+        pat_token: turn.session_token.clone(),
     }
 }
 
@@ -535,6 +583,12 @@ async fn consume(client: &CoreClient, session_id: &str, mut rx: mpsc::Receiver<R
             .await;
         }
     }
+
+    // The PATCH above is a terminal write, so core has already revoked this
+    // session's token — only unattended, single-turn sessions ever hold one.
+    // Dropping the entry keeps a long-lived daemon from carrying one dead
+    // credential per session it has ever served.
+    forget_session_token(session_id);
 }
 
 /// Final PATCH for a failed turn: append a visible error turn so the chat shows

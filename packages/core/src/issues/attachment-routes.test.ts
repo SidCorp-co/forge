@@ -273,38 +273,19 @@ describe('POST /api/issues/:id/attachments', () => {
     expect(verifyPatMock).toHaveBeenCalledOnce();
   });
 
-  it('201 via device token: requireAnyAuth resolves userId from device.ownerId', async () => {
+  // cm:guard ISS-927 — the `requireAnyAuth` device branch is deleted, so this route no longer resolves a device to its owner. `verifyDeviceTokenMock` going UNCALLED, not the 401, is what proves the branch is gone rather than merely failing: an agent uploading an issue attachment now presents the `job:`/`session:` PAT it was minted, which takes the PAT branch and is fenced by `patAllowedFor` + the project scope.
+  it('401 for a device token, without consulting the device path at all', async () => {
     verifyDeviceTokenMock.mockResolvedValueOnce({ id: 'device-1', ownerId: USER_ID });
-    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'admin',
-      orgRole: 'owner',
-    });
-    storagePut.mockResolvedValueOnce({ path: '/tmp/issues/x/y.png' });
-    insertReturning.mockResolvedValueOnce([
-      {
-        id: ATT_ID,
-        issueId: ISSUE_ID,
-        uploaderId: USER_ID,
-        name: 'pic.png',
-        mime: 'image/png',
-        size: 5,
-        createdAt: new Date(),
-      },
-    ]);
 
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/attachments`, {
       method: 'POST',
-      // Non-PAT, non-JWT-looking token — verifyPat returns null (mocked default),
-      // verifyUserToken throws (not a real JWT), verifyDeviceToken is called.
       headers: { authorization: 'Bearer device_token_opaque_value' },
       body: makeFile('hello'),
     });
 
-    expect(res.status).toBe(201);
-    expect(verifyDeviceTokenMock).toHaveBeenCalledOnce();
+    expect(res.status).toBe(401);
+    expect(verifyDeviceTokenMock).not.toHaveBeenCalled();
+    expect(storagePut).not.toHaveBeenCalled();
   });
 
   it('401 when all three auth paths reject the token', async () => {

@@ -11,6 +11,29 @@
 
 ### Added
 
+- **An unattended agent session holds its own credential, and it dies when the session does.**
+  A scheduled run, a RocketChat escalation and a RocketChat agent chat all open an agent session
+  with nobody at the keyboard. Until now none of them had a credential of its own: the mint Forge
+  already does for a dispatched job is keyed on a `jobs` row, and these have no job — so that whole
+  caller class fell back to whatever long-lived token the box was provisioned with, which is exactly
+  the credential nobody is watching. Core now mints a `session:<id>` PAT on `agent:start`, bound to
+  the one project, scoped read+write, on the same measured 600/min ceiling a job token gets, and
+  hands it to the runner on the dispatch frame as `$FORGE_PAT`.
+
+  It is revoked from **both** writers that can end a session, which is the part worth reading. The
+  kernel chokepoint covers cancel, the stale sweeper, a dispatch failure and a run-close cascade;
+  the runner's own happy-path completion is a direct `db.update` in `PATCH /api/agent-sessions/:id`
+  that the chokepoint never sees, and the guard test protecting that invariant cannot see it either,
+  because it scans for a literal status and that handler writes a variable. Wiring only the
+  chokepoint — which is what this change was originally specified to do — would have left a live,
+  write-scoped, project-bound credential behind every session that finished normally.
+
+  Interactive chat is deliberately excluded and keeps the operator's `$FORGE_PAT`. A chat turn
+  reports `completed` at the end of every turn, so core's status vocabulary cannot tell a dormant
+  session from a finished one; a token revoked on that ambiguity would be cut out from under a
+  resident `claude` process that reads `$FORGE_PAT` once, at spawn. Unattended sessions are
+  single-turn by construction, so for them terminal really is terminal. (ISS-927)
+
 - **The Ops Console's alert thresholds are an operator setting, and spend has a ceiling.**
   `GET`/`PUT /api/admin/thresholds` (platform admins only) reads and writes one global row: the
   stuck-job window, the runner-starvation grace, the spend-spike multiple, the schedule fail-streak,
@@ -2217,6 +2240,24 @@
   parked or blocked — there is still no limit on how many rounds an issue may take. (ISS-878)
 
 ### Changed
+
+- **A device token no longer reaches the API as its owner.** `requireAnyAuth` — the middleware
+  behind attachment uploads and two comment routes — used to accept a runner's device token and set
+  `userId = device.ownerId`, which was the single place in Forge where a credential silently became
+  a person. It is deleted, along with the probe that existed to measure it. A caller presenting a
+  device token there now gets a 401 rather than its owner's account, and the caller class it served
+  holds a real scoped token instead: `job:<id>` from the moment a job is claimed, `session:<id>`
+  from `agent:start`. Four middlewares still verify a device token on the runner's own control
+  plane, and none of them grants ambient owner authority. (ISS-927)
+
+- **The audit trail records who was at the keyboard, not just whose account it was.**
+  `kernel_transitions` gains `actor_agency`, finishing the axis `activity_log` started: `actor_type`
+  answers who owns a write — truthfully the person a job or session token was minted under — while
+  `actor_agency` answers whether a machine made it. The field is required on a `user` actor and
+  refused on the others, so `system`, `sweeper` and `runner` cannot be recorded as people and no
+  call site can quietly inherit the column's default. The activity feed reads it per row, ORed over
+  the existing actor-type test so that every row written before the column existed keeps exactly the
+  marker it has today. (ISS-927)
 
 - **The docs stop offering the runner's own passthrough as the surface a skill calls.** Two
   command-line tools reach core's data plane — `forge-runner api`, built in this repo, and `forge`,
