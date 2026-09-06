@@ -11,17 +11,12 @@
 
 import type { agentSessions } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { revokeSessionToken } from './session-token.js';
 
-// cm:guard everything a session's terminal write owes, for the ONE terminal writer `applyKernelTransition` cannot see. This PATCH is the runner's happy-path completion and a direct `db.update`, so each side-effect hung on the kernel chokepoint needs its twin here or it goes silent for the commonest case in production — the ISS-675 escalation bridge is why this exists, and the ISS-927 token revoke is why it is a function.
+export { revokeSessionToken } from './session-token.js';
+
+// cm:guard the ROOM half of what a session's terminal write owes, for the ONE terminal writer `applyKernelTransition` cannot see. The credential half is `revokeSessionToken`, called separately by the same handler because the two want different gates: these bridges fire on the REPORTED status like their siblings, while the revoke fires on the PERSISTED one — a bridge that fires early sends a duplicate room reply, a revoke that fires early kills a running session's token. This PATCH is the runner's happy-path completion and a direct `db.update`, so each side-effect hung on the kernel chokepoint needs its twin here or it goes silent for the commonest case in production — the ISS-675 escalation bridge is why this exists, and the ISS-927 token revoke is why it is a function.
 // cm:edge lockstep -> packages/core/src/lifecycle/transition.ts — the chokepoint's `entity === 'session'` branch is the other half of every line below. Adding one here without adding it there loses cancel, the sweeper and dispatch failure; adding it there alone loses the happy path.
-export async function onTerminalPatch(
-  id: string,
-  updated: typeof agentSessions.$inferSelect,
-): Promise<void> {
-  // cm:guard AWAITED, unlike the bridges below, and the asymmetry is the point: a room reply that fails is a missing message, while a revoke that fails is a live write-scoped credential outliving the session it was minted for. Best-effort is the right posture for the first and not for the second.
-  await revokeSessionToken(id);
-
+export async function onTerminalPatch(updated: typeof agentSessions.$inferSelect): Promise<void> {
   const meta = updated.metadata as { escalation?: unknown; agentChat?: unknown } | null;
   // cm:why the two bridges are best-effort and swallow: the runner's PATCH is its only way to report the turn, and failing it over a RocketChat problem would lose the transcript to save a room message.
   if (meta?.escalation) {

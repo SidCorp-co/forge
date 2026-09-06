@@ -53,7 +53,7 @@ import {
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
 import { detectUnexpandedSkillFailure, finalizeScheduleSessionFailure } from './session-failure.js';
-import { onTerminalPatch } from './terminal-effects.js';
+import { onTerminalPatch, revokeSessionToken } from './terminal-effects.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
 
@@ -112,13 +112,8 @@ const TERMINAL_SESSION_STATUSES: ReadonlySet<AgentSessionStatus> = new Set(
   terminalAgentSessionStatuses,
 );
 
-// `broadcastSession` is imported from `./broadcast.ts` so per-turn handlers can
-// share the same fan-out shape (project room + owning device room).
-
 export const agentSessionRoutes = new Hono<{ Variables: AuthVars }>();
-// Dual-auth: user JWT (web/desktop) OR device token (a CLI runner streaming a
-// chat reply back via PATCH /:id). Non-device routes still authorize via
-// `loadProjectAccess(_, userId)`, which fails closed for a device principal.
+// cm:guard the ONE wildcard for this whole surface, and it stays the only one — every router mounted below inherits it, and a second `use('*')` here would flatten into the same linear chain and run ahead of this for some routes (the ISS-706 shape). Dual-auth because the runner streams chat replies back through `PATCH /:id` with a device token; every other route authorizes via `loadProjectAccess(_, userId)`, which fails closed for a device principal because `userId` is left unset.
 agentSessionRoutes.use('*', requireUserOrDevice(), assertEmailVerified());
 
 // Static-path lifecycle handlers (start / send / abort / cancel / build-prompt
@@ -796,8 +791,13 @@ agentSessionRoutes.patch(
       messages: patch.messages ?? existing.messages,
     });
 
+    // cm:guard the REVOKE reads the PERSISTED `updated.status`; the bridges below read the REPORTED `patch.status`. The split is deliberate and is NOT a bug fix — every rewrite core performs today maps one terminal status onto another (ISS-733 skill-not-synced, `audit_ran_blind`), so the two agree and no test can tell them apart. It is priced as hardening in one direction: a `...Once` bridge that fires on a status core did not accept sends a duplicate room reply, while a revoke that does kills the credential of a session still running. `writeBackScheduleLastStatus` above already reads the persisted value for its own version of this reason. The condition that would end the split is a rewrite mapping a terminal report onto a NON-terminal status — none exists, and if one is added it belongs here first.
+    if (TERMINAL_SESSION_STATUSES.has(updated.status)) {
+      await revokeSessionToken(id);
+    }
+
     if (patch.status !== undefined && TERMINAL_SESSION_STATUSES.has(patch.status)) {
-      await onTerminalPatch(id, updated);
+      await onTerminalPatch(updated);
     }
 
     return c.json(updated);

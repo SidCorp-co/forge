@@ -248,6 +248,49 @@ describe('the token dies with the session, by every route a session can end', ()
     expect((transitions as unknown as Array<{ n: number }>)[0]?.n).toBe(0);
   });
 
+  // cm:guard this covers the REWRITE path, and it does NOT distinguish the two gates — say so rather than let the name imply it. When core turns a reported `completed` into a persisted `failed` (ISS-733 skill-not-synced, `audit_ran_blind`), both values are terminal, so gating on either revokes and no test can tell them apart today. What it does catch is the revoke going missing on the one PATCH shape where the reported and persisted statuses differ at all — a shape nothing else in this suite exercises, and the shape a future rewrite would extend.
+  it('revokes when core rewrites the reported status into a different terminal one', async () => {
+    const { user, project, sessionId } = await seedSession();
+    await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
+    await createTestProjectMember(harness.db, {
+      userId: user.id,
+      projectId: project.id,
+      role: 'member',
+    });
+    const plaintext = (await mintSessionToken({
+      id: sessionId,
+      projectId: project.id,
+      userId: user.id,
+    })) as string;
+
+    // cm:why this metadata plus an "Unknown command" assistant turn is the ONLY shape that makes core rewrite a reported status (ISS-733: a cold start invoked a skill the runner had not synced). Reproducing it is what gets a PATCH where reported and persisted differ; a plain `status: 'failed'` would not.
+    await dbMod.db.execute(sql`
+      UPDATE agent_sessions
+         SET metadata = jsonb_build_object('pendingSkillName', 'forge-code',
+                                           'pendingSkillBaselineCount', 0)
+       WHERE id = ${sessionId}::uuid
+    `);
+
+    const res = await app.request(`http://localhost/api/agent-sessions/${sessionId}`, {
+      method: 'PATCH',
+      headers: {
+        authorization: `Bearer ${await signUserToken(user.id)}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        status: 'completed',
+        messages: [{ role: 'assistant', content: 'Unknown command: /forge-code' }],
+      }),
+    });
+    expect(res.status).toBe(200);
+
+    const [row] = (await dbMod.db.execute(sql`
+      SELECT status FROM agent_sessions WHERE id = ${sessionId}::uuid
+    `)) as unknown as Array<{ status: string }>;
+    expect(row?.status).toBe('failed');
+    expect(await deadWithin(plaintext)).toBe(true);
+  });
+
   it('leaves another session token alone', async () => {
     const { user, project, sessionId, runId } = await seedSession();
     const otherSessionId = await seedSessionRow(project.id, user.id, runId);
