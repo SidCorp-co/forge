@@ -74,7 +74,7 @@ export interface PreparedJob {
 /**
  * The project's process model, and how long a duplex session may sit idle.
  */
-// cm:guard defaults to `print` for an absent project, an absent config or an absent key — duplex is opt-in per project (ISS-873 phase 3) and a read that failed must never be the thing that flips a project's process model. `pipelineConfig` is not parsed through its Zod schema here on purpose: a config that fails validation for an unrelated key must not stop the job going out.
+// cm:guard defaults to `duplex` for an absent project, an absent config or an absent key — the direction INVERTED with the ISS-873 phase 5 flip, and the safety argument inverted with it. A read that failed now yields the residency model rather than the one-shot one, which is safe because core never discriminates on this value: every hop that behaves differently under duplex keys on `agent_sessions.runtime_state`, which only a session that actually spawned duplex ever writes. A runner below 0.9.0 ignores the field entirely and runs print, reports no state, and is treated as print by every one of those hops. `pipelineConfig` is not parsed through its Zod schema here on purpose: a config that fails validation for an unrelated key must not stop the job going out.
 // cm:guard ONE read for both fields. Two calls would let the mode and the residency come from different snapshots of the same row — a job spawned duplex with the residency of a config that no longer says duplex.
 async function sessionSettingsOf(projectId: string): Promise<{
   agentConfig: unknown;
@@ -92,7 +92,7 @@ async function sessionSettingsOf(projectId: string): Promise<{
   return {
     agentConfig: row?.agentConfig ?? null,
     settings: {
-      sessionMode: cfg.pipelineConfig?.sessionMode === 'duplex' ? 'duplex' : 'print',
+      sessionMode: cfg.pipelineConfig?.sessionMode === 'print' ? 'print' : 'duplex',
       // cm:guard a positive number ONLY. The key defaults to 0 and no project has set it, so forwarding 0 would be indistinguishable on the wire from a project asking for no residency at all — the runner resolves absent and 0 to the same default for exactly that reason, and sending nothing keeps the two sides agreeing by construction.
       ...(typeof secs === 'number' && secs > 0 ? { sessionResidencySeconds: secs } : {}),
     },
