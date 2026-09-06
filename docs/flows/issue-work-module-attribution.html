@@ -157,6 +157,77 @@ name or uuid against <code>kind='module'</code> labels only and then reuses the 
 EXISTS-join. An unresolved module returns <strong>no issues</strong>, never every issue: dropping
 the narrowing would hand the caller the whole project and read as "nothing matched".</p>
 
+<h2>The two surfaces, and the handshake nobody owns</h2>
+<p class="sub">The taxonomy is <em>authored</em> on one surface and <em>consumed</em> on another,
+and no single package holds both ends. An admin defines a module through
+<code>labels/routes.ts</code> — the route <code>project-settings</code> drives — and an agent then
+attributes and filters through <code>forge_issues</code>, which never creates a label. Everything
+crossing the dashed line is a contract that no type checks: a module name, a
+<code>{labelId, isPrimary}</code> object, and a filter value.</p>
+
+<svg viewBox="0 0 900 400" role="img" aria-label="The taxonomy authored through REST and consumed through MCP, and which test holds each edge">
+  <defs>
+    <marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/></marker>
+    <marker id="e" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a3b52"/></marker>
+  </defs>
+
+  <text class="m" x="30" y="26">AUTHORING — a human, through the web</text>
+  <text class="m" x="530" y="26">CONSUMING — an agent, through MCP</text>
+  <path d="M470,10 L470,390" stroke="#ddd7cf" stroke-width="1.2" stroke-dasharray="5 4" fill="none"/>
+
+  <rect class="box" x="30" y="40" width="400" height="58" rx="4"/>
+  <text class="t" x="44" y="62">POST /api/projects/:id/labels</text>
+  <text class="m" x="44" y="80">kind:'module', parentId, description — admin role only</text>
+
+  <rect class="box" x="30" y="118" width="400" height="58" rx="4"/>
+  <text class="t" x="44" y="140">labels rows, kind='module'</text>
+  <text class="m" x="44" y="158">the taxonomy IS this set; there is no registry table</text>
+
+  <path class="arrow" style="marker-end:url(#d)" d="M230,98 L230,118"/>
+  <path class="arrow" style="marker-end:url(#d)" d="M430,147 L530,147"/>
+
+  <rect class="box" x="530" y="118" width="350" height="58" rx="4"/>
+  <text class="t" x="544" y="140">forge_issues.update  data.labels[]</text>
+  <text class="m" x="544" y="158">names resolve here — no auto-create, ever</text>
+
+  <rect class="lockband" x="530" y="196" width="350" height="76" rx="4"/>
+  <text class="t" x="544" y="218">resolveLabelIdsForWrite</text>
+  <text class="m" x="544" y="236">refuses: unknown name · plain label as primary</text>
+  <text class="m" x="544" y="252">· two primaries in one set — before any write</text>
+
+  <rect class="box" x="530" y="292" width="350" height="58" rx="4"/>
+  <text class="t" x="544" y="314">forge_issues.list  filters.module</text>
+  <text class="m" x="544" y="332">resolved against kind='module' only, then EXISTS-join</text>
+
+  <path class="arrow" style="marker-end:url(#d)" d="M705,176 L705,196"/>
+  <path class="arrow" style="marker-end:url(#d)" d="M705,272 L705,292"/>
+
+  <rect class="exit" x="30" y="292" width="400" height="58" rx="4"/>
+  <text class="t" x="44" y="314">an unresolved module returns NO issues</text>
+  <text class="m" x="44" y="332">dropping the narrowing would return the whole project</text>
+  <path class="arrowbad" style="marker-end:url(#e)" d="M530,321 L430,321"/>
+</svg>
+
+<div class="rule">
+<strong>A hand-copied filter is the failure this seam is shaped like.</strong>
+<code>filters.module</code> is normalised at the MCP boundary and handed to the search service as a
+separate argument; nothing in the type system ties the two together. When that copy is dropped the
+call still succeeds and still returns issues — <em>every</em> issue in the project — so a caller
+reads a silently unfiltered list as a correct one. <code>complexity</code> reached all three
+projections and the strict schema this way with no way to filter on it at all, and every unit suite
+was green throughout (ISS-912). This is why the assertions on this edge check that the
+<strong>other</strong> issue is absent, never that the wanted one is present.
+</div>
+
+<p>Which test holds which edge: the authoring column and the write path are
+<code>tests/integration/module-taxonomy-e2e.test.ts</code>; the list projection is
+<code>search-with-modules-e2e.test.ts</code>; the prompt hop below is
+<code>module-attribution-prompt.test.ts</code>. The dashed line itself — a taxonomy authored on the
+left and consumed on the right — is <code>module-attribution-mcp-e2e.test.ts</code>, which is the
+only place the two surfaces meet in a single run.</p>
+
 <h2>Where the write comes from — how an agent learns there is a taxonomy at all</h2>
 <p class="sub">Everything above starts at a <code>labels[]</code> payload. This is the hop before
 it: nothing in the product asks a human to attribute an issue, so on a Forge project the writer is
