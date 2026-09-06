@@ -175,11 +175,11 @@ describe('db/schema — devices', () => {
     expect(fk.onDelete).toBe('restrict');
   });
 
-  it('token_prefix is notNull varchar(8)', () => {
-    const c = columnByName(devices, 'token_prefix');
-    expect(c.notNull).toBe(true);
-    expect(c.columnType).toBe('PgVarchar');
-    expect((c as unknown as { length?: number }).length).toBe(8);
+  // cm:guard the inverse of what stood here until ISS-932: `devices` must carry NO credential column. It is a registry of boxes now, and a box authenticates with a `personal_access_tokens` row pointing back at it, so a `token_hash`/`token_prefix` reappearing here is a second credential species and the `device.ownerId` fiction with it.
+  it('holds no credential columns — a box authenticates with a PAT, not a device secret', () => {
+    const names = Object.values(devices).map((c) => (c as { name?: string }).name);
+    expect(names).not.toContain('token_hash');
+    expect(names).not.toContain('token_prefix');
   });
 
   it('status defaults to offline and enum matches deviceStatuses', () => {
@@ -298,7 +298,6 @@ describe('db/schema — job_events', () => {
       'tool_result',
       'progress',
       'result',
-      // ISS-442 C0 — audited manual intervention (single-job cancel).
       'intervention',
       'kill_ack',
     ]);

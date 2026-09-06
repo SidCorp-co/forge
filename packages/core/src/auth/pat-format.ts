@@ -55,11 +55,13 @@ export function patPrefixOf(token: string): string {
 // cm:guard ADDING a species to this family means adding it to `MACHINE_TOKEN_NAME_PREFIXES`, and nothing else. Every one of the three consumers reads the family, never a member: that is the whole reason `session:` (ISS-927) cost one line here instead of three edits that could each have been forgotten. A prefix that is minted but left out of this array is a machine credential the cap counts, the revoke sweep misses and `authenticatePat` stamps `human` — which is the exact bypass ISS-894 paid to patch.
 const JOB_TOKEN_NAME_PREFIX = 'job:';
 const SESSION_TOKEN_NAME_PREFIX = 'session:';
+const DEVICE_TOKEN_NAME_PREFIX = 'device:';
 
 /** Every name prefix that marks a token as machine-minted rather than a person's. */
 export const MACHINE_TOKEN_NAME_PREFIXES = [
   JOB_TOKEN_NAME_PREFIX,
   SESSION_TOKEN_NAME_PREFIX,
+  DEVICE_TOKEN_NAME_PREFIX,
 ] as const;
 
 /** SQL `LIKE` patterns matching every machine-minted token name. */
@@ -72,6 +74,9 @@ export const jobTokenNameFor = (jobId: string) => `${JOB_TOKEN_NAME_PREFIX}${job
 
 export const sessionTokenNameFor = (sessionId: string) =>
   `${SESSION_TOKEN_NAME_PREFIX}${sessionId}`;
+
+// cm:guard a box's credential joined this family when it stopped being its own species (ISS-932), and it had to: an operator pairing five machines would otherwise spend five of `PAT_MAX_PER_USER` on tokens they did not hand-make, and a daemon's writes would be stamped `human` and exempted from the ISS-786/812 evidence gates a runner is exactly the caller for.
+export const deviceTokenNameFor = (deviceId: string) => `${DEVICE_TOKEN_NAME_PREFIX}${deviceId}`;
 
 export const isJobTokenName = (name: string | null | undefined): boolean =>
   typeof name === 'string' && name.startsWith(JOB_TOKEN_NAME_PREFIX);
@@ -105,5 +110,6 @@ export function parseMachineTokenName(name: string | null | undefined): MachineT
     const id = name.slice(SESSION_TOKEN_NAME_PREFIX.length);
     return id ? { kind: 'session', id } : null;
   }
+  // cm:guard `device:` is in the family above and deliberately answers `null` here, and the asymmetry is not an omission. This function answers "which piece of PIPELINE WORK is this token for", and a box's credential is for all of them or none — `forge_ux_findings` resolving a device's "whatever job that machine is running" is the imprecision ISS-931 removed. A device reaches its own row through `PatPrincipal.deviceId`, never through here.
   return null;
 }

@@ -21,7 +21,7 @@ const jobRow: {
   agentSessionId: null,
 };
 
-const verifyDeviceToken = vi.fn(async (token: string) => {
+const verifyDeviceCredential = vi.fn(async (token: string) => {
   if (token === 'dev-1-token') {
     return { id: 'dev-1', ownerId: 'u-1', name: 'd1', platform: 'linux' };
   }
@@ -31,8 +31,8 @@ const verifyDeviceToken = vi.fn(async (token: string) => {
   return null;
 });
 
-vi.mock('../auth/deviceToken.js', () => ({
-  verifyDeviceToken: (t: string) => verifyDeviceToken(t),
+vi.mock('../auth/device-credential.js', () => ({
+  verifyDeviceCredential: (t: string) => verifyDeviceCredential(t),
 }));
 
 const insertValues = vi.fn();
@@ -368,7 +368,7 @@ describe('jobs/events-routes POST /:id/events', () => {
   });
 
   it('continues seq across batches (baseSeq = prior MAX)', async () => {
-    txExecute.mockResolvedValueOnce([]); // advisory_xact_lock
+    txExecute.mockResolvedValueOnce([]);
     txExecute.mockResolvedValueOnce([{ max_seq: 5 }]);
     insertReturning.mockResolvedValueOnce([
       { seq: 6, kind: 'stdout', ts: new Date(), data: {} },

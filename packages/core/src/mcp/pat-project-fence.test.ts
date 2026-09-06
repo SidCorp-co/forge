@@ -31,7 +31,7 @@ vi.mock('../config/env.js', () => ({
 }));
 vi.mock('../db/client.js', () => ({ db: {} as unknown }));
 
-import type { Device } from '../auth/deviceToken.js';
+import type { Device } from '../db/schema.js';
 import { createMcpServer } from './server.js';
 
 const BOUND = '00000000-0000-4000-8000-00000000aaaa';
@@ -43,8 +43,6 @@ const stubDevice: Device = {
   name: 'pat-stub',
   platform: 'linux',
   agentVersion: null,
-  tokenHash: '$argon2id$v=19$m=1,t=1,p=1$ZQ$ZQ',
-  tokenPrefix: 'stub0001',
   disabledAt: null,
   status: 'online',
   lastSeenAt: null,
@@ -65,6 +63,7 @@ const boundPat = () =>
     scopes: ['read', 'write'],
     projectIds: [BOUND],
     boundProjectId: null,
+    deviceId: null,
     machine: null,
   }) as const;
 

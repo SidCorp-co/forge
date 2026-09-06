@@ -7,15 +7,18 @@ vi.mock('../config/env.js', () => ({
   env: { DEVICE_TOKEN_PEPPER: TEST_PEPPER, NODE_ENV: 'test' },
 }));
 
-const issueDeviceToken = vi.fn(async (..._args: unknown[]) => ({
-  device: { id: 'dev-new', ownerId: 'u-1', name: 'laptop', platform: 'linux', status: 'offline' },
-  plaintext: 'tok-plaintext',
+const registerDevice = vi.fn(async (..._args: unknown[]) => ({
+  id: 'dev-new',
+  ownerId: 'u-1',
+  name: 'laptop',
+  platform: 'linux',
+  status: 'offline',
 }));
+const issueDeviceCredential = vi.fn(async (..._args: unknown[]) => 'tok-plaintext');
 
-vi.mock('../auth/deviceToken.js', () => ({
-  // pair.ts now routes through the machine-id-aware issuer; the spy var keeps
-  // its old name to minimise churn in the assertions below.
-  issueOrRotateDeviceTokenByMachine: (input: unknown) => issueDeviceToken(input),
+vi.mock('./register.js', () => ({ registerDevice: (i: unknown) => registerDevice(i) }));
+vi.mock('./credential.js', () => ({
+  issueDeviceCredential: (i: unknown) => issueDeviceCredential(i),
 }));
 
 const txExecute = vi.fn();
@@ -104,10 +107,39 @@ describe('redeemPairingCode', () => {
     expect(result.plaintext).toBe('tok-plaintext');
     expect(result.device.id).toBe('dev-new');
     expect(result.projectId).toBeNull();
-    expect(issueDeviceToken).toHaveBeenCalledOnce();
+    expect(registerDevice).toHaveBeenCalledOnce();
+    expect(issueDeviceCredential).toHaveBeenCalledWith({
+      deviceId: 'dev-new',
+      holderUserId: 'u-1',
+    });
     // consume + (no project bind) — 1 select + 0 project update
     expect(txExecute).toHaveBeenCalledTimes(1);
     expect(txUpdate).toHaveBeenCalledOnce();
+  });
+
+  // cm:guard the ORDER is the assertion, not just that both ran. `registerDevice` and `issueDeviceCredential` write on the ambient `db`, outside this transaction, so a failure between marking the code used and minting must leave a spent code and no credential. Reversed, a crash after the mint leaves a pairing code that still redeems and a token already in the wild.
+  it('marks the code used BEFORE it issues the credential', async () => {
+    txExecute.mockResolvedValueOnce([
+      {
+        code: 'c1',
+        user_id: 'u-1',
+        project_id: null,
+        expires_at: new Date(Date.now() + 60_000),
+        used_at: null,
+      },
+    ]);
+    const order: string[] = [];
+    txUpdateWhere.mockImplementationOnce(async () => {
+      order.push('consume');
+      return { rowCount: 1 };
+    });
+    issueDeviceCredential.mockImplementationOnce(async () => {
+      order.push('mint');
+      return 'tok-plaintext';
+    });
+
+    await redeemPairingCode({ code: 'c1', name: 'laptop', platform: 'linux' });
+    expect(order).toEqual(['consume', 'mint']);
   });
 
   it('echoes projectId from project-scoped code but performs no DB bind', async () => {

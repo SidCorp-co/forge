@@ -167,7 +167,6 @@ describe('forge_feedback submit', () => {
         agentSessionId: 'sess-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       },
     ]);
-    // count = 5 (at limit)
     selectLimit.mockResolvedValueOnce([{ n: 5 }]);
 
     const result = await tool.handler({
@@ -191,6 +190,7 @@ describe('forge_feedback submit', () => {
         scopes: ['read', 'write'],
         projectIds: null,
         boundProjectId: PROJECT_ID,
+        deviceId: null,
         machine: null,
       },
       projectSlug: null,

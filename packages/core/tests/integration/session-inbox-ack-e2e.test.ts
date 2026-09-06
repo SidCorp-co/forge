@@ -57,8 +57,8 @@ beforeEach(async () => {
   ownerId = (await createTestUser(harness.db)).id;
   const org = await seedOrg(harness.db, ownerId);
   projectId = (await createTestProject(harness.db, ownerId, { orgId: org.id })).id;
-  const { issueDeviceToken } = await import('../../src/auth/deviceToken.js');
-  const issued = await issueDeviceToken({ ownerId, name: 'd1', platform: 'linux' });
+  const { pairDevice } = await import('../helpers/pair-device.js');
+  const issued = await pairDevice({ ownerId, name: 'd1', platform: 'linux' });
   deviceId = issued.device.id;
   deviceToken = issued.plaintext;
 });
@@ -126,8 +126,8 @@ describe('the inbox ack', () => {
   // cm:guard the discriminating case for the ownership check. Any paired runner in the fleet holds a valid device token, so without the session lookup this ack succeeds — and a forged `delivered` is exactly what stops core falling back, losing the human's answer silently.
   it('refuses an ack from a device that does not own the session', async () => {
     const id = await sessionWithMessage();
-    const { issueDeviceToken } = await import('../../src/auth/deviceToken.js');
-    const other = await issueDeviceToken({ ownerId, name: 'd2', platform: 'linux' });
+    const { pairDevice } = await import('../helpers/pair-device.js');
+    const other = await pairDevice({ ownerId, name: 'd2', platform: 'linux' });
     expect((await post(id, 'ack', { outcome: 'delivered' }, other.plaintext)).status).toBe(403);
     expect((await rowOf(id))?.send_outcome).toBeNull();
   });
@@ -165,8 +165,8 @@ describe('the applied report', () => {
 
   it('refuses an applied report from another device', async () => {
     const id = await sessionWithMessage();
-    const { issueDeviceToken } = await import('../../src/auth/deviceToken.js');
-    const other = await issueDeviceToken({ ownerId, name: 'd2', platform: 'linux' });
+    const { pairDevice } = await import('../helpers/pair-device.js');
+    const other = await pairDevice({ ownerId, name: 'd2', platform: 'linux' });
     expect((await post(id, 'applied', { turn: 1 }, other.plaintext)).status).toBe(403);
     expect((await rowOf(id))?.applied_at).toBeNull();
   });

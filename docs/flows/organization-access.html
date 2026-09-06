@@ -23,18 +23,26 @@
 <p class="sub">One <code>Authorization: Bearer</code> header, from the byte that decides which
 verifier runs to the project ids the request is fenced to — and every place the answer is refused.
 Owner: <code>packages/core/src/middleware/{bearer,auth,require-any-auth,require-device,require-pat,pat-rest-surface}.ts</code>,
-<code>packages/core/src/auth/{pat,pat-format,deviceToken}.ts</code>, <code>packages/core/src/lib/authz.ts</code>.</p>
+<code>packages/core/src/auth/{pat,pat-format,device-credential,agent-account}.ts</code>, <code>packages/core/src/lib/authz.ts</code>.</p>
 
 <h2>The token decides the verifier, and the verifier decides who you are</h2>
-<p>There is no negotiation and no fallback chain worth the name: <code>isPatLike()</code> reads the
-<code>forge_pat_&lt;env&gt;_</code> prefix and that one test routes the whole request. Everything
-else is tried as a user JWT. A device token is verified on the <em>control</em> plane only — the
-runner's own <code>/api/devices</code>, <code>/api/jobs</code> and <code>/api/skills</code> sibling
-routers, plus <code>/ws</code> — and since ISS-927 it reaches nothing on the data plane, nor
-(since ISS-931) <code>/mcp</code>. Three surfaces used to accept two species; one does now, and
-<code>/mcp</code> is not among them: <code>requirePat</code> refuses a non-PAT bearer
-<em>without consulting <code>verifyDeviceToken</code> at all</em>, which is what makes the 401 a
-statement about the credential CLASS rather than about this particular token.</p>
+<p>There is one credential species left. <code>isPatLike()</code> reads the
+<code>forge_pat_&lt;env&gt;_</code> prefix and that one test routes the whole request; everything
+else is tried as a user JWT and nothing else is tried at all. Since ISS-932 a box has no credential
+of its own either &mdash; <code>devices</code> is a registry of machines, and what authenticates on
+the control plane (<code>/api/devices</code>, <code>/api/jobs</code>, <code>/api/skills</code>,
+<code>/ws</code>) is an ordinary PAT or AAT whose <code>device_id</code> names the box.
+So the question a verifier answers is no longer <em>which species is this</em> but <em>what does
+this one token carry</em>: a <code>device_id</code> makes it a machine, an owner with
+<code>users.kind = 'agent'</code> makes it an agent, a <code>job:</code>/<code>session:</code> name
+makes it a piece of pipeline work.</p>
+
+<p>The refusals stay loud in both directions, and they are the point. <code>/mcp</code> refuses a
+non-PAT bearer naming the credential class; <code>requireDevice</code> refuses a perfectly valid
+PAT that carries no <code>device_id</code>, naming the class and <code>forge login</code> as the
+remedy. Neither falls back to the other, and neither reads the token's owner as a stand-in for the
+box &mdash; the <code>device.ownerId</code> fiction, where a machine borrowed a person's whole
+account, is what this shape exists to remove.</p>
 
 <div class="board"><pre class="mermaid">
 flowchart TD
@@ -44,20 +52,24 @@ flowchart TD
   B -- malformed --> X2["401 — /mcp adds error=invalid_request<br/>so a spec-aware client fixes its header<br/>instead of re-prompting for credentials"]
   B -- no --> D{"isPatLike(t)?<br/>forge_pat_&lt;env&gt;_"}
   C --> D
-  D -- yes --> P1["verifyPat: prefix lookup + argon2"]
-  D -- "no, and the surface is /mcp" --> M1["401 invalid_token — names the CLASS:<br/>'device tokens no longer authenticate /mcp',<br/>and the remedy: a newer forge-runner.<br/>verifyDeviceToken is NEVER called"]
+  D -- yes --> P1["verifyPat: prefix lookup + argon2<br/>joins users.kind in the SAME query"]
+  D -- "no, and the surface is /mcp" --> M1["401 invalid_token — names the CLASS:<br/>'device tokens no longer authenticate /mcp'"]
+  D -- "no, and the surface is a device route" --> M2["401 — 'carries no device … run forge login'.<br/>Since ISS-932 there is no device verifier<br/>in the process to fall back to"]
   D -- no --> U1["verifyUserToken (JWT)"]
   U1 -- ok --> U2["userId = claims.sub<br/>principal = 'user', agency = human"]
-  U1 -- throws --> V{"which middleware?"}
-  V -- "requireAuth / requireAnyAuth" --> X3["401 — no device branch exists here"]
-  V -- "requireDevice / requireUserOrDevice" --> W["verifyDeviceToken"]
-  W -- ok --> W2["principal = 'device', userId LEFT UNSET<br/>so loadProjectAccess fails closed"]
-  W -- null --> X4["401"]
+  U1 -- throws --> X3["401"]
   P1 -- null --> X5["401 INVALID_TOKEN"]
-  P1 -- ok --> P2["rate limit: 600/min per token<br/>429 + Retry-After on breach"]
-  P2 --> P3["agency = isMachineTokenName(row.name)<br/>job: / session: -&gt; agent, else human"]
-  P3 --> P3b["machine = parseMachineTokenName(row.name)<br/>the JOB or SESSION the token names —<br/>how a tool finds its pipeline context<br/>now that there is no device to look one up by"]
-  P3b --> P4{"patAllowedFor(path)?<br/>REST only; /mcp fences per tool"}
+  P1 -- ok --> P2["rate limit: 600/min per token<br/>429 + Retry-After on breach<br/>(device + /ws paths skip the bucket)"]
+  P2 --> P3["agency = ownerKind === 'agent'<br/>OR isMachineTokenName(row.name)"]
+  P3 --> P3b["machine = parseMachineTokenName(row.name)<br/>the JOB or SESSION the token names.<br/>device: is in the family but answers null —<br/>a box is for all of them or none"]
+  P3b --> S{"which surface?"}
+  S -- "device route or /ws" --> S1{"row.device_id set?"}
+  S1 -- no --> M2
+  S1 -- yes --> S2{"devices row live?"}
+  S2 -- "missing or revoked" --> M2
+  S2 -- yes --> S3["principal = the DEVICE, userId LEFT UNSET<br/>so loadProjectAccess fails closed"]
+  S -- "REST data plane" --> P4{"patAllowedFor(path)?"}
+  S -- "/mcp" --> P5
   P4 -- no --> X6["403 PAT_NOT_PERMITTED<br/>the route resolves no project,<br/>so there is nothing to fence on"]
   P4 -- yes --> P5{"scope for method?<br/>GET/HEAD -&gt; read, else write"}
   P5 -- no --> X7["403 INSUFFICIENT_SCOPE"]
@@ -68,9 +80,12 @@ flowchart TD
 <div class="rule">
 <p><b><code>actor_type</code> — who OWNS the write.</b> A job or session token is minted under the
 person the work belongs to, so its writes really are theirs and read as theirs.</p>
-<p><b><code>agency</code> — who was at the KEYBOARD.</b> Derived from the token's name prefix, never
-from which verifier matched. This is what the ISS-786/812 evidence gates read, and it is the only
-field separating an agent's credential from a person's.</p>
+<p><b><code>agency</code> — who was at the KEYBOARD.</b> Two reads OR'd together, never one:
+<code>users.kind === 'agent'</code> answers for an AAT, whose owner IS an agent; the token's name
+prefix answers for <code>job:</code>/<code>session:</code>, which is minted from a HUMAN's
+<code>jobs.created_by</code> and would read <code>human</code> off the kind alone. This is what the
+ISS-786/812 evidence gates read. Dropping the name half is wave 4 of ISS-932 and cannot happen
+while those tokens are minted.</p>
 <p>They disagree for exactly the rows those gates exist to catch, and nothing type-checks that a
 writer keeps them in step. Both are now persisted beside each other:
 <code>activity_log.actor_agency</code> and <code>kernel_transitions.actor_agency</code>.</p>
@@ -110,22 +125,36 @@ writer keeps them in step. Both are now persisted beside each other:
     answered <code>FORBIDDEN</code> and never read the allowlist) to
     <code>assertPrincipalIsMember</code> in ISS-931, so this reads as not-found by design: a 403
     would confirm the project exists to a caller who cannot see it.</td></tr>
+<tr><td>Every box in the fleet 401s at once, right after a deploy</td>
+    <td>ISS-932 deleted the device credential. A token minted before it is argon2 in
+    <code>devices.token_hash</code>, which core cannot map to a PAT, so there is no backfill and
+    there was never going to be one: each box re-runs <code>forge login</code> once and is issued a
+    PAT (or its project agent's AAT) carrying <code>device_id</code>. The migration refuses to drop
+    those columns while any non-revoked device still holds one, and names the rows, so this should
+    have been read at deploy time rather than discovered here.</td></tr>
 <tr><td>A runner's REST call 401s where it used to work</td>
-    <td>It is presenting a device token to <code>requireAnyAuth</code>. That branch is gone
-    (ISS-927). An unattended caller holds a real token now: <code>job:&lt;id&gt;</code> minted at
-    claim, <code>session:&lt;id&gt;</code> minted on <code>agent:start</code>. If a caller class has
-    neither, mint it one — do not restore the branch.</td></tr>
+    <td>Either it is presenting a device token to <code>requireAnyAuth</code> — that branch is gone
+    (ISS-927) — or it holds a PAT with no <code>device_id</code> on a device route, which
+    ISS-932 refuses by name rather than accepting as its owner. An unattended caller holds a real
+    token: <code>job:&lt;id&gt;</code> minted at claim, <code>session:&lt;id&gt;</code> on
+    <code>agent:start</code>, <code>device:&lt;id&gt;</code> at pairing.</td></tr>
+<tr><td>A person cannot sign in and the error says the account is an agent</td>
+    <td>Working as designed. <code>users.kind = 'agent'</code> is refused at every entrance that
+    mints a user JWT, and <code>agent-login-refusal.test.ts</code> scans the tree so a fourth
+    entrance cannot be added without one. If a HUMAN's row carries that kind, it was created
+    through <code>POST /api/orgs/:orgId/agents</code> and should be retired there.</td></tr>
 <tr><td>A runner's REST call 401s and the token IS a PAT</td>
     <td>Its work went terminal. Both credentials die with the thing they were minted for, and for a
     session that is <b>two</b> writers: <code>applyKernelTransition</code> for cancel / sweeper /
     dispatch failure, and <code>PATCH /api/agent-sessions/:id</code> for the runner's happy path.
     The second is a direct <code>db.update</code> the kernel chokepoint never sees.</td></tr>
 <tr><td>An agent's write shows in the feed as a person's</td>
-    <td>The token's name lost its machine prefix, so <code>authenticatePat</code> stamped
-    <code>agency: 'human'</code>. Every consumer reads the FAMILY via
-    <code>isMachineTokenName</code>, so a species added to
+    <td>The token's name lost its machine prefix AND its owner is not <code>kind:'agent'</code>,
+    so <code>authenticatePat</code> stamped <code>agency: 'human'</code>. Every consumer reads the
+    FAMILY via <code>isMachineTokenName</code>, so a species added to
     <code>MACHINE_TOKEN_NAME_PREFIXES</code> is covered everywhere at once — and one minted without
-    being added there escapes the PAT cap, the revoke sweep and the evidence gates together.</td></tr>
+    being added there escapes the PAT cap, the revoke sweep and the evidence gates together.
+    <code>device:</code> joined that family in ISS-932 for exactly those three reasons.</td></tr>
 <tr><td>A device principal 403s inside a handler that looked correct</td>
     <td>Working as designed. Three middlewares verify a device token and none sets
     <code>userId</code>, so <code>loadProjectAccess(projectId, userId)</code> fails closed unless
@@ -136,10 +165,12 @@ writer keeps them in step. Both are now persisted beside each other:
 
 <h2>Read this before</h2>
 <p>Adding a prefix to <code>PAT_ALLOWED_PREFIXES</code> — every entry must be reachable by a PAT
-<em>today</em>, which is what forces the grant to be made by someone looking at the route. Adding a
-PAT branch to <code>requireUserOrDevice</code> — <code>GET /api/agent-sessions</code> with no
-<code>projectId</code> returns every session of every visible project with <code>messages[]</code>
-attached, so that branch needs a project-scoped twin first, not an allowlist entry. And minting a
+<em>today</em>, which is what forces the grant to be made by someone looking at the route, and
+<code>/api/pat</code> and <code>/api/orgs</code> being absent is the whole reason an agent cannot
+mint another agent. <code>requireUserOrDevice</code> now HAS a PAT branch (ISS-932) and it resolves
+a device without setting <code>userId</code>; that list is the only thing keeping a token off
+<code>GET /api/agent-sessions</code>, which with no <code>projectId</code> returns every session of
+every visible project with <code>messages[]</code> attached. And minting a
 new species of machine token — it belongs in <code>MACHINE_TOKEN_NAME_PREFIXES</code> and nowhere
 else, or it is a credential three separate mechanisms silently disagree about.</p>
 

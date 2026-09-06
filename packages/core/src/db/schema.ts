@@ -1,4 +1,4 @@
-import { relations, type SQL, sql } from 'drizzle-orm';
+import { type InferSelectModel, relations, type SQL, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   bigint,
@@ -38,9 +38,15 @@ export {
   actorTypes,
 } from './schema-activity.js';
 
+// cm:guard an agent is a `users` row and NOT a table of its own, which is what keeps `effectiveProjectRole` (27 call sites) and the 173 `organization_members`/`project_members` reads unchanged — an agent is authorized because it IS a member, through the machinery that was already there. The flag is the seam: the day an agent needs its own table, every reader already asks through one column.
+export const userKinds = ['human', 'agent'] as const;
+export type UserKind = (typeof userKinds)[number];
+
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: text('email').notNull().unique(),
+  // cm:guard EVERY login entrance must refuse `agent`, and the column defaulting to `human` is why a new entrance is the dangerous one: an agent row carries a synthesized address it cannot receive mail at and a NULL `password_hash`, so a forgotten refusal turns creating an agent into creating an unapproved person's account with a live password-reset path. The refusals live in `auth/agent-login-refusal.ts` and every entrance calls that, never its own check.
+  kind: text('kind', { enum: userKinds }).notNull().default('human'),
   /**
    * Nullable since 0037: OAuth-only users have no local password. `/auth/local`
    * rejects a null hash, so a password-less account cannot be brute-forced
@@ -95,6 +101,8 @@ export const deviceLoginCodes = pgTable(
       onDelete: 'cascade',
     }),
     approvedAt: timestamp('approved_at', { withTimezone: true }),
+    // cm:guard the principal the BOX will act as, kept separate from `approved_user_id` which is the person who approved. Folding the two together is tempting and wrong twice: the approval event publishes to the approver's user room, which nobody watches if it becomes the agent's, and the audit answer to "who let this machine in" stops being a person (ISS-932).
+    agentUserId: uuid('agent_user_id').references(() => users.id, { onDelete: 'cascade' }),
     consumedAt: timestamp('consumed_at', { withTimezone: true }),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -406,8 +414,7 @@ export const devices = pgTable(
     name: text('name').notNull(),
     platform: text('platform', { enum: devicePlatforms }).notNull(),
     agentVersion: text('agent_version'),
-    tokenHash: text('token_hash').notNull(),
-    tokenPrefix: varchar('token_prefix', { length: 8 }).notNull(),
+    // cm:guard a `devices` row is a REGISTRY entry and no longer a credential (ISS-932) — it held `token_hash`/`token_prefix` and its own argon2 until this issue deleted them. What authenticates a box is a `personal_access_tokens` row carrying this row's id in `device_id`, so the box's identity is a token like every other and one revoke path covers it. Putting a secret back on this table restores a second credential species and, with it, the `device.ownerId` fiction that had a machine borrowing a person's identity.
     status: text('status', { enum: deviceStatuses }).notNull().default('offline'),
     // Operator-set "turn off" switch (reversible, distinct from `revoked`). When
     // set, the device is IGNORED by dispatch + interactive-chat device-pick
@@ -438,14 +445,11 @@ export const devices = pgTable(
   },
   (t) => ({
     ownerIdIdx: index('devices_owner_id_idx').on(t.ownerId),
-    tokenPrefixIdx: index('devices_token_prefix_idx').on(t.tokenPrefix),
     ownerMachineIdx: index('devices_owner_machine_idx').on(t.ownerId, t.machineId),
   }),
 );
 
-// ISS-150 — Personal Access Tokens (PAT) for non-device MCP clients
-// (Cursor, Cline, Zed, web-only users). Mints + verification live in
-// packages/core/src/auth/pat.ts.
+// cm:guard the ONE credential table (ISS-150, ISS-932). A person's PAT, an agent's AAT, a job's or session's short-lived token and a paired box's token are all rows here, and a second credential species anywhere else is what this issue spent a migration removing — it is how a machine ends up borrowing a person's identity because its own row cannot express one.
 export const personalAccessTokens = pgTable(
   'personal_access_tokens',
   {
@@ -463,6 +467,8 @@ export const personalAccessTokens = pgTable(
     // ISS-497 — project-level token: NULL = user-level (today's behavior, zero backfill);
     // set = bound to exactly this project (slug-omitted default AND auth fence).
     boundProjectId: uuid('bound_project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    // cm:guard the box this token was issued to, and it is what replaced the device credential (ISS-932): a `devices` row is a registry entry now, not a species of token, so `requireDevice` and `/ws` resolve the box from HERE. Non-null is the whole authority to speak as a device — a token without it is a valid credential on the wrong plane and those surfaces refuse it by name rather than reading `userId` and carrying on.
+    deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'cascade' }),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
@@ -475,6 +481,7 @@ export const personalAccessTokens = pgTable(
     userNameUq: uniqueIndex('pat_user_name_uniq').on(t.userId, t.name),
     userActiveIdx: index('pat_user_active_idx').on(t.userId, t.revokedAt),
     tokenPrefixIdx: index('pat_token_prefix_idx').on(t.tokenPrefix),
+    deviceIdIdx: index('pat_device_id_idx').on(t.deviceId),
   }),
 );
 
@@ -829,6 +836,9 @@ export const kernelTransitions = pgTable(
     reasonIdx: index('kernel_transitions_reason_idx').on(t.reason),
   }),
 );
+
+/** A registered box, as every device-authenticated surface reads it. */
+export type Device = InferSelectModel<typeof devices>;
 
 export const devicesRelations = relations(devices, ({ one, many }) => ({
   owner: one(users, { fields: [devices.ownerId], references: [users.id] }),

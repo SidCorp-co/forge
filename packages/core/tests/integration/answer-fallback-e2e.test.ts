@@ -67,8 +67,8 @@ beforeEach(async () => {
       pipelineConfig: { mode: 'autonomous' },
     })}::jsonb WHERE id = ${projectId}
   `);
-  const { issueDeviceToken } = await import('../../src/auth/deviceToken.js');
-  deviceId = (await issueDeviceToken({ ownerId, name: 'd1', platform: 'linux' })).device.id;
+  const { pairDevice } = await import('../helpers/pair-device.js');
+  deviceId = (await pairDevice({ ownerId, name: 'd1', platform: 'linux' })).device.id;
 
   issueId = randomUUID();
   seq += 1;

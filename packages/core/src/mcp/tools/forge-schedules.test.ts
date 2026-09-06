@@ -101,6 +101,7 @@ function buildPatCtx(scopes: string[], projectIds: string[] | null = null) {
       scopes,
       projectIds,
       boundProjectId: null,
+      deviceId: null,
       machine: null,
     },
     projectSlug: null,
@@ -336,7 +337,7 @@ describe('forge_schedules action=delete', () => {
 describe('forge_schedules action=run', () => {
   it('triggers a schedule for a writer (member)', async () => {
     mockScheduleProjectId();
-    mockMemberRole('member'); // writer = member
+    mockMemberRole('member');
     runScheduleNowMock.mockResolvedValueOnce({
       sessionId: SESSION_ID,
       message: 'Schedule triggered',

@@ -21,7 +21,7 @@ flowchart LR
   D["forge-runner<br/>Rust daemon"] -->|"$FORGE_PAT"| CLI["forge-runner api"]
   P["forge · the plugin CLI<br/>the agent's surface"] -->|"3.35.141+"| CLI
   P -->|"3.35.140 · what the fleet runs"| MCP["/mcp"]
-  MC["Claude's MCP client<br/>device token"] --> MCP
+  MC["Claude's MCP client<br/>job:/session: PAT"] --> MCP
   CLI --> F{"PAT allowlist<br/>16 prefixes"}
   F -->|on it| R["REST · the data plane"]
   F -->|not on it| X["403 PAT_NOT_PERMITTED"]
@@ -155,7 +155,8 @@ forge-runner api pipeline-runs/<run>/phases/end -X POST -d '{"phase":"code","att
 prefix, it does not invent a route, so a path with no handler answers 404 rather than falling back
 to anything.
 
-The credential is a **personal access token**, not the device token — a device token answers 401 on
+The credential is a **personal access token** — since ISS-932 that is the only species there is, and
+a box's own token is one of them, carrying `device_id`. A token WITHOUT a device answers 401 on
 every route behind `requireAuth`. In a job the runner exports one as `$FORGE_PAT`, minted for that job and revoked when it goes terminal,
 alongside `$FORGE_PROJECT_ID` and `$FORGE_PROJECT_SLUG` (runner 0.9.8+) — the PAT alone cannot build
 a project-scoped path, because every such route takes the project UUID as a path segment and only
@@ -184,7 +185,9 @@ own `job:`/`session:` token into the per-job `.mcp.json` instead of the box's de
 device-authenticated MCP caller is no longer a thing a data-tool deletion can break.
 
 The residual is a clock, not a gap: core refuses at deploy and a runner box changes at binary
-install, so a box still running an older `forge-runner` writes a device token that now 401s. The
-refusal text names that remedy, and the deletion rule in
+install, so a box still running an older `forge-runner` writes a device token that now 401s —
+everywhere, since ISS-932 deleted that species outright and every paired box must re-run
+`forge login` once to be issued a PAT or AAT carrying `device_id`. The refusal text names that
+remedy, and the deletion rule in
 [agent-surface.md](agent-surface.md) reads `mcp_audit_log`'s device split as a HISTORICAL count from
 this point on.

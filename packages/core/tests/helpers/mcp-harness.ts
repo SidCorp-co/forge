@@ -34,6 +34,7 @@ export async function connectClientAsPat(patPlaintext: string) {
       scopes: row.scopes,
       projectIds: row.projectIds ?? null,
       boundProjectId: row.boundProjectId ?? null,
+      deviceId: null,
       machine: parseMachineTokenName(row.name),
     },
     projectSlug: null,
