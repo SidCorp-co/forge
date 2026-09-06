@@ -28,6 +28,7 @@ import {
   resolveRunnerForDevice,
 } from '../jobs/prepare-claimed-job.js';
 import { hooks } from '../pipeline/hooks.js';
+import { runnerAdmission } from './pool-admission.js';
 
 export type PrepareResult =
   | {
@@ -45,7 +46,10 @@ export type PrepareResult =
         | 'issue_busy'
         | 'budget_exhausted'
         | 'hold_lost'
-        | 'runner_too_old';
+        | 'runner_too_old'
+        | 'runner_withdrawn'
+        | 'device_disabled'
+        | 'runner_unbound';
     };
 
 export type StartResult = { ok: true } | { ok: false; reason: 'hold_lost' | 'runner_too_old' };
@@ -69,6 +73,13 @@ export async function prepareJobForMaster(args: {
   // cm:guard a version skew is a REFUSAL, not an error, and it is checked before the hold so there is nothing to give back. Throwing instead would reach the master as a bare 500 with the reason nowhere — this route's own rule is that a refused claim answers 200 with `ok:false`, and an operator whose box has gone quiet reads that reason in the master's transcript. Like every other refusal it must not be retried in a loop: only updating the runner clears it.
   if (!(await canNameItsAgent(args.deviceId))) {
     return { ok: false, reason: 'runner_too_old' };
+  }
+
+  // cm:guard a withdrawn box is refused BY NAME, and the pool's exclusion is not enough on its own — a master holds a page of pool rows across the round trip, so an operator draining mid-flight would otherwise get a silent claim on a box they just took out of service. `readPool` filtering and this refusing are the same predicate answered twice on purpose (pool-admission.ts).
+  // cm:guard checked BEFORE the hold, like `runner_too_old`, so there is nothing to give back. A refusal after the stamp would need the release path and would leave the job briefly held by a box that may never come back.
+  const admission = await runnerAdmission({ jobId: args.jobId, deviceId: args.deviceId });
+  if (!admission.admitted) {
+    return { ok: false, reason: admission.reason };
   }
 
   // cm:guard the token is minted AFTER this transaction commits, never inside it. `mintJobToken` writes through the module-level `db` rather than the passed `tx`, so a mint placed inside would survive a rollback — a live credential for a job whose hold never landed, with nothing left pointing at it to revoke.

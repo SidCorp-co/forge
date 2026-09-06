@@ -490,3 +490,94 @@ describe('master pool — reaping, load and preparation', () => {
     expect(box?.reposLocked).toContain('/tmp/pool-test');
   });
 });
+
+describe('pool admission', () => {
+  // cm:guard the fixture is IDENTICAL to the offered-job case above and only the runner's status
+  //   moves, so a green here cannot come from a seed that had no claimable work in the first place
+  async function withRunnerStatus(status: string) {
+    const s = await seed();
+    await harness.db.execute(sql`
+      UPDATE runners SET status = ${status} WHERE device_id = ${s.device.id}
+    `);
+    return s;
+  }
+
+  it('offers the job while the runner is online, which is what the rest of these compare against', async () => {
+    const { device, job } = await withRunnerStatus('online');
+    const items = await mods.readPool({ deviceId: device.id, limit: 20 });
+    expect(items.map((i) => i.jobId)).toContain(job);
+  });
+
+  for (const status of ['disabled', 'draining']) {
+    it(`offers nothing to a ${status} runner`, async () => {
+      const { device } = await withRunnerStatus(status);
+      const items = await mods.readPool({ deviceId: device.id, limit: 20 });
+      expect(
+        items,
+        `a ${status} runner is a box an operator withdrew; the pool must not offer it work`,
+      ).toEqual([]);
+    });
+
+    // cm:guard the refusal must be NAMED, not an empty pool — a master handed nothing and a master told why are the same transcript to an operator whose box has gone quiet, and only one of them can be acted on
+    it(`refuses a ${status} runner's claim by name`, async () => {
+      const { device, job } = await withRunnerStatus(status);
+      const res = await mods.prepareJobForMaster({
+        jobId: job,
+        deviceId: device.id,
+        sessionId: randomUUID(),
+      });
+      expect(res.ok).toBe(false);
+      expect(res.ok === false && res.reason).toBe('runner_withdrawn');
+    });
+  }
+
+  // cm:guard this is the case the pool filter alone cannot cover: a master holds its page of pool rows across the round trip, so an operator draining mid-flight is only caught because the claim asks again
+  it('refuses a claim for a runner drained AFTER the pool was read', async () => {
+    const { device, job } = await withRunnerStatus('online');
+    const items = await mods.readPool({ deviceId: device.id, limit: 20 });
+    expect(items.map((i) => i.jobId)).toContain(job);
+
+    await harness.db.execute(sql`
+      UPDATE runners SET status = 'draining' WHERE device_id = ${device.id}
+    `);
+    const res = await mods.prepareJobForMaster({
+      jobId: job,
+      deviceId: device.id,
+      sessionId: randomUUID(),
+    });
+    expect(res.ok === false && res.reason).toBe('runner_withdrawn');
+  });
+
+  it('offers nothing, and refuses by a different name, when the DEVICE is disabled', async () => {
+    const { device, job } = await withRunnerStatus('online');
+    await harness.db.execute(sql`
+      UPDATE devices SET disabled_at = now() WHERE id = ${device.id}
+    `);
+
+    expect(await mods.readPool({ deviceId: device.id, limit: 20 })).toEqual([]);
+    const res = await mods.prepareJobForMaster({
+      jobId: job,
+      deviceId: device.id,
+      sessionId: randomUUID(),
+    });
+    expect(
+      res.ok === false && res.reason,
+      'a revoked device and a drained runner are different operator actions and must read differently',
+    ).toBe('device_disabled');
+  });
+
+  // cm:guard without this the switch has a ~30-second life and every other assertion in this block is theatre: the operator drains, the next beat writes `online`, and the pool readmits the box
+  it('a heartbeat does not undo a drain', async () => {
+    const { device } = await withRunnerStatus('draining');
+    const { mirrorHeartbeatToRunners } = await import(
+      '../../src/devices/heartbeat-runner-mirror.js'
+    );
+    await mirrorHeartbeatToRunners(device.id);
+
+    const rows = (await harness.db.execute(sql`
+      SELECT status FROM runners WHERE device_id = ${device.id}
+    `)) as unknown as Array<Record<string, unknown>>;
+    expect(rows[0]?.status).toBe('draining');
+    expect(await mods.readPool({ deviceId: device.id, limit: 20 })).toEqual([]);
+  });
+});

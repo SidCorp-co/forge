@@ -46,6 +46,15 @@ export const FAILURE_CAUSES = [
   'workspace_preflight_failed',
   /** ENOSPC. 57 jobs/60d. */
   'workspace_disk_full',
+  /** a sibling job held the runner's repo root past `REPO_LOCK_WAIT`. Writer:
+   *  runner `daemon/dispatch.rs` (`repo_lock_timeout`); 7 rows in 30 minutes on
+   *  forge-vm 2026-09-05, all read `unclassified` before ISS-920. */
+  'repo_root_contention',
+  /** the box's `duplex_max_sessions` permits were all held. Writer: runner
+   *  `runner/claude_code.rs` (`session_permit_saturated`); new in ISS-920, which
+   *  is also what made it nameable — before it, the same event surfaced on a
+   *  DIFFERENT project's jobs as `repo_lock_timeout`. */
+  'box_session_saturated',
   /** dispatch never delivered or never claimed. 54 jobs/60d. */
   'runner_unreachable',
   /** duplex send/ack/checkpoint failure (RFC 0003). Writer: pipeline/failure-classifier.ts. */
@@ -162,6 +171,8 @@ export const FAILURE_CAUSE_PRESENTATION: Record<FailureCause, FailureCausePresen
   skill_not_synced: 'failure',
   workspace_preflight_failed: 'failure',
   workspace_disk_full: 'failure',
+  repo_root_contention: 'failure',
+  box_session_saturated: 'failure',
   runner_unreachable: 'failure',
   duplex_channel_failed: 'failure',
   session_lost: 'failure',

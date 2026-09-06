@@ -29,6 +29,7 @@ import {
 	Skeleton,
 	Textarea,
 	useNow,
+	Toggle,
 } from "@/design";
 import { useUpdateProject } from "@/features/project-settings/hooks";
 import { useProject } from "@/features/projects/hooks";
@@ -53,6 +54,7 @@ import {
 	useRunnerActivity,
 	useSetDefaultDevice,
 	useSetDeviceDisabled,
+	useSetRunnerAdmission,
 	useSetGitCredential,
 	useTestGitCredential,
 	useUnassignDeviceFromProject,
@@ -501,10 +503,7 @@ function RunnerRow({
 	const clearError = useClearRunnerError(projectId);
 	const [confirmRemove, setConfirmRemove] = useState(false);
 	const [showActivity, setShowActivity] = useState(false);
-	// A disabled device's runner keeps heartbeating (deviceStatus stays
-	// "online"), so `deviceDisabledAt` is the real reason it receives no jobs —
-	// the dispatcher excludes disabled devices. Surface it explicitly instead of
-	// showing a misleading healthy dot.
+	// cm:guard a disabled device keeps heartbeating, so `deviceStatus` stays "online" — this flag is the only thing between the operator and a healthy green dot on a box that pool admission excludes and every claim refuses `device_disabled`. It named the central dispatcher until that was deleted; the exclusion now lives in devices/pool-admission.ts.
 	const deviceDisabled = Boolean(runner.deviceDisabledAt);
 	const online = runner.deviceStatus === "online" && !deviceDisabled;
 	// Tick once a second while this runner is limited (live reset countdown) OR
@@ -738,6 +737,13 @@ function RunnerRow({
 				canEdit={canEdit}
 			/>
 
+			<PoolAdmission
+				projectId={projectId}
+				runnerId={runner.runnerId}
+				status={runner.runnerStatus}
+				canEdit={canEdit}
+			/>
+
 			<div className="flex justify-start">
 				<Button
 					variant="ghost"
@@ -749,6 +755,44 @@ function RunnerRow({
 				</Button>
 			</div>
 			{showActivity && <RunnerActivityPanel runnerId={runner.runnerId} />}
+		</div>
+	);
+}
+
+// cm:edge contract -> packages/core/src/devices/pool-admission.ts — the OFF position writes `draining`, one of the statuses that predicate excludes. A third status added there needs reading here, or a box withdrawn some other way renders as admitted.
+/** Whether this runner may be offered jobs from the pool. */
+function PoolAdmission({
+	projectId,
+	runnerId,
+	status,
+	canEdit,
+}: {
+	projectId: string;
+	runnerId: string;
+	status: string;
+	canEdit: boolean;
+}) {
+	const set = useSetRunnerAdmission(projectId);
+	const withdrawn = status === "draining" || status === "disabled";
+
+	return (
+		<div className="flex items-start gap-3 border-line border-t pt-3">
+			<Toggle
+				checked={!withdrawn}
+				onChange={(next) => set.mutate({ runnerId, admit: next })}
+				disabled={!canEdit || set.isPending || status === "disabled"}
+				aria-label="Take jobs from the pool"
+			/>
+			<div className="min-w-0">
+				<div className="fg-body-sm text-fg">Takes jobs from the pool</div>
+				<p className="fg-caption text-muted">
+					{status === "disabled"
+						? "Retired by an operator. Re-register the runner to bring it back."
+						: withdrawn
+							? "Drained: work already running finishes, nothing new is offered or claimed."
+							: "Offered work whenever this box is bound to the project."}
+				</p>
+			</div>
 		</div>
 	);
 }

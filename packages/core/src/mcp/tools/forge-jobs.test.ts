@@ -144,12 +144,12 @@ describe('forge_jobs.list', () => {
   it('attaches gateReason to queued rows', async () => {
     const tool = forgeJobsListTool(fakeDevice);
     mockMemberThenJobs([baseJobRow]);
-    gateReasonsMock.mockResolvedValueOnce(new Map([[JOB_ID, 'blocked_by']]));
+    gateReasonsMock.mockResolvedValueOnce(new Map([[JOB_ID, 'runner_stale']]));
 
     const result = (await tool.handler({ projectId: PROJECT_ID })) as JobsPage;
 
     expect(gateReasonsMock).toHaveBeenCalledWith(PROJECT_ID);
-    expect(result.jobs[0]?.gateReason).toBe('blocked_by');
+    expect(result.jobs[0]?.gateReason).toBe('runner_stale');
   });
 
   it('reports gateReason null for a queued job that is merely awaiting its turn', async () => {
@@ -279,8 +279,6 @@ describe('forge_jobs.get', () => {
     await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
-  // ISS-150 review #1 re-review — PAT projectIds allowlist regression on
-  // jobId-resolved access.
   it('returns NOT_FOUND for a PAT when the job’s project is outside the allowlist', async () => {
     const tool = forgeJobsGetTool(makePatCtx([OTHER_PROJECT_ID]));
     selectLimit.mockResolvedValueOnce([baseJobRow]);

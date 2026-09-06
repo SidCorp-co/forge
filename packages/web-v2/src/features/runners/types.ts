@@ -78,9 +78,10 @@ export interface ProjectRunner {
 	deviceStatus: "online" | "offline" | "revoked" | null;
 	/**
 	 * Operator "turn off" timestamp on the device (reversible). A disabled
-	 * device's runner can still heartbeat (deviceStatus stays "online"), so this
-	 * is the only signal that explains why an online-looking runner never
-	 * receives jobs — the dispatcher excludes disabled devices. Null = enabled.
+	 * device's runner keeps heartbeating, so `deviceStatus` stays "online" and
+	 * this is the only signal explaining why it is never offered work: pool
+	 * admission excludes it, and the claim refuses `device_disabled`. Null =
+	 * enabled. (It named the central dispatcher until that was deleted.)
 	 */
 	deviceDisabledAt: string | null;
 	runnerStatus: string;

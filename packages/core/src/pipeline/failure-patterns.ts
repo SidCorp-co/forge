@@ -58,6 +58,18 @@ export const DUPLEX_SESSION_PATTERNS: ReadonlyArray<RegExp> = [
   /\bsession_checkpoint_deadline_exceeded\b/i,
 ];
 
+// cm:guard both tables are matched AHEAD of the cc-startup signal, and that ordering is the only thing that makes them reachable. A job that dies in either wait never spawned, so `deriveCcStartupSignals` reads it as a startup death — the pre-spawn heartbeat posts a `progress` event every 25s, `total > 0` with `toolCalls === 0`, and the signal branch would take every one of these before a text pattern is consulted. Being ahead of PERMISSION matters too: the saturation line carries project slugs, and a project called `store-403` would otherwise route on `/\b(401|403)\b/`.
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — `acquire_session_permit` writes this token and its test asserts the whole rendered line, so a reword there is a red test here
+export const BOX_SATURATION_PATTERNS: ReadonlyArray<RegExp> = [/\bsession_permit_saturated\b/i];
+
+// cm:guard its own table rather than a row in TRANSIENT, because the two must not both claim the text — the classifier's rule is one policy bucket per string, and this one has to sit above the cc-startup signal where TRANSIENT cannot go. Same diagnosis and policy as TRANSIENT (`infra` / `retry`): a sibling genuinely spent `REPO_LOCK_WAIT` in preflight or `git worktree add`, and the next attempt is right.
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — `handle` writes this token when `locks.acquire` times out
+export const REPO_CONTENTION_PATTERNS: ReadonlyArray<RegExp> = [/\brepo_lock_timeout\b/i];
+
+// cm:guard the catch-all for the preflight prefixes `TERMINAL_INFRA_PATTERNS` does NOT name — `push_credentials:` today, and whatever `preflight.rs` adds next. Same diagnosis, `infra`, and the retry `TRANSIENT` used to give it (ISS-451: a broken checkout or an unreachable push remote is an environment fault by construction), but it has to live up here: preflight runs after the pre-spawn beat starts, so with `TRANSIENT` below the cc-startup signal a 20s `ls-remote` timeout was landing as `agent_startup_failed` on a job that never spawned (ISS-920).
+// cm:guard matched AFTER `TERMINAL_INFRA_PATTERNS` and never before it — this pattern subsumes all three of those, so reversing the two makes `origin_remote`/`work_tree`/`repo_path` retry forever against a repo-less project, which is the whole thing ISS-808 made terminal.
+export const PREFLIGHT_PATTERNS: ReadonlyArray<RegExp> = [/\bpreflight[ _-]?failed\b/i];
+
 export const TRANSIENT_PATTERNS: ReadonlyArray<RegExp> = [
   /\bECONN(RESET|REFUSED|ABORTED)\b/i,
   /\bEPIPE\b|\bnetwork[ _-]?error\b/i,
@@ -65,8 +77,6 @@ export const TRANSIENT_PATTERNS: ReadonlyArray<RegExp> = [
   /\b429\b|\brate[ _-]?limit/i,
   /runner (offline|stale|disconnected)/i,
   /pg-?boss[ _-]?(error|timeout)/i,
-  // cm:why ISS-451 (C5) — a pre-claim preflight failure (missing repo, bad git tree, unreachable push remote, missing hooks path) is an environment problem by construction, so it is `infra` even though it looks like a project error
-  /\bpreflight[ _-]?failed\b/i,
 ];
 
 // cm:guard ISS-450 — a TEXT fallback only, for callers that could not derive structured `signals`; prefer the signal, because a CLI that dies during startup retries uselessly on the SAME device and only `transient-cc` routes it to an immediate different-device failover

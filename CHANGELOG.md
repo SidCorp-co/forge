@@ -806,6 +806,91 @@
 
 ### Fixed
 
+- **A job waiting for a duplex permit killed another project's jobs, and blamed the lock.**
+  `dispatch.rs` took the repo-root lock, called `runner.start`, and released it only when that
+  returned — but `start` awaited the box's duplex session semaphore with no deadline, so the root
+  lock was held across an unbounded queue. Every sibling job for that repo then died at
+  `REPO_LOCK_WAIT` (600s) saying `repo_lock_timeout`, went back to the pool, was claimed again and
+  met the same wall. Measured on forge-vm 2026-09-05: 7 timeouts in 30 minutes, all on `codemap`,
+  whose pool never drained across four master passes — while the permits were held by `forge-dev`
+  jobs a resident master had claimed 24 seconds earlier, with nothing in any record connecting the
+  two.
+
+  The two waits no longer nest. `git worktree add` — the only root-touching work `start` ever did —
+  moves into `dispatch::handle`, inside a lexical block that also binds the lock guard, so the
+  compiler releases the root before the permit is asked for. The permit wait itself is now bounded
+  by `SESSION_PERMIT_WAIT` (10 min, one residency window) and fails as
+  `session_permit_saturated: all N duplex permits on this box held after 600s; holders: <projects>`
+  — which core classifies `infra` + **failover** with the cause `box_session_saturated`.
+  `PRE_SPAWN_BEAT_BUDGET` still derives from the waits rather than being picked, now from both of
+  them.
+
+  What that classification does NOT yet do is move the job. On the pool path `readPool` selects on
+  `status`, `held_by` and `retry_after_at` and nothing about routing — its own guard forbids adding
+  any — so `_autoRetry.target` is read only by the push dispatcher, and the saturated box may claim
+  the clone again. Worse before it is better: `failover` sets `immediateFailover`, so the clone is
+  claimable with **zero** cooldown where `repo_lock_timeout` used to pay `RETRY_COOLDOWN_MS`. That
+  is a priced trade: what this change buys is a job row that says `box_session_saturated` instead
+  of `repo_lock_timeout` + `unclassified`, which is B3's "distinguishable by whoever re-claims";
+  B3's "cannot spin" needs a master that can see permit pressure, and `pool load` reports no permit
+  figure at all. That is the master-orchestration work the issue puts out of scope, and it is
+  written down in `docs/proposals/pool-cannot-route-around-a-full-box.md` rather than left as a
+  sentence nobody owns.
+
+  Two causes join the taxonomy with it: `box_session_saturated` for the above, and
+  `repo_root_contention` for `repo_lock_timeout` — which is now a different event, meaning a
+  sibling genuinely spent ten minutes in preflight or `git worktree add`, and which had been
+  landing in the operator review queue as `unclassified` because no policy rule claimed it. Both
+  are matched above the cc-startup signal, because a job that died in either wait never spawned
+  and so carries that signal by construction — below it they would have been unreachable.
+
+  **`preflight_failed` was already losing that race**, and this fixes it too. Every preflight
+  verdict sat below the same signal, so ISS-808's deliberately terminal one — a project with no
+  git repo cannot fix a missing work tree by retrying anywhere — was being converted to a
+  cross-box failover, and the prefixes outside that terminal three, `push_credentials` among
+  them, were landing as `agent_startup_failed` on jobs that never started. Preflight takes
+  longer than one 25s heartbeat whenever the lock wait, a re-provision, the setup agent or a 20s
+  `ls-remote` timeout is in play, which is most of the time. All four move up together.
+
+  One trade-off, priced: `SESSION_PERMIT_WAIT` is the DEFAULT residency window, and
+  `sessionResidencySeconds` is per-project and allowed up to an hour. A project that raises it
+  gets jobs failing at 600s that a longer wait would have served — they fail over rather than die,
+  and no project sets the key today. The first one that does moves the number.
+
+  The runner half ships at `0.11.2`. `runner-v0.11.1` was cut hours before this fix, and
+  `update::apply` gates on `is_newer(manifest.version, CURRENT_VERSION)` — so a re-cut `0.11.1`
+  would have reached no box already on `0.11.1`, and the fix would have been merged, released and
+  still absent from every runner it was written for.
+
+- **A withdrawn runner still took jobs.** `readPool` joined `runners` only to prove a binding
+  existed and read nothing else from the row; `claimJobForMaster` checked the agent version and
+  nothing about the box. So `runners.status` — which has carried `draining` and `disabled` since the
+  table existed — gated no code on the claim path: `forge_runners drain`, `forge_runners retire` and
+  the status PATCH all wrote a column nothing consulted. Proved by planting the fix's own tests
+  against the old code: a `disabled` runner's claim returned `ok: true`.
+
+  Admission is now one predicate in `devices/pool-admission.ts`, read twice on purpose. The pool
+  excludes a withdrawn box, and the claim refuses it again by name — `runner_withdrawn`,
+  `device_disabled`, `runner_unbound` — because a master holds its page of pool rows across the
+  round trip, so an operator draining mid-flight is only caught on the second reading. A silent
+  empty pool and a named refusal are the same transcript to an operator whose box went quiet, and
+  only one of them can be acted on.
+
+  It excludes `disabled`/`draining` rather than requiring `online`: the heartbeat mirror is what
+  writes `online`, so requiring it would hand a live runner an empty pool whenever that mirror
+  lagged. A master reading the pool is alive by definition — the poll is the proof — so admission is
+  a permission question, not a liveness one.
+
+  Third half, and without it the other two are theatre: the heartbeat mirror preserved `disabled`
+  and overwrote `draining`, so a drain had a ~30-second life. That is the same defect fixed for
+  `disabled` on 2026-08-14 (retired 08:19:29, online again 08:19:59) and left standing for its twin,
+  invisible because nothing read either. The mirror now preserves both, and the guard names
+  `pool-admission.ts` as the authority on which statuses withdraw a box.
+
+  Project settings → Runners carries the switch: **Takes jobs from the pool**. Off drains — work
+  already running finishes, nothing new is offered or claimed. A retired (`disabled`) runner shows
+  the toggle locked with the reason, because that one is undone by re-registering, not by a click.
+
 - **A stale coverage report answered for code that no longer existed.** `check-flow-coverage`
   treats the integration coverage report as the authoritative evidence that a `cm:flow` step is
   defended. It handled an ABSENT report (skip locally, fail under `--require-sources`) and had
@@ -841,7 +926,7 @@
   gone; verified on `mcp/tools/forge-issues.ts` — a code edit alone reports *37 still frozen*, and
   deleting one frozen comment clears it.
 
-  Priced (`cm:hack ISS-849` on `debtOf`): a block whose frozen keys were *all* rewrapped is charged
+  Priced (`cm:hack codemap ISS-9` on `debtOf`): a block whose frozen keys were *all* rewrapped is charged
   1 rather than the count it held, so rewrapping a two-comment block beside a code edit lowers the
   debt by one and passes. Closing that needs the baseline to record each block's key count, which is
   a re-freeze; until then the loophole is narrow, deliberate, and named in the code. The plugin's

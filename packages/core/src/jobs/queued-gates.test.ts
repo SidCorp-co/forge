@@ -145,9 +145,9 @@ describe('assertDispatchable', () => {
   it('returns ok:false with the failing reason verbatim from the CASE', async () => {
     mockAssertChain({
       job: { projectId: 'p1' },
-      caseResult: { reason: 'project_cap' },
+      caseResult: { reason: 'issue_busy' },
     });
-    expect(await assertDispatchable('j1')).toEqual({ ok: false, reason: 'project_cap' });
+    expect(await assertDispatchable('j1')).toEqual({ ok: false, reason: 'issue_busy' });
   });
 
   it('returns not_found when the CASE query returns 0 rows (race: job vanished mid-call)', async () => {
@@ -158,7 +158,7 @@ describe('assertDispatchable', () => {
     expect(await assertDispatchable('j1')).toEqual({ ok: false, reason: 'not_found', hint: 'j1' });
   });
 
-  // cm:guard every reason must appear in the SQL text, because `dispatch_barrier_skips_total{reason}` is keyed by it — an arm renamed without this test going red silently splits one metric series into two.
+  // cm:guard every reason must appear in the SQL text, because both readers cast the raw CASE string into `GateSkipReason` unchecked — an arm renamed without this test going red is invisible to tsc, and it silently changes the answer for every consumer keying on the reason (`alarmStalledQueuedJobs`'s `gated.has`, the `gateReason` field `forge_jobs.list` publishes).
   it('SQL enumerates every GateSkipReason in the CASE', async () => {
     mockAssertChain({
       job: { projectId: 'p1' },

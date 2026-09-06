@@ -33,15 +33,7 @@ const listInputSchema = z
   })
   .strict();
 
-// ISS-478 fix-forward — the body-free projection bounds per-ROW size but not
-// the TOTAL response. At the old default limit of 50, a real-history project
-// still produced ~52K chars and overflowed the MCP output cap, spilling to a
-// file (the very failure this issue fixes, just 16× smaller). So ALSO bound the
-// total response: a smaller default limit for the common no-arg call, plus a
-// hard char budget that trims rows from the tail (oldest first — the list is
-// ordered queuedAt desc) until the serialized payload fits. ~38K leaves
-// headroom under the observed spill threshold (40 rows/~41K fit, 50/~52K did
-// not).
+// cm:guard the body-free projection bounds per-ROW size, never the TOTAL response, so this limit and the char budget in `buildListEnvelope` are the only things keeping a real-history project under the MCP output cap — raising it spills the whole page to a file, which is the failure ISS-478 fixed (50 rows measured at ~52K, over the threshold; 40 at ~41K, under).
 const DEFAULT_LIST_LIMIT = 25;
 
 const getInputSchema = z.object({ jobId: z.uuid() }).strict();
@@ -64,7 +56,7 @@ const cancelInputSchema = z
 export const forgeJobsListTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_jobs.list',
   description:
-    'List jobs scoped to a project (default 25, max 200; ordered newest-first). Supports status/type/issueId filters. Returns a lightweight projection per job: the heavy fields (payload, promptBlocks, failureMeta jsonb and the unbounded userPromptSnapshot/error text) are OMITTED to stay under the response token cap — fetch them per-job via forge_jobs.get. Every `queued` row also carries `gateReason` — the exact dispatch gate holding it (`blocked_by`, `runner_stale`, `pipeline_run_not_running`, …) or null when it is dispatchable and merely awaiting its turn. READ IT before assuming a queued job is progressing: `queued` is the status both of a job about to run and of one blocked indefinitely. EVERY response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit looks exactly like a complete one. `truncated:true` + `truncatedBy` + a notice say which cap bit (your limit, or the hard response-size cap). Requires device owner to be a project member.',
+    'List jobs scoped to a project (default 25, max 200; ordered newest-first). Supports status/type/issueId filters. Returns a lightweight projection per job: the heavy fields (payload, promptBlocks, failureMeta jsonb and the unbounded userPromptSnapshot/error text) are OMITTED to stay under the response token cap — fetch them per-job via forge_jobs.get. Every `queued` row also carries `gateReason` — the exact dispatch gate holding it (`issue_busy`, `runner_stale`, `pipeline_run_not_running`, …) or null when it is dispatchable and merely awaiting its turn. READ IT before assuming a queued job is progressing: `queued` is the status both of a job about to run and of one blocked indefinitely. EVERY response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit looks exactly like a complete one. `truncated:true` + `truncatedBy` + a notice say which cap bit (your limit, or the hard response-size cap). Requires device owner to be a project member.',
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId, status, type, issueId, limit } = listInputSchema.parse(args);

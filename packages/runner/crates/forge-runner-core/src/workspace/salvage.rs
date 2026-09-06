@@ -248,7 +248,7 @@ pub struct SalvageInput<'a> {
     /// The project's base branch per the server, when it has one.
     pub base_branch: Option<&'a str>,
     /// The branch the master named this job's agent — its worktree, exactly.
-    // cm:guard match this branch EXACTLY and never by prefix. The old field was the issue key and had to guess which checkout an agent had cut (`ISS-862` vs `ISS-8620-…`); a master that groups two issues into one agent names a branch no issue key predicts, so the guess would salvage nothing or, worse, a stranger's tree. dev1 carried five agent worktrees on 2026-08-26, two dirty since 2026-08-12 — "the one dirty checkout" is not a thing that exists on a real box.
+    // cm:guard match this branch EXACTLY, never by prefix — a master that groups two issues names a branch no issue key predicts, so a prefix guess salvages nothing or, worse, a stranger's tree (dev1 2026-08-26: five agent worktrees, two dirty).
     pub agent_branch: &'a str,
     pub job_id: &'a str,
     pub attempt: u32,
