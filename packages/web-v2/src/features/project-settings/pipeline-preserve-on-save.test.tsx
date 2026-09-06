@@ -8,7 +8,7 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "@/providers/toast-provider";
 import { PipelineTab } from "./components/pipeline-tab";
@@ -130,6 +130,40 @@ describe("Pipeline tab · preserve-on-save (ISS-813, ISS-767 pattern)", () => {
     expect((sent.states as Record<string, Record<string, unknown>>).released.disallowedTools).toEqual(
       DENYLIST_FULL,
     );
+  });
+
+  // cm:guard this is the case the read-only version of this screen could not have: a per-STAGE save now exists, and it is the one place a `states` map gets rebuilt. `withStagePatch` spreads cfg + cfg.states + the stage; drop any one of the three spreads and one of these three assertions goes red.
+  it("saving one stage preserves the other stages, the unknown keys and its own untouched keys", () => {
+    renderTab();
+    fireEvent.click(screen.getByText("in_progress").closest("button") as HTMLElement);
+    fireEvent.click(screen.getByRole("button", { name: "Remove Cron create" }));
+    fireEvent.click(screen.getByRole("button", { name: /save running permissions/i }));
+
+    const sent = mutate.mock.calls[0]?.[0] as PipelineConfig;
+    const states = sent.states as Record<string, Record<string, unknown>>;
+    expect(states.open.disallowedTools).toEqual(DENYLIST_FULL);
+    expect(states.needs_info.futureStageKnob).toBe("stage-round-trips");
+    expect(states.released.mode).toBe("manual");
+    expect(sent.someFutureKnob).toBe("round-trips");
+    expect(states.in_progress.enabled).toBe(true);
+    expect(states.in_progress.mode).toBe("auto");
+    expect(states.in_progress.mcpServers).toEqual({ playwright: true });
+    expect(states.in_progress.disallowedTools).not.toContain("CronCreate");
+  });
+
+  it("saving a stage's per-state MCP override leaves its tool lists alone", () => {
+    renderTab();
+    fireEvent.click(screen.getByText("needs_info").closest("button") as HTMLElement);
+    const row = screen.getByText(/Playwright —/).closest("label") as HTMLElement;
+    fireEvent.click(within(row).getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /save needs a human permissions/i }));
+
+    const sent = mutate.mock.calls[0]?.[0] as PipelineConfig;
+    const states = sent.states as Record<string, Record<string, unknown>>;
+    expect(states.needs_info.mcpServers).toEqual({ playwright: true });
+    expect(states.needs_info.disallowedTools).toEqual(DENYLIST_FULL);
+    expect(states.needs_info.futureStageKnob).toBe("stage-round-trips");
+    expect(states.open.disallowedTools).toEqual(DENYLIST_FULL);
   });
 
   // cm:guard the toggle must READ the OR of both knobs, not just `enabled` — a project stored with `mode: 'manual'` alone is held by `isEntryGateClosed` and must not render as running.

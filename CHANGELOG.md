@@ -11,6 +11,34 @@
 
 ### Added
 
+- **Settings → Pipeline edits the tool policy it has only ever displayed.** Since ISS-813 the tab
+  has shown each stage's `disallowedTools` / `allowedTools` and its per-stage `mcpServers` — the
+  policy the dispatcher hands every session — and offered no way to change any of it short of a
+  REST call. Each stage now carries a draft editor: chips you can remove, a picker seeded from the
+  ids the project already uses, a free-text field for one it does not, and catalog toggles for the
+  per-stage MCP override. A stage with no override yet is listed too, so one can be added rather
+  than only amended.
+
+  Every save round-trips the full fetched config and overrides exactly one `states[<status>]` key,
+  through a single writer (`withStagePatch`). That is not stylistic: `statesConfigSchema` has no
+  passthrough and the PATCH replaces `states` wholesale, so a save built from anything less than
+  the fetched map deletes the stages it omitted. Four tests fail if any one of its three spreads
+  goes, including one asserting a key no schema version declares.
+
+  Alongside it, `agentConfig.stateContext` — a model override and a spend cap per kind of job —
+  becomes editable through the scoped `stateContext` field that already existed on
+  `PATCH /projects/:id`. Budgets are all-or-nothing in the browser because core's `budgetSchema`
+  is `.strict()` with all three keys required: a half-filled budget was never a smaller cap, it
+  was a 400. No core changes were needed for any of this.
+
+  Two of the five fields the issue asked for were refused by name rather than answered with the
+  nearest thing that renders. `states[*].skipComplexities` was deleted from `stageConfigSchema` by
+  ISS-897, and that schema strips unknown keys, so a control writing it would be undone by the
+  next save; `recoveryMaxAttempts` / `recoveryWindowHours` / `recoveryByFailureKind` have no
+  reader anywhere in core, so adding them to the schema would have made three dead dials
+  configurable. The "configured elsewhere" list is rewritten to match: every row now names a key
+  something in core actually reads, and none of them promises work to a closed issue.
+
 - **`pnpm test:changed` — the local loop, wired to nothing.** Runs the tests a change reaches
   (`vitest list --changed` against the same `baseRev()` the drain gate uses, so a push straight to
   `main` does not select an empty diff) plus every test that scans the source tree rather than

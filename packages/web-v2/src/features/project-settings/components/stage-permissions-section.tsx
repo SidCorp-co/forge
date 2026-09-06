@@ -1,36 +1,36 @@
 "use client";
 
-// Project settings → Pipeline → "Stage permissions" (ISS-813, read-only Phase 1).
+// Project settings → Pipeline → "Stage permissions".
 //
-// Surfaces states[*].allowedTools/disallowedTools/mcpServers/skipComplexities/
-// sessionGroup — set via the API today, invisible on this tab until now. Takes
-// the already-fetched pipelineConfig (no query of its own) so it never flickers
-// mid-edit. Collapsed by default per stage: the only way 176 entries across 9
-// stages stay legible on one screen.
+// Reads and writes states[*].allowedTools / disallowedTools / mcpServers, the
+// tool policy the dispatcher hands each session and which was API-only until
+// ISS-814. Runner pools (`deviceIds`) are displayed here but edited in
+// RunnerPoolsSection, which owns the stage × runner matrix.
 //
-// No write controls here (deliberate — see ISS-813 plan §Step 5): `sessionGroup`
-// stays a read-only echo (SessionGroupsSection below is the only editor), and
-// full editability of the rest is ISS-814.
+// Takes the already-fetched pipelineConfig rather than querying, so it never
+// flickers mid-edit. Collapsed by default per stage: the only way a denylist
+// this long stays legible on one screen.
 
-import { Badge, Collapsible, MonoTag } from "@/design";
+import { useState } from "react";
+import { Badge, Banner, Button, Checkbox, Collapsible, MonoTag } from "@/design";
+import { formatPipelineConfigError } from "@/lib/api/error";
+import { useUpdatePipelineConfig } from "../hooks";
 import {
   denylistBaseline,
+  groupByServer,
   humanizeToolName,
+  knownToolIds,
+  MCP_CATALOG,
+  MCP_CATALOG_NAMES,
+  PIPELINE_STATUS_ROWS,
+  pipelineStatusLabel,
   summarizeStageConfig,
+  withStagePatch,
   type PipelineConfig,
+  type PipelineStateConfig,
+  type StagePermissionRow,
 } from "../types";
-
-function groupByServer(tools: string[]): Array<[string, string[]]> {
-  const groups = new Map<string, string[]>();
-  for (const raw of tools) {
-    const { server } = humanizeToolName(raw);
-    const key = server ?? "Built-in";
-    const list = groups.get(key) ?? [];
-    list.push(raw);
-    groups.set(key, list);
-  }
-  return [...groups.entries()];
-}
+import { ToolListEditor } from "./tool-list-editor";
 
 function ToolChips({ tools }: { tools: string[] }) {
   return (
@@ -55,24 +55,158 @@ function namesOf(names: string[]): string {
   return names.map((raw) => humanizeToolName(raw).label).join(", ");
 }
 
-export function StagePermissionsSection({
+/** The stages an editor offers: every ladder status, so a stage with no
+ *  override yet can be given one, plus any extra status already stored. */
+function editableRows(config: PipelineConfig): StagePermissionRow[] {
+  const states = (config.states ?? {}) as Record<string, PipelineStateConfig | undefined>;
+  const rows = PIPELINE_STATUS_ROWS.map(({ status, label }) => ({
+    status,
+    label,
+    config: states[status] ?? {},
+  }));
+  const seen = new Set(rows.map((r) => r.status));
+  for (const [status, sc] of Object.entries(states)) {
+    if (!seen.has(status)) rows.push({ status, label: pipelineStatusLabel(status), config: sc ?? {} });
+  }
+  return rows;
+}
+
+// cm:guard this is the editor's React key, and it must change whenever the STORED stage does: `useState` initialisers do not re-run, so an identity key leaves the form showing pre-save values after a successful write.
+function stageEditorKey(config: PipelineStateConfig): string {
+  return JSON.stringify(config);
+}
+
+function StageEditor({
+  projectId,
   config,
+  status,
+}: {
+  projectId: string;
+  config: PipelineConfig;
+  status: string;
+}) {
+  const update = useUpdatePipelineConfig(projectId);
+  const stored = ((config.states ?? {}) as Record<string, PipelineStateConfig | undefined>)[status] ?? {};
+
+  const [denied, setDenied] = useState<string[]>(stored.disallowedTools ?? []);
+  const [allowed, setAllowed] = useState<string[]>(stored.allowedTools ?? []);
+  const [mcp, setMcp] = useState<Record<string, unknown>>(stored.mcpServers ?? {});
+
+  const snapshot = (d: string[], a: string[], m: Record<string, unknown>) =>
+    JSON.stringify([[...d], [...a], Object.keys(m).sort().map((k) => [k, m[k]])]);
+  const dirty =
+    snapshot(denied, allowed, mcp) !==
+    snapshot(stored.disallowedTools ?? [], stored.allowedTools ?? [], stored.mcpServers ?? {});
+
+  // cm:guard an EMPTY list is `undefined`, never `[]`: `stageConfigSchema` accepts both, but a stored `disallowedTools: []` reads on every later screen as "this stage was deliberately given an empty denylist" rather than "this stage has no override", which is the distinction `summarizeStageConfig` renders.
+  function save() {
+    const patch: PipelineStateConfig = {
+      disallowedTools: denied.length > 0 ? denied : undefined,
+      allowedTools: allowed.length > 0 ? allowed : undefined,
+      mcpServers: Object.keys(mcp).length > 0 ? mcp : undefined,
+    };
+    update.mutate(withStagePatch(config, status, patch));
+  }
+
+  return (
+    <div className="mt-3 space-y-4 border-t border-line pt-3">
+      <ToolListEditor
+        label="Denied tools"
+        hint="A real denylist — the tool is removed from the session's set even under bypassPermissions, and deny wins over allow."
+        value={denied}
+        options={knownToolIds(config)}
+        onChange={setDenied}
+      />
+
+      <ToolListEditor
+        label="Allowed tools (allowlist)"
+        hint="Empty means every tool not denied above. Listing any narrows the session to exactly these."
+        value={allowed}
+        options={knownToolIds(config)}
+        onChange={setAllowed}
+      />
+
+      <div>
+        <p className="fg-caption mb-1 text-muted">
+          MCP servers — layered on top of the project default for this stage only
+        </p>
+        <div className="space-y-1.5">
+          {MCP_CATALOG_NAMES.map((name) => (
+            <Checkbox
+              key={name}
+              checked={mcp[name] === true}
+              onChange={(on) =>
+                setMcp((m) => {
+                  const next = { ...m };
+                  if (on) next[name] = true;
+                  else delete next[name];
+                  return next;
+                })
+              }
+              label={`${MCP_CATALOG[name].label} — ${MCP_CATALOG[name].hint}`}
+            />
+          ))}
+          {Object.keys(mcp)
+            .filter((n) => !MCP_CATALOG_NAMES.includes(n))
+            .map((n) => (
+              <div key={n} className="flex items-center justify-between gap-3">
+                <MonoTag>{n}</MonoTag>
+                <Button variant="ghost" size="sm" onClick={() => setMcp((m) => {
+                  const next = { ...m };
+                  delete next[n];
+                  return next;
+                })}>
+                  Remove
+                </Button>
+              </div>
+            ))}
+        </div>
+        <p className="fg-caption mt-1 text-subtle">
+          A custom server spec is written through the API — this list edits the catalog entries.
+        </p>
+      </div>
+
+      {update.isError && (
+        <Banner tone="danger" onDismiss={() => update.reset()}>
+          {formatPipelineConfigError(update.error)}
+        </Banner>
+      )}
+
+      <Button
+        variant="primary"
+        loading={update.isPending}
+        disabled={!dirty}
+        onClick={save}
+        className="min-h-11"
+      >
+        Save {pipelineStatusLabel(status)} permissions
+      </Button>
+    </div>
+  );
+}
+
+export function StagePermissionsSection({
+  projectId,
+  config,
+  canEdit,
   deviceNames,
 }: {
+  projectId: string;
   config: PipelineConfig;
+  canEdit: boolean;
   /** deviceId → runner name, so a pinned pool reads as boxes, not UUIDs. Optional: the component stays query-free. */
   deviceNames?: Record<string, string>;
 }) {
-  const rows = summarizeStageConfig(config);
-  const diffs = denylistBaseline(rows);
+  const rows = canEdit ? editableRows(config) : summarizeStageConfig(config);
+  const diffs = denylistBaseline(summarizeStageConfig(config));
   const diffByStatus = new Map(diffs.map((d) => [d.status, d]));
 
   return (
     <div className="mt-6 border-t border-line pt-5">
       <h3 className="fg-label text-fg">Stage permissions</h3>
       <p className="fg-body-sm mb-3 text-muted">
-        What each stage&apos;s agent is allowed or denied, per-stage MCP overrides, complexity
-        and runner pools — read-only. Editability lands in a follow-up.
+        What each stage&apos;s agent may and may not reach, and the MCP servers layered on for that
+        stage alone. Runner pools are shown here and edited in the matrix below.
       </p>
 
       {rows.length === 0 ? (
@@ -108,7 +242,7 @@ export function StagePermissionsSection({
                 }
               >
                 <div className="space-y-3">
-                  {denied.length > 0 && (
+                  {!canEdit && denied.length > 0 && (
                     <div>
                       <p className="fg-caption mb-1 text-muted">Denied tools</p>
                       <div className="space-y-1.5">
@@ -135,14 +269,14 @@ export function StagePermissionsSection({
                     </p>
                   )}
 
-                  {allowed.length > 0 && (
+                  {!canEdit && allowed.length > 0 && (
                     <div>
                       <p className="fg-caption mb-1 text-muted">Allowed tools (allowlist)</p>
                       <ToolChips tools={allowed} />
                     </div>
                   )}
 
-                  {mcpNames.length > 0 && (
+                  {!canEdit && mcpNames.length > 0 && (
                     <div>
                       <p className="fg-caption mb-1 text-muted">
                         MCP servers — overrides the project default above
@@ -167,6 +301,15 @@ export function StagePermissionsSection({
                         ))}
                       </div>
                     </div>
+                  )}
+
+                  {canEdit && (
+                    <StageEditor
+                      key={stageEditorKey(row.config)}
+                      projectId={projectId}
+                      config={config}
+                      status={row.status}
+                    />
                   )}
                 </div>
               </Collapsible>
