@@ -54,18 +54,21 @@ export function verifyConnectState(
  * receives the conversion code; `hook_attributes.url` is where deliveries land.
  */
 // cm:edge contract -> packages/core/src/webhooks/inbound-routes.ts — `hook_attributes.url` must be the `/api/webhooks/in/:slug` this core actually serves. GitHub stores it ON THE APP at creation time, so a path changed here after an App exists does not move that App's deliveries and they keep arriving at the old URL until someone edits the App by hand.
+// cm:guard three of these four URLs are served by CORE and take `apiBaseUrl`; only `url` is the web app. Building them all from APP_BASE_URL is what shipped on 2026-09-06 and it 404s every one of them on a split-origin deploy — the redirect visibly, at the moment the operator has already created the App, and `hook_attributes` SILENTLY forever after.
 export function buildAppManifest(args: {
   appName: string;
-  appBaseUrl: string;
+  webBaseUrl: string;
+  apiBaseUrl: string;
   projectSlug: string;
 }): Record<string, unknown> {
-  const base = args.appBaseUrl.replace(/\/+$/, '');
+  const web = args.webBaseUrl.replace(/\/+$/, '');
+  const api = args.apiBaseUrl.replace(/\/+$/, '');
   return {
     name: args.appName,
-    url: base,
-    hook_attributes: { url: `${base}/api/webhooks/in/${args.projectSlug}`, active: true },
-    redirect_url: `${base}/api/integrations/github/manifest-callback`,
-    setup_url: `${base}/api/integrations/github/installed`,
+    url: web,
+    hook_attributes: { url: `${api}/api/webhooks/in/${args.projectSlug}`, active: true },
+    redirect_url: `${api}/api/integrations/github/manifest-callback`,
+    setup_url: `${api}/api/integrations/github/installed`,
     setup_on_update: true,
     public: false,
     default_permissions: {

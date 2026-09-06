@@ -10,8 +10,10 @@
  */
 
 import { eq } from 'drizzle-orm';
+import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
 import { logger } from '../../logger.js';
@@ -31,6 +33,7 @@ import {
   signConnectState,
   verifyConnectState,
 } from './connect.js';
+import { findBindingOwningInstallation } from './install-resolve.js';
 
 // cm:guard these are TWO apps because they mount at different prefixes: the project-scoped one under `/api/projects`, the callbacks under `/api`. Folding the callbacks into the first would put them at `/api/projects/integrations/...`, where `integrations` is read as a `:projectId` by every sibling route.
 export const githubConnectRoutes = new Hono<{ Variables: AuthVars }>();
@@ -46,10 +49,32 @@ function stateSecret(): string {
   return secret;
 }
 
-function appBaseUrl(): string {
+function webBaseUrl(): string {
   const base = process.env.APP_BASE_URL;
   if (!base) throw new HTTPException(500, { message: 'APP_BASE_URL is not configured' });
   return base;
+}
+
+// cm:guard resolve this from CONFIG, never from the request's Host header — `redirect_url` is where GitHub delivers the conversion code that yields the App's PRIVATE KEY, so a forged Host would hand it to the forger. The request's own origin is read below only to REFUSE on a mismatch, which a forged header can at worst turn into a denial.
+function apiBaseUrl(): string {
+  const base = env.PUBLIC_API_BASE_URL ?? env.OAUTH_REDIRECT_BASE ?? process.env.APP_BASE_URL;
+  if (!base) throw new HTTPException(500, { message: 'APP_BASE_URL is not configured' });
+  return base.replace(/\/+$/, '');
+}
+
+// cm:guard a manifest whose callback names an origin this core is not reachable on strands the operator AFTER GitHub has created the App — the state is spent, the App exists, and only a hand-edit recovers it. So refuse while nothing has been created, naming both origins. Measured 2026-09-06: APP_BASE_URL was the web host, and all three core URLs 404'd.
+function assertApiOriginReachable(c: Context, api: string): void {
+  const url = new URL(c.req.url);
+  const proto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim();
+  if (proto === 'https' || proto === 'http') url.protocol = `${proto}:`;
+  const forwardedHost = c.req.header('x-forwarded-host')?.split(',')[0]?.trim();
+  if (forwardedHost) url.host = forwardedHost;
+  if (new URL(api).origin === url.origin) return;
+  throw new HTTPException(500, {
+    message:
+      `GitHub would be told to call back at ${new URL(api).origin}, but this request reached core at ${url.origin}. ` +
+      "Set PUBLIC_API_BASE_URL to this API's public origin — APP_BASE_URL is the web frontend and cannot serve the callback.",
+  });
 }
 
 githubConnectRoutes.post('/:projectId/integrations/github/connect', async (c) => {
@@ -69,12 +94,16 @@ githubConnectRoutes.post('/:projectId/integrations/github/connect', async (c) =>
   const org = url.searchParams.get('org');
   const environment = url.searchParams.get('environment') ?? 'prod';
 
+  const api = apiBaseUrl();
+  assertApiOriginReachable(c, api);
+
   return c.json({
     postUrl: manifestPostUrl(org),
     state: signConnectState(stateSecret(), { projectId, userId, environment }),
     manifest: buildAppManifest({
       appName: `Forge — ${project.name}`,
-      appBaseUrl: appBaseUrl(),
+      webBaseUrl: webBaseUrl(),
+      apiBaseUrl: api,
       projectSlug: project.slug,
     }),
   });
@@ -125,7 +154,7 @@ githubCallbackRoutes.get('/integrations/github/manifest-callback', async (c) => 
   );
 
   const install = app.htmlUrl ? `${app.htmlUrl}/installations/new` : null;
-  return c.redirect(install ?? `${appBaseUrl()}/projects/${state.projectId}/settings/integrations`);
+  return c.redirect(install ?? `${webBaseUrl()}/projects/${state.projectId}/settings/integrations`);
 });
 
 githubCallbackRoutes.get('/integrations/github/installed', async (c) => {
@@ -138,21 +167,21 @@ githubCallbackRoutes.get('/integrations/github/installed', async (c) => {
   if (!Number.isFinite(installationId) || installationId <= 0) {
     throw badRequest({ installation_id: 'required' });
   }
-  if (!state) {
-    throw badRequest({ state: 'missing — install the App from the link Forge gave you' });
-  }
-  if (state.userId !== userId) throw badRequest({ state: 'issued for another user' });
+  if (rawState && !state) throw badRequest({ state: 'invalid or expired' });
+  if (state && state.userId !== userId) throw badRequest({ state: 'issued for another user' });
 
-  assertAdmin(await assertProjectMember(state.projectId, userId));
-
-  const pairs = await listActiveBindingsForProjectProvider(state.projectId, 'github');
-  const pair = pairs[0];
+  const pair = state
+    ? (await listActiveBindingsForProjectProvider(state.projectId, 'github'))[0]
+    : await findBindingOwningInstallation({ userId, installationId });
   if (!pair) throw notFound('github binding');
+
+  const projectId = state?.projectId ?? pair.binding.projectId;
+  assertAdmin(await assertProjectMember(projectId, userId));
 
   const { updateBinding } = await import('../store.js');
   await updateBinding(pair.binding.id, {
     config: { ...(pair.binding.config as Record<string, unknown>), installationId },
   });
 
-  return c.redirect(`${appBaseUrl()}/projects/${state.projectId}/settings/integrations`);
+  return c.redirect(`${webBaseUrl()}/projects/${projectId}/settings/integrations`);
 });

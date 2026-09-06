@@ -33,18 +33,32 @@ describe('connect state', () => {
 });
 
 describe('buildAppManifest', () => {
-  it('points the webhook at this core and the redirect at the conversion route', () => {
-    const m = buildAppManifest({
+  const split = () =>
+    buildAppManifest({
       appName: 'Forge — demo',
-      appBaseUrl: 'https://forge.example/',
+      webBaseUrl: 'https://forge.example/',
+      apiBaseUrl: 'https://api.forge.example/',
       projectSlug: 'demo',
     });
+
+  it('points the webhook at this core and the redirect at the conversion route', () => {
+    const m = split();
     expect((m.hook_attributes as { url: string }).url).toBe(
-      'https://forge.example/api/webhooks/in/demo',
+      'https://api.forge.example/api/webhooks/in/demo',
     );
-    expect(m.redirect_url).toBe('https://forge.example/api/integrations/github/manifest-callback');
+    expect(m.redirect_url).toBe(
+      'https://api.forge.example/api/integrations/github/manifest-callback',
+    );
     expect(m.public).toBe(false);
     expect((m.default_permissions as Record<string, string>).pull_requests).toBe('write');
+  });
+
+  it('sends every core-served URL to the api origin and only the homepage to the web', () => {
+    const m = split();
+    expect(m.url).toBe('https://forge.example');
+    for (const u of [m.redirect_url, m.setup_url, (m.hook_attributes as { url: string }).url]) {
+      expect(u).toMatch(/^https:\/\/api\.forge\.example\//);
+    }
   });
 
   it('posts to the org endpoint when an org is named', () => {
