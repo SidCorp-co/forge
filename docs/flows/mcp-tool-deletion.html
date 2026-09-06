@@ -29,48 +29,55 @@ credential species. Owner: <code>packages/core/src/mcp/registered-tools.ts</code
 
 <h2>Why this flow changed shape</h2>
 <p>Until <code>ISS-931</code> the gate was one number: a tool was clear when its
-<code>mcp_audit_log</code> <em>device</em> count was zero. That number no longer moves.
-<code>mcp/server.ts</code> stamps <code>device_id</code> NULL on every row it writes, so every
-tool's device count is frozen at whatever it reached — and the clause that number fed asked
-whether the callers a tool <em>had</em> could reach its replacement. Those callers are
-un-upgraded runner boxes, which <code>requirePat</code> now answers 401 on <em>every</em>
-<code>/mcp</code> call, whatever is registered. <span class="bad">A gate keyed on a number that
-can never fall, protecting a population the same change already made unreachable, never
-opens.</span> The shrink would not have been blocked under it; it would have been unable to
-finish.</p>
+<code>mcp_audit_log</code> <em>device</em> count was zero. <code>ISS-931</code> did not make that
+number meaningless — it changed what it is a statement about. <code>requirePat</code> refuses a
+device, so no new device rows are written and the counts stop rising; but the sessions behind them
+are <b>paused, not retired</b>. A box installs a <code>runner-v*</code> that writes the job token
+and the same Claude MCP client resumes against the same tool list, on a PAT.</p>
 
-<p>So the question moved from <em>who called this</em> to <em>who can still call this</em>. There
-are exactly two answers, and only one of them is in the database.</p>
+<p><span class="bad">So a non-zero device count is a forecast of returning traffic, not a record of
+dead traffic</span>, and it stays a refusal. What genuinely went obsolete is the rule's <em>second</em>
+clause: it asked for a replacement route that accepts a <em>device token</em>, and every caller
+that comes back holds a <code>forge_pat_*</code> instead.</p>
+
+<p>Two things this page previously got wrong about that are worth stating, because both are easy to
+re-derive. The counts do not fall <em>because of</em> <code>ISS-931</code> — they could not fall
+before it either, since <code>mcp_audit_log</code> declares 90-day retention and nothing calls
+<code>enforceMcpAuditRetention</code>. And wiring that pruner would drain every device count to
+zero, which must <b>not</b> be read as clearing twenty tools at once: the refusal is about callers
+who return, not rows that expire.</p>
+
+<p>The question therefore moved from <em>who called this</em> to <em>who will lose it</em>, and
+there are three populations rather than one.</p>
 
 <div class="board"><pre class="mermaid">
 flowchart TD
   START["a wave picks a tool<br/>out of REGISTERED_TOOLS"] --> KEEP{"on the<br/>keep-forever list?"}
-  KEEP -->|"forge_step_start · forge_uploads<br/>forge_phase · forge_step_handoff.*"| NEVER["STOP — stays.<br/>session lifecycle, not data query"]
+  KEEP -->|"forge_step_start · forge_uploads<br/>forge_phase · forge_step_handoff.*"| NEVER["STOP - stays.<br/>session lifecycle, not data query.<br/>all four HAVE REST twins, so the<br/>twin test does not protect them"]
   KEEP -->|no| FENCE{"resolves<br/>no project?"}
-  FENCE -->|"forge_orgs.* · forge_collaborators"| FENCED["STOP — stays.<br/>a project-scoped PAT here is an<br/>account-scoped credential in disguise"]
-  FENCE -->|no| H1{"HALF 1 — named by the<br/>forge CLI the FLEET runs?"}
+  FENCE -->|"forge_orgs.* · forge_collaborators"| FENCED["STOP - stays.<br/>a project-scoped PAT here is an<br/>account-scoped credential in disguise"]
+  FENCE -->|no| R1{"RULE 1 - any device rows?"}
 
-  H1 -->|"yes · 9 tools"| REFUSE1["REFUSE BY NAME<br/>blocked on a fleet upgrade"]
-  H1 -->|no| H2{"HALF 2 — any other caller<br/>still on a token?"}
+  R1 -->|"yes · ~20 tools"| REFUSE0["REFUSE BY NAME<br/>those callers RETURN on a PAT at<br/>the runner-v* release. paused, not dead"]
+  R1 -->|no| R2{"RULE 2 - named by the<br/>forge CLI the FLEET runs?"}
 
-  H2 -->|"token_id rows · skills.skill_md<br/>· runner orientation text"| REFUSE2["REFUSE BY NAME<br/>name the caller, do not widen a filter"]
-  H2 -->|"zero, and measured"| TWIN{"does the replacement route<br/>accept a forge_pat_*?"}
-  H2 -->|"cannot be measured<br/>from a box"| STOP2["STOP — do not estimate.<br/>ISS-946"]
+  R2 -->|"9 wrapped verbs, plus<br/>whatever forge call reaches"| REFUSE1["REFUSE BY NAME<br/>blocked on a fleet upgrade"]
+  R2 -->|no| R3{"RULE 3 - any other<br/>caller still on a token?"}
+
+  R3 -->|"token_id rows · skills.skill_md<br/>· runner orientation text"| REFUSE2["REFUSE BY NAME<br/>name the caller, never widen a filter"]
+  R3 -->|"cannot be measured<br/>from a box"| STOP2["STOP - do not estimate.<br/>ISS-946"]
+  R3 -->|"zero, and measured"| TWIN{"does the replacement route<br/>accept a forge_pat_*?"}
 
   TWIN -->|no| REFUSE3["REFUSE BY NAME<br/>the /api/skill-facts shape:<br/>a twin behind the wrong middleware<br/>is not a replacement"]
-  TWIN -->|yes| DELETE["DELETE — registry, factory,<br/>server registration, CHANGELOG.<br/>Never deprecate: two paths is two paths"]
-
-  DEV["device count"] -.->|"frozen history since ISS-931.<br/>reads as: which tools the<br/>un-upgraded fleet leaned on"| H1
+  TWIN -->|yes| DELETE["DELETE - registry, factory,<br/>server registration, CHANGELOG.<br/>Never deprecate: two paths is two paths"]
 
   classDef stop fill:#f7ecef,stroke:#8a3b52,color:#5c2436;
   classDef go fill:#e9f3ec,stroke:#1f6f4a,color:#17402c;
-  classDef note fill:#fbf5e8,stroke:#a06a1f,color:#6b4712;
-  class NEVER,FENCED,REFUSE1,REFUSE2,REFUSE3,STOP2 stop;
+  class NEVER,FENCED,REFUSE0,REFUSE1,REFUSE2,REFUSE3,STOP2 stop;
   class DELETE go;
-  class DEV note;
 </pre></div>
 
-<h2>Half 1 is a version, and it is readable from a box</h2>
+<h2>Rule 2 is a version, and it is readable from a box</h2>
 <p>The <code>forge</code> CLI is built in <a
 href="https://github.com/SidCorp-co/forge-plugin">forge-plugin</a>, not here, so this repo cannot
 see which tools it names. <code>ISS-508</code> moved every verb to a path under <code>/api</code>;
@@ -80,9 +87,12 @@ directory you can grep:</p>
 <div class="rule">
 <code>~/.config/forge-runner/marketplaces/sidcorp-co__forge-plugin/plugin</code> — version
 <b>3.35.140</b>, carrying <code>src/tracker/rpc.mjs</code> and <b>no</b>
-<code>src/tracker/rest.mjs</code>. <b>When <code>rest.mjs</code> is present on every box, half 1
-is discharged for all nine tools at once.</b> That is the observable end state; there is no issue
-to wait on.
+<code>src/tracker/rest.mjs</code>. <b>When <code>rest.mjs</code> is present on every box, the
+<em>wrapped verbs</em> are discharged together.</b> That is the observable end state for them, and
+it is a file rather than an issue. It does <b>not</b> cover <code>forge call</code>, the raw
+<code>tools/call</code> passthrough whose purpose is the tools no verb wraps — whether 3.35.141+
+still ships it against <code>/mcp</code> is not knowable from this repo, and guessing is what the
+forge-plugin carve-out exists to prevent.
 </div>
 
 <p>This CLI holds a <code>forge_pat_prd_*</code> — a PAT, not a device token — so
@@ -91,27 +101,39 @@ away, and its calls land as <code>token_id</code> traffic that a device split ca
 The nine, with the call site in the installed copy:</p>
 
 <table>
-<thead><tr><th>Tool</th><th>Where the installed 3.35.140 copy calls it</th></tr></thead>
+<thead><tr><th>Tool</th><th>Occurrences under <code>plugin/src</code> in the installed 3.35.140 copy</th></tr></thead>
 <tbody>
-<tr><td><code>forge_issues</code></td><td><code>src/tracker/issues.mjs</code> and six siblings — 34 references</td></tr>
-<tr><td><code>forge_knowledge</code></td><td>10 references</td></tr>
-<tr><td><code>forge_guide</code></td><td><code>src/guides/guides.mjs</code> — 7 references</td></tr>
-<tr><td><code>forge_comments</code></td><td><code>src/tracker/comments.mjs</code> — 6 references</td></tr>
-<tr><td><code>forge_project_pm</code></td><td>4 references</td></tr>
-<tr><td><code>forge_config</code></td><td><code>src/tracker/project-config.mjs:54</code></td></tr>
-<tr><td><code>forge_memory.search</code></td><td><code>src/tracker/neighbours.mjs:8</code></td></tr>
-<tr><td><code>forge_projects.list</code></td><td><code>src/tracker/rpc.mjs:262</code></td></tr>
-<tr><td><code>forge_projects.get</code></td><td><code>src/tracker/project-config.mjs:118</code></td></tr>
+<tr><td><code>forge_issues</code></td><td>40, across 16 files incl. <code>src/tracker/issues.mjs</code>, <code>src/flow/*.mjs</code></td></tr>
+<tr><td><code>forge_knowledge</code></td><td>15 — <code>src/tools/knowledge.mjs</code>, <code>doctor.mjs</code>, <code>resolve/visibility.mjs</code></td></tr>
+<tr><td><code>forge_guide</code></td><td>8 — <code>src/commands.mjs</code>, <code>src/tools/doctor.mjs</code></td></tr>
+<tr><td><code>forge_comments</code></td><td>7 — <code>src/tracker/comments.mjs</code> and three others</td></tr>
+<tr><td><code>forge_project_pm</code></td><td>6 — <code>src/commands.mjs</code>, <code>doctor.mjs</code>, <code>resolve/visibility.mjs</code></td></tr>
+<tr><td><code>forge_memory.search</code></td><td>3 — <code>src/tracker/neighbours.mjs:8</code>, <code>doctor.mjs:132</code>, <code>guides/guides.mjs</code></td></tr>
+<tr><td><code>forge_projects.list</code></td><td>2 — <code>src/tracker/rpc.mjs:262</code>, <code>src/resolve/visibility.mjs:35</code></td></tr>
+<tr><td><code>forge_config</code></td><td>1 — <code>src/tracker/project-config.mjs:54</code></td></tr>
+<tr><td><code>forge_projects.get</code></td><td>1 — <code>src/tracker/project-config.mjs:118</code></td></tr>
+<tr><td><code>forge_memory.write</code>, <code>forge_memory.feedback</code></td><td><b>0 hard-coded.</b> Reached through <code>forge call</code>, and <code>src/guides/guides.mjs</code> tells agents to do exactly that</td></tr>
 </tbody>
 </table>
 
-<p>The last three were filed <em>free to go</em> until this was measured, and
+<p><code>forge_memory.search</code>, <code>forge_projects.get</code> and
+<code>forge_projects.list</code> were all filed <em>free to go</em> until this was measured, and
 <code>forge_projects.create</code> was listed as blocked with <b>zero</b> call sites in the
-installed copy. Deleting <code>forge_memory.search</code> on the old list would have broken every
-box's <code>forge</code> — the <code>7f0c5a56</code> shape, where six tools went on a bad
-measurement and the fleet read <code>not_found</code> at 09:07 the same day.</p>
+installed copy.</p>
 
-<h2>Half 2 has a source the database does not hold</h2>
+<p><b>What deleting one costs differs per call site, and only one of the three is a hard break.</b>
+<code>callTool</code> (<code>src/tracker/rpc.mjs:189</code>) returns a refusal object instead of
+exiting when its <code>soft</code> flag is set. <code>forge_projects.list</code> is reached through
+<code>idOfProject(false)</code> — not soft — so it exits: that one is the <code>7f0c5a56</code>
+shape, where six tools went on a bad measurement and the fleet read <code>not_found</code> the same
+day. <code>forge_memory.search</code> degrades to a note (<code>neighbours.mjs</code> returns
+<code>{hits: [], note: …}</code>) and <code>forge_projects.get</code> degrades to
+<code>null</code>. A silent degradation is still a caller losing a capability — that is the reason
+to refuse, not a reason to discount it — but the blast radius is "recall quietly stops working"
+rather than "every command exits", and a rule whose stated cost is overstated is one a reader
+eventually stops trusting.</p>
+
+<h2>Rule 3 has a source the database does not hold</h2>
 <p><code>forge_memory.search</code> has a second live caller that no audit query would have
 surfaced: <code>packages/runner/crates/forge-runner-core/src/workspace/orientation.rs</code> writes
 <em>"Recall memory FIRST — <code>forge_memory_search({...})</code>"</em> into every project
@@ -119,7 +141,7 @@ workspace's orientation. Every agent on every box is told to call it by name, in
 ships. <span class="bad">Grep the runner's bundled prose as well as the tables.</span></p>
 
 <div class="rule">
-<b>Half 2 cannot be finished from a runner box.</b> It needs whole-table
+<b>Rule 3 cannot be finished from a runner box.</b> It needs whole-table
 <code>mcp_audit_log</code> counts, and the only route over that table is
 <code>GET /api/pat/:id/audit</code> — one token, last-N rows — with <code>/api/pat</code> off
 <code>PAT_ALLOWED_PREFIXES</code> by design. An agent session that reaches this node stops and does
@@ -131,13 +153,13 @@ rule stops being written against a number no agent can read.
 <table>
 <thead><tr><th>Node</th><th>Refusal</th><th>The failure it exists to prevent</th></tr></thead>
 <tbody>
-<tr><td>half 1</td><td>blocked on a fleet upgrade</td>
+<tr><td>rule 2</td><td>blocked on a fleet upgrade</td>
     <td>Deleting a tool the fleet's CLI names. The caller does not degrade — it reads
     <code>not_found</code> mid-run, on a box nobody is watching</td></tr>
-<tr><td>half 2</td><td>name the caller</td>
+<tr><td>rule 3</td><td>name the caller</td>
     <td>Widening a filter, or keeping the tool quietly registered. Both leave two live paths,
     which is the condition this whole shrink exists to remove</td></tr>
-<tr><td>half 2, unmeasurable</td><td>stop, do not estimate</td>
+<tr><td>rule 3, unmeasurable</td><td>stop, do not estimate</td>
     <td>A green that means nothing. The runtime could not represent the failure, so a pass is not
     weak evidence — it is none</td></tr>
 <tr><td>replacement twin</td><td>wrong middleware</td>

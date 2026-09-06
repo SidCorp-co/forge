@@ -1,0 +1,111 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · metrics-bucketing — a row becomes a point, or silently does not</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --lock:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
+</style>
+<main>
+
+<h1>metrics-bucketing — a row becomes a point, or silently does not</h1>
+<p class="sub">How one timestamped row reaches one point on a chart, and the one place the answer
+can be wrong without anything going red. Owner:
+<code>packages/core/src/metrics/queries.ts</code>,
+<code>packages/core/src/admin/aggregate-routes.ts</code>.</p>
+
+<h2>The bucket key is computed twice, in two languages</h2>
+<p>A time series here is <em>dense</em>: every bucket in the window appears, whether or not any row
+landed in it, so a chart plots a continuous line instead of a ragged one. That requires the list of
+buckets to exist independently of the data — so it is built in JavaScript
+(<code>bucketTimestamps</code>, <code>bucketBoundaries</code>) — while the counts are grouped in
+SQL by <code>date_trunc</code>. The two are then joined <b>on string equality of an ISO
+timestamp</b>.</p>
+
+<div class="rule">
+<b>Nothing checks that the two halves floor to the same instant.</b> They are joined by a map
+lookup, and a lookup that misses is indistinguishable from a bucket that genuinely had no rows.
+That is the whole hazard of this flow.
+</div>
+
+<div class="board"><pre class="mermaid">
+flowchart TD
+  ROW["a row with a timestamptz<br/>started_at · recorded_at · created_at"] --> SQL["SQL: date_trunc(unit, ts …)<br/>GROUP BY 1"]
+  REQ["GET /api/projects/:id/metrics<br/>days · bucket"] --> JS["JS: bucketTimestamps(days, bucket, now)<br/>floors with setUTCHours(0)"]
+
+  SQL --> KEY1["key from the driver<br/>→ Date → toISOString()"]
+  JS --> KEY2["key list, UTC midnights"]
+
+  KEY1 --> JOIN{"densifyScalar / toBucketMap<br/>byBucket.get(ts)"}
+  KEY2 --> JOIN
+
+  JOIN -->|"keys equal"| POINT["point carries the row's value"]
+  JOIN -->|"keys differ"| ZERO["point carries the DEFAULT<br/>n: 0 · rate: null"]
+
+  ZERO --> LIE["200 OK · complete series<br/>every bucket present<br/><b>every number wrong</b><br/>nothing logged, nothing thrown"]
+
+  classDef bad fill:#f7ecef,stroke:#8a3b52,color:#5c2436;
+  classDef go fill:#e9f3ec,stroke:#1f6f4a,color:#17402c;
+  class ZERO,LIE bad;
+  class POINT go;
+</pre></div>
+
+<h2>What made the keys differ</h2>
+<p><code>date_trunc(unit, ts)</code> on a <code>timestamptz</code> floors in the <b>session</b>
+timezone, not UTC. The JS half floors in UTC unconditionally. So the two agree only when the
+database session happens to be UTC — which CI is, and which is why this held green for as long as
+it did.</p>
+
+<table>
+<thead><tr><th>Session timezone</th><th>A row at <code>2026-09-06T21:00Z</code>, daily bucket</th><th>JS key</th><th>Match</th></tr></thead>
+<tbody>
+<tr><td><code>UTC</code></td><td><code>2026-09-06T00:00:00Z</code></td><td><code>2026-09-06T00:00:00.000Z</code></td><td>yes</td></tr>
+<tr><td><code>Asia/Ho_Chi_Minh</code></td><td><code>2026-09-07T00:00+07</code> = <code>2026-09-06T17:00:00Z</code></td><td><code>2026-09-06T00:00:00.000Z</code></td><td class="bad">no — and on a daily bucket <em>no</em> key ever matches, so the whole series is defaults</td></tr>
+</tbody>
+</table>
+
+<p>The fix is at the query, not at the connection: every bucketed query reads
+<code>date_trunc(unit, ts AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'</code>, which yields the same
+instant on any session. <span class="bad">Setting the session timezone instead is not equivalent</span>
+— a transaction-mode pooler drops session <code>SET</code>s, and the failure would come back in
+exactly the silent form, with no line of this code changed to point at.</p>
+
+<h2>Why the test reads the source</h2>
+<div class="rule">
+<code>metrics/bucket-timezone.test.ts</code> asserts the <em>spelling</em> of the SQL rather than
+running it. That looks weaker than an end-to-end assertion and is the stronger one available here:
+the failure only exists on a non-UTC session, CI is UTC, so an end-to-end test of this behaviour
+<b>cannot go red on CI</b> — a green from it would be evidence of nothing. A source assertion goes
+red in every timezone, and it goes red naming the expression that was reverted.
+</div>
+
+<p>The reverse also holds and is worth stating: the integration suite is the only place this repo
+runs against a real Postgres, so a developer box whose cluster is not UTC is the only environment
+that ever reproduced this. That is where it was found.</p>
+
+<h2>Adding a bucketed metric</h2>
+<table>
+<thead><tr><th>Step</th><th>Rule</th></tr></thead>
+<tbody>
+<tr><td>the SQL</td><td><code>date_trunc(${unit}, &lt;col&gt; AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS bucket</code>, <code>GROUP BY 1</code>. The unit is a <b>bound parameter</b>, never interpolated</td></tr>
+<tr><td>the key list</td><td>reuse <code>bucketTimestamps</code> / <code>bucketBoundaries</code>. Do not floor by hand — a second flooring is a third place for these to disagree</td></tr>
+<tr><td>the join</td><td><code>densifyScalar</code> or <code>densifyGrouped</code>, which is what makes the series dense and what silently swallows a key mismatch</td></tr>
+<tr><td>the count</td><td><code>bucket-timezone.test.ts</code> asserts the total number of anchored sites. A new query raises it in the same commit — that is deliberate, so adding one is a decision rather than a drift</td></tr>
+</tbody>
+</table>
+
+<p><a href="index.html">← all flows</a></p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>
