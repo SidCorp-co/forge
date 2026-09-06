@@ -11,6 +11,39 @@
 
 ### Added
 
+- **A status now says only WHERE the work is, and three row fields answer what exists.** Four runs
+  on 2026-09-06 reached one identical real state — implemented, gates run, branch pushed, PR open,
+  nothing merged — and recorded four different statuses (`developed`, `draft`, `waiting`,
+  `in_progress`). None was careless: `developed` carried a **placement** promise from this repo's
+  lifecycle guide (work built outside the pipeline enters at the review gate) and an **evidence**
+  promise from the driver plugin's own contract (the mark is earned by the merged commit and the
+  base it landed on), and direct-ship is where the two come apart permanently — placement is earned
+  when the branch is pushed, the merge evidence is never earned at all by an actor bound not to
+  merge. The generalisation underneath: the tracker had assumed the actor who finishes work can
+  also land it.
+
+  `pipeline/status-assertions.ts` now declares, exhaustively and per status, a `gate` and a
+  `nextActor` — two fields, both placement, and no field in which a status could claim that code
+  landed. A status added to the schema without an entry fails `tsc`, so the next rung cannot
+  inherit the ambiguity by saying nothing. Evidence moved to three named row fields read directly:
+  `merged_at`, `sessionContext.branch`, and the implementation handoff's `commitSha`. The
+  agent-facing lifecycle guide says the same in the same words, and
+  `docs/flows/issue-status-placement.html` draws it. No status was added: `developed` was already
+  the right rung, and what made it unusable was a promise it should never have carried.
+
+  One consequence worth stating: on this lane `open` is the only status a job dispatches at, so
+  every other live status is already waiting on a person. That is asserted against
+  `autonomousStepFor` rather than described.
+
+- **A `draft` somebody is already working can say so, without dispatching an agent into their
+  worktree.** `draft → in_progress` was refused outright, and the only legal forward move — `open`
+  — auto-triages and mints a `drive` job. ISS-933 therefore sat at `draft` with a green-gated PR
+  open on it, because the honest move was no move. `in_progress` joins `DRAFT_EXIT_TARGETS` (now
+  five), the web-v2 status menu offers it, and nothing is enqueued: the driver dispatches at `open`
+  and nowhere else. The autonomous wedge pass cannot roll it back either — that pass requires a
+  prior `drive` job row and a running issue run, and a draft worked by hand has neither.
+
+
 - **An agent working an issue on a project that keeps modules is now told they exist, and how to
   set the issue's primary one.** ISS-593 made a module a label with `kind='module'` and gave an
   issue a primary through `issue_labels.is_primary`, but nothing told the agents doing the work:
@@ -1131,6 +1164,18 @@
   set is now 59.
 
 ### Fixed
+
+- **An issue whose code merged and deployed is no longer re-dispatched as claimable work.**
+  ISS-920 and ISS-931 both had their change on `origin/main` and serving production traffic while
+  the tracker read `open`, because the run that owed the close died before writing it. The
+  reconciler's rescue pass selects exactly that shape — `open`, no active job — and re-enqueued a
+  drive job for it every minute. `merged_at IS NULL` is now a clause on that query, and the refusal
+  is not silent: a new sweeper pass (`detectOwedCloses`) surfaces merged code sitting under a live
+  status with no job and no running run to the project's admins, deduped on
+  `issue:<id>:owed-close` and cleared when the issue reaches a terminal placement. Neither pass
+  closes the issue — `merged_at` is caller-asserted, so the honest act is to put it in front of
+  someone who can check the branch.
+
 
 - **`POST /api/memory/search` ignored the `strategy` you asked for and told you it had honoured
   it.** The route validated `strategy` in its body schema and then never passed it to

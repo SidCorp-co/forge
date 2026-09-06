@@ -20,8 +20,8 @@ import { logger } from '../logger.js';
 import type { Actor } from './activity.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
-  AUTONOMOUS_JOB_TYPE,
   AUTONOMOUS_SKILL_NAME,
+  autonomousStepFor,
   isAutonomous,
 } from './autonomous-mode.js';
 import { ActiveJobConflictError, insertAndEnqueueJob } from './enqueue-helper.js';
@@ -32,20 +32,9 @@ export {
   AUTONOMOUS_ENTRY_STATUS,
   AUTONOMOUS_JOB_TYPE,
   AUTONOMOUS_SKILL_NAME,
+  autonomousStepFor,
   isAutonomous,
 } from './autonomous-mode.js';
-
-/**
- * What the autonomous driver wants done for an issue that just landed on
- * `status`: a single drive job at the entry status, and nothing anywhere else.
- */
-// cm:guard returning `null` here must mean "enqueue nothing", NOT "no skill is registered" — the staged path reads a null resolution as a misconfiguration and pauses the run with a missing-skill comment, which on an autonomous project would park every issue the moment its agent moved it
-export function autonomousStepFor(
-  status: IssueStatus,
-): { type: JobType; skillName: string } | null {
-  if (status !== AUTONOMOUS_ENTRY_STATUS) return null;
-  return { type: AUTONOMOUS_JOB_TYPE, skillName: AUTONOMOUS_SKILL_NAME };
-}
 
 // cm:guard the runId MUST be in the prompt — every phase endpoint takes it as a path segment, and the agent has no other way to learn its own run without spending a call on the pipeline-runs list route. It named `forge_phase` until 2026-09-02; the argument survived the move to REST, the tool did not.
 // cm:guard the phase example IS the phase vocabulary: `phase_journal.phase` is free-form and no gate reads it, so whatever name this literal shows is what lands in the table. It read `phase-1` from 2026-09-02 until ISS-921 and 542 rows landed named `phase-0`..`phase-8`, which no reader can interpret and which do not mean the same step run to run. Keep a descriptive name, keep BOTH example lines on the SAME name, and never reintroduce an ordinal — `autonomous-dispatch.test.ts` fails on the digit, not on the wording.

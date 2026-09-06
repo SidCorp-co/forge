@@ -141,15 +141,15 @@ describe("allowedTransitions", () => {
 		const from = allowedTransitions("approved");
 		expect(from).not.toContain("draft");
 		expect(from).not.toContain("approved");
-		// permissive guard: every non-draft status is reachable from a live state
 		expect(from).toContain("in_progress");
 		expect(from).toContain("on_hold");
 		expect(from).toContain("reopen");
 	});
-	// cm:guard spell all four out and keep `dropped` among them — this list is a SECOND copy of core's DRAFT_EXIT_TARGETS, and core's refusal message renders that constant member by member, so any member missing here is a menu that hides a discard the server offers the user by name. Until 2026-08-27 (ISS-787) `dropped` was absent and `closed` was the only discard on offer: the one that stamps merged_at and unblocks every dependent of work that never existed.
-	it("restricts draft to promote, direct-ship, or either discard (ISS-431)", () => {
+	// cm:guard spell all five out and keep `dropped` among them — this list is a SECOND copy of core's DRAFT_EXIT_TARGETS, and core's refusal message renders that constant member by member, so any member missing here is a menu that hides an exit the server offers the user by name. Until 2026-08-27 (ISS-787) `dropped` was absent and `closed` was the only discard on offer: the one that stamps merged_at and unblocks every dependent of work that never existed.
+	it("restricts draft to promote, take up, direct-ship, or either discard", () => {
 		expect(allowedTransitions("draft")).toEqual([
 			"open",
+			"in_progress",
 			"developed",
 			"closed",
 			"dropped",
@@ -202,13 +202,14 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 		// a commonly-valid target survives
 		expect(result).toContain("on_hold");
 	});
-	it("narrows hard when a draft row is in the mix (a draft's four exits bound the whole selection)", () => {
+	it("narrows hard when a draft row is in the mix (a draft's five exits bound the whole selection)", () => {
 		const rows = [
 			row({ id: "a", status: "draft" }),
 			row({ id: "b", status: "approved" }),
 		];
 		expect(bulkAllowedStatuses(rows)).toEqual([
 			"open",
+			"in_progress",
 			"developed",
 			"closed",
 			"dropped",
