@@ -113,7 +113,17 @@ deleted 2026-09-06 under the second half of that reading; `GET /api/memory/revis
 `requireAuth()` and would refuse a device, which is the same shape `/api/skill-facts` had and is
 only safe here because the count is zero rather than small. **This is an amnesty and it has a
 price:** it is available exactly once per tool, on evidence of zero rows over the whole table under
-both spellings, and it buys nothing for any tool with traffic. If a device caller for such a tool
+both spellings, and it buys nothing for any tool with traffic.
+
+**"Whole table" is a lifetime count only while the pruner stays unwired.** `mcp_audit_log` declares
+90-day retention — `drizzle/migrations/0063_mcp_audit_log.sql` says so and
+`auth/mcp-audit.ts:enforceMcpAuditRetention` implements it — and **nothing calls that function**.
+So today a zero really does mean "never called". Wire it to a tick and the same query answers
+"not called in 90 days", which would license deleting a quarterly-called tool with nothing going
+red: the `7f0c5a56` shape again, arriving through the measurement rather than the column. Whoever
+wires the pruner rewrites this paragraph in the same commit. Until then, read that function before
+spending a zero, and note that `forge_memory.revisions` — added `f568c503` on 2026-09-05, deleted
+the next day — is a zero under any retention, so it did not test this clause. If a device caller for such a tool
 ever appears in `mcp_audit_log` after a deletion taken this way, the reading is wrong and the tool
 comes back.
 

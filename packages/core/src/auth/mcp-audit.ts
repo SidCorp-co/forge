@@ -6,9 +6,9 @@
  * to a console.warn (a future PR will route these to Sentry once the
  * scrubber is sure to redact PAT plaintext from breadcrumbs).
  *
- * Retention: rows older than 90 days are deleted by `enforceMcpAuditRetention()`
- * — called from the existing stale-detector cadence. A follow-up PR can
- * migrate this table to monthly RANGE partitions for cheaper retention.
+ * Retention is DECLARED at 90 days and not enforced: nothing calls
+ * `enforceMcpAuditRetention()`. The docstring here used to say the
+ * stale-detector cadence did; it does not, and `grep` says so.
  */
 
 import { createHash } from 'node:crypto';
@@ -73,6 +73,7 @@ export function writeMcpAudit(row: AuditRow): void {
   })();
 }
 
+// cm:guard nothing calls this, so the table is unpruned and a `count(*)` over it really is a lifetime count — which is exactly what `mcp/registered-tools.ts` and `docs/architecture/agent-surface.md` spend when they clear a tool for deletion on "zero rows, whole table". Wiring this to a tick turns that evidence into "zero rows in 90 days" and licenses deleting a quarterly-called tool with nothing going red, so whoever wires it changes that rule in the same commit.
 /** Delete audit rows older than 90 days. Idempotent; call on a cron tick. */
 export async function enforceMcpAuditRetention(): Promise<number> {
   const result = await db

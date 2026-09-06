@@ -383,7 +383,8 @@
   `text_content` on their own path and a record wired into one of them misses the next writer added.
   Identical text records nothing, so the embedding backfill and `feedback` mint no history, and
   lifecycle mirrors (issue/comment/job/decision) are excluded — their text tracks a record that keeps
-  its own. Read it at `GET /api/memory/revisions?projectId=…&sourceRef=…` or `forge_memory.revisions`.
+  its own. Read it at `GET /api/memory/revisions?projectId=…&sourceRef=…` — the MCP tool that also
+  served it is removed in this same release, see below.
   The four wrong-day rows repaired on 2026-09-05 were recoverable only because the deleted absorb had
   left archived snapshots behind; a repeat would have had nothing to read.
 
