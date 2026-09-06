@@ -334,6 +334,71 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The residency claim itself: the pane's parent is the tmux server, so a
+    /// daemon restart re-enters the session it left rather than replacing it.
+    // cm:guard the PID comparison is the assertion, not `created == false`. A second `ensure` that killed the pane and started a fresh one would also report "created nothing" while the master lost every word of the pass it was in the middle of — the two are indistinguishable from the return value alone.
+    // cm:guard the second `ensure` passes a DIFFERENT argv on purpose, because that is what a restarted daemon carrying a new build sends. A reuse path that read the argv would relaunch here and the test would catch it; one that matched on the name alone is what the design needs.
+    #[tokio::test]
+    async fn a_restart_re_enters_the_pane_it_left_rather_than_starting_a_second_one() {
+        if !available() {
+            eprintln!("tmux is not installed here — the residency test cannot run");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("forge-resident-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let name = session_name("forge-test", &format!("r{}", std::process::id()));
+        let _ = kill(&name).await;
+
+        let pane_pid = || async {
+            let out = tmux(&[
+                "display-message",
+                "-p",
+                "-t",
+                &pane_target(&name),
+                "#{pane_pid}",
+            ])
+            .await
+            .expect("tmux must answer");
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+
+        assert!(
+            ensure(
+                &name,
+                &dir,
+                &["sleep".to_string(), "300".to_string()],
+                &[],
+                None
+            )
+            .await
+            .expect("the session must start"),
+            "a fresh name creates the session"
+        );
+        let before = pane_pid().await;
+        assert!(!before.is_empty(), "the pane must report a pid");
+
+        assert!(
+            !ensure(
+                &name,
+                &dir,
+                &["sleep".to_string(), "600".to_string()],
+                &[],
+                None
+            )
+            .await
+            .expect("the restart must find it"),
+            "a live name starts no second process"
+        );
+        assert_eq!(
+            before,
+            pane_pid().await,
+            "the process a master is running must survive the daemon that started it"
+        );
+
+        kill(&name).await.expect("kill is infallible");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     // cm:guard tmux runs the `pipe-pane` string through a shell, so this is an injection boundary and not a formatting nicety. The assertion runs the quoted form through a REAL shell rather than pattern-matching the escape, because the escape `'\''` legitimately contains every character a pattern would look for — a string test here passes on correct output and on a hole alike.
     #[test]
     fn a_transcript_path_survives_the_shell_tmux_runs_it_through() {
