@@ -46,6 +46,7 @@ function submitManifest(start: GitHubConnectStart): void {
   form.submit();
 }
 
+// cm:guard bind github at `prod` and offer no environment choice — the adapter declares hasEnvironments false and the drawer reads rows[0] for such providers, so a binding stamped `staging` is not a second environment, it is a row every prod-scoped lookup walks straight past
 function permissionRows(manifest: Record<string, unknown>): [string, string][] {
   const perms = manifest.default_permissions;
   if (!perms || typeof perms !== "object") return [];
@@ -124,7 +125,6 @@ function UseExistingApp({
   const repos = useGitHubRepositories(projectId, connectionId);
   const bind = useBindExistingConnection();
   const [fullName, setFullName] = useState("");
-  const [environment, setEnvironment] = useState("prod");
 
   const options = useMemo(
     () => (repos.data?.repositories ?? []).map((r) => ({ value: r.fullName, label: r.fullName })),
@@ -139,7 +139,7 @@ function UseExistingApp({
       id: connectionId,
       body: {
         projectId,
-        environment: environment === "staging" ? "staging" : "prod",
+        environment: "prod",
         config: {
           owner: chosen.owner,
           repo: chosen.repo,
@@ -186,18 +186,6 @@ function UseExistingApp({
           </p>
         )}
 
-        <Field label="Environment">
-          <NativeSelect
-            value={environment}
-            onChange={(e) => setEnvironment(e.target.value)}
-            aria-label="Environment"
-            options={[
-              { value: "prod", label: "Production" },
-              { value: "staging", label: "Staging" },
-            ]}
-          />
-        </Field>
-
         {bind.isError && <Banner tone="danger">{formatApiError(bind.error)}</Banner>}
 
         <div className="flex items-center gap-3">
@@ -216,15 +204,10 @@ function UseExistingApp({
 function CreateApp({ projectId, onBack }: { projectId: string; onBack: (() => void) | null }) {
   const connect = useGitHubConnect(projectId);
   const [org, setOrg] = useState("");
-  const [environment, setEnvironment] = useState("prod");
   const [orgId, setOrgId] = useState<string | undefined>(undefined);
 
   const start = async () => {
-    const res = await connect.mutateAsync({
-      org: org.trim() || undefined,
-      environment,
-      orgId,
-    });
+    const res = await connect.mutateAsync({ org: org.trim() || undefined, orgId });
     submitManifest(res);
   };
 
@@ -247,18 +230,6 @@ function CreateApp({ projectId, onBack }: { projectId: string; onBack: (() => vo
             onChange={(e) => setOrg(e.target.value)}
             placeholder="SidCorp-co"
             aria-label="GitHub organization"
-          />
-        </Field>
-
-        <Field label="Environment">
-          <NativeSelect
-            value={environment}
-            onChange={(e) => setEnvironment(e.target.value)}
-            aria-label="Environment"
-            options={[
-              { value: "prod", label: "Production" },
-              { value: "staging", label: "Staging" },
-            ]}
           />
         </Field>
 

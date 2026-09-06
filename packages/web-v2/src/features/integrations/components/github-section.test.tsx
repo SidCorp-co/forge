@@ -136,6 +136,13 @@ describe("GitHubSection", () => {
     expect(connectMutate).not.toHaveBeenCalled();
   });
 
+  it("offers no environment choice, because github declares hasEnvironments false", () => {
+    connectionItems.mockReturnValue([{ id: "conn-1", provider: "github", active: true }]);
+    render(<GitHubSection projectId="proj-1" />);
+
+    expect(screen.queryByLabelText("Environment")).toBeNull();
+  });
+
   it("refuses to bind until a repository is chosen", () => {
     connectionItems.mockReturnValue([{ id: "conn-1", provider: "github", active: true }]);
     render(<GitHubSection projectId="proj-1" />);
