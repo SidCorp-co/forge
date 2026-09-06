@@ -131,6 +131,24 @@ three disclosed honestly and moved on. Nobody lied and nobody fixed it. "Pre-exi
 "untouched" and "out of scope" are reasons to **record**, never reasons to go quiet, and never
 reasons to go green.
 
+### The one carve-out: forge-plugin is reached by issue, never by diff
+
+**A defect in `github.com/SidCorp-co/forge-plugin` leaves as an issue on the `forge-plugin`
+project, and you do not edit that repo from a job in this one.** The `forge` CLI, the session
+hooks and `plugin/skills/issue-flow` live there; a verb that refuses wrongly, a missing way out, a
+skill naming something this repo no longer has — all of it files there and is named in your
+comment under `Extra fixes:` as **reported**, not fixed.
+
+This is the single exception to *fix-it-now*, and it is a boundary rather than an amnesty: the two
+repos ship on different clocks, and a change landing there from here is a change none of this
+repo's fifteen gates has seen and none of that repo's reviewers asked for. The defect still leaves
+your hands owned — it leaves owned by a row somebody can open, which is exactly what
+`file-instead-of-fix` refuses everywhere else and requires here.
+
+The pair is not symmetric. Nothing in this repo can gate that one: a change to the five driver
+statuses, the drive prompt or the phase endpoints has a second half over there, and the
+`cm:guard`s naming it are the only record of the coupling.
+
 ## Green is a claim about one proposition
 
 **A green check is evidence for exactly one thing: that assertion held in the runtime that ran
