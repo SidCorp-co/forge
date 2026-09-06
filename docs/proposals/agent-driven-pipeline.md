@@ -121,6 +121,24 @@ every dependent when the second step is forgotten.
 it. `phase` is agent-declared, free vocabulary, and **no gate reads it** — a wrong phase can never
 wedge an issue.
 
+What free vocabulary costs is paid by the seed, not by a gate. The drive prompt's worked example in
+`autonomous-dispatch.ts` showed the literal `phase-1` from 2026-09-02, agents copied it, and 542
+rows landed named `phase-0`..`phase-8` — unreadable, and not the same step from one run to the next.
+ISS-921 changed the example, which is the only lever there is: a gate on the name would turn a
+descriptive vocabulary into a contract the agent can break by being descriptive. Those rows stay as
+written; `phase_step_durations.step_named` is false for them, so an aggregate excludes the era
+without a date and without guessing what any of them meant.
+
+**Still open, and not fixable from this repo.** The agent reads two things in one context window,
+and the second is `guides/skills/issue-flow/guide.md` in `SidCorp-co/forge-plugin`, whose headings
+are `## Phase 4 — Implement` and which says nothing about what to declare. That is the other seed:
+`phase-4-implement`, `phase-0-learn-project`, `phase-5-verify` and `phase-5-prove` are what it
+produces when a session tries to be descriptive and keeps the ordinal anyway — and the last two are
+one step under two names. The change wanted there is a declarable slug on each heading. `forge
+feedback` is the route and it is refused from a runner box: the job credential sees only the project
+it was minted for (`No Forge project has slug forge-plugin. Seen: forge-dev`, 2026-09-06), so this
+needs a person with access to that backlog. The note to file is on ISS-921.
+
 ### Phases inside a session
 
 ```mermaid
