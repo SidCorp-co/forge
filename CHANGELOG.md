@@ -986,6 +986,30 @@
   already closed — 81 of 4,247 measured — is reported at ERROR level instead of being stamped onto
   a run that cannot witness it. (ISS-922)
 
+- **The GitHub App manifest sent GitHub three URLs this core does not serve.** `buildAppManifest`
+  built `redirect_url`, `setup_url` and `hook_attributes.url` from `APP_BASE_URL`, which is the WEB
+  frontend — `env.ts` says so, and `auth/email.ts` already resolves the same split for verification
+  links. On a subdomain-split deploy all three landed on the Next.js app and 404'd. The redirect
+  fails visibly, and at the worst moment: GitHub has already created the App, the signed state is
+  spent, and only a hand-edit recovers it. `hook_attributes` fails **silently** and forever — the
+  integration renders as configured while every delivery misses. The manifest now takes the web and
+  API origins separately; only the App's homepage is the web one.
+
+  Rather than trust the env alone, the connect route now **refuses before anything is created** when
+  the origin it would give GitHub is not the origin the request reached core on, naming both and
+  saying which variable to set. The check reads the request only to refuse — the callback is where
+  GitHub delivers the code that yields the App's private key, so a forged `Host` must never be able
+  to choose that URL, and here the worst it can do is deny.
+
+- **The last step of the GitHub install refused the case its own guard described.** `setup_url`
+  carries no `state` when the operator installs the App from its settings page — which is where
+  GitHub lands you after creating it. The guard on that route said so, and said refusing would
+  strand the flow with the App already created; the line under it refused anyway. The binding is now
+  identified from the installation itself, and ownership is **proved** by asking GitHub with each
+  candidate App's own JWT, because an App JWT reads only its own installations. Picking the caller's
+  single unconfigured binding would have worked until a second project connected, then written one
+  project's installation id onto another's.
+
 - **Two more shapes of run that showed as live work no box was doing.** ISS-923 closed `running`
   runs whose jobs had all finished; a `paused` run in the same state, and an issue run that never
   grew a job at all, were reached by nothing and kept inflating the live-run count. Both are now
