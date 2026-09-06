@@ -88,9 +88,7 @@ const TASK_STATUS_TONE: Record<
   done: "green",
 };
 
-// Human labels for the task lifecycle — the Tasks tab badge must read "In
-// progress", not the raw wire value `in_progress` (ISS-349, matching the issue
-// label helpers in derive.ts).
+// cm:edge naming -> packages/web-v2/src/features/issues/derive.ts — the same kernel-status-to-human-label job the issue helpers do, kept separate only because tasks carry their own status set; ISS-349, and the badge must never render the raw wire value `in_progress`
 const TASK_STATUS_LABELS: Record<TaskRow["status"], string> = {
   backlog: "Backlog",
   todo: "To do",

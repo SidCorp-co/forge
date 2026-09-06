@@ -116,7 +116,7 @@ is re-sent to every master this box starts, so it survives this session.\n\n",
 }
 
 /// One pass: the pool as it stands, and nothing else.
-fn pass_prompt(session_id: &str, issue_keys: &[String]) -> String {
+fn pass_prompt(session_id: &str, issue_keys: &[String], backlog_keys: &[String]) -> String {
     let mut out = format!(
         "Pass. Your master session id is `{session_id}` — pass it as `--session-id`.\n\nIssues \
 with claimable work right now:\n"
@@ -125,6 +125,19 @@ with claimable work right now:\n"
         out.push_str("- ");
         out.push_str(id);
         out.push('\n');
+    }
+    // cm:guard name the backlog as a SEPARATE list and say what it is not. Folded into the list above, a master reads `pool claim <issueId>` as the next step and burns its turn on a refusal core answers as `not_found` — a message that names the job rather than the mistake, so nothing in the transcript says why. The two lists answer different questions and the prompt is where that distinction has to survive.
+    if !backlog_keys.is_empty() {
+        out.push_str(
+            "\nBacklog — declared visible, NOT claimable. No job and no run exists for these; \
+`forge-runner pool promote <issueId>` is what turns one into work, and whether any of them is \
+worth pulling up now is your call:\n",
+        );
+        for id in backlog_keys {
+            out.push_str("- ");
+            out.push_str(id);
+            out.push('\n');
+        }
     }
     out.push_str(
         "\nTake the time you need to decide, then stop. Claim what you are confident about, \
@@ -389,7 +402,8 @@ async fn sweep(client: &CoreClient, cfg: &Config, masters: &Arc<Masters>) -> Dur
             continue;
         };
 
-        if items.is_empty() {
+        // cm:guard a backlog-only project is prompted too. `items` alone was the test while a pool held nothing but jobs; a project that opted into `poolBacklog` and has only drafts would otherwise get a master, a brief and never a single pass — the knob configurable, savable and dead.
+        if items.is_empty() && backlog.is_empty() {
             continue;
         }
 
@@ -589,7 +603,9 @@ async fn prompt_pass(
     slug: &str,
     session: &master_api::MasterSession,
     keys: &[String],
+    backlog_keys: &[String],
     claimable: usize,
+    backlog: usize,
 ) {
     let Some((_, name, transcript)) = masters.get(project_id) else {
         return;
@@ -599,8 +615,10 @@ async fn prompt_pass(
         tracing::debug!("[master] {slug}: still working — not prompting this sweep");
         return;
     }
-    tracing::info!("[master] {slug}: {claimable} job(s) claimable — prompting {name}");
-    match terminal::send_line(&name, &pass_prompt(&session.session_id, keys)).await {
+    tracing::info!(
+        "[master] {slug}: {claimable} job(s) claimable, {backlog} backlog row(s) — prompting {name}"
+    );
+    match terminal::send_line(&name, &pass_prompt(&session.session_id, keys, backlog_keys)).await {
         Ok(()) => masters.mark_prompted(project_id),
         Err(e) => tracing::warn!("[master] {slug}: could not prompt {name}: {e}"),
     }
@@ -826,6 +844,24 @@ mod tests {
         }
     }
 
+    // cm:guard the two lists must stay TOLD APART in the prompt. A master that reads a backlog key as claimable spends its turn on `pool claim <issueId>`, which core refuses as `not_found` — and the refusal names the job, not the mistake, so nothing in the transcript says why.
+    #[test]
+    fn the_pass_prompt_separates_the_backlog_from_the_claimable_pool() {
+        let p = pass_prompt("sess-1", &["ISS-901".into()], &["ISS-917".into()]);
+        assert!(p.contains("ISS-901"));
+        assert!(p.contains("ISS-917"));
+        assert!(p.contains("NOT claimable"), "{p}");
+        assert!(p.contains("pool promote"), "{p}");
+    }
+
+    // cm:guard a project that declared no backlog must be prompted EXACTLY as it was before ISS-917. That is every other project on the fleet, so a stray heading here changes what every master on it reads.
+    #[test]
+    fn a_pass_prompt_with_no_backlog_says_nothing_about_one() {
+        let p = pass_prompt("sess-1", &["ISS-901".into()], &[]);
+        assert!(!p.contains("Backlog"), "{p}");
+        assert!(!p.contains("pool promote"), "{p}");
+    }
+
     // cm:guard the standing brief and the pass prompt must stay SEPARATE, and this is the assertion that fails if they are folded back together: re-sending the brief every 30 seconds is the cold start this change removed, arriving as tokens instead of as a process.
     #[test]
     fn the_pass_prompt_carries_the_pool_and_not_the_brief() {
@@ -833,7 +869,7 @@ mod tests {
         assert!(brief.contains("forge-master"));
         assert!(brief.contains("origin/main"));
 
-        let pass = pass_prompt("sess-1", &["ISS-1".into(), "ISS-2".into()]);
+        let pass = pass_prompt("sess-1", &["ISS-1".into(), "ISS-2".into()], &[]);
         assert!(
             pass.contains("sess-1"),
             "the master needs its own session id: {pass}"
