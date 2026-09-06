@@ -26,6 +26,7 @@ import {
   users,
 } from '../db/schema.js';
 import { listResponse } from '../lib/pagination.js';
+import { bucketIso, utcDateTrunc } from '../lib/time-buckets.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
 import { computeAlerts } from './alert-queries.js';
@@ -72,7 +73,8 @@ function bucketStepMs(unit: BucketUnit): number {
 
 /** Dense, oldest→newest UTC bucket-start boundaries for `count` buckets of
  *  `unit`, ending at the bucket containing `now`. Week buckets floor to UTC
- *  Monday to match Postgres `date_trunc('week', ...)`. */
+ *  Monday to match `utcDateTrunc('week', ...)`. */
+// cm:edge contract -> packages/core/src/lib/time-buckets.ts#utcDateTrunc — both sides floor in UTC or `toBucketMap` joins nothing and every glance reads zero
 function bucketBoundaries(unit: BucketUnit, count: number, now: Date): string[] {
   const end = new Date(now);
   end.setUTCMilliseconds(0);
@@ -88,10 +90,6 @@ function bucketBoundaries(unit: BucketUnit, count: number, now: Date): string[] 
   const out: string[] = [];
   for (let i = count - 1; i >= 0; i--) out.push(new Date(end.getTime() - i * step).toISOString());
   return out;
-}
-
-function bucketIso(x: unknown): string {
-  return x instanceof Date ? x.toISOString() : new Date(x as string).toISOString();
 }
 
 function toBucketMap(rows: Array<Record<string, unknown>>, key: string): Map<string, number> {
@@ -172,7 +170,7 @@ function toGlance(r: {
 
 async function bucketedUserSignups(spec: WindowSpec, baseStart: SQL): Promise<Map<string, number>> {
   const rows = (await db.execute(sql`
-    SELECT date_trunc(${spec.unit}, created_at) AS bucket, count(*)::int AS n
+    SELECT ${utcDateTrunc(spec.unit, sql`created_at`)} AS bucket, count(*)::int AS n
     FROM users
     WHERE created_at >= ${baseStart}
     GROUP BY 1
@@ -185,7 +183,7 @@ async function bucketedLeadTime(
   baseStart: SQL,
 ): Promise<{ num: Map<string, number>; den: Map<string, number> }> {
   const rows = (await db.execute(sql`
-    SELECT date_trunc(${spec.unit}, al.created_at) AS bucket,
+    SELECT ${utcDateTrunc(spec.unit, sql`al.created_at`)} AS bucket,
            sum(extract(epoch from (al.created_at - i.created_at)) / 60.0)::float AS num,
            count(*)::int AS den
     FROM activity_log al
@@ -206,7 +204,7 @@ async function bucketedLeadTime(
 
 async function bucketedResolved(spec: WindowSpec, baseStart: SQL): Promise<Map<string, number>> {
   const rows = (await db.execute(sql`
-    SELECT date_trunc(${spec.unit}, created_at) AS bucket, count(*)::int AS n
+    SELECT ${utcDateTrunc(spec.unit, sql`created_at`)} AS bucket, count(*)::int AS n
     FROM activity_log
     WHERE action = 'issue.statusChanged'
       AND payload ->> 'to' IN ('closed', 'released')
@@ -228,7 +226,7 @@ async function bucketedResolvedWithInterventionLabel(
     sql`, `,
   );
   const rows = (await db.execute(sql`
-    SELECT date_trunc(${spec.unit}, al.created_at) AS bucket, count(DISTINCT al.id)::int AS n
+    SELECT ${utcDateTrunc(spec.unit, sql`al.created_at`)} AS bucket, count(DISTINCT al.id)::int AS n
     FROM activity_log al
     INNER JOIN issue_labels il ON il.issue_id = al.issue_id
     INNER JOIN labels l ON l.id = il.label_id
@@ -243,7 +241,7 @@ async function bucketedResolvedWithInterventionLabel(
 
 async function bucketedCost(spec: WindowSpec, baseStart: SQL): Promise<Map<string, number>> {
   const rows = (await db.execute(sql`
-    SELECT date_trunc(${spec.unit}, recorded_at) AS bucket, coalesce(sum(estimated_cost), 0)::float AS n
+    SELECT ${utcDateTrunc(spec.unit, sql`recorded_at`)} AS bucket, coalesce(sum(estimated_cost), 0)::float AS n
     FROM usage_records
     WHERE recorded_at >= ${baseStart}
     GROUP BY 1
@@ -256,7 +254,7 @@ async function bucketedRunOutcomes(
   baseStart: SQL,
 ): Promise<{ num: Map<string, number>; den: Map<string, number> }> {
   const rows = (await db.execute(sql`
-    SELECT date_trunc(${spec.unit}, started_at) AS bucket,
+    SELECT ${utcDateTrunc(spec.unit, sql`started_at`)} AS bucket,
            count(*) FILTER (WHERE status = 'completed')::int AS num,
            count(*) FILTER (WHERE status IN ('completed', 'failed', 'cancelled'))::int AS den
     FROM pipeline_runs
@@ -397,13 +395,13 @@ adminAggregateRoutes.get(
     const [newUsersRows, activeWorkspaceRows, [{ n: baselineUsers } = { n: 0 }]] =
       await Promise.all([
         db.execute(sql`
-        SELECT date_trunc(${unit}, created_at) AS bucket, count(*)::int AS n
+        SELECT ${utcDateTrunc(unit, sql`created_at`)} AS bucket, count(*)::int AS n
         FROM users
         WHERE created_at >= ${firstBucketStart}::timestamptz
         GROUP BY 1
       `) as unknown as Promise<Array<{ bucket: unknown; n: number }>>,
         db.execute(sql`
-        SELECT date_trunc(${unit}, started_at) AS bucket, count(distinct project_id)::int AS n
+        SELECT ${utcDateTrunc(unit, sql`started_at`)} AS bucket, count(distinct project_id)::int AS n
         FROM pipeline_runs
         WHERE started_at >= ${firstBucketStart}::timestamptz
         GROUP BY 1

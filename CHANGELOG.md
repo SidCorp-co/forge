@@ -1132,6 +1132,24 @@
 
 ### Fixed
 
+- **Every chart went blank on a server whose Postgres was not set to UTC, and nothing said so.**
+  The metrics timeseries built its bucket list in JavaScript floored to UTC midnight, then grouped
+  the rows in SQL with a bare `date_trunc`, which Postgres evaluates in the database session's
+  timezone. On a UTC database the two agreed; anywhere else every row landed in a bucket the
+  densifier was not looking for, the join matched nothing, and the series came back as zeroes with
+  a `null` rate. No error, no warning — a chart reading "this project did no work" is
+  indistinguishable from one reading "this project's rows were all discarded".
+
+  All nine bucketed metrics were affected (cost, throughput, cycle time, queue wait, runner
+  utilization, cache hit rate, pass rate, approve rate, queue depth), and so was the whole admin
+  overview, which had the same JS-floors-UTC / SQL-floors-session split behind a different
+  function. Two more surfaces reported the wrong calendar day rather than an empty one: the
+  per-project daily analytics and the usage-record daily breakdown both labelled a day by the
+  server's clock. One truncation helper now pins all of them to UTC.
+
+  Surfaced by `core-integration` failing only on developer machines in UTC+7 while CI, whose
+  Postgres is UTC, stayed green — the test was right and the query was wrong. (ISS-942, ISS-954)
+
 - **`POST /api/memory/search` ignored the `strategy` you asked for and told you it had honoured
   it.** The route validated `strategy` in its body schema and then never passed it to
   `runMemorySearch`, which applied its own `'semantic'` default — so a caller asking for `keyword`
