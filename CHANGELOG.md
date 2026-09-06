@@ -806,6 +806,20 @@
 
 ### Fixed
 
+- **The Pool admission toggle now reaches the route that can write `runners.status`.** It sent
+  `{status}` to `PATCH /api/projects/:id/runners/:runnerId`, whose body schema is `.strict()` over
+  repoPath/branch/labels — so every attempt to withdraw or readmit a box came back `400
+  Unrecognized key: "status"` and surfaced as a generic "Save failed" toast. The status writer is
+  `PATCH /api/runners/:id`, which hands the transition to `setRunnerStatus` and audits it into
+  `runner_events`; admission goes there now.
+
+  Nothing caught it because nothing asserted the URL, and the two routes differ only by prefix.
+  There is a test for that now, and it fails naming the route when the prefix moves. The
+  consequence was not cosmetic: an operator who retired a runner had no way back through the UI,
+  and `forge_runners` MCP has `retire` but no enable, so a box withdrawn from a project stayed
+  withdrawn. Un-retiring one meanwhile goes through `POST /api/projects/:id/runners`, whose upsert
+  recomputes status from device freshness.
+
 - **A job waiting for a duplex permit killed another project's jobs, and blamed the lock.**
   `dispatch.rs` took the repo-root lock, called `runner.start`, and released it only when that
   returned — but `start` awaited the box's duplex session semaphore with no deadline, so the root
