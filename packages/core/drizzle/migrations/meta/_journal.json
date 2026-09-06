@@ -1485,6 +1485,13 @@
       "when": 1791849600000,
       "tag": "0213_module_taxonomy",
       "breakpoints": true
+    },
+    {
+      "idx": 214,
+      "version": "7",
+      "when": 1791936000000,
+      "tag": "0214_duplex_strips_session_mode",
+      "breakpoints": true
     }
   ]
 }
