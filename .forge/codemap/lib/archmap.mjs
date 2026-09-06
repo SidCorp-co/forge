@@ -1,4 +1,4 @@
-// @generated codemap 0.16.1 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.19.0 — vendored by `cm install`; edit the plugin, not this.
 // codemap/1 §7.1 — the real import graph CM301 was missing (graph.mjs:108 confesses the gap).
 //
 // archmap is a sibling tool, vendored independently at `.forge/archmap` the same way codemap

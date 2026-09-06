@@ -89,7 +89,7 @@ with no args, or the `codemap` skill.
 
 ## How the gate is scoped
 
-`.forge/codemap/cm` is vendored (codemap 0.16.0) and is the authority — it wins over a `cm` on
+`.forge/codemap/cm` is vendored (codemap 0.19.0) and is the authority — it wins over a `cm` on
 PATH, which wins over the plugin's bundled copy. Config: `.forge/codemap.json` (flow vocabulary +
 enforcement scope) · `.forge/codemap-baseline.json` (12,454 legacy comments across 965 files frozen
 by CONTENT — a comment is flagged only when its text is new, so a reflow or a move is not a

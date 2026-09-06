@@ -1,4 +1,4 @@
-// @generated codemap 0.16.1 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.19.0 — vendored by `cm install`; edit the plugin, not this.
 // codemap/1 — local-first north-star metrics (ISS-3).
 //
 // ISS-3's own framing of the number that matters: how many times a cm: annotation blocked a real

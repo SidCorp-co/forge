@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @generated codemap 0.16.1 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.19.0 — vendored by `cm install`; edit the plugin, not this.
 // cm — the codemap/1 CLI. Zero dependencies on purpose (see registry.mjs).
 //
 // A positional path resolves against the CWD first, which is what a shell user means, and falls back to
@@ -25,6 +25,7 @@ import { applyFmt } from './lib/rewrite.mjs';
 import { candidateFiles } from './lib/candidates.mjs';
 import { install } from './lib/install.mjs';
 import { debtOf, drainBase, drainDiags } from './lib/drain.mjs';
+import { lockstepFindings, guardFindings, renderComment, MARKER } from './lib/prcomment.mjs';
 import { renderHelp, VERBS } from './lib/help.mjs';
 import { resolveCm } from './lib/locate.mjs';
 import {
@@ -48,7 +49,7 @@ const cmd = argv[0] ?? 'help';
 
 // cm:guard every flag that takes a value MUST be listed here — an unlisted one has its value parsed as a
 // path, which silently narrowed `cm verify --since <ref>` to zero files and made the CI gate a no-op
-const VALUE_FLAGS = new Set(['--since', '--tier', '--limit', '--description', '--endpoint']);
+const VALUE_FLAGS = new Set(['--since', '--tier', '--limit', '--description', '--endpoint', '--base']);
 const TIERS = new Set(['all', 'grammar', 'referential', 'structural', 'advisory']);
 
 // cm:guard exit 2 is "the gate could not run", exit 1 is "the gate ran and failed" — CI must be able to
@@ -222,9 +223,9 @@ function migrateTargets(perFile) {
   return done;
 }
 
-// cm:edge lockstep -> plugins/forge-codemap/agent-setup/prompt.md — that file is this function's output;
+// cm:edge lockstep -> adapters/ci/prompt.md — that file is this function's output;
 //   tests/install.mjs fails if they drift, so a hand-edit there is reverted rather than merged
-// cm:edge lockstep -> plugins/forge-codemap/agent-setup/prompt.md — that file IS this output, and
+// cm:edge lockstep -> adapters/ci/prompt.md — that file IS this output, and
 //   tests/install.mjs fails when they drift, so a hand-edit there is reverted rather than merged
 function bootstrapPrompt() {
   return [
@@ -241,14 +242,14 @@ function bootstrapPrompt() {
     'It is plain node (>= 18) with zero dependencies, so it runs anywhere without installing anything:',
     '',
     '```sh',
-    `git clone --depth 1 --branch ${TAG_HINT} https://github.com/SidCorp-co/forge-pipeline-skills /tmp/codemap`,
-    'alias cm="node /tmp/codemap/plugins/forge-codemap/scripts/cm.mjs"',
+    `git clone --depth 1 --branch ${TAG_HINT} https://github.com/SidCorp-co/codemap /tmp/codemap`,
+    'alias cm="node /tmp/codemap/cli/cm.mjs"',
     '```',
     '',
     'If the user is on Claude Code and wants the editor hooks too, this installs those as well:',
     '',
     '```sh',
-    'claude plugin marketplace add SidCorp-co/forge-pipeline-skills',
+    'claude plugin marketplace add SidCorp-co/codemap',
     'claude plugin install forge-codemap@forge',
     '```',
     '',
@@ -274,6 +275,60 @@ function bootstrapPrompt() {
     'Then read `cm help workflow`. That guidebook ships inside the checker, so it works offline and matches',
     'the version you are actually running.',
   ].join('\n') + '\n';
+}
+
+/** The PR number `cm pr-comment` posts to, read from the event GitHub Actions writes to disk. */
+function prNumberFromEvent(eventPath) {
+  if (!eventPath || !existsSync(eventPath)) return null;
+  try {
+    const ev = JSON.parse(readFileSync(eventPath, 'utf8'));
+    return ev.pull_request?.number ?? ev.number ?? null;
+  } catch { return null; }
+}
+
+async function ghFetch(url, token, init = {}) {
+  return fetch(url, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'codemap-pr-comment',
+      ...(init.body ? { 'content-type': 'application/json' } : {}),
+    },
+  });
+}
+
+async function findExistingPrComment(apiUrl, repoFull, token, pr, marker) {
+  for (let page = 1; ; page++) {
+    const res = await ghFetch(`${apiUrl}/repos/${repoFull}/issues/${pr}/comments?per_page=100&page=${page}`, token);
+    if (!res.ok) throw new Error(`list comments: ${res.status} ${res.statusText}`);
+    const items = await res.json();
+    const hit = items.find((c) => c.body?.includes(marker));
+    if (hit) return hit;
+    if (items.length < 100) return null;
+  }
+}
+
+// cm:edge contract -> cli/lib/prcomment.mjs — MARKER is what makes this idempotent: the caller
+//   must delete/update the SAME comment findExistingPrComment locates, never post a second one
+/**
+ * One comment, updated in place, never a new one per push — and removed outright once a later
+ * push leaves nothing to say, so a resolved finding does not read as still open (§ business rules).
+ */
+async function postOrUpdatePrComment({ apiUrl, repoFull, token, pr, body, marker }) {
+  const existing = await findExistingPrComment(apiUrl, repoFull, token, pr, marker);
+  if (!body) {
+    if (!existing) return;
+    const res = await ghFetch(`${apiUrl}/repos/${repoFull}/issues/comments/${existing.id}`, token, { method: 'DELETE' });
+    if (!res.ok && res.status !== 404) throw new Error(`delete stale comment: ${res.status} ${res.statusText}`);
+    return;
+  }
+  const res = existing
+    ? await ghFetch(`${apiUrl}/repos/${repoFull}/issues/comments/${existing.id}`, token,
+      { method: 'PATCH', body: JSON.stringify({ body }) })
+    : await ghFetch(`${apiUrl}/repos/${repoFull}/issues/${pr}/comments`, token,
+      { method: 'POST', body: JSON.stringify({ body }) });
+  if (!res.ok) throw new Error(`${existing ? 'update' : 'post'} comment: ${res.status} ${res.statusText}`);
 }
 
 function printDiag(d) {
@@ -379,14 +434,14 @@ switch (cmd) {
         || !(frozen.has(baselineKey(d.text ?? d.message)) || (d.blockKey && frozen.has(d.blockKey))));
       diags.push(...keep);
 
-      // cm:edge contract -> plugins/forge-codemap/scripts/lib/drain.mjs — CM013 must count debt exactly
+      // cm:edge contract -> cli/lib/drain.mjs — CM013 must count debt exactly
       //   as this line reports it, so the accounting lives there and both read the one copy
       const still = debtOf(frozen, f);
       debt += still;
       cleaned += [...frozen].filter((k) => !k.startsWith('b:')).length - still;
     }
 
-    // cm:edge contract -> plugins/forge-codemap/scripts/lib/drain.mjs — CM013 rides the grammar tier from
+    // cm:edge contract -> cli/lib/drain.mjs — CM013 rides the grammar tier from
     //   here, so `--tier referential` wipes it below with the rest and no second tier test is needed
     diags.push(...drainDiags({
       root, reg, baseline, perFile,
@@ -440,13 +495,13 @@ switch (cmd) {
       process.exitCode = diags.some((d) => d.tier !== 'structural' && d.tier !== 'advisory') ? 1 : 0;
       console.log(JSON.stringify({
         specVersion: SPEC_VERSION, toolVersion: toolVersion(), files: files.length, diags,
-        // cm:edge contract -> plugins/forge-codemap/scripts/hook-post-edit.mjs — the hook decides what blocks
+        // cm:edge contract -> cli/hooks/hook-post-edit.mjs — the hook decides what blocks
         // from these three: prose is enforced only when onboarded, and never while the baseline is unreadable
         onboarded: !reg._missing,
         baselineUnreadable: Boolean(baseline.__legacyFormat),
         normalized,
         legacy: { debt, cleaned, scoped },
-        // cm:edge contract -> plugins/forge-codemap/scripts/hook-post-edit.mjs — the hook prints this count
+        // cm:edge contract -> cli/hooks/hook-post-edit.mjs — the hook prints this count
         // to say why a pre-existing comment is not in the list it is blocking on
         outsideDiff,
       }, null, 2));
@@ -648,7 +703,11 @@ switch (cmd) {
       const alive = (f.blockKeys ?? []).some((b) => frozen.has(b));
       const keep = [...frozen].filter((k) => present.has(k) || (alive && !k.startsWith('b:')));
       stale += [...frozen].filter((k) => !k.startsWith('b:') && !present.has(k) && !alive).length;
-      if (keep.length) pruned[f.relPath] = keep;
+      // cm:why a prune must not silently erase a prior freeze's per-block counts (ISS-9) — only a
+      //   key this run actually drops loses its blockCounts entry too
+      const blocks = {};
+      for (const k of keep) if (k.startsWith('b:') && frozen.blockCounts?.[k] != null) blocks[k] = frozen.blockCounts[k];
+      if (keep.length) pruned[f.relPath] = { keys: keep, blocks };
     }
 
     if (flags.has('--prune-baseline')) {
@@ -659,7 +718,7 @@ switch (cmd) {
         process.exit(2);
       }
       saveBaseline(root, pruned);
-  console.log(`codemap sweep: dropped ${stale} stale key(s); ${Object.values(pruned).flat().filter((k) => !k.startsWith('b:')).length} remain frozen`);
+  console.log(`codemap sweep: dropped ${stale} stale key(s); ${Object.values(pruned).flatMap((v) => v.keys).filter((k) => !k.startsWith('b:')).length} remain frozen`);
       console.log(dim('bookkeeping only — no source file was touched, and no new comment was absolved'));
       break;
     }
@@ -703,7 +762,7 @@ switch (cmd) {
     const keys = {};
     if (scoped) {
       for (const [file, set] of Object.entries(loadBaseline(root))) {
-        if (!file.startsWith('__')) keys[file] = [...set];
+        if (!file.startsWith('__')) keys[file] = { keys: [...set], blocks: { ...(set.blockCounts ?? {}) } };
       }
     }
     // cm:guard "pre-existing" must mean pre-existing, not "in the tree right now" — this command is the
@@ -730,14 +789,18 @@ switch (cmd) {
       // cm:why a block's reflow key is frozen only when EVERY line in it is old — one new line in a legacy
       //   block would otherwise have the block vouch for it
       const mixed = new Set(prose.filter((d) => !old.has(baselineKey(d.text ?? d.message))).map((d) => d.blockKey));
-      const all = [...old, ...(f.blockKeys ?? []).filter((b) => !mixed.has(b))];
-      if (all.length) keys[f.relPath] = all;
-      else delete keys[f.relPath];
+      const survivingBlocks = (f.blockKeys ?? []).filter((b) => !mixed.has(b));
+      const all = [...old, ...survivingBlocks];
+      if (all.length) {
+        const blocks = {};
+        for (const b of survivingBlocks) if (f.blockCounts?.[b] != null) blocks[b] = f.blockCounts[b];
+        keys[f.relPath] = { keys: all, blocks };
+      } else delete keys[f.relPath];
       touched.push(f.relPath);
     }
     saveBaseline(root, keys);
     // cm:why a block key is a reflow shadow, not a comment, so the count a human reads must exclude it
-    const total = Object.values(keys).flat().filter((k) => !k.startsWith('b:')).length;
+    const total = Object.values(keys).flatMap((v) => v.keys).filter((k) => !k.startsWith('b:')).length;
     console.log(scoped
       ? `codemap baseline: re-froze ${plural(touched.length, 'file')}; ${total} comments frozen across ${Object.keys(keys).length} files`
       : `codemap baseline: froze ${total} pre-existing prose comments across ${Object.keys(keys).length} files`);
@@ -763,10 +826,10 @@ switch (cmd) {
     const keys = {};
     for (const f of perFile) {
       const all = [...(f.proseKeys ?? []), ...(f.blockKeys ?? [])];
-      if (all.length) keys[f.relPath] = all;
+      if (all.length) keys[f.relPath] = { keys: all, blocks: { ...(f.blockCounts ?? {}) } };
     }
     saveBaseline(root, keys);
-    const total = Object.values(keys).flat().filter((k) => !k.startsWith('b:')).length;
+    const total = Object.values(keys).flatMap((v) => v.keys).filter((k) => !k.startsWith('b:')).length;
     console.log(`codemap ${SPEC_VERSION} initialised at ${root}`);
     console.log(`  .forge/codemap.json`);
     console.log(`  .forge/codemap-baseline.json  ${dim(`${total} legacy comments frozen by content`)}`);
@@ -950,7 +1013,7 @@ switch (cmd) {
     break;
   }
 
-  // cm:edge contract -> plugins/forge-codemap/NORTH-STAR.md#5 — the north star is a count of real
+  // cm:edge contract -> NORTH-STAR.md#5 — the north star is a count of real
   //   blocks, not scale; this verb is the only place that count is produced (ISS-3)
   case 'metrics': {
     const sub = positional[0];
@@ -1032,6 +1095,49 @@ switch (cmd) {
       process.exitCode = res.ok ? 0 : 1;
     } catch (e) {
       die(`could not send to ${endpoint}: ${e.message}`);
+    }
+    break;
+  }
+
+  // cm:edge contract -> cli/lib/prcomment.mjs — the finding logic lives there, testable with
+  //   plain data; everything below is I/O glue, same split `metrics send`'s fetch above uses
+  case 'pr-comment': {
+    const base = flagValue('--base');
+    if (!base) die('pr-comment needs --base <ref>', '<ref> is diffed against the working tree — pass a merge-base, not the PR branch tip');
+    const reg = loadOrDie();
+    const g = buildGraph(analyzeAll(reg, annotatedFiles(reg)));
+
+    let ranges;
+    try {
+      ranges = changedRanges(root, ['diff', '--unified=0', '--diff-filter=ACMR', base], `--base ${base}`);
+    } catch (e) {
+      // cm:why a diff that cannot be computed is never "nothing changed" (§9.1's fail-open shape) —
+      //   it means this run has nothing USEFUL to report, not that every coupling was honoured
+      console.error(yellow(`codemap: ${e.message} — nothing to report`));
+      break;
+    }
+    const changedFiles = new Set(ranges.keys());
+    const findings = [...lockstepFindings(g, changedFiles), ...guardFindings(g, ranges)];
+    const body = renderComment(findings);
+
+    const token = process.env.GITHUB_TOKEN;
+    const repoFull = process.env.GITHUB_REPOSITORY;
+    const pr = prNumberFromEvent(process.env.GITHUB_EVENT_PATH);
+    const apiUrl = process.env.GITHUB_API_URL ?? 'https://api.github.com';
+    // cm:guard live posting needs ALL of token/repo/PR — any one missing means this is not
+    //   running against a real pull_request event, so printing beats a network call that 404s
+    const dryRun = flags.has('--dry-run') || !token || !repoFull || !pr;
+
+    if (dryRun) {
+      console.log(body ?? 'codemap pr-comment: no declared coupling looks crossed — nothing to report');
+      break;
+    }
+    try {
+      await postOrUpdatePrComment({ apiUrl, repoFull, token, pr, body, marker: MARKER });
+    } catch (e) {
+      // cm:guard this is a second SURFACE, never a second gate (business rules) — a GitHub outage
+      //   must not turn into a red PR check when `cm verify` already ran clean
+      console.error(yellow(`codemap: ${e.message}`));
     }
     break;
   }
