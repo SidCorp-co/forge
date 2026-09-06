@@ -149,10 +149,12 @@ single process sees both halves.</p>
       entry that was <span class="bad">never written</span> — it only defends entries that existed
       at the base revision.</li>
 </ul>
-<p>Measured consequence: ISS-877, ISS-854, ISS-870 and ISS-903 all reached <code>main</code> with
-nothing in the record, and ISS-870 and ISS-903 had their <code>releaseNotes</code> populated, so
-the refusal held and the reader still got nothing. The bullets they were owed were written by hand
-in ISS-896.</p>
+<p>Measured consequence: four issues reached <code>main</code> with nothing in the record —
+ISS-877 (08-29), ISS-854 (08-30), ISS-870 (09-02) and ISS-903 (09-03). Every one was found by a
+scheduled sweep days later and backfilled by hand: the first two by ISS-870, the last two by
+ISS-896. Three of the four had <code>releaseNotes</code> populated at their close, so the refusal
+above held and the reader still got nothing — which is the point. The one that did not, ISS-854,
+was closed by hand, where the refusal exempts by design.</p>
 <p>This is a <b>known open decision, not an unnoticed hole</b>: whether a close should prompt for
 its note, and whether that prompt should also write the bullet, is held for a human in
 <code>docs/proposals/changelog-omission-is-unguarded.md</code> along with the reason both obvious
