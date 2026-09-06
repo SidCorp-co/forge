@@ -234,6 +234,12 @@
   `forge_issues.list`. Both match MODULE labels only: the name of a plain label returns no issues
   rather than quietly behaving as `?label`, which stays uuid-only and unchanged. Every `labels[]`
   read now reports `kind` and `isPrimary` per entry (`ModuleAttribution` in `@forge/contracts`).
+  Both database-level refusals (`issue_labels_primary_uq`, `labels_kind_chk`) are asserted by
+  constraint NAME rather than by regex over the error message. Drizzle wraps the driver error, so
+  `.message` carries only the failed SQL: the regex matched nothing, and each case was red whether
+  the constraint existed or not — no signal in either direction. The name is green only when that
+  constraint rejected, and red both when nothing rejects and when a different one does.
+
   Migration `0213` is additive in every statement — existing labels read back as `kind='label'`,
   existing attachments as `is_primary=false` — and carries `labels_kind_chk`, because
   `text(col,{enum})` is a compile-time type and emits no constraint of its own. Drawn in

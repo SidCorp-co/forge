@@ -2,7 +2,7 @@
  * ISS-593 — the module taxonomy against a real Postgres.
  *
  * Everything here needs a database that can actually refuse: the partial unique index on
- * `issue_labels.is_primary`, the additive defaults migration 0210 leaves behind, and the
+ * `issue_labels.is_primary`, the additive defaults migration 0213 leaves behind, and the
  * `kind='module'` predicate that separates `?module` from `?label`. A mocked client cannot
  * fail any of them, so a green from the unit suites is no evidence for these.
  */
@@ -19,6 +19,16 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+
+// cm:guard assert the constraint NAME through the cause, never a regex over the message — drizzle wraps the driver error, so `.message` carries only the failed SQL and the regex matches nothing, leaving the case red whether or not the constraint exists and carrying no signal either way. The name is green only when THAT constraint rejected, red both when nothing rejects and when a different one does.
+async function violatedConstraint(p: Promise<unknown>): Promise<string | undefined> {
+  try {
+    await p;
+    return undefined;
+  } catch (e) {
+    return (e as { cause?: { constraint_name?: string } }).cause?.constraint_name;
+  }
+}
 
 type Mods = {
   labelProjectRoutes: typeof import('../../src/labels/routes.js')['labelProjectRoutes'];
@@ -166,12 +176,14 @@ describe('ISS-593 · migration 0210', () => {
       INSERT INTO issue_labels (issue_id, label_id, is_primary)
       VALUES (${issueId}, ${a.id}, true)
     `);
-    await expect(
-      harness.db.execute(sql`
+    expect(
+      await violatedConstraint(
+        harness.db.execute(sql`
         INSERT INTO issue_labels (issue_id, label_id, is_primary)
         VALUES (${issueId}, ${b.id}, true)
       `),
-    ).rejects.toThrow(/issue_labels_primary_uq/);
+      ),
+    ).toBe('issue_labels_primary_uq');
   });
 
   it('permits many non-primary rows for one issue', async () => {
@@ -489,11 +501,13 @@ describe('ISS-593 · parentId belongs to modules only', () => {
 describe('ISS-593 · labels_kind_chk', () => {
   // cm:guard `text(col,{enum})` emits no constraint, so this CHECK is the only thing stopping a writer that skips `labels/routes.ts` — a row with a third kind filters as no module and renders as no label, and nothing reports it
   it('refuses a kind that is neither label nor module, at the database', async () => {
-    await expect(
-      harness.db.execute(sql`
+    expect(
+      await violatedConstraint(
+        harness.db.execute(sql`
         INSERT INTO labels (id, project_id, name, color, kind)
         VALUES (${randomUUID()}, ${project.id}, 'weird', '#aabbcc', 'component')
       `),
-    ).rejects.toThrow(/labels_kind_chk/);
+      ),
+    ).toBe('labels_kind_chk');
   });
 });
