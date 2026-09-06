@@ -21,6 +21,9 @@ export interface SelectProps {
   disabled?: boolean;
   id?: string;
   invalid?: boolean;
+  /** Required when no visible <label> names the trigger — a combobox whose only
+   *  text is its placeholder has no accessible name once a value is chosen. */
+  "aria-label"?: string;
   "aria-describedby"?: string;
   className?: string;
 }
@@ -82,7 +85,6 @@ export function Select({
     [options],
   );
 
-  // close on outside click
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
@@ -92,7 +94,6 @@ export function Select({
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
-  // keep active option in view
   useEffect(() => {
     if (!open) return;
     listRef.current?.querySelector<HTMLElement>(`[data-idx="${active}"]`)?.scrollIntoView({ block: "nearest" });
@@ -138,6 +139,7 @@ export function Select({
         aria-controls={`${baseId}-list`}
         aria-invalid={isInvalid || undefined}
         aria-describedby={aria["aria-describedby"] as string | undefined}
+        aria-label={aria["aria-label"] as string | undefined}
         disabled={disabled}
         onClick={() => (open ? close() : openList())}
         onKeyDown={onKeyDown}

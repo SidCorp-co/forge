@@ -14,11 +14,7 @@ export type {
 	UxToggleSettings,
 } from "@forge/contracts";
 
-// ── Project facts (ISS-521) — the per-project "rules" layer ─────────────────
-// Mirrors `GET/PATCH /api/projects/:id/project-facts` in core routes.ts. The
-// always-inject tier (projectFactsConfig) flags a fact for verbatim injection
-// into every agent prompt.
-
+// cm:edge contract -> packages/core/src/projects/project-facts.ts — the project-facts shapes below are hand-mirrored from `projectFactsPatchSchema`; the always-inject tier is injected verbatim into every agent prompt, so a key added there and not here is silently undisplayable
 /** Per-key config map; `alwaysInject` flags a fact for verbatim injection. */
 export type ProjectFactsConfig = Record<string, { alwaysInject?: boolean }>;
 
@@ -77,6 +73,10 @@ export interface ProjectUpdateInput {
 	/** ISS-727 — RC bot answer-engine knob; scoped server-side write into
 	 *  `agentConfig.rocketChatAnswerMode`. null clears it (reverts to `fast`). */
 	rocketChatAnswerMode?: "fast" | "agent" | null;
+	/** ISS-814 — per-jobType agent context; scoped server-side write into
+	 *  `agentConfig.stateContext`. Merged per key: a `null` entry removes that
+	 *  jobType, an omitted one is untouched, `null` for the map wipes it. */
+	stateContext?: Record<string, StateContextEntry | null> | null;
 }
 
 /** One `previewDeploy.testingUrls` row — mirrors `testingUrlSchema` in core. */
@@ -138,9 +138,9 @@ export interface ProjectLabel {
 
 /**
  * One `states[<status>]` entry — mirrors `stageConfigSchema` in core
- * `pipeline/pipeline-config-schema.ts`. Only `enabled`/`mode` are edited by
- * this tab today (ISS-813 Phase 1 adds read-only display of the rest);
- * the index signature keeps every other key round-tripping on save.
+ * `pipeline/pipeline-config-schema.ts`. The tab edits `enabled`/`mode`,
+ * `allowedTools`/`disallowedTools`, `mcpServers` and `deviceIds`; the index
+ * signature keeps every other key round-tripping on save.
  */
 export interface PipelineStateConfig {
 	enabled?: boolean;
@@ -410,6 +410,20 @@ export function humanizeToolName(raw: string): HumanizedToolName {
 	return { label: words.length > 0 ? toSentenceCase(words) : raw, server: null, raw };
 }
 
+/** Tool ids bucketed by their MCP server, builtins under "Built-in". Shared by
+ *  the read-only chip display and the editor so both group identically. */
+export function groupByServer(tools: string[]): Array<[string, string[]]> {
+	const groups = new Map<string, string[]>();
+	for (const raw of tools) {
+		const { server } = humanizeToolName(raw);
+		const key = server ?? "Built-in";
+		const list = groups.get(key) ?? [];
+		list.push(raw);
+		groups.set(key, list);
+	}
+	return [...groups.entries()];
+}
+
 /** One stage row worth rendering on the Stage permissions section — carries
  *  any of allowedTools / disallowedTools / mcpServers / deviceIds. */
 export interface StagePermissionRow {
@@ -484,9 +498,86 @@ export function denylistBaseline(rows: StagePermissionRow[]): DenylistDiff[] {
 	});
 }
 
-/** Config keys the settings API accepts that this screen intentionally does
- *  not surface yet — driving the "configured elsewhere" note (invariant D:
- *  an unsurfaced key must state why, never go silent). */
+// cm:edge naming -> packages/core/src/db/schema.ts — `jobTypes`, mirrored so the jobType picker offers what `stateContextSchema` (a partialRecord over that enum) accepts; a value added there and not here is a jobType no operator can configure, and one removed there but left here 400s the save
+export const STATE_CONTEXT_JOB_TYPES = [
+	"triage",
+	"clarify",
+	"plan",
+	"code",
+	"review",
+	"test",
+	"staging",
+	"release",
+	"fix",
+	"custom",
+	"pm",
+	"smoke",
+	"release_batch",
+	"reconcile",
+	"verify_skill",
+	"drive",
+] as const;
+
+// cm:edge naming -> packages/core/src/projects/state-context.ts — `budgetSchema` bounds; a cap raised there and not here refuses in the browser a value the server would have taken
+export const BUDGET_PER_RUN_MAX = 1000;
+export const BUDGET_PER_MONTH_MAX = 100_000;
+
+export type BudgetAction = "warn" | "pause";
+export interface StateContextBudget {
+	perRunUsd?: number;
+	perMonthUsd?: number;
+	action?: BudgetAction;
+}
+
+/**
+ * Reasons core would refuse a budget, or `[]` when it would take it. Its
+ * `budgetSchema` is `.strict()` with all three keys REQUIRED, so a budget
+ * carrying only `perRunUsd` is not a smaller budget — it is a 400.
+ */
+export function validateBudget(b: StateContextBudget): string[] {
+	const errors: string[] = [];
+	const present = [b.perRunUsd, b.perMonthUsd, b.action].filter((v) => v != null).length;
+	if (present === 0) return errors;
+	if (present < 3) errors.push("A budget needs all three of per-run, per-month and action.");
+	if (b.perRunUsd != null && (b.perRunUsd < 0 || b.perRunUsd > BUDGET_PER_RUN_MAX)) {
+		errors.push(`Per-run must be between 0 and ${BUDGET_PER_RUN_MAX}.`);
+	}
+	if (b.perMonthUsd != null && (b.perMonthUsd < 0 || b.perMonthUsd > BUDGET_PER_MONTH_MAX)) {
+		errors.push(`Per-month must be between 0 and ${BUDGET_PER_MONTH_MAX}.`);
+	}
+	return errors;
+}
+
+// cm:guard the ONLY writer of a single stage. `statesConfigSchema` has no passthrough and the PATCH replaces `states` wholesale, so anything building a `states` map from less than the fetched one DELETES the stages it left out — spread cfg, spread cfg.states, spread the stage, override nothing else.
+export function withStagePatch(
+	cfg: PipelineConfig,
+	status: string,
+	patch: PipelineStateConfig,
+): PipelineConfig {
+	const states = (cfg.states ?? {}) as Record<string, PipelineStateConfig | undefined>;
+	return {
+		...cfg,
+		states: { ...states, [status]: { ...(states[status] ?? {}), ...patch } },
+	};
+}
+
+/** Every tool id already named anywhere in the config — the add-picker's seed.
+ *  No canonical registry of Claude Code tool ids exists to draw from, so what
+ *  the project already uses is the honest list and a novel id is typed in. */
+export function knownToolIds(cfg: PipelineConfig): string[] {
+	const seen = new Set<string>();
+	for (const sc of Object.values((cfg.states ?? {}) as Record<string, PipelineStateConfig>)) {
+		for (const t of sc?.allowedTools ?? []) seen.add(t);
+		for (const t of sc?.disallowedTools ?? []) seen.add(t);
+	}
+	return [...seen].sort();
+}
+
+/** Config keys the settings API accepts that this screen deliberately does not
+ *  surface — driving the "configured elsewhere" note (invariant D: an
+ *  unsurfaced key must state why, never go silent). Every row must name a key
+ *  something in core actually reads; a row for a key with no reader is a
+ *  promise that the knob does something. */
 export interface ApiOnlyKey {
 	key: string;
 	reason: string;
@@ -500,15 +591,18 @@ export const API_ONLY_KEYS: ApiOnlyKey[] = [
 	},
 	{
 		key: "states[*].permissionMode",
-		reason: "Controls the Claude CLI's own approval mode — an operational lever, deferred to ISS-814.",
+		reason:
+			"Controls the Claude CLI's own approval mode, and `bypassPermissions` is flagged by the security config policy — a lever that belongs with a review of what it unlocks, not with a toggle.",
 	},
 	{
 		key: "states[*].timeoutSeconds",
-		reason: "Per-stage job timeout override — deferred to ISS-814.",
+		reason:
+			"Per-stage job timeout. Read at dispatch; too coarse to set without knowing what a stage's longest legitimate run looks like on this fleet.",
 	},
 	{
 		key: "states[*].budget",
-		reason: "Per-stage spend caps (perRunUsd/perMonthUsd) — deferred to ISS-814.",
+		reason:
+			"Per-stage spend caps. Distinct from the per-jobType budget below, which IS editable — two caps on one screen read as one, so this one stays with the API until the pair is designed together.",
 	},
 	{
 		key: "states[*].systemPrompt",
@@ -516,16 +610,13 @@ export const API_ONLY_KEYS: ApiOnlyKey[] = [
 	},
 	{
 		key: "states[*].userPromptPolicy",
-		reason: "Prompt field/truncation tuning — an advanced knob, deferred to ISS-814.",
+		reason:
+			"Prompt field/truncation tuning, including handoff injection — a token-budget decision measured against real prompts, not guessed from a form.",
 	},
 	{
 		key: "maxResumeTokens",
-		reason: "Session-resume budget guard (ISS-580) — project-level, not per-stage; deferred to ISS-814.",
-	},
-	{
-		key: "recoveryMaxAttempts / recoveryWindowHours / recoveryByFailureKind",
 		reason:
-			"Absent from pipelineConfigSchema — the GET route's schema parse strips them before the response reaches the browser, so this screen genuinely cannot read them (core schema change, tracked on ISS-814).",
+			"Session-resume budget guard (ISS-580), read by `jobs/session-resume.ts`. Project-level rather than per-stage, so it has no home in the per-stage editor above.",
 	},
 ];
 

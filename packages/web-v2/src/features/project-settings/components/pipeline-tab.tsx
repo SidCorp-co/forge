@@ -97,7 +97,7 @@ export function PipelineTab({
     if (r.deviceId && r.deviceName) deviceNames[r.deviceId] = r.deviceName;
   }
 
-  // Local working copy of the full config — preserves opaque keys on save.
+  // cm:guard the draft holds the FULL fetched config, not the keys this tab draws — `pipelineConfigSchema` strips what a PATCH omits, so a save built from the toggles alone deletes every key the screen does not render.
   const [draft, setDraft] = useState<PipelineConfig | null>(null);
   useEffect(() => {
     if (cfgQ.data) setDraft(cfgQ.data.pipelineConfig);
@@ -217,15 +217,19 @@ export function PipelineTab({
 
         <McpServersSection projectId={projectId} config={server} canEdit={canEdit} />
 
-        <StagePermissionsSection config={server} deviceNames={deviceNames} />
-
+        <StagePermissionsSection
+          projectId={projectId}
+          config={server}
+          canEdit={canEdit}
+          deviceNames={deviceNames}
+        />
 
         <RunnerPoolsSection projectId={projectId} config={server} canEdit={canEdit} />
 
         <IntakeGateSection projectId={projectId} config={server} canEdit={canEdit} />
         <KnowledgePromotionSection projectId={projectId} config={server} canEdit={canEdit} />
 
-        <AgentConfigSection projectId={projectId} />
+        <AgentConfigSection projectId={projectId} canEdit={canEdit} />
 
         <div className="mt-6 border-t border-line pt-5">
           <Collapsible title={`Configured elsewhere — ${API_ONLY_KEYS.length} keys this screen doesn't edit`}>
