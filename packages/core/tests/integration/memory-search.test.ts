@@ -12,14 +12,25 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// Phase 2.5-F3 integration — semantic memory search end-to-end.
-// - Real Postgres with pgvector (testcontainer pgvector/pgvector:pg17).
-// - Embeddings service is stubbed via resetEmbeddingsClient() so the route
-//   does not hit a real LiteLLM instance.
-// - Vectors are 1536-dim zero vectors with a single "hot" index set per row,
-//   producing deterministic distance ordering.
+// cm:guard every vector here is 1536 zeros with ONE index set, and the ordering assertions depend on that: cosine distance between two such vectors is a step function of whether their hot indices match, so a "realistic" random vector makes the expected order non-deterministic and the tests flake instead of failing.
+// cm:guard the embeddings client is stubbed through `resetEmbeddingsClient` and NOT mocked at the module boundary — the route must run its real error path, which is how `search: 503 when embeddings circuit breaker is open` can assert on the breaker at all.
 
 const DIM = 1536;
+
+const ENV_DEFAULTS: Record<string, string> = {
+  JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef-123456',
+  DEVICE_TOKEN_PEPPER: 'test-device-pepper-at-least-32-chars-long-aa',
+  SMTP_HOST: 'localhost',
+  SMTP_PORT: '1025',
+  SMTP_USER: 'test',
+  SMTP_PASS: 'test',
+  SMTP_FROM: 'test@example.com',
+  APP_BASE_URL: 'http://localhost:3000',
+  CORS_ORIGINS: 'http://localhost:3000',
+  NODE_ENV: 'test',
+  EMBEDDINGS_BASE_URL: 'https://stub.invalid',
+  EMBEDDINGS_API_KEY: 'stub-key',
+};
 
 function hotVector(hotIdx: number, mag = 1): number[] {
   const v = new Array<number>(DIM).fill(0);
@@ -48,18 +59,7 @@ describe('F3 memory search + indexer integration', () => {
   beforeAll(async () => {
     harness = await setupTestDatabase();
     process.env.DATABASE_URL = harness.url;
-    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
-    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-    process.env.SMTP_HOST ??= 'localhost';
-    process.env.SMTP_PORT ??= '1025';
-    process.env.SMTP_USER ??= 'test';
-    process.env.SMTP_PASS ??= 'test';
-    process.env.SMTP_FROM ??= 'test@example.com';
-    process.env.APP_BASE_URL ??= 'http://localhost:3000';
-    process.env.CORS_ORIGINS ??= 'http://localhost:3000';
-    process.env.NODE_ENV ??= 'test';
-    process.env.EMBEDDINGS_BASE_URL ??= 'https://stub.invalid';
-    process.env.EMBEDDINGS_API_KEY ??= 'stub-key';
+    for (const [key, value] of Object.entries(ENV_DEFAULTS)) process.env[key] ??= value;
 
     const { memorySearchRoutes } = await import('../../src/memory/search-routes.js');
     const { errorHandler } = await import('../../src/middleware/error.js');
@@ -213,14 +213,6 @@ describe('F3 memory search + indexer integration', () => {
   // cm:guard assert on `strategy` in the RESPONSE, never on the hits — the route validated this field and did not forward it, so the service defaulted to 'semantic' and reported 'semantic' back while the caller had asked for something else (ISS-894), and a hits-only assertion passes on the broken route and the fixed one alike.
   it('search: the requested strategy reaches the service and is reported back', async () => {
     const { projectId, token } = await seedMember();
-
-    await insertMemory(projectId, {
-      source: 'issue',
-      sourceRef: randomUUID(),
-      text: 'auth login flow',
-      vec: hotVector(0),
-    });
-    stubEmbedding(hotVector(0));
 
     const res = await app.request('/api/memory/search', {
       method: 'POST',

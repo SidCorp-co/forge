@@ -347,7 +347,7 @@
     },
     "packages/core/tests/integration/memory-search.test.ts": {
       "fileLines": 0,
-      "maxFunctionLines": 338
+      "maxFunctionLines": 321
     },
     "packages/core/tests/integration/memory-write-get-delete.test.ts": {
       "fileLines": 0,

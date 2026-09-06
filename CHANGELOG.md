@@ -1141,13 +1141,11 @@
   rather than in the hits, because a hits-only assertion passes on both the broken and the fixed
   route.
 
-  *Trade-off, priced:* `memory-search.test.ts`'s describe block was frozen at 321 lines and the new
-  case takes it to 338, so its one entry in `.forge/size-baseline.json` was re-frozen — one line,
-  by hand, rather than `--update-baseline`, which would have silently re-frozen all 79 entries at
-  today's sizes. What it costs: this file is now allowed to be 17 lines longer before the gate
-  speaks again. What ends it: the file is already 5× the 150-line function budget because every
-  case shares one `describe`; splitting the search cases out of the indexer cases retires the
-  waiver rather than raising it again.
+  The new case fits under the file's frozen size budget rather than raising it: the twelve
+  `process.env.X ??=` lines in `beforeAll` are now one loop over a module-level `ENV_DEFAULTS`, and
+  the keyword strategy needs neither a seeded row nor an embedding stub to report itself back. The
+  `form` axis baseline may only move down, so a waiver was not available here — which is the gate
+  working.
 
 - **A valid Coolify token that was merely under-scoped told the operator to replace it.** Every
   Coolify v4 route sits behind an ability middleware (`api.ability:read`, `:deploy`, …), so a token
