@@ -8,7 +8,6 @@
 import { and, count, desc, eq, inArray, type SQL } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
-  agentSessions,
   type FeedbackKind,
   type FeedbackSeverity,
   type FeedbackTarget,
@@ -38,17 +37,6 @@ export const reportColumns = {
   linkedIssueId: feedbackReports.linkedIssueId,
   createdAt: feedbackReports.createdAt,
 } as const;
-
-// cm:guard ISS-557 — a steward run is a schedule session with NO job row, so the job-join the caller tries first resolves null and its pipeline context comes back empty. This session-level lookup is what covers both pipeline and schedule sessions; removing it silently drops every steward report's attribution.
-export async function resolveActiveSessionId(deviceId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ id: agentSessions.id })
-    .from(agentSessions)
-    .where(and(eq(agentSessions.deviceId, deviceId), eq(agentSessions.status, 'running')))
-    .orderBy(desc(agentSessions.updatedAt))
-    .limit(1);
-  return row?.id ?? null;
-}
 
 export async function countReportsForJob(jobId: string): Promise<number> {
   const [row] = await db

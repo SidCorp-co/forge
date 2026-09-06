@@ -8,16 +8,16 @@
  */
 
 import { z } from 'zod';
-import type { Device } from '../../auth/deviceToken.js';
+import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { readPmSnapshot } from '../../pm/snapshot-service.js';
-import { assertDeviceOwnerIsMember } from './project-authz.js';
+import { assertPrincipalIsMember } from './lib.js';
 
 export const pmSnapshotInputSchema = z.object({ projectId: z.uuid() }).strict();
 
 export async function pmSnapshotHandler(
-  device: Device,
+  principal: McpPrincipal,
   input: z.infer<typeof pmSnapshotInputSchema>,
 ) {
-  await assertDeviceOwnerIsMember(device, input.projectId);
+  await assertPrincipalIsMember(principal, input.projectId);
   return readPmSnapshot(input.projectId);
 }

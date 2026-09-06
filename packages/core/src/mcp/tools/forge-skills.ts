@@ -22,14 +22,13 @@ import {
   type SkillRow,
   updateProjectSkill,
 } from '../../skills/service.js';
-import type { ContextScopedMcpToolFactory, DeviceScopedMcpToolFactory } from './lib.js';
+import type { ContextScopedMcpToolFactory } from './lib.js';
 import {
   assertPrincipalIsAdmin,
   assertPrincipalIsMember,
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
-import { assertDeviceOwnerIsAdmin, assertDeviceOwnerIsMember } from './project-authz.js';
 
 const listInputSchema = z.object({ projectId: z.uuid() });
 const getInputSchema = z.object({ projectId: z.uuid(), skillId: z.uuid() });
@@ -165,46 +164,46 @@ function toSkillListRow(row: SkillListRow): Record<string, unknown> {
   };
 }
 
-export const forgeSkillsListTool: DeviceScopedMcpToolFactory = (device) => ({
+export const forgeSkillsListTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_skills.list',
   description:
-    'Catalog of skills visible to a project, deduped by name. Returns a lightweight projection per skill (catalog metadata + dedup hints); the heavy bodies (skillMd, prompt, files, tools, manifest, changelog, localGuide) are OMITTED to stay under the response token cap — fetch a skill body via forge_skills.get / forge_skills.effective. Each row has `scope`: `project` rows are USABLE (installable/dispatchable); `global` rows are adoptable TEMPLATES that do nothing at runtime until adopted (forge_skills.adopt) into the project. `shadowsGlobal`/`shadowedGlobalSkillId` are catalog hints (a same-name global exists), never a runtime fallback. `basedOnGlobalVersion` and `templateVersion` are adoption provenance — the template version this copy was taken from, and the one the template carries now. A gap between them means only that the template moved on; nothing recomputes, flags or reconciles it, so treat it as history, and re-adopt (forge_skills.adopt) only when a human asks for the newer template. `pinned: true` marks a deliberately divergent copy. Requires device owner to be a project member.',
+    'Catalog of skills visible to a project, deduped by name. Returns a lightweight projection per skill (catalog metadata + dedup hints); the heavy bodies (skillMd, prompt, files, tools, manifest, changelog, localGuide) are OMITTED to stay under the response token cap — fetch a skill body via forge_skills.get / forge_skills.effective. Each row has `scope`: `project` rows are USABLE (installable/dispatchable); `global` rows are adoptable TEMPLATES that do nothing at runtime until adopted (forge_skills.adopt) into the project. `shadowsGlobal`/`shadowedGlobalSkillId` are catalog hints (a same-name global exists), never a runtime fallback. `basedOnGlobalVersion` and `templateVersion` are adoption provenance — the template version this copy was taken from, and the one the template carries now. A gap between them means only that the template moved on; nothing recomputes, flags or reconciles it, so treat it as history, and re-adopt (forge_skills.adopt) only when a human asks for the newer template. `pinned: true` marks a deliberately divergent copy. Requires project membership.',
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId } = listInputSchema.parse(args);
-    await assertDeviceOwnerIsMember(device, projectId);
+    await assertPrincipalIsMember(principal, projectId);
     const skills = dedupSkillsByName(await listProjectSkills(projectId)).map(toSkillListRow);
     return { skills };
   },
 });
 
-export const forgeSkillsGetTool: DeviceScopedMcpToolFactory = (device) => ({
+export const forgeSkillsGetTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_skills.get',
   description:
     'Fetch a single skill by id. Returns null when the skill is project-scoped to a different project (no cross-project leak).',
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const { projectId, skillId } = getInputSchema.parse(args);
-    await assertDeviceOwnerIsMember(device, projectId);
+    await assertPrincipalIsMember(principal, projectId);
     const skill = await getSkillForProject(skillId, projectId);
     return { skill };
   },
 });
 
-export const forgeSkillsRegisterTool: DeviceScopedMcpToolFactory = (device) => ({
+export const forgeSkillsRegisterTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_skills.register',
   description:
-    'Bind a PROJECT skill to a pipeline stage for this project (or clear with stage=null). Only project-scoped skills may be registered — a global template must be adopted (forge_skills.adopt) into the project first, else this rejects with SKILL_NOT_PROJECT_SCOPED. Requires device owner to be owner/admin of the project.',
+    'Bind a PROJECT skill to a pipeline stage for this project (or clear with stage=null). Only project-scoped skills may be registered — a global template must be adopted (forge_skills.adopt) into the project first, else this rejects with SKILL_NOT_PROJECT_SCOPED. Requires project owner/admin.',
   inputSchema: zodToMcpSchema(registerInputSchema),
   handler: async (args) => {
     const input = registerInputSchema.parse(args);
-    await assertDeviceOwnerIsAdmin(device, input.projectId);
+    await assertPrincipalIsAdmin(principal, input.projectId);
     const skill = await getSkillForProject(input.skillId, input.projectId);
     if (!skill) {
       throw new Error('NOT_FOUND: skill not found');
     }
     try {
-      return await registerSkillForProject({ ...input, actorUserId: device.ownerId });
+      return await registerSkillForProject({ ...input, actorUserId: principal.userId });
     } catch (err) {
       if (err instanceof SkillNotProjectScopedError) {
         throw new Error(

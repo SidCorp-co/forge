@@ -16,9 +16,9 @@
  */
 
 import { z } from 'zod';
-import type { Device } from '../../auth/deviceToken.js';
+import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { PM_GRAPH_DEFAULT_DEPTH, PM_GRAPH_MAX_DEPTH, readPmGraph } from '../../pm/graph-service.js';
-import { assertDeviceOwnerIsMember } from './project-authz.js';
+import { assertPrincipalIsMember } from './lib.js';
 
 export const pmGraphInputSchema = z
   .object({
@@ -28,7 +28,10 @@ export const pmGraphInputSchema = z
   })
   .strict();
 
-export async function pmGraphHandler(device: Device, input: z.infer<typeof pmGraphInputSchema>) {
-  await assertDeviceOwnerIsMember(device, input.projectId);
+export async function pmGraphHandler(
+  principal: McpPrincipal,
+  input: z.infer<typeof pmGraphInputSchema>,
+) {
+  await assertPrincipalIsMember(principal, input.projectId);
   return readPmGraph(input);
 }

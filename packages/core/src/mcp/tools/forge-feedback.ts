@@ -13,10 +13,9 @@ import {
   issueVisibleIn,
   listReports,
   readReport,
-  resolveActiveSessionId,
   stampReviewed,
 } from '../../feedback/service.js';
-import { resolveActiveJobContext } from '../../jobs/active-job-context.js';
+import { resolveMachineTokenContext } from '../../jobs/active-job-context.js';
 import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../../prompt/sanitize.js';
 import {
   assertPrincipalIsMember,
@@ -116,7 +115,7 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    const { principal, device } = ctx;
+    const { principal } = ctx;
 
     switch (input.action) {
       case 'submit': {
@@ -127,25 +126,17 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.target) throw new Error('BAD_REQUEST: target is required for submit');
         if (!input.summary) throw new Error('BAD_REQUEST: summary is required for submit');
 
-        // Server-resolve pipeline context from the active device job.
-        // If no active job (interactive/PAT), all context fields stay null.
-        let jobId: string | null = null;
-        let runId: string | null = null;
-        let issueId: string | null = null;
-        let stage: string | null = null;
-
-        let sessionId: string | null = null;
-        if (principal.kind === 'device') {
-          const ctx_ = await resolveActiveJobContext(device.id);
-          if (ctx_) {
-            jobId = ctx_.jobId;
-            runId = ctx_.runId;
-            issueId = ctx_.issueId ?? null;
-            stage = ctx_.stage ?? null;
-          }
-          // Resolve session-level link for steward + pipeline sessions (works even with no job).
-          sessionId = await resolveActiveSessionId(device.id);
-        }
+        // cm:guard the pipeline context is SERVER-resolved from the job this token was minted for and is never taken from the caller's input — that is what makes it attribution rather than a claim. A person's PAT names no job, so every context field stays null instead of borrowing whatever job that box ran last, which is what the pre-ISS-931 device lookup did.
+        const active = await resolveMachineTokenContext(principal.machine);
+        const jobId = active?.jobId ?? null;
+        const runId = active?.runId ?? null;
+        const issueId = active?.issueId ?? null;
+        const stage = active?.stage ?? null;
+        // cm:guard ISS-557 — a steward run is a schedule session with NO job row, so `active` is null for it and its report would lose every link. A `session:` token names that session itself, which is why the session id is read off the token first and only falls back to the job's; taking it from `active` alone silently drops every steward report's attribution.
+        const sessionId =
+          principal.machine?.kind === 'session'
+            ? principal.machine.id
+            : (active?.agentSessionId ?? null);
 
         // Per-job rate-limit (server-enforced). Interactive callers (no jobId)
         // have no pipeline run to cap by; skip the check.

@@ -86,3 +86,24 @@ export const isSessionTokenName = (name: string | null | undefined): boolean =>
  */
 export const isMachineTokenName = (name: string | null | undefined): boolean =>
   typeof name === 'string' && MACHINE_TOKEN_NAME_PREFIXES.some((p) => name.startsWith(p));
+
+/** What a machine token names: the job it was minted for, or the session. */
+export type MachineTokenRef = { kind: 'job'; id: string } | { kind: 'session'; id: string };
+
+/**
+ * The id a machine token carries in its own name, for the callers that need
+ * the pipeline context rather than only the fact that one exists.
+ */
+// cm:guard the fourth consumer of these prefixes, and it lives HERE for the same reason the other three do — it is the ONE that has to tell `job:` from `session:`, so a caller that spelled either literal itself would be the copy the guard above forbids. `resolveActiveJobContext` used to take a `devices.id` and answer "whatever that box is running"; a machine token names its own job, which is exact, and this is where that name is read.
+export function parseMachineTokenName(name: string | null | undefined): MachineTokenRef | null {
+  if (typeof name !== 'string') return null;
+  if (name.startsWith(JOB_TOKEN_NAME_PREFIX)) {
+    const id = name.slice(JOB_TOKEN_NAME_PREFIX.length);
+    return id ? { kind: 'job', id } : null;
+  }
+  if (name.startsWith(SESSION_TOKEN_NAME_PREFIX)) {
+    const id = name.slice(SESSION_TOKEN_NAME_PREFIX.length);
+    return id ? { kind: 'session', id } : null;
+  }
+  return null;
+}

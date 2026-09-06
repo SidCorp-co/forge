@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import type { MachineTokenRef } from '../../auth/pat-format.js';
 import { uxFindingKinds, uxFindingStages, uxRuleSeverities } from '../../db/schema.js';
-import { resolveActiveJobContext } from '../../jobs/active-job-context.js';
+import { resolveMachineTokenContext } from '../../jobs/active-job-context.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
 import {
   countFindingsFor,
@@ -34,7 +35,6 @@ const inputSchema = z
     ruleId: z.uuid().optional(),
     // cm:guard the escape hatch, for when active-job resolution refused — supplying it ROUTINELY defeats the point: it skips the lookup entirely, so a finding lands with runId:null and no record of which pass found it. Reach for it only after a named refusal.
     issueId: z.uuid().optional(),
-    // list filters
     filters: z
       .object({
         issueId: z.uuid().optional(),
@@ -60,25 +60,21 @@ type FindingTarget =
   | { ok: true; issueId: string; runId: string | null }
   | { ok: false; reason: string; detail: string };
 
-async function resolveTargetFromActiveJob(
-  principalKind: string,
-  deviceId: string,
-): Promise<FindingTarget> {
-  if (principalKind !== 'device') {
+async function resolveTargetFromActiveJob(machine: MachineTokenRef | null): Promise<FindingTarget> {
+  if (!machine) {
     return {
       ok: false,
       reason: 'not_pipeline_context',
       detail:
-        'Findings resolve their issue from the running pipeline job, and this call did not come from a device principal (interactive session, or a PAT). Pass an explicit `issueId` to write the finding anyway.',
+        'Findings resolve their issue from the pipeline job your token was minted for, and this call came on a personal access token, which names no job. Pass an explicit `issueId` to write the finding anyway.',
     };
   }
-  const active = await resolveActiveJobContext(deviceId);
+  const active = await resolveMachineTokenContext(machine);
   if (!active) {
     return {
       ok: false,
       reason: 'no_active_job',
-      detail:
-        'This device has no dispatched/running job with a live agent session, so there is no pipeline context to attribute the finding to. Pass an explicit `issueId` to write it anyway.',
+      detail: `The ${machine.kind} this token was minted for has no dispatched/running job, so there is no pipeline context to attribute the finding to. Pass an explicit \`issueId\` to write it anyway.`,
     };
   }
   if (!active.issueId) {
@@ -99,7 +95,7 @@ async function resolveExplicitTarget(issueId: string, projectId: string): Promis
       detail: `No issue ${issueId} in this project. A finding is never written against an issue the caller cannot see — check the id, or drop \`issueId\` to resolve it from the active job.`,
     };
   }
-  // cm:guard runId stays null here — an explicitly-targeted finding is by definition not attributable to a run, and borrowing the device's current one would credit the wrong pass
+  // cm:guard runId stays null here — an explicitly-targeted finding is by definition not attributable to a run, and borrowing the caller's current one would credit the wrong pass
   return { ok: true, issueId, runId: null };
 }
 
@@ -110,7 +106,7 @@ export const forgeUxFindingsTool: ContextScopedMcpToolFactory = (ctx) => ({
     'action=write: persist a UX gap observed during review or verify-live — a required state/a11y/microcopy/responsive/design-system item the changed UI fails to satisfy. ' +
     'Pipeline context (issueId/runId) is normally resolved server-side from your active job — do NOT supply it. ' +
     'Required: stage (review|verify-live), kind (missing-state|a11y|microcopy|responsive|design-system|other), detail. Optional: severity (default must), ruleId (the ux-contract rule it violates). ' +
-    'Returns {ok:true,id} on success. Every refusal carries {ok:false,reason,detail} where `detail` names the remedy: `not_pipeline_context` (not a device principal), `no_active_job` (no dispatched/running job on this device), `job_not_issue_bound` (a pm/interactive/system run), `issue_not_in_project`, or `rate_limited` past the per-job cap. None is a 500 — the agent continues. ' +
+    'Returns {ok:true,id} on success. Every refusal carries {ok:false,reason,detail} where `detail` names the remedy: `not_pipeline_context` (a personal access token, which names no job), `no_active_job` (no dispatched/running job for the job/session this token names), `job_not_issue_bound` (a pm/interactive/system run), `issue_not_in_project`, or `rate_limited` past the per-job cap. None is a 500 — the agent continues. ' +
     'ESCAPE HATCH: when resolution refuses and you know the issue, pass an explicit `issueId` and the finding is written against it with runId:null. Use it rather than pasting the finding into a comment, which is where findings go to be forgotten. ' +
     'action=list: read findings for a project. Supports filters.issueId/stage/kind, limit (default 25). ' +
     'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. ' +
@@ -118,7 +114,7 @@ export const forgeUxFindingsTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    const { principal, device } = ctx;
+    const { principal } = ctx;
 
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
 
@@ -132,7 +128,7 @@ export const forgeUxFindingsTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         const target = input.issueId
           ? await resolveExplicitTarget(input.issueId, projectId)
-          : await resolveTargetFromActiveJob(principal.kind, device.id);
+          : await resolveTargetFromActiveJob(principal.machine);
         if (!target.ok) return target;
 
         const written = await countFindingsFor(target.issueId, target.runId);

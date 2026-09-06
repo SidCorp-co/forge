@@ -1,8 +1,8 @@
 # The agent's surface: two CLIs, one shrinking MCP
 
 How an agent reaches core, which CLI belongs to whom, and which MCP tools survive.
-**Verified against the tree and the live tracker DB 2026-09-06, after `ISS-508` and `ISS-927`
-both merged.**
+**Verified against the tree and the live tracker DB 2026-09-06, after `ISS-508`, `ISS-927` and
+`ISS-931` all merged.**
 
 ## Today
 
@@ -16,7 +16,7 @@ flowchart LR
       MC["Claude's MCP client<br/>.mcp.json"]
     end
     D -->|spawns| S
-    D -->|"writes .mcp.json<br/>DEVICE token"| MC
+    D -->|"writes .mcp.json<br/>JOB token"| MC
   end
 
   subgraph CORE["forge · core"]
@@ -30,7 +30,7 @@ flowchart LR
   CLI -->|"REST · $FORGE_PAT<br/>3.35.141+"| API
   CLI -->|"jsonrpc tools/call · 7 tools<br/>3.35.140, what the fleet runs"| MCP
   CLI -.->|"uploads · step_start<br/>either version"| MCP
-  MC -->|"jsonrpc tools/call · device token"| MCP
+  MC -->|"jsonrpc tools/call · job token"| MCP
 ```
 
 Two CLI arrows because two copies are live: the one `ISS-508` shipped and the one the boxes still
@@ -50,12 +50,41 @@ route through `forge_uploads` and `forge_step_start` — which stay on `/mcp` by
 3.35.140 and still carries `src/tracker/rpc.mjs`, so the seven families that copy names are held
 by a version upgrade, not by a decision.
 
-**The caller that now holds the surface open is not a CLI at all.** `forge-runner` writes each
-job's `.mcp.json` with the **device token**
-(`packages/runner/crates/forge-runner-core/src/mcp/config.rs`), so every agent session reaches
-`/mcp` as a device and calls whatever the tool list shows it. Measured over the whole
-`mcp_audit_log`: 55,643 device calls on `forge_issues`, 24,122 on `forge_comments`. That file,
-not the plugin, is what the deletion rule below is waiting on.
+**No device authenticates `/mcp` any more.** `requirePat` takes one species — `forge_pat_*` — and
+refuses every other bearer with a 401 naming the class and the remedy
+(`packages/core/src/middleware/require-pat.ts`). `forge-runner` writes each job's `.mcp.json` with
+that job's own token, the same credential the spawn exports as `$FORGE_PAT`
+(`packages/runner/crates/forge-runner-core/src/mcp/config.rs`). What the device token still holds:
+`/ws`, and the REST routes behind `requireDevice` — chiefly the pool a master claims from.
+
+**This ships on two clocks and the second one is a binary.** Core refuses the device at deploy; a
+box only starts writing the job token when it installs a `forge-runner` that does. In between,
+`claude`'s MCP client on an un-upgraded box gets 401 on every call, which is why the refusal says
+*"needs a newer forge-runner binary"* rather than anything about PATs. The fleet when this landed:
+three boxes, all `0.12.0`, all online; every other `devices` row `revoked`/`offline`. Device MCP
+traffic in the 24h before: 1,565 calls against 82,722 on tokens.
+
+Two reachability changes come with it, and neither is a bug to file:
+
+- **Admin-gated tools need the `admin` scope, which no machine token carries.** A paired device had
+  no scopes at all, so `assertPrincipalIsAdmin`'s scope half was skipped for it and only the
+  project role was asked. A `job:`/`session:` token is minted `['read','write']`
+  (`jobs/job-token.ts`, `agent-sessions/session-token.ts`), so `forge_skills.register` /
+  `.create` / `.update` / `.delete` / `.adopt` / `.push`, `forge_runners` register / retire /
+  update_capabilities, `forge_config action=update`, `forge_schedules` create / update / delete /
+  run and `forge_reconcile` now answer `FORBIDDEN: this token lacks the admin scope` to a pipeline
+  agent. That traffic was operator-shaped and mostly dormant (`forge_skills.register` last
+  2026-08-07, `.adopt` 08-09, `runners register` 08-12, `reconcile` 08-10); `forge_config
+  action=update` and `forge_skills.update` were live, and both already had succeeding token
+  callers. An operator who wants one of these from an agent mints a PAT with `admin` and sets it as
+  the box's `$FORGE_PAT` — deliberately an operator decision, because the alternative is ambient
+  admin authority, which is what `ISS-927` removed from REST.
+- **A non-member now reads as not-found, not forbidden.** `assertDeviceOwnerIsMember` answered
+  `FORBIDDEN: device owner is not a member`; `assertPrincipalIsMember` answers
+  `NOT_FOUND: project not found or not accessible`, the existence-hiding semantics the rest of the
+  surface already used. Fourteen tools moved onto it, and the move also closed what `ISS-150`'s
+  review called blocker #1: the device helpers read only `ownerId`, so those fourteen never
+  consulted the token's `projectIds` allowlist.
 
 ## Target
 
@@ -94,7 +123,7 @@ the other's half, which is why a skill never names `runner-v*` or any project's 
 |---|---|---|
 | **stay** | `forge_step_start`, `forge_uploads` | `step_start` opens the session every other call reports into and returns the issue body the runner did not inline; `uploads` returns an image content block, which a shell process cannot produce |
 | **blocked on a fleet upgrade** | `forge_issues` `forge_comments` `forge_config` `forge_guide` `forge_knowledge` `forge_project_pm` `forge_projects.create` | the 7 the pre-`ISS-508` plugin CLI calls. That CLI has moved to `/api`; the copies running on the boxes have not. Deleting one before the fleet upgrades breaks those copies |
-| **blocked on the runner's `.mcp.json`** | ~20 taking device-token calls | the credential question is settled — `ISS-927` merged 2026-09-06, an unattended session mints a `session:<id>` PAT on `agent:start` and `requireAnyAuth`'s device branch is gone. What is left is mechanical: `/mcp` still accepts a device through `requirePatOrDevice`, and `mcp/config.rs` still writes the device token into every job's `.mcp.json`. Schedules, measured 2026-09-06: 16 rows, **0 enabled** |
+| ~~blocked on the runner's `.mcp.json`~~ **cleared** | ~20 that took device-token calls | `ISS-931` closed it: `/mcp` refuses a device and `mcp/config.rs` writes the job's token. Their device counts stop rising the moment a box upgrades, so the deletion rule below is now a question about a count's HISTORY rather than about live traffic — which does NOT make a nonzero one spendable; read the clause and its price |
 | **fenced by design** | `forge_orgs.list` `forge_orgs.members` `forge_collaborators` | they resolve no project, so a project-scoped PAT there is an account-scoped credential in disguise. Session only, on every transport |
 | **free to go** | the rest | each has a REST twin — see [data-plane-surface.md](data-plane-surface.md) |
 
@@ -126,6 +155,14 @@ spending a zero, and note that `forge_memory.revisions` — added `f568c503` on 
 the next day — is a zero under any retention, so it did not test this clause. If a device caller for such a tool
 ever appears in `mcp_audit_log` after a deletion taken this way, the reading is wrong and the tool
 comes back.
+
+**Since `ISS-931` a device count is a HISTORICAL count.** Nothing writes a non-null `device_id`
+any more — `mcp/server.ts` stamps it `null` on every row — so a tool's device number is frozen at
+whatever it reached, and it will never fall to zero on its own. That does not license spending it:
+the clause asks whether the callers a tool HAD can reach its replacement, and those callers are
+exactly the un-upgraded boxes the fleet-upgrade row above is about. The column stays in the schema
+for that reason; a table with no device column would answer this question with silence instead of
+a number.
 
 Read `mcp_audit_log` split on `device_id IS NOT NULL` / `token_id IS NOT NULL` — never on
 `user_id`, which is stamped `device.ownerId` and so reads 100% user and 0 device for every tool.
@@ -161,8 +198,8 @@ aggregate is undecided (`ISS-926`).
 |---|---|---|
 | the CLI moves to REST | `ISS-508` on the **forge-plugin** project | closed, merged 2026-09-06T14:13Z — the boxes still run the old copy |
 | one credential form for the API | `ISS-927` here | closed, merged `3291d537` |
-| the runner stops handing sessions a device token | `ISS-931` here | open, holds a `blocks` edge onto `ISS-894` |
-| the waves themselves, and the record of the ones already run | `ISS-894` here | `waiting` on `ISS-931` |
+| the runner stops handing sessions a device token | `ISS-931` here | closed, merged — `requirePat` on `/mcp` + the job token in `mcp/config.rs`; needs a `runner-v*` release before a box stops writing the device token |
+| the waves themselves, and the record of the ones already run | `ISS-894` here | unblocked by `ISS-931`; wave 4 reads the deletion rule below, not this row |
 | the boundary is written down | `ISS-926` here | |
 
 A dependency edge does not cross projects, so `ISS-508`'s ordering lived in both bodies as prose;

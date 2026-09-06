@@ -17,11 +17,11 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { connectClientAsDevice, parseToolResult } from '../helpers/mcp-harness.js';
+import { connectClientAsPat, parseToolResult } from '../helpers/mcp-harness.js';
 
 describe('forge_issues list: complexity filter (ISS-912)', () => {
   let harness: TestDatabase;
-  let issueDeviceToken: typeof import('../../src/auth/deviceToken.js').issueDeviceToken;
+  let mintPat: typeof import('../../src/auth/pat.js').mintPat;
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
@@ -29,7 +29,7 @@ describe('forge_issues list: complexity filter (ISS-912)', () => {
     process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
     process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
     process.env.NODE_ENV ??= 'test';
-    ({ issueDeviceToken } = await import('../../src/auth/deviceToken.js'));
+    ({ mintPat } = await import('../../src/auth/pat.js'));
   }, 60_000);
 
   afterAll(async () => {
@@ -50,12 +50,8 @@ describe('forge_issues list: complexity filter (ISS-912)', () => {
       projectId: project.id,
       role: 'admin',
     });
-    const { plaintext } = await issueDeviceToken({
-      ownerId: user.id,
-      name: 'd',
-      platform: 'linux',
-    });
-    const ctx = await connectClientAsDevice(plaintext);
+    const { plaintext } = await mintPat({ userId: user.id, name: 'test-cli' });
+    const ctx = await connectClientAsPat(plaintext);
     try {
       const mk = async (complexity: string, title: string) => {
         const res = await ctx.client.callTool({

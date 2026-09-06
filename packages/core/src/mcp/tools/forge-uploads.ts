@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { env } from '../../config/env.js';
-import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
+import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
 import { getStorage } from '../../storage/index.js';
 import {
@@ -32,7 +32,6 @@ const inputSchema = z
     data: z
       .object({
         target: z.enum(['issue', 'comment', 'session']),
-        // request: the file to upload
         targetId: z.uuid().optional(),
         name: z.string().trim().min(1).max(200).optional(),
         // Optional — inferred from the file extension when omitted; the ticket
@@ -86,8 +85,8 @@ async function mintDownloadTicket(
       targetType: target,
       attachmentId,
       projectId,
-      issuedToUserId: principal.kind === 'pat' ? principal.userId : principal.device.ownerId,
-      issuedToDeviceId: principal.kind === 'device' ? principal.device.id : null,
+      issuedToUserId: principal.userId,
+      issuedToDeviceId: null,
     });
     return {
       url: `/api/uploads/download/${ticket.id}`,
@@ -132,7 +131,7 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
       const att = await loadAttachmentForFetch(target, attachmentId);
       await assertPrincipalIsWriter(principal, att.projectId);
 
-      // cm:why every fetch mints one, inlinable or not — the bearer-guarded `url` 401s for a device token, a PAT and no-auth alike, so without this an agent that can SEE an attachment still has no way to obtain its bytes (or to hand a fetchable URL to a third-party service that must re-host it)
+      // cm:why every fetch mints one, inlinable or not — the bearer-guarded `url` 401s for a PAT and for no-auth alike, so without this an agent that can SEE an attachment still has no way to obtain its bytes (or to hand a fetchable URL to a third-party service that must re-host it)
       const download = await mintDownloadTicket(target, attachmentId, att.projectId, principal);
       const meta = {
         attachmentId,
@@ -230,7 +229,7 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
         targetType: target,
         targetId,
         uploaderId: principalUserId(principal),
-        uploaderDeviceId: principal.kind === 'device' ? principal.device.id : null,
+        uploaderDeviceId: null,
         name,
         mime,
       });
