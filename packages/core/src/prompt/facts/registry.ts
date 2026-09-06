@@ -36,6 +36,15 @@ export interface FactRenderContext {
   stage?: JobType | null;
   /** Resolved happy-path status ladder for this project (enabled stages). */
   ladder?: readonly IssueStatus[];
+  /** The project's `kind='module'` labels, resolved by `./resolve.ts`. Empty
+   *  or absent means the project has no taxonomy. */
+  modules?: readonly ProjectModuleFact[];
+}
+
+// cm:edge contract -> packages/core/src/prompt/facts/resolve.ts#loadProjectModules — that query is the only producer of this shape, and `parentName` must stay a NAME: the rendered text hands it straight to an agent as something to pass back to `forge_issues`, where an id is noise it cannot act on
+export interface ProjectModuleFact {
+  name: string;
+  parentName: string | null;
 }
 
 export interface ForgeFact {
@@ -51,6 +60,15 @@ export interface ForgeFact {
   version: number;
   /** Canonical text. Pure: reads only `ctx`, never the DB. */
   render(ctx?: FactRenderContext): string;
+  /**
+   * Whether this fact belongs in THIS project's prompt at all. Absent means always.
+   *
+   * Distinct from `appliesTo`, which gates on the stage and is known statically: this gates on
+   * resolved project data, so a fact about a feature a project does not use costs that project
+   * nothing. `render()` must still return text without it — the author-time surfaces (Skill
+   * Studio, `GET /api/skill-facts`) preview every fact regardless of any one project.
+   */
+  relevant?(ctx: FactRenderContext): boolean;
 }
 
 // cm:guard these strings are the ONLY text injected into every job rather than fetched on demand, so a mode-specific claim here reaches projects of every mode: `rule-parity.test.ts` holds them against the runner's orientation template by INTENT (never bytes — the surfaces differ in escaping and audience), and `check-injected-doc-modes.mjs` holds every status transition in them to naming the mode it belongs to.
@@ -152,9 +170,7 @@ export const CANONICAL_LADDER: readonly IssueStatus[] = [
   'closed',
 ];
 
-// Issue-bound pipeline stages — facts that operate on an issue (status ladder,
-// comments, handoff) apply here and are kept OUT of `pm` jobs, which have no
-// issue to act on.
+// cm:why `pm` is absent because it has no issue to act on — a fact that names "the issue" reaching a pm job describes something that is not there
 const ISSUE_STAGES: readonly JobType[] = [
   'triage',
   'clarify',
@@ -458,6 +474,40 @@ A setup step may have run in this checkout seconds before you started, and anyth
     version: 1,
     render: () => `## Red flag: report the friction
 If you JUST worked around an ambiguous / contradictory / missing / redundant pipeline step (skill, tool, doc, orientation) to get unblocked, call \`forge_feedback\` (action=submit) BEFORE you finish — name the target + targetRef and what you expected vs what you hit. This is a trigger, not a checklist item: do it when the trigger fires, skip it when nothing snagged.`,
+  },
+  // cm:why ISS-595 — this instruction used to belong in a `forge-triage` / `forge-clarify` skill body; those were deleted with the staged lane (ISS-895), and a fact reaches every stage of both lanes with no file to re-sync and can gate itself on project data, which a skill body cannot
+  {
+    id: 'module-attribution',
+    title: "The issue's primary module",
+    category: 'protocol',
+    tier: 'contextual',
+    scope: 'project-resolved',
+    namespace: 'forge',
+    appliesTo: [...ISSUE_STAGES, 'drive'],
+    version: 1,
+    // cm:guard the predicate, not an empty `render()`, is what makes this a no-op for a taxonomy-less project — `render()` is also what the Skill Studio palette and `GET /api/skill-facts` preview with no project at all, and `registry.test.ts` asserts every fact renders non-empty
+    relevant: (ctx) => (ctx.modules?.length ?? 0) > 0,
+    render: (ctx) => {
+      const modules = ctx?.modules ?? [];
+      const list =
+        modules.length > 0
+          ? modules
+              .map((m) => `- ${m.name}${m.parentName ? ` (under ${m.parentName})` : ''}`)
+              .join('\n')
+          : '- (this project declares no modules — nothing to attribute to)';
+      return `## The issue's primary module
+This project keeps a module taxonomy. Every module is a label with \`kind:"module"\`, and an issue may carry at most one PRIMARY module — the part of the product the work belongs to.
+
+${list}
+
+**Set it on the issue itself, never in a comment.** The carrier is the label attach payload: send the module as an OBJECT alongside any plain label strings —
+\`forge_issues.update({ documentId, labels: [{ labelId: "<module name>", isPrimary: true }, "needs-design"] })\`
+\`labelId\` takes the module's name or its uuid. \`labels\` REPLACES the set, so send the whole set in one call. A second primary in the same payload, or an \`isPrimary\` on something that is not a module, is refused — the write does not half-apply.
+
+A \`**Module:**\` line in a comment is NOT the attribution and nothing reads it. If you find one, set the field and leave the comment alone.
+
+When you are unsure which module fits, attach the labels you are sure of and leave the primary unset. An unattributed issue is a normal state, not a gap to fill by guessing — a wrong primary is worse than none, because it is what module filters and reports are counted from.`;
+    },
   },
 ] as const;
 

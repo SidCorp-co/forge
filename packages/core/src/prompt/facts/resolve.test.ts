@@ -36,6 +36,7 @@ function makeInputs(overrides?: Partial<Inputs>): Inputs {
     project: (key: string) => values[key],
     projectFactKeys: ['build-commands'],
     alwaysInjectFacts: [],
+    modules: [],
     ...overrides,
   };
 }
@@ -110,7 +111,6 @@ describe('renderStageFactsText', () => {
     expect(pm).not.toContain('Status ladder');
     expect(pm).not.toContain('Comment + status ordering');
     expect(pm).not.toContain('forge_step_handoff');
-    // Tool-routing + guides index still apply.
     expect(pm).toContain('### Project integrations');
     expect(pm).toContain('Project guides (fetch on demand)');
   });
@@ -343,5 +343,64 @@ describe('renderIntegrations — per-binding instructions (A11)', () => {
     expect(text.indexOf('Backend: org=acme')).toBeLessThan(
       text.indexOf('Project-specific instructions'),
     );
+  });
+});
+
+// cm:guard assert the RENDERED block for both projects, never the registry's `relevant` predicate — the predicate could be correct while the tier filter never consults it, which is exactly how the ISS-552 leak stayed open
+describe('renderStageFactsText — module attribution is gated on the taxonomy (ISS-595)', () => {
+  const MODULES = [
+    { name: 'billing', parentName: null },
+    { name: 'invoices', parentName: 'billing' },
+  ];
+
+  it('names every module of a project that has a taxonomy', () => {
+    const text = renderStageFactsText(makeInputs({ modules: MODULES }), 'p-1', 'triage');
+    expect(text).toContain("### The issue's primary module");
+    expect(text).toContain('- billing');
+    expect(text).toContain('- invoices (under billing)');
+  });
+
+  it('names the isPrimary attach payload as the carrier, and refuses the comment line', () => {
+    const text = renderStageFactsText(makeInputs({ modules: MODULES }), 'p-1', 'clarify');
+    expect(text).toContain('isPrimary: true');
+    expect(text).toContain('forge_issues.update');
+    expect(text).toContain('**Set it on the issue itself, never in a comment.**');
+    expect(text).toContain('is NOT the attribution and nothing reads it');
+  });
+
+  it('reaches the autonomous driver, which is the only lane that still runs triage', () => {
+    const text = renderStageFactsText(makeInputs({ modules: MODULES }), 'p-1', 'drive');
+    expect(text).toContain("### The issue's primary module");
+  });
+
+  it('renders NOTHING for a project with no module labels', () => {
+    const text = renderStageFactsText(makeInputs({ modules: [] }), 'p-1', 'triage');
+    expect(text).not.toContain('primary module');
+    expect(text).not.toContain('isPrimary');
+  });
+
+  it('adds no section to a project with no module labels — the headings are pinned', () => {
+    // cm:why the pinned list is the exact heading set a taxonomy-less project got before this change, so a section that leaks past the predicate lands here as an extra entry whatever its wording — asserting `not.toContain` of one phrase would pass on a reworded leak
+    const headings = (text: string) => text.split('\n').filter((l) => l.startsWith('### '));
+    expect(headings(renderStageFactsText(makeInputs({ modules: [] }), 'p-1', 'triage'))).toEqual([
+      '### Complexity scale',
+      '### Priority scale',
+      '### Category convention',
+      '### Issue relation kinds',
+      '### Status ladder',
+      '### Comment + status ordering',
+      '### Step handoff (best-effort)',
+      '### The workspace you were handed',
+      '### Project integrations',
+      '### Project guides (fetch on demand)',
+    ]);
+    expect(
+      headings(renderStageFactsText(makeInputs({ modules: MODULES }), 'p-1', 'triage')),
+    ).toContain("### The issue's primary module");
+  });
+
+  it('stays out of pm jobs, which have no issue to attribute', () => {
+    const text = renderStageFactsText(makeInputs({ modules: MODULES }), 'p-1', 'pm');
+    expect(text).not.toContain("### The issue's primary module");
   });
 });
