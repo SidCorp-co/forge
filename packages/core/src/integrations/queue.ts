@@ -2,6 +2,7 @@ import { INTEGRATIONS_QUEUE_NAME } from '../jobs/queue-name.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
 import { coolifyAdapter } from './coolify/adapter.js';
+import { type CoolifyConfirmJob, runCoolifyConfirm } from './coolify/confirm.js';
 import type { CoolifyConfig, CoolifySecrets } from './coolify/types.js';
 import { buildContextFromBinding, findBindingById, findConnectionById } from './store.js';
 
@@ -33,16 +34,26 @@ export async function registerIntegrationsWorker(): Promise<void> {
     async (arg: any) => {
       const entries = Array.isArray(arg) ? arg : [arg];
       for (const entry of entries) {
-        const data = entry?.data as CoolifyDispatchJob | undefined;
-        if (!data || data.jobKind !== 'coolify.dispatch') continue;
+        const data = entry?.data as CoolifyDispatchJob | CoolifyConfirmJob | undefined;
+        if (!data) continue;
         try {
-          await runCoolifyDispatch(data);
+          if (data.jobKind === 'coolify.dispatch') {
+            await runCoolifyDispatch(data);
+          } else if (data.jobKind === 'coolify.confirm') {
+            const outcome = await runCoolifyConfirm(data);
+            if (outcome.settled) {
+              logger.info(
+                { bindingId: data.bindingId, runId: data.runId, ...outcome },
+                'integrations worker: coolify deploy confirmation settled',
+              );
+            }
+          } else {
+          }
         } catch (err) {
-          // Let pg-boss surface this to the retry policy. The adapter has
-          // already recorded the failed delivery + maybe-tripped the breaker.
+          // cm:guard rethrow — pg-boss's retry policy is the only thing that re-runs this, and the delivery row plus the breaker were already written by the adapter, so swallowing here loses the retry and keeps the failure.
           logger.error(
-            { err, bindingId: data.bindingId, runId: data.runId },
-            'integrations worker: coolify dispatch threw — retry will be scheduled by pg-boss',
+            { err, bindingId: data.bindingId, runId: data.runId, jobKind: data.jobKind },
+            'integrations worker: coolify job threw — retry will be scheduled by pg-boss',
           );
           throw err;
         }

@@ -28,8 +28,8 @@
 </style>
 <main>
 <h1>lifecycle-pipeline</h1>
-<p class="sub">How a run and its jobs open, advance and close without orphans — and what closes the
-run when the jobs are already done.</p>
+<p class="sub">How a run and its jobs open, advance and close without orphans — what closes the
+run when the jobs are already done, and what stops it closing while a deploy is unproven.</p>
 
 <h2>The invariant, in both directions</h2>
 <div class="rule">
@@ -126,6 +126,45 @@ undo, so what admits a paused run is not the pause itself but the proof that not
 resume into: every job terminal, an hour of silence, and no session beating. Widen it and the pass
 starts cancelling deliberate holds.</p>
 
+<h2>The deploy gate — the one thing that can refuse a close</h2>
+<p>Every close above asks one question first, and only about <code>completed</code>: does this run
+carry a deploy nobody has heard back from? Before ISS-922 nothing asked. A release run closed
+<code>completed</code> on the evidence that an agent had <i>asked</i> Coolify to deploy — measured
+2026-09-06, 50 runs sat at <code>status='completed'</code> while their own <code>current_step</code>
+still read <code>release.deploy.in_flight</code>, and <code>release.deploy.done</code> had been
+stamped zero times fleet-wide.</p>
+<pre>
+  tryDispatchCoolifyRelease           coolify/adapter.ts                coolify/confirm.ts
+        |                                    |                                |
+   open a HOLD on the run  --enqueue-->  deploy each target  --enqueue-->  poll GET /deployments/{uuid}
+   (deploy-confirmations.ts)             one hold per target                     |
+        |                                                          +-------------+-------------+
+        |                                                          |             |             |
+        |                                                     succeeded       failed      still running
+        |                                                          |             |             |
+        |                                                     mark hold     mark hold     re-poll until
+        |                                                          |             |         deadlineAt (30 min)
+        v                                                          v             v             |
+  closeRun / closeOpenRunForIssue  ---- asks ---->  resolveDeployGate(holds)  <----------------+
+        |                                                          |
+        |                          +-------------------------------+-------------------------------+
+        |                          |                               |                               |
+        v                     verdict=clear                  verdict=defer                   verdict=failed
+   writes the terminal      no deploy, or every         a deploy is genuinely in           Coolify said failed,
+   status as asked          target confirmed            flight: NOTHING is written,        or the deadline passed
+                                                        the run stays running at           -> the run closes
+                                                        release.deploy.in_flight (k/n)        <b>failed</b>, naming
+                                                        and confirm.ts performs the           the deploy
+                                                        close when the last hold lands
+</pre>
+<p>Bounded by construction: every hold carries its own <code>deadlineAt</code>, 30 minutes, chosen
+below <code>RESULT_QUIET_MINUTES</code> (60) so the gate always resolves before the sweeper's own
+window opens and two mechanisms never decide one run. A deferral therefore cannot leak a run — past
+the deadline the gate itself answers <code>failed</code>, through the same single writer.</p>
+<p>The hold write is refused on a run that is already terminal. A deploy asked for after its run
+closed cannot be witnessed by that run; <code>release-coolify.ts</code> reports it at ERROR level
+rather than stamping the run with a deploy substep it cannot back up.</p>
+
 <h2>When it goes wrong</h2>
 <table>
 <thead><tr><th>Symptom</th><th>What actually happened</th></tr></thead>
@@ -147,6 +186,14 @@ starts cancelling deliberate holds.</p>
     <td>It had no live session and every job terminal, so the sweeper judged it unresumable. If the
         hold was real, the session or the queued job that made it real was missing — that is the
         defect, not the reap.</td></tr>
+<tr><td>A run sits <code>running</code> at <code>release.deploy.in_flight (k/n)</code></td>
+    <td>Not a leak — <i>k</i> of <i>n</i> deploy targets have reported and the rest have not. It
+        resolves either way within 30 minutes: every target confirms and the run closes, or the
+        deadline passes and it closes <code>failed</code> naming what went unconfirmed.</td></tr>
+<tr><td>A run closed <code>failed</code> and every job in it was <code>done</code></td>
+    <td>The deploy failed, or went unconfirmed past its deadline. <code>current_step</code> names the
+        target and Coolify's reason, and the inbound <code>integration_deliveries</code> row for that
+        <code>deployment_uuid</code> carries the read that decided it.</td></tr>
 <tr><td>The run split into two rows across a gap</td>
     <td>Expected, not damage. <code>runs.ts openIssueRun</code> opens a fresh run when none is open,
         which is what makes closing a concluded run safe in the first place.</td></tr>
@@ -162,6 +209,8 @@ starts cancelling deliberate holds.</p>
 <tr><td>reap a run whose children are done, and the job-less issue runs</td><td><code>packages/core/src/pipeline/runs-concluded.ts</code></td></tr>
 <tr><td>the four job hops</td><td><code>packages/core/src/jobs/loop-monitor.ts</code></td></tr>
 <tr><td>the tick that drives all of it</td><td><code>packages/core/src/pipeline/sweeper.ts</code></td></tr>
+<tr><td>the deploy gate a close must pass</td><td><code>packages/core/src/pipeline/deploy-confirmations.ts</code></td></tr>
+<tr><td>reading a deploy's outcome out of Coolify</td><td><code>packages/core/src/integrations/coolify/confirm.ts</code></td></tr>
 </tbody>
 </table>
 

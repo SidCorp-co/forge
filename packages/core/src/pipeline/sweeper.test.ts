@@ -91,7 +91,7 @@ vi.mock('../issues/apply-transition.js', () => ({
 
 // cm:why both run-close SSOTs are mocked to keep `runs.ts -> hooks -> cascade` out of this suite; the sweeper's own contract here is which passes run, in what order, and what they call.
 const closeRunIfOneShotMock = vi.fn(async (..._args: unknown[]) => {});
-const closeOpenRunForIssueMock = vi.fn(async (..._args: unknown[]) => {});
+const closeOpenRunForIssueMock = vi.fn(async (..._args: unknown[]) => 'settled' as const);
 vi.mock('./runs.js', () => ({
   closeRunIfOneShot: (...args: unknown[]) => closeRunIfOneShotMock(...args),
   closeOpenRunForIssue: (...args: unknown[]) => closeOpenRunForIssueMock(...args),
@@ -167,7 +167,7 @@ beforeEach(() => {
   selectWhere.mockReset();
   selectWhere.mockResolvedValue([]);
   closeRunIfOneShotMock.mockResolvedValue(undefined);
-  closeOpenRunForIssueMock.mockResolvedValue(undefined);
+  closeOpenRunForIssueMock.mockResolvedValue('settled');
   dbExecute.mockResolvedValue([]);
   dbInsertValues.mockResolvedValue(undefined);
   resolveGateSettingsMock.mockResolvedValue({ cap: 1, baseStampable: true });
@@ -254,8 +254,7 @@ describe('alarmZombieSessions — demoted to alarm-only (ISS-449)', () => {
   it('keeps the pipeline/pm scoping + ISS-420 no-client predicate in the detection SELECTs', async () => {
     await alarmZombieSessions(new Date('2026-06-05T00:00:00Z'), {});
 
-    // Three detection SELECTs: queued-past-timeout, running-with-stale-
-    // heartbeat, and the no-client-ack detector for chat/schedule sessions.
+    // cm:guard the COUNT is the assertion — three detection SELECTs (queued-past-timeout, running-with-stale-heartbeat, no-client-ack), and a fourth pass added without a fourth SELECT asserted here would alarm rows nobody proved were alarmable.
     expect(dbExecute).toHaveBeenCalledTimes(3);
     const [pass1, pass2, pass3] = dbExecute.mock.calls.map((c) => sqlText(c[0]));
 
@@ -525,7 +524,7 @@ describe('reapOrphanedIssueRuns (ISS-461 — issue runs leaked past a terminal i
     ]);
     closeOpenRunForIssueMock
       .mockRejectedValueOnce(new Error('boom'))
-      .mockResolvedValueOnce(undefined);
+      .mockResolvedValueOnce('settled');
 
     const result = await reapOrphanedIssueRuns(new Date('2026-06-12T00:00:00Z'));
 
@@ -556,6 +555,7 @@ describe('reapConcludedRuns wiring (ISS-923 — the inverse orphan direction)', 
     dbExecute.mockResolvedValue([{ id: 'run-a', issue_id: 'iss-a' }]);
     closeOpenRunForIssueMock.mockImplementation(async () => {
       order.push('orphanedIssueRuns');
+      return 'settled' as const;
     });
     reapConcludedRunsMock.mockImplementation(async () => {
       order.push('concludedRuns');

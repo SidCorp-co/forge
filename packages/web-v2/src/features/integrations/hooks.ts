@@ -153,15 +153,6 @@ export function useDeleteProviderIntegration(projectId: string | undefined) {
   });
 }
 
-/** Rotate the inbound HMAC webhook secret. The new secret is returned ONCE. */
-export function useRotateIntegrationSecret(projectId: string | undefined) {
-  const invalidate = useInvalidateIntegrations(projectId);
-  return useMutation({
-    mutationFn: (id: string) =>
-      integrationsApi.rotateSecret(projectId as string, id),
-    onSuccess: () => invalidate(),
-  });
-}
 
 /** Release the production deploy gate for an in-flight pipeline run. */
 export function useConfirmProdDeploy(projectId: string | undefined) {
@@ -201,7 +192,6 @@ export function useIntegrationDeliveries(
   });
 }
 
-// === ISS-408 / F3 — retry failed outbound deliveries ===
 
 /** Re-dispatch a failed outbound delivery (202). Caller passes the deliveryId
  *  to `mutate`. On success, invalidates the delivery-list key so the new row
@@ -350,7 +340,6 @@ export function useRemoveConnection() {
   });
 }
 
-// === ISS-408 / F3 — list bindings for a connection + share-existing flow ===
 
 /**
  * Project+env bindings fed by one connection. Keyed

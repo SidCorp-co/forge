@@ -12,14 +12,8 @@ import type { IntegrationProvider } from '../integrations/types.js';
 import { logger } from '../logger.js';
 import { verifyHmacSignature } from './hmac.js';
 
-// Coolify-style provider signature headers, in priority order. The router
-// uses these to disambiguate which integration row (e.g. staging vs prod)
-// a webhook belongs to when multiple rows are active for the same provider.
-const PROVIDER_SIGNATURE_HEADERS = [
-  'x-coolify-signature-256',
-  'x-hub-signature-256',
-  'x-forge-signature-256',
-] as const;
+// cm:guard every header here belongs to a provider that actually SIGNS its webhooks — `x-coolify-signature-256` went with the Coolify inbound path (ISS-922) because Coolify sends no signature at all, and an entry for a provider that signs nothing only makes an unreachable branch look reachable.
+const PROVIDER_SIGNATURE_HEADERS = ['x-hub-signature-256', 'x-forge-signature-256'] as const;
 
 const badRequest = (details: unknown, code = 'BAD_REQUEST') =>
   new HTTPException(400, { message: 'Invalid input', cause: { code, details } });
@@ -31,7 +25,6 @@ const notFound = () =>
 // Header → adapter provider lookup. Order matters only when a request
 // carries multiple provider headers — first match wins.
 const PROVIDER_HEADER_MAP: Array<{ header: string; provider: IntegrationProvider }> = [
-  { header: 'x-coolify-event', provider: 'coolify' },
   { header: 'x-github-event', provider: 'github' },
 ];
 
@@ -57,9 +50,7 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
     const adapter = getAdapter(map.provider);
     if (!adapter) throw badRequest({ provider: map.provider }, 'ADAPTER_NOT_REGISTERED');
 
-    // Multi-env disambiguation across active bindings: verify the inbound
-    // signature against each binding's own integrationSecret and dispatch on
-    // the one that matches (tells a staging-Coolify webhook apart from prod).
+    // cm:why multi-env disambiguation: the signature is verified against each binding's own integrationSecret and dispatched on the one that matches, which is what tells a staging delivery apart from a prod one.
     const candidatePairs = await listActiveBindingsForProjectProvider(project.id, map.provider);
     if (candidatePairs.length === 0) {
       throw badRequest({ provider: map.provider }, 'INTEGRATION_NOT_CONFIGURED');

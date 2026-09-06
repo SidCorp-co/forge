@@ -1,33 +1,26 @@
 /**
- * ISS-234 — Coolify deploy integration E2E.
+ * ISS-234 — Coolify deploy integration E2E, against real Postgres.
  *
- * Drives the real `coolifyAdapter` against real Postgres. Verifies the round
- * trip an operator's webhook would take:
- *   1. dispatchOutbound posts to Coolify (mocked via fetchImpl) and writes
- *      an `integration_deliveries` row with the deployment_uuid.
- *   2. handleInbound verifies the HMAC against the binding's integrationSecret
- *      and stamps `pipelineRuns.currentStep` even when the run is already
- *      closed (the release flow closes the run before the deploy outcome
- *      arrives — see release-coolify.ts).
- *   3. Repeated outbound failures within the breaker window flip the owning
+ *   1. dispatchOutbound posts to Coolify (fetch mocked) and writes an
+ *      `integration_deliveries` row carrying the deployment_uuid.
+ *   2. ISS-922 — the deploy's CONFIRMATION HOLD lands on the run's metadata by
+ *      a real `jsonb_set` on a real jsonb column, and is refused on a run that
+ *      already went terminal. The gate that reads these holds is proved in
+ *      `pipeline/deploy-confirmations.test.ts`; the inbound router no longer
+ *      routes coolify at all.
+ *   3. Repeated outbound failures inside the breaker window flip the owning
  *      `integration_connections.active=false`.
  *
- * ISS-410 — the legacy `project_integrations` table was dropped; the data now
- * lives in `integration_connections` (the credential, which carries the
- * active/breaker state) + `integration_bindings` (the per-project+env link,
- * which carries config overrides + the inbound HMAC secret). The adapter
- * resolves a binding+connection pair via `findBindingWithConnectionById` +
- * `buildContextFromBinding`; breaker/health mutations target the connection.
- *
- * Multi-env disambiguation in the inbound router is covered by
- * `inbound-routes.test.ts`; this test focuses on the adapter loop.
+ * The credential lives on `integration_connections` and the per-project+env
+ * config on `integration_bindings` (ISS-410); the adapter pairs them through
+ * `findBindingWithConnectionById` + `buildContextFromBinding`, and
+ * breaker/health mutations target the connection.
  */
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CoolifyConfig, CoolifySecrets } from '../../src/integrations/coolify/types.js';
-import { signHmacSha256 } from '../../src/webhooks/hmac.js';
 import {
   createTestProject,
   createTestUser,
@@ -36,103 +29,150 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
+// cm:why the adapter enqueues a confirmation poll per target and pg-boss is not part of what this suite proves, so the send is a spy.
+vi.mock('../../src/integrations/coolify/confirm.js', () => ({
+  enqueueCoolifyConfirm: vi.fn(),
+}));
+
 // Fixed test key so vault encrypt/decrypt is deterministic.
 process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
 
 type StoreMod = typeof import('../../src/integrations/store.js');
+type HoldsMod = typeof import('../../src/pipeline/deploy-confirmations.js');
 type Mods = {
   coolifyAdapter: typeof import('../../src/integrations/coolify/adapter.js').coolifyAdapter;
   encryptJson: typeof import('../../src/integrations/vault.js').encryptJson;
   findConnectionById: StoreMod['findConnectionById'];
   findBindingWithConnectionById: StoreMod['findBindingWithConnectionById'];
   buildContextFromBinding: StoreMod['buildContextFromBinding'];
+  resolveDeployGate: HoldsMod['resolveDeployGate'];
+  settleDeployTarget: HoldsMod['settleDeployTarget'];
+  markCloseDeferred: HoldsMod['markCloseDeferred'];
+  isCloseDeferred: HoldsMod['isCloseDeferred'];
 };
 
-describe('ISS-234 — coolify deploy integration E2E', () => {
-  let harness: TestDatabase;
-  let mods: Mods;
+let harness: TestDatabase;
+let mods: Mods;
 
-  beforeAll(async () => {
-    harness = await setupTestDatabase();
-    process.env.DATABASE_URL = harness.url;
-    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
-    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-    process.env.NODE_ENV ??= 'test';
+beforeAll(async () => {
+  harness = await setupTestDatabase();
+  process.env.DATABASE_URL = harness.url;
+  process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+  process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+  process.env.NODE_ENV ??= 'test';
 
-    const adapterMod = await import('../../src/integrations/coolify/adapter.js');
-    const vaultMod = await import('../../src/integrations/vault.js');
-    const storeMod = await import('../../src/integrations/store.js');
-    mods = {
-      coolifyAdapter: adapterMod.coolifyAdapter,
-      encryptJson: vaultMod.encryptJson,
-      findConnectionById: storeMod.findConnectionById,
-      findBindingWithConnectionById: storeMod.findBindingWithConnectionById,
-      buildContextFromBinding: storeMod.buildContextFromBinding,
-    };
-  }, 60_000);
+  const adapterMod = await import('../../src/integrations/coolify/adapter.js');
+  const vaultMod = await import('../../src/integrations/vault.js');
+  const storeMod = await import('../../src/integrations/store.js');
+  const holdsMod = await import('../../src/pipeline/deploy-confirmations.js');
+  mods = {
+    resolveDeployGate: holdsMod.resolveDeployGate,
+    settleDeployTarget: holdsMod.settleDeployTarget,
+    markCloseDeferred: holdsMod.markCloseDeferred,
+    isCloseDeferred: holdsMod.isCloseDeferred,
+    coolifyAdapter: adapterMod.coolifyAdapter,
+    encryptJson: vaultMod.encryptJson,
+    findConnectionById: storeMod.findConnectionById,
+    findBindingWithConnectionById: storeMod.findBindingWithConnectionById,
+    buildContextFromBinding: storeMod.buildContextFromBinding,
+  };
+}, 60_000);
 
-  afterAll(async () => {
-    if (harness) await harness.cleanup();
+afterAll(async () => {
+  if (harness) await harness.cleanup();
+});
+
+beforeEach(async () => {
+  await truncateAll(harness.db);
+  vi.restoreAllMocks();
+});
+
+async function seedIntegration(opts: {
+  environment: 'staging' | 'prod';
+  secret?: string;
+  runStatus?: 'running' | 'completed';
+}) {
+  const owner = await createTestUser(harness.db);
+  const project = await createTestProject(harness.db, owner.id);
+
+  // Connection = the credential (active/breaker state + secrets + baseUrl).
+  const connectionId = randomUUID();
+  const secretsEnc = mods.encryptJson({ apiToken: 'test-token-abc-123' });
+  await harness.db.execute(sql`
+    INSERT INTO integration_connections
+      (id, owner_type, owner_id, provider, config, secrets_enc, active)
+    VALUES (
+      ${connectionId},
+      'user',
+      ${owner.id},
+      'coolify',
+      ${JSON.stringify({ baseUrl: 'https://coolify.test' })}::jsonb,
+      ${secretsEnc},
+      true
+    )
+  `);
+
+  // Binding = per-project+env link (config overrides + inbound HMAC secret).
+  const bindingId = randomUUID();
+  const integrationSecret = opts.secret ?? `whsec_test_${bindingId.slice(0, 12)}`;
+  await harness.db.execute(sql`
+    INSERT INTO integration_bindings
+      (id, connection_id, project_id, provider, environment, config, integration_secret, active)
+    VALUES (
+      ${bindingId},
+      ${connectionId},
+      ${project.id},
+      'coolify',
+      ${opts.environment},
+      ${JSON.stringify({
+        // ISS-558 multi-target shape: the adapter fans out one deploy per
+        // targets[] entry; a binding without targets refuses to dispatch.
+        targets: [{ id: 't-1', label: 'App', resourceUuid: 'res-1' }],
+        branch: 'main',
+        environment: opts.environment,
+      })}::jsonb,
+      ${integrationSecret},
+      true
+    )
+  `);
+
+  const runId = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
+    VALUES (${runId}, ${project.id}, NULL, 'system', ${opts.runStatus ?? 'completed'}, NOW())
+  `);
+  return { project, connectionId, bindingId, integrationSecret, runId };
+}
+
+async function dispatchOnce(
+  seed: Awaited<ReturnType<typeof seedIntegration>>,
+  deploymentUuid: string,
+) {
+  vi.spyOn(global, 'fetch').mockResolvedValue(
+    new Response(JSON.stringify({ deployment_uuid: deploymentUuid }), { status: 200 }),
+  );
+  const pair = await mods.findBindingWithConnectionById(seed.bindingId);
+  if (!pair) throw new Error('seedIntegration produced no binding+connection pair');
+  const ctx = mods.buildContextFromBinding<CoolifyConfig, CoolifySecrets>(pair);
+  return mods.coolifyAdapter.dispatchOutbound(ctx, {
+    eventName: 'release.requested',
+    runId: seed.runId,
+    payload: { runId: seed.runId, issueId: null, environment: 'staging' },
+    requestId: `${seed.runId}:${seed.bindingId}`,
   });
+}
 
-  beforeEach(async () => {
-    await truncateAll(harness.db);
-    vi.restoreAllMocks();
-  });
+async function readHolds(runId: string) {
+  const rows = await harness.db.execute<{ metadata: Record<string, unknown> }>(sql`
+    SELECT metadata FROM pipeline_runs WHERE id = ${runId}
+  `);
+  const metadata = (rows[0] as { metadata: Record<string, unknown> } | undefined)?.metadata;
+  return metadata?.__forge_deploy_confirm as
+    | Parameters<typeof mods.resolveDeployGate>[0]
+    | undefined;
+}
 
-  async function seedIntegration(opts: { environment: 'staging' | 'prod'; secret?: string }) {
-    const owner = await createTestUser(harness.db);
-    const project = await createTestProject(harness.db, owner.id);
-
-    // Connection = the credential (active/breaker state + secrets + baseUrl).
-    const connectionId = randomUUID();
-    const secretsEnc = mods.encryptJson({ apiToken: 'test-token-abc-123' });
-    await harness.db.execute(sql`
-      INSERT INTO integration_connections
-        (id, owner_type, owner_id, provider, config, secrets_enc, active)
-      VALUES (
-        ${connectionId},
-        'user',
-        ${owner.id},
-        'coolify',
-        ${JSON.stringify({ baseUrl: 'https://coolify.test' })}::jsonb,
-        ${secretsEnc},
-        true
-      )
-    `);
-
-    // Binding = per-project+env link (config overrides + inbound HMAC secret).
-    const bindingId = randomUUID();
-    const integrationSecret = opts.secret ?? `whsec_test_${bindingId.slice(0, 12)}`;
-    await harness.db.execute(sql`
-      INSERT INTO integration_bindings
-        (id, connection_id, project_id, provider, environment, config, integration_secret, active)
-      VALUES (
-        ${bindingId},
-        ${connectionId},
-        ${project.id},
-        'coolify',
-        ${opts.environment},
-        ${JSON.stringify({
-          // ISS-558 multi-target shape: the adapter fans out one deploy per
-          // targets[] entry; a binding without targets refuses to dispatch.
-          targets: [{ id: 't-1', label: 'App', resourceUuid: 'res-1' }],
-          branch: 'main',
-          environment: opts.environment,
-        })}::jsonb,
-        ${integrationSecret},
-        true
-      )
-    `);
-
-    const runId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
-      VALUES (${runId}, ${project.id}, NULL, 'system', 'completed', NOW())
-    `);
-    return { project, connectionId, bindingId, integrationSecret, runId };
-  }
-
+describe('ISS-234 — coolify deploy dispatch and its breaker', () => {
   it('outbound dispatch → records delivery with deployment_uuid', async () => {
     const seed = await seedIntegration({ environment: 'staging' });
 
@@ -170,62 +210,6 @@ describe('ISS-234 — coolify deploy integration E2E', () => {
       | undefined;
     expect(r?.status).toBe('ok');
     expect(r?.response?.deployment_uuid).toBe('deploy-uuid-A');
-  });
-
-  it('inbound webhook with success status stamps the run', async () => {
-    const seed = await seedIntegration({ environment: 'staging' });
-
-    // First record an outbound that the inbound will be matched against.
-    vi.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ deployment_uuid: 'deploy-uuid-B' }), { status: 200 }),
-    );
-    const pair = await mods.findBindingWithConnectionById(seed.bindingId);
-    const ctx = mods.buildContextFromBinding<CoolifyConfig, CoolifySecrets>(pair!);
-    await mods.coolifyAdapter.dispatchOutbound(ctx, {
-      eventName: 'release.requested',
-      runId: seed.runId,
-      payload: { runId: seed.runId, issueId: null, environment: 'staging' },
-    });
-
-    const body = JSON.stringify({
-      event: 'deploy.succeeded',
-      status: 'success',
-      deployment_uuid: 'deploy-uuid-B',
-    });
-    const signature = signHmacSha256(seed.integrationSecret, body);
-
-    const inbound = await mods.coolifyAdapter.handleInbound(ctx, {
-      headers: { 'x-coolify-signature-256': signature },
-      rawBody: body,
-      payload: JSON.parse(body),
-    });
-
-    expect(inbound.actions).toBe(1);
-    const runRows = await harness.db.execute<{ current_step: string }>(sql`
-      SELECT current_step FROM pipeline_runs WHERE id = ${seed.runId}
-    `);
-    const runRow = runRows[0] as { current_step?: unknown } | undefined;
-    expect(runRow?.current_step).toBe('release.deploy.done');
-  });
-
-  it('rejects inbound with bad signature', async () => {
-    const seed = await seedIntegration({ environment: 'staging' });
-    const pair = await mods.findBindingWithConnectionById(seed.bindingId);
-    const ctx = mods.buildContextFromBinding<CoolifyConfig, CoolifySecrets>(pair!);
-
-    const body = JSON.stringify({
-      event: 'deploy.succeeded',
-      status: 'success',
-      deployment_uuid: 'whatever',
-    });
-
-    await expect(
-      mods.coolifyAdapter.handleInbound(ctx, {
-        headers: { 'x-coolify-signature-256': 'sha256=deadbeef' },
-        rawBody: body,
-        payload: JSON.parse(body),
-      }),
-    ).rejects.toThrow(/signature/i);
   });
 
   it('three consecutive outbound failures trip the breaker (active=false)', async () => {
@@ -269,5 +253,51 @@ describe('ISS-234 — coolify deploy integration E2E', () => {
         payload: { runId: seed.runId, issueId: null, environment: 'staging' },
       }),
     ).rejects.toThrow(/inactive|circuit breaker/i);
+  });
+});
+
+describe('ISS-922 — the deploy a run has to prove before it may close', () => {
+  it('records one confirmation hold per target on the run, against real jsonb', async () => {
+    const seed = await seedIntegration({ environment: 'staging', runStatus: 'running' });
+    await dispatchOnce(seed, 'deploy-uuid-B');
+
+    const holds = await readHolds(seed.runId);
+    expect(Object.values(holds ?? {})).toEqual([
+      expect.objectContaining({ deploymentUuid: 'deploy-uuid-B', status: 'pending' }),
+    ]);
+    expect(mods.resolveDeployGate(holds ?? {}).verdict).toBe('defer');
+  });
+
+  it('refuses the hold on a run that already went terminal — a closed run cannot witness a deploy', async () => {
+    const seed = await seedIntegration({ environment: 'staging', runStatus: 'completed' });
+    await dispatchOnce(seed, 'deploy-uuid-C');
+
+    expect(await readHolds(seed.runId)).toBeUndefined();
+  });
+
+  it('a settled hold and a deferred close survive a real jsonb round trip', async () => {
+    const seed = await seedIntegration({ environment: 'staging', runStatus: 'running' });
+    const res = await dispatchOnce(seed, 'deploy-uuid-D');
+
+    await mods.markCloseDeferred(seed.runId);
+    expect(await mods.isCloseDeferred(seed.runId)).toBe(true);
+
+    const after = await mods.settleDeployTarget({
+      runId: seed.runId,
+      deliveryId: res.deliveryId,
+      status: 'succeeded',
+    });
+    expect(mods.resolveDeployGate(after).verdict).toBe('clear');
+
+    // cm:guard the deferral marker and the holds are siblings under ONE jsonb column, so a write to either that rebuilds the whole map erases the other — this assertion is the only thing that catches it.
+    expect(await mods.isCloseDeferred(seed.runId)).toBe(true);
+    expect(Object.values(after)).toHaveLength(1);
+  });
+
+  it('handleInbound refuses by name rather than accepting a body Coolify never signed', async () => {
+    await expect(
+      // biome-ignore lint/suspicious/noExplicitAny: the refusal takes no meaningful args
+      (mods.coolifyAdapter as any).handleInbound(),
+    ).rejects.toThrow(/inbound webhooks are not supported/);
   });
 });

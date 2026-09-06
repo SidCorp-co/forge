@@ -129,8 +129,8 @@ export async function reapConcludedRuns(
         },
         'pipeline-sweeper: closing concluded run (every child job terminal)',
       );
-      await closeRun(row.id, outcome);
-      reaped++;
+      // cm:guard count only what actually closed — a run whose deploy is still unconfirmed is DEFERRED (ISS-922), and counting it here would make the sweeper's own log the next thing claiming a close that did not happen.
+      if ((await closeRun(row.id, outcome)) === 'settled') reaped++;
     } catch (err) {
       logger.error(
         { err, runId: row.id, projectId: row.project_id },

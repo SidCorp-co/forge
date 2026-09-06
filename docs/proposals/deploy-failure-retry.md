@@ -1,7 +1,7 @@
 # Should a failed deploy retry itself?
 
-Status: **Open decision, no code proposed** · Raised by ISS-854 · Verified against the tree
-2026-08-26
+Status: **Open decision** on the retry itself · Raised by ISS-854 · Verified against the tree
+2026-08-26 · **Half of option B shipped in ISS-922, 2026-09-06** — see "What ISS-922 settled" below
 
 ISS-854 removed one cause of transient deploy failure by vendoring the two Google fonts the
 `web-v2` build used to download. It deliberately did **not** answer the more general question
@@ -20,7 +20,8 @@ Nothing retries. Verified 2026-08-26:
 
 | Mechanism | Where | What it actually does |
 |---|---|---|
-| Deploy dispatch | `packages/core/src/integrations/coolify/adapter.ts` | Fires once. A failure is recorded and the run advances no further. |
+| Deploy dispatch | `packages/core/src/integrations/coolify/adapter.ts` | Fires once. **Since ISS-922** a failure is recorded *and fails the run*, naming the target and Coolify's reason; before that the run advanced no further and could still close `completed`. |
+| Deploy confirmation | `packages/core/src/integrations/coolify/confirm.ts` | Polls the deployment to a terminal outcome. **Not a retry** — it reads what happened; it never re-dispatches. |
 | Circuit breaker | `packages/core/src/integrations/coolify/circuit-breaker.ts` | 3 failed outbound deliveries in 5 minutes opens the breaker; a 10-minute cooldown then allows one half-open trial. This **suppresses** dispatch — it is the opposite of a retry. |
 | Job recovery | `pipelineConfig.recoveryByFailureKind` | Re-dispatches a crashed **job** (`transient: 5`, `unknown: 2`, `permanent: 0`). A deploy that ran and reported failure is not a crashed job, so this never fires for it. |
 
@@ -73,6 +74,17 @@ B, and specifically the notice half of B rather than any retry work. Recorded he
 agent that worked ISS-854; it is a human's call, and nothing in the tree depends on it being
 made. If A is chosen, the classification rule is the whole design — a retry that cannot tell
 the two failure shapes apart is worse than no retry.
+
+## What ISS-922 settled, and what it left open
+
+ISS-922 shipped the *legibility* half of option B and nothing of option A. A deploy's outcome is now
+read back out of Coolify, a failure fails its run rather than being invisible, and a deploy that
+goes unconfirmed for 30 minutes fails the same way. That removes the "nothing said anything" half of
+the 90 minutes — the run itself now says it.
+
+It deliberately added **no retry and no notification destination**. The two costed rows above that
+belong to a notice — choosing a destination, an owner, and a de-duplication rule — are untouched,
+and so is every row costed for A. This file stays open for exactly those.
 
 ## What ISS-854 did settle
 

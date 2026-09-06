@@ -8,13 +8,10 @@ vi.mock('../store.js', () => ({
 }));
 vi.mock('../../config/env.js', () => ({ env: { NODE_ENV: 'test' } }));
 vi.mock('../../db/client.js', () => ({ db: {} }));
-vi.mock('../../pipeline/runs.js', () => ({ closeRun: vi.fn(), setCurrentStepForce: vi.fn() }));
+vi.mock('../../pipeline/runs.js', () => ({ closeRun: vi.fn(), setCurrentStep: vi.fn() }));
 vi.mock('../deliveries.js', () => ({
   recordDelivery: vi.fn(),
   updateDelivery: vi.fn(),
-  findOutboundByDeploymentUuid: vi.fn(),
-  listDispatchedOutboundForRun: vi.fn(),
-  findInboundByDeploymentUuid: vi.fn(),
 }));
 vi.mock('../../observability/sentry.js', () => ({
   isSentryEnabled: () => false,

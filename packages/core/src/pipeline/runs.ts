@@ -11,6 +11,8 @@ import { and, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, type PipelineRunKind, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
+import { logger } from '../logger.js';
+import { markCloseDeferred, readDeployHolds, resolveDeployGate } from './deploy-confirmations.js';
 import { hooks } from './hooks.js';
 import {
   cascadeCancelChildJobs,
@@ -30,7 +32,6 @@ export async function openIssueRun(args: {
   projectId: string;
   issueId: string;
 }): Promise<OpenIssueRun> {
-  // Fast path — open run already exists.
   const existing = await selectOpenIssueRun(args.issueId);
   if (existing) return existing;
 
@@ -135,46 +136,87 @@ export async function setCurrentStep(runId: string, step: string): Promise<void>
 }
 
 /**
- * Stamp current_step on a run regardless of status. Used by post-terminal
- * substeps like Coolify release.deploy.* — the issue state-machine has
- * already closed the run by the time the deploy outcome arrives, but the UI
- * still needs to render the deploy result on the existing run row.
+ * Substep markers stamped on `current_step` while a deploy is being proved.
+ * They live here rather than beside the dispatcher because the close path is
+ * the one that has to write them at the moment it refuses to close.
  */
-export async function setCurrentStepForce(runId: string, step: string): Promise<void> {
-  await db
-    .update(pipelineRuns)
-    .set({ currentStep: step, updatedAt: new Date() })
-    .where(eq(pipelineRuns.id, runId));
+export const RELEASE_DEPLOY_IN_FLIGHT_STEP = 'release.deploy.in_flight';
+export const RELEASE_DEPLOY_FAILED_STEP = 'release.deploy.failed';
+export const RELEASE_DEPLOY_DONE_STEP = 'release.deploy.done';
+
+export type CloseResult = 'settled' | 'deferred';
+
+/**
+ * What a caller asking for `completed` is actually allowed to write, given the
+ * deploy confirmations on this run. `null` means the close is DEFERRED — a
+ * deploy is still in flight and the confirmation that resolves it performs the
+ * close instead.
+ *
+ * Only `completed` is gated: a run already heading for `failed` or `cancelled`
+ * is not making a claim about a deploy.
+ */
+// cm:edge contract -> packages/core/src/integrations/coolify/confirm.ts — the poller is the other half: it settles the holds this reads, and calls back into `closeRun` when the last one resolves. Neither side works alone.
+async function gatedOutcome(
+  runId: string,
+  outcome: 'completed' | 'failed' | 'cancelled',
+): Promise<'completed' | 'failed' | 'cancelled' | null> {
+  if (outcome !== 'completed') return outcome;
+  if (Object.keys(await readDeployHolds(runId)).length === 0) return 'completed';
+
+  // cm:guard mark the deferral BEFORE resolving the verdict, never after — a confirmation settling the last hold in between would find no marker, neither side would close the run, and it would sit `running` until a sweeper found it 60 minutes later. Marking first is harmless when it turns out unnecessary: a stale marker only ever causes a `closeRun` on an already-terminal run, which no-ops.
+  await markCloseDeferred(runId);
+  const gate = resolveDeployGate(await readDeployHolds(runId));
+  if (gate.verdict === 'clear') return 'completed';
+  if (gate.verdict === 'failed') {
+    logger.warn(
+      { runId, detail: gate.detail },
+      'run close: deploy confirmation failed — closing the run `failed` rather than `completed`',
+    );
+    await setCurrentStep(runId, `${RELEASE_DEPLOY_FAILED_STEP} (${gate.detail})`);
+    return 'failed';
+  }
+  await setCurrentStep(runId, `${RELEASE_DEPLOY_IN_FLIGHT_STEP} (${gate.confirmed}/${gate.total})`);
+  logger.info(
+    { runId, confirmed: gate.confirmed, total: gate.total },
+    'run close deferred: a dispatched deploy is not confirmed yet',
+  );
+  return null;
 }
 
 /**
  * Mark a run terminal. No-op when the run is already terminal so callers
  * can call this from both the issue state-machine (issue-runs) and the
  * session/job lifecycle (pm/interactive runs) without coordinating.
+ *
+ * Returns `deferred` when a dispatched deploy has not reported back yet — the
+ * run is deliberately left `running` and nothing was written.
  */
 export async function closeRun(
   runId: string,
   outcome: 'completed' | 'failed' | 'cancelled',
-): Promise<void> {
+): Promise<CloseResult> {
+  const resolved = await gatedOutcome(runId, outcome);
+  if (resolved === null) return 'deferred';
   const { rows, cascade } = await db.transaction(async (tx) => {
     const updated = await applyKernelTransition(tx, {
       entity: 'run',
-      to: outcome,
+      to: resolved,
       set: { finishedAt: new Date(), updatedAt: new Date() },
       where: and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
       fromStatus: 'open',
-      reason: reasonForOutcome(outcome),
+      reason: reasonForOutcome(resolved),
       actor: { type: 'system' },
       source: 'runs',
     });
     const c =
       updated.length > 0
-        ? await cascadeCancelChildJobs(tx, runId, reasonForOutcome(outcome))
+        ? await cascadeCancelChildJobs(tx, runId, reasonForOutcome(resolved))
         : null;
     return { rows: updated, cascade: c };
   });
-  if (cascade) await requestKillsForCascade(cascade.killableJobs, reasonForOutcome(outcome));
-  await emitCloseHook(rows, outcome, cascade?.cancelledJobIds ?? []);
+  if (cascade) await requestKillsForCascade(cascade.killableJobs, reasonForOutcome(resolved));
+  await emitCloseHook(rows, resolved, cascade?.cancelledJobIds ?? []);
+  return 'settled';
 }
 
 /**
@@ -206,6 +248,7 @@ export async function setCurrentStepForOpenIssueRun(issueId: string, step: strin
  * scheduled (the retry shares the same run); see `jobs/lifecycle-routes.ts`
  * for the retry-aware call sites.
  */
+// cm:guard NOT gated on deploy confirmations, and that is a statement about the run KINDS this one accepts: a hold is only ever written for the `issue` run a deploy was dispatched against, so a gate here could never fire and would only suggest one exists for pm/interactive/system runs.
 export async function closeRunIfOneShot(
   runId: string,
   outcome: 'completed' | 'failed' | 'cancelled',
@@ -244,11 +287,16 @@ export async function closeRunIfOneShot(
 export async function closeOpenRunForIssue(
   issueId: string,
   outcome: 'completed' | 'failed' | 'cancelled',
-): Promise<void> {
+): Promise<CloseResult> {
+  // cm:guard the gate is per-RUN, so the open run is named before it can be asked — an issue-keyed gate would have to guess which run a deploy hold belongs to.
+  const open = await selectOpenIssueRun(issueId);
+  if (!open) return 'settled';
+  const resolved = await gatedOutcome(open.id, outcome);
+  if (resolved === null) return 'deferred';
   const { rows, cascades } = await db.transaction(async (tx) => {
     const updatedRows = await applyKernelTransition(tx, {
       entity: 'run',
-      to: outcome,
+      to: resolved,
       set: { finishedAt: new Date(), updatedAt: new Date() },
       where: and(
         eq(pipelineRuns.kind, 'issue'),
@@ -256,23 +304,24 @@ export async function closeOpenRunForIssue(
         inArray(pipelineRuns.status, ['running', 'paused']),
       ),
       fromStatus: 'open',
-      reason: reasonForOutcome(outcome),
+      reason: reasonForOutcome(resolved),
       actor: { type: 'system' },
       source: 'runs',
     });
     const cs = await Promise.all(
       updatedRows.map(async (r) => ({
         runId: r.id,
-        result: await cascadeCancelChildJobs(tx, r.id, reasonForOutcome(outcome)),
+        result: await cascadeCancelChildJobs(tx, r.id, reasonForOutcome(resolved)),
       })),
     );
     return { rows: updatedRows, cascades: cs };
   });
   for (const c of cascades) {
-    await requestKillsForCascade(c.result.killableJobs, reasonForOutcome(outcome));
+    await requestKillsForCascade(c.result.killableJobs, reasonForOutcome(resolved));
   }
   const cascadedByRun = new Map(cascades.map((c) => [c.runId, c.result.cancelledJobIds]));
-  await emitCloseHookPerRow(rows, outcome, cascadedByRun);
+  await emitCloseHookPerRow(rows, resolved, cascadedByRun);
+  return 'settled';
 }
 
 type CloseReturning = {
