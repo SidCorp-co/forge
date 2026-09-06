@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -41,7 +41,10 @@ const ORG_ID = '88888888-8888-4888-8888-888888888888';
 const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
 const adminAccessRow = { orgId: ORG_ID, memberRole: 'admin', orgRole: null };
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+// cm:guard `admin` is in these scopes because `action=update` is admin-gated and `assertPrincipalIsAdmin` reads `principal.scopes` — a paired device carried none, so the scope half was skipped for it until ISS-931 took the device off `/mcp`.
+const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID, {
+  scopes: ['read', 'write', 'admin'],
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -53,8 +56,7 @@ beforeEach(() => {
 describe('forge_config tool (ISS-135 PR-A)', () => {
   it('omits branchConfig from the response when no issueId is supplied (backward-compat)', async () => {
     const tool = forgeConfigTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
 
@@ -88,8 +90,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
 
   it('returns null branches (no fallback to main) when project columns are unset — surfaces misconfig instead of silently merging to main', async () => {
     const tool = forgeConfigTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
 
@@ -120,13 +121,12 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
 
   it('includes resolved branchConfig (project defaults) when issueId is supplied and the issue has no override', async () => {
     const tool = forgeConfigTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
 
     selectLimit
-      .mockResolvedValueOnce([memberAccessRow]) // membership lookup
+      .mockResolvedValueOnce([memberAccessRow])
       .mockResolvedValueOnce([
         {
           id: PROJECT_ID,
@@ -156,8 +156,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
 
   it('layers sessionContext.branchConfig override on top of project defaults', async () => {
     const tool = forgeConfigTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
 
@@ -197,8 +196,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
 
   it('action=get exposes stateContext on the config response', async () => {
     const tool = forgeConfigTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
 
@@ -228,8 +226,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
 
   it('action=update merges a stateContext patch (preserves untouched states)', async () => {
     const tool = forgeConfigTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
 
@@ -285,8 +282,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
 
   it('action=update rejects an invalid budget (negative perRunUsd)', async () => {
     const tool = forgeConfigTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
 
@@ -304,8 +300,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
 
   it('throws NOT_FOUND when issueId refers to an issue outside the project', async () => {
     const tool = forgeConfigTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
 

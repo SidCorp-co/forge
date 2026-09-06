@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -62,12 +62,11 @@ const DEVICE_ID = '55555555-5555-4555-8555-555555555555';
 const STAGING_INT = 'a1111111-1111-4111-8111-111111111111';
 const PROD_INT = 'b2222222-2222-4222-8222-222222222222';
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID);
 
 function makeDeviceCtx() {
   return {
-    principal: { kind: 'device' as const, device: fakeDevice },
-    device: fakeDevice,
+    principal: fakePrincipal,
     projectSlug: null,
   };
 }
@@ -148,18 +147,18 @@ describe('forge_coolify_deploy → list', () => {
   it('returns an empty array when no Coolify is configured', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
-    resultQueue.push([]); // no integrations
+    resultQueue.push([]);
     const result = (await tool.handler({ action: 'list', projectId: PROJECT_ID })) as {
       integrations: unknown[];
     };
     expect(result.integrations).toEqual([]);
   });
 
-  it('rejects a non-member with FORBIDDEN', async () => {
+  it('rejects a non-member as not-found (existence-hiding)', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     resultQueue.push([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // no effective role
     await expect(tool.handler({ action: 'list', projectId: PROJECT_ID })).rejects.toThrow(
-      /FORBIDDEN/,
+      /NOT_FOUND/,
     );
   });
 });

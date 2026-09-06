@@ -2,22 +2,22 @@ import { z } from 'zod';
 import pkg from '../../../package.json' with { type: 'json' };
 import { countActiveJobs, readLiveness } from '../../health/service.js';
 import { getLastSeedResult } from '../../skills/builtin-seed.js';
-import { type DeviceScopedMcpToolFactory, zodToMcpSchema } from './lib.js';
+import { type ContextScopedMcpToolFactory, zodToMcpSchema } from './lib.js';
 
 /**
  * MCP Phase 1 (ISS-7) — server snapshot for "is the core healthy?" calls
- * from MCP clients. No project scope: the /mcp endpoint is already gated by
- * `requireDevice()` so a valid device-token is sufficient. Wraps the same
- * three checks as `app.get('/health')` plus seed status and active-jobs
- * counter so a Claude session can self-diagnose without tailing server log.
+ * from MCP clients. No project scope: `/mcp` is already gated by `requirePat`,
+ * so any authenticated caller may read it. Wraps the same three checks as
+ * `app.get('/health')` plus seed status and active-jobs counter so a Claude
+ * session can self-diagnose without tailing server log.
  */
 
 const inputSchema = z.object({}).strict();
 
-export const forgeHealthTool: DeviceScopedMcpToolFactory = (_device) => ({
+export const forgeHealthTool: ContextScopedMcpToolFactory = () => ({
   name: 'forge_health',
   description:
-    'Server snapshot: version, uptime, db/queue/ws status, last builtin-skills seed result, and active jobs count. Device-token only (no project scope).',
+    'Server snapshot: version, uptime, db/queue/ws status, last builtin-skills seed result, and active jobs count. No project scope.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     inputSchema.parse(args);
@@ -32,9 +32,7 @@ export const forgeHealthTool: DeviceScopedMcpToolFactory = (_device) => ({
           inserted: seed.inserted,
           updated: seed.updated,
           unchanged: seed.unchanged,
-          // Serialise to ISO so MCP callers see a stable string regardless of
-          // transport (structuredContent forwards the raw value; consumers
-          // that rely on the JSON `content` field also get the ISO form).
+          // cm:why serialise to ISO here rather than at the transport: `structuredContent` forwards the raw value, so a caller reading the JSON `content` field and one reading the structured field would otherwise see two different shapes for the same timestamp
           at: seed.at.toISOString(),
         }
       : null;

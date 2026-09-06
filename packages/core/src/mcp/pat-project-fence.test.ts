@@ -62,13 +62,13 @@ const boundPat = () =>
     scopes: ['read', 'write'],
     projectIds: [BOUND],
     boundProjectId: null,
+    machine: null,
   }) as const;
 
 async function connect() {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const server = createMcpServer({
     principal: boundPat(),
-    device: stubDevice,
     projectSlug: null,
   });
   await server.connect(serverTransport);

@@ -1,13 +1,12 @@
 /**
- * Dispatcher middleware (ISS-150).
+ * The `/mcp` credential (ISS-150, narrowed to one species by ISS-931).
  *
- * Accepts `Authorization: Bearer <token>` for either a Personal Access
- * Token (`forge_pat_*`) or a legacy device token. Sets `c.get('principal')`
- * to the resolved {@link McpPrincipal} union for downstream tool handlers,
- * and sets `c.get('patTokenId')` when the principal is a PAT so the
- * generic rate-limit middleware (`by: 'token'`) can key off it.
+ * Accepts `Authorization: Bearer <token>` for a Personal Access Token
+ * (`forge_pat_*`) and nothing else. Sets `c.get('principal')` to the resolved
+ * {@link McpPrincipal} for downstream tool handlers, and `c.get('patTokenId')`
+ * so the generic rate-limit middleware (`by: 'token'`) can key off it.
  *
- * On PAT path the dispatcher also:
+ * The dispatcher also:
  *   - enforces a per-token rolling rate limit (RULES.patPerToken) honoring
  *     `personal_access_tokens.rate_limit_max` overrides, and audits the first
  *     rejection of each window as `rate_limited`
@@ -16,10 +15,14 @@
 
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { type Device, verifyDeviceToken } from '../auth/deviceToken.js';
 import { writeMcpAudit } from '../auth/mcp-audit.js';
 import { touchPatUsage, verifyPat } from '../auth/pat.js';
-import { isMachineTokenName, isPatLike } from '../auth/pat-format.js';
+import {
+  isMachineTokenName,
+  isPatLike,
+  type MachineTokenRef,
+  parseMachineTokenName,
+} from '../auth/pat-format.js';
 import { RULES } from '../config/rate-limits.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -42,11 +45,16 @@ export type PatPrincipal = {
   projectIds: readonly string[] | null;
   // cm:guard non-null is BOTH the slug-omitted default and the auth fence (ISS-497), and the second of those is why a null here is not a widening to be tidied away: null means user-level, which is a token whose reach is its owner's projects. Reading it as "no project set, so no restriction" inverts the fence.
   boundProjectId: string | null;
+  /**
+   * The job or unattended session this token was minted for, read off its
+   * name — `null` for a person's PAT. It is what gives a tool its pipeline
+   * context now that the caller has no device to look one up by.
+   */
+  machine: MachineTokenRef | null;
 };
 
-export type DevicePrincipal = { kind: 'device'; device: Device };
-
-export type McpPrincipal = PatPrincipal | DevicePrincipal;
+// cm:guard ONE species reaches `/mcp`, and this alias staying a single member is the whole of ISS-931. A device token authenticates `/ws` and the `requireDevice` REST routes and NOTHING here; widening it back into a union restores the second live path that ISS-894's deletions exist to remove, and it does so silently — every `principal.kind === 'pat'` test in `mcp/**` was deleted as unreachable, so the device branch would come back with no gate reading it.
+export type McpPrincipal = PatPrincipal;
 
 export type PrincipalVars = {
   principal: McpPrincipal;
@@ -215,10 +223,18 @@ export async function authenticatePat(c: Context, token: string): Promise<PatPri
     scopes: row.scopes,
     projectIds: row.projectIds ?? null,
     boundProjectId: row.boundProjectId ?? null,
+    machine: parseMachineTokenName(row.name),
   };
 }
 
-export const requirePatOrDevice = (): MiddlewareHandler<{ Variables: PrincipalVars }> => {
+// cm:guard the message names the CLASS and the remedy, not just the rejection. A device token is a real, paired, unexpired credential on the wrong plane, so `invalid personal access token` sends an operator to look for a PAT problem that does not exist. Until every box runs a `forge-runner` that writes the job's token into `.mcp.json` (ISS-931), this 401 is what an upgrade-lagging box reads, and it is the only place that can tell it what to do.
+const DEVICE_TOKEN_REFUSAL =
+  'device tokens no longer authenticate /mcp — an agent session presents its own ' +
+  '`job:`/`session:` token, minted by core and written into the job MCP config by ' +
+  'forge-runner. A runner box seeing this needs a newer forge-runner binary; the device ' +
+  'token still authenticates /ws and the device REST routes.';
+
+export const requirePat = (): MiddlewareHandler<{ Variables: PrincipalVars }> => {
   return async (c, next) => {
     const parsed = parseBearerHeader(c);
     if (parsed.kind === 'absent') throw unauth('authentication required');
@@ -226,18 +242,12 @@ export const requirePatOrDevice = (): MiddlewareHandler<{ Variables: PrincipalVa
       throw unauth('invalid authorization header', { invalidRequest: true });
     const token = parsed.token;
 
-    if (isPatLike(token)) {
-      const principal = await authenticatePat(c, token);
-      if (!principal) throw unauth('invalid personal access token', { invalidToken: true });
-      c.set('patTokenId', principal.tokenId);
-      c.set('principal', principal);
-      await next();
-      return;
-    }
+    if (!isPatLike(token)) throw unauth(DEVICE_TOKEN_REFUSAL, { invalidToken: true });
 
-    const device = await verifyDeviceToken(token);
-    if (!device) throw unauth('invalid device token', { invalidToken: true });
-    c.set('principal', { kind: 'device', device });
+    const principal = await authenticatePat(c, token);
+    if (!principal) throw unauth('invalid personal access token', { invalidToken: true });
+    c.set('patTokenId', principal.tokenId);
+    c.set('principal', principal);
     await next();
   };
 };

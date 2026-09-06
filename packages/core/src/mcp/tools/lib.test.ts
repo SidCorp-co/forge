@@ -33,7 +33,7 @@ vi.mock('../../lib/authz.js', () => ({
   },
 }));
 
-import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
+import type { McpPrincipal } from '../../middleware/require-pat.js';
 import {
   assertPrincipalIsMember,
   type McpContext,
@@ -46,7 +46,7 @@ const BOUND = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
 const SLUG_ID = '33333333-3333-4333-8333-333333333333';
 
-function patPrincipal(over: Partial<Extract<McpPrincipal, { kind: 'pat' }>> = {}): McpPrincipal {
+function patPrincipal(over: Partial<McpPrincipal> = {}): McpPrincipal {
   return {
     kind: 'pat',
     agency: 'human' as const,
@@ -55,6 +55,7 @@ function patPrincipal(over: Partial<Extract<McpPrincipal, { kind: 'pat' }>> = {}
     scopes: ['read', 'write'],
     projectIds: null,
     boundProjectId: null,
+    machine: null,
     ...over,
   };
 }
@@ -62,8 +63,6 @@ function patPrincipal(over: Partial<Extract<McpPrincipal, { kind: 'pat' }>> = {}
 function ctx(over: Partial<McpContext> = {}): McpContext {
   return {
     principal: patPrincipal(),
-    // device stub — unused by the resolver paths under test
-    device: { ownerId: 'user-1' } as McpContext['device'],
     projectSlug: null,
     boundProjectId: null,
     ...over,
@@ -76,10 +75,6 @@ beforeEach(() => {
 });
 
 describe('patEffectiveProjectIds', () => {
-  it('returns null for a device principal', () => {
-    expect(patEffectiveProjectIds({ kind: 'device', device: {} as never })).toBeNull();
-  });
-
   it('returns null for a user-level PAT with no allowlist', () => {
     expect(patEffectiveProjectIds(patPrincipal())).toBeNull();
   });
@@ -141,40 +136,27 @@ describe('cross-project conflict → NOT_FOUND', () => {
 });
 
 describe('principalActor — who a write is recorded as', () => {
-  const device = { id: 'dev-1', ownerId: 'owner-1' };
-  const pat = {
-    kind: 'pat' as const,
-    userId: 'user-9',
-    tokenId: 'tok-1',
-    scopes: [] as string[],
-    projectIds: null,
-    boundProjectId: null,
-  };
+  const pat = patPrincipal({ userId: 'user-9', tokenId: 'tok-1', scopes: [] });
 
-  it('records the person whose token it is, not the synthetic device it rides on', () => {
-    expect(principalActor({ ...pat, agency: 'human' }, device)).toEqual({
+  it('records the person whose token it is', () => {
+    expect(principalActor({ ...pat, agency: 'human' })).toEqual({
       type: 'user',
       id: 'user-9',
     });
   });
 
-  it('records an agent-driven chat write as a device, though it carries a pat principal', () => {
-    expect(principalActor({ ...pat, agency: 'agent' }, device)).toEqual({
+  // cm:guard the ONLY field this may branch on is `agency`. Since ISS-931 every `/mcp` principal is `kind:'pat'`, so a `kind`-shaped test would read a job token as a human and hand it the ISS-812 exemption — plant `kind` in the implementation and this case is what goes red.
+  it('records an agent-held token as a device, though it carries a pat principal', () => {
+    expect(principalActor({ ...pat, agency: 'agent' })).toEqual({
       type: 'device',
-      id: 'dev-1',
-      ownerId: 'owner-1',
+      id: 'tok-1',
+      ownerId: 'user-9',
     });
   });
 
-  it('records a runner as a device', () => {
-    const principal = {
-      kind: 'device' as const,
-      device: { id: 'dev-1', ownerId: 'owner-1' } as never,
-    };
-    expect(principalActor(principal, device)).toEqual({
-      type: 'device',
-      id: 'dev-1',
-      ownerId: 'owner-1',
-    });
+  // cm:guard the agent branch's `id` is the TOKEN id and its `ownerId` the token's user, byte-identical to what `stubDeviceForPat` fabricated before ISS-931 deleted it. This case exists so a later "tidy-up" that swaps in a real device id, or flips the shape to `{type:'user', agency:'agent'}`, cannot move attribution silently — it changes `activity_log.actor_id` for every agent MCP write ever recorded.
+  it('carries the token id, not a devices row', () => {
+    const actor = principalActor({ ...pat, agency: 'agent' });
+    expect(actor).toMatchObject({ id: pat.tokenId, ownerId: pat.userId });
   });
 });

@@ -2426,6 +2426,32 @@
 
 ### Changed
 
+- **An agent session authenticates `/mcp` with its own job token, and a device token no longer
+  authenticates `/mcp` at all.** Two credential species reached the MCP transport, and one of them
+  was a fiction: for every PAT call, core fabricated a `Device` row — a token id in its `id` column
+  and `__pat_synthetic__` for a name — and handed it to fourteen tools. The membership helpers those
+  tools used read only that stub's `ownerId`, so none of the fourteen ever consulted the PAT's
+  `projectIds` allowlist. `requirePat` (renamed from `require-pat-or-device.ts`) now accepts
+  `forge_pat_*` and refuses every other bearer, and `McpContext` has no `device` field to
+  reintroduce. `forge-runner` writes the job's own `job:`/`session:` token into the per-job
+  `.mcp.json` and never falls back to the device token; `/ws` and the device REST routes are
+  unchanged, because that is the daemon's own channel.
+
+  Two reachability consequences are deliberate and documented rather than papered over. A
+  non-member of a project now reads `NOT_FOUND` from those fourteen tools instead of `FORBIDDEN`,
+  so a tool is no longer an existence oracle. And an admin-gated tool asks for the `admin` scope,
+  which a machine-minted token does not carry — an operator who wants `forge_skills.*`,
+  `forge_runners` writes or `forge_reconcile` from an agent mints a PAT with `admin` rather than
+  having the mint widened, because ambient admin authority is the thing ISS-927 removed.
+
+  This ships on two clocks and the second one is a binary: core refuses at deploy, a runner box
+  changes at binary install. A box on an older `forge-runner` writes the device token, every MCP
+  call 401s at once, and the refusal names that remedy in its own text rather than leaving an
+  operator to read it as a core outage. The two `forge_project_pm` actions that genuinely need a
+  paired device (`dispatch`, `write_decision`) refuse by name and list the actions a PAT can reach;
+  `write_decision` has no REST twin left, and that open decision is
+  `docs/proposals/pm-dispatch-has-no-rest-twin.md`. (ISS-931)
+
 - **A device token no longer reaches the API as its owner.** `requireAnyAuth` — the middleware
   behind attachment uploads and two comment routes — used to accept a runner's device token and set
   `userId = device.ownerId`, which was the single place in Forge where a credential silently became

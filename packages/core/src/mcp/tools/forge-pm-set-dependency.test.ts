@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -56,11 +56,10 @@ const EDGE_ID = '66666666-6666-4666-8666-666666666666';
 const OWNER_ID = '44444444-4444-4444-8444-444444444444';
 const DEVICE_ID = '55555555-5555-4555-8555-555555555555';
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID);
 
 const ctx = {
-  principal: { kind: 'device' as const, device: fakeDevice },
-  device: fakeDevice,
+  principal: fakePrincipal,
   projectSlug: null,
 };
 
@@ -186,7 +185,7 @@ describe('forge_pm.set_dependency', () => {
   });
 
   // cm:guard the relaxed gate still REFUSES a stranger — this is the FORBIDDEN branch of `loadDeviceProjectRole`, and it is the assertion that stops "relaxed from assertPmActor" from quietly meaning "open to any device"
-  it('rejects a device whose owner is not a project member', async () => {
+  it('rejects a caller who is not a project member', async () => {
     const tool = forgePmSetDependencyTool(ctx);
     queue.push([{ ownerId: 'ffffffff-ffff-4fff-8fff-ffffffffffff' }]);
     queue.push([]);
@@ -198,7 +197,7 @@ describe('forge_pm.set_dependency', () => {
         toIssueId: TO_ID,
         kind: 'blocks',
       }),
-    ).rejects.toThrow(/FORBIDDEN/);
+    ).rejects.toThrow(/NOT_FOUND/);
   });
 });
 
@@ -259,7 +258,7 @@ describe('forge_pm.set_dependency — deferHealthPublish', () => {
 
   it('publishes the health refresh when the caller does not defer', async () => {
     queueFreshBlocksInsert();
-    const result = await pmSetDependencyHandler(fakeDevice, input);
+    const result = await pmSetDependencyHandler(fakePrincipal, input);
     expect(result.created).toBe(true);
     expect(publishHealthSpy).toHaveBeenCalledWith(PROJECT_ID, [TO_ID]);
   });
@@ -270,7 +269,7 @@ describe('forge_pm.set_dependency — deferHealthPublish', () => {
     const depSpy = vi.fn();
     hooks.on('dependencyChanged', (p) => depSpy(p));
 
-    const result = await pmSetDependencyHandler(fakeDevice, input, undefined, {
+    const result = await pmSetDependencyHandler(fakePrincipal, input, {
       deferHealthPublish: true,
     });
 

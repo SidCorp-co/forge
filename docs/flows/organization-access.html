@@ -22,7 +22,7 @@
 <h1>organization-access — a principal resolves to what it may touch</h1>
 <p class="sub">One <code>Authorization: Bearer</code> header, from the byte that decides which
 verifier runs to the project ids the request is fenced to — and every place the answer is refused.
-Owner: <code>packages/core/src/middleware/{bearer,auth,require-any-auth,require-device,require-pat-or-device,pat-rest-surface}.ts</code>,
+Owner: <code>packages/core/src/middleware/{bearer,auth,require-any-auth,require-device,require-pat,pat-rest-surface}.ts</code>,
 <code>packages/core/src/auth/{pat,pat-format,deviceToken}.ts</code>, <code>packages/core/src/lib/authz.ts</code>.</p>
 
 <h2>The token decides the verifier, and the verifier decides who you are</h2>
@@ -30,7 +30,11 @@ Owner: <code>packages/core/src/middleware/{bearer,auth,require-any-auth,require-
 <code>forge_pat_&lt;env&gt;_</code> prefix and that one test routes the whole request. Everything
 else is tried as a user JWT. A device token is verified on the <em>control</em> plane only — the
 runner's own <code>/api/devices</code>, <code>/api/jobs</code> and <code>/api/skills</code> sibling
-routers — and since ISS-927 it reaches nothing on the data plane at all.</p>
+routers, plus <code>/ws</code> — and since ISS-927 it reaches nothing on the data plane, nor
+(since ISS-931) <code>/mcp</code>. Three surfaces used to accept two species; one does now, and
+<code>/mcp</code> is not among them: <code>requirePat</code> refuses a non-PAT bearer
+<em>without consulting <code>verifyDeviceToken</code> at all</em>, which is what makes the 401 a
+statement about the credential CLASS rather than about this particular token.</p>
 
 <div class="board"><pre class="mermaid">
 flowchart TD
@@ -41,17 +45,19 @@ flowchart TD
   B -- no --> D{"isPatLike(t)?<br/>forge_pat_&lt;env&gt;_"}
   C --> D
   D -- yes --> P1["verifyPat: prefix lookup + argon2"]
+  D -- "no, and the surface is /mcp" --> M1["401 invalid_token — names the CLASS:<br/>'device tokens no longer authenticate /mcp',<br/>and the remedy: a newer forge-runner.<br/>verifyDeviceToken is NEVER called"]
   D -- no --> U1["verifyUserToken (JWT)"]
   U1 -- ok --> U2["userId = claims.sub<br/>principal = 'user', agency = human"]
   U1 -- throws --> V{"which middleware?"}
   V -- "requireAuth / requireAnyAuth" --> X3["401 — no device branch exists here"]
-  V -- "requireDevice / requireUserOrDevice / requirePatOrDevice" --> W["verifyDeviceToken"]
+  V -- "requireDevice / requireUserOrDevice" --> W["verifyDeviceToken"]
   W -- ok --> W2["principal = 'device', userId LEFT UNSET<br/>so loadProjectAccess fails closed"]
   W -- null --> X4["401"]
   P1 -- null --> X5["401 INVALID_TOKEN"]
   P1 -- ok --> P2["rate limit: 600/min per token<br/>429 + Retry-After on breach"]
   P2 --> P3["agency = isMachineTokenName(row.name)<br/>job: / session: -&gt; agent, else human"]
-  P3 --> P4{"patAllowedFor(path)?"}
+  P3 --> P3b["machine = parseMachineTokenName(row.name)<br/>the JOB or SESSION the token names —<br/>how a tool finds its pipeline context<br/>now that there is no device to look one up by"]
+  P3b --> P4{"patAllowedFor(path)?<br/>REST only; /mcp fences per tool"}
   P4 -- no --> X6["403 PAT_NOT_PERMITTED<br/>the route resolves no project,<br/>so there is nothing to fence on"]
   P4 -- yes --> P5{"scope for method?<br/>GET/HEAD -&gt; read, else write"}
   P5 -- no --> X7["403 INSUFFICIENT_SCOPE"]
@@ -81,6 +87,29 @@ writer keeps them in step. Both are now persisted beside each other:
     <code>/api/me/collaborators</code> and <code>/api/me/ops-health</code> are permanently in this
     class — they fan out over every project the caller can see, and there is deliberately no
     per-project twin because <code>GET /api/projects/:id/members</code> already is one.</td></tr>
+<tr><td>An agent session's MCP calls all 401 at once, on a box that was fine</td>
+    <td>Its <code>.mcp.json</code> carries the box's device token, and <code>/mcp</code> stopped
+    accepting one (ISS-931). The fix is a <code>forge-runner</code> new enough to write the job's
+    own token into the per-job config, which is why the refusal text says so. Core refuses at
+    deploy and a box changes at binary install, so the two are never simultaneous — read this
+    before deploying core ahead of a <code>runner-v*</code> release.</td></tr>
+<tr><td>An admin-gated MCP tool 403s <code>this token lacks the admin scope</code></td>
+    <td>Working as designed, and new since ISS-931. A paired device carried no scopes, so
+    <code>assertPrincipalIsAdmin</code>'s scope half was skipped for it and only the project role
+    was asked; a <code>job:</code>/<code>session:</code> token is minted
+    <code>['read','write']</code>. An operator who wants <code>forge_skills.*</code>,
+    <code>forge_runners</code> writes, <code>forge_config action=update</code>,
+    <code>forge_schedules</code> writes or <code>forge_reconcile</code> from an agent mints a PAT
+    with <code>admin</code> and exports it as the box's <code>$FORGE_PAT</code>. Widening the
+    machine mint instead would restore ambient admin authority, which is the thing ISS-927
+    removed.</td></tr>
+<tr><td>An MCP tool answers <code>NOT_FOUND: project not found or not accessible</code> to a caller
+    who IS a member</td>
+    <td>Then they are not, on the effective role — or the token's <code>projectIds</code> allowlist
+    excludes the project. Fourteen tools moved from <code>assertDeviceOwnerIsMember</code> (which
+    answered <code>FORBIDDEN</code> and never read the allowlist) to
+    <code>assertPrincipalIsMember</code> in ISS-931, so this reads as not-found by design: a 403
+    would confirm the project exists to a caller who cannot see it.</td></tr>
 <tr><td>A runner's REST call 401s where it used to work</td>
     <td>It is presenting a device token to <code>requireAnyAuth</code>. That branch is gone
     (ISS-927). An unattended caller holds a real token now: <code>job:&lt;id&gt;</code> minted at
@@ -98,7 +127,7 @@ writer keeps them in step. Both are now persisted beside each other:
     <code>MACHINE_TOKEN_NAME_PREFIXES</code> is covered everywhere at once — and one minted without
     being added there escapes the PAT cap, the revoke sweep and the evidence gates together.</td></tr>
 <tr><td>A device principal 403s inside a handler that looked correct</td>
-    <td>Working as designed. Four middlewares verify a device token and none sets
+    <td>Working as designed. Three middlewares verify a device token and none sets
     <code>userId</code>, so <code>loadProjectAccess(projectId, userId)</code> fails closed unless
     the handler honours the device principal explicitly and scopes by <code>row.deviceId</code>.
     Fixing one half of a read/write pair leaves the other half failing closed.</td></tr>

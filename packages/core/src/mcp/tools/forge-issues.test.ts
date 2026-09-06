@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakeJobPrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -55,7 +55,6 @@ const txInsertValues = vi.fn((_values?: unknown) => ({
   then: (r: (v: unknown) => unknown) => Promise.resolve(undefined).then(r),
 }));
 const txInsert = vi.fn(() => ({ values: txInsertValues }));
-// ISS-633 — label replace-set delete (issueLabels) inside the update tx.
 const txDeleteWhere = vi.fn(async () => undefined);
 const txDelete = vi.fn(() => ({ where: txDeleteWhere }));
 // ISS-196 — `withActorContext` calls `tx.execute(SELECT set_config(...))`
@@ -199,7 +198,12 @@ const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
 const ORG_ID = '99999999-9999-4999-8999-999999999999';
 const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+// cm:guard a MACHINE principal, because a paired device is what these cases used to run as and `agency: 'agent'` is the load-bearing half of that. It is what turns the ISS-786/812 evidence gates ON — a `makeFakePrincipal` here reads as a person, the gates skip, and `mark_merged refuses ... with no recorded code evidence` passes for the wrong reason (ISS-931).
+const fakePrincipal = makeFakeJobPrincipal(
+  DEVICE_ID,
+  OWNER_ID,
+  '00000000-0000-4000-8000-00000000abcd',
+);
 
 const baseIssueRow = {
   id: ISSUE_ID,
@@ -237,13 +241,13 @@ const humanPat = (userId: string, tokenId: string, projectIds: string[] | null) 
     scopes: ['read', 'write'],
     projectIds,
     boundProjectId: null,
+    machine: null,
   }) as const;
 
 describe('forge_issues tool', () => {
   it('rejects unknown action', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     await expect(
@@ -253,8 +257,7 @@ describe('forge_issues tool', () => {
 
   it('list resolves projectId from slug header and enforces membership', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     // 1. resolveProjectIdFromSlug → projects.id
@@ -275,8 +278,7 @@ describe('forge_issues tool', () => {
   // the MCP token cap; heavy fields stay reachable via action=get.
   it('list omits heavy body fields and keeps the light summary fields', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -319,8 +321,7 @@ describe('forge_issues tool', () => {
   // selection.
   it('list calls db.select with SQL-level light-column projection — no heavy fields (ISS-562)', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -364,8 +365,7 @@ describe('forge_issues tool', () => {
 
   it('list returns truncated:true and stays under output cap when fat rows exceed 38K chars (ISS-562)', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -402,8 +402,7 @@ describe('forge_issues tool', () => {
 
   it('list filters.label (uuid) pushes the EXISTS join and returns matching issues', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     // 1. resolveProjectIdFromSlug
@@ -424,8 +423,7 @@ describe('forge_issues tool', () => {
 
   it('list filters.label (name) resolves via labels query then returns matching issues', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     // 1. resolveProjectIdFromSlug
@@ -448,8 +446,7 @@ describe('forge_issues tool', () => {
 
   it('list filters.label with unknown name short-circuits to empty without querying issues', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     // 1. resolveProjectIdFromSlug
@@ -470,8 +467,7 @@ describe('forge_issues tool', () => {
 
   it('list filters.label array mixes uuid and name, deduplicates resolved ids', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     // 1. resolveProjectIdFromSlug
@@ -493,8 +489,7 @@ describe('forge_issues tool', () => {
 
   it('list throws BAD_REQUEST when no slug and no projectId', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
     await expect(tool.handler({ action: 'list' })).rejects.toThrow(/BAD_REQUEST/);
@@ -502,8 +497,7 @@ describe('forge_issues tool', () => {
 
   it('list throws NOT_FOUND when slug resolves to no project', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: 'unknown',
     });
     selectLimit.mockResolvedValueOnce([]); // no project for slug
@@ -512,8 +506,7 @@ describe('forge_issues tool', () => {
 
   it('get throws BAD_REQUEST without documentId', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     await expect(tool.handler({ action: 'get' })).rejects.toThrow(/BAD_REQUEST/);
@@ -521,8 +514,7 @@ describe('forge_issues tool', () => {
 
   it('get returns serialized issue when device owner is member', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     // 1. loadIssue → issues row
@@ -542,8 +534,7 @@ describe('forge_issues tool', () => {
 
   it('get attaches the issue attachments[] from the join', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
@@ -568,10 +559,9 @@ describe('forge_issues tool', () => {
     expect(result.attachments[0]?.url).toBe('/api/attachments/att-1/download');
   });
 
-  it('get throws FORBIDDEN when device owner is not a project member', async () => {
+  it('get answers not-found when the caller is not a project member', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
@@ -579,14 +569,13 @@ describe('forge_issues tool', () => {
     selectLimit.mockResolvedValueOnce([{ orgId: ORG_ID, memberRole: null, orgRole: null }]);
 
     await expect(tool.handler({ action: 'get', documentId: ISSUE_ID })).rejects.toThrow(
-      /FORBIDDEN/,
+      /NOT_FOUND/,
     );
   });
 
   it('get with fields returns only documentId + issueId + requested fields', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     const rowWithPlan = {
@@ -620,8 +609,7 @@ describe('forge_issues tool', () => {
 
   it('get with multiple fields returns all of them', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     const rowWithFields = {
@@ -648,8 +636,7 @@ describe('forge_issues tool', () => {
 
   it('get without fields stays backwards-compatible (full body + attachments)', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, plan: 'a plan' }]);
@@ -671,8 +658,7 @@ describe('forge_issues tool', () => {
 
   it('get with invalid field enum throws validation error', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
 
@@ -687,8 +673,7 @@ describe('forge_issues tool', () => {
 
   it('create requires data.title', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     await expect(tool.handler({ action: 'create', data: {} })).rejects.toThrow(/BAD_REQUEST/);
@@ -696,8 +681,7 @@ describe('forge_issues tool', () => {
 
   it('create persists plan + acceptanceCriteria on the new row', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     // resolve slug → project
@@ -727,8 +711,7 @@ describe('forge_issues tool', () => {
 
   it('create accepts status: on_hold and emits issueCreated with that status (ISS-130)', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -752,8 +735,7 @@ describe('forge_issues tool', () => {
 
   it('create rejects status outside the {open, on_hold, draft} allow-list (ISS-130, ISS-236)', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -772,8 +754,7 @@ describe('forge_issues tool', () => {
   // accepts them so Dream / Doc-Sync schedules can deposit findings.
   it('create accepts status: draft and emits issueCreated with that status (ISS-236)', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -797,8 +778,7 @@ describe('forge_issues tool', () => {
 
   it('create defaults status to open when omitted and emits issueCreated accordingly', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -826,8 +806,7 @@ describe('forge_issues tool', () => {
 
     it('commits the dependsOnId edge BEFORE hooks.emit(issueCreated)', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]); // resolveProjectIdFromSlug
@@ -862,15 +841,17 @@ describe('forge_issues tool', () => {
           toIssueId: ISSUE_ID,
           kind: 'blocks',
         }),
-        { actor: { type: 'device', id: fakeDevice.id, agency: 'agent' }, createdById: OWNER_ID },
+        {
+          actor: { type: 'device', id: fakePrincipal.tokenId, agency: 'agent' },
+          createdById: OWNER_ID,
+        },
         expect.anything(),
       );
     });
 
     it('commits a blocksId edge with the new issue on the blocking side', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -892,15 +873,17 @@ describe('forge_issues tool', () => {
           toIssueId: BLOCKED_ID,
           kind: 'blocks',
         }),
-        { actor: { type: 'device', id: fakeDevice.id, agency: 'agent' }, createdById: OWNER_ID },
+        {
+          actor: { type: 'device', id: fakePrincipal.tokenId, agency: 'agent' },
+          createdById: OWNER_ID,
+        },
         expect.anything(),
       );
     });
 
     it('create without relations writes no edge (backward compat)', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -914,8 +897,7 @@ describe('forge_issues tool', () => {
 
     it('rejects a relation with both dependsOnId and blocksId set', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       await expect(
@@ -932,8 +914,7 @@ describe('forge_issues tool', () => {
 
     it('rejects a relation with neither dependsOnId nor blocksId set', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       await expect(
@@ -950,8 +931,7 @@ describe('forge_issues tool', () => {
 
     it('rejects a relation with kind=decomposes (must use forge_project_pm instead)', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       await expect(
@@ -968,8 +948,7 @@ describe('forge_issues tool', () => {
 
     it('propagates an edge-write error and does not emit issueCreated', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -1010,8 +989,7 @@ describe('forge_issues tool', () => {
 
     it('persists a single attachment and returns its url', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]); // resolveProjectIdFromSlug
@@ -1042,8 +1020,7 @@ describe('forge_issues tool', () => {
 
     it('rejects PAYLOAD_TOO_LARGE before inserting the issue', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -1070,8 +1047,7 @@ describe('forge_issues tool', () => {
 
     it('rejects INVALID_BASE64 before inserting the issue', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -1091,8 +1067,7 @@ describe('forge_issues tool', () => {
 
     it('returns MIME_NOT_ALLOWED in attachmentErrors and keeps the issue', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -1122,8 +1097,7 @@ describe('forge_issues tool', () => {
 
   it('update writes plan and bumps updatedAt', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     // loadIssue
@@ -1150,8 +1124,7 @@ describe('forge_issues tool', () => {
 
   it('update with status routes through state machine and rejects illegal transition', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     // loadIssue (status=open)
@@ -1173,8 +1146,7 @@ describe('forge_issues tool', () => {
   // cm:guard `unblock` is GONE from the schema (RFC 0002 INV-6) — the three tests deleted from this spot asserted that a park exit needs a sentinel to dispatch. `.strict()` is what makes this fail loudly instead of ignoring the field, which is how the same flag was silently dropped by the `transition` action for two days (ISS-671/813/825/831, one stranded 48h).
   it('rejects the removed data.unblock flag instead of ignoring it', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     await expect(
@@ -1194,8 +1166,7 @@ describe('forge_issues tool', () => {
     ['needs_info', 'open'],
   ])('rejects a %s with no reason and no note', async (to, from) => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, status: from }]);
@@ -1208,8 +1179,7 @@ describe('forge_issues tool', () => {
 
   it('rejects a `waiting` park that states a reason but no kind', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, status: 'in_progress' as const }]);
@@ -1226,8 +1196,7 @@ describe('forge_issues tool', () => {
 
   it('accepts a reopen whose rationale arrives as `note`', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     const testedRow = { ...baseIssueRow, status: 'tested' as const };
@@ -1250,8 +1219,7 @@ describe('forge_issues tool', () => {
 
   it('transition open→confirmed updates status and emits hook', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     // loadIssue (open)
@@ -1278,8 +1246,7 @@ describe('forge_issues tool', () => {
 
   it('create persists releaseNotes and serializes them on the response', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -1302,8 +1269,7 @@ describe('forge_issues tool', () => {
 
   it('update writes releaseNotes onto an existing issue', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
@@ -1325,8 +1291,7 @@ describe('forge_issues tool', () => {
 
   it('update rejects releaseNotes with an invalid section enum', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     await expect(
@@ -1343,8 +1308,7 @@ describe('forge_issues tool', () => {
 
   it('transition surfaces STALE_TRANSITION when conditional update returns no row', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
@@ -1371,7 +1335,6 @@ describe('forge_issues tool', () => {
     function makePatTool(projectIds: string[] | null) {
       return forgeIssuesTool({
         principal: humanPat(PAT_USER, PAT_TOKEN, projectIds),
-        device: fakeDevice,
         projectSlug: null,
       });
     }
@@ -1446,8 +1409,7 @@ describe('forge_issues tool', () => {
 
     it('mark_merged stamps merged_at via COALESCE, writes audit comment, and broadcasts', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       // loadIssue (merged_at currently null)
@@ -1510,8 +1472,7 @@ describe('forge_issues tool', () => {
       // cannot type inside COALESCE (live 500 on forge-beta). The stamp must
       // be an ISO string carrying an explicit ::timestamptz cast.
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([baseIssueRow]); // loadIssue
@@ -1559,8 +1520,7 @@ describe('forge_issues tool', () => {
 
     it('mark_merged requires data.target', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       await expect(
@@ -1570,8 +1530,7 @@ describe('forge_issues tool', () => {
 
     it('mark_merged requires data.issueId', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       await expect(
@@ -1581,8 +1540,7 @@ describe('forge_issues tool', () => {
 
     it('unmark clears merged_at to NULL, writes audit comment, broadcasts, and does NOT tick', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       // loadIssue (merged_at currently set)
@@ -1619,17 +1577,15 @@ describe('forge_issues tool', () => {
 
     it('unmark requires data.issueId', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       await expect(tool.handler({ action: 'unmark', data: {} })).rejects.toThrow(/BAD_REQUEST/);
     });
 
-    it('mark_merged rejects a non-member device with FORBIDDEN', async () => {
+    it('mark_merged rejects a non-member as not-found', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       // loadIssue
@@ -1639,13 +1595,12 @@ describe('forge_issues tool', () => {
 
       await expect(
         tool.handler({ action: 'mark_merged', data: { issueId: ISSUE_ID, target: 'base' } }),
-      ).rejects.toThrow(/FORBIDDEN/);
+      ).rejects.toThrow(/NOT_FOUND/);
     });
 
-    it('mark_merged refuses a device principal with no recorded code evidence (ISS-75/76/77/78 shape)', async () => {
+    it('mark_merged refuses an agent-held token with no recorded code evidence (ISS-75/76/77/78 shape)', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([baseIssueRow]); // loadIssue
@@ -1664,10 +1619,8 @@ describe('forge_issues tool', () => {
     it('mark_merged does NOT evidence-gate a PAT (human) principal', async () => {
       const tool = forgeIssuesTool({
         principal: humanPat(OWNER_ID, '55555555-5555-4555-8555-555555555555', null),
-        device: fakeDevice,
         projectSlug: PROJECT_SLUG,
       });
-      // Would refuse a device principal — proves the PAT path skips the check.
       findMissingWorkEvidenceMock.mockResolvedValueOnce('no evidence at all');
       selectLimit.mockResolvedValueOnce([baseIssueRow]); // loadIssue
       selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership/writer role
@@ -1688,7 +1641,6 @@ describe('forge_issues tool', () => {
         principal: humanPat(OWNER_ID, '55555555-5555-4555-8555-555555555555', [
           '66666666-6666-4666-8666-666666666666',
         ]),
-        device: fakeDevice,
         projectSlug: null,
       });
       // loadIssue resolves a row whose project is NOT in the allowlist
@@ -1706,8 +1658,7 @@ describe('forge_issues tool', () => {
 
     it('update resolves labels by NAME and by UUID and hands the ids to the update service', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       // cm:guard these four stagings pop off ONE shared queue in call order — loadIssue, membership, the single resolveLabelIdsForWrite query that answers both the uuid and the name, then the re-read; insert or drop a query anywhere in the handler and every later test in this file reads someone else's row
@@ -1736,13 +1687,12 @@ describe('forge_issues tool', () => {
         [LABEL_ID, LABEL_ID_2].sort(),
       );
       expect([...(call?.labelIds ?? [])].every((l) => l.isPrimary === false)).toBe(true);
-      expect(call?.actor).toEqual({ type: 'device', id: fakeDevice.id, agency: 'agent' });
+      expect(call?.actor).toEqual({ type: 'device', id: fakePrincipal.tokenId, agency: 'agent' });
     });
 
     it('update with labels:[] passes an empty id set through as the clear-all request', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([baseIssueRow]); // loadIssue
@@ -1764,8 +1714,7 @@ describe('forge_issues tool', () => {
 
     it('update rejects an unknown label name with BAD_REQUEST and performs no writes', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([baseIssueRow]); // loadIssue
@@ -1784,8 +1733,7 @@ describe('forge_issues tool', () => {
 
     it('update rejects a label uuid that belongs to another project', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([baseIssueRow]); // loadIssue
@@ -1806,8 +1754,7 @@ describe('forge_issues tool', () => {
 
     it('create accepts data.labels, attaches them, and passes resolved ids to issueCreated snapshot.labels', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]); // resolveProjectIdFromSlug
@@ -1837,8 +1784,7 @@ describe('forge_issues tool', () => {
 
     it('create without data.labels attaches none and keeps snapshot.labels empty (backward compat)', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -1861,8 +1807,7 @@ describe('forge_issues tool', () => {
 
     it('get returns the issue current labels[]', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([baseIssueRow]);
@@ -1878,8 +1823,7 @@ describe('forge_issues tool', () => {
 
     it('list row omits labels (stays lean; use action=get for the label set)', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -1916,8 +1860,7 @@ describe('forge_issues tool', () => {
 
     it('createTask: inserts row with project resolved from parent issue', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       // loadIssueProjectId
@@ -1939,15 +1882,14 @@ describe('forge_issues tool', () => {
           issueId: ISSUE_ID,
           projectId: PROJECT_ID,
           title: 'Sub-task',
-          actor: { type: 'device', id: fakeDevice.id, agency: 'agent' },
+          actor: { type: 'device', id: fakePrincipal.tokenId, agency: 'agent' },
         }),
       );
     });
 
     it('createTask: requires data.issueId', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       await expect(
@@ -1957,8 +1899,7 @@ describe('forge_issues tool', () => {
 
     it('createTask: requires data.taskTitle', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       await expect(
@@ -1968,8 +1909,7 @@ describe('forge_issues tool', () => {
 
     it('listTasks: returns serialized rows filtered by parent issue', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       // loadIssueProjectId
@@ -1989,8 +1929,7 @@ describe('forge_issues tool', () => {
 
     it('listTasks: respects filters.taskStatus', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
@@ -2012,8 +1951,7 @@ describe('forge_issues tool', () => {
 
     it('listTasks: requires filters.issue', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       await expect(tool.handler({ action: 'listTasks' })).rejects.toThrow(/BAD_REQUEST/);
@@ -2021,8 +1959,7 @@ describe('forge_issues tool', () => {
 
     it('listTasks: returned rows omit description field in serialization (ISS-562)', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
@@ -2041,8 +1978,7 @@ describe('forge_issues tool', () => {
 
     it('listTasks: returns truncated:true when fat rows exceed 38K chars (ISS-562)', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
@@ -2077,8 +2013,7 @@ describe('forge_issues tool', () => {
 
     it('updateTask: patches mapped fields', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       findTaskByIdMock.mockResolvedValueOnce(baseTaskRow);
@@ -2097,15 +2032,14 @@ describe('forge_issues tool', () => {
       expect(updateTaskMock).toHaveBeenCalledWith(
         baseTaskRow,
         { status: 'done' },
-        { type: 'device', id: fakeDevice.id, agency: 'agent' },
+        { type: 'device', id: fakePrincipal.tokenId, agency: 'agent' },
         ['acceptanceCriteria'],
       );
     });
 
     it('deleteTask: runs db.delete after membership check', async () => {
       const tool = forgeIssuesTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       findTaskByIdMock.mockResolvedValueOnce(baseTaskRow);
@@ -2120,7 +2054,7 @@ describe('forge_issues tool', () => {
       expect(result.documentId).toBe(TASK_ID);
       expect(deleteTaskMock).toHaveBeenCalledWith(baseTaskRow, {
         type: 'device',
-        id: fakeDevice.id,
+        id: fakePrincipal.tokenId,
         agency: 'agent',
       });
     });
@@ -2260,8 +2194,7 @@ describe('findVerifiedClaimViolation', () => {
 describe('forge_issues create — sessionContext verified* wiring (ISS-820)', () => {
   it('rejects create when sessionContext carries a bare verified* claim', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
 
@@ -2278,8 +2211,7 @@ describe('forge_issues create — sessionContext verified* wiring (ISS-820)', ()
 
   it('accepts create when sessionContext verified* claim is properly shaped', async () => {
     const tool = forgeIssuesTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: PROJECT_SLUG,
     });
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);

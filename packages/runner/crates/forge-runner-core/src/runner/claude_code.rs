@@ -20,6 +20,7 @@ use super::process::{build_command, graceful_kill};
 use super::{FailureKind, JobSpec, Runner, RunnerEvent, RunnerKind, RunnerStatus, SessionId};
 use crate::error::{Error, Result};
 use crate::mcp;
+use crate::transport::frames::JobToken;
 
 /// One `--input-format stream-json` user message, newline-terminated.
 // cm:guard the CLI accepts exactly this envelope and rejects a bare string — verified on claude 2.1.251, 2026-08-29. A malformed line is not an error: the process stays alive with nothing to answer, so the turn hangs until the job timeout with no diagnosis anywhere.
@@ -884,7 +885,7 @@ impl Runner for ClaudeCodeRunner {
         let slug = spec.project_slug.as_deref().unwrap_or("");
         let mcp_path = mcp::config::write(
             &self.core_url,
-            &self.device_token,
+            spec.pat_token.as_ref().map(JobToken::expose),
             slug,
             &spec.job_id,
             spec.mcp_servers_override.as_ref(),

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -85,11 +85,10 @@ const ISSUE_ID = '22222222-2222-4222-8222-222222222222';
 const OWNER_ID = '44444444-4444-4444-8444-444444444444';
 const DEVICE_ID = '55555555-5555-4555-8555-555555555555';
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID);
 
 const ctx = {
-  principal: { kind: 'device' as const, device: fakeDevice },
-  device: fakeDevice,
+  principal: fakePrincipal,
   projectSlug: null,
 };
 
@@ -267,7 +266,7 @@ describe('forge_step_start', () => {
   it('small issue (heavy chars ≤ threshold) returns full body without bodyTruncated', async () => {
     const tool = forgeStepStartTool(ctx);
     loadIssue.mockResolvedValue(makeIssue({ plan: 'short plan' }));
-    heavyFieldChars.mockReturnValue(10); // well under threshold
+    heavyFieldChars.mockReturnValue(10);
     queueHappyPath();
 
     const result = (await tool.handler({

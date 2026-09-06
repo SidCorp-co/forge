@@ -8,10 +8,9 @@
  */
 
 import { z } from 'zod';
-import type { Device } from '../../auth/deviceToken.js';
 import { jobTypes, modelTiers } from '../../db/schema.js';
+import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { dispatchPmJob } from '../../pm/dispatch-service.js';
-import { assertPmActor } from './project-authz.js';
 
 export const pmDispatchInputSchema = z
   .object({
@@ -25,9 +24,8 @@ export const pmDispatchInputSchema = z
   .strict();
 
 export async function pmDispatchHandler(
-  device: Device,
+  principal: McpPrincipal,
   input: z.infer<typeof pmDispatchInputSchema>,
 ) {
-  await assertPmActor(device, input.projectId);
-  return dispatchPmJob(input, device.ownerId);
+  return dispatchPmJob(input, principal.userId);
 }

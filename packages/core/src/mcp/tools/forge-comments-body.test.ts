@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
 /**
  * The MCP half of ISS-898's body gate: `format` reaching the write door, a
@@ -67,7 +67,7 @@ const ORG_ID = '88888888-8888-4888-8888-888888888888';
 
 const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID);
 
 const baseCommentRow = {
   id: COMMENT_ID,
@@ -94,8 +94,7 @@ beforeEach(() => {
 describe('forge_comments component bodies (ISS-898)', () => {
   const tool = () =>
     forgeCommentsTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
 

@@ -73,7 +73,7 @@ export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
   - record_vote: Verifier agent records its pass/fail vote for a run in 'verifying' status. jobId (this verifier's job ID), vote ('pass'|'fail'), and reason are required.
   - apply: Human approves a 'decided' run at the human gate and publishes the candidate body (admin-only).
   - reject: Human rejects a 'decided' run with a reason (admin-only). Sets status to 'escalated'.
-  - acknowledge: Clear an ESCALATED run's attention item (admin-only). Only valid for status='escalated' + verdict='escalate'; idempotent (a second call is a no-op, not an error). Does NOT change status — the run stays terminal; it resolves the gate notification for EVERY admin, not just the caller. The REST equivalent is JWT-only, so this action is the only path for a PAT or device principal (ISS-810).`,
+  - acknowledge: Clear an ESCALATED run's attention item (admin-only). Only valid for status='escalated' + verdict='escalate'; idempotent (a second call is a no-op, not an error). Does NOT change status — the run stays terminal; it resolves the gate notification for EVERY admin, not just the caller. The REST equivalent is JWT-only, so this action is the only path for a PAT (ISS-810).`,
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);

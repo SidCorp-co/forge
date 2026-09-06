@@ -56,7 +56,7 @@ is the live example. Read the mount and its middleware, not the prefix alone.
 | `forge_pipeline_runs.get` | `/api/pipeline-runs` |
 | `forge_project_pipeline_runs` | `/api/projects/:id/pipeline-runs` |
 | `forge_projects.*` (4) | `/api/projects`, `/api/projects/:id` |
-| `forge_project_pm`, `forge_pm.set_dependency` | `/api/projects/:projectId/pm` |
+| `forge_project_pm`, `forge_pm.set_dependency` | `/api/projects/:projectId/pm` — **reads only.** `pm/read-routes.ts` covers `snapshot`/`graph`/`runner-load`; `pm/routes.ts` is config, policies, decision READS and the escalation respond. `dispatch` and `write_decision` have no REST route at all, and since `ISS-931` no MCP route either (`docs/proposals/pm-dispatch-has-no-rest-twin.md`) |
 | `forge_coolify_deploy` | `/api/projects/:projectId/integrations/coolify[/status\|/deploy]` |
 | `forge_metrics.*` (4) | `/api/projects/:id/metrics` |
 | `forge_agent_sessions.*` (2) | `/api/projects/:id/agent-sessions` |
@@ -177,9 +177,14 @@ bound to one project, on the same 600/min ceiling a job token gets, revoked when
 The token binds to the **session**, not to the schedule run, which is why no new revoke hook was
 needed. Interactive chat is the exception and keeps the operator's `$FORGE_PAT`.
 
-So the credential question is answered and the caller class has a destination. What has not moved
-is the transport: `/mcp` still accepts a device token through `requirePatOrDevice`, and
-`packages/runner/crates/forge-runner-core/src/mcp/config.rs` still writes the device token into
-every agent session's `.mcp.json`. Until that changes, removing a data tool still breaks a
-device-authenticated caller — see `ISS-931` and the deletion rule in
-[agent-surface.md](agent-surface.md).
+So the credential question is answered and the caller class has a destination. `ISS-931` then moved
+the transport to match: `/mcp` is `requirePat`, which accepts `forge_pat_*` and refuses every other
+bearer by name, and `packages/runner/crates/forge-runner-core/src/mcp/config.rs` writes the job's
+own `job:`/`session:` token into the per-job `.mcp.json` instead of the box's device token. So a
+device-authenticated MCP caller is no longer a thing a data-tool deletion can break.
+
+The residual is a clock, not a gap: core refuses at deploy and a runner box changes at binary
+install, so a box still running an older `forge-runner` writes a device token that now 401s. The
+refusal text names that remedy, and the deletion rule in
+[agent-surface.md](agent-surface.md) reads `mcp_audit_log`'s device split as a HISTORICAL count from
+this point on.

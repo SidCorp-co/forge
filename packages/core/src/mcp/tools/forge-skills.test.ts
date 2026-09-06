@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakeContext, makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -38,7 +38,7 @@ const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const OWNER_ID = '44444444-4444-4444-8444-444444444444';
 const DEVICE_ID = '55555555-5555-4555-8555-555555555555';
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID);
 
 const projectSkillRow = {
   id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -65,8 +65,8 @@ beforeEach(() => {
 
 describe('forge_skills.list (ISS-428 body-free projection)', () => {
   it('omits heavy bodies and keeps catalog metadata + dedup hints', async () => {
-    const tool = forgeSkillsListTool(fakeDevice);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
+    const tool = forgeSkillsListTool(makeFakeContext(fakePrincipal));
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     listProjectSkillsMock.mockResolvedValueOnce([projectSkillRow]);
 
     const result = (await tool.handler({ projectId: PROJECT_ID })) as {
@@ -94,9 +94,9 @@ describe('forge_skills.list (ISS-428 body-free projection)', () => {
     }
   });
 
-  it('rejects non-member with FORBIDDEN', async () => {
-    const tool = forgeSkillsListTool(fakeDevice);
+  it('rejects a non-member as not-found (existence-hiding)', async () => {
+    const tool = forgeSkillsListTool(makeFakeContext(fakePrincipal));
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // not a member
-    await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
+    await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 });
