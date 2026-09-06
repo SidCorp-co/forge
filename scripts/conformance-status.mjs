@@ -3,28 +3,27 @@
 // document claims for it.
 //
 // Every gate this repo has lost was lost the same way: it stayed documented
-// while it stopped blocking. biome drifted to 366 errors, typecheck to 84, and
-// the two length rules to 143 — each of them described in CLAUDE.md as gating
-// something the whole time it gated nothing. A written level is a claim; this
-// runs the checker and reports what came back.
+// while it stopped blocking — biome drifted to 366 errors, typecheck to 84, the
+// two length rules to 143, each described in CLAUDE.md as gating something the
+// whole time it gated nothing. A written level is a claim; this runs the checker.
 //
-// Levels, shared by every axis:
-//   0  no checker
-//   1  measure — runs, prints, does not block
-//   2  freeze — baseline the old, block the new
-//   3  lock — zero violations, no baseline
+// Levels, shared by every axis: 0 no checker · 1 measure, does not block ·
+//   2 freeze, baseline the old and block the new · 3 lock, zero violations
 //
 // The declared level lives in .forge/conformance.json. This compares it against
-// what the checkers actually do and fails when the two disagree, so the manifest
-// cannot quietly become the next thing that lies.
+// what the checkers do and fails when the two disagree, so the manifest cannot
+// quietly become the next thing that lies.
 //
-// Exit: 0 declared matches measured · 1 they disagree · 2 could not run.
+// Exit: 0 matches · 1 they disagree · 2 could not run. Those last two accuse
+// different parties: 1 accuses the repo, 2 accuses nobody — an axis whose probe
+// is not on disk prints `n/a` and is compared against nothing.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { baseRev, ratchetFault } from './lib/baseline-ratchet.mjs';
+import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
@@ -35,7 +34,14 @@ const PROBES = {
   form: {
     gate: 'check-size-budget + check-lint-budget + biome',
     probe: ['node', 'scripts/check-size-budget.mjs', '--all'],
-    also: [{ from: 'alsoBaseline', probe: ['node', 'scripts/check-lint-budget.mjs', '--all'] }],
+    needs: ['deps'],
+    also: [
+      {
+        from: 'alsoBaseline',
+        needs: ['deps'],
+        probe: ['node', 'scripts/check-lint-budget.mjs', '--all'],
+      },
+    ],
   },
   knowledge: {
     gate: 'cm verify + cm drain + check-honest-costs + check-injected-doc-modes',
@@ -52,6 +58,7 @@ const PROBES = {
     gate: 'archmap check',
     // cm:why archmap carries its baseline INSIDE .arch.json as each contract's draft/locked status rather than in a separate frozen file — `locked` already means "no new violations", not "zero violations", which is level 2 by the same definition the other axes use
     probe: ['./.forge/archmap/archmap', 'check'],
+    needs: ['deps'],
   },
   // cm:guard an axis with several checkers measures at the WEAKEST of them. Reporting the strongest would let one locked checker hide a sibling that stopped blocking, which is the drift this whole script exists to catch.
   behaviour: {
@@ -60,7 +67,7 @@ const PROBES = {
     also: [
       { from: 'alsoBaseline', probe: ['node', 'scripts/check-flow-coverage.mjs', '--all'] },
       // cm:why `from: 'none'` rather than the default, because this checker has no baseline and must not borrow test-signal's — borrowing would report it as level 2 `baseline frozen` when it is level 3 at zero debt, and an axis that overstates one checker is how a sibling's rot stays hidden
-      { from: 'none', probe: ['node', 'scripts/check-test-reachability.mjs'] },
+      { from: 'none', needs: ['deps'], probe: ['node', 'scripts/check-test-reachability.mjs'] },
     ],
   },
   language: {
@@ -106,14 +113,22 @@ function readManifest() {
 }
 
 // cm:guard measure by RUNNING the checker, never by reading the manifest. Reading the declaration and printing it back is what every drifted gate already did.
+// cm:guard a probe that could not run has NO level — not level 0. Level 0 means "no checker exists", which is a measured fact about the repo, and returning it for an absent binary made a worktree with no node_modules report three axes as having lost their gates. The two states print the same digit and mean opposite things, so this returns `level: null` and the caller keeps them apart.
 function measureOne(spec, baselinePath) {
+  const missing = absentPrerequisites(ROOT, spec.needs);
+  if (missing.length > 0) return { level: null, blocked: missing, note: remedyLines(missing)[0] };
+
   const r = spawnSync(spec.probe[0], spec.probe.slice(1), {
     cwd: ROOT,
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
   });
-  if (r.error) return { level: 0, note: `cannot run: ${r.error.message}` };
-  if (r.status === 2) return { level: 0, note: 'checker reported it could not run' };
+  if (couldNotStart(r)) {
+    return { level: null, blocked: [], note: `${spec.probe[0]} is not executable here` };
+  }
+  if (r.error) return { level: null, blocked: [], note: `cannot run: ${r.error.message}` };
+  if (r.status === 2)
+    return { level: null, blocked: [], note: 'checker reported it could not run' };
 
   const hasBaseline = baselinePath ? existsSync(join(ROOT, baselinePath)) : false;
   if (r.status === 1) return { level: 2, note: 'blocking, violations present' };
@@ -128,9 +143,13 @@ function measure(_axis, spec, decl) {
     // cm:guard an explicit slot, not a missing key. A checker with no baseline needs to resolve to null on purpose; leaving it to `paths[undefined]` works today and breaks silently the moment someone adds a key by that name, and the breakage is a checker quietly reporting a stricter level than it holds.
     none: null,
   };
+  // cm:guard an unmeasurable probe outranks every measured one. The axis measures at its WEAKEST gate, and a gate whose level is unknown could be the weakest — reporting the others' number would publish a level nobody measured.
   return [spec, ...(spec.also ?? [])]
     .map((s) => measureOne(s, paths[s.from ?? 'baseline']))
-    .reduce((weakest, m) => (m.level < weakest.level ? m : weakest));
+    .reduce((weakest, m) => {
+      if (weakest.level === null) return weakest;
+      return m.level === null || m.level < weakest.level ? m : weakest;
+    });
 }
 
 function ciGates() {
@@ -172,6 +191,7 @@ if (ratchetable.length > 0 && BASE_REV === null) {
 const axes = [...new Set([...Object.keys(PROBES), ...Object.keys(declared)])].sort();
 const rows = [];
 let disagreements = 0;
+let unmeasured = 0;
 
 for (const axis of axes) {
   const spec = PROBES[axis];
@@ -199,6 +219,12 @@ for (const axis of axes) {
   }
   const m = measure(axis, spec, declared[axis]);
   const d = declared[axis].level;
+  // cm:guard an unmeasurable axis is reported and skipped, never compared. Comparing it would fault the manifest for a claim no probe tested, which is the accusation this script exists to make ONLY on evidence.
+  if (m.level === null) {
+    unmeasured++;
+    rows.push({ axis, gate: spec.gate, declared: d, measured: 'n/a', note: m.note });
+    continue;
+  }
   // cm:guard EVERY declared baseline, not just the primary. `alsoBaseline` was skipped here from the day the ratchet landed: 6 baselines declared, 4 judged, and the visibility line said "4 baseline(s) judged" without ever saying out of how many. `.forge/lint-baseline.json` and `.forge/flow-coverage-baseline.json` could be re-frozen larger and nothing anywhere went red — the same fail-open the ratchet was written to close, one level up in the thing that runs it.
   const fault =
     declaredBaselines(declared[axis])
@@ -217,7 +243,7 @@ for (const axis of axes) {
 const w = Math.max(...rows.map((r) => r.gate.length), 10);
 console.log(`\n  axis        gate${' '.repeat(w - 4)}declared  measured`);
 for (const r of rows) {
-  const flag = r.declared === r.measured ? ' ' : '!';
+  const flag = r.measured === 'n/a' ? '?' : r.declared === r.measured ? ' ' : '!';
   console.log(
     `${flag} ${r.axis.padEnd(11)} ${String(r.gate).padEnd(w)}  ${String(r.declared).padEnd(8)}  ${String(r.measured).padEnd(8)}  ${r.note}`,
   );
@@ -241,6 +267,21 @@ if (rows.length === 0) {
       'scanned-nothing, not agreement. Exit 2, because a status report over an empty\n' +
       'set is the fail-open shape this whole system exists to refuse.\n',
   );
+  process.exit(2);
+}
+
+// cm:guard exit 2 and say which axes, BEFORE the disagreement verdict below. The axes that did measure may agree perfectly, and printing "declared levels match measured" over a run that could not measure three of them is a green earned by the checks that were absent.
+if (unmeasured > 0) {
+  console.error(
+    `\nconformance-status: ${unmeasured} axis/axes could not be measured — the probe's tool is\n` +
+      'not on disk. That is a fact about this checkout, not about the repo: no level below\n' +
+      'was compared for those axes and none of them is claimed to overstate anything.\n' +
+      `Exit 2, because ${unmeasured} unmeasured axis/axes is not agreement.\n`,
+  );
+  for (const r of rows.filter((x) => x.measured === 'n/a')) {
+    console.error(`  ${r.axis}: ${r.note}`);
+  }
+  console.error('');
   process.exit(2);
 }
 

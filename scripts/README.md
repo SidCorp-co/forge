@@ -195,6 +195,41 @@ Four contracts:
    printing the guards / edges / flows you should read. This is the pull-side stand-in for the
    PreToolUse hook, and it works with no plugin installed.
 
+### One proposition per verdict
+
+**A gate must distinguish "I ran and the code is wrong" from "I could not run", and a failure must
+name which condition it represents.** They are answers to different questions — one is about the
+repo, the other about the machine the gate is standing on — and a signal with no field for the
+difference hands the reader the wrong one silently.
+
+Five marks, each asserting exactly one thing:
+
+| Mark | Means | Exit | Statement about |
+|---|---|---|---|
+| `ok` | ran, found nothing | 0 | the repo |
+| `red` | ran, found violations | 1 | the repo |
+| `FAIL` | ran, but its output could not be audited — no file count, or a count of zero | 2 | the repo |
+| `n/a` | did not run: a declared prerequisite is absent. Names it and the command that installs it | 2 | this checkout |
+| `skip` | did not run: absent locally by design, and CI provably runs it | 0 | this checkout |
+
+`n/a` is not an amnesty. It exits `2` exactly as `FAIL` does, because an unrun gate is no evidence
+and this script does not forward no-evidence as a pass — what changes is only the sentence a reader
+gets. Prerequisites are declared per check as `needs:` and resolved against the **filesystem** by
+`lib/prerequisite.mjs`, never against a tool's output text: a missing binary and a genuinely broken
+import both print `Cannot find module`, and classifying by message would turn a real defect into
+"could not run", which is this bug inverted and strictly worse because it goes green.
+
+Preflight happens **before** the spawn. A checker run without its tool produces a sentence about its
+own subject — `biome output in packages/core was not JSON`, `archmap: scope matched no files` — and
+once that sentence exists nothing downstream can unsay it.
+
+Measured 2026-09-07 in a worktree with no `node_modules`: `pnpm verify` reported `FAIL R7 the
+relations gate can resolve the graph it claims to cover` and `conformance: claims "hardened" and
+does not meet it`. Both accuse the repo; both were false; `archmap` and `tsc` were not on disk.
+Nine checks were affected, not the two the report named. Unlike contention this survives a serial
+re-run identically, so it wears the exact signature a reader is told to trust as a real defect
+(ISS-938).
+
 ### Modes
 
 - (none) — full run
@@ -216,6 +251,13 @@ claim; this is the check that tests the claim.
 
 Also fails when an axis is declared with no probe, or probed with no declaration, so neither half can
 drift out of the other's sight.
+
+An axis whose probe is not on disk has **no measured level** — reported as `n/a`, compared against
+nothing, and taking the script to exit `2`. Level `0` is not the answer there: `0` means "no checker
+exists", a measured fact about the repo, and returning it for an absent binary reported three axes
+as having lost their gates. `conformance-audit.mjs` draws the same line for `R7`, its one rule that
+runs a tool: `n/a` rather than a rule this repo fails, and exit `2` before either profile verdict —
+a `--` mark means the rule does not apply, `n/a` means it applies and was not answered.
 
 ## check-size-budget.mjs — file and function length
 
