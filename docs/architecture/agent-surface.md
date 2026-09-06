@@ -166,6 +166,23 @@ three, and each has its own end condition.
 A tool with a caller in any of the three is refused **by name**. It is not deleted behind a widened
 filter, and the caller is not left to find out as `not_found`.
 
+**Rules 1 and 2 are static evidence, and static evidence can never be sufficient here.** `forge call
+<tool>` takes a tool name as an ARGUMENT, so any registered tool can be invoked without its name
+appearing in any source, artifact or import graph anywhere. `forge_memory.write` and
+`forge_memory.feedback` are the proof: zero hard-coded references in the installed plugin, and the
+CLI's own guide text routes agents to both through the passthrough. A grep that comes back empty
+therefore means *"no static reference"*, never *"no caller"* — including for the tools this page has
+already cleared.
+
+So rule 3 is not one input among three; **it is the only one that can settle the question**, and
+`mcp_audit_log` is the only place that holds it. `mcp/server.ts` stamps `tool: request.params.name`
+on every `tools/call` before dispatch — including calls to names it does not recognise, which land
+as `not_found` rows — so a passthrough call is recorded exactly like a wrapped one. That is the
+evidence rules 1 and 2 cannot supply, and it is the evidence no agent session can read
+(`ISS-946`). Which makes `ISS-946` the wave's precondition rather than a convenience: until it is
+answered, no tool reachable through `forge call` can be *proven* safe to delete from a runner box,
+whatever the greps say.
+
 **What `ISS-931` did change is the credential the replacement must accept.** The old rule asked for
 a route that accepts a *device token*. Every caller that returns holds a `forge_pat_*` instead, so
 that is the test now. `/api/skill-facts` is where the clause was bought and it still reads
