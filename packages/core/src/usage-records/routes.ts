@@ -138,7 +138,7 @@ usageRecordRoutes.get(
 
     const daily = await db
       .select({
-        date: sql<string>`to_char(date_trunc('day', ${usageRecords.recordedAt}), 'YYYY-MM-DD')`,
+        date: sql<string>`to_char(date_trunc('day', ${usageRecords.recordedAt} AT TIME ZONE 'UTC'), 'YYYY-MM-DD')`,
         input: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
         output: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
         cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
@@ -146,8 +146,8 @@ usageRecordRoutes.get(
       })
       .from(usageRecords)
       .where(and(...conditions))
-      .groupBy(sql`date_trunc('day', ${usageRecords.recordedAt})`)
-      .orderBy(sql`date_trunc('day', ${usageRecords.recordedAt})`);
+      .groupBy(sql`date_trunc('day', ${usageRecords.recordedAt} AT TIME ZONE 'UTC')`)
+      .orderBy(sql`date_trunc('day', ${usageRecords.recordedAt} AT TIME ZONE 'UTC')`);
 
     const byModel = await db
       .select({
@@ -194,10 +194,7 @@ usageRecordRoutes.get(
     const [row] = await db.select().from(usageRecords).where(eq(usageRecords.id, id)).limit(1);
     if (!row) throw notFound('usage record not found');
 
-    // null-projectId rows are the internal/global pool — never disclosed via
-    // this user-facing route (404, same shape as a missing row, so it is not
-    // an enumeration oracle). Internal writers read them off the DB directly,
-    // not over HTTP (ISS-492).
+    // cm:guard a null `projectId` is an internal/global-pool row and this user-facing route must NEVER disclose one. The refusal is a 404 with the SAME shape as a missing row on purpose — a 403 here would confirm the row exists and turn this into an enumeration oracle. Internal writers read these off the DB directly rather than over HTTP (ISS-492).
     if (!row.projectId) throw notFound('usage record not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
