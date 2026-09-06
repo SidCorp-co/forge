@@ -1132,6 +1132,37 @@
 
 ### Fixed
 
+- **A gate now says whether the defect is in the repo or on the box it is running on.** Three
+  checks reported an environment condition as a repository failure, in a signal with no field in
+  which to say which it was. All three survive a serial re-run identically, so they wear the exact
+  signature a reader is told to trust as a real defect.
+
+  `pnpm verify` in a checkout with no `node_modules` reported `FAIL R7 the relations gate can
+  resolve the graph it claims to cover` and `conformance: claims "hardened" and does not meet it`.
+  Neither was true — `archmap` and `tsc` were not on disk — and nine checks were affected, not the
+  two the report named. Each check now declares what it `needs:`, resolved against the filesystem
+  by `scripts/lib/prerequisite.mjs` before the checker is spawned, and a check whose prerequisite
+  is absent reports `n/a` naming it and the command that installs it. `conformance-status.mjs`
+  reports such an axis as having no measured level rather than level 0, and `conformance-audit.mjs`
+  reports `R7` as unanswered rather than as a rule this repo fails. `verify` still exits 2 and
+  nothing new goes green: an unrun gate is no evidence, and what changed is only the sentence a
+  reader gets. A skipped check now prints `skip` rather than `ok`. (ISS-938)
+
+  The integration suite dropped and recreated one fixed template database, `forge_test_tpl`, so two
+  runs entering global setup together destroyed each other's template and the loser reported
+  `template database "forge_test_tpl" does not exist` — a failure naming a Postgres object, on files
+  the change never touched. The template and each worker's clone are now named for the run that
+  created them (`tests/helpers/scratch-db.ts`); a run drops only what it created, and what a crashed
+  run left behind is reaped by age. `db.ts` and `container.ts` say `this is an ENVIRONMENT
+  condition, not a failure of the code under test` for the failures that remain. (ISS-937)
+
+  `forge-runner-core`'s `mcp::config` tests wrote to a fixed path under the shared
+  `~/.config/forge-runner/mcp/`, so two `cargo test --workspace` runs collided and the loser
+  panicked on a file the winner had unlinked. The tests now write into a directory belonging to the
+  process, through a `write_in` seam, and keep asserting that the file *name* is stable — which is
+  the property they exist for and the reason randomising it was not the fix. (ISS-939)
+
+
 - **`POST /api/memory/search` ignored the `strategy` you asked for and told you it had honoured
   it.** The route validated `strategy` in its body schema and then never passed it to
   `runMemorySearch`, which applied its own `'semantic'` default — so a caller asking for `keyword`
