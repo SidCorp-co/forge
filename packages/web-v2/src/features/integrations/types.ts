@@ -53,7 +53,6 @@ export type {
   ConnectionResponse,
   ConnectionListResponse,
   BindingListResponse,
-  // === ISS-408 / F3 — share-existing-connection + delivery-retry ===
   BindExistingConnectionRequest,
   ConnectionBindingsResponse,
   DeliveryRetryResponse,
@@ -106,6 +105,18 @@ export interface SentryConfig {
  * is stored.
  */
 export type { BindingSummary as IntegrationSummary } from "@forge/contracts";
+
+/**
+ * What `POST .../integrations/github/connect` hands back. Nothing is persisted
+ * yet: `state` is a signed claim that Forge asked for this App, redeemed once at
+ * the manifest callback, and `manifest` is the App definition GitHub renders for
+ * approval.
+ */
+export interface GitHubConnectStart {
+  postUrl: string;
+  state: string;
+  manifest: Record<string, unknown>;
+}
 
 /**
  * Result of the test-connection (`POST .../test`) call. Bases the cutover-

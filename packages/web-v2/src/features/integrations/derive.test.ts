@@ -56,8 +56,6 @@ describe("deriveDirectoryStatus", () => {
         card({ status: "attention", meta: { lastHealthStatus: "needs_reauth" } }),
       ),
     ).toBe("needs_reauth");
-    // Wins over an error bucket too — credentials rejected reads as actionable,
-    // not generic failure.
     expect(
       deriveDirectoryStatus(card({ status: "error", meta: { lastHealthStatus: "needs_reauth" } })),
     ).toBe("needs_reauth");
@@ -142,7 +140,7 @@ describe("isProviderCard / cardProvider", () => {
     expect(isProviderCard("coolify:staging")).toBe(true);
     expect(isProviderCard("postman")).toBe(true);
     expect(isProviderCard("epodsystem")).toBe(true);
-    expect(isProviderCard("github")).toBe(false);
+    expect(isProviderCard("github")).toBe(true);
     expect(isProviderCard("runners")).toBe(false);
   });
 

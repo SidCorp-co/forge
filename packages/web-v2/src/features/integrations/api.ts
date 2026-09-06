@@ -16,6 +16,7 @@ import type {
   IntegrationSummary,
   IntegrationTestResult,
   IntegrationsStatus,
+  GitHubConnectStart,
   McpPreviewResponse,
   RocketchatRoom,
   UpdateIntegrationInput,
@@ -88,6 +89,20 @@ export const integrationsApi = {
       `/projects/${projectId}/integrations/${bindingId}/deliveries/${deliveryId}/retry`,
       { method: "POST" },
     ),
+
+  /** `POST .../integrations/github/connect` — begin the GitHub App manifest
+   *  flow. Read-only on the server: it signs a state and builds the manifest,
+   *  and the credential exists only once GitHub redirects to the callback. */
+  githubConnect: (projectId: string, params: { org?: string; environment?: string }) => {
+    const qs = new URLSearchParams();
+    if (params.org) qs.set("org", params.org);
+    if (params.environment) qs.set("environment", params.environment);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return apiClient<GitHubConnectStart>(
+      `/projects/${projectId}/integrations/github/connect${suffix}`,
+      { method: "POST" },
+    );
+  },
 
   /** `POST .../integrations/rocketchat/rooms` — rooms the bot is a member of
    *  (name picker source). Pass `integrationId` to use the stored credential,

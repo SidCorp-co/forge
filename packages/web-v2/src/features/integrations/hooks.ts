@@ -82,6 +82,16 @@ export function useProbeRocketchatRooms(projectId: string | undefined) {
  *  inline (user/email on success, clear error on a bad key). Invalidates the
  *  integrations list on settle so health/breaker badges refresh without a manual
  *  page reload (a successful Test resets an open circuit breaker server-side). */
+/** Start the GitHub App manifest flow. Deliberately NOT invalidating anything
+ *  on success: no connection exists until GitHub redirects back through the
+ *  callback, so a refetch here would only re-read the same empty list. */
+export function useGitHubConnect(projectId: string | undefined) {
+  return useMutation({
+    mutationFn: (params: { org?: string; environment?: string }) =>
+      integrationsApi.githubConnect(projectId as string, params),
+  });
+}
+
 export function useTestIntegration(projectId: string | undefined) {
   const invalidate = useInvalidateIntegrations(projectId);
   return useMutation({

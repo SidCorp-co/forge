@@ -40,13 +40,14 @@ export const DEFAULT_CAPABILITIES: IntegrationCapabilities = {
 
 /** The provider keys that resolve to a connection/binding the user can drill
  *  into (Test / Rotate / Disconnect + delivery log). Other status cards
- *  (github, runners, postgres, …) are read-only telemetry. */
+ *  (runners, postgres, …) are read-only telemetry. */
 export const DRILLABLE_PROVIDERS = [
   "coolify",
   "postman",
   "epodsystem",
   "sentry",
   "rocketchat",
+  "github",
 ] as const;
 export type DrillableProvider = (typeof DRILLABLE_PROVIDERS)[number];
 
@@ -129,7 +130,6 @@ export function deriveDirectoryStatus(card: Pick<StatusCard, "status" | "meta">)
     case "disabled":
       return "disabled";
     case "unverified":
-      // A tripped breaker is a live problem even before the first healthcheck.
       return breakerOpen ? "degraded" : "unverified";
     default:
       return "not_connected";
