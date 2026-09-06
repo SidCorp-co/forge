@@ -8,7 +8,6 @@ import {
 } from '../../memory/feedback-service.js';
 import { getMemoryInputSchema, runMemoryGet } from '../../memory/get-service.js';
 import { deleteMemory } from '../../memory/indexer.js';
-import { memoryRevisionsInputSchema, runMemoryRevisions } from '../../memory/revisions-service.js';
 import { memorySearchStrategies, runMemorySearch } from '../../memory/search-service.js';
 import {
   MemoryWriteValidationError,
@@ -28,11 +27,9 @@ const deleteInputSchema = z.object({
 const searchInputSchema = z.object({
   projectId: z.uuid(),
   query: z.string().trim().min(1).max(4000),
-  // Match REST default so MCP callers omitting topK get the same 10 hits.
+  // cm:edge contract -> packages/core/src/memory/search-routes.ts — the two surfaces declare this schema separately and nothing type-checks them against each other, so `topK` and `strategy` must be changed in both: a caller that omits either gets a different result set depending on which surface it happened to reach, and `semantic` is load-bearing because its scores are cosine similarity and the prompt-facts thresholds (knowledge dedup > 0.8) are calibrated on that scale.
   topK: z.number().int().min(1).max(50).default(10),
   sourceFilter: z.array(z.enum(memorySources)).optional(),
-  // Match REST: semantic default because its scores are cosine similarity
-  // and existing prompt facts threshold on them (knowledge dedup > 0.8).
   strategy: z.enum(memorySearchStrategies).default('semantic'),
 });
 
@@ -52,8 +49,7 @@ export const forgeMemorySearchTool: DeviceScopedMcpToolFactory = (device) => ({
     try {
       return await runMemorySearch({ ...input, surface: 'agent' });
     } catch (err) {
-      // Surface embeddings outage with a stable prefix so MCP callers can
-      // recognise it (mirrors REST's 503 EMBEDDING_UNAVAILABLE response).
+      // cm:edge contract -> packages/core/src/memory/search-routes.ts — an MCP result has no status code, so this `UNAVAILABLE:` prefix is the whole signal a caller matches on; it is this file's stand-in for the 503 `EMBEDDING_UNAVAILABLE` that route throws, and rewording it breaks every caller that tells an outage from a bad query.
       if (err instanceof EmbeddingUnavailableError) {
         throw new Error(`UNAVAILABLE: ${err.message}`);
       }
@@ -131,7 +127,7 @@ export const forgeMemoryFeedbackTool: DeviceScopedMcpToolFactory = (device) => (
 export const forgeMemoryWriteTool: DeviceScopedMcpToolFactory = (device) => ({
   name: 'forge_memory.write',
   description:
-    'Write (upsert) a memory row for a project. Embeds textContent via the configured embedding model and stores under the unique key (projectId, source, sourceRef) — the ref you name is ALWAYS the ref that is written, and no other row is ever modified. Re-writing an existing ref REPLACES its body; the body you replaced is kept and readable via `forge_memory.revisions`. Returns {id, embeddedAt, truncated, degraded, nearDuplicateOf?, dedupeScore?}. nearDuplicateOf is advisory: for note/knowledge, an existing row whose text is near-identical to yours, reported so you can decide to refine THAT record instead — to do so, re-issue the write under that exact sourceRef. degraded:true means embeddings were down and the row is keyword-searchable only until the backfill re-embeds it. Agent-authored sources (note/knowledge/policy) are quality-gated: textContent ≤8192 chars (the embedding window) and no fenced code block >5 lines — write the invariant + a file:line/SHA pointer instead of code; one-line runnable commands are fine. Requires the device owner to be a project member.',
+    'Write (upsert) a memory row for a project. Embeds textContent via the configured embedding model and stores under the unique key (projectId, source, sourceRef) — the ref you name is ALWAYS the ref that is written, and no other row is ever modified. Re-writing an existing ref REPLACES its body; the body you replaced is kept and readable via `GET /api/memory/revisions`. Returns {id, embeddedAt, truncated, degraded, nearDuplicateOf?, dedupeScore?}. nearDuplicateOf is advisory: for note/knowledge, an existing row whose text is near-identical to yours, reported so you can decide to refine THAT record instead — to do so, re-issue the write under that exact sourceRef. degraded:true means embeddings were down and the row is keyword-searchable only until the backfill re-embeds it. Agent-authored sources (note/knowledge/policy) are quality-gated: textContent ≤8192 chars (the embedding window) and no fenced code block >5 lines — write the invariant + a file:line/SHA pointer instead of code; one-line runnable commands are fine. Requires the device owner to be a project member.',
   inputSchema: zodToMcpSchema(writeMemoryInputSchema),
   handler: async (args) => {
     const input = writeMemoryInputSchema.parse(args);
@@ -147,22 +143,5 @@ export const forgeMemoryWriteTool: DeviceScopedMcpToolFactory = (device) => ({
       }
       throw err;
     }
-  },
-});
-
-/**
- * `forge_memory.revisions` — the bodies a later write replaced (ISS-790).
- * Written by the `memories_record_replacement` trigger and by nothing else, so
- * this and `GET /api/memory/revisions` are the only ways to read one back.
- */
-export const forgeMemoryRevisionsTool: DeviceScopedMcpToolFactory = (device) => ({
-  name: 'forge_memory.revisions',
-  description:
-    'List the previous bodies of memory rows a later write replaced, newest first, filtered by memoryId / source / sourceRef. Only agent-authored sources (note/knowledge/policy) keep a history — a lifecycle mirror tracks a record that has its own. A re-write of identical text records nothing, so every row here is a real replacement. Use it to recover a body an overwrite took, or to tell whether a ref whose content looks wrong was written that way or replaced later. Requires the device owner to be a project member.',
-  inputSchema: zodToMcpSchema(memoryRevisionsInputSchema),
-  handler: async (args) => {
-    const input = memoryRevisionsInputSchema.parse(args);
-    await assertDeviceOwnerIsMember(device, input.projectId);
-    return runMemoryRevisions(input);
   },
 });

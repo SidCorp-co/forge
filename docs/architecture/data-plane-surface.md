@@ -158,17 +158,24 @@ a project-scoped path, because every such route takes the project UUID as a path
 `/mcp` resolves `X-Forge-Project-Slug`.
 Full flag and exit-code reference: [`packages/runner/README.md`](../../packages/runner/README.md).
 
-## The caller class this does NOT cover
+## The caller class this covers since ISS-927
 
-**A `schedules` run is not a job, so it can never hold a job PAT.** Schedules dispatch through
-`agent:start` on the device room; the mint is per-job, so these sessions authenticate to `/mcp` with
-the **device token** and always will under the current mechanism.
+**A `schedules` run is not a job, so it could not hold a job PAT.** Schedules dispatch through
+`agent:start` on the device room, and the mint was per-job, so these sessions authenticated to
+`/mcp` with the device token. Measured 2026-09-02 in a window where no pipeline job ran at all: 20
+registered tools still took device-token calls, timestamps matching the cron entries —
+`pixelight-product-autopublish` (`0 */12 * * *`) against calls at 00:00:20 on two consecutive days,
+three `0 9 * * *` schedules against 29 calls from one box starting 09:00:24.
 
-Measured 2026-09-02 in a window where no pipeline job ran at all: 20 registered tools still took
-device-token calls, and the timestamps match the cron entries — `pixelight-product-autopublish`
-(`0 */12 * * *`) against calls at 00:00:20 on two consecutive days, three `0 9 * * *` schedules
-against 29 calls from one box starting 09:00:24.
+`ISS-927` closed that gap on 2026-09-06 (`3291d537`): an unattended session — a scheduled run, a
+RocketChat escalation, a RocketChat agent chat — mints its own `session:<id>` PAT on `agent:start`,
+bound to one project, on the same 600/min ceiling a job token gets, revoked when the session ends.
+The token binds to the **session**, not to the schedule run, which is why no new revoke hook was
+needed. Interactive chat is the exception and keeps the operator's `$FORGE_PAT`.
 
-So "move the caller from the device token to a job PAT" is not a prerequisite a schedule can ever
-satisfy. Removing a data tool those 8 schedules name breaks them at their cron hour with nobody
-watching. Which credential a schedule should hold is an open decision, not an oversight.
+So the credential question is answered and the caller class has a destination. What has not moved
+is the transport: `/mcp` still accepts a device token through `requirePatOrDevice`, and
+`packages/runner/crates/forge-runner-core/src/mcp/config.rs` still writes the device token into
+every agent session's `.mcp.json`. Until that changes, removing a data tool still breaks a
+device-authenticated caller — see `ISS-931` and the deletion rule in
+[agent-surface.md](agent-surface.md).

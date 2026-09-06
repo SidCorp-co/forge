@@ -798,6 +798,23 @@
 
 ### Removed
 
+- **The `forge_memory.revisions` MCP tool.** The MCP surface is being shrunk to the
+  session-lifecycle group (ISS-894), and the rule for taking one out is that its device-caller
+  count over the whole `mcp_audit_log` is zero and a replacement route exists. This one is the
+  first tool to satisfy it outright: it has **no rows at all** in that table under either
+  spelling, no `skills.skill_md` row on the live instance names it, and
+  `GET /api/memory/revisions` — which the driver's own rules block already points at — answers a
+  job-scoped PAT. The registry goes 60 → 59. `runMemoryRevisions` and the REST route are
+  untouched; only the second way in is gone.
+
+  The wave that measured this before reported "no candidates" because it joined the registry
+  against the audit log with an inner join, and a tool nobody has ever called has no row to join
+  to. That clause is now part of the deletion rule in `docs/architecture/agent-surface.md`, which
+  is also corrected where it named the `forge-plugin` CLI as what pins the remaining tools: ISS-508
+  moved that CLI to `/api` on 2026-09-06, and what holds the surface open now is
+  `packages/runner/.../mcp/config.rs` writing the box's device token into every agent session's
+  `.mcp.json` (ISS-931).
+
 - **The skill rebase lane.** `sweepTemplateBumps` walked every project skill on each builtin seed,
   compared `basedOnGlobalVersion` against the template's current `version`, and wrote nothing — its
   only output was a log line and a `behindTemplate: true` flag on the effective-skill projection and

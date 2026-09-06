@@ -1,7 +1,8 @@
 # The agent's surface: two CLIs, one shrinking MCP
 
 How an agent reaches core, which CLI belongs to whom, and which MCP tools survive.
-**Verified against the tree 2026-09-06.**
+**Verified against the tree and the live tracker DB 2026-09-06, after `ISS-508` and `ISS-927`
+both merged.**
 
 ## Today
 
@@ -12,19 +13,23 @@ flowchart LR
     subgraph S["agent session"]
       SK["SKILLS"] --> CLI["CLI · bin/forge<br/>21 verbs"]
       HK["HOOKS"] --> CLI
+      MC["Claude's MCP client<br/>.mcp.json"]
     end
     D -->|spawns| S
+    D -->|"writes .mcp.json<br/>DEVICE token"| MC
   end
 
   subgraph CORE["forge · core"]
     API["API · REST /api/*"]
-    MCP["MCP · /mcp<br/>60 tools"]
+    MCP["MCP · /mcp<br/>59 tools"]
     WS["WS · /ws"]
   end
 
   D -->|"WS · device token"| WS
   D -->|"forge-runner api · $FORGE_PAT"| API
-  CLI -->|"jsonrpc tools/call · 7 tools"| MCP
+  CLI -->|"REST · $FORGE_PAT"| API
+  CLI -.->|"uploads · step_start"| MCP
+  MC -->|"jsonrpc tools/call · device token"| MCP
 ```
 
 Two command-line surfaces reach the same data plane:
@@ -32,10 +37,20 @@ Two command-line surfaces reach the same data plane:
 | | Built in | Transport | For |
 |---|---|---|---|
 | `forge-runner api` | this repo | REST, `$FORGE_PAT` | **the runner's own work.** It must never depend on the plugin — a daemon that cannot reach core until a Claude Code plugin is installed is a worse daemon |
-| `forge` | [forge-plugin](https://github.com/SidCorp-co/forge-plugin) | MCP JSON-RPC | **the agent.** Skills call its verbs; it is the agent's whole surface |
+| `forge` | [forge-plugin](https://github.com/SidCorp-co/forge-plugin) | REST, `$FORGE_PAT` | **the agent.** Skills call its verbs; it is the agent's whole surface |
 
-Everything the plugin does goes through one function — `rpc("tools/call", …)` in
-`src/tracker/rpc.mjs`. So MCP today is not a residue: **it is the plugin's spine.**
+The plugin was the spine until `ISS-508` closed on 2026-09-06: every `forge` verb but the two
+that mint an upload now goes to a path under `/api`, keyed by a declared route table in
+`src/tracker/rest.mjs`. **The fleet has not caught up** — the copy installed on `forge-vm` is
+3.35.140 and still carries `src/tracker/rpc.mjs`, so the seven families that copy names are held
+by a version upgrade, not by a decision.
+
+**The caller that now holds the surface open is not a CLI at all.** `forge-runner` writes each
+job's `.mcp.json` with the **device token**
+(`packages/runner/crates/forge-runner-core/src/mcp/config.rs`), so every agent session reaches
+`/mcp` as a device and calls whatever the tool list shows it. Measured over the whole
+`mcp_audit_log`: 55,643 device calls on `forge_issues`, 24,122 on `forge_comments`. That file,
+not the plugin, is what the deletion rule below is waiting on.
 
 ## Target
 
@@ -73,8 +88,8 @@ the other's half, which is why a skill never names `runner-v*` or any project's 
 | Group | Tools | Why |
 |---|---|---|
 | **stay** | `forge_step_start`, `forge_uploads` | `step_start` opens the session every other call reports into and returns the issue body the runner did not inline; `uploads` returns an image content block, which a shell process cannot produce |
-| **blocked on the plugin** | `forge_issues` `forge_comments` `forge_config` `forge_guide` `forge_knowledge` `forge_project_pm` `forge_projects.create` | the 7 the plugin CLI calls. Deleting one before the CLI moves breaks the CLI |
-| **blocked on a credential decision** | ~20 taking device-token calls | 8 cron schedules. A schedule is not a job, so it can never hold a job PAT, and REST `requireAuth()` answers a device token 401 |
+| **blocked on a fleet upgrade** | `forge_issues` `forge_comments` `forge_config` `forge_guide` `forge_knowledge` `forge_project_pm` `forge_projects.create` | the 7 the pre-`ISS-508` plugin CLI calls. That CLI has moved to `/api`; the copies running on the boxes have not. Deleting one before the fleet upgrades breaks those copies |
+| **blocked on the runner's `.mcp.json`** | ~20 taking device-token calls | the credential question is settled — `ISS-927` merged 2026-09-06, an unattended session mints a `session:<id>` PAT on `agent:start` and `requireAnyAuth`'s device branch is gone. What is left is mechanical: `/mcp` still accepts a device through `requirePatOrDevice`, and `mcp/config.rs` still writes the device token into every job's `.mcp.json`. Schedules, measured 2026-09-06: 16 rows, **0 enabled** |
 | **fenced by design** | `forge_orgs.list` `forge_orgs.members` `forge_collaborators` | they resolve no project, so a project-scoped PAT there is an account-scoped credential in disguise. Session only, on every transport |
 | **free to go** | the rest | each has a REST twin — see [data-plane-surface.md](data-plane-surface.md) |
 
@@ -88,6 +103,12 @@ Read `mcp_audit_log` split on `device_id IS NOT NULL` / `token_id IS NOT NULL` �
 Count the whole table with no date filter, and normalise with `replace(tool,'.','_')`: agents send
 the underscore form their MCP client shows them.
 
+**LEFT join the registry onto the aggregate.** A tool nothing has ever called has no row in
+`mcp_audit_log` at all, so an inner join silently drops exactly the tools this rule exists to
+find. The wave-3 pass reported one device-free tool and named `forge_step_handoff.delete`, which
+is on the keep-forever list, and read that as "no candidates"; `forge_memory.revisions` was
+sitting at zero rows lifetime and was invisible to the query. It was deleted 2026-09-06.
+
 Commit `7f0c5a56` deleted six tools after claiming the audit log had cleared them. The split was on
 the wrong column; the fleet hit one of them at 09:07 the same day and read `not_found`.
 
@@ -100,15 +121,13 @@ aggregate is undecided (`ISS-926`).
 
 ## Who delivers the target
 
-| Half | Issue |
-|---|---|
-| the CLI moves to REST | `ISS-508` on the **forge-plugin** project — critical |
-| the waves themselves, and the record of the ones already run | `ISS-894` here, at `draft` |
-| the boundary is written down | `ISS-926` here |
+| Half | Issue | Where it stands |
+|---|---|---|
+| the CLI moves to REST | `ISS-508` on the **forge-plugin** project | closed, merged 2026-09-06T14:13Z — the boxes still run the old copy |
+| one credential form for the API | `ISS-927` here | closed, merged `3291d537` |
+| the runner stops handing sessions a device token | `ISS-931` here | open, holds a `blocks` edge onto `ISS-894` |
+| the waves themselves, and the record of the ones already run | `ISS-894` here | `waiting` on `ISS-931` |
+| the boundary is written down | `ISS-926` here | |
 
-The deletions wait on `ISS-508`. A dependency edge does not cross projects, so the ordering lives in
-both bodies as prose.
-
-`ISS-894` is at `draft`, which no list or pool view of this project shows; it is reachable by its
-displayId. That is why `registered-tools.ts` cites this page alongside the number — a `draft` row
-cited by number alone reads as a reference to nothing.
+A dependency edge does not cross projects, so `ISS-508`'s ordering lived in both bodies as prose;
+it is discharged. What the remaining deletions wait on is `ISS-931`, and that one is an edge.
