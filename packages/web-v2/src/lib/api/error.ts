@@ -18,6 +18,16 @@ const FRIENDLY_CODES: Record<string, string> = {
   SLUG_TAKEN: 'That slug is already taken.',
   ASSIGNEE_NOT_MEMBER: 'Assignee must be a project member.',
   INVALID_LABELS: 'One or more labels do not belong to this project.',
+  LABEL_NAME_TAKEN: 'A label with that name already exists in this project.',
+  // cm:why ISS-593/594 — the module taxonomy's typed refusals, each naming the ONE thing to change, because a raw code tells the reader nothing they can act on
+  LABEL_IN_USE: 'Issues are still tagged with this — remove it from them first.',
+  INVALID_PARENT: 'That parent is not a label in this project.',
+  PARENT_NOT_MODULE: 'A module’s parent has to be a module.',
+  PARENT_ON_NON_MODULE: 'Only a module can have a parent.',
+  CIRCULAR_HIERARCHY: 'That parent sits under this module — pick one above it.',
+  MODULE_IN_USE: 'Other modules or issues still depend on this one.',
+  PRIMARY_NOT_MODULE: 'Only a module can be an issue’s primary.',
+  MULTIPLE_PRIMARY: 'An issue has at most one primary module.',
 };
 
 export function formatApiError(err: unknown): string {
@@ -30,8 +40,6 @@ export function formatApiError(err: unknown): string {
   return 'Unknown error';
 }
 
-// ─── Pipeline-config errors (ISS-422) ───────────────────────────────────────
-//
 // `PATCH /api/projects/:id/pipeline-config` rejects with a typed `code` and a
 // structured `details` payload (e.g. which stages are missing a skill). The
 // generic `formatApiError` only ever returns `err.message`, so the actionable

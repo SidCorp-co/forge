@@ -50,6 +50,7 @@ import {
 import {
   CostCell,
   DepBadges,
+  ModuleCell,
   type RowActions,
   type RowSelection,
 } from "./issue-table-row";
@@ -291,7 +292,6 @@ export function IssueTableRow({
     <TR className={`group ${pending ? "opacity-60" : ""}`} aria-busy={pending}>
       {selection && (
         <TD className="w-9 pr-0">
-          {/* Stop propagation so toggling never opens the issue. */}
           {/* biome-ignore lint/a11y/useKeyWithClickEvents: wrapper only blocks bubbling; the Checkbox button is the control. */}
           <span
             className="inline-flex"
@@ -334,6 +334,9 @@ export function IssueTableRow({
           {row.category && <MonoTag>{row.category}</MonoTag>}
           <DepBadges id={row.id} slug={slug} />
         </div>
+      </TD>
+      <TD className="max-w-[160px]">
+        <ModuleCell modules={row.modules} />
       </TD>
       <TD>
         <StatusCell row={row} />
@@ -412,6 +415,7 @@ export function IssueMobileCard({
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {row.category && <MonoTag>{row.category}</MonoTag>}
+          {row.modules && row.modules.length > 0 && <ModuleCell modules={row.modules} />}
           <DepBadges id={row.id} slug={slug} />
         </div>
 

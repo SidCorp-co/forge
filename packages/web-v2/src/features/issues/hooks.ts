@@ -11,10 +11,11 @@
 // Any other prefix → WS-driven invalidation silently no-ops.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
-import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, issuesApi, releaseBatchApi } from "./api";
+import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, issuesApi, releaseBatchApi } from "./api";
 import type {
   IssueLabel,
   IssuePriority,
@@ -90,6 +91,70 @@ export function useProjectLabels(projectId: string | undefined) {
   });
 }
 
+/**
+ * The project's module taxonomy — the `kind='module'` half of `useProjectLabels`.
+ *
+ * Derived from the same query rather than a second request: core has no `?kind=` filter and no
+ * `/modules` route, so one labels fetch serves the Labels tab, the label filter, the module filter
+ * and the picker off one cache entry.
+ */
+export function useProjectModules(projectId: string | undefined) {
+  const q = useProjectLabels(projectId);
+  const modules = useMemo(
+    () => (q.data ?? []).filter((l) => l.kind === "module"),
+    [q.data],
+  );
+  return { ...q, data: q.data ? modules : undefined, modules };
+}
+
+/**
+ * The `labels` body for a module write, built from the issue's CURRENT labels.
+ *
+ * `PATCH /api/issues/:id` REPLACES the whole set, so every plain label the issue already carries
+ * has to travel with the modules; a payload of modules alone deletes them, and the server cannot
+ * tell that from a deliberate clear.
+ */
+// cm:guard the non-module labels come FIRST and unconditionally — this function is the only thing standing between a module edit and silently wiping an issue's labels
+export function buildModuleLabelWrite(
+  current: IssueLabel[],
+  moduleIds: string[],
+  primaryId: string | null,
+): LabelAttach[] {
+  const kept: LabelAttach[] = current.filter((l) => l.kind !== "module").map((l) => l.id);
+  const modules: LabelAttach[] = moduleIds.map((id) =>
+    id === primaryId ? { labelId: id, isPrimary: true } : id,
+  );
+  return [...kept, ...modules];
+}
+
+/** Replace an issue's module attributions, preserving its plain labels. */
+export function useSetIssueModules(issueId: string | undefined) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (args: {
+      current: IssueLabel[];
+      moduleIds: string[];
+      primaryId: string | null;
+    }) =>
+      issuesApi.setLabels(
+        issueId as string,
+        buildModuleLabelWrite(args.current, args.moduleIds, args.primaryId),
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["issue", issueId] });
+      qc.invalidateQueries({ queryKey: ["issues"] });
+      toast({ title: "Modules updated", tone: "success" });
+    },
+    onError: (err) =>
+      toast({
+        title: "Couldn't update modules",
+        description: formatApiError(err),
+        tone: "error",
+      }),
+  });
+}
+
 /** Shared mutation factory: invalidate `['issues']` on success, toast on error
  *  (409 ILLEGAL_TRANSITION / 400 ASSIGNEE_NOT_MEMBER map to friendly copy). */
 function useIssueMutation<TArgs, TData>(
@@ -151,7 +216,6 @@ export function useRunPipelineStep() {
     issuesApi.runPipelineStep(args.id), { successMessage: "Pipeline step queued" });
 }
 
-// ─── Bulk update (ISS-463) ──────────────────────────────────────────────────
 
 /** A single field to apply across many issues. */
 export type BulkUpdate =

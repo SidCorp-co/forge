@@ -129,12 +129,34 @@ export interface ProjectInvitationRow {
 	expired: boolean;
 }
 
-/** A project label (`GET /api/projects/:id/labels`). */
+/** A label's taxonomy role — a module IS a label carrying `kind: 'module'`. */
+// cm:edge contract -> packages/core/src/db/schema.ts#labelKinds — a third kind added there and not here is a row the Modules tab shows as a plain label and the Labels tab shows as a module
+export type LabelKind = "label" | "module";
+
+/** A project label (`GET /api/projects/:id/labels`), modules included. */
+// cm:edge contract -> packages/core/src/labels/routes.ts#labelColumns — every route in that file projects exactly this set; `color` is NOT NULL in the schema and every projection carries it, so there is no null arm
 export interface ProjectLabel {
 	id: string;
 	name: string;
-	color: string | null;
+	color: string;
+	kind: LabelKind;
+	/** Modules only — the parent module, or null at the root of the taxonomy. */
+	parentId: string | null;
+	description: string | null;
 }
+
+/** Body for creating a label or a module. `color` may be omitted for a module — the server
+ *  derives a stable one from the name; it is REQUIRED for a plain label. */
+export interface LabelCreateInput {
+	name: string;
+	color?: string;
+	kind?: LabelKind;
+	parentId?: string | null;
+	description?: string | null;
+}
+
+/** Body for `PATCH /api/labels/:id`. Every field optional; at least one required. */
+export type LabelPatchInput = Partial<LabelCreateInput>;
 
 /**
  * One `states[<status>]` entry — mirrors `stageConfigSchema` in core
