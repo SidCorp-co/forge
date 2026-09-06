@@ -8,8 +8,7 @@ vi.mock('../store.js', () => ({
   buildContextFromBinding: vi.fn(),
 }));
 
-// Stub the modules whose import chains pull in the db client / env (not needed
-// for the healthcheck path) so this suite runs without a configured database.
+// cm:why the db client and env are stubbed because the adapter's import chain reaches both, not because this suite uses them — the healthcheck path under test touches neither.
 vi.mock('../../config/env.js', () => ({ env: { NODE_ENV: 'test' } }));
 vi.mock('../../db/client.js', () => ({ db: {} }));
 const recordDeliveryMock = vi.fn();
@@ -17,10 +16,10 @@ vi.mock('../deliveries.js', () => ({
   recordDelivery: (...a: unknown[]) => recordDeliveryMock(...(a as [])),
   updateDelivery: vi.fn(),
 }));
-const replaceHoldsMock = vi.fn();
+const replaceHoldsMock = vi.fn(async (_args: unknown) => true);
 vi.mock('../../pipeline/deploy-confirmations.js', () => ({
   DEPLOY_CONFIRM_WINDOW_MS: 1_800_000,
-  replaceDispatchHoldWithTargets: (...a: unknown[]) => replaceHoldsMock(...(a as [])),
+  replaceDispatchHoldWithTargets: (args: unknown) => replaceHoldsMock(args),
 }));
 const enqueueConfirmMock = vi.fn();
 vi.mock('./confirm.js', () => ({
@@ -39,6 +38,7 @@ vi.mock('../../observability/sentry.js', () => ({
 }));
 
 const { coolifyAdapter } = await import('./adapter.js');
+const { logger } = await import('../../logger.js');
 
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 const CONN_ID = 'conn-cf-1';
@@ -257,6 +257,42 @@ describe('coolifyAdapter — the deploy is held until Coolify confirms it (ISS-9
       expect.objectContaining({ targetLabel: 'Backend', status: 'pending' }),
       expect.objectContaining({ targetLabel: 'Frontend', status: 'failed' }),
     ]);
+  });
+
+  it('writes the target holds even when the dispatch carried no requestId — a run with no holds reads as proven', async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response(JSON.stringify({ deployment_uuid: 'dep-x' }), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    await coolifyAdapter.dispatchOutbound(twoTargetCtx(), {
+      eventName: 'release.requested',
+      payload: { runId: RUN_ID },
+    });
+
+    expect(replaceHoldsMock).toHaveBeenCalledTimes(1);
+    const args = replaceHoldsMock.mock.calls[0]?.[0] as { requestId?: string; targets: unknown[] };
+    expect(args.requestId).toBeUndefined();
+    expect(args.targets).toHaveLength(2);
+  });
+
+  it('reports at ERROR level when the run went terminal mid-dispatch and refused the holds', async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response(JSON.stringify({ deployment_uuid: 'dep-y' }), { status: 200 }),
+    ) as unknown as typeof fetch;
+    replaceHoldsMock.mockResolvedValueOnce(false);
+    const errorSpy = vi.spyOn(logger, 'error').mockReturnValue(undefined as never);
+
+    await coolifyAdapter.dispatchOutbound(twoTargetCtx(), {
+      eventName: 'release.requested',
+      payload: { runId: RUN_ID },
+      requestId: 'req-3',
+    });
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: RUN_ID }),
+      expect.stringContaining('no run can witness its outcome'),
+    );
+    errorSpy.mockRestore();
   });
 
   it('handleInbound REFUSES by name rather than accepting a body it cannot have verified', async () => {

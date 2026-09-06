@@ -53,9 +53,7 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
       if (targets.length === 0) {
         throw new Error('coolify: no deploy targets configured');
       }
-      // Verify every configured target resolves to a real Coolify application —
-      // a stale/wrong resourceUuid is the classic "deploys the wrong repo" trap,
-      // so we surface it per-target rather than only checking the first.
+      // cm:guard resolve EVERY target, never just the first — a stale resourceUuid is the "deploys the wrong repo" trap, and a healthcheck that stops at target one reports green for a binding whose second app does not exist.
       const names: string[] = [];
       for (const t of targets) {
         const res = await client.getResource(t.resourceUuid);
@@ -263,13 +261,19 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
       }
     }
 
-    if (runId && input.requestId) {
-      await replaceDispatchHoldWithTargets({
+    if (runId) {
+      const held = await replaceDispatchHoldWithTargets({
         runId,
-        requestId: input.requestId,
         bindingId: ctx.bindingId,
         targets: confirmations,
+        ...(input.requestId ? { requestId: input.requestId } : {}),
       });
+      if (!held) {
+        logger.error(
+          { runId, bindingId: ctx.bindingId, targets: confirmations.length },
+          'coolify deploy: the run went terminal mid-dispatch and refused its confirmation holds — this deploy will be polled and audited, but no run can witness its outcome',
+        );
+      }
     }
 
     if (failures.length > 0) {

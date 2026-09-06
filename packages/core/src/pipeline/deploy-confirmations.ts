@@ -115,10 +115,14 @@ export async function openDeployDispatchHold(args: {
  * Replace one dispatch placeholder with the real per-target holds. Called once
  * the adapter has fanned out and every target has a `deployment_uuid` (or has
  * failed to get one, which is already a resolved hold).
+ *
+ * @returns `false` when the run refused any hold — it went terminal while the
+ * deploy was being dispatched, so nothing can witness this deploy's outcome.
  */
+// cm:guard the target holds are written whether or not a placeholder exists, and `requestId` is optional for exactly that reason: a dispatch with no requestId has no placeholder to replace, and gating the WRITE on one would leave its run with no holds at all — which `resolveDeployGate` reads as `clear`, i.e. the original defect.
 export async function replaceDispatchHoldWithTargets(args: {
   runId: string;
-  requestId: string;
+  requestId?: string;
   bindingId: string;
   targets: {
     deliveryId: string;
@@ -128,11 +132,12 @@ export async function replaceDispatchHoldWithTargets(args: {
     detail?: string;
   }[];
   now?: Date;
-}): Promise<void> {
+}): Promise<boolean> {
   const now = args.now ?? new Date();
   const deadlineAt = new Date(now.getTime() + DEPLOY_CONFIRM_WINDOW_MS).toISOString();
+  let allHeld = true;
   for (const t of args.targets) {
-    await writeHold(args.runId, targetHoldKey(t.deliveryId), {
+    const held = await writeHold(args.runId, targetHoldKey(t.deliveryId), {
       bindingId: args.bindingId,
       deploymentUuid: t.deploymentUuid,
       targetLabel: t.targetLabel,
@@ -140,8 +145,10 @@ export async function replaceDispatchHoldWithTargets(args: {
       deadlineAt,
       ...(t.detail ? { detail: t.detail } : {}),
     });
+    if (!held) allHeld = false;
   }
-  await dropHold(args.runId, dispatchHoldKey(args.requestId));
+  if (args.requestId) await dropHold(args.runId, dispatchHoldKey(args.requestId));
+  return allHeld;
 }
 
 /** Record what Coolify said about one deploy target. */
