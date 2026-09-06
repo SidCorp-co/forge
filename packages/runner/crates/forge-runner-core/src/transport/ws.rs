@@ -74,6 +74,19 @@ pub async fn connect(
                 .to_string();
                 let _ = write.send(Message::Text(sub.into())).await;
 
+                // cm:guard emitted as a LOCAL frame on the same channel core's events arrive on, so the daemon has one place that decides what a wake means. This transport deliberately knows nothing about masters or pools — it reports that the socket came up and stops there. Sent AFTER the subscribe so a catch-up read cannot race the subscription it depends on.
+                // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/mod.rs — the `ws.connected` arm turns this into a `master::Wake::Reconnect`. The name is local to this binary and is not a core event; core must never publish it.
+                if frame_tx
+                    .send(Frame {
+                        event: "ws.connected".into(),
+                        data: serde_json::Value::Null,
+                    })
+                    .await
+                    .is_err()
+                {
+                    return; // consumer gone — stop entirely
+                }
+
                 // Register one runner per bound project (gated by the flag).
                 if cfg.register_enabled {
                     for reg in &cfg.registrations {
