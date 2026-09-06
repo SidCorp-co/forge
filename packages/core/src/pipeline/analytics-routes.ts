@@ -18,8 +18,7 @@ const forbidden = (message: string) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-// Project-member gate for the per-project cost analytics endpoints. 404 when
-// the project does not exist so we don't leak existence to non-members.
+// cm:guard a non-member gets 404, NEVER 403, and the two cases are deliberately indistinguishable: a 403 would confirm the project exists and make this route an enumeration oracle over every project id. "Fixing" the status code to be more accurate is what opens it.
 async function assertProjectMember(projectId: string, userId: string): Promise<void> {
   const access = await effectiveProjectRole(userId, projectId);
   if (!access) throw notFound('project not found');
@@ -67,13 +66,12 @@ pipelineAnalyticsRoutes.get(
     const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
     if (projectIds.length === 0) return c.json([]);
 
-    // Bucket by UTC day. The `now() - interval` cutoff is computed in SQL
-    // because postgres-js refuses to bind JS Date through parameters
-    // (see ISS-267).
+    // cm:guard the `AT TIME ZONE 'UTC'` is what makes "bucket by UTC day" true, and it must move with the GROUP BY and ORDER BY or Postgres rejects the query. Bare `date_trunc` floors a `timestamptz` in the SESSION timezone, so before ISS-954 this route filed a row near midnight under the server's local date and returned it as the UTC one — a wrong date rather than a missing row, which is the quiet half of that defect.
+    // cm:why the `now() - interval` cutoff is computed SQL-side because postgres-js refuses to bind a JS Date through parameters (ISS-267)
     const rows = await db
       .select({
         projectId: issues.projectId,
-        date: sql<string>`date_trunc('day', ${activityLog.createdAt})::date::text`,
+        date: sql<string>`date_trunc('day', ${activityLog.createdAt} AT TIME ZONE 'UTC')::date::text`,
         count: sql<number>`count(*)::int`,
       })
       .from(activityLog)
@@ -84,8 +82,11 @@ pipelineAnalyticsRoutes.get(
           AND ${activityLog.createdAt} >= now() - (${days}::int * interval '1 day')
           AND ${issues.projectId} IN ${projectIds}`,
       )
-      .groupBy(issues.projectId, sql`date_trunc('day', ${activityLog.createdAt})`)
-      .orderBy(sql`date_trunc('day', ${activityLog.createdAt})`);
+      .groupBy(
+        issues.projectId,
+        sql`date_trunc('day', ${activityLog.createdAt} AT TIME ZONE 'UTC')`,
+      )
+      .orderBy(sql`date_trunc('day', ${activityLog.createdAt} AT TIME ZONE 'UTC')`);
 
     return c.json(
       rows.map((r) => ({
@@ -473,15 +474,15 @@ projectCostAnalyticsRoutes.get(
 
     const stepFilter = step ? sql`AND step = ${step}` : sql``;
     const dailyRows = await db.execute(sql`
-      SELECT date_trunc('day', started_at)::date::text AS date,
+      SELECT date_trunc('day', started_at AT TIME ZONE 'UTC')::date::text AS date,
              SUM(cost_usd)::float AS cost,
              COUNT(*)::int AS runs
       FROM pipeline_run_step_durations
       WHERE project_id = ${id}
         AND started_at >= now() - (${days}::int * interval '1 day')
         ${stepFilter}
-      GROUP BY date_trunc('day', started_at)
-      ORDER BY date_trunc('day', started_at) ASC
+      GROUP BY date_trunc('day', started_at AT TIME ZONE 'UTC')
+      ORDER BY date_trunc('day', started_at AT TIME ZONE 'UTC') ASC
     `);
 
     const annotationRows = await db.execute(sql`

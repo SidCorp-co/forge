@@ -2,16 +2,17 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 
 /**
- * Project-scoped time-series metrics (ISS-380, Part 1). Every series is
- * derived from data that already exists — no new collection (Part 2 lives in
- * ISS-381). The SQL idioms here mirror `src/projects/health-routes.ts` and
- * `src/mcp/tools/forge-metrics.ts`:
+ * Project-scoped time-series metrics. The SQL idioms here mirror
+ * `src/projects/health-routes.ts` and `src/mcp/tools/forge-metrics.ts`:
  *   - window cutoffs are computed SQL-side as `now() - (${days}::int * interval
  *     '1 day')` because postgres-js cannot bind a JS `Date` into a parameterized
  *     query (ISS-267).
- *   - `bucket` ('day' | 'hour') is passed as a BOUND text parameter to
- *     `date_trunc(text, ts)` — never string-interpolated — so it is
- *     injection-safe even though it is enum-validated upstream.
+ *   - `bucket` ('day' | 'hour') is a BOUND text parameter, never
+ *     string-interpolated, so it is injection-safe even though it is
+ *     enum-validated upstream.
+ *   - every bucket is floored as
+ *     `date_trunc(bucket, ts AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'` — see the
+ *     guard on {@link bucketTimestamps} for what a bare `date_trunc` costs.
  *   - percentiles use `percentile_disc(p) WITHIN GROUP (ORDER BY …)`.
  */
 
@@ -22,7 +23,6 @@ export const METRICS = [
   'queue_wait',
   'runner_utilization',
   'cache_hit_rate',
-  // ISS-381 (Part 2) — backed by the new collection tables:
   'pass_rate', // issue_step_contexts.verdict, step='test'
   'approve_rate', // issue_step_contexts.verdict, step='review'
   'queue_depth', // queue_snapshots (sweeper-written)
@@ -57,6 +57,7 @@ function windowCutoff(days: number): SQL {
  * buckets had rows. Daily buckets are floored to UTC midnight, hourly to the
  * hour. `now` is injectable for deterministic tests.
  */
+// cm:guard the SQL side of every bucketed query in this file truncates as `date_trunc(unit, ts AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`, and the two halves have to agree or the join below silently finds nothing. `ts` columns are `timestamptz` and bare `date_trunc` floors them in the SESSION timezone, while this function floors in UTC — so on any connection whose timezone is not UTC every key here misses every SQL key, `densifyScalar` fills the defaults, and the route answers a well-formed series of zeros with no error anywhere. Measured on a `Asia/Ho_Chi_Minh` session: a row at 21:00Z bucketed to 17:00Z and matched nothing. Do NOT fix that by setting the session timezone instead: a transaction-mode pooler drops session SETs, which turns this back into the silent version.
 export function bucketTimestamps(days: number, bucket: Bucket, now: Date): string[] {
   const end = new Date(now);
   end.setUTCMilliseconds(0);
@@ -151,7 +152,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
     case 'cost': {
       if (groupByStep) {
         const rows = (await db.execute(sql`
-          SELECT date_trunc(${bucket}, started_at) AS bucket,
+          SELECT date_trunc(${bucket}, started_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS bucket,
                  step,
                  sum(cost_usd)::float AS cost_usd
           FROM pipeline_run_step_durations
@@ -165,7 +166,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
         });
       } else {
         const rows = (await db.execute(sql`
-          SELECT date_trunc(${bucket}, recorded_at) AS bucket,
+          SELECT date_trunc(${bucket}, recorded_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS bucket,
                  sum(estimated_cost)::float AS cost_usd
           FROM usage_records
           WHERE project_id = ${projectId}
@@ -182,7 +183,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
 
     case 'throughput': {
       const rows = (await db.execute(sql`
-        SELECT date_trunc(${bucket}, al.created_at) AS bucket,
+        SELECT date_trunc(${bucket}, al.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS bucket,
                count(*)::int AS resolved
         FROM activity_log al
         JOIN issues i ON i.id = al.issue_id
@@ -228,7 +229,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
             AND al.payload ->> 'to' IN ('in_progress', 'approved')
           GROUP BY al.issue_id
         )
-        SELECT date_trunc(${bucket}, r.resolved_at) AS bucket,
+        SELECT date_trunc(${bucket}, r.resolved_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS bucket,
                avg(extract(epoch from (r.resolved_at - COALESCE(ws.started_at, i.created_at))) / 86400.0)::float AS avg_days,
                percentile_disc(0.5) WITHIN GROUP (
                  ORDER BY extract(epoch from (r.resolved_at - COALESCE(ws.started_at, i.created_at))) / 86400.0
@@ -251,7 +252,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
 
     case 'queue_wait': {
       const rows = (await db.execute(sql`
-        SELECT date_trunc(${bucket}, queued_at) AS bucket,
+        SELECT date_trunc(${bucket}, queued_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS bucket,
                percentile_disc(0.5) WITHIN GROUP (
                  ORDER BY extract(epoch from (dispatched_at - queued_at)) * 1000.0
                ) AS median_ms,
@@ -279,7 +280,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
       // jobs has no started_at; dispatched_at is the busy-interval start proxy.
       const windowSeconds = BUCKET_SECONDS[bucket];
       const rows = (await db.execute(sql`
-        SELECT date_trunc(${bucket}, dispatched_at) AS bucket,
+        SELECT date_trunc(${bucket}, dispatched_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS bucket,
                runner_id,
                (sum(extract(epoch from (finished_at - dispatched_at))) / ${windowSeconds}::float) AS busy_pct
         FROM jobs
@@ -314,7 +315,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
       // total input = input_tokens + cache_read_tokens (cache reads are billed
       // input that bypassed fresh processing).
       const rows = (await db.execute(sql`
-        SELECT date_trunc(${bucket}, recorded_at) AS bucket,
+        SELECT date_trunc(${bucket}, recorded_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS bucket,
                (sum(cache_read_tokens)::float / NULLIF(sum(input_tokens + cache_read_tokens), 0)) AS cache_hit_rate,
                count(*)::int AS n
         FROM usage_records
@@ -344,7 +345,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
         : sql`verdict = 'pass'`;
       const eligible = isPassRate ? sql`verdict <> 'blocked_fixture'` : sql`true`;
       const rows = (await db.execute(sql`
-        SELECT date_trunc(${bucket}, created_at) AS bucket,
+        SELECT date_trunc(${bucket}, created_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS bucket,
                (count(*) FILTER (WHERE ${passed})::float / NULLIF(count(*) FILTER (WHERE ${eligible}), 0)) AS rate,
                (count(*) FILTER (WHERE ${eligible}))::int AS n
         FROM issue_step_contexts
@@ -368,7 +369,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
       // ISS-381 (2.2) — sweeper-written snapshots. Average the per-tick depth /
       // running count within each bucket; gaps fill as 0 (no active jobs).
       const rows = (await db.execute(sql`
-        SELECT date_trunc(${bucket}, ts) AS bucket,
+        SELECT date_trunc(${bucket}, ts AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS bucket,
                avg(queue_depth)::float AS queue_depth,
                avg(running_count)::float AS running_count,
                avg(avg_wait_ms)::float AS avg_wait_ms

@@ -2,7 +2,9 @@
 
 How an agent reaches core, which CLI belongs to whom, and which MCP tools survive.
 **Verified against the tree and the live tracker DB 2026-09-06, after `ISS-508`, `ISS-927` and
-`ISS-931` all merged.**
+`ISS-931` all merged. The tool groups below were re-measured the same day against the
+`forge-plugin` copy installed on a runner box — the fleet artifact, which this repo cannot see —
+and three tools moved out of "free to go" as a result.**
 
 ## Today
 
@@ -28,14 +30,18 @@ flowchart LR
   D -->|"WS · device token"| WS
   D -->|"forge-runner api · $FORGE_PAT"| API
   CLI -->|"REST · $FORGE_PAT<br/>3.35.141+"| API
-  CLI -->|"jsonrpc tools/call · 7 tools<br/>3.35.140, what the fleet runs"| MCP
-  CLI -.->|"uploads · step_start<br/>either version"| MCP
+  CLI -->|"jsonrpc tools/call · 9 tools<br/>3.35.140, what the fleet runs"| MCP
+  CLI -.->|"uploads · forge call<br/>either version"| MCP
   MC -->|"jsonrpc tools/call · job token"| MCP
+  MC -.->|"device token · 401 until<br/>the box installs a runner-v*"| MCP
 ```
 
 Two CLI arrows because two copies are live: the one `ISS-508` shipped and the one the boxes still
-run. The seven families cannot go while the second arrow exists — that is the fleet-upgrade row in
-the table below, drawn rather than only stated.
+run. The nine tools the second arrow carries cannot go while it exists — that is the fleet-upgrade
+row in the table below, drawn rather than only stated. **That arrow survives `ISS-931`**: the CLI
+authenticates with a `forge_pat_*`, not a device token, so `requirePat` accepts it. The dashed
+device arrow is the other population — refused today, and back on a job token the moment its box
+installs a `runner-v*`.
 
 Two command-line surfaces reach the same data plane:
 
@@ -45,10 +51,11 @@ Two command-line surfaces reach the same data plane:
 | `forge` | [forge-plugin](https://github.com/SidCorp-co/forge-plugin) | REST, `$FORGE_PAT` | **the agent.** Skills call its verbs; it is the agent's whole surface |
 
 The plugin was the spine until `ISS-508` closed on 2026-09-06: every `forge` verb now goes to a
-path under `/api`, keyed by a declared route table in `src/tracker/rest.mjs`, except the two that
-route through `forge_uploads` and `forge_step_start` — which stay on `/mcp` by design, not by lag. **The fleet has not caught up** — the copy installed on `forge-vm` is
-3.35.140 and still carries `src/tracker/rpc.mjs`, so the seven families that copy names are held
-by a version upgrade, not by a decision.
+path under `/api`, keyed by a declared route table in `src/tracker/rest.mjs`, except what goes
+through `forge_uploads` — which stays on `/mcp` by design, not by lag. **The fleet has not caught up** — the copy installed on `forge-vm` is
+3.35.140 and still carries `src/tracker/rpc.mjs`, so what that copy names is held by a version
+upgrade, not by a decision — nine wrapped verbs, plus whatever reaches `/mcp` through its
+`forge call` passthrough.
 
 **No device authenticates `/mcp` any more.** `requirePat` takes one species — `forge_pat_*` — and
 refuses every other bearer with a 401 naming the class and the remedy
@@ -101,14 +108,14 @@ flowchart LR
 
   subgraph CORE["forge · core"]
     API["API · REST /api/*<br/>the one data contract"]
-    MCP["MCP · /mcp<br/>step_start · uploads"]
+    MCP["MCP · /mcp<br/>the 4 keep-forever families"]
     WS["WS · /ws"]
   end
 
   D -->|"WS · device token"| WS
   D -->|"forge-runner api"| API
   CLI -->|"REST · $FORGE_PAT"| API
-  CLI -.->|"2 tools"| MCP
+  CLI -.->|"uploads"| MCP
 ```
 
 **One arrow changes port.** The CLI leaves `/mcp` for `/api`, and `/mcp` keeps only what cannot be
@@ -121,28 +128,82 @@ the other's half, which is why a skill never names `runner-v*` or any project's 
 
 | Group | Tools | Why |
 |---|---|---|
-| **stay** | `forge_step_start`, `forge_uploads` | `step_start` opens the session every other call reports into and returns the issue body the runner did not inline; `uploads` returns an image content block, which a shell process cannot produce |
-| **blocked on a fleet upgrade** | `forge_issues` `forge_comments` `forge_config` `forge_guide` `forge_knowledge` `forge_project_pm` `forge_projects.create` | the 7 the pre-`ISS-508` plugin CLI calls. That CLI has moved to `/api`; the copies running on the boxes have not. Deleting one before the fleet upgrades breaks those copies |
-| ~~blocked on the runner's `.mcp.json`~~ **cleared** | ~20 that took device-token calls | `ISS-931` closed it: `/mcp` refuses a device and `mcp/config.rs` writes the job's token. Their device counts stop rising the moment a box upgrades, so the deletion rule below is now a question about a count's HISTORY rather than about live traffic — which does NOT make a nonzero one spendable; read the clause and its price |
+| **stay** | `forge_step_start`, `forge_phase`, `forge_step_handoff.*`, `forge_uploads` | the four families `ISS-931` rule 2 names, asserted by `packages/core/src/mcp/keep-forever-tools.test.ts`. `step_start` opens the session every other call reports into and returns the issue body the runner did not inline; `uploads` returns an image content block, which a shell process cannot produce; `phase` and `step_handoff.*` are session-lifecycle hooks, not data queries. **All four have REST twins, so the twin test does not protect them — this row does.** The wave-3 pass surfaced `forge_step_handoff.delete` as a device-free candidate on exactly that reasoning |
+| **blocked on a fleet upgrade** | wrapped verbs: `forge_issues` `forge_comments` `forge_config` `forge_guide` `forge_knowledge` `forge_memory.search` `forge_project_pm` `forge_projects.get` `forge_projects.list` · reached through `forge call`: `forge_memory.write` `forge_memory.feedback` | what the installed plugin CLI names — counted by grepping the artifact, not this repo, because this repo cannot see it. That CLI has moved to `/api`; the copies on the boxes have not. **This CLI holds a PAT, so `ISS-931` did not take its access away** — its calls are ordinary `token_id` traffic. The second group is not hard-coded anywhere: `forge call <tool>` is a raw `tools/call` passthrough, and the CLI's own guide text tells agents to reach the memory verbs through it (`src/guides/guides.mjs`) |
+| **paused, not cleared** | ~20 that took device-token calls | `ISS-931` made `/mcp` refuse a device and `mcp/config.rs` write the job's token, so `mcp/server.ts` stamps `device_id` NULL on every new row. That did NOT retire these callers: it 401s them until their box installs a `runner-v*` that writes the job token, at which point **the same sessions return, calling the same tools, on a PAT**. A non-zero device count is therefore a forecast, not history — read the rule below |
 | **fenced by design** | `forge_orgs.list` `forge_orgs.members` `forge_collaborators` | they resolve no project, so a project-scoped PAT there is an account-scoped credential in disguise. Session only, on every transport |
-| **free to go** | the rest | each has a REST twin — see [data-plane-surface.md](data-plane-surface.md) |
+| **free to go** | the rest, and only after all three rows above are checked against it | each has a REST twin — see [data-plane-surface.md](data-plane-surface.md). A REST twin is necessary and not sufficient, and this row has been wrong three times for that reason: `forge_memory.search`, `forge_projects.get` and `forge_projects.list` all sat here with twins while the fleet's CLI called the tool and not the route |
 
 ## The deletion rule, paid for once
 
-A tool is clear to delete only when its **device count is 0** *and* the replacement route
-**accepts a device token**.
+A tool is clear to delete only when **no caller loses it** — including the callers that are
+currently refused and are coming back. `ISS-931` did not reduce the caller set; it split it into
+three, and each has its own end condition.
 
-**The second clause protects a caller, so a tool with no callers at all does not need it.**
-`/api/skill-facts` failed it and mattered: `forge_skill_facts.get` had 23 device calls, and
-`requireAuth()` answers a device 401, so those callers had nowhere to go. A tool at **zero rows
-lifetime** has nobody to strand, and demanding a device-reachable twin for it would freeze the
-surface until `ISS-931` lands. So the clause is read as: *device count 0, and — if that count was
-ever above 0 — a replacement the callers it had can actually reach.* `forge_memory.revisions` was
-deleted 2026-09-06 under the second half of that reading; `GET /api/memory/revisions` is
-`requireAuth()` and would refuse a device, which is the same shape `/api/skill-facts` had and is
-only safe here because the count is zero rather than small. **This is an amnesty and it has a
-price:** it is available exactly once per tool, on evidence of zero rows over the whole table under
-both spellings, and it buys nothing for any tool with traffic.
+1. **The paused device population.** ~20 tools took device-token calls. `requirePat` now 401s
+   those boxes on every `/mcp` call, so their counts stopped rising — but the sessions behind them
+   have not gone anywhere. A box installs a `runner-v*` that writes the job token and the same
+   Claude MCP client resumes, calling the same tools off the same tool list, on a `forge_pat_*`.
+   **So a non-zero device count is a forecast of returning traffic, not a record of dead traffic**,
+   and it stays a refusal. It is discharged for a tool when that traffic has actually reappeared as
+   `token_id` rows and can be judged on its merits — never by the count merely ceasing to grow.
+2. **The fleet's `forge` CLI.** It holds a PAT, so `ISS-931` left its access untouched and its
+   calls are indistinguishable from any other token traffic. Two channels, and the second is why a
+   grep for hard-coded tool names is not sufficient on its own: the wrapped verbs in the row above,
+   and `forge call <tool>`, a raw `tools/call` passthrough whose whole purpose is the tools no verb
+   wraps. `ISS-508` moved the wrapped verbs to `/api`; whether it also retired the passthrough is
+   not knowable from this repo, and guessing is what the forge-plugin carve-out exists to prevent.
+   The observable half: the installed copy at
+   `~/.config/forge-runner/marketplaces/sidcorp-co__forge-plugin/plugin` is 3.35.140 and carries
+   `src/tracker/rpc.mjs` with no `src/tracker/rest.mjs`. `rest.mjs` present on every box discharges
+   the **wrapped verbs**; the `forge call` targets need the newer CLI read, not a filesystem check.
+3. **Everything else on a token.** `token_id IS NOT NULL` rows, `skills.skill_md` on the live
+   instance, and the runner's own bundled text — the orientation
+   `packages/runner/crates/forge-runner-core/src/workspace/orientation.rs` writes into every
+   workspace names `forge_memory_search` and `forge_memory_write` by hand, and no audit query would
+   have told you that.
+
+A tool with a caller in any of the three is refused **by name**. It is not deleted behind a widened
+filter, and the caller is not left to find out as `not_found`.
+
+**Rules 1 and 2 are static evidence, and static evidence can never be sufficient here.** `forge call
+<tool>` takes a tool name as an ARGUMENT, so any registered tool can be invoked without its name
+appearing in any source, artifact or import graph anywhere. `forge_memory.write` and
+`forge_memory.feedback` are the proof: zero hard-coded references in the installed plugin, and the
+CLI's own guide text routes agents to both through the passthrough. A grep that comes back empty
+therefore means *"no static reference"*, never *"no caller"* — including for the tools this page has
+already cleared.
+
+So rule 3 is not one input among three; **it is the only one that can settle the question**, and
+`mcp_audit_log` is the only place that holds it. `mcp/server.ts` stamps `tool: request.params.name`
+on every `tools/call` before dispatch — including calls to names it does not recognise, which land
+as `not_found` rows — so a passthrough call is recorded exactly like a wrapped one. That is the
+evidence rules 1 and 2 cannot supply, and it is the evidence no agent session can read
+(`ISS-946`). Which makes `ISS-946` the wave's precondition rather than a convenience: until it is
+answered, no tool reachable through `forge call` can be *proven* safe to delete from a runner box,
+whatever the greps say.
+
+**What `ISS-931` did change is the credential the replacement must accept.** The old rule asked for
+a route that accepts a *device token*. Every caller that returns holds a `forge_pat_*` instead, so
+that is the test now. `/api/skill-facts` is where the clause was bought and it still reads
+correctly under the new credential: `forge_skill_facts.get` had 23 **device** calls and
+`requireAuth()` refuses a *device*, so the route was nowhere those callers could go. It does accept
+a PAT, and is on `PAT_ALLOWED_PREFIXES` — which is exactly the point. Check which species the
+callers hold and which the middleware admits, not whether a route is mounted.
+
+**The device counts are frozen, and that is the pruner's doing rather than `ISS-931`'s.** They
+could not fall before either: the table declares 90-day retention and nothing calls
+`enforceMcpAuditRetention`. Wiring it would drain every device count to zero within 90 days of the
+last device call — and that must not be read as clearing 20 tools at once, because rule 1 above is
+about callers who return, not about rows that expire. Whoever wires the pruner rewrites rule 1 in
+the same commit, or the drain silently licenses the deletions it was never evidence for.
+
+**The zero-rows amnesty survives, unchanged and still priced.** A tool at zero rows lifetime under
+both spellings has nobody to strand and nobody to come back, so it needs no reachable replacement.
+It is available exactly once per tool, buys nothing for any tool with traffic, and
+`forge_memory.revisions` was deleted under it on 2026-09-06. If a caller for such a tool ever
+appears in `mcp_audit_log` after a deletion taken this way, the reading was wrong and the tool
+comes back.
 
 **"Whole table" is a lifetime count only while the pruner stays unwired.** `mcp_audit_log` declares
 90-day retention — `drizzle/migrations/0063_mcp_audit_log.sql` says so and
@@ -152,17 +213,8 @@ So today a zero really does mean "never called". Wire it to a tick and the same 
 red: the `7f0c5a56` shape again, arriving through the measurement rather than the column. Whoever
 wires the pruner rewrites this paragraph in the same commit. Until then, read that function before
 spending a zero, and note that `forge_memory.revisions` — added `f568c503` on 2026-09-05, deleted
-the next day — is a zero under any retention, so it did not test this clause. If a device caller for such a tool
-ever appears in `mcp_audit_log` after a deletion taken this way, the reading is wrong and the tool
-comes back.
+the next day — is a zero under any retention, so it did not test this clause.
 
-**Since `ISS-931` a device count is a HISTORICAL count.** Nothing writes a non-null `device_id`
-any more — `mcp/server.ts` stamps it `null` on every row — so a tool's device number is frozen at
-whatever it reached, and it will never fall to zero on its own. That does not license spending it:
-the clause asks whether the callers a tool HAD can reach its replacement, and those callers are
-exactly the un-upgraded boxes the fleet-upgrade row above is about. The column stays in the schema
-for that reason; a table with no device column would answer this question with silence instead of
-a number.
 
 Read `mcp_audit_log` split on `device_id IS NOT NULL` / `token_id IS NOT NULL` — never on
 `user_id`, which is stamped `device.ownerId` and so reads 100% user and 0 device for every tool.
@@ -189,8 +241,11 @@ the commit that takes one out, and treat a caller that pins by index as already 
 `mcp_audit_log` — the one route that reads the table at all is `GET /api/pat/:id/audit`, per-token
 and last-N rows, and `/api/pat` is off `PAT_ALLOWED_PREFIXES` for the reason the fence section of
 [data-plane-surface.md](data-plane-surface.md) gives. So an agent session on a runner box cannot
-satisfy this rule and must not delete on an estimate; whether the fence should grow a read-only
-aggregate is undecided (`ISS-926`).
+satisfy rule 3 of the deletion rule and must not delete on an estimate. Rule 2 it CAN satisfy — the
+installed plugin artifact is on the box and greppable — and that is the half that caught
+`forge_memory.search`, `forge_projects.get` and `forge_projects.list`, all three of which the
+"free to go" row had held. Whether the fence should grow a read-only aggregate, or the rule should
+stop being written against a number no agent can read, is `ISS-946`.
 
 ## Who delivers the target
 
@@ -198,9 +253,12 @@ aggregate is undecided (`ISS-926`).
 |---|---|---|
 | the CLI moves to REST | `ISS-508` on the **forge-plugin** project | closed, merged 2026-09-06T14:13Z — the boxes still run the old copy |
 | one credential form for the API | `ISS-927` here | closed, merged `3291d537` |
-| the runner stops handing sessions a device token | `ISS-931` here | closed, merged — `requirePat` on `/mcp` + the job token in `mcp/config.rs`; needs a `runner-v*` release before a box stops writing the device token |
-| the waves themselves, and the record of the ones already run | `ISS-894` here | unblocked by `ISS-931`; wave 4 reads the deletion rule below, not this row |
-| the boundary is written down | `ISS-926` here | |
+| the runner stops handing sessions a device token | `ISS-931` here | merged 2026-09-06T19:09Z (`4e85fb69`, an ancestor of `main`), tracker row still `open` — `requirePat` on `/mcp` + the job token in `mcp/config.rs`; needs a `runner-v*` release before a box stops writing the device token |
+| the waves themselves, and the record of the ones already run | `ISS-894` here | unblocked — every `blocks` edge on it is merged. Wave 4 reads the deletion rule above, and what it waits on is the fleet-upgrade row, not an issue |
+| the boundary is written down | `ISS-926` here | closed, merged 2026-09-06T07:46Z |
+| the rule becomes evaluable by the thing that runs it | `ISS-946` here | open — no surface aggregates `mcp_audit_log`, so rule 3 above is unreachable from a box |
 
 A dependency edge does not cross projects, so `ISS-508`'s ordering lived in both bodies as prose;
-it is discharged. What the remaining deletions wait on is `ISS-931`, and that one is an edge.
+it is discharged, and so is `ISS-931`'s edge. What the remaining deletions wait on is no longer an
+issue at all — it is a version on the boxes, which is why the end state above is written as a file
+that has to appear rather than as a row that has to close.

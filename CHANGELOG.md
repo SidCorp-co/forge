@@ -1132,6 +1132,28 @@
 
 ### Fixed
 
+- **Every time-bucketed metric returned a chart of zeros on any database session whose timezone
+  was not UTC, and raised nothing while doing it.** The bucket keys a series is assembled against
+  are floored to UTC midnight in JavaScript (`bucketTimestamps`, `bucketBoundaries`); the SQL that
+  produced the keys they were matched against used a bare `date_trunc(unit, ts)`, and `date_trunc`
+  floors a `timestamptz` in the **session** timezone. On a UTC session the two agree, which is why
+  CI never saw it. On anything else no SQL key ever equals a JS key, the densifier fills its
+  defaults for every bucket, and the route answers a complete, well-formed series of zeros and
+  nulls — the failure mode where nothing is red and the number is wrong.
+
+  Measured on an `Asia/Ho_Chi_Minh` session: rows written at 21:00Z bucketed to 17:00Z and matched
+  nothing. All 17 bucketed queries — 9 in `metrics/queries.ts` behind
+  `/api/projects/:id/metrics` and `forge_metrics.*`, 8 in `admin/aggregate-routes.ts` behind the
+  admin console — now truncate as `date_trunc(unit, ts AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`,
+  which is session-independent.
+
+  Fixed at the query rather than by setting the session timezone: a transaction-mode pooler drops
+  session `SET`s, which would restore the silent version without changing a line of this code.
+  `metrics/bucket-timezone.test.ts` asserts the spelling from source, because an assertion that
+  needs a non-UTC `TZ` to go red is one CI cannot make. Found while working ISS-894 — the
+  integration suite is the only place this repo runs against a real Postgres, and this box's is
+  not UTC. (ISS-894)
+
 - **`POST /api/memory/search` ignored the `strategy` you asked for and told you it had honoured
   it.** The route validated `strategy` in its body schema and then never passed it to
   `runMemorySearch`, which applied its own `'semantic'` default — so a caller asking for `keyword`
@@ -2425,6 +2447,44 @@
   parked or blocked — there is still no limit on how many rounds an issue may take. (ISS-878)
 
 ### Changed
+
+- **The rule that decides which MCP tools may be deleted was measured against the copy of the
+  `forge` CLI the fleet actually runs, and three tools it had cleared turned out to have live
+  callers.** The rule gated a deletion on a tool's *device* call count and on the replacement route
+  accepting a device token. ISS-931 changed what both clauses are about, and the page had not
+  caught up.
+
+  A device count is no longer a record of traffic that happened — it is a forecast of traffic that
+  returns. `requirePat` refuses a device, so those ~20 tools' counts stopped rising, but the
+  sessions behind them are paused rather than retired: a box installs a `runner-v*` that writes the
+  job token and the same MCP client resumes against the same tool list, on a PAT. So the count
+  stays a refusal, and the clause that genuinely went obsolete is the second one — the replacement
+  must accept a `forge_pat_*`, because that is what every returning caller holds.
+
+  The gate now names three caller populations rather than one, and the second is what this change
+  found. The `forge` CLI on the boxes holds a PAT, so ISS-931 left its access untouched and its
+  calls are indistinguishable from any other token traffic — invisible to a device split.
+  Re-measuring against the installed artifact (forge-plugin 3.35.140, which this repo cannot see)
+  corrected the protected list in both directions: `forge_memory.search`, `forge_projects.get` and
+  `forge_projects.list` are called by it and had been filed *free to go*, while
+  `forge_projects.create` was listed as blocked with no call site in it at all. Two more,
+  `forge_memory.write` and `forge_memory.feedback`, are hard-coded nowhere and reached through
+  `forge call`, the raw passthrough the CLI's own guide text points agents at — so a grep for tool
+  names is necessary and not sufficient. `forge_memory.search` also has a caller no audit query
+  would surface: the runner writes "Recall memory FIRST — `forge_memory_search`" into every project
+  workspace's orientation.
+
+  Deleting one of these is not uniformly fatal, and the page now says which is which: the plugin's
+  `callTool` degrades softly where its `soft` flag is set, so `forge_memory.search` would have gone
+  quiet rather than loud. Only `forge_projects.list` exits.
+
+  Separately, the page's *stay* row listed two of the four keep-forever families, leaving
+  `forge_phase` and `forge_step_handoff.*` filed as deletable — and all four have REST twins, so
+  the twin test does not protect them.
+
+  No tool is deleted by this change. `docs/architecture/agent-surface.md` carries the rule,
+  `docs/flows/mcp-tool-deletion.html` draws the decision path, and ISS-946 carries the fact that
+  the third population cannot be measured from a runner box at all. (ISS-894)
 
 - **An agent session authenticates `/mcp` with its own job token, and a device token no longer
   authenticates `/mcp` at all.** Two credential species reached the MCP transport, and one of them

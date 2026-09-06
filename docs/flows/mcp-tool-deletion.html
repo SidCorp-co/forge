@@ -1,0 +1,180 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · mcp-tool-deletion — a tool leaves the registry, or is refused by name</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --lock:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
+</style>
+<main>
+
+<h1>mcp-tool-deletion — a tool leaves the registry, or is refused by name</h1>
+<p class="sub">The decision path one MCP tool walks on its way out of
+<code>REGISTERED_TOOLS</code>, after <code>ISS-931</code> left <code>/mcp</code> with a single
+credential species. Owner: <code>packages/core/src/mcp/registered-tools.ts</code>,
+<code>packages/core/src/mcp/server.ts</code>,
+<code>packages/core/src/middleware/require-pat.ts</code>. The rule in prose:
+<code>docs/architecture/agent-surface.md</code>.</p>
+
+<h2>Why this flow changed shape</h2>
+<p>Until <code>ISS-931</code> the gate was one number: a tool was clear when its
+<code>mcp_audit_log</code> <em>device</em> count was zero. <code>ISS-931</code> did not make that
+number meaningless — it changed what it is a statement about. <code>requirePat</code> refuses a
+device, so no new device rows are written and the counts stop rising; but the sessions behind them
+are <b>paused, not retired</b>. A box installs a <code>runner-v*</code> that writes the job token
+and the same Claude MCP client resumes against the same tool list, on a PAT.</p>
+
+<p><span class="bad">So a non-zero device count is a forecast of returning traffic, not a record of
+dead traffic</span>, and it stays a refusal. What genuinely went obsolete is the rule's <em>second</em>
+clause: it asked for a replacement route that accepts a <em>device token</em>, and every caller
+that comes back holds a <code>forge_pat_*</code> instead.</p>
+
+<p>Two things this page previously got wrong about that are worth stating, because both are easy to
+re-derive. The counts do not fall <em>because of</em> <code>ISS-931</code> — they could not fall
+before it either, since <code>mcp_audit_log</code> declares 90-day retention and nothing calls
+<code>enforceMcpAuditRetention</code>. And wiring that pruner would drain every device count to
+zero, which must <b>not</b> be read as clearing twenty tools at once: the refusal is about callers
+who return, not rows that expire.</p>
+
+<p>The question therefore moved from <em>who called this</em> to <em>who will lose it</em>, and
+there are three populations rather than one.</p>
+
+<div class="board"><pre class="mermaid">
+flowchart TD
+  START["a wave picks a tool<br/>out of REGISTERED_TOOLS"] --> KEEP{"on the<br/>keep-forever list?"}
+  KEEP -->|"forge_step_start · forge_uploads<br/>forge_phase · forge_step_handoff.*"| NEVER["STOP - stays.<br/>session lifecycle, not data query.<br/>all four HAVE REST twins, so the<br/>twin test does not protect them"]
+  KEEP -->|no| FENCE{"resolves<br/>no project?"}
+  FENCE -->|"forge_orgs.* · forge_collaborators"| FENCED["STOP - stays.<br/>a project-scoped PAT here is an<br/>account-scoped credential in disguise"]
+  FENCE -->|no| R1{"RULE 1 - any device rows?"}
+
+  R1 -->|"yes · ~20 tools"| REFUSE0["REFUSE BY NAME<br/>those callers RETURN on a PAT at<br/>the runner-v* release. paused, not dead"]
+  R1 -->|no| R2{"RULE 2 - named by the<br/>forge CLI the FLEET runs?"}
+
+  R2 -->|"9 wrapped verbs, plus<br/>whatever forge call reaches"| REFUSE1["REFUSE BY NAME<br/>blocked on a fleet upgrade"]
+  R2 -->|no| R3{"RULE 3 - any other<br/>caller still on a token?"}
+
+  R3 -->|"token_id rows · skills.skill_md<br/>· runner orientation text"| REFUSE2["REFUSE BY NAME<br/>name the caller, never widen a filter"]
+  R3 -->|"cannot be measured<br/>from a box"| STOP2["STOP - do not estimate.<br/>ISS-946"]
+  R3 -->|"zero, and measured"| TWIN{"does the replacement route<br/>accept a forge_pat_*?"}
+
+  TWIN -->|no| REFUSE3["REFUSE BY NAME<br/>the /api/skill-facts shape:<br/>a twin behind the wrong middleware<br/>is not a replacement"]
+  TWIN -->|yes| DELETE["DELETE - registry, factory,<br/>server registration, CHANGELOG.<br/>Never deprecate: two paths is two paths"]
+
+  classDef stop fill:#f7ecef,stroke:#8a3b52,color:#5c2436;
+  classDef go fill:#e9f3ec,stroke:#1f6f4a,color:#17402c;
+  class NEVER,FENCED,REFUSE0,REFUSE1,REFUSE2,REFUSE3,STOP2 stop;
+  class DELETE go;
+</pre></div>
+
+<h2>Rule 2 is a version, and it is readable from a box</h2>
+<p>The <code>forge</code> CLI is built in <a
+href="https://github.com/SidCorp-co/forge-plugin">forge-plugin</a>, not here, so this repo cannot
+see which tools it names. <code>ISS-508</code> moved every verb to a path under <code>/api</code>;
+the fleet has not installed that build. The copy on a runner box is the authority, and it is a
+directory you can grep:</p>
+
+<div class="rule">
+<code>~/.config/forge-runner/marketplaces/sidcorp-co__forge-plugin/plugin</code> — version
+<b>3.35.140</b>, carrying <code>src/tracker/rpc.mjs</code> and <b>no</b>
+<code>src/tracker/rest.mjs</code>. <b>When <code>rest.mjs</code> is present on every box, the
+<em>wrapped verbs</em> are discharged together.</b> That is the observable end state for them, and
+it is a file rather than an issue. It does <b>not</b> cover <code>forge call</code>, the raw
+<code>tools/call</code> passthrough whose purpose is the tools no verb wraps — whether 3.35.141+
+still ships it against <code>/mcp</code> is not knowable from this repo, and guessing is what the
+forge-plugin carve-out exists to prevent.
+</div>
+
+<p>This CLI holds a <code>forge_pat_prd_*</code> — a PAT, not a device token — so
+<code>requirePat</code> admits it. <span class="bad"><code>ISS-931</code> did not take its access
+away, and its calls land as <code>token_id</code> traffic that a device split cannot see.</span>
+The nine, with the call site in the installed copy:</p>
+
+<table>
+<thead><tr><th>Tool</th><th>Occurrences under <code>plugin/src</code> in the installed 3.35.140 copy</th></tr></thead>
+<tbody>
+<tr><td><code>forge_issues</code></td><td>40, across 16 files incl. <code>src/tracker/issues.mjs</code>, <code>src/flow/*.mjs</code></td></tr>
+<tr><td><code>forge_knowledge</code></td><td>15 — <code>src/tools/knowledge.mjs</code>, <code>doctor.mjs</code>, <code>resolve/visibility.mjs</code></td></tr>
+<tr><td><code>forge_guide</code></td><td>8 — <code>src/commands.mjs</code>, <code>src/tools/doctor.mjs</code></td></tr>
+<tr><td><code>forge_comments</code></td><td>7 — <code>src/tracker/comments.mjs</code> and three others</td></tr>
+<tr><td><code>forge_project_pm</code></td><td>6 — <code>src/commands.mjs</code>, <code>doctor.mjs</code>, <code>resolve/visibility.mjs</code></td></tr>
+<tr><td><code>forge_memory.search</code></td><td>3 — <code>src/tracker/neighbours.mjs:8</code>, <code>doctor.mjs:132</code>, <code>guides/guides.mjs</code></td></tr>
+<tr><td><code>forge_projects.list</code></td><td>2 — <code>src/tracker/rpc.mjs:262</code>, <code>src/resolve/visibility.mjs:35</code></td></tr>
+<tr><td><code>forge_config</code></td><td>1 — <code>src/tracker/project-config.mjs:54</code></td></tr>
+<tr><td><code>forge_projects.get</code></td><td>1 — <code>src/tracker/project-config.mjs:118</code></td></tr>
+<tr><td><code>forge_memory.write</code>, <code>forge_memory.feedback</code></td><td><b>0 hard-coded.</b> Reached through <code>forge call</code>, and <code>src/guides/guides.mjs</code> tells agents to do exactly that</td></tr>
+</tbody>
+</table>
+
+<p><code>forge_memory.search</code>, <code>forge_projects.get</code> and
+<code>forge_projects.list</code> were all filed <em>free to go</em> until this was measured, and
+<code>forge_projects.create</code> was listed as blocked with <b>zero</b> call sites in the
+installed copy.</p>
+
+<p><b>What deleting one costs differs per call site, and only one of the three is a hard break.</b>
+<code>callTool</code> (<code>src/tracker/rpc.mjs:189</code>) returns a refusal object instead of
+exiting when its <code>soft</code> flag is set. <code>forge_projects.list</code> is reached through
+<code>idOfProject(false)</code> — not soft — so it exits: that one is the <code>7f0c5a56</code>
+shape, where six tools went on a bad measurement and the fleet read <code>not_found</code> the same
+day. <code>forge_memory.search</code> degrades to a note (<code>neighbours.mjs</code> returns
+<code>{hits: [], note: …}</code>) and <code>forge_projects.get</code> degrades to
+<code>null</code>. A silent degradation is still a caller losing a capability — that is the reason
+to refuse, not a reason to discount it — but the blast radius is "recall quietly stops working"
+rather than "every command exits", and a rule whose stated cost is overstated is one a reader
+eventually stops trusting.</p>
+
+<h2>Rule 3 has a source the database does not hold</h2>
+<p><code>forge_memory.search</code> has a second live caller that no audit query would have
+surfaced: <code>packages/runner/crates/forge-runner-core/src/workspace/orientation.rs</code> writes
+<em>"Recall memory FIRST — <code>forge_memory_search({...})</code>"</em> into every project
+workspace's orientation. Every agent on every box is told to call it by name, in text this repo
+ships. <span class="bad">Grep the runner's bundled prose as well as the tables.</span></p>
+
+<div class="rule">
+<b>Rule 3 cannot be finished from a runner box.</b> It needs whole-table
+<code>mcp_audit_log</code> counts, and the only route over that table is
+<code>GET /api/pat/:id/audit</code> — one token, last-N rows — with <code>/api/pat</code> off
+<code>PAT_ALLOWED_PREFIXES</code> by design. An agent session that reaches this node stops and does
+not estimate. <code>ISS-946</code> decides whether the fence grows a read-only aggregate or the
+rule stops being written against a number no agent can read.
+</div>
+
+<h2>What refuses, and what must never happen instead</h2>
+<table>
+<thead><tr><th>Node</th><th>Refusal</th><th>The failure it exists to prevent</th></tr></thead>
+<tbody>
+<tr><td>rule 2</td><td>blocked on a fleet upgrade</td>
+    <td>Deleting a tool the fleet's CLI names. The caller does not degrade — it reads
+    <code>not_found</code> mid-run, on a box nobody is watching</td></tr>
+<tr><td>rule 3</td><td>name the caller</td>
+    <td>Widening a filter, or keeping the tool quietly registered. Both leave two live paths,
+    which is the condition this whole shrink exists to remove</td></tr>
+<tr><td>rule 3, unmeasurable</td><td>stop, do not estimate</td>
+    <td>A green that means nothing. The runtime could not represent the failure, so a pass is not
+    weak evidence — it is none</td></tr>
+<tr><td>replacement twin</td><td>wrong middleware</td>
+    <td><code>/api/skill-facts</code>: <code>forge_skill_facts.get</code> had 23 callers and
+    <code>requireAuth()</code> answered them 401. A mounted route is not a reachable one</td></tr>
+</tbody>
+</table>
+
+<p>One thing the deletion cannot honour, and the commit says so rather than pretending otherwise:
+three <code>cm:guard</code>s in <code>mcp/server.ts</code> record that callers pin to
+<code>tools/list</code> order. Those guards govern <em>insertion</em> — a new tool is appended, not
+spliced in. A deletion shifts every index below it and there is no position that leaves the tail
+where it was. A caller that pins by index is already broken.</p>
+
+<p><a href="index.html">← all flows</a></p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>
