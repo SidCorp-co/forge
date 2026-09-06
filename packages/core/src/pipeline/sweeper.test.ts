@@ -38,6 +38,12 @@ vi.mock('./inv7-alarms.js', () => ({
 const resumeOrphanedPausesMock = vi.fn(async () => ({ detected: 0, resumed: 0 }));
 vi.mock('./run-pause.js', () => ({ resumeOrphanedPauses: () => resumeOrphanedPausesMock() }));
 
+// cm:why mocked for the same reason `alertSweep` is — `reapConcludedRuns` issues its own real `db.execute`, and this suite's `dbExecute` is one shared `mockResolvedValueOnce` queue, so an unmocked pass silently eats another pass's queued result. Its own behaviour is proved in `runs-concluded.test.ts` and `tests/integration/concluded-run-reap-e2e.test.ts`.
+const reapConcludedRunsMock = vi.fn(async (_now?: Date) => ({ reaped: 0 }));
+vi.mock('./runs-concluded.js', () => ({
+  reapConcludedRuns: (now?: Date) => reapConcludedRunsMock(now),
+}));
+
 const detectRetryRescueThresholdsMock = vi.fn(async (_now?: Date) => ({
   detected: 0,
   notified: 0,
@@ -83,12 +89,8 @@ vi.mock('../issues/apply-transition.js', () => ({
   applyStatusTransition: (...args: unknown[]) => applyStatusTransitionMock(...args),
 }));
 
-// ISS-445 — reapOrphanedOneShotRuns closes runs through the shared
-// closeRunIfOneShot SSOT. Mock it so the sweeper test asserts the call
-// contract without pulling in the runs.ts → hooks → cascade graph.
+// cm:why both run-close SSOTs are mocked to keep `runs.ts -> hooks -> cascade` out of this suite; the sweeper's own contract here is which passes run, in what order, and what they call.
 const closeRunIfOneShotMock = vi.fn(async (..._args: unknown[]) => {});
-// ISS-461 — reapOrphanedIssueRuns closes issue runs through the shared
-// closeOpenRunForIssue SSOT; mocked for the same reason as closeRunIfOneShot.
 const closeOpenRunForIssueMock = vi.fn(async (..._args: unknown[]) => {});
 vi.mock('./runs.js', () => ({
   closeRunIfOneShot: (...args: unknown[]) => closeRunIfOneShotMock(...args),
@@ -535,6 +537,35 @@ describe('reapOrphanedIssueRuns (ISS-461 — issue runs leaked past a terminal i
     const result = await runPipelineSweep();
     expect(result).toHaveProperty('orphanedIssueRuns');
     expect(result.orphanedIssueRuns.reaped).toBe(0); // default mock: no candidates
+  });
+});
+
+describe('reapConcludedRuns wiring (ISS-923 — the inverse orphan direction)', () => {
+  it('runs as part of runPipelineSweep and reports the count', async () => {
+    reapConcludedRunsMock.mockResolvedValueOnce({ reaped: 3 });
+
+    const result = await runPipelineSweep();
+
+    expect(reapConcludedRunsMock).toHaveBeenCalledTimes(1);
+    expect(result.concludedRuns.reaped).toBe(3);
+  });
+
+  // cm:guard the ordering is the assertion, not decoration: `reapOrphanedIssueRuns` writes `completed` unconditionally to mirror `apply-transition.ts`, so it must claim the closed-issue rows first. Reversed, a closed issue whose last job failed would start closing `failed` — a silent change to ISS-461's contract made by ordering alone.
+  it('runs AFTER reapOrphanedIssueRuns', async () => {
+    const order: string[] = [];
+    dbExecute.mockResolvedValue([{ id: 'run-a', issue_id: 'iss-a' }]);
+    closeOpenRunForIssueMock.mockImplementation(async () => {
+      order.push('orphanedIssueRuns');
+    });
+    reapConcludedRunsMock.mockImplementation(async () => {
+      order.push('concludedRuns');
+      return { reaped: 0 };
+    });
+
+    await runPipelineSweep();
+
+    expect(order.indexOf('orphanedIssueRuns')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('concludedRuns')).toBeGreaterThan(order.indexOf('orphanedIssueRuns'));
   });
 });
 

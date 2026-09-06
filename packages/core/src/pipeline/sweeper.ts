@@ -46,6 +46,7 @@ import {
 import { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
 import { type OrphanedPauseResult, resumeOrphanedPauses } from './run-pause.js';
 import { closeOpenRunForIssue, closeRunIfOneShot } from './runs.js';
+import { type ConcludedRunReapResult, reapConcludedRuns } from './runs-concluded.js';
 import { detectStrandedIssues, type StrandedIssuesResult } from './stranded-issues.js';
 import { emitPipelineWedge } from './wedge.js';
 
@@ -112,6 +113,8 @@ export interface SweepResult {
   idleChatSessions: IdleChatCloseResult;
   /** ISS-461 — issue runs closed because their backing issue is terminal (reaps). */
   orphanedIssueRuns: IssueRunReapResult;
+  /** ISS-923 — runs closed because every child job already reached a terminal status (reaps). */
+  concludedRuns: ConcludedRunReapResult;
   /** RFC 0002 INV-7 — holds that outlived their threshold (alarm only). */
   agedHolds: Inv7AlarmResult;
   stalledQueuedJobs: Inv7AlarmResult;
@@ -166,17 +169,11 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     reapOrphanedOneShotRuns(now),
   );
   const idleChatSessions = await runPass('closeIdleChatSessions', () => closeIdleChatSessions(now));
-  // ISS-461 — close `issue`-kind runs whose backing issue already reached the
-  // run-closing status (`closed`) but whose run never closed. closeOpenRunForIssue
-  // fires only via applyTransition; a close that bypasses it (or predates that
-  // wiring) leaks the run `running`/`paused` forever and inflates the dashboard
-  // live-run count. Run-axis backstop; still an ACTIVE reaper. `released` is
-  // deliberately NOT a candidate status (ISS-669) — the release step runs
-  // inside that still-open run, so an open run at `released` is expected, not
-  // a leak.
   const orphanedIssueRuns = await runPass('reapOrphanedIssueRuns', () =>
     reapOrphanedIssueRuns(now),
   );
+  // cm:guard AFTER reapOrphanedIssueRuns, and the order carries meaning: that pass writes `completed` unconditionally to mirror `apply-transition.ts`, so running it first keeps the closed-issue case on its established outcome and leaves this pass the rows nothing else reaches. Reversed, a closed issue whose last job failed would start closing `failed` — a silent change to ISS-461's contract made by ordering alone.
+  const concludedRuns = await runPass('reapConcludedRuns', () => reapConcludedRuns(now));
   const agedHolds = await runPass('alarmAgedHolds', () => alarmAgedHolds(now));
   // cm:why alarm, not a reap: a plain `queued` job holds no capacity, so cancelling it frees nothing and only destroys work — and the state it reports (every gate passes, nothing started it) is one only a human can resolve, because the picker and the selector disagreeing is a configuration mismatch, not a stuck row
   const stalledQueuedJobs = await runPass('alarmStalledQueuedJobs', () =>
@@ -225,6 +222,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     orphanedOneShotRuns: orphanedOneShotRuns as OneShotRunReapResult,
     idleChatSessions: idleChatSessions as IdleChatCloseResult,
     orphanedIssueRuns: orphanedIssueRuns as IssueRunReapResult,
+    concludedRuns: concludedRuns as ConcludedRunReapResult,
     agedHolds: agedHolds as Inv7AlarmResult,
     stalledQueuedJobs: stalledQueuedJobs as Inv7AlarmResult,
     pausedRunsWithQueuedWork: pausedRunsWithQueuedWork as Inv7AlarmResult,

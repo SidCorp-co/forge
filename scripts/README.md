@@ -587,8 +587,11 @@ together"*. `git` knows which files a change touched. Neither can know that one 
 other did not, and neither should: `cm` has no business knowing your merge-base, and `git` has never
 heard of an edge.
 
-Today: 49 lockstep edges across 66 files. The three orphan-hygiene defences are the worked example —
-change `runs-cascade.ts` alone, tests stay green, merge, and an orphan job wedges a runner slot.
+Today: 49 lockstep edges across 66 files. The orphan-hygiene defences are the worked example —
+change `runs-cascade.ts` alone, tests stay green, merge, and an orphan job wedges a runner slot. Its
+fourth edge is the one that shows what the join is FOR: `runs-concluded.ts` defends the same
+invariant read backwards, and nothing but a declared pair can tell a reader of one direction that
+the other exists (ISS-923).
 
 **It ships advisory, and that is a design decision, not a stepping stone.** A lockstep edge means
 *"the other side likely needs this too"*, not *"every keystroke here needs a matching one there"* — a
