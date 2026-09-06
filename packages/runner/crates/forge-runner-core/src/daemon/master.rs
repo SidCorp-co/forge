@@ -6,17 +6,17 @@
 //! running the `forge-master` skill, which decides order and batch size and
 //! claims through the control socket.
 //!
-//! Resident, and parented by tmux rather than by this daemon (ISS-919). What
-//! that buys: a human can `tmux attach` to the same pane core addresses, the
-//! master survives a `forge-runner` restart, its reasoning appends to one
-//! transcript instead of being truncated per pass, and every pass after the
-//! first starts from context it already has. What it costs is that a dead
-//! master no longer drops a socket, so the detector is here — `supervise`
-//! below — and the ceiling that used to be a per-pass kill is now a bound on
-//! silence after a prompt.
+//! Resident, and parented by tmux rather than by this daemon (ISS-919). That
+//! buys an attachable pane, a master that survives a `forge-runner` restart,
+//! one appended transcript and a warm context per pass. It costs the socket a
+//! dead master used to drop, so the detector is `supervise` below and the old
+//! per-pass kill is now a bound on silence after a prompt.
 //!
 //! The daemon deliberately makes NO routing decision. It answers one question
 //! per project, "is there anything at all", and hands the rest to judgement.
+//!
+//! Restarting it is bounded: `MASTER_DEATH_LIMIT` deaths in a window stop the
+//! respawn, and `workspace::trust` shuts the door that opened it (ISS-928).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -43,6 +43,19 @@ const MASTER_SILENCE_CEILING: Duration = Duration::from_secs(600);
 /// How quiet a master must be before the next pass prompt is typed at it.
 // cm:guard a resident master shares ONE composer with the pass prompts, so a prompt sent while it is mid-turn queues behind the turn and the two run back to back on a stale pool read. Transcript growth is the only progress signal available through a tmux pane — there is no structured stdout to parse here, by design — so quiet-for-a-while is what "idle" means, and it is deliberately shorter than a pass so a finished master is prompted on the next sweep rather than the one after.
 const MASTER_QUIET_BEFORE_PROMPT: Duration = Duration::from_secs(15);
+
+/// How many deaths in `MASTER_DEATH_WINDOW` mean this project's master is not
+/// coming up, whatever the box does next.
+// cm:guard three, not one, and the reason is that a SINGLE death is normal: an operator running `tmux kill-session`, a box reboot, an OOM. The respawn on the next sweep is the design working, and a breaker that opened on the first one would turn every ordinary restart into a half-hour outage for that project.
+const MASTER_DEATH_LIMIT: u32 = 3;
+
+/// How far back a death still counts.
+// cm:guard measured against the failure this exists for: on forge-vm 2026-09-06 the session died within SECONDS of every spawn, so three deaths landed inside ~90s of a 30s sweep. The window only has to be wide enough that a crashloop fills it and narrow enough that three unrelated restarts spread over an afternoon never do.
+const MASTER_DEATH_WINDOW: Duration = Duration::from_secs(10 * 60);
+
+/// How long the box stops respawning once the limit is reached.
+// cm:guard a BACKOFF, never a latch, the same rule `LIMITED_POLL_INTERVAL` states for rate limits. What put this here was a box whose fix was one edit to `~/.claude.json` made out of band, and a breaker that stayed open until someone restarted the daemon would leave that box idle after the thing was already repaired. One probe after the cooldown costs a spawn every half hour, against the 120 an unbounded loop was costing.
+const MASTER_BREAKER_COOLDOWN: Duration = Duration::from_secs(30 * 60);
 
 /// Sweep spacing once every project this box serves is rate-limited.
 // cm:guard this is a BACKOFF, never a blackout, and the distinction is the whole design. Core clears a limit only when a job SUCCEEDS (`clearRunnerLimit`), so a master that declines to sweep while limited removes the only thing that can clear the stamp, and an operator who fixes the account out of band is left watching an idle fleet forever. Slowing down costs a few minutes of latency; stopping costs the self-heal.
@@ -109,7 +122,23 @@ report, and let the next pass take the rest.\n",
 // cm:guard this map is now an OPTIMISATION, not the bound. The bound moved to two places that survive this process: tmux refuses a second session under a name that exists, and core refuses a second live `agent_sessions` row for the same (device, project). It had to move, because a session parented by the multiplexer is invisible to any in-process set — which is exactly the hole ISS-919 B1 names. Never re-derive the bound from this map alone: a daemon restart empties it while every master is still running.
 // cm:guard this bounds masters and NOTHING ELSE. `duplex_max_sessions` (default 3) is the box's only process ceiling and it covers duplex PIPELINE jobs alone — a master takes no permit, and neither does a one-shot job. Adding a project therefore adds a claude process with nothing counting it; measured on dev1 2026-09-05 at load 17.26 on 12 cores with CPU pressure some=52%. A box-level bound is owed and is not this map.
 #[derive(Default)]
-pub struct Masters(Arc<Mutex<HashMap<String, MasterState>>>);
+pub struct Masters(Arc<Mutex<Registry>>);
+
+/// The live masters, and what this box has seen the dead ones do.
+#[derive(Default)]
+struct Registry {
+    live: HashMap<String, MasterState>,
+    deaths: HashMap<String, Breaker>,
+}
+
+/// One project's consecutive-death tally, and the stop it earns.
+// cm:guard the tally is keyed per PROJECT for the same reason the live map is: two projects on this box fail for unrelated reasons, and a box-wide counter would let one broken checkout stop every other project's master.
+struct Breaker {
+    count: u32,
+    /// When the run of deaths being counted started.
+    first: Instant,
+    open_until: Option<Instant>,
+}
 
 struct MasterState {
     session_id: String,
@@ -128,19 +157,20 @@ impl Masters {
     }
 
     fn get(&self, project_id: &str) -> Option<(String, String, Option<std::path::PathBuf>)> {
-        let live = self.0.lock().expect("masters poisoned");
-        live.get(project_id)
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.live
+            .get(project_id)
             .map(|m| (m.session_id.clone(), m.name.clone(), m.transcript.clone()))
     }
 
     fn remember(&self, project_id: &str, state: MasterState) {
-        let mut live = self.0.lock().expect("masters poisoned");
-        live.insert(project_id.to_string(), state);
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.live.insert(project_id.to_string(), state);
     }
 
     fn forget(&self, project_id: &str) -> Option<String> {
-        let mut live = self.0.lock().expect("masters poisoned");
-        live.remove(project_id).map(|m| m.session_id)
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.live.remove(project_id).map(|m| m.session_id)
     }
 
     /// Record what the transcript looks like now, and answer what it means.
@@ -148,8 +178,8 @@ impl Masters {
     /// `(quiet_for, prompted)` — how long the pane has printed nothing, and
     /// whether it owes an answer to a prompt already typed at it.
     fn observe(&self, project_id: &str, len: u64) -> (Duration, bool) {
-        let mut live = self.0.lock().expect("masters poisoned");
-        let Some(m) = live.get_mut(project_id) else {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let Some(m) = reg.live.get_mut(project_id) else {
             return (Duration::ZERO, false);
         };
         if len != m.seen_len {
@@ -163,19 +193,69 @@ impl Masters {
     /// The pane name for a master session id, for the inbox's terminal arm.
     // cm:guard keyed by SESSION id, not project id. Core addresses a master by the `agent_sessions` row it registered, which is the only identity a `session.send` frame carries — a lookup by project would need core to know which project a session belongs to and to say so on the frame, and it does neither.
     pub fn pane_for_session(&self, session_id: &str) -> Option<String> {
-        let live = self.0.lock().expect("masters poisoned");
-        live.values()
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.live
+            .values()
             .find(|m| m.session_id == session_id)
             .map(|m| m.name.clone())
     }
 
     fn mark_prompted(&self, project_id: &str) {
-        let mut live = self.0.lock().expect("masters poisoned");
-        if let Some(m) = live.get_mut(project_id) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        if let Some(m) = reg.live.get_mut(project_id) {
             m.prompted = true;
             m.last_growth = Instant::now();
         }
     }
+
+    /// Count one master ending. Answers the tally, and whether it just tripped.
+    ///
+    /// `now` is a parameter so the window and the cooldown can be tested; every
+    /// caller passes `Instant::now()`.
+    // cm:guard everything that leaves this project without a running master counts here, and there are exactly two such paths: `end_master` for a session that existed and ended, and a `terminal::ensure` that refused. A path that dropped a master without counting would give a crashloop an unbounded supply of fresh starts again.
+    fn record_death(&self, project_id: &str, now: Instant) -> (u32, bool) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let b = reg.deaths.entry(project_id.to_string()).or_insert(Breaker {
+            count: 0,
+            first: now,
+            open_until: None,
+        });
+        if now.duration_since(b.first) > MASTER_DEATH_WINDOW {
+            b.count = 0;
+            b.first = now;
+        }
+        b.count += 1;
+        let tripped = b.count >= MASTER_DEATH_LIMIT && b.open_until.is_none();
+        if tripped {
+            b.open_until = Some(now + MASTER_BREAKER_COOLDOWN);
+        }
+        (b.count, tripped)
+    }
+
+    /// How long this project's master must stay unstarted, if at all.
+    // cm:guard the expiry does not clear the tally, it sets it one death BELOW the limit, and that is what makes the retry a probe rather than a fresh licence. Clearing it would buy a box that is still broken another full run of three spawns every half hour, which is the unbounded loop back at a slower rate.
+    fn cooldown_remaining(&self, project_id: &str, now: Instant) -> Option<(u32, Duration)> {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let b = reg.deaths.get_mut(project_id)?;
+        let open_until = b.open_until?;
+        if now < open_until {
+            return Some((b.count, open_until - now));
+        }
+        b.open_until = None;
+        b.count = MASTER_DEATH_LIMIT - 1;
+        b.first = now;
+        None
+    }
+}
+
+/// What an operator reads on a sweep that refuses to start a master.
+// cm:guard this says WHEN the box will try again, and that is the half a log line about a dead master usually leaves out. The reader has to be able to tell a project this box has stopped serving from one it is about to serve, and the ordinary spawn line is silent about both.
+fn breaker_notice(slug: &str, deaths: u32, remaining: Duration) -> String {
+    format!(
+        "[master] {slug}: DEGRADED — {deaths} master deaths inside {}m, so this box is not starting another for {}m. Nothing is claiming for this project until then; check `~/.claude.json` trust, the checkout and `tmux ls`.",
+        MASTER_DEATH_WINDOW.as_secs() / 60,
+        remaining.as_secs().div_ceil(60)
+    )
 }
 
 /// Poll every served project until `cancel` flips, keeping masters alive.
@@ -377,6 +457,14 @@ async fn ensure_master(
         return None;
     }
 
+    // cm:guard the breaker stops a START and nothing else, which is why it is read AFTER the liveness check and before the registration. A pane that is alive must still be adopted and supervised even while the breaker is open — refusing that would leave a running master unwatched and its holds unreturned when it dies, and would register an identity with no process behind it besides.
+    if !terminal::alive(&name).await {
+        if let Some((deaths, left)) = masters.cooldown_remaining(project_id, Instant::now()) {
+            tracing::error!("{}", breaker_notice(&resolved.slug, deaths, left));
+            return None;
+        }
+    }
+
     let session = match master_api::register(client, project_id, &name).await {
         Ok(s) => s,
         Err(e) => {
@@ -407,6 +495,9 @@ async fn ensure_master(
         return None;
     }
 
+    // cm:guard the pane is the ONE session this runner opens on a TTY, and a TTY is the only place Claude Code shows the workspace-trust prompt. An unanswered prompt is a session that ends without doing anything and takes the breaker above with it, so the stamp belongs immediately before the spawn — `workspace::provision` covers a fresh box, this covers every box provisioned before it shipped (ISS-928, forge-vm 2026-09-06).
+    crate::workspace::trust::pre_trust_logged(&resolved.repo_path, &resolved.slug);
+
     let transcript = transcript_path(&resolved.slug);
     match terminal::ensure(
         &name,
@@ -420,6 +511,8 @@ async fn ensure_master(
         Ok(_) => {}
         Err(e) => {
             tracing::error!("[master] {}: could not start {name}: {e}", resolved.slug);
+            // cm:guard a spawn that never succeeds is the same failure as one that dies a second later, and it counts the same. Leaving it uncounted would keep exactly one unbounded retry loop alive — the one where `tmux new-session` refuses on every sweep forever.
+            note_failed_master(masters, project_id, &resolved.slug);
             return None;
         }
     }
@@ -501,6 +594,7 @@ async fn supervise(client: &CoreClient, masters: &Arc<Masters>, project_id: &str
             client,
             masters,
             project_id,
+            slug,
             &session_id,
             "terminal session vanished",
         )
@@ -520,6 +614,7 @@ async fn supervise(client: &CoreClient, masters: &Arc<Masters>, project_id: &str
             client,
             masters,
             project_id,
+            slug,
             &session_id,
             "silent past the ceiling",
         )
@@ -531,6 +626,7 @@ async fn end_master(
     client: &CoreClient,
     masters: &Arc<Masters>,
     project_id: &str,
+    slug: &str,
     session_id: &str,
     reason: &str,
 ) {
@@ -543,6 +639,15 @@ async fn end_master(
         tracing::warn!("[master] could not close session {session_id}: {e}");
     }
     masters.forget(project_id);
+    note_failed_master(masters, project_id, slug);
+}
+
+/// Count this project as having no master, and say so when that trips the breaker.
+fn note_failed_master(masters: &Arc<Masters>, project_id: &str, slug: &str) {
+    let (deaths, tripped) = masters.record_death(project_id, Instant::now());
+    if tripped {
+        tracing::error!("{}", breaker_notice(slug, deaths, MASTER_BREAKER_COOLDOWN));
+    }
 }
 
 #[cfg(test)]
@@ -707,5 +812,114 @@ mod tests {
             !pass.contains("forge-master skill"),
             "the brief must not repeat: {pass}"
         );
+    }
+
+    fn breaker_masters() -> Arc<Masters> {
+        Arc::new(Masters::new())
+    }
+
+    // cm:guard this is the test that has to fail if the respawn goes back to being unbounded. Three deaths inside the window on forge-vm cost 90 seconds and then two spawns a minute for as long as nobody looked.
+    #[test]
+    fn deaths_stacking_inside_the_window_stop_the_respawn() {
+        let m = breaker_masters();
+        let t0 = Instant::now();
+
+        assert_eq!(m.record_death("p1", t0), (1, false));
+        assert!(
+            m.cooldown_remaining("p1", t0).is_none(),
+            "one death is an ordinary restart, not a crashloop"
+        );
+        assert_eq!(
+            m.record_death("p1", t0 + Duration::from_secs(30)),
+            (2, false)
+        );
+        assert!(m
+            .cooldown_remaining("p1", t0 + Duration::from_secs(30))
+            .is_none());
+
+        let (deaths, tripped) = m.record_death("p1", t0 + Duration::from_secs(60));
+        assert_eq!(deaths, MASTER_DEATH_LIMIT);
+        assert!(
+            tripped,
+            "the third death inside the window opens the breaker"
+        );
+
+        let (_, left) = m
+            .cooldown_remaining("p1", t0 + Duration::from_secs(61))
+            .expect("the breaker is open");
+        assert!(left <= MASTER_BREAKER_COOLDOWN && left > Duration::ZERO);
+    }
+
+    // cm:guard the tally is per project. A box-wide counter would let one broken checkout stop every other project this box serves, which is a worse outage than the crashloop it replaced.
+    #[test]
+    fn deaths_on_one_project_never_stop_another() {
+        let m = breaker_masters();
+        let t0 = Instant::now();
+        for _ in 0..MASTER_DEATH_LIMIT {
+            m.record_death("p1", t0);
+        }
+        assert!(m.cooldown_remaining("p1", t0).is_some());
+        assert!(
+            m.cooldown_remaining("p2", t0).is_none(),
+            "p2's master has died no times"
+        );
+    }
+
+    // cm:guard deaths spread thinly are not a crashloop, and the window is what says so — without the reset, a box that restarts its master once a week would trip the breaker on the third week.
+    #[test]
+    fn a_death_older_than_the_window_does_not_count() {
+        let m = breaker_masters();
+        let t0 = Instant::now();
+        m.record_death("p1", t0);
+        m.record_death("p1", t0 + Duration::from_secs(10));
+
+        let (deaths, tripped) =
+            m.record_death("p1", t0 + MASTER_DEATH_WINDOW + Duration::from_secs(1));
+        assert_eq!(deaths, 1, "the run restarted");
+        assert!(!tripped);
+    }
+
+    // cm:guard half-open, and the second half of this test is the point: the retry after the cooldown is ONE probe, so a box that is still broken pays one spawn per cooldown rather than a fresh run of three.
+    #[test]
+    fn the_cooldown_buys_one_probe_and_a_death_reopens_it_at_once() {
+        let m = breaker_masters();
+        let t0 = Instant::now();
+        for _ in 0..MASTER_DEATH_LIMIT {
+            m.record_death("p1", t0);
+        }
+        assert!(m.cooldown_remaining("p1", t0).is_some());
+
+        let after = t0 + MASTER_BREAKER_COOLDOWN + Duration::from_secs(1);
+        assert!(
+            m.cooldown_remaining("p1", after).is_none(),
+            "the cooldown elapsed, so one attempt is allowed"
+        );
+
+        let (deaths, tripped) = m.record_death("p1", after + Duration::from_secs(5));
+        assert_eq!(deaths, MASTER_DEATH_LIMIT);
+        assert!(
+            tripped,
+            "a probe that dies re-opens the breaker immediately"
+        );
+    }
+
+    // cm:guard a spawn that is refused every time is a respawn loop too, and this is the assertion that fails if the refusal arm stops counting — the tally is the only thing standing between `tmux new-session` failing forever and a sweep that asks it to, forever.
+    #[test]
+    fn a_spawn_that_never_succeeds_trips_the_breaker_as_a_death_does() {
+        let m = breaker_masters();
+        for _ in 0..MASTER_DEATH_LIMIT {
+            note_failed_master(&m, "p1", "p1");
+        }
+        assert!(m.cooldown_remaining("p1", Instant::now()).is_some());
+    }
+
+    // cm:guard the line has to say WHEN the box will try again. An operator reading a dead-master log needs to tell a project this box has stopped serving from one it is about to serve, and no other line on this path says which.
+    #[test]
+    fn the_degraded_line_names_the_project_the_tally_and_the_next_attempt() {
+        let notice = breaker_notice("forge-dev", 3, Duration::from_secs(29 * 60));
+        assert!(notice.contains("forge-dev"), "{notice}");
+        assert!(notice.contains('3'), "{notice}");
+        assert!(notice.contains("29m"), "{notice}");
+        assert!(notice.contains("DEGRADED"), "{notice}");
     }
 }
