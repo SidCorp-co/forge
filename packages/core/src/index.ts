@@ -12,6 +12,7 @@ import { adminAggregateRoutes } from './admin/aggregate-routes.js';
 import { adminAlertRoutes } from './admin/alert-routes.js';
 import { pipelineHealthAdminRoutes } from './admin/pipeline-health-routes.js';
 import { adminRoutes } from './admin/routes.js';
+import { adminThresholdRoutes } from './admin/thresholds-routes.js';
 import { agentSessionAttachmentRoutes } from './agent-sessions/attachment-routes.js';
 import { agentSessionProjectReadRoutes } from './agent-sessions/project-read-routes.js';
 import { agentSessionRoutes } from './agent-sessions/routes.js';
@@ -159,6 +160,7 @@ import { promptRoutes } from './prompt/routes.js';
 import { startBoss, stopBoss } from './queue/boss.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
 import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
+import { registerGhostRunnerReaper } from './runners/ghost-reaper.js';
 import { runnerRoutes } from './runners/routes.js';
 import { registerRunnerStaleDetector } from './runners/stale-detector.js';
 import { scheduleRoutes } from './schedules/routes.js';
@@ -189,9 +191,7 @@ export const app = new Hono<{ Variables: RequestIdVars }>();
 app.use('*', requestId());
 app.use('*', requestLogger());
 
-// Cookie-based auth from browsers requires Access-Control-Allow-Credentials
-// with an explicit origin (never `*`). `CORS_ORIGINS` is a comma-separated
-// allow-list; requests from unlisted origins receive no CORS headers.
+// cm:guard an explicit origin from the `CORS_ORIGINS` allow-list, NEVER `*` — cookie-based browser auth needs Access-Control-Allow-Credentials, which the spec refuses alongside a wildcard origin, so widening this silently logs every browser client out
 const CORS_ORIGINS = env.CORS_ORIGINS.split(',')
   .map((s) => s.trim())
   .filter((s) => s.length > 0);
@@ -392,6 +392,7 @@ app.route('/api/projects', pipelineRunProjectRoutes);
 app.route('/api/admin', adminRoutes);
 app.route('/api/admin', adminAggregateRoutes);
 app.route('/api/admin', adminAlertRoutes);
+app.route('/api/admin', adminThresholdRoutes);
 app.route('/api/admin/pipeline', pipelineHealthAdminRoutes);
 app.route('/api/devices', devicePublicRoutes);
 app.route('/api/devices', deviceLoginRoutes);
@@ -486,6 +487,7 @@ if (isMain) {
   await registerDevicePrune();
   await registerMasterReaper();
   await registerRunnerStaleDetector();
+  await registerGhostRunnerReaper();
   await registerRetentionSweeper();
   await registerPipelineSweeper();
   await registerPhaseJournalBackfill();

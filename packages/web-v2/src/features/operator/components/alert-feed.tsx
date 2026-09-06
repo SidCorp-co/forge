@@ -43,10 +43,6 @@ const STATUS_DOT: Record<AdminAlertStatus, string> = {
 // cm:guard the feed's order is crit > warn > ok and nothing else — an operator reads top-down and stops, so an alert sorted by id would bury a crit A5 under four ok rows
 const STATUS_RANK: Record<AdminAlertStatus, number> = { crit: 0, warn: 1, ok: 2 };
 
-export function openAlertCount(alerts: readonly AdminAlert[]): number {
-  return alerts.filter((a) => a.status !== 'ok').length;
-}
-
 export function sortAlerts(alerts: readonly AdminAlert[]): AdminAlert[] {
   return [...alerts].sort(
     (a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status] || a.id.localeCompare(b.id),

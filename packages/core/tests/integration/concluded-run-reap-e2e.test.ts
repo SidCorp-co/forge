@@ -99,6 +99,13 @@ describe('reapConcludedRuns predicate E2E (ISS-923)', () => {
     return jobId;
   }
 
+  async function seedSession(runId: string, status: string): Promise<void> {
+    await harness.db.execute(sql`
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status)
+      VALUES (${randomUUID()}, ${projectId}, ${runId}, ${status})
+    `);
+  }
+
   async function runStatus(runId: string): Promise<string> {
     const rows = await harness.db.execute<{ status: string }>(
       sql`SELECT status FROM pipeline_runs WHERE id = ${runId}`,
@@ -192,7 +199,7 @@ describe('reapConcludedRuns predicate E2E (ISS-923)', () => {
     },
   );
 
-  // cm:edge contract -> packages/core/src/pipeline/sweeper.ts — a job-less run is `reapOrphanedOneShotRuns`' row, not this pass's; widening either to cover the other gives one run two reapers with different outcome rules.
+  // cm:edge contract -> packages/core/src/pipeline/runs-concluded.ts — a job-less run belongs to `reapJoblessRuns`, never to this pass; one run answering to two reapers with different outcome rules is the shape both guards exist to prevent.
   it('leaves a run with no jobs at all', async () => {
     const runId = await seedRun();
 
@@ -202,15 +209,37 @@ describe('reapConcludedRuns predicate E2E (ISS-923)', () => {
     expect(await runStatus(runId)).toBe('running');
   });
 
-  // cm:guard an operator pause is deliberate and no sweeper may undo it.
-  it('leaves a `paused` run alone', async () => {
+  // cm:guard ISS-654 narrowed this from "never touch a paused run" to "never touch a paused run that could still be resumed into work" — a live session is what makes the pause a hold rather than a phantom, and this pair is the whole distinction.
+  it('leaves a `paused` run holding a live session alone', async () => {
     const runId = await seedRun('paused');
     await seedJob(runId, 'done', 5000);
+    await seedSession(runId, 'running');
 
     const res = await mods.reapConcludedRuns(new Date());
 
     expect(res.reaped).toBe(0);
     expect(await runStatus(runId)).toBe('paused');
+  });
+
+  it('closes a `paused` run whose jobs are all terminal and whose sessions are all dead', async () => {
+    const runId = await seedRun('paused');
+    await seedJob(runId, 'done', 5000);
+    await seedSession(runId, 'failed');
+
+    const res = await mods.reapConcludedRuns(new Date());
+
+    expect(res.reaped).toBe(1);
+    expect(await runStatus(runId)).toBe('completed');
+  });
+
+  it('closes a `paused` run carrying no session at all', async () => {
+    const runId = await seedRun('paused');
+    await seedJob(runId, 'failed', 5000);
+
+    const res = await mods.reapConcludedRuns(new Date());
+
+    expect(res.reaped).toBe(1);
+    expect(await runStatus(runId)).toBe('failed');
   });
 
   it('is idempotent — a second tick finds nothing', async () => {

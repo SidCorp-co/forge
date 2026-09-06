@@ -11,6 +11,20 @@
 
 ### Added
 
+- **The Ops Console's alert thresholds are an operator setting, and spend has a ceiling.**
+  `GET`/`PUT /api/admin/thresholds` (platform admins only) reads and writes one global row: the
+  stuck-job window, the runner-starvation grace, the spend-spike multiple, the schedule fail-streak,
+  the delivery fail-rate, the labels that count as an intervention, and how many days offline makes
+  a runner a ghost. `computeAlerts()` re-reads the row on every call, so a change lands on the next
+  sweeper tick with nothing restarted, and the three `FORGE_ALERT_*` environment knobs it supersedes
+  were deleted rather than shipped beside it.
+
+  `spendCeilingUsdDay` is new capability, not a rename: the spike alert compares one window against
+  the one before, so a deployment burning the same large amount every day had a ratio of 1.0 and
+  reported nothing. With a ceiling set, A4 warns at 80% of a trailing 24 hours and goes crit at the
+  ceiling, and the alert says which of the two arms fired. The table ships empty and the declared
+  defaults stand in, so a deploy that never writes it behaves exactly as it did before. (ISS-654)
+
 - **`/admin` answers "who is using Forge, and what needs me right now".** The Operator Ops Console
   overview was an empty state; it now renders the deployment from the four `/api/admin/*` endpoints
   ISS-651 and ISS-652 shipped. A KPI row (open alerts, jobs in flight, active workspaces, spend this
@@ -28,9 +42,10 @@
   operator's own. The room widening is READ-only and says so in a guard: project rooms carry
   invalidation events and accept no input from a subscriber.
 
-  The "Open alerts" tile deliberately counts the alerts the feed below it is showing rather than
-  `overview.kpis.openAlerts`, which is an independent A2-only approximation ISS-654 will unify.
-  Printing "0 - nothing needs you" above a red crit row is the one thing this screen must not do.
+  The "Open alerts" tile read the alerts the feed below it was showing rather than
+  `overview.kpis.openAlerts`, which was an independent A2-only approximation; ISS-654 unified the
+  two and the tile now reads the KPI. Printing "0 - nothing needs you" above a red crit row is the
+  one thing this screen must not do.
 
   The wire shapes moved to one declaration (`@forge/core/admin-types`, re-exported through
   `@forge/contracts`) instead of the two that were drifting, and the `overview` placeholder was
@@ -918,6 +933,21 @@
   set is now 59.
 
 ### Fixed
+
+- **Two more shapes of run that showed as live work no box was doing.** ISS-923 closed `running`
+  runs whose jobs had all finished; a `paused` run in the same state, and an issue run that never
+  grew a job at all, were reached by nothing and kept inflating the live-run count. Both are now
+  reaped to a terminal status after the same 60-minute quiet window. A paused run is admitted only
+  when it also holds no live session — an operator's hold that could still be resumed into work is a
+  decision no sweeper may undo, and this is the one shape where there is provably nothing left to
+  resume into. (ISS-654)
+
+- **A runner that went away weeks ago stops counting as fleet.** A box that was paired once and
+  never came back sat `offline` forever: nothing walked it past that status, so it inflated the
+  fleet count and kept stage device pools pointing at nothing. It is now flagged `disabled` after
+  the configured number of days, with an audit row saying why. Never a runner still holding a
+  dispatched or running job, and never a row delete — a returning box re-registers itself on its
+  next heartbeat. (ISS-654)
 
 - **Half the phase journal recorded numbers nobody can read back, because the drive prompt's
   example said `phase-1`.** `phase_journal.phase` is free vocabulary and no gate reads it — both

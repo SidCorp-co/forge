@@ -14,54 +14,46 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { buildBarrierFragments } from '../jobs/queued-gates.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
-import type { AdminAlert, AdminAlertId, AdminAlertStatus } from './types.js';
+import { readThresholds } from './thresholds.js';
+import type { AdminAlert, AdminAlertId, AdminAlertStatus, AdminThresholds } from './types.js';
+import { ADMIN_THRESHOLD_DEFAULTS } from './types.js';
 
 export const ENTITY_LIMIT = 20;
-export const DEFAULT_STALE_SECONDS = 600;
+export const DEFAULT_STALE_SECONDS = ADMIN_THRESHOLD_DEFAULTS.stuckJobSeconds;
 
 export interface AlertQueryOptions {
+  /** Overrides the configured `stuckJobSeconds` for one call — the `?staleSeconds=` query param. */
   staleSeconds?: number;
   now?: Date;
+  thresholds?: AdminThresholds;
 }
 
 const CRIT_STUCK_JOBS = 3;
 
-const STARVED_GRACE_SECONDS = (() => {
-  const env = Number(process.env.FORGE_ALERT_STARVED_GRACE_SECONDS);
-  return Number.isFinite(env) && env > 0 ? env : 300;
-})();
 const CRIT_STARVED_PROJECTS = 3;
 
-// cm:hack ISS-654 until:admin-thresholds-config-lands — ratio-based spend-spike thresholds are a placeholder; measured on forge-beta they fire at 3.06x on ordinary hourly swings ($37-$194), so expect near-permanent warn until ISS-654 lands the configurable ceiling
+// cm:why the window, the absolute floor and the schedule-activity window stay env: they are deployment tuning that changes what a measurement MEANS, not operator policy, and none is duplicated in `admin_thresholds`. The three knobs that were duplicated — FORGE_ALERT_STARVED_GRACE_SECONDS, FORGE_ALERT_SPEND_WARN_RATIO and FORGE_ALERT_SPEND_CRIT_RATIO — were deleted with ISS-654 rather than shipped beside the table that supersedes them.
 const SPEND_WINDOW_HOURS = (() => {
   const env = Number(process.env.FORGE_ALERT_SPEND_WINDOW_HOURS);
   return Number.isFinite(env) && env > 0 ? env : 1;
-})();
-const SPEND_WARN_RATIO = (() => {
-  const env = Number(process.env.FORGE_ALERT_SPEND_WARN_RATIO);
-  return Number.isFinite(env) && env > 0 ? env : 2;
-})();
-const SPEND_CRIT_RATIO = (() => {
-  const env = Number(process.env.FORGE_ALERT_SPEND_CRIT_RATIO);
-  return Number.isFinite(env) && env > 0 ? env : 4;
 })();
 const SPEND_MIN_USD = (() => {
   const env = Number(process.env.FORGE_ALERT_SPEND_MIN_USD);
   return Number.isFinite(env) && env > 0 ? env : 5;
 })();
 
-const SCHEDULE_WARN_STREAK = 3;
-const SCHEDULE_CRIT_STREAK = 5;
+// cm:guard crit is derived from the configured warn threshold, never configured beside it — one number per axis is what the operator was given, and two would let a PUT invert them (crit below warn), which classifies every warn as crit. Each derivation reproduces exactly the gap the hardcoded pair had: spend 2/4, schedule streak 3/5, delivery rate 50%/80%.
+const SPEND_CRIT_FACTOR = 2;
+const SCHEDULE_CRIT_MARGIN = 2;
+const DELIVERY_CRIT_FACTOR = 1.6;
 // cm:why a streak on a schedule that has stopped running (disabled, or simply abandoned) would pin A5 at warn forever with no path to resolveNotifications — the window is wide enough for a weekly cadence to still be caught
 const SCHEDULE_ACTIVE_WINDOW_HOURS = (() => {
   const env = Number(process.env.FORGE_ALERT_SCHEDULE_ACTIVE_WINDOW_HOURS);
   return Number.isFinite(env) && env > 0 ? env : 24 * 8;
 })();
 const DELIVERY_MIN_SAMPLE = 5;
-const DELIVERY_WARN_RATE = 0.5;
-const DELIVERY_CRIT_RATE = 0.8;
 
-// cm:why ONE notification type for all 5 Tier 1 alerts, with the identity carried here in the resolutionKey — five `notificationTypes` values would mean five lockstep edits across schema.ts + contracts + emit.ts for a taxonomy ISS-654 makes configurable anyway, and the bell does not branch on type
+// cm:why ONE notification type for all 5 Tier 1 alerts, with the identity carried here in the resolutionKey — five `notificationTypes` values would mean five lockstep edits across schema.ts + contracts + emit.ts, and the bell does not branch on type
 export function opsAlertResolutionKey(id: AdminAlertId): string {
   return `ops-alert:${id}`;
 }
@@ -89,28 +81,58 @@ export function classifyStuck(
 }
 
 /** A4 classification: ratio of current window vs the preceding window, gated by an absolute floor so a near-zero baseline can't fire on noise. */
-export function classifySpend(current: number, baseline: number): AdminAlertStatus {
+export function classifySpend(
+  current: number,
+  baseline: number,
+  spikeMultiple: number,
+): AdminAlertStatus {
   if (current < SPEND_MIN_USD) return 'ok';
   if (baseline <= 0) return 'warn';
   const ratio = current / baseline;
-  if (ratio >= SPEND_CRIT_RATIO) return 'crit';
-  if (ratio >= SPEND_WARN_RATIO) return 'warn';
+  if (ratio >= spikeMultiple * SPEND_CRIT_FACTOR) return 'crit';
+  if (ratio >= spikeMultiple) return 'warn';
+  return 'ok';
+}
+
+/**
+ * A4's second, ABSOLUTE arm: trailing-24h spend against the configured ceiling.
+ *
+ * The ratio arm alone cannot see a spend that is high but steady — a deployment
+ * burning $200/day every day has a ratio of 1.0 and reads `ok` forever. That is
+ * the gap ISS-654's ceiling fills, so the two arms are combined with
+ * `worstStatus`, never substituted for one another.
+ */
+// cm:guard warn at 80% of the ceiling, crit AT it — a budget alarm that first speaks on the breach has already let the money go; the whole point of a ceiling over the ratio arm is the warning that arrives before it.
+export const SPEND_CEILING_WARN_FRACTION = 0.8;
+
+export function classifySpendCeiling(
+  spendUsdDay: number,
+  ceilingUsdDay: number | null,
+): AdminAlertStatus {
+  if (ceilingUsdDay === null || ceilingUsdDay <= 0) return 'ok';
+  if (spendUsdDay >= ceilingUsdDay) return 'crit';
+  if (spendUsdDay >= ceilingUsdDay * SPEND_CEILING_WARN_FRACTION) return 'warn';
   return 'ok';
 }
 
 /** A5 schedule contributor classification: consecutive trailing failures. */
-export function classifyScheduleStreak(streak: number): AdminAlertStatus {
-  if (streak >= SCHEDULE_CRIT_STREAK) return 'crit';
-  if (streak >= SCHEDULE_WARN_STREAK) return 'warn';
+export function classifyScheduleStreak(streak: number, warnStreak: number): AdminAlertStatus {
+  if (streak >= warnStreak + SCHEDULE_CRIT_MARGIN) return 'crit';
+  if (streak >= warnStreak) return 'warn';
   return 'ok';
 }
 
 /** A5 integration-delivery contributor classification: fail-rate over the minimum sample. */
-export function classifyDeliveryFailRate(failed: number, total: number): AdminAlertStatus {
+export function classifyDeliveryFailRate(
+  failed: number,
+  total: number,
+  warnRatePct: number,
+): AdminAlertStatus {
   if (total < DELIVERY_MIN_SAMPLE) return 'ok';
   const rate = failed / total;
-  if (rate >= DELIVERY_CRIT_RATE) return 'crit';
-  if (rate >= DELIVERY_WARN_RATE) return 'warn';
+  const warnRate = warnRatePct / 100;
+  if (rate >= Math.min(1, warnRate * DELIVERY_CRIT_FACTOR)) return 'crit';
+  if (rate >= warnRate) return 'warn';
   return 'ok';
 }
 
@@ -223,7 +245,7 @@ type StarvedProject = {
  * candidate pre-filter is a cheap cross-tenant scan, so on healthy data (no old
  * queued jobs) the per-project replay never runs.
  */
-async function alertRunnerStarved(): Promise<AdminAlert> {
+async function alertRunnerStarved(starvedGraceSeconds: number): Promise<AdminAlert> {
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
 
   const candidates = await db.execute<{ project_id: string; slug: string }>(sql`
@@ -234,7 +256,7 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
     WHERE j.status = 'queued'
       AND j.type <> 'pm'
       AND pr.status = 'running'
-      AND j.queued_at < now() - (${STARVED_GRACE_SECONDS}::int * interval '1 second')
+      AND j.queued_at < now() - (${starvedGraceSeconds}::int * interval '1 second')
   `);
 
   const starved: StarvedProject[] = [];
@@ -269,7 +291,7 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
         AND j.status = 'queued'
         AND j.type <> 'pm'
         AND r.status = 'running'
-        AND j.queued_at < now() - (${STARVED_GRACE_SECONDS}::int * interval '1 second')
+        AND j.queued_at < now() - (${starvedGraceSeconds}::int * interval '1 second')
         AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())
         AND NOT (${predicates.issueBusySession})
         AND NOT (${predicates.issueBusyJob})
@@ -336,9 +358,9 @@ async function alertRunnerStarved(): Promise<AdminAlert> {
 type SpendRow = { project_id: string; slug: string; cur: number; base: number };
 
 /** A4 — current-window spend vs the preceding window of equal length, cross-tenant and per project. */
-async function alertSpendSpike(now: Date): Promise<AdminAlert> {
+async function alertSpendSpike(now: Date, thresholds: AdminThresholds): Promise<AdminAlert> {
   const w = SPEND_WINDOW_HOURS;
-  const [[global], projectRows] = await Promise.all([
+  const [[global], projectRows, [day]] = await Promise.all([
     db.execute<{ cur: number; base: number }>(sql`
       SELECT
         coalesce(sum(estimated_cost) FILTER (WHERE recorded_at >= now() - (${w}::int * interval '1 hour')), 0)::float AS cur,
@@ -361,28 +383,44 @@ async function alertSpendSpike(now: Date): Promise<AdminAlert> {
         AND u.recorded_at >= now() - (${w * 2}::int * interval '1 hour')
       GROUP BY p.id, p.slug
     `),
+    // cm:guard the ceiling arm is a fixed TRAILING 24h, never SPEND_WINDOW_HOURS — `spendCeilingUsdDay` is a per-DAY budget, so reading it against the ratio arm's 1-hour window would compare an hour of spend to a day's allowance and never fire.
+    db.execute<{ spend: number }>(sql`
+      SELECT coalesce(sum(estimated_cost), 0)::float AS spend
+      FROM usage_records
+      WHERE recorded_at >= now() - interval '24 hours'
+    `),
   ]);
 
-  const globalStatus = classifySpend(global?.cur ?? 0, global?.base ?? 0);
+  const spikeMultiple = thresholds.spendSpikeMultiple;
+  const globalStatus = classifySpend(global?.cur ?? 0, global?.base ?? 0, spikeMultiple);
   const overProjects = projectRows
-    .map((r) => ({ ...r, status: classifySpend(r.cur, r.base) }))
+    .map((r) => ({ ...r, status: classifySpend(r.cur, r.base, spikeMultiple) }))
     .filter((r) => r.status !== 'ok')
     .sort((a, b) => b.cur - a.cur);
 
-  const status = overProjects.reduce((acc, r) => worstStatus(acc, r.status), globalStatus);
+  const spendUsdDay = day?.spend ?? 0;
+  const ceiling = thresholds.spendCeilingUsdDay;
+  const ceilingStatus = classifySpendCeiling(spendUsdDay, ceiling);
+  const ratioStatus = overProjects.reduce((acc, r) => worstStatus(acc, r.status), globalStatus);
+  const status = worstStatus(ratioStatus, ceilingStatus);
   const windowStart = new Date(now.getTime() - w * 3_600_000).toISOString();
   // cm:guard count must stay >= 1 whenever status !== 'ok' — a global-only fire (no project individually crosses the ratio) still counts 1: the deployment. A consumer filtering on count > 0 must never silently drop a live spend spike.
   const count = status === 'ok' ? 0 : Math.max(overProjects.length, 1);
+
+  // cm:guard the ceiling breach owns the detail line whenever it is the worse of the two arms — an operator paged for blowing a budget must be told the budget, not a ratio between two hours that may read perfectly ordinary.
+  const detail =
+    status === 'ok'
+      ? 'No spend spike'
+      : ceiling !== null && worstStatus(ceilingStatus, ratioStatus) === ceilingStatus
+        ? `Spend is $${spendUsdDay.toFixed(2)} in 24h against a $${ceiling.toFixed(2)}/day ceiling`
+        : `Spend is $${(global?.cur ?? 0).toFixed(2)} this window vs $${(global?.base ?? 0).toFixed(2)} baseline`;
 
   return {
     id: 'A4',
     key: 'spend_spike',
     status,
     count,
-    detail:
-      status === 'ok'
-        ? 'No spend spike'
-        : `Spend is $${(global?.cur ?? 0).toFixed(2)} this window vs $${(global?.base ?? 0).toFixed(2)} baseline`,
+    detail,
     since: status === 'ok' ? null : windowStart,
     entities: overProjects.slice(0, ENTITY_LIMIT).map((r) => ({
       ref: r.project_id,
@@ -426,7 +464,7 @@ function oldestIso(values: Array<PgTimestamp | null>): string | null {
 }
 
 /** A5 — two contributors combined into one alert: schedule fail-streaks and integration-delivery fail-rates. */
-async function alertAutomationFailing(): Promise<AdminAlert> {
+async function alertAutomationFailing(thresholds: AdminThresholds): Promise<AdminAlert> {
   const [scheduleRows, deliveryRows] = await Promise.all([
     // cm:guard never put a time bound on schedule_events, however tempting for I/O — a bound changes what a streak MEANS rather than just trimming rows: verified on Postgres 17, failures at 40d/20d/1h give streak=3 -> warn unbounded but streak=1 -> silence under the 8-day bound, while last_run_at still admits the schedule, so a slow-cadence failing schedule stops alarming and nothing looks wrong. A count bound (rn <= 5) does preserve the classification but buys no I/O, because row_number() must read and sort every partition row before rn exists to filter on; the only restructure that would cut I/O is a per-schedule LATERAL ... LIMIT, and the agent_sessions arm needs a partial expression index on (metadata ->> 'scheduleId', updated_at) first or it seq-scans once per schedule.
     // cm:guard no LIMIT on the row set either — `count` is documented as the true contributor total, so capping in SQL would understate it past ENTITY_LIMIT streaking schedules; only the display `entities` list is truncated
@@ -471,7 +509,7 @@ async function alertAutomationFailing(): Promise<AdminAlert> {
       FROM streaks st
       JOIN schedules s ON s.id::text = st.schedule_id
       JOIN projects p ON p.id = s.project_id
-      WHERE st.streak >= ${SCHEDULE_WARN_STREAK}
+      WHERE st.streak >= ${thresholds.scheduleFailStreak}
         AND s.enabled = true
         AND st.last_run_at >= now() - (${SCHEDULE_ACTIVE_WINDOW_HOURS}::int * interval '1 hour')
       ORDER BY st.streak DESC
@@ -499,7 +537,7 @@ async function alertAutomationFailing(): Promise<AdminAlert> {
       kind: 'schedule' as const,
       label: `${r.name} · ${r.streak} in a row`,
     },
-    status: classifyScheduleStreak(r.streak),
+    status: classifyScheduleStreak(r.streak, thresholds.scheduleFailStreak),
     since: r.streak_started_at,
   }));
   const deliveryContributors = deliveryRows
@@ -509,7 +547,7 @@ async function alertAutomationFailing(): Promise<AdminAlert> {
         kind: 'integration_binding' as const,
         label: `${r.provider} · ${r.project_slug} · ${r.failed}/${r.total} failed`,
       },
-      status: classifyDeliveryFailRate(r.failed, r.total),
+      status: classifyDeliveryFailRate(r.failed, r.total, thresholds.deliveryFailRatePct),
       since: r.oldest_failed_at,
     }))
     .filter((r) => r.status !== 'ok');
@@ -540,14 +578,16 @@ async function alertAutomationFailing(): Promise<AdminAlert> {
 
 /** Always returns exactly 5 items, ordered A1..A5. Shared by the pull route and the push sweeper. */
 export async function computeAlerts(opts: AlertQueryOptions = {}): Promise<AdminAlert[]> {
-  const staleSeconds = opts.staleSeconds ?? DEFAULT_STALE_SECONDS;
+  // cm:guard read the thresholds per call, never hoist them to module scope — a PUT must take effect on the next sweep tick and the next GET, which is what "the sweeper reads them dynamically" means; a process-lifetime read would restore exactly the redeploy-to-retune defect ISS-654 exists to remove.
+  const thresholds = opts.thresholds ?? (await readThresholds());
+  const staleSeconds = opts.staleSeconds ?? thresholds.stuckJobSeconds;
   const now = opts.now ?? new Date();
   const [a1, a2, a3, a4, a5] = await Promise.all([
     alertOrphanJobs(),
     alertStuckJobs(staleSeconds),
-    alertRunnerStarved(),
-    alertSpendSpike(now),
-    alertAutomationFailing(),
+    alertRunnerStarved(thresholds.runnerStarvedSeconds),
+    alertSpendSpike(now, thresholds),
+    alertAutomationFailing(thresholds),
   ]);
   return [a1, a2, a3, a4, a5];
 }

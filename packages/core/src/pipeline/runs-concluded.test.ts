@@ -17,7 +17,7 @@ vi.mock('../logger.js', () => ({
   },
 }));
 
-const { reapConcludedRuns } = await import('./runs-concluded.js');
+const { reapConcludedRuns, reapJoblessRuns } = await import('./runs-concluded.js');
 
 type Row = {
   id: string;
@@ -110,5 +110,47 @@ describe('reapConcludedRuns (ISS-923)', () => {
     expect(res.reaped).toBe(0);
     expect(closeRunMock).not.toHaveBeenCalled();
     expect(loggerInfo).not.toHaveBeenCalled();
+  });
+});
+
+// cm:edge contract -> packages/core/tests/integration/jobless-run-reap-e2e.test.ts — this suite proves the outcome mapping only; which rows the pass ADMITS is SQL and a mocked db.execute is no evidence about it.
+describe('reapJoblessRuns outcome mapping (ISS-654)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dbExecute.mockResolvedValue([]);
+  });
+
+  const row = (over: Partial<{ any_completed: boolean; any_failed: boolean }> = {}) => ({
+    id: 'run-1',
+    project_id: 'proj-1',
+    issue_id: 'iss-1',
+    any_completed: false,
+    any_failed: false,
+    ...over,
+  });
+
+  // cm:guard `cancelled` when nothing ever ran, never `failed` — a fabricated failure lands in every success-rate metric that reads run outcomes.
+  it.each([
+    [{}, 'cancelled'],
+    [{ any_completed: true }, 'completed'],
+    [{ any_failed: true }, 'failed'],
+    [{ any_completed: true, any_failed: true }, 'failed'],
+  ])('maps %o to `%s`', async (over, outcome) => {
+    dbExecute.mockResolvedValue([row(over)]);
+
+    const res = await reapJoblessRuns(new Date());
+
+    expect(res.reaped).toBe(1);
+    expect(closeRunMock).toHaveBeenCalledWith('run-1', outcome);
+  });
+
+  it('skips a row that throws and keeps closing the rest', async () => {
+    dbExecute.mockResolvedValue([row(), { ...row(), id: 'run-2' }]);
+    closeRunMock.mockRejectedValueOnce(new Error('nope'));
+
+    const res = await reapJoblessRuns(new Date());
+
+    expect(res.reaped).toBe(1);
+    expect(loggerError).toHaveBeenCalledOnce();
   });
 });

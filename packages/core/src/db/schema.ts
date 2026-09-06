@@ -179,10 +179,7 @@ export const refreshTokens = pgTable(
 export const orgMemberRoles = ['owner', 'admin', 'member'] as const;
 export type OrgMemberRole = (typeof orgMemberRoles)[number];
 
-// Soft "working lens(es)" an org owner/admin assigns to a member — orthogonal to
-// the permission `role`. Multi-valued; shapes ONLY how the interactive agent
-// answers (altitude/voice), never permissions. Empty = default (product /
-// non-technical voice). See prompt/system.ts buildChatPreamble.
+// cm:guard a lens shapes ONLY how the interactive agent answers (altitude and voice) and NEVER permissions — it is orthogonal to `role`, so a gate that reads a lens grants access an org admin never assigned; empty means the default product voice, not the absence of a right
 export const memberLenses = ['technical', 'product'] as const;
 export type MemberLens = (typeof memberLenses)[number];
 
@@ -2301,10 +2298,8 @@ export const sessionAttachmentsRelations = relations(sessionAttachments, ({ one 
   }),
 }));
 
-// v1 EPIC 5 (ISS-274) — per-project chat/runtime config. One row per project,
-// upserted via PUT /api/app-config/:projectId. `chatProviderId` is free-form
-// text until EPIC 1 (ISS-270) ships the chat-provider registry that validates
-// it; consumers must fall back to env defaults when the provider is unknown.
+// cm:guard `app_config` is keyed one row PER PROJECT — fleet-wide operator policy has no row here and belongs in `admin_thresholds` instead (ISS-654)
+// cm:guard `chatProviderId` is free-form text with no registry validating it, so every consumer must fall back to the env default on an unknown provider rather than trusting the column (ISS-270)
 export const memoryModels = ['flat', 'chunked'] as const;
 export type MemoryModel = (typeof memoryModels)[number];
 

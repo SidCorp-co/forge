@@ -1464,6 +1464,13 @@
       "when": 1791590400000,
       "tag": "0210_phase_step_durations_step_named",
       "breakpoints": true
+    },
+    {
+      "idx": 211,
+      "version": "7",
+      "when": 1791676800000,
+      "tag": "0211_admin_thresholds",
+      "breakpoints": true
     }
   ]
 }

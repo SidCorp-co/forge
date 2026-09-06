@@ -92,16 +92,39 @@ than a hook. That detector is a sweeper pass; the terminal write itself still go
   runs-concluded.ts reapConcludedRuns
         |
         |  admits a run only when ALL of:
-        |    status = 'running'          (never 'paused' — that is an operator's hold)
-        |    it HAS at least one job     (job-less runs belong to the pass above)
+        |    status = 'running' or 'paused'
+        |    it HAS at least one job     (job-less runs go to reapJoblessRuns below)
         |    no job in queued | dispatched | running | held
         |    no job touched within RESULT_QUIET_MINUTES
+        |    if 'paused': no agent_session in queued | running | idle
         v
   outcome := last job's status     done -> completed | failed -> failed | cancelled -> cancelled
         |
         v
   runs.ts closeRun(runId, outcome)  -->  cascadeCancelChildJobs  (a no-op: nothing is active)
+
+
+  runs-concluded.ts reapJoblessRuns          (the ISSUE-kind job-less shape)
+        |
+        |  admits a run only when ALL of:
+        |    kind = 'issue'              (system/interactive go to reapOrphanedOneShotRuns)
+        |    status = 'running' or 'paused'
+        |    NO jobs at all
+        |    started_at older than RESULT_QUIET_MINUTES
+        |    no agent_session in queued | running | idle
+        v
+  outcome := from the run's sessions   a completed one and no failure -> completed
+                                       any failure                    -> failed
+                                       no session at all              -> cancelled
+        |
+        v
+  runs.ts closeRun(runId, outcome)
 </pre>
+
+<p>The <code>paused</code> arm is narrow on purpose. An operator's hold is a decision no sweeper may
+undo, so what admits a paused run is not the pause itself but the proof that nothing is left to
+resume into: every job terminal, an hour of silence, and no session beating. Widen it and the pass
+starts cancelling deliberate holds.</p>
 
 <h2>When it goes wrong</h2>
 <table>
@@ -120,6 +143,10 @@ than a hook. That detector is a sweeper pass; the terminal write itself still go
     <td>Only possible if the next job had not been INSERTed yet. <code>jobs/retry.ts</code> inserts
         the clone at <code>queued</code> <i>before</i> the delayed enqueue precisely so a
         backing-off retry always leaves a non-terminal job here.</td></tr>
+<tr><td>An operator's <code>paused</code> run was closed</td>
+    <td>It had no live session and every job terminal, so the sweeper judged it unresumable. If the
+        hold was real, the session or the queued job that made it real was missing — that is the
+        defect, not the reap.</td></tr>
 <tr><td>The run split into two rows across a gap</td>
     <td>Expected, not damage. <code>runs.ts openIssueRun</code> opens a fresh run when none is open,
         which is what makes closing a concluded run safe in the first place.</td></tr>
@@ -132,7 +159,7 @@ than a hook. That detector is a sweeper pass; the terminal write itself still go
 <tbody>
 <tr><td>open / close a run</td><td><code>packages/core/src/pipeline/runs.ts</code></td></tr>
 <tr><td>reap children on close</td><td><code>packages/core/src/pipeline/runs-cascade.ts</code></td></tr>
-<tr><td>reap a run whose children are done</td><td><code>packages/core/src/pipeline/runs-concluded.ts</code></td></tr>
+<tr><td>reap a run whose children are done, and the job-less issue runs</td><td><code>packages/core/src/pipeline/runs-concluded.ts</code></td></tr>
 <tr><td>the four job hops</td><td><code>packages/core/src/jobs/loop-monitor.ts</code></td></tr>
 <tr><td>the tick that drives all of it</td><td><code>packages/core/src/pipeline/sweeper.ts</code></td></tr>
 </tbody>

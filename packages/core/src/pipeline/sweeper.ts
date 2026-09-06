@@ -46,7 +46,12 @@ import {
 import { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
 import { type OrphanedPauseResult, resumeOrphanedPauses } from './run-pause.js';
 import { closeOpenRunForIssue, closeRunIfOneShot } from './runs.js';
-import { type ConcludedRunReapResult, reapConcludedRuns } from './runs-concluded.js';
+import {
+  type ConcludedRunReapResult,
+  type JoblessRunReapResult,
+  reapConcludedRuns,
+  reapJoblessRuns,
+} from './runs-concluded.js';
 import { detectStrandedIssues, type StrandedIssuesResult } from './stranded-issues.js';
 import { emitPipelineWedge } from './wedge.js';
 
@@ -115,6 +120,8 @@ export interface SweepResult {
   orphanedIssueRuns: IssueRunReapResult;
   /** ISS-923 — runs closed because every child job already reached a terminal status (reaps). */
   concludedRuns: ConcludedRunReapResult;
+  /** ISS-654 — issue runs closed because no job was ever enqueued under them (reaps). */
+  joblessRuns: JoblessRunReapResult;
   /** RFC 0002 INV-7 — holds that outlived their threshold (alarm only). */
   agedHolds: Inv7AlarmResult;
   stalledQueuedJobs: Inv7AlarmResult;
@@ -154,10 +161,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     }
   };
 
-  // ISS-449 — the loop monitor runs FIRST and owns every reap. The alarm
-  // passes below run against the post-loop state, so anything they match is a
-  // genuine loop miss (handler threw, CAS starved, coverage gap) — not a row
-  // the loop simply hadn't reached yet.
+  // cm:guard the loop monitor runs FIRST and owns every reap; the alarm passes below must run against the POST-loop state, or a row they match is one the loop had not reached yet rather than a genuine miss, and every tick reports false wedges (ISS-449)
   const loop = await runPass('loopMonitor', () => runLoopMonitor(now));
   const zombieSessions = await runPass('alarmZombieSessions', () => alarmZombieSessions(now));
   const orphanedJobs = await runPass('alarmOrphanedJobs', () => alarmOrphanedJobs(now));
@@ -174,6 +178,8 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   );
   // cm:guard AFTER reapOrphanedIssueRuns, and the order carries meaning: that pass writes `completed` unconditionally to mirror `apply-transition.ts`, so running it first keeps the closed-issue case on its established outcome and leaves this pass the rows nothing else reaches. Reversed, a closed issue whose last job failed would start closing `failed` — a silent change to ISS-461's contract made by ordering alone.
   const concludedRuns = await runPass('reapConcludedRuns', () => reapConcludedRuns(now));
+  // cm:guard AFTER reapConcludedRuns for the same ordering reason: that pass owns every run that HAS a job, this one only the rows with none, so a row can never be a candidate for both within one tick.
+  const joblessRuns = await runPass('reapJoblessRuns', () => reapJoblessRuns(now));
   const agedHolds = await runPass('alarmAgedHolds', () => alarmAgedHolds(now));
   // cm:why alarm, not a reap: a plain `queued` job holds no capacity, so cancelling it frees nothing and only destroys work — and the state it reports (every gate passes, nothing started it) is one only a human can resolve, because the picker and the selector disagreeing is a configuration mismatch, not a stuck row
   const stalledQueuedJobs = await runPass('alarmStalledQueuedJobs', () =>
@@ -223,6 +229,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     idleChatSessions: idleChatSessions as IdleChatCloseResult,
     orphanedIssueRuns: orphanedIssueRuns as IssueRunReapResult,
     concludedRuns: concludedRuns as ConcludedRunReapResult,
+    joblessRuns: joblessRuns as JoblessRunReapResult,
     agedHolds: agedHolds as Inv7AlarmResult,
     stalledQueuedJobs: stalledQueuedJobs as Inv7AlarmResult,
     pausedRunsWithQueuedWork: pausedRunsWithQueuedWork as Inv7AlarmResult,

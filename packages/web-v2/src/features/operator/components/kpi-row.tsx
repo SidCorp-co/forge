@@ -27,8 +27,8 @@ export function KpiRowSkeleton() {
   );
 }
 
-// cm:edge contract -> packages/core/src/admin/aggregate-routes.ts — `kpis.openAlerts` there is an independent approximation of A2 (running-only, no A1/A3/A4/A5) that ISS-654 will unify; until it does, this tile counts the alerts the feed one card below is showing, because "0 · nothing needs you" printed above a red crit row is the state-lies failure VISION №10 forbids
-export function KpiRow({ overview, openAlerts }: { overview: AdminOverview; openAlerts: number | null }) {
+// cm:edge contract -> packages/core/src/admin/aggregate-routes.ts — `kpis.openAlerts` is now counted there from the SHARED `computeAlerts`, the same five alerts the feed one card below renders, so this tile reads it directly (ISS-654). It must never go back to a locally derived count: two definitions is how "0 · nothing needs you" came to print above a red crit row, the state-lies failure VISION №10 forbids.
+export function KpiRow({ overview }: { overview: AdminOverview }) {
   const { counts, kpis } = overview;
   const spendDelta = formatDelta(
     kpis.spendBaselineUsd > 0
@@ -40,8 +40,8 @@ export function KpiRow({ overview, openAlerts }: { overview: AdminOverview; open
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <Tile
         label="Open alerts"
-        value={formatCount(openAlerts)}
-        note={openAlerts === 0 ? "nothing needs you" : "needs an operator"}
+        value={formatCount(kpis.openAlerts)}
+        note={kpis.openAlerts === 0 ? "nothing needs you" : "needs an operator"}
       />
       <Tile label="Jobs in flight" value={formatCount(kpis.inFlightJobs)} note="queued, dispatched or running" />
       <Tile

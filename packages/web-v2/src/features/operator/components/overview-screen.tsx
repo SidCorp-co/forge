@@ -13,7 +13,7 @@ import {
 } from "../hooks";
 import type { OperatorWindow, OperatorWorkspaceSort } from "../types";
 import { AdoptionPanel, AdoptionPanelSkeleton } from "./adoption-panel";
-import { AlertFeed, AlertFeedSkeleton, openAlertCount } from "./alert-feed";
+import { AlertFeed, AlertFeedSkeleton } from "./alert-feed";
 import { GlanceCards, GlanceCardsSkeleton } from "./glance-cards";
 import { KpiRow, KpiRowSkeleton } from "./kpi-row";
 import { WorkspacesTable, WorkspacesTableSkeleton } from "./workspaces-table";
@@ -71,12 +71,7 @@ export function OperatorOverviewScreen() {
       </div>
 
       <Panel query={overview} skeleton={<KpiRowSkeleton />}>
-        {(data) => (
-          <KpiRow
-            overview={data}
-            openAlerts={alerts.data ? openAlertCount(alerts.data.items) : null}
-          />
-        )}
+        {(data) => <KpiRow overview={data} />}
       </Panel>
 
       <Panel query={alerts} skeleton={<AlertFeedSkeleton />}>

@@ -4,9 +4,7 @@ vi.mock('../config/env.js', () => ({ env: { NODE_ENV: 'test' } }));
 
 const zeroAxis = { reaped: 0, killRequested: 0, awaitingKill: 0 };
 
-// ISS-449 — the loop monitor is the primary pass; the sweeper only drives it.
-// Mock it so these tests assert the sweeper's own contract (ordering, alarm
-// passes, still-active reapers) without pulling in the loop's reap graph.
+// cm:guard the loop monitor stays MOCKED here — this suite asserts the sweeper's own contract (pass ordering, the alarm passes, the still-active reapers), and unmocking it pulls in the whole reap graph, whose writes then answer assertions about passes that never ran (ISS-449)
 const zeroLoopResult = {
   ackMisses: zeroAxis,
   sessions: { queueTimedOut: 0, heartbeatTimedOut: 0, noClientAcked: 0 },
@@ -40,8 +38,10 @@ vi.mock('./run-pause.js', () => ({ resumeOrphanedPauses: () => resumeOrphanedPau
 
 // cm:why mocked for the same reason `alertSweep` is — `reapConcludedRuns` issues its own real `db.execute`, and this suite's `dbExecute` is one shared `mockResolvedValueOnce` queue, so an unmocked pass silently eats another pass's queued result. Its own behaviour is proved in `runs-concluded.test.ts` and `tests/integration/concluded-run-reap-e2e.test.ts`.
 const reapConcludedRunsMock = vi.fn(async (_now?: Date) => ({ reaped: 0 }));
+const reapJoblessRunsMock = vi.fn(async (_now?: Date) => ({ reaped: 0 }));
 vi.mock('./runs-concluded.js', () => ({
   reapConcludedRuns: (now?: Date) => reapConcludedRunsMock(now),
+  reapJoblessRuns: (now?: Date) => reapJoblessRunsMock(now),
 }));
 
 const detectRetryRescueThresholdsMock = vi.fn(async (_now?: Date) => ({
@@ -566,6 +566,42 @@ describe('reapConcludedRuns wiring (ISS-923 — the inverse orphan direction)', 
 
     expect(order.indexOf('orphanedIssueRuns')).toBeGreaterThanOrEqual(0);
     expect(order.indexOf('concludedRuns')).toBeGreaterThan(order.indexOf('orphanedIssueRuns'));
+  });
+});
+
+describe('reapJoblessRuns wiring (ISS-654 — the job-less issue-run phantom)', () => {
+  it('runs as part of runPipelineSweep and reports the count', async () => {
+    reapJoblessRunsMock.mockResolvedValueOnce({ reaped: 2 });
+
+    const result = await runPipelineSweep();
+
+    expect(reapJoblessRunsMock).toHaveBeenCalledTimes(1);
+    expect(result.joblessRuns.reaped).toBe(2);
+  });
+
+  // cm:guard the ordering is the assertion: `reapConcludedRuns` owns every run that HAS a job and this pass owns only the rows with none, so running it second is what keeps one row from answering to two reapers with different outcome rules within a single tick.
+  it('runs AFTER reapConcludedRuns', async () => {
+    const order: string[] = [];
+    reapConcludedRunsMock.mockImplementation(async () => {
+      order.push('concludedRuns');
+      return { reaped: 0 };
+    });
+    reapJoblessRunsMock.mockImplementation(async () => {
+      order.push('joblessRuns');
+      return { reaped: 0 };
+    });
+
+    await runPipelineSweep();
+
+    expect(order).toEqual(['concludedRuns', 'joblessRuns']);
+  });
+
+  // cm:guard the pass is isolated like every sibling: a throw must not stop the passes AFTER it, and the tick must still reject at the end so `pgboss-health` records a missed tick rather than a clean heartbeat. Both halves are the assertion — drop the second and a failing pass goes green; drop the first and one bad row starves every pass behind it.
+  it('a throw leaves the later passes running and still fails the tick', async () => {
+    reapJoblessRunsMock.mockRejectedValueOnce(new Error('boom'));
+
+    await expect(runPipelineSweep()).rejects.toThrow();
+    expect(alertsMock).toHaveBeenCalled();
   });
 });
 
