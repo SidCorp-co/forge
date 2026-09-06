@@ -1,0 +1,197 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · release-record — what has to be true before an issue may claim it shipped</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --lock:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .gap { background:#fff; border:1px solid var(--line); border-left:3px solid var(--bad); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .lock { color:var(--lock); font-weight:600; }
+  pre { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto;
+        font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  ul { padding-left:1.1rem; } li { margin:.3rem 0; }
+</style>
+<main>
+<h1>release-record</h1>
+<p class="sub">How an issue reaches <code>closed</code>, what must be written before it may, and
+the one hop on this path where the record can still be lost in silence.</p>
+
+<h2>Why this flow exists</h2>
+<div class="rule">
+<p><code>closed</code> is what every reader takes as <b>this shipped</b> — the <code>blocks</code>
+gate, the release roster, pipeline health, and <code>markMergedOnClose</code>, which stamps
+<code>merged_at</code> on the way past and thereby releases every dependent. So a close is a claim,
+and the whole of this flow is the set of things that must be true before an automated hand may make
+it.</p>
+<p>The claim used to be free. Six issues closed on 2026-08-27 with no changelog entry, two of them
+with <code>releaseNotes</code> null; a batch closed two more the same way. Both doors below were
+built from those measurements (ISS-863, ISS-880, ISS-897).</p>
+</div>
+
+<h2>The path</h2>
+<pre>
+  agent finishes the work, asks for `closed`
+                |
+                v
+  +-------------------------------+
+  | issues/release-gate-hold.ts   |   resolveAgentCloseTarget
+  | does this project ship        |   agency=agent AND not viaReleasePath
+  | anywhere else?                |
+  +-------------------------------+
+        |                     |
+   no gate                  gate = `released`         <- release-batch/gate.ts:
+        |                     |                          an ACTIVE prod binding, AND
+        |                     v                          (a production branch distinct
+        |            the close is REWRITTEN               from the base OR a declared
+        |            to `released` and held               releaseRunnerLabel)
+        |                     |
+        v                     |          an operator selects the parked issues
+  +------------------------+  |                        |
+  | release-record-        |  |                        v
+  | required.ts            |  |     +--------------------------------------+
+  | refuseUnrecordedClose  |  |     | release-batch/service.ts             |
+  |                        |  |     | createReleaseBatch                   |
+  | exempt: a human,       |  |     |  1. every issue at the gate status   |
+  |   viaReleasePath,      |  |     |  2. NONE missing a release note  <---+-- the same rule,
+  |   `dropped`            |  |     |  3. a named, online release box      |   second door
+  +------------------------+  |     |  4. read the LIVE commit FIRST       |
+        |            |        |     +--------------------------------------+
+   note present   no note     |                        |
+        |            |        |            one `release_batch` job, one agent
+        |            v        |                        |
+        |        REFUSED      |                        v
+        |     nothing moves   |     +--------------------------------------+
+        |                     |     | finishReleaseBatch                   |
+        |                     |     |  probes: live commit CHANGED and     |
+        |                     |     |  matches what the release pushed     |
+        |                     |     +--------------------------------------+
+        |                     |            |                    |
+        |                     |         verified            not verified
+        |                     |            |                    |
+        |                     |            v                    v
+        |                     |     close every claim     ReleaseNotVerifiedError
+        |                     |     viaReleasePath        NOTHING closes; abort is
+        |                     |            |              the only remaining move
+        +---------------------+------------+
+                              |
+                              v
+              +--------------------------------+
+              | issues/merged-at.ts            |
+              | leaving BASE_MERGE_STATE  -> stamp merged_at   (cm:flow release/stamp)
+              | reaching `closed`         -> stamp if still null (cm:flow release/close)
+              +--------------------------------+
+                              |
+                              v
+                 every `blocks` dependent is now free
+                              |
+                              v
+              +--------------------------------+
+              | runs-cascade.ts closes the run | (cm:flow release/reap)
+              | job completion dispatches the  | (cm:flow release/deploy)
+              | deploy; prod parks for a human |
+              +--------------------------------+
+</pre>
+
+<h2>The two doors are one rule</h2>
+<div class="rule">
+<p>A release note must exist on the issue before an automated close. It is checked in two places
+because two different callers reach <code>closed</code> with an automated hand on them, and the
+second is exempt from the first <b>because</b> of the second check:</p>
+<table>
+<thead><tr><th>Door</th><th>Where</th><th>Refuses</th></tr></thead>
+<tbody>
+<tr><td>the transition</td><td><code>issues/release-record-required.ts</code> <code>refuseUnrecordedClose</code></td>
+    <td>an agent's <code>closed</code> while <code>issues.release_notes</code> is null</td></tr>
+<tr><td>the batch claim</td><td><code>release-batch/service.ts</code> <code>createReleaseBatch</code></td>
+    <td>the WHOLE batch, before anything moves, if any issue has no note</td></tr>
+</tbody>
+</table>
+<p><code>finishReleaseBatch</code> closes with <code>viaReleasePath</code>, which the first door
+exempts. That exemption is sound only while the claim preflight exists — delete the preflight and
+the batch path silently closes unrecorded issues again. The pair carries
+<code>cm:edge lockstep</code> in both directions for exactly this reason.</p>
+</div>
+
+<h2>The three exemptions, and why each one is right</h2>
+<table>
+<thead><tr><th>Exempt</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>a human actor</td><td>An operator closing by hand makes the shipped claim deliberately and
+    owns it. The check asks <code>agency</code>, not <code>actor.type</code>: a job token is an
+    agent writing as the person who queued it.</td></tr>
+<tr><td><code>viaReleasePath</code></td><td>The note was already required at the claim. This is the
+    only flag that must not be widened — the shared <code>skip</code> flag rides on every internal
+    transition, so exempting on it would open the door from all of them at once.</td></tr>
+<tr><td><code>dropped</code></td><td><code>dropped</code> means <i>this was not work</i>. It is
+    terminal with no exit, and it stamps no <code>merged_at</code> — which is what makes it the
+    honest discard, and why closing an abandoned issue is the wrong one.</td></tr>
+</tbody>
+</table>
+
+<h2 id="the-gap">Where the record is still lost</h2>
+<div class="gap">
+<p><b>Everything above guarantees a note exists on the ISSUE. Nothing here reaches
+<code>CHANGELOG.md</code>.</b> Core never reads that file, and CI never reads the issue table, so no
+single process sees both halves.</p>
+<ul>
+  <li><code>RELEASE_RECORD_REQUIRED</code> is blind to whether the note ever became a bullet.</li>
+  <li><code>scripts/check-release-record.mjs</code> (<code>no-silent-loss</code>) is blind to an
+      entry that was <span class="bad">never written</span> — it only defends entries that existed
+      at the base revision.</li>
+</ul>
+<p>Measured consequence: ISS-877, ISS-854, ISS-870 and ISS-903 all reached <code>main</code> with
+nothing in the record, and ISS-870 and ISS-903 had their <code>releaseNotes</code> populated, so
+the refusal held and the reader still got nothing. The bullets they were owed were written by hand
+in ISS-896.</p>
+<p>This is a <b>known open decision, not an unnoticed hole</b>: whether a close should prompt for
+its note, and whether that prompt should also write the bullet, is held for a human in
+<code>docs/proposals/changelog-omission-is-unguarded.md</code> along with the reason both obvious
+gates are refused. Do not close it from a diff.</p>
+</div>
+
+<h2>What breaks it, and how you would know</h2>
+<table>
+<thead><tr><th>Change</th><th>What goes wrong</th><th>What tells you</th></tr></thead>
+<tbody>
+<tr><td>Delete the claim preflight in <code>createReleaseBatch</code></td>
+    <td>The batch closes note-less issues again — the exemption on the other door is now a hole</td>
+    <td><code>tests/integration/release-record-required-e2e.test.ts</code></td></tr>
+<tr><td>Widen the transition exemption to the shared <code>skip</code> flag</td>
+    <td><code>closed</code> becomes reachable with nothing written from every internal transition</td>
+    <td>the same file — it was tried and falsified there</td></tr>
+<tr><td>Re-add <code>merged_at IS NULL</code> to bound the refusal</td>
+    <td>It refuses the canonical <code>released → closed</code>, the one path it meant to exempt: the
+        stamp lands later in the same transaction</td>
+    <td>the same file; the mocked unit suite passes this one</td></tr>
+<tr><td>Let <code>finishReleaseBatch</code> close before the probes agree</td>
+    <td>Issues claim a release the probes said did not happen, and nothing walks it back</td>
+    <td><code>tests/integration/release-batch-finish-e2e.test.ts</code></td></tr>
+<tr><td>Make <code>abortReleaseBatch</code> release claims without closing the run</td>
+    <td>A retry job under the aborted run keeps going and ships anyway (batch <code>ee39c4ae</code>,
+        2026-09-03: 20 commits to production after the abort)</td>
+    <td>the same file</td></tr>
+<tr><td>Turn <code>finalizeJobDone</code>'s CAS into a plain update</td>
+    <td>A stale finalizer overwrites the terminal state a concurrent writer already owns</td>
+    <td><code>tests/integration/release-job-finalize-e2e.test.ts</code></td></tr>
+</tbody>
+</table>
+
+<h2>Read next</h2>
+<ul>
+  <li><a href="lifecycle-pipeline.html">lifecycle-pipeline</a> — what closes the run this flow's
+      last step reaps, in both directions.</li>
+  <li><code>docs/proposals/changelog-omission-is-unguarded.md</code> — the open decision named
+      above, with its priced options.</li>
+</ul>
+
+</main>
