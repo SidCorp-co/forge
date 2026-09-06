@@ -317,6 +317,10 @@ pub async fn handle_send(
         Some((dir, paths)) => (augment_prompt(&f.message, &paths), Some(dir)),
         None => (f.message, None),
     };
+    // The session's token was delivered on `agent:start`; a follow-up never
+    // carries one, and re-minting per turn would revoke the credential the
+    // previous turn may still be spending.
+    let session_token = session_token_for(&f.session_id);
     run_turn(
         client,
         runner,
@@ -332,10 +336,7 @@ pub async fn handle_send(
             resume_id: f.claude_session_id.filter(|s| !s.is_empty()),
             mcp_servers_override: f.mcp_servers_override,
             attachment_dir,
-            // The session's token was delivered on `agent:start`; a follow-up
-            // never carries one, and re-minting per turn would revoke the
-            // credential the previous turn may still be spending.
-            session_token: session_token_for(&f.session_id),
+            session_token,
         },
     )
     .await
@@ -710,6 +711,49 @@ mod tests {
     use crate::config::Binding;
     use std::path::PathBuf;
 
+    // cm:guard the token arrives on `agent:start` and every later turn reads it from the store, because core does not re-send it on `agent:send` — a re-mint would revoke the credential an in-flight turn is spending. This asserts the round-trip that keeps a resumed turn authenticated; without it, `agent:send` silently falls back to whatever `$FORGE_PAT` the box was provisioned with, which is exactly the credential ISS-927 exists to stop relying on.
+    #[test]
+    fn a_session_token_survives_from_start_to_the_next_turn() {
+        let sid = format!("sess-{}", Uuid::new_v4());
+        assert!(session_token_for(&sid).is_none());
+
+        remember_session_token(&sid, Some("forge_pat_dev_secret".into()));
+        assert_eq!(
+            session_token_for(&sid).map(|t| t.expose().to_string()),
+            Some("forge_pat_dev_secret".into())
+        );
+
+        forget_session_token(&sid);
+        assert!(session_token_for(&sid).is_none());
+    }
+
+    // cm:guard a mint core could not perform sends no field at all, and an absent token must leave the entry ABSENT rather than storing an empty string — `claude_code.rs` sets `FORGE_PAT` whenever `pat_token` is `Some`, so an empty one would overwrite a working operator-provisioned value with nothing and break a box that was fine.
+    #[test]
+    fn an_absent_or_empty_token_stores_nothing() {
+        let sid = format!("sess-{}", Uuid::new_v4());
+        remember_session_token(&sid, None);
+        assert!(session_token_for(&sid).is_none());
+        remember_session_token(&sid, Some(String::new()));
+        assert!(session_token_for(&sid).is_none());
+    }
+
+    // cm:guard one session's token must never be handed to another. The store is process-global and shared by every session this daemon serves, and a box serving several projects would otherwise cross project-bound credentials between them.
+    #[test]
+    fn forgetting_one_session_leaves_another_alone() {
+        let mine = format!("sess-{}", Uuid::new_v4());
+        let theirs = format!("sess-{}", Uuid::new_v4());
+        remember_session_token(&mine, Some("mine".into()));
+        remember_session_token(&theirs, Some("theirs".into()));
+
+        forget_session_token(&mine);
+
+        assert!(session_token_for(&mine).is_none());
+        assert_eq!(
+            session_token_for(&theirs).map(|t| t.expose().to_string()),
+            Some("theirs".into())
+        );
+    }
+
     fn turn_for_test() -> Turn {
         Turn {
             session_id: "s1".into(),
@@ -721,6 +765,7 @@ mod tests {
             resume_id: None,
             mcp_servers_override: None,
             attachment_dir: None,
+            session_token: None,
         }
     }
 
