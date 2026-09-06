@@ -82,26 +82,24 @@ type Sessions = Arc<Mutex<HashMap<String, Session>>>;
 // cm:guard PRINT ONLY. On the duplex path a `{type:result}` ends the TURN and the process is expected to stay alive, so applying this grace there would kill every resident session five seconds after its first answer — the exact behaviour residency exists to remove.
 const RESULT_EXIT_GRACE: Duration = Duration::from_secs(5);
 
-/// How long a duplex session may sit between turns before it is closed.
-// cm:guard a resident session with nobody talking to it is a leaked process holding a permit, and nothing else reaps it: the daemon's drain counter tracks TURNS (`InflightGuard` is scoped to the frame task), so an idle session reads as idle and a restart would exit(0) leaving a setsid-detached survivor. This ceiling is the only thing that closes it. `sessionResidencySeconds` gets its reader in phase 3 and replaces this const with a per-project value.
+/// How long a session may sit between turns before it is closed, when the
+/// project named no residency of its own.
+// cm:guard a resident session with nobody talking to it is a leaked process holding a permit, and nothing else reaps it: the daemon's drain counter tracks TURNS (`InflightGuard` is scoped to the frame task), so an idle session reads as idle and a restart would exit(0) leaving a setsid-detached survivor. This ceiling is the only thing that closes it. It is now the FALLBACK rather than the whole rule — `resolve_residency` prefers a project's `sessionResidencySeconds` and lands here for absent and 0 alike.
 const SESSION_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
-/// How long this session may sit parked between turns.
-// cm:edge lockstep -> packages/core/src/jobs/park-deadline.ts — core's backstop resolves the SAME field with a COALESCE onto the same default, and fires at that value plus a grace. Resolving `0` differently here is what would make the two race: core reaping a park this side still considers live, with `residency_expired` no longer meaning "the runner is gone".
-// cm:guard `Some(0)` means "use the default", NOT "no residency". The config key defaults to 0 and no project has set it, so reading 0 literally would turn residency off for the entire fleet the moment this reader shipped — a regression against the phase 1b const it replaces, and exactly why ISS-873 moved this reader out of phase 3.
 /// Whether this spawn must hold one of the box's session permits.
 // cm:guard the cap covers PIPELINE jobs ONLY. Chat opts out at the spec (`counts_against_session_cap: false`) and must keep doing so. The reason is the SWEEPER, not the shape of the wait: core kills a chat turn that has not acked in 90s, and `SESSION_PERMIT_WAIT` is 600s, so a chat turn queued behind parked pipeline sessions dies before it ever spawns whether the wait is bounded or not (session 1af837da, 2026-09-04). ISS-920 gave the wait a bound and that argument did not move — dropping this field and capping every spawn restores the defect.
 fn takes_session_permit(spec: &JobSpec) -> bool {
     spec.counts_against_session_cap
 }
 
-/// How long a spawn may wait for one of the box's duplex session permits.
+/// How long a spawn may wait for one of the box's session permits.
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — `PRE_SPAWN_BEAT_BUDGET` is derived from this plus `REPO_LOCK_WAIT`, so the runner still gives up before core condemns the session. Change this and that budget moves with it; the `const _: () = assert!` over there fails the build if it stops.
 // cm:guard equal to `SESSION_IDLE_TIMEOUT` on purpose: a permit is released by a session ending or by its residency deadline, so a wait shorter than a residency window fails jobs a parked session was about to release, and a longer one learns nothing.
 // cm:hack ISS-920 until:`sessionResidencySeconds` is set above 600 on any project — that value is per-project and `pipeline-config-schema.ts` allows up to 3600, so this bound is only the DEFAULT residency window, not every one. Priced: a project that raises the key gets jobs failing `session_permit_saturated` after 600s that would have got a permit at 900s. Nothing sets the key today; the first project that does moves this number or derives it from the resolved value.
 pub const SESSION_PERMIT_WAIT: Duration = SESSION_IDLE_TIMEOUT;
 
-/// Take a duplex session permit, or fail naming the box that is full.
+/// Take a session permit, or fail naming the box that is full.
 ///
 /// Split out of [`Runner::start`] so the bound can be tested without spawning
 /// `claude`: the wait is the whole behaviour, and the only way to exercise it
@@ -121,14 +119,14 @@ async fn acquire_session_permit(
     }
     // cm:guard a parked `awaiting_input` session keeps its permit until its residency deadline, so "no permit" here usually means the ceiling is spent on sessions doing nothing — say so, or the job's silence reads as a hang.
     tracing::warn!(
-        "[job {job_id}] waiting for a duplex session slot — all {cap} permits held by {} (parked awaiting_input sessions keep theirs until residency ends)",
+        "[job {job_id}] waiting for a session slot — all {cap} permits held by {} (parked awaiting_input sessions keep theirs until residency ends)",
         describe_holders(&holders)
     );
     match tokio::time::timeout(wait, sem.acquire_owned()).await {
         Ok(Ok(permit)) => Ok(permit),
         Ok(Err(e)) => Err(Error::Other(format!("session semaphore closed: {e}"))),
         Err(_) => Err(Error::Other(format!(
-            "session_permit_saturated: all {cap} duplex permits on this box held after {}s; holders at wait start: {}",
+            "session_permit_saturated: all {cap} permits on this box held after {}s; holders at wait start: {}",
             wait.as_secs(),
             describe_holders(&holders)
         ))),
@@ -145,6 +143,9 @@ fn describe_holders(holders: &[String]) -> String {
     holders.join(", ")
 }
 
+/// How long this session may sit parked between turns.
+// cm:edge lockstep -> packages/core/src/jobs/park-deadline.ts — core's backstop resolves the SAME field with a COALESCE onto the same default, and fires at that value plus a grace. Resolving `0` differently here is what would make the two race: core reaping a park this side still considers live, with `residency_expired` no longer meaning "the runner is gone".
+// cm:guard `Some(0)` means "use the default", NOT "no residency". The config key defaults to 0 and no project has set it, so reading 0 literally would turn residency off for the entire fleet the moment this reader shipped — a regression against the phase 1b const it replaces, and exactly why ISS-873 moved this reader out of phase 3.
 fn resolve_residency(configured: Option<u64>) -> Duration {
     match configured {
         Some(secs) if secs > 0 => Duration::from_secs(secs),
@@ -1541,7 +1542,7 @@ mod tests {
         // bucket is ever consulted.
         assert_eq!(
             err.to_string(),
-            "session_permit_saturated: all 2 duplex permits on this box held after 600s; \
+            "session_permit_saturated: all 2 permits on this box held after 600s; \
              holders at wait start: codemap, forge-dev"
         );
     }
