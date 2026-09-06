@@ -1,5 +1,5 @@
 {
-  "$comment": "Resolution map for `arch check` ONLY — nothing compiles against this. It exists so dependency-cruiser can follow web-v2's `@/*` alias; without it 841 of the repo's import edges are unresolvable, and an unresolvable edge is DROPPED, so every contract over that package passes on an empty graph. Declared by `.arch.json` -> tsConfig. It sits at the repo root because tsc resolves `include` against the tsconfig's own directory, so a copy under .forge/ finds no inputs. Keep `paths` in sync with packages/web-v2/tsconfig.json.",
+  "$comment": "Resolution map for `arch check` ONLY — nothing compiles against this. It exists so dependency-cruiser can follow web-v2's `@/*` alias; without it 841 of the repo's import edges are unresolvable, and an unresolvable edge is DROPPED, so every contract over that package passes on an empty graph. Declared by `.arch.json` -> tsConfig. It sits at the repo root because tsc resolves `include` against the tsconfig's own directory, so a copy under .forge/ finds no inputs. Keep `paths` in sync with packages/web-v2/tsconfig.json and with packages/contracts/package.json#exports \u2014 `@forge/contracts` is a first-party package whose subpath exports dependency-cruiser does not follow, and its 35 edges were being dropped in the same silence.",
   "compilerOptions": {
     "module": "esnext",
     "moduleResolution": "bundler",
@@ -7,7 +7,9 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["packages/web-v2/src/*"]
+      "@/*": ["packages/web-v2/src/*"],
+      "@forge/contracts": ["packages/contracts/src/index.ts"],
+      "@forge/contracts/*": ["packages/contracts/src/*"]
     }
   },
   "include": [

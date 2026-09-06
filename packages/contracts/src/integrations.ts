@@ -452,9 +452,31 @@ export interface BindingResponse {
 
 // cm:why these list routes answer with a bare `{ items }` object rather than the X-Total-Count + bare-array convention `ListResponse<T>` wraps, so the envelopes below declare `items` and nothing else
 
+/**
+ * Where one connection is actually used. The directory lists credentials that
+ * are otherwise indistinguishable — several Coolify tokens differ only by the
+ * projects behind them — so the list route carries usage and the cards tell
+ * each other apart without a query per card.
+ */
+export interface ConnectionUsage {
+  bindings: Array<{
+    id: string;
+    projectId: string;
+    environment: IntegrationEnvironment;
+    label: string;
+    active: boolean;
+  }>;
+}
+
+/** A connection as the workspace directory reads it: the credential plus where it is used. */
+export interface ConnectionDirectoryItem extends ConnectionSummary {
+  usage: ConnectionUsage;
+}
+
+// cm:edge contract -> packages/core/src/integrations/connection-routes.ts — `usage` is carried by the LIST route alone; create/update answer with a bare ConnectionSummary, so widening ConnectionResponse to expect it would break both
 /** List envelope for connections (`GET /integration-connections`). */
 export interface ConnectionListResponse {
-  items: ConnectionSummary[];
+  items: ConnectionDirectoryItem[];
 }
 /** List envelope for project bindings (`GET /:projectId/integrations`). */
 export interface BindingListResponse {

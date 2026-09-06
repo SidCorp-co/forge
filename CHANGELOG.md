@@ -962,6 +962,33 @@
 
 ### Fixed
 
+- **The connections directory told seventeen credentials apart by nothing at all.** Every card on
+  `/integrations` fell back to its provider label, printed that label a second time as a pill beside
+  itself, and offered no other detail — because `GET /api/integration-connections` returned no
+  binding, project or endpoint information for the cards to show. The list route now carries `usage`
+  (the bindings, with project and environment) from one batched query rather than a fetch per card,
+  and a card names the endpoint its credential points at, the projects using it, and the provider
+  only when that is not already its title. `POST /api/integration-connections` also names a new
+  connection from the config it was given (`coolify · deploy.example.com`), so rows stop arriving
+  anonymous; the existing rename in the edit drawer is unchanged.
+
+  Three states the screen had been reporting falsely are now distinct. "No connections yet" was
+  rendered for an org scope that was merely *hiding* connections, which reads as data loss to whoever
+  created them — a filtered-empty scope, an out-of-scope one and a genuinely empty workspace now say
+  which of the three they are. Disable/Enable/Remove were offered to a principal the API answers
+  `403`; a member who can see an org credential but not change it is told so instead. And "Projects
+  using this connection" answered `404` to that same member, because `GET
+  /api/integration-connections/:id/bindings` gated a READ on the manage check — reads now gate on
+  visibility, which is the set the list route already showed them.
+
+  Search and provider filters arrive with the card rebuild (matching on project name too, which is
+  how an operator actually looks a credential up), and Remove is reachable from the card behind a
+  confirmation that names how many projects it disconnects.
+- **`archmap` was blind to 35 first-party import edges.** `.arch-tsconfig.json` taught
+  dependency-cruiser web-v2's `@/*` alias but not `@forge/contracts`, whose package `exports`
+  subpaths it does not follow — so every import of the shared contracts package was unresolvable and
+  therefore silently *dropped* from the graph the relations gate checks. Same failure the file's own
+  comment records for the `@/*` alias, one package over. Unresolvable edges fell from 204 to 166.
 - **A release run no longer reports `completed` on the evidence that somebody asked for a deploy.**
   Measured on the fleet 2026-09-06: `integration_deliveries` held 5,408 outbound rows and **zero**
   inbound ones since 2026-05-27, `release.deploy.done` had been stamped **zero** times, and **50
