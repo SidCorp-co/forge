@@ -143,10 +143,8 @@ export const stageConfigSchema = z.object({
   permissionMode: z.enum(['default', 'plan', 'acceptEdits', 'bypassPermissions']).optional(),
   timeoutSeconds: z.int().positive().max(86_400).optional(),
   mcpServers: z.record(z.string(), z.unknown()).optional(),
-  // Prompt content overrides — orchestrator + dispatcher resolve before stamping.
   systemPrompt: systemPromptOverrideSchema.optional(),
   userPromptPolicy: userPromptPolicySchema.optional(),
-  // Budget caps (consumed by dispatcher pre-flight + in-flight kill paths).
   budget: budgetConfigSchema.optional(),
   // cm:why per-state runner pool: unset/empty = whole fleet (pre-pool behaviour), one element = a hard pin, and every other selection rule still applies WITHIN the pool rather than being replaced by it
   // cm:edge contract -> packages/core/src/runners/select.ts — apply the pool INSIDE the candidate query next to rate_limited_until, never as an exclude set: the retry rotation deliberately clears its exclusions when a round wraps, which would evaporate a pool expressed that way
@@ -254,9 +252,7 @@ export const pipelineConfigSchema = z
     // cm:guard MUST stay declared here — this schema STRIPS unknown keys, so a lock that is not in the object literal is dropped by PATCH /pipeline-config and silently never takes effect, while skills/lock.ts keeps reporting the project as unlocked
     // cm:edge contract -> packages/core/src/skills/lock.ts — readLockedSkills() parses exactly this field; `false` and a malformed value read as ABSENT there, never as "unlocked"
     lockedSkills: z.union([z.boolean(), z.array(z.string())]).optional(),
-    // cm:guard ships ABSENT, which reads as `duplex` since the ISS-873 phase 5 flip. The key survives the flip for exactly one release as the opt-OUT: `print` is the escape a project reaches for if residency misbehaves, and phase 6 deletes both the key and the lane it names. Removing this key from the schema REQUIRES the stored-config migration first (invariant 6) — this object is `.strict()`, so a stored config still carrying `sessionMode` fails validation for the whole project the moment the key leaves.
-    sessionMode: z.enum(['print', 'duplex']).optional(),
-    // cm:guard NO READER on the runner side yet, so the declared default of 0 is in force nowhere — the ceiling actually enforced is `SESSION_IDLE_TIMEOUT` (claude_code.rs). Only core reads this today, as the residency backstop in jobs/park-deadline.ts. Giving it the runner reader means 0 becomes the fleet default and turns residency OFF for every project that has not opted in, which is why it lands with the phase 5 flip and not before: raising it trades a held duplex slot for the park fast path, so it is a capacity decision, never a latency tweak.
+    // cm:guard the LAST survivor of ISS-873's two config keys — `sessionMode` was deleted by phase 6 and this one is not its replacement. `resolve_residency` (claude_code.rs) reads it and treats absent and `0` alike as the default, and core sends it only when a project set a positive number, so the knob's own default cannot silently disable the feature it configures. Raising it trades a held session slot for the park fast path, so it is a capacity decision, never a latency tweak.
     sessionResidencySeconds: z.number().int().min(0).max(3600).optional(),
   })
   .superRefine((cfg, ctx) => {

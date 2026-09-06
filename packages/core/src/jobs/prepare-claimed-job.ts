@@ -67,18 +67,19 @@ export interface PreparedJob {
   runnerId: string;
   runnerType: string;
   attempts: number;
-  sessionMode: 'print' | 'duplex';
+  // cm:hack ISS-941 until:every runner bound to any project reports the first release carrying ISS-873 phase 6 — a CONSTANT on the wire, never read from config. Core and the runner ship on different clocks: a core deploy reaches every box at once, a runner binary reaches one on its own 6-hour update check. A 0.9.x runner still derives its process model from the literal `"duplex"` in this field, so dropping the field before the fleet converges makes every un-upgraded box read it absent and run the print lane for a core that no longer has one — a silent fleet-wide revert with nothing reporting it. Sending the constant makes BOTH runner generations correct.
+  sessionMode: 'duplex';
   sessionResidencySeconds?: number;
 }
 
 /**
- * The project's process model, and how long a duplex session may sit idle.
+ * How long a resident session may sit idle, and the process model every job
+ * now runs under.
  */
-// cm:guard defaults to `duplex` for an absent project, an absent config or an absent key — the direction INVERTED with the ISS-873 phase 5 flip, and the safety argument inverted with it. A read that failed now yields the residency model rather than the one-shot one, which is safe because core never discriminates on this value: every hop that behaves differently under duplex keys on `agent_sessions.runtime_state`, which only a session that actually spawned duplex ever writes. A runner below 0.9.0 ignores the field entirely and runs print, reports no state, and is treated as print by every one of those hops. `pipelineConfig` is not parsed through its Zod schema here on purpose: a config that fails validation for an unrelated key must not stop the job going out.
-// cm:guard ONE read for both fields. Two calls would let the mode and the residency come from different snapshots of the same row — a job spawned duplex with the residency of a config that no longer says duplex.
+// cm:guard `pipelineConfig` is not parsed through its Zod schema here on purpose: a config that fails validation for an unrelated key must not stop the job going out.
 async function sessionSettingsOf(projectId: string): Promise<{
   agentConfig: unknown;
-  settings: { sessionMode: 'print' | 'duplex'; sessionResidencySeconds?: number };
+  settings: { sessionMode: 'duplex'; sessionResidencySeconds?: number };
 }> {
   const [row] = await db
     .select({ agentConfig: projects.agentConfig })
@@ -86,13 +87,13 @@ async function sessionSettingsOf(projectId: string): Promise<{
     .where(eq(projects.id, projectId))
     .limit(1);
   const cfg = (row?.agentConfig ?? {}) as {
-    pipelineConfig?: { sessionMode?: unknown; sessionResidencySeconds?: unknown };
+    pipelineConfig?: { sessionResidencySeconds?: unknown };
   };
   const secs = cfg.pipelineConfig?.sessionResidencySeconds;
   return {
     agentConfig: row?.agentConfig ?? null,
     settings: {
-      sessionMode: cfg.pipelineConfig?.sessionMode === 'print' ? 'print' : 'duplex',
+      sessionMode: 'duplex',
       // cm:guard a positive number ONLY. The key defaults to 0 and no project has set it, so forwarding 0 would be indistinguishable on the wire from a project asking for no residency at all — the runner resolves absent and 0 to the same default for exactly that reason, and sending nothing keeps the two sides agreeing by construction.
       ...(typeof secs === 'number' && secs > 0 ? { sessionResidencySeconds: secs } : {}),
     },
