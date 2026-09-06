@@ -76,8 +76,9 @@ struct StartFrame {
     /// The session-scoped PAT core minted for this session (ISS-927). Optional
     /// because a mint that fails must not stop the session dispatching, and
     /// because a session whose owner row is gone has no principal to mint for.
+    // cm:guard `JobToken`, never `String` — this struct derives `Debug`, and `frames.rs` records why that combination is the whole reason the newtype exists: a plain `String` here writes a live credential into the daemon log and into Sentry the day anyone adds a `tracing::debug!("{f:?}")`. The runner has no Sentry scrubber to catch it afterwards; core's `PAT_STRING_PATTERN` only covers core.
     #[serde(default)]
-    session_token: Option<String>,
+    session_token: Option<JobToken>,
 }
 
 /// `agent:send` payload (a follow-up turn on an existing session).
@@ -125,12 +126,12 @@ fn session_tokens() -> &'static Mutex<HashMap<String, JobToken>> {
     SESSION_TOKENS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn remember_session_token(session_id: &str, token: Option<String>) {
-    let Some(token) = token.filter(|t| !t.is_empty()) else {
+fn remember_session_token(session_id: &str, token: Option<JobToken>) {
+    let Some(token) = token.filter(|t| !t.expose().is_empty()) else {
         return;
     };
     if let Ok(mut map) = session_tokens().lock() {
-        map.insert(session_id.to_string(), JobToken::new(token));
+        map.insert(session_id.to_string(), token);
     }
 }
 
@@ -717,7 +718,7 @@ mod tests {
         let sid = format!("sess-{}", Uuid::new_v4());
         assert!(session_token_for(&sid).is_none());
 
-        remember_session_token(&sid, Some("forge_pat_dev_secret".into()));
+        remember_session_token(&sid, Some(JobToken::new("forge_pat_dev_secret".into())));
         assert_eq!(
             session_token_for(&sid).map(|t| t.expose().to_string()),
             Some("forge_pat_dev_secret".into())
@@ -733,7 +734,7 @@ mod tests {
         let sid = format!("sess-{}", Uuid::new_v4());
         remember_session_token(&sid, None);
         assert!(session_token_for(&sid).is_none());
-        remember_session_token(&sid, Some(String::new()));
+        remember_session_token(&sid, Some(JobToken::new(String::new())));
         assert!(session_token_for(&sid).is_none());
     }
 
@@ -742,8 +743,8 @@ mod tests {
     fn forgetting_one_session_leaves_another_alone() {
         let mine = format!("sess-{}", Uuid::new_v4());
         let theirs = format!("sess-{}", Uuid::new_v4());
-        remember_session_token(&mine, Some("mine".into()));
-        remember_session_token(&theirs, Some("theirs".into()));
+        remember_session_token(&mine, Some(JobToken::new("mine".into())));
+        remember_session_token(&theirs, Some(JobToken::new("theirs".into())));
 
         forget_session_token(&mine);
 
@@ -751,6 +752,26 @@ mod tests {
         assert_eq!(
             session_token_for(&theirs).map(|t| t.expose().to_string()),
             Some("theirs".into())
+        );
+    }
+
+    // cm:guard the frame DERIVES `Debug`, so this is the only thing standing between a future `tracing::debug!("{f:?}")` and a live project-scoped credential in the daemon log and in Sentry. The runner has no scrubber downstream to catch it — core's `PAT_STRING_PATTERN` never sees a runner log line. Retype the field as `String` and this goes red, which is the whole reason it is written down.
+    #[test]
+    fn a_start_frame_cannot_debug_print_its_token() {
+        let f: StartFrame = serde_json::from_value(json!({
+            "sessionId": "s1",
+            "sessionToken": "forge_pat_dev_live_secret",
+        }))
+        .expect("frame parses");
+
+        let rendered = format!("{f:?}");
+        assert!(
+            !rendered.contains("forge_pat_dev_live_secret"),
+            "agent:start frame leaked its token: {rendered}"
+        );
+        assert_eq!(
+            f.session_token.as_ref().map(|t| t.expose()),
+            Some("forge_pat_dev_live_secret")
         );
     }
 
