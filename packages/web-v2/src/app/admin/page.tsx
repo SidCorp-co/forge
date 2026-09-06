@@ -1,5 +1,5 @@
-import { OperatorSection } from "@/features/operator";
+import { OperatorOverviewScreen } from "@/features/operator";
 
 export default function AdminOverviewPage() {
-  return <OperatorSection section="overview" />;
+  return <OperatorOverviewScreen />;
 }

@@ -8,6 +8,7 @@ import { verifyUserToken } from '../auth/jwt.js';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
+import { isPlatformAdmin } from '../middleware/require-admin.js';
 import {
   handleRunnerRegister,
   handleRunnerUnregister,
@@ -62,10 +63,7 @@ interface ProtocolMatch {
   protocol: string;
 }
 
-// Browsers require the server to echo the chosen subprotocol back via the
-// `Sec-WebSocket-Protocol` response header — otherwise the upgrade is
-// rejected client-side. Returns both the bearer token and the exact
-// protocol string we matched so the upgrade handler can echo it back.
+// cm:guard return the EXACT protocol string matched, not the token alone — a browser rejects an upgrade whose `Sec-WebSocket-Protocol` response header does not echo the subprotocol it offered, and the handler has nothing else to echo
 function parseProtocolToken(header: string | string[] | undefined): ProtocolMatch | undefined {
   if (!header) return undefined;
   // Node's http parser collapses repeats into a single comma-joined string
@@ -148,7 +146,10 @@ async function canSubscribe(principal: Principal, room: string): Promise<boolean
     const projectId = room.slice('project:'.length);
     const userId = principal.type === 'user' ? principal.userId : principal.ownerId;
     const access = await effectiveProjectRole(userId, projectId);
-    return !!access?.role;
+    if (access?.role) return true;
+    // cm:edge contract -> packages/core/src/admin/aggregate-routes.ts — the Operator Ops Console reads every tenant over `/api/admin/*` on this same ADMIN_EMAILS allow-list, and the live half of that screen rides `pipeline_run.status_changed` in each project's room; without this an admin sees cross-tenant numbers that only refresh for the projects they happen to be a member of
+    // cm:guard this widens READ only — the room carries invalidation events, and a project room's publishers never accept input from a subscriber. Anything that ever gives a room a write side must gate it on membership again here, not on this branch.
+    return await isPlatformAdmin(userId);
   }
   if (room.startsWith('device:')) {
     const deviceId = room.slice('device:'.length);

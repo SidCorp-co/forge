@@ -28,6 +28,12 @@ import {
 import { listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
+import type {
+  AdminAdoptionBucket,
+  AdminGlanceMetric,
+  AdminOverview,
+  AdminWorkspaceRow,
+} from './types.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -157,17 +163,11 @@ function deltaPct(cur: number | null, prev: number | null): number | null {
   return ((cur - prev) / prev) * 100;
 }
 
-interface GlanceMetric {
-  value: number | null;
-  deltaPct: number | null;
-  spark: number[];
-}
-
 function toGlance(r: {
   value: number | null;
   baseline: number | null;
   spark: number[];
-}): GlanceMetric {
+}): AdminGlanceMetric {
   return { value: r.value, deltaPct: deltaPct(r.value, r.baseline), spark: r.spark };
 }
 
@@ -262,47 +262,6 @@ async function bucketedRunOutcomes(
     GROUP BY 1
   `)) as unknown as Array<{ bucket: unknown; num: number; den: number }>;
   return { num: toBucketMap(rows, 'num'), den: toBucketMap(rows, 'den') };
-}
-
-export interface AdminOverview {
-  counts: {
-    users: number;
-    usersNew: number;
-    orgs: number;
-    projects: number;
-    activeWorkspaces: number;
-    devicesOnline: number;
-    devicesTotal: number;
-  };
-  kpis: {
-    openAlerts: number;
-    inFlightJobs: number;
-    spendWindowUsd: number;
-    spendBaselineUsd: number;
-  };
-  glance: {
-    leadTimeMinutes: GlanceMetric;
-    interventionsPerClosed: GlanceMetric;
-    costPerClosedUsd: GlanceMetric;
-    successRatePct: GlanceMetric;
-    signupsWindow: GlanceMetric;
-  };
-}
-
-export interface AdminAdoptionBucket {
-  bucketStart: string;
-  newUsers: number;
-  cumulativeUsers: number;
-  activeWorkspaces: number;
-}
-
-export interface AdminWorkspaceRow {
-  projectId: string;
-  slug: string;
-  runs: number;
-  spendUsd: number;
-  medianLeadTimeMin: number | null;
-  openIssues: number;
 }
 
 const overviewQuerySchema = z.object({ window: z.enum(windows).default('24h') });

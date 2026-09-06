@@ -14,26 +14,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { buildBarrierFragments } from '../jobs/queued-gates.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
-
-export type AdminAlertId = 'A1' | 'A2' | 'A3' | 'A4' | 'A5';
-export type AdminAlertStatus = 'ok' | 'warn' | 'crit';
-export interface AdminAlertEntity {
-  ref: string;
-  kind: 'job' | 'project' | 'runner' | 'schedule' | 'integration_binding';
-  label: string;
-}
-
-export interface AdminAlert {
-  id: AdminAlertId;
-  key: string;
-  status: AdminAlertStatus;
-  /** True total, NOT entities.length — entities is capped at ENTITY_LIMIT. */
-  count: number;
-  detail: string;
-  /** ISO of the oldest contributing entity; null when status is 'ok'. */
-  since: string | null;
-  entities: AdminAlertEntity[];
-}
+import type { AdminAlert, AdminAlertId, AdminAlertStatus } from './types.js';
 
 export const ENTITY_LIMIT = 20;
 export const DEFAULT_STALE_SECONDS = 600;

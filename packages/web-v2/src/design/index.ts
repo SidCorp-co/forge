@@ -1,7 +1,6 @@
 /* The design layer — presentational, data-agnostic. Components here never
    touch data; features wire data into them. Import from "@/design". */
 
-// foundations
 export { Icon, type IconName, type IconProps } from "./icons/icon";
 export { STAGES, STAGE_INDEX, stageColor, type StageKey } from "./stages";
 export {
@@ -9,7 +8,6 @@ export {
   type StatusKey, type HealthKey, type AvatarHue, type ColorMeta,
 } from "./status";
 
-// primitives
 export { Button, type ButtonProps } from "./primitives/button";
 export { StatusChip, type StatusChipProps } from "./primitives/status-chip";
 export { MonoTag, type MonoTagProps } from "./primitives/mono-tag";
@@ -23,6 +21,7 @@ export { Kbd } from "./primitives/kbd";
 export { Spinner, type SpinnerProps } from "./primitives/spinner";
 export { Skeleton, type SkeletonProps } from "./primitives/skeleton";
 export { ProgressBar, type ProgressBarProps } from "./primitives/progress-bar";
+export { Sparkline, type SparklineProps } from "./primitives/sparkline";
 export { EmptyState, type EmptyStateProps } from "./primitives/empty-state";
 export { ComingSoon, type ComingSoonProps } from "./primitives/coming-soon";
 export { ErrorState, type ErrorStateProps } from "./primitives/error-state";
@@ -57,7 +56,6 @@ export {
   HelpButton, type HelpButtonProps, type HelpContent, type HelpShortcut,
 } from "./primitives/help-button";
 
-// patterns
 export {
   PipelineTracker,
   type PipelineTrackerProps,
@@ -85,13 +83,11 @@ export { MermaidDiagram } from "./patterns/mermaid";
 export { ForgeMascot, type ForgeMascotProps, STAGE_RING } from "./patterns/forge-mascot";
 export { ProjectLoader, ColdBoot, AgentWorking, ReconnectingBanner } from "./patterns/mascot-loaders";
 
-// skeleton compositions
 export {
   BoardRowSkeleton, KanbanCardSkeleton, KanbanColumnSkeleton,
   SessionRowSkeleton, ProjectCardSkeleton,
 } from "./skeletons";
 
-// hooks
 export { useElapsed } from "./hooks/use-elapsed";
 export { useNow } from "./hooks/use-now";
 export { useAnimatedNumber } from "./hooks/use-animated-number";

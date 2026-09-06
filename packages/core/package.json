@@ -11,6 +11,10 @@
     "./public": {
       "types": "./src/public.ts",
       "default": "./dist/public.js"
+    },
+    "./admin-types": {
+      "types": "./src/admin/types.ts",
+      "default": "./dist/admin/types.js"
     }
   },
   "files": [

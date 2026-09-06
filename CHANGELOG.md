@@ -11,6 +11,31 @@
 
 ### Added
 
+- **`/admin` answers "who is using Forge, and what needs me right now".** The Operator Ops Console
+  overview was an empty state; it now renders the deployment from the four `/api/admin/*` endpoints
+  ISS-651 and ISS-652 shipped. A KPI row (open alerts, jobs in flight, active workspaces, spend this
+  window against the window before), the A1-A5 alert feed sorted crit before warn before ok, five
+  Tier 2 glance cards with a delta and a sparkline, the signup curve and the top-workspace table.
+  Each of the four panels carries its own loading, error-with-retry and empty state, so one dead
+  endpoint costs its card rather than the page.
+
+  A stuck-job (A2) row carries a **Reap** control that confirms before it cancels. Making it work
+  everywhere took two authz widenings outside `/api/admin/*`, both on the `ADMIN_EMAILS`
+  allow-list: `POST /api/jobs/:id/cancel` falls back to the platform-admin check when project role
+  is short — without it the button was dead on every tenant the operator is not a member of, which
+  is most of them — and `canSubscribe` admits a platform admin to a `project:` WebSocket room on
+  the same list, so the live half of the screen refreshes for all projects and not just the
+  operator's own. The room widening is READ-only and says so in a guard: project rooms carry
+  invalidation events and accept no input from a subscriber.
+
+  The "Open alerts" tile deliberately counts the alerts the feed below it is showing rather than
+  `overview.kpis.openAlerts`, which is an independent A2-only approximation ISS-654 will unify.
+  Printing "0 - nothing needs you" above a red crit row is the one thing this screen must not do.
+
+  The wire shapes moved to one declaration (`@forge/core/admin-types`, re-exported through
+  `@forge/contracts`) instead of the two that were drifting, and the `overview` placeholder was
+  deleted rather than left beside the screen that superseded it.
+
 - **Settings → Pipeline edits the tool policy it has only ever displayed.** Since ISS-813 the tab
   has shown each stage's `disallowedTools` / `allowedTools` and its per-stage `mcpServers` — the
   policy the dispatcher hands every session — and offered no way to change any of it short of a
