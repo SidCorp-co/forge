@@ -25,7 +25,7 @@ import { agentSessions, type IssueStatus, issues } from '../db/schema.js';
 import { freshRunnerAvailability } from '../jobs/queued-gates.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
-import { loadActiveJobsByIssue } from './pipeline-health-loaders.js';
+import { loadActiveJobsByIssue, loadPausedRunsByIssue } from './pipeline-health-loaders.js';
 import {
   heldWaitingOn,
   queuedStepOf,
@@ -43,6 +43,7 @@ export type {
   ClassifyInput,
   PipelineHealth,
   PipelineHealthJob,
+  PipelineHealthPausedRun,
   PipelineHealthQueuedStep,
   PipelineHealthSession,
   PipelineWaitingReason,
@@ -95,6 +96,9 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
   if (issue.status === 'waiting' && issue.waitingKind) {
     out.waitingCause = { kind: issue.waitingKind };
   }
+
+  // cm:guard ISS-853 — above every `return out` below, and gated on NOTHING: a paused run stops the issue whatever its own status says and whether or not a step is queued, and the `run_not_running` arm further down reaches it only through a queued candidate, so an issue with none rendered no banner at all
+  if (input.pausedRun) out.pausedRun = input.pausedRun;
 
   // cm:guard the candidate is picked HERE, above the held arm, so `queuedAt` and `queuedStep` describe the queued step whichever arm goes on to own `waitingOn` — an issue carrying a held job AND a queued one still has a step nobody can see, which is the ISS-903 blind spot. The `waitingOn` PRECEDENCE below is unchanged; only the projection moved.
   const candidate = [...queuedJobs].sort((a, b) => a.queuedAt.getTime() - b.queuedAt.getTime())[0];
@@ -212,6 +216,8 @@ export async function hydratePipelineHealthForIssues(
   }
 
   const jobsByIssue = await loadActiveJobsByIssue(projectId, ids);
+  // cm:why Q4 reads `pipeline_runs` by issue id rather than joining through Q3 — Q3 has no row at all for an issue whose run is paused with nothing queued, which is the only shape ISS-853 is about
+  const pausedRunsByIssue = await loadPausedRunsByIssue(projectId, ids);
 
   const runnerPool = await freshRunnerAvailability(projectId);
   const lastTickAt = getLastTickAt(projectId);
@@ -219,6 +225,7 @@ export async function hydratePipelineHealthForIssues(
   for (const issueId of ids) {
     const issueRow = issuesById.get(issueId);
     if (!issueRow) continue;
+    const pausedRun = pausedRunsByIssue.get(issueId);
     const health = classifyPipelineHealthForIssue({
       issue: {
         id: issueRow.id,
@@ -230,6 +237,7 @@ export async function hydratePipelineHealthForIssues(
       jobs: jobsByIssue.get(issueId) ?? [],
       runnerPool,
       lastTickAt,
+      ...(pausedRun ? { pausedRun } : {}),
     });
     map.set(issueId, health);
   }
@@ -259,10 +267,7 @@ export async function publishPipelineHealthChanged(
 ): Promise<void> {
   if (issueIds.length === 0) return;
   try {
-    // Lazy-import ws/server so the loader half of this module (used by the
-    // issue REST routes) doesn't pull the websocket + runner-heartbeat graph
-    // — which transitively requires pg-boss/DATABASE_URL — into unit tests
-    // that mock only the env they need.
+    // cm:guard keep this import lazy — a top-level one pulls the websocket + runner-heartbeat graph, and so pg-boss and DATABASE_URL, into every unit test that imports the loader half of this module for the REST routes alone
     const { roomManager } = await import('../ws/server.js');
     const map = await hydratePipelineHealthForIssues(projectId, issueIds);
     for (const [issueId, pipelineHealth] of map) {

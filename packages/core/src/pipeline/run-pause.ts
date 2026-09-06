@@ -109,6 +109,35 @@ export function pauseResumesItself(reason: string | null | undefined): boolean {
   return (MACHINE_RESUMED_PAUSE_KINDS as readonly string[]).includes(kind);
 }
 
+/** Who ends this pause. The one question a surface describing a pause has to
+ *  answer, and the only thing its copy may branch on. */
+export type PauseResumer = 'operator' | 'machine' | 'sweeper';
+
+/** A `pauseReason` read apart, for a surface that has to name the pause. */
+export interface PauseDescription {
+  /** The kind half of `<kind>:<detail>`; null for an operator pause. */
+  kind: string | null;
+  /** The detail half — the stage, for `stage_stalled:<stage>`. */
+  detail: string | null;
+  resumer: PauseResumer;
+}
+
+/**
+ * Read a `pauseReason` as the three things a banner needs: which kind holds the
+ * run, what its detail names, and who ends it.
+ */
+// cm:guard the ONLY place a `pauseReason` is taken apart for display — every surface asks this rather than splitting the string itself, because the three answers below are decided by the two kind lists above and a second reader of the raw string is a second vocabulary that goes stale the next time a kind is retired
+// cm:edge contract -> packages/web-v2/src/features/issues/waiting.ts — `PAUSED_RUN_COPY` keys its copy on `resumer` and on nothing else; a fourth resumer added here without a line there renders as the sweeper case, which is the one that tells the reader no action is needed
+export function describePause(reason: string | null | undefined): PauseDescription {
+  if (!reason) return { kind: null, detail: null, resumer: 'operator' };
+  const separator = reason.indexOf(':');
+  const kind = separator === -1 ? reason : reason.slice(0, separator);
+  const detail = separator === -1 ? null : reason.slice(separator + 1) || null;
+  if (pauseResumesItself(reason)) return { kind, detail, resumer: 'machine' };
+  // cm:guard a kind absent from LIVE_PAUSE_REASON_KINDS reads `sweeper`, not `operator` — `resumeOrphanedPauses` frees exactly those on the next tick, and asking an operator to resume a run the sweeper is about to resume anyway is how a surface earns the reader's distrust
+  return { kind, detail, resumer: isLivePauseReason(reason) ? 'operator' : 'sweeper' };
+}
+
 /**
  * CAS `running → paused`. Returns the updated row, or null when the run was
  * not `running` (already paused / terminal / missing) — callers disambiguate
@@ -126,7 +155,7 @@ export async function pauseRun(args: {
     .set({
       status: 'paused',
       updatedAt: new Date(),
-      // COALESCE + merge so we never clobber sibling metadata keys.
+      // cm:guard merge in SQL with COALESCE, never read-modify-write — `metadata` carries sibling keys other writers own, and rebuilding the object here drops whichever ones this call never read
       ...(args.pauseReason
         ? {
             metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object('pauseReason', ${args.pauseReason}::text)`,

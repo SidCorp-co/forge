@@ -23,6 +23,7 @@ vi.mock('./hooks.js', () => ({
 }));
 
 const {
+  describePause,
   HUMAN_RESUMED_PAUSE_KINDS,
   isLivePauseReason,
   LIVE_PAUSE_REASON_KINDS,
@@ -129,7 +130,7 @@ describe('pipeline/run-pause', () => {
     });
     expect(rows).toHaveLength(2);
     expect(busEmit).toHaveBeenCalledTimes(2);
-    expect(hookEmit).not.toHaveBeenCalled(); // caller bus wins over global hooks
+    expect(hookEmit).not.toHaveBeenCalled();
     expect(wsPublish).toHaveBeenCalledTimes(2);
   });
 });
@@ -225,5 +226,48 @@ describe('pauseResumesItself (ISS-879)', () => {
     expect([...LIVE_PAUSE_REASON_KINDS].sort()).toEqual(['stage_stalled']);
     expect(isLivePauseReason('stage_stalled:released')).toBe(true);
     expect(isLivePauseReason('missing_skill:open')).toBe(false);
+  });
+});
+
+describe('describePause — ISS-853, the one reader of a pauseReason for display', () => {
+  it('reads an absent reason as an operator pause with no kind to name', () => {
+    expect(describePause(null)).toEqual({ kind: null, detail: null, resumer: 'operator' });
+    expect(describePause(undefined).resumer).toBe('operator');
+    expect(describePause('').resumer).toBe('operator');
+  });
+
+  it('splits a live kind into its kind and its detail, and hands it to a person', () => {
+    expect(describePause('stage_stalled:released')).toEqual({
+      kind: 'stage_stalled',
+      detail: 'released',
+      resumer: 'operator',
+    });
+  });
+
+  it('gives a retired kind to the sweeper, which is what actually frees it', () => {
+    expect(describePause('missing_skill:open')).toEqual({
+      kind: 'missing_skill',
+      detail: 'open',
+      resumer: 'sweeper',
+    });
+    expect(describePause('reopen_cap:3').resumer).toBe('sweeper');
+  });
+
+  // cm:guard the detail half may itself contain a colon (a stage plus a qualifier), so only the FIRST separator splits — reading the last one renames the kind
+  it('splits on the first colon only, and reads a bare kind as detail-free', () => {
+    expect(describePause('stage_stalled:code:attempt-2').detail).toBe('code:attempt-2');
+    expect(describePause('stage_stalled')).toEqual({
+      kind: 'stage_stalled',
+      detail: null,
+      resumer: 'operator',
+    });
+  });
+
+  it('reports `machine` for every kind something in this build resumes', () => {
+    // cm:guard this list is EMPTY today, so the loop is empty and the assertion below is what keeps the arm honest — a kind added to MACHINE_RESUMED_PAUSE_KINDS without its resume path makes this describe the promise it breaks
+    for (const kind of MACHINE_RESUMED_PAUSE_KINDS) {
+      expect(describePause(`${kind}:x`).resumer).toBe('machine');
+    }
+    expect(MACHINE_RESUMED_PAUSE_KINDS).toEqual([]);
   });
 });

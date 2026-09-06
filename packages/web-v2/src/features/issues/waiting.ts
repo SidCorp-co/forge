@@ -7,7 +7,7 @@
 // cm:edge lockstep -> packages/core/src/issues/pipeline-health-types.ts — `PipelineWaitingReason` is the authority on which gates exist and `WaitingReason` in ./types is a HAND-MIRROR of it, so nothing here breaks when a reason is added there: add it to that mirror and to all three records below in the same change. Until it is added, the reason arrives as an unrecognised string and degrades to UNKNOWN_GATE_COPY.
 
 import { formatCountdown } from "@/lib/utils/format";
-import type { PipelineHealth, WaitingReason } from "./types";
+import type { PauseResumer, PipelineHealth, WaitingReason } from "./types";
 
 // cm:edge contract -> packages/core/src/jobs/hold.ts — mirrors AUTO_RELEASE_REASONS (`holdResumesItself`); a reason that changes lane there and not here tells the reader "no action needed" about a hold that is in fact waiting for them
 const SELF_RESUMING_HOLD_REASONS = new Set([
@@ -185,4 +185,53 @@ export function deriveQueuedStep(
  *  gate needs a human, the calm queued tone otherwise. */
 export function queuedChipStatus(step: QueuedStepView): "waiting" | "queued" {
 	return step.gate?.needsAction ? "waiting" : "queued";
+}
+
+/** One paused run, in the registers the banner needs. */
+export interface PausedRunView {
+	runId: string;
+	reason: string;
+	who: string;
+	/** True when a person ends this pause, which is also when the banner may
+	 *  offer Resume run. False means something else clears it, and the `who`
+	 *  line above already says so in words. */
+	needsAction: boolean;
+}
+
+/** Copy for a paused run, keyed on WHO ends the pause and on nothing else. */
+// cm:guard never re-split `pauseReason` here to decide the copy — core's `describePause` reads the kind lists that decide it, and a second reader of the raw string keeps promising a resume for kinds `run-pause.ts` has since retired
+const PAUSED_RUN_COPY: Record<PauseResumer, { reason: string; who: string }> = {
+	operator: {
+		reason:
+			"The pipeline run for this issue is paused. No step will dispatch while it is, whatever this issue's status says.",
+		who: "Resume the run — nothing else will. Cancel it instead if the work should not continue.",
+	},
+	// cm:guard `MACHINE_RESUMED_PAUSE_KINDS` is EMPTY in this build, so nothing reaches this arm today and it must still say the truth if something does — a kind is added to that list only together with the code that clears it, and this is the copy that promise is made in
+	machine: {
+		reason:
+			"The pipeline run for this issue is paused, waiting for the condition that paused it to clear.",
+		who: "No action — it resumes itself once the condition clears.",
+	},
+	sweeper: {
+		reason:
+			"The pipeline run for this issue is paused for a reason this build no longer has code for.",
+		who: "No action — the sweeper frees it on its next tick. Resume it by hand only if it is still paused after that.",
+	},
+};
+
+/** The pause as the banner reads it, or `null` when no run is paused. */
+export function pausedRunView(
+	pausedRun: PipelineHealth["pausedRun"],
+): PausedRunView | null {
+	if (!pausedRun) return null;
+	const copy = PAUSED_RUN_COPY[pausedRun.resumer] ?? PAUSED_RUN_COPY.sweeper;
+	const named = pausedRun.kind
+		? `${copy.reason} It is held by ${pausedRun.kind}${pausedRun.detail ? ` at ${pausedRun.detail}` : ""}.`
+		: `${copy.reason} An operator paused it.`;
+	return {
+		runId: pausedRun.runId,
+		reason: named,
+		who: copy.who,
+		needsAction: pausedRun.resumer === "operator",
+	};
 }

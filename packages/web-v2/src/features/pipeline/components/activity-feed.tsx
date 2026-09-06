@@ -131,6 +131,11 @@ function RetryHeadline({ summary }: { summary: PipelineRunRetrySummary }) {
   );
 }
 
+/** The one sentence that says WHICH attempts a collapsed line stands for. */
+function repeatLabel(positions: number[]): string {
+  return `Attempts ${positions.join(", ")} were identical.`;
+}
+
 function ActivityRow({ entry }: { entry: ActivityEntry }) {
   const color = TONE_COLOR[entry.tone];
   const when = formatRelativeTime(entry.at);
@@ -149,11 +154,13 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
             {entry.outcome}
           </span>
           {entry.repeats > 1 && (
-            <Tooltip label={`Attempts ${entry.positions.join(", ")} were identical.`}>
+            // cm:guard the sr-only twin is not decoration — WHICH attempts folded exists nowhere else on this screen, and a tooltip on a non-interactive badge reaches a pointer and nothing else, so without it a screen reader is told sixteen attempts collapsed and never which ones (ux-contract §4)
+            <Tooltip label={repeatLabel(entry.positions)}>
               <span className="inline-flex">
                 <Badge tone={entry.tone === "failure" ? "red" : "neutral"}>
                   ×{entry.repeats}
                 </Badge>
+                <span className="sr-only">{repeatLabel(entry.positions)}</span>
               </span>
             </Tooltip>
           )}

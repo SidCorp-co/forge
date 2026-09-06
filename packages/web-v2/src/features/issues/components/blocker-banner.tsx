@@ -1,10 +1,6 @@
 "use client";
 
-// ISS-377 Tier-1 "why is it stuck" surface. Renders the single server-derived
-// `BlockerState` (from `deriveBlockerState` — the ONE join of status /
-// pipelineHealth.waitingOn / blocks edges) as a prominent banner. Shown ONLY
-// when blocked; the screen renders nothing when the verdict is null (AC#1/#2).
-// The banner says WHY + WHO + the next action.
+// cm:guard render only, and every field it renders comes from ONE `deriveBlockerState` verdict — re-joining status, `pipelineHealth` or the `blocks` edges here would give the banner a second opinion about why the issue is stuck, and the caller renders nothing at all for a null verdict
 import { Banner, Button } from "@/design";
 import type { BlockerState } from "../derive";
 import { IssueRefBadge } from "./issue-ref-badge";
@@ -15,8 +11,8 @@ interface BlockerBannerProps {
   pending: boolean;
   onApprove: () => void;
   onResume: () => void;
+  onResumeRun: (runId: string) => void;
   onProvideInfo: () => void;
-  onReopen: () => void;
 }
 
 export function BlockerBanner({
@@ -25,10 +21,10 @@ export function BlockerBanner({
   pending,
   onApprove,
   onResume,
+  onResumeRun,
   onProvideInfo,
-  onReopen,
 }: BlockerBannerProps) {
-  const { cta } = blocker;
+  const { cta, runId } = blocker;
 
   let action: React.ReactNode = null;
   if (cta.kind === "approve") {
@@ -49,9 +45,15 @@ export function BlockerBanner({
         {cta.label}
       </Button>
     );
-  } else if (cta.kind === "reopen") {
+  } else if (cta.kind === "resume-run" && runId) {
     action = (
-      <Button variant="secondary" size="sm" icon="rerun" loading={pending} onClick={onReopen}>
+      <Button
+        variant="primary"
+        size="sm"
+        icon="rerun"
+        loading={pending}
+        onClick={() => onResumeRun(runId)}
+      >
         {cta.label}
       </Button>
     );

@@ -34,6 +34,7 @@ import type {
 	IssueDependencyEdge,
 	IssueDetail,
 	IssueRow,
+	PipelineHealth,
 	StepDurationRow,
 	StepHandoffRow,
 } from "./types";
@@ -562,7 +563,6 @@ describe("deriveCommentKind", () => {
 	});
 });
 
-// ─── ISS-377 ────────────────────────────────────────────────────────────────
 
 function blockerIssue(
 	over: Partial<Pick<IssueDetail, "status">> = {},
@@ -962,5 +962,102 @@ it("uses only the most-recent run's duration/cost (no double-count on reopen)", 
 			[],
 		);
 		expect(cells.code.outcomeLabel).toBe("patched");
+	});
+});
+
+describe("deriveBlockerState — ISS-853, the paused run the screen used to hide", () => {
+	const pausedHealth = (
+		over: Partial<NonNullable<PipelineHealth["pausedRun"]>> = {},
+	): PipelineHealth => ({
+		stage: "approved",
+		pausedRun: {
+			runId: over.runId ?? "run-1",
+			pauseReason: over.pauseReason ?? null,
+			kind: over.kind ?? null,
+			detail: over.detail ?? null,
+			resumer: over.resumer ?? "operator",
+			since: over.since ?? "2026-09-06T10:00:00.000Z",
+		},
+	});
+
+	it("banners an operator pause on an issue whose own status says nothing is wrong", () => {
+		const b = deriveBlockerState(
+			blockerIssue({ status: "approved" }),
+			pausedHealth(),
+			undefined,
+		);
+		expect(b?.tone).toBe("attention");
+		expect(b?.reason).toContain("paused");
+		expect(b?.cta).toEqual({ label: "Resume run", kind: "resume-run" });
+		expect(b?.runId).toBe("run-1");
+	});
+
+	it("names the kind and its detail rather than saying only that something holds it", () => {
+		const b = deriveBlockerState(
+			blockerIssue({ status: "in_progress" }),
+			pausedHealth({
+				pauseReason: "stage_stalled:code",
+				kind: "stage_stalled",
+				detail: "code",
+			}),
+			undefined,
+		);
+		expect(b?.reason).toContain("stage_stalled");
+		expect(b?.reason).toContain("code");
+	});
+
+	it("reads a sweeper-cleared pause differently, and offers no resume for it", () => {
+		const operator = deriveBlockerState(
+			blockerIssue({ status: "approved" }),
+			pausedHealth(),
+			undefined,
+		);
+		const sweeper = deriveBlockerState(
+			blockerIssue({ status: "approved" }),
+			pausedHealth({ resumer: "sweeper", kind: "missing_skill", detail: "open" }),
+			undefined,
+		);
+		expect(sweeper?.reason).not.toBe(operator?.reason);
+		expect(sweeper?.whoMustAct).not.toBe(operator?.whoMustAct);
+		expect(sweeper?.tone).toBe("info");
+		expect(sweeper?.cta.kind).toBe("none");
+		expect(sweeper?.runId).toBeUndefined();
+	});
+
+	// cm:guard the pause outranks needs_info deliberately — while the run is paused the "Provide info" CTA promises a resume that cannot happen, and this assertion is the record of that trade
+	it("outranks needs_info, whose CTA would promise movement the pause forbids", () => {
+		const b = deriveBlockerState(
+			blockerIssue({ status: "needs_info" }),
+			pausedHealth(),
+			undefined,
+			{ needsInfoQuestion: "which account?" },
+		);
+		expect(b?.cta.kind).toBe("resume-run");
+	});
+
+	it("outranks the generic run_not_running gate copy when a step is queued too", () => {
+		const b = deriveBlockerState(
+			blockerIssue({ status: "in_progress" }),
+			{
+				...pausedHealth({ kind: "stage_stalled", detail: "code" }),
+				waitingOn: {
+					reason: "run_not_running",
+					since: "2026-09-06T10:00:00.000Z",
+					details: {},
+				},
+			},
+			undefined,
+		);
+		expect(b?.reason).toContain("stage_stalled");
+		expect(b?.cta.kind).toBe("resume-run");
+	});
+
+	it("keeps the blocking refs it would have shown anyway", () => {
+		const b = deriveBlockerState(
+			blockerIssue({ status: "approved" }),
+			pausedHealth(),
+			incomingBlocks(),
+		);
+		expect(b?.blockingRefs?.[0]?.displayId).toBe("ISS-9");
 	});
 });
