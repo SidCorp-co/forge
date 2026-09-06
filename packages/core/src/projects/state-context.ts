@@ -28,26 +28,13 @@ export const stateContextEntrySchema = z
 
 export type StateContextEntry = z.infer<typeof stateContextEntrySchema>;
 
-// `partialRecord` (Zod v4) builds a partial mapped type: each enum key is
-// optional, unknown keys are rejected. `z.record(z.enum(...), ...)` would
-// require every key to be present, which is the wrong shape for a patch.
+// cm:why `partialRecord` over `z.record(z.enum(...))`: the latter demands every jobType be present, which is the wrong shape for a patch
+// cm:guard the entry is `.nullable()` because `null` is `mergeStateContext`'s REMOVAL SENTINEL, and a schema that refuses it leaves every REST/MCP caller with no way to delete one jobType — the whole map or nothing. ISS-814: web-v2's editor sent exactly `{ triage: null }` and got a 400 naming a shape the merge below documents as supported.
 export const stateContextSchema = z
-  .partialRecord(z.enum(jobTypes), stateContextEntrySchema)
+  .partialRecord(z.enum(jobTypes), stateContextEntrySchema.nullable())
   .optional();
 
-// `z.record(z.enum(...), ...)` infers a fully-required mapped type. Wrap it
-// in `Partial` so consumers can pass a single-state patch without TypeScript
-// demanding every job type.
 export type StateContext = Partial<NonNullable<z.infer<typeof stateContextSchema>>>;
-
-// The merge accepts a slightly looser patch shape than the schema: entries
-// may also be `null` (remove that state) or `undefined` (no-op for that key).
-// Zod doesn't model the null-to-remove sentinel on per-state entries, so we
-// widen here. The REST/MCP surfaces only expose the strict schema; this
-// laxer type is for direct in-process callers.
-export type StateContextPatch = {
-  [K in keyof StateContext]?: StateContext[K] | null | undefined;
-};
 
 /**
  * Per-state merge. `patch` entries fully replace the entry at that state
@@ -58,7 +45,7 @@ export type StateContextPatch = {
  */
 export function mergeStateContext(
   existing: unknown,
-  patch: StateContextPatch | null | undefined,
+  patch: StateContext | null | undefined,
 ): Record<string, unknown> | null {
   const base =
     existing && typeof existing === 'object' && !Array.isArray(existing)
