@@ -1,9 +1,9 @@
 import crypto from 'node:crypto';
 import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { activityLog, comments, issues, memories, projects } from '../db/schema.js';
+import { activityLog, comments, issues, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
-import { resolveMergeStates } from '../issues/merged-at.js';
+import { BASE_MERGE_STATE } from '../issues/merged-at.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 import { boss } from '../queue/boss.js';
@@ -357,8 +357,6 @@ export async function runConsolidationSweep(): Promise<{
   return { projects: projectRows.length, durationMs: Date.now() - t0 };
 }
 
-// ── ISS-708: release-triggered reconciliation ─────────────────────────────
-//
 // Closes the code→memory loop that the nightly consolidation above cannot:
 // that pass only reacts to comments/status-changes/reopens from the last
 // 24h and never reads `releaseNotes`. This one fires once per issue, when
@@ -642,11 +640,11 @@ let reconcileTriggerRegistered = false;
 
 /**
  * Subscribe to the `transition` hook: whenever a status change lands the
- * issue's `merged_at` (leaving `mergeStates.baseBranch`, or reaching
- * `closed` — the same cross-project "code landed" predicate `merged-at.ts`
- * uses), enqueue a durable pg-boss reconcile job. Detached via
- * `queueMicrotask` (mirrors `registerMemoryIndexer`/`registerCiFixPatternLearner`)
- * so a slow project-config lookup never adds latency to the transition path.
+ * issue's `merged_at` (leaving {@link BASE_MERGE_STATE}, or reaching `closed`
+ * — the same cross-project "code landed" predicate `merged-at.ts` uses),
+ * enqueue a durable pg-boss reconcile job. Detached via `queueMicrotask`
+ * (mirrors `registerMemoryIndexer`/`registerCiFixPatternLearner`) so the
+ * `boss.send` never adds latency to the transition path.
  */
 export function registerMemoryReconcileTrigger(bus: HooksBus): () => void {
   if (reconcileTriggerRegistered) return () => undefined;
@@ -661,14 +659,9 @@ export function registerMemoryReconcileTrigger(bus: HooksBus): () => void {
 
   const unsub = bus.on('transition', (payload) => {
     detach(async () => {
-      const [projectRow] = await db
-        .select({ agentConfig: projects.agentConfig })
-        .from(projects)
-        .where(eq(projects.id, payload.projectId))
-        .limit(1);
-      const { baseBranch } = resolveMergeStates(projectRow?.agentConfig);
       const mergeLanded =
-        (payload.from === baseBranch && payload.to !== baseBranch) || payload.to === 'closed';
+        (payload.from === BASE_MERGE_STATE && payload.to !== BASE_MERGE_STATE) ||
+        payload.to === 'closed';
       if (!mergeLanded) return;
 
       await boss.send(
