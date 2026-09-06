@@ -97,14 +97,15 @@ describe('resolveMachineTokenContext E2E (ISS-573, re-keyed ISS-931)', () => {
     `);
 
     const jobId = randomUUID();
+    // cm:guard stamp `device_id` on the JOB, not only on the session — `startJobForMaster` (devices/claim.ts) sets status, device_id, runner_id and dispatched_at in ONE statement, so a dispatched job with a null device_id is a state core never writes, and a fixture omitting it makes `resolveMachineTokenContext` look like it loses the device (that is exactly how this suite went red in CI).
     await harness.db.execute(sql`
       INSERT INTO jobs (
-        id, project_id, issue_id, type, status, agent_session_id,
+        id, project_id, issue_id, type, status, device_id, agent_session_id,
         pipeline_run_id, payload, queued_at, dispatched_at, created_by
       )
       VALUES (
         ${jobId}, ${project.id}, ${issueId}, ${opts.jobType ?? 'review'},
-        ${opts.jobStatus ?? 'dispatched'}, ${sessionId}, ${runId},
+        ${opts.jobStatus ?? 'dispatched'}, ${device.id}, ${sessionId}, ${runId},
         '{}'::jsonb, now(), ${opts.dispatchedAt ?? new Date().toISOString()}, ${owner.id}
       )
     `);
@@ -220,12 +221,12 @@ describe('resolveMachineTokenContext E2E (ISS-573, re-keyed ISS-931)', () => {
     const newerJobId = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO jobs (
-        id, project_id, issue_id, type, status, agent_session_id,
+        id, project_id, issue_id, type, status, device_id, agent_session_id,
         pipeline_run_id, payload, queued_at, dispatched_at, created_by
       )
       VALUES (
-        ${newerJobId}, ${older.projectId}, NULL, 'pm', 'dispatched', ${sessionId}, ${runId},
-        '{}'::jsonb, now(), now(), ${older.owner.id}
+        ${newerJobId}, ${older.projectId}, NULL, 'pm', 'dispatched', ${older.deviceId},
+        ${sessionId}, ${runId}, '{}'::jsonb, now(), now(), ${older.owner.id}
       )
     `);
 
