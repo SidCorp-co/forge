@@ -1,8 +1,12 @@
 import type {
   CoolifyApplicationLogsResponse,
+  CoolifyApplicationResponse,
+  CoolifyCancelResponse,
   CoolifyDeploymentResponse,
   CoolifyDeployResponse,
   CoolifyResourceResponse,
+  CoolifyRollbackImagesResponse,
+  CoolifyRollbackResponse,
 } from './types.js';
 
 export class CoolifyApiError extends Error {
@@ -27,8 +31,12 @@ export class CoolifyApiError extends Error {
 const ROUTE_ABILITIES: { match: RegExp; ability: string }[] = [
   { match: /^POST \/api\/v1\/deploy\b/, ability: 'deploy' },
   { match: /^GET \/api\/v1\/resources\b/, ability: 'read' },
+  { match: /^POST \/api\/v1\/deployments\/[^/]+\/cancel\b/, ability: 'deploy' },
   { match: /^GET \/api\/v1\/deployments\//, ability: 'read' },
+  { match: /^POST \/api\/v1\/applications\/[^/]+\/rollback\b/, ability: 'deploy' },
+  { match: /^GET \/api\/v1\/applications\/[^/]+\/rollback-images\b/, ability: 'read' },
   { match: /^GET \/api\/v1\/applications\/[^/]+\/logs\b/, ability: 'read' },
+  { match: /^GET \/api\/v1\/applications\b/, ability: 'read' },
 ];
 
 /** The `api.ability:*` name a route requires, or `null` for a route not in the table. */
@@ -203,6 +211,57 @@ export class CoolifyClient {
       'GET',
       `/api/v1/applications/${encodeURIComponent(resourceUuid)}/logs?${qs.toString()}`,
     );
+  }
+
+  /**
+   * Stop a deployment that is still queued or building.
+   * Docs: https://coolify.io/docs/api-reference/api/operations/cancel-deployment-by-uuid
+   */
+  // cm:guard a deployment Coolify has already finished answers 400, and that 400 is the ANSWER, not a transport fault — it carries `Deployment cannot be cancelled. Current status: finished`. It surfaces as a `CoolifyApiError` so the caller reports Coolify's own sentence instead of claiming a cancel that never happened.
+  async cancelDeployment(deploymentUuid: string): Promise<CoolifyCancelResponse> {
+    return this.request<CoolifyCancelResponse>(
+      'POST',
+      `/api/v1/deployments/${encodeURIComponent(deploymentUuid)}/cancel`,
+    );
+  }
+
+  /**
+   * The images this application can be rolled back to, with `is_current`
+   * marking the one running now.
+   * Docs: https://coolify.io/docs/api-reference/api/operations/list-rollback-images
+   */
+  async listRollbackImages(resourceUuid: string): Promise<CoolifyRollbackImagesResponse> {
+    return this.request<CoolifyRollbackImagesResponse>(
+      'GET',
+      `/api/v1/applications/${encodeURIComponent(resourceUuid)}/rollback-images`,
+    );
+  }
+
+  /**
+   * Queue a rollback deployment at `commit` — Coolify's name for the IMAGE TAG
+   * from {@link listRollbackImages}, not a git SHA of the repository.
+   * Docs: https://coolify.io/docs/api-reference/api/operations/rollback-application-by-uuid
+   */
+  // cm:guard Coolify does NOT check `commit` against its own rollback-image list — `ApplicationsController::rollback_by_uuid` only runs `validateGitRef` on the string and queues the build — so the "refuse a tag Coolify no longer lists" rule is Forge's to enforce, in `assertRollbackTagListed`; calling this method without it rolls a production app back to an image nobody confirmed exists.
+  async rollbackApplication(input: {
+    resourceUuid: string;
+    commit: string;
+  }): Promise<CoolifyRollbackResponse> {
+    return this.request<CoolifyRollbackResponse>(
+      'POST',
+      `/api/v1/applications/${encodeURIComponent(input.resourceUuid)}/rollback`,
+      { commit: input.commit },
+    );
+  }
+
+  /**
+   * Every application this token's team owns — the pick-list source that
+   * replaces transcribing a `resourceUuid` out of the Coolify UI.
+   * Docs: https://coolify.io/docs/api-reference/api/operations/list-applications
+   */
+  async listApplications(): Promise<CoolifyApplicationResponse[]> {
+    const list = await this.request<CoolifyApplicationResponse[]>('GET', '/api/v1/applications');
+    return Array.isArray(list) ? list : [];
   }
 }
 

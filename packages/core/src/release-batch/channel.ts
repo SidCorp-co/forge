@@ -16,11 +16,40 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { effectiveConfig, listActiveBindingsForEnvironment } from '../integrations/store.js';
-import { RELEASE_PROCEDURE_FACT, type ReleaseChannel, type ReleasePlan } from './plan.js';
+import {
+  RELEASE_PROCEDURE_FACT,
+  type ReleaseChannel,
+  type ReleasePlan,
+  type ReleaseRollback,
+} from './plan.js';
 import { parseVerifyConfig } from './verify.js';
 
-export type { ReleaseChannel, ReleasePlan } from './plan.js';
+export type { ReleaseChannel, ReleasePlan, ReleaseRollback } from './plan.js';
 export { DEFAULT_RELEASE_PROCEDURE, RELEASE_PROCEDURE_FACT } from './plan.js';
+
+/**
+ * Read one binding's stored `rollback` into what a release agent may act on.
+ *
+ * Prose on a COOLIFY binding is `unrepresentable`, not `manual`: Coolify
+ * exposes a rollback API and Forge performs it, so a paragraph there is a
+ * second path to the same outcome that nothing has verified is still true.
+ */
+// cm:guard prose on a coolify binding must NOT degrade to `manual` — that is the silent substitution ISS-925 removed, and it reads identically to a working declaration. It is carried through so the prompt can quote it and settings can name the binding; it is never handed to an agent as an instruction. To undo the break, return `{kind:'manual'}` here.
+export function classifyRollback(provider: string, raw: unknown): ReleaseRollback | null {
+  if (typeof raw === 'string') {
+    const text = raw.trim();
+    if (text.length === 0) return null;
+    return provider === 'coolify' ? { kind: 'unrepresentable', text } : { kind: 'manual', text };
+  }
+  if (
+    typeof raw === 'object' &&
+    raw !== null &&
+    (raw as { mode?: unknown }).mode === 'coolify-image'
+  ) {
+    return { kind: 'coolify-image' };
+  }
+  return null;
+}
 
 export async function resolveReleaseChannel(projectId: string): Promise<ReleaseChannel> {
   const bindings = await listActiveBindingsForEnvironment(projectId, 'prod');
@@ -36,12 +65,11 @@ export async function resolveReleaseChannel(projectId: string): Promise<ReleaseC
   }
   const cfg = effectiveConfig(pair);
   const label = cfg.releaseRunnerLabel;
-  const rollback = cfg.rollback;
   return {
     provider: pair.binding.provider,
     instructions: pair.binding.instructions ?? null,
     verify: parseVerifyConfig(cfg.verify),
-    rollback: typeof rollback === 'string' && rollback.trim().length > 0 ? rollback : null,
+    rollback: classifyRollback(pair.binding.provider, cfg.rollback),
     // cm:guard read the pool label out of `config`, NEVER out of `integration_bindings.label` — that column is the multi-store slug (ISS-558) and sits inside UNIQUE(project_id, provider, environment, label), so borrowing it would make "which box releases" and "which store is this" the same field
     releaseRunnerLabel: typeof label === 'string' && label.length > 0 ? label : null,
   };

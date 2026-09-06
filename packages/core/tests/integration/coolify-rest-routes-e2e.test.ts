@@ -111,6 +111,51 @@ describe('Coolify commands over REST', () => {
     expect([403, 404]).toContain(res.status);
   });
 
+  // cm:guard every case below must stop at a Forge-side refusal: a control that changes production may not be proved by firing it at a real Coolify, which is the harm ISS-925 exists to remove.
+  it('reports nothing to cancel rather than failing, when no integration exists', async () => {
+    const { project, token } = await seed();
+    const res = await call(
+      token,
+      `/api/projects/${project.id}/integrations/coolify/cancel`,
+      'POST',
+      {},
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      code: 'BAD_REQUEST',
+      message: 'project has no active Coolify integration',
+    });
+  });
+
+  it('refuses a rollback with no image named, before resolving any integration', async () => {
+    const { project, token } = await seed();
+    const res = await call(
+      token,
+      `/api/projects/${project.id}/integrations/coolify/rollback`,
+      'POST',
+      {},
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses an applications probe that carries neither a binding nor a credential', async () => {
+    const { project, token } = await seed();
+    const res = await call(
+      token,
+      `/api/projects/${project.id}/integrations/coolify/applications`,
+      'POST',
+      { baseUrl: 'https://coolify.example' },
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses to read the targets of a project with no integration', async () => {
+    const { project, token } = await seed();
+    const res = await call(token, `/api/projects/${project.id}/integrations/coolify/targets`);
+    expect(res.status).toBe(400);
+  });
+
   it('rejects a malformed deploy body instead of deploying something else', async () => {
     const { project, token } = await seed();
     const res = await call(

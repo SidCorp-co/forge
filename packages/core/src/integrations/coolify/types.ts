@@ -62,6 +62,57 @@ export interface CoolifyResourceResponse {
 }
 
 /**
+ * Coolify v4 `POST /api/v1/deployments/{uuid}/cancel`. A deployment that has
+ * already finished answers 400 with its own `message`, not this shape.
+ */
+export interface CoolifyCancelResponse {
+  message?: string;
+  deployment_uuid?: string;
+  status?: string;
+}
+
+/** One entry of `GET /api/v1/applications/{uuid}/rollback-images`. */
+export interface CoolifyRollbackImage {
+  tag?: string;
+  created_at?: string;
+  is_current?: boolean;
+}
+
+/**
+ * Coolify v4 `GET /api/v1/applications/{uuid}/rollback-images`.
+ */
+// cm:guard an EMPTY `images` is NOT "this application has no older builds" — `ApplicationsController::rollback_images` catches every throwable from the remote `docker images` call and answers 200 with `{current:null, images:[]}`, so an unreachable server is byte-identical to a clean one. `assertRollbackTagListed` refuses on an empty list for exactly this reason.
+export interface CoolifyRollbackImagesResponse {
+  current?: string | null;
+  images?: CoolifyRollbackImage[];
+}
+
+/**
+ * Coolify v4 `POST /api/v1/applications/{uuid}/rollback`.
+ */
+// cm:guard `deployment_uuid` is OPTIONAL on a 200 and its absence is a rollback that did NOT happen — `queue_application_deployment` answers `status:'skipped'` with a bare `message` and HTTP 200 when a deployment for that commit is already queued. Reading the 200 alone reports a rollback nobody performed.
+export interface CoolifyRollbackResponse {
+  message?: string;
+  deployment_uuid?: string;
+}
+
+/**
+ * Coolify v4 `Application`, narrowed to the identity fields Forge shows an
+ * operator. `git_commit_sha` is Coolify's OWN record of what it deployed,
+ * which is why a bound target can be checked without probing the running app.
+ */
+export interface CoolifyApplicationResponse {
+  uuid: string;
+  name?: string;
+  fqdn?: string | null;
+  description?: string | null;
+  git_repository?: string;
+  git_branch?: string;
+  git_commit_sha?: string;
+  status?: string;
+}
+
+/**
  * Coolify v4 `GET /api/v1/applications/{uuid}/logs` — recent RUNTIME container
  * logs as one string. CAVEAT (verified 2026-07-14 against getforge-beta): for a
  * docker-compose application this returns only ONE container's logs and the

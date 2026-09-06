@@ -27,6 +27,7 @@ const BASE: ReleaseReadiness = {
   provider: null,
   releaseRunnerLabel: null,
   rollback: null,
+  rollbackMode: null,
   hasVerify: false,
   gaps: [],
 };
@@ -77,7 +78,8 @@ describe("ReleaseSection", () => {
       productionBranch: "production",
       provider: "coolify",
       releaseRunnerLabel: "prod-box",
-      rollback: "redeploy the previous tag",
+      rollback: null,
+      rollbackMode: "coolify-image",
       hasVerify: true,
     });
 
@@ -128,8 +130,32 @@ describe("ReleaseSection", () => {
 
   // cm:guard an undeclared rollback is a DEFAULT the operator is running under, not an absence — the release aborts and comments rather than rolling back blind, and a dash here would read as "unknown".
   it("states the abort-and-comment default rather than a dash", () => {
-    renderWith({ hasProduction: true, productionBranch: "production", rollback: null });
+    renderWith({ hasProduction: true, productionBranch: "production", rollbackMode: null });
 
     expect(screen.getByText("abort and comment")).toBeInTheDocument();
+  });
+
+  // cm:guard free text on a coolify binding must NOT read as "declared" — Forge does not execute it, so a settled-looking row here hides a release that will abort (ISS-925).
+  it("says a coolify binding's free text is not executed", () => {
+    renderWith({
+      hasProduction: true,
+      productionBranch: "production",
+      rollback: "ssh in and redeploy",
+      rollbackMode: "unrepresentable",
+      gaps: ["rollback-prose"],
+    });
+
+    expect(screen.getByText(/not executed, abort and comment/i)).toBeInTheDocument();
+    expect(screen.getByText(/no longer executes/i)).toBeInTheDocument();
+  });
+
+  it("says Forge performs the rollback when the binding declares the action", () => {
+    renderWith({
+      hasProduction: true,
+      productionBranch: "production",
+      rollbackMode: "coolify-image",
+    });
+
+    expect(screen.getByText(/Forge rolls back to a Coolify image/i)).toBeInTheDocument();
   });
 });

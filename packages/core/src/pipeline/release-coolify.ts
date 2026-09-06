@@ -40,7 +40,7 @@ export interface DispatchOutcome {
  * skipping the human-confirm gate. Default false keeps the gate. Best-effort —
  * a read failure falls back to the safe (gated) behavior.
  */
-async function projectAutoProdDeploy(projectId: string): Promise<boolean> {
+export async function projectAutoProdDeploy(projectId: string): Promise<boolean> {
   try {
     const [row] = await db
       .select({ agentConfig: projects.agentConfig })
@@ -54,6 +54,23 @@ async function projectAutoProdDeploy(projectId: string): Promise<boolean> {
     logger.warn({ err, projectId }, 'coolify: failed to read autoProdDeploy — keeping prod gate');
     return false;
   }
+}
+
+/**
+ * Whether a run-less action against a `prod` binding must park for a human.
+ *
+ * There is exactly one rule and this is the only place it is written: a prod
+ * binding with no run behind it never dispatches, because confirming a prod
+ * deploy is run-keyed and a run-less action has no gate to release. The
+ * project can opt out wholesale with `pipelineConfig.autoProdDeploy`.
+ */
+// cm:edge contract -> packages/core/src/integrations/coolify/controls.ts — cancel and rollback change production exactly as a deploy does (ISS-925), so they ask THIS function rather than restating the branch; a second copy is how one of the three ends up with a weaker gate than the other two.
+export async function prodActionNeedsHumanConfirm(
+  projectId: string,
+  environment: string,
+): Promise<boolean> {
+  if (environment !== 'prod') return false;
+  return !(await projectAutoProdDeploy(projectId));
 }
 
 /**
@@ -216,7 +233,7 @@ export async function dispatchCoolifyDeployDirect(args: {
   }
   const { binding } = pair;
 
-  if (binding.environment === 'prod' && !(await projectAutoProdDeploy(projectId))) {
+  if (await prodActionNeedsHumanConfirm(projectId, binding.environment)) {
     // Prod is never auto-dispatched run-less (unless the project opted into
     // autoProdDeploy). Confirming a prod deploy is run-keyed (confirm-prod-
     // deploy endpoint), so it still requires the issueId path — return the gate
@@ -339,7 +356,6 @@ export async function confirmPendingProdDeploy(
     return { confirmed: false, runId: null, integrationId: bindingId };
   }
 
-  // Persist the confirmation onto the run's metadata.
   const [run] = await db
     .select({ id: pipelineRuns.id, metadata: pipelineRuns.metadata })
     .from(pipelineRuns)

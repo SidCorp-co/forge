@@ -11,6 +11,31 @@
 
 ### Added
 
+- **A Coolify deploy that is building the wrong thing can now be stopped from Forge.** Coolify has
+  had `POST /deployments/{uuid}/cancel` all along; Forge had no path to it, so a bad build ran to
+  completion and the only recourse was the Coolify UI. `forge_coolify_deploy action=cancel` and
+  `POST /api/projects/:id/integrations/coolify/cancel` reach it, resolving the deployment from the
+  explicit uuid or the integration's most recent one. A deployment Coolify has already finished
+  answers 400 with its own sentence, which is returned as-is: nothing is reported cancelled that
+  was not. The cancel is written to the delivery log like any other outbound action, and needs no
+  new confirmation path — Coolify reports `cancelled-by-user`, which the deploy poller already
+  reads as a failure, so the run settles on its next tick.
+
+- **A rollback is an action Forge performs, against an image it has confirmed exists.** New
+  `action=rollback-images` reads what a target can actually be rolled back to (with the running one
+  marked), and `action=rollback` queues the rollback at a chosen image tag. A tag Coolify no longer
+  lists is refused by name, and so is an empty list — Coolify answers an unreachable application
+  server with an empty list and a 200, so the read that proves least must not be the one that lets
+  everything through. Coolify itself does not check the tag against its own list, so this rule is
+  Forge's. A rollback that Coolify accepts without queuing anything is reported as a failure, not a
+  rollback. The rollback build is polled and audited exactly like a deploy.
+
+- **A deploy target is picked from what Coolify reports instead of transcribed.** The Coolify
+  settings section now lists the applications the credential can see — including on the create
+  form, before the connection is saved, which is where the transcription used to happen — and each
+  bound target shows the name, domain and branch/commit Coolify holds for it. A bound uuid Coolify
+  does not list is called out in place, so a wrong binding is visible without opening Coolify.
+
 - **An agent working an issue on a project that keeps modules is now told they exist, and how to
   set the issue's primary one.** ISS-593 made a module a label with `kind='module'` and gave an
   issue a primary through `issue_labels.is_primary`, but nothing told the agents doing the work:
@@ -2451,6 +2476,21 @@
   paired device (`dispatch`, `write_decision`) refuse by name and list the actions a PAT can reach;
   `write_decision` has no REST twin left, and that open decision is
   `docs/proposals/pm-dispatch-has-no-rest-twin.md`. (ISS-931)
+
+- **`rollback` on a production Coolify binding is now the action, not a paragraph.** Free text
+  there described a procedure somebody would carry out by hand under time pressure, from
+  instructions nothing had verified were still true. A Coolify binding now declares
+  `rollback: {"mode":"coolify-image"}` and Forge performs it; free text is refused on save, with a
+  message naming the replacement. It stays exactly as it was for every other channel — Postman,
+  Epodsystem, Sentry, GitHub, Rocket.Chat and the `agent` channel have no API that expresses a
+  rollback, which is the one thing the field is now for.
+
+  Bindings already holding prose are not rewritten and not deleted. They are named: project
+  settings shows the declaration as *free text — not executed*, readiness reports a new
+  `rollback-prose` gap, and a release batch on that project is told to **abort** and is shown the
+  stored text so a human can convert it, rather than being handed a paragraph to improvise from.
+  That is a deliberate break: those projects previously had a rollback an agent would attempt, and
+  now they abort until the binding is converted.
 
 - **A device token no longer reaches the API as its owner.** `requireAnyAuth` — the middleware
   behind attachment uploads and two comment routes — used to accept a runner's device token and set

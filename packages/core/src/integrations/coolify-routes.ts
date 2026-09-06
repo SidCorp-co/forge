@@ -28,12 +28,21 @@ import {
   runCoolifyDeploy,
 } from './coolify/commands.js';
 import {
+  credentialFromSecrets,
+  fetchCoolifyApplications,
+  listCoolifyRollbackImages,
+  resolveCoolifyTargets,
+  runCoolifyCancel,
+  runCoolifyRollback,
+} from './coolify/controls.js';
+import type { CoolifyConfig, CoolifySecrets } from './coolify/types.js';
+import {
   assertAdmin,
   assertProjectMember,
   broadcastIntegrationChanged,
   notFound,
 } from './route-helpers.js';
-import { findBindingWithConnectionById } from './store.js';
+import { buildContextFromBinding, findBindingWithConnectionById } from './store.js';
 
 const deployBodySchema = z
   .object({
@@ -42,6 +51,27 @@ const deployBodySchema = z
     integrationId: z.uuid().optional(),
   })
   .strict();
+
+const cancelBodySchema = z
+  .object({
+    integrationId: z.uuid().optional(),
+    deploymentUuid: z.string().min(1).max(200).optional(),
+  })
+  .strict();
+
+const rollbackBodySchema = z
+  .object({
+    integrationId: z.uuid().optional(),
+    resourceUuid: z.string().min(1).max(200).optional(),
+    commit: z.string().min(1).max(200),
+  })
+  .strict();
+
+// cm:edge contract -> packages/web-v2/src/features/integrations/components/coolify-section.tsx — the picker calls this with the credential the operator is STILL TYPING, before any connection row exists, which is the only reason the target list can replace a transcribed uuid on a first save. Requiring `integrationId` here would put the pick-list one save behind the form and hand the operator back the transcription (ISS-925).
+const applicationsBodySchema = z.union([
+  z.object({ integrationId: z.uuid() }).strict(),
+  z.object({ baseUrl: z.string().url().max(500), apiToken: z.string().min(8).max(2000) }).strict(),
+]);
 
 // cm:edge contract -> packages/core/src/integrations/coolify/commands.ts — that module throws a bare sentence so this surface can make it a 400 body; the MCP tool adds its own `BAD_REQUEST:` prefix instead. Mapping it to a 500 here would report a caller's mistake as core's.
 const asHttp = (err: unknown): never => {
@@ -90,6 +120,113 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
 
     try {
       return c.json(await runCoolifyDeploy({ projectId, ...parsed.data }));
+    } catch (err) {
+      return asHttp(err);
+    }
+  });
+
+  // cm:guard `member`, matching the deploy route above and NOT admin: cancel and rollback answer to the SAME prod gate a deploy does — `prodActionNeedsHumanConfirm` inside the commands — so raising the floor here would only block staging while changing nothing about prod (ISS-925).
+  routes.post('/:projectId/integrations/coolify/cancel', async (c) => {
+    const projectId = c.req.param('projectId');
+    await assertProjectMember(projectId, c.get('userId'));
+    const raw = await c.req.json().catch(() => ({}));
+    const parsed = cancelBodySchema.safeParse(raw ?? {});
+    if (!parsed.success) {
+      throw new HTTPException(400, {
+        message: 'Invalid input',
+        cause: { code: 'BAD_REQUEST', details: z.flattenError(parsed.error) },
+      });
+    }
+    try {
+      return c.json(await runCoolifyCancel({ projectId, ...parsed.data }));
+    } catch (err) {
+      return asHttp(err);
+    }
+  });
+
+  routes.get('/:projectId/integrations/coolify/rollback-images', async (c) => {
+    const projectId = c.req.param('projectId');
+    await assertProjectMember(projectId, c.get('userId'));
+    const integrationId = c.req.query('integrationId');
+    const resourceUuid = c.req.query('resourceUuid');
+    try {
+      return c.json(
+        await listCoolifyRollbackImages({
+          projectId,
+          ...(integrationId ? { integrationId } : {}),
+          ...(resourceUuid ? { resourceUuid } : {}),
+        }),
+      );
+    } catch (err) {
+      return asHttp(err);
+    }
+  });
+
+  routes.post('/:projectId/integrations/coolify/rollback', async (c) => {
+    const projectId = c.req.param('projectId');
+    await assertProjectMember(projectId, c.get('userId'));
+    const raw = await c.req.json().catch(() => ({}));
+    const parsed = rollbackBodySchema.safeParse(raw ?? {});
+    if (!parsed.success) {
+      throw new HTTPException(400, {
+        message: 'Invalid input',
+        cause: { code: 'BAD_REQUEST', details: z.flattenError(parsed.error) },
+      });
+    }
+    try {
+      return c.json(await runCoolifyRollback({ projectId, ...parsed.data }));
+    } catch (err) {
+      return asHttp(err);
+    }
+  });
+
+  routes.post('/:projectId/integrations/coolify/applications', async (c) => {
+    const projectId = c.req.param('projectId');
+    await assertProjectMember(projectId, c.get('userId'));
+    const raw = await c.req.json().catch(() => ({}));
+    const parsed = applicationsBodySchema.safeParse(raw ?? {});
+    if (!parsed.success) {
+      throw new HTTPException(400, {
+        message: 'Invalid input',
+        cause: { code: 'BAD_REQUEST', details: z.flattenError(parsed.error) },
+      });
+    }
+    const body = parsed.data;
+    let auth: { baseUrl: string; apiToken: string; previousApiToken?: string };
+    if ('integrationId' in body) {
+      const existing = await findBindingWithConnectionById(body.integrationId);
+      if (
+        !existing ||
+        existing.binding.projectId !== projectId ||
+        existing.binding.provider !== 'coolify'
+      ) {
+        throw notFound();
+      }
+      const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>(existing);
+      if (!ctx.config?.baseUrl || !ctx.secrets?.apiToken) {
+        throw new HTTPException(409, {
+          message: 'coolify connection is missing baseUrl or apiToken',
+          cause: { code: 'MISSING_CREDENTIALS' },
+        });
+      }
+      auth = credentialFromSecrets(ctx.config, ctx.secrets);
+    } else {
+      auth = { baseUrl: body.baseUrl, apiToken: body.apiToken };
+    }
+    return c.json({ applications: (await fetchCoolifyApplications(auth)).slice(0, 500) });
+  });
+
+  routes.get('/:projectId/integrations/coolify/targets', async (c) => {
+    const projectId = c.req.param('projectId');
+    await assertProjectMember(projectId, c.get('userId'));
+    const integrationId = c.req.query('integrationId');
+    try {
+      return c.json(
+        await resolveCoolifyTargets({
+          projectId,
+          ...(integrationId ? { integrationId } : {}),
+        }),
+      );
     } catch (err) {
       return asHttp(err);
     }
