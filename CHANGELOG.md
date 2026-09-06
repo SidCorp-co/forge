@@ -11,6 +11,22 @@
 
 ### Added
 
+- **A project's owner can set a standing policy for its master, and it survives the session.**
+  The forge-dev master ran on an instruction — an advisory session budget, which issues count as
+  eligible, when to group work into one session, what to pay down alongside the change — that
+  existed only as text a human had typed into a tmux pane. Every master restart dropped it, and it
+  was re-sent by hand twice and lost twice in two days. Nothing in the master's own process could
+  hold it: the skill text ships inside the runner binary, so an edit needs a release, and the two
+  places it does discuss batch size and grouping said the opposite of what the owner had decided.
+
+  A project now carries a `master-policy` fact (set it with `forge_config`, no deploy and no
+  restart). Core sends it on `/me/runners` as `masterPolicy`, the daemon splices it verbatim into
+  the standing brief the master is given once per session, and the brief says plainly that it
+  outranks the shipped skill wherever the two differ. The skill's *Deciding how many* and grouping
+  sections now defer to it and keep their own text as the default for a project that has set none —
+  a project with no policy is briefed byte-for-byte as it was before. Reaching the fleet needs a
+  `runner-v*` release. (ISS-929)
+
 - **A master that cannot start is stopped being restarted, and a fresh box never meets the
   workspace-trust dialog.** `ensure_master` respawned a dead master on every 30-second sweep with
   nothing counting how many times it had already done so, so a session that died deterministically
