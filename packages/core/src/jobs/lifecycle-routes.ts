@@ -9,7 +9,7 @@ import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { assertPlatformAdmin } from '../middleware/require-admin.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -80,11 +80,7 @@ const killAckBodySchema = z
 
 const RUNNABLE_STATUSES = new Set(['dispatched', 'running']);
 
-// ISS-378 — `jobs.error` markers written by the SERVER-side reapers (never by
-// a real runner /fail): the orphan reconcilers + stale-detector. A successful
-// late /complete for a job carrying one of these means the runner actually
-// finished but its report was lost (e.g. to a core outage) and a sweep reaped
-// the row first — so the success is reconcilable, not a conflict.
+// cm:guard these markers are written by SERVER-side reapers only — the orphan reconcilers and the stale-detector — never by a real runner `/fail` (ISS-378). That is what makes a late successful `/complete` on a job carrying one reconcilable rather than a conflict: the runner did finish, its report was lost (a core outage), and a sweep reaped the row first. Add a marker a runner CAN write and this list starts forgiving a genuine contradiction.
 
 async function loadJob(jobId: string) {
   const row = await readJob(jobId);
@@ -572,6 +568,7 @@ jobLifecycleUserRoutes.post(
     try {
       const result = await cancelJob(id, {
         actorUserId: userId,
+        actorAgency: restActor(c).agency,
         reason: parsedBody.data.reason ?? 'manual cancel (REST)',
         source: 'rest',
       });

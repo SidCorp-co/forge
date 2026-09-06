@@ -1471,6 +1471,13 @@
       "when": 1791676800000,
       "tag": "0211_admin_thresholds",
       "breakpoints": true
+    },
+    {
+      "idx": 212,
+      "version": "7",
+      "when": 1791763200000,
+      "tag": "0212_kernel_transitions_actor_agency",
+      "breakpoints": true
     }
   ]
 }

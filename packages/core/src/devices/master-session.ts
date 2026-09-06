@@ -109,7 +109,7 @@ export async function ensureMasterSession(args: {
  * statement would make a partial failure invisible on whichever half lost.
  */
 // cm:guard refuse to close a session this device does not own. Every paired runner in the fleet holds a valid device token, so without the ownership check any box could terminate another box's master and take its work — the same reason `assertOwnsSession` exists on the inbox routes.
-// cm:edge lockstep -> packages/core/src/lifecycle/transition.ts — a terminal status on `agent_sessions` goes through `applyKernelTransition` and nowhere else, so this flip leaves a `kernel_transitions` row like every other. `transition-guard.test.ts` fails the build on a direct write; it caught this one while ISS-919 was being written, which is the whole reason the guard scans the tree rather than the diff.
+// cm:edge lockstep -> packages/core/src/lifecycle/transition.ts — route this flip through `applyKernelTransition` so it leaves a `kernel_transitions` row like every other. `transition-guard.test.ts` caught this one while ISS-919 was being written, which is the whole reason the guard scans the tree rather than the diff. It is NOT true that every terminal `agent_sessions` write goes through the chokepoint — the runner's `PATCH /:id` is a direct `db.update` the guard cannot see, because it writes a variable status (ISS-927). That is a fact about the guard's reach, not a licence: a LITERAL terminal status here still fails the build, and should.
 export async function closeMasterSession(args: {
   deviceId: string;
   sessionId: string;

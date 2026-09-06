@@ -1,0 +1,1 @@
+ALTER TABLE "kernel_transitions" ADD COLUMN "actor_agency" text DEFAULT 'human' NOT NULL;

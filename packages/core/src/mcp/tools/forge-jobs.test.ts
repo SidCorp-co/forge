@@ -275,7 +275,7 @@ describe('forge_jobs.get', () => {
   it('throws FORBIDDEN cross-project', async () => {
     const tool = forgeJobsGetTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([{ ...baseJobRow, projectId: OTHER_PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // not a member
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
     await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
@@ -369,7 +369,7 @@ describe('forge_jobs.events', () => {
   it('throws FORBIDDEN cross-project', async () => {
     const tool = forgeJobsEventsTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([{ ...baseJobRow, projectId: OTHER_PROJECT_ID }]);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // not a member
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
     await expect(tool.handler({ jobId: JOB_ID })).rejects.toThrow(/FORBIDDEN/);
   });
 
@@ -400,6 +400,7 @@ describe('forge_jobs.cancel', () => {
     expect(result.cancellationRequested).toBe(true);
     expect(cancelJobMock).toHaveBeenCalledWith(JOB_ID, {
       actorUserId: OWNER_ID,
+      actorAgency: 'human',
       reason: 'stuck ghost job',
       source: 'mcp',
     });

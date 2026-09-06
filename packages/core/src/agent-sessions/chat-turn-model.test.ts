@@ -64,6 +64,11 @@ vi.mock('./turns-helpers.js', () => ({
   syncTurnsWithMessages: vi.fn(async () => ({ appended: [], truncatedFromTurnIndex: null })),
 }));
 vi.mock('../pipeline/runs.js', () => ({ openOneShotRun: vi.fn(async () => ({ id: 'run-1' })) }));
+// cm:why the ISS-927 mint writes through the module-level `db`, which this suite stubs as a single shared spy — unmocked, its UPDATE lands in `updateSet` and `writtenMetadata()` reads it back as if it were the session write.
+vi.mock('./session-token.js', () => ({
+  mintSessionToken: vi.fn(async () => 'forge_pat_dev_x'),
+  isUnattendedSession: () => false,
+}));
 
 const { dispatchChatTurn } = await import('./chat-turn.js');
 

@@ -88,7 +88,12 @@ describe('cancelJob — queued path closes orphaned reconcile runs (ISS-808)', (
   it('invokes failReconcileRunForFailedJob with the updated job for a queued reconcile job', async () => {
     applyKernelTransitionMock.mockResolvedValueOnce([updatedRow()]);
 
-    await cancelJob('job-1', { actorUserId: 'u1', reason: 'stuck', source: 'rest' });
+    await cancelJob('job-1', {
+      actorUserId: 'u1',
+      reason: 'stuck',
+      source: 'rest',
+      actorAgency: 'human',
+    });
 
     expect(failReconcileRunForFailedJobMock).toHaveBeenCalledTimes(1);
     expect(failReconcileRunForFailedJobMock).toHaveBeenCalledWith(
@@ -99,7 +104,12 @@ describe('cancelJob — queued path closes orphaned reconcile runs (ISS-808)', (
   it('still cancels a non-reconcile queued job (no regression)', async () => {
     applyKernelTransitionMock.mockResolvedValueOnce([updatedRow({ type: 'code', payload: {} })]);
 
-    const result = await cancelJob('job-1', { actorUserId: 'u1', reason: 'stuck', source: 'rest' });
+    const result = await cancelJob('job-1', {
+      actorUserId: 'u1',
+      reason: 'stuck',
+      source: 'rest',
+      actorAgency: 'human',
+    });
 
     expect(result.status).toBe('cancelled');
     expect(failReconcileRunForFailedJobMock).toHaveBeenCalledTimes(1);
@@ -109,7 +119,12 @@ describe('cancelJob — queued path closes orphaned reconcile runs (ISS-808)', (
     applyKernelTransitionMock.mockResolvedValueOnce([updatedRow()]);
     failReconcileRunForFailedJobMock.mockRejectedValueOnce(new Error('run already terminal'));
 
-    const result = await cancelJob('job-1', { actorUserId: 'u1', reason: 'stuck', source: 'rest' });
+    const result = await cancelJob('job-1', {
+      actorUserId: 'u1',
+      reason: 'stuck',
+      source: 'rest',
+      actorAgency: 'human',
+    });
 
     expect(result.status).toBe('cancelled');
   });
@@ -131,6 +146,7 @@ describe('cancelJob — held', () => {
       actorUserId: 'u1',
       reason: 'condition is permanent',
       source: 'mcp',
+      actorAgency: 'human',
     });
 
     expect(result.status).toBe('cancelled');
@@ -149,7 +165,12 @@ describe('cancelJob — held', () => {
       updatedRow({ type: 'triage', payload: {}, issueId: 'iss-1' }),
     ]);
 
-    await cancelJob('job-1', { actorUserId: 'u1', reason: 'permanent', source: 'mcp' });
+    await cancelJob('job-1', {
+      actorUserId: 'u1',
+      reason: 'permanent',
+      source: 'mcp',
+      actorAgency: 'human',
+    });
 
     expect(syncAgentSessionLifecycleMock).toHaveBeenCalledTimes(1);
   });

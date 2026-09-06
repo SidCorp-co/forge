@@ -12,7 +12,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { readPipelineRun } from './runs.js';
 import {
   cancelPipelineRun,
@@ -38,7 +38,6 @@ const runConflict = (message: string) =>
 async function loadRunWithAccess(runId: string, userId: string): Promise<PipelineRunRow> {
   const row = await readPipelineRun(runId);
   if (!row) throw notFound('pipeline run not found');
-  // pause/resume/cancel are mutations — viewers are read-only.
   const access = await loadProjectAccess(row.projectId, userId);
   assertProjectRole(access, 'member');
   return row;
@@ -108,6 +107,7 @@ pipelineRunRoutes.post(
     try {
       const result = await cancelPipelineRun(id, {
         actorUserId: userId,
+        actorAgency: restActor(c).agency,
         ...(body.data.parkIssue !== undefined ? { parkIssue: body.data.parkIssue } : {}),
       });
       return c.json(result);
