@@ -27,7 +27,7 @@ const deleteInputSchema = z.object({
 const searchInputSchema = z.object({
   projectId: z.uuid(),
   query: z.string().trim().min(1).max(4000),
-  // cm:edge contract -> packages/core/src/memory/search-routes.ts — the two surfaces declare this schema separately and nothing type-checks them against each other, so `topK` and `strategy` must be changed in both: a caller that omits either gets a different result set depending on which surface it happened to reach, and `semantic` is load-bearing because its scores are cosine similarity and the prompt-facts thresholds (knowledge dedup > 0.8) are calibrated on that scale.
+  // cm:edge contract -> packages/core/src/memory/search-routes.ts — the two surfaces declare this schema separately and nothing type-checks one against the other, so `topK` and `strategy` must be changed in both AND forwarded in both: that route declared `strategy` and then did not pass it to `runMemorySearch` for as long as it existed, so a REST caller asking for `hybrid` was answered `semantic` and told so in the response (fixed 2026-09-06, ISS-894). `semantic` is the default on both because its scores are cosine similarity and the prompt-facts thresholds (knowledge dedup > 0.8) are calibrated on that scale.
   topK: z.number().int().min(1).max(50).default(10),
   sourceFilter: z.array(z.enum(memorySources)).optional(),
   strategy: z.enum(memorySearchStrategies).default('semantic'),

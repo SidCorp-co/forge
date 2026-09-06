@@ -119,8 +119,6 @@ describe('F3 memory search + indexer integration', () => {
     );
   }
 
-  // ---------- SEARCH ----------
-
   it('search: 401 without token', async () => {
     const { projectId } = await seedMember();
     const res = await app.request('/api/memory/search', {
@@ -166,7 +164,6 @@ describe('F3 memory search + indexer integration', () => {
   it('search: happy path returns hits ordered by score (higher similarity first)', async () => {
     const { projectId, token } = await seedMember();
 
-    // Seed three memories with distinct "hot" indices.
     await insertMemory(projectId, {
       source: 'issue',
       sourceRef: randomUUID(),
@@ -211,6 +208,31 @@ describe('F3 memory search + indexer integration', () => {
     }
     expect(body.model).toBeTruthy();
     expect(typeof body.took_ms).toBe('number');
+  });
+
+  // cm:guard assert on `strategy` in the RESPONSE, never on the hits — the route validated this field and did not forward it, so the service defaulted to 'semantic' and reported 'semantic' back while the caller had asked for something else (ISS-894), and a hits-only assertion passes on the broken route and the fixed one alike.
+  it('search: the requested strategy reaches the service and is reported back', async () => {
+    const { projectId, token } = await seedMember();
+
+    await insertMemory(projectId, {
+      source: 'issue',
+      sourceRef: randomUUID(),
+      text: 'auth login flow',
+      vec: hotVector(0),
+    });
+    stubEmbedding(hotVector(0));
+
+    const res = await app.request('/api/memory/search', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ projectId, query: 'auth', topK: 3, strategy: 'keyword' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { strategy: string };
+    expect(body.strategy).toBe('keyword');
   });
 
   it('search: sourceFilter narrows results', async () => {

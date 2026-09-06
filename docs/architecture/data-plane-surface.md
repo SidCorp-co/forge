@@ -3,21 +3,25 @@
 **This page documents `forge-runner api` — the Rust daemon's own reach into core, over REST on a
 `$FORGE_PAT`.** It is not the agent's surface. An agent's whole surface is `forge`, the 21-verb CLI
 built in [forge-plugin](https://github.com/SidCorp-co/forge-plugin), and a skill calls that and
-nothing else. Which CLI belongs to whom, and why the runner must never acquire a dependency on a
-plugin it does not ship: [agent-surface.md](agent-surface.md).
+nothing else. Since `ISS-508` closed on 2026-09-06 that CLI reaches `/api` too, so the table below
+is the map for both callers rather than a translation between them — except on a box still running
+3.35.140, which posts JSON-RPC. Which CLI belongs to whom, and why the runner must never acquire a
+dependency on a plugin it does not ship: [agent-surface.md](agent-surface.md).
 
 **Most MCP tools that read or write data have a REST twin.** The table below maps them, and it is
 true whoever calls the route. Two tools stay on MCP by design, three sit behind a fence that is
 deliberate and permanent, two are open questions, and one has no route at all.
 
-Verified 2026-09-01 against `registered-tools.ts`, the mounts in `index.ts`, and
+Verified 2026-09-06 against `registered-tools.ts`, the mounts in `index.ts`, and
 `PAT_ALLOWED_PREFIXES` in `middleware/pat-rest-surface.ts`. Where a route is listed, it was checked
 to call the same service as the tool — not merely to carry a similar name.
 
 ```mermaid
 flowchart LR
   D["forge-runner<br/>Rust daemon"] -->|"$FORGE_PAT"| CLI["forge-runner api"]
-  P["forge · the plugin CLI<br/>the agent's surface"] --> MCP["/mcp"]
+  P["forge · the plugin CLI<br/>the agent's surface"] -->|"3.35.141+"| CLI
+  P -->|"3.35.140 · what the fleet runs"| MCP["/mcp"]
+  MC["Claude's MCP client<br/>device token"] --> MCP
   CLI --> F{"PAT allowlist<br/>16 prefixes"}
   F -->|on it| R["REST · the data plane"]
   F -->|not on it| X["403 PAT_NOT_PERMITTED"]
@@ -40,7 +44,7 @@ is the live example. Read the mount and its middleware, not the prefix alone.
 | `forge_issues` get / update / delete | `/api/issues/:id`, and `PATCH /api/issues/batch` |
 | `forge_issues` mark_merged / unmark | `POST` / `DELETE /api/issues/:id/merge` |
 | `forge_comments` create / list | `/api/issues/:id/comments` — `/api/comments/:id` is edit, delete and replies only, and has no collection route |
-| `forge_memory.*` (5) | `/api/memory` |
+| `forge_memory.*` (5) | `/api/memory` — the sixth, `forge_memory.revisions`, was deleted 2026-09-06 (ISS-894); `GET /api/memory/revisions` is the only way in |
 | `forge_knowledge` list / get / upsert / delete | `/api/knowledge`, `/api/knowledge-edges`, `/api/projects/:id/knowledge[/:slug]` |
 | `forge_knowledge` search | `POST /api/projects/:id/knowledge/search` — body `{query, topK?, scope?, strategy?}`, the action's own fields with its own defaults (`knowledge`, 10, `semantic`). **`POST`, because `GET` on that path is the `/:slug` handler and answers *knowledge entry not found*.** There is no `sourceFilter`: the MCP action never had one either — that argument is `POST /api/memory/search`'s, and `runUnifiedSearch` takes no such parameter |
 | `forge_config` | `/api/projects/:id/pipeline-config` |

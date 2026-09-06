@@ -799,13 +799,20 @@
 ### Removed
 
 - **The `forge_memory.revisions` MCP tool.** The MCP surface is being shrunk to the
-  session-lifecycle group (ISS-894), and the rule for taking one out is that its device-caller
-  count over the whole `mcp_audit_log` is zero and a replacement route exists. This one is the
-  first tool to satisfy it outright: it has **no rows at all** in that table under either
-  spelling, no `skills.skill_md` row on the live instance names it, and
-  `GET /api/memory/revisions` — which the driver's own rules block already points at — answers a
-  job-scoped PAT. The registry goes 60 → 59. `runMemoryRevisions` and the REST route are
-  untouched; only the second way in is gone.
+  session-lifecycle group (ISS-894). It has **no rows at all** in `mcp_audit_log` under either
+  spelling — the first registered tool measured at zero calls lifetime — no `skills.skill_md` row
+  on the live instance names it, and `GET /api/memory/revisions` answers a job-scoped PAT. The
+  registry goes 60 → 59. `runMemoryRevisions` and the REST route are untouched; only the second
+  way in is gone.
+
+  **The deletion rule's second clause was not met, and the rule now says why that is allowed
+  here.** It asks that the replacement route accept a device token; `GET /api/memory/revisions` is
+  `requireAuth()` and would refuse one, the same shape that made `/api/skill-facts` a bad
+  replacement for `forge_skill_facts.get`. The difference is that tool had 23 device callers to
+  strand and this one has none. `docs/architecture/agent-surface.md` now states that reading and
+  prices it: available once per tool, on evidence of zero rows whole-table under both spellings,
+  worth nothing for a tool with traffic, and revoked if a device caller for a tool deleted this way
+  ever appears.
 
   The wave that measured this before reported "no candidates" because it joined the registry
   against the audit log with an inner join, and a tool nobody has ever called has no row to join
@@ -1123,6 +1130,24 @@
   set is now 59.
 
 ### Fixed
+
+- **`POST /api/memory/search` ignored the `strategy` you asked for and told you it had honoured
+  it.** The route validated `strategy` in its body schema and then never passed it to
+  `runMemorySearch`, which applied its own `'semantic'` default — so a caller asking for `keyword`
+  or `hybrid` got a semantic search back, labelled `strategy: 'semantic'` in the response, with no
+  error anywhere. The MCP tool always forwarded it, so the two surfaces disagreed for as long as
+  the route existed. Found while annotating the pair as a declared contract (ISS-894); the route
+  now forwards the field, and an integration test asserts the requested strategy in the response
+  rather than in the hits, because a hits-only assertion passes on both the broken and the fixed
+  route.
+
+  *Trade-off, priced:* `memory-search.test.ts`'s describe block was frozen at 321 lines and the new
+  case takes it to 338, so its one entry in `.forge/size-baseline.json` was re-frozen — one line,
+  by hand, rather than `--update-baseline`, which would have silently re-frozen all 79 entries at
+  today's sizes. What it costs: this file is now allowed to be 17 lines longer before the gate
+  speaks again. What ends it: the file is already 5× the 150-line function budget because every
+  case shares one `describe`; splitting the search cases out of the indexer cases retires the
+  waiver rather than raising it again.
 
 - **A valid Coolify token that was merely under-scoped told the operator to replace it.** Every
   Coolify v4 route sits behind an ability middleware (`api.ability:read`, `:deploy`, …), so a token

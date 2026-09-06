@@ -27,10 +27,15 @@ flowchart LR
 
   D -->|"WS · device token"| WS
   D -->|"forge-runner api · $FORGE_PAT"| API
-  CLI -->|"REST · $FORGE_PAT"| API
-  CLI -.->|"uploads · step_start"| MCP
+  CLI -->|"REST · $FORGE_PAT<br/>3.35.141+"| API
+  CLI -->|"jsonrpc tools/call · 7 tools<br/>3.35.140, what the fleet runs"| MCP
+  CLI -.->|"uploads · step_start<br/>either version"| MCP
   MC -->|"jsonrpc tools/call · device token"| MCP
 ```
+
+Two CLI arrows because two copies are live: the one `ISS-508` shipped and the one the boxes still
+run. The seven families cannot go while the second arrow exists — that is the fleet-upgrade row in
+the table below, drawn rather than only stated.
 
 Two command-line surfaces reach the same data plane:
 
@@ -39,9 +44,9 @@ Two command-line surfaces reach the same data plane:
 | `forge-runner api` | this repo | REST, `$FORGE_PAT` | **the runner's own work.** It must never depend on the plugin — a daemon that cannot reach core until a Claude Code plugin is installed is a worse daemon |
 | `forge` | [forge-plugin](https://github.com/SidCorp-co/forge-plugin) | REST, `$FORGE_PAT` | **the agent.** Skills call its verbs; it is the agent's whole surface |
 
-The plugin was the spine until `ISS-508` closed on 2026-09-06: every `forge` verb but the two
-that mint an upload now goes to a path under `/api`, keyed by a declared route table in
-`src/tracker/rest.mjs`. **The fleet has not caught up** — the copy installed on `forge-vm` is
+The plugin was the spine until `ISS-508` closed on 2026-09-06: every `forge` verb now goes to a
+path under `/api`, keyed by a declared route table in `src/tracker/rest.mjs`, except the two that
+route through `forge_uploads` and `forge_step_start` — which stay on `/mcp` by design, not by lag. **The fleet has not caught up** — the copy installed on `forge-vm` is
 3.35.140 and still carries `src/tracker/rpc.mjs`, so the seven families that copy names are held
 by a version upgrade, not by a decision.
 
@@ -98,6 +103,20 @@ the other's half, which is why a skill never names `runner-v*` or any project's 
 A tool is clear to delete only when its **device count is 0** *and* the replacement route
 **accepts a device token**.
 
+**The second clause protects a caller, so a tool with no callers at all does not need it.**
+`/api/skill-facts` failed it and mattered: `forge_skill_facts.get` had 23 device calls, and
+`requireAuth()` answers a device 401, so those callers had nowhere to go. A tool at **zero rows
+lifetime** has nobody to strand, and demanding a device-reachable twin for it would freeze the
+surface until `ISS-931` lands. So the clause is read as: *device count 0, and — if that count was
+ever above 0 — a replacement the callers it had can actually reach.* `forge_memory.revisions` was
+deleted 2026-09-06 under the second half of that reading; `GET /api/memory/revisions` is
+`requireAuth()` and would refuse a device, which is the same shape `/api/skill-facts` had and is
+only safe here because the count is zero rather than small. **This is an amnesty and it has a
+price:** it is available exactly once per tool, on evidence of zero rows over the whole table under
+both spellings, and it buys nothing for any tool with traffic. If a device caller for such a tool
+ever appears in `mcp_audit_log` after a deletion taken this way, the reading is wrong and the tool
+comes back.
+
 Read `mcp_audit_log` split on `device_id IS NOT NULL` / `token_id IS NOT NULL` — never on
 `user_id`, which is stamped `device.ownerId` and so reads 100% user and 0 device for every tool.
 Count the whole table with no date filter, and normalise with `replace(tool,'.','_')`: agents send
@@ -111,6 +130,13 @@ sitting at zero rows lifetime and was invisible to the query. It was deleted 202
 
 Commit `7f0c5a56` deleted six tools after claiming the audit log had cleared them. The split was on
 the wrong column; the fleet hit one of them at 09:07 the same day and read `not_found`.
+
+**A deletion shifts every `tools/list` index below it, and three `cm:guard`s in `server.ts` say
+callers pin to that order.** Those guards govern *insertion* — they exist so a new tool is appended
+rather than spliced in. Deletion cannot honour them: there is no position that leaves the tail where
+it was. The shrink this page describes is a sequence of deletions, so the pinning premise cannot
+survive it, and a deletion is the caller-visible change an insertion was written to avoid. Say so in
+the commit that takes one out, and treat a caller that pins by index as already broken.
 
 **The count is only readable with direct database access.** There is no aggregate route over
 `mcp_audit_log` — the one route that reads the table at all is `GET /api/pat/:id/audit`, per-token
