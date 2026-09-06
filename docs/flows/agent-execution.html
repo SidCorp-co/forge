@@ -171,7 +171,7 @@ than pane-hosted — the price paid, and what it buys.</p>
     <td>every hold that session had goes back to the pool at once, without waiting out the 3-minute
         reaper; the next sweep starts a fresh master — up to <code>MASTER_DEATH_LIMIT</code>. What it
         had already <em>started</em> is untouched — a started job holds no hold</td></tr>
-<tr><td>The fresh master dies too, three times inside 10 minutes</td>
+<tr><td>The fresh master dies too — or never starts — three times inside 10 minutes</td>
     <td>the daemon's death tally, per project (<code>master.rs</code>)</td>
     <td>no further start for 30 minutes, one <code>DEGRADED</code> line per sweep naming the project
         and the next attempt; then exactly one probe, and a probe that dies re-opens it at once</td>

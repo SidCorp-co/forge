@@ -212,7 +212,7 @@ impl Masters {
     ///
     /// `now` is a parameter so the window and the cooldown can be tested; every
     /// caller passes `Instant::now()`.
-    // cm:guard every ending goes through here — both `supervise` arms call `end_master` and nothing else ends a master on this box — so the tally has exactly ONE writer. A second path that forgot a project without counting would give a crashloop an unbounded supply of fresh starts again.
+    // cm:guard everything that leaves this project without a running master counts here, and there are exactly two such paths: `end_master` for a session that existed and ended, and a `terminal::ensure` that refused. A path that dropped a master without counting would give a crashloop an unbounded supply of fresh starts again.
     fn record_death(&self, project_id: &str, now: Instant) -> (u32, bool) {
         let mut reg = self.0.lock().expect("masters poisoned");
         let b = reg.deaths.entry(project_id.to_string()).or_insert(Breaker {
@@ -511,6 +511,8 @@ async fn ensure_master(
         Ok(_) => {}
         Err(e) => {
             tracing::error!("[master] {}: could not start {name}: {e}", resolved.slug);
+            // cm:guard a spawn that never succeeds is the same failure as one that dies a second later, and it counts the same. Leaving it uncounted would keep exactly one unbounded retry loop alive — the one where `tmux new-session` refuses on every sweep forever.
+            note_failed_master(masters, project_id, &resolved.slug);
             return None;
         }
     }
@@ -637,6 +639,11 @@ async fn end_master(
         tracing::warn!("[master] could not close session {session_id}: {e}");
     }
     masters.forget(project_id);
+    note_failed_master(masters, project_id, slug);
+}
+
+/// Count this project as having no master, and say so when that trips the breaker.
+fn note_failed_master(masters: &Arc<Masters>, project_id: &str, slug: &str) {
     let (deaths, tripped) = masters.record_death(project_id, Instant::now());
     if tripped {
         tracing::error!("{}", breaker_notice(slug, deaths, MASTER_BREAKER_COOLDOWN));
@@ -894,6 +901,16 @@ mod tests {
             tripped,
             "a probe that dies re-opens the breaker immediately"
         );
+    }
+
+    // cm:guard a spawn that is refused every time is a respawn loop too, and this is the assertion that fails if the refusal arm stops counting — the tally is the only thing standing between `tmux new-session` failing forever and a sweep that asks it to, forever.
+    #[test]
+    fn a_spawn_that_never_succeeds_trips_the_breaker_as_a_death_does() {
+        let m = breaker_masters();
+        for _ in 0..MASTER_DEATH_LIMIT {
+            note_failed_master(&m, "p1", "p1");
+        }
+        assert!(m.cooldown_remaining("p1", Instant::now()).is_some());
     }
 
     // cm:guard the line has to say WHEN the box will try again. An operator reading a dead-master log needs to tell a project this box has stopped serving from one it is about to serve, and no other line on this path says which.
