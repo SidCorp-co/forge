@@ -134,6 +134,7 @@ function ModuleRow({
     onPatch({ description: next === "" ? null : next });
   }
 
+  // cm:why the name input takes the whole first line below `sm` — with five controls wrapping in one flex row at 375px the `flex-1` input is what loses, and it collapsed to zero width on the live walk while the colour well and the parent select kept their intrinsic size
   return (
     <li className="rounded-md border border-line" style={{ marginLeft: depth * INDENT_PER_DEPTH_PX }}>
       <div className="flex flex-wrap items-center gap-2 px-3 py-2">
@@ -153,10 +154,12 @@ function ModuleRow({
             }}
             aria-label={`Module name for ${m.name}`}
             maxLength={64}
-            className="min-w-0 flex-1 sm:max-w-56"
+            className="min-w-0 basis-full sm:basis-auto sm:flex-1 sm:max-w-56"
           />
         ) : (
-          <span className="min-w-0 flex-1 truncate text-fg">{m.name}</span>
+          <span className="min-w-0 basis-full truncate text-fg sm:basis-auto sm:flex-1">
+            {m.name}
+          </span>
         )}
         {canEdit && (
           <>
