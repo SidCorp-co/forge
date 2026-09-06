@@ -116,7 +116,6 @@ describe('forge facts registry', () => {
       expect(fact?.appliesTo, id).toBeDefined();
       expect(fact?.appliesTo, id).not.toContain('pm');
     }
-    // handoff only applies where a payload schema exists.
     expect(getFact('handoff')?.appliesTo).not.toContain('release');
     expect(getFact('handoff')?.appliesTo).toContain('fix');
   });
@@ -465,5 +464,44 @@ describe('pipeline-rules — a stale clone is not evidence of absence', () => {
 
   it('tells the agent to trust Forge over a disagreeing working copy until it fetches', () => {
     expect(text).toMatch(/fetch before you trust your copy/);
+  });
+});
+
+describe('module-attribution (ISS-595)', () => {
+  const fact = getFact('module-attribution');
+  const MODULES = [
+    { name: 'billing', parentName: null },
+    { name: 'invoices', parentName: 'billing' },
+  ];
+
+  it('is contextual and project-resolved, so it never enters the byte-pinned preamble', () => {
+    expect(fact?.tier).toBe('contextual');
+    expect(fact?.scope).toBe('project-resolved');
+  });
+
+  it('applies to the driver as well as the staged issue stages', () => {
+    expect(fact?.appliesTo).toContain('drive');
+    expect(fact?.appliesTo).toContain('triage');
+    expect(fact?.appliesTo).not.toContain('pm');
+  });
+
+  it('is relevant only to a project that has modules', () => {
+    expect(fact?.relevant?.({ modules: MODULES })).toBe(true);
+    expect(fact?.relevant?.({ modules: [] })).toBe(false);
+    expect(fact?.relevant?.({})).toBe(false);
+  });
+
+  it('renders the field path and refuses the comment line', () => {
+    const text = fact?.render({ modules: MODULES }) ?? '';
+    expect(text).toContain('isPrimary: true');
+    expect(text).toContain('forge_issues.update');
+    expect(text).toContain('- invoices (under billing)');
+    expect(text).toContain('is NOT the attribution');
+  });
+
+  // cm:guard the author-time surfaces (Skill Studio, GET /api/skill-facts) preview a fact with no project resolved and the registry invariant requires non-empty text from every one — so `render` may not be where the taxonomy gate lives
+  it('still renders text with no project context, which is why the gate is `relevant`', () => {
+    expect((fact?.render() ?? '').trim().length).toBeGreaterThan(0);
+    expect(fact?.render()).toContain('no modules');
   });
 });

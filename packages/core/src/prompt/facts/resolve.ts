@@ -5,10 +5,11 @@
 // surfaces return. Lives apart from registry.ts so the registry stays free of
 // DB/env coupling.
 
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
-import { type IssueStatus, type JobType, projects } from '../../db/schema.js';
+import { type IssueStatus, type JobType, labels, projects } from '../../db/schema.js';
 import { integrationGuideSlug, loadOrgGuideProviders } from '../../guides/integration-guides.js';
 import {
   renderSentryTargetsLine,
@@ -37,6 +38,7 @@ import {
   FORGE_FACTS,
   type ForgeFact,
   getFact,
+  type ProjectModuleFact,
 } from './registry.js';
 
 export interface ResolvedFact {
@@ -73,6 +75,9 @@ export interface ProjectFactInputs {
    *  preamble (like a mandatory ForgeFact), and excluded from the
    *  fetch-on-demand guide index. Paired with their full text, in map order. */
   alwaysInjectFacts: Array<{ key: string; text: string }>;
+  /** The project's `kind='module'` labels (ISS-595). Empty for a project with
+   *  no taxonomy, which is what keeps `module-attribution` out of its prompt. */
+  modules: ProjectModuleFact[];
 }
 
 interface TestingUrl {
@@ -208,6 +213,25 @@ function makeProjectResolver(src: {
     key in reserved ? reserved[key as keyof typeof reserved]() : src.projectFacts[key];
 }
 
+/**
+ * The project's module taxonomy, flattened to names — the one input `module-attribution` gates on.
+ *
+ * Parent comes back as a NAME because the only consumer writes it into a system prompt, where an
+ * id is noise an agent cannot act on: `forge_issues` resolves a module by name as well as by uuid.
+ */
+// cm:guard an EMPTY array is what keeps the `module-attribution` fact out of a taxonomy-less project's prompt, so this must stay a plain read with no placeholder row and no fallback list
+// cm:why read here rather than through `labels/module-service.ts`, which owns modules: that import is an EIGHTH module edge out of this file and `no-coordinator-blob` freezes it at seven. The invariants module-service holds are all about WRITES; a list has none to hold.
+export async function loadProjectModules(projectId: string): Promise<ProjectModuleFact[]> {
+  const parents = alias(labels, 'parent_labels');
+  const rows = await db
+    .select({ name: labels.name, parentName: parents.name })
+    .from(labels)
+    .leftJoin(parents, eq(labels.parentId, parents.id))
+    .where(and(eq(labels.projectId, projectId), eq(labels.kind, 'module')))
+    .orderBy(labels.name);
+  return rows.map((r) => ({ name: r.name, parentName: r.parentName ?? null }));
+}
+
 /** Load the per-project inputs for fact resolution: the status ladder and the
  *  `{{project:}}` resolver (project columns + previewDeploy + connected
  *  integrations + the author's projectFacts map). */
@@ -222,6 +246,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   let testNotes: string | null = null;
   let integrations: IntegrationRow[] = [];
   let noProgressRounds = DEFAULT_NO_PROGRESS_ROUNDS;
+  let modules: ProjectModuleFact[] = [];
   try {
     const [row] = await db
       .select({
@@ -257,6 +282,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     repoPath = row?.repoPath ?? null;
 
     integrations = await loadActiveIntegrationRows(projectId, row?.orgId ?? null);
+    modules = await loadProjectModules(projectId);
   } catch {
     // defaults → full ladder, empty {{project:}} resolver
   }
@@ -274,7 +300,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
         selectOnDemandSlugsFromKnowledge(projectId),
       ]);
     } catch {
-      // Fallback to agentConfig on any DB error so the prompt never breaks.
+      // cm:why a prompt with stale facts beats no prompt: this path runs at dispatch, and throwing here would fail the job rather than the read
       alwaysInjectFacts = selectAlwaysInjectFacts(projectFacts, projectFactsConfig);
       projectFactKeys = Object.keys(projectFacts);
     }
@@ -298,6 +324,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     }),
     projectFactKeys,
     alwaysInjectFacts,
+    modules,
   };
 }
 
@@ -323,10 +350,19 @@ export function renderStageFactsText(
   projectId: string,
   stage: JobType,
 ): string {
-  const ctx: FactRenderContext = { projectId, stage, ladder: inputs.ladder };
+  const ctx: FactRenderContext = {
+    projectId,
+    stage,
+    ladder: inputs.ladder,
+    modules: inputs.modules,
+  };
 
+  // cm:guard `relevant` is asked LAST and its absence means yes, so a fact that does not opt in renders exactly as it did before the predicate existed — the property the pinned-heading test in `resolve.test.ts` rests on
   const forgeText = FORGE_FACTS.filter(
-    (f) => f.tier === 'contextual' && (!f.appliesTo || f.appliesTo.includes(stage)),
+    (f) =>
+      f.tier === 'contextual' &&
+      (!f.appliesTo || f.appliesTo.includes(stage)) &&
+      (f.relevant?.(ctx) ?? true),
   )
     .map((f) => demoteHeadings(f.render(ctx)))
     .join('\n\n');
@@ -403,8 +439,8 @@ export async function buildFactContext(
   projectId: string,
   stage?: JobType | null,
 ): Promise<FactRenderContext> {
-  const { ladder } = await loadProjectFactInputs(projectId);
-  return { projectId, stage: stage ?? null, ladder };
+  const { ladder, modules } = await loadProjectFactInputs(projectId);
+  return { projectId, stage: stage ?? null, ladder, modules };
 }
 
 function toResolved(fact: ForgeFact, ctx: FactRenderContext): ResolvedFact {

@@ -33,7 +33,8 @@
 four points at which it is refused. A module <em>is</em> a label (<code>labels.kind='module'</code>),
 so this is the ordinary label-attach path with one extra claim riding on it: which of those labels
 is the issue's <strong>primary</strong> module. Owner:
-<code>packages/core/src/issues/label-service.ts</code>.</p>
+<code>packages/core/src/issues/label-service.ts</code>. The last section covers the hop before the
+request: how an agent comes to know the project has modules at all.</p>
 
 <h2>Where a write is refused, and what has been written when it is</h2>
 <svg viewBox="0 0 900 560" role="img" aria-label="Decision path of a labels[] write carrying a primary module">
@@ -155,5 +156,64 @@ a client that wants it reads the array and picks the <code>isPrimary</code> one.
 name or uuid against <code>kind='module'</code> labels only and then reuses the ordinary label
 EXISTS-join. An unresolved module returns <strong>no issues</strong>, never every issue: dropping
 the narrowing would hand the caller the whole project and read as "nothing matched".</p>
+
+<h2>Where the write comes from — how an agent learns there is a taxonomy at all</h2>
+<p class="sub">Everything above starts at a <code>labels[]</code> payload. This is the hop before
+it: nothing in the product asks a human to attribute an issue, so on a Forge project the writer is
+almost always a pipeline agent, and an agent only writes what its prompt told it exists. Owner:
+<code>packages/core/src/prompt/facts/resolve.ts</code>.</p>
+
+<svg viewBox="0 0 900 300" role="img" aria-label="How the module taxonomy reaches a pipeline agent's prompt">
+  <defs>
+    <marker id="c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/></marker>
+    <marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a3b52"/></marker>
+  </defs>
+
+  <rect class="box" x="20" y="16" width="300" height="34" rx="4"/>
+  <text class="t" x="34" y="38">a job is dispatched for this project</text>
+
+  <path class="arrow" style="marker-end:url(#c)" d="M170,50 L170,80"/>
+  <rect class="box" x="20" y="80" width="300" height="34" rx="4"/>
+  <text class="t" x="34" y="102">loadProjectFactInputs</text>
+  <text class="m" x="330" y="102">reads the project row, then listProjectModules</text>
+
+  <path class="arrow" style="marker-end:url(#c)" d="M170,114 L170,144"/>
+  <rect class="lockband" x="20" y="144" width="300" height="48" rx="4"/>
+  <text class="t" x="34" y="166">fact.relevant(ctx) — modules.length &gt; 0</text>
+  <text class="m" x="34" y="183">the only gate; render() is never asked</text>
+  <path class="arrowbad" style="marker-end:url(#d)" d="M320,168 L560,168"/>
+  <rect class="exit" x="560" y="144" width="320" height="48" rx="4"/>
+  <text class="t bad" x="574" y="166">no section in the prompt</text>
+  <text class="m" x="574" y="183">a project with no taxonomy pays nothing</text>
+
+  <path class="arrow" style="marker-end:url(#c)" d="M170,192 L170,222"/>
+  <rect class="box" x="20" y="222" width="300" height="62" rx="4"/>
+  <text class="t" x="34" y="244">## Forge context → ### The issue's</text>
+  <text class="t" x="34" y="261">primary module</text>
+  <text class="m" x="34" y="277">names the modules and the isPrimary payload</text>
+
+  <path class="arrow" style="marker-end:url(#c)" d="M320,253 L560,253"/>
+  <rect class="box" x="560" y="222" width="320" height="62" rx="4"/>
+  <text class="t" x="574" y="244">the agent decides, and writes</text>
+  <text class="m" x="574" y="261">forge_issues.update → the path above,</text>
+  <text class="m" x="574" y="277">or writes nothing when it is unsure</text>
+</svg>
+
+<div class="rule">
+<strong>The taxonomy's existence is the switch.</strong> There is no per-project flag for module
+attribution and no setting to turn it on: a project acquires the prompt section the moment its
+first <code>kind='module'</code> label exists, and loses it if the last one is deleted. That is
+deliberate — an instruction to attribute, sent to a project with nothing to attribute to, is an
+invitation to invent a module, and an invented primary is worse than none because the filters and
+the reports are counted from it.
+</div>
+
+<p>Two things this hop deliberately does <strong>not</strong> do. It does not write an attribution:
+Forge never guesses an issue's module, so an issue whose agent was unsure stays unattributed, which
+is a legal state at every status. And it does not reach the mandatory preamble — that text is
+byte-identical across projects for the prompt cache, so a per-project section could only ever live
+in the contextual, project-resolved tier.</p>
 
 </main>
