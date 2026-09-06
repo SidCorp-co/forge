@@ -6,23 +6,17 @@
 //! running the `forge-master` skill, which decides order and batch size and
 //! claims through the control socket.
 //!
-//! Resident, and parented by tmux rather than by this daemon (ISS-919). What
-//! that buys: a human can `tmux attach` to the same pane core addresses, the
-//! master survives a `forge-runner` restart, its reasoning appends to one
-//! transcript instead of being truncated per pass, and every pass after the
-//! first starts from context it already has. What it costs is that a dead
-//! master no longer drops a socket, so the detector is here — `supervise`
-//! below — and the ceiling that used to be a per-pass kill is now a bound on
-//! silence after a prompt.
+//! Resident, and parented by tmux rather than by this daemon (ISS-919). That
+//! buys an attachable pane, a master that survives a `forge-runner` restart,
+//! one appended transcript and a warm context per pass. It costs the socket a
+//! dead master used to drop, so the detector is `supervise` below and the old
+//! per-pass kill is now a bound on silence after a prompt.
 //!
 //! The daemon deliberately makes NO routing decision. It answers one question
 //! per project, "is there anything at all", and hands the rest to judgement.
 //!
-//! Restarting a master is bounded. A session that dies deterministically —
-//! forge-vm met the workspace-trust dialog in a tmux pane on 2026-09-06 — used
-//! to be respawned twice a minute forever, so `MASTER_DEATH_LIMIT` deaths in a
-//! window stop the respawn and say so, and `workspace::trust` closes that
-//! particular door before the pane opens (ISS-928).
+//! Restarting it is bounded: `MASTER_DEATH_LIMIT` deaths in a window stop the
+//! respawn, and `workspace::trust` shuts the door that opened it (ISS-928).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
