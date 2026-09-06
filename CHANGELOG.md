@@ -1107,6 +1107,28 @@
 
 ### Fixed
 
+- **A valid Coolify token that was merely under-scoped told the operator to replace it.** Every
+  Coolify v4 route sits behind an ability middleware (`api.ability:read`, `:deploy`, …), so a token
+  Coolify recognises but that lacks the ability a route wants answers **403**, not 401. Forge folded
+  both into `needs_reauth` — documented as *the stored credential was rejected … the operator must
+  re-enter the credential* — so the fix on offer was to mint a new token, which reproduces the state
+  exactly. It was easy to hit: the healthcheck lists `/api/v1/resources` and needs `read`, the deploy
+  posts `/api/v1/deploy` and needs `deploy`, so a read-scoped token passes Test-connection and is
+  refused only at deploy time.
+
+  A 403 is now its own health state, `needs_scope`, on both the health path and the deploy path, and
+  its message names the ability the token lacks and the route that wanted it — "Coolify recognised
+  the API token but refused `POST /api/v1/deploy` (HTTP 403): the token is missing the `deploy`
+  ability (`api.ability:deploy`)". The connections directory renders it as **Needs wider scope**,
+  distinct from **Needs re-auth**; both still bucket to `attention`, because both are things an
+  operator can fix. `needs_reauth` keeps its documented meaning: the credential is not recognised.
+
+  The rotation fallback already declined to retry a 403 with `previousApiToken` — a second token
+  cut from the same scope fails identically — and that is now pinned by a test rather than left to
+  be re-derived. The `/api/v1/resources` healthcheck is unchanged: swapping it for the cheaper
+  `GET /health` would narrow the ability surface but would also stop resolving every configured
+  target, which is what catches a stale `resourceUuid` deploying the wrong repo.
+
 - **The connections directory told seventeen credentials apart by nothing at all.** Every card on
   `/integrations` fell back to its provider label, printed that label a second time as a pill beside
   itself, and offered no other detail — because `GET /api/integration-connections` returned no

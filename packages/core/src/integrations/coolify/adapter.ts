@@ -15,7 +15,7 @@ import type {
   OutboundDispatchResult,
 } from '../types.js';
 import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
-import { CoolifyApiError } from './client.js';
+import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyForbidden } from './client.js';
 import { enqueueCoolifyConfirm } from './confirm.js';
 import { buildClient } from './log-fetch.js';
 import type { CoolifyConfig, CoolifySecrets } from './types.js';
@@ -31,6 +31,44 @@ interface DeployPayload extends Record<string, unknown> {
   targetId: string;
   targetLabel: string;
   resourceUuid: string;
+}
+
+interface CoolifyFailureVerdict {
+  health: 'needs_reauth' | 'needs_scope' | 'error';
+  /** Operator-facing sentence for a 403; `null` leaves the raw error message. */
+  message: string | null;
+  route: string | null;
+  missingAbility: string | null;
+}
+
+/**
+ * Which health state a failed Coolify call earns. 401 and 403 are DIFFERENT
+ * conditions and the only place they can still be told apart is here, at the
+ * call that failed (ISS-924).
+ */
+// cm:guard 403 is NOT `needs_reauth`. Coolify answers 401 for a token it does not recognise and 403 for one it recognises and refuses this route, so collapsing them tells the operator to re-enter a working credential and re-entering it reproduces the state exactly. The same guard is on `github/adapter.ts` for the same reason.
+function classifyCoolifyFailure(err: unknown): CoolifyFailureVerdict {
+  const status = err instanceof CoolifyApiError ? err.status : null;
+  const route = err instanceof CoolifyApiError ? err.route : null;
+  if (status === 401) {
+    return { health: 'needs_reauth', message: null, route, missingAbility: null };
+  }
+  if (status === 403 && err instanceof CoolifyApiError) {
+    return {
+      health: 'needs_scope',
+      message: describeCoolifyForbidden(err),
+      route,
+      missingAbility: coolifyAbilityForRoute(route),
+    };
+  }
+  return { health: 'error', message: null, route, missingAbility: null };
+}
+
+/** The message a failure is recorded and reported under. */
+function describeCoolifyFailure(err: unknown): string {
+  const verdict = classifyCoolifyFailure(err);
+  if (verdict.message) return verdict.message;
+  return err instanceof Error ? err.message : 'unknown error';
 }
 
 export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> = {
@@ -77,15 +115,11 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
         diagnostics: { durationMs, targetCount: targets.length },
       } satisfies HealthCheckResult;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'unknown error';
       const status = err instanceof CoolifyApiError ? err.status : null;
-      // A 401/403 here means the API token was rejected even after buildClient
-      // already retried any valid previous token (ISS-405 rotation window), so
-      // the operator must re-enter the credential — surface needs_reauth rather
-      // than a generic error (ISS-409). Any other status stays error.
-      const healthStatus = status === 401 || status === 403 ? 'needs_reauth' : 'error';
+      const verdict = classifyCoolifyFailure(err);
+      const message = verdict.message ?? (err instanceof Error ? err.message : 'unknown error');
       await updateConnection(ctx.connectionId, {
-        lastHealthStatus: healthStatus,
+        lastHealthStatus: verdict.health,
         lastHealthAt: new Date(),
       });
       logger.warn(
@@ -98,9 +132,13 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
         'coolify: healthcheck failed',
       );
       return {
-        status: healthStatus,
+        status: verdict.health,
         message,
-        diagnostics: { httpStatus: status },
+        diagnostics: {
+          httpStatus: status,
+          ...(verdict.route ? { route: verdict.route } : {}),
+          ...(verdict.missingAbility ? { missingAbility: verdict.missingAbility } : {}),
+        },
       } satisfies HealthCheckResult;
     }
   },
@@ -230,8 +268,8 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
       } catch (err) {
         const durationMs = Date.now() - started;
         totalDurationMs += durationMs;
-        const message = err instanceof Error ? err.message : 'unknown error';
         const status = err instanceof CoolifyApiError ? err.status : null;
+        const message = describeCoolifyFailure(err);
         await updateDelivery(deliveryId, {
           status: 'failed',
           errorMessage: message,
@@ -240,11 +278,11 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
           durationMs,
           completedAt: new Date(),
         });
-        // Revocation discovered during a deploy (not just the healthcheck): a
-        // 401/403 means the token was rejected, so flag needs_reauth (ISS-409).
-        if (status === 401 || status === 403) {
+        // cm:guard the deploy route wants `api.ability:deploy` and the healthcheck only ever wants `read`, so a read-scoped token passes Test-connection and is first refused HERE — this site must write the same verdict the healthcheck would, which is why both go through `classifyCoolifyFailure` (ISS-924)
+        const verdict = classifyCoolifyFailure(err);
+        if (verdict.health !== 'error') {
           await updateConnection(ctx.connectionId, {
-            lastHealthStatus: 'needs_reauth',
+            lastHealthStatus: verdict.health,
             lastHealthAt: new Date(),
           });
         }

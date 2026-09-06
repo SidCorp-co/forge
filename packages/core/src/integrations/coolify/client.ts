@@ -8,11 +8,47 @@ import type {
 export class CoolifyApiError extends Error {
   readonly status: number;
   readonly body: string;
-  constructor(status: number, body: string, message?: string) {
+  /** The route that produced this error, e.g. `POST /api/v1/deploy`. */
+  readonly route: string | null;
+  constructor(status: number, body: string, message?: string, route?: string) {
     super(message ?? `Coolify API error: ${status}`);
     this.status = status;
     this.body = body;
+    this.route = route ?? null;
   }
+}
+
+/**
+ * Coolify v4 ability middleware, per route this client calls. Every v4 API route
+ * sits behind one of `api.ability:read | write | deploy | read:sensitive | root`,
+ * and a token that lacks the one its route wants answers 403 — not 401.
+ */
+// cm:edge contract -> packages/core/src/integrations/coolify/adapter.ts — the adapter turns a 403 into the operator-facing `needs_scope` message using this table, so a route added to CoolifyClient without a row here degrades that message to "an ability it does not have" instead of naming one
+const ROUTE_ABILITIES: { match: RegExp; ability: string }[] = [
+  { match: /^POST \/api\/v1\/deploy\b/, ability: 'deploy' },
+  { match: /^GET \/api\/v1\/resources\b/, ability: 'read' },
+  { match: /^GET \/api\/v1\/deployments\//, ability: 'read' },
+  { match: /^GET \/api\/v1\/applications\/[^/]+\/logs\b/, ability: 'read' },
+];
+
+/** The `api.ability:*` name a route requires, or `null` for a route not in the table. */
+export function coolifyAbilityForRoute(route: string | null): string | null {
+  if (!route) return null;
+  return ROUTE_ABILITIES.find((r) => r.match.test(route))?.ability ?? null;
+}
+
+/**
+ * The operator sentence for a 403. Coolify KNOWS this token and refuses this
+ * route, so the fix is to widen the token's abilities — never to mint a new one,
+ * which reproduces the state exactly (ISS-924).
+ */
+export function describeCoolifyForbidden(err: CoolifyApiError): string {
+  const route = err.route ?? 'the requested route';
+  const ability = coolifyAbilityForRoute(err.route);
+  const missing = ability
+    ? `the \`${ability}\` ability (\`api.ability:${ability}\`)`
+    : 'the ability that route requires';
+  return `Coolify recognised the API token but refused ${route} (HTTP 403): the token is missing ${missing}. Widen this token's abilities in Coolify (Keys & Tokens → edit the token) — the credential itself is valid, so replacing it will not change this.`;
 }
 
 export interface CoolifyClientOptions {
@@ -50,6 +86,7 @@ export class CoolifyClient {
 
   private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
     const url = joinUrl(this.baseUrl, path);
+    const route = `${method} ${path.split('?')[0]}`;
     const tokens = [this.apiToken];
     if (this.previousApiToken) tokens.push(this.previousApiToken);
 
@@ -75,17 +112,19 @@ export class CoolifyClient {
             401,
             await safeText(res),
             'unauthorized (will retry with previous token)',
+            route,
           );
           continue;
         }
         if (!res.ok) {
-          throw new CoolifyApiError(res.status, await safeText(res));
+          throw new CoolifyApiError(res.status, await safeText(res), undefined, route);
         }
-        // Some Coolify endpoints answer success with an empty 204 body.
+        // cm:guard a 204 must return before `res.json()` — several Coolify endpoints answer success with an empty body and parsing it throws a SyntaxError that reads like a transport failure
         if (res.status === 204) return undefined as unknown as T;
         return (await res.json()) as T;
       } catch (err) {
         clearTimeout(timer);
+        // cm:guard ONLY a 401 falls through to the previous token. A 403 means Coolify recognised this token and refused the route, so a second token minted from the same scope fails identically — the retry would cost a round trip and blur the diagnosis (ISS-924).
         if (err instanceof CoolifyApiError && err.status !== 401) throw err;
         lastErr = err as Error;
       }
@@ -124,6 +163,7 @@ export class CoolifyClient {
         404,
         '',
         `resource ${resourceUuid} not found in Coolify resource list`,
+        'GET /api/v1/resources',
       );
     }
     return match;
