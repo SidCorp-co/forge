@@ -1,7 +1,7 @@
 # The data plane: which MCP tool, which REST route
 
 **Most MCP tools that read or write data have a REST twin the CLI reaches.** This table is what an
-agent or a skill author calls instead. Six tools stay on MCP by design, three sit behind a fence
+agent or a skill author calls instead. Two tools stay on MCP by design, three sit behind a fence
 that is deliberate and permanent, two are open questions, and one has no route at all.
 
 Verified 2026-09-01 against `registered-tools.ts`, the mounts in `index.ts`, and
