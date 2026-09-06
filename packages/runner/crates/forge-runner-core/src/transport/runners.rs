@@ -34,6 +34,14 @@ pub struct MeRunner {
     /// which is the expensive path this field exists to retire.
     #[serde(default)]
     pub workspace_setup: Option<String>,
+    /// `projectFacts['master-policy']`: the owner's standing instruction for this
+    /// project's resident master, spliced into its brief by `daemon::master`.
+    /// `None` on an older core or a project that has set none — the skill's own
+    /// defaults then apply, which is what every project had before ISS-929.
+    // cm:guard the ABSENT case must stay "skill defaults", never a refusal to brief. A master briefed with nothing is the behaviour that shipped for months; a master not briefed at all is a session that orchestrates the whole box off a four-line prompt, which is the failure `install_skill` already refuses for the skill body.
+    // cm:edge contract -> packages/core/src/devices/me-runners.ts — core reads the fact and sends the text; nothing type-checks the key name across the two languages, and a rename on either side reads here as "no policy set" rather than as an error.
+    #[serde(default)]
+    pub master_policy: Option<String>,
     /// Seconds core says remain on this runner's rate limit: `None` when it is
     /// not limited (and on a core that predates the field), `0` once expired.
     ///
@@ -122,6 +130,25 @@ mod tests {
                        "repoPath":"/srv/app","branch":null,"status":"online"}"#;
         let parsed: MeRunner = serde_json::from_str(json).expect("older core payload must parse");
         assert_eq!(parsed.kind, None);
+    }
+
+    /// A core that predates `masterPolicy` leaves the master on the skill's own
+    /// defaults, which is what every project ran before ISS-929.
+    #[test]
+    fn master_policy_absent_deserializes_to_none() {
+        let json = r#"{"projectId":"p1","runnerId":"r1","slug":"app","baseBranch":"main",
+                       "repoPath":"/srv/app","branch":null,"status":"online"}"#;
+        let parsed: MeRunner = serde_json::from_str(json).expect("older core payload must parse");
+        assert_eq!(parsed.master_policy, None);
+    }
+
+    #[test]
+    fn master_policy_is_read_when_core_sends_it() {
+        let json = r#"{"projectId":"p1","runnerId":"r1","slug":"app","baseBranch":"main",
+                       "repoPath":"/srv/app","branch":null,"status":"online",
+                       "masterPolicy":"Budget: 5 sessions."}"#;
+        let parsed: MeRunner = serde_json::from_str(json).expect("payload must parse");
+        assert_eq!(parsed.master_policy.as_deref(), Some("Budget: 5 sessions."));
     }
 
     #[test]

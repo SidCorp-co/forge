@@ -1,7 +1,7 @@
 /**
  * Assignment discovery (ISS-271): what one device serves, and everything the
- * runner on it needs to act — repo path, branch, project kind, setup prose and
- * the pacing hint for its master.
+ * runner on it needs to act — repo path, branch, project kind, setup prose, the
+ * pacing hint for its master and the owner policy that master is briefed with.
  *
  * Its own module because every field here is half of a cross-language contract
  * the type checker cannot see, and the annotations that record them are longer
@@ -22,6 +22,13 @@ function rateLimitedForSecondsSql() {
   END`;
 }
 
+/** The owner's standing instruction for this project's master, or `null`. */
+// cm:why a `projectFacts` key rather than a column or a `pipelineConfig` field, because the owner edits this while a master is running and a schema field would cost a deploy per edit. `projectFacts` is already ≤8k free text with an MCP editor (`forge_config`), a web editor and no migration, and this value is prose an agent reads — the same shape as every other key in that map.
+// cm:guard read it HERE, in the payload the daemon already fetches, and never from the master itself. A master is a tmux-parented Claude session started outside the job path: it holds no device token and makes no `/me/*` call, so a policy it had to fetch for itself would be a policy it silently ran without. ISS-929: the forge-dev policy was re-typed into the pane by hand twice and lost twice for exactly this reason.
+function masterPolicySql() {
+  return sql<string | null>`${projects.agentConfig}->'projectFacts'->>'master-policy'`;
+}
+
 /** Every `claude-code` runner row this device owns, joined to its project. */
 export async function listDeviceAssignments(deviceId: string) {
   return db
@@ -37,6 +44,8 @@ export async function listDeviceAssignments(deviceId: string) {
       kind: projects.kind,
       // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/setup_agent.rs — the setup agent's procedure comes from here and nowhere else. Same silent-failure shape as `kind` above: the runner defaults it to None and falls back to deriving the procedure per job, so dropping this field costs tokens on every repair instead of failing anything.
       workspaceSetup: projects.workspaceSetup,
+      // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/master.rs — `standing_prompt` splices this into the brief a resident master is given once per session, and it is the ONLY delivery: the skill in the binary carries the defaults, this carries what the owner decided. Dropping it fails no type check — the runner reads a missing field as `None` and the master falls back to the skill's own defaults, which is the silent half of the bug ISS-929 fixed.
+      masterPolicy: masterPolicySql(),
       rateLimitedForSeconds: rateLimitedForSecondsSql(),
       limitReason: runners.limitReason,
     })

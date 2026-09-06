@@ -11,6 +11,22 @@
 
 ### Added
 
+- **A project's owner can set a standing policy for its master, and it survives the session.**
+  The forge-dev master ran on an instruction — an advisory session budget, which issues count as
+  eligible, when to group work into one session, what to pay down alongside the change — that
+  existed only as text a human had typed into a tmux pane. Every master restart dropped it, and it
+  was re-sent by hand twice and lost twice in two days. Nothing in the master's own process could
+  hold it: the skill text ships inside the runner binary, so an edit needs a release, and the two
+  places it does discuss batch size and grouping said the opposite of what the owner had decided.
+
+  A project now carries a `master-policy` fact (set it with `forge_config`, no deploy and no
+  restart). Core sends it on `/me/runners` as `masterPolicy`, the daemon splices it verbatim into
+  the standing brief the master is given once per session, and the brief says plainly that it
+  outranks the shipped skill wherever the two differ. The skill's *Deciding how many* and grouping
+  sections now defer to it and keep their own text as the default for a project that has set none —
+  a project with no policy is briefed byte-for-byte as it was before. Reaching the fleet needs a
+  `runner-v*` release. (ISS-929)
+
 - **A master that cannot start is stopped being restarted, and a fresh box never meets the
   workspace-trust dialog.** `ensure_master` respawned a dead master on every 30-second sweep with
   nothing counting how many times it had already done so, so a session that died deterministically
@@ -32,6 +48,16 @@
   JSON, only when that path is not already trusted, atomically and keeping the file's mode; a config
   it cannot parse is refused rather than replaced. Reaching the fleet needs a `runner-v*` release.
   (ISS-928)
+
+- **Project knowledge is searchable over REST, so a client that leaves MCP keeps the capability.**
+  `POST /api/projects/:id/knowledge/search` takes `{query, topK?, scope?, strategy?}` — the
+  `forge_knowledge` search action's own fields, defaults and bounds — and answers from the same
+  `runUnifiedSearch` service, so the two transports cannot drift into different results. It is a
+  `POST` because `GET` on that path is already the `/:slug` entry handler and answers *knowledge
+  entry not found*, which is one of six paths ISS-930 probed live before filing. `sourceFilter` is
+  deliberately absent: the MCP action never had one either, and that argument belongs to
+  `POST /api/memory/search`. Member-gated, rate-limited at 60/min per user like memory search,
+  because both spend on the same embeddings provider. (ISS-930)
 
 - **An unattended agent session holds its own credential, and it dies when the session does.**
   A scheduled run, a RocketChat escalation and a RocketChat agent chat all open an agent session

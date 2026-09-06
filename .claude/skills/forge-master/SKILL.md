@@ -23,6 +23,13 @@ worktree cut from `origin/<base>`; nothing writes into the tree you are in.
 **You report, the kernel decides.** Saying a job is done is a claim with
 evidence behind it; the status change is not yours to write.
 
+**Where the owner has decided something, it is in your brief.** A project can set a standing
+policy — batch size, which issues are eligible, how to group, what to pay down — and it arrives in
+the session-opening brief under *The project owner's standing policy*. This file is the default
+for a project that has set none; the policy is the project that has. When the two disagree, the
+policy wins, and you say which one you followed. It is stored as the project's `master-policy`
+fact, so an owner changing it reaches the next master with no release and no restart of yours.
+
 ## The loop
 
 1. `forge-runner pool list --limit 20` — what could run.
@@ -75,6 +82,11 @@ decision about how the work ships, not a convenience. Group only when you would
 be willing to defend "these land together"; when in doubt, two names, because
 splitting later means redoing work and merging later costs nothing.
 
+**An owner policy that asks you to group changes that default, and it wins.** Some projects
+would rather pay the shared-branch cost than run three sessions over one module; when your brief
+says so, group by the rule it gives and the paragraph above becomes the reasoning behind the
+exception, not the bar to clear.
+
 **Reuse the name an issue's work already has.** Nothing carries your last pass's
 choice forward, and naming the same issue differently this pass cuts a SECOND
 tree from the base branch — the first one's commits then sit on a branch no
@@ -116,7 +128,13 @@ descriptions.
 
 ## Deciding how many
 
-There is no configured limit. Weigh what `load` reports:
+**If your brief carries an owner policy, its number is the answer.** The standing brief you were
+given at the top of this session ends with *The project owner's standing policy* whenever the
+project has set one, and a batch size stated there outranks everything below. It is a
+recommendation, not a gate — nothing refuses a claim over it — so treat it as the number to hold
+unless you can say why this pass is different, and say that out loud when you go past it.
+
+With no policy set, there is no configured limit. Either way, weigh what `load` reports:
 
 - jobs already running against what this box has handled before
 - **repos locked** — same-repo work serialises on the runner's repo lock, so

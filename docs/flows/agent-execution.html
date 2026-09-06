@@ -51,12 +51,14 @@ sequenceDiagram
   participant A as agent (job process)
 
   Note over D,C: every sweep, per served project
+  D->>C: GET /me/runners
+  C-->>D: repoPath · baseBranch · kind · workspaceSetup · masterPolicy
   D->>C: POST /me/master-session {projectId, name}
   C-->>D: agent_sessions row — THE identity held_by carries
   D->>TX: has-session =forge-master-slug ?
   alt no pane
     D->>TX: new-session + pipe-pane >> transcript.log (append-only)
-    D->>M: standing brief (once)
+    D->>M: standing brief (once) = skill name + base branch + masterPolicy
   end
   D->>C: GET /me/pool?projectId
   D->>M: paste-buffer + Enter — the pass prompt
@@ -69,6 +71,17 @@ sequenceDiagram
   D->>A: dispatch::handle — the lock band below
   A->>C: job_events (seq...) · complete / fail
 </pre></div>
+<p><b>The brief is assembled by the daemon, never fetched by the master.</b> A master holds no
+device token and makes no <code>/me/*</code> call — it is a tmux-parented session started outside
+the job path — so anything it must be told has to arrive on <code>/me/runners</code>, which the
+daemon already reads every sweep. <code>masterPolicy</code> is the project's
+<code>master-policy</code> fact: the owner's standing instruction, spliced verbatim into the brief
+and outranking the shipped <code>forge-master</code> skill wherever they differ. It is the only
+part of the brief that is <em>not</em> in the binary, which is why editing it needs no runner
+release and no restart — the next master this box starts is briefed with the new text (ISS-929).
+Before it existed, that instruction lived only in whatever a human had typed into the pane, and
+died with the session.</p>
+
 <p>The agent stays a daemon child on purpose. A tmux pane would cost the structured stdout
 <code>job_events</code> is parsed from, and <code>job_events?sinceSeq</code> is the exact signal the
 master needs to see an agent that is alive and not progressing. So an agent is <b>named and
@@ -164,6 +177,11 @@ than pane-hosted — the price paid, and what it buys.</p>
 <tr><td>Nothing spawned inside the beat budget</td><td>the heartbeat task</td>
     <td>the beat stops; core's reaper judges the silence</td>
     <td><code>session_lost</code></td></tr>
+<tr><td>The project has no <code>master-policy</code> fact, or core predates the field</td>
+    <td>nowhere — <code>masterPolicy</code> arrives <code>null</code> and the runner reads it as <code>None</code></td>
+    <td>the brief is byte-identical to what every project got before ISS-929</td>
+    <td>deliberately silent: the shipped <code>forge-master</code> skill holds the defaults, and
+        "no policy" is the normal state for every project but the ones whose owner wrote one</td></tr>
 <tr><td>Master pane vanishes (crash, <code>tmux kill-session</code>, box reboot)</td>
     <td>the daemon's next sweep — <code>master.rs</code> watches <code>tmux has-session</code></td>
     <td><code>POST /me/pool/release</code> with no <code>jobId</code>, then

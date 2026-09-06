@@ -41,6 +41,10 @@ pub(crate) struct Resolved {
     /// `projects.workspace_setup` — prose the setup agent follows instead of
     /// deriving the repo's setup procedure for itself.
     pub workspace_setup: Option<String>,
+    /// The owner's standing instruction for this project's master, from the
+    /// `master-policy` projectFact. Only `daemon::master` reads it — a job
+    /// never sees it, because it governs what runs, not how one runs.
+    pub master_policy: Option<String>,
 }
 
 /// Merge server assignments with local config bindings for one project id.
@@ -89,6 +93,12 @@ pub(crate) fn resolve_repo(
         .filter(|p| !p.is_empty())
         .map(str::to_string);
 
+    let master_policy = server_match
+        .and_then(|r| r.master_policy.as_deref())
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(str::to_string);
+
     match repo_path {
         Some(repo_path) => Ok(Resolved {
             slug,
@@ -97,6 +107,7 @@ pub(crate) fn resolve_repo(
             kind,
             runner_id,
             workspace_setup,
+            master_policy,
         }),
         None => Err(slug),
     }
@@ -955,6 +966,7 @@ mod tests {
             status: "online".into(),
             kind: Some("standard".into()),
             workspace_setup: None,
+            master_policy: None,
             rate_limited_for_seconds: None,
             limit_reason: None,
         }
@@ -996,6 +1008,25 @@ mod tests {
         let cfg = cfg_with_binding("app", Some("p-1"), "/local/app");
         let r = resolve_repo(&server, &cfg, "p-1").expect("resolves");
         assert_eq!(r.repo_path, PathBuf::from("/local/app"));
+    }
+
+    // cm:guard whitespace must resolve to `None`, not to `Some("   ")`. An owner who clears the fact by blanking it in the editor is asking for the skill's defaults back, and a brief that then carries an empty policy heading tells the master the owner said nothing in particular — which is a different instruction from having set none.
+    #[test]
+    fn a_blank_master_policy_is_no_policy() {
+        let mut server = vec![me("p-1", "app", Some("/srv/app"))];
+        server[0].master_policy = Some("  \n ".into());
+        let cfg = Config::default();
+        let r = resolve_repo(&server, &cfg, "p-1").expect("resolves");
+        assert_eq!(r.master_policy, None);
+    }
+
+    #[test]
+    fn master_policy_is_carried_from_the_server() {
+        let mut server = vec![me("p-1", "app", Some("/srv/app"))];
+        server[0].master_policy = Some(" Budget: 5 sessions. ".into());
+        let cfg = Config::default();
+        let r = resolve_repo(&server, &cfg, "p-1").expect("resolves");
+        assert_eq!(r.master_policy.as_deref(), Some("Budget: 5 sessions."));
     }
 
     #[test]
