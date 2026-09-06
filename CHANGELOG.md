@@ -11,6 +11,27 @@
 
 ### Added
 
+- **Work you finished by hand can now say so, and the project's progress figure believes it.**
+  `merged_at` is the claim that an issue's code shipped — it is what releases every issue blocked
+  on it, and what separates *shipped* from *closed with no evidence it shipped*. Making that claim
+  was reachable only from the CLI, MCP and REST; the web never called
+  `POST /api/issues/:id/merge` at all. A person who merged something outside the pipeline could
+  therefore only close the issue, and a close stamps `merged_at` inside its own transaction —
+  a stamp the counter correctly discounts, because closing is also how a duplicate ends.
+
+  The issue's Properties rail now carries **Mark merged** next to the merge date, with the
+  target it landed on and an optional note, and **Unmark** to retract it. Both route through the
+  same `applyMergeMarker` every other surface uses, so the audit comment, the hooks and the
+  work-evidence gate on agent callers are unchanged; a viewer never sees either control.
+
+  The counter was also discarding the claim once it was made. It required, on top of a deliberate
+  stamp, a logged transition into `developed`/`testing`/`tested`/`released` — which work driven
+  entirely by hand never has. Such an issue is now counted as shipped on the strength of the
+  deliberate stamp alone. An auto-stamp written by the close itself still counts as no evidence,
+  which is the ISS-817 property and is pinned against real Postgres rather than asserted.
+
+  The path is drawn end to end in `docs/flows/issue-work-shipped-evidence.html`. (ISS-791)
+
 - **An agent working an issue on a project that keeps modules is now told they exist, and how to
   set the issue's primary one.** ISS-593 made a module a label with `kind='module'` and gave an
   issue a primary through `issue_labels.is_primary`, but nothing told the agents doing the work:
