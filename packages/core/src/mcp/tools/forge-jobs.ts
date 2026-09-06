@@ -9,6 +9,7 @@ import {
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   type DeviceScopedMcpToolFactory,
+  principalAgency,
   principalUserId,
   zodToMcpSchema,
 } from './lib.js';
@@ -183,6 +184,7 @@ export const forgeJobsCancelTool: ContextScopedMcpToolFactory = ({ principal }) 
     try {
       return await cancelJob(jobId, {
         actorUserId: principalUserId(principal),
+        actorAgency: principalAgency(principal),
         reason: reason ?? 'manual cancel (MCP)',
         source: 'mcp',
       });

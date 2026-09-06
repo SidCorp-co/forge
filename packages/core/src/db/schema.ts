@@ -27,7 +27,7 @@ import { BODY_FORMATS } from '../body/formats.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
 import type { ReleaseNotes } from '../issues/release-notes.js';
 import { FAILURE_CAUSES, type FailureCause } from '../pipeline/failure-causes.js';
-import { activityLog } from './schema-activity.js';
+import { activityLog, actorAgencies } from './schema-activity.js';
 
 // cm:edge naming -> packages/core/src/db/schema-activity.ts — re-exported so that `activity_log` moving out of this file is invisible to its ten importers. Drop this line and every one of them breaks at once; that is the only reason it is here, not a licence to grow it into a barrel.
 export {
@@ -173,10 +173,7 @@ export const refreshTokens = pgTable(
 export const orgMemberRoles = ['owner', 'admin', 'member'] as const;
 export type OrgMemberRole = (typeof orgMemberRoles)[number];
 
-// Soft "working lens(es)" an org owner/admin assigns to a member — orthogonal to
-// the permission `role`. Multi-valued; shapes ONLY how the interactive agent
-// answers (altitude/voice), never permissions. Empty = default (product /
-// non-technical voice). See prompt/system.ts buildChatPreamble.
+// cm:guard a lens shapes ONLY how the interactive agent answers (altitude and voice) and NEVER permissions — it is orthogonal to `role`, so a gate that reads a lens grants access an org admin never assigned; empty means the default product voice, not the absence of a right
 export const memberLenses = ['technical', 'product'] as const;
 export type MemberLens = (typeof memberLenses)[number];
 
@@ -186,8 +183,7 @@ export const organizations = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     slug: text('slug').notNull().unique(),
     name: text('name').notNull(),
-    // Personal orgs are auto-created (one per user, partial-unique below),
-    // cannot be deleted, and are the default target for project creation.
+    // cm:guard one per user, held by the partial unique index below and by nothing in the application — a second personal org for a user is an insert error, not a validation message, and code that creates orgs must be ready for that.
     isPersonal: boolean('is_personal').notNull().default(false),
     createdBy: uuid('created_by')
       .notNull()
@@ -821,6 +817,8 @@ export const kernelTransitions = pgTable(
     toStatus: text('to_status').notNull(),
     reason: text('reason'),
     actorType: text('actor_type', { enum: kernelTransitionActorTypes }).notNull(),
+    // cm:guard the SECOND actor axis, and it is not a refinement of the first. `actor_type` answers who OWNS the write (a job or session token transitions under its creator, so `user` is true); `actor_agency` answers who was at the keyboard. They disagree for exactly the rows the ISS-786/812 gates exist to catch, and nothing type-checks that a writer keeps them in step — `KernelActor.agency` is required for that reason, so the compiler names an omitting call site instead of letting it record the default. Same shape as `activity_log.actor_agency` (ISS-927 finished the axis that migration 0193 started).
+    actorAgency: text('actor_agency', { enum: actorAgencies }).notNull().default('human'),
     actorId: uuid('actor_id'),
     source: text('source').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -2317,10 +2315,8 @@ export const sessionAttachmentsRelations = relations(sessionAttachments, ({ one 
   }),
 }));
 
-// v1 EPIC 5 (ISS-274) — per-project chat/runtime config. One row per project,
-// upserted via PUT /api/app-config/:projectId. `chatProviderId` is free-form
-// text until EPIC 1 (ISS-270) ships the chat-provider registry that validates
-// it; consumers must fall back to env defaults when the provider is unknown.
+// cm:guard `app_config` is keyed one row PER PROJECT — fleet-wide operator policy has no row here and belongs in `admin_thresholds` instead (ISS-654)
+// cm:guard `chatProviderId` is free-form text with no registry validating it, so every consumer must fall back to the env default on an unknown provider rather than trusting the column (ISS-270)
 export const memoryModels = ['flat', 'chunked'] as const;
 export type MemoryModel = (typeof memoryModels)[number];
 

@@ -62,7 +62,12 @@ export const phaseJournal = pgTable(
       onDelete: 'set null',
     }),
 
-    /** Agent-declared, free vocabulary. No gate reads this — see the module header. */
+    /**
+     * Agent-declared, free vocabulary. No gate reads this — see the module header.
+     * Rows named `phase-0`..`phase-8` are the 2026-09-02 → ISS-921 era, when the
+     * drive prompt's example seeded an ordinal; they are kept, not rewritten, and
+     * `phase_step_durations.step_named` is false for them.
+     */
     phase: text('phase').notNull(),
     /** Round number for a phase entered more than once (review sent code back). */
     attempt: integer('attempt').notNull().default(1),

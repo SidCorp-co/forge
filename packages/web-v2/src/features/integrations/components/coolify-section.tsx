@@ -29,7 +29,6 @@ import {
   useDeleteProviderIntegration,
   useIntegrationsList,
   useOrgConnectionLocked,
-  useRotateIntegrationSecret,
   useTestIntegration,
   useUpdateProviderIntegration,
 } from "../hooks";
@@ -60,8 +59,8 @@ function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
  * ISS-395 — Coolify deploy integration config (ported from the v1
  * `coolify-section.tsx`). Separate staging/prod integrations toggled via a
  * SegmentedControl. Prod requires a manual confirmation gate before every
- * deploy. The inbound HMAC webhook secret is minted server-side and revealed
- * exactly once (on create + on rotate).
+ * deploy. There is no inbound webhook to configure: Coolify signs nothing, so
+ * ISS-922 replaced the callback with a poll of the deployment's own status.
  */
 export function CoolifySection({ projectId }: { projectId: string }) {
   const [env, setEnv] = useState<IntegrationEnvironment>("staging");
@@ -125,7 +124,6 @@ function EnvironmentPanel({
   const remove = useDeleteProviderIntegration(projectId);
   const test = useTestIntegration(projectId);
   const confirmProd = useConfirmProdDeploy(projectId);
-  const rotate = useRotateIntegrationSecret(projectId);
 
   const cfg = (existing?.config ?? {}) as ProviderConfig;
   const seedTargets = (): CoolifyTargetInput[] =>
@@ -149,8 +147,6 @@ function EnvironmentPanel({
     null,
   );
   const [error, setError] = useState<string | null>(null);
-  // Returned exactly once by create + rotate-secret; the server never re-emits it.
-  const [revealedSecret, setRevealedSecret] = useState<string | null>(null);
 
   const isProd = environment === "prod";
   const saving = create.isPending || update.isPending;
@@ -177,7 +173,6 @@ function EnvironmentPanel({
 
   async function handleSave() {
     setError(null);
-    setRevealedSecret(null);
     setTestResult(null);
     const cleanTargets = targets
       .map((t) => ({
@@ -211,36 +206,15 @@ function EnvironmentPanel({
           setError("API token is required for the first save");
           return;
         }
-        const res = await create.mutateAsync({
+        await create.mutateAsync({
           provider: "coolify",
           environment,
           config: { baseUrl, targets: cleanTargets },
           secrets: { apiToken: apiToken.trim() },
           ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
         });
-        // Surface the auto-minted HMAC secret once — the operator must paste it
-        // into Coolify's webhook settings or inbound callbacks fail sig checks.
-        setRevealedSecret(res.integrationSecret);
       }
       setApiToken("");
-      onRefetch();
-    } catch (err) {
-      setError(formatApiError(err));
-    }
-  }
-
-  async function handleRotate() {
-    if (!existing) return;
-    if (
-      !window.confirm(
-        `Rotate the inbound webhook secret for ${environment}? You will need to update Coolify's webhook settings with the new value.`,
-      )
-    )
-      return;
-    setError(null);
-    try {
-      const res = await rotate.mutateAsync(existing.id);
-      setRevealedSecret(res.integrationSecret);
       onRefetch();
     } catch (err) {
       setError(formatApiError(err));
@@ -408,16 +382,6 @@ function EnvironmentPanel({
         )}
         {existing && (
           <Button
-            variant="secondary"
-            onClick={handleRotate}
-            loading={rotate.isPending}
-            disabled={orgLocked}
-          >
-            Rotate webhook secret
-          </Button>
-        )}
-        {existing && (
-          <Button
             variant="danger"
             icon="trash"
             loading={remove.isPending}
@@ -428,16 +392,7 @@ function EnvironmentPanel({
         )}
       </div>
 
-      {revealedSecret && (
-        <SecretRevealBanner
-          secret={revealedSecret}
-          onDismiss={() => setRevealedSecret(null)}
-        />
-      )}
-
-      {existing && (
-        <WebhookHint integrationSecretSet={existing.integrationSecretSet} />
-      )}
+      {existing && <DeployConfirmationHint />}
 
       {isProd && existing && (
         <ProdGateSection
@@ -548,64 +503,18 @@ function ProdGateSection({
   );
 }
 
-function SecretRevealBanner({
-  secret,
-  onDismiss,
-}: { secret: string; onDismiss: () => void }) {
-  const [copied, setCopied] = useState(false);
-  async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(secret);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // clipboard may be unavailable (insecure context); leave it on screen.
-    }
-  }
-  return (
-    <Banner tone="attention">
-      <div className="flex flex-col gap-2">
-        <span className="fg-label">Webhook signing secret — shown once</span>
-        <span className="fg-body-sm">
-          Copy this value into Coolify&apos;s webhook settings as the HMAC
-          secret. Forge will not show it again — rotate to issue a new one.
-        </span>
-        <code className="block break-all rounded bg-sunken p-2 font-mono text-[11px]">
-          {secret}
-        </code>
-        <div className="flex gap-2">
-          <Button size="sm" onClick={handleCopy}>
-            {copied ? "Copied" : "Copy"}
-          </Button>
-          <Button size="sm" variant="secondary" onClick={onDismiss}>
-            Dismiss
-          </Button>
-        </div>
-      </div>
-    </Banner>
-  );
-}
-
-function WebhookHint({
-  integrationSecretSet,
-}: { integrationSecretSet: boolean }) {
+function DeployConfirmationHint() {
   return (
     <div className="flex flex-col gap-1 rounded-lg border border-subtle bg-sunken p-3">
-      <span className="fg-label text-subtle">Inbound webhook</span>
+      <span className="fg-label text-subtle">Deploy confirmation</span>
       <span className="fg-body-sm">
-        Point Coolify at:{" "}
-        <code className="font-mono">/api/webhooks/in/&lt;project-slug&gt;</code>
+        Forge reads each deploy&apos;s outcome back from Coolify and holds the
+        pipeline run open until every target reports. Nothing to configure in
+        Coolify — it sends no callback, so Forge asks instead.
       </span>
-      <span className="fg-body-sm">
-        Signature header:{" "}
-        <code className="font-mono">X-Coolify-Signature-256</code> (sha256=…)
+      <span className="fg-body-sm text-subtle">
+        A deploy still unconfirmed after 30 minutes fails its run.
       </span>
-      {!integrationSecretSet && (
-        <span className="fg-body-sm text-red">
-          Signing secret missing — save this integration to mint one, then paste
-          it into Coolify.
-        </span>
-      )}
     </div>
   );
 }

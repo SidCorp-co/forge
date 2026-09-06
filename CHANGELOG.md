@@ -11,6 +11,207 @@
 
 ### Added
 
+- **A master that cannot start is stopped being restarted, and a fresh box never meets the
+  workspace-trust dialog.** `ensure_master` respawned a dead master on every 30-second sweep with
+  nothing counting how many times it had already done so, so a session that died deterministically
+  burned the box's core loop twice a minute while the project's pool sat unread. On forge-vm
+  (2026-09-06) the deterministic death was Claude Code's workspace-trust prompt: it is shown in a
+  TTY only, `-p` and the SDK skip it, and a resident master lives in a tmux pane — which is a TTY —
+  so the pane held an unanswered prompt and ended. Two halves, both in the runner:
+
+  Three master deaths inside ten minutes now stop the respawn for thirty, with a `DEGRADED` line
+  per sweep naming the project, the tally and when the box will try again. The tally is per project,
+  so one broken checkout cannot idle the others, and it is a backoff rather than a latch: after the
+  cooldown the box tries exactly once, and a probe that dies re-opens it immediately instead of
+  buying another run of three. An operator who repairs the box out of band gets that probe without
+  restarting the daemon.
+
+  And the runner now pre-accepts the trust dialog for the checkout it owns — at provision, where the
+  box first takes the path, and again immediately before a master pane starts, which covers every box
+  provisioned before this shipped. It writes `hasTrustDialogAccepted` into Claude Code's own config
+  JSON, only when that path is not already trusted, atomically and keeping the file's mode; a config
+  it cannot parse is refused rather than replaced. Reaching the fleet needs a `runner-v*` release.
+  (ISS-928)
+
+- **An unattended agent session holds its own credential, and it dies when the session does.**
+  A scheduled run, a RocketChat escalation and a RocketChat agent chat all open an agent session
+  with nobody at the keyboard. Until now none of them had a credential of its own: the mint Forge
+  already does for a dispatched job is keyed on a `jobs` row, and these have no job — so that whole
+  caller class fell back to whatever long-lived token the box was provisioned with, which is exactly
+  the credential nobody is watching. Core now mints a `session:<id>` PAT on `agent:start`, bound to
+  the one project, scoped read+write, on the same measured 600/min ceiling a job token gets, and
+  hands it to the runner on the dispatch frame as `$FORGE_PAT`.
+
+  It is revoked from **both** writers that can end a session, which is the part worth reading. The
+  kernel chokepoint covers cancel, the stale sweeper, a dispatch failure and a run-close cascade;
+  the runner's own happy-path completion is a direct `db.update` in `PATCH /api/agent-sessions/:id`
+  that the chokepoint never sees, and the guard test protecting that invariant cannot see it either,
+  because it scans for a literal status and that handler writes a variable. Wiring only the
+  chokepoint — which is what this change was originally specified to do — would have left a live,
+  write-scoped, project-bound credential behind every session that finished normally.
+
+  Interactive chat is deliberately excluded and keeps the operator's `$FORGE_PAT`. A chat turn
+  reports `completed` at the end of every turn, so core's status vocabulary cannot tell a dormant
+  session from a finished one; a token revoked on that ambiguity would be cut out from under a
+  resident `claude` process that reads `$FORGE_PAT` once, at spawn. Unattended sessions are
+  single-turn by construction, so for them terminal really is terminal. (ISS-927)
+
+- **The Ops Console's alert thresholds are an operator setting, and spend has a ceiling.**
+  `GET`/`PUT /api/admin/thresholds` (platform admins only) reads and writes one global row: the
+  stuck-job window, the runner-starvation grace, the spend-spike multiple, the schedule fail-streak,
+  the delivery fail-rate, the labels that count as an intervention, and how many days offline makes
+  a runner a ghost. `computeAlerts()` re-reads the row on every call, so a change lands on the next
+  sweeper tick with nothing restarted, and the three `FORGE_ALERT_*` environment knobs it supersedes
+  were deleted rather than shipped beside it.
+
+  `spendCeilingUsdDay` is new capability, not a rename: the spike alert compares one window against
+  the one before, so a deployment burning the same large amount every day had a ratio of 1.0 and
+  reported nothing. With a ceiling set, A4 warns at 80% of a trailing 24 hours and goes crit at the
+  ceiling, and the alert says which of the two arms fired. The table ships empty and the declared
+  defaults stand in, so a deploy that never writes it behaves exactly as it did before. (ISS-654)
+- **GitHub is connectable from the UI.** The backend for the App-manifest flow shipped some time
+  ago — three routes, an adapter, a signed connect state — and nothing ever called them. The web UI
+  classified `github` as read-only telemetry, so the only GitHub affordance in project settings was
+  a card showing a repo URL, and there was no path to a connection at all. Project settings →
+  Integrations now opens a GitHub section that creates the App: pick an organization (blank for
+  your personal account) and an environment, and Forge hands GitHub a manifest naming the
+  permissions it asks for, which the screen lists before you leave. GitHub creates the App, the
+  callback stores the credential, and you land on its install page to choose repositories.
+
+  The handshake has one shape that must not be refactored away, and it carries a guard: the
+  manifest goes to GitHub as a **top-level form POST**, never `fetch`. GitHub reads `manifest` from
+  a form submission, and the redirect back to the callback authenticates on the `forge_auth`
+  cookie, which is `SameSite=Lax` and so rides a real navigation and nothing else. A background
+  request would resolve and connect nobody.
+
+  A card that is drillable now shows **Manage** even when it also links out to the repository.
+  GitHub is the first provider that has both, and the previous either/or would have left its card
+  offering only the link that navigates away from the screen that connects the App.
+
+  **One App serves the whole organization, not one per project.** The App is the credential; the
+  repository a project uses belongs to that project's binding, and `owner`/`repo` were already
+  declared binding-tier keys that nothing had ever filled in — which is why a per-project App was
+  the only thing keeping two projects apart. A project that finds an App already connected now
+  picks a repository from what that App's installations actually granted, and the binding records
+  the repository and the installation that reaches it: no approval screen, no second private key,
+  no second webhook secret. Creating a separate App stays one click away for the case that needs
+  one, and the first connect asks whether the credential belongs to you or to the organization —
+  org-owned requires org admin, the same gate the generic connection create applies.
+
+- **`/admin` answers "who is using Forge, and what needs me right now".** The Operator Ops Console
+  overview was an empty state; it now renders the deployment from the four `/api/admin/*` endpoints
+  ISS-651 and ISS-652 shipped. A KPI row (open alerts, jobs in flight, active workspaces, spend this
+  window against the window before), the A1-A5 alert feed sorted crit before warn before ok, five
+  Tier 2 glance cards with a delta and a sparkline, the signup curve and the top-workspace table.
+  Each of the four panels carries its own loading, error-with-retry and empty state, so one dead
+  endpoint costs its card rather than the page.
+
+  A stuck-job (A2) row carries a **Reap** control that confirms before it cancels. Making it work
+  everywhere took two authz widenings outside `/api/admin/*`, both on the `ADMIN_EMAILS`
+  allow-list: `POST /api/jobs/:id/cancel` falls back to the platform-admin check when project role
+  is short — without it the button was dead on every tenant the operator is not a member of, which
+  is most of them — and `canSubscribe` admits a platform admin to a `project:` WebSocket room on
+  the same list, so the live half of the screen refreshes for all projects and not just the
+  operator's own. The room widening is READ-only and says so in a guard: project rooms carry
+  invalidation events and accept no input from a subscriber.
+
+  The "Open alerts" tile read the alerts the feed below it was showing rather than
+  `overview.kpis.openAlerts`, which was an independent A2-only approximation; ISS-654 unified the
+  two and the tile now reads the KPI. Printing "0 - nothing needs you" above a red crit row is the
+  one thing this screen must not do.
+
+  The wire shapes moved to one declaration (`@forge/core/admin-types`, re-exported through
+  `@forge/contracts`) instead of the two that were drifting, and the `overview` placeholder was
+  deleted rather than left beside the screen that superseded it.
+
+- **Settings → Pipeline edits the tool policy it has only ever displayed.** Since ISS-813 the tab
+  has shown each stage's `disallowedTools` / `allowedTools` and its per-stage `mcpServers` — the
+  policy the dispatcher hands every session — and offered no way to change any of it short of a
+  REST call. Each stage now carries a draft editor: chips you can remove, a picker seeded from the
+  ids the project already uses, a free-text field for one it does not, and catalog toggles for the
+  per-stage MCP override. A stage with no override yet is listed too, so one can be added rather
+  than only amended.
+
+  Every save round-trips the full fetched config and overrides exactly one `states[<status>]` key,
+  through a single writer (`withStagePatch`). That is not stylistic: `statesConfigSchema` has no
+  passthrough and the PATCH replaces `states` wholesale, so a save built from anything less than
+  the fetched map deletes the stages it omitted. Four tests fail if any one of its three spreads
+  goes, including one asserting a key no schema version declares.
+
+  Alongside it, `agentConfig.stateContext` — a model override and a spend cap per kind of job —
+  becomes editable through the scoped `stateContext` field that already existed on
+  `PATCH /projects/:id`. Budgets are all-or-nothing in the browser because core's `budgetSchema`
+  is `.strict()` with all three keys required: a half-filled budget was never a smaller cap, it
+  was a 400. No core changes were needed for any of this.
+
+  Two of the five fields the issue asked for were refused by name rather than answered with the
+  nearest thing that renders. `states[*].skipComplexities` was deleted from `stageConfigSchema` by
+  ISS-897, and that schema strips unknown keys, so a control writing it would be undone by the
+  next save; `recoveryMaxAttempts` / `recoveryWindowHours` / `recoveryByFailureKind` have no
+  reader anywhere in core, so adding them to the schema would have made three dead dials
+  configurable. The "configured elsewhere" list is rewritten to match: every row now names a key
+  something in core actually reads, and none of them promises work to a closed issue.
+- **Connecting GitHub is an authorization, not a form.** `POST
+  /api/projects/:id/integrations/github/connect` returns an App manifest; the operator's browser
+  posts it to GitHub, GitHub creates the App and redirects to
+  `/api/integrations/github/manifest-callback` with a one-time code, and converting that code
+  yields the App's `id`, `pem` and `webhook_secret` at once. Nothing is typed, so nothing can be
+  mistyped, and the binding's `integrationSecret` is the App's own webhook secret rather than a
+  freshly minted one that would fail every signature check while the UI showed the integration as
+  configured.
+
+  The `state` carried through the flow is HMAC-signed with a ten-minute life AND checked against the
+  session on the way back: the signature proves Forge issued the state, not that this browser is the
+  one that asked for it. Without the second check a signed state replays in someone else's session
+  and binds an attacker's App to their project — which is what the test asserts, and it fails with
+  `expected { projectId: 'p-attacker', … } to be null` when the signature check is removed.
+
+  **The mount nearly shipped a 401 on every webhook.** The callback sub-app carried
+  `use('*', requireAuth())` and mounts at the broad `/api` prefix, where Hono turns it into `/api/*`
+  on the parent and runs it for every route registered afterwards — including the deliberately
+  unauthenticated `/api/webhooks/in/:slug`. Measured before the fix: `POST /api/webhooks/in/demo` →
+  `401 UNAUTHENTICATED`, so every GitHub delivery would have been rejected by a guard belonging to
+  an unrelated feature while the integration still displayed as connected. The guard is now scoped
+  to `/integrations/github/*`, and `middleware/route-mount-order.test.ts` carries both halves — the
+  broad mount failing, and the scoped one leaving the webhook public. The `cm:edge lockstep` on that
+  file is what surfaced it; it was one line of "advice, not a verdict" away from being dismissed as
+  unrelated to a route mount.
+
+- **GitHub is an integration provider, not a second webhook path.** It used to live on a branch
+  inside `POST /in/:slug` keyed on `projects.webhookSecret` — one shared secret per project, no
+  environment split, no delivery log, no health, no circuit breaker — kept, by its own comment,
+  "preserved verbatim so the existing inbound-routes.test.ts regression test continues to pass".
+  Measured on the live fleet 2026-09-06, that path had **0 of 41** projects configured and had
+  produced **0 of 4,436** issues, so there was nothing in the field to keep working and the branch
+  is gone rather than left beside its replacement.
+
+  `github` is now a registered adapter with its own connection, binding, per-binding
+  `integrationSecret`, delivery log and healthcheck, reached by `x-github-event` like any other
+  provider. A delivery signed with the project's old `webhookSecret` is now refused — there is a
+  test that asserts exactly that, because it is the break, and it fails with `expected 200 to be
+  401` if the routing entry is removed.
+
+  **The credential is a GitHub App, not a pasted token.** The app-manifest flow returns `id`, `pem`
+  and `webhook_secret` to Forge's own redirect, so nothing is typed by hand; a repository call
+  carries an installation access token minted from a JWT signed with that key
+  (`POST /app/installations/{id}/access_tokens`, one hour, cached until five minutes before it
+  lapses). The JWT backdates `iat` by a minute because GitHub rejects one issued in its own future,
+  which a box with a slightly fast clock produces and which surfaces as an unexplained 401 on a
+  credential that is fine.
+
+  That App signs every installation's deliveries with **one** webhook secret, so a valid signature
+  proves the App sent the event and says nothing about which binding it belongs to. The adapter
+  therefore matches `repository.full_name` against the binding and refuses by name when they
+  differ — without it, the router's "first binding whose secret verifies" would hand one repo's
+  events to another's binding silently, behind a 200.
+
+  Failures are told apart rather than collapsed into `needs_reauth`: 401 on the JWT is a wrong App
+  id or key, 404 is an App that is not installed on that account, and 403 on the repository is an
+  installation missing a permission — three different things for the operator to do. ISS-924 files
+  the same mislabel against the Coolify adapter.
+
+  Opening and reviewing pull requests is not in this change and is refused by name until it lands.
+
 - **Modules: a taxonomy an issue can be filed under, and one primary module per issue.** A module
   IS a label — `labels.kind` is the only thing telling them apart — so every path that already
   attaches, filters and lists labels carries modules with no second table and no second attach
@@ -33,7 +234,7 @@
   `forge_issues.list`. Both match MODULE labels only: the name of a plain label returns no issues
   rather than quietly behaving as `?label`, which stays uuid-only and unchanged. Every `labels[]`
   read now reports `kind` and `isPrimary` per entry (`ModuleAttribution` in `@forge/contracts`).
-  Migration `0210` is additive in every statement — existing labels read back as `kind='label'`,
+  Migration `0213` is additive in every statement — existing labels read back as `kind='label'`,
   existing attachments as `is_primary=false` — and carries `labels_kind_chk`, because
   `text(col,{enum})` is a compile-time type and emits no constraint of its own. Drawn in
   `docs/flows/issue-work-module-attribution.html`. (ISS-593)
@@ -833,6 +1034,181 @@
 
 ### Fixed
 
+- **The connections directory told seventeen credentials apart by nothing at all.** Every card on
+  `/integrations` fell back to its provider label, printed that label a second time as a pill beside
+  itself, and offered no other detail — because `GET /api/integration-connections` returned no
+  binding, project or endpoint information for the cards to show. The list route now carries `usage`
+  (the bindings, with project and environment) from one batched query rather than a fetch per card,
+  and a card names the endpoint its credential points at, the projects using it, and the provider
+  only when that is not already its title. `POST /api/integration-connections` also names a new
+  connection from the config it was given (`coolify · deploy.example.com`), so rows stop arriving
+  anonymous; the existing rename in the edit drawer is unchanged.
+
+  Three states the screen had been reporting falsely are now distinct. "No connections yet" was
+  rendered for an org scope that was merely *hiding* connections, which reads as data loss to whoever
+  created them — a filtered-empty scope, an out-of-scope one and a genuinely empty workspace now say
+  which of the three they are. Disable/Enable/Remove were offered to a principal the API answers
+  `403`; a member who can see an org credential but not change it is told so instead. And "Projects
+  using this connection" answered `404` to that same member, because `GET
+  /api/integration-connections/:id/bindings` gated a READ on the manage check — reads now gate on
+  visibility, which is the set the list route already showed them.
+
+  Search and provider filters arrive with the card rebuild (matching on project name too, which is
+  how an operator actually looks a credential up), and Remove is reachable from the card behind a
+  confirmation that names how many projects it disconnects.
+- **`archmap` was blind to 35 first-party import edges.** `.arch-tsconfig.json` taught
+  dependency-cruiser web-v2's `@/*` alias but not `@forge/contracts`, whose package `exports`
+  subpaths it does not follow — so every import of the shared contracts package was unresolvable and
+  therefore silently *dropped* from the graph the relations gate checks. Same failure the file's own
+  comment records for the `@/*` alias, one package over. Unresolvable edges fell from 204 to 166.
+- **A release run no longer reports `completed` on the evidence that somebody asked for a deploy.**
+  Measured on the fleet 2026-09-06: `integration_deliveries` held 5,408 outbound rows and **zero**
+  inbound ones since 2026-05-27, `release.deploy.done` had been stamped **zero** times, and **50
+  runs sat at `status='completed'` while their own `current_step` still read
+  `release.deploy.in_flight`** — the run contradicting itself in one row. The one mechanism that
+  would have checked, an inbound Coolify webhook, was unreachable by construction: Coolify's
+  `SendWebhookJob` does `Http::withOptions(...)->post($url, $payload)` with no event header and no
+  signature, and `POST /in/:slug` requires both.
+
+  A deploy now writes a **confirmation hold per target** onto its run, and `closeRun` /
+  `closeOpenRunForIssue` ask that hold before writing `completed`. Every target confirmed → the run
+  closes as asked. A deploy Coolify reports failed, or one still unconfirmed 30 minutes after
+  dispatch → the run closes **`failed`**, with `current_step` naming the target and the reason. A
+  deploy genuinely still in flight → **the close is deferred**, not weakened: the run stays
+  `running` at `release.deploy.in_flight (k/n)`, which is true, and the confirmation performs the
+  close when the last target lands. The outcome is read by polling
+  `GET /api/v1/deployments/{uuid}` — a client that already existed and had only ever been called
+  when a human asked — and every terminal read writes an inbound-direction delivery row, so the
+  audit log carries both directions again from a source that exists.
+
+  The unreachable path was **removed, not repaired**: `coolifyAdapter.handleInbound` now refuses by
+  name, `canReceiveWebhook` is `false`, the `x-coolify-event` and `x-coolify-signature-256` entries
+  are gone from the inbound router, and the settings screen no longer tells an operator to paste a
+  signing secret into a Coolify field that does not exist. Repairing it would have added a second
+  writer of run-terminal state for a message Coolify cannot send. The GitHub inbound adapter, which
+  does send `x-github-event` and does sign `x-hub-signature-256`, is untouched.
+
+  Bounded by construction, and the bound is the trade: 30 minutes is below the 60 of
+  `RESULT_QUIET_MINUTES`, so the gate always resolves before the sweeper's window opens and two
+  mechanisms never decide one run's outcome. The price is that a build slower than 30 minutes fails
+  its run; it ends when a project can declare its own deadline. A deploy asked for after its run
+  already closed — 81 of 4,247 measured — is reported at ERROR level instead of being stamped onto
+  a run that cannot witness it. (ISS-922)
+
+- **The GitHub App manifest sent GitHub three URLs this core does not serve.** `buildAppManifest`
+  built `redirect_url`, `setup_url` and `hook_attributes.url` from `APP_BASE_URL`, which is the WEB
+  frontend — `env.ts` says so, and `auth/email.ts` already resolves the same split for verification
+  links. On a subdomain-split deploy all three landed on the Next.js app and 404'd. The redirect
+  fails visibly, and at the worst moment: GitHub has already created the App, the signed state is
+  spent, and only a hand-edit recovers it. `hook_attributes` fails **silently** and forever — the
+  integration renders as configured while every delivery misses. The manifest now takes the web and
+  API origins separately; only the App's homepage is the web one.
+
+  Rather than trust the env alone, the connect route now **refuses before anything is created** when
+  the origin it would give GitHub is not the origin the request reached core on, naming both and
+  saying which variable to set. The check reads the request only to refuse — the callback is where
+  GitHub delivers the code that yields the App's private key, so a forged `Host` must never be able
+  to choose that URL, and here the worst it can do is deny.
+
+- **The last step of the GitHub install refused the case its own guard described.** `setup_url`
+  carries no `state` when the operator installs the App from its settings page — which is where
+  GitHub lands you after creating it. The guard on that route said so, and said refusing would
+  strand the flow with the App already created; the line under it refused anyway. The binding is now
+  identified from the installation itself, and ownership is **proved** by asking GitHub with each
+  candidate App's own JWT, because an App JWT reads only its own installations. Picking the caller's
+  single unconfigured binding would have worked until a second project connected, then written one
+  project's installation id onto another's.
+
+- **Two more shapes of run that showed as live work no box was doing.** ISS-923 closed `running`
+  runs whose jobs had all finished; a `paused` run in the same state, and an issue run that never
+  grew a job at all, were reached by nothing and kept inflating the live-run count. Both are now
+  reaped to a terminal status after the same 60-minute quiet window. A paused run is admitted only
+  when it also holds no live session — an operator's hold that could still be resumed into work is a
+  decision no sweeper may undo, and this is the one shape where there is provably nothing left to
+  resume into. (ISS-654)
+
+- **A runner that went away weeks ago stops counting as fleet.** A box that was paired once and
+  never came back sat `offline` forever: nothing walked it past that status, so it inflated the
+  fleet count and kept stage device pools pointing at nothing. It is now flagged `disabled` after
+  the configured number of days, with an audit row saying why. Never a runner still holding a
+  dispatched or running job, and never a row delete — a returning box re-registers itself on its
+  next heartbeat. (ISS-654)
+
+- **Half the phase journal recorded numbers nobody can read back, because the drive prompt's
+  example said `phase-1`.** `phase_journal.phase` is free vocabulary and no gate reads it — both
+  deliberate — so the worked example in `buildDrivePrompt` is the whole specification. It carried
+  the literal `phase-1` from 2026-09-02, agents copied it, and 542 rows landed named `phase-0`
+  through `phase-8` across every autonomous project on the instance. `phase-4` cost 6.8 hours on
+  forge-dev alone and nothing can say what it was; worse, two runs' `phase-4` need not have been
+  the same step, so every aggregate over them summed unlike things.
+
+  The example now reads `understand` — a name 161 existing rows already use for that step, so
+  autonomous rows aggregate with staged ones instead of forming a second bucket — and three lines
+  beside it say to name the phase for the step in words, never by its number, reusing the name an
+  earlier run used. Nothing gates the column and nothing should: a gate on the name would turn a
+  free vocabulary into a contract the agent can break by being descriptive. The unit test asserts
+  the digit, not the wording.
+
+  The 542 rows are **not** rewritten. What step each was is not recoverable, and guessing would put
+  invented data in the one table that exists to be evidence. They are told apart by pattern rather
+  than by date: `phase_step_durations` gains `step_named`, false exactly when the name matches
+  `^phase-[0-9]+$`. A boundary date would have been wrong — the fix is a seed, not a gate, so a
+  session on a stale plugin can still write an ordinal next week and a date-based reader would
+  count it as readable.
+
+  The other half is `guides/skills/issue-flow/guide.md` in `SidCorp-co/forge-plugin`, whose
+  headings are `## Phase 4 — Implement` and which is read in the same context window. No gate in
+  this repo can hold that pair; the `cm:guard` on `buildDrivePrompt` is the only record of it.
+
+- **A `stateContext` entry could not be deleted through any external caller.**
+  `mergeStateContext` has always implemented `null` as its per-jobType removal sentinel and said so
+  in its own JSDoc, but `stateContextSchema` never marked the entry `.nullable()`, so the `null`
+  was rejected at the door — by REST and by MCP `forge_config` alike, both of which validate through
+  it. The only expressible deletion was wiping the whole map. Found by the Settings → Pipeline
+  editor added in this release, which is the first caller to try it and got a 400 naming a shape the
+  merge below it documents as supported. The `cm:guard` on the schema now records why the `.nullable()` has to stay.
+
+  `StateContextPatch` went with it — a widening type whose comment read *"Zod doesn't model the
+  null-to-remove sentinel on per-state entries, so we widen here."* Zod models it now, `StateContext`
+  already carries `| null` per entry, and its only caller was the merge in the same file.
+
+- **The Pool admission toggle now reaches the route that can write `runners.status`.** It sent
+  `{status}` to `PATCH /api/projects/:id/runners/:runnerId`, whose body schema is `.strict()` over
+  repoPath/branch/labels — so every attempt to withdraw or readmit a box came back `400
+  Unrecognized key: "status"` and surfaced as a generic "Save failed" toast. The status writer is
+  `PATCH /api/runners/:id`, which hands the transition to `setRunnerStatus` and audits it into
+  `runner_events`; admission goes there now.
+
+  Nothing caught it because nothing asserted the URL, and the two routes differ only by prefix.
+  There is a test for that now, and it fails naming the route when the prefix moves. The
+  consequence was not cosmetic: an operator who retired a runner had no way back through the UI,
+  and `forge_runners` MCP has `retire` but no enable, so a box withdrawn from a project stayed
+  withdrawn. Un-retiring one meanwhile goes through `POST /api/projects/:id/runners`, whose upsert
+  recomputes status from device freshness.
+- **A pipeline run now ends when its jobs do.** The repo stated and defended its orphan invariant in
+  one direction — no child job may stay non-terminal under a terminal run — and nothing at all
+  defended the inverse. The cascade fires when a run *closes*; nothing fired when the *last job* of
+  an open run finished, so a run whose jobs had all reached `done` simply stayed `running` forever.
+
+  Measured on the fleet 2026-09-06: **98 of 114** `running` runs across 18 projects had every child
+  job terminal, oldest 2026-05-26 and newest 2026-09-04 — a live leak, not a historical backlog.
+  Each one rendered as an in-flight pipeline no box was doing, and each recovery was a hand-driven
+  cancel plus transition.
+
+  `pipeline/runs-concluded.ts` is the missing detector, driven from the sweeper tick beside the two
+  run-axis reapers that could not reach these rows (`reapOrphanedOneShotRuns` requires a job-less
+  run; `reapOrphanedIssueRuns` requires a closed issue). It admits a `running` run only when it has
+  jobs, none of them is `queued`/`dispatched`/`running`/`held`, and none has been touched within
+  `RESULT_QUIET_MINUTES` — then closes it through the existing `closeRun` SSOT, so there is still
+  exactly one writer of a run's terminal status. The outcome is the **last** job's, so a run whose
+  last job failed cannot close `completed`, while a failure retried to success still can. Every
+  reap logs its run and project before the write, and the standing backlog drains on ordinary ticks
+  rather than through a migration.
+
+  The invariant is now written both ways in `CLAUDE.md`, and the whole lifecycle — both directions,
+  and what each symptom means when it goes wrong — is drawn in `docs/flows/lifecycle-pipeline.html`.
+
+
 - **A job waiting for a duplex permit killed another project's jobs, and blamed the lock.**
   `dispatch.rs` took the repo-root lock, called `runner.start`, and released it only when that
   returned — but `start` awaited the box's duplex session semaphore with no deadline, so the root
@@ -888,6 +1264,41 @@
   `update::apply` gates on `is_newer(manifest.version, CURRENT_VERSION)` — so a re-cut `0.11.1`
   would have reached no box already on `0.11.1`, and the fix would have been merged, released and
   still absent from every runner it was written for.
+- **A mirrored GitHub close no longer claims the work shipped, and a pull request no longer becomes
+  an issue.** Both defects sat in `handleGitHubEvent`, which had no test of any kind until now —
+  which is why they sat there.
+
+  `issues.closed` stamped `merged_at` via COALESCE, mirroring the state-machine writer's rule for
+  work Forge itself drove to done. But `merged_at` releases every `blocks` dependent as if the code
+  had landed, and GitHub sends the same event for `wontfix`, `duplicate` and `not planned` — so a
+  duplicate closed upstream would have dispatched its dependents against code that does not exist.
+  A mirror of somebody else's tracker knows only that the row is closed, and now records only that.
+
+  `pull_request.opened` filed a Forge issue per PR. A PR is a change under review, not a unit of
+  work with a deliverable and an owner, so it fails every admission gate in the `what-is-an-issue`
+  guide and arrives owned by nobody. What a PR event is for is advancing the issue its branch
+  already belongs to; that mapping comes with the pull-request verbs, and until then the event
+  falls through to the unhandled-event log, which is the honest answer rather than the nearest one.
+
+  Both are covered by `tests/integration/github-webhook-mirror-e2e.test.ts` against real Postgres,
+  because both assertions are about a column: restoring the stamp turns the close test red with
+  `expected '2026-09-06 04:48:00.449163+00' to be null`.
+
+- **Coolify deploys go out as POST, before the GET stops being a deploy.** `client.ts` triggered
+  every deploy with `GET /api/v1/deploy?uuid=&force=`. Upstream `0633b543` (2026-07-19, released in
+  v4.2.0) repointed that route at a stub returning **405 `This endpoint has changed to a POST
+  request.`** — the path still resolves, so the failure would have arrived as a 405 on every deploy
+  of every one of the 13 Coolify connections at once, on whichever day someone upgraded the
+  instance. `manage.musetools.com` is still on ≤ v4.1.x: 5,392 outbound deliveries `ok`, the last on
+  2026-09-05, so nothing is red today.
+
+  The route was `Route::match(['get','post'], '/deploy')` before that commit, so POST is accepted by
+  every version in the field and this is one method swap, not a fallback pair. `client.test.ts`
+  asserted `init.method === 'GET'` — a green test pinning the shape that was scheduled to break; it
+  now asserts POST, with a second case proving a 405 surfaces as a `CoolifyApiError` still carrying
+  Coolify's own message. The same commit did this to `applications/{uuid}/start|restart|stop`,
+  `servers/{uuid}/validate` and `enable`/`disable`; Forge calls none of those yet, and the `cm:guard`
+  on `deploy` names them so the next one added starts on POST.
 
 - **A withdrawn runner still took jobs.** `readPool` joined `runners` only to prove a binding
   existed and read nothing else from the row; `claimJobForMaster` checked the agent version and
@@ -1878,6 +2289,89 @@
   parked or blocked — there is still no limit on how many rounds an issue may take. (ISS-878)
 
 ### Changed
+
+- **A device token no longer reaches the API as its owner.** `requireAnyAuth` — the middleware
+  behind attachment uploads and two comment routes — used to accept a runner's device token and set
+  `userId = device.ownerId`, which was the single place in Forge where a credential silently became
+  a person. It is deleted, along with the probe that existed to measure it. A caller presenting a
+  device token there now gets a 401 rather than its owner's account, and the caller class it served
+  holds a real scoped token instead: `job:<id>` from the moment a job is claimed, `session:<id>`
+  from `agent:start`. Four middlewares still verify a device token on the runner's own control
+  plane, and none of them grants ambient owner authority. (ISS-927)
+
+- **The audit trail records who was at the keyboard, not just whose account it was.**
+  `kernel_transitions` gains `actor_agency`, finishing the axis `activity_log` started: `actor_type`
+  answers who owns a write — truthfully the person a job or session token was minted under — while
+  `actor_agency` answers whether a machine made it. The field is required on a `user` actor and
+  refused on the others, so `system`, `sweeper` and `runner` cannot be recorded as people and no
+  call site can quietly inherit the column's default. The activity feed reads it per row, ORed over
+  the existing actor-type test so that every row written before the column existed keeps exactly the
+  marker it has today. (ISS-927)
+
+- **The docs stop offering the runner's own passthrough as the surface a skill calls.** Two
+  command-line tools reach core's data plane — `forge-runner api`, built in this repo, and `forge`,
+  the 21-verb CLI built in `forge-plugin` — and until now nothing said which belonged to whom.
+  `docs/architecture/data-plane-surface.md` opened by presenting its table as *"what an agent or a
+  skill author calls instead"*, drew *"agent in a job"* as the caller, and addressed its whole
+  calling section to *"the agent process"*. A skill author reading it came away with the wrong verb.
+
+  The page now says what it is: documentation of `forge-runner api`, the Rust daemon's own reach
+  into core, with exactly two callers named — the daemon's subcommands, and the drive-job shell
+  that core's own prompt hands `$FORGE_PAT` to. A skill is neither, and the page says so and links
+  to `agent-surface.md`. The MCP↔REST twin table is untouched: it maps the data plane and is true
+  whoever calls the route. Both index rows (`docs/README.md`, `docs/architecture/README.md`) are
+  rewritten in the same change so no index still routes an agent here.
+
+  `forge-runner api` is not deprecated by any of this and does not move. A daemon that could not
+  reach core until a Claude Code plugin was installed would be a worse daemon.
+
+- **The frozen MCP surface cites a document, not only a tracker number.** `registered-tools.ts`
+  named `ISS-894` as the authority for shrinking the tool list, and seven commits cite it. That row
+  exists and is the right one, but it sits at `draft`, which no list or pool view of the project
+  shows — so a reader who went looking concluded the authority was missing. The guard now carries a
+  `cm:edge naming` to `docs/architecture/agent-surface.md`, which holds the deletion rule in prose
+  and can always be opened, alongside the number. `agent-surface.md` names `ISS-894` in its delivery
+  table for the same reason, and records that the per-tool device count the deletion rule turns on
+  is readable only with direct database access — there is no aggregate route over `mcp_audit_log`,
+  so no agent session can satisfy that rule, and none may delete on an estimate.
+
+- **The master, and the way it takes work, stop being one-shot.** The per-project master agent was
+  a `claude -p` child of the runner daemon: killed and restarted every 30-second pass, unreachable
+  by a human, inventing its own session id so core had no record it existed, and writing its
+  reasoning to a `last-pass.log` that the next pass truncated. Measured 2026-09-05 on forge-vm — the
+  master's account of why it claimed ISS-917 was gone three minutes later.
+
+  It is now a **resident tmux session** named `forge-master-<slug>`, parented by the multiplexer
+  rather than by the daemon. An operator can `tmux attach -t forge-master-forge-dev` and watch it
+  work, or `forge-runner master say <slug> "<text>"` and type at it; core can address the same pane
+  through the existing `session_inbox` with its `delivered`/`gone` ack. It survives a
+  `forge-runner` restart, its transcript appends instead of truncating
+  (`forge-runner master log <slug>`), and every pass after the first starts from context it already
+  has.
+
+  Taking a job and starting it are now two acts (`pool prepare` / `pool start` / `pool discard`;
+  `pool claim` is the first two composed). A master can hold a preparation, look at it and hand it
+  back — the single irreversible verb it replaced made that impossible. The job stays `queued` and
+  held in between, so every release path that already existed covers the gap, and the daemon returns
+  a preparation nobody started after two minutes.
+
+  Two protections had to be rebuilt because the daemon is no longer the parent. A dead master used
+  to be detected by its control socket dropping; it is now detected by its tmux session no longer
+  existing, checked every sweep, which returns its holds in ≤30s instead of core's three-minute
+  reaper. And `SESSION_IDLE_TIMEOUT`, which killed a master for sitting still, is replaced by a
+  ceiling on silence *after a prompt* — a resident master between passes is idle on purpose and is
+  no longer reaped for it.
+
+  The agents the master starts are deliberately NOT pane-hosted, and the price is stated rather than
+  skipped: a pane costs the structured stdout `job_events` is parsed from, and `job_events` is the
+  only way anyone sees a subagent that is alive and not progressing. They get the addressable half
+  instead. Recorded as decision ⑥ in `docs/proposals/master-orchestration.html`, with §5 case ③,
+  §6 and §10's first open question corrected in the same commit.
+
+  Ships as `runner-v0.12.0`; a box without `tmux` starts no master and says so (`forge-runner
+  doctor` checks for it). A runner below the split answers `runner_too_old` at
+  `POST /api/devices/me/pool/claim`, which is a named refusal an operator can act on rather than a
+  second live path.
 
 - **`pnpm verify` runs its checks in parallel, and `tsc` stops recompiling the world.** 66s to
   28.4s, with no check narrowed and none removed. Two causes, both measured 2026-09-06 on 12 cores:

@@ -9,13 +9,12 @@ function makeFetch(handler: (req: { url: string; init: RequestInit }) => Respons
 }
 
 describe('CoolifyClient', () => {
-  it('deploys via GET /api/v1/deploy with uuid+force query params (no body)', async () => {
+  it('deploys via POST /api/v1/deploy with uuid+force query params (no body)', async () => {
     const fetchImpl = makeFetch(({ url, init }) => {
       expect(url).toBe('https://coolify.example/api/v1/deploy?uuid=res-uuid&force=false');
-      expect(init.method).toBe('GET');
+      expect(init.method).toBe('POST');
       expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok-abc');
       expect(init.body).toBeUndefined();
-      // Coolify v4 returns a deployments[] array.
       return new Response(
         JSON.stringify({ deployments: [{ deployment_uuid: 'dep-1', message: 'queued' }] }),
         { status: 200, headers: { 'content-type': 'application/json' } },
@@ -28,6 +27,25 @@ describe('CoolifyClient', () => {
     });
     const res = await client.deploy({ resourceUuid: 'res-uuid' });
     expect(res.deployments?.[0]?.deployment_uuid).toBe('dep-1');
+  });
+
+  it("surfaces Coolify's method-changed 405 as a CoolifyApiError carrying its message", async () => {
+    const fetchImpl = makeFetch(
+      () =>
+        new Response(JSON.stringify({ message: 'This endpoint has changed to a POST request.' }), {
+          status: 405,
+          headers: { allow: 'POST', 'content-type': 'application/json' },
+        }),
+    );
+    const client = new CoolifyClient({
+      baseUrl: 'https://coolify.example',
+      apiToken: 'tok',
+      fetchImpl,
+    });
+    const err = await client.deploy({ resourceUuid: 'r' }).catch((e) => e);
+    expect(err).toBeInstanceOf(CoolifyApiError);
+    expect(err.status).toBe(405);
+    expect(err.body).toContain('changed to a POST request');
   });
 
   it('falls back to previousApiToken on 401', async () => {
@@ -69,7 +87,6 @@ describe('CoolifyClient', () => {
     const fetchImpl = makeFetch(({ url, init }) => {
       expect(url).toBe('https://coolify.example/api/v1/resources');
       expect(init.method).toBe('GET');
-      // Coolify v4 /resources is list-only — returns an array.
       return new Response(
         JSON.stringify([
           { uuid: 'other-uuid', name: 'api', status: 'running' },

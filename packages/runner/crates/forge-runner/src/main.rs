@@ -44,6 +44,8 @@ enum Command {
     Runners(cmd::runners::Args),
     /// Pool operations for a master agent: list work, claim, release, read load.
     Pool(cmd::pool::Args),
+    /// Look at, talk to, and end this box's resident masters.
+    Master(cmd::master::Args),
     /// Pull the latest skills for bound projects now (on-demand, one-shot).
     Sync(cmd::sync::Args),
     /// Check for a newer release and self-update.
@@ -76,6 +78,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Service(a) => cmd::service::run(ctx, a).await,
         Command::Runners(a) => cmd::runners::run(ctx, a).await,
         Command::Pool(a) => cmd::pool::run(ctx, a).await,
+        Command::Master(a) => cmd::master::run(ctx, a).await,
         Command::Sync(a) => cmd::sync::run(ctx, a).await,
         Command::Update(a) => cmd::update::run(ctx, a).await,
     }

@@ -10,7 +10,7 @@
  */
 
 import { zValidator } from '@hono/zod-validator';
-import { and, count, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm';
+import { count, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -28,12 +28,17 @@ import {
 import { listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
+import { computeAlerts } from './alert-queries.js';
+import { readThresholds } from './thresholds.js';
+import type {
+  AdminAdoptionBucket,
+  AdminGlanceMetric,
+  AdminOverview,
+  AdminWorkspaceRow,
+} from './types.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-// cm:hack ISS-649 until:admin-thresholds-config-lands — G2 label lanes hardcoded here; Step 4 (thresholds config) replaces with configurable slugs. Labels are project-scoped, so cross-tenant matching is by NAME, not id.
-const INTERVENTION_LABEL_LANES = ['kernel-hardening', 'onboarding'] as const;
 
 // cm:edge naming -> packages/core/src/projects/health-routes.ts — mirrors NON_OPEN_STATUSES there; keep the excluded-status set aligned
 const NON_OPEN_STATUSES = new Set(['released', 'closed', 'draft']);
@@ -157,17 +162,11 @@ function deltaPct(cur: number | null, prev: number | null): number | null {
   return ((cur - prev) / prev) * 100;
 }
 
-interface GlanceMetric {
-  value: number | null;
-  deltaPct: number | null;
-  spark: number[];
-}
-
 function toGlance(r: {
   value: number | null;
   baseline: number | null;
   spark: number[];
-}): GlanceMetric {
+}): AdminGlanceMetric {
   return { value: r.value, deltaPct: deltaPct(r.value, r.baseline), spark: r.spark };
 }
 
@@ -217,12 +216,15 @@ async function bucketedResolved(spec: WindowSpec, baseStart: SQL): Promise<Map<s
   return toBucketMap(rows, 'n');
 }
 
+// cm:guard match label lanes by NAME, never by id — `labels` rows are project-scoped and this query is cross-tenant, so the same lane is a different id in every workspace.
 async function bucketedResolvedWithInterventionLabel(
   spec: WindowSpec,
   baseStart: SQL,
+  lanes: string[],
 ): Promise<Map<string, number>> {
+  if (lanes.length === 0) return new Map();
   const laneList = sql.join(
-    INTERVENTION_LABEL_LANES.map((name) => sql`${name}`),
+    lanes.map((name) => sql`${name}`),
     sql`, `,
   );
   const rows = (await db.execute(sql`
@@ -264,47 +266,6 @@ async function bucketedRunOutcomes(
   return { num: toBucketMap(rows, 'num'), den: toBucketMap(rows, 'den') };
 }
 
-export interface AdminOverview {
-  counts: {
-    users: number;
-    usersNew: number;
-    orgs: number;
-    projects: number;
-    activeWorkspaces: number;
-    devicesOnline: number;
-    devicesTotal: number;
-  };
-  kpis: {
-    openAlerts: number;
-    inFlightJobs: number;
-    spendWindowUsd: number;
-    spendBaselineUsd: number;
-  };
-  glance: {
-    leadTimeMinutes: GlanceMetric;
-    interventionsPerClosed: GlanceMetric;
-    costPerClosedUsd: GlanceMetric;
-    successRatePct: GlanceMetric;
-    signupsWindow: GlanceMetric;
-  };
-}
-
-export interface AdminAdoptionBucket {
-  bucketStart: string;
-  newUsers: number;
-  cumulativeUsers: number;
-  activeWorkspaces: number;
-}
-
-export interface AdminWorkspaceRow {
-  projectId: string;
-  slug: string;
-  runs: number;
-  spendUsd: number;
-  medianLeadTimeMin: number | null;
-  openIssues: number;
-}
-
 const overviewQuerySchema = z.object({ window: z.enum(windows).default('24h') });
 
 export const adminAggregateRoutes = new Hono<{ Variables: AuthVars }>();
@@ -319,6 +280,11 @@ adminAggregateRoutes.get(
     const { window } = c.req.valid('query');
     const spec = WINDOW_SPECS[window];
     const now = new Date();
+    // cm:edge contract -> packages/core/src/admin/alert-queries.ts — `openAlerts` is the count of non-`ok` alerts from the SHARED `computeAlerts`, never a second definition: the tile used to approximate A2 alone (running jobs past a hardcoded 600s) and printed "0 · nothing needs you" above a red A1/A3/A4/A5 row, the state-lies failure VISION №10 forbids.
+    const thresholds = await readThresholds();
+    const openAlerts = (await computeAlerts({ now, thresholds })).filter(
+      (a) => a.status !== 'ok',
+    ).length;
     const cutoff = cutoffExpr(spec.hours);
     const baseStart = cutoffExpr(spec.hours * 2);
 
@@ -329,7 +295,6 @@ adminAggregateRoutes.get(
       [{ n: activeWorkspaces } = { n: 0 }],
       [{ n: devicesOnline } = { n: 0 }],
       [{ n: devicesTotal } = { n: 0 }],
-      [{ n: openAlerts } = { n: 0 }],
       [{ n: inFlightJobs } = { n: 0 }],
       [{ v: spendWindowUsd } = { v: 0 }],
       [{ v: spendBaselineUsd } = { v: 0 }],
@@ -349,16 +314,6 @@ adminAggregateRoutes.get(
         .where(sql`${pipelineRuns.startedAt} >= ${cutoff}`),
       db.select({ n: count() }).from(devices).where(eq(devices.status, 'online')),
       db.select({ n: count() }).from(devices),
-      // cm:edge contract -> packages/core/src/admin/alert-queries.ts — this is an independent approximation of A2 (stuck_jobs); Step 4 (thresholds config) unifies them
-      db
-        .select({ n: count() })
-        .from(jobs)
-        .where(
-          and(
-            eq(jobs.status, 'running'),
-            sql`${jobs.dispatchedAt} < now() - interval '600 seconds'`,
-          ),
-        ),
       db
         .select({ n: count() })
         .from(jobs)
@@ -376,7 +331,7 @@ adminAggregateRoutes.get(
       bucketedUserSignups(spec, baseStart),
       bucketedLeadTime(spec, baseStart),
       bucketedResolved(spec, baseStart),
-      bucketedResolvedWithInterventionLabel(spec, baseStart),
+      bucketedResolvedWithInterventionLabel(spec, baseStart, thresholds.interventionLabels),
       bucketedCost(spec, baseStart),
       bucketedRunOutcomes(spec, baseStart),
     ]);
@@ -395,7 +350,7 @@ adminAggregateRoutes.get(
         devicesTotal: Number(devicesTotal),
       },
       kpis: {
-        openAlerts: Number(openAlerts),
+        openAlerts,
         inFlightJobs: Number(inFlightJobs),
         spendWindowUsd: Number(spendWindowUsd),
         spendBaselineUsd: Number(spendBaselineUsd),

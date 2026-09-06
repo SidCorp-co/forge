@@ -19,6 +19,7 @@ import {
   effectiveConfig,
   findActiveBinding,
   findBindingWithConnectionById,
+  type IntegrationBindingRow,
   type IntegrationConnectionRow,
 } from './store.js';
 import type { HealthCheckResult, IntegrationProvider } from './types.js';
@@ -106,10 +107,7 @@ export function summarizeBinding(pair: BindingWithConnection) {
     provider: binding.provider as IntegrationProvider,
     environment: binding.environment as IntegrationEnvironment,
     config: effectiveConfig(pair),
-    // Raw binding-tier overrides so clients can tell a per-project value from
-    // one inherited off the shared connection (`config` is the merged view).
     bindingConfig: (binding.config ?? {}) as Record<string, unknown>,
-    // ISS-558 — empty string = default/unlabeled; non-empty = named store.
     label: binding.label ?? '',
     // cm:edge contract -> packages/contracts/src/integrations.ts — BindingSummary is the shape this returns; nothing type-checks the two against each other
     // cm:why all three flags rather than just the AND: a project admin's binding PATCH can only write `bindingActive`, so a UI toggle bound to the AND writes one tier and reads another — it reports success and snaps back, which is how forge-dev's Rocket.Chat sat unbootable from the UI for two months
@@ -143,6 +141,65 @@ export function summarizeConnection(connection: IntegrationConnectionRow) {
     createdAt: connection.createdAt,
     updatedAt: connection.updatedAt,
   };
+}
+
+/**
+ * The directory projection: the credential plus where it is used. Kept apart
+ * from `summarizeConnection` on purpose — create and update answer with the
+ * bare summary and have no usage to report, so widening the shared projection
+ * would buy them a join for a field they never fill.
+ */
+export function summarizeConnectionWithUsage(
+  connection: IntegrationConnectionRow,
+  bindings: IntegrationBindingRow[],
+) {
+  return {
+    ...summarizeConnection(connection),
+    usage: {
+      bindings: bindings.map((b) => ({
+        id: b.id,
+        projectId: b.projectId,
+        environment: b.environment,
+        label: b.label,
+        active: b.active,
+      })),
+    },
+  };
+}
+
+function hostOf(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length === 0) return null;
+  try {
+    return new URL(value).host;
+  } catch {
+    return null;
+  }
+}
+
+function str(config: Record<string, unknown>, key: string): string | null {
+  const value = config[key];
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+// cm:guard name a connection at CREATE time, never only at render — two credentials of one provider are indistinguishable in every list, drawer and picker that shows them, and a card cannot invent a name the row does not carry. Measured on forge-beta 2026-09-06: 17 of 17 rows had displayName null, so every card read as its provider label.
+/**
+ * A name for a connection its owner will recognise, from the non-secret config
+ * they just typed. Returns null when the config says nothing distinguishing —
+ * an honest null the caller falls back on, never a fabricated detail.
+ */
+export function defaultConnectionDisplayName(
+  provider: IntegrationProvider,
+  config: Record<string, unknown>,
+): string | null {
+  const detail =
+    hostOf(config.baseUrl) ??
+    hostOf(config.endpoint) ??
+    str(config, 'workspaceName') ??
+    str(config, 'storeSlug') ??
+    str(config, 'org') ??
+    str(config, 'organization') ??
+    hostOf(config.url);
+  return detail ? `${provider} · ${detail}` : null;
 }
 
 /**

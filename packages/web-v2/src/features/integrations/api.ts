@@ -16,6 +16,8 @@ import type {
   IntegrationSummary,
   IntegrationTestResult,
   IntegrationsStatus,
+  GitHubConnectStart,
+  GitHubRepositoriesResponse,
   McpPreviewResponse,
   RocketchatRoom,
   UpdateIntegrationInput,
@@ -48,7 +50,6 @@ export const integrationsApi = {
       method: "DELETE",
     }),
 
-  // === ISS-395 — generic provider CRUD (Coolify + Epodsystem) ===
 
   /** `POST .../integrations` — create with a discriminated provider body. The
    *  server probes the new integration immediately (ISS-429) and returns the
@@ -67,12 +68,6 @@ export const integrationsApi = {
       { method: "PATCH", body: JSON.stringify(body) },
     ),
 
-  /** `POST .../rotate-secret` — mint a new HMAC webhook secret (returned once). */
-  rotateSecret: (projectId: string, id: string) =>
-    apiClient<{ integration: IntegrationSummary; integrationSecret: string }>(
-      `/projects/${projectId}/integrations/${id}/rotate-secret`,
-      { method: "POST" },
-    ),
 
   /** `POST .../confirm-prod-deploy` — release the prod deploy gate. */
   confirmProdDeploy: (projectId: string, id: string) =>
@@ -87,7 +82,6 @@ export const integrationsApi = {
       `/projects/${projectId}/integrations/${id}/deliveries`,
     ),
 
-  // === ISS-408 / F3 — re-dispatch a failed outbound delivery ===
 
   /** `POST .../deliveries/:deliveryId/retry` — re-enqueue with a fresh requestId
    *  (202). Server gates on `direction==='outbound' && status==='failed'`. */
@@ -95,6 +89,32 @@ export const integrationsApi = {
     apiClient<DeliveryRetryResponse>(
       `/projects/${projectId}/integrations/${bindingId}/deliveries/${deliveryId}/retry`,
       { method: "POST" },
+    ),
+
+  /** `POST .../integrations/github/connect` — begin the GitHub App manifest
+   *  flow. Read-only on the server: it signs a state and builds the manifest,
+   *  and the credential exists only once GitHub redirects to the callback. */
+  githubConnect: (
+    projectId: string,
+    params: { org?: string; environment?: string; orgId?: string },
+  ) => {
+    const qs = new URLSearchParams();
+    if (params.org) qs.set("org", params.org);
+    if (params.environment) qs.set("environment", params.environment);
+    if (params.orgId) qs.set("orgId", params.orgId);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return apiClient<GitHubConnectStart>(
+      `/projects/${projectId}/integrations/github/connect${suffix}`,
+      { method: "POST" },
+    );
+  },
+
+  /** `GET .../integrations/github/repositories?connectionId=` — what the App's
+   *  installations actually granted. The picker source; a project may only bind
+   *  a repository that appears here. */
+  githubRepositories: (projectId: string, connectionId: string) =>
+    apiClient<GitHubRepositoriesResponse>(
+      `/projects/${projectId}/integrations/github/repositories?connectionId=${encodeURIComponent(connectionId)}`,
     ),
 
   /** `POST .../integrations/rocketchat/rooms` — rooms the bot is a member of
@@ -112,7 +132,6 @@ export const integrationsApi = {
     ),
 };
 
-// === ISS-401/C — owner-scoped connection CRUD ===
 // Connections are the credential, owned by the authenticated principal (NOT a
 // project) — these routes carry NO `:projectId` and the list is scoped server-
 // side by the auth `userId`. Secrets are write-only inputs; responses only ever
@@ -150,7 +169,6 @@ export const integrationConnectionsApi = {
       method: "POST",
     }),
 
-  // === ISS-408 / F3 — bindings for a connection + bind-existing flow ===
 
   /** `GET /api/integration-connections/:id/bindings` — every (project, env)
    *  binding fed by this connection. Used by the connection-detail drawer's

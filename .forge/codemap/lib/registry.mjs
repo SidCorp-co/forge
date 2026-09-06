@@ -1,4 +1,4 @@
-// @generated codemap 0.16.1 — vendored by `cm install`; edit the plugin, not this.
+// @generated codemap 0.19.0 — vendored by `cm install`; edit the plugin, not this.
 // codemap/1 §8 — registry, baseline, path selection.
 //
 // JSON rather than YAML so the whole framework runs on a bare `node` with zero dependencies:
@@ -83,12 +83,20 @@ export function loadBaseline(root) {
   try { raw = JSON.parse(readFileSync(p, 'utf8')); } catch { return {}; }
   const out = {};
   for (const [file, v] of Object.entries(raw)) {
+    // cm:why a pre-ISS-9 baseline is a bare array with no per-block count — still readable, just
+    //   crediting a rewrapped block 1 (today's behaviour) until it is re-frozen with `cm baseline`
+    const keys = Array.isArray(v) ? v : v?.keys;
     // cm:why the pre-0.2 format stored counts, which cannot say WHICH comment is new — treat it as empty and say so
-    if (!Array.isArray(v)) {
+    if (!Array.isArray(keys)) {
       out.__legacyFormat = true;
       continue;
     }
-    out[file] = new Set(v);
+    const set = new Set(keys);
+    // cm:why a side-channel property, never encoded into the key string itself — every existing
+    //   frozen.has(blockKey) reader (sited/CM302 detection, sweep's alive check, anchor selection)
+    //   stays correct without knowing this exists (ISS-9)
+    if (!Array.isArray(v) && v.blocks) set.blockCounts = v.blocks;
+    out[file] = set;
   }
   return out;
 }
@@ -98,9 +106,14 @@ export function saveBaseline(root, keysByFile) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   const sorted = Object.fromEntries(
     Object.entries(keysByFile)
-      .filter(([, keys]) => keys.length > 0)
+      .map(([f, v]) => [f, Array.isArray(v) ? { keys: v, blocks: {} } : v])
+      .filter(([, v]) => v.keys.length > 0)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([f, keys]) => [f, [...keys].sort()]),
+      .map(([f, v]) => {
+        const entry = { keys: [...v.keys].sort() };
+        if (v.blocks && Object.keys(v.blocks).length) entry.blocks = v.blocks;
+        return [f, entry];
+      }),
   );
   writeFileSync(join(root, ...BASELINE), `${JSON.stringify(sorted, null, 2)}\n`);
 }

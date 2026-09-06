@@ -130,7 +130,6 @@ vi.mock('./dispatch-tick.js', () => ({
   dispatchTickForProject: vi.fn(async () => {}),
 }));
 
-// Skip the assertEmailVerified DB call by mocking auth middleware side-effects away
 const verifiedUser = { id: 'u-1', emailVerifiedAt: new Date() };
 // Our selectLimit is shared — route handler will set its own mocks per test.
 
@@ -169,6 +168,18 @@ beforeEach(() => {
   txUpdateReturning.mockReset();
   txExecute.mockResolvedValue([{ max_seq: 0 }]);
 });
+
+function postAsUser(verb: string, body?: unknown, userId = 'u-1') {
+  return signUserToken(userId).then((token) =>
+    buildApp().fetch(
+      req(`/api/jobs/${validJobId}/${verb}`, {
+        method: 'POST',
+        token,
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      }),
+    ),
+  );
+}
 
 function postAsDevice(verb: string, body: unknown, deviceToken = 'dev-1-token') {
   return buildApp().fetch(
@@ -515,10 +526,6 @@ describe('POST /:id/kill-ack (device) — ISS-785', () => {
 });
 
 describe('POST /:id/cancel (user)', () => {
-  async function userToken(userId = 'u-1') {
-    return await signUserToken(userId);
-  }
-
   it('cancels a queued job directly (no WS to device)', async () => {
     const queuedJob = { ...jobRow, status: 'queued' as string, deviceId: null };
     selectLimit.mockResolvedValueOnce([verifiedUser]); // assertEmailVerified
@@ -528,13 +535,7 @@ describe('POST /:id/cancel (user)', () => {
       { ...queuedJob, status: 'cancelled', cancellationRequested: true },
     ]);
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/cancel`, {
-        method: 'POST',
-        token: await userToken(),
-      }),
-    );
+    const r = await postAsUser('cancel');
     expect(r.status).toBe(200);
     const json = (await r.json()) as { status: string; cancellationRequested: boolean };
     expect(json.status).toBe('cancelled');
@@ -561,13 +562,7 @@ describe('POST /:id/cancel (user)', () => {
     selectLimit.mockResolvedValueOnce([jobRow]); // cancelJob internal load
     txUpdateReturning.mockResolvedValueOnce([{ ...jobRow, cancellationRequested: true }]);
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/cancel`, {
-        method: 'POST',
-        token: await userToken(),
-      }),
-    );
+    const r = await postAsUser('cancel');
     expect(r.status).toBe(200);
     const json = (await r.json()) as { status: string; cancellationRequested: boolean };
     expect(json.status).toBe('running');
@@ -587,13 +582,7 @@ describe('POST /:id/cancel (user)', () => {
     selectLimit.mockResolvedValueOnce([{ ...jobRow, status: 'done' }]); // loadJob (route authz)
     selectLimit.mockResolvedValueOnce([{ ...jobRow, status: 'done' }]); // cancelJob internal load
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/cancel`, {
-        method: 'POST',
-        token: await userToken(),
-      }),
-    );
+    const r = await postAsUser('cancel');
     expect(r.status).toBe(409);
     const json = (await r.json()) as { code?: string };
     expect(json.code).toBe('NOT_CANCELLABLE');
@@ -622,14 +611,7 @@ describe('POST /:id/resume (user)', () => {
     selectLimit.mockResolvedValueOnce([heldJob]);
     txUpdateReturning.mockResolvedValueOnce([{ id: 'j1', type: 'plan', issueId: 'i1' }]);
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/resume`, {
-        method: 'POST',
-        token: await signUserToken('u-1'),
-        body: JSON.stringify({ reason: 'workspace re-provisioned' }),
-      }),
-    );
+    const r = await postAsUser('resume', { reason: 'workspace re-provisioned' });
 
     expect(r.status).toBe(200);
     const json = (await r.json()) as { status: string; heldReason: string };
@@ -654,10 +636,7 @@ describe('POST /:id/resume (user)', () => {
     selectLimit.mockResolvedValueOnce([jobRow]);
     selectLimit.mockResolvedValueOnce([jobRow]);
 
-    const app = buildApp();
-    const r = await app.fetch(
-      req(`/api/jobs/${validJobId}/resume`, { method: 'POST', token: await signUserToken('u-1') }),
-    );
+    const r = await postAsUser('resume');
 
     expect(r.status).toBe(409);
     expect(((await r.json()) as { code?: string }).code).toBe('NOT_HELD');

@@ -1,5 +1,5 @@
 {
-  "id": "71d0acea-fb70-492d-aa83-57f2408a1838",
+  "id": "4e6f6488-6205-42e5-94e1-ef7d55de8ba7",
   "prevId": "979c9f14-dd5d-4e1b-bb4a-f9584a093bb1",
   "version": "7",
   "dialect": "postgresql",
@@ -3944,13 +3944,6 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
-        },
-        "is_primary": {
-          "name": "is_primary",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         }
       },
       "indexes": {
@@ -3965,22 +3958,6 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "issue_labels_primary_uq": {
-          "name": "issue_labels_primary_uq",
-          "columns": [
-            {
-              "expression": "issue_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "is_primary = true",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -5854,25 +5831,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'label'"
-        },
-        "parent_id": {
-          "name": "parent_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -5902,21 +5860,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "labels_parent_id_idx": {
-          "name": "labels_parent_id_idx",
-          "columns": [
-            {
-              "expression": "parent_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -5932,30 +5875,12 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
-        },
-        "labels_parent_id_labels_id_fk": {
-          "name": "labels_parent_id_labels_id_fk",
-          "tableFrom": "labels",
-          "tableTo": "labels",
-          "columnsFrom": [
-            "parent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "labels_kind_chk": {
-          "name": "labels_kind_chk",
-          "value": "\"labels\".\"kind\" IN ('label', 'module')"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.mcp_audit_log": {
@@ -12344,6 +12269,113 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.admin_thresholds": {
+      "name": "admin_thresholds",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "'singleton'"
+        },
+        "stuck_job_seconds": {
+          "name": "stuck_job_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 600
+        },
+        "runner_starved_seconds": {
+          "name": "runner_starved_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 300
+        },
+        "spend_ceiling_usd_day": {
+          "name": "spend_ceiling_usd_day",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "spend_spike_multiple": {
+          "name": "spend_spike_multiple",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 2.5
+        },
+        "schedule_fail_streak": {
+          "name": "schedule_fail_streak",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 2
+        },
+        "delivery_fail_rate_pct": {
+          "name": "delivery_fail_rate_pct",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 20
+        },
+        "intervention_labels": {
+          "name": "intervention_labels",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[\"kernel-hardening\",\"onboarding\"]'::jsonb"
+        },
+        "ghost_runner_offline_days": {
+          "name": "ghost_runner_offline_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 14
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "admin_thresholds_updated_by_users_id_fk": {
+          "name": "admin_thresholds_updated_by_users_id_fk",
+          "tableFrom": "admin_thresholds",
+          "tableTo": "users",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "admin_thresholds_singleton_ck": {
+          "name": "admin_thresholds_singleton_ck",
+          "value": "\"admin_thresholds\".\"id\" = 'singleton'"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.phase_journal": {

@@ -89,7 +89,7 @@ with no args, or the `codemap` skill.
 
 ## How the gate is scoped
 
-`.forge/codemap/cm` is vendored (codemap 0.16.0) and is the authority — it wins over a `cm` on
+`.forge/codemap/cm` is vendored (codemap 0.19.0) and is the authority — it wins over a `cm` on
 PATH, which wins over the plugin's bundled copy. Config: `.forge/codemap.json` (flow vocabulary +
 enforcement scope) · `.forge/codemap-baseline.json` (12,454 legacy comments across 965 files frozen
 by CONTENT — a comment is flagged only when its text is new, so a reflow or a move is not a
@@ -109,6 +109,25 @@ one of its frozen comments (`.forge/codemap/cm sweep <file>` lists them), or con
 (`scripts/check-codemap-drain.mjs`), never mid-keystroke. Reflow, reindent, a formatter run and a
 file move all cost nothing. A file whose comments genuinely may not be touched says so once, anywhere
 in it: `cm:ignore CM013 — <reason>`.
+
+## When the checker itself is wrong
+
+**A defect in `cm` is never fixed here.** `.forge/codemap/` is vendored, and
+`.github/workflows/codemap-upgrade.yml` re-vendors over it every Monday — a local patch to
+`lib/` disappears on a Monday morning with nothing reporting that it went. Same shape as the
+forge-plugin carve-out, and the same reason: it ships on its own clock.
+
+It leaves as an issue on the **`codemap`** Forge project (source repo
+`SidCorp-co/codemap`), named in your comment under `Extra fixes:` as **reported**,
+not fixed. A false CM001, a verb that refuses wrongly, a rule with no way out — all of it files
+there. Carry the `cm --version`, the file, and the exact line the checker named; the checker's own
+output is the reproduction.
+
+What comes back is a `codemap-v*` tag. **The tag's annotation IS the release note** — there is no
+CHANGELOG in that repo, and `tests/release-tag.mjs` fails a version bump that lands without its
+tag, because every consumer's upgrade bot reads tags and reads an untagged bump as *already up to
+date*. The weekly PR body carries those annotations for the versions it crosses, so the fix
+arrives here as a reviewable diff that says what changed.
 
 Bump with `cm install --upgrade`; `.github/workflows/codemap-upgrade.yml` opens that PR weekly, and
 `cm doctor` shows any skew. Spec: `.forge/codemap/SPEC.md`.

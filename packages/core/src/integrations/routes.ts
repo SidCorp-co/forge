@@ -41,6 +41,7 @@ import {
   badRequest,
   broadcastIntegrationChanged,
   buildCreatedBindingResponse,
+  defaultConnectionDisplayName,
   forbidden,
   notFound,
   reloadRocketChatIfNeeded,
@@ -93,14 +94,11 @@ integrationsRoutes.post(
 
     const body = c.req.valid('json');
 
-    // ISS-558 — epodsystem allows N labeled bindings per (project, env).
-    // The unique index is now (project_id, provider, environment, label), so
-    // we check by label for epodsystem and by env-only for other providers.
+    // cm:guard the clash check must match the UNIQUE index, which is (project_id, provider, environment, label) since ISS-558 — checking env-only for epodsystem refuses a second labeled storefront the index would have accepted, and checking by label for anyone else lets a duplicate through
     const bindingLabel =
       body.provider === 'epodsystem' && 'label' in body && body.label ? body.label : '';
 
     if (body.provider === 'epodsystem') {
-      // For epodsystem check the specific label slot ('' = default, or named).
       const clash = await findActiveBindingByLabel(
         projectId,
         body.provider,
@@ -114,11 +112,9 @@ integrationsRoutes.post(
         );
       }
     } else {
-      // Non-epodsystem: one active binding per (project, provider, env) as before.
       await assertNoActiveBindingClash(projectId, body.provider, body.environment);
     }
 
-    // Auto-mint a per-binding HMAC secret for inbound webhook verification.
     const integrationSecret = `whsec_${randomBytes(24).toString('hex')}`;
 
     // Create the credential (connection) then bind it into this project+env.
@@ -143,6 +139,8 @@ integrationsRoutes.post(
       ownerType: body.orgId ? 'org' : 'user',
       ownerId: body.orgId ?? userId,
       provider: body.provider,
+      // cm:edge contract -> packages/core/src/integrations/connection-routes.ts — BOTH create paths must name the connection; this is the one an operator actually walks (project settings → Integrations), and naming only the other one leaves the anonymous rows still arriving
+      displayName: defaultConnectionDisplayName(body.provider, tiers.connection),
       config: { ...tiers.connection, environment: body.environment },
       secrets: body.secrets,
     });

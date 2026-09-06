@@ -19,11 +19,28 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
+      - id: cur
+        run: echo "version=$(cat .forge/codemap/VERSION)" >> "$GITHUB_OUTPUT"
+      # cm:guard clone SidCorp-co/codemap by its CURRENT name — forge-pipeline-skills resolves only through GitHub's rename redirect, and a new repo taking that freed name would send this bot at the wrong tree with no error (same silent-bot class as codemap ISS-5 / ISS-918)
       - id: latest
         run: |
-          git clone --depth 1 https://github.com/SidCorp-co/forge-pipeline-skills /tmp/codemap
+          git clone --depth 1 https://github.com/SidCorp-co/codemap /tmp/codemap
           git -C /tmp/codemap fetch --tags --depth 1 origin
           echo "tag=$(git -C /tmp/codemap tag -l 'codemap-v*' | sort -V | tail -1)" >> "$GITHUB_OUTPUT"
+      # cm:guard a codemap version's release note is its ANNOTATED TAG and nothing else — that repo has no CHANGELOG, and its tests/release-tag.mjs fails a bump landing untagged because every consumer's bot reads an untagged bump as already-up-to-date (its ISS-5)
+      # cm:why an unrecognised pin makes the sed range empty, so the body degrades to the tag name rather than to a wrong list
+      - id: notes
+        run: |
+          {
+            echo 'body<<CODEMAP_NOTES_EOF'
+            for t in $(git -C /tmp/codemap tag -l 'codemap-v*' | sort -V \
+                       | sed -n "/^codemap-v${{ steps.cur.outputs.version }}\$/,\$p" | tail -n +2); do
+              echo "### $t"
+              git -C /tmp/codemap tag -l --format='%(contents)' "$t" | head -25
+              echo
+            done
+            echo CODEMAP_NOTES_EOF
+          } >> "$GITHUB_OUTPUT"
       - run: |
           git -C /tmp/codemap checkout -q "${{ steps.latest.outputs.tag }}"
           node /tmp/codemap/cli/cm.mjs install --upgrade
@@ -32,8 +49,13 @@ jobs:
           branch: codemap-upgrade
           title: "chore: upgrade the committed codemap checker to ${{ steps.latest.outputs.tag }}"
           body: |
-            The gate CI runs is the copy committed under `.forge/codemap/`. This bumps it.
+            The gate CI runs is the copy committed under `.forge/codemap/`. This bumps it from
+            `${{ steps.cur.outputs.version }}` to `${{ steps.latest.outputs.tag }}`.
 
             Whatever this PR's own codemap job reports **is** the blast radius — if it is green, the
             upgrade changes no verdict in this repo. Run `cm doctor` locally to see the same thing.
+
+            ## What shipped upstream
+
+            ${{ steps.notes.outputs.body }}
           commit-message: "chore: upgrade committed codemap checker"

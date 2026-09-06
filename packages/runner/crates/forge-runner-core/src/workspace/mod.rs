@@ -9,6 +9,7 @@
 //! - `plugin_sync`— device-level shared-skill plugin channel (ISS-739)
 //! - `refresh`    — fetch + fast-forward before an agent reads the workspace
 //! - `salvage`    — commit + push a failed job's uncommitted work
+//! - `trust`      — pre-accept Claude Code's workspace-trust dialog for a checkout
 
 pub mod orientation;
 pub mod plugin_sync;
@@ -16,5 +17,6 @@ pub mod provision;
 pub mod refresh;
 pub mod salvage;
 pub mod skill_sync;
+pub mod trust;
 pub mod worktree;
 pub mod worktree_reap;

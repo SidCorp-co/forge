@@ -18,7 +18,7 @@ export function actorAgency(actor: { type: 'user' | 'device'; agency?: ActorAgen
 
 export type DeviceLite = { id: string; ownerId: string };
 
-// cm:guard `agency` is runtime-only and MUST NOT reach the `actor_type` columns — it answers whether the caller is a person, while `type` answers who owns the write, and a job token makes the two differ (the write is its creator's, the caller is an agent). Storing it would need a migration on two enums; deriving it per call needs none, and every gate that asks reads it through `actorAgency`.
+// cm:guard `agency` MUST NOT reach the `actor_type` columns — it answers whether the caller is a person, while `type` answers who owns the write, and a job or session token makes the two differ (the write is its creator's, the caller is an agent). It is now STORED, but in its own column beside `actor_type` and never folded into it: `activity_log.actor_agency` (migration 0193) and `kernel_transitions.actor_agency` (ISS-927). Every gate that asks at call time still reads it through `actorAgency` — persistence is a record of what was decided, not a second place to decide it.
 export type TransitionActor =
   | { type: 'user'; id: string; agency?: ActorAgency }
   | ({ type: 'device' } & DeviceLite);

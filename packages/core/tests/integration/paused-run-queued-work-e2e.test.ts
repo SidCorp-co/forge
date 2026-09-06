@@ -288,7 +288,7 @@ describe('alarmPausedRunsWithQueuedWork E2E (ISS-879) — when it stays quiet an
     expect(emitWedgeMock).toHaveBeenCalledTimes(1);
     resolveWedgeMock.mockClear();
 
-    await mods.cancelPipelineRun(runId, { parkIssue: false });
+    await mods.cancelPipelineRun(runId, { parkIssue: false, actorAgency: 'human' });
 
     expect(resolveWedgeMock).toHaveBeenCalledWith(`paused:${runId}`);
   });

@@ -97,6 +97,19 @@ describe('dispatchAutonomous', () => {
     expect(prompt).toContain('pipeline-runs/run-1/resume-point');
   });
 
+  // cm:guard the seed IS the vocabulary — `phase_journal.phase` is free-form and ungated, so the ordinal is caught here or nowhere. 542 rows landed named `phase-0`..`phase-8` between 2026-09-02 and ISS-921 because the example read `phase-1`, and no aggregate over them means anything.
+  it('seeds a phase name a reader can interpret, never an ordinal', async () => {
+    selectLimit.mockResolvedValueOnce([{ status: 'open' }]);
+
+    await dispatchAutonomous({ ...BASE, status: 'open', cfg: { enabled: true } });
+
+    const prompt = String(insertAndEnqueueJob.mock.calls[0]?.[0]?.promptString ?? '');
+    const declared = [...prompt.matchAll(/"phase":"([^"]+)"/g)].map((m) => m[1]);
+    expect(declared.length).toBeGreaterThan(0);
+    expect(declared.filter((p) => /^phase-\d/.test(p ?? ''))).toEqual([]);
+    expect(new Set(declared).size).toBe(1);
+  });
+
   // cm:guard this prompt and the `issue-flow` skill (forge-plugin repo) are read in ONE context window, so they must name one transport. They disagreed until 2026-09-02 — the skill said `forge-runner api`, this said `forge_issues` / `forge_config` / `forge_phase` — and the agent believed the prompt: 4,806 `forge_step_start` and 4,268 `forge_step_handoff.write` MCP calls, every one on an autonomous project. The rule is ONE name, not an unreachable tool: the driver's MCP client works, and the job PAT wins because it is minted per job and revoked at terminal where the device token is fleet-wide. The runner-side twin is `bundled_skills.rs`, which bans the same substring in the skill bodies.
   it('names one transport, and the skill already chose the CLI', async () => {
     selectLimit.mockResolvedValueOnce([{ status: 'open' }]);

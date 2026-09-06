@@ -17,6 +17,7 @@ import type {
 	PluginDesignation,
 	ProjectFactsPatch,
 	ProjectUpdateInput,
+	StateContextEntry,
 	UxContractRulePatch,
 } from "./types";
 
@@ -90,7 +91,7 @@ export function usePipelineConfig(id: string | undefined) {
 		queryKey: ["project", id, "pipeline-config"],
 		queryFn: () => projectSettingsApi.getPipelineConfig(id as string),
 		enabled: !!id,
-		// FEATURE_OFF / FORBIDDEN won't resolve by retrying — surface immediately.
+		// cm:why FEATURE_OFF and FORBIDDEN are both terminal, so a retry only delays the empty-state the caller branches on
 		retry: false,
 	});
 }
@@ -136,6 +137,29 @@ export function useUpdatePlugins(id: string | undefined) {
 		onError: (err) =>
 			toast({
 				title: "Couldn't save plugins",
+				description: formatApiError(err),
+				tone: "error",
+			}),
+	});
+}
+
+/** Per-jobType `agentConfig.stateContext`, through the scoped field on
+ *  `PATCH /api/projects/:id`. The server merges per jobType — an entry sent as
+ *  `null` is removed, one omitted is untouched — so a patch carries only the
+ *  jobTypes it changes and sibling agentConfig keys survive server-side. */
+export function useUpdateStateContext(id: string | undefined) {
+	const qc = useQueryClient();
+	const { toast } = useToast();
+	return useMutation({
+		mutationFn: (stateContext: Record<string, StateContextEntry | null>) =>
+			projectSettingsApi.update(id as string, { stateContext }),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: ["project", id] });
+			toast({ title: "Per-job context saved", tone: "success" });
+		},
+		onError: (err) =>
+			toast({
+				title: "Couldn't save per-job context",
 				description: formatApiError(err),
 				tone: "error",
 			}),

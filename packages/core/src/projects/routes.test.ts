@@ -439,6 +439,20 @@ describe('GET /api/projects/:id', () => {
   });
 });
 
+/** The row the PATCH handler returns — every case in this describe differs only
+ *  by `agentConfig` and the odd `name`, so the shape lives here once. */
+function patchedRow(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 'p1',
+    slug: 'p-one',
+    name: 'P One',
+    orgId: ORG_ID,
+    createdBy: 'uuid-owner',
+    createdAt: new Date(),
+    ...over,
+  };
+}
+
 describe('PATCH /api/projects/:id', () => {
   it('400 BAD_REQUEST when no fields supplied', async () => {
     const token = await signUserToken('uuid-user');
@@ -483,16 +497,11 @@ describe('PATCH /api/projects/:id', () => {
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
-      {
-        id: 'p1',
-        slug: 'p-one',
+      patchedRow({
         name: 'New Name',
-        orgId: ORG_ID,
-        createdBy: 'uuid-owner',
         agentConfig: { auto: true },
         webhookSecret: 'secret-of-at-least-16-chars',
-        createdAt: new Date(),
-      },
+      }),
     ]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
@@ -517,12 +526,7 @@ describe('PATCH /api/projects/:id', () => {
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
-      {
-        id: 'p1',
-        slug: 'p-one',
-        name: 'P One',
-        orgId: ORG_ID,
-        createdBy: 'uuid-owner',
+      patchedRow({
         description: 'a project',
         repoPath: '/home/user/repo',
         baseBranch: 'staging',
@@ -530,8 +534,7 @@ describe('PATCH /api/projects/:id', () => {
         defaultDeviceId: '22222222-2222-4222-8222-222222222222',
         agentConfig: null,
         webhookSecret: null,
-        createdAt: new Date(),
-      },
+      }),
     ]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
@@ -561,17 +564,11 @@ describe('PATCH /api/projects/:id', () => {
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
-      {
-        id: 'p1',
-        slug: 'p-one',
-        name: 'P One',
-        orgId: ORG_ID,
-        createdBy: 'uuid-owner',
+      patchedRow({
         kind: 'website',
         agentConfig: null,
         webhookSecret: null,
-        createdAt: new Date(),
-      },
+      }),
     ]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
@@ -602,12 +599,7 @@ describe('PATCH /api/projects/:id', () => {
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
-      {
-        id: 'p1',
-        slug: 'p-one',
-        name: 'P One',
-        orgId: ORG_ID,
-        createdBy: 'uuid-owner',
+      patchedRow({
         description: null,
         repoPath: null,
         baseBranch: null,
@@ -615,8 +607,7 @@ describe('PATCH /api/projects/:id', () => {
         defaultDeviceId: null,
         agentConfig: null,
         webhookSecret: null,
-        createdAt: new Date(),
-      },
+      }),
     ]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
@@ -645,12 +636,7 @@ describe('PATCH /api/projects/:id', () => {
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
-      {
-        id: 'p1',
-        slug: 'p-one',
-        name: 'P One',
-        orgId: ORG_ID,
-        createdBy: 'uuid-owner',
+      patchedRow({
         description: null,
         repoPath: null,
         baseBranch: null,
@@ -662,8 +648,7 @@ describe('PATCH /api/projects/:id', () => {
           testCredentials: [{ label: 'Admin', username: 'qa@example.com', password: 'pw123' }],
         },
         webhookSecret: null,
-        createdAt: new Date(),
-      },
+      }),
     ]);
 
     const previewDeploy = {
@@ -685,12 +670,7 @@ describe('PATCH /api/projects/:id', () => {
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
-      {
-        id: 'p1',
-        slug: 'p-one',
-        name: 'P One',
-        orgId: ORG_ID,
-        createdBy: 'uuid-owner',
+      patchedRow({
         description: null,
         repoPath: null,
         baseBranch: null,
@@ -699,8 +679,7 @@ describe('PATCH /api/projects/:id', () => {
         agentConfig: null,
         previewDeploy: { stagingUrl: 'https://stg.example.com', testingUrls: [] },
         webhookSecret: null,
-        createdAt: new Date(),
-      },
+      }),
     ]);
 
     const previewDeploy = {
@@ -722,12 +701,7 @@ describe('PATCH /api/projects/:id', () => {
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
-      {
-        id: 'p1',
-        slug: 'p-one',
-        name: 'P One',
-        orgId: ORG_ID,
-        createdBy: 'uuid-owner',
+      patchedRow({
         description: null,
         repoPath: null,
         baseBranch: null,
@@ -736,8 +710,7 @@ describe('PATCH /api/projects/:id', () => {
         agentConfig: null,
         previewDeploy: null,
         webhookSecret: null,
-        createdAt: new Date(),
-      },
+      }),
     ]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
@@ -776,12 +749,7 @@ describe('PATCH /api/projects/:id', () => {
       },
     ]);
     updateReturning.mockResolvedValueOnce([
-      {
-        id: 'p1',
-        slug: 'p-one',
-        name: 'P One',
-        orgId: ORG_ID,
-        createdBy: 'uuid-owner',
+      patchedRow({
         agentConfig: {
           pipelineConfig: { enabled: true },
           stateContext: {
@@ -789,8 +757,7 @@ describe('PATCH /api/projects/:id', () => {
             code: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } },
           },
         },
-        createdAt: new Date(),
-      },
+      }),
     ]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
@@ -810,6 +777,41 @@ describe('PATCH /api/projects/:id', () => {
           plan: { blocks: { tip: 'keep' } },
           code: { budget: { perRunUsd: 1, perMonthUsd: 50, action: 'pause' } },
         },
+      },
+    });
+  });
+
+  // cm:guard `null` is `mergeStateContext`'s removal sentinel, and until ISS-814 the schema refused it — so the merge documented a deletion no REST or MCP caller could reach, and web-v2's editor got a 400 for sending exactly this. Drop the `.nullable()` in state-context.ts and this goes red at the status line.
+  it('200 stateContext: a null entry REMOVES that jobType and leaves the others', async () => {
+    const token = await signUserToken('uuid-owner');
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]).mockResolvedValueOnce([
+      {
+        agentConfig: {
+          personaStyle: 'keep',
+          stateContext: {
+            plan: { blocks: { tip: 'keep' } },
+            code: { modelOverride: 'drop-me' },
+          },
+        },
+      },
+    ]);
+    updateReturning.mockResolvedValueOnce([
+      patchedRow({
+        agentConfig: {},
+      }),
+    ]);
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH',
+      body: JSON.stringify({ stateContext: { code: null } }),
+      token,
+    });
+    expect(res.status).toBe(200);
+    expect(updateSet).toHaveBeenCalledWith({
+      agentConfig: {
+        personaStyle: 'keep',
+        stateContext: { plan: { blocks: { tip: 'keep' } } },
       },
     });
   });
@@ -854,15 +856,9 @@ describe('PATCH /api/projects/:id', () => {
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
       .mockResolvedValueOnce([{ agentConfig: { personaStyle: 'keep me' } }]);
     updateReturning.mockResolvedValueOnce([
-      {
-        id: 'p1',
-        slug: 'p-one',
-        name: 'P One',
-        orgId: ORG_ID,
-        createdBy: 'uuid-owner',
+      patchedRow({
         agentConfig: { personaStyle: 'keep me', rocketChatAnswerMode: 'agent' },
-        createdAt: new Date(),
-      },
+      }),
     ]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
@@ -885,15 +881,9 @@ describe('PATCH /api/projects/:id', () => {
         { agentConfig: { personaStyle: 'keep me', rocketChatAnswerMode: 'agent' } },
       ]);
     updateReturning.mockResolvedValueOnce([
-      {
-        id: 'p1',
-        slug: 'p-one',
-        name: 'P One',
-        orgId: ORG_ID,
-        createdBy: 'uuid-owner',
+      patchedRow({
         agentConfig: { personaStyle: 'keep me' },
-        createdAt: new Date(),
-      },
+      }),
     ]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
@@ -977,7 +967,7 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
       .mockResolvedValueOnce([{ baseBranch: 'develop', productionBranch: 'release' }])
-      .mockResolvedValueOnce([]); // issue lookup empty
+      .mockResolvedValueOnce([]);
 
     const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
     expect(res.status).toBe(404);

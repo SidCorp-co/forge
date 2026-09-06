@@ -16,6 +16,7 @@ pub mod frames;
 pub mod heartbeat;
 pub mod inbox;
 pub mod lifecycle;
+pub mod master;
 pub mod plugins;
 pub mod pool;
 pub mod provision;

@@ -11,7 +11,8 @@ import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { platformAdminUserIds } from '../notifications/platform-admins.js';
 import { hooks } from '../pipeline/hooks.js';
-import { type AdminAlert, computeAlerts, opsAlertResolutionKey } from './alert-queries.js';
+import { computeAlerts, opsAlertResolutionKey } from './alert-queries.js';
+import type { AdminAlert } from './types.js';
 
 export interface AlertSweepResult {
   evaluated: number;

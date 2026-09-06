@@ -23,11 +23,20 @@ const insertCalls: InsertCall[] = [];
 const updateCalls: UpdateCall[] = [];
 const selectResponses: Array<Record<string, unknown>[]> = [];
 let nextInsertReturnsEmpty = false;
-// Per-call queue of rows returned by `.returning()` on an UPDATE chain.
-// Defaults to a single canonical row so tests that don't care still pass.
+// cm:guard the queue defaults to one canonical row when empty, so a test that forgets to push still sees a close that "worked" — push explicitly whenever the assertion is about whether the write happened at all.
 const nextUpdateReturning: Array<Record<string, unknown>[]> = [];
 
 const emitMock = vi.fn(async (..._args: unknown[]) => {});
+
+// cm:edge contract -> packages/core/src/pipeline/deploy-confirmations.test.ts — the gate's own verdicts are proved there; here it is pinned CLEAR so these tests keep asserting the write shapes they were written for rather than the gate's logic twice.
+const deployGateMock = vi.fn(() => ({ verdict: 'clear' }) as const);
+const readHoldsMock = vi.fn(async () => ({}) as Record<string, unknown>);
+const markDeferredMock = vi.fn();
+vi.mock('./deploy-confirmations.js', () => ({
+  readDeployHolds: (...a: unknown[]) => readHoldsMock(...(a as [])),
+  resolveDeployGate: (...a: unknown[]) => deployGateMock(...(a as [])),
+  markCloseDeferred: (...a: unknown[]) => markDeferredMock(...(a as [])),
+}));
 
 vi.mock('./hooks.js', () => ({
   hooks: {
@@ -178,6 +187,10 @@ beforeEach(() => {
   emitMock.mockClear();
   cascadeMock.mockClear();
   requestKillsMock.mockClear();
+  deployGateMock.mockClear();
+  readHoldsMock.mockClear();
+  readHoldsMock.mockResolvedValue({ 'target:del-1': {} });
+  markDeferredMock.mockClear();
 });
 
 describe('openIssueRun', () => {
@@ -381,6 +394,7 @@ describe('closeRun / closeRunIfOneShot / closeOpenRunForIssue', () => {
   });
 
   it('closeOpenRunForIssue closes by issueId for kind=issue runs and emits', async () => {
+    selectResponses.push([{ id: 'run-1', startedAt: new Date() }]);
     nextUpdateReturning.push([
       {
         id: 'run-1',
@@ -407,7 +421,73 @@ describe('closeRun / closeRunIfOneShot / closeOpenRunForIssue', () => {
     });
   });
 
+  it('a run with no deploy hold is not asked, and pays no extra write', async () => {
+    readHoldsMock.mockResolvedValue({});
+    nextUpdateReturning.push([
+      { id: 'run-1', projectId: 'p-1', issueId: 'i-1', kind: 'issue', currentStep: null },
+    ]);
+
+    expect(await closeRun('run-1', 'completed')).toBe('settled');
+
+    expect(deployGateMock).not.toHaveBeenCalled();
+    expect(markDeferredMock).not.toHaveBeenCalled();
+  });
+
+  // cm:guard this asserts ORDER, not that both happened — the marker must be written before the verdict is read, or a confirmation settling the last hold in between leaves nobody to close the run for an hour.
+  it('marks the deferral before it reads the verdict, so the settle-in-between window cannot strand the run', async () => {
+    const order: string[] = [];
+    markDeferredMock.mockImplementation(async () => {
+      order.push('mark');
+    });
+    deployGateMock.mockImplementation(() => {
+      order.push('resolve');
+      return { verdict: 'defer', confirmed: 1, total: 2 } as never;
+    });
+
+    await closeRun('run-1', 'completed');
+
+    expect(order).toEqual(['mark', 'resolve']);
+    deployGateMock.mockReset();
+  });
+
+  it('closeRun DEFERS `completed` while a dispatched deploy is unconfirmed, and writes nothing', async () => {
+    deployGateMock.mockReturnValueOnce({ verdict: 'defer', confirmed: 1, total: 2 } as never);
+    const before = updateCalls.length;
+
+    expect(await closeRun('run-1', 'completed')).toBe('deferred');
+
+    const wrote = updateCalls.slice(before).some((c) => c.set.status !== undefined);
+    expect(wrote).toBe(false);
+    expect(cascadeMock).not.toHaveBeenCalled();
+    expect(emitMock).not.toHaveBeenCalled();
+  });
+
+  it('closeRun writes `failed` when the deploy gate reports a failure, not the `completed` it was asked for', async () => {
+    deployGateMock.mockReturnValueOnce({ verdict: 'failed', detail: 'Backend: boom' } as never);
+    nextUpdateReturning.push([
+      { id: 'run-1', projectId: 'p-1', issueId: 'i-1', kind: 'issue', currentStep: null },
+    ]);
+
+    expect(await closeRun('run-1', 'completed')).toBe('settled');
+
+    const closeCall = updateCalls.find((c) => c.returnedRows.length > 0);
+    expect(closeCall?.set.status).toBe('failed');
+    expect(emitMock).toHaveBeenLastCalledWith(
+      'pipelineRunStatusChanged',
+      expect.objectContaining({ toStatus: 'failed' }),
+    );
+  });
+
+  it('the gate is asked only about `completed` — a `cancelled` close is not a claim about a deploy', async () => {
+    nextUpdateReturning.push([
+      { id: 'run-1', projectId: 'p-1', issueId: 'i-1', kind: 'issue', currentStep: null },
+    ]);
+    await closeRun('run-1', 'cancelled');
+    expect(deployGateMock).not.toHaveBeenCalled();
+  });
+
   it('closeOpenRunForIssue is idempotent — repeat call with no UPDATE rows does not re-cascade', async () => {
+    selectResponses.push([{ id: 'run-1', startedAt: new Date() }]);
     nextUpdateReturning.push([]);
     await closeOpenRunForIssue('i-1', 'completed');
     expect(cascadeMock).not.toHaveBeenCalled();

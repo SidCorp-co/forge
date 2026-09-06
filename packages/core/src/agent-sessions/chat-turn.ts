@@ -30,22 +30,10 @@ import {
   samePageContext,
 } from './page-context.js';
 import { readSessionModel } from './session-model.js';
+import { isUnattendedSession, mintSessionToken } from './session-token.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 
-// ============================================================================
-// ONE logic for ONE purpose: delivering an interactive chat turn to a Claude
-// client. Every entry point — POST /start, POST /send, and schedule.run — flows
-// through this module so device selection, turn persistence, and the
-// `agent:start` / `agent:send` WS dispatch live in exactly one place. Adding a
-// fourth caller (or a missing one, the bug this replaced) cannot drift.
-//
-// Two genuinely different execution models share the dispatcher:
-//   - REMOTE (web / schedule): core picks an online runner and publishes the
-//     turn into its device room; the runner runs `claude` and streams back.
-//   - LOCAL (desktop, origin='desktop'): the desktop runs `claude` itself and
-//     streams via /relay — core only records the turn and mirrors it to web
-//     viewers. No device pick, no `agent:start`.
-// ============================================================================
+// cm:guard the SINGLE publisher of `agent:start` / `agent:send`, and every entry point funnels here — POST /start, POST /send, schedule.run, escalation, RocketChat agent-chat, schedule failover. That is what lets device selection, turn persistence and the ISS-927 token mint each exist in exactly one place; a caller that publishes its own frame gets none of them and drifts silently, which is the bug this module replaced.
 
 type AgentSessionRow = typeof agentSessions.$inferSelect;
 
@@ -247,6 +235,9 @@ export async function createChatSessionRow(args: CreateChatSessionArgs): Promise
     kind: args.runKind ?? 'interactive',
     ...(args.runMetadata ? { metadata: args.runMetadata } : {}),
   });
+  // cm:guard stamped HERE, from the `runKind` the caller already passes, and not read back off `pipeline_runs.kind` at dispatch time — the dispatcher would need a join it otherwise never makes, and a marker every unattended caller must remember to set itself is a marker one of them eventually forgets. `runKind: 'system'` is already what every unattended entry point passes (schedule.run, escalation, RocketChat agent-chat, schedule failover) and nothing else does.
+  const metadata =
+    args.runKind === 'system' ? { ...(args.metadata ?? {}), unattended: true } : args.metadata;
   const [row] = await db
     .insert(agentSessions)
     .values({
@@ -257,7 +248,7 @@ export async function createChatSessionRow(args: CreateChatSessionArgs): Promise
       title: args.title ?? null,
       repoPath: args.repoPath ?? null,
       claudeSessionId: args.claudeSessionId ?? null,
-      metadata: (args.metadata ?? null) as never,
+      metadata: (metadata ?? null) as never,
     })
     .returning();
   if (!row) throw new Error('agent_sessions: insert returned no row');
@@ -519,6 +510,17 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     if (args.skillName) {
       prompt = `/${args.skillName}\n${prompt}`;
     }
+    // cm:guard UNATTENDED sessions only, and this exclusion is load-bearing rather than conservative. A chat turn PATCHes `status:'completed'` at the END OF EVERY TURN — core's status vocabulary has no word for "dormant", so an interactive session is `completed` between turns and revived to `running` by the next `agent:send`. The revoke fires on terminal, so a token held by an interactive session would die after turn one while its RESIDENT `claude` process lives on holding the dead value in `$FORGE_PAT` (env is fixed at spawn; ISS-873 residency means no respawn re-reads it). Unattended sessions are single-turn by construction — schedule.run, escalation and RocketChat agent-chat each dispatch once and a retry opens a NEW session — so for them terminal really is terminal. Interactive chat keeps using whatever `$FORGE_PAT` the operator provisioned, exactly as before this change.
+    // cm:guard mint on the COLD START and nowhere else. An `agent:send` must not re-mint: the runner still holds the token this frame delivered, and a re-mint revokes the credential an in-flight turn is spending. A migration or a re-pin IS a cold start, and re-minting there is correct — the new box never had the old token, and the rename-then-mint in `mintSessionToken` is what keeps the same session id from colliding on `pat_user_name_uniq`.
+    // cm:guard `agent_sessions.user_id` is ON DELETE SET NULL, so a session can outlive its owner. There is then no principal to mint against and the honest answer is no token — NOT the project creator, which would hand an orphaned session a live credential belonging to somebody who never opened it.
+    const sessionToken =
+      updated.userId && isUnattendedSession(updated.metadata)
+        ? await mintSessionToken({
+            id: updated.id,
+            projectId: project.id,
+            userId: updated.userId,
+          })
+        : null;
     roomManager.publish(deviceRoom(target), {
       event: 'agent:start',
       data: {
@@ -529,6 +531,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         preBuilt: args.preBuilt ?? false,
         systemPrompt: TOOL_REFERENCE,
         mcpServersOverride,
+        ...(sessionToken ? { sessionToken } : {}),
         ...(model ? { model } : {}),
         ...(attachments.length ? { attachments } : {}),
       },

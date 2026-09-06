@@ -1,18 +1,7 @@
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// ISS-706 regression coverage. Before the fix, `index.ts` mounted two Hono
-// sub-apps at the same `/api/comments` prefix: `commentRoutes` (strict
-// JWT-only `use('*')`) mounted FIRST, then `commentUploadRoutes` (permissive
-// `requireAnyAuth` `use('*')`) mounted SECOND. Hono flattens both routers'
-// wildcard middleware into one linear chain at that prefix, so the strict
-// wildcard ran (and 401'd) ahead of the permissive one for every
-// `/api/comments/*` request, including the attachment routes only the second
-// router implemented. The fix merges both into one `commentRoutes` router
-// with per-route auth (no router-wide wildcard at all) — this test builds
-// the app the same way `index.ts` does post-fix and would have failed on the
-// pre-fix code (a test that mounts `commentUploadRoutes` in isolation, as the
-// old `upload.test.ts` did, can't see the cross-router collision).
+// cm:guard build the app the way `index.ts` does, never by mounting one router in isolation. ISS-706 was two sub-apps at the same `/api/comments` prefix whose wildcard middleware Hono flattens into ONE chain, so the strict JWT `use('*')` 401'd ahead of the permissive one for routes only the second router implemented. The old `upload.test.ts` mounted that second router alone and could not see the collision; a test that does the same here is green against the bug.
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 const TEST_PEPPER = 'test-pepper-32-chars-long-abcdefghij';
@@ -204,19 +193,15 @@ describe('GET /api/comments/attachments/:id — auth paths (AC-A)', () => {
     expect(verifyPatMock).toHaveBeenCalledOnce();
   });
 
-  it('200 with bytes via device token', async () => {
+  // cm:guard ISS-927 — a device token is refused here, and `verifyDeviceTokenMock` going UNCALLED is the assertion that matters. A 401 alone would also be produced by a still-present device branch that merely failed, and this route (`requireAnyAuth`) was the one place a device bought its owner's whole account. A runner needing these bytes holds a `job:`/`session:` PAT and reaches them through the PAT branch above.
+  it('401 for a device token, and the device path is not even consulted', async () => {
     verifyDeviceTokenMock.mockResolvedValueOnce({ id: 'device-1', ownerId: USER_ID });
-    queueResult([
-      { id: ATT_ID, path: '/tmp/x.png', mime: 'image/png', name: 'a.png', projectId: PROJECT_ID },
-    ]);
-    projectAccess.mockResolvedValueOnce(memberAccess());
-    storageGet.mockResolvedValueOnce(Buffer.from([1, 2, 3]));
 
     const res = await buildApp().request(`/api/comments/attachments/${ATT_ID}`, {
       headers: { authorization: `Bearer ${DEVICE_TOKEN}` },
     });
-    expect(res.status).toBe(200);
-    expect(verifyDeviceTokenMock).toHaveBeenCalledOnce();
+    expect(res.status).toBe(401);
+    expect(verifyDeviceTokenMock).not.toHaveBeenCalled();
   });
 });
 
@@ -337,24 +322,16 @@ describe('POST /api/comments/:commentId/attachments — auth paths', () => {
     expect(verifyPatMock).toHaveBeenCalledOnce();
   });
 
-  it('201 via device token', async () => {
+  it('401 via device token, and no attachment is written (ISS-927)', async () => {
     verifyDeviceTokenMock.mockResolvedValueOnce({ id: 'device-1', ownerId: USER_ID });
-    queueResult([{ id: COMMENT_ID, issueId: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce(memberAccess());
-    persistCommentAttachmentMock.mockResolvedValueOnce({
-      id: ATT_ID,
-      commentId: COMMENT_ID,
-      name: 'pic.png',
-      mime: 'image/png',
-      size: 5,
-    });
     const res = await buildApp().request(`/api/comments/${COMMENT_ID}/attachments`, {
       method: 'POST',
       headers: { authorization: `Bearer ${DEVICE_TOKEN}` },
       body: makeFile('hello'),
     });
-    expect(res.status).toBe(201);
-    expect(verifyDeviceTokenMock).toHaveBeenCalledOnce();
+    expect(res.status).toBe(401);
+    expect(verifyDeviceTokenMock).not.toHaveBeenCalled();
+    expect(persistCommentAttachmentMock).not.toHaveBeenCalled();
   });
 
   it('404 when comment missing', async () => {

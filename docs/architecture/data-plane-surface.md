@@ -1,8 +1,14 @@
 # The data plane: which MCP tool, which REST route
 
-**Most MCP tools that read or write data have a REST twin the CLI reaches.** This table is what an
-agent or a skill author calls instead. Six tools stay on MCP by design, three sit behind a fence
-that is deliberate and permanent, two are open questions, and one has no route at all.
+**This page documents `forge-runner api` — the Rust daemon's own reach into core, over REST on a
+`$FORGE_PAT`.** It is not the agent's surface. An agent's whole surface is `forge`, the 21-verb CLI
+built in [forge-plugin](https://github.com/SidCorp-co/forge-plugin), and a skill calls that and
+nothing else. Which CLI belongs to whom, and why the runner must never acquire a dependency on a
+plugin it does not ship: [agent-surface.md](agent-surface.md).
+
+**Most MCP tools that read or write data have a REST twin.** The table below maps them, and it is
+true whoever calls the route. Two tools stay on MCP by design, three sit behind a fence that is
+deliberate and permanent, two are open questions, and one has no route at all.
 
 Verified 2026-09-01 against `registered-tools.ts`, the mounts in `index.ts`, and
 `PAT_ALLOWED_PREFIXES` in `middleware/pat-rest-surface.ts`. Where a route is listed, it was checked
@@ -10,8 +16,8 @@ to call the same service as the tool — not merely to carry a similar name.
 
 ```mermaid
 flowchart LR
-  A[agent in a job] -->|"$FORGE_PAT"| CLI["forge-runner api"]
-  A -->|"session hooks only"| MCP["/mcp · 6 tools"]
+  D["forge-runner<br/>Rust daemon"] -->|"$FORGE_PAT"| CLI["forge-runner api"]
+  P["forge · the plugin CLI<br/>the agent's surface"] --> MCP["/mcp"]
   CLI --> F{"PAT allowlist<br/>16 prefixes"}
   F -->|on it| R["REST · the data plane"]
   F -->|not on it| X["403 PAT_NOT_PERMITTED"]
@@ -26,7 +32,7 @@ forgotten deny-list entry is a silent leak nobody reports.
 never reaches `beginPatRequest`, so the fence never runs and the prefix is irrelevant — `/api/guides`
 is the live example. Read the mount and its middleware, not the prefix alone.
 
-## Reachable from the CLI today
+## Reachable over REST today
 
 | MCP tool | REST | 
 |---|---|
@@ -105,7 +111,21 @@ project-scoped twin built for it — not a widened fence.
 | `forge_feedback` | `/api/feedback-reports` | project-scoped in practice; nothing decided |
 | `forge_storefront_target` | — | no REST route exists at all |
 
-## Calling it
+## Who calls `forge-runner api`, and who does not
+
+Exactly two callers, and neither of them is a skill:
+
+- **the daemon's own subcommands** (`packages/runner/crates/**`) — pairing, plugin sync, job claim
+  and everything the box does before any agent exists. This is the whole reason the passthrough
+  exists: a daemon that could not reach core until a Claude Code plugin was installed would be a
+  worse daemon.
+- **the drive-job shell**, because core's drive prompt (`packages/core/src/prompt/`) hands it
+  `$FORGE_PAT` and names this verb in the rules it injects. That is a runtime instruction from core
+  to one process it spawned, not a surface a skill may build on.
+
+**A skill never writes `forge-runner api`.** Skills are the plugin's, they ship on the plugin's
+clock, and their verb is `forge` — see [agent-surface.md](agent-surface.md). A skill reaching for
+this passthrough couples the plugin to a binary version the box happens to hold.
 
 ```
 forge-runner api projects/<id>/issues            # GET  the issue list — project-scoped
@@ -115,8 +135,8 @@ forge-runner api issues/<id>/merge -X POST -d '{"target":"main"}'
 forge-runner api projects/<id>/integrations/coolify/deploy -X POST -d '{}'
 ```
 
-The agent process is given `$FORGE_PAT`, `$FORGE_PROJECT_ID` and `$FORGE_PROJECT_SLUG` and nothing
-else — no run id, no job id, no session id. A driver that knows only its issue reaches its run
+A drive-job shell is given `$FORGE_PAT`, `$FORGE_PROJECT_ID` and `$FORGE_PROJECT_SLUG` and nothing
+else — no run id, no job id, no session id. A caller that knows only its issue reaches its run
 through the list route, which is why the phase endpoints take the run as a path segment and resolve
 the project from it rather than asking the caller for both:
 

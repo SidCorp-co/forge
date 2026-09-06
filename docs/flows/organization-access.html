@@ -1,0 +1,120 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · organization-access — a principal resolves to what it may touch</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --lock:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
+</style>
+<main>
+
+<h1>organization-access — a principal resolves to what it may touch</h1>
+<p class="sub">One <code>Authorization: Bearer</code> header, from the byte that decides which
+verifier runs to the project ids the request is fenced to — and every place the answer is refused.
+Owner: <code>packages/core/src/middleware/{bearer,auth,require-any-auth,require-device,require-pat-or-device,pat-rest-surface}.ts</code>,
+<code>packages/core/src/auth/{pat,pat-format,deviceToken}.ts</code>, <code>packages/core/src/lib/authz.ts</code>.</p>
+
+<h2>The token decides the verifier, and the verifier decides who you are</h2>
+<p>There is no negotiation and no fallback chain worth the name: <code>isPatLike()</code> reads the
+<code>forge_pat_&lt;env&gt;_</code> prefix and that one test routes the whole request. Everything
+else is tried as a user JWT. A device token is verified on the <em>control</em> plane only — the
+runner's own <code>/api/devices</code>, <code>/api/jobs</code> and <code>/api/skills</code> sibling
+routers — and since ISS-927 it reaches nothing on the data plane at all.</p>
+
+<div class="board"><pre class="mermaid">
+flowchart TD
+  A["Authorization: Bearer &lt;t&gt;<br/>parseBearerHeader"] --> B{absent?}
+  B -- yes, and a forge_auth cookie exists --> C["cookie = the token<br/>(browser uploads only)"]
+  B -- yes, no cookie --> X1["401 UNAUTHENTICATED"]
+  B -- malformed --> X2["401 — /mcp adds error=invalid_request<br/>so a spec-aware client fixes its header<br/>instead of re-prompting for credentials"]
+  B -- no --> D{"isPatLike(t)?<br/>forge_pat_&lt;env&gt;_"}
+  C --> D
+  D -- yes --> P1["verifyPat: prefix lookup + argon2"]
+  D -- no --> U1["verifyUserToken (JWT)"]
+  U1 -- ok --> U2["userId = claims.sub<br/>principal = 'user', agency = human"]
+  U1 -- throws --> V{"which middleware?"}
+  V -- "requireAuth / requireAnyAuth" --> X3["401 — no device branch exists here"]
+  V -- "requireDevice / requireUserOrDevice / requirePatOrDevice" --> W["verifyDeviceToken"]
+  W -- ok --> W2["principal = 'device', userId LEFT UNSET<br/>so loadProjectAccess fails closed"]
+  W -- null --> X4["401"]
+  P1 -- null --> X5["401 INVALID_TOKEN"]
+  P1 -- ok --> P2["rate limit: 600/min per token<br/>429 + Retry-After on breach"]
+  P2 --> P3["agency = isMachineTokenName(row.name)<br/>job: / session: -&gt; agent, else human"]
+  P3 --> P4{"patAllowedFor(path)?"}
+  P4 -- no --> X6["403 PAT_NOT_PERMITTED<br/>the route resolves no project,<br/>so there is nothing to fence on"]
+  P4 -- yes --> P5{"scope for method?<br/>GET/HEAD -&gt; read, else write"}
+  P5 -- no --> X7["403 INSUFFICIENT_SCOPE"]
+  P5 -- yes --> P6["withPatScope(projectIds, tokenId)<br/>every query below runs inside it"]
+</pre></div>
+
+<h2>Two questions, and the answer to one is not the answer to the other</h2>
+<div class="rule">
+<p><b><code>actor_type</code> — who OWNS the write.</b> A job or session token is minted under the
+person the work belongs to, so its writes really are theirs and read as theirs.</p>
+<p><b><code>agency</code> — who was at the KEYBOARD.</b> Derived from the token's name prefix, never
+from which verifier matched. This is what the ISS-786/812 evidence gates read, and it is the only
+field separating an agent's credential from a person's.</p>
+<p>They disagree for exactly the rows those gates exist to catch, and nothing type-checks that a
+writer keeps them in step. Both are now persisted beside each other:
+<code>activity_log.actor_agency</code> and <code>kernel_transitions.actor_agency</code>.</p>
+</div>
+
+<h2>When it goes wrong</h2>
+<table>
+<thead><tr><th>Symptom</th><th>What actually happened</th></tr></thead>
+<tbody>
+<tr><td><code>403 PAT_NOT_PERMITTED</code> on a route that plainly exists</td>
+    <td>The path is not on <code>PAT_ALLOWED_PREFIXES</code>. That is a statement about the ROUTE,
+    not the token: a route resolving no project has nothing for the fence to bite on, so a
+    project-scoped token there would be an account-scoped credential wearing a project label.
+    <code>/api/me/collaborators</code> and <code>/api/me/ops-health</code> are permanently in this
+    class — they fan out over every project the caller can see, and there is deliberately no
+    per-project twin because <code>GET /api/projects/:id/members</code> already is one.</td></tr>
+<tr><td>A runner's REST call 401s where it used to work</td>
+    <td>It is presenting a device token to <code>requireAnyAuth</code>. That branch is gone
+    (ISS-927). An unattended caller holds a real token now: <code>job:&lt;id&gt;</code> minted at
+    claim, <code>session:&lt;id&gt;</code> minted on <code>agent:start</code>. If a caller class has
+    neither, mint it one — do not restore the branch.</td></tr>
+<tr><td>A runner's REST call 401s and the token IS a PAT</td>
+    <td>Its work went terminal. Both credentials die with the thing they were minted for, and for a
+    session that is <b>two</b> writers: <code>applyKernelTransition</code> for cancel / sweeper /
+    dispatch failure, and <code>PATCH /api/agent-sessions/:id</code> for the runner's happy path.
+    The second is a direct <code>db.update</code> the kernel chokepoint never sees.</td></tr>
+<tr><td>An agent's write shows in the feed as a person's</td>
+    <td>The token's name lost its machine prefix, so <code>authenticatePat</code> stamped
+    <code>agency: 'human'</code>. Every consumer reads the FAMILY via
+    <code>isMachineTokenName</code>, so a species added to
+    <code>MACHINE_TOKEN_NAME_PREFIXES</code> is covered everywhere at once — and one minted without
+    being added there escapes the PAT cap, the revoke sweep and the evidence gates together.</td></tr>
+<tr><td>A device principal 403s inside a handler that looked correct</td>
+    <td>Working as designed. Four middlewares verify a device token and none sets
+    <code>userId</code>, so <code>loadProjectAccess(projectId, userId)</code> fails closed unless
+    the handler honours the device principal explicitly and scopes by <code>row.deviceId</code>.
+    Fixing one half of a read/write pair leaves the other half failing closed.</td></tr>
+</tbody>
+</table>
+
+<h2>Read this before</h2>
+<p>Adding a prefix to <code>PAT_ALLOWED_PREFIXES</code> — every entry must be reachable by a PAT
+<em>today</em>, which is what forces the grant to be made by someone looking at the route. Adding a
+PAT branch to <code>requireUserOrDevice</code> — <code>GET /api/agent-sessions</code> with no
+<code>projectId</code> returns every session of every visible project with <code>messages[]</code>
+attached, so that branch needs a project-scoped twin first, not an allowlist entry. And minting a
+new species of machine token — it belongs in <code>MACHINE_TOKEN_NAME_PREFIXES</code> and nowhere
+else, or it is a credential three separate mechanisms silently disagree about.</p>
+
+<p><a href="index.html">← all flows</a></p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>

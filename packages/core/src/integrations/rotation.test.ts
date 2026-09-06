@@ -13,14 +13,15 @@ afterEach(() => {
 });
 
 describe('isRotatingProvider', () => {
-  it('recognizes the three rotating providers', () => {
-    expect(isRotatingProvider('coolify')).toBe(true);
-    expect(isRotatingProvider('postman')).toBe(true);
-    expect(isRotatingProvider('epodsystem')).toBe(true);
+  it('recognizes every provider that carries a rotating credential', () => {
+    for (const p of ['coolify', 'postman', 'epodsystem', 'sentry', 'rocketchat', 'github']) {
+      expect(isRotatingProvider(p)).toBe(true);
+    }
   });
 
-  it('rejects unknown providers', () => {
-    expect(isRotatingProvider('github')).toBe(false);
+  it('rejects a provider with no credential, and anything not a provider', () => {
+    expect(isRotatingProvider('agent')).toBe(false);
+    expect(isRotatingProvider('bitbucket')).toBe(false);
     expect(isRotatingProvider('')).toBe(false);
   });
 });
@@ -78,7 +79,6 @@ describe('mergeRotatedSecrets', () => {
   });
 
   it('ignores the wrong-shape incoming key (apiKey supplied for coolify is a no-op)', () => {
-    // Wrong field for the provider — no primary present, merge skips.
     expect(mergeRotatedSecrets('coolify', { apiToken: 'old' }, { apiKey: 'PMAK-x' })).toBeNull();
   });
 });

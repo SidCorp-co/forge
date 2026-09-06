@@ -13,13 +13,14 @@ import { z } from 'zod';
 import { listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
-import { computeAlerts, DEFAULT_STALE_SECONDS } from './alert-queries.js';
+import { computeAlerts } from './alert-queries.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
+// cm:guard `staleSeconds` must stay OPTIONAL with no default — a default here is indistinguishable from a caller-supplied value inside `computeAlerts`, and it would shadow the configured `stuckJobSeconds` on every request, so the GET would keep answering on 600s however the operator set the threshold.
 const alertsQuerySchema = z.object({
-  staleSeconds: z.coerce.number().int().min(60).max(86_400).default(DEFAULT_STALE_SECONDS),
+  staleSeconds: z.coerce.number().int().min(60).max(86_400).optional(),
 });
 
 export const adminAlertRoutes = new Hono<{ Variables: AuthVars }>();
@@ -32,7 +33,7 @@ adminAlertRoutes.get(
   }),
   async (c) => {
     const { staleSeconds } = c.req.valid('query');
-    const alerts = await computeAlerts({ staleSeconds });
+    const alerts = await computeAlerts(staleSeconds === undefined ? {} : { staleSeconds });
     return c.json(listResponse(c, alerts, alerts.length, { limit: alerts.length, offset: 0 }));
   },
 );

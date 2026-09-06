@@ -44,6 +44,7 @@ let projectArchived: string;
 let issueA: string;
 let issueB: string;
 let boundToA: string;
+let sessionTokenForA: string;
 let listScopedToA: string;
 let unscoped: string;
 let readOnlyBoundToA: string;
@@ -85,8 +86,14 @@ beforeAll(async () => {
   issueB = await seedIssue(projectB, user.id);
 
   const { mintPat } = await import('../../src/auth/pat.js');
+  const { mintSessionToken } = await import('../../src/agent-sessions/session-token.js');
   boundToA = (await mintPat({ userId: user.id, name: 'bound-a', boundProjectId: projectA }))
     .plaintext;
+  sessionTokenForA = (await mintSessionToken({
+    id: randomUUID(),
+    projectId: projectA,
+    userId: user.id,
+  })) as string;
   listScopedToA = (await mintPat({ userId: user.id, name: 'list-a', projectIds: [projectA] }))
     .plaintext;
   unscoped = (await mintPat({ userId: user.id, name: 'unscoped' })).plaintext;
@@ -171,6 +178,13 @@ describe('PAT fence — which projects a token may name', () => {
   it('a token bound to A cannot read an issue that lives in B', async () => {
     expect((await get(`/api/issues/${issueA}`, boundToA)).status).toBe(200);
     expect((await get(`/api/issues/${issueB}`, boundToA)).status).toBe(404);
+  });
+
+  // cm:guard ISS-927 — a session token is a `boundProjectId` PAT and is fenced by the same code, but "the same code" is the assumption worth testing rather than stating. An unattended session runs unwatched on a box, so if the fence ever moved to somewhere that reads a `job:` name or a `jobs` row, this token would be the one that silently stopped being fenced.
+  it('a session token is fenced to its own project, like any other bound token', async () => {
+    expect((await get(`/api/issues/${issueA}`, sessionTokenForA)).status).toBe(200);
+    expect((await get(`/api/issues/${issueB}`, sessionTokenForA)).status).toBe(404);
+    expect((await get(`/api/projects/${projectB}`, sessionTokenForA)).status).toBe(404);
   });
 
   it('an allowlist token (projectIds, no binding) is fenced the same way', async () => {

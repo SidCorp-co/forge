@@ -110,6 +110,14 @@ pub struct Prepared {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct StartOutcome {
+    pub ok: bool,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ClaimOutcome {
     pub ok: bool,
     #[serde(default)]
@@ -199,15 +207,29 @@ impl Prepared {
     }
 }
 
-/// Take one job for `session_id`.
+/// Take one job for `session_id` WITHOUT starting anything (ISS-919 B2).
+///
+/// The job comes back `queued` and held. Whoever holds it now owes either a
+/// [`start`] or a [`release`].
 // cm:guard a refusal comes back as `ok:false` on a 200 and MUST NOT be retried in a loop. A full box and a lost race are ordinary; retrying either changes nothing and burns the master's turn budget on a condition only another master finishing can clear.
-pub async fn claim(client: &CoreClient, job_id: &str, session_id: &str) -> Result<ClaimOutcome> {
-    let url = client.url("/api/devices/me/pool/claim");
+pub async fn prepare(client: &CoreClient, job_id: &str, session_id: &str) -> Result<ClaimOutcome> {
+    let url = client.url("/api/devices/me/pool/prepare");
     let body = serde_json::json!({ "jobId": job_id, "sessionId": session_id });
     let resp = post(client, &url, body).await?;
     resp.json()
         .await
-        .map_err(|e| Error::Other(format!("claim decode: {e}")))
+        .map_err(|e| Error::Other(format!("prepare decode: {e}")))
+}
+
+/// Hand a prepared job to the process now starting it.
+// cm:guard the stamp lives HERE, on the far side of the split, and this call is what ends the hold. Everything between `prepare` and this is a plain held `queued` job, which is why a master that dies mid-preparation is recovered by `release` and the three-minute reaper with no stamp to unwind.
+pub async fn start(client: &CoreClient, job_id: &str, session_id: &str) -> Result<StartOutcome> {
+    let url = client.url("/api/devices/me/pool/start");
+    let body = serde_json::json!({ "jobId": job_id, "sessionId": session_id });
+    let resp = post(client, &url, body).await?;
+    resp.json()
+        .await
+        .map_err(|e| Error::Other(format!("start decode: {e}")))
 }
 
 /// Hand back one job, or everything this session holds when `job_id` is None.

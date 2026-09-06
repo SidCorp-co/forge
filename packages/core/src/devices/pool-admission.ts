@@ -12,7 +12,7 @@ import { db } from '../db/client.js';
 export const NON_ADMITTED_RUNNER_STATUSES = ['disabled', 'draining'] as const;
 
 // cm:guard exclude the statuses that WITHDRAW a box, never require `online` — the heartbeat mirror is what writes `online`, so requiring it hands a live runner an empty pool whenever that mirror lags, with nothing anywhere saying why. Admission is a permission question; liveness is already answered by the master being here to ask.
-// cm:edge lockstep -> packages/core/src/devices/claim.ts — `claimJobForMaster` calls `runnerAdmission` with this same predicate. Offer work here that the claim refuses and every master burns a round trip on a job it can never take; admit here what the claim allows and the pool hides work a box was entitled to.
+// cm:edge lockstep -> packages/core/src/devices/claim.ts — `prepareJobForMaster` calls `runnerAdmission` with this same predicate. Offer work here that the claim refuses and every master burns a round trip on a job it can never take; admit here what the claim allows and the pool hides work a box was entitled to.
 // cm:edge lockstep -> packages/core/src/devices/heartbeat-runner-mirror.ts — that UPDATE must preserve every status named here. It preserved only `disabled`, so a drained runner came back `online` on the next beat (~30s) and this exclusion would have quietly stopped applying.
 export const ADMITTED_RUNNER = sql`
   r.status NOT IN ('disabled', 'draining')
@@ -45,7 +45,7 @@ export async function runnerAdmission(args: {
   `)) as unknown as Array<Record<string, unknown>>;
 
   const row = rows[0];
-  // cm:guard a job that does not exist is NOT an admission verdict — the LEFT JOIN is what keeps the two apart, and answering here would have the claim tell a master its box is unbound when the job is simply gone. `claimJobForMaster` owns `not_found` and must stay the one that says it.
+  // cm:guard a job that does not exist is NOT an admission verdict — the LEFT JOIN is what keeps the two apart, and answering here would have the claim tell a master its box is unbound when the job is simply gone. `prepareJobForMaster` owns `not_found` and must stay the one that says it.
   if (!row) return { admitted: true };
   if (row.runner_id == null) return { admitted: false, reason: 'runner_unbound' };
   if (row.device_disabled_at != null) return { admitted: false, reason: 'device_disabled' };

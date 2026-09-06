@@ -6,9 +6,8 @@
  * the dispatcher gate counts them against the runner's inFlight cap forever
  * and no later lifecycle event will resolve them. The cancel path in
  * `runs-control.ts` already had this cleanup; the natural-close paths in
- * `runs.ts` (`closeRun`, `closeRunIfOneShot`, `closeOpenRunForIssue`) did not,
- * so an issue closing while a triage job sat in `dispatched` wedged the
- * runner indefinitely (the production stall on 2026-05-27).
+ * `runs.ts` did not, so an issue closing while a triage job sat in
+ * `dispatched` wedged the runner indefinitely (the 2026-05-27 stall).
  *
  * This module is the single SSOT for the cascade so MCP cancel and natural
  * close cannot drift.
@@ -16,6 +15,8 @@
  * ISS-785 — `agent:abort` (keyed by `agent_sessions.id`) was always a no-op
  * for pipeline jobs (keyed by `jobId`); `requestKillsForCascade` fixes that
  * with the real primitive, `job.cancel` (see `jobs/kill-gate.ts`).
+ *
+ * ISS-923 — this is HALF the invariant; the inverse is `runs-concluded.ts`.
  */
 
 import { and, eq, inArray } from 'drizzle-orm';
@@ -61,6 +62,7 @@ export interface CascadeResult {
 // cm:guard every terminal pipeline_runs.status transition must route through this helper — nothing else reaps child jobs
 // cm:edge lockstep -> packages/core/src/jobs/loop-monitor.ts — orphan-hygiene defence 2; the three defences move together
 // cm:edge lockstep -> packages/core/src/devices/pool.ts — orphan-hygiene defence 3: the pool offers a job only under a `running`/`paused` parent, so an orphan the cascade missed is never handed to a master. It took this role from the dispatch gates when the central picker was deleted.
+// cm:edge lockstep -> packages/core/src/pipeline/runs-concluded.ts — the INVERSE direction, and it is part of the same statement: this module keeps child jobs from outliving a terminal run, that one keeps a run from outliving its last terminal job. Defending only this direction is what left 98 of 114 live runs `running` with nothing in flight (ISS-923); a change to what `terminal` means on either axis has to move both.
 export async function cascadeCancelChildJobs(
   tx: Tx | Db,
   runId: string,

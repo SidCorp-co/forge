@@ -71,7 +71,6 @@ export class CoolifyClient {
         const res = await this.fetchImpl(url, init);
         clearTimeout(timer);
         if (res.status === 401 && this.previousApiToken && token === this.apiToken) {
-          // Try the rotation-window fallback before giving up.
           lastErr = new CoolifyApiError(
             401,
             await safeText(res),
@@ -95,18 +94,18 @@ export class CoolifyClient {
   }
 
   /**
-   * Trigger a deploy. Coolify v4 deploy is `GET /api/v1/deploy?uuid=&force=`
-   * (query params, GET — NOT a POST with a JSON body).
-   * Docs: https://coolify.io/docs/api-reference/api/operations/deploy-by-tag-or-uuid
+   * Trigger a deploy. `uuid` and `force` go in the QUERY STRING, not a JSON
+   * body — `DeployController::deploy` reads them off the query either way.
    * Response is a `deployments[]` array; some versions also surface a
    * top-level `deployment_uuid`, so callers parse defensively.
    */
+  // cm:guard POST, never GET — Coolify pointed `GET /api/v1/deploy` at a 405 stub ("This endpoint has changed to a POST request") in v4.2.0 (upstream 0633b543, 2026-07-19), while POST has been accepted since long before it, so POST is the one method that works on every version. The same swap hit `applications/{uuid}/start|restart|stop`, `servers/{uuid}/validate` and `enable`/`disable`: reach for POST on anything that changes state.
   async deploy(input: { resourceUuid: string; force?: boolean }): Promise<CoolifyDeployResponse> {
     const qs = new URLSearchParams({
       uuid: input.resourceUuid,
       force: String(input.force ?? false),
     });
-    return this.request<CoolifyDeployResponse>('GET', `/api/v1/deploy?${qs.toString()}`);
+    return this.request<CoolifyDeployResponse>('POST', `/api/v1/deploy?${qs.toString()}`);
   }
 
   /**

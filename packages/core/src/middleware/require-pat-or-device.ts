@@ -19,7 +19,7 @@ import { HTTPException } from 'hono/http-exception';
 import { type Device, verifyDeviceToken } from '../auth/deviceToken.js';
 import { writeMcpAudit } from '../auth/mcp-audit.js';
 import { touchPatUsage, verifyPat } from '../auth/pat.js';
-import { isJobTokenName, isPatLike } from '../auth/pat-format.js';
+import { isMachineTokenName, isPatLike } from '../auth/pat-format.js';
 import { RULES } from '../config/rate-limits.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -40,8 +40,7 @@ export type PatPrincipal = {
   tokenId: string;
   scopes: readonly string[];
   projectIds: readonly string[] | null;
-  // ISS-497 — non-null = project-level token bound to exactly this project
-  // (slug-omitted default AND auth fence). NULL = user-level (unchanged).
+  // cm:guard non-null is BOTH the slug-omitted default and the auth fence (ISS-497), and the second of those is why a null here is not a widening to be tidied away: null means user-level, which is a token whose reach is its owner's projects. Reading it as "no project set, so no restriction" inverts the fence.
   boundProjectId: string | null;
 };
 
@@ -207,10 +206,10 @@ export async function authenticatePat(c: Context, token: string): Promise<PatPri
 
   touchPatUsage(row.id, getClientIp(c));
   maybeEmitPatUsed(row.id, row.userId);
-  // cm:guard derive `agency` from the token, never assume `human` — this is the ONE place a PAT principal is built, for `/mcp` AND for REST (`pat-rest-surface.ts:beginPatRequest` calls straight into here), so a wrong constant here is wrong on every surface at once. A `job:` token is minted for an agent, delivered to the runner on `job.assigned`, and exported as `$FORGE_PAT`; stamped `human` it makes `principalActor` return `{type:'user'}`, which is the exact input `checkTransitionEvidence` and `mark_merged` use to SKIP the ISS-786/812 evidence gates. The gates were added because agents fabricate evidence, so the credential built for agents was the one class exempt from them.
+  // cm:guard derive `agency` from the token, never assume `human` — this is the ONE place a PAT principal is built, for `/mcp` AND for REST (`pat-rest-surface.ts:beginPatRequest` calls straight into here), so a wrong constant here is wrong on every surface at once. A `job:` token is minted for an agent, delivered to the runner on `job.assigned`, and exported as `$FORGE_PAT`; a `session:` token is the same thing for an unattended chat/schedule session, delivered on `agent:start` (ISS-927). Stamped `human` either makes `principalActor` return `{type:'user'}`, which is the exact input `checkTransitionEvidence` and `mark_merged` use to SKIP the ISS-786/812 evidence gates. The gates were added because agents fabricate evidence, so the credential built for agents was the one class exempt from them. Read the FAMILY (`isMachineTokenName`), never one member — a species minted but tested for by name is the same hole wearing a new prefix.
   return {
     kind: 'pat',
-    agency: isJobTokenName(row.name) ? 'agent' : 'human',
+    agency: isMachineTokenName(row.name) ? 'agent' : 'human',
     userId: row.userId,
     tokenId: row.id,
     scopes: row.scopes,

@@ -66,7 +66,7 @@ export class SkillLockedError extends Error {
  */
 export function readLockedSkills(pipelineConfig: unknown): LockedSkillsDeclaration {
   if (typeof pipelineConfig !== 'object' || pipelineConfig === null) return undefined;
-  const value = (pipelineConfig as Record<string, unknown>)['lockedSkills'];
+  const value = (pipelineConfig as Record<string, unknown>).lockedSkills;
   if (value === true) return true;
   if (Array.isArray(value) && value.every((v) => typeof v === 'string')) return value as string[];
   return undefined;

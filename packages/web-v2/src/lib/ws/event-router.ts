@@ -1,9 +1,6 @@
 "use client";
 
-// Ported verbatim from `packages/web/src/lib/ws/event-router.ts` (ISS-288).
-// The switch cases — and especially the React Query keys — are copied
-// EXACTLY. web-v2 `features/*` hooks MUST reuse these same keys (e.g.
-// `['projects']`) or WS-driven invalidation silently no-ops.
+// cm:guard a `features/*` hook must key its query under one of the prefixes invalidated below (e.g. ['projects']) — pick any other and the live update silently no-ops, with nothing red anywhere to say the screen stopped refreshing
 import type { QueryClient } from "@tanstack/react-query";
 import { trackJobSeq } from "./seq-tracker";
 
@@ -140,6 +137,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "job.resumed":
 		case "job.cancelled": {
 			qc.invalidateQueries({ queryKey: ["jobs", "list"] });
+			// cm:edge contract -> packages/web-v2/src/features/operator/hooks.ts — A2 (stuck jobs) and the in-flight KPI both count `jobs` rows, so a reap that clears the alert must clear it on screen; without this the operator presses the button and the row it just cancelled is still listed
+			qc.invalidateQueries({ queryKey: ["admin", "ops"] });
 			// ISS-307 — a job flipping to failed (incl. deploy) belongs in Attention's
 			// failed-jobs bucket; refresh the cross-project inbox + rail count.
 			qc.invalidateQueries({ queryKey: ["attention"] });
@@ -155,6 +154,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		}
 		case "pipeline_run.status_changed": {
 			qc.invalidateQueries({ queryKey: ["pipeline-runs", "list"] });
+			// cm:edge contract -> packages/web-v2/src/features/operator/hooks.ts — all four Operator Ops Console panels roll up from `pipeline_runs` and are keyed under this prefix; a key that does not start ["admin","ops"] leaves the console serving stale cross-tenant numbers with nothing to say it (ISS-653)
+			qc.invalidateQueries({ queryKey: ["admin", "ops"] });
 			// Projects console (ISS-290): liveRuns / spend roll up from pipeline_runs.
 			qc.invalidateQueries({ queryKey: ["projects", "health"] });
 			if (data?.runId) {

@@ -65,7 +65,14 @@ vi.mock('../integrations/store.js', () => ({
   listActiveBindingsForProjectProvider: (...a: unknown[]) => listBindingsSpy(...(a as [])),
 }));
 
-vi.mock('./runs.js', () => ({ setCurrentStepForce: vi.fn() }));
+vi.mock('./runs.js', () => ({
+  setCurrentStep: vi.fn(),
+  RELEASE_DEPLOY_IN_FLIGHT_STEP: 'release.deploy.in_flight',
+}));
+const openHoldMock = vi.fn(async (_args: unknown) => true);
+vi.mock('./deploy-confirmations.js', () => ({
+  openDeployDispatchHold: (args: unknown) => openHoldMock(args),
+}));
 
 vi.mock('../observability/sentry.js', () => ({
   isSentryEnabled: () => false,
@@ -76,6 +83,7 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+const { logger } = await import('../logger.js');
 const { tryDispatchCoolifyRelease, dispatchCoolifyDeployDirect, isIssueAtReleaseStage } =
   await import('./release-coolify.js');
 
@@ -205,10 +213,54 @@ describe('dispatchCoolifyDeployDirect — run-less resource redeploy (ISS-312)',
   });
 });
 
+describe('tryDispatchCoolifyRelease — a run that cannot witness its deploy (ISS-922)', () => {
+  it('reports at ERROR level when the run is already terminal, and still dispatches', async () => {
+    listBindingsSpy.mockResolvedValueOnce([stagingPair]);
+    selectQueue.push([{ status: 'completed' }]);
+
+    const outcome = await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      runId: RUN_ID,
+    });
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: RUN_ID, issueId: ISSUE_ID }),
+      expect.stringContaining('no run can witness its outcome'),
+    );
+    // cm:guard the report must not cancel the deploy — what ISS-922 stops is the pretence that the run proves it, and a fix that skips the dispatch here would break every deploy asked for after its run closed.
+    expect(outcome.dispatched).toBe(true);
+  });
+
+  it('reports when the run closes in the window and REFUSES the hold, not just when it was terminal on entry', async () => {
+    listBindingsSpy.mockResolvedValueOnce([stagingPair]);
+    selectQueue.push([{ status: 'running' }]);
+    openHoldMock.mockResolvedValueOnce(false);
+
+    await tryDispatchCoolifyRelease({ projectId: PROJECT_ID, issueId: ISSUE_ID, runId: RUN_ID });
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: RUN_ID, bindingId: STAGING_INT }),
+      expect.stringContaining('refused the confirmation hold'),
+    );
+  });
+
+  it('says nothing when the run is still open', async () => {
+    listBindingsSpy.mockResolvedValueOnce([stagingPair]);
+    selectQueue.push([{ status: 'running' }]);
+    openHoldMock.mockResolvedValueOnce(true);
+
+    await tryDispatchCoolifyRelease({ projectId: PROJECT_ID, issueId: ISSUE_ID, runId: RUN_ID });
+
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+});
+
 describe('tryDispatchCoolifyRelease — prod autoProdDeploy bypass', () => {
   it('auto-dispatches prod like staging when the project opted into autoProdDeploy', async () => {
     listBindingsSpy.mockResolvedValueOnce([prodPair]);
-    // projectAutoProdDeploy read → flag on → skip the gate entirely.
+    // cm:guard the queue is FIFO and the order is the fixture: the run's status is read first (ISS-922), then projectAutoProdDeploy — swap them and this test proves the opposite of what it says.
+    selectQueue.push([{ status: 'running' }]);
     selectQueue.push([{ agentConfig: { pipelineConfig: { autoProdDeploy: true } } }]);
 
     const outcome = await tryDispatchCoolifyRelease({
@@ -282,6 +334,7 @@ describe('tryDispatchCoolifyRelease — integrationId hard filter + allowProd', 
 
   it('no new args (auto-subscriber shape): prod still auto-dispatches under autoProdDeploy — unchanged', async () => {
     listBindingsSpy.mockResolvedValueOnce([prodPair]);
+    selectQueue.push([{ status: 'running' }]);
     selectQueue.push([{ agentConfig: { pipelineConfig: { autoProdDeploy: true } } }]);
 
     const outcome = await tryDispatchCoolifyRelease({
@@ -318,6 +371,7 @@ describe('isIssueAtReleaseStage', () => {
 describe('tryDispatchCoolifyRelease — prod confirm gate', () => {
   it('returns pendingHumanConfirm and enqueues nothing when the gate is unconfirmed', async () => {
     listBindingsSpy.mockResolvedValueOnce([prodPair]); // active coolify bindings
+    selectQueue.push([{ status: 'running' }]); // cm:why the run's own status, read first by ISS-922's terminal-run report
     selectQueue.push([]); // projectAutoProdDeploy: no agentConfig → gate stays on
     selectQueue.push([]); // getProdGateState: no run carries a gate
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm: run metadata read

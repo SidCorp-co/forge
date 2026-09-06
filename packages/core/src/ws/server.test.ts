@@ -55,6 +55,19 @@ vi.mock('../lib/feature-flags.js', () => ({
   isEnabled: () => false,
 }));
 
+const effectiveProjectRoleMock = vi.fn(
+  async (_userId: string, _projectId: string): Promise<{ role: string | null } | null> => null,
+);
+vi.mock('../lib/authz.js', () => ({
+  effectiveProjectRole: (userId: string, projectId: string) =>
+    effectiveProjectRoleMock(userId, projectId),
+}));
+
+const isPlatformAdminMock = vi.fn(async (_userId: string): Promise<boolean> => false);
+vi.mock('../middleware/require-admin.js', () => ({
+  isPlatformAdmin: (userId: string) => isPlatformAdminMock(userId),
+}));
+
 const { attachWs, closeWs } = await import('./server.js');
 const WebSocketLib = (await import('ws')).WebSocket;
 
@@ -188,10 +201,72 @@ describe('/ws subscribe — global room (ISS-2A)', () => {
       });
       ws.send(JSON.stringify({ type: 'subscribe', room: 'global' }));
       const result = await denial;
-      // Null = no denial message arrived within the grace window.
       expect(result).toBeNull();
     } finally {
       ws.close();
     }
+  });
+});
+
+// cm:guard the allow-list is a SECOND way into a `project:` room, not a replacement for membership — both arms need a test, because dropping either one fails silently: no denial is sent for a room the client simply never receives events on (ISS-653)
+describe('/ws subscribe — project room (ISS-653)', () => {
+  const PROJECT_ROOM = 'project:11111111-1111-4111-8111-111111111111';
+
+  function dialPersistent(): Promise<import('ws').WebSocket> {
+    const url = `ws://127.0.0.1:${port}/ws`;
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocketLib(url, [`forge.bearer.${VALID_USER_TOKEN}`]);
+      ws.on('open', () => resolve(ws));
+      ws.on('error', reject);
+    });
+  }
+
+  /** Resolves with the `subscribe.denied` envelope, or null when none arrived. */
+  async function subscribeOutcome(): Promise<unknown> {
+    const ws = await dialPersistent();
+    try {
+      const denial = new Promise<unknown>((resolve, reject) => {
+        const t = setTimeout(() => resolve(null), 200);
+        ws.on('message', (buf) => {
+          clearTimeout(t);
+          try {
+            const msg = JSON.parse(buf.toString());
+            if (msg?.event === 'subscribe.denied') resolve(msg);
+            else reject(new Error(`unexpected message ${buf.toString()}`));
+          } catch (err) {
+            reject(err);
+          }
+        });
+      });
+      ws.send(JSON.stringify({ type: 'subscribe', room: PROJECT_ROOM }));
+      return await denial;
+    } finally {
+      ws.close();
+    }
+  }
+
+  it('denies a non-member who is not on the ADMIN_EMAILS allow-list', async () => {
+    effectiveProjectRoleMock.mockResolvedValueOnce(null);
+    isPlatformAdminMock.mockResolvedValueOnce(false);
+
+    expect(await subscribeOutcome()).toMatchObject({
+      event: 'subscribe.denied',
+      data: { room: PROJECT_ROOM },
+    });
+  });
+
+  it('admits a platform admin who is a member of nothing', async () => {
+    effectiveProjectRoleMock.mockResolvedValueOnce(null);
+    isPlatformAdminMock.mockResolvedValueOnce(true);
+
+    expect(await subscribeOutcome()).toBeNull();
+    expect(isPlatformAdminMock).toHaveBeenCalledWith(USER_ID);
+  });
+
+  it('admits a member without reading the allow-list at all', async () => {
+    effectiveProjectRoleMock.mockResolvedValueOnce({ role: 'viewer' });
+
+    expect(await subscribeOutcome()).toBeNull();
+    expect(isPlatformAdminMock).not.toHaveBeenCalled();
   });
 });
