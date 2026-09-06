@@ -71,7 +71,7 @@ function buildCtx(secrets: Record<string, unknown>) {
   } as any;
 }
 
-describe('coolifyAdapter.healthcheck — needs_reauth on rejected token (ISS-409)', () => {
+describe('coolifyAdapter.healthcheck — 401 and 403 are different verdicts (ISS-409/ISS-924)', () => {
   it('surfaces needs_reauth when the API token is rejected (401)', async () => {
     globalThis.fetch = vi.fn(
       async () => new Response('unauthorized', { status: 401 }),
@@ -86,14 +86,37 @@ describe('coolifyAdapter.healthcheck — needs_reauth on rejected token (ISS-409
     );
   });
 
-  it('surfaces needs_reauth on a 403 (forbidden token)', async () => {
+  it('surfaces needs_scope on a 403, naming the missing ability and the route', async () => {
     globalThis.fetch = vi.fn(
       async () => new Response('forbidden', { status: 403 }),
     ) as unknown as typeof fetch;
 
     const res = await coolifyAdapter.healthcheck(buildCtx({ apiToken: 'cf-current' }));
 
-    expect(res.status).toBe('needs_reauth');
+    expect(res.status).toBe('needs_scope');
+    expect(res.message).toContain('api.ability:read');
+    expect(res.message).toContain('GET /api/v1/resources');
+    // cm:guard this negative assertion IS the issue — a 403 message that tells the operator to re-enter or replace the credential sends them to redo work that reproduces the state exactly (ISS-924)
+    expect(res.message).not.toMatch(/re-enter|replace it/);
+    expect(res.diagnostics).toMatchObject({
+      httpStatus: 403,
+      route: 'GET /api/v1/resources',
+      missingAbility: 'read',
+    });
+    expect(updateConnectionMock).toHaveBeenCalledWith(
+      CONN_ID,
+      expect.objectContaining({ lastHealthStatus: 'needs_scope' }),
+    );
+  });
+
+  it('leaves a non-auth failure on error', async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response('boom', { status: 500 }),
+    ) as unknown as typeof fetch;
+
+    const res = await coolifyAdapter.healthcheck(buildCtx({ apiToken: 'cf-current' }));
+
+    expect(res.status).toBe('error');
   });
 
   it('resets the breaker on a successful Test-connection (operator recovery)', async () => {
@@ -143,8 +166,7 @@ describe('coolifyAdapter.dispatchOutbound — health follows real deploy outcome
     });
 
     expect(res.externalId).toBe('dep-1');
-    // The stale-error fix: a working deploy path must flip health back to ok
-    // instead of leaving a months-old error from a one-off healthcheck.
+    // cm:guard a succeeding deploy is itself proof the API is reachable and the token accepted, so it must clear health back to ok — without this the card stays on a months-old `error` from one failed healthcheck while every deploy succeeds (ISS-429)
     expect(updateConnectionMock).toHaveBeenCalledWith(
       CONN_ID,
       expect.objectContaining({ lastHealthStatus: 'ok' }),
@@ -300,5 +322,69 @@ describe('coolifyAdapter — the deploy is held until Coolify confirms it (ISS-9
       // biome-ignore lint/suspicious/noExplicitAny: refusal takes no meaningful args
       (coolifyAdapter as any).handleInbound(),
     ).rejects.toThrow(/inbound webhooks are not supported/);
+  });
+});
+
+describe('coolifyAdapter.dispatchOutbound — a refused deploy is not a rejected credential (ISS-924)', () => {
+  beforeEach(() => {
+    findConnectionByIdMock.mockResolvedValue({ id: CONN_ID, active: true });
+    recordDeliveryMock.mockResolvedValue('del-1');
+  });
+
+  async function deployWith(status: number): Promise<void> {
+    globalThis.fetch = vi.fn(
+      async () => new Response('nope', { status }),
+    ) as unknown as typeof fetch;
+    await expect(
+      coolifyAdapter.dispatchOutbound(buildCtx({ apiToken: 'cf-current' }), {
+        eventName: 'deploy',
+        payload: { runId: null, issueId: null },
+      }),
+    ).rejects.toThrow(/coolify deploy failed/);
+  }
+
+  it('writes needs_scope when the deploy route answers 403', async () => {
+    await deployWith(403);
+
+    expect(updateConnectionMock).toHaveBeenCalledWith(
+      CONN_ID,
+      expect.objectContaining({ lastHealthStatus: 'needs_scope' }),
+    );
+    expect(updateConnectionMock).not.toHaveBeenCalledWith(
+      CONN_ID,
+      expect.objectContaining({ lastHealthStatus: 'needs_reauth' }),
+    );
+  });
+
+  it('names the deploy ability, which the read-only healthcheck never exercises', async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response('nope', { status: 403 }),
+    ) as unknown as typeof fetch;
+
+    await expect(
+      coolifyAdapter.dispatchOutbound(buildCtx({ apiToken: 'cf-current' }), {
+        eventName: 'deploy',
+        payload: { runId: null, issueId: null },
+      }),
+    ).rejects.toThrow(/api\.ability:deploy/);
+  });
+
+  it('still writes needs_reauth when the deploy route answers 401', async () => {
+    await deployWith(401);
+
+    expect(updateConnectionMock).toHaveBeenCalledWith(
+      CONN_ID,
+      expect.objectContaining({ lastHealthStatus: 'needs_reauth' }),
+    );
+  });
+
+  it('writes no credential verdict at all for a 500', async () => {
+    await deployWith(500);
+
+    const written = updateConnectionMock.mock.calls.map(
+      (c) => (c[1] as { lastHealthStatus?: string }).lastHealthStatus,
+    );
+    expect(written).not.toContain('needs_scope');
+    expect(written).not.toContain('needs_reauth');
   });
 });

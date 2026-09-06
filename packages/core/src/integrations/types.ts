@@ -45,12 +45,20 @@ export interface AdapterContext<
 }
 
 /**
- * `needs_reauth` (ISS-409 / F4): the stored credential was rejected (HTTP
- * 401/403, or an epodsystem GraphQL auth error) AND the ISS-405 previous-
- * credential rotation fallback did not recover — the operator must re-enter the
- * credential. Distinct from `error`, which covers transient/other failures.
+ * `needs_reauth` (ISS-409 / F4): the provider does NOT RECOGNISE the stored
+ * credential — HTTP 401, or an epodsystem GraphQL auth error — AND the ISS-405
+ * previous-credential rotation fallback did not recover. The operator must
+ * re-enter the credential.
+ *
+ * `needs_scope` (ISS-924): the provider recognises the credential and REFUSES
+ * this route — HTTP 403. The credential is valid and re-entering it reproduces
+ * the state exactly; the fix is to widen what the credential is allowed to do.
+ * The message names the missing permission and the route that wanted it.
+ *
+ * `error` covers transient and other failures.
  */
-export type HealthStatus = 'ok' | 'degraded' | 'error' | 'needs_reauth';
+// cm:guard 401 and 403 are different verdicts and must never be collapsed into one — a 403 mapped to `needs_reauth` sends the operator to replace a credential that works, and re-entering it reproduces the state exactly (ISS-924)
+export type HealthStatus = 'ok' | 'degraded' | 'error' | 'needs_reauth' | 'needs_scope';
 
 export interface HealthCheckResult {
   status: HealthStatus;
