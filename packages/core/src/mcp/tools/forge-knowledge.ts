@@ -15,15 +15,12 @@ import {
   zodToMcpSchema,
 } from './lib.js';
 
-// Top-level schema must stay `type: object` (discriminated union breaks MCP
-// tool listing). Per-action validation happens in the handler.
+// cm:guard the top-level schema must stay `type: object` — a discriminated union breaks MCP tool listing, which is why per-action validation happens in the handler below rather than in the schema.
 const inputSchema = z
   .object({
     action: z.enum(['list', 'get', 'upsert', 'delete', 'search']),
     projectId: z.uuid(),
-    // list/get/delete/upsert
     slug: z.string().min(1).max(512).optional(),
-    // upsert body fields
     title: z.string().min(1).max(500).optional(),
     body: z.string().min(1).max(100_000).optional(),
     kind: z
@@ -34,12 +31,10 @@ const inputSchema = z
     authoredBy: z.enum(['human', 'agent', 'imported']).optional(),
     orderIndex: z.number().int().optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
-    // list filters
     kindFilter: z
       .enum(['overview', 'scenario', 'workflow', 'rule', 'guide', 'reference', 'glossary'])
       .optional(),
     injectionFilter: z.enum(['always', 'on_demand', 'none']).optional(),
-    // search
     query: z.string().min(1).max(4000).optional(),
     scope: z.enum(['knowledge', 'memory', 'all']).default('knowledge'),
     topK: z.number().int().min(1).max(50).default(10),
@@ -98,7 +93,7 @@ export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
           orderIndex: input.orderIndex,
           metadata: input.metadata,
         });
-        return upsertKnowledgeEntry(parsed);
+        return await upsertKnowledgeEntry(parsed);
       } catch (err) {
         if (err instanceof EmbeddingUnavailableError) {
           throw new Error(`UNAVAILABLE: ${err.message}`);
@@ -119,7 +114,8 @@ export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
       if (!input.query) throw new Error('BAD_REQUEST: query is required for action=search');
       await assertPrincipalIsMember(ctx.principal, projectId);
       try {
-        return runUnifiedSearch({
+        // cm:guard `await` inside the try, not a returned promise — a bare `return runUnifiedSearch(...)` settles outside the catch, so an embeddings outage reached the caller as a raw rejection instead of `UNAVAILABLE:` (found and fixed in ISS-930; the upsert branch had the same shape).
+        return await runUnifiedSearch({
           projectId,
           query: input.query,
           scope: input.scope,

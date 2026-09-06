@@ -60,12 +60,9 @@ const searchBodySchema = z.object({
 });
 
 // cm:why POST, not GET: `GET /:id/knowledge/:slug` already owns this path, so a GET here resolves as the slug `search` and answers "knowledge entry not found" (ISS-930 probed it). The method is what keeps the two apart, with no ordering rule to preserve.
-knowledgeRoutes.use(
-  '/:id/knowledge/search',
-  rateLimit(RULES.knowledgeSearch, { name: 'knowledge-search' }),
-);
 knowledgeRoutes.post(
   '/:id/knowledge/search',
+  rateLimit(RULES.knowledgeSearch, { name: 'knowledge-search' }),
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid project id');
   }),
@@ -123,7 +120,7 @@ knowledgeRoutes.put(
     const { id, slug } = c.req.valid('param');
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    // writer-level: same as memory write (member)
+    // cm:why a knowledge write is `member`, deliberately the same bar as a memory write and not the `writer` role the MCP tool asserts — the two transports differ here, and this is the one that is intended.
     await assertProjectAccess(id, userId);
 
     try {
