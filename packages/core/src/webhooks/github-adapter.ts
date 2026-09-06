@@ -11,7 +11,6 @@ export interface GitHubAdapterResult {
 interface GitHubIssuePayload {
   action?: string;
   issue?: { id?: number; title?: string; body?: string | null };
-  pull_request?: { id?: number; title?: string; body?: string | null };
 }
 
 async function projectCreatedById(projectId: string): Promise<string | null> {
@@ -71,15 +70,11 @@ async function closeExternalIssue(
   source: 'github',
   externalId: string,
 ): Promise<boolean> {
+  // cm:guard close WITHOUT stamping merged_at — `merged_at` releases every `blocks` dependent as if the work had shipped, and GitHub closes an issue for `wontfix`, `duplicate` and `not planned` with the same event as one that was actually fixed. This used to COALESCE a stamp in to mirror `issues/merged-at.ts markMergedOnClose`, which is the state-machine writer's rule for work Forge itself drove to done; a mirror of somebody else's tracker knows only that the row is closed.
   const updated = await db
     .update(issues)
-    // Mirror-close bypasses the state-machine writer, so mirror its
-    // close-time merged_at stamp too (closed = done for the L2 blocks gate —
-    // see issues/merged-at.ts markMergedOnClose). COALESCE keeps an earlier
-    // pipeline stamp.
     .set({
       status: 'closed',
-      mergedAt: sql`COALESCE(${issues.mergedAt}, now())`,
       updatedAt: new Date(),
     })
     .where(
@@ -126,23 +121,7 @@ export async function handleGitHubEvent(
     }
   }
 
-  if (eventType === 'pull_request' && payload.pull_request) {
-    const externalId = `pr:${payload.pull_request.id ?? ''}`;
-    if (externalId === 'pr:') return { actions: 0 };
-    if (action === 'opened') {
-      const result = await upsertExternalIssue(projectId, 'github', externalId, {
-        title: payload.pull_request.title ?? '(untitled PR)',
-        description: payload.pull_request.body ?? null,
-        createdById,
-      });
-      return { actions: result === 'noop' ? 0 : 1 };
-    }
-    if (action === 'closed') {
-      const ok = await closeExternalIssue(projectId, 'github', externalId);
-      return { actions: ok ? 1 : 0 };
-    }
-  }
-
+  // cm:guard a `pull_request` event must NEVER create a Forge issue. It did until 2026-09-06, filing one per opened PR: a PR is a change under review, not a unit of work with a deliverable and an owner, so it fails every admission gate in the `what-is-an-issue` guide and arrives in the backlog owned by nobody. What a PR event is FOR is advancing the issue its branch already belongs to — that mapping lands with the pull-request verbs, and until then falling through to here is the honest answer.
   logger.info({ key, projectId }, 'github-adapter: unhandled event');
   return { actions: 0 };
 }

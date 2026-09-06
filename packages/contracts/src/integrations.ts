@@ -17,9 +17,8 @@
 
 import type { IntegrationProvider, schema } from '@forge/core/public';
 
-// === Enums — mirrored from the DB schema source of truth (no hand-copied unions) ===
 
-/** `'coolify' | 'postman' | 'epodsystem' | 'sentry' | 'rocketchat'`. */
+/** Re-exported, never re-declared — `INTEGRATION_PROVIDERS` in core is the list. */
 export type { IntegrationProvider, IntegrationCapabilities } from '@forge/core/public';
 
 /** `'user' | 'org'` — the connection owner namespace. */
@@ -31,7 +30,6 @@ export type IntegrationDeliveryDirection = schema.IntegrationDeliveryDirection;
 /** `'pending' | 'ok' | 'failed'` — delivery status. */
 export type IntegrationDeliveryStatus = schema.IntegrationDeliveryStatus;
 
-// === Summaries (no secret bytes) ===
 
 /**
  * Owner-facing connection summary — the credential, owned by a principal.
@@ -97,7 +95,6 @@ export interface BindingSummary {
   updatedAt: string;
 }
 
-// === Composed status card (read-only hub) ===
 
 /**
  * Coarse card-status bucket for the composed status read model.
@@ -130,7 +127,6 @@ export interface IntegrationsStatus {
   cards: IntegrationStatusCard[];
 }
 
-// === Delivery audit row ===
 
 /**
  * Webhook/dispatch delivery row (`GET .../integrations/:id/deliveries`). Raw
@@ -152,7 +148,6 @@ export interface IntegrationDeliveryRow {
   completedAt: string | null;
 }
 
-// === Health / test-connection result ===
 
 /**
  * Result of the test-connection (`POST .../test`) call — an adapter `HealthCheckResult`.
@@ -184,7 +179,6 @@ export interface ConfirmProdDeployResult {
   integrationId: string;
 }
 
-// === Provider config / secret inputs ===
 
 /** One Coolify deploy target (a single application UUID). `id` is server-assigned
  *  when omitted; a write replaces the whole `targets` array. */
@@ -288,8 +282,16 @@ export interface RocketchatSecretsInput {
   authToken: string;
   userId: string;
 }
+export interface GithubConfigInput {
+  owner?: string;
+  repo?: string;
+  /** GitHub Enterprise only; absent means api.github.com. */
+  apiBaseUrl?: string;
+}
+export interface GithubSecretsInput {
+  token: string;
+}
 
-// === Request bodies ===
 
 /**
  * Body for `POST /:projectId/integrations` — discriminated on `provider`. Each
@@ -330,6 +332,18 @@ export type IntegrationBindingCreateInput =
       environment?: IntegrationEnvironment;
       config: RocketchatConfigInput;
       secrets: RocketchatSecretsInput;
+    }
+  | {
+      provider: 'github';
+      environment?: IntegrationEnvironment;
+      config: GithubConfigInput;
+      secrets: GithubSecretsInput;
+    }
+  | {
+      provider: 'agent';
+      environment?: IntegrationEnvironment;
+      config: Record<string, unknown>;
+      secrets?: Record<string, never>;
     };
 
 /** Body for `PATCH /:projectId/integrations/:id` — re-validated against the existing provider. */
@@ -379,6 +393,13 @@ export type ConnectionCreateInput =
       config: RocketchatConfigInput;
       secrets: RocketchatSecretsInput;
       orgId?: string;
+    }
+  | {
+      provider: 'github';
+      displayName?: string;
+      config: GithubConfigInput;
+      secrets: GithubSecretsInput;
+      orgId?: string;
     };
 
 /** Body for `PATCH /integration-connections/:id` — re-validated against the existing provider. */
@@ -404,7 +425,6 @@ export interface BindExistingConnectionRequest {
   config?: Record<string, unknown>;
 }
 
-// === Response envelopes ===
 
 /** `{ connection }` — connection list items, create (201) + update. */
 export interface ConnectionResponse {
@@ -447,7 +467,6 @@ export interface ConnectionBindingsResponse {
   items: BindingSummary[];
 }
 
-// === MCP injection preview (ISS-429) ===
 
 /**
  * One entry of `GET /:projectId/integrations/mcp-preview` — exactly what the

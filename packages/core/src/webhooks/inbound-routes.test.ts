@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { signHmacSha256 } from './hmac.js';
 
 const SECRET = 'test-webhook-secret';
+const BINDING_SECRET = 'whsec_binding_scoped';
 
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
@@ -13,9 +14,18 @@ vi.mock('../db/client.js', () => ({
   db: { select: dbSelect },
 }));
 
-const handleGitHubEventMock = vi.fn(async () => ({ actions: 1 }));
-vi.mock('./github-adapter.js', () => ({
-  handleGitHubEvent: (...a: unknown[]) => handleGitHubEventMock(...(a as [])),
+const handleInboundMock = vi.fn(async () => ({ deliveryId: 'del-1', actions: 1 }));
+const getAdapterMock = vi.fn(() => ({ provider: 'github', handleInbound: handleInboundMock }));
+vi.mock('../integrations/registry.js', () => ({
+  getAdapter: (...a: unknown[]) => getAdapterMock(...(a as [])),
+}));
+
+const listBindingsMock = vi.fn(async () => [
+  { binding: { id: 'b1', environment: 'prod', integrationSecret: BINDING_SECRET }, connection: {} },
+]);
+vi.mock('../integrations/store.js', () => ({
+  listActiveBindingsForProjectProvider: (...a: unknown[]) => listBindingsMock(...(a as [])),
+  buildContextFromBinding: (pair: { binding: { id: string } }) => ({ bindingId: pair.binding.id }),
 }));
 
 const { webhookInboundRoutes } = await import('./inbound-routes.js');
@@ -80,32 +90,63 @@ describe('POST /api/webhooks/in/:slug', () => {
     const json = (await r.json()) as { handler: string; actions: number };
     expect(json.handler).toBe('generic');
     expect(json.actions).toBe(0);
-    expect(handleGitHubEventMock).not.toHaveBeenCalled();
+    expect(handleInboundMock).not.toHaveBeenCalled();
   });
 
-  it('200 and invokes GitHub adapter when x-github-event is present', async () => {
+  it('dispatches a GitHub delivery to the adapter, signed with the BINDING secret', async () => {
     selectLimit.mockResolvedValueOnce([{ id: 'p1', secret: SECRET }]);
     const body = JSON.stringify({ action: 'opened', issue: { id: 42, title: 't' } });
+    const r = await buildApp().fetch(
+      await post('/api/webhooks/in/p', body, {
+        'x-hub-signature-256': signHmacSha256(BINDING_SECRET, body),
+        'x-github-event': 'issues',
+      }),
+    );
+    expect(r.status).toBe(200);
+    const json = (await r.json()) as { handler: string; actions: number; environment: string };
+    expect(json.handler).toBe('github');
+    expect(json.actions).toBe(1);
+    expect(json.environment).toBe('prod');
+    expect(handleInboundMock).toHaveBeenCalled();
+  });
+
+  it("refuses a GitHub delivery signed with the project's own webhookSecret", async () => {
+    selectLimit.mockResolvedValueOnce([{ id: 'p1', secret: SECRET }]);
+    const body = JSON.stringify({ action: 'opened', issue: { id: 42 } });
     const r = await buildApp().fetch(
       await post('/api/webhooks/in/p', body, {
         'x-hub-signature-256': signHmacSha256(SECRET, body),
         'x-github-event': 'issues',
       }),
     );
-    expect(r.status).toBe(200);
-    const json = (await r.json()) as { handler: string; actions: number };
-    expect(json.handler).toBe('github');
-    expect(json.actions).toBe(1);
-    expect(handleGitHubEventMock).toHaveBeenCalledWith('p1', 'issues', expect.any(Object));
+    expect(r.status).toBe(401);
+    const json = (await r.json()) as { code?: string };
+    expect(json.code).toBe('INVALID_SIGNATURE');
+    expect(handleInboundMock).not.toHaveBeenCalled();
   });
 
-  it('500 HANDLER_FAILED if the GitHub adapter throws', async () => {
+  it('400 INTEGRATION_NOT_CONFIGURED when the project has no github binding', async () => {
     selectLimit.mockResolvedValueOnce([{ id: 'p1', secret: SECRET }]);
-    handleGitHubEventMock.mockRejectedValueOnce(new Error('boom'));
+    listBindingsMock.mockResolvedValueOnce([]);
+    const body = '{"action":"opened"}';
+    const r = await buildApp().fetch(
+      await post('/api/webhooks/in/p', body, {
+        'x-hub-signature-256': signHmacSha256(BINDING_SECRET, body),
+        'x-github-event': 'issues',
+      }),
+    );
+    expect(r.status).toBe(400);
+    const json = (await r.json()) as { code?: string };
+    expect(json.code).toBe('INTEGRATION_NOT_CONFIGURED');
+  });
+
+  it('500 HANDLER_FAILED if the github adapter throws', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: 'p1', secret: SECRET }]);
+    handleInboundMock.mockRejectedValueOnce(new Error('boom'));
     const body = '{"action":"opened","issue":{"id":1}}';
     const r = await buildApp().fetch(
       await post('/api/webhooks/in/p', body, {
-        'x-hub-signature-256': signHmacSha256(SECRET, body),
+        'x-hub-signature-256': signHmacSha256(BINDING_SECRET, body),
         'x-github-event': 'issues',
       }),
     );

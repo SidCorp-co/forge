@@ -6,6 +6,7 @@ export type IntegrationProvider =
   | 'epodsystem'
   | 'sentry'
   | 'rocketchat'
+  | 'github'
   // cm:why `agent` has no adapter on purpose — nothing is integrated. It is a release CHANNEL declaration (which box may ship, how to prove it shipped, how to undo it), and the deploy itself is the project's own script run by the release session. Every adapter lookup already guards `if (!adapter)`, so the absence is a supported shape, not a gap.
   | 'agent';
 
@@ -16,6 +17,7 @@ export const INTEGRATION_PROVIDERS = [
   'epodsystem',
   'sentry',
   'rocketchat',
+  'github',
   'agent',
 ] as const satisfies readonly IntegrationProvider[];
 

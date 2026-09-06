@@ -38,6 +38,23 @@
   reader anywhere in core, so adding them to the schema would have made three dead dials
   configurable. The "configured elsewhere" list is rewritten to match: every row now names a key
   something in core actually reads, and none of them promises work to a closed issue.
+- **GitHub is an integration provider, not a second webhook path.** It used to live on a branch
+  inside `POST /in/:slug` keyed on `projects.webhookSecret` — one shared secret per project, no
+  environment split, no delivery log, no health, no circuit breaker — kept, by its own comment,
+  "preserved verbatim so the existing inbound-routes.test.ts regression test continues to pass".
+  Measured on the live fleet 2026-09-06, that path had **0 of 41** projects configured and had
+  produced **0 of 4,436** issues, so there was nothing in the field to keep working and the branch
+  is gone rather than left beside its replacement.
+
+  `github` is now a registered adapter with its own connection, binding, per-binding
+  `integrationSecret`, delivery log and healthcheck, reached by `x-github-event` like any other
+  provider. A delivery signed with the project's old `webhookSecret` is now refused — there is a
+  test that asserts exactly that, because it is the break, and it fails with `expected 200 to be
+  401` if the routing entry is removed. The healthcheck separates GitHub's 401 (token not
+  recognised) from its 403 (token recognised, scope or SSO refused) instead of calling both
+  `needs_reauth`; ISS-924 files the same mislabel against the Coolify adapter.
+
+  Opening and reviewing pull requests is not in this change and is refused by name until it lands.
 
 - **`pnpm test:changed` — the local loop, wired to nothing.** Runs the tests a change reaches
   (`vitest list --changed` against the same `baseRev()` the drain gate uses, so a push straight to
@@ -952,6 +969,26 @@
   `update::apply` gates on `is_newer(manifest.version, CURRENT_VERSION)` — so a re-cut `0.11.1`
   would have reached no box already on `0.11.1`, and the fix would have been merged, released and
   still absent from every runner it was written for.
+- **A mirrored GitHub close no longer claims the work shipped, and a pull request no longer becomes
+  an issue.** Both defects sat in `handleGitHubEvent`, which had no test of any kind until now —
+  which is why they sat there.
+
+  `issues.closed` stamped `merged_at` via COALESCE, mirroring the state-machine writer's rule for
+  work Forge itself drove to done. But `merged_at` releases every `blocks` dependent as if the code
+  had landed, and GitHub sends the same event for `wontfix`, `duplicate` and `not planned` — so a
+  duplicate closed upstream would have dispatched its dependents against code that does not exist.
+  A mirror of somebody else's tracker knows only that the row is closed, and now records only that.
+
+  `pull_request.opened` filed a Forge issue per PR. A PR is a change under review, not a unit of
+  work with a deliverable and an owner, so it fails every admission gate in the `what-is-an-issue`
+  guide and arrives owned by nobody. What a PR event is for is advancing the issue its branch
+  already belongs to; that mapping comes with the pull-request verbs, and until then the event
+  falls through to the unhandled-event log, which is the honest answer rather than the nearest one.
+
+  Both are covered by `tests/integration/github-webhook-mirror-e2e.test.ts` against real Postgres,
+  because both assertions are about a column: restoring the stamp turns the close test red with
+  `expected '2026-09-06 04:48:00.449163+00' to be null`.
+
 - **Coolify deploys go out as POST, before the GET stops being a deploy.** `client.ts` triggered
   every deploy with `GET /api/v1/deploy?uuid=&force=`. Upstream `0633b543` (2026-07-19, released in
   v4.2.0) repointed that route at a stub returning **405 `This endpoint has changed to a POST

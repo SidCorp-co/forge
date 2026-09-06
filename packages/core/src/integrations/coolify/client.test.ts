@@ -87,7 +87,6 @@ describe('CoolifyClient', () => {
     const fetchImpl = makeFetch(({ url, init }) => {
       expect(url).toBe('https://coolify.example/api/v1/resources');
       expect(init.method).toBe('GET');
-      // Coolify v4 /resources is list-only — returns an array.
       return new Response(
         JSON.stringify([
           { uuid: 'other-uuid', name: 'api', status: 'running' },

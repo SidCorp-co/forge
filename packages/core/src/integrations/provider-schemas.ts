@@ -51,7 +51,7 @@ const RELEASE_CHANNEL_KEYS = ['releaseRunnerLabel', 'verify', 'rollback'] as con
 
 const coolifyConfigSchema = z.object({
   baseUrl: z.string().url().max(500),
-  // One binding fans out to ≥1 target (split BE/FE deploy as separate apps).
+  // cm:why several targets under one binding because a split BE/FE deploy is two separate Coolify applications sharing one project's credential and release gate
   targets: z.array(coolifyTargetSchema).min(1).max(20),
   ...releaseChannelFields,
 });
@@ -70,6 +70,7 @@ const BINDING_CONFIG_KEYS: Record<string, readonly string[]> = {
   postman: RELEASE_CHANNEL_KEYS,
   epodsystem: RELEASE_CHANNEL_KEYS,
   sentry: RELEASE_CHANNEL_KEYS,
+  github: ['owner', 'repo', ...RELEASE_CHANNEL_KEYS],
   agent: RELEASE_CHANNEL_KEYS,
 };
 
@@ -183,6 +184,19 @@ const rocketchatSecretsSchema = z.object({
   userId: z.string().min(1).max(200),
 });
 
+// cm:guard the webhook signing secret is `integrationSecret` on the binding, NOT a field here — `secrets` holds the API credential only. An operator pastes the former into GitHub and the latter comes from GitHub, so a schema that carried both would invite the two to be swapped, and a swap authenticates nothing while looking configured.
+const githubConfigBase = z.object({
+  owner: z.string().min(1).max(200).optional(),
+  repo: z.string().min(1).max(200).optional(),
+  apiBaseUrl: z.string().url().max(500).optional(),
+  ...releaseChannelFields,
+});
+
+// cm:guard ONE credential field here on purpose. Opening a pull request and approving one need DIFFERENT identities — GitHub refuses a review of `event: APPROVE` from the PR's own author — so the approve verb brings a second token when it lands and has a consumer. Adding it now would ship a field nothing reads and no operator could be told what to put in.
+const githubSecretsSchema = z.object({
+  token: z.string().min(8).max(2000),
+});
+
 // cm:why the release channel `agent` is declared here rather than left as free-text: the REST create path validates through the discriminated union below, so a provider absent from it cannot be created at all — `provider` being a `text` column only means no MIGRATION is needed. It carries no credential and has no adapter because nothing is integrated: the deploy is the project's own script, run by the release session on a box that already holds the key.
 const agentReleaseConfigSchema = z.object(releaseChannelFields);
 
@@ -233,6 +247,13 @@ export const createSchema = z.discriminatedUnion('provider', [
     environment: environmentSchema.default('prod'),
     config: rocketchatConfigBase,
     secrets: rocketchatSecretsSchema,
+    orgId: z.uuid().optional(),
+  }),
+  z.object({
+    provider: z.literal('github'),
+    environment: environmentSchema.default('prod'),
+    config: githubConfigBase,
+    secrets: githubSecretsSchema,
     orgId: z.uuid().optional(),
   }),
   z.object({
@@ -292,6 +313,13 @@ export const connectionCreateSchema = z.discriminatedUnion('provider', [
     secrets: rocketchatSecretsSchema,
     orgId: z.uuid().optional(),
   }),
+  z.object({
+    provider: z.literal('github'),
+    displayName: z.string().min(1).max(200).optional(),
+    config: githubConfigBase,
+    secrets: githubSecretsSchema,
+    orgId: z.uuid().optional(),
+  }),
 ]);
 
 export const connectionUpdateSchema = z.object({
@@ -308,6 +336,7 @@ export function configSchemaForProvider(provider: string): z.ZodTypeAny {
   if (provider === 'epodsystem') return epodsystemConfigBase.partial();
   if (provider === 'sentry') return sentryConfigBase.partial();
   if (provider === 'rocketchat') return rocketchatConfigBase.partial();
+  if (provider === 'github') return githubConfigBase.partial();
   if (provider === 'agent') return agentReleaseConfigSchema.partial();
   return coolifyConfigSchema.partial();
 }
@@ -317,6 +346,7 @@ function secretsSchemaForProvider(provider: RotatingProvider): z.ZodTypeAny {
   if (provider === 'coolify') return coolifySecretsSchema.partial();
   if (provider === 'sentry') return sentrySecretsSchema.partial();
   if (provider === 'rocketchat') return rocketchatSecretsSchema.partial();
+  if (provider === 'github') return githubSecretsSchema.partial();
   return postmanSecretsSchema.partial();
 }
 
@@ -324,6 +354,7 @@ function secretsSchemaForProvider(provider: RotatingProvider): z.ZodTypeAny {
 function primaryFieldForProvider(provider: RotatingProvider): string {
   if (provider === 'coolify') return 'apiToken';
   if (provider === 'sentry' || provider === 'rocketchat') return 'authToken';
+  if (provider === 'github') return 'token';
   return 'apiKey';
 }
 

@@ -60,6 +60,7 @@ import { registerRunnerReleaseRefetch } from './install/fetch-release.js';
 import { installRoutes } from './install/routes.js';
 import { registerCoolifyAdapter } from './integrations/coolify/adapter.js';
 import { registerEpodsystemAdapter } from './integrations/epodsystem/adapter.js';
+import { registerGitHubAdapter } from './integrations/github/adapter.js';
 import { registerIntegrationsHealthSweep } from './integrations/health-sweep.js';
 import { registerPostmanAdapter } from './integrations/postman/adapter.js';
 import { registerIntegrationsWorker } from './integrations/queue.js';
@@ -259,11 +260,7 @@ app.post('/mcp', mcpHandler);
 app.get('/mcp', mcpHandler);
 app.delete('/mcp', mcpHandler);
 
-// Public runner distribution: GET /install.sh, /install/latest.json, /install/bin/:target.
-// Mounted at the root for self-hosters who expose core directly, AND under
-// `/api` because the hosted edge proxy forwards only `/api/*` to core — the
-// runner self-updater fetches `{core}/api/install/latest.json` (ISS-392). The
-// route handlers echo the arriving prefix into the download URLs they emit.
+// cm:guard mount BOTH — a self-hoster exposes core directly at the root, while the hosted edge proxy forwards only `/api/*`, so dropping either mount breaks one deployment shape and leaves the other working. The runner self-updater fetches `{core}/api/install/latest.json` (ISS-392), and the handlers echo the arriving prefix into the download URLs they emit, so the two mounts are not interchangeable.
 app.route('/', installRoutes);
 app.route('/api', installRoutes);
 
@@ -454,6 +451,7 @@ if (isMain) {
   await startBoss();
   await assertVaultBootSafety();
   registerCoolifyAdapter();
+  registerGitHubAdapter();
   registerPostmanAdapter();
   registerEpodsystemAdapter();
   registerSentryAdapter();
