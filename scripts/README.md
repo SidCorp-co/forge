@@ -359,7 +359,7 @@ its own words: *"Without this exception the baseline has no path that ever reduc
 `CM013`, in the vendored checker from **0.16.0**, asks what siting cannot: this change altered what
 the file *does* and paid none of that file's frozen debt — why is the count still the same? Deleting
 or rewording one comment satisfies it. Baseline behaviour is owned upstream in
-`SidCorp-co/forge-pipeline-skills`, so the rule landed there and arrived here as a pin bump — never
+`SidCorp-co/codemap`, so the rule landed there and arrived here as a pin bump — never
 patch `.forge/codemap/lib/` in place, the weekly `codemap-upgrade` workflow re-vendors over it.
 
 This script is the wiring, and it exists rather than a fourth `cm verify` step for two reasons:

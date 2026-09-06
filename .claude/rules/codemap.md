@@ -118,7 +118,7 @@ in it: `cm:ignore CM013 — <reason>`.
 forge-plugin carve-out, and the same reason: it ships on its own clock.
 
 It leaves as an issue on the **`codemap`** Forge project (source repo
-`SidCorp-co/forge-pipeline-skills`), named in your comment under `Extra fixes:` as **reported**,
+`SidCorp-co/codemap`), named in your comment under `Extra fixes:` as **reported**,
 not fixed. A false CM001, a verb that refuses wrongly, a rule with no way out — all of it files
 there. Carry the `cm --version`, the file, and the exact line the checker named; the checker's own
 output is the reproduction.
