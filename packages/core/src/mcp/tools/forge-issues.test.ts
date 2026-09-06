@@ -23,9 +23,7 @@ vi.mock('../../storage/index.js', () => ({
   isEnoent: () => false,
 }));
 
-// Drizzle query-builder mock — each chain step returns the next mock so we
-// can program per-call return values via `mockResolvedValueOnce` and assert
-// on the call arguments. Mirrors the pattern used in tasks/routes.test.ts.
+// cm:guard every chain step returns the NEXT mock, so a test programs its rows with `mockResolvedValueOnce` in the order the subject queries them — insert a query anywhere in a handler and every later expectation in that test reads someone else's row
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
@@ -88,7 +86,7 @@ const deleteFrom = vi.fn(() => ({ where: deleteWhere }));
 type UpdateIssueFieldsInput = {
   issueId: string;
   updates: Record<string, unknown>;
-  labelIds?: string[];
+  labelIds?: Array<{ labelId: string; isPrimary: boolean }>;
   actor: { type: string; id: string };
 };
 const updateIssueFieldsMock = vi.fn(async (_input: UpdateIssueFieldsInput) => ({}) as never);
@@ -1734,7 +1732,10 @@ describe('forge_issues tool', () => {
       expect(result.labels).toHaveLength(2);
       // cm:edge contract -> packages/core/src/issues/update-service.ts — the replace-set delta (which ids are added, which removed, and the activity rows for both) is asserted there; this side asserts only that the resolved ids arrive
       const call = updateIssueFieldsMock.mock.lastCall?.[0];
-      expect([...(call?.labelIds ?? [])].sort()).toEqual([LABEL_ID, LABEL_ID_2].sort());
+      expect([...(call?.labelIds ?? [])].map((l) => l.labelId).sort()).toEqual(
+        [LABEL_ID, LABEL_ID_2].sort(),
+      );
+      expect([...(call?.labelIds ?? [])].every((l) => l.isPrimary === false)).toBe(true);
       expect(call?.actor).toEqual({ type: 'device', id: fakeDevice.id, agency: 'agent' });
     });
 
@@ -1826,7 +1827,7 @@ describe('forge_issues tool', () => {
 
       expect(result.labels).toEqual([{ id: LABEL_ID, name: 'area:mobile', color: '#000' }]);
       expect(txInsertValues).toHaveBeenCalledWith(
-        expect.arrayContaining([{ issueId: ISSUE_ID, labelId: LABEL_ID }]),
+        expect.arrayContaining([{ issueId: ISSUE_ID, labelId: LABEL_ID, isPrimary: false }]),
       );
       expect(hooks.emit).toHaveBeenCalledWith(
         'issueCreated',

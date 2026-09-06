@@ -48,6 +48,21 @@ export type ProjectMember = typeof schema.projectMembers.$inferSelect;
 
 export type Label = typeof schema.labels.$inferSelect;
 
+// cm:edge contract -> packages/core/src/db/schema.ts — `labelKinds`, shared so a client cannot build a filter or a picker on a kind the server would reject
+export type LabelKind = schema.LabelKind;
+
+/**
+ * ISS-593 — how one module reads on an issue. The shape core returns in every `labels[]` entry
+ * (REST issue detail, `by-display`, and the MCP `listIssueLabels` serializers); a client picks
+ * the primary module out of that array by `isPrimary`, and there is no other source for it.
+ */
+export interface ModuleAttribution {
+  labelId: string;
+  name: string;
+  color: string;
+  isPrimary: boolean;
+}
+
 // Core serializes issues with a `displayId: "ISS-N"` added on top of the
 // stored row (see `packages/core/src/issues/routes.ts:serializeIssue`).
 // `agentSessions` / `agentStatus` are populated only when the caller opts in
@@ -92,7 +107,6 @@ export type SkillActivityEventRow = typeof schema.skillActivityEvents.$inferSele
 
 export type UpdatePacketRow = typeof schema.updatePackets.$inferSelect;
 
-// ISS-564 — Knowledge subsystem P0. Foundation row type only; no reader/writer yet.
 export type KnowledgeEntry = typeof schema.knowledgeEntries.$inferSelect;
 
 // ISS-546/ISS-556 — improvement-message registry type (cross-app parity).

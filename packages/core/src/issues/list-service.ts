@@ -2,7 +2,7 @@ import { and, desc, eq, exists, gte, ilike, inArray, lt, ne, or, sql } from 'dri
 import { db } from '../db/client.js';
 import { type IssueStatus, issueLabels, issues } from '../db/schema.js';
 import { identifierTsQuery } from '../db/schema-types.js';
-import { resolveLabelIdsTolerant } from './label-service.js';
+import { resolveLabelIdsTolerant, resolveModuleIdsTolerant } from './label-service.js';
 
 export type IssueListFilters = {
   status?: IssueStatus | undefined;
@@ -15,6 +15,7 @@ export type IssueListFilters = {
   updatedAfter?: Date | undefined;
   search?: string | undefined;
   label?: readonly string[] | undefined;
+  module?: readonly string[] | undefined;
 };
 
 /**
@@ -62,8 +63,13 @@ export async function listIssueRows(
     if (orExpr) conds.push(orExpr);
   }
 
-  if (filters?.label !== undefined) {
-    const resolvedIds = await resolveLabelIdsTolerant(projectId, filters.label);
+  for (const [values, resolve] of [
+    [filters?.label, resolveLabelIdsTolerant],
+    [filters?.module, resolveModuleIdsTolerant],
+  ] as const) {
+    if (values === undefined) continue;
+    const resolvedIds = await resolve(projectId, values);
+    // cm:guard an empty resolution means NO issues, never "skip this filter" — dropping it returns every row in the project and the caller reads that as "nothing matched"
     if (resolvedIds.length === 0) return [];
     conds.push(
       exists(

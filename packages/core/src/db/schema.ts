@@ -168,13 +168,7 @@ export const refreshTokens = pgTable(
   }),
 );
 
-// Every project belongs to exactly ONE org (`projects.org_id` NOT NULL). Each
-// user gets a personal org at signup (and via the 0106 backfill); team orgs are
-// created explicitly. Org owner/admin derive an implicit project `admin` role
-// on every project in the org; org `member` derives NOTHING — project access
-// for plain members still requires a project_members row (or being in a
-// project of an org they admin). The single resolution rule lives in
-// `lib/authz.ts effectiveProjectRole` — do not re-implement it.
+// cm:guard org role does NOT imply project access on its own: owner/admin derive an implicit project `admin`, plain `member` derives nothing and still needs a `project_members` row. Resolve it through `lib/authz.ts effectiveProjectRole` — a second implementation grants or denies differently and nothing compares the two.
 
 export const orgMemberRoles = ['owner', 'admin', 'member'] as const;
 export type OrgMemberRole = (typeof orgMemberRoles)[number];
@@ -1167,6 +1161,10 @@ export const comments = pgTable(
   }),
 );
 
+// cm:why ISS-593 — a module IS a label rather than a table of its own, so every path that already attaches, filters and lists labels carries modules for free; `kind` is the only thing that separates them.
+export const labelKinds = ['label', 'module'] as const;
+export type LabelKind = (typeof labelKinds)[number];
+
 export const labels = pgTable(
   'labels',
   {
@@ -1176,10 +1174,18 @@ export const labels = pgTable(
       .references(() => projects.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     color: text('color').notNull(),
+    // cm:guard `text(col,{enum})` with a DEFAULT, matching `issues.status` — the default is load-bearing: every row that existed before ISS-593 and every insert that predates the widened schema must read back as a plain label, never as a module.
+    kind: text('kind', { enum: labelKinds }).notNull().default('label'),
+    // cm:why modules only — a self-referencing parent gives the taxonomy its hierarchy without a second table. Cycle-freedom is NOT expressible here and is enforced in `labels/module-service.ts`; the FK only guarantees the parent exists.
+    parentId: uuid('parent_id').references((): AnyPgColumn => labels.id, { onDelete: 'set null' }),
+    description: text('description'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     projectNameUq: uniqueIndex('labels_project_id_name_uq').on(t.projectId, t.name),
+    parentIdx: index('labels_parent_id_idx').on(t.parentId),
+    // cm:guard the CHECK is the backstop, not a duplicate of the TS enum: `text(..., { enum })` is compile-time only and emits no constraint, so any path that inserts a label without going through `labels/routes.ts` can write a kind that is neither — and such a row filters as no module and renders as no label. Same reason `comments_format_chk` and `issues_complexity_chk` exist.
+    kindChk: check('labels_kind_chk', sql`${t.kind} IN ('label', 'module')`),
   }),
 );
 
@@ -1192,10 +1198,14 @@ export const issueLabels = pgTable(
     labelId: uuid('label_id')
       .notNull()
       .references(() => labels.id, { onDelete: 'cascade' }),
+    // cm:why ISS-593 — the issue's PRIMARY module, and the single source of truth for it: no column on `issues`, no second table. A plain label is never primary; that half is the service layer's, because SQL cannot see `labels.kind` from this row.
+    isPrimary: boolean('is_primary').notNull().default(false),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.issueId, t.labelId] }),
     labelIdx: index('issue_labels_label_id_idx').on(t.labelId),
+    // cm:guard the DB backstop for "at most one primary module per issue" — the service layer enforces the same rule with a typed error, and this index is what holds when a writer bypasses it. Partial, so the false rows (all of them, by default) are not indexed.
+    primaryUq: uniqueIndex('issue_labels_primary_uq').on(t.issueId).where(sql`is_primary = true`),
   }),
 );
 
@@ -1309,6 +1319,12 @@ export const issueAttachmentsRelations = relations(issueAttachments, ({ one }) =
 
 export const labelsRelations = relations(labels, ({ one, many }) => ({
   project: one(projects, { fields: [labels.projectId], references: [projects.id] }),
+  parent: one(labels, {
+    fields: [labels.parentId],
+    references: [labels.id],
+    relationName: 'labelHierarchy',
+  }),
+  children: many(labels, { relationName: 'labelHierarchy' }),
   issues: many(issueLabels),
 }));
 
