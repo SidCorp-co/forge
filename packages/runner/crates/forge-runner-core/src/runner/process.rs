@@ -31,7 +31,7 @@ const DEFAULT_MCP_TOOL_TIMEOUT_MS: &str = "600000";
 /// Resolve the `MCP_TOOL_TIMEOUT` to inject when spawning `claude`: `None` when
 /// the operator already set it in the environment (respect their override),
 /// else the bounded default. Pure (env read passed in) so it stays testable.
-fn mcp_tool_timeout_default(existing: Option<&OsStr>) -> Option<&'static str> {
+pub(crate) fn mcp_tool_timeout_default(existing: Option<&OsStr>) -> Option<&'static str> {
     match existing {
         Some(v) if !v.is_empty() => None,
         _ => Some(DEFAULT_MCP_TOOL_TIMEOUT_MS),

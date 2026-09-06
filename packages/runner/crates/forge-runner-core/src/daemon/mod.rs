@@ -15,6 +15,7 @@ pub mod preflight;
 pub mod repo_lock;
 pub mod setup_agent;
 pub mod skill_pull;
+pub mod terminal;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -469,15 +470,27 @@ pub async fn run(
         });
     }
 
+    // cm:guard ONE registry, shared by the master loop and the inbox arm. The loop is what learns a session's pane name and the inbox is what needs it, so two registries would leave every `session.send` to a master acked `gone` while the master sat there alive.
+    let masters = Arc::new(master::Masters::new());
+
     // cm:guard both loops start, or the box does neither half of its own work: the control socket is the ONLY way a master turns a decision into a running job, and the pool poll is the only thing that notices work exists now that core pushes nothing. A daemon that starts one without the other looks healthy and never runs anything.
     {
+        let prepared = control::Preparations::new();
         let ctl = Arc::new(control::Control {
             client: (*client).clone(),
             runner: runner.clone(),
             cfg: (*cfg).clone(),
             locks: repo_locks.clone(),
             inflight: inflight.clone(),
+            prepared: prepared.clone(),
         });
+        // cm:guard the preparation reaper starts with the socket, always. `prepare` can park a hold, and the only process that knows it happened is this one — a daemon serving the split without this loop leaves a master free to take ten jobs, start two and strand eight until core's three-minute reaper notices each of them.
+        {
+            let (client, cancel_rx) = ((*client).clone(), cancel_rx.clone());
+            tokio::spawn(async move {
+                control::reap_preparations(client, prepared, cancel_rx).await;
+            });
+        }
         let cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             if let Err(e) = control::serve(ctl, cancel_rx).await {
@@ -487,9 +500,9 @@ pub async fn run(
     }
     {
         let (client, cfg) = ((*client).clone(), (*cfg).clone());
-        let gate = Arc::new(master::MasterGate::new());
         let cancel_rx = cancel_rx.clone();
-        tokio::spawn(async move { master::run(client, cfg, gate, cancel_rx).await });
+        let masters = masters.clone();
+        tokio::spawn(async move { master::run(client, cfg, masters, cancel_rx).await });
     }
 
     let mut cancel_rx = cancel_rx.clone();
@@ -546,11 +559,12 @@ pub async fn run(
                     }
                     // cm:edge protocol -> packages/core/src/agent-sessions/session-send.ts — the durable half. Core stamps an episode and publishes; this arm is what makes silence mean something, so an arm that panics or returns early without acking is indistinguishable to core from a runner that is gone.
                     "session.send" => {
-                        let (client, runner) = (client.clone(), runner.clone());
+                        let (client, runner, masters) =
+                            (client.clone(), runner.clone(), masters.clone());
                         let guard = InflightGuard::enter(&inflight);
                         tokio::spawn(async move {
                             let _guard = guard;
-                            inbox::handle_session_send(&client, runner, frame.data).await;
+                            inbox::handle_session_send(&client, runner, masters, frame.data).await;
                         });
                     }
                     "agent:abort" => {

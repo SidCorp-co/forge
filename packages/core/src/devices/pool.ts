@@ -55,8 +55,8 @@ const RELATIONS = sql`
  * `limit` bounds the read only — taking any of it is a separate `claim`.
  */
 // cm:guard the exclusions here are exactly the conditions under which a claim CANNOT succeed — queued under a live run, unheld, off cooldown, no in-flight sibling for the issue. Do NOT add a dependency filter, a project cap, or an ordering by priority: those are routing judgements the master owns, and a pool that pre-decides them is the kernel deciding routing again, which is the whole thing this replaces.
-// cm:edge lockstep -> packages/core/src/devices/claim.ts — the sibling-job NOT EXISTS below must stay identical to L1 in `claimJobForMaster`. Looser here offers work every claim refuses; tighter hides work a master could have taken, and neither failure says a word.
-// cm:edge lockstep -> packages/core/src/devices/pool-admission.ts — `ADMITTED_RUNNER` is the same predicate `claimJobForMaster` answers by name; the join above proves a BINDING exists and says nothing about whether an operator has withdrawn the box.
+// cm:edge lockstep -> packages/core/src/devices/claim.ts — the sibling-job NOT EXISTS below must stay identical to L1 in `prepareJobForMaster`. Looser here offers work every claim refuses; tighter hides work a master could have taken, and neither failure says a word.
+// cm:edge lockstep -> packages/core/src/devices/pool-admission.ts — `ADMITTED_RUNNER` is the same predicate `prepareJobForMaster` answers by name; the join above proves a BINDING exists and says nothing about whether an operator has withdrawn the box.
 export async function readPool(args: {
   deviceId: string;
   projectId?: string | undefined;

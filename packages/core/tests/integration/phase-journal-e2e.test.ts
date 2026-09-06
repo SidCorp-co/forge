@@ -100,7 +100,7 @@ describe('phase_journal E2E', () => {
       kind: 'verdict',
       decision: 'request_changes',
     });
-    expect(rows[0]?.['ended_at']).toBeNull();
+    expect(rows[0]?.ended_at).toBeNull();
   });
 
   // cm:guard this is the removal's own witness, not an aspiration: the CHECK that refused this insert is gone with migration 0194, and a test that still asserted the refusal would be the stale claim the changelog warns about. If this ever fails, the constraint came back — decide that on purpose.
@@ -127,8 +127,8 @@ describe('phase_journal E2E', () => {
     const rows = await harness.db.execute(sql`
       SELECT artifact->>'text' AS text, ended_at FROM phase_journal WHERE phase = 'code'
     `);
-    expect(rows[0]?.['text']).toBe('second');
-    expect(rows[0]?.['ended_at']).not.toBeNull();
+    expect(rows[0]?.text).toBe('second');
+    expect(rows[0]?.ended_at).not.toBeNull();
   });
 
   it('lets the agent write every phase it owns', async () => {
@@ -138,7 +138,7 @@ describe('phase_journal E2E', () => {
     const rows = await harness.db.execute(
       sql`SELECT phase FROM phase_journal WHERE source = 'agent' ORDER BY phase`,
     );
-    expect(rows.map((r) => r['phase'])).toEqual(['code', 'plan']);
+    expect(rows.map((r) => r.phase)).toEqual(['code', 'plan']);
   });
 
   it('refuses a second row for the same phase and attempt, so a resume point is never ambiguous', async () => {

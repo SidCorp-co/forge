@@ -4,6 +4,7 @@ pub mod config;
 pub mod doctor;
 pub mod login;
 pub mod logs;
+pub mod master;
 pub mod pool;
 pub mod runners;
 pub mod service;

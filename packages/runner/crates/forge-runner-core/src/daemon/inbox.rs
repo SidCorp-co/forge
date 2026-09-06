@@ -15,6 +15,8 @@ use std::sync::Arc;
 use serde::Deserialize;
 use serde_json::Value;
 
+use crate::daemon::master::Masters;
+use crate::daemon::terminal;
 use crate::runner::claude_code::ClaudeCodeRunner;
 use crate::transport::inbox::{self, Ack};
 use crate::transport::CoreClient;
@@ -42,7 +44,12 @@ fn write_deadline(frame_ms: Option<u64>) -> std::time::Duration {
     std::time::Duration::from_millis(ms)
 }
 
-pub async fn handle_session_send(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, data: Value) {
+pub async fn handle_session_send(
+    client: &CoreClient,
+    runner: Arc<ClaudeCodeRunner>,
+    masters: Arc<Masters>,
+    data: Value,
+) {
     let frame: SendFrame = match serde_json::from_value(data) {
         Ok(f) => f,
         Err(e) => {
@@ -60,13 +67,19 @@ pub async fn handle_session_send(client: &CoreClient, runner: Arc<ClaudeCodeRunn
 
     match frame.kind.as_str() {
         "cancel" => {
-            runner.close(&key).await;
+            // cm:guard a master is ENDED by killing its pane, not by `runner.close`, which knows nothing about a session it does not parent. Falling through to the resident map would ack `gone` for a master that is still running and still holding work.
+            if let Some(pane) = masters.pane_for_session(&sid) {
+                let _ = terminal::kill(&pane).await;
+            } else {
+                runner.close(&key).await;
+            }
             inbox::ack(client, &sid, seq, Ack::Gone).await;
         }
         "checkpoint" => {
             deliver(
                 client,
                 &runner,
+                &masters,
                 &frame,
                 &key,
                 ClaudeCodeRunner::CHECKPOINT_PROMPT,
@@ -82,19 +95,39 @@ pub async fn handle_session_send(client: &CoreClient, runner: Arc<ClaudeCodeRunn
                 );
                 return;
             };
-            deliver(client, &runner, &frame, &key, &body).await;
+            deliver(client, &runner, &masters, &frame, &key, &body).await;
         }
         other => tracing::warn!("[inbox] unknown kind {other:?} — session={sid} seq={seq}"),
+    }
+}
+
+/// Type a message into a master's pane, and say whether it landed (ISS-919 B6).
+// cm:guard the terminal arm is tried FIRST for a session this box hosts as a pane, because the resident map does not contain it and `send_resident` would answer with an error the caller reads as `gone`. A master that is alive, attached to by a human and holding work would then be reported dead, and core would fall back on the strength of that report.
+// cm:guard the pane write is a real ack, not a courtesy one. `send_line` fails when the session is absent and when the paste is refused, which are the two ways a message does not reach the composer — so `delivered` here means the same thing it means on the resident path, and the `applied` half stays what it always was: unreported, because a pane emits no turn boundary.
+async fn deliver_to_pane(masters: &Arc<Masters>, session_id: &str, body: &str) -> Option<bool> {
+    let pane = masters.pane_for_session(session_id)?;
+    match terminal::send_line(&pane, body).await {
+        Ok(()) => Some(true),
+        Err(e) => {
+            tracing::info!("[inbox] master pane {pane} did not take the message: {e}");
+            Some(false)
+        }
     }
 }
 
 async fn deliver(
     client: &CoreClient,
     runner: &Arc<ClaudeCodeRunner>,
+    masters: &Arc<Masters>,
     frame: &SendFrame,
     key: &str,
     body: &str,
 ) {
+    if let Some(landed) = deliver_to_pane(masters, &frame.session_id, body).await {
+        let ack = if landed { Ack::Delivered } else { Ack::Gone };
+        inbox::ack(client, &frame.session_id, frame.seq, ack).await;
+        return;
+    }
     let pending = Some((frame.session_id.clone(), frame.seq));
     let key = key.to_string();
     let write = runner.send_resident(&key, body, pending);
