@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FORGE_GUIDES, getGuide, listGuides } from './registry.js';
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
-// Guardrail (D2 in the plan): the public /api/guides route is fully
-// unauthenticated, so a secret-shaped literal here would be a real leak.
+// cm:why `GET /api/guides` is fully unauthenticated, so a secret-shaped literal in a guide body is a real leak rather than a style problem — which is why a test, not review, is what stops one landing
 const SECRET_SHAPE_RE = /password\s*[:=]|Bearer [A-Za-z0-9]{12,}|forge_pat_|crmk_/i;
 
 describe('FORGE_GUIDES registry', () => {
@@ -74,5 +73,32 @@ describe('FORGE_GUIDES registry', () => {
     if (!known) return;
     expect(getGuide(known.slug)).toEqual(known);
     expect(getGuide('not-a-real-guide-slug')).toBeUndefined();
+  });
+});
+
+describe('module-taxonomy-migration guide (ISS-595)', () => {
+  const body = getGuide('module-taxonomy-migration')?.body ?? '';
+
+  it('states an idempotency key for both passes', () => {
+    expect(body).toContain('(projectId, label name)');
+    expect(body).toContain('(issueId, labelId, isPrimary)');
+  });
+
+  it('orders a read-only dry run before the write passes', () => {
+    const dryRun = body.indexOf('### Pass 0 — dry run, reads only');
+    const create = body.indexOf('### Pass 1 — create the modules');
+    const attribute = body.indexOf('### Pass 2 — attribute the issues');
+    expect(dryRun).toBeGreaterThan(-1);
+    expect(dryRun).toBeLessThan(create);
+    expect(create).toBeLessThan(attribute);
+    expect(body).toContain('Nothing in this pass writes');
+  });
+
+  it('forbids deleting the old comment tags the migration supersedes', () => {
+    expect(body).toContain('**Do not delete the old tags.**');
+  });
+
+  it('warns that `labels` replaces the set rather than adding to it', () => {
+    expect(body).toContain('REPLACES the set');
   });
 });

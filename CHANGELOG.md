@@ -11,6 +11,26 @@
 
 ### Added
 
+- **An agent working an issue on a project that keeps modules is now told they exist, and how to
+  set the issue's primary one.** ISS-593 made a module a label with `kind='module'` and gave an
+  issue a primary through `issue_labels.is_primary`, but nothing told the agents doing the work:
+  the field was discoverable only by reading the `forge_issues` tool description closely, and no
+  prompt anywhere said attributing was expected or which modules a project had. Projects that had
+  a module convention carried it as a `**Module:**` line agents wrote into a comment — a tag no
+  query could filter on.
+
+  Every pipeline job for a project with at least one `kind='module'` label now carries a **The
+  issue's primary module** section in its system prompt: the project's modules with their parents,
+  the `{ labelId, isPrimary: true }` attach payload that sets the primary, and the explicit
+  statement that a `**Module:**` comment is not the attribution and nothing reads it. It also says
+  to leave the primary unset when unsure, because a wrong primary is worse than none — the module
+  filters are counted from it.
+
+  A project with no module labels gets no section at all, byte-for-byte as before: the taxonomy's
+  existence is the only switch, and there is no setting to turn this on. Nothing is written by the
+  server; Forge still never guesses an issue's module. Migrating a project that already has a
+  module convention: `forge_guide get module-taxonomy-migration`. (ISS-595)
+
 - **A project's owner can set a standing policy for its master, and it survives the session.**
   The forge-dev master ran on an instruction — an advisory session budget, which issues count as
   eligible, when to group work into one session, what to pay down alongside the change — that
