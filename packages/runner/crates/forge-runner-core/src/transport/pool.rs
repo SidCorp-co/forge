@@ -99,8 +99,6 @@ pub struct Prepared {
     #[serde(default)]
     pub runner_type: Option<String>,
     #[serde(default)]
-    pub session_mode: Option<String>,
-    #[serde(default)]
     pub session_residency_seconds: Option<u64>,
     #[serde(default)]
     pub agent_session_id: Option<String>,
@@ -151,7 +149,6 @@ pub struct ClaimedJob {
     pub mcp_servers_override: Option<serde_json::Value>,
     pub claude_session_id: Option<String>,
     pub runner_type: Option<String>,
-    pub session_mode: Option<String>,
     pub session_residency_seconds: Option<u64>,
     pub agent_session_id: Option<String>,
     pub issue_key: Option<String>,
@@ -197,7 +194,6 @@ impl Prepared {
             model: self.model,
             claude_session_id: self.prior_claude_session_id,
             runner_type: self.runner_type,
-            session_mode: self.session_mode,
             session_residency_seconds: self.session_residency_seconds,
             agent_session_id: self.agent_session_id,
             attempts: self.attempts,

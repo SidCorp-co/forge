@@ -373,7 +373,6 @@ fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
         mcp_servers_override: turn.mcp_servers_override.clone(),
         resume_id: turn.resume_id.clone(),
         agent_session_id: Some(session_id.to_string()),
-        duplex: true,
         // cm:guard chat NEVER takes a session-cap permit, and ISS-920 giving that wait a 600s bound does not change it: core's `no_client_ack` sweeper kills an unacked chat turn at 90s, so a bounded queue still ends the turn before it spawns (session 1af837da, 2026-09-04: five user messages, no reply). Owner decision: chat has no limit.
         counts_against_session_cap: false,
         // cm:guard chat takes the DEFAULT and no project value, because the field is `pipelineConfig.sessionResidencySeconds` and chat has no pipeline behind it. A chat session's residency is bounded by the same const it always was; giving it a pipeline project's number would make a project setting silently change how long an unrelated chat window stays warm.
@@ -791,12 +790,8 @@ mod tests {
     }
 
     #[test]
-    fn a_chat_turn_is_duplex_and_exempt_from_the_session_cap() {
+    fn a_chat_turn_is_exempt_from_the_session_cap() {
         let spec = chat_spec("s1", "hi", &turn_for_test());
-        assert!(
-            spec.duplex,
-            "chat is resident — a print spawn cannot take a follow-up on stdin"
-        );
         assert!(
             !spec.counts_against_session_cap,
             "a chat turn must never queue for a permit: the wait has no timeout and core kills the session at 90s as `no_client_ack`, after which every send answers 200 into a cancelled session"

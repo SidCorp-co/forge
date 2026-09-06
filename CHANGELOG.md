@@ -799,6 +799,43 @@
 
 ### Removed
 
+- **`print` mode. Every agent a runner starts is now one long-lived session that reads its turns
+  off stdin, and there is no longer a mode to choose.** A runner used to spawn `claude -p "<prompt>"`
+  with stdin closed, read stdout to the first result, and let the process die — one prompt, one
+  process, one unit of work. Three things followed from that identity, and all three are what this
+  removes: a driver that had to ask a human parked the issue and its session was *gone* (measured
+  2026-08-27: `needs_info` parks sat a 360h median, with **zero** human replies across all 17 of
+  them); nothing could be told to a running agent, so every correction was a new process with a cold
+  context; and every counter that said "turn" actually counted processes, because the two were the
+  same number.
+
+  A session now survives the turn that started it. It can be asked a question, answered, injected
+  into, checkpointed and closed without losing the work in flight — a human's comment on a parked
+  question is delivered into the living session, which picks the work back up with its context
+  intact instead of a fresh agent re-reading the issue from scratch.
+
+  `pipelineConfig.sessionMode` is deleted, and `0214_duplex_strips_session_mode.sql` strips the key
+  from stored configs before it leaves the schema. **That migration refuses to run if any project
+  explicitly opted out of duplex**, naming them, rather than quietly moving the one project that
+  said "not this lane" onto that lane. Nothing opts out today; the guard is for the window.
+
+  *Technical: the deletion is the second half of ISS-873, whose phases 0–4 shipped 2026-08-29. What
+  it removes from the runner is `JobSpec::duplex` and every branch that read it — the `Stdio::null()`
+  stdin, the `-p` argument, the conditional input format, and the reader's print-only break on a
+  send error — plus `session_mode` from the two claim types. Core keeps sending `sessionMode:
+  "duplex"` as a constant, recorded as `cm:hack ISS-941`: a core deploy reaches every box at once
+  while a runner binary reaches one on its own 6-hour update check, so dropping the field before the
+  fleet converges would make every un-upgraded box read it absent and run a print lane this release
+  no longer has — a silent fleet-wide revert. Three items on the issue's own delete list were
+  refused and each says why in `docs/flows/agent-execution-session-turns.html`: the 25s heartbeat
+  beat, `RESULT_EXIT_GRACE` and the job-level outcome derivation are shared machinery the issue
+  attributed to the mode, and the last of them is the only thing that reports a job which exits
+  immediately after its final result. The flip to duplex-by-default was taken on a 7-day
+  measurement rather than on more code — no duplex-specific failure cause on either project with
+  volume, and a print cohort that does no work at all, so the comparison the gate asked for was
+  never going to arrive. Four superseded design documents were deleted rather than corrected.
+  (ISS-873)*
+
 - **The `forge_memory.revisions` MCP tool.** The MCP surface is being shrunk to the
   session-lifecycle group (ISS-894). It has **no rows at all** in `mcp_audit_log` under either
   spelling — the first registered tool measured at zero calls lifetime — no `skills.skill_md` row

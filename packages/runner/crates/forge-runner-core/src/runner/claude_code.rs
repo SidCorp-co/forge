@@ -82,26 +82,24 @@ type Sessions = Arc<Mutex<HashMap<String, Session>>>;
 // cm:guard PRINT ONLY. On the duplex path a `{type:result}` ends the TURN and the process is expected to stay alive, so applying this grace there would kill every resident session five seconds after its first answer — the exact behaviour residency exists to remove.
 const RESULT_EXIT_GRACE: Duration = Duration::from_secs(5);
 
-/// How long a duplex session may sit between turns before it is closed.
-// cm:guard a resident session with nobody talking to it is a leaked process holding a permit, and nothing else reaps it: the daemon's drain counter tracks TURNS (`InflightGuard` is scoped to the frame task), so an idle session reads as idle and a restart would exit(0) leaving a setsid-detached survivor. This ceiling is the only thing that closes it. `sessionResidencySeconds` gets its reader in phase 3 and replaces this const with a per-project value.
+/// How long a session may sit between turns before it is closed, when the
+/// project named no residency of its own.
+// cm:guard a resident session with nobody talking to it is a leaked process holding a permit, and nothing else reaps it: the daemon's drain counter tracks TURNS (`InflightGuard` is scoped to the frame task), so an idle session reads as idle and a restart would exit(0) leaving a setsid-detached survivor. This ceiling is the only thing that closes it. It is now the FALLBACK rather than the whole rule — `resolve_residency` prefers a project's `sessionResidencySeconds` and lands here for absent and 0 alike.
 const SESSION_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
-/// How long this session may sit parked between turns.
-// cm:edge lockstep -> packages/core/src/jobs/park-deadline.ts — core's backstop resolves the SAME field with a COALESCE onto the same default, and fires at that value plus a grace. Resolving `0` differently here is what would make the two race: core reaping a park this side still considers live, with `residency_expired` no longer meaning "the runner is gone".
-// cm:guard `Some(0)` means "use the default", NOT "no residency". The config key defaults to 0 and no project has set it, so reading 0 literally would turn residency off for the entire fleet the moment this reader shipped — a regression against the phase 1b const it replaces, and exactly why ISS-873 moved this reader out of phase 3.
-/// Whether this spawn must hold one of the box's duplex session permits.
-// cm:guard the cap covers duplex PIPELINE jobs ONLY. Chat opts out at the spec (`counts_against_session_cap: false`) and must keep doing so. The reason is the SWEEPER, not the shape of the wait: core kills a chat turn that has not acked in 90s, and `SESSION_PERMIT_WAIT` is 600s, so a chat turn queued behind parked pipeline sessions dies before it ever spawns whether the wait is bounded or not (session 1af837da, 2026-09-04). ISS-920 gave the wait a bound and that argument did not move — widening this to `spec.duplex` alone still restores the defect.
+/// Whether this spawn must hold one of the box's session permits.
+// cm:guard the cap covers PIPELINE jobs ONLY. Chat opts out at the spec (`counts_against_session_cap: false`) and must keep doing so. The reason is the SWEEPER, not the shape of the wait: core kills a chat turn that has not acked in 90s, and `SESSION_PERMIT_WAIT` is 600s, so a chat turn queued behind parked pipeline sessions dies before it ever spawns whether the wait is bounded or not (session 1af837da, 2026-09-04). ISS-920 gave the wait a bound and that argument did not move — dropping this field and capping every spawn restores the defect.
 fn takes_session_permit(spec: &JobSpec) -> bool {
-    spec.duplex && spec.counts_against_session_cap
+    spec.counts_against_session_cap
 }
 
-/// How long a spawn may wait for one of the box's duplex session permits.
+/// How long a spawn may wait for one of the box's session permits.
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — `PRE_SPAWN_BEAT_BUDGET` is derived from this plus `REPO_LOCK_WAIT`, so the runner still gives up before core condemns the session. Change this and that budget moves with it; the `const _: () = assert!` over there fails the build if it stops.
 // cm:guard equal to `SESSION_IDLE_TIMEOUT` on purpose: a permit is released by a session ending or by its residency deadline, so a wait shorter than a residency window fails jobs a parked session was about to release, and a longer one learns nothing.
 // cm:hack ISS-920 until:`sessionResidencySeconds` is set above 600 on any project — that value is per-project and `pipeline-config-schema.ts` allows up to 3600, so this bound is only the DEFAULT residency window, not every one. Priced: a project that raises the key gets jobs failing `session_permit_saturated` after 600s that would have got a permit at 900s. Nothing sets the key today; the first project that does moves this number or derives it from the resolved value.
 pub const SESSION_PERMIT_WAIT: Duration = SESSION_IDLE_TIMEOUT;
 
-/// Take a duplex session permit, or fail naming the box that is full.
+/// Take a session permit, or fail naming the box that is full.
 ///
 /// Split out of [`Runner::start`] so the bound can be tested without spawning
 /// `claude`: the wait is the whole behaviour, and the only way to exercise it
@@ -121,14 +119,14 @@ async fn acquire_session_permit(
     }
     // cm:guard a parked `awaiting_input` session keeps its permit until its residency deadline, so "no permit" here usually means the ceiling is spent on sessions doing nothing — say so, or the job's silence reads as a hang.
     tracing::warn!(
-        "[job {job_id}] waiting for a duplex session slot — all {cap} permits held by {} (parked awaiting_input sessions keep theirs until residency ends)",
+        "[job {job_id}] waiting for a session slot — all {cap} permits held by {} (parked awaiting_input sessions keep theirs until residency ends)",
         describe_holders(&holders)
     );
     match tokio::time::timeout(wait, sem.acquire_owned()).await {
         Ok(Ok(permit)) => Ok(permit),
         Ok(Err(e)) => Err(Error::Other(format!("session semaphore closed: {e}"))),
         Err(_) => Err(Error::Other(format!(
-            "session_permit_saturated: all {cap} duplex permits on this box held after {}s; holders at wait start: {}",
+            "session_permit_saturated: all {cap} permits on this box held after {}s; holders at wait start: {}",
             wait.as_secs(),
             describe_holders(&holders)
         ))),
@@ -145,6 +143,9 @@ fn describe_holders(holders: &[String]) -> String {
     holders.join(", ")
 }
 
+/// How long this session may sit parked between turns.
+// cm:edge lockstep -> packages/core/src/jobs/park-deadline.ts — core's backstop resolves the SAME field with a COALESCE onto the same default, and fires at that value plus a grace. Resolving `0` differently here is what would make the two race: core reaping a park this side still considers live, with `residency_expired` no longer meaning "the runner is gone".
+// cm:guard `Some(0)` means "use the default", NOT "no residency". The config key defaults to 0 and no project has set it, so reading 0 literally would turn residency off for the entire fleet the moment this reader shipped — a regression against the phase 1b const it replaces, and exactly why ISS-873 moved this reader out of phase 3.
 fn resolve_residency(configured: Option<u64>) -> Duration {
     match configured {
         Some(secs) if secs > 0 => Duration::from_secs(secs),
@@ -603,7 +604,6 @@ impl ClaudeCodeRunner {
     }
 }
 
-// cm:guard the print/duplex split lives HERE and nowhere else — `-p` and `--input-format` are the two halves of one decision, and while they were decided in two places a spawn could carry both, which is a process holding a prompt it will never read off a stdin it will never be given.
 /// What a live duplex session was spawned with. `None` means no live session.
 pub struct Resident {
     pub model: Option<String>,
@@ -611,7 +611,7 @@ pub struct Resident {
     pub head_sha: Option<String>,
 }
 
-fn build_args(spec: &JobSpec, mcp_path: &str, prompt: &str) -> Vec<String> {
+fn build_args(spec: &JobSpec, mcp_path: &str) -> Vec<String> {
     let mode = spec
         .permission_mode
         .as_deref()
@@ -627,12 +627,10 @@ fn build_args(spec: &JobSpec, mcp_path: &str, prompt: &str) -> Vec<String> {
         "--permission-mode".into(),
         mode.into(),
     ];
-    if spec.duplex {
-        args.push("--input-format".into());
-        args.push("stream-json".into());
-        // cm:guard the replay comes back as `type:"user"` with `isReplay:true`, and chat's `parse_assistant_message` keys on `type=="assistant"`, so it is inert there. Any future consumer that reads user turns off this stream MUST skip replays or it will persist the prompt twice.
-        args.push("--replay-user-messages".into());
-    }
+    args.push("--input-format".into());
+    args.push("stream-json".into());
+    // cm:guard the replay comes back as `type:"user"` with `isReplay:true`, and chat's `parse_assistant_message` keys on `type=="assistant"`, so it is inert there. Any future consumer that reads user turns off this stream MUST skip replays or it will persist the prompt twice.
+    args.push("--replay-user-messages".into());
     if let Some(sp) = spec.system_prompt.as_deref().filter(|s| !s.is_empty()) {
         args.push("--append-system-prompt".into());
         args.push(sp.into());
@@ -664,10 +662,6 @@ fn build_args(spec: &JobSpec, mcp_path: &str, prompt: &str) -> Vec<String> {
     if let Some(rid) = spec.resume_id.as_deref().filter(|s| !s.is_empty()) {
         args.push("--resume".into());
         args.push(rid.into());
-    }
-    if !spec.duplex {
-        args.push("-p".into());
-        args.push(prompt.into());
     }
     args
 }
@@ -890,7 +884,7 @@ impl Runner for ClaudeCodeRunner {
             &spec.job_id,
             spec.mcp_servers_override.as_ref(),
         )?;
-        let args = build_args(&spec, &mcp_path.to_string_lossy(), &prompt);
+        let args = build_args(&spec, &mcp_path.to_string_lossy());
         let turn_started = Arc::new(tokio::sync::Notify::new());
         let turn_done = Arc::new(tokio::sync::Notify::new());
         let residency_secs = spec.session_residency_seconds;
@@ -903,12 +897,7 @@ impl Runner for ClaudeCodeRunner {
         for (k, v) in project_env(&spec) {
             cmd.env(k, v);
         }
-        let stdin_mode = if spec.duplex {
-            std::process::Stdio::piped()
-        } else {
-            std::process::Stdio::null()
-        };
-        cmd.stdin(stdin_mode)
+        cmd.stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
         // Give MCP servers room to connect before the `system/init` snapshot.
@@ -925,20 +914,18 @@ impl Runner for ClaudeCodeRunner {
         })?;
         tracing::info!("[claude] spawned job={job_id}");
 
-        // cm:guard stdin is HELD, not dropped — dropping it is EOF, and EOF is how a duplex session ends. Everything downstream (the turn loop, `send`, the idle ceiling) exists because this handle stays open; closing it here would silently restore one-shot behaviour with none of the print path's reaping.
-        let session_stdin = if spec.duplex {
+        // cm:guard stdin is HELD, not dropped — dropping it is EOF, and EOF is how a session ends. Everything downstream (the turn loop, `send`, the idle ceiling) exists because this handle stays open; closing it here restores one-shot behaviour with none of the reaping the deleted print path had.
+        let session_stdin = {
             let mut stdin = child
                 .stdin
                 .take()
-                .ok_or_else(|| Error::Other("no stdin on a duplex spawn".into()))?;
+                .ok_or_else(|| Error::Other("no stdin on the spawn".into()))?;
             stdin
                 .write_all(user_message_line(&prompt).as_bytes())
                 .await
                 .map_err(|e| Error::Other(format!("failed to write the first turn: {e}")))?;
             let _ = stdin.flush().await;
             Some(stdin)
-        } else {
-            None
         };
 
         let stdout = child
@@ -954,9 +941,7 @@ impl Runner for ClaudeCodeRunner {
         if let Some(pid) = child.id() {
             inflight::record(&job_id, pid);
         }
-        if spec.duplex {
-            let _ = tx.send(RunnerEvent::StateChanged("working")).await;
-        }
+        let _ = tx.send(RunnerEvent::StateChanged("working")).await;
         let turn_tx: TurnTx = Arc::new(Mutex::new(tx.clone()));
         self.sessions.lock().await.insert(
             job_id.clone(),
@@ -997,7 +982,6 @@ impl Runner for ClaudeCodeRunner {
         });
 
         // stdout reader.
-        let duplex = spec.duplex;
         let reader = {
             let turn_tx = turn_tx.clone();
             let sessions = self.sessions.clone();
@@ -1066,17 +1050,8 @@ impl Runner for ClaudeCodeRunner {
                         // Definitive done marker — wake the completion task.
                         result_notify.notify_one();
                     }
-                    // cm:guard a send error is fatal on PRINT (the one consumer went away, so nothing will ever read again) and expected on DUPLEX (chat's `consume` drops its receiver at every turn end, and the next `send` installs a fresh one). Breaking here on duplex would stop reading stdout for a process that is still alive and about to be asked another question.
-                    if turn_tx
-                        .lock()
-                        .await
-                        .send(RunnerEvent::Stdout(json))
-                        .await
-                        .is_err()
-                        && !duplex
-                    {
-                        break;
-                    }
+                    // cm:guard a send error is EXPECTED and must never break this loop — chat's `consume` drops its receiver at every turn end and the next `send` installs a fresh one, so breaking would stop reading stdout for a process that is still alive and about to be asked another question. Under print a send error was fatal (the one consumer was gone for good); there is no such consumer any more.
+                    let _ = turn_tx.lock().await.send(RunnerEvent::Stdout(json)).await;
                 }
             })
         };
@@ -1086,10 +1061,11 @@ impl Runner for ClaudeCodeRunner {
         // reap, classify, and emit Done/Failed.
         let sessions = self.sessions.clone();
         let job_id_task = job_id.clone();
-        // cm:guard built for EVERY duplex spawn, and the two paths use it differently on purpose: chat's key IS its agent-session id, so it may PATCH the session directly, while a pipeline job's key is a `job_id` and every session-keyed PATCH with it 404s. The pipeline path therefore reports state as a job EVENT (core writes the column in `jobs/events-routes.ts`) and uses this client only for the job-keyed turn verdict.
-        let core_for_state = spec.duplex.then(|| {
-            crate::transport::CoreClient::new(self.core_url.clone(), self.device_token.clone())
-        });
+        // cm:guard built for EVERY spawn, and the two paths use it differently on purpose: chat's key IS its agent-session id, so it may PATCH the session directly, while a pipeline job's key is a `job_id` and every session-keyed PATCH with it 404s. The pipeline path therefore reports state as a job EVENT (core writes the column in `jobs/events-routes.ts`) and uses this client only for the job-keyed turn verdict.
+        let core_for_state = Some(crate::transport::CoreClient::new(
+            self.core_url.clone(),
+            self.device_token.clone(),
+        ));
         let outcome_for_turns = outcome.clone();
         let result_notify_for_turns = result_notify.clone();
         let turn_tx_for_turns = turn_tx.clone();
@@ -1099,26 +1075,22 @@ impl Runner for ClaudeCodeRunner {
         tokio::spawn(async move {
             let job_id = job_id_task;
             let mut reader = reader;
-            let already_reported = if duplex {
-                duplex_turns(
-                    TurnLoop {
-                        sessions: &sessions_for_turns,
-                        job_id: &job_id,
-                        core: core_for_state.as_ref(),
-                        outcome: &outcome_for_turns,
-                        result_notify: &result_notify_for_turns,
-                        turn_tx: &turn_tx_for_turns,
-                        turn_started: &turn_started_for_turns,
-                        turn_done: &turn_done_for_turns,
-                        is_issue_job,
-                        residency: resolve_residency(residency_secs),
-                    },
-                    &mut reader,
-                )
-                .await
-            } else {
-                false
-            };
+            let already_reported = duplex_turns(
+                TurnLoop {
+                    sessions: &sessions_for_turns,
+                    job_id: &job_id,
+                    core: core_for_state.as_ref(),
+                    outcome: &outcome_for_turns,
+                    result_notify: &result_notify_for_turns,
+                    turn_tx: &turn_tx_for_turns,
+                    turn_started: &turn_started_for_turns,
+                    turn_done: &turn_done_for_turns,
+                    is_issue_job,
+                    residency: resolve_residency(residency_secs),
+                },
+                &mut reader,
+            )
+            .await;
             let exit_poll = {
                 let sessions = sessions.clone();
                 let outcome = outcome.clone();
@@ -1422,7 +1394,7 @@ mod tests {
         );
     }
 
-    fn spec(duplex: bool) -> JobSpec {
+    fn spec(counts_against_session_cap: bool) -> JobSpec {
         JobSpec {
             job_id: "j1".into(),
             project_id: String::new(),
@@ -1440,34 +1412,26 @@ mod tests {
             mcp_servers_override: None,
             resume_id: None,
             agent_session_id: None,
-            duplex,
-            counts_against_session_cap: duplex,
+            counts_against_session_cap,
             session_residency_seconds: None,
             pat_token: None,
         }
     }
 
     #[test]
-    fn a_chat_spawn_takes_no_session_permit_but_a_duplex_pipeline_job_does() {
-        let mut chat = spec(true);
-        chat.counts_against_session_cap = false;
-        assert!(
-            !takes_session_permit(&chat),
-            "a chat turn that waits for a permit is reaped as `no_client_ack` at 90s"
-        );
-
-        assert!(
-            takes_session_permit(&spec(true)),
-            "a duplex pipeline job is what the ceiling is for"
-        );
+    fn a_chat_spawn_takes_no_session_permit_but_a_pipeline_job_does() {
         assert!(
             !takes_session_permit(&spec(false)),
-            "a print spawn holds no session"
+            "a chat turn that waits for a permit is reaped as `no_client_ack` at 90s"
+        );
+        assert!(
+            takes_session_permit(&spec(true)),
+            "a pipeline job is what the ceiling is for"
         );
     }
 
-    fn args_for(duplex: bool) -> Vec<String> {
-        build_args(&spec(duplex), "/tmp/mcp.json", "hello")
+    fn args_for(counts_against_session_cap: bool) -> Vec<String> {
+        build_args(&spec(counts_against_session_cap), "/tmp/mcp.json")
     }
 
     fn has_pair(args: &[String], flag: &str, value: &str) -> bool {
@@ -1475,7 +1439,7 @@ mod tests {
     }
 
     #[test]
-    fn a_duplex_spawn_reads_its_turn_off_stdin() {
+    fn a_spawn_reads_its_turn_off_stdin() {
         let args = args_for(true);
         assert!(has_pair(&args, "--input-format", "stream-json"), "{args:?}");
         assert!(
@@ -1488,20 +1452,25 @@ mod tests {
         );
     }
 
-    // cm:guard the output format is `--output-format stream-json` on BOTH modes and the input format only on duplex — asserting the bare string `stream-json` is present would pass on the print path too, which is why every assertion here is on the FLAG/VALUE pair.
+    // cm:guard the assertion that `print` is UNREACHABLE, and it is the inverse of the one it replaced: there is no longer any spec, from any caller, whose args carry `-p` or omit `--input-format`. `counts_against_session_cap` is the one axis a spawn still varies on and it must not reach the args at all — reintroducing a mode means making one of these two loops fail, which is the point of iterating rather than asserting one spec.
+    // cm:guard every assertion is on the FLAG/VALUE pair, never the bare string `stream-json`: that value is also `--output-format`'s, so a bare-string check passes on a spawn that lost its input format entirely.
     #[test]
-    fn a_print_spawn_still_has_no_input_format() {
-        let args = args_for(false);
-        assert!(!args.iter().any(|a| a == "--input-format"), "{args:?}");
-        assert!(
-            !args.iter().any(|a| a == "--replay-user-messages"),
-            "{args:?}"
-        );
-        assert!(
-            has_pair(&args, "--output-format", "stream-json"),
-            "{args:?}"
-        );
-        assert!(has_pair(&args, "-p", "hello"), "{args:?}");
+    fn no_spawn_can_reach_the_deleted_print_lane() {
+        for cap in [true, false] {
+            let args = args_for(cap);
+            assert!(
+                !args.iter().any(|a| a == "-p"),
+                "cap={cap}: a spawn carrying -p answers the flag and never reads stdin: {args:?}"
+            );
+            assert!(
+                has_pair(&args, "--input-format", "stream-json"),
+                "cap={cap}: {args:?}"
+            );
+            assert!(
+                has_pair(&args, "--output-format", "stream-json"),
+                "cap={cap}: {args:?}"
+            );
+        }
     }
 
     struct Harness {
@@ -1573,7 +1542,7 @@ mod tests {
         // bucket is ever consulted.
         assert_eq!(
             err.to_string(),
-            "session_permit_saturated: all 2 duplex permits on this box held after 600s; \
+            "session_permit_saturated: all 2 permits on this box held after 600s; \
              holders at wait start: codemap, forge-dev"
         );
     }
