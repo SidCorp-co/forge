@@ -1,9 +1,9 @@
-import { randomBytes } from 'node:crypto';
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres, { type Sql } from 'postgres';
 import { startPostgresContainer } from './container.js';
 import { runMigrations } from './migrate.js';
 import { createTestSchema } from './schema-mode.js';
+import { workerDbName } from './scratch-db.js';
 
 export type TestDb = PostgresJsDatabase<Record<string, unknown>>;
 
@@ -105,11 +105,13 @@ async function cloneFromTemplate(workerId: string): Promise<TestDatabase | null>
   const template = process.env.TEST_PG_TEMPLATE;
   if (!adminUrl || !template) return null;
 
-  const dbName = `test_w${workerId}_${randomBytes(4).toString('hex')}`;
+  const dbName = workerDbName(workerId);
 
   const admin = postgres(adminUrl, { max: 1 });
   try {
     await admin.unsafe(`CREATE DATABASE "${dbName}" TEMPLATE "${template}"`);
+  } catch (err) {
+    throw new Error(explainCloneFailure(template, err), { cause: err });
   } finally {
     await admin.end({ timeout: 5 });
   }
@@ -135,6 +137,27 @@ async function cloneFromTemplate(workerId: string): Promise<TestDatabase | null>
       }
     },
   };
+}
+
+// cm:guard say which CONDITION the failure is, never only which object it names. Postgres answers a lost template with `template database "<name>" does not exist`, and that sentence sends a reader looking for a defect in the suite: six files failed on it and all six passed on a serial re-run, because the real subject was another process, not this repo (ISS-937). A message that cannot distinguish "the code is wrong" from "this box is busy" costs a re-run of everything at best, and a wrong belief about main at worst.
+function explainCloneFailure(template: string, err: unknown): string {
+  const detail = err instanceof Error ? err.message : String(err);
+  if (/does not exist/.test(detail)) {
+    return (
+      `could not clone the template database "${template}" — it is gone. ` +
+      'This is an ENVIRONMENT condition, not a failure of the code under test: global setup ' +
+      'built this template and something outside this run removed it. Re-run the suite; if it ' +
+      'recurs, look for another process dropping databases on this server.'
+    );
+  }
+  if (/being accessed by other users/.test(detail)) {
+    return (
+      `could not clone the template database "${template}" — it still has open connections. ` +
+      'This is an ENVIRONMENT condition, not a failure of the code under test. Postgres copies ' +
+      'a template at the file level and refuses while anything is attached to it.'
+    );
+  }
+  return `could not clone the template database "${template}": ${detail}`;
 }
 
 async function quiesceOrReport(_dbName: string): Promise<void> {
