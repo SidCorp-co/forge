@@ -1,0 +1,30 @@
+# Says on the pull request when its diff looks past a declared coupling: a lockstep edge with one
+# side touched, or a guarded line the diff crossed. ADVISORY ONLY — `cm verify` in ci.yml is the
+# gate, this workflow is deliberately absent from ci-passed's needs, and adding it there would turn
+# a visibility surface into a sixteenth gate.
+#
+# From codemap's adapters/ci/pr-comment.yml, with this repo's pins: checkout v7 / setup-node v6 /
+# node 22 to match ci.yml, where the template ships v4 / v4 / node 20 — node 20 is already forced
+# onto 24 with a deprecation warning on this repo's runners. Keep these when re-vendoring.
+#
+# It runs the COMMITTED checker, like every other codemap step here, so the comment and the gate can
+# never disagree about what is declared.
+name: codemap pr comment
+on:
+  pull_request:
+permissions: { contents: read, pull-requests: write }
+jobs:
+  pr-comment:
+    runs-on: ubuntu-latest
+    steps:
+      # cm:why fetch-depth 0 because the verb needs a real merge-base — a shallow checkout has no origin/<base> to compute one against
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v6
+        with: { node-version: '22' }
+      - run: |
+          git fetch -q origin "${{ github.event.pull_request.base.ref }}"
+          BASE=$(git merge-base "origin/${{ github.event.pull_request.base.ref }}" HEAD)
+          .forge/codemap/cm pr-comment --base "$BASE"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
