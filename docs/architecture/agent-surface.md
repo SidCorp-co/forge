@@ -91,12 +91,24 @@ the underscore form their MCP client shows them.
 Commit `7f0c5a56` deleted six tools after claiming the audit log had cleared them. The split was on
 the wrong column; the fleet hit one of them at 09:07 the same day and read `not_found`.
 
+**The count is only readable with direct database access.** There is no aggregate route over
+`mcp_audit_log` — the one route that reads the table at all is `GET /api/pat/:id/audit`, per-token
+and last-N rows, and `/api/pat` is off `PAT_ALLOWED_PREFIXES` for the reason the fence section of
+[data-plane-surface.md](data-plane-surface.md) gives. So an agent session on a runner box cannot
+satisfy this rule and must not delete on an estimate; whether the fence should grow a read-only
+aggregate is undecided (`ISS-926`).
+
 ## Who delivers the target
 
 | Half | Issue |
 |---|---|
 | the CLI moves to REST | `ISS-508` on the **forge-plugin** project — critical |
-| the boundary is written down, the waves resume | `ISS-926` here |
+| the waves themselves, and the record of the ones already run | `ISS-894` here, at `draft` |
+| the boundary is written down | `ISS-926` here |
 
-`ISS-926`'s deletions wait on `ISS-508`. A dependency edge does not cross projects, so the ordering
-lives in both bodies as prose.
+The deletions wait on `ISS-508`. A dependency edge does not cross projects, so the ordering lives in
+both bodies as prose.
+
+`ISS-894` is at `draft`, which no list or pool view of this project shows; it is reachable by its
+displayId. That is why `registered-tools.ts` cites this page alongside the number — a `draft` row
+cited by number alone reads as a reference to nothing.

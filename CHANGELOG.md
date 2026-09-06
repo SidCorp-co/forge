@@ -2050,6 +2050,33 @@
 
 ### Changed
 
+- **The docs stop offering the runner's own passthrough as the surface a skill calls.** Two
+  command-line tools reach core's data plane — `forge-runner api`, built in this repo, and `forge`,
+  the 21-verb CLI built in `forge-plugin` — and until now nothing said which belonged to whom.
+  `docs/architecture/data-plane-surface.md` opened by presenting its table as *"what an agent or a
+  skill author calls instead"*, drew *"agent in a job"* as the caller, and addressed its whole
+  calling section to *"the agent process"*. A skill author reading it came away with the wrong verb.
+
+  The page now says what it is: documentation of `forge-runner api`, the Rust daemon's own reach
+  into core, with exactly two callers named — the daemon's subcommands, and the drive-job shell
+  that core's own prompt hands `$FORGE_PAT` to. A skill is neither, and the page says so and links
+  to `agent-surface.md`. The MCP↔REST twin table is untouched: it maps the data plane and is true
+  whoever calls the route. Both index rows (`docs/README.md`, `docs/architecture/README.md`) are
+  rewritten in the same change so no index still routes an agent here.
+
+  `forge-runner api` is not deprecated by any of this and does not move. A daemon that could not
+  reach core until a Claude Code plugin was installed would be a worse daemon.
+
+- **The frozen MCP surface cites a document, not only a tracker number.** `registered-tools.ts`
+  named `ISS-894` as the authority for shrinking the tool list, and seven commits cite it. That row
+  exists and is the right one, but it sits at `draft`, which no list or pool view of the project
+  shows — so a reader who went looking concluded the authority was missing. The guard now carries a
+  `cm:edge naming` to `docs/architecture/agent-surface.md`, which holds the deletion rule in prose
+  and can always be opened, alongside the number. `agent-surface.md` names `ISS-894` in its delivery
+  table for the same reason, and records that the per-tool device count the deletion rule turns on
+  is readable only with direct database access — there is no aggregate route over `mcp_audit_log`,
+  so no agent session can satisfy that rule, and none may delete on an estimate.
+
 - **The master, and the way it takes work, stop being one-shot.** The per-project master agent was
   a `claude -p` child of the runner daemon: killed and restarted every 30-second pass, unreachable
   by a human, inventing its own session id so core had no record it existed, and writing its
