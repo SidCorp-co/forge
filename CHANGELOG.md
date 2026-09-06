@@ -860,6 +860,18 @@
   headings are `## Phase 4 — Implement` and which is read in the same context window. No gate in
   this repo can hold that pair; the `cm:guard` on `buildDrivePrompt` is the only record of it.
 
+- **A `stateContext` entry could not be deleted through any external caller.**
+  `mergeStateContext` has always implemented `null` as its per-jobType removal sentinel and said so
+  in its own JSDoc, but `stateContextSchema` never marked the entry `.nullable()`, so the `null`
+  was rejected at the door — by REST and by MCP `forge_config` alike, both of which validate through
+  it. The only expressible deletion was wiping the whole map. Found by the Settings → Pipeline
+  editor added in this release, which is the first caller to try it and got a 400 naming a shape the
+  merge below it documents as supported. The `cm:guard` on the schema now records why the `.nullable()` has to stay.
+
+  `StateContextPatch` went with it — a widening type whose comment read *"Zod doesn't model the
+  null-to-remove sentinel on per-state entries, so we widen here."* Zod models it now, `StateContext`
+  already carries `| null` per entry, and its only caller was the merge in the same file.
+
 - **The Pool admission toggle now reaches the route that can write `runners.status`.** It sent
   `{status}` to `PATCH /api/projects/:id/runners/:runnerId`, whose body schema is `.strict()` over
   repoPath/branch/labels — so every attempt to withdraw or readmit a box came back `400
