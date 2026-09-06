@@ -1,0 +1,160 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · coolify-deploy-controls — stopping a deploy, undoing one, and knowing what a target is</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --warn:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .rule.warn { border-left-color:var(--bad); }
+  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
+  text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
+  text.m { font-size:11px; fill:var(--mut); }
+  text.t { font:600 12px ui-monospace,Menlo,monospace; }
+  .box { fill:#fff; stroke:var(--line); }
+  .stop { fill:#fdf0f3; stroke:#e3c2cb; }
+  .gate { fill:#fdf6e8; stroke:#e6d3ac; }
+  .ok   { fill:#eef6f1; stroke:#bcd9c8; }
+  .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
+  .arrow.no { stroke:var(--bad); }
+</style>
+<main>
+
+<h1>coolify-deploy-controls — stopping a deploy, undoing one, and knowing what a target is</h1>
+<p class="sub">Forge calls four of Coolify&rsquo;s operations to deploy. This is what the other three
+controls do and, more usefully, everywhere each one <em>refuses</em>. Owners:
+<code>packages/core/src/integrations/coolify/client.ts</code> (the HTTP surface and its ability table),
+<code>packages/core/src/integrations/coolify/controls.ts</code> (the refusals and the audit row),
+<code>packages/core/src/integrations/coolify/confirm.ts</code> (the poll that settles both).</p>
+
+<div class="rule"><strong>A rollback and a cancel change production exactly as a deploy does, so
+they pass the same gate.</strong> <code>prodActionNeedsHumanConfirm</code> is the only writer of that
+rule: against a <code>prod</code> binding all three park for a human unless the project set
+<code>pipelineConfig.autoProdDeploy</code>. A second copy of the branch is how one of the three ends
+up weaker than the other two.</div>
+
+<h2>Rollback — four refusals before Coolify is called once</h2>
+<svg viewBox="0 0 900 470" role="img" aria-label="Flowchart of a rollback request through its four refusals to a queued deployment">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/>
+    </marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a3b52"/>
+    </marker>
+  </defs>
+
+  <rect class="box" x="20" y="20" width="200" height="46" rx="4"/>
+  <text class="t" x="34" y="40">action=rollback</text>
+  <text class="m" x="34" y="56">MCP tool, or POST …/coolify/rollback</text>
+
+  <path class="arrow" d="M120,66 L120,96"/>
+
+  <rect class="gate" x="20" y="96" width="200" height="46" rx="4"/>
+  <text x="34" y="116">1 · which target?</text>
+  <text class="m" x="34" y="132">several and no resourceUuid → refuse</text>
+
+  <path class="arrow" d="M120,142 L120,172"/>
+
+  <rect class="gate" x="20" y="172" width="200" height="46" rx="4"/>
+  <text x="34" y="192">2 · prod gate</text>
+  <text class="m" x="34" y="208">pendingHumanConfirm, nothing read</text>
+
+  <path class="arrow" d="M120,218 L120,248"/>
+
+  <rect class="box" x="20" y="248" width="200" height="46" rx="4"/>
+  <text class="t" x="34" y="268">GET …/rollback-images</text>
+  <text class="m" x="34" y="284">api.ability:read</text>
+
+  <path class="arrow" d="M120,294 L120,324"/>
+
+  <rect class="gate" x="20" y="324" width="200" height="60" rx="4"/>
+  <text x="34" y="344">3 · is the tag listed?</text>
+  <text class="m" x="34" y="360">empty list → refuse</text>
+  <text class="m" x="34" y="374">tag absent → refuse, naming both</text>
+
+  <path class="arrow" d="M120,384 L120,414"/>
+
+  <rect class="box" x="20" y="414" width="200" height="46" rx="4"/>
+  <text class="t" x="34" y="434">POST …/rollback {commit}</text>
+  <text class="m" x="34" y="450">api.ability:deploy</text>
+
+  <path class="arrow" d="M220,437 L330,437"/>
+
+  <rect class="gate" x="330" y="414" width="230" height="46" rx="4"/>
+  <text x="344" y="434">4 · did it queue anything?</text>
+  <text class="m" x="344" y="450">200 without deployment_uuid → failure</text>
+
+  <path class="arrow" d="M445,414 L445,354"/>
+
+  <rect class="ok" x="330" y="308" width="230" height="46" rx="4"/>
+  <text x="344" y="328">coolify.confirm job</text>
+  <text class="m" x="344" y="344">the same poller a deploy uses</text>
+
+  <path class="arrow" d="M445,308 L445,248"/>
+
+  <rect class="ok" x="330" y="202" width="230" height="46" rx="4"/>
+  <text x="344" y="222">terminal, audited</text>
+  <text class="m" x="344" y="238">inbound delivery row, either way</text>
+
+  <path class="arrow no" style="marker-end:url(#b)" d="M220,119 L620,119"/>
+  <path class="arrow no" style="marker-end:url(#b)" d="M220,195 L620,195 L620,140"/>
+  <path class="arrow no" style="marker-end:url(#b)" d="M220,354 L640,354 L640,140"/>
+  <path class="arrow no" style="marker-end:url(#b)" d="M560,437 L660,437 L660,140"/>
+
+  <rect class="stop" x="600" y="88" width="270" height="52" rx="4"/>
+  <text x="614" y="110">Refused, by name</text>
+  <text class="m" x="614" y="126">no Coolify mutation, no delivery marked ok</text>
+
+  <rect class="box" x="600" y="202" width="270" height="150" rx="4"/>
+  <text x="614" y="224">Every attempt is one outbound row</text>
+  <text class="m" x="614" y="244">written before the call, closed after it —</text>
+  <text class="m" x="614" y="260">so a control that failed is as visible as</text>
+  <text class="m" x="614" y="276">one that worked. Cancel writes the same</text>
+  <text class="m" x="614" y="292">shape under deploy.cancel.requested.</text>
+  <text class="m" x="614" y="316">A cancel needs no new poller: Coolify</text>
+  <text class="m" x="614" y="332">reports cancelled-by-user, already a</text>
+  <text class="m" x="614" y="348">FAILURE status in confirm.ts.</text>
+</svg>
+
+<div class="rule warn"><strong>Refusal 3 is Forge&rsquo;s, not Coolify&rsquo;s.</strong>
+<code>ApplicationsController::rollback_by_uuid</code> runs <code>validateGitRef</code> on the string
+and queues the build — it never checks the tag against its own rollback-image list. And
+<code>rollback_images</code> catches its own failure and answers <code>200</code> with
+<code>{current:null, images:[]}</code>, so an unreachable server is byte-identical to a clean one.
+That is why an empty list refuses too: the read that proves least must not be the read that lets
+everything through.</div>
+
+<h2>Where the rollback declaration comes from</h2>
+<table>
+<thead><tr><th>Stored on the prod binding</th><th>Read as</th><th>What the release agent is told</th></tr></thead>
+<tbody>
+<tr><td><code>{mode:"coolify-image"}</code></td><td><code>coolify-image</code></td><td>Call the Forge action; read the images first</td></tr>
+<tr><td>prose, on a non-Coolify channel</td><td><code>manual</code></td><td>The prose, verbatim — no API expresses it</td></tr>
+<tr><td>prose, on a Coolify binding</td><td><code>unrepresentable</code></td><td><b>Abort.</b> The text is quoted for a human, never handed over as an instruction</td></tr>
+<tr><td>nothing</td><td><code>null</code></td><td>Abort and comment; do not improvise a way back</td></tr>
+</tbody>
+</table>
+<p class="sub">Decided in <code>packages/core/src/release-batch/channel.ts</code>
+(<code>classifyRollback</code>), rendered by <code>release-batch/prompt.ts</code>, and named as the
+<code>rollback-prose</code> gap in <code>release-batch/readiness.ts</code> so settings says which
+binding still needs converting.</p>
+
+<h2>A deploy target, before and after</h2>
+<p class="sub">A target used to be a <code>resourceUuid</code> copied out of another browser tab, with
+nothing in Forge able to say whether it was the application the operator meant.
+<code>GET /api/v1/applications</code> makes it a pick-list, and one call resolves every bound target
+of a binding: a uuid Coolify does not list comes back <code>found:false</code> and renders as a
+refusal in settings rather than as an ordinary row. The picker takes either a saved binding or the
+credential still in the create form — without the second, the list would arrive one save after the
+moment the transcription happens.</p>
+
+</main>

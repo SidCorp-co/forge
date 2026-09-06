@@ -17,7 +17,7 @@ import { projects } from '../db/schema.js';
 import { missingAutonomousFacts } from '../projects/autonomous-contract.js';
 import { resolveReleaseChannel } from './channel.js';
 import { resolveProductionDeclaration } from './gate.js';
-import { RELEASE_PROCEDURE_FACT } from './plan.js';
+import { RELEASE_PROCEDURE_FACT, type ReleaseRollback } from './plan.js';
 
 export type ReleaseGapKey = string;
 
@@ -28,8 +28,10 @@ export interface ReleaseReadiness {
   /** Provider of the prod binding, or `null` when the project declares none. */
   provider: string | null;
   releaseRunnerLabel: string | null;
-  /** Verbatim rollback declaration; `null` means abort-and-comment on failure. */
+  /** Verbatim rollback declaration; `null` when the channel performs it or none is declared. */
   rollback: string | null;
+  /** How the declaration was read. `null` means abort-and-comment on failure. */
+  rollbackMode: ReleaseRollback['kind'] | null;
   hasVerify: boolean;
   /** Everything still undeclared. Empty means settings has nothing to say. */
   gaps: ReleaseGapKey[];
@@ -45,7 +47,9 @@ function isDeclared(v: unknown): boolean {
  * `rollback` is reported as a gap on a project WITH production because rule 2
  * of ISS-897 makes an undeclared rollback mean "abort and comment, never roll
  * back blind" — a defensible default that an operator should still be told
- * they are running under.
+ * they are running under. `rollback-prose` is the ISS-925 case: a Coolify
+ * binding whose declaration is free text Forge no longer executes, which is
+ * the same abort wearing a declaration, and names the one binding to convert.
  */
 // cm:guard the contract facts are owed by EVERY project, production or not — they are what the driver needs to prove its own work. Only the three release gaps are conditional. Reporting the contract conditionally would make a project with no production look complete while its very first issue has nothing to run.
 export async function loadReleaseReadiness(projectId: string): Promise<ReleaseReadiness | null> {
@@ -67,6 +71,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
     if (!isDeclared(facts[RELEASE_PROCEDURE_FACT])) gaps.push('release-procedure');
     if (!channel.releaseRunnerLabel) gaps.push('release-runner');
     if (!channel.rollback) gaps.push('rollback');
+    else if (channel.rollback.kind === 'unrepresentable') gaps.push('rollback-prose');
   }
 
   return {
@@ -75,7 +80,8 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
     productionBranch: decl.productionBranch,
     provider: decl.provider,
     releaseRunnerLabel: channel.releaseRunnerLabel,
-    rollback: channel.rollback,
+    rollback: channel.rollback && 'text' in channel.rollback ? channel.rollback.text : null,
+    rollbackMode: channel.rollback?.kind ?? null,
     hasVerify: channel.verify !== null,
     gaps,
   };

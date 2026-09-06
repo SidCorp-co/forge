@@ -56,6 +56,19 @@ export function releaseBranches(project: ProjectLike): ReleaseBranches {
   };
 }
 
+/**
+ * What this project's channel can do when a deploy comes up dead.
+ *
+ * `manual` is operator prose for a channel whose API cannot express a
+ * rollback. `coolify-image` is the action Forge performs itself.
+ * `unrepresentable` is a Coolify binding still carrying prose from before
+ * ISS-925: the text is carried so it can be shown, and it is NOT executed.
+ */
+export type ReleaseRollback =
+  | { kind: 'manual'; text: string }
+  | { kind: 'coolify-image' }
+  | { kind: 'unrepresentable'; text: string };
+
 export interface ReleaseChannel {
   /** `null` when the project declares no production binding: cut and stop. */
   provider: string | null;
@@ -65,8 +78,8 @@ export interface ReleaseChannel {
   releaseRunnerLabel: string | null;
   /** How the kernel proves the deploy landed. `null` → nothing is proven. */
   verify: VerifyConfig | null;
-  /** What to do when a deploy comes up dead, verbatim from the operator. */
-  rollback: string | null;
+  /** How this project gets back, or `null` when it declares no way. */
+  rollback: ReleaseRollback | null;
 }
 
 export interface ReleasePlan extends ReleaseChannel {

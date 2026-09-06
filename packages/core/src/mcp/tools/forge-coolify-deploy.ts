@@ -4,22 +4,15 @@
  * forge-test) already call but which had no server-side implementation,
  * causing a tool-not-found at the deploy step.
  *
- * Actions:
- *  - `list`   — active Coolify integrations for the project; drives the
- *               skills' "local-only mode" detection (empty array → no Coolify).
- *  - `deploy` — enqueue a Coolify deploy. `issueId` is optional (ISS-312):
- *               with it, a run-tracked deploy via the EXACT dispatch path the
- *               release auto-subscriber uses (`tryDispatchCoolifyRelease` →
- *               `enqueueCoolifyDispatch`); without it, a run-less resource
- *               redeploy (`dispatchCoolifyDeployDirect`, `runId=null`) that
- *               resolves the integration like the `logs` action and advances no
- *               pipeline. Each call is its own per-attempt requestId.
- *  - `status` — latest outbound delivery (deployment_uuid / ok|failed|pending /
- *               breaker) per integration, or for a specific `integrationId`.
+ * The action list and what each one returns live in the tool `description`
+ * below — it is what a model actually reads, and a second copy here is a copy
+ * that goes stale. ISS-925 added the controls beside deploy: `cancel`,
+ * `rollback-images`, `rollback`, `applications`, `targets`.
  *
  * Authorization is membership-level (`assertPrincipalIsMember`) like
- * `forge_issues`; prod safety is the human-confirm gate inside
- * `tryDispatchCoolifyRelease`, not RBAC. No DEVICE_REQUIRED entry — the tool
+ * `forge_issues`, raised to writer for the three actions that change something;
+ * prod safety is the human-confirm gate inside `tryDispatchCoolifyRelease` and
+ * `prodActionNeedsHumanConfirm`, not RBAC. No DEVICE_REQUIRED entry — the tool
  * has no runner dependency.
  */
 
@@ -33,6 +26,13 @@ import {
   resolveIntegrationRow,
   runCoolifyDeploy,
 } from '../../integrations/coolify/commands.js';
+import {
+  listApplicationsForIntegration,
+  listCoolifyRollbackImages,
+  resolveCoolifyTargets,
+  runCoolifyCancel,
+  runCoolifyRollback,
+} from '../../integrations/coolify/controls.js';
 import {
   fetchCoolifyDeploymentLogs,
   fetchCoolifyRuntimeLogs,
@@ -50,7 +50,18 @@ import {
 
 const inputSchema = z
   .object({
-    action: z.enum(['list', 'deploy', 'status', 'logs', 'runtime-logs']),
+    action: z.enum([
+      'list',
+      'deploy',
+      'status',
+      'logs',
+      'runtime-logs',
+      'cancel',
+      'rollback-images',
+      'rollback',
+      'applications',
+      'targets',
+    ]),
     projectId: z.uuid().optional(),
     issueId: z.uuid().optional(),
     /** ISS-764 — batch release path: deploy via an existing pipeline run that
@@ -59,9 +70,12 @@ const inputSchema = z
     pipelineRunId: z.uuid().optional(),
     integrationId: z.uuid().optional(),
     deploymentUuid: z.string().optional(),
-    /** runtime-logs: the Coolify application (target) resourceUuid to tail;
-     *  defaults to the integration's sole target when it has exactly one. */
+    /** runtime-logs / rollback-images / rollback: the Coolify application
+     *  (target) resourceUuid; defaults to the integration's sole target. */
     resourceUuid: z.string().optional(),
+    /** rollback: the IMAGE TAG to roll back to, exactly as `rollback-images`
+     *  lists it. A tag Coolify no longer lists is refused by name. */
+    commit: z.string().optional(),
     /** logs + runtime-logs: number of recent lines to keep. REJECTED outside
      *  1..1000, not clamped into it — a description that says "clamped" of a
      *  bound that hard-fails is the same lie ISS-787 removed from `lines`
@@ -79,7 +93,8 @@ async function resolveProjectId(input: Input, ctx: McpContext): Promise<string> 
 export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_coolify_deploy',
   description:
-    'Coolify deploy controls for the pipeline skills. Actions: list | deploy | status | logs | runtime-logs. ' +
+    'Coolify deploy controls for the pipeline skills. Actions: list | deploy | status | logs | ' +
+    'runtime-logs | cancel | rollback-images | rollback | applications | targets. ' +
     'MODEL: one integration = one project+ENVIRONMENT binding (staging vs prod are SEPARATE ' +
     'integrations). Each integration deploys ONE OR MORE targets[] — each target is its own Coolify ' +
     'application (e.g. a split backend + frontend, or a worker), deployed TOGETHER. A single deploy ' +
@@ -137,6 +152,27 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     "container's logs and its public API has NO working per-service selector — reliable for " +
     'single-container apps; a compose deploy cannot be narrowed to a specific service here. Returns ' +
     '{ integrationId, resourceUuid, logs, truncated, fetchedAt, logsDigest } or { error, httpStatus }. ' +
+    'cancel: stop a deployment that is still queued or building — POST deployments/{uuid}/cancel. ' +
+    "Resolves deploymentUuid from the explicit param, else the integration's most recent outbound " +
+    'delivery. Coolify answers 400 for a deployment that has already finished and that message is ' +
+    'returned as-is; nothing is reported cancelled that was not. The cancel is recorded as an ' +
+    'outbound delivery and the in-flight confirmation poll settles the run on cancelled-by-user. ' +
+    'rollback-images: what this target can actually be rolled back to — { current, images[]={tag,' +
+    'createdAt,isCurrent} }. READ THIS FIRST; an empty images[] also means Coolify could not reach ' +
+    "the application's server, so it is a refusal, not an empty shelf. " +
+    'rollback: queue a rollback of one target to `commit` (the IMAGE TAG from rollback-images, not ' +
+    'a git SHA). A tag Coolify does not list is REFUSED BY NAME and is never resolved to the ' +
+    'nearest image. Returns { performed, deploymentUuid }; the rollback build is polled and audited ' +
+    'exactly like a deploy. ' +
+    'cancel and rollback answer to the SAME production gate a deploy does: against a prod binding ' +
+    'both return pendingHumanConfirm:true and do nothing unless the project set ' +
+    'pipelineConfig.autoProdDeploy. ' +
+    'applications: every Coolify application this credential can see — { uuid, name, fqdn, ' +
+    'gitRepository, gitBranch, gitCommitSha, status }. The pick-list that replaces transcribing a ' +
+    'resourceUuid. ' +
+    'targets: the bound targets of one integration resolved against that list, each with its ' +
+    'Coolify identity and `found:false` when Coolify does not list the bound uuid — which is how a ' +
+    'wrong binding is visible without opening Coolify. ' +
     'Project scope comes from the X-Forge-Project-Slug header (or an explicit projectId). ' +
     'Authorization: project membership.',
   inputSchema: zodToMcpSchema(inputSchema),
@@ -159,6 +195,8 @@ async function dispatchAction(
   ctx: McpContext,
   principal: McpContext['principal'],
 ): Promise<unknown> {
+  const control = await dispatchControlAction(input, ctx, principal);
+  if (control !== NOT_A_CONTROL_ACTION) return control;
   switch (input.action) {
     case 'list': {
       const projectId = await resolveProjectId(input, ctx);
@@ -278,5 +316,73 @@ async function dispatchAction(
         throw err;
       }
     }
+  }
+}
+
+/** Sentinel so a control action returning `undefined` is still a handled one. */
+const NOT_A_CONTROL_ACTION = Symbol('not-a-control-action');
+
+/**
+ * ISS-925's five actions, split off `dispatchAction` rather than added to it:
+ * that function is at its frozen function-length budget, and the deploy path
+ * and the controls read better apart anyway.
+ */
+async function dispatchControlAction(
+  input: Input,
+  ctx: McpContext,
+  principal: McpContext['principal'],
+): Promise<unknown> {
+  switch (input.action) {
+    case 'cancel': {
+      const projectId = await resolveProjectId(input, ctx);
+      await assertPrincipalIsWriter(principal, projectId);
+      return runCoolifyCancel({
+        projectId,
+        ...(input.integrationId ? { integrationId: input.integrationId } : {}),
+        ...(input.deploymentUuid ? { deploymentUuid: input.deploymentUuid } : {}),
+      });
+    }
+    case 'rollback-images': {
+      const projectId = await resolveProjectId(input, ctx);
+      await assertPrincipalIsMember(principal, projectId);
+      return listCoolifyRollbackImages({
+        projectId,
+        ...(input.integrationId ? { integrationId: input.integrationId } : {}),
+        ...(input.resourceUuid ? { resourceUuid: input.resourceUuid } : {}),
+      });
+    }
+    case 'rollback': {
+      const projectId = await resolveProjectId(input, ctx);
+      await assertPrincipalIsWriter(principal, projectId);
+      if (!input.commit) {
+        throw new Error(
+          'BAD_REQUEST: rollback needs `commit` — the image tag from rollback-images',
+        );
+      }
+      return runCoolifyRollback({
+        projectId,
+        commit: input.commit,
+        ...(input.integrationId ? { integrationId: input.integrationId } : {}),
+        ...(input.resourceUuid ? { resourceUuid: input.resourceUuid } : {}),
+      });
+    }
+    case 'applications': {
+      const projectId = await resolveProjectId(input, ctx);
+      await assertPrincipalIsMember(principal, projectId);
+      return listApplicationsForIntegration({
+        projectId,
+        ...(input.integrationId ? { integrationId: input.integrationId } : {}),
+      });
+    }
+    case 'targets': {
+      const projectId = await resolveProjectId(input, ctx);
+      await assertPrincipalIsMember(principal, projectId);
+      return resolveCoolifyTargets({
+        projectId,
+        ...(input.integrationId ? { integrationId: input.integrationId } : {}),
+      });
+    }
+    default:
+      return NOT_A_CONTROL_ACTION;
   }
 }

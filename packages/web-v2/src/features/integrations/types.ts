@@ -55,8 +55,7 @@ export type {
   BindExistingConnectionRequest,
   ConnectionBindingsResponse,
   DeliveryRetryResponse,
-  // === ISS-429 — MCP injection preview ===
-  McpServerPreviewEntry,
+    McpServerPreviewEntry,
   McpPreviewResponse,
 } from "@forge/contracts";
 
@@ -151,6 +150,25 @@ export interface IntegrationTestResult extends IntegrationHealthResult {
 }
 
 // === ISS-395 — Coolify + Epodsystem integration CRUD (ported from v1) ===
+
+/** ISS-925 — one Coolify application, as the deploy-target picker shows it. */
+export interface CoolifyApplication {
+	uuid: string;
+	name: string | null;
+	fqdn: string | null;
+	gitRepository: string | null;
+	gitBranch: string | null;
+	gitCommitSha: string | null;
+	status: string | null;
+}
+
+/** A bound deploy target resolved against what Coolify actually lists. */
+export interface CoolifyTargetIdentity extends CoolifyApplication {
+	targetId: string;
+	label: string;
+	/** `false` when Coolify does not list this uuid — a wrong binding, visible here. */
+	found: boolean;
+}
 
 /**
  * Permissive read-shape for a provider-specific `config` jsonb. Consumers

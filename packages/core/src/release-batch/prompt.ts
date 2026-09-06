@@ -63,10 +63,18 @@ function renderProcedure(plan: ReleasePlan): string {
       `### Proof (the server checks this, you do not)\nWhen you call \`finish\`, pass \`commit\` — the SHA you pushed to the production branch. The server then reads these probes itself:\n${urls}\nIt goes green only when the live build CHANGED from what was serving before this batch started AND matches your \`commit\`. A healthy site still serving the old build is a RED, and \`finish\` will refuse. That refusal is not something to retry or work around: it means the deploy did not land.`,
     );
   }
-  // cm:guard the ELSE branch is not optional. An undeclared rollback used to emit NOTHING, and silence is not an instruction: an agent told only that the deploy is dead will invent a way back, and from inside one session an outage that predates the release is indistinguishable from one it caused. ISS-897 rule 2 makes no-declaration mean ABORT, so the prompt has to say so where the agent is looking.
-  if (plan.rollback) {
+  // cm:guard every branch must EMIT, the final else included. Silence is not an instruction: an agent told only that the deploy is dead will invent a way back, and from inside one session an outage that predates the release is indistinguishable from one it caused. ISS-897 rule 2 makes no-declaration mean ABORT; ISS-925 makes prose on a coolify binding mean ABORT too, and neither is discoverable by an agent the prompt does not tell.
+  if (plan.rollback?.kind === 'manual') {
     blocks.push(
-      `### If the deploy comes up dead\n${plan.rollback}\n\nRoll back AT MOST ONCE, and only when the deploy replaced a working build with a broken one. If the deploy never came up at all, the previous build is still serving — do nothing and abort. A rollback always ends in \`abort\`, never \`finish\`: nothing shipped.`,
+      `### If the deploy comes up dead\n${plan.rollback.text}\n\nRoll back AT MOST ONCE, and only when the deploy replaced a working build with a broken one. If the deploy never came up at all, the previous build is still serving — do nothing and abort. A rollback always ends in \`abort\`, never \`finish\`: nothing shipped.`,
+    );
+  } else if (plan.rollback?.kind === 'coolify-image') {
+    blocks.push(
+      '### If the deploy comes up dead\nForge performs this rollback — do NOT improvise one and do NOT touch Coolify by hand. Read the images first with `forge_coolify_deploy action=rollback-images`, then call `forge_coolify_deploy action=rollback` with the `commit` (image tag) you picked. A tag Coolify no longer lists is refused by name; that refusal means the image is gone, not that you should pick the nearest one. Roll back AT MOST ONCE, and only when the deploy replaced a working build with a broken one. A rollback always ends in `abort`, never `finish`: nothing shipped.',
+    );
+  } else if (plan.rollback?.kind === 'unrepresentable') {
+    blocks.push(
+      `### If the deploy comes up dead\nThis project's Coolify binding declares its rollback as free text, which Forge no longer executes (ISS-925) — a paragraph is not a rollback, and nothing has verified this one is still true. ABORT, and comment on each issue with what failed, what state production is in, and that the binding still needs converting to \`{"mode":"coolify-image"}\`. Do NOT follow the text below yourself; it is quoted only so a human can convert it:\n\n> ${plan.rollback.text.replace(/\n/g, '\n> ')}`,
     );
   } else {
     blocks.push(

@@ -1,5 +1,4 @@
-// web-v2 feature module: integrations hub — REST surface. Route verified
-// against `packages/core/src/integrations/routes.ts` (ISS-305).
+// cm:edge contract -> packages/core/src/integrations/routes.ts — every path below is spelled out as a string here and mounted there; nothing type-checks the pair, so a route renamed on one side 404s from the other with no compile error
 import { apiClient } from "@/lib/api/client";
 import type {
   BindExistingConnectionRequest,
@@ -10,6 +9,8 @@ import type {
   ConnectionListResponse,
   ConnectionResponse,
   ConnectionUpdateInput,
+  CoolifyApplication,
+  CoolifyTargetIdentity,
   CreateIntegrationInput,
   DeliveryRetryResponse,
   IntegrationDelivery,
@@ -115,6 +116,26 @@ export const integrationsApi = {
   githubRepositories: (projectId: string, connectionId: string) =>
     apiClient<GitHubRepositoriesResponse>(
       `/projects/${projectId}/integrations/github/repositories?connectionId=${encodeURIComponent(connectionId)}`,
+    ),
+
+  /** `POST .../integrations/coolify/applications` — every Coolify application
+   *  the credential can see, the source of the deploy-target picker. Takes a
+   *  stored `integrationId` OR the base URL + token still in the create form,
+   *  so the picker works before the connection exists. ISS-925. */
+  coolifyApplications: (
+    projectId: string,
+    body: { integrationId: string } | { baseUrl: string; apiToken: string },
+  ) =>
+    apiClient<{ applications: CoolifyApplication[] }>(
+      `/projects/${projectId}/integrations/coolify/applications`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+
+  /** `GET .../integrations/coolify/targets?integrationId=` — the bound targets
+   *  with the identity Coolify reports, `found:false` for one it cannot place. */
+  coolifyTargets: (projectId: string, integrationId: string) =>
+    apiClient<{ integrationId: string; targets: CoolifyTargetIdentity[] }>(
+      `/projects/${projectId}/integrations/coolify/targets?integrationId=${encodeURIComponent(integrationId)}`,
     ),
 
   /** `POST .../integrations/rocketchat/rooms` — rooms the bot is a member of
