@@ -3,21 +3,25 @@
 **This page documents `forge-runner api` — the Rust daemon's own reach into core, over REST on a
 `$FORGE_PAT`.** It is not the agent's surface. An agent's whole surface is `forge`, the 21-verb CLI
 built in [forge-plugin](https://github.com/SidCorp-co/forge-plugin), and a skill calls that and
-nothing else. Which CLI belongs to whom, and why the runner must never acquire a dependency on a
-plugin it does not ship: [agent-surface.md](agent-surface.md).
+nothing else. Since `ISS-508` closed on 2026-09-06 that CLI reaches `/api` too, so the table below
+is the map for both callers rather than a translation between them — except on a box still running
+3.35.140, which posts JSON-RPC. Which CLI belongs to whom, and why the runner must never acquire a
+dependency on a plugin it does not ship: [agent-surface.md](agent-surface.md).
 
 **Most MCP tools that read or write data have a REST twin.** The table below maps them, and it is
 true whoever calls the route. Two tools stay on MCP by design, three sit behind a fence that is
 deliberate and permanent, two are open questions, and one has no route at all.
 
-Verified 2026-09-01 against `registered-tools.ts`, the mounts in `index.ts`, and
+Verified 2026-09-06 against `registered-tools.ts`, the mounts in `index.ts`, and
 `PAT_ALLOWED_PREFIXES` in `middleware/pat-rest-surface.ts`. Where a route is listed, it was checked
 to call the same service as the tool — not merely to carry a similar name.
 
 ```mermaid
 flowchart LR
   D["forge-runner<br/>Rust daemon"] -->|"$FORGE_PAT"| CLI["forge-runner api"]
-  P["forge · the plugin CLI<br/>the agent's surface"] --> MCP["/mcp"]
+  P["forge · the plugin CLI<br/>the agent's surface"] -->|"3.35.141+"| CLI
+  P -->|"3.35.140 · what the fleet runs"| MCP["/mcp"]
+  MC["Claude's MCP client<br/>device token"] --> MCP
   CLI --> F{"PAT allowlist<br/>16 prefixes"}
   F -->|on it| R["REST · the data plane"]
   F -->|not on it| X["403 PAT_NOT_PERMITTED"]
@@ -40,7 +44,7 @@ is the live example. Read the mount and its middleware, not the prefix alone.
 | `forge_issues` get / update / delete | `/api/issues/:id`, and `PATCH /api/issues/batch` |
 | `forge_issues` mark_merged / unmark | `POST` / `DELETE /api/issues/:id/merge` |
 | `forge_comments` create / list | `/api/issues/:id/comments` — `/api/comments/:id` is edit, delete and replies only, and has no collection route |
-| `forge_memory.*` (5) | `/api/memory` |
+| `forge_memory.*` (5) | `/api/memory` — the sixth, `forge_memory.revisions`, was deleted 2026-09-06 (ISS-894); `GET /api/memory/revisions` is the only way in |
 | `forge_knowledge` list / get / upsert / delete | `/api/knowledge`, `/api/knowledge-edges`, `/api/projects/:id/knowledge[/:slug]` |
 | `forge_knowledge` search | `POST /api/projects/:id/knowledge/search` — body `{query, topK?, scope?, strategy?}`, the action's own fields with its own defaults (`knowledge`, 10, `semantic`). **`POST`, because `GET` on that path is the `/:slug` handler and answers *knowledge entry not found*.** There is no `sourceFilter`: the MCP action never had one either — that argument is `POST /api/memory/search`'s, and `runUnifiedSearch` takes no such parameter |
 | `forge_config` | `/api/projects/:id/pipeline-config` |
@@ -158,17 +162,24 @@ a project-scoped path, because every such route takes the project UUID as a path
 `/mcp` resolves `X-Forge-Project-Slug`.
 Full flag and exit-code reference: [`packages/runner/README.md`](../../packages/runner/README.md).
 
-## The caller class this does NOT cover
+## The caller class this covers since ISS-927
 
-**A `schedules` run is not a job, so it can never hold a job PAT.** Schedules dispatch through
-`agent:start` on the device room; the mint is per-job, so these sessions authenticate to `/mcp` with
-the **device token** and always will under the current mechanism.
+**A `schedules` run is not a job, so it could not hold a job PAT.** Schedules dispatch through
+`agent:start` on the device room, and the mint was per-job, so these sessions authenticated to
+`/mcp` with the device token. Measured 2026-09-02 in a window where no pipeline job ran at all: 20
+registered tools still took device-token calls, timestamps matching the cron entries —
+`pixelight-product-autopublish` (`0 */12 * * *`) against calls at 00:00:20 on two consecutive days,
+three `0 9 * * *` schedules against 29 calls from one box starting 09:00:24.
 
-Measured 2026-09-02 in a window where no pipeline job ran at all: 20 registered tools still took
-device-token calls, and the timestamps match the cron entries — `pixelight-product-autopublish`
-(`0 */12 * * *`) against calls at 00:00:20 on two consecutive days, three `0 9 * * *` schedules
-against 29 calls from one box starting 09:00:24.
+`ISS-927` closed that gap on 2026-09-06 (`3291d537`): an unattended session — a scheduled run, a
+RocketChat escalation, a RocketChat agent chat — mints its own `session:<id>` PAT on `agent:start`,
+bound to one project, on the same 600/min ceiling a job token gets, revoked when the session ends.
+The token binds to the **session**, not to the schedule run, which is why no new revoke hook was
+needed. Interactive chat is the exception and keeps the operator's `$FORGE_PAT`.
 
-So "move the caller from the device token to a job PAT" is not a prerequisite a schedule can ever
-satisfy. Removing a data tool those 8 schedules name breaks them at their cron hour with nobody
-watching. Which credential a schedule should hold is an open decision, not an oversight.
+So the credential question is answered and the caller class has a destination. What has not moved
+is the transport: `/mcp` still accepts a device token through `requirePatOrDevice`, and
+`packages/runner/crates/forge-runner-core/src/mcp/config.rs` still writes the device token into
+every agent session's `.mcp.json`. Until that changes, removing a data tool still breaks a
+device-authenticated caller — see `ISS-931` and the deletion rule in
+[agent-surface.md](agent-surface.md).

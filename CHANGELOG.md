@@ -383,7 +383,8 @@
   `text_content` on their own path and a record wired into one of them misses the next writer added.
   Identical text records nothing, so the embedding backfill and `feedback` mint no history, and
   lifecycle mirrors (issue/comment/job/decision) are excluded — their text tracks a record that keeps
-  its own. Read it at `GET /api/memory/revisions?projectId=…&sourceRef=…` or `forge_memory.revisions`.
+  its own. Read it at `GET /api/memory/revisions?projectId=…&sourceRef=…` — the MCP tool that also
+  served it is removed in this same release, see below.
   The four wrong-day rows repaired on 2026-09-05 were recoverable only because the deleted absorb had
   left archived snapshots behind; a repeat would have had nothing to read.
 
@@ -798,6 +799,30 @@
 
 ### Removed
 
+- **The `forge_memory.revisions` MCP tool.** The MCP surface is being shrunk to the
+  session-lifecycle group (ISS-894). It has **no rows at all** in `mcp_audit_log` under either
+  spelling — the first registered tool measured at zero calls lifetime — no `skills.skill_md` row
+  on the live instance names it, and `GET /api/memory/revisions` answers a job-scoped PAT. The
+  registry goes 60 → 59. `runMemoryRevisions` and the REST route are untouched; only the second
+  way in is gone.
+
+  **The deletion rule's second clause was not met, and the rule now says why that is allowed
+  here.** It asks that the replacement route accept a device token; `GET /api/memory/revisions` is
+  `requireAuth()` and would refuse one, the same shape that made `/api/skill-facts` a bad
+  replacement for `forge_skill_facts.get`. The difference is that tool had 23 device callers to
+  strand and this one has none. `docs/architecture/agent-surface.md` now states that reading and
+  prices it: available once per tool, on evidence of zero rows whole-table under both spellings,
+  worth nothing for a tool with traffic, and revoked if a device caller for a tool deleted this way
+  ever appears.
+
+  The wave that measured this before reported "no candidates" because it joined the registry
+  against the audit log with an inner join, and a tool nobody has ever called has no row to join
+  to. That clause is now part of the deletion rule in `docs/architecture/agent-surface.md`, which
+  is also corrected where it named the `forge-plugin` CLI as what pins the remaining tools: ISS-508
+  moved that CLI to `/api` on 2026-09-06, and what holds the surface open now is
+  `packages/runner/.../mcp/config.rs` writing the box's device token into every agent session's
+  `.mcp.json` (ISS-931).
+
 - **The skill rebase lane.** `sweepTemplateBumps` walked every project skill on each builtin seed,
   compared `basedOnGlobalVersion` against the template's current `version`, and wrote nothing — its
   only output was a log line and a `behindTemplate: true` flag on the effective-skill projection and
@@ -1106,6 +1131,22 @@
   set is now 59.
 
 ### Fixed
+
+- **`POST /api/memory/search` ignored the `strategy` you asked for and told you it had honoured
+  it.** The route validated `strategy` in its body schema and then never passed it to
+  `runMemorySearch`, which applied its own `'semantic'` default — so a caller asking for `keyword`
+  or `hybrid` got a semantic search back, labelled `strategy: 'semantic'` in the response, with no
+  error anywhere. The MCP tool always forwarded it, so the two surfaces disagreed for as long as
+  the route existed. Found while annotating the pair as a declared contract (ISS-894); the route
+  now forwards the field, and an integration test asserts the requested strategy in the response
+  rather than in the hits, because a hits-only assertion passes on both the broken and the fixed
+  route.
+
+  The new case fits under the file's frozen size budget rather than raising it: the twelve
+  `process.env.X ??=` lines in `beforeAll` are now one loop over a module-level `ENV_DEFAULTS`, and
+  the keyword strategy needs neither a seeded row nor an embedding stub to report itself back. The
+  `form` axis baseline may only move down, so a waiver was not available here — which is the gate
+  working.
 
 - **A valid Coolify token that was merely under-scoped told the operator to replace it.** Every
   Coolify v4 route sits behind an ability middleware (`api.ability:read`, `:deploy`, …), so a token
