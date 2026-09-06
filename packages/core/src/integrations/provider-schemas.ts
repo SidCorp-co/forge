@@ -69,7 +69,8 @@ const BINDING_CONFIG_KEYS: Record<string, readonly string[]> = {
   postman: RELEASE_CHANNEL_KEYS,
   epodsystem: RELEASE_CHANNEL_KEYS,
   sentry: RELEASE_CHANNEL_KEYS,
-  github: ['owner', 'repo', ...RELEASE_CHANNEL_KEYS],
+  // cm:guard `installationId` is binding-tier with owner/repo, not connection-tier — ONE App can hold several installations, and splitProviderConfig drops from the binding every key missing here, so leaving it out lets a bind succeed with the repository recorded and no way to mint a token for it (adapter.ts reads all three together)
+  github: ['installationId', 'owner', 'repo', ...RELEASE_CHANNEL_KEYS],
   agent: RELEASE_CHANNEL_KEYS,
 };
 
@@ -96,12 +97,7 @@ const coolifySecretsSchema = z.object({
   apiToken: z.string().min(8).max(2000),
 });
 
-// ISS-336 — Postman provider. Config is the non-secret write-target; the
-// API key (PMAK-...) is the only secret and is vault-encrypted like coolify's.
-// `postmanConfigBase` carries NO defaults so `.partial()` is a true partial for
-// PATCH (Zod's `.partial()` still EMITS a field's `.default()` when the key is
-// absent, which would silently reset region/mode/workspaceName on a partial
-// update). Defaults live only on the create schema below.
+// cm:guard keep this base free of `.default()` — zod's `.partial()` still EMITS a field's default when the key is absent, so a default here turns a PATCH that names one field into one that silently resets region, mode and workspaceName. Defaults belong on the create schema alone (ISS-336).
 const postmanConfigBase = z.object({
   workspaceId: z.string().min(1).max(200).optional(),
   workspaceName: z.string().min(1).max(200),
