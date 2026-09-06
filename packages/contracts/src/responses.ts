@@ -46,11 +46,8 @@ export interface RefreshResponse {
   token: string;
 }
 
-// ISS-271 — one entry per (device × project) runner assignment, returned by
-// `GET /api/devices/me/runners` (device-token auth). The runner daemon uses
-// `repoPath`/`branch` as the source of truth for the working dir, falling back
-// to local config.toml only when the server has no path yet. `slug` lets the
-// CLI resolve a project from its slug without hand-typing the project id.
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/runners.rs — `MeRunner` deserializes this shape and every field here defaults on the Rust side, so a field renamed or dropped on either half is read as ABSENT rather than as an error, and each field's own annotation says which way its absent case falls (ISS-271, ISS-929).
+// cm:guard `repoPath`/`branch` are the source of truth for the working dir and `config.toml` is only the fallback when the server has no path — inverting that lets a stale local binding outlive a repo move nobody on the box can see.
 export interface MeRunnerAssignment {
   projectId: string;
   runnerId: string;
@@ -63,6 +60,9 @@ export interface MeRunnerAssignment {
   kind: string;
   /** Prose: how to bring this repo's workspace to a usable state. */
   workspaceSetup: string | null;
+  /** The `master-policy` projectFact: the owner's standing instruction for this
+   *  project's resident master, spliced into its standing brief (ISS-929). */
+  masterPolicy: string | null;
 }
 
 export type MeRunnersResponse = MeRunnerAssignment[];

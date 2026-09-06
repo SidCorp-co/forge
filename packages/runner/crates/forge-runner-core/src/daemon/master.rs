@@ -62,9 +62,15 @@ const MASTER_BREAKER_COOLDOWN: Duration = Duration::from_secs(30 * 60);
 const LIMITED_POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
 /// The first thing a resident master is told, once, when its session starts.
-// cm:guard name the skill and STOP. Restating its rules here creates a second copy of the master's process, and the copies drift in silence because nothing compares them — the skill file is where a reader looks and this string is what a master is actually told. The two ship together (see the include_str edge below), so there is no version where inlining the rules here is even the safer half.
+// cm:guard name the skill and STOP. Restating its RULES here creates a second copy of the master's process, and the copies drift in silence because nothing compares them — the skill file is where a reader looks and this string is what a master is actually told. The two ship together (see the include_str edge below), so there is no version where inlining the rules here is even the safer half. The owner policy block below is the one thing that is not a copy: the skill holds the defaults and defers to it by name, and it exists nowhere in the binary.
 // cm:guard this is the STANDING brief and the pass prompt is the pool read, and the split is what makes residency worth anything. Folding the two back together sends the whole brief every 30 seconds — the cold start this change removed, arriving as tokens instead of as a process.
-fn standing_prompt(project: &str, base_branch: Option<&str>) -> String {
+// cm:guard the policy is spliced VERBATIM and is never summarised, reordered or merged into the sentences around it. It is the project owner speaking, this box is a courier, and a courier that paraphrases is how an instruction that was typed correctly arrives wrong. The heading is what lets the skill defer to it by name.
+// cm:edge contract -> packages/core/src/devices/me-runners.ts — the text arrives as `masterPolicy` on `/me/runners`, from the `master-policy` projectFact. `None` means the project set none, and the skill's own defaults stand; it never means "brief nothing".
+fn standing_prompt(
+    project: &str,
+    base_branch: Option<&str>,
+    master_policy: Option<&str>,
+) -> String {
     let mut out = format!(
         "Use the `forge-master` skill. You are the resident master for project `{project}` on \
 this box. You will be given the claimable pool repeatedly, in this same session: read it, decide \
@@ -96,6 +102,16 @@ you have already decided.\n",
 deliberately did not claim and why — where the next pass can read it, and say it out loud rather \
 than only thinking it: this pane is the record.\n",
     );
+    if let Some(policy) = master_policy {
+        out.push_str(
+            "\n## The project owner's standing policy\n\nThis is the owner's own instruction for \
+this project, and it OUTRANKS the `forge-master` skill wherever the two differ — the skill holds \
+the defaults for a project that has set none. It is set as this project's `master-policy` fact and \
+is re-sent to every master this box starts, so it survives this session.\n\n",
+        );
+        out.push_str(policy);
+        out.push('\n');
+    }
     out
 }
 
@@ -525,7 +541,11 @@ async fn ensure_master(
 
     // cm:guard the standing brief is typed ONCE, into a pane that has just started, and the sleep is not decoration: Claude Code draws its composer after a startup that takes a second or two, and a paste that lands before it is dropped on the floor with no error anywhere. The next sweep would then prompt a master that was never briefed.
     tokio::time::sleep(Duration::from_secs(5)).await;
-    let brief = standing_prompt(&resolved.slug, resolved.base_branch.as_deref());
+    let brief = standing_prompt(
+        &resolved.slug,
+        resolved.base_branch.as_deref(),
+        resolved.master_policy.as_deref(),
+    );
     if let Err(e) = terminal::send_line(&name, &brief).await {
         tracing::warn!("[master] {}: could not brief {name}: {e}", resolved.slug);
     }
@@ -667,6 +687,7 @@ mod tests {
                 status: (*status).into(),
                 kind: None,
                 workspace_setup: None,
+                master_policy: None,
                 rate_limited_for_seconds: *limited,
                 limit_reason: None,
             })
@@ -798,7 +819,7 @@ mod tests {
     // cm:guard the standing brief and the pass prompt must stay SEPARATE, and this is the assertion that fails if they are folded back together: re-sending the brief every 30 seconds is the cold start this change removed, arriving as tokens instead of as a process.
     #[test]
     fn the_pass_prompt_carries_the_pool_and_not_the_brief() {
-        let brief = standing_prompt("forge-dev", Some("main"));
+        let brief = standing_prompt("forge-dev", Some("main"), None);
         assert!(brief.contains("forge-master"));
         assert!(brief.contains("origin/main"));
 
@@ -811,6 +832,32 @@ mod tests {
         assert!(
             !pass.contains("forge-master skill"),
             "the brief must not repeat: {pass}"
+        );
+    }
+
+    // cm:guard the policy must arrive VERBATIM and this asserts exactly that. A master briefed with a summary of the owner's instruction is a master following the summariser, and the whole failure ISS-929 fixes is an instruction that reached the pane wrong or not at all.
+    #[test]
+    fn the_owner_policy_reaches_the_brief_verbatim() {
+        let policy = "Budget: 5 sessions.\nDrafts are eligible work.\nGroup related issues.";
+        let brief = standing_prompt("forge-dev", Some("main"), Some(policy));
+        assert!(
+            brief.contains(policy),
+            "the policy must be spliced whole: {brief}"
+        );
+        assert!(
+            brief.contains("OUTRANKS"),
+            "the brief must say the policy beats the skill's defaults: {brief}"
+        );
+    }
+
+    // cm:guard a project that set no policy must be briefed EXACTLY as it was before ISS-929. The absent case is every project on the fleet but one, so a stray heading or blank section here is a change to every master this repo starts.
+    #[test]
+    fn no_policy_leaves_the_brief_untouched() {
+        let brief = standing_prompt("forge-dev", Some("main"), None);
+        assert!(!brief.contains("standing policy"), "{brief}");
+        assert!(
+            brief.trim_end().ends_with("this pane is the record."),
+            "{brief}"
         );
     }
 
