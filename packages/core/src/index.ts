@@ -61,6 +61,7 @@ import { installRoutes } from './install/routes.js';
 import { registerCoolifyAdapter } from './integrations/coolify/adapter.js';
 import { registerEpodsystemAdapter } from './integrations/epodsystem/adapter.js';
 import { registerGitHubAdapter } from './integrations/github/adapter.js';
+import { githubCallbackRoutes, githubConnectRoutes } from './integrations/github/connect-routes.js';
 import { registerIntegrationsHealthSweep } from './integrations/health-sweep.js';
 import { registerPostmanAdapter } from './integrations/postman/adapter.js';
 import { registerIntegrationsWorker } from './integrations/queue.js';
@@ -264,11 +265,7 @@ app.delete('/mcp', mcpHandler);
 app.route('/', installRoutes);
 app.route('/api', installRoutes);
 
-// Public capability-guide index (ISS-746): GET /guides, /guides/:slug,
-// /guides/:slug.md. Same dual-mount reasoning as installRoutes above — the
-// hosted edge proxy forwards only `/api/*`, so every pointer we emit
-// elsewhere (FORGE_MCP_INSTRUCTIONS, the mcp-tool-reference fact) uses the
-// `/api/guides` form; the root mount is for self-hosters.
+// cm:why dual-mounted for the same reason as installRoutes above; every pointer Forge emits (FORGE_MCP_INSTRUCTIONS, the mcp-tool-reference fact) uses the `/api/guides` form, so the root mount serves only self-hosters
 app.route('/', guideRoutes);
 app.route('/api', guideRoutes);
 
@@ -323,6 +320,8 @@ app.route('/api/orgs', orgRoutes);
 app.route('/api/orgs', sshKeyRoutes);
 app.route('/api/org-invitations', orgInvitationRoutes);
 app.route('/api/projects', integrationsRoutes);
+app.route('/api/projects', githubConnectRoutes);
+app.route('/api', githubCallbackRoutes);
 app.route('/api/projects', integrationTargetRoutes);
 app.route('/api/integration-connections', integrationConnectionsRoutes);
 app.route('/api/projects', memberRoutes);

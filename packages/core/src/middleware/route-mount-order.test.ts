@@ -156,3 +156,48 @@ describe('two sub-apps that BOTH carry a guard (the /api/issues shape)', () => {
     await expect(unauthed.json()).resolves.toEqual({ code: 'UNAUTHENTICATED' });
   });
 });
+
+// cm:edge lockstep -> packages/core/src/index.ts — the callback sub-app mounted at the broad `/api` prefix; if that mount moves, or its guard scope changes, change this together
+describe('a guarded sub-app at the BROAD /api prefix (the github-callback shape)', () => {
+  const callbackSubApp = (scope: '*' | '/integrations/github/*') => {
+    const sub = new Hono();
+    sub.use(scope, async (c, next) => {
+      if (c.req.header('Authorization') !== 'Bearer user-1') {
+        return c.json({ code: 'UNAUTHENTICATED' }, 401);
+      }
+      await next();
+    });
+    sub.get('/integrations/github/manifest-callback', (c) => c.json({ ok: 'callback' }));
+    return sub;
+  };
+
+  const webhookSubApp = () => {
+    const sub = new Hono();
+    sub.post('/in/:slug', (c) => c.json({ accepted: true }));
+    return sub;
+  };
+
+  it("a '*' guard at /api reaches routes it does not own, including public ones", async () => {
+    const app = new Hono();
+    app.route('/api', callbackSubApp('*'));
+    app.route('/api/webhooks', webhookSubApp());
+
+    // cm:why the inbound webhook is authenticated by HMAC and must stay reachable without a session — a 401 here is a provider's delivery being rejected by a guard belonging to an unrelated feature
+    const res = await app.request('/api/webhooks/in/demo', { method: 'POST' });
+    expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toEqual({ code: 'UNAUTHENTICATED' });
+  });
+
+  it('scoping that guard to its own path leaves the public route public', async () => {
+    const app = new Hono();
+    app.route('/api', callbackSubApp('/integrations/github/*'));
+    app.route('/api/webhooks', webhookSubApp());
+
+    const hook = await app.request('/api/webhooks/in/demo', { method: 'POST' });
+    expect(hook.status).toBe(200);
+    await expect(hook.json()).resolves.toEqual({ accepted: true });
+
+    const callback = await app.request('/api/integrations/github/manifest-callback');
+    expect(callback.status).toBe(401);
+  });
+});

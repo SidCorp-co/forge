@@ -38,6 +38,32 @@
   reader anywhere in core, so adding them to the schema would have made three dead dials
   configurable. The "configured elsewhere" list is rewritten to match: every row now names a key
   something in core actually reads, and none of them promises work to a closed issue.
+- **Connecting GitHub is an authorization, not a form.** `POST
+  /api/projects/:id/integrations/github/connect` returns an App manifest; the operator's browser
+  posts it to GitHub, GitHub creates the App and redirects to
+  `/api/integrations/github/manifest-callback` with a one-time code, and converting that code
+  yields the App's `id`, `pem` and `webhook_secret` at once. Nothing is typed, so nothing can be
+  mistyped, and the binding's `integrationSecret` is the App's own webhook secret rather than a
+  freshly minted one that would fail every signature check while the UI showed the integration as
+  configured.
+
+  The `state` carried through the flow is HMAC-signed with a ten-minute life AND checked against the
+  session on the way back: the signature proves Forge issued the state, not that this browser is the
+  one that asked for it. Without the second check a signed state replays in someone else's session
+  and binds an attacker's App to their project — which is what the test asserts, and it fails with
+  `expected { projectId: 'p-attacker', … } to be null` when the signature check is removed.
+
+  **The mount nearly shipped a 401 on every webhook.** The callback sub-app carried
+  `use('*', requireAuth())` and mounts at the broad `/api` prefix, where Hono turns it into `/api/*`
+  on the parent and runs it for every route registered afterwards — including the deliberately
+  unauthenticated `/api/webhooks/in/:slug`. Measured before the fix: `POST /api/webhooks/in/demo` →
+  `401 UNAUTHENTICATED`, so every GitHub delivery would have been rejected by a guard belonging to
+  an unrelated feature while the integration still displayed as connected. The guard is now scoped
+  to `/integrations/github/*`, and `middleware/route-mount-order.test.ts` carries both halves — the
+  broad mount failing, and the scoped one leaving the webhook public. The `cm:edge lockstep` on that
+  file is what surfaced it; it was one line of "advice, not a verdict" away from being dismissed as
+  unrelated to a route mount.
+
 - **GitHub is an integration provider, not a second webhook path.** It used to live on a branch
   inside `POST /in/:slug` keyed on `projects.webhookSecret` — one shared secret per project, no
   environment split, no delivery log, no health, no circuit breaker — kept, by its own comment,
