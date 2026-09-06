@@ -405,7 +405,7 @@ export async function abortReleaseBatch(
   reason: string,
   actorUserId: string,
 ): Promise<string[]> {
-  const released = await db.execute<{ id: string; issue_id_col: string }>(sql`
+  const released = await db.execute<{ id: string }>(sql`
     UPDATE issues SET release_batch_run_id = NULL, updated_at = now()
     WHERE release_batch_run_id = ${runId}
     RETURNING id

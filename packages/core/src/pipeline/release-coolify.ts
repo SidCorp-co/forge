@@ -27,14 +27,6 @@ export interface DispatchOutcome {
 }
 
 /**
- * Hook called after a `release`-type job completes. Looks up the project's
- * Coolify integrations (staging + prod), enqueues a deploy job for each
- * environment that's active and not waiting for prod confirmation.
- *
- * No-op (returns `dispatched=false, integrationIds=[]`) when the project
- * has no Coolify configured — preserves backwards-compatible behaviour.
- */
-/**
  * Per-project opt-in: when `agentConfig.pipelineConfig.autoProdDeploy === true`,
  * a prod Coolify deploy auto-dispatches on release exactly like staging,
  * skipping the human-confirm gate. Default false keeps the gate. Best-effort —

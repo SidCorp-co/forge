@@ -797,6 +797,16 @@
   who signs in. They now reach the project's admins, ordered by priority, capped at 20 rows with the
   real total shown; one human comment clears a row for good. (ISS-881)
 
+- An issue whose next step is queued now says so — on its own page and on the board: which step,
+  what is holding it, how long it has waited, and when it will try again. Before, a queued step
+  looked exactly like an issue nobody was working: the pipeline panel had no queued arm at all, and
+  the card and the list row took their reading from the run's status rather than from the gate
+  actually holding the step. `pipelineHealth` carries a `queuedStep`, the issues search endpoint
+  serves it under `withPipelineHealth=1` — which the board and the list both already send — and the
+  blocker banner takes its tone from whether the wait needs anyone to act, so waiting on a
+  dependency reads as information rather than as an alarm. Shipped 2026-09-03; this line was owed
+  then and is written now. (ISS-903)
+
 ### Removed
 
 - **The `forge_memory.revisions` MCP tool.** The MCP surface is being shrunk to the
@@ -2423,6 +2433,17 @@
   agent's `churn` ledger stays as the human's reading material and is named as such. Rounds that each
   fix a different blocker still do not alarm, and one approval resets the count. Nothing is capped,
   parked or blocked — there is still no limit on how many rounds an issue may take. (ISS-878)
+
+- **What's New no longer lists the same category several times over for one release.**
+  `[Unreleased]` had grown nine `###` headings from append-only edits — Added three times, Fixed
+  three, Changed twice — and the feed renders one section per heading, so a single release read
+  ADDED, FIXED, CHANGED, REMOVED, ADDED, FIXED, ADDED, CHANGED, FIXED down the page. The headings
+  are folded to four with every bullet carried across unchanged, and `scripts/lib/release-record.mjs`
+  gained a `structure` rule that refuses a repeated `###` inside one release section, so the shape
+  cannot drift back one append at a time: it reported five repeats against the file as it stood and
+  none after. Two fixes that had shipped with nothing written about them went in at the same time —
+  failure classification, and the vendored fonts that stopped a font host from failing a backend
+  deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
 

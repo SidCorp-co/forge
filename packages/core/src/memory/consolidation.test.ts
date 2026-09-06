@@ -48,11 +48,6 @@ vi.mock('./feedback-service.js', () => ({
   runMemoryFeedback: (input: unknown) => runMemoryFeedbackMock(input),
 }));
 
-const resolveMergeStatesMock = vi.fn();
-vi.mock('../issues/merged-at.js', () => ({
-  resolveMergeStates: (cfg: unknown) => resolveMergeStatesMock(cfg),
-}));
-
 // cm:guard the stub is ORDER-sensitive, not shape-sensitive: each select() consumes the next queued result whether the chain ends at .limit() or is awaited at .where(). Adding a query without queueing a row for it steals the next test's row rather than failing where the gap is.
 const selectResults: unknown[][] = [];
 const updateSetMock = vi.fn();
@@ -117,7 +112,6 @@ beforeEach(() => {
   embedMock.mockReset();
   searchMemoriesMock.mockReset();
   runMemoryFeedbackMock.mockReset();
-  resolveMergeStatesMock.mockReset();
   bossSendMock.mockReset();
   bossCreateQueueMock.mockReset();
   bossWorkMock.mockReset();
@@ -135,7 +129,6 @@ beforeEach(() => {
   insertReturningMock.mockResolvedValue([{ id: 'issue-new' }]);
   embedMock.mockResolvedValue(new Array(8).fill(0.01));
   runMemoryFeedbackMock.mockResolvedValue({ found: true, action: 'archived' });
-  resolveMergeStatesMock.mockReturnValue({ baseBranch: 'released', productionBranch: 'released' });
   bossCreateQueueMock.mockResolvedValue(undefined);
   bossWorkMock.mockResolvedValue(undefined);
   bossSendMock.mockResolvedValue(undefined);
@@ -275,8 +268,6 @@ describe('runConsolidationForProject', () => {
   });
 });
 
-// ── ISS-708: reconcileForReleasedIssue ─────────────────────────────────────
-
 describe('reconcileForReleasedIssue', () => {
   it('skips when the issue is not found', async () => {
     selectResults.push([]); // issue lookup — empty
@@ -387,7 +378,7 @@ describe('reconcileForReleasedIssue', () => {
     expect(result.possiblyStale).toBe(1);
     expect(result.contradicted).toBe(0);
     expect(runMemoryFeedbackMock).not.toHaveBeenCalled();
-    expect(indexMemoryMock).not.toHaveBeenCalled(); // no re-embed
+    expect(indexMemoryMock).not.toHaveBeenCalled();
     expect(updateSetMock).toHaveBeenCalledTimes(1);
     const set = updateSetMock.mock.calls[0]?.[0] as { metadata: Record<string, unknown> };
     expect(set.metadata).toMatchObject({ keep: true, supersededBy: 'ISS-708' });
@@ -437,8 +428,7 @@ describe('registerMemoryReconcileTrigger', () => {
     await new Promise((r) => setTimeout(r, 0));
   }
 
-  it('enqueues a reconcile job when a transition lands merged_at (leaving mergeStates.baseBranch)', async () => {
-    selectResults.push([{ agentConfig: {} }]);
+  it('enqueues a reconcile job when a transition lands merged_at (leaving BASE_MERGE_STATE)', async () => {
     const { bus, emit } = fakeBus();
     registerMemoryReconcileTrigger(bus);
 
@@ -459,8 +449,7 @@ describe('registerMemoryReconcileTrigger', () => {
     );
   });
 
-  it('enqueues when leaving baseBranch even without reaching closed', async () => {
-    selectResults.push([{ agentConfig: {} }]);
+  it('enqueues when leaving BASE_MERGE_STATE even without reaching closed', async () => {
     const { bus, emit } = fakeBus();
     registerMemoryReconcileTrigger(bus);
 
@@ -478,7 +467,6 @@ describe('registerMemoryReconcileTrigger', () => {
   });
 
   it('does not enqueue for a non-merge-landing transition', async () => {
-    selectResults.push([{ agentConfig: {} }]);
     const { bus, emit } = fakeBus();
     registerMemoryReconcileTrigger(bus);
 
