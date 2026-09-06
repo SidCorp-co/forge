@@ -339,6 +339,7 @@ it('attributes the edge to the PAT user — the synthetic device that used to st
       scopes: ['read', 'write'],
       projectIds: null,
       boundProjectId: null,
+      deviceId: null,
       machine: null,
     },
     projectSlug: PROJECT_SLUG,

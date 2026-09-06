@@ -11,6 +11,7 @@ export type UserJwtClaims = JWTPayload & {
 
 const secret = () => new TextEncoder().encode(env.JWT_SECRET);
 
+// cm:edge lockstep -> packages/core/src/auth/agent-login-refusal.test.ts — every caller of this function is a login entrance, and each one must refuse `users.kind = 'agent'` through `assertNotAgent` BEFORE reaching it. The refusal is not here because signing a JWT is pure crypto and a DB read in it costs every caller a query; it is enforced instead by that test, which scans the tree for call sites and fails on one that does not refuse (ISS-932).
 export async function signUserToken(userId: string): Promise<string> {
   return new SignJWT({ typ: USER_JWT_TYPE })
     .setProtectedHeader({ alg: 'HS256' })

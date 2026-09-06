@@ -23,8 +23,8 @@ vi.mock('../auth/jwt.js', () => ({
   }),
 }));
 
-vi.mock('../auth/deviceToken.js', () => ({
-  verifyDeviceToken: vi.fn(async () => null),
+vi.mock('../auth/device-credential.js', () => ({
+  verifyDeviceCredential: vi.fn(async () => null),
 }));
 
 vi.mock('../auth/cookie.js', () => ({
@@ -166,10 +166,7 @@ describe('/ws auth — Sec-WebSocket-Protocol subprotocol (ISS-286)', () => {
   });
 });
 
-// ISS-2A — any authenticated principal can subscribe to the cross-tenant
-// `global` room used for builtin skill update broadcasts. The DB is mocked
-// to return no rows so this also confirms subscribe to `'global'` does not
-// hit any project-membership lookup.
+// cm:guard the db mock returns NO rows on purpose, and that is the assertion: subscribing to the cross-tenant `global` room must not reach a project-membership lookup at all. A mock that returned a membership would make this suite pass whether or not the lookup happens (ISS-2A).
 describe('/ws subscribe — global room (ISS-2A)', () => {
   function dialPersistent(opts: {
     protocols?: string | string[];

@@ -26,6 +26,7 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { hooks } from '../pipeline/hooks.js';
 import { readPluginDesignations, unionPluginDesignations } from '../plugins/designation.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
+import { revokeDeviceCredentials } from './credential.js';
 import { mirrorHeartbeatToRunners } from './heartbeat-runner-mirror.js';
 import { listDeviceAssignments } from './me-runners.js';
 import { redeemPairingCode } from './pair.js';
@@ -253,7 +254,8 @@ deviceOwnerRoutes.patch(
   },
 );
 
-// cm:why soft revoke, not a delete — the row is history, and the auth middleware already rejects a revoked token, so nothing is gained by losing the record of a box that once ran jobs
+// cm:why soft revoke, not a delete — the row is history, and the auth middleware already rejects a revoked device, so nothing is gained by losing the record of a box that once ran jobs
+// cm:guard revoking the box must ALSO revoke the token issued to it (ISS-932). A box's credential is now an ordinary `personal_access_tokens` row, so the device's `status` alone stops only the surfaces that call `verifyDeviceCredential`; the token itself would keep authenticating as its holder everywhere a plain PAT is accepted. `verifyDeviceCredential` re-checks the status as the second defence precisely because these are two writes.
 // cm:why dropping the `runners` rows is the ONLY pool cleanup owed: ISS-172 Slice A folded `project_devices` into `runners`, so there is no second table to sweep
 // cm:guard deliberately NOT behind `requireFreshAuth` — that gate stamps `users.last_fresh_auth_at`, and `POST /api/auth/reauth` refuses any account whose `passwordHash` is NULL, which is every OAuth-only owner. It therefore did not slow those owners down, it made revoking impossible for them: measured 2026-09-05, a GitHub-authed owner could not delete six retired hosts by any sequence of clicks. Ownership below is the authorization; the confirmation that the right box is being revoked belongs in the UI, which types the device name back.
 // cm:edge contract -> packages/web-v2/src/features/runners/components/revoke-device-control.tsx — that control is the whole confirmation step now, so a guard re-added here must first have a path an OAuth-only owner can actually complete.
@@ -280,6 +282,7 @@ deviceOwnerRoutes.delete(
       await tx.update(devices).set({ status: 'revoked' }).where(eq(devices.id, id));
       await tx.delete(runners).where(eq(runners.deviceId, id));
     });
+    await revokeDeviceCredentials(id);
 
     // Live-refresh the owner's Runners surface (and any device room watchers).
     // Best-effort, lazily imported to avoid circular deps at module init.
@@ -294,9 +297,7 @@ deviceOwnerRoutes.delete(
         event: 'device.revoked',
         data: { deviceId: id },
       });
-    } catch {
-      // Non-fatal: revoke already committed.
-    }
+    } catch {}
 
     return c.body(null, 204);
   },

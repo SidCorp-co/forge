@@ -26,6 +26,7 @@ export function makeFakePrincipal(
     scopes: ['read', 'write'],
     projectIds: null,
     boundProjectId: null,
+    deviceId: null,
     machine: null,
     ...overrides,
   };

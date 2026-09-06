@@ -84,7 +84,6 @@ vi.mock('../storage/index.js', async () => {
 });
 
 const verifyPatMock = vi.fn();
-const verifyDeviceTokenMock = vi.fn();
 vi.mock('../auth/pat.js', async () => {
   const actual = await vi.importActual<typeof import('../auth/pat.js')>('../auth/pat.js');
   // cm:guard `touchPatUsage` is stubbed OUT, not left real: it fires a `db.update` the moment a PAT verifies, and this file's db mock serves one shared queue, so the real one steals the row the handler was about to read and the failure lands on the handler as a 500. Its own error handling is irrelevant here — the theft happens before anything throws.
@@ -94,12 +93,6 @@ vi.mock('../auth/pat.js', async () => {
     touchPatUsage: () => {},
   };
 });
-vi.mock('../auth/deviceToken.js', async () => {
-  const actual =
-    await vi.importActual<typeof import('../auth/deviceToken.js')>('../auth/deviceToken.js');
-  return { ...actual, verifyDeviceToken: (...args: unknown[]) => verifyDeviceTokenMock(...args) };
-});
-
 const { commentRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
@@ -133,7 +126,6 @@ beforeEach(() => {
   persistCommentAttachmentMock.mockReset();
   storageGet.mockReset();
   verifyPatMock.mockReset();
-  verifyDeviceTokenMock.mockReset();
 });
 
 async function userJwt() {
@@ -193,15 +185,13 @@ describe('GET /api/comments/attachments/:id — auth paths (AC-A)', () => {
     expect(verifyPatMock).toHaveBeenCalledOnce();
   });
 
-  // cm:guard ISS-927 — a device token is refused here, and `verifyDeviceTokenMock` going UNCALLED is the assertion that matters. A 401 alone would also be produced by a still-present device branch that merely failed, and this route (`requireAnyAuth`) was the one place a device bought its owner's whole account. A runner needing these bytes holds a `job:`/`session:` PAT and reaches them through the PAT branch above.
-  it('401 for a device token, and the device path is not even consulted', async () => {
-    verifyDeviceTokenMock.mockResolvedValueOnce({ id: 'device-1', ownerId: USER_ID });
-
+  // cm:guard the ISS-927 version of this test asserted `verifyDeviceToken` went UNCALLED, because a 401 alone could also come from a device branch that merely failed. That assertion is now unwritable and does not need writing: ISS-932 deleted `auth/deviceToken.ts`, so there is no device-token verifier in the process to call. What is left to prove is that the opaque credential a pre-ISS-932 box holds gets a 401 here rather than any part of its owner's account.
+  it('401 for the opaque token a pre-ISS-932 box holds', async () => {
     const res = await buildApp().request(`/api/comments/attachments/${ATT_ID}`, {
       headers: { authorization: `Bearer ${DEVICE_TOKEN}` },
     });
     expect(res.status).toBe(401);
-    expect(verifyDeviceTokenMock).not.toHaveBeenCalled();
+    expect(verifyPatMock).not.toHaveBeenCalled();
   });
 });
 
@@ -322,15 +312,14 @@ describe('POST /api/comments/:commentId/attachments — auth paths', () => {
     expect(verifyPatMock).toHaveBeenCalledOnce();
   });
 
-  it('401 via device token, and no attachment is written (ISS-927)', async () => {
-    verifyDeviceTokenMock.mockResolvedValueOnce({ id: 'device-1', ownerId: USER_ID });
+  it('401 via the opaque token a pre-ISS-932 box holds, and no attachment is written', async () => {
     const res = await buildApp().request(`/api/comments/${COMMENT_ID}/attachments`, {
       method: 'POST',
       headers: { authorization: `Bearer ${DEVICE_TOKEN}` },
       body: makeFile('hello'),
     });
     expect(res.status).toBe(401);
-    expect(verifyDeviceTokenMock).not.toHaveBeenCalled();
+    expect(verifyPatMock).not.toHaveBeenCalled();
     expect(persistCommentAttachmentMock).not.toHaveBeenCalled();
   });
 
@@ -362,8 +351,7 @@ describe('POST /api/comments/:commentId/attachments — auth paths', () => {
 });
 
 describe('Comment CRUD auth is NOT widened by the merge (AC-A bullet 2)', () => {
-  it('GET /:id/replies 401s a device token', async () => {
-    verifyDeviceTokenMock.mockResolvedValueOnce(null);
+  it('GET /:id/replies 401s an opaque non-PAT bearer', async () => {
     const res = await buildApp().request(`/api/comments/${COMMENT_ID}/replies`, {
       headers: { authorization: `Bearer ${DEVICE_TOKEN}` },
     });
@@ -372,15 +360,13 @@ describe('Comment CRUD auth is NOT widened by the merge (AC-A bullet 2)', () => 
 
   it('GET /:id/replies 401s a PAT', async () => {
     verifyPatMock.mockResolvedValueOnce(null);
-    verifyDeviceTokenMock.mockResolvedValueOnce(null);
     const res = await buildApp().request(`/api/comments/${COMMENT_ID}/replies`, {
       headers: { authorization: `Bearer ${PAT_TOKEN}` },
     });
     expect(res.status).toBe(401);
   });
 
-  it('PATCH /:id 401s a device token', async () => {
-    verifyDeviceTokenMock.mockResolvedValueOnce(null);
+  it('PATCH /:id 401s an opaque non-PAT bearer', async () => {
     const res = await buildApp().request(`/api/comments/${COMMENT_ID}`, {
       method: 'PATCH',
       headers: { authorization: `Bearer ${DEVICE_TOKEN}`, 'content-type': 'application/json' },
@@ -389,8 +375,7 @@ describe('Comment CRUD auth is NOT widened by the merge (AC-A bullet 2)', () => 
     expect(res.status).toBe(401);
   });
 
-  it('DELETE /:id 401s a device token', async () => {
-    verifyDeviceTokenMock.mockResolvedValueOnce(null);
+  it('DELETE /:id 401s an opaque non-PAT bearer', async () => {
     const res = await buildApp().request(`/api/comments/${COMMENT_ID}`, {
       method: 'DELETE',
       headers: { authorization: `Bearer ${DEVICE_TOKEN}` },
@@ -399,7 +384,6 @@ describe('Comment CRUD auth is NOT widened by the merge (AC-A bullet 2)', () => 
   });
 
   it('GET /:id/replies 200s a valid user JWT (auth still works for the real case)', async () => {
-    // assertEmailVerified() runs first on this route and does its own db lookup.
     queueResult([{ emailVerifiedAt: new Date('2026-01-01') }]);
     queueResult([
       { id: COMMENT_ID, issueId: ISSUE_ID, authorId: USER_ID, body: 'x', projectId: PROJECT_ID },

@@ -51,6 +51,13 @@ export type PatPrincipal = {
    * context now that the caller has no device to look one up by.
    */
   machine: MachineTokenRef | null;
+  /**
+   * The paired box this token was issued to, or `null` for a token a person
+   * holds. It is what `requireDevice` and `/ws` resolve a device from now that
+   * a device is a registry row rather than a credential (ISS-932).
+   */
+  // cm:guard non-null is the ENTIRE authority to act as a box, so no surface may fall back to `userId` when it is null — that is the `device.ownerId` fiction the AAT exists to remove, where a machine borrowed its owner's whole account. `middleware/require-device.ts` refuses by name instead.
+  deviceId: string | null;
 };
 
 // cm:guard ONE species reaches `/mcp`, and this alias staying a single member is the whole of ISS-931. A device token authenticates `/ws` and the `requireDevice` REST routes and NOTHING here; widening it back into a union restores the second live path that ISS-894's deletions exist to remove, and it does so silently — every `principal.kind === 'pat'` test in `mcp/**` was deleted as unreachable, so the device branch would come back with no gate reading it.
@@ -185,7 +192,7 @@ function maybeEmitPatUsed(tokenId: string, userId: string): void {
 export async function authenticatePat(c: Context, token: string): Promise<PatPrincipal | null> {
   const verified = await verifyPat(token);
   if (!verified) return null;
-  const { row } = verified;
+  const { row, ownerKind } = verified;
 
   const outcome = checkPatRateLimit(row.id, row.rateLimitMax);
   c.header('X-RateLimit-Limit', String(row.rateLimitMax ?? RULES.patPerToken.max));
@@ -217,12 +224,14 @@ export async function authenticatePat(c: Context, token: string): Promise<PatPri
   // cm:guard derive `agency` from the token, never assume `human` — this is the ONE place a PAT principal is built, for `/mcp` AND for REST (`pat-rest-surface.ts:beginPatRequest` calls straight into here), so a wrong constant here is wrong on every surface at once. A `job:` token is minted for an agent, delivered to the runner on `job.assigned`, and exported as `$FORGE_PAT`; a `session:` token is the same thing for an unattended chat/schedule session, delivered on `agent:start` (ISS-927). Stamped `human` either makes `principalActor` return `{type:'user'}`, which is the exact input `checkTransitionEvidence` and `mark_merged` use to SKIP the ISS-786/812 evidence gates. The gates were added because agents fabricate evidence, so the credential built for agents was the one class exempt from them. Read the FAMILY (`isMachineTokenName`), never one member — a species minted but tested for by name is the same hole wearing a new prefix.
   return {
     kind: 'pat',
-    agency: isMachineTokenName(row.name) ? 'agent' : 'human',
+    // cm:guard the OR is the whole shape and neither half may be dropped. `users.kind` answers for an AAT, whose owner IS an agent (ISS-932); `isMachineTokenName` answers for a `job:`/`session:` token, which is minted from a HUMAN's `jobs.created_by` and would read `human` off the kind alone. Deleting the name half is wave 4 of ISS-932 and cannot happen while those tokens are minted, or every job write is stamped a person's and skips the ISS-786/812 evidence gates.
+    agency: ownerKind === 'agent' || isMachineTokenName(row.name) ? 'agent' : 'human',
     userId: row.userId,
     tokenId: row.id,
     scopes: row.scopes,
     projectIds: row.projectIds ?? null,
     boundProjectId: row.boundProjectId ?? null,
+    deviceId: row.deviceId ?? null,
     machine: parseMachineTokenName(row.name),
   };
 }

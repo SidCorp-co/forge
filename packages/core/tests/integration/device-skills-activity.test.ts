@@ -15,7 +15,7 @@ import {
 describe('device skills report -> activity log (ISS-798 fix)', () => {
   let harness: TestDatabase;
   let app: Hono<{ Variables: RequestIdVars }>;
-  let issueDeviceToken: typeof import('../../src/auth/deviceToken.js').issueDeviceToken;
+  let pairDevice: typeof import('../helpers/pair-device.js').pairDevice;
   let schema: typeof import('../../src/db/schema.js');
   let listByDevice: typeof import('../../src/skills/activity-views.js').listByDevice;
 
@@ -36,8 +36,7 @@ describe('device skills report -> activity log (ISS-798 fix)', () => {
     const { deviceSkillRoutes } = await import('../../src/devices/skills-routes.js');
     const { errorHandler } = await import('../../src/middleware/error.js');
     const { requestId } = await import('../../src/middleware/request-id.js');
-    const deviceTokenMod = await import('../../src/auth/deviceToken.js');
-    issueDeviceToken = deviceTokenMod.issueDeviceToken;
+    pairDevice = (await import('../helpers/pair-device.js')).pairDevice;
     schema = await import('../../src/db/schema.js');
     ({ listByDevice } = await import('../../src/skills/activity-views.js'));
 
@@ -58,7 +57,7 @@ describe('device skills report -> activity log (ISS-798 fix)', () => {
   async function seedBoundDevice() {
     const user = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, user.id);
-    const { device, plaintext: deviceToken } = await issueDeviceToken({
+    const { device, plaintext: deviceToken } = await pairDevice({
       ownerId: user.id,
       name: 'test-device',
       platform: 'linux',

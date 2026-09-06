@@ -25,6 +25,8 @@ export function buildChatToolContext(opts: {
     kind: 'pat',
     // cm:guard `agent`, not `human` — the PAT shape here is a carrier for the user's identity, not a claim that a person is typing. Flipping it hands every chat write the human exemption from the ISS-812 fabrication guard.
     agency: 'agent',
+    // cm:guard `null`, and it may never become a device id. Chat runs in core's own process on behalf of a signed-in person, so it speaks for no box; a value here would let a synthetic principal through `requireDevice`-shaped checks that exist to gate a paired machine.
+    deviceId: null,
     userId: opts.userId,
     tokenId: CHAT_TOKEN_ID,
     // cm:guard `read` and only `read` — read handlers such as forge_projects_get refuse a PAT without it (measured 2026-09-04: the allowlist offered the tool and every call failed FORBIDDEN_SCOPE), while `write` is deliberately absent because the allowlist's per-action gate, not the scope, is what bounds chat writes

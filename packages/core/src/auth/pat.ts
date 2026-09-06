@@ -1,8 +1,9 @@
 /**
  * Personal Access Tokens — mint, verify, revoke, rotate (ISS-150).
  *
- * Mirrors the device-token primitives in `deviceToken.ts` but adds:
- *  - per-token argon2id pepper distinct from `DEVICE_TOKEN_PEPPER`
+ * The one credential species in Forge: a person's PAT, an agent's AAT, a
+ * job's or session's short-lived token, and a paired box's token are all rows
+ * in this table verified through this file. It offers:
  *  - constant-time prefix verification: we iterate all candidate rows
  *    even after a hit so timing does not leak which row matched
  *  - asynchronous `last_used_at`/`last_used_ip` updates so the request
@@ -15,7 +16,7 @@ import argon2 from 'argon2';
 import { and, eq, gt, type InferSelectModel, isNull, like, not, or, sql } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
-import { personalAccessTokens } from '../db/schema.js';
+import { personalAccessTokens, type UserKind, users } from '../db/schema.js';
 import {
   generatePatPlaintext,
   isPatValid,
@@ -41,6 +42,8 @@ export interface MintPatInput {
   projectIds?: string[] | null | undefined;
   // cm:edge contract -> packages/core/src/pat/routes.ts — mutual exclusion with `projectIds` is enforced at the REST layer ONLY, so a direct caller of `mintPat` can set both and no type says otherwise. `mintJobToken` and `mintSessionToken` are such callers; both set this and leave `projectIds` unset.
   boundProjectId?: string | null | undefined;
+  /** The paired box this token is issued to — see `devices/credential.ts`. */
+  deviceId?: string | null | undefined;
   expiresAt?: Date | null | undefined;
   rateLimitMax?: number | null | undefined;
 }
@@ -86,6 +89,7 @@ export async function mintPat(input: MintPatInput): Promise<MintedPat> {
       scopes: input.scopes ?? ['read', 'write'],
       projectIds: input.projectIds ?? null,
       boundProjectId: input.boundProjectId ?? null,
+      deviceId: input.deviceId ?? null,
       expiresAt: input.expiresAt ?? null,
       rateLimitMax: input.rateLimitMax ?? null,
     })
@@ -97,6 +101,12 @@ export async function mintPat(input: MintPatInput): Promise<MintedPat> {
 
 export interface VerifiedPat {
   row: Pat;
+  /**
+   * The kind of the principal the token belongs to. Read here so the one place
+   * a PAT principal is built can answer `agency` from WHO holds the token.
+   */
+  // cm:guard joined in the verify query rather than looked up by the caller, because `authenticatePat` builds the principal for `/mcp` AND for REST off this one return — a second lookup in one of them is how the two surfaces start disagreeing about whether a caller is an agent, and the ISS-786/812 evidence gates read exactly that answer.
+  ownerKind: UserKind;
 }
 
 /**
@@ -112,8 +122,9 @@ export async function verifyPat(plaintext: unknown): Promise<VerifiedPat | null>
 
   const prefix = patPrefixOf(plaintext);
   const rows = await db
-    .select()
+    .select({ pat: personalAccessTokens, ownerKind: users.kind })
     .from(personalAccessTokens)
+    .innerJoin(users, eq(users.id, personalAccessTokens.userId))
     .where(
       and(
         eq(personalAccessTokens.tokenPrefix, prefix),
@@ -129,26 +140,24 @@ export async function verifyPat(plaintext: unknown): Promise<VerifiedPat | null>
     // in the hash so this stays aligned with ARGON2_OPTIONS.
     try {
       await argon2.verify(await getDummyHash(), plaintext + env.PAT_PEPPER);
-    } catch {
-      // ignore — only here for timing parity
-    }
+    } catch {}
     return null;
   }
 
-  let matched: Pat | null = null;
+  let matched: VerifiedPat | null = null;
   for (const row of rows) {
     let ok = false;
     try {
-      ok = await argon2.verify(row.tokenHash, plaintext + env.PAT_PEPPER);
+      ok = await argon2.verify(row.pat.tokenHash, plaintext + env.PAT_PEPPER);
     } catch {
       ok = false;
     }
     // Intentionally do NOT short-circuit: keep verifying so the work done
     // for a non-matching token is the same as a matching one.
-    if (ok && matched === null) matched = row;
+    if (ok && matched === null) matched = { row: row.pat, ownerKind: row.ownerKind };
   }
 
-  return matched ? { row: matched } : null;
+  return matched;
 }
 
 /**
@@ -260,6 +269,8 @@ export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null
         scopes: existing.scopes,
         projectIds: existing.projectIds,
         boundProjectId: existing.boundProjectId,
+        // cm:guard carried over for the same reason the project binding is: `device_id` is part of the token's IDENTITY, not of its secret. Dropping it on rotate silently demotes a paired box's credential to an ordinary PAT, and the box then 401s on every `requireDevice` route with nothing in the rotate path to say why.
+        deviceId: existing.deviceId,
         expiresAt: input.expiresAt ?? existing.expiresAt,
         rateLimitMax: existing.rateLimitMax,
       })

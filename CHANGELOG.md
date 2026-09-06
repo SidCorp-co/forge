@@ -11,6 +11,29 @@
 
 ### Added
 
+- **An org admin can create a named agent, and that agent is a real member of the organization.**
+  Until now every machine token borrowed a person: `job:<id>` was minted from `jobs.created_by`,
+  `session:<id>` from `agent_sessions.user_id`, and a master agent — which has no `user_id` at all —
+  had no valid principal to mint from, so `device.ownerId` was invented to stand in for one. The
+  question *who made this write* had no true answer for the work agents do.
+
+  `POST /api/orgs/:orgId/agents` (org `admin` and above) now creates a `users` row carrying
+  `kind = 'agent'`, joins it to the org and to exactly one project, and mints its **Agent Access
+  Token** through the same `mintPat` a person's PAT comes from. Same table, same middleware, and a
+  permission path that does not differ by a line — an agent is authorized because it *is* a member,
+  through `effectiveProjectRole` and the membership reads that were already there. `GET` lists them;
+  `DELETE` retires one by revoking its tokens and dropping its memberships while keeping the row,
+  because `activity_log.actor_id` points at it and a principal whose history vanishes on retirement
+  answers the original question with nothing.
+
+  An agent cannot sign in. `assertNotAgent` refuses `kind = 'agent'` at every entrance that mints a
+  user JWT, and a test scans the source tree for callers of `signUserToken` and fails on one that
+  does not refuse — the failure mode being guarded is not a broken entrance but a fourth entrance
+  added later. Its address is random at `agents.forge.invalid`, a domain RFC 2606 reserves so no MX
+  ever resolves it. It cannot mint another agent either: `/api/pat` and `/api/orgs` are both absent
+  from `PAT_ALLOWED_PREFIXES`, so no PAT or AAT reaches either route.
+
+
 - **An agent working an issue on a project that keeps modules is now told they exist, and how to
   set the issue's primary one.** ISS-593 made a module a label with `kind='module'` and gave an
   issue a primary through `issue_labels.is_primary`, but nothing told the agents doing the work:
@@ -2425,6 +2448,32 @@
   parked or blocked — there is still no limit on how many rounds an issue may take. (ISS-878)
 
 ### Changed
+
+- **Pairing a box is now issuing it a token, and the device credential is gone.** `devices` was
+  both the machine and its secret — `token_hash`, `token_prefix` and an argon2 verifier of its own.
+  It is a registry of machines now. `POST /api/devices/login/approve` takes an optional `agent_id`,
+  and the poll hands back an ordinary PAT (the approver's) or that agent's AAT, carrying the new
+  `personal_access_tokens.device_id`. `requireDevice`, `requireUserOrDevice` and the `/ws` upgrade
+  all resolve the box from that one column through `verifyDeviceCredential`; `auth/deviceToken.ts`
+  and `verifyDeviceToken` are deleted. Four auth middlewares became two species, then one.
+
+  A token with no `device_id` presented to a device route is refused **by name** rather than read as
+  its owner — that fallback is the `device.ownerId` fiction, where a machine borrowed a person's
+  whole account, and the refusal names `forge login` as the remedy.
+
+  **Every paired box must re-run `forge login` once.** There is no backfill and there could not be
+  one: core holds argon2 over a plaintext it never had, so an existing device token cannot be mapped
+  to a PAT. Migration `0214` refuses to drop the credential columns while any non-revoked device
+  still holds one and names the rows, so the break is read at deploy time rather than discovered as
+  a dark fleet. `devices` rows keep their ids, so every `runners` binding, `jobs.device_id`,
+  `agent_sessions.device_id` and `projects.default_device_id` reference survives.
+
+  `agency` now reads `users.kind === 'agent'` OR the token's machine-name prefix, and both halves
+  are load-bearing: an AAT's owner is an agent, while a `job:`/`session:` token is minted from a
+  human and would read `human` off the kind alone. `device:` joined
+  `MACHINE_TOKEN_NAME_PREFIXES` so a fleet's tokens stay off their owner's PAT cap and a daemon's
+  writes are held to the ISS-786/812 evidence gates.
+
 
 - **An agent session authenticates `/mcp` with its own job token, and a device token no longer
   authenticates `/mcp` at all.** Two credential species reached the MCP transport, and one of them

@@ -27,7 +27,7 @@ const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
 const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
-// lib/authz.ts effectiveProjectRole chains TWO leftJoins before where().limit(1).
+// cm:guard TWO leftJoins before `where().limit(1)` — that is `effectiveProjectRole`'s real shape, and a mock chain one join short resolves at the wrong link, handing every role check an undefined row that reads as no access.
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 const selectFrom = vi.fn(() => ({
@@ -107,6 +107,7 @@ const humanPat = (projectIds: string[] | null) =>
     scopes: ['read', 'write'],
     projectIds,
     boundProjectId: null,
+    deviceId: null,
     machine: null,
   }) as const;
 
@@ -252,7 +253,7 @@ describe('forge_comments tool', () => {
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
     selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
     selectLimit.mockResolvedValueOnce([{ deviceId: DEVICE_ID }]);
-    insertReturning.mockResolvedValueOnce([baseCommentRow]); // insert
+    insertReturning.mockResolvedValueOnce([baseCommentRow]);
 
     const result = (await tool.handler({
       action: 'create',

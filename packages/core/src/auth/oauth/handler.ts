@@ -14,6 +14,7 @@ import { db } from '../../db/client.js';
 import { oauthAccounts, users } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { ensurePersonalOrg } from '../../orgs/service.js';
+import { assertNotAgentUser } from '../agent-login-gate.js';
 import { setAuthCookie } from '../cookie.js';
 import { signUserToken } from '../jwt.js';
 import { githubProvider } from './github.js';
@@ -151,7 +152,6 @@ async function findOrCreateUser(
       .insert(users)
       .values({
         email: identity.email!,
-        // No local password — passwordHash defaults NULL since 0037.
         emailVerifiedAt: new Date(),
       })
       .returning({ id: users.id });
@@ -243,6 +243,7 @@ export async function handleCallback(c: Context, providerId: ProviderId) {
     throw err;
   }
 
+  await assertNotAgentUser(userId);
   const token = await signUserToken(userId);
   setAuthCookie(c, token);
 

@@ -54,6 +54,7 @@ function patPrincipal(over: Partial<McpPrincipal> = {}): McpPrincipal {
     scopes: ['read', 'write'],
     projectIds: null,
     boundProjectId: null,
+    deviceId: null,
     machine: null,
     ...over,
   };
@@ -96,7 +97,7 @@ describe('resolveEffectiveProjectId precedence', () => {
   it('1. explicit projectId arg wins over slug and binding', async () => {
     const c = ctx({ projectSlug: 'some-slug', boundProjectId: BOUND });
     await expect(resolveEffectiveProjectId(c, OTHER)).resolves.toBe(OTHER);
-    expect(selectLimit).not.toHaveBeenCalled(); // no slug round-trip
+    expect(selectLimit).not.toHaveBeenCalled();
   });
 
   it('2. slug header resolves when no explicit arg', async () => {

@@ -46,6 +46,7 @@ function buildPatCtx(scopes: readonly string[], projectIds: string[] | null = nu
       scopes,
       projectIds,
       boundProjectId: null,
+      deviceId: null,
       machine: null,
     },
     projectSlug: null,
@@ -86,7 +87,6 @@ describe('forge_collaborators', () => {
     selectImpl.mockImplementationOnce(() => ({
       from: () => ({ where: () => Promise.resolve([{ total: 1 }]) }),
     }));
-    // user rows
     selectImpl.mockImplementationOnce(() => ({
       from: () => ({
         where: () => ({

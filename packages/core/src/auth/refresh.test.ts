@@ -98,8 +98,14 @@ vi.mock('../db/client.js', () => ({
       return result;
     }),
     update: outerDbUpdate,
+    // cm:guard the ROTATION path reads `users.kind` before it mints, so a stub that returns nothing here silently turns the 200 case into a 500. `assertNotAgentUser` is defence in depth — an agent can never hold a refresh token because it can never log in — and this row is what keeps the depth measurable rather than assumed (ISS-932).
+    select: () => ({
+      from: () => ({ where: () => ({ limit: async () => [{ kind: usersKind }] }) }),
+    }),
   },
 }));
+
+const usersKind: 'human' | 'agent' = 'human';
 
 vi.mock('./refresh-token.js', async () => {
   const actual = await vi.importActual<typeof import('./refresh-token.js')>('./refresh-token.js');
@@ -196,7 +202,6 @@ describe('POST /api/auth/refresh', () => {
     expect(txState.txUpdateCalls[0]?.kind).toBe('byId');
     expect(txState.outerInvalidateCalls).toBe(0);
 
-    // New row inserted.
     expect(txState.insertValues).toHaveLength(1);
     expect(txState.insertValues[0]).toMatchObject({
       userId: 'user-1',
