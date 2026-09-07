@@ -11,8 +11,10 @@ const EnvSchema = z.object({
   DEVICE_TOKEN_PEPPER: z.string().min(32),
   // cm:guard ISS-150 — PAT_PEPPER MUST be set explicitly in production: the default below exists only so non-prod test runs work without operator setup, and shipping it live makes every PAT hash forgeable by anyone reading this file
   PAT_PEPPER: z.string().min(32).default('dev-pat-pepper-replace-in-production-0123456789'),
-  RATE_LIMIT_PAT_MAX: z.coerce.number().int().positive().optional(),
-  RATE_LIMIT_PAT_WINDOW_MS: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_PAT_READ_MAX: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_PAT_READ_WINDOW_MS: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_PAT_WRITE_MAX: z.coerce.number().int().positive().optional(),
+  RATE_LIMIT_PAT_WRITE_WINDOW_MS: z.coerce.number().int().positive().optional(),
   PAT_MAX_PER_USER: z.coerce.number().int().positive().default(20),
   // cm:why SMTP is optional — an empty SMTP_HOST skips the send and logs instead, but email verification stays enforced server-side, so a deployment without SMTP hands out the token via server logs (dev mode) or an admin self-verify
   SMTP_HOST: z.string().optional(),
@@ -107,6 +109,22 @@ const EnvSchema = z.object({
 });
 
 // cm:guard ISS-234 — do NOT add INTEGRATION_MASTER_KEY to the schema above: the vault reads process.env directly so that unit tests which mock the DB but never touch the vault do not trip env validation, and assertVaultBootSafety catches a missing key at boot whenever an active integration row exists
+
+// cm:guard a retired rate-limit variable REFUSES the boot rather than being ignored: an operator who lowered `RATE_LIMIT_PAT_MAX` to throttle a token did so deliberately, and a schema that simply stops reading a key it once read leaves that deliberate number silently unenforced. ISS-961 split the one PAT bucket into a read and a write half, so there is no single value left for the old name to mean.
+const RETIRED_ENV_VARS: Record<string, string> = {
+  RATE_LIMIT_PAT_MAX: 'RATE_LIMIT_PAT_READ_MAX and RATE_LIMIT_PAT_WRITE_MAX',
+  RATE_LIMIT_PAT_WINDOW_MS: 'RATE_LIMIT_PAT_READ_WINDOW_MS and RATE_LIMIT_PAT_WRITE_WINDOW_MS',
+};
+
+const retired = Object.entries(RETIRED_ENV_VARS).filter(([name]) => cleanedEnv[name] !== undefined);
+if (retired.length > 0) {
+  const lines = retired.map(([name, replacement]) => `  - ${name} is retired; set ${replacement}`);
+  throw new Error(
+    `[@forge/core] Retired environment variable(s) set:\n${lines.join('\n')}\n` +
+      'The per-token PAT rate limit is two buckets now, one for reads and one for writes ' +
+      '(ISS-961), so the old single value has no meaning to carry over.',
+  );
+}
 
 export type Env = z.infer<typeof EnvSchema>;
 
