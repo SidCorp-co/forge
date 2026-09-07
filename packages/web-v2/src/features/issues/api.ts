@@ -8,6 +8,7 @@ import { apiClient, apiClientList } from "@/lib/api/client";
 import { filterToQueryParams } from "./derive";
 import type {
   CreatedIssue,
+  ModuleRollupResponse,
   IssueComplexity,
   IssueCostSummary,
   IssueDependencies,
@@ -47,6 +48,21 @@ export interface CreateIssueInput {
    *  (max 10, server-validated for size/mime). Omit when none are staged. */
   attachments?: { name: string; mime: string; dataBase64: string }[];
 }
+
+/**
+ * ISS-949 — the backlog counted by module. `GET /api/projects/:id/modules/rollup`.
+ */
+// cm:edge contract -> packages/core/src/labels/module-rollup.ts — the response shape is that module's: `rollup` is `own + inherited` with each issue counted once per attribution kind, so a client that re-adds them double-counts
+export const modulesApi = {
+  rollup: (projectId: string, activeWithinDays?: number) => {
+    const params = new URLSearchParams();
+    if (activeWithinDays !== undefined) params.set("activeWithinDays", String(activeWithinDays));
+    const query = params.toString();
+    return apiClient<ModuleRollupResponse>(
+      `/projects/${projectId}/modules/rollup${query === "" ? "" : `?${query}`}`,
+    );
+  },
+};
 
 export const issuesApi = {
   /** `POST /api/projects/:id/issues` — create an issue (caller must be a

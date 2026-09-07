@@ -1,0 +1,93 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · issue-work-module-rollup-read — how the backlog is counted by module</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+</style>
+<main>
+
+<h1>issue-work-module-rollup-read — how the backlog is counted by module</h1>
+<p class="sub">The read that answers <em>which module is hot</em>, <em>what is open against each</em>
+and <em>where did the work go this month</em>. <code>issue-work-module-attribution</code> owns how an
+issue acquires its modules; <code>web-v2-module-taxonomy</code> owns how the taxonomy is authored.
+This file owns what happens when a reader asks about <strong>all</strong> modules at once. Owner:
+<code>packages/core/src/labels/module-rollup.ts</code>, served by
+<code>GET /api/projects/:id/modules/rollup</code> and rendered by the Issues screen's Modules view
+(<code>packages/web-v2/src/features/issues/components/module-rollup-view.tsx</code>).</p>
+
+<h2>One request, two reads, and the buckets they fill</h2>
+<div class="board"><pre class="mermaid">
+flowchart TD
+  Q["GET /projects/:id/modules/rollup<br/>?activeWithinDays=n (1..3650, default 30)"]
+  Q --> AZ{"caller a project<br/>member?"}
+  AZ -- no --> F403(["403 FORBIDDEN<br/>nothing is read"])
+  AZ -- yes --> M["read 1 — the taxonomy<br/>labels WHERE project_id AND kind='module'"]
+  M --> A["read 2 — the attributions<br/>issues LEFT JOIN issue_labels<br/>ON issue_id AND label_id IN (module ids)"]
+  A --> S{"row has a<br/>label_id?"}
+  S -- "no — the issue carries no module<br/>(a plain label joins nothing)" --> U["unassigned bucket"]
+  S -- yes --> P{"is_primary?"}
+  P -- true --> PB["that module's own.primary"]
+  P -- false --> SB["that module's own.secondary"]
+  PB --> H["hierarchy pass<br/>own + descendants, deduped per issue<br/>per attribution kind"]
+  SB --> H
+  H --> R(["200 { modules[], unassigned,<br/>activeWithinDays, generatedAt }"])
+  U --> R
+</pre></div>
+
+<h2>What each bucket promises</h2>
+<table>
+<thead><tr><th>Field</th><th>Means</th><th>Why it is not something else</th></tr></thead>
+<tbody>
+<tr><td><code>own</code></td><td>Issues attributed to this module itself.</td><td>Separated from <code>inherited</code> so a reader can tell a module that carries the work from one whose children do.</td></tr>
+<tr><td><code>inherited</code></td><td>Issues attributed to a descendant, at any depth, minus any already in <code>own</code> for the same attribution kind.</td><td>Without the subtraction, an issue that is a secondary on both a parent and its child is counted twice and <code>own + inherited</code> stops being addition.</td></tr>
+<tr><td><code>rollup</code></td><td><code>own + inherited</code>, exactly.</td><td>It is the number a person means by "the module", and it holds as addition only because <code>inherited</code> already excluded the overlap.</td></tr>
+<tr><td><code>primary</code> vs <code>secondary</code></td><td>Two blocks, never summed. An issue contributes to its primary module's <code>primary</code> and to each secondary module's <code>secondary</code>.</td><td>Collapsing them loses the distinction the attribution axis exists for: one issue has exactly one primary and any number of secondaries.</td></tr>
+<tr><td><code>closed</code></td><td><code>released</code>, <code>closed</code>, <code>dropped</code> — the set <code>TERMINAL_FOR_DISPATCH</code> already names.</td><td>A second definition of "finished" in a counting endpoint is a number that disagrees with the pipeline's own.</td></tr>
+<tr><td><code>recentlyActive</code></td><td><code>issues.updated_at</code> inside the window.</td><td>Activity is the only signal every status has; a per-status timeline would be a different flow.</td></tr>
+<tr><td><code>unassigned</code></td><td>Issues carrying no module attribution at all.</td><td>Reported, never dropped and never assigned anywhere: it is how much of the backlog the taxonomy does not cover.</td></tr>
+</tbody>
+</table>
+
+<h2>When it goes wrong</h2>
+<table>
+<thead><tr><th>What fails</th><th>What the caller sees</th><th>Where the reader reads it</th></tr></thead>
+<tbody>
+<tr><td>The caller is not a member of the project</td><td><code>403 FORBIDDEN</code>, <span class="bad">before any row is read</span></td><td>The screen's <code>ErrorState</code> with <code>formatApiError</code> and a Retry.</td></tr>
+<tr><td><code>?activeWithinDays</code> outside 1..3650</td><td><code>400 BAD_REQUEST</code> naming the field</td><td>Same <code>ErrorState</code>. The bound exists because <code>0</code> is a window nothing can fall inside and a huge value is an interval Postgres refuses.</td></tr>
+<tr><td>A module's <code>parent_id</code> points at a row that is not a module of this project</td><td>Success. That module is a root.</td><td>Its <code>depth</code> is <code>0</code>. The hierarchy stays reachable rather than dropping a row nobody could then fix.</td></tr>
+<tr><td>The taxonomy contains a cycle (only reachable by a writer that bypassed <code>module-service.ts</code>)</td><td>Success, and the walk terminates.</td><td>A seen-set bounds both the ordering walk and the descendant walk; a module already emitted is not emitted twice.</td></tr>
+</tbody>
+</table>
+
+<div class="rule">
+<b>There is no second store of module membership, and this read must not create one.</b>
+Membership is <code>issue_labels</code> joined to <code>kind='module'</code> labels and nothing else.
+The narrowing happens <em>inside</em> the join condition rather than after it: narrowed afterwards,
+an issue carrying only a plain label would produce a <code>NULL</code> row of its own, and that row
+is exactly what the unassigned bucket is read from — so an issue with a plain label and an issue
+with nothing at all would become indistinguishable.
+</div>
+
+<div class="rule">
+<b>The read returns attributions, not counts, and the counting happens in TypeScript.</b> A grouped
+<code>COUNT</code> cannot express identity, and the parent rollup has to know <em>which</em> issues a
+descendant contributed so it can refuse to count one twice. The row set is one row per (issue,
+module) attribution plus one per unattributed issue, carrying four small columns.
+</div>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>

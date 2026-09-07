@@ -23,6 +23,20 @@
 
 ### Added
 
+- **The backlog can be read by module: counts, open and closed, and recent activity.** Tier 2
+  shipped the `?module=` filter, which answers "show me the issues in module X"; nothing answered
+  "which module is hot" or "what is open against each". The Issues screen has a fourth view,
+  **Modules** (`?tab=modules`), listing every module of the project with its total, open, closed
+  and recently-active counts, and `GET /api/projects/:id/modules/rollup` serves the same numbers.
+  Primary and secondary attributions are counted and shown separately — an issue has one primary
+  module and any number of secondaries, and summing them would lose the distinction. A parent
+  module's counts say which part is its own and which is inherited from its children, with an
+  issue attributed to both counted once. A module with no issues appears with zeroes rather than
+  vanishing, and the issues carrying no module at all are their own row rather than being dropped.
+  The aggregation reads `issue_labels` joined to `kind='module'` labels and nothing else: there is
+  no second store of module membership. Flow:
+  [`docs/flows/issue-work-module-rollup-read.html`](docs/flows/issue-work-module-rollup-read.html).
+
 - **An issue or comment written as `forge-*` components now renders as components, and a
   description can be corrected after it was created.** The registry, the validator and the four
   columns shipped in ISS-898, but nothing drew them: a body stored as components reached the
@@ -3250,6 +3264,21 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **Sixteen major dependency lines moved up at once, with the source migrated to each new API.**
+  `@hono/node-server` 1→2, pg-boss 10→12, vitest + `@vitest/coverage-v8` 3→5, `@types/node` 20→26,
+  cron-parser 4→5, zxcvbn-ts 3→4, nodemailer 9→10, testcontainers 11→12, `lucide-react` 0.564→1.41,
+  jsdom 28→30, `@testing-library/jest-dom` 6→7, dependency-cruiser 16→18. Five breaking API changes
+  were carried rather than pinned around: cron-parser's default `parseExpression` is now
+  `CronExpressionParser.parse`; `@zxcvbn-ts/core` dropped the `zxcvbn` / `zxcvbnOptions` singletons
+  for a `ZxcvbnFactory` instance; pg-boss moved to a named `PgBoss` export; vitest 5 removed
+  `poolOptions` (parallel forks is the default) and now hard-errors a `vi.mock` written below a
+  module's top level, so six integration files had theirs hoisted; and `lucide-react` 1.x removed
+  the `Github` brand glyph, so the `github` icon maps to `GitBranch`. **TypeScript is held at 5.x**:
+  7.0's native compiler breaks dependency-cruiser's TS resolution, which blinds the vendored archmap
+  relations gate (0% of the graph resolved, `archmap check` then passing over an empty graph) — the
+  upgrade waits on toolchain support in the archmap/dependency-cruiser line rather than shipping a
+  silently unenforced gate.
 
 - **The interventions metric now counts a hand on `agent_sessions`, a hand on a non-terminal
   status, and a hand that deletes the row — and it stopped charging an ordinary auto-release to a

@@ -8,14 +8,14 @@
  * voluntarily strengthen weak choices.
  */
 
-import { type ZxcvbnResult, zxcvbn, zxcvbnOptions } from '@zxcvbn-ts/core';
+import { ZxcvbnFactory, type ZxcvbnResult } from '@zxcvbn-ts/core';
 import * as zxcvbnCommonPackage from '@zxcvbn-ts/language-common';
 import * as zxcvbnEnPackage from '@zxcvbn-ts/language-en';
 
-let configured = false;
-function ensureConfigured(): void {
-  if (configured) return;
-  zxcvbnOptions.setOptions({
+let factory: ZxcvbnFactory | null = null;
+function getFactory(): ZxcvbnFactory {
+  if (factory) return factory;
+  factory = new ZxcvbnFactory({
     translations: zxcvbnEnPackage.translations,
     graphs: zxcvbnCommonPackage.adjacencyGraphs,
     dictionary: {
@@ -23,7 +23,7 @@ function ensureConfigured(): void {
       ...zxcvbnEnPackage.dictionary,
     },
   });
-  configured = true;
+  return factory;
 }
 
 export const MIN_PASSWORD_SCORE = 2;
@@ -39,8 +39,7 @@ export function evaluatePasswordStrength(
   password: string,
   userInputs: string[] = [],
 ): PasswordStrength {
-  ensureConfigured();
-  const result: ZxcvbnResult = zxcvbn(password, userInputs);
+  const result: ZxcvbnResult = getFactory().check(password, userInputs);
   return {
     score: result.score,
     warning: result.feedback.warning ?? '',

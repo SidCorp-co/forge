@@ -9,29 +9,21 @@ import {
 import { PipelineBoard } from "@/features/pipeline/components/pipeline-board";
 import { useProjects } from "@/features/projects/hooks";
 import { useTabParam } from "@/lib/utils/use-tab-param";
-// web-v2 Issues screen (`/projects/[slug]/issues`). Redesigned to the
-// 3-view layout from `design/draft-screen/02 Issues.html` (ISS-364): a
-// List / Board / Insights switcher in the header.
-//   • List     → the dense table/cards body (search/filter/group/sort/
-//                inline-edit/pagination), `IssuesListView`. DEFAULT view
-//                (ISS-436 — the board hides draft+closed, so it opened empty
-//                on mostly-shipped projects).
-//   • Board    → the 7-stage pipeline kanban (embedded PipelineBoard).
-//   • Insights → per-stage funnel + throughput + where-time-goes analytics.
-// Active view persists in `?tab=` (param-preserving, ISS-331) so it survives
-// reload and never clobbers the List view's `?q/filter/groupBy/sort/page`.
+// cm:why List is the default view and not Board (ISS-436) — the board hides draft+closed, so it opened empty on the projects that had shipped most of their work
 import { useEffect, useState } from "react";
 import { IssuesInsightsView } from "./issues-insights-view";
+import { ModuleRollupView } from "./module-rollup-view";
 import { IssuesListView } from "./issues-list-view";
 import { ReleaseGatePanel } from "./release-gate-panel";
 import { NewIssueDialog } from "./new-issue-dialog";
 
-type IssuesView = "board" | "list" | "insights";
-const VIEWS = ["list", "board", "insights"] as const;
+type IssuesView = "board" | "list" | "insights" | "modules";
+const VIEWS = ["list", "board", "insights", "modules"] as const;
 const VIEW_OPTIONS: SegmentOption<IssuesView>[] = [
   { value: "list", label: "List", icon: "list" },
   { value: "board", label: "Board", icon: "board" },
   { value: "insights", label: "Insights", icon: "activity" },
+  { value: "modules", label: "Modules", icon: "book" },
 ];
 
 interface IssuesScreenProps {
@@ -114,6 +106,8 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
               canWrite={canWrite}
               onNewIssue={canWrite ? () => setNewOpen(true) : undefined}
             />
+          ) : view === "modules" ? (
+            <ModuleRollupView scope={scope} />
           ) : (
             <IssuesInsightsView scope={scope} />
           )}

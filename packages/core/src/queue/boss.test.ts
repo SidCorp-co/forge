@@ -4,10 +4,10 @@ const startMock = vi.fn(async () => {});
 const stopMock = vi.fn(async () => {});
 
 vi.mock('pg-boss', () => ({
-  default: vi.fn(() => ({
-    start: startMock,
-    stop: stopMock,
-  })),
+  // cm:why vitest 5 constructs a `vi.fn` spy by calling its implementation with `new`; an arrow impl is not a constructor and throws, so the mock uses a regular function.
+  PgBoss: vi.fn(function pgBossMock() {
+    return { start: startMock, stop: stopMock };
+  }),
 }));
 
 const VALID_ENV = {
