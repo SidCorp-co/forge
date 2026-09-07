@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { env } from '../../config/env.js';
-import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { mimeFromName } from '../../lib/attachment-mime.js';
+import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
 import { getStorage } from '../../storage/index.js';
 import {
@@ -23,10 +23,7 @@ import {
   zodToMcpSchema,
 } from './lib.js';
 
-// Single top-level object schema (NOT a discriminated union) — MCP tool
-// inputSchemas MUST be `type:object`, so per-action fields are optional here
-// and validated in the handler. `action=request` needs data.targetId+name;
-// `action=fetch` needs data.attachmentId.
+// cm:guard keep this ONE object schema and never split it into a discriminated union — an MCP tool inputSchema must be `type:object`, so the per-action fields stay optional here and the handler enforces them: `action=request` needs data.targetId+name, `action=fetch` needs data.attachmentId
 const inputSchema = z
   .object({
     action: z.enum(['request', 'fetch']),
@@ -78,11 +75,11 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Upload (action=request) or READ (action=fetch) an issue/comment/session attachment.\n' +
     'action=request — mint a short-lived, single-use upload URL WITHOUT base64-inlining ' +
     'bytes through the model context (presigned-URL pattern). data={target:"issue"|"comment"|"session", ' +
-    'targetId:<uuid>, name:"<filename>", mime?:"<type>"}. LEAVE `mime` OFF unless you mean to '
-    + 'constrain the file: the type is read from the BYTES at upload time, so ANY extension of '
-    + 'plain UTF-8 text (.log, .sql, .diff, none at all) lands as text/plain. A refusal carries '
-    + '`details.allowed` with the accepted types and extensions, so print that rather than '
-    + 'guessing. Returns {uploadId, method:"PUT", ' +
+    'targetId:<uuid>, name:"<filename>", mime?:"<type>"}. LEAVE `mime` OFF unless you mean to ' +
+    'constrain the file: the type is read from the BYTES at upload time, so ANY extension of ' +
+    'plain UTF-8 text (.log, .sql, .diff, none at all) lands as text/plain. A refusal carries ' +
+    '`details.allowed` with the accepted types and extensions, so print that rather than ' +
+    'guessing. Returns {uploadId, method:"PUT", ' +
     'uploadUrl, uploadPath, expiresIn (~300s), maxBytes}. Upload out-of-band with NO auth ' +
     'header: `curl -X PUT -T <localPath> "<uploadUrl>"` (if uploadUrl is null, prepend your ' +
     'Forge API origin to uploadPath). The PUT returns the attachment {id,name,mime,size,url}.\n' +

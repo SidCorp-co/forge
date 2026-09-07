@@ -100,8 +100,12 @@ export function safeName(name: string): string {
   return cleaned.slice(0, 200) || 'file';
 }
 
-// cm:why tab, LF, CR and FF are the four C0 codes a text file does carry; every other control character is what separates a `.log` of text from a `.log` of binary
-const BINARY_CONTROL_RE = /[\u0000-\u0008\u000B\u000E-\u001F\u007F]/;
+// cm:guard test code points, never a regex character class — biome's noControlCharactersInRegex refuses control escapes in a literal, and spelling them as `\\x00` in a `new RegExp` string only hides the same bytes from the reader
+const TEXT_CONTROLS = new Set([0x09, 0x0a, 0x0c, 0x0d]);
+function isBinaryControl(codePoint: number): boolean {
+  if (TEXT_CONTROLS.has(codePoint)) return false;
+  return codePoint < 0x20 || codePoint === 0x7f;
+}
 
 /** Whether the bytes decode as UTF-8 and carry no control character. */
 export function isUtf8Text(bytes: Buffer): boolean {
@@ -112,7 +116,11 @@ export function isUtf8Text(bytes: Buffer): boolean {
   } catch {
     return false;
   }
-  return !BINARY_CONTROL_RE.test(text);
+  for (const ch of text) {
+    const code = ch.codePointAt(0);
+    if (code !== undefined && isBinaryControl(code)) return false;
+  }
+  return true;
 }
 
 /** The allowed set in the shape a refusal body carries, so a client prints it instead of copying it. */

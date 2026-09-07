@@ -58,10 +58,7 @@ export async function findIssueAttachmentByName(
   return { id: row.id, name: row.name, url: `/api/attachments/${row.id}/download` };
 }
 
-export function nameTakenError(
-  existing: ExistingAttachmentRef,
-  scope: string,
-): AttachmentError {
+export function nameTakenError(existing: ExistingAttachmentRef, scope: string): AttachmentError {
   return new AttachmentError(
     'ATTACHMENT_NAME_TAKEN',
     `an attachment named "${existing.name}" is already on this ${scope} (id ${existing.id}) — cite it, delete it, or upload under a different name`,

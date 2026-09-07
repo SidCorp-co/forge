@@ -30,117 +30,116 @@ interface Refusal {
   details?: { existing?: { id?: string; name?: string; url?: string } };
 }
 
-describe('attachment name identity', () => {
-  let harness: TestDatabase;
-  let app: Hono<{ Variables: RequestIdVars }>;
-  let uploadsDir: string;
-  let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
-  let createUploadTicket: typeof import('../../src/uploads/ticket-service.js').createUploadTicket;
-  let persistSessionAttachment: typeof import('../../src/agent-sessions/attachment-service.js').persistSessionAttachment;
+let harness: TestDatabase;
+let app: Hono<{ Variables: RequestIdVars }>;
+let uploadsDir: string;
+let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
+let createUploadTicket: typeof import('../../src/uploads/ticket-service.js').createUploadTicket;
+let persistSessionAttachment: typeof import('../../src/agent-sessions/attachment-service.js').persistSessionAttachment;
 
-  beforeAll(async () => {
-    harness = await setupTestDatabase();
-    uploadsDir = mkdtempSync(join(tmpdir(), 'iss963-uploads-'));
-    process.env.DATABASE_URL = harness.url;
-    process.env.UPLOADS_DIR = uploadsDir;
-    process.env.STORAGE_DRIVER = 'local';
-    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
-    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-    process.env.SMTP_HOST ??= 'localhost';
-    process.env.SMTP_PORT ??= '1025';
-    process.env.SMTP_USER ??= 'test';
-    process.env.SMTP_PASS ??= 'test';
-    process.env.SMTP_FROM ??= 'test@example.com';
-    process.env.APP_BASE_URL ??= 'http://localhost:3000';
-    process.env.CORS_ORIGINS ??= 'http://localhost:3000';
-    process.env.NODE_ENV ??= 'test';
+beforeAll(async () => {
+  harness = await setupTestDatabase();
+  uploadsDir = mkdtempSync(join(tmpdir(), 'iss963-uploads-'));
+  process.env.DATABASE_URL = harness.url;
+  process.env.UPLOADS_DIR = uploadsDir;
+  process.env.STORAGE_DRIVER = 'local';
+  process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+  process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+  process.env.SMTP_HOST ??= 'localhost';
+  process.env.SMTP_PORT ??= '1025';
+  process.env.SMTP_USER ??= 'test';
+  process.env.SMTP_PASS ??= 'test';
+  process.env.SMTP_FROM ??= 'test@example.com';
+  process.env.APP_BASE_URL ??= 'http://localhost:3000';
+  process.env.CORS_ORIGINS ??= 'http://localhost:3000';
+  process.env.NODE_ENV ??= 'test';
 
-    const { issueAttachmentRoutes, attachmentRoutes } = await import(
-      '../../src/issues/attachment-routes.js'
-    );
-    const { commentRoutes } = await import('../../src/comments/routes.js');
-    const { uploadRoutes } = await import('../../src/uploads/routes.js');
-    const { errorHandler } = await import('../../src/middleware/error.js');
-    const { requestId } = await import('../../src/middleware/request-id.js');
-    signUserToken = (await import('../../src/auth/jwt.js')).signUserToken;
-    createUploadTicket = (await import('../../src/uploads/ticket-service.js')).createUploadTicket;
-    persistSessionAttachment = (
-      await import('../../src/agent-sessions/attachment-service.js')
-    ).persistSessionAttachment;
+  const { issueAttachmentRoutes, attachmentRoutes } = await import(
+    '../../src/issues/attachment-routes.js'
+  );
+  const { commentRoutes } = await import('../../src/comments/routes.js');
+  const { uploadRoutes } = await import('../../src/uploads/routes.js');
+  const { errorHandler } = await import('../../src/middleware/error.js');
+  const { requestId } = await import('../../src/middleware/request-id.js');
+  signUserToken = (await import('../../src/auth/jwt.js')).signUserToken;
+  createUploadTicket = (await import('../../src/uploads/ticket-service.js')).createUploadTicket;
+  persistSessionAttachment = (await import('../../src/agent-sessions/attachment-service.js'))
+    .persistSessionAttachment;
 
-    app = new Hono<{ Variables: RequestIdVars }>();
-    app.use('*', requestId());
-    app.route('/api/issues', issueAttachmentRoutes);
-    app.route('/api/attachments', attachmentRoutes);
-    app.route('/api/comments', commentRoutes);
-    app.route('/api/uploads', uploadRoutes);
-    app.onError(errorHandler);
-  }, 120_000);
+  app = new Hono<{ Variables: RequestIdVars }>();
+  app.use('*', requestId());
+  app.route('/api/issues', issueAttachmentRoutes);
+  app.route('/api/attachments', attachmentRoutes);
+  app.route('/api/comments', commentRoutes);
+  app.route('/api/uploads', uploadRoutes);
+  app.onError(errorHandler);
+}, 120_000);
 
-  afterAll(async () => {
-    if (harness) await harness.cleanup();
-    if (uploadsDir) rmSync(uploadsDir, { recursive: true, force: true });
+afterAll(async () => {
+  if (harness) await harness.cleanup();
+  if (uploadsDir) rmSync(uploadsDir, { recursive: true, force: true });
+});
+
+beforeEach(async () => {
+  await truncateAll(harness.db);
+});
+
+async function seed() {
+  const owner = await createTestUser(harness.db);
+  await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${owner.id}`);
+  const project = await createTestProject(harness.db, owner.id);
+  await createTestProjectMember(harness.db, {
+    userId: owner.id,
+    projectId: project.id,
+    role: 'admin',
   });
+  const rows = await harness.db.execute<{ id: string }>(sql`
+    INSERT INTO issues (project_id, title, created_by_id)
+    VALUES (${project.id}, 'name-identity', ${owner.id})
+    RETURNING id
+  `);
+  const issueId = (rows[0] as { id: string }).id;
+  const token = await signUserToken(owner.id);
+  return { owner, project, issueId, token };
+}
 
-  beforeEach(async () => {
-    await truncateAll(harness.db);
+async function newIssue(projectId: string, ownerId: string) {
+  const rows = await harness.db.execute<{ id: string }>(sql`
+    INSERT INTO issues (project_id, title, created_by_id)
+    VALUES (${projectId}, 'second', ${ownerId})
+    RETURNING id
+  `);
+  return (rows[0] as { id: string }).id;
+}
+
+async function newComment(issueId: string, authorId: string) {
+  const rows = await harness.db.execute<{ id: string }>(sql`
+    INSERT INTO comments (issue_id, author_id, body)
+    VALUES (${issueId}, ${authorId}, 'holder')
+    RETURNING id
+  `);
+  return (rows[0] as { id: string }).id;
+}
+
+function upload(path: string, token: string, filename: string, bytes = PNG) {
+  const fd = new FormData();
+  fd.set('file', new File([new Uint8Array(bytes)], filename, { type: 'image/png' }));
+  return app.request(path, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}` },
+    body: fd,
   });
+}
 
-  async function seed() {
-    const owner = await createTestUser(harness.db);
-    await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${owner.id}`);
-    const project = await createTestProject(harness.db, owner.id);
-    await createTestProjectMember(harness.db, {
-      userId: owner.id,
-      projectId: project.id,
-      role: 'admin',
-    });
-    const rows = await harness.db.execute<{ id: string }>(sql`
-      INSERT INTO issues (project_id, title, created_by_id)
-      VALUES (${project.id}, 'name-identity', ${owner.id})
-      RETURNING id
-    `);
-    const issueId = (rows[0] as { id: string }).id;
-    const token = await signUserToken(owner.id);
-    return { owner, project, issueId, token };
-  }
+async function countAttachments(issueId: string, name: string) {
+  const rows = await harness.db.execute<{ n: string }>(sql`
+    SELECT count(*)::text AS n FROM issue_attachments
+    WHERE issue_id = ${issueId} AND name = ${name}
+  `);
+  return Number((rows[0] as { n: string }).n);
+}
 
-  async function newIssue(projectId: string, ownerId: string) {
-    const rows = await harness.db.execute<{ id: string }>(sql`
-      INSERT INTO issues (project_id, title, created_by_id)
-      VALUES (${projectId}, 'second', ${ownerId})
-      RETURNING id
-    `);
-    return (rows[0] as { id: string }).id;
-  }
-
-  async function newComment(issueId: string, authorId: string) {
-    const rows = await harness.db.execute<{ id: string }>(sql`
-      INSERT INTO comments (issue_id, author_id, body)
-      VALUES (${issueId}, ${authorId}, 'holder')
-      RETURNING id
-    `);
-    return (rows[0] as { id: string }).id;
-  }
-
-  function upload(path: string, token: string, filename: string, bytes = PNG) {
-    const fd = new FormData();
-    fd.set('file', new File([new Uint8Array(bytes)], filename, { type: 'image/png' }));
-    return app.request(path, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}` },
-      body: fd,
-    });
-  }
-
-  async function countAttachments(issueId: string, name: string) {
-    const rows = await harness.db.execute<{ n: string }>(sql`
-      SELECT count(*)::text AS n FROM issue_attachments
-      WHERE issue_id = ${issueId} AND name = ${name}
-    `);
-    return Number((rows[0] as { n: string }).n);
-  }
-
+describe('attachment name identity — an issue holds one document per name', () => {
   it('accepts the first upload of a name and refuses the second with the first row id and url', async () => {
     const { issueId, token } = await seed();
 
@@ -230,7 +229,9 @@ describe('attachment name identity', () => {
       mime: 'image/png',
     });
 
-    expect((await upload(`/api/issues/${issueId}/attachments`, token, 'race.png')).status).toBe(201);
+    expect((await upload(`/api/issues/${issueId}/attachments`, token, 'race.png')).status).toBe(
+      201,
+    );
 
     const put = await app.request(`/api/uploads/${ticket.id}`, {
       method: 'PUT',
@@ -240,7 +241,9 @@ describe('attachment name identity', () => {
     expect(((await put.json()) as Refusal).code).toBe('ATTACHMENT_NAME_TAKEN');
     expect(await countAttachments(issueId, 'race.png')).toBe(1);
   });
+});
 
+describe('attachment name identity — other scopes, listing and recovery', () => {
   it('scopes comment attachments to the one comment', async () => {
     const { issueId, token, owner } = await seed();
     const a = await newComment(issueId, owner.id);

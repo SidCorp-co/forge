@@ -128,6 +128,16 @@ function makeFile(content: string, name = 'pic.png', type = 'image/png'): FormDa
   return fd;
 }
 
+function grantIssueAccess(role: 'admin' | 'member' | null = 'admin') {
+  selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
+  projectAccess.mockResolvedValueOnce({
+    projectId: PROJECT_ID,
+    orgId: 'org-1',
+    role,
+    orgRole: role === 'admin' ? 'owner' : null,
+  });
+}
+
 describe('POST /api/issues/:id/attachments', () => {
   it('401 without token', async () => {
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/attachments`, {
@@ -148,13 +158,7 @@ describe('POST /api/issues/:id/attachments', () => {
   });
 
   it('403 when not a project member', async () => {
-    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: null,
-      orgRole: null,
-    });
+    grantIssueAccess(null);
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/attachments`, {
       method: 'POST',
       headers: { authorization: `Bearer ${await userJwt()}` },
@@ -164,13 +168,7 @@ describe('POST /api/issues/:id/attachments', () => {
   });
 
   it('400 on disallowed mime', async () => {
-    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'admin',
-      orgRole: 'owner',
-    });
+    grantIssueAccess();
     const fd = new FormData();
     fd.append(
       'file',
@@ -194,13 +192,7 @@ describe('POST /api/issues/:id/attachments', () => {
   });
 
   it('400 on empty file', async () => {
-    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'admin',
-      orgRole: 'owner',
-    });
+    grantIssueAccess();
     const fd = new FormData();
     fd.append('file', new File([''], 'pic.png', { type: 'image/png' }));
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/attachments`, {
@@ -212,13 +204,7 @@ describe('POST /api/issues/:id/attachments', () => {
   });
 
   it('201 via user JWT: stores file, inserts row, fires activity', async () => {
-    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'admin',
-      orgRole: 'owner',
-    });
+    grantIssueAccess();
     storagePut.mockResolvedValueOnce({ path: '/tmp/issues/x/y.png' });
     insertReturning.mockResolvedValueOnce([
       {
@@ -249,13 +235,7 @@ describe('POST /api/issues/:id/attachments', () => {
   });
 
   it('201 for a plain-text .log the extension table has never heard of', async () => {
-    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'admin',
-      orgRole: 'owner',
-    });
+    grantIssueAccess();
     storagePut.mockResolvedValueOnce({ path: '/tmp/issues/x/gate.log' });
     insertReturning.mockResolvedValueOnce([
       {
@@ -287,13 +267,7 @@ describe('POST /api/issues/:id/attachments', () => {
     // cm:guard `scopes` carries BOTH, because that is what `mintPat` defaults to and `requireAnyAuth` now gates the method on it — the `scopes: []` this used to pass 403s every write, which reads as a broken route rather than as a token nobody would ever mint.
     const row = { id: 'pat-1', userId: USER_ID, scopes: ['read', 'write'] };
     verifyPatMock.mockResolvedValueOnce({ row });
-    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'admin',
-      orgRole: 'owner',
-    });
+    grantIssueAccess();
     storagePut.mockResolvedValueOnce({ path: '/tmp/issues/x/y.png' });
     insertReturning.mockResolvedValueOnce([
       {
@@ -346,13 +320,7 @@ describe('POST /api/issues/:id/attachments', () => {
 
 describe('GET /api/issues/:id/attachments', () => {
   it('returns rows for the issue (user JWT)', async () => {
-    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'admin',
-      orgRole: 'owner',
-    });
+    grantIssueAccess();
     selectOrderBy.mockResolvedValueOnce([
       {
         id: ATT_ID,

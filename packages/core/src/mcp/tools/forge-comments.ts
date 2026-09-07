@@ -3,9 +3,7 @@ import { BodyInvalidError } from '../../body/errors.js';
 import { BODY_FORMATS } from '../../body/formats.js';
 import { bodySlots, bodyText } from '../../body/prepare.js';
 import {
-  AttachmentError,
   listCommentAttachmentsForIssue,
-  type PersistedCommentAttachment,
   persistDecodedCommentAttachments,
 } from '../../comments/attachment-service.js';
 import { pgConstraintName, pgErrorCode } from '../../comments/error-mapping.js';
@@ -90,8 +88,7 @@ function serialize(
     authorId: row.authorId,
     // cm:guard SECOND HALF IN forge-plugin `plugin/src/flow/earned.mjs` — `answered()` asks whether a PERSON replied after a park, and this field is what it asks with now that `is_ai` is gone: non-null means an agent wrote it. Drop it from this projection and every screen the driver parks on becomes unanswerable, because the agent's own comments would read as a person's. Since ISS-931 the value comes from the caller's `job:`/`session:` token rather than from a device principal, which is why a PAT-authored agent comment is marked at all — it never was before.
     authorDeviceId: row.authorDeviceId ?? null,
-    // ISS-532: comment bodies are untrusted (anyone can post) and reach the
-    // agent verbatim via this MCP surface — frame as DATA, never instructions.
+    // cm:guard a comment body reaches the agent verbatim over this MCP surface and anyone can post one, so it must stay inside a DATA frame — unframing it turns every commenter into someone who can issue the agent instructions (ISS-532)
     body: markUntrusted(row.body, { source: 'comment.body' }),
     format: row.format,
     template: row.template,

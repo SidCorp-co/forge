@@ -53,8 +53,7 @@ vi.mock('../../pipeline/hooks.js', () => ({
   hooks: { emit: vi.fn().mockResolvedValue(undefined) },
 }));
 
-// Keep the real create-path helper (persistCommentAttachment) but stub the
-// read-side join so `list` doesn't need a programmed query chain for it.
+// cm:guard stub only the READ-side join — the create path must keep the real persistCommentAttachment, because the mime resolution and the name-collision refusal this suite asserts both live inside it and a stub would assert the stub
 const listCommentAttachmentsForIssueMock = vi.fn(
   async (..._args: unknown[]) => new Map<string, unknown[]>(),
 );
