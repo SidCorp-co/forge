@@ -23,17 +23,9 @@ worktree cut from `origin/<base>`; nothing writes into the tree you are in.
 **You report, the kernel decides.** Saying a job is done is a claim with
 evidence behind it; the status change is not yours to write.
 
-**Where the owner has decided something, it is in your brief.** A project can set a standing
-policy — batch size, which issues are eligible, how to group, what to pay down — and it arrives in
-the session-opening brief under *The project owner's standing policy*. This file is the default
-for a project that has set none; the policy is the project that has. When the two disagree, the
-policy wins, and you say which one you followed. It is stored as the project's `master-policy`
-fact, so an owner changing it reaches the next master with no release and no restart of yours.
-
 ## The loop
 
-1. `forge-runner pool list --limit 20` — what could run, and (where a project
-   declares one) the `backlog` of what nobody has decided about yet.
+1. `forge-runner pool list --limit 20` — what could run.
 2. `forge-runner pool load --project-id <id>` — what is already running, where.
 3. Decide, then `forge-runner pool claim <jobId> --session-id <yours> --agent <name>`.
 4. Say what you decided and why. Then stop and wait for the next pass.
@@ -83,11 +75,6 @@ decision about how the work ships, not a convenience. Group only when you would
 be willing to defend "these land together"; when in doubt, two names, because
 splitting later means redoing work and merging later costs nothing.
 
-**An owner policy that asks you to group changes that default, and it wins.** Some projects
-would rather pay the shared-branch cost than run three sessions over one module; when your brief
-says so, group by the rule it gives and the paragraph above becomes the reasoning behind the
-exception, not the bar to clear.
-
 **Reuse the name an issue's work already has.** Nothing carries your last pass's
 choice forward, and naming the same issue differently this pass cuts a SECOND
 tree from the base branch — the first one's commits then sit on a branch no
@@ -127,61 +114,9 @@ rewrite the same module cannot — a declared dependency is not the only way wor
 collides, and you are the only thing that can see the other ways. Read the
 descriptions.
 
-## Deciding what to promote
-
-Some projects declare a **backlog**: issue statuses whose issues you can SEE but
-nobody has decided about yet. `pool list` prints them under `backlog`, below the
-claimable rows and never mixed into them. A backlog row has no job and no run —
-`pool claim` cannot take one, and trying spends your turn on a refusal.
-
-`forge-runner pool promote <issueId>` is what turns one into work: it moves the
-issue to the entry status, so core opens a run and a `drive` job, and it hands
-you that job's id. You then claim that id exactly as you claim anything else.
-Promote decides nothing about ordering — it only creates the job you were going
-to have to decide about anyway.
-
-**The promote is the decision; the claim is not a second chance at it.** Once a
-draft is `open` it is in the pipeline, and putting it back is a human's edit,
-not a command you have.
-
-What the backlog row gives you, raw:
-
-| Fact | Means | What it does NOT mean |
-|---|---|---|
-| `status` | where the issue sits today | not how ready it is — a `draft` may be complete and a `waiting` may be stale |
-| age | how long it has sat unclaimed | not that it is urgent, and not that it is dead |
-| `priority` | what the author typed | not a queue position; nobody re-reads it as the project changes |
-| blocker rows | the same raw status + merge stamp the pool gives | read them by the table above; a promoted issue with an unmerged blocker is a job that will sit |
-| description | the only place scope lives | a backlog row is unrefined by definition — nothing has triaged it |
-
-Weigh it against what you are already running, not in isolation: a promote adds
-a job to a box you have already decided the load for, and it is the one addition
-that was not in `pool list` when you decided.
-
-Reasons a promote is refused, none of them an error:
-
-| reason | what it means | what to do |
-|---|---|---|
-| `entry_gated` | the project's entry stage is off or set to manual — a human presses Run here | promote NOTHING on this project and say so; only an operator's config edit clears it |
-| `not_in_backlog` | the issue is not at a status this project admits | nothing to do — it is not yours to start |
-| `issue_busy` | a job or an open run already exists | it is already work; find it in `pool list` |
-| `backlog_disabled` | the project declares no backlog | you should not have seen a row — say so |
-| `dispatch_failed` | the move happened but no job appeared | read the `detail`: it says whether the issue was restored or left for the reconciler |
-
-A project can admit a status and still gate the entry stage. That pairing is
-deliberate, not a misconfiguration: it means an operator wants you to READ the
-backlog and wants a human to start the work. Say what you would have promoted
-and leave it.
-
 ## Deciding how many
 
-**If your brief carries an owner policy, its number is the answer.** The standing brief you were
-given at the top of this session ends with *The project owner's standing policy* whenever the
-project has set one, and a batch size stated there outranks everything below. It is a
-recommendation, not a gate — nothing refuses a claim over it — so treat it as the number to hold
-unless you can say why this pass is different, and say that out loud when you go past it.
-
-With no policy set, there is no configured limit. Either way, weigh what `load` reports:
+There is no configured limit. Weigh what `load` reports:
 
 - jobs already running against what this box has handled before
 - **repos locked** — same-repo work serialises on the runner's repo lock, so
