@@ -5,6 +5,8 @@ import { sessionAttachments } from '../db/schema.js';
 import {
   allowedSetForTarget,
   mimeRefusalMessage,
+  NAME_MAX_BYTES,
+  nameExceedsByteBudget,
   resolveAttachmentMime,
   safeName,
 } from '../lib/attachment-mime.js';
@@ -63,6 +65,12 @@ export async function persistSessionAttachment(
 ): Promise<PersistedSessionAttachment> {
   const { sessionId, bytes, uploaderId, uploaderDeviceId } = input;
   const name = safeName(input.name || 'file');
+  if (nameExceedsByteBudget(name)) {
+    throw new SessionAttachmentError(
+      'INVALID_NAME',
+      `name is longer than ${NAME_MAX_BYTES} bytes of UTF-8 — rename the file and upload it again`,
+    );
+  }
   if (bytes.byteLength <= 0) {
     throw new SessionAttachmentError('EMPTY_FILE', 'empty file');
   }

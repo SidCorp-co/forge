@@ -99,14 +99,35 @@ const MODE_TABS = [
 
 // cm:guard stage every file under a name no sibling holds — a clipboard screenshot is always `image.png`, and the server refuses the WHOLE batch when one member repeats a name, so letting two pastes share one name drops every file the user attached; rename rather than refuse, because two screenshots are two documents (ISS-963)
 function uniqueStagedName(name: string, used: Set<string>): string {
-if (!used.has(name)) return name;
-const dot = name.lastIndexOf(".");
-const base = dot > 0 ? name.slice(0, dot) : name;
-const ext = dot > 0 ? name.slice(dot) : "";
-for (let n = 2; ; n += 1) {
-  const candidate = `${base}-${n}${ext}`;
-  if (!used.has(candidate)) return candidate;
+  if (!used.has(nameKey(name))) return name;
+  const dot = name.lastIndexOf(".");
+  const base = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : "";
+  for (let n = 2; ; n += 1) {
+    const candidate = `${base}-${n}${ext}`;
+    if (!used.has(nameKey(candidate))) return candidate;
+  }
 }
+
+// cm:edge lockstep -> packages/core/src/lib/attachment-mime.ts#safeName — the server compares SANITISED names, so a key that skips the sanitisation stages `a b.png` beside an already-staged `a_b.png` and the server then drops the whole batch on a collision this saw as two names (ISS-963)
+function nameKey(name: string): string {
+  return name
+    .normalize("NFC")
+    .replace(/[\\/]+/g, "_")
+    .replace(/[\p{C}\p{Z}]/gu, "_")
+    .replace(/[^\p{L}\p{M}\p{N}._-]/gu, "_");
+}
+
+// cm:guard each dropped file gets ITS OWN reason — one shared message reads as the verdict on all of them, and the server's own wording carries a row id and tells the reader to "cite it", which is a sentence for an agent and not for the person who just dragged a file in (ISS-963)
+const ATTACHMENT_ERROR_COPY: Record<string, string> = {
+  ATTACHMENT_NAME_TAKEN: "this issue already has a file with that name",
+  MIME_NOT_ALLOWED: "that file type isn't accepted",
+  FILE_TOO_LARGE: "too large",
+  EMPTY_FILE: "the file is empty",
+  INVALID_NAME: "the name is too long",
+};
+function attachmentErrorCopy(dropped: { code?: string; message: string }): string {
+  return (dropped.code && ATTACHMENT_ERROR_COPY[dropped.code]) || dropped.message;
 }
 
 export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
@@ -148,9 +169,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
     // `create` is stable from React Query; resetting only on `open` is intended.
   }, [open]);
 
-
-  // Validate + stage picked/dropped/pasted files. Mirrors the V1 create page
-  // (size/mime/count caps) so the server never rejects what we accepted.
+  // cm:guard this is the ONLY staging path — the picker, the drop and the paste all land here, so a rule added to one of those handlers instead of this one holds for a third of the ways a file arrives (ISS-963)
   const acceptFiles = useCallback((picked: FileList | File[]) => {
     const accepted: File[] = [];
     const errs: string[] = [];
@@ -175,11 +194,11 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
         errs.push(`Max ${MAX_FILES} attachments per issue. Extras skipped.`);
       }
       const staged = accepted.slice(0, Math.max(0, room));
-      const used = new Set(prev.map((f) => f.name));
+      const used = new Set(prev.map((f) => nameKey(f.name)));
       const renamed: File[] = [];
       for (const f of staged) {
         const unique = uniqueStagedName(f.name, used);
-        used.add(unique);
+        used.add(nameKey(unique));
         if (unique === f.name) {
           renamed.push(f);
         } else {
@@ -287,7 +306,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
       if (dropped.length > 0) {
         toast({
           title: `Issue created, but ${dropped.length === 1 ? "1 file was" : `${dropped.length} files were`} not attached`,
-          description: `${dropped.map((e) => e.name).join(", ")} — ${dropped[0].message}. Open the issue and attach ${dropped.length === 1 ? "it" : "them"} again.`,
+          description: `${dropped.map((e) => `${e.name} — ${attachmentErrorCopy(e)}`).join("; ")}. Open the issue and attach ${dropped.length === 1 ? "it" : "them"} again.`,
           tone: "error",
         });
       } else {

@@ -3346,6 +3346,17 @@
   second paste is now staged under its own name, and a create that still drops a file says so
   instead of reporting success.
 
+  Downloading a non-Latin name works, which it did not the moment names stopped collapsing: a
+  `Content-Disposition` header value cannot carry a character above 255, so `报告.md` uploaded fine
+  and then answered its own download URL with a 500. The served name is now RFC 5987 encoded, with
+  an ASCII fallback for clients that read only the plain parameter. Hindi, Arabic and Hebrew names
+  are compared as themselves too — combining marks were still being replaced, so `किताब.pdf` and
+  `कुताब.pdf` were one name in exactly the way `报告.pdf` and `设计.pdf` had been. And a name too
+  long to store is refused with `INVALID_NAME` naming the limit, rather than trimmed: the limit is
+  180 bytes of UTF-8 because the filesystem counts bytes (an 81-character Chinese name overflows
+  where 200 ASCII ones did not), and trimming would have merged every name sharing a prefix into
+  the single row this whole rule exists to prevent. (ISS-963)
+
 - **The always-inject flag now says what it buys, and stops implying the rule will be followed.**
   Flagging a project fact `alwaysInject` splices its full body into every agent prompt under
   *"Hard rules for this project — always-injected by the project owner. Follow them exactly"*, and
