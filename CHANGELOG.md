@@ -36,6 +36,27 @@
   bound target shows the name, domain and branch/commit Coolify holds for it. A bound uuid Coolify
   does not list is called out in place, so a wrong binding is visible without opening Coolify.
 
+- **Work you finished by hand can now say so, and the project's progress figure believes it.**
+  `merged_at` is the claim that an issue's code shipped — it is what releases every issue blocked
+  on it, and what separates *shipped* from *closed with no evidence it shipped*. Making that claim
+  was reachable only from the CLI, MCP and REST; the web never called
+  `POST /api/issues/:id/merge` at all. A person who merged something outside the pipeline could
+  therefore only close the issue, and a close stamps `merged_at` inside its own transaction —
+  a stamp the counter correctly discounts, because closing is also how a duplicate ends.
+
+  The issue's Properties rail now carries **Mark merged** next to the merge date, with the
+  target it landed on and an optional note, and **Unmark** to retract it. Both route through the
+  same `applyMergeMarker` every other surface uses, so the audit comment, the hooks and the
+  work-evidence gate on agent callers are unchanged; a viewer never sees either control.
+
+  The counter was also discarding the claim once it was made. It required, on top of a deliberate
+  stamp, a logged transition into `developed`/`testing`/`tested`/`released` — which work driven
+  entirely by hand never has. Such an issue is now counted as shipped on the strength of the
+  deliberate stamp alone. An auto-stamp written by the close itself still counts as no evidence,
+  which is the ISS-817 property and is pinned against real Postgres rather than asserted.
+
+  The path is drawn end to end in `docs/flows/issue-work-shipped-evidence.html`. (ISS-791)
+
 - **An agent working an issue on a project that keeps modules is now told they exist, and how to
   set the issue's primary one.** ISS-593 made a module a label with `kind='module'` and gave an
   issue a primary through `issue_labels.is_primary`, but nothing told the agents doing the work:
@@ -1156,6 +1177,24 @@
   set is now 59.
 
 ### Fixed
+
+- **Every chart went blank on a server whose Postgres was not set to UTC, and nothing said so.**
+  The metrics timeseries built its bucket list in JavaScript floored to UTC midnight, then grouped
+  the rows in SQL with a bare `date_trunc`, which Postgres evaluates in the database session's
+  timezone. On a UTC database the two agreed; anywhere else every row landed in a bucket the
+  densifier was not looking for, the join matched nothing, and the series came back as zeroes with
+  a `null` rate. No error, no warning — a chart reading "this project did no work" is
+  indistinguishable from one reading "this project's rows were all discarded".
+
+  All nine bucketed metrics were affected (cost, throughput, cycle time, queue wait, runner
+  utilization, cache hit rate, pass rate, approve rate, queue depth), and so was the whole admin
+  overview, which had the same JS-floors-UTC / SQL-floors-session split behind a different
+  function. Two more surfaces reported the wrong calendar day rather than an empty one: the
+  per-project daily analytics and the usage-record daily breakdown both labelled a day by the
+  server's clock. One truncation helper now pins all of them to UTC.
+
+  Surfaced by `core-integration` failing only on developer machines in UTC+7 while CI, whose
+  Postgres is UTC, stayed green — the test was right and the query was wrong. (ISS-942, ISS-954)
 
 - **`POST /api/memory/search` ignored the `strategy` you asked for and told you it had honoured
   it.** The route validated `strategy` in its body schema and then never passed it to
