@@ -85,6 +85,15 @@ describe("DescriptionCard", () => {
     expect(screen.getByLabelText("Issue description")).toHaveValue("stored text");
   });
 
+  it("shows the write in flight rather than an idle-looking button", () => {
+    pending = true;
+    render(<DescriptionCard issue={issue("before")} attachments={[]} canWrite />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const save = [...screen.getAllByRole("button")].find((b) => b.textContent?.includes("Save"));
+    expect(save).toBeDisabled();
+    expect(save).toHaveAttribute("aria-busy", "true");
+  });
+
   it("invites the first description rather than reporting an absence", () => {
     render(<DescriptionCard issue={issue(null)} attachments={[]} canWrite />);
     expect(screen.getByText(/No description yet/)).toBeInTheDocument();

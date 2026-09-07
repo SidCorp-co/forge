@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useMemo, useRef, useState } from "react";
 import {
   BodyView,
+  Button,
   Menu,
   PreviewPane,
   Spinner,
@@ -94,10 +95,11 @@ export function BodyEditor({
         <div className="flex items-center gap-2">
           <Menu
             align="left"
+            // cm:guard the trigger must be a real interactive element: `Menu` deliberately wraps it in a plain `<span>` carrying only the popup semantics, so a `<span>` here is a menu no keyboard can open.
             trigger={
-              <span className="fg-label cursor-pointer rounded-md border border-line px-2 py-1 text-muted hover:bg-hover">
+              <Button variant="ghost" size="sm" disabled={disabled}>
                 Insert component
-              </span>
+              </Button>
             }
             items={
               insertItems.length > 0
