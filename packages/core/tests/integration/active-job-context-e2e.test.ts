@@ -30,12 +30,10 @@ import {
 
 type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  resolveMachineTokenContext: typeof import('../../src/jobs/active-job-context.js').resolveMachineTokenContext;
-  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  resolveMachineTokenDeviceId: typeof import('../../src/jobs/active-job-context.js').resolveMachineTokenDeviceId;
+  resolvePipelineContext: typeof import('../../src/jobs/active-job-context.js').resolvePipelineContext;
 };
 
-describe('resolveMachineTokenContext E2E (ISS-573, re-keyed ISS-931)', () => {
+describe('resolvePipelineContext E2E (ISS-573, re-keyed ISS-932 wave 4)', () => {
   let harness: TestDatabase;
   let mods: Mods;
 
@@ -113,133 +111,109 @@ describe('resolveMachineTokenContext E2E (ISS-573, re-keyed ISS-931)', () => {
     return { deviceId: device.id, projectId: project.id, issueId, runId, jobId, sessionId, owner };
   }
 
-  const jobRef = (id: string) => ({ kind: 'job' as const, id });
-  const sessionRef = (id: string) => ({ kind: 'session' as const, id });
+  const caller = (deviceId: string | null, boundProjectId: string | null) => ({
+    deviceId,
+    boundProjectId,
+  });
 
   // cm:guard this is the ISS-573 reproduction — `dispatched` job + `queued` session is the ordinary state a pipeline agent calls an MCP tool from, and the old `jobs.status = 'running'` predicate matched it never
-  it('resolves a dispatched job under a queued session', async () => {
+  it('resolves a dispatched job under a queued session, from the box and the project alone', async () => {
     const s = await seed({ sessionStatus: 'queued', jobStatus: 'dispatched' });
-    await expect(mods.resolveMachineTokenContext(sessionRef(s.sessionId))).resolves.toEqual({
-      jobId: s.jobId,
-      runId: s.runId,
-      issueId: s.issueId,
-      stage: 'review',
-      deviceId: s.deviceId,
-      agentSessionId: s.sessionId,
+    const got = await mods.resolvePipelineContext(caller(s.deviceId, s.projectId));
+    expect(got).toEqual({
+      ok: true,
+      context: {
+        agentSessionId: s.sessionId,
+        jobId: s.jobId,
+        runId: s.runId,
+        issueId: s.issueId,
+        stage: 'review',
+        deviceId: s.deviceId,
+      },
     });
   });
 
-  it('a job token resolves its own job directly', async () => {
-    const s = await seed({ sessionStatus: 'queued', jobStatus: 'dispatched' });
-    await expect(mods.resolveMachineTokenContext(jobRef(s.jobId))).resolves.toEqual({
-      jobId: s.jobId,
-      runId: s.runId,
-      issueId: s.issueId,
-      stage: 'review',
-      deviceId: s.deviceId,
-      agentSessionId: s.sessionId,
-    });
-  });
-
-  it('resolves nothing for a token that names no job or session', async () => {
-    await expect(mods.resolveMachineTokenContext(null)).resolves.toBeNull();
-    await expect(mods.resolveMachineTokenDeviceId(null)).resolves.toBeNull();
-  });
-
-  it('resolves the device a job and a session run on', async () => {
+  it('refuses a credential that names no box', async () => {
     const s = await seed({});
-    await expect(mods.resolveMachineTokenDeviceId(jobRef(s.jobId))).resolves.toBe(s.deviceId);
-    await expect(mods.resolveMachineTokenDeviceId(sessionRef(s.sessionId))).resolves.toBe(
-      s.deviceId,
-    );
+    const got = await mods.resolvePipelineContext(caller(null, s.projectId));
+    expect(got.ok).toBe(false);
+    if (!got.ok) expect(got.reason).toBe('not_pipeline_context');
   });
 
-  it('resolves once the session has flipped to running on its first event batch', async () => {
-    const s = await seed({ sessionStatus: 'running', jobStatus: 'dispatched' });
-    const active = await mods.resolveMachineTokenContext(sessionRef(s.sessionId));
-    expect(active?.jobId).toBe(s.jobId);
+  it('refuses a credential that names a box but no project', async () => {
+    const s = await seed({});
+    const got = await mods.resolvePipelineContext(caller(s.deviceId, null));
+    expect(got.ok).toBe(false);
+    if (!got.ok) expect(got.reason).toBe('not_pipeline_context');
+  });
+
+  // cm:guard the ambiguous case REFUSES and writes nothing. Its predecessor took "the most recently dispatched job on that box" and mis-attributed every call on a runner at concurrency 3 (ISS-931) — a guess that is right most of the time is the failure mode, because nothing downstream can tell the wrong writes from the right ones.
+  it('refuses by name when the box runs two sessions for one project', async () => {
+    const s = await seed({});
+    const second = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO agent_sessions (id, project_id, device_id, status, pipeline_run_id)
+      VALUES (${second}, ${s.projectId}, ${s.deviceId}, 'running', ${s.runId})
+    `);
+    const got = await mods.resolvePipelineContext(caller(s.deviceId, s.projectId));
+    expect(got.ok).toBe(false);
+    if (!got.ok) expect(got.reason).toBe('ambiguous_pipeline_context');
+  });
+
+  // cm:guard ISS-557 — a steward or schedule run is a session with NO job row, and it must still resolve so its reports carry a session id. A job-first lookup answers nothing here.
+  it('resolves a session that is running no job, with the job fields null', async () => {
+    const s = await seed({});
+    await harness.db.execute(sql`DELETE FROM jobs WHERE id = ${s.jobId}`);
+    const got = await mods.resolvePipelineContext(caller(s.deviceId, s.projectId));
+    expect(got.ok).toBe(true);
+    if (got.ok) {
+      expect(got.context.agentSessionId).toBe(s.sessionId);
+      expect(got.context.jobId).toBeNull();
+      expect(got.context.issueId).toBeNull();
+    }
   });
 
   it('carries the job type through as the stage', async () => {
     const s = await seed({ jobType: 'test' });
-    const active = await mods.resolveMachineTokenContext(jobRef(s.jobId));
-    expect(active?.stage).toBe('test');
+    const got = await mods.resolvePipelineContext(caller(s.deviceId, s.projectId));
+    expect(got.ok && got.context.stage).toBe('test');
   });
 
   it('resolves a job with no issue (pm/system runs) with issueId null', async () => {
     const s = await seed({ withIssue: false, jobType: 'pm' });
-    const active = await mods.resolveMachineTokenContext(jobRef(s.jobId));
-    expect(active).not.toBeNull();
-    expect(active?.issueId).toBeNull();
+    const got = await mods.resolvePipelineContext(caller(s.deviceId, s.projectId));
+    expect(got.ok).toBe(true);
+    if (got.ok) expect(got.context.issueId).toBeNull();
   });
-
-  it.each(['done', 'failed', 'cancelled', 'queued'])(
-    'returns null for a job in status %s',
-    async (jobStatus) => {
-      const s = await seed({ jobStatus });
-      await expect(mods.resolveMachineTokenContext(jobRef(s.jobId))).resolves.toBeNull();
-      await expect(mods.resolveMachineTokenContext(sessionRef(s.sessionId))).resolves.toBeNull();
-    },
-  );
 
   it.each(['completed', 'failed', 'cancelled_stale'])(
-    'returns null when the session is terminal (%s)',
+    'refuses when the session is terminal (%s)',
     async (sessionStatus) => {
       const s = await seed({ sessionStatus });
-      await expect(mods.resolveMachineTokenContext(sessionRef(s.sessionId))).resolves.toBeNull();
+      const got = await mods.resolvePipelineContext(caller(s.deviceId, s.projectId));
+      expect(got.ok).toBe(false);
     },
   );
 
-  it('returns null for an id that names no row at all', async () => {
-    await expect(mods.resolveMachineTokenContext(jobRef(randomUUID()))).resolves.toBeNull();
-    await expect(mods.resolveMachineTokenContext(sessionRef(randomUUID()))).resolves.toBeNull();
-  });
+  it.each(['done', 'failed', 'cancelled', 'queued'])(
+    'still resolves the session when its job is %s, with the job fields null',
+    async (jobStatus) => {
+      const s = await seed({ jobStatus });
+      const got = await mods.resolvePipelineContext(caller(s.deviceId, s.projectId));
+      expect(got.ok).toBe(true);
+      if (got.ok) expect(got.context.jobId).toBeNull();
+    },
+  );
 
-  it('does not leak another job', async () => {
+  // cm:guard the project half of the fence is load-bearing, not decoration: one box serves many projects, so a credential bound to B must never resolve A's session.
+  it('does not resolve another project running on the same box', async () => {
     const mine = await seed({});
     const theirs = await seed({});
-    const active = await mods.resolveMachineTokenContext(jobRef(mine.jobId));
-    expect(active?.jobId).toBe(mine.jobId);
-    expect(active?.jobId).not.toBe(theirs.jobId);
-  });
-
-  // cm:guard this is the ISS-931 improvement stated as a test, and it must keep failing on the old behaviour: TWO in-flight jobs on one box, and a `job:` token resolves the one it NAMES rather than the newest. The device key could not do this — it took `order by dispatched_at desc limit 1`, so a tool call from the older job was attributed to the newer one.
-  it('a job token resolves the job it names, not the newest on the same box', async () => {
-    const older = await seed({ dispatchedAt: new Date(Date.now() - 60_000).toISOString() });
-
-    // cm:why a second in-flight job on the SAME device needs its own session + run — that is the real shape when a runner's cap is above 1
-    const runId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
-      VALUES (${runId}, ${older.projectId}, NULL, 'pm', 'running', now())
-    `);
-    const sessionId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO agent_sessions (id, project_id, device_id, status, pipeline_run_id)
-      VALUES (${sessionId}, ${older.projectId}, ${older.deviceId}, 'running', ${runId})
-    `);
-    const newerJobId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO jobs (
-        id, project_id, issue_id, type, status, device_id, agent_session_id,
-        pipeline_run_id, payload, queued_at, dispatched_at, created_by
-      )
-      VALUES (
-        ${newerJobId}, ${older.projectId}, NULL, 'pm', 'dispatched', ${older.deviceId},
-        ${sessionId}, ${runId}, '{}'::jsonb, now(), now(), ${older.owner.id}
-      )
-    `);
-
-    await expect(mods.resolveMachineTokenContext(jobRef(older.jobId))).resolves.toMatchObject({
-      jobId: older.jobId,
-    });
-    await expect(mods.resolveMachineTokenContext(jobRef(newerJobId))).resolves.toMatchObject({
-      jobId: newerJobId,
-    });
-
-    // cm:why the session key is the one that still has to guess: a session can have run several jobs, so `resolveMachineTokenContext` prefers the newest — only the `job:` key above is exact
-    await expect(mods.resolveMachineTokenContext(sessionRef(sessionId))).resolves.toMatchObject({
-      jobId: newerJobId,
-    });
+    await harness.db.execute(
+      sql`UPDATE agent_sessions SET device_id = ${mine.deviceId} WHERE id = ${theirs.sessionId}`,
+    );
+    const got = await mods.resolvePipelineContext(caller(mine.deviceId, theirs.projectId));
+    expect(got.ok).toBe(true);
+    if (got.ok) expect(got.context.agentSessionId).toBe(theirs.sessionId);
   });
 });

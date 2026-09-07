@@ -54,7 +54,7 @@ import {
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
 import { detectUnexpandedSkillFailure, finalizeScheduleSessionFailure } from './session-failure.js';
-import { onTerminalPatch, revokeSessionToken } from './terminal-effects.js';
+import { onTerminalPatch } from './terminal-effects.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
 
@@ -108,7 +108,7 @@ const relayBodySchema = z
   })
   .strict();
 
-// cm:why derived from the schema constant, never restated. This used to be a hand-written copy of the same four statuses carrying a `cm:edge` asking the next editor to remember both — and it now gates the session-token revoke as well as the two bridges, so a drifted copy would leave a live credential behind rather than merely a silent room. A note asking someone to remember is not a mechanism; sharing the array is.
+// cm:why derived from the schema constant, never restated. This used to be a hand-written copy of the same four statuses carrying a `cm:edge` asking the next editor to remember both; a drifted copy would leave the two bridges silent for a whole class of finished sessions. A note asking someone to remember is not a mechanism; sharing the array is.
 const TERMINAL_SESSION_STATUSES: ReadonlySet<AgentSessionStatus> = new Set(
   terminalAgentSessionStatuses,
 );
@@ -117,9 +117,7 @@ export const agentSessionRoutes = new Hono<{ Variables: AuthVars }>();
 // cm:guard the ONE wildcard for this whole surface, and it stays the only one — every router mounted below inherits it, and a second `use('*')` here would flatten into the same linear chain and run ahead of this for some routes (the ISS-706 shape). Dual-auth because the runner streams chat replies back through `PATCH /:id` with a device token; every other route authorizes via `loadProjectAccess(_, userId)`, which fails closed for a device principal because `userId` is left unset.
 agentSessionRoutes.use('*', requireUserOrDevice(), assertEmailVerified());
 
-// Static-path lifecycle handlers (start / send / abort / cancel / build-prompt
-// / prompt-built / desktop-status) — mounted FIRST so they keep beating the
-// `:id` handlers below, exactly like the pre-split registration order.
+// cm:guard mounted BEFORE the `:id` handlers and the order is load-bearing: Hono matches in registration order, so a static path registered after `:id` is swallowed by it.
 agentSessionRoutes.route('/', agentSessionLifecycleRoutes);
 agentSessionRoutes.route('/', agentSessionInboxRoutes);
 
@@ -779,7 +777,6 @@ agentSessionRoutes.patch(
 
     // cm:guard the REVOKE reads the PERSISTED `updated.status`; the bridges below read the REPORTED `patch.status`. The split is deliberate and is NOT a bug fix — every rewrite core performs today maps one terminal status onto another (ISS-733 skill-not-synced, `audit_ran_blind`), so the two agree and no test can tell them apart. It is priced as hardening in one direction: a `...Once` bridge that fires on a status core did not accept sends a duplicate room reply, while a revoke that does kills the credential of a session still running. `writeBackScheduleLastStatus` above already reads the persisted value for its own version of this reason. The condition that would end the split is a rewrite mapping a terminal report onto a NON-terminal status — none exists, and if one is added it belongs here first.
     if (TERMINAL_SESSION_STATUSES.has(updated.status)) {
-      await revokeSessionToken(id);
     }
 
     if (patch.status !== undefined && TERMINAL_SESSION_STATUSES.has(patch.status)) {

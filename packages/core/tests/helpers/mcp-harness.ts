@@ -18,9 +18,6 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 // cm:guard import the two core modules INSIDE the call, never at module scope. Both reach `db/client.js`, which validates env the moment it loads, so a static import here runs before a test's `beforeAll` has set DATABASE_URL and the whole suite dies at collection with "Invalid environment" instead of running. This is the same trap `runners/device-cap.ts` carries a guard about.
 export async function connectClientAsPat(patPlaintext: string) {
   const { verifyPat } = await import('../../src/auth/pat.js');
-  const { isMachineTokenName, parseMachineTokenName } = await import(
-    '../../src/auth/pat-format.js'
-  );
   const { createMcpServer } = await import('../../src/mcp/server.js');
   const verified = await verifyPat(patPlaintext);
   if (!verified) throw new Error('test PAT did not verify');
@@ -28,14 +25,13 @@ export async function connectClientAsPat(patPlaintext: string) {
   const ctx = {
     principal: {
       kind: 'pat' as const,
-      agency: isMachineTokenName(row.name) ? ('agent' as const) : ('human' as const),
+      agency: verified.ownerKind === 'agent' ? ('agent' as const) : ('human' as const),
       userId: row.userId,
       tokenId: row.id,
       scopes: row.scopes,
       projectIds: row.projectIds ?? null,
       boundProjectId: row.boundProjectId ?? null,
-      deviceId: null,
-      machine: parseMachineTokenName(row.name),
+      deviceId: row.deviceId ?? null,
     },
     projectSlug: null,
   };

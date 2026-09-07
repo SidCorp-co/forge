@@ -26,7 +26,6 @@ import {
 
 let harness: TestDatabase;
 let app: Hono<{ Variables: RequestIdVars }>;
-let mintJobToken: typeof import('../../src/jobs/job-token.js').mintJobToken;
 let mintPat: typeof import('../../src/auth/pat.js').mintPat;
 
 beforeAll(async () => {
@@ -44,15 +43,13 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
-  const [extras, mergeMod, errMod, reqIdMod, tok, pat] = await Promise.all([
+  const [extras, mergeMod, errMod, reqIdMod, pat] = await Promise.all([
     import('../../src/issues/extras-routes.js'),
     import('../../src/issues/merge-routes.js'),
     import('../../src/middleware/error.js'),
     import('../../src/middleware/request-id.js'),
-    import('../../src/jobs/job-token.js'),
     import('../../src/auth/pat.js'),
   ]);
-  mintJobToken = tok.mintJobToken;
   mintPat = pat.mintPat;
 
   app = new Hono<{ Variables: RequestIdVars }>();
@@ -86,18 +83,23 @@ async function seedEvidenceLessIssue() {
   return { user, project, issueId };
 }
 
-async function jobPatFor(user: { id: string }, project: { id: string }): Promise<string> {
-  const runId = randomUUID();
-  await harness.db.execute(sql`
-    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
-    VALUES (${runId}::uuid, ${project.id}::uuid, 'system', 'running', now())
-  `);
-  const jobId = randomUUID();
-  await harness.db.execute(sql`
-    INSERT INTO jobs (id, project_id, pipeline_run_id, created_by, type, status)
-    VALUES (${jobId}::uuid, ${project.id}::uuid, ${runId}::uuid, ${user.id}::uuid, 'code', 'running')
-  `);
-  return (await mintJobToken({ id: jobId, projectId: project.id, createdBy: user.id })) as string;
+/**
+ * A credential an unattended agent holds: an ordinary PAT whose OWNER is a
+ * `kind:'agent'` user. Since ISS-932 wave 4 that ownership is the whole of what
+ * makes it read `agency:'agent'` — there is no token name to imitate.
+ */
+async function agentPatFor(project: { id: string }): Promise<string> {
+  const agent = await createTestUser(harness.db, { kind: 'agent' });
+  await harness.db.execute(
+    sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${project.id}::uuid, ${agent.id}::uuid, 'admin')`,
+  );
+  const { plaintext } = await mintPat({
+    userId: agent.id,
+    name: `agent for ${project.id}`,
+    scopes: ['read', 'write'],
+    boundProjectId: project.id,
+  });
+  return plaintext;
 }
 
 const advance = (token: string, issueId: string) =>
@@ -109,8 +111,8 @@ const advance = (token: string, issueId: string) =>
 
 describe('PATCH /api/issues/batch honours agency, not just device-ness', () => {
   it('refuses an agent-held token the evidence-less advance', async () => {
-    const { user, project, issueId } = await seedEvidenceLessIssue();
-    const res = await advance(await jobPatFor(user, project), issueId);
+    const { project, issueId } = await seedEvidenceLessIssue();
+    const res = await advance(await agentPatFor(project), issueId);
 
     expect(JSON.stringify(await res.json())).toContain('no_work_evidence');
     const [row] = await harness.db.execute<{ status: string }>(
@@ -153,8 +155,8 @@ describe('POST/DELETE /api/issues/:id/merge — the CLI route for a merge claim'
   };
 
   it('refuses an agent the claim when no work evidence exists', async () => {
-    const { user, project, issueId } = await seedEvidenceLessIssue();
-    const res = await merge(await jobPatFor(user, project), issueId, 'POST', { target: 'main' });
+    const { project, issueId } = await seedEvidenceLessIssue();
+    const res = await merge(await agentPatFor(project), issueId, 'POST', { target: 'main' });
 
     expect(res.status).toBe(422);
     expect(JSON.stringify(await res.json())).toContain('NO_WORK_EVIDENCE');

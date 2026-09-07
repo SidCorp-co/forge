@@ -285,7 +285,7 @@ async fn prepare(
 
     let agent_session_id = prepared.agent_session_id.clone();
     let issue_key = outcome.issue_key.clone();
-    let job = prepared.into_claimed(outcome.job_token, outcome.issue_key, agent);
+    let job = prepared.into_claimed(outcome.issue_key, agent);
     let held_job_id = job.job_id.clone();
     ctl.prepared.put(job, session_id);
 

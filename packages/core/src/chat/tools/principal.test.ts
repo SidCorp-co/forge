@@ -11,7 +11,7 @@ describe('buildChatToolContext', () => {
     expect(principal.scopes).toEqual(['read']);
     expect(principal.agency).toBe('agent');
     expect(principal.userId).toBe('u1');
-    // cm:guard the chat principal names NO job or session — a non-null `machine` here would attribute a chat turn's findings to somebody else's pipeline job (ISS-931)
-    expect(principal.machine).toBeNull();
+    // cm:guard the chat principal names NO box — a non-null `deviceId` here would attribute a chat turn's findings to whatever that machine is running, and would reach `requireDevice`-shaped checks that exist to gate a paired box
+    expect(principal.deviceId).toBeNull();
   });
 });

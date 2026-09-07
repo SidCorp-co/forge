@@ -26,6 +26,8 @@ export interface CreateTestUserOverrides {
   passwordHash?: string;
   /** Omitted leaves the user UNVERIFIED, which is what most negative cases want. */
   emailVerifiedAt?: Date;
+  /** `'agent'` makes every credential this user owns authenticate `agency:'agent'` (ISS-932). */
+  kind?: 'human' | 'agent';
 }
 
 export async function createTestUser(
@@ -39,10 +41,15 @@ export async function createTestUser(
   const passwordHash = overrides.passwordHash ?? '!test-not-a-real-hash';
 
   // cm:guard the default stays UNVERIFIED, and `emailVerifiedAt` is opt-in for that reason: flipping the default would turn every `assertEmailVerified` negative case green without touching the case. Callers that need a verified user pass the date rather than issuing their own UPDATE — which is what this override replaced, silently ignored until ISS-946.
+  // cm:guard an AGENT is created verified, because `orgs/agent-accounts.ts:86` stamps `emailVerifiedAt` at creation and its address is undeliverable by design — an unverified agent is a row production never writes, and a fixture that builds one fails `assertEmailVerified` on a path the real account would have passed.
+  const verifiedAt =
+    overrides.emailVerifiedAt?.toISOString() ??
+    (overrides.kind === 'agent' ? new Date().toISOString() : null);
+
   await db.execute(sql`
-    INSERT INTO users (id, email, password_hash, email_verified_at)
-    VALUES (${user.id}, ${user.email}, ${passwordHash},
-            ${overrides.emailVerifiedAt?.toISOString() ?? null})
+    INSERT INTO users (id, email, password_hash, email_verified_at, kind)
+    VALUES (${user.id}, ${user.email}, ${passwordHash}, ${verifiedAt},
+            ${overrides.kind ?? 'human'})
   `);
 
   return user;

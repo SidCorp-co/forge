@@ -12,9 +12,7 @@
 import type { agentSessions } from '../db/schema.js';
 import { logger } from '../logger.js';
 
-export { revokeSessionToken } from './session-token.js';
-
-// cm:guard the ROOM half of what a session's terminal write owes, for the ONE terminal writer `applyKernelTransition` cannot see. The credential half is `revokeSessionToken`, called separately by the same handler because the two want different gates: these bridges fire on the REPORTED status like their siblings, while the revoke fires on the PERSISTED one — a bridge that fires early sends a duplicate room reply, a revoke that fires early kills a running session's token. This PATCH is the runner's happy-path completion and a direct `db.update`, so each side-effect hung on the kernel chokepoint needs its twin here or it goes silent for the commonest case in production — the ISS-675 escalation bridge is why this exists, and the ISS-927 token revoke is why it is a function.
+// cm:guard the ROOM half of what a session's terminal write owes, for the ONE terminal writer `applyKernelTransition` cannot see. This PATCH is the runner's happy-path completion and a direct `db.update`, so each side-effect hung on the kernel chokepoint needs its twin here or it goes silent for the commonest case in production (ISS-675).
 // cm:edge lockstep -> packages/core/src/lifecycle/transition.ts — the chokepoint's `entity === 'session'` branch is the other half of every line below. Adding one here without adding it there loses cancel, the sweeper and dispatch failure; adding it there alone loses the happy path.
 export async function onTerminalPatch(updated: typeof agentSessions.$inferSelect): Promise<void> {
   const meta = updated.metadata as { escalation?: unknown; agentChat?: unknown } | null;

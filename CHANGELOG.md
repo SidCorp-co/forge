@@ -1303,6 +1303,31 @@
 
 ### Removed
 
+- **Forge no longer issues a separate credential for each job and each unattended session. A paired
+  box holds one credential, and that is what its agents use.** Until now a dispatched job was handed
+  a token minted for that job alone, and an unattended chat or schedule session got one of its own;
+  both were created under the account of a *person* — whoever filed the work, or whoever owned the
+  session — and Forge told an agent's writes apart from a person's by reading the token's NAME.
+  That is gone. An agent is now an account in its own right, so "was a person or an agent at the
+  keyboard" is answered by who owns the credential rather than by what it is called.
+
+  **What you will see.** Work an agent does shows under the agent's own name, and you can revoke it
+  or move it between projects the way you would any other member. A token you create by hand and
+  happen to name `job:something` is now an ordinary token: naming it that no longer grants anything,
+  and it no longer counts differently against your token limit — only credentials issued to a paired
+  box are excluded from that limit now.
+
+  **What an operator must do.** Each box needs an agent account of its own before its work reports
+  under one, and each project that box serves needs the agent that speaks for it. Until a box is
+  re-paired that way, its writes are recorded as its human owner's and the evidence checks that
+  apply to agents will not apply to them. Pairing is the whole of the change — no token you hold
+  stops working.
+
+  **One case now refuses instead of guessing.** When a single box is running two sessions for the
+  same project at once, a tool that files a finding or a report against "the work I am doing" can no
+  longer tell which one, and says so instead of picking. Before, it picked the most recently started
+  one and was quietly wrong some of the time.
+
 - **`print` mode. Every agent a runner starts is now one long-lived session that reads its turns
   off stdin, and there is no longer a mode to choose.** A runner used to spawn `claude -p "<prompt>"`
   with stdin closed, read stdout to the first result, and let the process die — one prompt, one

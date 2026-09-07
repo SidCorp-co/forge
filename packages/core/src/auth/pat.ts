@@ -13,14 +13,13 @@
  */
 
 import argon2 from 'argon2';
-import { and, eq, gt, type InferSelectModel, isNull, like, not, or, sql } from 'drizzle-orm';
+import { and, eq, gt, type InferSelectModel, isNull, or, sql } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens, type UserKind, users } from '../db/schema.js';
 import {
   generatePatPlaintext,
   isPatValid,
-  machineTokenNameLikes,
   PAT_PREFIX_LEN,
   patEnvForNodeEnv,
   patPrefixOf,
@@ -40,7 +39,7 @@ export interface MintPatInput {
   name: string;
   scopes?: string[] | undefined;
   projectIds?: string[] | null | undefined;
-  // cm:edge contract -> packages/core/src/pat/routes.ts — mutual exclusion with `projectIds` is enforced at the REST layer ONLY, so a direct caller of `mintPat` can set both and no type says otherwise. `mintJobToken` and `mintSessionToken` are such callers; both set this and leave `projectIds` unset.
+  // cm:edge contract -> packages/core/src/pat/routes.ts — mutual exclusion with `projectIds` is enforced at the REST layer ONLY, so a direct caller of `mintPat` can set both and no type says otherwise. `devices/credential.ts` is such a caller: it sets `projectIds: []` and leaves `boundProjectId` for the agent the box pairs as.
   boundProjectId?: string | null | undefined;
   /** The paired box this token is issued to — see `devices/credential.ts`. */
   deviceId?: string | null | undefined;
@@ -134,10 +133,7 @@ export async function verifyPat(plaintext: unknown): Promise<VerifiedPat | null>
     );
 
   if (rows.length === 0) {
-    // Constant-time guard: run a dummy argon2.verify so an empty bucket
-    // costs the same as a populated-but-mismatched bucket. The dummy hash
-    // is a one-time computation; argon2.verify uses the parameters embedded
-    // in the hash so this stays aligned with ARGON2_OPTIONS.
+    // cm:guard verify a dummy hash when the bucket is empty so an absent prefix costs the same as a wrong secret — skipping it makes prefix existence measurable by timing.
     try {
       await argon2.verify(await getDummyHash(), plaintext + env.PAT_PEPPER);
     } catch {}
@@ -152,8 +148,7 @@ export async function verifyPat(plaintext: unknown): Promise<VerifiedPat | null>
     } catch {
       ok = false;
     }
-    // Intentionally do NOT short-circuit: keep verifying so the work done
-    // for a non-matching token is the same as a matching one.
+    // cm:guard do NOT short-circuit on the first match — a non-matching token must cost the same work as a matching one, or the loop's exit point measures which prefix exists.
     if (ok && matched === null) matched = { row: row.pat, ownerKind: row.ownerKind };
   }
 
@@ -291,7 +286,8 @@ export async function countActivePatsForUser(userId: string): Promise<number> {
       and(
         eq(personalAccessTokens.userId, userId),
         isNull(personalAccessTokens.revokedAt),
-        ...machineTokenNameLikes.map((p) => not(like(personalAccessTokens.name, p))),
+        // cm:guard the cap counts tokens a PERSON hand-made, and a machine's is excluded by being BOUND TO A BOX rather than by being named like one (ISS-932 wave 4). An operator pairing five machines would otherwise spend five of `PAT_MAX_PER_USER` on tokens they never minted; keying that off the name let a hand-made `device:` token buy the same exemption.
+        isNull(personalAccessTokens.deviceId),
       ),
     );
   return rows.length;

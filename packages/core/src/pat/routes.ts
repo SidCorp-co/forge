@@ -19,7 +19,6 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { countActivePatsForUser, mintPat, revokePat, rotatePat } from '../auth/pat.js';
-import { isMachineTokenName, MACHINE_TOKEN_NAME_PREFIXES } from '../auth/pat-format.js';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { mcpAuditLog, personalAccessTokens } from '../db/schema.js';
@@ -35,13 +34,7 @@ const SCOPES = ['read', 'write', 'admin'] as const;
 const createBodySchema = z
   .object({
     // cm:guard reserve the WHOLE machine-token family on the ONLY route a person mints through — `mintPat` itself must keep accepting those names, because that is how a dispatch mints a job's token and `agent:start` mints a session's. A hand-made PAT wearing one inherits all three things the prefix decides: it escapes the owner's PAT cap (`countActivePatsForUser` filters the family out), a job's or session's revoke sweep matches it and kills a credential nothing owns, and `authenticatePat` stamps it `agency:'agent'` so it is held to the ISS-786/812 evidence gates a person is deliberately exempt from. Measured on production 2026-09-01: 0 tokens carried `job:`, so this fenced a hole before anyone was standing in it; `session:` (ISS-927) is fenced the same way on the day it starts being minted, not after.
-    name: z
-      .string()
-      .min(1)
-      .max(80)
-      .refine((n) => !isMachineTokenName(n), {
-        message: `${MACHINE_TOKEN_NAME_PREFIXES.join(' / ')} are reserved for tokens Forge mints for itself`,
-      }),
+    name: z.string().min(1).max(80),
     scopes: z.array(z.enum(SCOPES)).optional(),
     projectIds: z.array(z.uuid()).max(50).nullable().optional(),
     // cm:guard this is where the mutual exclusion with `projectIds` is enforced, and the ONLY place — `mintPat` accepts both (see its `cm:edge`), so a second minting route that skipped this check would produce a token carrying two different, silently contradictory fences.
@@ -116,8 +109,7 @@ patRoutes.post(
       });
     }
 
-    // Name uniqueness check (the DB also enforces this — we pre-check to give
-    // a clean 409 instead of a 500 on the unique-index violation).
+    // cm:why pre-checked to answer 409 rather than let `pat_user_name_uniq` surface as a 500.
     const [existing] = await db
       .select({ id: personalAccessTokens.id })
       .from(personalAccessTokens)

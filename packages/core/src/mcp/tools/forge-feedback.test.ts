@@ -10,10 +10,6 @@ vi.mock('../../config/env.js', () => ({
   },
 }));
 
-// Drizzle mock chain for select + insert queries.
-// Mirrors the pattern from forge-issues.test.ts.
-// effectiveProjectRole chains: select().from().leftJoin().leftJoin().where().limit()
-// count / list:                 select().from().where()[.orderBy()].limit()
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
@@ -77,7 +73,8 @@ function queueSlugAndMember(...then: unknown[][]): void {
 }
 
 // cm:guard the pipeline ctx carries a MACHINE principal — since ISS-931 the job comes off the `job:<id>` name on the caller's own token, so a person's PAT (`machine: null`) makes every context field null and the happy path stops asserting anything about attribution.
-const jobPrincipal = makeFakeJobPrincipal(TOKEN_ID, OWNER_ID, JOB_ID);
+const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
+const jobPrincipal = makeFakeJobPrincipal(TOKEN_ID, OWNER_ID, DEVICE_ID, PROJECT_ID);
 
 function makeCtx(projectSlug = PROJECT_SLUG) {
   return {
@@ -191,7 +188,6 @@ describe('forge_feedback submit', () => {
         projectIds: null,
         boundProjectId: PROJECT_ID,
         deviceId: null,
-        machine: null,
       },
       projectSlug: null,
       boundProjectId: PROJECT_ID,

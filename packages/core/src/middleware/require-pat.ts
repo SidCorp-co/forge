@@ -18,12 +18,7 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { writeMcpAudit } from '../auth/mcp-audit.js';
 import { touchPatUsage, verifyPat } from '../auth/pat.js';
-import {
-  isMachineTokenName,
-  isPatLike,
-  type MachineTokenRef,
-  parseMachineTokenName,
-} from '../auth/pat-format.js';
+import { isPatLike } from '../auth/pat-format.js';
 import { type PatRequestClass, patRuleFor } from '../config/rate-limits.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -46,12 +41,6 @@ export type PatPrincipal = {
   projectIds: readonly string[] | null;
   // cm:guard non-null is BOTH the slug-omitted default and the auth fence (ISS-497), and the second of those is why a null here is not a widening to be tidied away: null means user-level, which is a token whose reach is its owner's projects. Reading it as "no project set, so no restriction" inverts the fence.
   boundProjectId: string | null;
-  /**
-   * The job or unattended session this token was minted for, read off its
-   * name — `null` for a person's PAT. It is what gives a tool its pipeline
-   * context now that the caller has no device to look one up by.
-   */
-  machine: MachineTokenRef | null;
   /**
    * The paired box this token was issued to, or `null` for a token a person
    * holds. It is what `requireDevice` and `/ws` resolve a device from now that
@@ -148,7 +137,7 @@ interface RateLimitOutcome {
   firstRejectionInWindow: boolean;
 }
 
-// cm:why an explicit `rate_limit_max` caps EACH class rather than the two together: the three credentials that pin one (`devices/credential.ts`, `jobs/job-token.ts`, `agent-sessions/session-token.ts`) are all one-session tokens whose 600 was sized as 6x that session's measured peak, and that intent is per axis — a job doing 600 reads and 600 writes in a minute is still six times anything measured.
+// cm:why an explicit `rate_limit_max` caps EACH class rather than the two together: the box credential that pins one (`devices/credential.ts`) was sized at 6x a box's measured peak, and that intent is per axis — a box doing 600 reads and 600 writes in a minute is still six times anything measured.
 function checkPatRateLimit(
   tokenId: string,
   requestClass: PatRequestClass,
@@ -263,18 +252,16 @@ export async function authenticatePat(
 
   touchPatUsage(row.id, getClientIp(c));
   maybeEmitPatUsed(row.id, row.userId);
-  // cm:guard derive `agency` from the token, never assume `human` — this is the ONE place a PAT principal is built, for `/mcp` AND for REST (`pat-rest-surface.ts:beginPatRequest` calls straight into here), so a wrong constant here is wrong on every surface at once. A `job:` token is minted for an agent, delivered to the runner on `job.assigned`, and exported as `$FORGE_PAT`; a `session:` token is the same thing for an unattended chat/schedule session, delivered on `agent:start` (ISS-927). Stamped `human` either makes `principalActor` return `{type:'user'}`, which is the exact input `checkTransitionEvidence` and `mark_merged` use to SKIP the ISS-786/812 evidence gates. The gates were added because agents fabricate evidence, so the credential built for agents was the one class exempt from them. Read the FAMILY (`isMachineTokenName`), never one member — a species minted but tested for by name is the same hole wearing a new prefix.
+  // cm:guard derive `agency` from the token's OWNER and from nothing else — this is the ONE place a PAT principal is built, for `/mcp` AND for REST (`pat-rest-surface.ts:beginPatRequest` calls straight into here), so a wrong answer here is wrong on every surface at once. `agency` is what `principalActor`, `checkTransitionEvidence` and `mark_merged` read to decide whether the ISS-786/812 evidence gates apply, and those gates exist because agents fabricate evidence — so a machine credential reading `human` is the entire bypass. Every credential a machine holds is minted owned by a `kind:'agent'` user (ISS-932 wave 4), which is why the token's NAME buys nothing here and a person's token called `job:...` is inert.
   return {
     kind: 'pat',
-    // cm:guard the OR is the whole shape and neither half may be dropped. `users.kind` answers for an AAT, whose owner IS an agent (ISS-932); `isMachineTokenName` answers for a `job:`/`session:` token, which is minted from a HUMAN's `jobs.created_by` and would read `human` off the kind alone. Deleting the name half is wave 4 of ISS-932 and cannot happen while those tokens are minted, or every job write is stamped a person's and skips the ISS-786/812 evidence gates.
-    agency: ownerKind === 'agent' || isMachineTokenName(row.name) ? 'agent' : 'human',
+    agency: ownerKind === 'agent' ? 'agent' : 'human',
     userId: row.userId,
     tokenId: row.id,
     scopes: row.scopes,
     projectIds: row.projectIds ?? null,
     boundProjectId: row.boundProjectId ?? null,
     deviceId: row.deviceId ?? null,
-    machine: parseMachineTokenName(row.name),
   };
 }
 

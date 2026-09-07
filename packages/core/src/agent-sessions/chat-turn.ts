@@ -31,7 +31,6 @@ import {
   samePageContext,
 } from './page-context.js';
 import { readSessionModel } from './session-model.js';
-import { isUnattendedSession, mintSessionToken } from './session-token.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 
 // cm:guard the SINGLE publisher of `agent:start` / `agent:send`, and every entry point funnels here — POST /start, POST /send, schedule.run, escalation, RocketChat agent-chat, schedule failover. That is what lets device selection, turn persistence and the ISS-927 token mint each exist in exactly one place; a caller that publishes its own frame gets none of them and drifts silently, which is the bug this module replaced.
@@ -144,8 +143,6 @@ export async function resolveChatDevice(
     const picked = await findChatCapableDeviceForProject(session.projectId, overrideDeviceId, {
       allowLimited: true,
     });
-    // Not eligible (offline / disabled / not a chat runner for this project) →
-    // report no client so the caller can name the picked runner in the 409.
     if (!picked) return { deviceId: null, isLocal: false, migrated: false };
     return { deviceId: picked, isLocal: false, migrated: !!pinned && picked !== pinned };
   }
@@ -508,17 +505,6 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     if (args.skillName) {
       prompt = `/${args.skillName}\n${prompt}`;
     }
-    // cm:guard UNATTENDED sessions only, and this exclusion is load-bearing rather than conservative. A chat turn PATCHes `status:'completed'` at the END OF EVERY TURN — core's status vocabulary has no word for "dormant", so an interactive session is `completed` between turns and revived to `running` by the next `agent:send`. The revoke fires on terminal, so a token held by an interactive session would die after turn one while its RESIDENT `claude` process lives on holding the dead value in `$FORGE_PAT` (env is fixed at spawn; ISS-873 residency means no respawn re-reads it). Unattended sessions are single-turn by construction — schedule.run, escalation and RocketChat agent-chat each dispatch once and a retry opens a NEW session — so for them terminal really is terminal. Interactive chat keeps using whatever `$FORGE_PAT` the operator provisioned, exactly as before this change.
-    // cm:guard mint on the COLD START and nowhere else. An `agent:send` must not re-mint: the runner still holds the token this frame delivered, and a re-mint revokes the credential an in-flight turn is spending. A migration or a re-pin IS a cold start, and re-minting there is correct — the new box never had the old token, and the rename-then-mint in `mintSessionToken` is what keeps the same session id from colliding on `pat_user_name_uniq`.
-    // cm:guard `agent_sessions.user_id` is ON DELETE SET NULL, so a session can outlive its owner. There is then no principal to mint against and the honest answer is no token — NOT the project creator, which would hand an orphaned session a live credential belonging to somebody who never opened it.
-    const sessionToken =
-      updated.userId && isUnattendedSession(updated.metadata)
-        ? await mintSessionToken({
-            id: updated.id,
-            projectId: project.id,
-            userId: updated.userId,
-          })
-        : null;
     roomManager.publish(deviceRoom(target), {
       event: 'agent:start',
       data: {
@@ -529,7 +515,6 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         preBuilt: args.preBuilt ?? false,
         systemPrompt: TOOL_REFERENCE,
         mcpServersOverride,
-        ...(sessionToken ? { sessionToken } : {}),
         ...(model ? { model } : {}),
         ...(attachments.length ? { attachments } : {}),
       },
