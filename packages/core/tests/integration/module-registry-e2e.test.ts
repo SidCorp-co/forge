@@ -32,12 +32,12 @@ async function violatedConstraint(p: Promise<unknown>): Promise<string | undefin
 }
 
 type Mods = {
-  labelProjectRoutes: (typeof import('../../src/labels/routes.js'))['labelProjectRoutes'];
-  labelRoutes: (typeof import('../../src/labels/routes.js'))['labelRoutes'];
-  issueProjectRoutes: (typeof import('../../src/issues/routes.js'))['issueProjectRoutes'];
-  issueRoutes: (typeof import('../../src/issues/routes.js'))['issueRoutes'];
-  signUserToken: (typeof import('../../src/auth/jwt.js'))['signUserToken'];
-  errorHandler: (typeof import('../../src/middleware/error.js'))['errorHandler'];
+  labelProjectRoutes: typeof import('../../src/labels/routes.js')['labelProjectRoutes'];
+  labelRoutes: typeof import('../../src/labels/routes.js')['labelRoutes'];
+  issueProjectRoutes: typeof import('../../src/issues/routes.js')['issueProjectRoutes'];
+  issueRoutes: typeof import('../../src/issues/routes.js')['issueRoutes'];
+  signUserToken: typeof import('../../src/auth/jwt.js')['signUserToken'];
+  errorHandler: typeof import('../../src/middleware/error.js')['errorHandler'];
 };
 
 let harness: TestDatabase;

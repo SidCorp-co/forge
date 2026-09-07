@@ -160,7 +160,7 @@ export async function assertDemotionIsLegal(labelId: string): Promise<void> {
  * punctuation derives nothing, so it falls back to `module` rather than to the empty string the
  * CHECK would then have to call a valid slug.
  */
-// cm:edge lockstep -> packages/core/drizzle/migrations/0215_module_slug_and_knowledge_node.sql — the migration backfills every existing module with this same derivation written in SQL (`lower`, `regexp_replace`, `row_number`). The two must agree, or a module created before the migration and one created after answer to different slugs for the same name.
+// cm:edge lockstep -> packages/core/drizzle/migrations/0216_module_slug_and_knowledge_node.sql — the migration backfills every existing module with this same derivation written in SQL (`lower`, `regexp_replace`, `row_number`). The two must agree, or a module created before the migration and one created after answer to different slugs for the same name.
 export function moduleSlugBase(name: string): string {
   const base = name
     .toLowerCase()
