@@ -369,12 +369,9 @@ export function renderStageFactsText(
 
   const projectParts: string[] = [];
 
-  // Always-inject projectFacts (ISS-521) — the per-project hard-rules layer.
-  // Rendered VERBATIM, like a mandatory ForgeFact, so a rule the agent MUST
-  // follow is guaranteed-read rather than fetch-on-demand. Capped at
-  // PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS over the sum of bodies — never
-  // silently dropped (a truncated hard rule is worse than a warned-but-present
-  // one), but an overflow logs a warning so an over-eager flag is visible.
+  // cm:guard the cap decides only whether a warning is logged: every flagged body renders whatever the summed size, because a truncated hard rule is worse than a warned-but-present one.
+  // cm:why "Follow them exactly." stays, and ISS-936 is where that was decided rather than overlooked. Nothing verifies the rule was obeyed, and the honest sentence about that (`ALWAYS_INJECT_GUARANTEE_NOTE`) is owed to the OWNER who sets the flag, on the surfaces that offer it. Putting it here instead tells the agent, inside the rule, that ignoring the rule costs nothing — which converts an unverified rule into an ignored one.
+  // cm:edge contract -> packages/core/src/projects/project-facts.ts — `ALWAYS_INJECT_GUARANTEE_NOTE` describes THIS render to an owner; a change to what is guaranteed here has to move that sentence
   const alwaysInject = inputs.alwaysInjectFacts;
   const alwaysInjectKeys = new Set(alwaysInject.map((f) => f.key));
   if (alwaysInject.length > 0) {

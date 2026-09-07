@@ -2970,6 +2970,40 @@
 
 ### Changed
 
+- **The always-inject flag now says what it buys, and stops implying the rule will be followed.**
+  Flagging a project fact `alwaysInject` splices its full body into every agent prompt under
+  *"Hard rules for this project — always-injected by the project owner. Follow them exactly"*, and
+  nothing has ever read the rule back: no gate refuses a step that ignored it, no step is asked
+  whether it complied, no surface counts observance. The settings tab nevertheless told the owner
+  to *"use it for hard rules the agent must always follow"* — an enforcement promise the control
+  plane was not making.
+
+One sentence, `ALWAYS_INJECT_GUARANTEE_NOTE`, now states the split: the body reaches every
+  agent prompt, and nothing checks whether the agent followed it. `GET`/`PATCH
+  /api/projects/:id/project-facts` both serve it — the PATCH answer replaces the GET's in the
+  tab's query cache, so a field on only one of them would leave the screen on the owner's first
+  save — and the browser holds no second copy of the string. `ALWAYS_INJECT_ENFORCEMENT_NOTE`
+  carries the detail a settings tab has no room for, appended to `forge_config`'s description and
+  rendered into the `project-settings-and-test-credentials` guide: which three checks do not
+  exist, and the one obligation on this deployment that DOES have a readback — the UX contract,
+  whose rules are `ux_contract_rules` rows with ids and whose violations agents cite in
+  `ux_findings`. That is the price of an enforceable rule, ids to cite, and a free-text fact has
+  none — which is why this is a correction to the claim rather than a new checker.
+
+  **Found on the way, and fixed here.** `forge_config`'s issue-aware branch resolution read the
+  issue through a query that selected only `session_context`, while
+  `extractIssueBranchOverride` prefers `metadata.branchConfig` — so an issue carrying a real
+  per-issue base-branch override was answered with the project default, silently, and the comment
+  above the cast still said the `issues.metadata` column had not landed. It had. The reader now
+  selects both fields and is named `readIssueBranchInputs`; its single caller uses the shared
+  extractor instead of a hand-rolled copy of the same precedence. The unit lane could not have
+  caught this — it mocks the row, and a mocked row carries `metadata` whatever the SELECT asked
+  for — so the assertion is an integration test against real Postgres.
+
+  The agent's own prompt is unchanged, deliberately. Telling an agent inside a rule that nothing
+  checks the rule converts an unverified rule into an ignored one; the false promise was the one
+  made to the owner, and that is where it was withdrawn.
+
 - **Pairing a box is now issuing it a token, and the device credential is gone.** `devices` was
   both the machine and its secret — `token_hash`, `token_prefix` and an argon2 verifier of its own.
   It is a registry of machines now. `POST /api/devices/login/approve` takes an optional `agent_id`,
