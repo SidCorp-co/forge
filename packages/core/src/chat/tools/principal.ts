@@ -11,33 +11,10 @@
  * the real user's membership so read handlers succeed.
  */
 
-import type { Device } from '../../auth/deviceToken.js';
 import type { McpContext } from '../../mcp/tools/lib.js';
-import type { McpPrincipal } from '../../middleware/require-pat-or-device.js';
+import type { McpPrincipal } from '../../middleware/require-pat.js';
 
 const CHAT_TOKEN_ID = '__chat_synthetic__';
-
-/** Stub device row — mirrors `mcp/handler.ts stubDeviceForPat`; never hits the DB. */
-function stubDevice(userId: string): Device {
-  return {
-    id: CHAT_TOKEN_ID,
-    ownerId: userId,
-    name: '__chat_synthetic__',
-    platform: 'linux',
-    agentVersion: null,
-    tokenHash: '',
-    tokenPrefix: '',
-    status: 'online',
-    disabledAt: null,
-    lastSeenAt: null,
-    pairedAt: new Date(0),
-    capabilities: null,
-    gitCredentialRef: null,
-    maxConcurrent: 1,
-    machineId: null,
-    createdAt: new Date(0),
-  };
-}
 
 export function buildChatToolContext(opts: {
   userId: string;
@@ -54,10 +31,11 @@ export function buildChatToolContext(opts: {
     scopes: ['read'],
     projectIds: [opts.projectId],
     boundProjectId: opts.projectId,
+    // cm:guard `null`, and it must stay null: `machine` is what a tool reads to resolve the pipeline job its caller is running inside, and provider chat is running inside none. A non-null value invented here would attribute a chat message's findings and feedback to somebody else's job.
+    machine: null,
   };
   return {
     principal,
-    device: stubDevice(opts.userId),
     projectSlug: opts.projectSlug,
     boundProjectId: opts.projectId,
   };

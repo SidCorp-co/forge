@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakeContext, makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -34,7 +34,7 @@ const ISSUE_ID = '33333333-3333-4333-8333-333333333333';
 const OWNER_ID = '44444444-4444-4444-8444-444444444444';
 const DEVICE_ID = '55555555-5555-4555-8555-555555555555';
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID);
 
 const baseSessionRow = {
   id: SESSION_ID,
@@ -61,9 +61,9 @@ beforeEach(() => {
 });
 
 describe('forge_agent_sessions.list', () => {
-  it('returns sessions filtered by issueId/status when device owner is member', async () => {
-    const tool = forgeAgentSessionsListTool(fakeDevice);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
+  it('returns sessions filtered by issueId/status when the caller is a member', async () => {
+    const tool = forgeAgentSessionsListTool(makeFakeContext(fakePrincipal));
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     selectLimit.mockResolvedValueOnce([baseSessionRow]); // sessions query
 
     const result = (await tool.handler({
@@ -78,7 +78,7 @@ describe('forge_agent_sessions.list', () => {
 
   // cm:guard ISS-787 — the SAME limit must reach `.limit()` as limit+1 AND reach buildListEnvelope un-inflated: the disclosure is wiring, not a helper, so a tool that hands the overfetched value on as `limit` computes hasMore off the probe row and reports a bound page as complete
   it('over-fetches by one and discloses the limit that bound the page', async () => {
-    const tool = forgeAgentSessionsListTool(fakeDevice);
+    const tool = forgeAgentSessionsListTool(makeFakeContext(fakePrincipal));
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     selectLimit.mockResolvedValueOnce(
       Array.from({ length: 3 }, (_, i) => ({ ...baseSessionRow, id: `s${i}` })),
@@ -98,7 +98,7 @@ describe('forge_agent_sessions.list', () => {
   });
 
   it('says hasMore:false on a complete page, so a short list is not read as a whole one', async () => {
-    const tool = forgeAgentSessionsListTool(fakeDevice);
+    const tool = forgeAgentSessionsListTool(makeFakeContext(fakePrincipal));
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     selectLimit.mockResolvedValueOnce([baseSessionRow]);
 
@@ -108,23 +108,22 @@ describe('forge_agent_sessions.list', () => {
     expect(result).not.toHaveProperty('truncated');
   });
 
-  it('rejects non-member with FORBIDDEN', async () => {
-    const tool = forgeAgentSessionsListTool(fakeDevice);
+  it('rejects a non-member as not-found (existence-hiding)', async () => {
+    const tool = forgeAgentSessionsListTool(makeFakeContext(fakePrincipal));
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // not a member
-    await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
+    await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
   // ISS-428 — the list query must use a body-free column projection (never a
   // bare db.select()) so the multi-MB `messages` transcript can't overflow the
   // MCP token cap. Assert the projection map of the final (sessions) select.
   it('projects a body-free column set (no messages/diff jsonb; exposes messageCount)', async () => {
-    const tool = forgeAgentSessionsListTool(fakeDevice);
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]); // member check
+    const tool = forgeAgentSessionsListTool(makeFakeContext(fakePrincipal));
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     selectLimit.mockResolvedValueOnce([{ ...baseSessionRow, messageCount: 0 }]); // sessions query
 
     await tool.handler({ projectId: PROJECT_ID });
 
-    // last db.select() call is the sessions list projection
     const lastCall = selectSpy.mock.calls.at(-1) as unknown[] | undefined;
     const projection = lastCall?.[0] as Record<string, unknown> | undefined;
     expect(projection).toBeDefined();
@@ -148,8 +147,7 @@ describe('forge_agent_sessions.list', () => {
 describe('forge_agent_sessions.get', () => {
   function makeDeviceCtx() {
     return {
-      principal: { kind: 'device' as const, device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     };
   }
@@ -188,11 +186,11 @@ describe('forge_agent_sessions.get', () => {
     await expect(tool.handler({ sessionId: SESSION_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
-  it('throws FORBIDDEN cross-project', async () => {
+  it('answers not-found cross-project (existence-hiding)', async () => {
     const tool = forgeAgentSessionsGetTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([baseSessionRow]);
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
-    await expect(tool.handler({ sessionId: SESSION_ID })).rejects.toThrow(/FORBIDDEN/);
+    await expect(tool.handler({ sessionId: SESSION_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
   // ISS-150 review #1 re-review — PAT projectIds allowlist regression on
@@ -211,8 +209,8 @@ describe('forge_agent_sessions.get', () => {
           scopes: ['read', 'write'],
           projectIds,
           boundProjectId: null,
+          machine: null,
         },
-        device: fakeDevice,
         projectSlug: null,
       });
     }

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EmbeddingUnavailableError } from '../../embeddings/index.js';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakeContext, makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -66,7 +66,7 @@ const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const DEVICE_ID = '33333333-3333-4333-8333-333333333333';
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID);
 
 beforeEach(() => {
   limit.mockReset();
@@ -78,7 +78,7 @@ beforeEach(() => {
 
 describe('forge_memory.write tool', () => {
   it('exposes the correct name + JSON schema', () => {
-    const tool = forgeMemoryWriteTool(fakeDevice);
+    const tool = forgeMemoryWriteTool(makeFakeContext(fakePrincipal));
     expect(tool.name).toBe('forge_memory.write');
     expect(tool.inputSchema).toMatchObject({
       type: 'object',
@@ -91,8 +91,7 @@ describe('forge_memory.write tool', () => {
     });
   });
 
-  it('writes when the device owner is a project member', async () => {
-    // 1st db.select: project ownership lookup → owner matches.
+  it('writes when the caller is a project member', async () => {
     limit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     runMemoryWriteMock.mockResolvedValueOnce({
       id: 'm-1',
@@ -100,7 +99,7 @@ describe('forge_memory.write tool', () => {
       truncated: false,
     });
 
-    const tool = forgeMemoryWriteTool(fakeDevice);
+    const tool = forgeMemoryWriteTool(makeFakeContext(fakePrincipal));
     const r = await tool.handler({
       projectId: PROJECT_ID,
       source: 'note',
@@ -113,11 +112,10 @@ describe('forge_memory.write tool', () => {
     expect(runMemoryWriteMock).toHaveBeenCalledOnce();
   });
 
-  it('rejects with FORBIDDEN when device owner is neither owner nor member', async () => {
-    // owner mismatch + no membership row.
+  it('rejects as not-found when the caller is neither owner nor member', async () => {
     limit.mockResolvedValueOnce([{ ownerId: 'other-owner' }]).mockResolvedValueOnce([]);
 
-    const tool = forgeMemoryWriteTool(fakeDevice);
+    const tool = forgeMemoryWriteTool(makeFakeContext(fakePrincipal));
     await expect(
       tool.handler({
         projectId: PROJECT_ID,
@@ -125,7 +123,7 @@ describe('forge_memory.write tool', () => {
         sourceRef: 'n-1',
         textContent: 't',
       }),
-    ).rejects.toThrow(/FORBIDDEN/);
+    ).rejects.toThrow(/NOT_FOUND/);
 
     expect(runMemoryWriteMock).not.toHaveBeenCalled();
   });
@@ -136,7 +134,7 @@ describe('forge_memory.write tool', () => {
       new EmbeddingUnavailableError('breaker open until 2026'),
     );
 
-    const tool = forgeMemoryWriteTool(fakeDevice);
+    const tool = forgeMemoryWriteTool(makeFakeContext(fakePrincipal));
     await expect(
       tool.handler({
         projectId: PROJECT_ID,
@@ -148,7 +146,7 @@ describe('forge_memory.write tool', () => {
   });
 
   it('rejects malformed input via Zod before any DB / embed call', async () => {
-    const tool = forgeMemoryWriteTool(fakeDevice);
+    const tool = forgeMemoryWriteTool(makeFakeContext(fakePrincipal));
     await expect(
       tool.handler({
         projectId: 'not-a-uuid',
@@ -164,7 +162,7 @@ describe('forge_memory.write tool', () => {
 
 describe('forge_memory.get tool', () => {
   it('exposes the correct name + schema with metadataFilter', () => {
-    const tool = forgeMemoryGetTool(fakeDevice);
+    const tool = forgeMemoryGetTool(makeFakeContext(fakePrincipal));
     expect(tool.name).toBe('forge_memory.get');
     expect(tool.inputSchema).toMatchObject({
       type: 'object',
@@ -176,14 +174,14 @@ describe('forge_memory.get tool', () => {
     });
   });
 
-  it('returns rows + total when device owner is a member', async () => {
+  it('returns rows + total when the caller is a member', async () => {
     limit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     runMemoryGetMock.mockResolvedValueOnce({
       rows: [{ id: 'm-1', projectId: PROJECT_ID, source: 'step_handoff' }],
       total: 1,
     });
 
-    const tool = forgeMemoryGetTool(fakeDevice);
+    const tool = forgeMemoryGetTool(makeFakeContext(fakePrincipal));
     const r = await tool.handler({
       projectId: PROJECT_ID,
       source: 'note',
@@ -194,11 +192,11 @@ describe('forge_memory.get tool', () => {
     expect(runMemoryGetMock).toHaveBeenCalledOnce();
   });
 
-  it('rejects non-member device with FORBIDDEN', async () => {
+  it('rejects a non-member as not-found (existence-hiding)', async () => {
     limit.mockResolvedValueOnce([{ ownerId: 'other-owner' }]).mockResolvedValueOnce([]);
 
-    const tool = forgeMemoryGetTool(fakeDevice);
-    await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
+    const tool = forgeMemoryGetTool(makeFakeContext(fakePrincipal));
+    await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/NOT_FOUND/);
     expect(runMemoryGetMock).not.toHaveBeenCalled();
   });
 });
@@ -208,7 +206,7 @@ describe('forge_memory.delete tool', () => {
     limit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     deleteMemoryMock.mockResolvedValueOnce(1);
 
-    const tool = forgeMemoryDeleteTool(fakeDevice);
+    const tool = forgeMemoryDeleteTool(makeFakeContext(fakePrincipal));
     const r = await tool.handler({
       projectId: PROJECT_ID,
       source: 'note',
@@ -223,7 +221,7 @@ describe('forge_memory.delete tool', () => {
     limit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     deleteMemoryMock.mockResolvedValueOnce(0);
 
-    const tool = forgeMemoryDeleteTool(fakeDevice);
+    const tool = forgeMemoryDeleteTool(makeFakeContext(fakePrincipal));
     const r = await tool.handler({
       projectId: PROJECT_ID,
       source: 'note',
@@ -232,24 +230,24 @@ describe('forge_memory.delete tool', () => {
     expect(r).toEqual({ deleted: false });
   });
 
-  it('rejects non-member device with FORBIDDEN', async () => {
+  it('rejects a non-member as not-found (existence-hiding)', async () => {
     limit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
 
-    const tool = forgeMemoryDeleteTool(fakeDevice);
+    const tool = forgeMemoryDeleteTool(makeFakeContext(fakePrincipal));
     await expect(
       tool.handler({
         projectId: PROJECT_ID,
         source: 'note',
         sourceRef: 'r',
       }),
-    ).rejects.toThrow(/FORBIDDEN/);
+    ).rejects.toThrow(/NOT_FOUND/);
     expect(deleteMemoryMock).not.toHaveBeenCalled();
   });
 });
 
 describe('forge_memory.search tool (regression after enum + description change)', () => {
   it('points agents at forge_step_handoff.get for handoff lookups', () => {
-    const tool = forgeMemorySearchTool(fakeDevice);
+    const tool = forgeMemorySearchTool(makeFakeContext(fakePrincipal));
     expect(tool.description).toContain('forge_step_handoff.get');
   });
 
@@ -257,7 +255,7 @@ describe('forge_memory.search tool (regression after enum + description change)'
     limit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     runMemorySearchMock.mockResolvedValueOnce({ hits: [], model: 'gemini-embedding', took_ms: 1 });
 
-    const tool = forgeMemorySearchTool(fakeDevice);
+    const tool = forgeMemorySearchTool(makeFakeContext(fakePrincipal));
     const r = await tool.handler({
       projectId: PROJECT_ID,
       query: 'find similar plans',
@@ -272,7 +270,7 @@ describe('forge_memory.search tool (regression after enum + description change)'
     limit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     runMemorySearchMock.mockResolvedValueOnce({ hits: [], model: 'gemini-embedding', took_ms: 1 });
 
-    await forgeMemorySearchTool(fakeDevice).handler({
+    await forgeMemorySearchTool(makeFakeContext(fakePrincipal)).handler({
       projectId: PROJECT_ID,
       query: 'q',
       strategy: 'hybrid',

@@ -17,11 +17,11 @@ vi.mock('../db/client.js', () => ({
   db: {} as unknown,
 }));
 
-import { makeFakeDevice } from './fake-device.fixture.js';
+import { makeFakePrincipal } from './fake-principal.fixture.js';
 import { REGISTERED_TOOLS } from './registered-tools.js';
 import { createMcpServer } from './server.js';
 
-const fakeDevice = makeFakeDevice(
+const fakePrincipal = makeFakePrincipal(
   '00000000-0000-4000-8000-000000000001',
   '00000000-0000-4000-8000-000000000002',
 );
@@ -30,19 +30,19 @@ const humanPat = (tokenId: string) =>
   ({
     kind: 'pat',
     agency: 'human',
-    userId: fakeDevice.ownerId,
+    userId: fakePrincipal.userId,
     tokenId,
     scopes: ['read', 'write'],
     projectIds: null,
     boundProjectId: null,
+    machine: null,
   }) as const;
 
 describe('@forge/core MCP server', () => {
   async function connectClient() {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createMcpServer({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
     await server.connect(serverTransport);
@@ -153,19 +153,18 @@ describe('@forge/core MCP server', () => {
     }
   });
 
-  // cm:edge lockstep -> packages/core/src/mcp/pm-device-gate.test.ts — this list is the GATED half of forge_project_pm's actions and that file holds the ungated half; an action moved in DEVICE_REQUIRED without moving here leaves both files passing while one of them asserts the opposite of the gate
-  it('blocks PAT principal on every gated forge_project_pm action with PM_REQUIRES_DEVICE', async () => {
+  // cm:edge lockstep -> packages/core/src/mcp/pm-device-gate.test.ts — this list is the CREDENTIAL-refused half of forge_project_pm's actions and that file holds the reachable half plus dispatch, which answers ISS-895 instead; an action that changes side without moving in both leaves both files passing while one asserts the opposite of the gate
+  it('refuses the forge_project_pm action that needs runner state', async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createMcpServer({
       principal: humanPat('00000000-0000-4000-8000-0000000000ab'),
-      device: fakeDevice,
       projectSlug: null,
     });
     await server.connect(serverTransport);
     const client = new Client({ name: 'test', version: '0.0.0' });
     await client.connect(clientTransport);
     try {
-      for (const action of ['dispatch', 'set_dependency', 'write_decision']) {
+      for (const action of ['write_decision']) {
         const res = await client.callTool({
           name: 'forge_project_pm',
           arguments: { action, projectId: '00000000-0000-4000-8000-0000000000bb' },
@@ -180,24 +179,23 @@ describe('@forge/core MCP server', () => {
     }
   });
 
-  // cm:guard the refusal code must stay the literal `PM_REQUIRES_DEVICE`, because that string is the whole signal — ISS-150 Finding #2 was a DEVICE_REQUIRED set keyed with the wrong separator, so the gate never fired at all and every test still passed
-  it('rejects PAT principal on forge_pm.* tools with PM_REQUIRES_DEVICE', async () => {
+  // cm:guard the refusal code must stay the literal `PM_REQUIRES_DEVICE`, because that string is the whole signal — ISS-150 Finding #2 was a gate keyed with the wrong separator, so it never fired at all and every test still passed
+  it('lets a token reach the forge_pm.set_dependency shim', async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createMcpServer({
       principal: humanPat('00000000-0000-4000-8000-0000000000aa'),
-      device: fakeDevice,
       projectSlug: null,
     });
     await server.connect(serverTransport);
     const client = new Client({ name: 'test', version: '0.0.0' });
     await client.connect(clientTransport);
     try {
-      // cm:guard `forge_pm.set_dependency` is the last standalone forge_pm.* name, and it must keep the device gate its retired siblings had — it can run decomposeParent, which creates an integration branch, so a PAT reaching it writes git with no runner behind it
+      // cm:guard `forge_pm.set_dependency` is the last standalone forge_pm.* name and it is NOT credential-gated. It carried the device gate its retired siblings had, on the stated ground that it "can run decomposeParent, which creates an integration branch, so a PAT reaching it writes git with no runner behind it" — that capability is gone (`decomposeParent` is nowhere in the tree) and `setIssueDependency` writes a row and emits hooks. The same edges were reachable to any token through `forge_issues data.relations`, which the refusal itself advertised, so the gate was a detour rather than a fence (ISS-931).
       for (const name of ['forge_pm.set_dependency']) {
         const res = await client.callTool({ name, arguments: {} });
         expect(res.isError).toBe(true);
         const text = (res.content as Array<{ type: string; text: string }>)[0]?.text ?? '';
-        expect(text).toContain('PM_REQUIRES_DEVICE');
+        expect(text).not.toContain('PM_REQUIRES_DEVICE');
       }
     } finally {
       await client.close();

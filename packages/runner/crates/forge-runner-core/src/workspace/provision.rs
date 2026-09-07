@@ -209,9 +209,7 @@ async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, rep
     // is degraded but usable, while refusing to reach `ready` over it would leave
     // the project looking unprovisioned and block dispatch entirely.
     report(client, &p.runner_id, "writing_mcp", None).await;
-    if let Err(e) =
-        mcp::config::write_persistent(repo_path, client.base(), client.device_token(), &p.slug)
-    {
+    if let Err(e) = mcp::config::write_persistent(repo_path, client.base(), &p.slug) {
         tracing::warn!("[provision] write .mcp.json failed: {e}");
     }
     if let Err(e) = orientation::write_orientation(repo_path, &p.project_id, &p.slug) {

@@ -24,7 +24,7 @@ vi.mock('../middleware/require-fresh-auth.js', () => ({
   requireFreshAuth: () => async (_c: unknown, next: () => Promise<void>) => next(),
 }));
 
-vi.mock('../middleware/require-pat-or-device.js', () => ({
+vi.mock('../middleware/require-pat.js', () => ({
   forgetPatThrottle: vi.fn(),
 }));
 
@@ -109,7 +109,7 @@ describe('POST /api/pat — boundProjectId', () => {
   });
 
   it('rejects a bound project the caller cannot access → FORBIDDEN_PROJECT', async () => {
-    loadVisibleProjectIds.mockResolvedValue([]); // not a member of BOUND
+    loadVisibleProjectIds.mockResolvedValue([]);
     const res = await post({ name: 'my token', boundProjectId: BOUND });
     expect(res.status).toBe(403); // FORBIDDEN_PROJECT (HTTPException; mapped to code by global handler)
     expect(mintPat).not.toHaveBeenCalled();

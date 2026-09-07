@@ -12,7 +12,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -59,7 +59,7 @@ const ISSUE_ID = '33333333-3333-4333-8333-333333333333';
 const OWNER_ID = '44444444-4444-4444-8444-444444444444';
 const DEVICE_ID = '55555555-5555-4555-8555-555555555555';
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID);
 
 const baseRun = {
   id: RUN_ID,
@@ -77,8 +77,7 @@ const baseRun = {
 
 function makeDeviceCtx() {
   return {
-    principal: { kind: 'device' as const, device: fakeDevice },
-    device: fakeDevice,
+    principal: fakePrincipal,
     projectSlug: null,
   };
 }
@@ -93,8 +92,8 @@ function makePatCtx(projectIds: string[] | null) {
       scopes: ['read', 'write'],
       projectIds,
       boundProjectId: null,
+      machine: null,
     },
-    device: fakeDevice,
     projectSlug: null,
   };
 }
@@ -109,7 +108,7 @@ beforeEach(() => {
 });
 
 describe('forge_project_pipeline_runs (action=list)', () => {
-  it('returns runs filtered by issueId/status when device owner is member', async () => {
+  it('returns runs filtered by issueId/status when the caller is a member', async () => {
     const tool = forgeProjectPipelineRunsTool(makeDeviceCtx());
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     selectLimit.mockResolvedValueOnce([baseRun]);

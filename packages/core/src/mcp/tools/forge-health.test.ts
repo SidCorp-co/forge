@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakeContext, makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -36,7 +36,7 @@ const { forgeHealthTool } = await import('./forge-health.js');
 const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const DEVICE_ID = '22222222-2222-4222-8222-222222222222';
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -44,7 +44,7 @@ beforeEach(() => {
 
 describe('forge_health', () => {
   it('returns shape with all ok when db/queue/ws are healthy', async () => {
-    const tool = forgeHealthTool(fakeDevice);
+    const tool = forgeHealthTool(makeFakeContext(fakePrincipal));
     dbExecute.mockResolvedValueOnce(undefined);
     isBossStartedMock.mockReturnValue(true);
     isWsListeningMock.mockReturnValue(true);
@@ -52,7 +52,6 @@ describe('forge_health', () => {
     selectLimit.mockResolvedValueOnce([{ n: 3 }]);
     // The jobsActive query uses count() then where() then chains — our chain returns selectWhere directly.
     // Adapt: db.select(...).from().where() is the terminal Promise.
-    // Re-program with proper chain for this test.
     const _inactiveSelectImpl = vi.fn(() => ({
       from: () => ({
         where: () => Promise.resolve([{ n: 3 }]),
@@ -84,7 +83,7 @@ describe('forge_health', () => {
   });
 
   it('reports db down when execute rejects (and falls back jobsActive to 0)', async () => {
-    const tool = forgeHealthTool(fakeDevice);
+    const tool = forgeHealthTool(makeFakeContext(fakePrincipal));
     dbExecute.mockRejectedValueOnce(new Error('connection refused'));
     isBossStartedMock.mockReturnValue(false);
     isWsListeningMock.mockReturnValue(true);
@@ -103,7 +102,7 @@ describe('forge_health', () => {
   });
 
   it('returns lastSeed snapshot when seed has run', async () => {
-    const tool = forgeHealthTool(fakeDevice);
+    const tool = forgeHealthTool(makeFakeContext(fakePrincipal));
     dbExecute.mockResolvedValueOnce(undefined);
     isBossStartedMock.mockReturnValue(true);
     isWsListeningMock.mockReturnValue(true);

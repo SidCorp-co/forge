@@ -21,7 +21,7 @@ export type BearerHeader =
   | { kind: 'malformed' }
   | { kind: 'token'; token: string };
 
-// cm:guard `absent` and `malformed` are separate cases because `/mcp` answers them differently — `requirePatOrDevice` sends a bare `Bearer realm="forge-mcp"` challenge for the first and `error="invalid_request"` for the second, which is what tells a spec-aware MCP client to fix its header rather than re-prompt for credentials. Collapsing them into one 401 here would silently downgrade that handshake.
+// cm:guard `absent` and `malformed` are separate cases because `/mcp` answers them differently — `requirePat` sends a bare `Bearer realm="forge-mcp"` challenge for the first and `error="invalid_request"` for the second, which is what tells a spec-aware MCP client to fix its header rather than re-prompt for credentials. Collapsing them into one 401 here would silently downgrade that handshake.
 export function parseBearerHeader(c: Context): BearerHeader {
   const header = c.req.header('authorization') ?? c.req.header('Authorization');
   if (!header) return { kind: 'absent' };

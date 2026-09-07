@@ -205,6 +205,7 @@ export interface ReleaseReadiness {
 	provider: string | null;
 	releaseRunnerLabel: string | null;
 	rollback: string | null;
+	rollbackMode: "manual" | "coolify-image" | "unrepresentable" | null;
 	hasVerify: boolean;
 	gaps: (
 		| "build-commands"
@@ -212,6 +213,7 @@ export interface ReleaseReadiness {
 		| "release-procedure"
 		| "release-runner"
 		| "rollback"
+		| "rollback-prose"
 	)[];
 }
 

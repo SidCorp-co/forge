@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -57,11 +57,14 @@ const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_PROJECT_ID = '99999999-9999-4999-8999-999999999999';
 const SCHEDULE_ID = '22222222-2222-4222-8222-222222222222';
 const OWNER_ID = '33333333-3333-4333-8333-333333333333';
-const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
+const ADMIN_TOKEN_ID = '44444444-4444-4444-8444-444444444444';
 const TOKEN_ID = '55555555-5555-4555-8555-555555555555';
 const SESSION_ID = '66666666-6666-4666-8666-666666666666';
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+// cm:guard `admin` is in these scopes for the same reason `forge-runners.test.ts` says: `assertPrincipalIsAdmin` reads `principal.scopes`, a paired device carried none, and ISS-931 took the device off `/mcp`. The admin-action cases here assert what an ADMIN caller gets, so the principal has to be one.
+const fakePrincipal = makeFakePrincipal(ADMIN_TOKEN_ID, OWNER_ID, {
+  scopes: ['read', 'write', 'admin'],
+});
 
 // Minimal schedule row as returned by list projection (no prompt).
 const fakeScheduleRow = {
@@ -81,10 +84,9 @@ const fakeScheduleRow = {
   updatedAt: new Date(),
 };
 
-function buildDeviceCtx() {
+function buildAdminCtx() {
   return {
-    principal: { kind: 'device' as const, device: fakeDevice },
-    device: fakeDevice,
+    principal: fakePrincipal,
     projectSlug: null,
   };
 }
@@ -99,8 +101,8 @@ function buildPatCtx(scopes: string[], projectIds: string[] | null = null) {
       scopes,
       projectIds,
       boundProjectId: null,
+      machine: null,
     },
-    device: fakeDevice,
     projectSlug: null,
   };
 }
@@ -137,7 +139,7 @@ describe('forge_schedules action=list', () => {
     mockMemberRole('member');
     listSchedulesForMcpMock.mockResolvedValueOnce([fakeScheduleRow]);
 
-    const tool = forgeSchedulesTool(buildDeviceCtx());
+    const tool = forgeSchedulesTool(buildAdminCtx());
     const result = (await tool.handler({ action: 'list', projectId: PROJECT_ID })) as {
       schedules: Array<Record<string, unknown>>;
     };
@@ -146,12 +148,12 @@ describe('forge_schedules action=list', () => {
     expect(result.schedules[0]?.id).toBe(SCHEDULE_ID);
   });
 
-  it('non-member device principal gets NOT_FOUND', async () => {
+  it('a non-member gets NOT_FOUND', async () => {
     mockMemberRole(null);
 
-    const tool = forgeSchedulesTool(buildDeviceCtx());
+    const tool = forgeSchedulesTool(buildAdminCtx());
     await expect(tool.handler({ action: 'list', projectId: PROJECT_ID })).rejects.toThrow(
-      /FORBIDDEN/,
+      /NOT_FOUND/,
     );
   });
 
@@ -175,7 +177,7 @@ describe('forge_schedules action=list', () => {
   });
 
   it('rejects missing projectId with BAD_REQUEST', async () => {
-    const tool = forgeSchedulesTool(buildDeviceCtx());
+    const tool = forgeSchedulesTool(buildAdminCtx());
     await expect(tool.handler({ action: 'list' })).rejects.toThrow(/BAD_REQUEST/);
   });
 });
@@ -188,7 +190,7 @@ describe('forge_schedules action=get', () => {
     mockMemberRole('member');
     getScheduleMock.mockResolvedValueOnce({ ...fakeScheduleRow, prompt: 'the prompt' });
 
-    const tool = forgeSchedulesTool(buildDeviceCtx());
+    const tool = forgeSchedulesTool(buildAdminCtx());
     const result = (await tool.handler({ action: 'get', scheduleId: SCHEDULE_ID })) as {
       schedule: Record<string, unknown>;
     };
@@ -200,19 +202,19 @@ describe('forge_schedules action=get', () => {
   it('throws NOT_FOUND when schedule does not exist', async () => {
     readScheduleProjectIdMock.mockRejectedValueOnce(new Error('NOT_FOUND: schedule not found'));
 
-    const tool = forgeSchedulesTool(buildDeviceCtx());
+    const tool = forgeSchedulesTool(buildAdminCtx());
     await expect(tool.handler({ action: 'get', scheduleId: SCHEDULE_ID })).rejects.toThrow(
       /NOT_FOUND/,
     );
   });
 
-  it('non-member gets FORBIDDEN via assertPrincipalIsMember', async () => {
+  it('non-member gets not-found via assertPrincipalIsMember', async () => {
     mockScheduleProjectId();
     mockMemberRole(null);
 
-    const tool = forgeSchedulesTool(buildDeviceCtx());
+    const tool = forgeSchedulesTool(buildAdminCtx());
     await expect(tool.handler({ action: 'get', scheduleId: SCHEDULE_ID })).rejects.toThrow(
-      /FORBIDDEN/,
+      /NOT_FOUND/,
     );
   });
 });
@@ -224,7 +226,7 @@ describe('forge_schedules action=create', () => {
     mockMemberRole('admin');
     createScheduleMock.mockResolvedValueOnce({ ...fakeScheduleRow, prompt: 'do the thing' });
 
-    const tool = forgeSchedulesTool(buildDeviceCtx());
+    const tool = forgeSchedulesTool(buildAdminCtx());
     const result = (await tool.handler({
       action: 'create',
       projectId: PROJECT_ID,
@@ -246,9 +248,9 @@ describe('forge_schedules action=create', () => {
   });
 
   it('non-admin member gets FORBIDDEN', async () => {
-    mockMemberRole('member'); // member but not admin
+    mockMemberRole('member');
 
-    const tool = forgeSchedulesTool(buildDeviceCtx());
+    const tool = forgeSchedulesTool(buildAdminCtx());
     await expect(
       tool.handler({
         action: 'create',
@@ -285,7 +287,7 @@ describe('forge_schedules action=update', () => {
     mockMemberRole('admin');
     updateScheduleMock.mockResolvedValueOnce({ ...fakeScheduleRow, enabled: false });
 
-    const tool = forgeSchedulesTool(buildDeviceCtx());
+    const tool = forgeSchedulesTool(buildAdminCtx());
     const result = (await tool.handler({
       action: 'update',
       scheduleId: SCHEDULE_ID,
@@ -304,7 +306,7 @@ describe('forge_schedules action=update', () => {
     mockScheduleProjectId();
     mockMemberRole('member');
 
-    const tool = forgeSchedulesTool(buildDeviceCtx());
+    const tool = forgeSchedulesTool(buildAdminCtx());
     await expect(
       tool.handler({ action: 'update', scheduleId: SCHEDULE_ID, enabled: false }),
     ).rejects.toThrow(/FORBIDDEN/);
@@ -319,7 +321,7 @@ describe('forge_schedules action=delete', () => {
     mockMemberRole('admin');
     deleteScheduleMock.mockResolvedValueOnce(undefined);
 
-    const tool = forgeSchedulesTool(buildDeviceCtx());
+    const tool = forgeSchedulesTool(buildAdminCtx());
     const result = (await tool.handler({ action: 'delete', scheduleId: SCHEDULE_ID })) as {
       deleted: boolean;
     };
@@ -340,7 +342,7 @@ describe('forge_schedules action=run', () => {
       message: 'Schedule triggered',
     });
 
-    const tool = forgeSchedulesTool(buildDeviceCtx());
+    const tool = forgeSchedulesTool(buildAdminCtx());
     const result = (await tool.handler({ action: 'run', scheduleId: SCHEDULE_ID })) as {
       sessionId: string;
     };
@@ -353,7 +355,7 @@ describe('forge_schedules action=run', () => {
     mockScheduleProjectId();
     mockMemberRole('viewer'); // viewer is NOT a writer
 
-    const tool = forgeSchedulesTool(buildDeviceCtx());
+    const tool = forgeSchedulesTool(buildAdminCtx());
     await expect(tool.handler({ action: 'run', scheduleId: SCHEDULE_ID })).rejects.toThrow(
       /FORBIDDEN/,
     );
@@ -366,7 +368,7 @@ describe('forge_schedules action=catalog', () => {
   it('returns improvement message catalog for a member', async () => {
     mockMemberRole('member');
 
-    const tool = forgeSchedulesTool(buildDeviceCtx());
+    const tool = forgeSchedulesTool(buildAdminCtx());
     const result = (await tool.handler({ action: 'catalog', projectId: PROJECT_ID })) as {
       messages: Array<{ key: string }>;
     };
@@ -374,12 +376,12 @@ describe('forge_schedules action=catalog', () => {
     expect(result.messages).toEqual(fakeMessages);
   });
 
-  it('non-member gets FORBIDDEN for catalog', async () => {
+  it('non-member gets not-found for catalog', async () => {
     mockMemberRole(null);
 
-    const tool = forgeSchedulesTool(buildDeviceCtx());
+    const tool = forgeSchedulesTool(buildAdminCtx());
     await expect(tool.handler({ action: 'catalog', projectId: PROJECT_ID })).rejects.toThrow(
-      /FORBIDDEN/,
+      /NOT_FOUND/,
     );
   });
 });

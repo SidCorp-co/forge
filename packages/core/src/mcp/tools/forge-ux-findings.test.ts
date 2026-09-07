@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakeJobPrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -11,7 +11,6 @@ vi.mock('../../config/env.js', () => ({
 
 // Drizzle mock chain — same shape as forge-feedback.test.ts.
 // effectiveProjectRole: select().from().leftJoin().leftJoin().where().limit()
-// resolveActiveJobContext: select().from().innerJoin().where().limit()
 // count / ruleId / list: select().from().where()[.orderBy()].limit()
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
@@ -48,7 +47,7 @@ function sqlText(node: unknown): string {
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_SLUG = 'forge-dev';
 const OWNER_ID = '33333333-3333-4333-8333-333333333333';
-const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
+const TOKEN_ID = '44444444-4444-4444-8444-444444444444';
 const JOB_ID = '55555555-5555-4555-8555-555555555555';
 const RUN_ID = '66666666-6666-4666-8666-666666666666';
 const ISSUE_ID = '77777777-7777-4777-8777-777777777777';
@@ -57,12 +56,12 @@ const RULE_ID = '88888888-8888-4888-8888-888888888888';
 const ORG_ID = '99999999-9999-4999-8999-999999999999';
 const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+// cm:guard the pipeline ctx must carry a MACHINE principal — since ISS-931 the job is resolved from the `job:<id>` name on the caller's own token, not from a device row, so a `makeFakePrincipal` here (a person's PAT, `machine: null`) makes every case below answer `not_pipeline_context` and the suite asserts the refusal path twice instead of once.
+const jobPrincipal = makeFakeJobPrincipal(TOKEN_ID, OWNER_ID, JOB_ID);
 
 function makeCtx(projectSlug = PROJECT_SLUG) {
   return {
-    principal: { kind: 'device' as const, device: fakeDevice },
-    device: fakeDevice,
+    principal: jobPrincipal,
     projectSlug,
   };
 }
@@ -77,8 +76,8 @@ function makePatCtx(projectSlug = PROJECT_SLUG) {
       scopes: ['read', 'write'],
       projectIds: [PROJECT_ID],
       boundProjectId: null,
+      machine: null,
     },
-    device: fakeDevice,
     projectSlug,
   };
 }
@@ -106,7 +105,9 @@ describe('forge_ux_findings write', () => {
 
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]); // resolveProjectIdFromSlug
     selectLimit.mockResolvedValueOnce([memberAccessRow]); // assertPrincipalIsWriter
-    selectLimit.mockResolvedValueOnce([{ jobId: JOB_ID, runId: RUN_ID, issueId: ISSUE_ID }]); // active job
+    selectLimit.mockResolvedValueOnce([
+      { jobId: JOB_ID, runId: RUN_ID, issueId: ISSUE_ID, stage: 'review', deviceId: null },
+    ]);
     selectLimit.mockResolvedValueOnce([{ n: 0 }]); // per-job count
     insertReturning.mockResolvedValueOnce([{ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }]);
 
@@ -131,7 +132,9 @@ describe('forge_ux_findings write', () => {
 
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    selectLimit.mockResolvedValueOnce([{ jobId: JOB_ID, runId: RUN_ID, issueId: ISSUE_ID }]);
+    selectLimit.mockResolvedValueOnce([
+      { jobId: JOB_ID, runId: RUN_ID, issueId: ISSUE_ID, stage: 'review', deviceId: null },
+    ]);
     selectLimit.mockResolvedValueOnce([{ n: 0 }]);
     selectLimit.mockResolvedValueOnce([]); // ruleId lookup → not found in project
     insertReturning.mockResolvedValueOnce([{ id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }]);
@@ -148,7 +151,7 @@ describe('forge_ux_findings write', () => {
     expect(inserted.ruleId).toBeUndefined();
   });
 
-  it('soft-rejects a non-device principal with the actionable pipeline-context cause', async () => {
+  it("soft-rejects a person's PAT with the actionable pipeline-context cause", async () => {
     const tool = forgeUxFindingsTool(makePatCtx());
 
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
@@ -162,6 +165,7 @@ describe('forge_ux_findings write', () => {
     })) as { ok: boolean; reason: string; detail: string };
 
     expect(result).toMatchObject({ ok: false, reason: 'not_pipeline_context' });
+    expect(result.detail).toMatch(/personal access token/i);
     expect(result.detail).toMatch(/issueId/);
     expect(insertValues).not.toHaveBeenCalled();
   });
@@ -171,7 +175,8 @@ describe('forge_ux_findings write', () => {
 
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    selectLimit.mockResolvedValueOnce([]); // no active job
+    // cm:why the empty row set IS the terminal-job case — `resolveMachineTokenContext` joins on a non-terminal job, so a token naming a finished one resolves to no row at all
+    selectLimit.mockResolvedValueOnce([]);
 
     const result = await tool.handler({
       action: 'write',
@@ -277,7 +282,9 @@ describe('forge_ux_findings write', () => {
 
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    selectLimit.mockResolvedValueOnce([{ jobId: JOB_ID, runId: RUN_ID, issueId: ISSUE_ID }]);
+    selectLimit.mockResolvedValueOnce([
+      { jobId: JOB_ID, runId: RUN_ID, issueId: ISSUE_ID, stage: 'review', deviceId: null },
+    ]);
     selectLimit.mockResolvedValueOnce([{ n: 50 }]); // at cap
 
     const result = await tool.handler({

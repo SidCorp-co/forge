@@ -1,0 +1,151 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · issue-work-shipped-evidence — how finished work becomes a countable "shipped"</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --lock:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .ok { color:var(--acc); font-weight:600; }
+  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
+  text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
+  text.m { font-size:11px; fill:var(--mut); }
+  text.t { font:600 12px ui-monospace,Menlo,monospace; }
+  .box { fill:#fff; stroke:var(--line); }
+  .ship { fill:#eef6f1; stroke:#bcdcca; }
+  .exit { fill:#fdf0f3; stroke:#e3c2cb; }
+  .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
+  .arrowbad { stroke:var(--bad); stroke-width:1.2; fill:none; marker-end:url(#b); stroke-dasharray:4 3; }
+</style>
+<main>
+
+<h1>issue-work-shipped-evidence — how finished work becomes a countable "shipped"</h1>
+<p class="sub">Every path that writes <code>issues.merged_at</code>, and the one predicate that
+decides whether an issue counts as <em>shipped</em> or as <em>closed with no evidence it shipped</em>.
+This is a lifecycle question with an adversary built into it: <code>merged_at</code> is also what
+releases every <code>blocks</code> dependent, so a stamp is a <strong>claim that code shipped</strong>
+rather than a date field, and the counter has to tell a deliberate claim apart from the one the
+kernel writes on its own. Owners: <code>packages/core/src/issues/merged-at.ts</code> (the automatic
+writers), <code>packages/core/src/issues/merge-marker.ts</code> (the deliberate one) and
+<code>packages/core/src/issues/progress.ts</code> (the predicate).</p>
+
+<h2>Three writers, one predicate</h2>
+<svg viewBox="0 0 900 470" role="img" aria-label="The three writers of merged_at and the predicate that reads them">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a3b52"/></marker>
+  </defs>
+
+  <text class="m" x="20" y="24">who writes merged_at</text>
+  <text class="m" x="380" y="24">what the row then looks like</text>
+  <text class="m" x="672" y="24">how progress.ts counts it</text>
+
+  <rect class="box" x="20" y="38" width="250" height="64" rx="4"/>
+  <text class="t" x="32" y="58">markMergedIfLeavingBase</text>
+  <text class="m" x="32" y="76">the pipeline hop OUT of the base</text>
+  <text class="m" x="32" y="92">merge status, in that transition's tx</text>
+
+  <rect class="box" x="20" y="122" width="250" height="64" rx="4"/>
+  <text class="t" x="32" y="142">applyMergeMarker</text>
+  <text class="m" x="32" y="160">the deliberate claim — CLI, MCP,</text>
+  <text class="m" x="32" y="176">REST, and the web Mark-merged control</text>
+
+  <rect class="box" x="20" y="206" width="250" height="64" rx="4"/>
+  <text class="t" x="32" y="226">markMergedOnClose</text>
+  <text class="m" x="32" y="244">every close whose column is still</text>
+  <text class="m" x="32" y="260">null — nobody asked for it</text>
+
+  <rect class="box" x="380" y="38" width="250" height="48" rx="4"/>
+  <text class="m" x="392" y="58">an activity_log row with</text>
+  <text class="m" x="392" y="74">to = base or production branch</text>
+
+  <rect class="box" x="380" y="122" width="250" height="48" rx="4"/>
+  <text class="m" x="392" y="142">merged_at from its OWN tx —</text>
+  <text class="m" x="392" y="158">earlier than any later close</text>
+
+  <rect class="box" x="380" y="206" width="250" height="48" rx="4"/>
+  <text class="m" x="392" y="226">merged_at EQUALS the close's</text>
+  <text class="m" x="392" y="242">activity_log timestamp</text>
+
+  <rect class="ship" x="672" y="38" width="206" height="132" rx="4"/>
+  <text class="t" x="684" y="58">shipped</text>
+  <text class="m" x="684" y="78">leftMergeState</text>
+  <text class="m" x="684" y="96">OR (merged_at IS NOT NULL</text>
+  <text class="m" x="684" y="112">AND NOT stampedByCloseItself)</text>
+  <text class="m" x="684" y="136">the second disjunct asks only</text>
+  <text class="m" x="684" y="152">whether the stamp was deliberate</text>
+
+  <rect class="exit" x="672" y="206" width="206" height="64" rx="4"/>
+  <text class="t" x="684" y="226">closed_unshipped</text>
+  <text class="m" x="684" y="246">a close is not a claim; it is</text>
+  <text class="m" x="684" y="262">also how a duplicate ends</text>
+
+  <path class="arrow" d="M270,70 H374"/>
+  <path class="arrow" d="M270,154 H374"/>
+  <path class="arrowbad" d="M270,238 H374"/>
+  <path class="arrow" d="M630,62 H666"/>
+  <path class="arrow" d="M630,146 C650,146 650,110 666,110"/>
+  <path class="arrowbad" d="M630,230 H666"/>
+
+  <rect class="exit" x="20" y="316" width="858" height="126" rx="4"/>
+  <text class="t" x="32" y="338">The gap this flow was drawn for (ISS-791)</text>
+  <text x="32" y="360">The predicate used to require, on top of a deliberate stamp, a logged transition into</text>
+  <text x="32" y="380">developed / testing / tested / released. Work driven entirely by hand never enters one — so the</text>
+  <text x="32" y="400">audited claim above was discarded and the issue was reported as closed with no evidence it shipped.</text>
+  <text x="32" y="420">And the claim had no human surface at all: the web never called POST /api/issues/:id/merge.</text>
+</svg>
+
+<h2>What has been written when the count is wrong</h2>
+<div class="rule">
+<ul>
+  <li><b>An over-count is unrecoverable by reading.</b> If <code>stampedByCloseItself</code> is ever
+      dropped, every close counts as shipped and the figure is indistinguishable from a true one —
+      which is why <code>tests/integration/progress-shipped-evidence-e2e.test.ts</code> pins the
+      timestamp identity itself, not just the resulting number.</li>
+  <li><b>The identity is a real coupling, not a coincidence.</b> The auto-stamp and the close's
+      <code>activity_log</code> row are written in ONE transaction, and Postgres <code>now()</code>
+      is transaction-start time, so the two land on the same instant. Split those writes apart and
+      the <span class="bad">shipped</span> figure silently inflates —
+      <code>issues/apply-transition.ts</code> carries the <code>cm:edge lockstep</code> that says so.</li>
+  <li><b>An under-count is silent too, and it is what ISS-791 measured.</b> Nothing is lying:
+      the record is made, the API is truthful, and the work is simply not counted. The only signal
+      is a person noticing that a project they shipped reads as having shipped nothing.</li>
+  <li><b>An agent cannot make the claim on evidence it does not have.</b>
+      <code>applyMergeMarker</code> runs <code>pipeline/work-evidence.ts</code> when the actor's
+      agency is <code>agent</code>: no branch, no commit and no code handoff is a refusal, and a
+      human's own claim is not gated because a human is accountable for it.</li>
+</ul>
+</div>
+
+<h2>The hand-driven path, end to end</h2>
+<table>
+<thead><tr><th>Step</th><th>Where</th><th>What it leaves behind</th></tr></thead>
+<tbody>
+<tr><td>The work is done and merged outside the pipeline</td><td>a person, at a terminal</td>
+    <td>nothing the tracker can see</td></tr>
+<tr><td>Claim it: Mark merged on the issue's Properties rail, or <code>forge_issues action=mark</code>, or <code>POST /api/issues/:id/merge</code></td>
+    <td><code>features/issues/components/merge-marker-control.tsx</code> → <code>issues/merge-routes.ts</code> → <code>applyMergeMarker</code></td>
+    <td><code>merged_at</code> in its own transaction, an audit comment naming the target, an <code>issueUpdated</code> hook</td></tr>
+<tr><td>Every issue blocked on this one is released</td><td><code>jobs/queued-gates.ts</code></td>
+    <td>dependents become dispatchable</td></tr>
+<tr><td>Close the issue</td><td>any surface</td>
+    <td><code>markMergedOnClose</code> is a no-op — the column is already set, so the close cannot overwrite the claim with its own timestamp</td></tr>
+<tr><td>It counts</td><td><code>issues/progress.ts</code></td>
+    <td><span class="ok">shipped</span>, with no pipeline status ever having been entered</td></tr>
+<tr><td>It was wrong</td><td>Unmark, or <code>DELETE /api/issues/:id/merge</code></td>
+    <td><code>merged_at</code> cleared, dependents re-blocked, a second audit comment — the claim is reversible in full</td></tr>
+</tbody>
+</table>
+
+</main>

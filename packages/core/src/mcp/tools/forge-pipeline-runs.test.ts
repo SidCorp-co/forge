@@ -7,7 +7,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -58,10 +58,10 @@ const {
 
 // cm:why only `forge_pipeline_runs.get` is still registered — forge-skill-audit calls it by that name. The other four shim factories were deleted once nothing named them, so these cases run the handlers the `forge_project_pipeline_runs` dispatcher calls, one layer down.
 const forgePipelineRunsListTool = (c: {
-  device: Parameters<typeof pipelineRunsListHandler>[0];
+  principal: Parameters<typeof pipelineRunsListHandler>[0];
 }) => ({
   handler: async (args: unknown) =>
-    pipelineRunsListHandler(c.device, pipelineRunsListInputSchema.parse(args)),
+    pipelineRunsListHandler(c.principal, pipelineRunsListInputSchema.parse(args)),
 });
 const forgePipelineRunsPauseTool = (c: {
   principal: Parameters<typeof pipelineRunsPauseHandler>[0];
@@ -88,7 +88,7 @@ const ISSUE_ID = '33333333-3333-4333-8333-333333333333';
 const OWNER_ID = '44444444-4444-4444-8444-444444444444';
 const DEVICE_ID = '55555555-5555-4555-8555-555555555555';
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID);
 
 const baseRun = {
   id: RUN_ID,
@@ -113,17 +113,16 @@ beforeEach(() => {
   cancelSpy.mockReset();
 });
 
-function makeDeviceCtx() {
+function makePrincipalCtx() {
   return {
-    principal: { kind: 'device' as const, device: fakeDevice },
-    device: fakeDevice,
+    principal: fakePrincipal,
     projectSlug: null,
   };
 }
 
 describe('forge_pipeline_runs.list', () => {
-  it('returns runs filtered by issueId/status when device owner is member', async () => {
-    const tool = forgePipelineRunsListTool(makeDeviceCtx());
+  it('returns runs filtered by issueId/status when the caller is a member', async () => {
+    const tool = forgePipelineRunsListTool(makePrincipalCtx());
     // cm:guard the member check is resolved BEFORE the runs query, matching the handler's order — swap these two and the authz row is read as the run list, so the test asserts a shape the handler never produced
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     selectLimit.mockResolvedValueOnce([baseRun]);
@@ -140,7 +139,7 @@ describe('forge_pipeline_runs.list', () => {
 
   // cm:guard assert BOTH halves — the limit reaching `.limit()` as limit+1 AND the un-inflated limit reaching the envelope. Passing overfetch() to both reports a bound page as `hasMore:false`, and no other test in this file reads the envelope at all.
   it('over-fetches by one and reports the limit that bound the page', async () => {
-    const tool = forgePipelineRunsListTool(makeDeviceCtx());
+    const tool = forgePipelineRunsListTool(makePrincipalCtx());
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     selectLimit.mockResolvedValueOnce(
       Array.from({ length: 3 }, (_, i) => ({ ...baseRun, id: `run-${i}` })),
@@ -160,7 +159,7 @@ describe('forge_pipeline_runs.list', () => {
   });
 
   it('says hasMore:false on a complete page, so a short list is not read as a whole one', async () => {
-    const tool = forgePipelineRunsListTool(makeDeviceCtx());
+    const tool = forgePipelineRunsListTool(makePrincipalCtx());
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     selectLimit.mockResolvedValueOnce([baseRun]);
 
@@ -170,10 +169,10 @@ describe('forge_pipeline_runs.list', () => {
     expect(result).not.toHaveProperty('truncated');
   });
 
-  it('rejects non-member with FORBIDDEN', async () => {
-    const tool = forgePipelineRunsListTool(makeDeviceCtx());
+  it('rejects a non-member as not-found (existence-hiding)', async () => {
+    const tool = forgePipelineRunsListTool(makePrincipalCtx());
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
-    await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/FORBIDDEN/);
+    await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 });
 
@@ -187,15 +186,15 @@ function makePatCtx(projectIds: string[] | null) {
       scopes: ['read', 'write'],
       projectIds,
       boundProjectId: null,
+      machine: null,
     },
-    device: fakeDevice,
     projectSlug: null,
   };
 }
 
 describe('forge_pipeline_runs.get', () => {
   it('returns the run plus a per-status jobCounts breakdown', async () => {
-    const tool = forgePipelineRunsGetTool(makeDeviceCtx());
+    const tool = forgePipelineRunsGetTool(makePrincipalCtx());
     // cm:guard `get` looks the RUN up first and only then checks membership — the reverse of `list`, because the run is what names the project to check against
     selectLimit.mockResolvedValueOnce([baseRun]);
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
@@ -216,16 +215,16 @@ describe('forge_pipeline_runs.get', () => {
   });
 
   it('throws NOT_FOUND for a missing run', async () => {
-    const tool = forgePipelineRunsGetTool(makeDeviceCtx());
+    const tool = forgePipelineRunsGetTool(makePrincipalCtx());
     selectLimit.mockResolvedValueOnce([]);
     await expect(tool.handler({ runId: RUN_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
-  it('throws FORBIDDEN when the calling device is cross-project', async () => {
-    const tool = forgePipelineRunsGetTool(makeDeviceCtx());
+  it('answers not-found when the caller is cross-project', async () => {
+    const tool = forgePipelineRunsGetTool(makePrincipalCtx());
     selectLimit.mockResolvedValueOnce([baseRun]);
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
-    await expect(tool.handler({ runId: RUN_ID })).rejects.toThrow(/FORBIDDEN/);
+    await expect(tool.handler({ runId: RUN_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
   // cm:guard the allowlist must be enforced on the project the RUN resolves to, not only on an explicit projectId argument — ISS-150 review #1 found exactly that hole, where a PAT reached any run by id because nothing re-checked the project the lookup landed on
@@ -248,7 +247,7 @@ describe('forge_pipeline_runs.pause/.resume/.cancel', () => {
   }
 
   it('pause delegates to pausePipelineRun and returns the run', async () => {
-    const tool = forgePipelineRunsPauseTool(makeDeviceCtx());
+    const tool = forgePipelineRunsPauseTool(makePrincipalCtx());
     memberRunLookup();
     writerCheck();
     pauseSpy.mockResolvedValueOnce({ ...baseRun, status: 'paused' });
@@ -258,7 +257,7 @@ describe('forge_pipeline_runs.pause/.resume/.cancel', () => {
   });
 
   it('resume delegates to resumePipelineRun and returns the run', async () => {
-    const tool = forgePipelineRunsResumeTool(makeDeviceCtx());
+    const tool = forgePipelineRunsResumeTool(makePrincipalCtx());
     memberRunLookup();
     writerCheck();
     resumeSpy.mockResolvedValueOnce({ ...baseRun, status: 'running' });
@@ -268,7 +267,7 @@ describe('forge_pipeline_runs.pause/.resume/.cancel', () => {
   });
 
   it('cancel returns the full side-effect summary', async () => {
-    const tool = forgePipelineRunsCancelTool(makeDeviceCtx());
+    const tool = forgePipelineRunsCancelTool(makePrincipalCtx());
     memberRunLookup();
     writerCheck();
     cancelSpy.mockResolvedValueOnce({
@@ -287,11 +286,11 @@ describe('forge_pipeline_runs.pause/.resume/.cancel', () => {
     expect(result.abortedSessionIds).toEqual(['s1']);
   });
 
-  it('cancel rejects a non-member device with FORBIDDEN', async () => {
-    const tool = forgePipelineRunsCancelTool(makeDeviceCtx());
+  it('cancel rejects a non-member caller as not-found', async () => {
+    const tool = forgePipelineRunsCancelTool(makePrincipalCtx());
     selectLimit.mockResolvedValueOnce([baseRun]);
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
-    await expect(tool.handler({ runId: RUN_ID })).rejects.toThrow(/FORBIDDEN/);
+    await expect(tool.handler({ runId: RUN_ID })).rejects.toThrow(/NOT_FOUND/);
     expect(cancelSpy).not.toHaveBeenCalled();
   });
 

@@ -268,6 +268,18 @@ fn restrict_file(_p: &std::path::Path) {}
 #[cfg(not(unix))]
 fn restrict_dir(_p: &std::path::Path) {}
 
+/// Serialises the tests that mutate the process-wide env this module reads.
+///
+/// "One test, not four" keeps a single module honest, but it cannot keep two
+/// apart: `mcp/config.rs` reads a PAT through [`load_pat`] and its tests set
+/// `$FORGE_PAT` too, so with cargo's thread-per-test they would trade values
+/// mid-assertion. Every test in the crate that writes `FORGE_PAT`,
+/// `XDG_CONFIG_HOME` or `FORGE_RUNNER_CRED_STORE` takes this lock.
+// cm:guard the lock lives HERE, beside the resolution order it protects, for the same reason the env var is read here and not at each call site — a second lock elsewhere protects a different set of tests from a different half of the same variable.
+// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/mcp/config.rs — the other holder; a third module that starts setting these vars in a test takes this lock or reintroduces the race
+#[cfg(test)]
+pub(crate) static ENV_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,6 +289,7 @@ mod tests {
     /// cases would race each other's config dir.
     #[test]
     fn the_two_credentials_do_not_evict_each_other() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("forge-cred-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::env::set_var("XDG_CONFIG_HOME", &dir);
