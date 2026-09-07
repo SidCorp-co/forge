@@ -9,6 +9,7 @@ import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
+  principalHookActor,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -60,7 +61,7 @@ export const forgeStepHandoffWriteTool: ContextScopedMcpToolFactory = ({ princip
   handler: async (args) => {
     const input = writeInputSchema.parse(args);
     await assertPrincipalIsWriter(principal, input.projectId);
-    return writeIssueContext({ ...input, kind: 'handoff' });
+    return writeIssueContext({ ...input, kind: 'handoff', actor: principalHookActor(principal) });
   },
 });
 

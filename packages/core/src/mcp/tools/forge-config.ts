@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { type IssueBranchOverride, resolveIssueBranches } from '../../branches/resolve.js';
+import { extractIssueBranchOverride, resolveIssueBranches } from '../../branches/resolve.js';
 import { env } from '../../config/env.js';
 import { deleteKnowledgeEntry, upsertKnowledgeEntry } from '../../knowledge/service.js';
 import { logger } from '../../logger.js';
@@ -15,13 +15,15 @@ import {
 } from '../../plugins/designation.js';
 import { patchAgentConfigKey, readAgentConfig } from '../../projects/agent-config.js';
 import {
+  ALWAYS_INJECT_ENFORCEMENT_NOTE,
+  ALWAYS_INJECT_GUARANTEE_NOTE,
   mergeProjectFacts,
   mergeProjectFactsConfig,
   projectFactsConfigPatchSchema,
   projectFactsPatchSchema,
   RESERVED_PROJECT_FACT_KEYS,
 } from '../../projects/project-facts.js';
-import { readIssueSessionContext, readProjectWithConfig } from '../../projects/service.js';
+import { readIssueBranchInputs, readProjectWithConfig } from '../../projects/service.js';
 import { mergeStateContext, stateContextSchema } from '../../projects/state-context.js';
 import {
   assertPrincipalIsAdmin,
@@ -75,8 +77,12 @@ function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConfig>>) 
 
 export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_config',
+  // cm:edge contract -> packages/core/src/projects/project-facts.ts — the description ENDS with both notes, appended rather than paraphrased; a rewrite that drops them puts the enforcement promise back
   description:
-    "Read or write project configuration. Action `get` returns `config` with `repoPath`, `baseBranch`, `productionBranch` read DIRECTLY from the `projects` table columns (may be `null` when not configured — callers MUST NOT silently default to 'main'); plus `categories`, `pipelineConfig`, `stateContext`, `projectFacts` from `agent_config` JSON. When `issueId` is supplied, also returns a resolved `branchConfig` layering the issue override on top of the project defaults. Action `update` (admin-gated) merges a `pipelineConfig` patch with the same invariants as `PATCH /projects/:id/pipeline-config`, a `stateContext` patch (per-state merge — passing `{ code: {...} }` replaces only the `code` entry, other states untouched; pass `null` to wipe stateContext, or `{ code: null }` to remove one state), and a `projectFacts` patch (kebab-case key→text map referenced from skill bodies as `{{project:<key>}}`; per-key merge, value `null` removes a key, whole-map `null` wipes it; reserved keys base-branch/production-branch/repo-path/test-urls/test-creds are derived and ignored here; NEVER store secrets — they would sync to disk), and a `projectFactsConfig` patch (per-key `{ alwaysInject }` map — when a fact key is flagged `alwaysInject: true` its FULL body is injected verbatim into every agent system prompt for this project, like a mandatory rule, instead of the default fetch-on-demand pointer; same per-key merge semantics, value `null` removes a key's config, whole-map `null` wipes it; capped at a char budget that warns on overflow), and a `plugins` list designating the Claude Code plugins this project's runners must install (`[{marketplace, name, pinnedRef?, autoUpdate?}]`; marketplace is an `owner/repo`, name is kebab-case, pinnedRef is a commit SHA). UNLIKE the patches above, `plugins` REPLACES the whole list — GET first, send the complete list, `null` clears it. Designation is per-project but install is per-DEVICE: a device resolves the union of every project it is bound to via `GET /api/devices/me/plugins`, so a plugin designated by one project is installed for all of them; per-project opt-out belongs in that repo's own `.claude/settings.json` `enabledPlugins`. Errors surface as `BAD_REQUEST: <code>: <message>`.",
+    "Read or write project configuration. Action `get` returns `config` with `repoPath`, `baseBranch`, `productionBranch` read DIRECTLY from the `projects` table columns (may be `null` when not configured — callers MUST NOT silently default to 'main'); plus `categories`, `pipelineConfig`, `stateContext`, `projectFacts` from `agent_config` JSON. When `issueId` is supplied, also returns a resolved `branchConfig` layering the issue override on top of the project defaults. Action `update` (admin-gated) merges a `pipelineConfig` patch with the same invariants as `PATCH /projects/:id/pipeline-config`, a `stateContext` patch (per-state merge — passing `{ code: {...} }` replaces only the `code` entry, other states untouched; pass `null` to wipe stateContext, or `{ code: null }` to remove one state), and a `projectFacts` patch (kebab-case key→text map referenced from skill bodies as `{{project:<key>}}`; per-key merge, value `null` removes a key, whole-map `null` wipes it; reserved keys base-branch/production-branch/repo-path/test-urls/test-creds are derived and ignored here; NEVER store secrets — they would sync to disk), and a `projectFactsConfig` patch (per-key `{ alwaysInject }` map — when a fact key is flagged `alwaysInject: true` its FULL body is injected verbatim into every agent system prompt for this project, unmissable rather than fetch-on-demand; same per-key merge semantics, value `null` removes a key's config, whole-map `null` wipes it; capped at a char budget that warns on overflow rather than truncating), and a `plugins` list designating the Claude Code plugins this project's runners must install (`[{marketplace, name, pinnedRef?, autoUpdate?}]`; marketplace is an `owner/repo`, name is kebab-case, pinnedRef is a commit SHA). UNLIKE the patches above, `plugins` REPLACES the whole list — GET first, send the complete list, `null` clears it. Designation is per-project but install is per-DEVICE: a device resolves the union of every project it is bound to via `GET /api/devices/me/plugins`, so a plugin designated by one project is installed for all of them; per-project opt-out belongs in that repo's own `.claude/settings.json` `enabledPlugins`. Errors surface as `BAD_REQUEST: <code>: <message>`. " +
+    ALWAYS_INJECT_GUARANTEE_NOTE +
+    ' ' +
+    ALWAYS_INJECT_ENFORCEMENT_NOTE,
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -123,7 +129,6 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
           mergePluginDesignations(plugins),
         );
       }
-      // AC6: write-through to knowledge_entries when the flag is ON.
       if (
         env.KNOWLEDGE_INJECTION_ENABLED &&
         input.projectFacts !== undefined &&
@@ -183,29 +188,12 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
 
     if (!input.issueId) return baseResponse;
 
-    const issueRow = await readIssueSessionContext(input.issueId, projectId);
+    const issueRow = await readIssueBranchInputs(input.issueId, projectId);
     if (!issueRow) throw new Error('NOT_FOUND: issue not found in project');
 
-    // PR-C will add a real `issues.metadata` jsonb column; until then, accept
-    // the override from `metadata` if present and fall back to `sessionContext`.
-    const issueLike = issueRow as {
-      metadata?: { branchConfig?: unknown } | null;
-      sessionContext: unknown;
-    };
-    const metadataOverride =
-      (
-        issueLike.metadata as {
-          branchConfig?: IssueBranchOverride | null;
-        } | null
-      )?.branchConfig ?? null;
-    const sessionContextOverride =
-      (
-        issueLike.sessionContext as {
-          branchConfig?: IssueBranchOverride | null;
-        } | null
-      )?.branchConfig ?? null;
-    const branchConfigOverride: IssueBranchOverride | null =
-      metadataOverride ?? sessionContextOverride;
+    const branchConfigOverride = extractIssueBranchOverride(
+      issueRow as Parameters<typeof extractIssueBranchOverride>[0],
+    );
 
     const branchConfig = resolveIssueBranches(
       { metadata: { branchConfig: branchConfigOverride } },
