@@ -15,7 +15,7 @@ import {
   readReport,
   stampReviewed,
 } from '../../feedback/service.js';
-import { resolveMachineTokenContext } from '../../jobs/active-job-context.js';
+import { resolvePipelineContext } from '../../jobs/active-job-context.js';
 import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../../prompt/sanitize.js';
 import {
   assertPrincipalIsMember,
@@ -33,7 +33,6 @@ const inputSchema = z
     // scope: 'project' (default, caller's resolved project) or 'all' (every
     // project the principal can see) — applies to list and bulk review.
     scope: z.enum(['project', 'all']).optional(),
-    // review fields
     reportId: z.uuid().optional(),
     reviewed: z.boolean().optional(),
     // review: the issue this report was curated INTO (distinct from the
@@ -127,16 +126,14 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.summary) throw new Error('BAD_REQUEST: summary is required for submit');
 
         // cm:guard the pipeline context is SERVER-resolved from the job this token was minted for and is never taken from the caller's input — that is what makes it attribution rather than a claim. A person's PAT names no job, so every context field stays null instead of borrowing whatever job that box ran last, which is what the pre-ISS-931 device lookup did.
-        const active = await resolveMachineTokenContext(principal.machine);
+        const resolved = await resolvePipelineContext(principal);
+        const active = resolved.ok ? resolved.context : null;
         const jobId = active?.jobId ?? null;
         const runId = active?.runId ?? null;
         const issueId = active?.issueId ?? null;
         const stage = active?.stage ?? null;
-        // cm:guard ISS-557 — a steward run is a schedule session with NO job row, so `active` is null for it and its report would lose every link. A `session:` token names that session itself, which is why the session id is read off the token first and only falls back to the job's; taking it from `active` alone silently drops every steward report's attribution.
-        const sessionId =
-          principal.machine?.kind === 'session'
-            ? principal.machine.id
-            : (active?.agentSessionId ?? null);
+        // cm:guard ISS-557 — a steward run is a schedule session with NO job row, and its report must still carry a session id. That is why `resolvePipelineContext` resolves the SESSION and left-joins the job: reading the session off the job would drop every steward report's attribution.
+        const sessionId = active?.agentSessionId ?? null;
 
         // Per-job rate-limit (server-enforced). Interactive callers (no jobId)
         // have no pipeline run to cap by; skip the check.

@@ -12,7 +12,7 @@ vi.mock('../../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-// lib/authz.ts effectiveProjectRole chains TWO leftJoins before where().limit(1).
+// cm:guard TWO leftJoins, because `lib/authz.ts:effectiveProjectRole` chains two before `where().limit(1)` — a mock with one silently resolves the role to undefined and every case here passes for the wrong reason.
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
@@ -64,8 +64,7 @@ describe('forge_agent_sessions.list', () => {
   it('returns sessions filtered by issueId/status when the caller is a member', async () => {
     const tool = forgeAgentSessionsListTool(makeFakeContext(fakePrincipal));
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
-    selectLimit.mockResolvedValueOnce([baseSessionRow]); // sessions query
-
+    selectLimit.mockResolvedValueOnce([baseSessionRow]);
     const result = (await tool.handler({
       projectId: PROJECT_ID,
       issueId: ISSUE_ID,
@@ -210,7 +209,6 @@ describe('forge_agent_sessions.get', () => {
           projectIds,
           boundProjectId: null,
           deviceId: null,
-          machine: null,
         },
         projectSlug: null,
       });

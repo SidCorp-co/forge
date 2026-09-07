@@ -33,7 +33,6 @@ import { makeFakePrincipal } from './fake-principal.fixture.js';
 import { createMcpServer } from './server.js';
 
 const USER_ID = '00000000-0000-4000-8000-0000000000a1';
-const SESSION_ID = '00000000-0000-4000-8000-0000000000a2';
 const JOB_ID = '00000000-0000-4000-8000-0000000000a3';
 const ISSUE_ID = '00000000-0000-4000-8000-0000000000a4';
 
@@ -48,7 +47,6 @@ const KEEP_FOREVER = [
 function sessionPrincipal(tokenId: string) {
   return makeFakePrincipal(tokenId, USER_ID, {
     agency: 'agent',
-    machine: { kind: 'session', id: SESSION_ID },
   });
 }
 

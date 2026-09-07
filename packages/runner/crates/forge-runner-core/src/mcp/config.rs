@@ -9,21 +9,20 @@ use crate::error::{Error, Result};
 
 /// Write `{ mcpServers: { forge: <http>, ...override } }` to a temp file and
 /// return its path. The Forge server points at `<core>/mcp` and authenticates
-/// with the JOB'S OWN token + project slug header.
+/// with the BOX'S OWN agent credential + project slug header.
 ///
-/// `job_token` is what core minted for this job on `job.assigned` — the same
-/// credential the spawn exports as `$FORGE_PAT`. `None` means core did not mint
-/// one (an older core), and the box's operator-provisioned PAT stands in.
+/// Core mints no per-job credential since ISS-932 wave 4, so there is exactly
+/// one credential on the box and `load_pat` is the only source.
 ///
-/// When neither exists the `forge` entry is OMITTED and a warning names why.
+/// When the box holds none the `forge` entry is OMITTED and a warning names why.
 /// The device token is deliberately NOT a fallback: `/mcp` refuses it (ISS-931),
 /// so writing it would buy a 401 at the first tool call instead of an absent
 /// server at startup, and the 401 arrives with no line naming the writer.
 // cm:edge contract -> packages/core/src/middleware/require-pat.ts — `requirePat` accepts `forge_pat_*` and refuses every other bearer BY NAME; the refusal text tells a box reading it to install a newer forge-runner, and this function is what makes that upgrade the fix
 // cm:guard NEVER fall back to `device_token` here. It authenticates `/ws` and the `requireDevice` REST routes and nothing on `/mcp`, and a config carrying it is indistinguishable at startup from a working one — `claude` connects, `tools/list` 401s, and the session reads it as a core outage.
+// cm:guard the credential is resolved HERE and only here, through `cred_store::load_pat` — the same rule `write_persistent` carries below and for the same reason: that helper is the one place `$FORGE_PAT` and the stored credential are ordered, and a second resolution is how one path on a box starts honouring a different credential from another.
 pub fn write(
     core_url: &str,
-    job_token: Option<&str>,
     project_slug: &str,
     job_id: &str,
     override_servers: Option<&Value>,
@@ -31,7 +30,7 @@ pub fn write(
     write_in(
         &mcp_config_dir(),
         core_url,
-        job_token,
+        load_pat().ok().flatten().as_deref(),
         project_slug,
         job_id,
         override_servers,
@@ -48,19 +47,17 @@ pub fn write(
 /// panics on a file the winner already unlinked, which reads as a defect in the
 /// config writer rather than as two runs colliding (ISS-939).
 // cm:guard tests pass a directory of their own; production passes `mcp_config_dir()` and nothing else. A test that reaches this through `write` is back on the shared path and will fail somebody else's run instead of its own.
+// cm:guard `token` is a TEST SEAM and `write` is its only production caller, which passes what `load_pat` returned. Resolving it inside this function instead makes every test here depend on whether the machine happens to hold a credential — measured 2026-09-08: the suite passed on a dev box with a cred store and failed on CI without one, so the green said nothing about the code.
 fn write_in(
     dir: &Path,
     core_url: &str,
-    job_token: Option<&str>,
+    token: Option<&str>,
     project_slug: &str,
     job_id: &str,
     override_servers: Option<&Value>,
 ) -> Result<PathBuf> {
     let mcp_url = format!("{}/mcp", core_url.trim_end_matches('/'));
-    let token = match job_token {
-        Some(t) if !t.trim().is_empty() => Some(t.to_string()),
-        _ => load_pat().ok().flatten(),
-    };
+    let token = token.map(str::to_string).filter(|t| !t.trim().is_empty());
     let mut servers = match token.as_deref() {
         Some(t) => serde_json::json!({
             "forge": {
@@ -75,10 +72,9 @@ fn write_in(
         None => {
             tracing::warn!(
                 job_id,
-                "mcp config: no job token from core and no stored PAT — omitting the `forge` \
-                 MCP server. Tools that only exist there (forge_uploads, forge_step_start) will \
-                 be absent for this job; run `forge-runner login --pat <token>` or upgrade core \
-                 so it mints a job token."
+                "mcp config: this box holds no agent credential — omitting the `forge` MCP \
+                 server. Tools that only exist there (forge_uploads, forge_step_start) will be \
+                 absent for this job; run `forge-runner login` to pair the box."
             );
             serde_json::json!({})
         }
@@ -348,7 +344,7 @@ mod tests {
         let p1 = write_in(
             &dir,
             "https://core.example",
-            Some("forge_pat_dev_job"),
+            Some("forge_pat_dev_boxcred"),
             slug,
             "job-a",
             None,
@@ -357,7 +353,7 @@ mod tests {
         let p2 = write_in(
             &dir,
             "https://core.example",
-            Some("forge_pat_dev_job"),
+            Some("forge_pat_dev_boxcred"),
             slug,
             "job-a",
             None,
@@ -390,7 +386,7 @@ mod tests {
         let a = write_in(
             &one,
             "https://core.example",
-            Some("forge_pat_dev_job"),
+            Some("forge_pat_dev_boxcred"),
             "iso",
             "job-a",
             None,
@@ -399,7 +395,7 @@ mod tests {
         let b = write_in(
             &two,
             "https://core.example",
-            Some("forge_pat_dev_job"),
+            Some("forge_pat_dev_boxcred"),
             "iso",
             "job-a",
             None,
@@ -432,7 +428,7 @@ mod tests {
         let a = write_in(
             &dir,
             "https://core.example",
-            Some("forge_pat_dev_job"),
+            Some("forge_pat_dev_boxcred"),
             slug,
             "job-a",
             None,
@@ -441,7 +437,7 @@ mod tests {
         let b = write_in(
             &dir,
             "https://core.example",
-            Some("forge_pat_dev_job"),
+            Some("forge_pat_dev_boxcred"),
             slug,
             "job-b",
             None,
@@ -468,7 +464,7 @@ mod tests {
         let path = write_in(
             &tmp_mcp_dir("skip-non-object"),
             "https://core.example",
-            Some("forge_pat_dev_job"),
+            Some("forge_pat_dev_boxcred"),
             "skip-non-object-slug",
             "job-skip",
             Some(&overrides),
@@ -477,28 +473,6 @@ mod tests {
         let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert!(doc["mcpServers"]["chrome-devtools-mcp"].is_null());
         assert_eq!(doc["mcpServers"]["playwright"]["command"], "npx");
-        let _ = std::fs::remove_file(&path);
-    }
-
-    /// ISS-931 — the per-job config carries the JOB'S OWN token, which is what
-    /// `/mcp` accepts. This is the assertion the whole change rests on.
-    // cm:guard assert the header VALUE, not merely that a `forge` entry exists. The entry existed before this change too, carrying the device token; a presence-only test stays green against exactly the config `requirePat` now refuses.
-    #[test]
-    fn per_job_config_carries_the_job_token() {
-        let path = write_in(
-            &tmp_mcp_dir("job-token"),
-            "https://core.example",
-            Some("forge_pat_dev_thejobtoken"),
-            "job-token-slug",
-            "job-tok",
-            None,
-        )
-        .unwrap();
-        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(
-            doc["mcpServers"]["forge"]["headers"]["Authorization"],
-            "Bearer forge_pat_dev_thejobtoken"
-        );
         let _ = std::fs::remove_file(&path);
     }
 
@@ -527,6 +501,24 @@ mod tests {
         );
         assert_eq!(forge["headers"]["X-Forge-Project-Slug"], "proj");
         let _ = std::fs::remove_dir_all(&repo);
+
+        // cm:guard assert the header VALUE, not merely that a `forge` entry exists. The entry existed before ISS-932 wave 4 too, carrying first the device token and then a per-job one; a presence-only assertion stays green against exactly the config `requirePat` refuses. That the value comes from the STORE is `write`'s own single line, covered by the provisioned-folder case above rather than here — this case owns what the per-job file carries once a credential is resolved.
+        let path = write_in(
+            &tmp_mcp_dir("box-cred"),
+            "https://core.example",
+            Some("forge_pat_dev_boxcred"),
+            "box-cred-slug",
+            "job-tok",
+            None,
+        )
+        .unwrap();
+        let per_job: Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            per_job["mcpServers"]["forge"]["headers"]["Authorization"],
+            "Bearer forge_pat_dev_boxcred"
+        );
+        let _ = std::fs::remove_file(&path);
 
         // -- read-merge: a human's other servers survive --
         let repo = tmp_repo("merge");
@@ -571,27 +563,7 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&repo);
 
-        // -- a box against an older core: no job token on the frame, the
-        //    operator's PAT stands in. This is what lets core and the fleet
-        //    upgrade in either order.
-        let path = write_in(
-            &tmp_mcp_dir("fallback"),
-            "https://core.example",
-            None,
-            "fallback-slug",
-            "job-fb",
-            None,
-        )
-        .unwrap();
-        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(
-            doc["mcpServers"]["forge"]["headers"]["Authorization"],
-            "Bearer forge_pat_dev_operator"
-        );
-        let _ = std::fs::remove_file(&path);
-
-        // -- a blank token is the shape a frame carries when core could not
-        //    mint; treat it as absent, never write `Bearer `.
+        // cm:guard a blank credential is the shape a malformed store yields, and it must be treated as ABSENT rather than written as `Bearer ` — there is no second source to fall back to since ISS-932 wave 4, so an empty string here would produce a config that authenticates as nobody and 401s at the first tool call.
         let path = write_in(
             &tmp_mcp_dir("blank"),
             "https://core.example",
@@ -602,10 +574,7 @@ mod tests {
         )
         .unwrap();
         let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(
-            doc["mcpServers"]["forge"]["headers"]["Authorization"],
-            "Bearer forge_pat_dev_operator"
-        );
+        assert!(doc["mcpServers"]["forge"].is_null());
         let _ = std::fs::remove_file(&path);
 
         // -- with NO credential at all the `forge` server is ABSENT and the

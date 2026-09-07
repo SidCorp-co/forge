@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { type ActorAgency, actorAgency, type TransitionActor } from '../../issues/actor-agency.js';
-import { resolveMachineTokenDeviceId } from '../../jobs/active-job-context.js';
 import { loadVisibleProjectIds } from '../../lib/authz.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import type { Actor } from '../../pipeline/activity.js';
@@ -158,9 +157,8 @@ export function principalActor(principal: McpPrincipal): TransitionActor {
  * The `devices` row that stands for the agent behind this call, or `null` when
  * a person's own PAT made it.
  */
-// cm:guard the `jobs` hop lives HERE rather than in the tool that wants it. `forge-comments.ts` reached a 7th module the moment it resolved the job off the token itself, which is one past `no-coordinator-blob`'s limit of 6 in `.arch.json`; this file already owns every other principal-to-attribution mapping (`principalActor`, `principalHookActor`, `principalAgency`), so the hop belongs beside them and a second tool needing the marker calls this instead of importing `jobs` again.
-export function principalAuthorDeviceId(principal: McpPrincipal): Promise<string | null> {
-  return resolveMachineTokenDeviceId(principal.machine);
+export function principalAuthorDeviceId(principal: McpPrincipal): string | null {
+  return principal.deviceId;
 }
 
 /**

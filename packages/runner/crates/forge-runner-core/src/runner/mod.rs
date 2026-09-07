@@ -3,7 +3,6 @@
 //! every claimed job with `runnerType`, so a new kind = new `RunnerKind`
 //! variant + a `Runner` impl + a stream parser.
 
-use crate::transport::frames::JobToken;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
@@ -65,9 +64,6 @@ pub struct JobSpec {
     /// `pipelineConfig.sessionResidencySeconds`. `None` and `Some(0)` both mean
     /// "use the default" — see `resolve_residency`.
     pub session_residency_seconds: Option<u64>,
-    /// Job-scoped PAT from core, exported to the agent as `$FORGE_PAT` so
-    /// `forge-runner api` reaches REST without a hand-provisioned credential.
-    pub pat_token: Option<JobToken>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -9,7 +9,6 @@ vi.mock('../../config/env.js', () => ({
   },
 }));
 
-// Drizzle mock chain — same shape as forge-feedback.test.ts.
 // effectiveProjectRole: select().from().leftJoin().leftJoin().where().limit()
 // count / ruleId / list: select().from().where()[.orderBy()].limit()
 const selectLimit = vi.fn();
@@ -57,7 +56,8 @@ const ORG_ID = '99999999-9999-4999-8999-999999999999';
 const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
 
 // cm:guard the pipeline ctx must carry a MACHINE principal — since ISS-931 the job is resolved from the `job:<id>` name on the caller's own token, not from a device row, so a `makeFakePrincipal` here (a person's PAT, `machine: null`) makes every case below answer `not_pipeline_context` and the suite asserts the refusal path twice instead of once.
-const jobPrincipal = makeFakeJobPrincipal(TOKEN_ID, OWNER_ID, JOB_ID);
+const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
+const jobPrincipal = makeFakeJobPrincipal(TOKEN_ID, OWNER_ID, DEVICE_ID, PROJECT_ID);
 
 function makeCtx(projectSlug = PROJECT_SLUG) {
   return {
@@ -171,12 +171,12 @@ describe('forge_ux_findings write', () => {
     expect(insertValues).not.toHaveBeenCalled();
   });
 
-  it('soft-rejects with no_active_job, naming the cause, when nothing is running', async () => {
+  it('soft-rejects with not_pipeline_context, naming the cause, when nothing is running', async () => {
     const tool = forgeUxFindingsTool(makeCtx());
 
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    // cm:why the empty row set IS the terminal-job case — `resolveMachineTokenContext` joins on a non-terminal job, so a token naming a finished one resolves to no row at all
+    // cm:why the empty row set IS the nothing-running case — `resolvePipelineContext` selects a non-terminal session on this box for this project, so a finished one resolves to no row at all
     selectLimit.mockResolvedValueOnce([]);
 
     const result = await tool.handler({
@@ -186,7 +186,7 @@ describe('forge_ux_findings write', () => {
       detail: 'Layout breaks at 375px',
     });
 
-    expect(result).toMatchObject({ ok: false, reason: 'no_active_job' });
+    expect(result).toMatchObject({ ok: false, reason: 'not_pipeline_context' });
     expect((result as { detail: string }).detail).toMatch(/issueId/);
     expect(insertValues).not.toHaveBeenCalled();
   });

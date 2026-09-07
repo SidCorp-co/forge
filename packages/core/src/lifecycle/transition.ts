@@ -144,12 +144,7 @@ export async function applyKernelTransition(
       for (const row of updated as SessionRow[]) {
         fireEscalationBridge(row);
         fireAgentChatBridge(row);
-        fireSessionTokenRevoke(row);
       }
-    }
-    // cm:guard the JOB revoke rides on THIS chokepoint and nowhere else, because this module is the only writer of a terminal job status — the `lifecycle.transition` guard test fails the build on a terminal `.update(jobs)` anywhere outside it. That is what makes the token's lifetime provably the job's: cancel, cascade, loop-monitor reap, park reap and the happy finish all land here, so no new terminal path can ship a token that outlives its job without first breaking a gate.
-    if (args.entity === 'job') {
-      for (const row of updated as JobRow[]) fireJobTokenRevoke(row);
     }
   }
 
@@ -210,31 +205,6 @@ async function writeTransition(
   }
 
   return updated;
-}
-
-/**
- * Fire-and-forget, dynamically imported so this low-level kernel module never
- * statically drags in the RocketChat/knowledge dependency graph — mirrors the
- * existing lazy-import convention used to keep this kind of chokepoint
- * hermetic (e.g. `jobs/loop-monitor.ts`'s lazy `schedules/dispatch.js` load).
- * Errors are swallowed here (logged only): a bridge failure must never break
- * the kernel transition it rides on.
- */
-function fireJobTokenRevoke(row: JobRow): void {
-  void import('../jobs/job-token.js')
-    .then((mod) => mod.revokeJobToken(row.id))
-    .catch((err) => {
-      logger.error({ err, jobId: row.id }, 'lifecycle.transition: job-token revoke failed');
-    });
-}
-
-// cm:edge lockstep -> packages/core/src/agent-sessions/routes.ts — unlike the JOB revoke above, this chokepoint is NOT sufficient on its own. The runner's happy-path completion writes `agent_sessions.status` directly in `PATCH /:id`, so that handler fires the same revoke, and the pair must stay in step: deleting either one leaves a live write-scoped credential behind a whole class of finished sessions. The `lifecycle.transition` guard test cannot protect this the way it protects the job axis — it scans for a status LITERAL and that handler writes `patch.status`, a variable — so the only thing holding the pair together is this note and the test that plants a normal completion.
-function fireSessionTokenRevoke(row: SessionRow): void {
-  void import('../agent-sessions/session-token.js')
-    .then((mod) => mod.revokeSessionToken(row.id))
-    .catch((err) => {
-      logger.error({ err, sessionId: row.id }, 'lifecycle.transition: session-token revoke failed');
-    });
 }
 
 function fireEscalationBridge(row: SessionRow): void {

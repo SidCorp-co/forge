@@ -34,7 +34,7 @@ flowchart LR
   CLI -->|"REST · $FORGE_PAT<br/>3.35.141+"| API
   CLI -->|"jsonrpc tools/call · 9 tools<br/>3.35.140, what the fleet runs"| MCP
   CLI -.->|"uploads · forge call<br/>either version"| MCP
-  MC -->|"jsonrpc tools/call · job token"| MCP
+  MC -->|"jsonrpc tools/call · box agent credential"| MCP
   MC -.->|"device token · 401<br/>on a box still below 0.12.1"| MCP
 ```
 
@@ -43,8 +43,9 @@ run. The nine tools the second arrow carries cannot go while it exists — that 
 row in the table below, drawn rather than only stated. **That arrow survives `ISS-931`**: the CLI
 authenticates with a `forge_pat_*`, not a device token, so `requirePat` accepts it. The dashed
 device arrow is the other population, and it is the one that has started to empty: `runner-v0.12.1`
-carries the job-token write, and a box on it puts the job's own PAT in each `.mcp.json` — measured
-on `forge-vm` 2026-09-08. A box still below that tag keeps 401ing.
+carries the per-job `.mcp.json` write, and a box on it puts a `forge_pat_*` in each one — measured
+on `forge-vm` 2026-09-08. Since ISS-932 wave 4 that PAT is the BOX's own agent credential rather
+than one minted per job; the arrow and the tag are unchanged. A box still below that tag keeps 401ing.
 
 Two command-line surfaces reach the same data plane:
 
@@ -79,7 +80,7 @@ checking that `/mcp` has no device branch should read `index.ts`'s `requirePat()
 present a box credential and expect a refusal.
 
 **This ships on two clocks and the second one is a binary.** Core refuses the device at deploy; a
-box only starts writing the job token when it installs a `forge-runner` that does. In between,
+box only starts writing its agent credential when it installs a `forge-runner` that does. In between,
 `claude`'s MCP client on an un-upgraded box gets 401 on every call, which is why the refusal says
 *"needs a newer forge-runner binary"* rather than anything about PATs. The fleet when this landed:
 three boxes, all `0.12.0`, all online; every other `devices` row `revoked`/`offline`. Device MCP
@@ -95,8 +96,8 @@ Two reachability changes come with it, and neither is a bug to file:
 
 - **Admin-gated tools need the `admin` scope, which no machine token carries.** A paired device had
   no scopes at all, so `assertPrincipalIsAdmin`'s scope half was skipped for it and only the
-  project role was asked. A `job:`/`session:` token is minted `['read','write']`
-  (`jobs/job-token.ts`, `agent-sessions/session-token.ts`), so `forge_skills.register` /
+  project role was asked. A box's agent credential is minted `['read','write']`
+  (`devices/credential.ts`), so `forge_skills.register` /
   `.create` / `.update` / `.delete` / `.adopt` / `.push`, `forge_runners` register / retire /
   update_capabilities, `forge_config action=update`, `forge_schedules` create / update / delete /
   run and `forge_reconcile` now answer `FORBIDDEN: this token lacks the admin scope` to a pipeline
@@ -150,7 +151,7 @@ the other's half, which is why a skill never names `runner-v*` or any project's 
 |---|---|---|
 | **stay** | `forge_step_start`, `forge_phase`, `forge_step_handoff.*`, `forge_uploads` | the four families `ISS-931` rule 2 names, asserted by `packages/core/src/mcp/keep-forever-tools.test.ts`. `step_start` opens the session every other call reports into and returns the issue body the runner did not inline; `uploads` returns an image content block, which a shell process cannot produce; `phase` and `step_handoff.*` are session-lifecycle hooks, not data queries. **All four have REST twins, so the twin test does not protect them — this row does.** The wave-3 pass surfaced `forge_step_handoff.delete` as a device-free candidate on exactly that reasoning |
 | **blocked on a fleet upgrade** | wrapped verbs: `forge_issues` `forge_comments` `forge_config` `forge_guide` `forge_knowledge` `forge_memory.search` `forge_project_pm` `forge_projects.get` `forge_projects.list` · reached through `forge call`: `forge_memory.write` `forge_memory.feedback` | what the installed plugin CLI names — counted by grepping the artifact, not this repo, because this repo cannot see it. That CLI has moved to `/api`; the copies on the boxes have not. **This CLI holds a PAT, so `ISS-931` did not take its access away** — its calls are ordinary `token_id` traffic. The second group is not hard-coded anywhere: `forge call <tool>` is a raw `tools/call` passthrough, and the CLI's own guide text tells agents to reach the memory verbs through it (`src/guides/guides.mjs`) |
-| **paused, not cleared** | ~20 that took device-token calls | `ISS-931` made `/mcp` refuse a device and `mcp/config.rs` write the job's token, so `mcp/server.ts` stamps `device_id` NULL on every new row. That did NOT retire these callers: it 401s them until their box installs a `runner-v*` that writes the job token, at which point **the same sessions return, calling the same tools, on a PAT**. A non-zero device count is therefore a forecast, not history — read the rule below. `runner-v0.12.1` is that release and `forge-vm` is on it as of 2026-09-08, so the return has begun and this row is now discharged **per tool by reappearing `token_id` traffic**, never by the tag existing |
+| **paused, not cleared** | ~20 that took device-token calls | `ISS-931` made `/mcp` refuse a device and `mcp/config.rs` write a credential `/mcp` accepts, so `mcp/server.ts` stamps `device_id` NULL on every new row. That did NOT retire these callers: it 401s them until their box installs a `runner-v*` that writes one, at which point **the same sessions return, calling the same tools, on a PAT**. A non-zero device count is therefore a forecast, not history — read the rule below. `runner-v0.12.1` is that release and `forge-vm` is on it as of 2026-09-08, so the return has begun and this row is now discharged **per tool by reappearing `token_id` traffic**, never by the tag existing |
 | **fenced by design** | `forge_orgs.list` `forge_orgs.members` `forge_collaborators` | they resolve no project, so a project-scoped PAT there is an account-scoped credential in disguise. Session only, on every transport |
 | **free to go** | the rest, and only after all three rows above are checked against it | each has a REST twin — see [data-plane-surface.md](data-plane-surface.md). A REST twin is necessary and not sufficient, and this row has been wrong three times for that reason: `forge_memory.search`, `forge_projects.get` and `forge_projects.list` all sat here with twins while the fleet's CLI called the tool and not the route |
 
@@ -162,7 +163,7 @@ three, and each has its own end condition.
 
 1. **The paused device population.** ~20 tools took device-token calls. `requirePat` now 401s
    those boxes on every `/mcp` call, so their counts stopped rising — but the sessions behind them
-   have not gone anywhere. A box installs a `runner-v*` that writes the job token and the same
+   have not gone anywhere. A box installs a `runner-v*` that writes its agent credential and the same
    Claude MCP client resumes, calling the same tools off the same tool list, on a `forge_pat_*`.
    **So a non-zero device count is a forecast of returning traffic, not a record of dead traffic**,
    and it stays a refusal. It is discharged for a tool when that traffic has actually reappeared as
@@ -299,8 +300,8 @@ in that same commit.
 |---|---|---|
 | the CLI moves to REST | `ISS-508` on the **forge-plugin** project | closed, merged 2026-09-06T14:13Z — the boxes still run the old copy |
 | one credential form for the API | `ISS-927` here | closed, merged `3291d537` |
-| the runner stops handing sessions a device token | `ISS-931` here | closed, merged — `requirePat` on `/mcp` + the job token in `mcp/config.rs`. The `runner-v*` release it needed is `runner-v0.12.1`; `forge-vm` runs it and writes the job token, verified 2026-09-08 |
-| the device token stops existing at all | `ISS-932` here | waves 1-3 landed: `users.kind` + the AAT, pairing issues a PAT/AAT, `verifyDeviceToken` deleted and `devices.token_hash`/`token_prefix` dropped. Wave 4 (kill `job:` tokens and the `agency` axis) is NOT in it — see the issue's own comment for why the two halves are one unit and what it is blocked on |
+| the runner stops handing sessions a device token | `ISS-931` here | closed, merged — `requirePat` on `/mcp` + a `/mcp`-accepted credential in `mcp/config.rs`. The `runner-v*` release it needed is `runner-v0.12.1`; `forge-vm` runs it and writes one, verified 2026-09-08 |
+| the device token stops existing at all | `ISS-932` here | all four waves landed. Waves 1-3: `users.kind` + the AAT, pairing issues a PAT/AAT, `verifyDeviceToken` deleted and `devices.token_hash`/`token_prefix` dropped. Wave 4 deleted the per-job and per-session credentials with the whole token-NAME family, so `agency` is `users.kind === 'agent'` and a box holds exactly one credential |
 | the waves themselves, and the record of the ones already run | `ISS-894` here | unblocked — every `blocks` edge on it is merged. Wave 4 reads the deletion rule above, and what it waits on is the fleet-upgrade row, not an issue |
 | the boundary is written down | `ISS-926` here | closed, merged 2026-09-06T07:46Z |
 | the rule becomes evaluable at all | `ISS-946` here | answered — `GET /api/admin/mcp-audit/tools` aggregates the whole table. NOT by the thing that runs it: the counts are cross-project, so the route is admin-only and the rule is two-party by design, not by omission |

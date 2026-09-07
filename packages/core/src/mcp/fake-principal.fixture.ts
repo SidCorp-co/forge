@@ -27,16 +27,26 @@ export function makeFakePrincipal(
     projectIds: null,
     boundProjectId: null,
     deviceId: null,
-    machine: null,
     ...overrides,
   };
 }
 
-/** A machine principal — the `job:<id>` credential a dispatched agent holds. */
-export function makeFakeJobPrincipal(tokenId: string, userId: string, jobId: string): McpPrincipal {
+/**
+ * A machine principal — the box-issued agent credential a dispatched agent
+ * holds. Its third argument names the BOX, not the job: since ISS-932 wave 4 a
+ * credential names where it runs and which project it may reach, and the job is
+ * resolved from the live session on that pair.
+ */
+export function makeFakeJobPrincipal(
+  tokenId: string,
+  userId: string,
+  deviceId: string,
+  boundProjectId: string | null = null,
+): McpPrincipal {
   return makeFakePrincipal(tokenId, userId, {
     agency: 'agent',
-    machine: { kind: 'job', id: jobId },
+    deviceId,
+    boundProjectId,
   });
 }
 

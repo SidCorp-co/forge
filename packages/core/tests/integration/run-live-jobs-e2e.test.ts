@@ -86,7 +86,6 @@ describe('run liveJobs E2E (ISS-789)', () => {
       projectIds: null,
       boundProjectId: null,
       deviceId: null,
-      machine: null,
     };
     const runId = randomUUID();
     await harness.db.execute(sql`

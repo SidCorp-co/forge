@@ -84,16 +84,15 @@ const OWNER_ID = '33333333-3333-4333-8333-333333333333';
 const OTHER_USER_ID = '66666666-6666-4666-8666-666666666666';
 const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
 const TOKEN_ID = '99999999-9999-4999-8999-99999999aaaa';
-const JOB_ID = '99999999-9999-4999-8999-99999999bbbb';
 const ORG_ID = '88888888-8888-4888-8888-888888888888';
 
-// effectiveProjectRole (lib/authz.ts) result rows — ONE org-aware select.
+// cm:guard ONE org-aware select, because `lib/authz.ts:effectiveProjectRole` folds the org role into the same statement — queueing two rows here feeds the second to whatever query runs next and shifts every later mock by one.
 const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
 const adminAccessRow = { orgId: ORG_ID, memberRole: 'admin', orgRole: null };
 
 const fakePrincipal = makeFakePrincipal(TOKEN_ID, OWNER_ID);
-// cm:guard the agent marker is resolved from a MACHINE token's name, so the cases that assert `authorDeviceId` need one. A `makeFakePrincipal` is a person's PAT (`machine: null`) and correctly leaves the column null — assert the marker with that and the case passes while proving the opposite of what it says (ISS-931).
-const jobPrincipal = makeFakeJobPrincipal(TOKEN_ID, OWNER_ID, JOB_ID);
+// cm:guard the agent marker is the credential's OWN `deviceId` since ISS-932 wave 4, so the cases asserting `authorDeviceId` need a principal carrying one. A `makeFakePrincipal` is a person's PAT with no device and correctly leaves the column null — assert the marker with that and the case passes while proving the opposite of what it says.
+const jobPrincipal = makeFakeJobPrincipal(TOKEN_ID, OWNER_ID, DEVICE_ID);
 
 const baseCommentRow = {
   id: COMMENT_ID,
@@ -162,7 +161,6 @@ describe('forge_comments tool', () => {
     // MCP surface — the original text is preserved inside the frame.
     expect(result.comments[0]?.body).toContain('Hello');
     expect(result.comments[0]?.body).toContain('UNTRUSTED_DATA source="comment.body"');
-    // Default empty attachment join → attachments present as []
     expect((result.comments[0] as unknown as { attachments: unknown[] }).attachments).toEqual([]);
   });
 
@@ -270,7 +268,6 @@ describe('forge_comments tool', () => {
     });
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
     selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
-    selectLimit.mockResolvedValueOnce([{ deviceId: DEVICE_ID }]);
     insertReturning.mockResolvedValueOnce([baseCommentRow]);
 
     const result = (await tool.handler({
@@ -538,7 +535,6 @@ describe('forge_comments tool', () => {
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
       selectLimit.mockResolvedValueOnce([memberAccessRow]);
-      selectLimit.mockResolvedValueOnce([{ deviceId: DEVICE_ID }]);
       insertReturning.mockResolvedValueOnce([baseCommentRow]);
       insertReturning.mockResolvedValueOnce([makeAttachmentRow(0)]);
 
