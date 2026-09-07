@@ -88,7 +88,12 @@ export async function createUploadTicket(
   if (taken) {
     throw new UploadTicketError(
       'ATTACHMENT_NAME_TAKEN',
-      `an attachment named "${taken.name}" is already on this ${input.targetType} (id ${taken.id}, ${taken.url}) — cite it, delete it, or mint under a different name`,
+      // cm:guard only the ISSUE branch may offer a delete — `DELETE /api/attachments/:id` reads `issue_attachments` alone, so promising it for a comment target names a verb the API does not publish (ISS-963)
+      `an attachment named "${taken.name}" is already on this ${input.targetType} (id ${taken.id}, ${taken.url}) — ${
+        input.targetType === 'issue'
+          ? 'cite it, delete it, or mint under a different name'
+          : 'cite it, or mint under a different name'
+      }`,
       { existing: taken },
     );
   }

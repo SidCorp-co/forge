@@ -67,13 +67,12 @@ const txDelete = vi.fn(() => ({ where: txDeleteWhere }));
 // ISS-196 — `withActorContext` calls `tx.execute(SELECT set_config(...))`
 // before the UPDATE; stub it so the in-memory db mock doesn't blow up.
 const txExecute = vi.fn(async () => undefined);
-// ISS-232 — `markMergedIfLeavingBase` issues a 2nd `tx.select(...).from
-// (projects)...` to resolve `mergeStates`. ISS-633's label replace-set also
-// reads existing `issueLabels` via `tx.select(...).from(...).where(...).limit(...)`.
-// Stub as an empty resolve so both helpers short-circuit with defaults under
-// the in-memory db mock unless a test stages a specific value.
+// cm:guard every tx read stubbed here must resolve EMPTY by default and offer both `.limit()` and `.orderBy().limit()` — `markMergedIfLeavingBase` (ISS-232), ISS-633's label replace-set and the attachment name check (ISS-963) each read through this one chain, so a missing link throws for callers that never staged a value
 const txSelectLimit = vi.fn(async () => [] as unknown[]);
-const txSelectWhere = vi.fn(() => ({ limit: txSelectLimit }));
+const txSelectWhere = vi.fn(() => ({
+  limit: txSelectLimit,
+  orderBy: vi.fn(() => ({ limit: txSelectLimit })),
+}));
 const txSelectFrom = vi.fn(() => ({ where: txSelectWhere }));
 const txSelect = vi.fn(() => ({ from: txSelectFrom }));
 const txProxy = {

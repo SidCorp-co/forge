@@ -8,6 +8,7 @@ import {
   resolveAttachmentMime,
   safeName,
 } from '../lib/attachment-mime.js';
+import { lockAttachmentName, type NameCheckExecutor } from '../lib/attachment-name-lock.js';
 import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { getStorage } from '../storage/index.js';
@@ -47,8 +48,9 @@ export class AttachmentError extends Error {
 export async function findIssueAttachmentByName(
   issueId: string,
   name: string,
+  executor: NameCheckExecutor = db,
 ): Promise<ExistingAttachmentRef | null> {
-  const [row] = await db
+  const [row] = await executor
     .select({ id: issueAttachments.id, name: issueAttachments.name })
     .from(issueAttachments)
     .where(and(eq(issueAttachments.issueId, issueId), eq(issueAttachments.name, name)))
@@ -132,25 +134,31 @@ export async function persistIssueAttachment(
   const name = safeName(input.name || 'file');
   const mime = validateIssueAttachment({ name, mime: input.mime, bytes });
 
-  // cm:guard decide the collision on the SANITISED name, never `input.name` — that is what the row stores and what a record cites, and `a b.md`/`a_b.md` both sanitise to `a_b.md`, so checking the input would admit the pairs that actually collide and refuse the pairs that do not (ISS-963)
-  const taken = await findIssueAttachmentByName(issueId, name);
-  if (taken) throw nameTakenError(taken, 'issue');
+  // cm:guard the check, the storage write and the insert are ONE transaction under a name lock — the check alone is decorative because `getStorage().put` sits inside the read-to-write window, and four concurrent uploads of one name stored four rows before this (ISS-963)
+  const inserted = await db.transaction(async (tx) => {
+    await lockAttachmentName(tx, 'issue', issueId, name);
 
-  const key = `issues/${issueId}/${Date.now()}-${name}`;
-  const { path: storedPath } = await getStorage().put(key, bytes, mime);
+    // cm:guard decide the collision on the SANITISED name, never `input.name` — that is what the row stores and what a record cites, and `a b.md`/`a_b.md` both sanitise to `a_b.md`, so checking the input would admit the pairs that actually collide and refuse the pairs that do not (ISS-963)
+    const taken = await findIssueAttachmentByName(issueId, name, tx);
+    if (taken) throw nameTakenError(taken, 'issue');
 
-  const [inserted] = await db
-    .insert(issueAttachments)
-    .values({ issueId, uploaderId, name, path: storedPath, mime, size: bytes.byteLength })
-    .returning({
-      id: issueAttachments.id,
-      issueId: issueAttachments.issueId,
-      uploaderId: issueAttachments.uploaderId,
-      name: issueAttachments.name,
-      mime: issueAttachments.mime,
-      size: issueAttachments.size,
-      createdAt: issueAttachments.createdAt,
-    });
+    const key = `issues/${issueId}/${Date.now()}-${name}`;
+    const { path: storedPath } = await getStorage().put(key, bytes, mime);
+
+    const [row] = await tx
+      .insert(issueAttachments)
+      .values({ issueId, uploaderId, name, path: storedPath, mime, size: bytes.byteLength })
+      .returning({
+        id: issueAttachments.id,
+        issueId: issueAttachments.issueId,
+        uploaderId: issueAttachments.uploaderId,
+        name: issueAttachments.name,
+        mime: issueAttachments.mime,
+        size: issueAttachments.size,
+        createdAt: issueAttachments.createdAt,
+      });
+    return row;
+  });
   if (!inserted) throw new Error('issue_attachments: insert returned no row');
 
   void safeRecordActivity({

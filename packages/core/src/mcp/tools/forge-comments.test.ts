@@ -47,13 +47,16 @@ const selectFrom = vi.fn((table: unknown) =>
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
 const deleteWhere = vi.fn();
-vi.mock('../../db/client.js', () => ({
-  db: {
+vi.mock('../../db/client.js', () => {
+  const db = {
     select: vi.fn(() => ({ from: selectFrom })),
     insert: vi.fn(() => ({ values: insertValues })),
     delete: vi.fn(() => ({ where: deleteWhere })),
-  },
-}));
+    execute: vi.fn(async () => []),
+    transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(db),
+  };
+  return { db };
+});
 
 vi.mock('../../pipeline/hooks.js', () => ({
   hooks: { emit: vi.fn().mockResolvedValue(undefined) },
@@ -241,7 +244,7 @@ describe('forge_comments tool', () => {
       principal: fakePrincipal,
       projectSlug: null,
     });
-    selectLimit.mockResolvedValueOnce([]); // no issue
+    selectLimit.mockResolvedValueOnce([]);
     await expect(tool.handler({ action: 'list', filters: { issue: ISSUE_ID } })).rejects.toThrow(
       /NOT_FOUND/,
     );

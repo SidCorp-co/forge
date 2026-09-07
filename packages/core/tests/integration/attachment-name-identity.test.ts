@@ -6,7 +6,6 @@
  * constructed and nothing about whether the collision is found.
  */
 
-import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -237,8 +236,11 @@ describe('attachment name identity — an issue holds one document per name', ()
       method: 'PUT',
       body: new Uint8Array(PNG),
     });
+    const putBody = (await put.json()) as Refusal;
     expect(put.status).toBe(400);
-    expect(((await put.json()) as Refusal).code).toBe('ATTACHMENT_NAME_TAKEN');
+    expect(putBody.code).toBe('ATTACHMENT_NAME_TAKEN');
+    expect(putBody.details?.existing?.name).toBe('race.png');
+    expect(putBody.details?.existing?.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(await countAttachments(issueId, 'race.png')).toBe(1);
   });
 });
@@ -250,6 +252,16 @@ describe('attachment name identity — other scopes, listing and recovery', () =
     const b = await newComment(issueId, owner.id);
 
     expect((await upload(`/api/comments/${a}/attachments`, token, 'out.png')).status).toBe(201);
+
+    const firstId = (await (
+      await upload(`/api/comments/${a}/attachments`, token, 'first.png')
+    ).json()) as { id: string };
+    const dupFirst = await upload(`/api/comments/${a}/attachments`, token, 'first.png');
+    const dupBody = (await dupFirst.json()) as Refusal;
+    expect(dupFirst.status).toBe(400);
+    expect(dupBody.code).toBe('ATTACHMENT_NAME_TAKEN');
+    expect(dupBody.details?.existing?.id).toBe(firstId.id);
+    expect(dupBody.details?.existing?.url).toBe(`/api/comments/attachments/${firstId.id}`);
 
     const dup = await upload(`/api/comments/${a}/attachments`, token, 'out.png');
     expect(dup.status).toBe(400);
@@ -347,9 +359,67 @@ describe('attachment name identity — other scopes, listing and recovery', () =
     expect(body.details?.existing?.id).toBe((oldest[0] as { id: string }).id);
   });
 
+  it('refuses all but one of FOUR CONCURRENT uploads of one name', async () => {
+    const { issueId, token } = await seed();
+
+    const results = await Promise.all(
+      [1, 2, 3, 4].map(() => upload(`/api/issues/${issueId}/attachments`, token, 'race4.png')),
+    );
+    const created = results.filter((r) => r.status === 201);
+    const refused = results.filter((r) => r.status === 400);
+
+    expect(created).toHaveLength(1);
+    expect(refused).toHaveLength(3);
+    expect(await countAttachments(issueId, 'race4.png')).toBe(1);
+
+    for (const r of refused) {
+      expect(((await r.json()) as Refusal).code).toBe('ATTACHMENT_NAME_TAKEN');
+    }
+  });
+
+  it('serialises concurrent uploads per name, so a DIFFERENT name is not blocked by one', async () => {
+    const { issueId, token } = await seed();
+
+    const results = await Promise.all([
+      upload(`/api/issues/${issueId}/attachments`, token, 'par-a.png'),
+      upload(`/api/issues/${issueId}/attachments`, token, 'par-b.png'),
+      upload(`/api/issues/${issueId}/attachments`, token, 'par-c.png'),
+    ]);
+
+    expect(results.map((r) => r.status)).toEqual([201, 201, 201]);
+  });
+
+  it('keeps two non-Latin names apart instead of collapsing both to underscores', async () => {
+    const { issueId, token } = await seed();
+
+    expect((await upload(`/api/issues/${issueId}/attachments`, token, '报告.md')).status).toBe(201);
+    const second = await upload(`/api/issues/${issueId}/attachments`, token, '设计.md');
+    expect(second.status).toBe(201);
+    expect(((await second.json()) as { name: string }).name).toBe('设计.md');
+
+    const third = await upload(`/api/issues/${issueId}/attachments`, token, 'báo-cáo.md');
+    expect(third.status).toBe(201);
+    const fourth = await upload(`/api/issues/${issueId}/attachments`, token, 'bảo-cão.md');
+    expect(fourth.status).toBe(201);
+  });
+
+  it('treats the NFD and NFC spellings of one name as one document', async () => {
+    const { issueId, token } = await seed();
+    const nfc = 'café.md'.normalize('NFC');
+    const nfd = 'café.md'.normalize('NFD');
+    expect(nfc).not.toBe(nfd);
+
+    const first = await upload(`/api/issues/${issueId}/attachments`, token, nfd);
+    expect(first.status).toBe(201);
+
+    const second = await upload(`/api/issues/${issueId}/attachments`, token, nfc);
+    expect(second.status).toBe(400);
+    expect(((await second.json()) as Refusal).code).toBe('ATTACHMENT_NAME_TAKEN');
+    expect(await countAttachments(issueId, nfc)).toBe(1);
+  });
+
   it('does not refuse a name the issue never had', async () => {
     const { issueId, token } = await seed();
-    expect(randomUUID()).toBeTruthy();
     expect((await upload(`/api/issues/${issueId}/attachments`, token, 'fresh.png')).status).toBe(
       201,
     );

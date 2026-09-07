@@ -97,6 +97,18 @@ const MODE_TABS = [
   { value: "quick", label: "Quick capture" },
 ];
 
+// cm:guard stage every file under a name no sibling holds — a clipboard screenshot is always `image.png`, and the server refuses the WHOLE batch when one member repeats a name, so letting two pastes share one name drops every file the user attached; rename rather than refuse, because two screenshots are two documents (ISS-963)
+function uniqueStagedName(name: string, used: Set<string>): string {
+if (!used.has(name)) return name;
+const dot = name.lastIndexOf(".");
+const base = dot > 0 ? name.slice(0, dot) : name;
+const ext = dot > 0 ? name.slice(dot) : "";
+for (let n = 2; ; n += 1) {
+  const candidate = `${base}-${n}${ext}`;
+  if (!used.has(candidate)) return candidate;
+}
+}
+
 export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
   const router = useRouter();
   const { toast } = useToast();
@@ -136,6 +148,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
     // `create` is stable from React Query; resetting only on `open` is intended.
   }, [open]);
 
+
   // Validate + stage picked/dropped/pasted files. Mirrors the V1 create page
   // (size/mime/count caps) so the server never rejects what we accepted.
   const acceptFiles = useCallback((picked: FileList | File[]) => {
@@ -161,7 +174,20 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
       if (accepted.length > room) {
         errs.push(`Max ${MAX_FILES} attachments per issue. Extras skipped.`);
       }
-      return [...prev, ...accepted.slice(0, Math.max(0, room))];
+      const staged = accepted.slice(0, Math.max(0, room));
+      const used = new Set(prev.map((f) => f.name));
+      const renamed: File[] = [];
+      for (const f of staged) {
+        const unique = uniqueStagedName(f.name, used);
+        used.add(unique);
+        if (unique === f.name) {
+          renamed.push(f);
+        } else {
+          errs.push(`Renamed ${f.name} to ${unique} — one issue holds one file per name.`);
+          renamed.push(new File([f], unique, { type: f.type }));
+        }
+      }
+      return [...prev, ...renamed];
     });
     setWarnings(errs);
   }, []);
@@ -183,10 +209,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
     [acceptFiles],
   );
 
-  // Clipboard paste of a copied/screenshotted image. Only file blobs (kind ===
-  // "file") are pulled in; pasted text falls through to the normal Textarea so
-  // we never double-insert. Clipboard images often have an empty name → supply
-  // a fallback so the chip + server validation have something to show.
+  // cm:guard pull in only `kind === "file"` blobs — pasted TEXT must fall through to the Textarea or it is inserted twice, once by this handler and once by the browser; the empty-name fallback here is cosmetic only, and `acceptFiles` is what keeps two pastes from sharing a name (ISS-963)
   const onPaste = useCallback(
     (e: ClipboardEvent) => {
       // Quick capture sends no attachments — never stage invisible files there.
@@ -259,7 +282,17 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
           ...(attachments.length ? { attachments } : {}),
         });
       }
-      toast({ title: "Issue created", description: created.displayId, tone: "success" });
+      // cm:guard a 201 whose `attachmentErrors` is non-empty is a PARTIAL success — core drops the whole batch when one member fails, so reporting only `Issue created` tells the user their files landed when none did (ISS-963)
+      const dropped = created.attachmentErrors ?? [];
+      if (dropped.length > 0) {
+        toast({
+          title: `Issue created, but ${dropped.length === 1 ? "1 file was" : `${dropped.length} files were`} not attached`,
+          description: `${dropped.map((e) => e.name).join(", ")} — ${dropped[0].message}. Open the issue and attach ${dropped.length === 1 ? "it" : "them"} again.`,
+          tone: "error",
+        });
+      } else {
+        toast({ title: "Issue created", description: created.displayId, tone: "success" });
+      }
       onClose();
       router.push(`/projects/${scope.slug}/issues/${created.id}`);
     } catch (err) {

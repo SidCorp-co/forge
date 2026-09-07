@@ -8,6 +8,7 @@ import {
   resolveAttachmentMime,
   safeName,
 } from '../lib/attachment-mime.js';
+import { lockAttachmentName, type NameCheckExecutor } from '../lib/attachment-name-lock.js';
 import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
 import { getStorage } from '../storage/index.js';
 import type { CommentAttachmentLite } from './tree.js';
@@ -82,8 +83,9 @@ function nameTakenError(existing: ExistingAttachmentRef, scope: string): Attachm
 export async function findCommentAttachmentByName(
   commentId: string,
   name: string,
+  executor: NameCheckExecutor = db,
 ): Promise<ExistingAttachmentRef | null> {
-  const [row] = await db
+  const [row] = await executor
     .select({ id: commentAttachments.id, name: commentAttachments.name })
     .from(commentAttachments)
     .where(and(eq(commentAttachments.commentId, commentId), eq(commentAttachments.name, name)))
@@ -125,32 +127,38 @@ export async function persistCommentAttachment(
   const name = safeName(input.name || 'file');
   const mime = validateCommentAttachment({ name, mime: input.mime, bytes });
 
-  // cm:guard decide the collision on the SANITISED name, never `input.name` — that is what the row stores and what a record cites, and `a b.md`/`a_b.md` both sanitise to `a_b.md`, so checking the input would admit the pairs that actually collide and refuse the pairs that do not (ISS-963)
-  const taken = await findCommentAttachmentByName(commentId, name);
-  if (taken) throw nameTakenError(taken, 'comment');
+  // cm:guard the check, the storage write and the insert are ONE transaction under a name lock — the check alone is decorative because `getStorage().put` sits inside the read-to-write window (ISS-963)
+  const inserted = await db.transaction(async (tx) => {
+    await lockAttachmentName(tx, 'comment', commentId, name);
 
-  const key = `comments/${commentId}/${Date.now()}-${name}`;
-  const { path: storedPath } = await getStorage().put(key, bytes, mime);
+    // cm:guard decide the collision on the SANITISED name, never `input.name` — that is what the row stores and what a record cites, and `a b.md`/`a_b.md` both sanitise to `a_b.md`, so checking the input would admit the pairs that actually collide and refuse the pairs that do not (ISS-963)
+    const taken = await findCommentAttachmentByName(commentId, name, tx);
+    if (taken) throw nameTakenError(taken, 'comment');
 
-  const [inserted] = await db
-    .insert(commentAttachments)
-    .values({
-      commentId,
-      uploaderId,
-      uploaderDeviceId,
-      name,
-      path: storedPath,
-      mime,
-      size: bytes.byteLength,
-    })
-    .returning({
-      id: commentAttachments.id,
-      commentId: commentAttachments.commentId,
-      name: commentAttachments.name,
-      mime: commentAttachments.mime,
-      size: commentAttachments.size,
-      createdAt: commentAttachments.createdAt,
-    });
+    const key = `comments/${commentId}/${Date.now()}-${name}`;
+    const { path: storedPath } = await getStorage().put(key, bytes, mime);
+
+    const [row] = await tx
+      .insert(commentAttachments)
+      .values({
+        commentId,
+        uploaderId,
+        uploaderDeviceId,
+        name,
+        path: storedPath,
+        mime,
+        size: bytes.byteLength,
+      })
+      .returning({
+        id: commentAttachments.id,
+        commentId: commentAttachments.commentId,
+        name: commentAttachments.name,
+        mime: commentAttachments.mime,
+        size: commentAttachments.size,
+        createdAt: commentAttachments.createdAt,
+      });
+    return row;
+  });
   if (!inserted) throw new Error('comment_attachments: insert returned no row');
 
   return {
