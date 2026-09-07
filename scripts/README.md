@@ -39,7 +39,7 @@ passed, because the external record of what shipped belonged to none of them.
 | relations | `archmap check` — `archmap` | which module may depend on which | how a file is written |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
-| flows | `check-flow-coverage` — `core-integration` | whether every declared `cm:flow` step is executed end-to-end | which flows exist — codemap declares them |
+| flows | `check-flow-coverage` — `core-integration` | whether the integration suite ENTERS the function every declared `cm:flow` step sits on | whether the flow ran through it — a function-hit cannot tell; which flows exist, codemap declares |
 | language | `check-source-language` — `lang-check` | English-only source policy | everything else |
 | record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, and whether a published entry can leave without a declared reason | whether an entry is TRUE, or whether a change deserved one — that is review's |
 
@@ -229,6 +229,13 @@ does not meet it`. Both accuse the repo; both were false; `archmap` and `tsc` we
 Nine checks were affected, not the two the report named. Unlike contention this survives a serial
 re-run identically, so it wears the exact signature a reader is told to trust as a real defect
 (ISS-938).
+
+The run ends on a tally — `19 passed · 2 did not run · 1 red` — because the marks alone left the
+reader to total twenty-two rows by eye, and the line that actually gets read is the last one. `skip`
+and `n/a` are counted as **did not run**, never folded into `passed`: that fold is the exact merge
+the five marks exist to prevent (ISS-955). The marks and the tally live in `lib/verify-report.mjs`
+so both have a runner — `verify.mjs` executes its whole run at import and nothing inside it can be
+unit-tested.
 
 ### Modes
 
@@ -557,7 +564,21 @@ and executed by nothing is a step the next editor believes is defended.
 It is measured, never declared — a `// covers dispatch/tick` comment in a test file would be exactly
 the claim-instead-of-measurement that `conformance-status.mjs` exists to catch.
 
-**Authoritative vs not.** A step reached only by unit tests is printed as `UNIT` and does **not**
+**What the evidence is, exactly.** `f` — istanbul's per-function invocation count. A step counts
+as reached when the authoritative suite *entered* the function the annotation sits on, whatever
+that call then did. It is NOT proof the flow ran through the step, and the report says so in those
+words rather than calling it end-to-end (ISS-955: the summary used to read `N settled end-to-end`
+and each row `e2e`, which readers took for "the flow ran"). Marks are `fn:e2e` / `fn:unit` / `--`.
+
+The stronger reading — whether the annotated *statement* itself executed (`s`) — is measured on
+every run and printed as an advisory count, because moving the gate onto it re-opens every settled
+step at once and that is a decision about the gate. **Measured 2026-09-07 on a green 129-file
+integration suite: 0 of 7 reached steps fail the statement rule.** So the level is not what was
+wrong; `release/deploy`, the step that motivated ISS-955, has `fn=3 stmt=3` — the statement just
+below its annotation is the early return, which runs. Statement-level evidence would have caught
+nothing here.
+
+**Authoritative vs not.** A step reached only by unit tests is printed as `fn:unit` and does **not**
 count. With 974 `vi.mock` calls in `packages/core`, a unit test can execute a step's function with
 every neighbour stubbed out — that proves the function runs, not that the flow connects. Only
 sources marked `authoritative` in `.forge/conformance.json` (today: the integration suite) settle a

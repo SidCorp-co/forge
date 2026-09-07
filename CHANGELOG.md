@@ -1340,6 +1340,37 @@
 
 ### Fixed
 
+- **`check-flow-coverage` no longer calls a function-hit "settled end-to-end".** The summary read
+  `N step(s) across M flow(s), K settled end-to-end` and marked each row `e2e`, while the whole of
+  the verdict was `entry.f[id] > 0` — istanbul's per-function *invocation count*. Any call that
+  entered the annotated function settled the step, whatever it then did: `release/deploy` was
+  settled by three cases, one of which is `tryDispatchCoolifyRelease`'s early return for a project
+  with no Coolify binding, which touches no deploy and enqueues nothing. Readers took "settled
+  end-to-end" for "the flow ran". The summary now names the evidence it read, in those words, and
+  rows are marked `fn:e2e` / `fn:unit` / `--`.
+
+  The gating level is **unchanged** and `.forge/flow-coverage-baseline.json` is untouched — which
+  of the four options in ISS-955 is right was explicitly handed over, not taken here. What this
+  adds is the figure that decision was missing: the annotated *statement*'s own execution count
+  (`s`) is measured on every run and printed as an advisory. Measured 2026-09-07 against a green
+  129-file integration suite (980 tests, exit 0): **0 of 7 reached steps** fail the statement rule.
+  `release/deploy` reads `fn=3 stmt=3`, because the statement just below its annotation is the early
+  return itself. Moving to statement-level evidence would have re-opened nothing and caught nothing;
+  the words were the entire defect. Proven equivalent to `origin/main` on one report both ways —
+  exit 0 with the same seven rows, and exit 1 naming the same single `release/deploy` when that
+  function's counters are zeroed. `.forge/conformance.json`'s `owns` line for the behaviour axis
+  claimed the same thing the summary did — *"whether every declared flow step is executed
+  end-to-end"* — and is rewritten with it; the axis `level` and both baselines are untouched
+  (ISS-955).
+
+- **`pnpm verify` ends on a tally, so nobody totals twenty-two rows by eye.** ISS-938 split `skip`
+  and `n/a` out of `ok`, but the run still finished without saying how many checks that left
+  passing. It now prints `N passed · M did not run · K red`, with `skip` and `n/a` counted as *did
+  not run* and never folded into `passed` — the fold the five marks exist to prevent. The marks
+  moved to `scripts/lib/verify-report.mjs` with the tally, because `verify.mjs` executes its whole
+  run at import and nothing inside it could be unit-tested; both are now pinned by
+  `lib/verify-report.test.mjs` (ISS-955).
+
 - **A second `mark_merged` no longer answers as though it had stamped anything.** The first stamp
   wins by design (ISS-286), but the caller was told `merged` either way, so a later mark — a
   corrected note, a different target, a more accurate time — changed nothing while answering
