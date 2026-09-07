@@ -108,3 +108,20 @@ export const sessionContextSchema = z
       ctx.addIssue({ code: 'custom', path: [violation.path], message: violation.message });
     }
   });
+
+/**
+ * ISS-959 — the value a client read off the row, sent back with its write so
+ * the write can be refused when the field moved underneath it.
+ *
+ * `sessionContext` is where the driver's lease lives, and until this existed
+ * the lease was advisory in the only sense that matters: two runs that both
+ * read no holder both claimed, and the later write erased the earlier with
+ * neither able to tell. The rule the plugin carried client-side is a
+ * compare-and-set, and a compare-and-set nothing enforces is decorative.
+ */
+// cm:why the ISS-820 verified-claim walk is deliberately NOT applied here: `expect` is a value the client read BACK off the row rather than a claim it is writing, so re-judging it would make the field unwritable by the very client that read it — the walk already ran on the write that stored the value.
+export const sessionContextExpectSchema = z
+  .object({ sessionContext: z.record(z.string(), z.unknown()).nullable() })
+  .strict();
+
+export type SessionContextExpect = z.infer<typeof sessionContextExpectSchema>;

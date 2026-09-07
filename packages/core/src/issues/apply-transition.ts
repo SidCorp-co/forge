@@ -19,6 +19,8 @@ import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agen
 import { resolveAutonomousParkTarget } from './autonomous-park.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { recordDropUnblock } from './drop-unblock.js';
+import { resolveDeclaredEntryCriteria } from './entry-criteria.js';
+import type { EntryCriterionKey } from './entry-criteria-keys.js';
 import { markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { resolveAgentCloseTarget } from './release-gate-hold.js';
@@ -64,6 +66,7 @@ export type TransitionErrorCode =
   | 'STALE_TRANSITION'
   | 'NO_WORK_EVIDENCE'
   | 'RELEASE_RECORD_REQUIRED'
+  | 'ENTRY_CRITERIA_UNMET'
   | 'WAITING_KIND_NOT_APPLICABLE';
 
 /**
@@ -370,6 +373,14 @@ export async function transitionIssueStatus(
     throw new TransitionError('RELEASE_RECORD_REQUIRED', unrecorded.detail, unrecorded.details);
   }
 
+  // cm:guard read OUTSIDE the transaction and passed in, never read from inside `checkTransitionEvidence` — ISS-863 removed a `projects` SELECT from inside every status transition's transaction and this would put one back. It sits beside the two project reads this path already does (`resolveAutonomousParkTarget`, `resolveAgentCloseTarget`).
+  // cm:guard keyed on `requestedStatus`, matching the status `checkTransitionEvidence` is handed below — a project declares criteria against the status an actor ASKS for, and reading `toStatus` here would check the park rewrite's target instead of the ask
+  // cm:guard the `skip` arm reads NOTHING, and that is a cost rule, not an optimisation: `checkTransitionEvidence` exempts `skip:true` entirely, so a read there is a `projects` SELECT whose answer is discarded — on the orchestrator's chain, which is the highest-volume writer of statuses in the product
+  const declaredCriteria =
+    options.skip === true
+      ? []
+      : await resolveDeclaredEntryCriteria(issue.projectId, requestedStatus);
+
   const txResult = await executeTransitionWrite({
     issue,
     fromStatus,
@@ -378,6 +389,7 @@ export async function transitionIssueStatus(
     actor,
     options,
     reopening,
+    declaredCriteria,
   });
   const updated = txResult.row;
 
@@ -437,9 +449,6 @@ export async function transitionIssueStatus(
 
   await publishPipelineHealthChanged(issue.projectId, [updated.id]);
 
-  // ISS-101 — keep run timeline in sync with issue status, then close it on
-  // RUN_CLOSING_STATUSES entries. No-ops when no open run exists (e.g. an
-  // issue that transitions before any job is queued).
   await setCurrentStepForOpenIssueRun(issue.id, toStatus);
   // cm:guard a held close is terminal FOR DISPATCH even though the status is not: `merged_at` is stamped, so the L2 blocks gate is satisfied and the dependents are ready now — leaving this false makes them wait for the 60s reconciler backstop instead of the fan-out
   const terminal = TERMINAL_FOR_DISPATCH.has(toStatus) || held;
@@ -466,6 +475,7 @@ type TransitionWriteInput = {
   actor: TransitionActor;
   options: ApplyStatusTransitionOptions;
   reopening: boolean;
+  declaredCriteria: readonly EntryCriterionKey[];
 };
 
 type TransitionWriteResult = {
@@ -476,6 +486,7 @@ type TransitionWriteResult = {
 
 async function executeTransitionWrite(input: TransitionWriteInput): Promise<TransitionWriteResult> {
   const { issue, fromStatus, requestedStatus, toStatus, actor, options, reopening } = input;
+  const { declaredCriteria } = input;
   // cm:guard the never-ran check is re-asserted IN the UPDATE's WHERE, not just read above it — a freshly-`open` issue acquires its run within seconds, so a count read a moment earlier can hand `draft` to an issue that is already working, and the status would then claim nothing had started
   const draftGate =
     toStatus === 'draft' && !options.skip
@@ -504,6 +515,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         toStatus: requestedStatus,
         agency: actorAgency(actor),
         skip: options.skip === true,
+        declaredCriteria,
         executor: tx,
       });
       if (violation) throw new TransitionError(violation.code, violation.detail, violation.details);

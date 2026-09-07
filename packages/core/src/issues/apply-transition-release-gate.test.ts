@@ -163,13 +163,15 @@ describe('an agent closing on a project that declared a release gate', () => {
   });
 
   // cm:guard `dropped` means "this was not work" — holding it for a release it will never be part of parks it forever, and it is the one close that deliberately does not stamp
+  // cm:guard the gate's own signal is `listBindings`, not the project read: since ISS-959 every actor-chosen transition reads `pipelineConfig` once for declared entry criteria, so "the gate did not run" is one project read and zero binding reads — asserting zero project reads here would go red on a change that never touched this gate
   it('lets `dropped` through the gate untouched', async () => {
     queueUpdate('dropped');
 
     const result = await transitionIssueStatus(AT_WORK, 'dropped', AGENT);
 
     expect(result.status).toBe('dropped');
-    expect(dbSelect).not.toHaveBeenCalled();
+    expect(listBindings).not.toHaveBeenCalled();
+    expect(dbSelect).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -180,7 +182,8 @@ describe('who may still write `closed`', () => {
     const result = await transitionIssueStatus(AT_WORK, 'closed', HUMAN);
 
     expect(result.status).toBe('closed');
-    expect(dbSelect).not.toHaveBeenCalled();
+    expect(listBindings).not.toHaveBeenCalled();
+    expect(dbSelect).toHaveBeenCalledTimes(1);
   });
 
   // cm:guard this is the flag `release_batch finish` passes; if it ever stopped working the release would rewrite its own close back to the gate and no issue would ever close again

@@ -79,8 +79,6 @@ describe('ISS-786 state-integrity — work-evidence guard on a real DB', () => {
       ),
     ).rejects.toMatchObject({ code: 'NO_WORK_EVIDENCE' });
 
-    // Recording a branch (the direct-ship marker `work-evidence.ts` reads) is
-    // enough real evidence to unblock the same transition.
     await harness.db.execute(sql`
       UPDATE issues SET session_context = ${JSON.stringify({ branch: 'ISS-786-fix' })}::jsonb
       WHERE id = ${issue.id}
@@ -115,6 +113,7 @@ describe('ISS-786 state-integrity — work-evidence guard on a real DB', () => {
         toStatus: 'developed',
         agency: 'agent',
         skip: false,
+        declaredCriteria: [],
         executor: broken,
       }),
     ).resolves.toBeNull();
