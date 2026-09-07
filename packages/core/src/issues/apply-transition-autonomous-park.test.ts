@@ -294,3 +294,65 @@ describe('waiting on an autonomous project', () => {
     expect(result.status).toBe('on_hold');
   });
 });
+
+// cm:guard these key on the REQUESTED status, never the stored one: the CLEAR arm in apply-transition.ts nulls the kind for every target but `waiting`, and `HEADINGS.needs_info` ignores its `kind` argument, so a kind sent with any other target reached no reader at all. Measured on 16 `needs_info` parks, 2026-09-07 (ISS-965).
+describe('a waitingKind the write cannot keep', () => {
+  it('refuses a kind sent with a `needs_info` request instead of nulling it in silence', async () => {
+    projectRow(null);
+
+    await expect(
+      transitionIssueStatus(
+        { id: ISSUE_ID, projectId: PROJECT_ID, status: 'tested', reopenCount: 0 },
+        'needs_info',
+        { type: 'device', id: DEVICE_ID, ownerId: ACTOR_ID },
+        { transitionReason: 'the deploy fixture is missing', waitingKind: 'needs_decision' },
+      ),
+    ).rejects.toThrow('WAITING_KIND_NOT_APPLICABLE');
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the refusal must sit OUTSIDE the `requiresAuthoredReason` block — `in_progress` demands no reason, so a check nested in that block would let the commonest silent drop straight through
+  it('refuses a kind sent with a target that demands no reason at all', async () => {
+    projectRow(null);
+
+    await expect(
+      transitionIssueStatus(
+        { id: ISSUE_ID, projectId: PROJECT_ID, status: 'tested', reopenCount: 0 },
+        'in_progress',
+        { type: 'device', id: DEVICE_ID, ownerId: ACTOR_ID },
+        { waitingKind: 'needs_decision' },
+      ),
+    ).rejects.toThrow('WAITING_KIND_NOT_APPLICABLE');
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('leaves a `needs_info` park carrying no kind untouched', async () => {
+    projectRow(null);
+    queueUpdate('needs_info');
+
+    const result = await transitionIssueStatus(
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'tested', reopenCount: 0 },
+      'needs_info',
+      { type: 'device', id: DEVICE_ID, ownerId: ACTOR_ID },
+      { transitionReason: 'the deploy fixture is missing' },
+    );
+
+    expect(result.status).toBe('needs_info');
+    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({ waitingKind: null });
+  });
+
+  it('leaves a `waiting` park carrying its kind untouched', async () => {
+    projectRow(null);
+    queueUpdate('waiting');
+
+    const result = await transitionIssueStatus(
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'tested', reopenCount: 0 },
+      'waiting',
+      { type: 'device', id: DEVICE_ID, ownerId: ACTOR_ID },
+      WAITING_OPTS,
+    );
+
+    expect(result.status).toBe('waiting');
+    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({ waitingKind: 'needs_resource' });
+  });
+});

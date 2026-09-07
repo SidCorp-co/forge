@@ -1,14 +1,11 @@
 import { eq, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import {
-  type Device,
-  type IssueDeviceTokenInput,
-  issueOrRotateDeviceTokenByMachine,
-} from '../auth/deviceToken.js';
 import { db } from '../db/client.js';
-import { pairingCodes } from '../db/schema.js';
+import { type Device, pairingCodes } from '../db/schema.js';
+import { issueDeviceCredential } from './credential.js';
+import { type RegisterDeviceInput, registerDevice } from './register.js';
 
-export interface PairInput extends Omit<IssueDeviceTokenInput, 'ownerId'> {
+export interface PairInput extends Omit<RegisterDeviceInput, 'ownerId'> {
   code: string;
 }
 
@@ -30,8 +27,8 @@ const badRequest = (code: string, message: string) =>
  *  - CODE_EXPIRED — `expiresAt < now()`
  *  - On success, issues a device token bound to the code's owner.
  *
- * Pairing is device-scoped: redeeming a code mints a token, never binds the
- * device to a project. Project binding is a separate web-UI action driven by
+ * Pairing is device-scoped: redeeming a code registers the box and issues it a
+ * token, never binds the device to a project. Project binding is a separate web-UI action driven by
  * `POST /projects/:id/runners` (ISS-172 Slice A).
  *
  * `projectId` on the result echoes back the code's hint so the desktop client
@@ -58,7 +55,8 @@ export async function redeemPairingCode(input: PairInput): Promise<PairResult> {
       throw badRequest('CODE_EXPIRED', 'pairing code expired');
     }
 
-    const { device, plaintext } = await issueOrRotateDeviceTokenByMachine({
+    // cm:guard the code is marked used BEFORE the credential is issued, and the order is load-bearing: both writes run on the ambient `db` rather than this transaction (`mintPat` and `registerDevice` do not take one), so a failure between them must leave a spent code and no token — recoverable by asking for a new code — rather than a live code and a minted credential, which is a pairing secret that works twice.
+    const device = await registerDevice({
       ownerId: row.user_id,
       name: input.name,
       platform: input.platform,
@@ -71,6 +69,11 @@ export async function redeemPairingCode(input: PairInput): Promise<PairResult> {
       .update(pairingCodes)
       .set({ usedAt: new Date() })
       .where(eq(pairingCodes.code, input.code));
+
+    const plaintext = await issueDeviceCredential({
+      deviceId: device.id,
+      holderUserId: row.user_id,
+    });
 
     return { device, plaintext, projectId: row.project_id };
   });

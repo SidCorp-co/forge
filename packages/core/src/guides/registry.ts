@@ -16,6 +16,8 @@
 // Search already supplies those) and do not restate the status ladder /
 // enums (`prompt/facts/registry.ts` owns those).
 
+// cm:guard `issues/dependency-effects.ts` is a leaf — its only schema import is `import type` and erases — so it does not breach the no-DB rule below. Keep it that way, or this module and both its read surfaces start needing a live DB.
+import { WORK_EVIDENCE_WAIVER_NOTE } from '../issues/dependency-effects.js';
 import { CONFORMANCE_GUIDE } from './conformance-guide.js';
 import type { ForgeGuide } from './types.js';
 
@@ -59,7 +61,8 @@ The same shape costs tokens rather than a stall: a stage lands in a checkout who
 ### Relation kinds
 Edges are directional \`fromIssue --kind--> toIssue\`:
 - \`blocks\` — **the only kind that affects dispatch.** A → blocks → B means B cannot dispatch until A's code has reached the base branch — normally, until A has \`merged_at\` set. A reopened issue stays a blocker even if its prior merge stamp remains. A closed issue without \`merged_at\` unblocks B only when the project's base branch cannot be stamped structurally. It is **not** gated on A reaching \`released\`: a blocker parked at a manual release gate already unblocks B the instant its \`merged_at\` is stamped.
-- \`relates\`, \`duplicates\`, \`parent\`, \`decomposes\` — grouping labels, no dispatch effect. \`decomposes\` reads epic → child and is useful for showing structure; it holds nothing back, so ordering between the two is still a \`blocks\` edge.
+- \`relates\`, \`duplicates\`, \`parent\` — grouping labels, no dispatch effect.
+- \`decomposes\` — epic → child. ${WORK_EVIDENCE_WAIVER_NOTE} Ordering between the two is still a \`blocks\` edge.
 
 ### Setting a blocks edge — avoid the create-then-block race
 - Blocker known **at create time** → pass it in the create call itself (\`data.relations: [{ kind: 'blocks', dependsOnId }]\`), committed before the issue dispatches. This is atomic.
@@ -322,7 +325,7 @@ The kind is REQUIRED and core never guesses it. A plan awaiting approval and a t
 **A step that cannot RUN is not \`waiting\`.** No runner, provider quota, project budget, retries spent — the JOB is \`held\` and the issue stays at its stage. \`pipelineHealth.waitingOn.reason = 'job_held'\` names the condition, and nothing is being asked of you: a capacity hold resumes itself when capacity returns.
 
 ### Stopping the pipeline costs you a written reason
-\`reopen\`, \`waiting\` and \`needs_info\` are the three statuses that stop the pipeline, and all three are **rejected without a \`reason\`** (422). Pass it on the \`forge_issues\` call (\`note\` also counts); it is posted as a comment before the status flips, so it cannot go missing afterwards. \`waiting\` additionally requires \`waitingKind\`.
+\`reopen\`, \`waiting\` and \`needs_info\` are the three statuses that stop the pipeline, and all three are **rejected without a \`reason\`** (422). Pass it on the \`forge_issues\` call (\`note\` also counts); it is posted as a comment before the status flips, so it cannot go missing afterwards. \`waiting\` additionally requires \`waitingKind\`, and \`waitingKind\` is REFUSED on every other target (422 \`WAITING_KIND_NOT_APPLICABLE\`) — no other status stores it, so put the ask in \`reason\`.
 
 Entering a park costs a sentence; leaving one costs nothing. That asymmetry is deliberate and it is the opposite of the old rule, which let anyone stop the pipeline silently and then argued about who was allowed to restart it.
 

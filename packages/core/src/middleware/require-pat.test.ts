@@ -2,7 +2,7 @@
  * `/mcp` credential middleware unit tests (ISS-150, narrowed by ISS-931).
  *
  * One species authenticates: a PAT. A device token is refused BY NAME, the
- * refusal never reaches `verifyDeviceToken`, and the principal carries the
+ * refusal names the credential class, and the principal carries the
  * job/session the token names. Plus the 401 envelopes and the rate limit.
  */
 import { Hono } from 'hono';
@@ -18,10 +18,6 @@ vi.mock('../config/env.js', () => ({
   },
 }));
 
-vi.mock('../auth/deviceToken.js', () => ({
-  verifyDeviceToken: vi.fn(),
-}));
-
 vi.mock('../auth/pat.js', () => ({
   verifyPat: vi.fn(),
   touchPatUsage: vi.fn(),
@@ -33,27 +29,10 @@ vi.mock('../auth/mcp-audit.js', () => ({
 
 const { errorHandler } = await import('./error.js');
 const { requirePat, __resetPatBuckets } = await import('./require-pat.js');
-const { verifyDeviceToken } = await import('../auth/deviceToken.js');
 const { verifyPat } = await import('../auth/pat.js');
 const { writeMcpAudit } = await import('../auth/mcp-audit.js');
 
 const PAT_TOKEN = `forge_pat_dev_${'a'.repeat(64)}`;
-
-const testDevice = {
-  id: 'dev-1',
-  ownerId: 'user-1',
-  name: 'macbook',
-  platform: 'macos' as const,
-  agentVersion: null,
-  tokenHash: 'hash',
-  tokenPrefix: 'abcd1234',
-  disabledAt: null,
-  status: 'online' as const,
-  lastSeenAt: null,
-  pairedAt: new Date(0),
-  capabilities: null,
-  createdAt: new Date('2026-01-01T00:00:00Z'),
-};
 
 const testPatRow = {
   id: '00000000-0000-4000-8000-0000000000aa',
@@ -81,7 +60,6 @@ function makeApp() {
 }
 
 beforeEach(() => {
-  vi.mocked(verifyDeviceToken).mockReset();
   vi.mocked(verifyPat).mockReset();
   vi.mocked(writeMcpAudit).mockReset();
   __resetPatBuckets();
@@ -89,7 +67,7 @@ beforeEach(() => {
 
 describe('requirePat middleware (ISS-150, ISS-931)', () => {
   it('routes a forge_pat_* token to the PAT verifier and attaches a PAT principal', async () => {
-    vi.mocked(verifyPat).mockResolvedValue({ row: testPatRow } as never);
+    vi.mocked(verifyPat).mockResolvedValue({ row: testPatRow, ownerKind: 'human' } as never);
     const app = makeApp();
     const res = await app.request('/whoami', {
       headers: { authorization: `Bearer ${PAT_TOKEN}` },
@@ -100,19 +78,16 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
     expect(body.userId).toBe(testPatRow.userId);
     expect(body.tokenId).toBe(testPatRow.id);
     expect(vi.mocked(verifyPat)).toHaveBeenCalledWith(PAT_TOKEN);
-    expect(vi.mocked(verifyDeviceToken)).not.toHaveBeenCalled();
     expect(res.headers.get('WWW-Authenticate')).toBeNull();
   });
 
-  // cm:guard THE point of ISS-931, and the assertion that keeps it: a device token must be refused WITHOUT `verifyDeviceToken` being consulted. A `toBe(401)` alone would stay green against a middleware that verified the device and then rejected it, which is a second live credential path wearing a 401.
-  it('refuses a device token by name and never reaches the device verifier', async () => {
-    vi.mocked(verifyDeviceToken).mockResolvedValue(testDevice as never);
+  // cm:guard ISS-931 asserted this refusal happened WITHOUT `verifyDeviceToken` being consulted, because a bare `toBe(401)` would stay green against a middleware that verified a device and then rejected it. ISS-932 deleted that verifier from the process, so the surviving half is that `verifyPat` is not consulted either and the message still names the class — a pre-ISS-932 box reads this line and nothing else.
+  it('refuses the opaque token a pre-ISS-932 box holds, by name', async () => {
     const app = makeApp();
     const res = await app.request('/whoami', {
       headers: { authorization: 'Bearer legacy-device-token-string' },
     });
     expect(res.status).toBe(401);
-    expect(vi.mocked(verifyDeviceToken)).not.toHaveBeenCalled();
     expect(vi.mocked(verifyPat)).not.toHaveBeenCalled();
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('UNAUTHENTICATED');
@@ -128,6 +103,7 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
   it('carries the job a `job:` token names onto the principal', async () => {
     const jobId = '77777777-7777-4777-8777-777777777777';
     vi.mocked(verifyPat).mockResolvedValue({
+      ownerKind: 'human',
       row: { ...testPatRow, name: `job:${jobId}` },
     } as never);
     const app = makeApp();
@@ -146,6 +122,7 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
   it('carries the session a `session:` token names, and null for a person', async () => {
     const sessionId = '88888888-8888-4888-8888-888888888888';
     vi.mocked(verifyPat).mockResolvedValue({
+      ownerKind: 'human',
       row: { ...testPatRow, name: `session:${sessionId}` },
     } as never);
     let res = await makeApp().request('/whoami', {
@@ -157,7 +134,10 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
     });
 
     __resetPatBuckets();
-    vi.mocked(verifyPat).mockResolvedValue({ row: { ...testPatRow, name: 'my laptop' } } as never);
+    vi.mocked(verifyPat).mockResolvedValue({
+      ownerKind: 'human',
+      row: { ...testPatRow, name: 'my laptop' },
+    } as never);
     res = await makeApp().request('/whoami', {
       headers: { authorization: `Bearer ${PAT_TOKEN}` },
     });
@@ -206,7 +186,6 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
       headers: { authorization: `Bearer ${PAT_TOKEN}` },
     });
     expect(res.status).toBe(401);
-    expect(vi.mocked(verifyDeviceToken)).not.toHaveBeenCalled();
     // cm:why token present but invalid: `error="invalid_token"` is what makes an MCP client surface the failure instead of falling back to OAuth DCR
     expect(res.headers.get('WWW-Authenticate')).toBe(
       'Bearer realm="forge-mcp", error="invalid_token"',
@@ -219,7 +198,6 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
       headers: { authorization: 'Bearer not-a-pat-or-device' },
     });
     expect(res.status).toBe(401);
-    expect(vi.mocked(verifyDeviceToken)).not.toHaveBeenCalled();
     expect(res.headers.get('WWW-Authenticate')).toBe(
       'Bearer realm="forge-mcp", error="invalid_token"',
     );
@@ -227,6 +205,7 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
 
   it('enforces per-PAT rate limit and returns 429 with Retry-After', async () => {
     vi.mocked(verifyPat).mockResolvedValue({
+      ownerKind: 'human',
       row: { ...testPatRow, rateLimitMax: 2 },
     } as never);
     const app = makeApp();
@@ -240,6 +219,7 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
 
   it('audits the first rejection of a window as rate_limited, once per window', async () => {
     vi.mocked(verifyPat).mockResolvedValue({
+      ownerKind: 'human',
       row: { ...testPatRow, rateLimitMax: 1 },
     } as never);
     const app = makeApp();
@@ -264,6 +244,7 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
 
   it('keeps rejecting for the whole window and never revokes the token', async () => {
     vi.mocked(verifyPat).mockResolvedValue({
+      ownerKind: 'human',
       row: { ...testPatRow, rateLimitMax: 1 },
     } as never);
     const app = makeApp();

@@ -35,6 +35,7 @@ const humanPat = (tokenId: string) =>
     scopes: ['read', 'write'],
     projectIds: null,
     boundProjectId: null,
+    deviceId: null,
     machine: null,
   }) as const;
 

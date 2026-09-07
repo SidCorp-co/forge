@@ -92,6 +92,7 @@ function makePatCtx(projectIds: string[] | null) {
       scopes: ['read', 'write'],
       projectIds,
       boundProjectId: null,
+      deviceId: null,
       machine: null,
     },
     projectSlug: null,

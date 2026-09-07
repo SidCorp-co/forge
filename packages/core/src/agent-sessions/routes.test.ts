@@ -1,6 +1,9 @@
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// cm:guard PAT-SHAPED, because a box now presents an ordinary `forge_pat_*` carrying `device_id` (ISS-932). An opaque string here never reaches the device branch at all — `requireUserOrDevice` routes on `isPatLike` — so the mock would go unconsulted and the suite would prove nothing about the device path.
+const DEVICE_PAT = `forge_pat_dev_${'a'.repeat(64)}`;
+
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
 vi.mock('../config/env.js', () => ({
@@ -65,13 +68,10 @@ vi.mock('../ws/server.js', () => ({
   roomManager: { publish: publishSpy },
 }));
 
-// A CLI runner authenticates the chat write-back / baseline-read with a device
-// token. Stub verification so a non-JWT bearer resolves to a device principal
-// (ISS-462 GET /:id device-scoped read). Defaults to null (rejected); tests opt
-// in via verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID }).
-const verifyDeviceTokenMock = vi.fn(async (_token: unknown) => null as { id: string } | null);
-vi.mock('../auth/deviceToken.js', () => ({
-  verifyDeviceToken: (token: unknown) => verifyDeviceTokenMock(token),
+// cm:guard the default is null — REJECTED — and a test that wants the device path must opt in per call. Defaulted the other way, every suite in this file would authenticate as a box and the device-scoped reads (ISS-462) would prove nothing about who may see a session.
+const verifyDeviceCredentialMock = vi.fn(async (_token: unknown) => null as { id: string } | null);
+vi.mock('../auth/device-credential.js', () => ({
+  verifyDeviceCredential: (token: unknown) => verifyDeviceCredentialMock(token),
 }));
 
 // ISS-321 — POST /start resolves a Claude-capable device via device-pool.
@@ -158,8 +158,8 @@ beforeEach(() => {
   projectAccessMock.mockReset();
   visibleIdsMock.mockReset();
   visibleIdsMock.mockResolvedValue([]);
-  verifyDeviceTokenMock.mockReset();
-  verifyDeviceTokenMock.mockResolvedValue(null);
+  verifyDeviceCredentialMock.mockReset();
+  verifyDeviceCredentialMock.mockResolvedValue(null);
   whereResults.length = 0;
   previewExecuteResults.length = 0;
   deliverEscalationReplyOnceMock.mockClear();
@@ -564,7 +564,7 @@ describe('PATCH /api/agent-sessions/:id — ISS-733 fix: unexpanded skill detect
 describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the runner row', () => {
   // cm:why these stamp only from a DEVICE-principal PATCH — a member PATCH with a crafted `messages` array must never mis-stamp a healthy runner (round-4 review blocker 1)
   it("stamps the deviceId's runner row when a device-authored failure classifies as a usage limit", async () => {
-    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
+    verifyDeviceCredentialMock.mockResolvedValueOnce({ id: DEVICE_ID });
     selectLimit.mockResolvedValueOnce([
       {
         id: SESSION_ID,
@@ -583,7 +583,7 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
 
     const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
       method: 'PATCH',
-      headers: { 'content-type': 'application/json', authorization: 'Bearer device-token-xyz' },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${DEVICE_PAT}` },
       body: JSON.stringify({
         status: 'failed',
         messages: [
@@ -604,7 +604,7 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
   });
 
   it('does not stamp anything for a device-authored plain failure that is not a classified usage limit', async () => {
-    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
+    verifyDeviceCredentialMock.mockResolvedValueOnce({ id: DEVICE_ID });
     selectLimit.mockResolvedValueOnce([
       {
         id: SESSION_ID,
@@ -622,7 +622,7 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
 
     const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
       method: 'PATCH',
-      headers: { 'content-type': 'application/json', authorization: 'Bearer device-token-xyz' },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${DEVICE_PAT}` },
       body: JSON.stringify({
         status: 'failed',
         messages: [{ role: 'assistant', content: 'some unrelated tool error' }],
@@ -634,7 +634,7 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
   });
 
   it('stamps with a non-null until (DEFAULT_LIMIT_COOLDOWN) when reset text is unparseable', async () => {
-    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
+    verifyDeviceCredentialMock.mockResolvedValueOnce({ id: DEVICE_ID });
     selectLimit.mockResolvedValueOnce([
       {
         id: SESSION_ID,
@@ -653,7 +653,7 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
 
     const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
       method: 'PATCH',
-      headers: { 'content-type': 'application/json', authorization: 'Bearer device-token-xyz' },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${DEVICE_PAT}` },
       body: JSON.stringify({
         status: 'failed',
         messages: [{ role: 'assistant', content: "[USAGE_LIMIT] you've hit your limit" }],
@@ -671,7 +671,7 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
   });
 
   it('does not stamp when only the USER message mentions rate limits/429 (healthy runner)', async () => {
-    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
+    verifyDeviceCredentialMock.mockResolvedValueOnce({ id: DEVICE_ID });
     selectLimit.mockResolvedValueOnce([
       {
         id: SESSION_ID,
@@ -689,7 +689,7 @@ describe('PATCH /api/agent-sessions/:id — ISS-780: chat usage-limit stamps the
 
     const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
       method: 'PATCH',
-      headers: { 'content-type': 'application/json', authorization: 'Bearer device-token-xyz' },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${DEVICE_PAT}` },
       body: JSON.stringify({
         status: 'failed',
         messages: [{ role: 'user', content: 'why do we keep hitting 429 / rate limits lately?' }],
@@ -1136,7 +1136,7 @@ describe('GET /api/agent-sessions/:id (chat baseline read — ISS-462)', () => {
   // to empty and every turn's PATCH overwrites the whole array — dropping the
   // user turn + all prior history (the reopened Bug 1).
   it('200 returns the full row (incl. messages baseline) for the owning device', async () => {
-    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
+    verifyDeviceCredentialMock.mockResolvedValueOnce({ id: DEVICE_ID });
     const messages = [
       { role: 'user', content: 'How many files are in this repo?', timestamp: 1 },
       { type: 'assistant', content: '3', timestamp: 2 },
@@ -1145,7 +1145,7 @@ describe('GET /api/agent-sessions/:id (chat baseline read — ISS-462)', () => {
       { id: SESSION_ID, projectId: PROJECT_ID, deviceId: DEVICE_ID, messages },
     ]);
     const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
-      headers: { authorization: 'Bearer device-token-xyz' },
+      headers: { authorization: `Bearer ${DEVICE_PAT}` },
     });
     expect(res.status).toBe(200);
     const json = (await res.json()) as { messages: unknown[] };
@@ -1157,7 +1157,7 @@ describe('GET /api/agent-sessions/:id (chat baseline read — ISS-462)', () => {
   });
 
   it('403 when a device reads a session dispatched to a different device', async () => {
-    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
+    verifyDeviceCredentialMock.mockResolvedValueOnce({ id: DEVICE_ID });
     selectLimit.mockResolvedValueOnce([
       {
         id: SESSION_ID,
@@ -1167,7 +1167,7 @@ describe('GET /api/agent-sessions/:id (chat baseline read — ISS-462)', () => {
       },
     ]);
     const res = await buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
-      headers: { authorization: 'Bearer device-token-xyz' },
+      headers: { authorization: `Bearer ${DEVICE_PAT}` },
     });
     expect(res.status).toBe(403);
   });
@@ -1522,11 +1522,11 @@ describe('POST /api/agent-sessions/:id/ack (ISS-584 C — runner ack)', () => {
   const ackReq = () =>
     buildApp().request(`/api/agent-sessions/${SESSION_ID}/ack`, {
       method: 'POST',
-      headers: { authorization: 'Bearer device-token-xyz' },
+      headers: { authorization: `Bearer ${DEVICE_PAT}` },
     });
 
   it('owning device + running + not yet acked → stamps metadata.acked=true', async () => {
-    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
+    verifyDeviceCredentialMock.mockResolvedValueOnce({ id: DEVICE_ID });
     selectLimit.mockResolvedValueOnce([
       { id: SESSION_ID, deviceId: DEVICE_ID, status: 'running', metadata: { foo: 'bar' } },
     ]);
@@ -1540,7 +1540,7 @@ describe('POST /api/agent-sessions/:id/ack (ISS-584 C — runner ack)', () => {
   });
 
   it('idempotent — already acked → no write', async () => {
-    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
+    verifyDeviceCredentialMock.mockResolvedValueOnce({ id: DEVICE_ID });
     selectLimit.mockResolvedValueOnce([
       { id: SESSION_ID, deviceId: DEVICE_ID, status: 'running', metadata: { acked: true } },
     ]);
@@ -1551,7 +1551,7 @@ describe('POST /api/agent-sessions/:id/ack (ISS-584 C — runner ack)', () => {
   });
 
   it('terminal session → no-op, never resurrects', async () => {
-    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
+    verifyDeviceCredentialMock.mockResolvedValueOnce({ id: DEVICE_ID });
     selectLimit.mockResolvedValueOnce([
       { id: SESSION_ID, deviceId: DEVICE_ID, status: 'failed', metadata: null },
     ]);
@@ -1562,7 +1562,7 @@ describe('POST /api/agent-sessions/:id/ack (ISS-584 C — runner ack)', () => {
   });
 
   it('403 when a different device acks', async () => {
-    verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
+    verifyDeviceCredentialMock.mockResolvedValueOnce({ id: DEVICE_ID });
     selectLimit.mockResolvedValueOnce([
       {
         id: SESSION_ID,

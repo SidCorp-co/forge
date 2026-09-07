@@ -22,8 +22,8 @@ vi.mock('../config/env.js', () => ({
 }));
 vi.mock('../db/client.js', () => ({ db: {} }));
 
-const verifyDeviceToken = vi.fn();
-vi.mock('../auth/deviceToken.js', () => ({ verifyDeviceToken }));
+const verifyDeviceCredential = vi.fn();
+vi.mock('../auth/device-credential.js', () => ({ verifyDeviceCredential }));
 
 const verifyUserToken = vi.fn();
 vi.mock('../auth/jwt.js', () => ({ verifyUserToken }));
@@ -50,16 +50,16 @@ beforeEach(() => {
 
 describe('requireAnyAuth', () => {
   it('refuses a valid device token instead of admitting it as its owner', async () => {
-    verifyDeviceToken.mockResolvedValue({ id: 'dev-1', ownerId: 'owner-1' });
+    verifyDeviceCredential.mockResolvedValue({ id: 'dev-1', ownerId: 'owner-1' });
     const res = await asDevice();
     expect(res.status).toBe(401);
   });
 
-  // cm:guard this is the assertion, not `status === 401`. A 401 would also be produced by the middleware simply failing to reach a still-present device branch, and the whole defect class this issue closes is a credential path that looks retired and is not. `verifyDeviceToken` being uncalled is the only evidence that no device code path survives here.
+  // cm:guard this is the assertion, not `status === 401`. A 401 would also be produced by the middleware simply failing to reach a still-present device branch, and the whole defect class this issue closes is a credential path that looks retired and is not. `verifyDeviceCredential` being uncalled is the only evidence that no device code path survives here.
   it('does not so much as verify a device token — the branch is gone, not merely refusing', async () => {
-    verifyDeviceToken.mockResolvedValue({ id: 'dev-1', ownerId: 'owner-1' });
+    verifyDeviceCredential.mockResolvedValue({ id: 'dev-1', ownerId: 'owner-1' });
     await asDevice();
-    expect(verifyDeviceToken).not.toHaveBeenCalled();
+    expect(verifyDeviceCredential).not.toHaveBeenCalled();
   });
 
   it('still admits a user JWT', async () => {

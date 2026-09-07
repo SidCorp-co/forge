@@ -11,13 +11,13 @@ vi.mock('../config/env.js', () => ({
   env: { DEVICE_TOKEN_PEPPER: TEST_PEPPER, NODE_ENV: 'test' },
 }));
 
-const verifyDeviceToken = vi.fn(async (token: string) =>
+const verifyDeviceCredential = vi.fn(async (token: string) =>
   token === 'good'
     ? { id: 'dev-1', ownerId: 'u-1', status: 'offline', name: 'laptop', platform: 'linux' }
     : null,
 );
-vi.mock('../auth/deviceToken.js', () => ({
-  verifyDeviceToken: (t: string) => verifyDeviceToken(t),
+vi.mock('../auth/device-credential.js', () => ({
+  verifyDeviceCredential: (t: string) => verifyDeviceCredential(t),
 }));
 
 // Device owner is a project admin (passes both the partial- and full-mode role checks).
@@ -37,7 +37,6 @@ vi.mock('../db/client.js', () => ({ db: { transaction } }));
 const emit = vi.fn(async () => {});
 vi.mock('../pipeline/hooks.js', () => ({ hooks: { emit } }));
 
-// The register/CRUD helpers are imported by the module but unused on this path.
 vi.mock('./service.js', () => ({
   SkillDeleteBlockedError: class extends Error {},
   SkillNotProjectScopedError: class extends Error {},

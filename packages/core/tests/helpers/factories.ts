@@ -228,12 +228,10 @@ export async function createTestDevice(
   // cm:guard default to the CLAIM FLOOR, not a literal. A device with no version is below the floor, so every claim from a factory-made box is refused `runner_too_old` — which is invisible in a test that asserts something further down the claim, like the budget gate (measured 2026-09-05: 4 budget-check-e2e tests). Bind it to the constant so raising the floor cannot silently re-break them; a test that wants an OLD box sets agent_version itself.
   const agentVersion =
     overrides.agentVersion === undefined ? AGENT_NAMING_MIN_RUNNER : overrides.agentVersion;
-  const tokenHash = `!test-device-hash-${device.id}`;
-  const tokenPrefix = device.id.slice(0, 8);
-
+  // cm:guard a factory device carries NO credential, and that is the point since ISS-932: `devices` is a registry row, and the token a box authenticates with is a `personal_access_tokens` row pointing back at it. A suite that needs a device-authenticated request builds one with `pairDevice` (`tests/helpers/pair-device.ts`); a fabricated secret column here is what made that distinction invisible.
   await db.execute(sql`
-    INSERT INTO devices (id, owner_id, name, platform, token_hash, token_prefix, status, agent_version)
-    VALUES (${device.id}, ${device.ownerId}, ${device.name}, ${device.platform}, ${tokenHash}, ${tokenPrefix}, ${device.status}, ${agentVersion})
+    INSERT INTO devices (id, owner_id, name, platform, status, agent_version)
+    VALUES (${device.id}, ${device.ownerId}, ${device.name}, ${device.platform}, ${device.status}, ${agentVersion})
   `);
 
   return device;
