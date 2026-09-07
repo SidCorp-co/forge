@@ -112,16 +112,25 @@ A fourth, smaller: MCP `update` writes through the comments service, not REST
 |---|---|---|---|
 | 1 | prompt and embedding would receive raw HTML, so the 8,000-char cap holds fewer requirements | `toText()` in the registry, called at all four read paths | **P1 done** |
 | 2 | MCP cannot edit a comment, so `<forge-artifact id>` can never be placed — the attachment needs a comment id that does not exist until after the create | `forge_comments` action `update` | **P1 done** |
-| 3 | six skills parse upstream comments by string prefix, across two repos | readers accept both forms, THEN writers switch, THEN the regex goes | P3 — the order is mandatory |
+| 3 | comment kind is read by string prefix | readers accept both forms, THEN writers switch, THEN the regex goes | P3 — the order is mandatory; landings 1 and 2 shipped by ISS-968, landing 3 is open |
 | 4 | web cannot edit a description after create (`PatchIssueInput` carries only priority + complexity) | add `description` to the client input, plus a slot-shaped editor | P2 |
 | 5 | `forge-diagram` content contains `-->` and `<br/>` and confuses any markup scanner | lifted out as raw text at the opening tag | **P1 done** |
 | 6 | an older web build meets a component it does not know | generic fallback card listing attributes and slots — never a blank screen | P2 |
 | 7 | the composer has no preview | debounced preview pane, reusing the rules tab's | P2 |
 
 Gap 3 is the largest risk in the whole plan, and it is a sequencing risk rather than a design
-one. P1 deliberately changes no writer: `format` absent resolves to `markdown`, and
-`packages/core/skills/**` is untouched, so every shipped `forge_comments → create` example
-still validates and no reader is blinded.
+one. P1 deliberately changes no writer: `format` absent resolves to `markdown`, so every shipped
+`forge_comments → create` example still validates and no reader is blinded.
+
+ISS-968 found the gap's own map stale, and the correction is worth keeping. The "six skills" were
+`packages/core/skills/{forge-triage,clarify,plan,code,review,test,fix,release,staging}`; ISS-895
+deleted that lane and migration 0208 removed its rows, and `skills/staged-lane-removed.test.ts`
+now guards their absence. The five in-repo readers are prompt text —
+`prompt/state-prompts/{clarify,plan,code,fix,review}.ts` plus `prompt/facts/drive-rules.ts` — and
+`forge-outcome`'s `toText()` emits the literal `Extra fixes:`, so every prompt- and MCP-level
+reader has accepted the component form since P1 without knowing it. One reader in this repo saw a
+RAW body and would have been blinded: web-v2's `deriveCommentKind`, which landing 1 taught to read
+`template` first and to report which form answered.
 
 ## 7. Rejected, and staying rejected
 
@@ -139,7 +148,7 @@ still validates and no reader is blinded.
 |---|---|---|
 | **P1** (ISS-898, shipped) | registry, kernel validate/normalize on write for comments and issue descriptions, the four columns + CHECKs, `forge_comments.update`, `slots`/`text` on read, projection at four sites, tests | `core`, `contracts` |
 | P2 | web renderer (components → design system), fallback card, composer slash-insert + preview, new-issue shape picker, description editing on the detail screen | `web-v2` |
-| P3 | readers accept both forms → writers switch → regex removed. A `{{forge:body-components}}` fact so a skill embeds the component list rather than copying examples. Lockstep with `forge-plugin` | `core/skills`, `prompt/facts`, `forge-plugin` |
+| P3 (ISS-968, landings 1-2 shipped) | readers accept both forms → writers switch → regex removed. The `body-components` fact renders the set from the registry, so adding a component reaches every stage prompt with no prompt edit. Landing 3 waits on adoption data and on `forge-plugin` | `prompt/facts`, `web-v2`, `forge-plugin` |
 | P4 | `bodyPolicy` per project and stage (the `RELEASE_RECORD_REQUIRED` mechanism, requiring a component rather than only validating one), adoption metrics per stage | `core`, `web-v2` |
 
 The mandate ladder is separate from the phases and deliberately lags them: syntax refusal is on
