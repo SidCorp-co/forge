@@ -156,10 +156,8 @@ describe('renderStageFactsText — always-inject tier (ISS-521)', () => {
     expect(text).toContain('### Project rules (always applied)');
     expect(text).toContain('#### contracts-boundary');
     expect(text).toContain(RULE);
-    // The flagged key is NOT repeated in the fetch-on-demand pointer list…
     const indexSection = text.slice(text.indexOf('### Project guides (fetch on demand)'));
     expect(indexSection).not.toContain('- contracts-boundary');
-    // …but a non-flagged guide still lists as a pointer.
     expect(indexSection).toContain('- build-commands');
   });
 
@@ -172,7 +170,7 @@ describe('renderStageFactsText — always-inject tier (ISS-521)', () => {
     );
     expect(text).toContain('Follow them exactly.');
     expect(text).not.toContain('never that it was DONE');
-    expect(text).not.toContain('no gate refuses');
+    expect(text).not.toContain('No gate refuses');
   });
 
   it('AC#2: a non-flagged fact still renders only as a pointer, never inlined', () => {

@@ -51,24 +51,25 @@ export type ProjectFactsPatch = Record<string, string | null> | null;
 // cm:edge lockstep -> packages/core/src/prompt/facts/resolve.ts — the only reader of this cap, and the one that decides overflow is warned rather than cut
 export const PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS = 6000;
 
-// cm:guard the one sentence four surfaces owe an owner about what this flag buys, and it is a promise-shaped flag: the tier renders under "Hard rules ... Follow them exactly" and nothing reads the rule back (ISS-936). Interpolate it — never paraphrase — or the surface goes back to implying the control plane enforces the rule. `project-facts.ts` tests read the source of the ONE surface that cannot interpolate it and go red naming the file that drifted.
-// cm:guard NO markdown, NO backticks: this exact string renders into an MCP tool description, a terminal-read guide body and a browser paragraph, and only the first two would swallow the syntax.
-// cm:edge contract -> packages/core/src/mcp/tools/forge-config.ts — appended verbatim to the end of the tool description
-// cm:edge contract -> packages/core/src/guides/registry.ts — rendered verbatim into the `project-settings-and-test-credentials` guide
-// cm:edge contract -> packages/core/src/projects/project-facts-routes.ts — returned verbatim as `alwaysInjectGuarantee` on the settings tab's own GET
+// cm:guard the one LINE the owner-facing surfaces owe whoever sets this flag, and it is a promise-shaped flag: the tier renders under "Hard rules ... Follow them exactly" and nothing reads the rule back (ISS-936). Interpolate it — never paraphrase — or the surface goes back to implying the control plane enforces the rule.
+// cm:guard ONE sentence, and no markdown: it renders as body copy in the settings tab, where the project's own UX contract asks for one calm line, and into an MCP tool description and a terminal-read guide, where backticks would be swallowed. The detail that does not fit a line lives in `ALWAYS_INJECT_ENFORCEMENT_NOTE`.
+// cm:edge contract -> packages/core/src/projects/project-facts-routes.ts — returned verbatim as `alwaysInjectGuarantee` on BOTH the GET and the PATCH the settings tab uses
 // cm:edge contract -> packages/web-v2/src/features/project-settings/components/project-facts-tab.tsx — the browser copy, which reads it off that response instead of holding a second copy
 export const ALWAYS_INJECT_GUARANTEE_NOTE =
-  'What alwaysInject guarantees is that the fact is READ, never that it was DONE. ' +
-  'The full body is spliced verbatim into every agent system prompt for this project, and ' +
-  'what was injected is visible afterwards on the job. Whether it was followed is recorded ' +
-  'nowhere: no gate refuses a step that ignored it, no step is asked whether it complied, ' +
-  'and no surface counts how often it was obeyed. Compliance is the model reading the ' +
-  'text, not a guarantee the control plane is making. One obligation on this deployment ' +
-  'does have a ' +
-  'readback, and it shows the price: the UX contract is stored as ux_contract_rules rows ' +
-  'with ids, its prose is compiled from them, and agents cite those ids when they record ' +
-  'a ux_findings row. A free-text fact has no ids to cite, so write the rule so that an ' +
-  'agent following it leaves evidence a human can look at.';
+  'Flagging a fact always-inject guarantees it is READ, never that it was DONE: the body ' +
+  'reaches every agent prompt, and nothing checks whether the agent followed it.';
+
+// cm:guard the rest of the answer, for the surfaces an agent reads rather than the screen: what "nothing checks it" means exactly, and what an obligation with a readback costs. Kept apart from the line above so the settings tab stays one calm line (ISS-936).
+// cm:edge contract -> packages/core/src/mcp/tools/forge-config.ts — both notes are appended, in this order, to the end of the tool description
+// cm:edge contract -> packages/core/src/guides/registry.ts — both notes are rendered, in this order, into the `project-settings-and-test-credentials` guide
+export const ALWAYS_INJECT_ENFORCEMENT_NOTE =
+  'No gate refuses a step that ignored an always-inject rule, no step is asked whether it ' +
+  'complied, and no surface counts how often one was obeyed; what was injected is visible ' +
+  'afterwards on the job, whether it was followed is recorded nowhere. One obligation on this ' +
+  'deployment does have a readback, and it shows the price: the UX contract is stored as ' +
+  'ux_contract_rules rows with ids, its prose is compiled from them, and agents cite those ids ' +
+  'when they record a ux_findings row. A free-text fact has no ids to cite, so write the rule ' +
+  'so that an agent following it leaves evidence a human can look at.';
 
 const projectFactConfigEntrySchema = z.object({ alwaysInject: z.boolean().optional() }).strict();
 

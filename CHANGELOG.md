@@ -2955,16 +2955,17 @@
   to *"use it for hard rules the agent must always follow"* — an enforcement promise the control
   plane was not making.
 
-  One sentence, `ALWAYS_INJECT_GUARANTEE_NOTE`, now states the split: delivery is guaranteed and
-  visible afterwards on the job, observance is the model's. `forge_config`'s description and the
-  `project-settings-and-test-credentials` guide interpolate it, and the settings tab's own
-  `GET`/`PATCH /api/projects/:id/project-facts` both serve it — the PATCH answer replaces the GET's
-  in the tab's query cache, so a field on only one of them would leave the screen on the owner's
-  first save — and the browser holds no second copy of the string.
-  It also names the one obligation on this deployment that DOES have a readback — the UX contract,
+One sentence, `ALWAYS_INJECT_GUARANTEE_NOTE`, now states the split: the body reaches every
+  agent prompt, and nothing checks whether the agent followed it. `GET`/`PATCH
+  /api/projects/:id/project-facts` both serve it — the PATCH answer replaces the GET's in the
+  tab's query cache, so a field on only one of them would leave the screen on the owner's first
+  save — and the browser holds no second copy of the string. `ALWAYS_INJECT_ENFORCEMENT_NOTE`
+  carries the detail a settings tab has no room for, appended to `forge_config`'s description and
+  rendered into the `project-settings-and-test-credentials` guide: which three checks do not
+  exist, and the one obligation on this deployment that DOES have a readback — the UX contract,
   whose rules are `ux_contract_rules` rows with ids and whose violations agents cite in
-  `ux_findings` — because that is the price of an enforceable rule: ids to cite. A free-text fact
-  has none, which is why this is a correction to the claim rather than a new checker.
+  `ux_findings`. That is the price of an enforceable rule, ids to cite, and a free-text fact has
+  none — which is why this is a correction to the claim rather than a new checker.
 
   **Found on the way, and fixed here.** `forge_config`'s issue-aware branch resolution read the
   issue through a query that selected only `session_context`, while

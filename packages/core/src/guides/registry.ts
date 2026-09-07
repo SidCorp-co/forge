@@ -18,7 +18,10 @@
 
 // cm:guard both note modules are leaves — `issues/dependency-effects.ts` imports the schema as `import type` only and `projects/project-facts.ts` imports nothing but zod — so neither breaches the no-DB rule below. Keep them that way, or this module and both its read surfaces start needing a live DB.
 import { WORK_EVIDENCE_WAIVER_NOTE } from '../issues/dependency-effects.js';
-import { ALWAYS_INJECT_GUARANTEE_NOTE } from '../projects/project-facts.js';
+import {
+  ALWAYS_INJECT_ENFORCEMENT_NOTE,
+  ALWAYS_INJECT_GUARANTEE_NOTE,
+} from '../projects/project-facts.js';
 import { CONFORMANCE_GUIDE } from './conformance-guide.js';
 import type { ForgeGuide } from './types.js';
 
@@ -31,7 +34,7 @@ export const FORGE_GUIDES: readonly ForgeGuide[] = [
     title: 'Project settings & test credentials',
     summary:
       'Where to fetch repo paths, branches, workspace setup, preview URLs, and test credentials — and why forge_config never returns them.',
-    // cm:edge contract -> packages/core/src/projects/project-facts.ts — the body interpolates `ALWAYS_INJECT_GUARANTEE_NOTE` where it names the always-inject tier
+    // cm:edge contract -> packages/core/src/projects/project-facts.ts — the body interpolates both always-inject notes where it names the tier
     version: 3,
     body: `## Project settings & test credentials
 
@@ -40,7 +43,7 @@ Two tools, two different jobs — mixing them up is the single most common Forge
 - **\`forge_projects.get\`** — deployment-shaped facts: repo path, base/production branch, \`workspaceSetup\` (how to bring this repo's workspace to a buildable state), and \`previewDeploy\` (staging/beta URLs + \`testCredentials\` for logging into a preview environment as a test user). This is the ONLY place test credentials live.
 - **\`forge_config\`** — process-shaped facts: \`pipelineConfig\` (stage gates, status ladder overrides), \`stateContext\`, \`projectFacts\` (+ \`projectFactsConfig\` for the always-inject tier), categories. It deliberately does **not** return credentials or preview URLs — don't go looking for them there, and don't add them there either.
 
-  ${ALWAYS_INJECT_GUARANTEE_NOTE}
+  ${ALWAYS_INJECT_GUARANTEE_NOTE} ${ALWAYS_INJECT_ENFORCEMENT_NOTE}
 
 ### Rules
 1. Never hardcode a repo path, branch name, or test credential in a skill body, prompt, or comment — always fetch it live. A hardcoded value silently drifts the moment the project's settings change.

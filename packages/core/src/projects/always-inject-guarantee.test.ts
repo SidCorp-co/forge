@@ -14,7 +14,7 @@ import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { FORGE_GUIDES } from '../guides/registry.js';
-import { ALWAYS_INJECT_GUARANTEE_NOTE } from './project-facts.js';
+import { ALWAYS_INJECT_ENFORCEMENT_NOTE, ALWAYS_INJECT_GUARANTEE_NOTE } from './project-facts.js';
 
 // cm:guard the MCP tool module reaches `config/env.js` transitively and throws at IMPORT without DATABASE_URL/JWT_SECRET. Only `description` is under test, so env and the client are stubbed rather than the assertion weakened to a source grep — a grep for the identifier proves it is referenced, never that it lands in the text an agent reads.
 vi.mock('../config/env.js', () => ({
@@ -49,25 +49,14 @@ function withoutComments(source: string): string {
 // cm:guard the tool factory is context-scoped and a real `ctx` needs a principal and a DB. Only `description` is under test, so a cast of the minimum shape is correct here.
 const fakeCtx = { principal: {}, deprecations: new Set<string>() } as never;
 
-describe('ALWAYS_INJECT_GUARANTEE_NOTE', () => {
-  it('says the fact is guaranteed read, and where that is visible afterwards', () => {
+describe('ALWAYS_INJECT_GUARANTEE_NOTE — the line the owner reads', () => {
+  it('says the fact is guaranteed read and not guaranteed done', () => {
     expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain('is READ');
-    expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain(
-      'spliced verbatim into every agent system prompt',
-    );
-    expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain('visible afterwards on the job');
-  });
-
-  it('says compliance is not verified, in all three of the ways it is not', () => {
     expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain('never that it was DONE');
-    expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain('Whether it was followed is recorded nowhere');
-    expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain('no gate refuses a step that ignored it');
-    expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain('no surface counts how often it was obeyed');
   });
 
-  it('names the one obligation on this deployment that does have a readback', () => {
-    expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain('ux_contract_rules');
-    expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain('ux_findings');
+  it('says nothing checks the rule was followed', () => {
+    expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain('nothing checks whether the agent followed it');
   });
 
   it('promises nothing about enforcement', () => {
@@ -76,21 +65,52 @@ describe('ALWAYS_INJECT_GUARANTEE_NOTE', () => {
     );
   });
 
-  // cm:guard one string renders into an MCP tool description, a terminal-read guide body and a browser paragraph. Markdown would be swallowed by exactly one of the three.
-  it('carries no markdown', () => {
-    expect(ALWAYS_INJECT_GUARANTEE_NOTE).not.toContain('`');
-    expect(ALWAYS_INJECT_GUARANTEE_NOTE).not.toContain('**');
+  // cm:guard the project's own UX contract asks body copy for ONE calm line, and this string is body copy in the settings tab. A second sentence is what the split into `ALWAYS_INJECT_ENFORCEMENT_NOTE` exists to prevent.
+  it('is one sentence, short enough to read as body copy', () => {
+    expect(ALWAYS_INJECT_GUARANTEE_NOTE.length).toBeLessThanOrEqual(200);
+    expect(ALWAYS_INJECT_GUARANTEE_NOTE.match(/\.\s/g)).toBeNull();
+  });
+
+  // cm:guard both strings render into an MCP tool description, a terminal-read guide body and (the first one) a browser paragraph. Markdown would be swallowed by exactly one of the three.
+  it('neither note carries markdown', () => {
+    for (const note of [ALWAYS_INJECT_GUARANTEE_NOTE, ALWAYS_INJECT_ENFORCEMENT_NOTE]) {
+      expect(note).not.toContain('`');
+      expect(note).not.toContain('**');
+    }
+  });
+});
+
+describe('ALWAYS_INJECT_ENFORCEMENT_NOTE — the detail the screen has no room for', () => {
+  it('names all three of the ways compliance is not verified', () => {
+    expect(ALWAYS_INJECT_ENFORCEMENT_NOTE).toContain(
+      'No gate refuses a step that ignored an always-inject rule',
+    );
+    expect(ALWAYS_INJECT_ENFORCEMENT_NOTE).toContain('no step is asked whether it complied');
+    expect(ALWAYS_INJECT_ENFORCEMENT_NOTE).toContain('no surface counts how often one was obeyed');
+  });
+
+  it('says where the injection IS visible, and where observance is not', () => {
+    expect(ALWAYS_INJECT_ENFORCEMENT_NOTE).toContain('visible afterwards on the job');
+    expect(ALWAYS_INJECT_ENFORCEMENT_NOTE).toContain('recorded nowhere');
+  });
+
+  it('names the one obligation on this deployment that does have a readback', () => {
+    expect(ALWAYS_INJECT_ENFORCEMENT_NOTE).toContain('ux_contract_rules');
+    expect(ALWAYS_INJECT_ENFORCEMENT_NOTE).toContain('ux_findings');
   });
 });
 
 describe('the surfaces that interpolate it', () => {
-  it("`forge_config`'s tool description", () => {
-    expect(forgeConfigTool(fakeCtx).description).toContain(ALWAYS_INJECT_GUARANTEE_NOTE);
+  it("`forge_config`'s tool description carries both", () => {
+    const { description } = forgeConfigTool(fakeCtx);
+    expect(description).toContain(ALWAYS_INJECT_GUARANTEE_NOTE);
+    expect(description).toContain(ALWAYS_INJECT_ENFORCEMENT_NOTE);
   });
 
-  it('the `project-settings-and-test-credentials` guide', () => {
+  it('the `project-settings-and-test-credentials` guide carries both', () => {
     const guide = FORGE_GUIDES.find((g) => g.slug === 'project-settings-and-test-credentials');
     expect(guide?.body).toContain(ALWAYS_INJECT_GUARANTEE_NOTE);
+    expect(guide?.body).toContain(ALWAYS_INJECT_ENFORCEMENT_NOTE);
   });
 
   it('the settings tab, which reads it off its own GET rather than restating it', () => {
@@ -117,5 +137,6 @@ describe('the two surfaces the constant cannot reach', () => {
     const source = read('packages/core/src/prompt/facts/resolve.ts');
     expect(source).toContain('Follow them exactly.');
     expect(withoutComments(source)).not.toContain('ALWAYS_INJECT_GUARANTEE_NOTE');
+    expect(withoutComments(source)).not.toContain('ALWAYS_INJECT_ENFORCEMENT_NOTE');
   });
 });
