@@ -14,7 +14,11 @@ const version = async (
   const { publicHealthRoutes } = await import('./routes.js');
   const res = await publicHealthRoutes.request('/version');
   expect(res.status).toBe(200);
-  return (await res.json()) as { version: string; sourceCommit: string | null; uptimeSeconds: number };
+  return (await res.json()) as {
+    version: string;
+    sourceCommit: string | null;
+    uptimeSeconds: number;
+  };
 };
 
 describe('GET /version', () => {

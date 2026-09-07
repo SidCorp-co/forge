@@ -11,6 +11,33 @@
 
 ### Added
 
+- **A running instance now names the commit it was built from, and an error can be attributed to
+  the deploy that introduced it.** `GET /version` answered `{ version, uptimeSeconds }` where
+  `version` was the package version — `0.3.0` for every deploy this repo has ever made. Two
+  different builds read minutes apart returned the same string, and `uptimeSeconds` was the only
+  field that distinguished them, which tells you when a process started and not what it is. The
+  same defect ran the other way through Sentry: the release was `forge-core@0.3.0`, so hundreds of
+  deploys reported as one release and suspect-commit resolution had nothing to resolve against.
+
+  `/version` now carries `sourceCommit`, and both Sentry surfaces take their release from that
+  same value. There is one writer: the `SOURCE_COMMIT` build argument in
+  `docker-compose.prod.yml`, which core freezes into its runtime image and web-v2 inlines into the
+  client bundle above `pnpm build`. Two independent reads of "which commit is this" are two things
+  that can disagree, and the disagreement would be silent.
+
+  **A build that was not told its commit says so.** `sourceCommit` is `null` — the key present,
+  the value null, never an empty string, `unknown` or a placeholder — and Sentry attaches no
+  release at all. So is any value that is not 7 to 40 hexadecimal digits: the deploy platform's
+  own application row reads `git_commit_sha=HEAD`, so the literal `HEAD` and an unexpanded
+  `${SOURCE_COMMIT}` are values a build can really receive, and an identity nobody can look up is
+  worse than an admitted gap. `version` and `uptimeSeconds` keep their exact meanings, so no
+  existing caller of the route changes.
+
+  `.github/workflows/sentry-release.yml` registers each merge commit as a release for both Sentry
+  projects and associates it with its commits, which is the half that lets Sentry name a suspect
+  commit. It needs a `SENTRY_AUTH_TOKEN` repository secret and says in the run summary when that
+  secret is absent rather than failing — the release ids are already correct without it.
+
 - **A write to an issue's session field can now carry the value it read, and is refused when the
   field moved underneath it.** `sessionContext` is where a driver's lease lives, and until now a
   write always won: two runs that both read no holder both claimed, and the later write erased the

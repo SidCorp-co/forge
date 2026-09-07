@@ -30,6 +30,7 @@ describe('sourceCommit', () => {
     ['the empty string', ''],
     ['whitespace', '   '],
     ['the literal HEAD', 'HEAD'],
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the unexpanded reference IS the value under test — a compose file missing the `:-` default delivers this text verbatim, and the rule's usual reading (a template literal written with the wrong quotes) is the opposite of what is meant here.
     ['an unexpanded reference', '${SOURCE_COMMIT}'],
     ['unknown', 'unknown'],
     ['six digits', 'abc123'],
