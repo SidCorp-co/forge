@@ -7,6 +7,7 @@ import { db } from '../db/client.js';
 import { issueLabels, labelKinds, labels } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { moduleDrift } from './module-drift.js';
 import {
   assertDemotionIsLegal,
   assertKnowledgeNodeIsForModule,
@@ -157,6 +158,32 @@ labelProjectRoutes.get(
     const rows = await db.select(labelColumns).from(labels).where(eq(labels.projectId, projectId));
 
     return c.json(rows);
+  },
+);
+
+const driftQuerySchema = z
+  .object({ minCoOccurrence: z.coerce.number().int().min(1).max(1000).default(2) })
+  .strict();
+
+// cm:why ISS-951 — mounted here rather than under a surface of its own because the observed half IS `issue_labels` joined to this file's table, and a second domain owning the read would be a second answer to "which modules does this project have".
+labelProjectRoutes.get(
+  '/:id/modules/drift',
+  zValidator('param', projectIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('query', driftQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id: projectId } = c.req.valid('param');
+    const { minCoOccurrence } = c.req.valid('query');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    assertProjectRole(access, 'viewer', 'not a project member');
+
+    // cm:guard drift NEVER changes the status code — an undeclared coupling is information, and an endpoint that answered 409 (or a gate that read it) would be satisfied by declaring edges nobody means, which is the one failure mode ISS-951 names. Every legal state, including a project with no declaration at all, is a 200 body.
+    return c.json(await moduleDrift(projectId, { minCoOccurrence }));
   },
 );
 

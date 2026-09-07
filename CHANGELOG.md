@@ -23,6 +23,28 @@
 
 ### Added
 
+- **Forge now reports the module pairs your issues keep linking that your module hierarchy never
+  declares as connected.** `GET /api/projects/:id/modules/drift` compares two edge sets over the
+  same nodes — *observed*, a self-join of `issue_labels` scoped to `kind='module'` on both sides,
+  and *declared*, the transitive closure of `labels.parent_id` — and reports the difference in both
+  directions, weighted by the number of issues each edge rests on, with the five highest issue
+  numbers as the evidence to open. A pair seen on a single issue is a coincidence, not a finding, so
+  the threshold defaults to 2 (`?minCoOccurrence=n`).
+
+  **It is a signal and it can fail nothing.** No gate reads it, there is no threshold that 4xx's,
+  and every legal state including "this project declares nothing" is a 200 body. A detector that
+  could fail a build would be answered by declaring edges nobody means, which would cost the
+  declaration the value the signal measures against.
+
+  Three things the report states rather than leaves to the reader: `layer: 'module-taxonomy'`, so
+  it is not read as a claim about `.arch.json`'s 63 source-path globs (a different granularity,
+  gated on the `relations` axis, which this neither reads nor becomes an authority over);
+  `declaration: { state: 'absent' }` for a project with no hierarchy, which is a legal and common
+  state and not zero drift; and `nearestCommonAncestor` on every finding, so two cousins under one
+  parent read differently from two modules in unrelated subtrees. `knowledge_edges` is deliberately
+  not read — it is a free-text triple store with no module convention, and reading it as one would
+  invent the second declared-edge store this issue exists to avoid. (ISS-951)
+
 - **An issue or comment written as `forge-*` components now renders as components, and a
   description can be corrected after it was created.** The registry, the validator and the four
   columns shipped in ISS-898, but nothing drew them: a body stored as components reached the

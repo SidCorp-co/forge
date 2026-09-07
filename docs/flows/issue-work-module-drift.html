@@ -1,0 +1,125 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · issue-work-module-drift — how an undeclared coupling becomes a signal, and why it can never fail anything</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+</style>
+<main>
+
+<h1>issue-work-module-drift — how an undeclared coupling becomes a signal, and why it can never fail anything</h1>
+<p class="sub">Two edge sets over one set of nodes, and the difference between them.
+<code>issue-work-module-attribution</code> owns how an issue acquires the modules this reads;
+<code>web-v2-module-taxonomy</code> owns the hierarchy this treats as the declaration. This file
+owns the comparison: which query produces each set, which layer the answer speaks about, and every
+hop where the report says <em>nothing is declared</em> rather than <em>no drift</em>. Owner:
+<code>packages/core/src/labels/module-drift.ts</code>, reached through
+<code>GET /api/projects/:id/modules/drift</code>.</p>
+
+<h2>One request, two independent reads, one difference</h2>
+<div class="board"><pre class="mermaid">
+flowchart TD
+  R["GET /api/projects/:id/modules/drift<br/>?minCoOccurrence=n (default 2)"]
+  R --> Z{"n &gt;= 1?"}
+  Z -- no --> Z0(["400 BAD_REQUEST<br/>zod refuses 0"])
+  Z -- yes --> V{"viewer on<br/>this project?"}
+  V -- no --> V0(["403 FORBIDDEN"])
+  V -- yes --> Q["two reads, one round of Promise.all"]
+  Q --> O["OBSERVED<br/>issue_labels ⋈ issue_labels<br/>both sides kind='module' AND project_id<br/>right.label_id &gt; left.label_id"]
+  Q --> D["DECLARED<br/>labels where kind='module'<br/>+ parent_id"]
+  O --> M["per pair: count(*) issues,<br/>count filter (is_primary either side),<br/>5 highest iss_seq as evidence"]
+  D --> H["closeHierarchy: walk each parent chain<br/>bounded by a seen-set<br/>⇒ every ancestor↔descendant pair"]
+  M --> X{"pair declared<br/>by ancestry?"}
+  H --> X
+  X -- yes --> AG(["agreedEdgeCount++"])
+  X -- no --> T{"issueCount &gt;=<br/>minCoOccurrence?"}
+  T -- "no (a single issue<br/>is a coincidence)" --> BT(["observed.belowThresholdEdgeCount++"])
+  T -- yes --> U["undeclared[] += pair<br/>+ nearestCommonAncestor"]
+  H --> W{"declared pair<br/>observed enough?"}
+  W -- no --> UO["unobserved[] += pair<br/>(a declared edge gone cold)"]
+  D --> DS["declaration.state =<br/>does any module name a parent?"]
+  U --> J(["200 · layer='module-taxonomy'"])
+  UO --> J
+  AG --> J
+  BT --> J
+  DS --> J
+</pre></div>
+
+<h2>When it goes wrong</h2>
+<table>
+<thead><tr><th>What fails</th><th>What the caller sees</th><th>Where the operator reads it</th></tr></thead>
+<tbody>
+<tr><td>The project declares no hierarchy at all</td><td>200, the full observed graph, and <code>declaration: { state: 'absent', edgeCount: 0 }</code>.</td><td>That field, which is the whole point of it. <span class="bad">Not</span> an empty <code>undeclared</code> and <span class="bad">not</span> zero drift — a project that never built a taxonomy reads differently from one whose declaration happens to agree with everything.</td></tr>
+<tr><td>The project has modules but no issue touches two of them</td><td>200, <code>observed.edgeCount: 0</code>, and every declared pair in <code>unobserved</code>.</td><td><code>unobserved</code>, which is the same difference read the other way: declared, and the issue stream has never linked them.</td></tr>
+<tr><td>A pair co-occurs on exactly one issue</td><td>200, and the pair is <strong>not</strong> a finding.</td><td><code>observed.belowThresholdEdgeCount</code>. <code>?minCoOccurrence=1</code> promotes it, which is the only way to see it.</td></tr>
+<tr><td>A plain label co-occurs with a module</td><td>No edge, ever.</td><td>Nowhere — <code>issue_labels</code> cannot see <code>labels.kind</code>, so both sides of the self-join re-check it. A pair here would be a label like <code>bug</code> reported as a module coupling.</td></tr>
+<tr><td>An issue carries a label from another project</td><td>No edge.</td><td>Nowhere. <code>issue_labels</code>' FKs constrain neither side's project, so both sides re-check <code>project_id</code>; without that a shared issue joins two taxonomies.</td></tr>
+<tr><td>A <code>parent_id</code> chain has been corrupted into a cycle</td><td>200. The walk answers.</td><td>Nowhere. The FK permits a cycle, and the seen-set bounds the walk exactly as <code>module-service.ts</code> bounds its own — a spin here would hang the endpoint.</td></tr>
+<tr><td>The signal is full of findings</td><td><strong>200.</strong> Always.</td><td>The body. Nothing here is an error and no gate reads it — see below.</td></tr>
+</tbody>
+</table>
+
+<div class="rule">
+<b>The signal cannot fail anything, and that is a design constraint rather than a default.</b>
+An undeclared coupling is information: two modules the work keeps linking that nobody wrote down.
+A gate that failed on it would be satisfied by declaring edges nobody means, and the declaration —
+the thing the signal measures against — would stop being worth reading within a month. So there is
+no threshold that 4xx's, no exit code, and no conformance axis. <code>drift</code> is a 200 body an
+owner acts on, or does not.
+</div>
+
+<div class="rule">
+<b>The report speaks the module-taxonomy layer, and says so in the payload.</b>
+<code>layer: 'module-taxonomy'</code> is a field, not a comment, because this repo holds a second
+module graph at a different granularity: <code>.arch.json</code>'s 63 source-path globs
+(<code>core-labels</code>, <code>web-features</code>), gated by <code>archmap check</code> on the
+<code>relations</code> axis, and <code>cm:edge</code> annotations on the <code>knowledge</code> axis.
+An issue is attributed to a product domain, never to a glob, so the observed half can only be
+computed at the taxonomy layer. This endpoint therefore reads neither of the other two and becomes
+an authority over neither. Mapping between the layers stays where a project already records it — a
+module's knowledge node, and <code>docs/modules/&lt;domain&gt;/</code> — reached from every node in
+this report through its <code>slug</code> and <code>knowledgeEntryId</code>.
+</div>
+
+<div class="rule">
+<b>Declared means ancestry, and siblings are answered rather than decided.</b>
+<code>labels.parent_id</code> is the only module-to-module declaration Forge holds, so two modules
+are declared connected when one is the other's ancestor: a subtree is declared to hang together.
+Two children of one parent are <em>not</em> promoted to declared — the taxonomy says they are both
+parts of something, never that they relate to each other — so their pair stays in
+<code>undeclared</code> and carries <code>nearestCommonAncestor</code>. That way an owner can tell
+two cousins under one parent from two unrelated subtrees without the detector having taken that
+position for them.
+</div>
+
+<div class="rule">
+<b><code>knowledge_edges</code> is deliberately not read.</b> It is a free-text
+<code>(subject, predicate, object)</code> triple store written by LLM memory extraction
+(<code>memory/extraction.ts</code>), with no module convention in it. Reading it as a module graph
+would mean inventing that convention, which is the second declared-edge store ISS-951 forbids: a
+repo that already answers "are these two connected?" twice does not need a third answer that
+disagrees with both.
+</div>
+
+<div class="rule">
+<b><code>count(*)</code> is an issue count only because of a primary key.</b>
+<code>issue_labels</code> is keyed on <code>(issue_id, label_id)</code>, so a grouped pair has
+exactly one row per issue. Drop that key and every weight in this report silently becomes a
+junction-row count — which is why the guard naming it sits on the query and not in this file.
+</div>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>
