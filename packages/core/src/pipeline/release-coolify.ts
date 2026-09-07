@@ -27,14 +27,6 @@ export interface DispatchOutcome {
 }
 
 /**
- * Hook called after a `release`-type job completes. Looks up the project's
- * Coolify integrations (staging + prod), enqueues a deploy job for each
- * environment that's active and not waiting for prod confirmation.
- *
- * No-op (returns `dispatched=false, integrationIds=[]`) when the project
- * has no Coolify configured — preserves backwards-compatible behaviour.
- */
-/**
  * Per-project opt-in: when `agentConfig.pipelineConfig.autoProdDeploy === true`,
  * a prod Coolify deploy auto-dispatches on release exactly like staging,
  * skipping the human-confirm gate. Default false keeps the gate. Best-effort —
@@ -100,6 +92,12 @@ async function warnIfRunAlreadyTerminal(runId: string, issueId: string | null): 
   reportUnwitnessedDeploy(runId, issueId);
 }
 
+/**
+ * Enqueue a Coolify deploy for each active binding of this project, called
+ * after a release-type job completes. A prod binding is parked for a human
+ * unless the project opted into `autoProdDeploy`; a project with no binding
+ * at all returns `reason: 'no-integration'` and stamps the skipped substep.
+ */
 // cm:flow release/deploy after:reap — job completion, not the close, is what dispatches the deploy; a prod binding parks for a human unless pipelineConfig.autoProdDeploy is on
 export async function tryDispatchCoolifyRelease(args: {
   projectId: string;

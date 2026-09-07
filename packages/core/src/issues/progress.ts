@@ -12,11 +12,11 @@
  * `computeProjectProgress` for what counts as shipped-evidence.
  */
 
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
-import { activityLog, type IssueStatus, issueStatuses, issues, projects } from '../db/schema.js';
+import { activityLog, type IssueStatus, issueStatuses, issues } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { resolveMergeStates } from './merged-at.js';
+import { BASE_MERGE_STATE } from './merged-at.js';
 
 export type ProgressBucket = 'shipped' | 'closed_unshipped' | 'in_flight' | 'remaining';
 
@@ -65,18 +65,11 @@ export async function computeProjectProgress(
   dbi: typeof defaultDb = defaultDb,
 ): Promise<ProjectProgress | null> {
   try {
-    const [projectRow] = await dbi
-      .select({ agentConfig: projects.agentConfig })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    const { baseBranch, productionBranch } = resolveMergeStates(projectRow?.agentConfig);
-
     const leftMergeState = sql`exists (
       select 1 from ${activityLog}
       where ${activityLog.issueId} = ${issues.id}
         and ${activityLog.action} = 'issue.statusChanged'
-        and ${activityLog.payload}->>'to' in (${baseBranch}, ${productionBranch})
+        and ${activityLog.payload}->>'to' = ${BASE_MERGE_STATE}
     )`;
 
     // cm:guard ISS-817 — `merged_at` alone is NOT shipped-evidence: markMergedOnClose stamps it on EVERY close, so this is the WHOLE discriminator now that the post-code conjunct is gone. Drop the NOT and the predicate degenerates to "closed", reporting never-merged code as shipped.
