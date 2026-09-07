@@ -1,0 +1,167 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · master-wake — what makes a box look at a project, and what happens when the signal is lost</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .warn { border-left-color:var(--bad); }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
+</style>
+<main>
+
+<h1>master-wake — what makes a box look at a project, and what happens when the signal is lost</h1>
+<p class="sub">Nothing pushed work to a box until ISS-933: <code>daemon/master.rs</code> polled every
+project it served on a 30-second timer, and that interval <em>was</em> the latency from an issue
+arriving to an agent touching it. This is the push, the timer that stayed underneath it, and the
+third trigger that exists only because the transport drops frames in silence. Owner:
+<code>packages/core/src/ws/master-wake.ts</code>,
+<code>packages/runner/crates/forge-runner-core/src/daemon/master.rs</code>,
+<code>.../daemon/mod.rs</code>, <code>.../transport/ws.rs</code>.</p>
+
+<h2>Three triggers, one sweep</h2>
+<p>The design rule is that there is exactly one path from &ldquo;something might be there&rdquo; to
+&ldquo;the pool was read&rdquo;. A wake is not a dispatcher: it carries no job, no token and no
+decision. It says <em>look now</em>, and the box then reads the pool through the same call its timer
+already used and decides for itself.</p>
+
+<div class="board"><pre class="mermaid">
+flowchart TD
+  subgraph core["core"]
+    T1["issue reaches open / draft / released<br/>(transition hook)"] --> W
+    T2["issue CREATED at open / draft<br/>(issueCreated hook)"] --> W
+    W["ws/master-wake.ts<br/>wakeMastersForProject"]
+    W --> Q["SELECT DISTINCT device_id FROM runners<br/>WHERE project_id = ?<br/>— no status filter, a draining box is woken too"]
+    Q --> PUB["roomManager.publish(device:&lt;id&gt;, 'master.wake')<br/>{ projectId, issueId, status }"]
+  end
+
+  PUB -.->|"fire and forget<br/>no buffer, no replay"| F
+
+  subgraph box["the box"]
+    F["daemon/mod.rs frame loop"] -->|"master.wake"| TS["wake_tx.try_send(Wake::Core)"]
+    RC["transport/ws.rs — socket came up<br/>emits a LOCAL 'ws.connected' frame"] --> F
+    F -->|"ws.connected"| TS2["wake_tx.try_send(Wake::Reconnect)"]
+    TIMER["POLL_INTERVAL — 30s"] --> RUN
+    TS --> RUN["master.rs::run<br/>select! { timer | wake | cancel }"]
+    TS2 --> RUN
+    RUN --> SW["sweep — /me/runners, then the pool per project"]
+    SW --> M["ensure the master session, prompt the pass"]
+  end
+</pre></div>
+
+<div class="rule"><b>The timer is the floor and it must stay.</b> <code>ws/rooms.ts:publish</code> is
+fire-and-forget: it returns 0 for a room with no subscriber and skips any socket that is not
+<code>OPEN</code>, with no buffer, no queue and no replay. A wake published while a box's websocket
+is down is <em>gone</em>, and nothing anywhere records that it happened. With the timer, that drop
+costs 30 seconds of latency; without it, the drop costs the work — it sits forever with nothing
+reporting why. The wake is a latency cut layered on a poll, never a replacement for it.</div>
+
+<h2>The dropped-wake hole, and the two things that cover it</h2>
+<p>The reconnect catch-up is the second half of that defence, and it exists because the gap has a
+shape the timer alone does not cover well: a box that was disconnected for ten minutes missed every
+wake in that window, and on reconnect it would otherwise wait out a fresh poll interval before
+looking. One pool read on the way back up turns that into nothing.</p>
+
+<div class="board"><pre class="mermaid">
+sequenceDiagram
+  participant C as core
+  participant WS as transport/ws.rs
+  participant D as daemon/mod.rs
+  participant M as master.rs::run
+
+  Note over WS: socket is DOWN
+  C->>C: issue → open
+  C-)WS: publish master.wake
+  Note over C,WS: room has no subscriber → publish returns 0<br/>THE FRAME IS GONE. Nothing records it.
+  WS->>WS: reconnect, then subscribe device:&lt;id&gt;
+  WS->>D: local frame { event: "ws.connected" }
+  D->>M: Wake::Reconnect
+  M->>M: sweep — reads the WHOLE pool, so it finds the missed issue
+</pre></div>
+
+<div class="rule">The catch-up is deliberately the <em>same</em> wake path with a different trigger,
+not a second reader. A separate &ldquo;reconnect handler that reads the pool&rdquo; would be a
+second dispatcher on the box, and the two would drift the moment either grew a condition. The
+transport itself knows nothing about masters or pools: it reports that its socket came up and stops
+there, and <code>mod.rs</code> is the one place that decides what that means.</div>
+
+<h2>Coalescing — why the channel holds exactly one</h2>
+<p>Core publishes one frame per issue arrival. Promoting five drafts, or a batch closing, delivers
+five frames in about as many milliseconds. The wake channel has capacity 1 and drops the rest on
+purpose.</p>
+
+<div class="board"><pre class="mermaid">
+flowchart LR
+  A["5 master.wake frames<br/>within ~5ms"] --> B{"wake_tx.try_send"}
+  B -- "1st: channel empty" --> C["queued"]
+  B -- "2nd-5th: channel full" --> D["dropped, logged at debug<br/>'coalesced — a sweep is already pending'"]
+  C --> E{"last sweep<br/>less than WAKE_FLOOR ago?"}
+  E -- yes --> F["sleep the remainder<br/>— waits, never discards"]
+  E -- no --> G
+  F --> G["sweep: reads the WHOLE pool"]
+  D -.->|"covered by"| G
+</pre></div>
+
+<div class="rule">A dropped frame costs nothing because the sweep that follows reads the entire pool
+rather than the issue the frame named — so one sweep covers every wake that arrived while it was
+pending. <code>try_send</code> rather than an awaited send matters for a second reason: this arm runs
+on the one frame loop that also carries <code>job.cancel</code>, and blocking it on a full wake
+channel would stall a kill behind a sweep that was already going to cover the wake.</div>
+
+<div class="rule warn"><b><code>WAKE_FLOOR</code> must stay below <code>POLL_INTERVAL</code>.</b> The
+whole point of the push is to beat the timer; a floor at or above 30s would make every wake wait
+longer than doing nothing. <code>a_wake_cuts_latency_rather_than_adding_it</code> is the assertion
+that fails if someone raises it.</div>
+
+<h2>What is NOT here yet, and why the diagram stops where it does</h2>
+<p>ISS-933 describes four waves. This flow is <b>wave 1 only</b> — core wakes the box, and the box
+looks. The master's lifecycle beyond that is unchanged: it is still a resident session prompted per
+pass, still supervised by <code>supervise</code>, still killed on a silence ceiling, and every run
+is still a <code>jobs</code> row claimed from the pool.</p>
+
+<table>
+<thead><tr><th>Wave</th><th>State</th><th>Why not here</th></tr></thead>
+<tbody>
+<tr><td>1 — core wakes the box, catch-up on reconnect</td><td>built</td><td>—</td></tr>
+<tr><td>2 — each run is its own terminal session + a SQLite registry</td><td>not built</td><td>Deleting the job-row path while the pool still mints jobs would leave two live paths for starting work</td></tr>
+<tr><td>3 — the master self-exits; the supervise/kill cluster is deleted</td><td>not built</td><td>Depends on wave 2 for &ldquo;are the children done&rdquo;</td></tr>
+<tr><td>4 — the pool is deleted; <code>forge next</code> becomes the pool</td><td>not built</td><td>Blocked by ISS-932 (the master needs its own credential), and it removes the surface ISS-917 just extended</td></tr>
+</tbody>
+</table>
+
+<div class="rule warn"><b>The close-the-loop half is the known hole, and it is unowned today.</b> When
+a run ends, three things must happen: its <code>agent_sessions</code> row reaches terminal, its
+worktree is removed, and its tracker lease is returned. Nothing performs them and nothing checks
+they happened — it rests on the master remembering all three. Measured on forge-dev 2026-09-06: a
+master reported a loop closed having done one and a half of the three, and the third is not merely
+forgettable but currently <em>impossible</em> — <code>forge claim</code> gates on wall clock rather
+than liveness, so a lease held by a dead pid refuses every claim for its full duration
+(forge-plugin ISS-602). Wave 2 multiplies this by one loop per run. Any automatic reaper must
+consult the lease rather than <code>cwd</code>, mtime or &ldquo;no tmux session by that name&rdquo;
+— a session working a second worktree is held from a cwd that is not inside it — and the lease
+cannot be that authority until it can tell a live holder from a dead one.</div>
+
+<h2>Read this before</h2>
+<p>Adding a status to <code>MASTER_WAKE_STATUSES</code> — the driver's mid-run statuses
+(<code>in_progress</code>, <code>needs_info</code>) are an issue a master already handed to a run, so
+waking on them turns one issue's lifecycle into a burst of pool reads that can find nothing new by
+construction. Filtering <code>devicesServing</code> on <code>runners.status</code> — declining work
+is the box's act, not core's, and <code>master.rs:accepts_new_work</code> carries the guard saying
+core adding the same filter would hide work from a master rather than let the box decline it.
+Removing the timer, the catch-up, or either one's guard — each covers a different half of a
+transport that loses frames without saying so. And widening the wake channel past capacity 1: that
+is not &ldquo;losing fewer wakes&rdquo;, it is one redundant full sweep per queued frame.</p>
+
+<p><a href="index.html">&larr; all flows</a></p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>

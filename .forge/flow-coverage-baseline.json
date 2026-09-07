@@ -1,5 +1,3 @@
 {
-  "uncovered": [
-    "release/deploy"
-  ]
+  "uncovered": []
 }

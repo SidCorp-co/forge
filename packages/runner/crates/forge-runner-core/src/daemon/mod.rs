@@ -498,11 +498,13 @@ pub async fn run(
             }
         });
     }
+    // cm:guard the wake sender and the master loop are created TOGETHER, and a daemon that starts the loop without wiring the sender is one that silently reverts to poll-only: nothing fails, nothing logs, and the only symptom is that every issue waits up to a full `POLL_INTERVAL` for a box that was told about it immediately.
+    let (wake_tx, wake_rx) = master::wake_channel();
     {
         let (client, cfg) = ((*client).clone(), (*cfg).clone());
         let cancel_rx = cancel_rx.clone();
         let masters = masters.clone();
-        tokio::spawn(async move { master::run(client, cfg, masters, cancel_rx).await });
+        tokio::spawn(async move { master::run(client, cfg, masters, cancel_rx, wake_rx).await });
     }
 
     let mut cancel_rx = cancel_rx.clone();
@@ -591,6 +593,24 @@ pub async fn run(
                                 tracing::warn!("[provision] {e}");
                             }
                         });
+                    }
+                    // cm:edge contract -> packages/core/src/ws/master-wake.ts — core publishes this on the device room when an issue reaches `open`, `draft` or `released`. The event NAME and the optional `projectId` are the whole contract; the frame carries no work, so nothing here reads anything else off it.
+                    "master.wake" => {
+                        let project_id = frame
+                            .data
+                            .get("projectId")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string);
+                        // cm:guard `try_send` and never `send().await`, because this arm runs on the ONE frame loop that also carries `job.cancel`. Awaiting a full wake channel would stall cancellation behind a sweep that is already covering this wake anyway — a dropped frame costs nothing, a blocked frame loop costs a kill that never arrives.
+                        if wake_tx.try_send(master::Wake::Core { project_id }).is_err() {
+                            tracing::debug!("[ws] master.wake coalesced — a sweep is already pending");
+                        }
+                    }
+                    // cm:guard this is the runner's OWN observation, not a core event, and it is the other half of the dropped-wake defence. `ws/rooms.ts:publish` has no buffer and no replay, so every `master.wake` published while this socket was down is gone with nothing recording it; one pool read on the way back up is what turns that from work-lost into latency. It is the same wake path with a different trigger, deliberately, so there is no second dispatcher to keep in step.
+                    "ws.connected" => {
+                        if wake_tx.try_send(master::Wake::Reconnect).is_err() {
+                            tracing::debug!("[ws] catch-up read coalesced — a sweep is already pending");
+                        }
                     }
                     "runner.registered" => tracing::info!("[ws] runner registered"),
                     other => tracing::debug!("[ws] ignored event {other}"),

@@ -42,17 +42,55 @@ const releaseChannelFields = {
       stableReads: z.number().int().min(1).max(10).optional(),
     })
     .optional(),
-  /** What to do when a deploy replaces a working build with a dead one. */
+  /**
+   * What to do when a deploy replaces a working build with a dead one, for a
+   * channel whose API cannot do it. Prose here is read by a release agent.
+   */
   rollback: z.string().max(4000).optional(),
 };
 
 const RELEASE_CHANNEL_KEYS = ['releaseRunnerLabel', 'verify', 'rollback'] as const;
+
+export const COOLIFY_ROLLBACK_MODE = 'coolify-image' as const;
+
+const COOLIFY_ROLLBACK_PROSE_REFUSAL =
+  'rollback on a Coolify binding is an action, not a paragraph: Coolify exposes `GET /applications/{uuid}/rollback-images` and `POST /applications/{uuid}/rollback`, and Forge performs them. Send {"mode":"coolify-image"}. Free text is kept only for channels whose API cannot express a rollback (ISS-925).';
+
+/**
+ * The Coolify override of `releaseChannelFields.rollback`. Written as a hand
+ * rolled refinement rather than a zod object so the refusal of the OLD prose
+ * value is a sentence naming the replacement, not `expected object, received
+ * string`.
+ */
+// cm:guard the union `releaseChannelFields` implies across providers is a shape, NOT a type: `rollback` alone differs, and this key must stay LAST in `coolifyConfigSchema` so it overrides the spread above it. `RELEASE_CHANNEL_KEYS` still lists it because splitProviderConfig routes by key name and is indifferent to the value's shape (ISS-925).
+const coolifyRollbackSchema = z
+  .unknown()
+  .superRefine((value, ctx) => {
+    if (value === undefined || value === null) return;
+    if (typeof value === 'string') {
+      ctx.addIssue({ code: 'custom', message: COOLIFY_ROLLBACK_PROSE_REFUSAL });
+      return;
+    }
+    const ok =
+      typeof value === 'object' &&
+      Object.keys(value).length === 1 &&
+      (value as { mode?: unknown }).mode === COOLIFY_ROLLBACK_MODE;
+    if (!ok) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'rollback must be exactly {"mode":"coolify-image"}',
+      });
+    }
+  })
+  .transform((value) => value as { mode: typeof COOLIFY_ROLLBACK_MODE } | undefined)
+  .optional();
 
 const coolifyConfigSchema = z.object({
   baseUrl: z.string().url().max(500),
   // cm:why several targets under one binding because a split BE/FE deploy is two separate Coolify applications sharing one project's credential and release gate
   targets: z.array(coolifyTargetSchema).min(1).max(20),
   ...releaseChannelFields,
+  rollback: coolifyRollbackSchema,
 });
 
 // cm:why binding-tier = per project: two projects share one org connection (the credential + baseUrl) but each deploys its own targets and names its own release box, probes and rollback — a key left on the connection tier is also a key a project admin cannot write on an org-owned connection
@@ -197,9 +235,7 @@ const githubSecretsSchema = z.object({
 // cm:why the release channel `agent` is declared here rather than left as free-text: the REST create path validates through the discriminated union below, so a provider absent from it cannot be created at all — `provider` being a `text` column only means no MIGRATION is needed. It carries no credential and has no adapter because nothing is integrated: the deploy is the project's own script, run by the release session on a box that already holds the key.
 const agentReleaseConfigSchema = z.object(releaseChannelFields);
 
-// Discriminated on `provider` so each provider validates its own config +
-// secrets shape. `environment` defaults to 'prod' for postman (it has no
-// staging/prod split, but the binding column + unique index require a value).
+// cm:why `environment` defaults to 'prod' on postman because that provider has no staging/prod split, while the binding column and its unique index still require a value
 export const createSchema = z.discriminatedUnion('provider', [
   z.object({
     provider: z.literal('coolify'),
