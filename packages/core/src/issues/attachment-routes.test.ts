@@ -20,13 +20,21 @@ const selectInnerJoinLimit = vi.fn();
 const selectInnerJoinWhere = vi.fn(() => ({ limit: selectInnerJoinLimit }));
 const selectInnerJoin = vi.fn(() => ({ where: selectInnerJoinWhere }));
 const selectOrderBy = vi.fn();
+// cm:why the list route awaits orderBy() directly while the ISS-963 name lookup chains .limit(1) onto it; one resolver cannot answer both, so the chained call gets its own and defaults to no collision
+const selectOrderByLimit = vi.fn(async () => [] as unknown[]);
 const selectListWhere = vi.fn(() => ({ orderBy: selectOrderBy }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({
   where: (...args: unknown[]) => {
     selectWhere(...(args as []));
     selectListWhere(...(args as []));
-    return { limit: selectLimit, orderBy: selectOrderBy };
+    return {
+      limit: selectLimit,
+      orderBy: (...o: unknown[]) =>
+        Object.assign(Promise.resolve(selectOrderBy(...(o as []))), {
+          limit: selectOrderByLimit,
+        }),
+    };
   },
   innerJoin: selectInnerJoin,
 }));
@@ -104,6 +112,8 @@ beforeEach(() => {
   selectLimit.mockReset();
   selectInnerJoinLimit.mockReset();
   selectOrderBy.mockReset();
+  selectOrderByLimit.mockReset();
+  selectOrderByLimit.mockResolvedValue([]);
   projectAccess.mockReset();
   insertReturning.mockReset();
   storagePut.mockReset();
@@ -305,7 +315,7 @@ describe('POST /api/issues/:id/attachments', () => {
 
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/attachments`, {
       method: 'POST',
-      // PAT-shaped token — must match `forge_pat_<env>_<64 hex>` to route through PAT verifier
+      // cm:guard the literal below must keep the shape `forge_pat_<env>_<64 hex>` — requireAnyAuth picks its verifier off that pattern, so a token that merely looks plausible falls through to the JWT path and the test proves nothing about PAT auth
       headers: {
         authorization:
           'Bearer forge_pat_dev_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',

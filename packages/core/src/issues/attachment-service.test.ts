@@ -26,11 +26,18 @@ vi.mock('../storage/index.js', () => ({
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
 const selectWhere = vi.fn(async () => [] as Array<{ id: string; path: string }>);
+// cm:why `where()` must stay lazy: the discard lookup awaits it while the ISS-963 name lookup chains .orderBy().limit(), and calling selectWhere eagerly would burn one mockResolvedValueOnce per chained call
+const selectNameLimit = vi.fn(async () => [] as unknown[]);
+const selectChain = (...args: unknown[]) => ({
+  orderBy: () => ({ limit: selectNameLimit }),
+  then: (ok: (v: unknown) => unknown, no: (e: unknown) => unknown) =>
+    selectWhere(...(args as [])).then(ok, no),
+});
 const deleteWhere = vi.fn(async () => undefined);
 vi.mock('../db/client.js', () => ({
   db: {
     insert: vi.fn(() => ({ values: insertValues })),
-    select: vi.fn(() => ({ from: () => ({ where: selectWhere }) })),
+    select: vi.fn(() => ({ from: () => ({ where: selectChain }) })),
     delete: vi.fn(() => ({ where: deleteWhere })),
   },
 }));
@@ -294,8 +301,6 @@ describe('persistIssueAttachment', () => {
 
 describe('persistDecodedIssueAttachments', () => {
   it('refuses the whole batch when one member is unacceptable, persisting none', async () => {
-    insertReturning.mockResolvedValueOnce([makeAttachmentRow({ name: 'good.png' })]);
-
     const result = await persistDecodedIssueAttachments(
       ISSUE_ID,
       [

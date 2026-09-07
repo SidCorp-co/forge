@@ -1,15 +1,18 @@
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
+import { findCommentAttachmentByName } from '../comments/attachment-service.js';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { uploadTickets } from '../db/schema.js';
-import { allowedSetForTarget } from '../lib/attachment-mime.js';
+import { findIssueAttachmentByName } from '../issues/attachment-service.js';
+import { allowedSetForTarget, safeName } from '../lib/attachment-mime.js';
+import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
 
 /** How long a minted upload ticket stays valid. Short by design (replay window). */
 export const UPLOAD_TICKET_TTL_MS = 5 * 60 * 1000;
 
 export type UploadTargetType = 'issue' | 'comment' | 'session';
 
-export type UploadTicketErrorCode = 'MIME_NOT_ALLOWED';
+export type UploadTicketErrorCode = 'MIME_NOT_ALLOWED' | 'ATTACHMENT_NAME_TAKEN';
 
 export class UploadTicketError extends Error {
   readonly code: UploadTicketErrorCode;
@@ -46,6 +49,23 @@ export interface CreateUploadTicketInput {
 }
 
 /**
+/**
+ * The document already holding this name on the target, or null.
+ *
+ * Sessions are absent by design and not by omission: no record cites a session
+ * attachment by name, so uniqueness there would refuse uploads for nothing.
+ */
+async function takenNameOn(
+  targetType: UploadTargetType,
+  targetId: string,
+  name: string,
+): Promise<ExistingAttachmentRef | null> {
+  if (targetType === 'issue') return findIssueAttachmentByName(targetId, safeName(name));
+  if (targetType === 'comment') return findCommentAttachmentByName(targetId, safeName(name));
+  return null;
+}
+
+/**
  * Mint a single-use capability ticket.
  *
  * The declared mime is checked against the target's set up front, so a caller
@@ -63,6 +83,15 @@ export async function createUploadTicket(
       reason: 'not-allowed',
       allowed,
     });
+  }
+  // cm:edge protocol -> packages/core/src/issues/attachment-service.ts — advisory only, and the persist-time check is the authority: a name free at mint can be taken before the PUT arrives, so removing the check there would leave the rule unenforced while this one still passed (ISS-963)
+  const taken = await takenNameOn(input.targetType, input.targetId, input.name);
+  if (taken) {
+    throw new UploadTicketError(
+      'ATTACHMENT_NAME_TAKEN',
+      `an attachment named "${taken.name}" is already on this ${input.targetType} (id ${taken.id}, ${taken.url}) — cite it, delete it, or mint under a different name`,
+      { existing: taken },
+    );
   }
   const expiresAt = new Date(Date.now() + UPLOAD_TICKET_TTL_MS);
   const maxBytes = env.UPLOADS_MAX_BYTES;

@@ -20,7 +20,8 @@ export type SessionAttachmentErrorCode =
 
 export class SessionAttachmentError extends Error {
   readonly code: SessionAttachmentErrorCode;
-  // cm:guard this rides to the client as `body.details` (middleware/error.ts serializes `cause.details`), so it must stay free of storage paths, uploader ids and anything else the refusal does not need
+  // cm:guard this rides to the client as `body.details`, so it must stay free of storage paths, uploader ids and anything else the refusal does not need
+  // cm:why carried on all three attachment error classes so one route mapping reads `err.details` across the union; a session attachment is never refused for a taken name (no record cites one by name), so MIME_NOT_ALLOWED's allowed set is the only thing that ever fills it here
   readonly details: unknown;
   constructor(code: SessionAttachmentErrorCode, message: string, details?: unknown) {
     super(message);

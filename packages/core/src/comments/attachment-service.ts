@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { commentAttachments, comments } from '../db/schema.js';
@@ -8,22 +8,25 @@ import {
   resolveAttachmentMime,
   safeName,
 } from '../lib/attachment-mime.js';
+import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
 import { getStorage } from '../storage/index.js';
 import type { CommentAttachmentLite } from './tree.js';
 
 export { safeName };
 
-export type CommentAttachmentErrorCode =
+export type AttachmentErrorCode =
   | 'MIME_NOT_ALLOWED'
   | 'FILE_TOO_LARGE'
   | 'EMPTY_FILE'
-  | 'INVALID_NAME';
+  | 'INVALID_NAME'
+  | 'ATTACHMENT_NAME_TAKEN';
 
 export class AttachmentError extends Error {
-  readonly code: CommentAttachmentErrorCode;
-  // cm:guard this rides to the client as `body.details` (middleware/error.ts serializes `cause.details`), so it must stay free of storage paths, uploader ids and anything else the refusal does not need
+  readonly code: AttachmentErrorCode;
+  // cm:guard every route that maps this class must forward `details` — an ATTACHMENT_NAME_TAKEN whose body drops it names a collision without naming what it collided with, and a MIME_NOT_ALLOWED whose body drops it names a type without naming the set (ISS-957, ISS-963)
+  // cm:guard this rides to the client as `body.details`, so it must stay free of storage paths, uploader ids and anything else the refusal does not need
   readonly details: unknown;
-  constructor(code: CommentAttachmentErrorCode, message: string, details?: unknown) {
+  constructor(code: AttachmentErrorCode, message: string, details?: unknown) {
     super(message);
     this.code = code;
     this.details = details;
@@ -31,6 +34,7 @@ export class AttachmentError extends Error {
   }
 }
 
+/**
 /**
  * Everything a comment attachment is refused for, decided without touching
  * storage or the DB. Returns the type the row will be stored under, read from
@@ -59,6 +63,26 @@ export function validateCommentAttachment(input: {
     });
   }
   return resolved.mime;
+}
+
+/**
+ * The oldest attachment on this comment stored under exactly `name`, or null.
+ *
+ * Scoped to the one comment, not the issue: a comment is written once with its
+ * files, and two comments in a thread may each carry their own `output.txt`.
+ */
+export async function findCommentAttachmentByName(
+  commentId: string,
+  name: string,
+): Promise<ExistingAttachmentRef | null> {
+  const [row] = await db
+    .select({ id: commentAttachments.id, name: commentAttachments.name })
+    .from(commentAttachments)
+    .where(and(eq(commentAttachments.commentId, commentId), eq(commentAttachments.name, name)))
+    .orderBy(asc(commentAttachments.createdAt))
+    .limit(1);
+  if (!row) return null;
+  return { id: row.id, name: row.name, url: `/api/comments/attachments/${row.id}` };
 }
 
 export interface PersistCommentAttachmentInput {
@@ -93,6 +117,16 @@ export async function persistCommentAttachment(
   const name = safeName(input.name || 'file');
   const mime = validateCommentAttachment({ name, mime: input.mime, bytes });
 
+  // cm:guard decide the collision on the SANITISED name, never `input.name` — that is what the row stores and what a record cites, and `a b.md`/`a_b.md` both sanitise to `a_b.md`, so checking the input would admit the pairs that actually collide and refuse the pairs that do not (ISS-963)
+  const taken = await findCommentAttachmentByName(commentId, name);
+  if (taken) {
+    throw new AttachmentError(
+      'ATTACHMENT_NAME_TAKEN',
+      `an attachment named "${taken.name}" is already on this comment (id ${taken.id}) — cite it or upload under a different name`,
+      { existing: taken },
+    );
+  }
+
   const key = `comments/${commentId}/${Date.now()}-${name}`;
   const { path: storedPath } = await getStorage().put(key, bytes, mime);
 
@@ -126,7 +160,7 @@ export async function persistCommentAttachment(
 export interface CommentAttachmentErrorEntry {
   index: number;
   name: string;
-  code: CommentAttachmentErrorCode | 'INTERNAL';
+  code: AttachmentErrorCode | 'INTERNAL';
   message: string;
   details?: unknown;
 }

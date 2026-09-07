@@ -53,10 +53,7 @@ const idParamSchema = z.object({ id: z.uuid() });
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-// Distinct 400 shape for the attachment endpoints (moved from upload.ts) —
-// preserves their original {message, code} response, separate from the
-// {message:'Invalid input', cause:{code:'BAD_REQUEST', details}} shape the
-// comment CRUD validators above already return.
+// cm:guard the attachment endpoints answer `{message, code}` and the comment CRUD validators above answer `{message:'Invalid input', cause:{code:'BAD_REQUEST', details}}` — collapsing the two rewrites a response shape clients already parse
 const attachmentBadRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });
 
@@ -312,6 +309,11 @@ function attachmentErrorToHttp(err: AttachmentError): HTTPException {
       return new HTTPException(400, { message: 'empty file', cause: { code: 'BAD_REQUEST' } });
     case 'INVALID_NAME':
       return new HTTPException(400, { message: err.message, cause: { code: 'BAD_REQUEST' } });
+    case 'ATTACHMENT_NAME_TAKEN':
+      return new HTTPException(400, {
+        message: err.message,
+        cause: { code: 'ATTACHMENT_NAME_TAKEN', details: err.details },
+      });
   }
 }
 

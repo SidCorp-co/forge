@@ -213,6 +213,7 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
         mime,
       });
     } catch (err) {
+      // cm:why the whole refusal has to fit in the message string — an MCP handler that throws has no structured error channel, so an agent told only `ATTACHMENT_NAME_TAKEN` would have to list the attachments to find what it collided with (ISS-963)
       if (err instanceof UploadTicketError) throw new Error(`${err.code}: ${err.message}`);
       throw err;
     }
