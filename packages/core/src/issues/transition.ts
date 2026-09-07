@@ -53,12 +53,12 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
       return new HTTPException(409, { message: 'issue already in toStatus', cause });
     case 'TRANSITION_REASON_REQUIRED':
     case 'WAITING_KIND_REQUIRED':
+    case 'WAITING_KIND_NOT_APPLICABLE':
     case 'RELEASE_RECORD_REQUIRED':
       return new HTTPException(422, { message: err.detail, cause });
     case 'NO_WORK_EVIDENCE':
       return new HTTPException(409, { message: err.detail, cause });
     default:
-      // ILLEGAL_TRANSITION | STALE_TRANSITION
       return new HTTPException(409, { message: err.detail, cause });
   }
 }
