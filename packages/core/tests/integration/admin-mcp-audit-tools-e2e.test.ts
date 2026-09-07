@@ -172,12 +172,15 @@ describe('admin MCP audit tool counts (ISS-946)', () => {
       expect(r.unattributedCalls).toBe(0);
     });
 
+    // cm:guard the `deviceCalls` assertion here is what discriminates `device_id` from `user_id`, and the case above cannot: a device row stamps BOTH, so any split that reads `user_id` still answers 1 there. This row stamps `user_id` and NEITHER id, so it is the only shape where the two columns disagree — a split on `user_id` reads it as a device call and goes red exactly here.
     it('counts a row carrying neither id as unattributed rather than dropping it', async () => {
       await audit({ tool: 'forge_health', userId: admin.id });
 
       const r = row(await asAdmin(), 'forge_health');
       expect(r.unattributedCalls).toBe(1);
       expect(r.totalCalls).toBe(1);
+      expect(r.deviceCalls).toBe(0);
+      expect(r.tokenCalls).toBe(0);
     });
   });
 
@@ -231,6 +234,7 @@ describe('admin MCP audit tool counts (ISS-946)', () => {
       const body = await asAdmin();
       expect(body.oldestRow).toBe(oldest.toISOString());
       expect(row(body, 'forge_issues').firstSeen).toBe(oldest.toISOString());
+      expect(row(body, 'forge_issues').totalCalls).toBe(2);
     });
 
     it('reports oldestRow as null on an empty table rather than inventing a window', async () => {
