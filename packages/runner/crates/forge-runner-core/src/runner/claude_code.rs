@@ -20,7 +20,6 @@ use super::process::{build_command, graceful_kill};
 use super::{FailureKind, JobSpec, Runner, RunnerEvent, RunnerKind, RunnerStatus, SessionId};
 use crate::error::{Error, Result};
 use crate::mcp;
-use crate::transport::frames::JobToken;
 
 /// One `--input-format stream-json` user message, newline-terminated.
 // cm:guard the CLI accepts exactly this envelope and rejects a bare string — verified on claude 2.1.251, 2026-08-29. A malformed line is not an error: the process stays alive with nothing to answer, so the turn hangs until the job timeout with no diagnosis anywhere.
@@ -879,7 +878,6 @@ impl Runner for ClaudeCodeRunner {
         let slug = spec.project_slug.as_deref().unwrap_or("");
         let mcp_path = mcp::config::write(
             &self.core_url,
-            spec.pat_token.as_ref().map(JobToken::expose),
             slug,
             &spec.job_id,
             spec.mcp_servers_override.as_ref(),
@@ -890,9 +888,9 @@ impl Runner for ClaudeCodeRunner {
         let residency_secs = spec.session_residency_seconds;
 
         let mut cmd = build_command(&args, &effective_repo);
-        // cm:guard set it ONLY when core sent one, and never clear it otherwise — a box whose operator ran `forge-runner login --pat` keeps working against a core that does not mint yet, which is the property that lets the fleet upgrade in either order. Overwriting with an empty string here would break every already-provisioned box the moment one job frame arrived without the field.
-        if let Some(tok) = spec.pat_token.as_ref() {
-            cmd.env("FORGE_PAT", tok.expose());
+        // cm:guard export the BOX's credential, read from the store rather than from the frame — core mints no per-job token since ISS-932 wave 4. Leaving it unset would send `forge-runner api` and the `forge` CLI inside the session looking for a credential the daemon already holds.
+        if let Ok(Some(tok)) = crate::auth::cred_store::load_pat() {
+            cmd.env("FORGE_PAT", tok);
         }
         for (k, v) in project_env(&spec) {
             cmd.env(k, v);
@@ -1414,7 +1412,6 @@ mod tests {
             agent_session_id: None,
             counts_against_session_cap,
             session_residency_seconds: None,
-            pat_token: None,
         }
     }
 

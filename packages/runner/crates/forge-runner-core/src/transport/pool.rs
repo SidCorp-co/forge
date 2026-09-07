@@ -6,7 +6,6 @@
 
 use super::CoreClient;
 use crate::error::{Error, Result};
-use crate::transport::frames::JobToken;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -185,8 +184,6 @@ pub struct ClaimOutcome {
     #[serde(default)]
     pub job_id: Option<String>,
     #[serde(default)]
-    pub job_token: Option<String>,
-    #[serde(default)]
     pub issue_key: Option<String>,
     #[serde(default)]
     pub reason: Option<String>,
@@ -217,7 +214,6 @@ pub struct ClaimedJob {
     pub agent_session_id: Option<String>,
     pub issue_key: Option<String>,
     pub attempts: Option<u32>,
-    pub pat_token: Option<JobToken>,
     // cm:guard the master's name for this agent, and the git branch its worktree sits on. It replaces core's `worktreeBranch` payload outright: core no longer names a branch, so a job that reaches dispatch with this empty has no checkout of its own and would write the repo ROOT — which is why the claim refuses an unnamed agent at the door rather than defaulting one here.
     pub agent_name: String,
 }
@@ -232,12 +228,7 @@ fn payload_str(payload: &serde_json::Value, key: &str) -> Option<String> {
 impl Prepared {
     /// Fold the preparation and the claim's own two fields into one job.
     // cm:guard the stage overrides live INSIDE `payload` (core's `buildOverridesPayload` writes them there) and must be read out here rather than expected as siblings. Reading them off the top level yields `None` for every one, which is not a parse error — it is a job that silently runs with the project defaults instead of the stage's model, tools and timeout.
-    pub fn into_claimed(
-        self,
-        job_token: Option<String>,
-        issue_key: Option<String>,
-        agent_name: String,
-    ) -> ClaimedJob {
+    pub fn into_claimed(self, issue_key: Option<String>, agent_name: String) -> ClaimedJob {
         let payload = self.payload;
         ClaimedJob {
             job_id: self.job_id,
@@ -261,7 +252,6 @@ impl Prepared {
             session_residency_seconds: self.session_residency_seconds,
             agent_session_id: self.agent_session_id,
             attempts: self.attempts,
-            pat_token: job_token.map(JobToken::new),
             agent_name,
         }
     }
@@ -432,6 +422,5 @@ mod tests {
         let out: ClaimOutcome = serde_json::from_value(raw).unwrap();
         assert!(!out.ok);
         assert_eq!(out.reason.as_deref(), Some("already_held"));
-        assert!(out.job_token.is_none());
     }
 }

@@ -625,7 +625,6 @@ pub async fn handle(
         session_residency_seconds: ja.session_residency_seconds,
         resume_id: ja.claude_session_id.clone(),
         agent_session_id: ja.agent_session_id.clone(),
-        pat_token: ja.pat_token.clone(),
     };
 
     // cm:guard beat from ack until `start` returns, or the wait reads as a dead runner. `consume`'s own heartbeat starts only after the process spawns, and `start` still blocks for up to `SESSION_PERMIT_WAIT` on the session semaphore; core reaps a silent session at 3 minutes (job 483387d4, 2026-09-03, killed `session_lost` 4.5 min into a permit wait).
@@ -901,9 +900,7 @@ mod tests {
             }))
             .expect("an unknown wire field must never fail a claim");
         assert_eq!(
-            prepared
-                .into_claimed(None, None, "test-agent".into())
-                .job_id,
+            prepared.into_claimed(None, "test-agent".into()).job_id,
             "j1"
         );
     }

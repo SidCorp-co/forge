@@ -2,31 +2,6 @@
 
 use serde::Deserialize;
 
-/// A machine-minted PAT that lives exactly as long as the work it was minted
-/// for: a `job:` token for the life of one job, a `session:` token for the life
-/// of one agent session (ISS-927). Named `JobToken` for the first of those and
-/// kept that way — the type is about redaction, not about which one it holds.
-// cm:guard the redacting `Debug` is the whole point of the newtype — `ClaimedJob` and `JobSpec` both derive `Debug`, so the day someone adds a `tracing::debug!("{job:?}")` a plain `String` here writes a live credential into the daemon log and into Sentry. Keep the manual impl; deriving `Debug` on this type silently undoes it.
-#[derive(Clone, Deserialize)]
-#[serde(transparent)]
-pub struct JobToken(String);
-
-impl JobToken {
-    pub fn new(raw: String) -> Self {
-        Self(raw)
-    }
-
-    pub fn expose(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Debug for JobToken {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("JobToken(redacted)")
-    }
-}
-
 /// Envelope core wraps every broadcast in: `{ event, data, timestamp }`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Frame {
@@ -52,18 +27,6 @@ pub fn session_id_of(data: &serde_json::Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn debug_never_prints_the_token() {
-        let token = JobToken::new("forge_pat_live_secret".into());
-        let rendered = format!("{token:?}");
-        assert!(
-            !rendered.contains("forge_pat_live_secret"),
-            "the token reached a Debug rendering: {rendered}"
-        );
-        assert!(rendered.contains("JobToken(redacted)"));
-        assert_eq!(token.expose(), "forge_pat_live_secret");
-    }
 
     #[test]
     fn a_cancel_frame_yields_its_job_id() {
