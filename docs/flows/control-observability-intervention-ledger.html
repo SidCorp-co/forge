@@ -25,7 +25,8 @@ interventions-per-issue metric can see. The question this answers: <em>a person 
 something — does the number move, and under what name?</em> Owners:
 <code>packages/core/src/lifecycle/transition.ts</code> (the audited path),
 <code>packages/core/drizzle/migrations/0217_unaudited_transition_detector.sql</code> (the detector
-and the view), <code>packages/core/src/pipeline/analytics-routes.ts</code> (the read).</p>
+and the view), <code>packages/core/src/metrics/interventions-report.ts</code> (the read, shared by both
+routes).</p>
 
 <h2>The fork that decides whether the flip is countable</h2>
 <p>There are exactly two ways a terminal status lands on <code>jobs</code> or
@@ -58,9 +59,20 @@ flowchart TD
   JOBEV["job_events kind='intervention'<br/>written beside the flip, in the same tx"] --> VIEW
   APP --> JOBEV
 
-  VIEW --> API["GET /api/pipeline/analytics/interventions<br/>rollup per issue + raw events"]
-  API --> NS(["interventions per issue closed"])
+  VIEW --> RPT["metrics/interventions-report.ts<br/>buildInterventionsReport(projectIds, days)"]
+  RPT --> FAN["GET /api/pipeline/interventions<br/>every project the caller can see — session only"]
+  RPT --> ONE["GET /api/projects/:id/metrics/interventions<br/>one named project — reachable by a PAT"]
+  FAN --> NS(["interventions per issue closed"])
+  ONE --> NS
 </pre></div>
+
+<div class="rule"><strong>Two read hops, and which credential each answers.</strong> The fan-out
+answers every project the caller can see, so <code>/api/pipeline</code> is off
+<code>PAT_ALLOWED_PREFIXES</code> and a session is the only thing that reaches it — adding
+<code>?projectId=</code> does not change that, because the allowlist judges the route and never
+reads the query. The project-scoped hop is the one an agent or a runner box can read, and until
+ISS-944 it did not exist: the north-star metric was readable from a browser and from nothing else.
+</div>
 
 <div class="rule"><strong>The marker is set before the UPDATE, never after.</strong> The trigger is
 <code>AFTER UPDATE</code> on the row, which fires before <code>applyKernelTransition</code> has

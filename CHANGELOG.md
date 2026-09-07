@@ -1096,6 +1096,19 @@
   dependency reads as information rather than as an alarm. Shipped 2026-09-03; this line was owed
   then and is written now. (ISS-903)
 
+- **The interventions metric — the north star — could be read from a browser session and from
+  nothing else.** `GET /api/pipeline/interventions` is a cross-project fan-out: with `projectId`
+  omitted it answers over every project the caller can see, so `/api/pipeline` is off
+  `PAT_ALLOWED_PREFIXES` and a personal access token is refused on the path before the query string
+  is ever read. Adding `?projectId=` did not change that and was never going to — the allowlist
+  judges the route, and a fence that switched on an optional parameter would be a fence the caller
+  decides. `GET /api/projects/:id/metrics/interventions` is the project-scoped half, the fourth of
+  a pattern `step-durations`, `retry-rescues` and `session-failures` already follow, and it is
+  fenced by the token's own project allowlist: a token naming a project it may not see gets
+  `project not found`, not that project's rows. The rollup both routes answer from now lives once,
+  in `metrics/interventions-report.ts`. No MCP tool was added — that surface is under a documented
+  shrink and `forge_metrics.*` is in its "free to go" group. (ISS-944)
+
 ### Removed
 
 - **`print` mode. Every agent a runner starts is now one long-lived session that reads its turns

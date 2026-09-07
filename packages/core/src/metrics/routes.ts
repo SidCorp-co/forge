@@ -4,6 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { buildInterventionsReport } from './interventions-report.js';
 import { BUCKETS, METRICS, runTimeseries, stepDurationsForProject } from './queries.js';
 import { buildRetryRescuesReport, buildSessionFailuresReport } from './session-failures-report.js';
 
@@ -21,7 +22,7 @@ const idParamSchema = z.object({ id: z.uuid() });
 
 const timeseriesQuerySchema = z.object({
   metric: z.enum(METRICS),
-  // days window, capped at 90 to bound activity_log / jobs scans (AC #4).
+  // cm:why 90 is the ceiling every metric window shares, and it is a scan bound rather than a product choice: the series behind it walk `activity_log` and `jobs` unindexed on time
   days: z.coerce.number().int().min(1).max(90).default(30),
   bucket: z.enum(BUCKETS).default('day'),
   groupBy: z.literal('step').optional(),
@@ -45,7 +46,6 @@ projectMetricsRoutes.get(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    // Same member visibility as /api/projects/health.
     const access = await loadProjectAccess(id, userId);
     if (!access.role) throw forbidden('not a project member');
 
@@ -127,5 +127,24 @@ projectMetricsRoutes.get(
 
     const { days } = c.req.valid('query');
     return c.json(await buildSessionFailuresReport(id, days));
+  },
+);
+
+// cm:guard the ONLY shape of the interventions metric a personal access token can reach, and the reason is the same one the guard above states: `/api/pipeline/interventions` fans out over every project the caller can see when `projectId` is omitted, so `/api/pipeline` stays off PAT_ALLOWED_PREFIXES and a query parameter cannot buy a way in — a fence the caller decides is not a fence. ISS-944 measured the cost of the gap live on forge-beta 2026-09-06: VISION §1 metric ② was readable from a browser session and from nothing else.
+projectMetricsRoutes.get(
+  '/:id/metrics/interventions',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('query', daysQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const access = await loadProjectAccess(id, c.get('userId'));
+    if (!access.role) throw forbidden('not a project member');
+
+    const { days } = c.req.valid('query');
+    return c.json(await buildInterventionsReport([id], days));
   },
 );
