@@ -3138,6 +3138,39 @@
 
 ### Changed
 
+- **The interventions metric now counts a hand on `agent_sessions`, a hand on a non-terminal
+  status, and a hand that deletes the row — and it stopped charging an ordinary auto-release to a
+  human.** ISS-884 taught the ruler to see a `psql` terminal flip on `jobs` or `pipeline_runs` by
+  the absence of a `forge.kernel_txn` marker, and recorded the other three shapes of hand-written
+  intervention as permanent edges of the instrument. They were not edges. Each was uncounted for the
+  same reason — only the TERMINAL writers stamped the marker — so widening it to every legitimate
+  status writer and row deleter closed all three at once, with no new discriminator.
+
+  `db/kernel-marker.ts` now owns the stamp (`withKernelMarker`), `applyKernelTransition` is
+  one of its callers, and `0219_unaudited_transition_reach.sql` widens the two triggers to any
+  status change, adds the same trigger on `agent_sessions`, and adds an `AFTER DELETE` arm that
+  records `<status>→deleted`. A DELETE of a `projects` or `issues` row cascades kernel rows in the
+  parent's transaction, so the parent's marker covers every child it takes with it.
+  `db/kernel-marker-guard.test.ts` is what keeps this true as the tree grows: it reads the
+  SHAPE of a `.set()` argument rather than its status literal, which is how it catches
+  `PATCH /api/agent-sessions/:id` writing `patch.status` — the writer whose invisibility to the
+  older literal-scanning guard is the whole reason the session class was uncounted.
+
+  It also fixes an overcount ISS-884 shipped on the arm it did prove. The detector is
+  `AFTER UPDATE OF status`; the I1 backstop is a `BEFORE` trigger that rewrites `NEW.status` to
+  `cancelled` when an active child is written under a terminal run. An ordinary requeue writes
+  `queued`, stamped nothing, and I1 turned it terminal — so releasing a held job whose run had
+  closed was charted as manual SQL. Asserted as a regression, red on the parent commit.
+
+  Two premises recorded as reasons in `docs/modules/control-observability/README.md` did not survive
+  contact with the tree and are corrected there rather than quietly dropped: the retention sweeper
+  deletes `job_events`, never `jobs`, and there is no in-code delete of a `jobs` or `pipeline_runs`
+  row anywhere. One edge stays, and it is not a shape of write — a migration that backfills a
+  `status` is charged to the metric, so such a migration stamps the marker itself. Priced: the
+  session PATCH no longer skips its transaction on a status-free heartbeat, costing one
+  `SELECT set_config` per PATCH, because a marker gated on a runtime condition is one the guard
+  cannot see.
+
 - **The rule that decides which MCP tools may be deleted was measured against the copy of the
   `forge` CLI the fleet actually runs, and three tools it had cleared turned out to have live
   callers.** The rule gated a deletion on a tool's *device* call count and on the replacement route

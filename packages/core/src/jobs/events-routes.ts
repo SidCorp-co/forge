@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
+import { withKernelMarker } from '../db/kernel-marker.js';
 import {
   agentSessions,
   jobEventKinds,
@@ -60,11 +61,7 @@ const eventsListQuerySchema = z
 
 export const jobEventsRoutes = new Hono<{ Variables: DeviceVars }>();
 
-// GET /api/jobs/:id/events — replay endpoint for the WS client. Members of
-// the job's project can read; device auth not required (reads are safe).
-//
-// Auth is applied per-handler (not via .use) so the middleware doesn't
-// intercept POST /:id/events on the sibling device router.
+// cm:guard auth is applied PER-HANDLER, never with `.use` — a router-wide middleware here also intercepts `POST /:id/events` on the sibling device router, which authenticates a device rather than a user.
 export const jobEventsListRoutes = new Hono<{ Variables: AuthVars }>();
 jobEventsListRoutes.get(
   '/:id/events',
@@ -217,23 +214,26 @@ jobEventsRoutes.post(
     // cm:guard server-side and NOT in the worker on purpose: the worker keys its local session by `jobId` and would have to learn the linked `agentSessionId` to PATCH the row itself. Moving it there couples every worker to the linkage for a bump core can do from the id it already has.
     // cm:guard best-effort, and it must stay that way — a throw here would fail event INGEST, losing the runner's output to protect a freshness stamp the sweeper can recover from on the next batch.
     // cm:edge lockstep -> packages/core/src/agent-sessions/routes.ts — the SAME rule as `isWorkerActivity` there, and it has to be in both: a park announced over PATCH and a park announced as a job event are the same fact arriving by two doors, and a rule on only one door leaves the other stamping the session healthy while it waits on a human.
-    if (job.agentSessionId && events.some((e) => !isParkEvent(e))) {
+    const linkedSessionId = job.agentSessionId;
+    if (linkedSessionId && events.some((e) => !isParkEvent(e))) {
       try {
         const heartbeatNow = new Date();
-        const flipped = await db
-          .update(agentSessions)
-          .set({
-            status: 'running',
-            startedAt: heartbeatNow,
-            lastHeartbeatAt: heartbeatNow,
-            updatedAt: heartbeatNow,
-          })
-          .where(and(eq(agentSessions.id, job.agentSessionId), eq(agentSessions.status, 'queued')))
-          .returning({
-            id: agentSessions.id,
-            projectId: agentSessions.projectId,
-            deviceId: agentSessions.deviceId,
-          });
+        const flipped = await withKernelMarker(db, async (tx) =>
+          tx
+            .update(agentSessions)
+            .set({
+              status: 'running',
+              startedAt: heartbeatNow,
+              lastHeartbeatAt: heartbeatNow,
+              updatedAt: heartbeatNow,
+            })
+            .where(and(eq(agentSessions.id, linkedSessionId), eq(agentSessions.status, 'queued')))
+            .returning({
+              id: agentSessions.id,
+              projectId: agentSessions.projectId,
+              deviceId: agentSessions.deviceId,
+            }),
+        );
         if (flipped.length > 0) {
           const row = flipped[0];
           if (row) {
@@ -247,9 +247,7 @@ jobEventsRoutes.post(
           await db
             .update(agentSessions)
             .set({ lastHeartbeatAt: heartbeatNow, updatedAt: heartbeatNow })
-            .where(
-              and(eq(agentSessions.id, job.agentSessionId), eq(agentSessions.status, 'running')),
-            );
+            .where(and(eq(agentSessions.id, linkedSessionId), eq(agentSessions.status, 'running')));
         }
       } catch (err) {
         logger.warn(

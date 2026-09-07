@@ -7,13 +7,13 @@
  * hooks, dispatch re-tick) stays in the caller.
  */
 // cm:guard invariant I2 — the audit row is written in the same TRANSACTION as the status UPDATE, which is what makes a terminal status physically unable to land without a trail. A root-`db` executor is autocommit, so this module opens a transaction itself rather than letting the two statements commit separately; before ISS-884 they did, and a crash between them left an unaudited terminal flip written BY the audited path. `transition-guard.test.ts` scans the tree for `.update(jobs|agentSessions|pipelineRuns).set({ status: <terminal literal> })` outside this module and fails the build on one.
-// cm:guard the guard test reads a status LITERAL, so a caller writing a VARIABLE status is invisible to it — `PATCH /api/agent-sessions/:id` is exactly that and is a real second terminal writer on the session axis. Anything hung on this chokepoint for sessions (the ISS-675 escalation bridge, the ISS-927 token revoke) needs a second half in `agent-sessions/routes.ts`, and no gate will tell you if you forget.
+// cm:guard the guard test reads a status LITERAL, so a caller writing a VARIABLE status is invisible to it — `PATCH /api/agent-sessions/:id` is exactly that and is a real second terminal writer on the session axis. Anything hung on this chokepoint for sessions (the ISS-675 escalation bridge, the ISS-927 token revoke) needs a second half in `agent-sessions/routes.ts`, and no gate will tell you if you forget. The `forge.kernel_txn` half of that is now gated: `kernel-marker-guard.test.ts` reads the SHAPE of the `.set()` argument rather than its status literal, so the PATCH is caught there as a marker obligation even though it is invisible here.
 // cm:guard the caller supplies `where` and it MUST carry the prior-status guard — the CAS is the only thing stopping two writers double-flipping, and a predicate without it matches every row.
 // cm:guard pass a `tx` when the flip must be atomic with a cascade or a sibling write (cancel audit, run-close cascade); `db` is for a standalone flip. Either way this module opens a transaction of its own — a real one on `db`, a savepoint on a `tx` — so the executor decides what the flip is atomic WITH, never whether it is atomic at all. Passing `db` while inside a transaction that later rolls back still leaves the audit row behind describing a status nothing holds.
 // cm:why `reason='pipeline_completed'` is the cascade's SUCCESS sentinel — a terminal pipeline step set its issue terminal while its own job/session was still active — so `resolvePipelineCompletedTarget` maps it to `done`/`completed` and a succeeded step is never recorded as `cancelled`/`failed` (ISS-444 amendment 2, ISS-352).
 
-import { type SQL, sql } from 'drizzle-orm';
-import type { Db } from '../db/client.js';
+import type { SQL } from 'drizzle-orm';
+import { type KernelExecutor, stampKernelTxn } from '../db/kernel-marker.js';
 import {
   agentSessions,
   type JobStatus,
@@ -26,11 +26,10 @@ import {
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { logger } from '../logger.js';
 
-type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
-/** Either a live transaction handle or the root `db`. The UPDATE + audit INSERT
- *  run on whichever is passed; pass a `tx` when atomicity with a cascade or a
- *  sibling write is required. */
-export type KernelExecutor = Tx | Db;
+/** Re-exported so a caller that already imports the chokepoint keeps one import.
+ *  The UPDATE + audit INSERT run on whichever executor is passed; pass a `tx`
+ *  when atomicity with a cascade or a sibling write is required. */
+export type { KernelExecutor };
 
 export type KernelEntity = 'job' | 'session' | 'run';
 export type KernelActorType = 'user' | 'system' | 'runner' | 'sweeper';
@@ -163,15 +162,13 @@ export async function applyKernelTransition(
  * a real transaction on the root `db` and a SAVEPOINT on a caller's `tx`, so the
  * three statements are one atomic unit no matter which executor arrived.
  */
-// cm:edge contract -> packages/core/drizzle/migrations/0217_unaudited_transition_detector.sql — `forge.kernel_txn` is read by `forge_detect_unaudited_transition`, which counts a terminal flip on `jobs`/`pipeline_runs` as a hand-written intervention when the marker is absent. Dropping this `set_config`, or setting it AFTER the UPDATE, charts every kernel flip this repo performs as manual SQL in the north-star metric.
+// cm:edge contract -> packages/core/src/db/kernel-marker.ts — `stampKernelTxn` is what keeps this flip out of the interventions metric; calling it AFTER the UPDATE, or not at all, charts every kernel flip this repo performs as manual SQL in the north-star.
 async function writeTransition(
   exec: KernelExecutor,
   args: JobTransitionArgs | SessionTransitionArgs | RunTransitionArgs,
 ): Promise<Array<{ id: string }>> {
-  await exec.execute(sql`SELECT set_config('forge.kernel_txn', txid_current()::text, true)`);
-  // drizzle's `.returning()` always yields an array; `?? []` only guards the
-  // (test-double) case where a mock omits it, mirroring the prior call sites'
-  // `updated ?? []` tolerance so a missing return can't crash the chokepoint.
+  await stampKernelTxn(exec);
+  // cm:why `?? []` guards a TEST DOUBLE, not drizzle — `.returning()` always yields an array in production. It mirrors the tolerance the prior call sites had so a mock that omits the return cannot crash the chokepoint.
   let updated: Array<{ id: string }>;
   if (args.entity === 'job') {
     updated =

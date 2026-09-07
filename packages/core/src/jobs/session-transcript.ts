@@ -95,17 +95,17 @@ async function runDerive(jobId: string, agentSessionId: string): Promise<void> {
     if (existing.status === 'failed' && existing.failureReason === 'user_cancelled') return;
 
     const prevMessages = Array.isArray(existing.messages) ? existing.messages : [];
-    const updates: Record<string, unknown> = { messages, updatedAt: new Date() };
-    // claudeSessionId is stable once known; set it when we have one and the row
-    // doesn't already carry it (don't churn the column on every flush).
-    if (claudeSessionId && existing.claudeSessionId !== claudeSessionId) {
-      updates.claudeSessionId = claudeSessionId;
-    }
-
+    // cm:why the SET list is written as a literal so `kernel-marker-guard.test.ts` can see it carries no `status` — this is the transcript flush, the hottest write on the session table, and it is the one place worth proving status-free rather than paying a marker round-trip per flush. `claudeSessionId` is stable once known, so it is spread in only when the row does not already carry it rather than churning the column on every flush.
     const { updated, sync } = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(agentSessions)
-        .set(updates)
+        .set({
+          messages,
+          updatedAt: new Date(),
+          ...(claudeSessionId && existing.claudeSessionId !== claudeSessionId
+            ? { claudeSessionId }
+            : {}),
+        })
         .where(eq(agentSessions.id, agentSessionId))
         .returning();
       if (!row) throw new Error('agent session not found');

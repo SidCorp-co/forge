@@ -45,7 +45,7 @@ const txInsert = vi.fn(() => ({
 }));
 const txExecute = vi.fn();
 const transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-  const tx = { execute: txExecute, insert: txInsert };
+  const tx = { execute: txExecute, insert: txInsert, update: dbUpdate };
   return fn(tx);
 });
 
@@ -54,9 +54,7 @@ const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const dbSelect = vi.fn(() => ({ from: selectFrom }));
 
-// Heartbeat sync chain: db.update(agentSessions).set(...).where(...)[.returning(...)]
-// First call (CAS queued→running) ends with .returning() — second call (heartbeat
-// bump) ends at .where(). Both branches exercised in dedicated tests below.
+// cm:why the two heartbeat writes end the chain at different links — the CAS `queued`→`running` calls `.returning()`, the plain heartbeat bump stops at `.where()` — so the double has to answer both shapes or one branch fails on the mock rather than on the route.
 const updateReturning = vi.fn(async () => [] as unknown[]);
 const updateWhere = vi.fn(() => {
   const p = {

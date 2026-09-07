@@ -13,27 +13,29 @@ const insertValues = vi.fn();
 const updateSet = vi.fn();
 const selectRows = vi.fn<() => unknown[]>(() => []);
 
-vi.mock('../db/client.js', () => ({
-  db: {
-    insert: () => ({
-      values: (v: unknown) => {
-        insertValues(v);
-        return { returning: async () => [{ id: 'held-1' }] };
-      },
-    }),
-    update: () => ({
-      set: (v: unknown) => {
-        updateSet(v);
-        return {
-          where: () => ({
-            returning: async () => [{ id: 'held-1', type: 'code', issueId: 'i1' }],
-          }),
-        };
-      },
-    }),
-    select: () => ({ from: () => ({ where: async () => selectRows() }) }),
-  },
-}));
+// cm:why `releaseHeldJobs` requeues through `withKernelMarker`, which opens a transaction and stamps `forge.kernel_txn` via `tx.execute` before the UPDATE — the double hands the same stub back so the scripted `.update()` chain still answers.
+const dbStub = {
+  execute: async () => [],
+  transaction: async (fn: (tx: unknown) => unknown) => fn(dbStub),
+  insert: () => ({
+    values: (v: unknown) => {
+      insertValues(v);
+      return { returning: async () => [{ id: 'held-1' }] };
+    },
+  }),
+  update: () => ({
+    set: (v: unknown) => {
+      updateSet(v);
+      return {
+        where: () => ({
+          returning: async () => [{ id: 'held-1', type: 'code', issueId: 'i1' }],
+        }),
+      };
+    },
+  }),
+  select: () => ({ from: () => ({ where: async () => selectRows() }) }),
+};
+vi.mock('../db/client.js', () => ({ db: dbStub }));
 
 vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

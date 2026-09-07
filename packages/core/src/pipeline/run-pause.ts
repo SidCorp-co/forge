@@ -17,6 +17,7 @@
 
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { withKernelMarker } from '../db/kernel-marker.js';
 import { pipelineRuns } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
@@ -150,20 +151,22 @@ export async function pauseRun(args: {
   pauseReason?: string | undefined;
   bus?: HooksBus | undefined;
 }): Promise<PipelineRunRow | null> {
-  const [row] = await db
-    .update(pipelineRuns)
-    .set({
-      status: 'paused',
-      updatedAt: new Date(),
-      // cm:guard merge in SQL with COALESCE, never read-modify-write — `metadata` carries sibling keys other writers own, and rebuilding the object here drops whichever ones this call never read
-      ...(args.pauseReason
-        ? {
-            metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object('pauseReason', ${args.pauseReason}::text)`,
-          }
-        : {}),
-    })
-    .where(and(eq(pipelineRuns.id, args.runId), eq(pipelineRuns.status, 'running')))
-    .returning();
+  const [row] = await withKernelMarker(db, async (tx) =>
+    tx
+      .update(pipelineRuns)
+      .set({
+        status: 'paused',
+        updatedAt: new Date(),
+        // cm:guard merge in SQL with COALESCE, never read-modify-write — `metadata` carries sibling keys other writers own, and rebuilding the object here drops whichever ones this call never read
+        ...(args.pauseReason
+          ? {
+              metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object('pauseReason', ${args.pauseReason}::text)`,
+            }
+          : {}),
+      })
+      .where(and(eq(pipelineRuns.id, args.runId), eq(pipelineRuns.status, 'running')))
+      .returning(),
+  );
   if (!row) return null;
   await emitRunPauseTransition(row, 'running', 'paused', args.bus ?? hooks);
   return row;
@@ -178,15 +181,17 @@ export async function resumeRunsWhere(
   where: SQL | undefined,
   opts: { bus?: HooksBus | undefined } = {},
 ): Promise<PipelineRunRow[]> {
-  const rows = await db
-    .update(pipelineRuns)
-    .set({
-      status: 'running',
-      updatedAt: new Date(),
-      metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) - 'pauseReason'`,
-    })
-    .where(and(eq(pipelineRuns.status, 'paused'), where))
-    .returning();
+  const rows = await withKernelMarker(db, async (tx) =>
+    tx
+      .update(pipelineRuns)
+      .set({
+        status: 'running',
+        updatedAt: new Date(),
+        metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) - 'pauseReason'`,
+      })
+      .where(and(eq(pipelineRuns.status, 'paused'), where))
+      .returning(),
+  );
   for (const row of rows) {
     await emitRunPauseTransition(row, 'paused', 'running', opts.bus ?? hooks);
   }
