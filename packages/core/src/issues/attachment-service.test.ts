@@ -34,13 +34,16 @@ const selectChain = (...args: unknown[]) => ({
     selectWhere(...(args as [])).then(ok, no),
 });
 const deleteWhere = vi.fn(async () => undefined);
-vi.mock('../db/client.js', () => ({
-  db: {
+vi.mock('../db/client.js', () => {
+  const db = {
     insert: vi.fn(() => ({ values: insertValues })),
     select: vi.fn(() => ({ from: () => ({ where: selectChain }) })),
     delete: vi.fn(() => ({ where: deleteWhere })),
-  },
-}));
+    execute: vi.fn(async () => []),
+    transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(db),
+  };
+  return { db };
+});
 
 const safeRecordActivity = vi.fn();
 vi.mock('../pipeline/activity.js', () => ({

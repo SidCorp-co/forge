@@ -414,6 +414,24 @@ export interface TaskRow {
   updatedAt: string;
 }
 
+/** Per-file failure from the inline create's `attachments[]`, as core returns it
+ *  on the 201 body (`issues/routes.ts` sets `attachmentErrors`). Mirrors core's
+ *  `AttachmentErrorEntry`. */
+export interface AttachmentErrorEntry {
+  index: number;
+  name: string;
+  code: string;
+  message: string;
+}
+
+/** `POST /api/projects/:id/issues` — the created issue, plus whatever it could
+ *  NOT attach. A create that drops files answers 201 all the same, so a caller
+ *  that ignores `attachmentErrors` reports a success the user did not get
+ *  (ISS-963). */
+export interface CreatedIssue extends IssueRow {
+  attachmentErrors?: AttachmentErrorEntry[];
+}
+
 /** Attachment row from `GET /api/issues/:id/attachments` — `url` is the
  *  download path, render through `coreFileUrl`. */
 export interface AttachmentRow {

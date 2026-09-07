@@ -19,7 +19,7 @@ import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchRes
 import type {
   IssueLabel,
   IssuePriority,
-  IssueRow,
+  CreatedIssue,
   IssueSearchOpts,
   IssueStatus,
   WaitingCause,
@@ -33,7 +33,7 @@ import type {
  */
 export function useCreateIssue(projectId: string) {
   const qc = useQueryClient();
-  return useMutation<IssueRow, unknown, CreateIssueInput>({
+  return useMutation<CreatedIssue, unknown, CreateIssueInput>({
     mutationFn: (body) => issuesApi.create(projectId, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["issues"] });

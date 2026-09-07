@@ -143,7 +143,7 @@ functions, and the type resolution lives inside those rather than at any entranc
 <tr><td><code>findIssueAttachmentByName</code> / <code>findCommentAttachmentByName</code></td>
     <td>A name already stored on this issue (or this comment), compared on the <em>sanitised</em> name.</td>
     <td><code>details.existing = {id, name, url}</code>.</td>
-    <td class="ok">Nothing. And the id it hands back is exactly what <code>DELETE /api/attachments/:id</code> takes, so refuse → delete → retry is a closed loop rather than a dead end.</td></tr>
+    <td class="ok">Nothing. <b>On an issue</b> the id it hands back is exactly what <code>DELETE /api/attachments/:id</code> takes, so refuse &rarr; delete &rarr; retry closes. <b>On a comment it does not close</b> &mdash; there is no delete for comment attachments (see the gap below), so the only way out is a different name.</td></tr>
 <tr><td><code>persistDecoded*Attachments</code> (a batch)</td>
     <td>The whole batch, if <em>any</em> member fails validation.</td>
     <td>One entry per failing member: <code>{index, name, code, message, details}</code>.</td>

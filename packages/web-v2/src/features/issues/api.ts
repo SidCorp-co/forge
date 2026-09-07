@@ -7,6 +7,7 @@
 import { apiClient, apiClientList } from "@/lib/api/client";
 import { filterToQueryParams } from "./derive";
 import type {
+  CreatedIssue,
   IssueComplexity,
   IssueCostSummary,
   IssueDependencies,
@@ -52,7 +53,7 @@ export const issuesApi = {
    *  project member). Returns the created row incl. `displayId` (`ISS-<seq>`)
    *  for navigation to its detail page. */
   create: (projectId: string, body: CreateIssueInput) =>
-    apiClient<IssueRow>(`/projects/${projectId}/issues`, {
+    apiClient<CreatedIssue>(`/projects/${projectId}/issues`, {
       method: "POST",
       body: JSON.stringify(body),
     }),

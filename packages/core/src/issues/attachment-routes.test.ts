@@ -43,13 +43,16 @@ const insertValues = vi.fn(() => ({ returning: insertReturning }));
 const deleteWhere = vi.fn(async () => undefined);
 const deleteFrom = vi.fn(() => ({ where: deleteWhere }));
 
-vi.mock('../db/client.js', () => ({
-  db: {
+vi.mock('../db/client.js', () => {
+  const db = {
     select: vi.fn(() => ({ from: selectFrom })),
     insert: vi.fn(() => ({ values: insertValues })),
     delete: vi.fn(() => deleteFrom()),
-  },
-}));
+    execute: vi.fn(async () => []),
+    transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(db),
+  };
+  return { db };
+});
 
 const projectAccess = vi.fn();
 vi.mock('../lib/authz.js', async (importOriginal) => ({

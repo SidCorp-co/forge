@@ -85,8 +85,13 @@ export function mimeFromName(name: string): string {
 }
 
 /** Strip path separators; keep the extension. Length-cap. */
+// cm:guard this output is an IDENTITY, not just a safe filename — the attachment name rule compares it, so a character class that maps distinct names together refuses distinct documents: `[^A-Za-z0-9._-]` sent `报告.pdf` and `设计.pdf` both to `__.pdf`, and NFC/NFD spellings of one name to two (ISS-963)
 export function safeName(name: string): string {
-  const cleaned = name.replace(/[\\/]+/g, '_').replace(/[^A-Za-z0-9._-]/g, '_');
+  const cleaned = name
+    .normalize('NFC')
+    .replace(/[\\/]+/g, '_')
+    .replace(/[\p{C}\p{Z}]/gu, '_')
+    .replace(/[^\p{L}\p{N}._-]/gu, '_');
   return cleaned.slice(0, 200) || 'file';
 }
 

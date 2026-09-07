@@ -3308,6 +3308,31 @@
   No tool is deleted by this change. `docs/architecture/agent-surface.md` carries the rule,
   `docs/flows/mcp-tool-deletion.html` draws the decision path, and ISS-946 carries the fact that
   the third population cannot be measured from a runner box at all. (ISS-894)
+
+- **An attachment name on an issue now means one file, and a refusal says which file already
+  holds it.** An issue or a comment could carry the same attachment name twice, so a record citing
+  that name resolved to two documents and no reader could tell which was meant. One tracker issue
+  had eight attachments under six names, and ten verdict records citing a name that pointed at two
+  files. Nothing refused the second upload, and nothing in the issue view made the duplication
+  visible.
+
+  Uploading under a name the issue or comment already carries is now refused with
+  `ATTACHMENT_NAME_TAKEN`, and the refusal names the document that already holds it — its id and
+  its download URL — so you can cite that one, delete it, or pick a different name. On an issue the
+  id is what the delete verb takes, so refuse → delete → retry closes; on a comment there is no
+  delete yet, so the way out there is a different name.
+
+  Names that are not written in the Latin alphabet are compared as themselves rather than as the
+  underscores they used to collapse into: `报告.pdf` and `设计.pdf` are two documents, not one
+  refused pair. The two Unicode spellings of one accented name are now one document rather than
+  two. Uploads racing for the same name are serialised, so exactly one of them wins instead of all
+  of them landing.
+
+  Pasting two screenshots into the New issue dialog no longer loses both. The browser calls every
+  clipboard image `image.png`, and a create that cannot attach one file attaches none — so the
+  second paste is now staged under its own name, and a create that still drops a file says so
+  instead of reporting success.
+
 - **The always-inject flag now says what it buys, and stops implying the rule will be followed.**
   Flagging a project fact `alwaysInject` splices its full body into every agent prompt under
   *"Hard rules for this project — always-injected by the project owner. Follow them exactly"*, and
