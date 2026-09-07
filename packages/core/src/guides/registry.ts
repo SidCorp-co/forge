@@ -16,9 +16,9 @@
 // Search already supplies those) and do not restate the status ladder /
 // enums (`prompt/facts/registry.ts` owns those).
 
-// cm:guard `issues/dependency-effects.ts` is a leaf — its only schema import is `import type` and erases — so it does not breach the no-DB rule below. Keep it that way, or this module and both its read surfaces start needing a live DB.
-import { ALWAYS_INJECT_GUARANTEE_NOTE } from '../projects/project-facts.js';
+// cm:guard both note modules are leaves — `issues/dependency-effects.ts` imports the schema as `import type` only and `projects/project-facts.ts` imports nothing but zod — so neither breaches the no-DB rule below. Keep them that way, or this module and both its read surfaces start needing a live DB.
 import { WORK_EVIDENCE_WAIVER_NOTE } from '../issues/dependency-effects.js';
+import { ALWAYS_INJECT_GUARANTEE_NOTE } from '../projects/project-facts.js';
 import { CONFORMANCE_GUIDE } from './conformance-guide.js';
 import type { ForgeGuide } from './types.js';
 

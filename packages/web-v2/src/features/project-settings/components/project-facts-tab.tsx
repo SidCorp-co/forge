@@ -1,5 +1,8 @@
 "use client";
 
+// cm:guard flagging a fact always-inject guarantees DELIVERY and nothing else, so this tab may not word it as a rule the agent will follow — the server's `alwaysInjectGuarantee` sentence is rendered here to say exactly that (ISS-936).
+// cm:edge protocol -> packages/core/src/projects/project-facts-routes.ts — one PATCH carries every edit and the server merges PER KEY, so a removed key must be sent as `null` and a rename is a delete plus an add; sending only the survivors leaves the dropped key on the project.
+
 import {
 	Banner,
 	Button,
@@ -15,8 +18,6 @@ import {
 	Toggle,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-// cm:guard flagging a fact always-inject guarantees DELIVERY and nothing else, so this tab may not word it as a rule the agent will follow — the server's `alwaysInjectGuarantee` sentence is rendered here to say exactly that (ISS-936).
-// cm:edge protocol -> packages/core/src/projects/project-facts-routes.ts — one PATCH carries every edit and the server merges PER KEY, so a removed key must be sent as `null` and a rename is a delete plus an add; sending only the survivors leaves the dropped key on the project.
 import { useEffect, useMemo, useState } from "react";
 import { useProjectFacts, useUpdateProjectFacts } from "../hooks";
 import {

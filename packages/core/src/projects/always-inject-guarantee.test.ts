@@ -60,9 +60,7 @@ describe('ALWAYS_INJECT_GUARANTEE_NOTE', () => {
 
   it('says compliance is not verified, in all three of the ways it is not', () => {
     expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain('never that it was DONE');
-    expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain(
-      'Whether it was followed is recorded nowhere',
-    );
+    expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain('Whether it was followed is recorded nowhere');
     expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain('no gate refuses a step that ignored it');
     expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain('no surface counts how often it was obeyed');
   });
@@ -96,17 +94,14 @@ describe('the surfaces that interpolate it', () => {
   });
 
   it('the settings tab, which reads it off its own GET rather than restating it', () => {
-    const source = read(
-      'packages/core/src/projects/project-facts-routes.ts',
-    );
+    const source = read('packages/core/src/projects/project-facts-routes.ts');
     expect(source).toContain('alwaysInjectGuarantee: ALWAYS_INJECT_GUARANTEE_NOTE');
   });
 });
 
 // cm:guard these read SOURCE because neither claim can be made any other way: the tab is in another package and cannot import this constant, and the prompt's claim is an ABSENCE.
 describe('the two surfaces the constant cannot reach', () => {
-  const TAB =
-    'packages/web-v2/src/features/project-settings/components/project-facts-tab.tsx';
+  const TAB = 'packages/web-v2/src/features/project-settings/components/project-facts-tab.tsx';
 
   it(`${TAB} renders the served sentence`, () => {
     expect(read(TAB)).toContain('alwaysInjectGuarantee');

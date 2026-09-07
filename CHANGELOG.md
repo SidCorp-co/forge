@@ -2964,6 +2964,16 @@
   `ux_findings` — because that is the price of an enforceable rule: ids to cite. A free-text fact
   has none, which is why this is a correction to the claim rather than a new checker.
 
+  **Found on the way, and fixed here.** `forge_config`'s issue-aware branch resolution read the
+  issue through a query that selected only `session_context`, while
+  `extractIssueBranchOverride` prefers `metadata.branchConfig` — so an issue carrying a real
+  per-issue base-branch override was answered with the project default, silently, and the comment
+  above the cast still said the `issues.metadata` column had not landed. It had. The reader now
+  selects both fields and is named `readIssueBranchInputs`; its single caller uses the shared
+  extractor instead of a hand-rolled copy of the same precedence. The unit lane could not have
+  caught this — it mocks the row, and a mocked row carries `metadata` whatever the SELECT asked
+  for — so the assertion is an integration test against real Postgres.
+
   The agent's own prompt is unchanged, deliberately. Telling an agent inside a rule that nothing
   checks the rule converts an unverified rule into an ignored one; the false promise was the one
   made to the owner, and that is where it was withdrawn.

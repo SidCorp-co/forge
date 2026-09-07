@@ -23,7 +23,7 @@ import {
 describe('GET /api/projects/:id/project-facts — the always-inject guarantee (ISS-936)', () => {
   let harness: TestDatabase;
   let guaranteeNote: string;
-  let signUserToken: (typeof import('../../src/auth/jwt.js'))['signUserToken'];
+  let signUserToken: typeof import('../../src/auth/jwt.js')['signUserToken'];
   // biome-ignore lint/suspicious/noExplicitAny: test-only mount
   let app: any;
 
@@ -65,9 +65,7 @@ describe('GET /api/projects/:id/project-facts — the always-inject guarantee (I
 
   it('serves it to a project member, alongside the char budget', async () => {
     const user = await createTestUser(harness.db);
-    await harness.db.execute(
-      sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`,
-    );
+    await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
     const project = await createTestProject(harness.db, user.id);
     await createTestProjectMember(harness.db, {
       userId: user.id,
@@ -80,7 +78,11 @@ describe('GET /api/projects/:id/project-facts — the always-inject guarantee (I
     });
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { alwaysInjectGuarantee?: string };
+    const body = (await res.json()) as {
+      alwaysInjectGuarantee?: string;
+      maxAlwaysInjectChars?: number;
+    };
     expect(body.alwaysInjectGuarantee).toBe(guaranteeNote);
+    expect(body.maxAlwaysInjectChars).toBe(6000);
   });
 });

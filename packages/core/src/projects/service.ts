@@ -221,9 +221,11 @@ export async function readProjectWithConfig(projectId: string) {
 }
 
 /** One issue's session context, scoped to a project so an id from elsewhere reads as absent. */
-export async function readIssueSessionContext(issueId: string, projectId: string) {
+// cm:guard both jsonb fields are selected because `extractIssueBranchOverride` reads `metadata.branchConfig` FIRST and only falls back to `sessionContext` — omit `metadata` and the caller silently resolves the project default for an issue that carries an override (ISS-936, found with the column already shipped and this select still on `sessionContext` alone).
+// cm:edge contract -> packages/core/src/branches/resolve.ts — this row IS `extractIssueBranchOverride`'s argument shape; a field added to that precedence has to be selected here
+export async function readIssueBranchInputs(issueId: string, projectId: string) {
   const [row] = await db
-    .select({ id: issues.id, sessionContext: issues.sessionContext })
+    .select({ id: issues.id, metadata: issues.metadata, sessionContext: issues.sessionContext })
     .from(issues)
     .where(and(eq(issues.id, issueId), eq(issues.projectId, projectId)))
     .limit(1);
