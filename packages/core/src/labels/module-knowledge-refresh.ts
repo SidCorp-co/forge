@@ -38,7 +38,6 @@ export interface ModuleKnowledgeRefreshInput {
 }
 
 interface AttributedModule {
-  labelId: string;
   slug: string | null;
   knowledgeEntryId: string | null;
   isPrimary: boolean;
@@ -88,7 +87,6 @@ function readFlowRecord(metadata: unknown): ModuleFlowRecord | null {
 async function loadAttributedModules(issueId: string): Promise<AttributedModule[]> {
   return db
     .select({
-      labelId: labels.id,
       slug: labels.slug,
       knowledgeEntryId: labels.knowledgeEntryId,
       isPrimary: issueLabels.isPrimary,

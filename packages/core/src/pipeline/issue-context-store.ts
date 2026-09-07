@@ -58,7 +58,7 @@ const writeInputBaseSchema = scopeSchema.extend({
 });
 
 // cm:guard `actor` is REQUIRED, never optional with a fallback — the refresh below writes an `activity_log` row, whose `actor_agency` default reads as a plausible `human` (`db/schema-activity.ts`), so a caller that omitted it would attribute an agent's handoff to a person and nobody would report a feed that looks right.
-export const writeIssueContextActorSchema = z.object({
+const writeIssueContextActorSchema = z.object({
   type: z.enum(actorTypes),
   id: z.uuid(),
   agency: z.enum(actorAgencies),
