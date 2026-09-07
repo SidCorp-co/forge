@@ -75,6 +75,16 @@ describe('a valid component body', () => {
     expect(twice.body).toBe(once.body);
   });
 
+  // cm:guard an entity in PROSE is the case that breaks idempotence, and an entity-free body cannot see it: the parser decodes entities in attributes but not in text, so a serializer that escapes `&` grows one `amp;` per re-prepare and `forge_comments.update` re-prepares. Assert the character reaches `text`, not the entity.
+  it('is idempotent over entities in prose, and projects them decoded', () => {
+    const raw =
+      '<forge-blocked on="decision"><p>a &quot;b&quot; &lt;c&gt; &amp; d</p></forge-blocked>';
+    const once = prepareBody({ raw, format: 'html' });
+    const twice = prepareBody({ raw: once.body, format: 'html' });
+    expect(twice.body).toBe(once.body);
+    expect(once.text).toContain('a "b" <c> & d');
+  });
+
   it('reads slots and text back off the stored row', () => {
     const { body } = prepareBody({ raw: review(), format: 'html' });
     expect(bodySlots(body, 'html')).toMatchObject({ verdict: 'request-changes' });

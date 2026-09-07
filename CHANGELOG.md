@@ -1558,6 +1558,19 @@
 
 ### Fixed
 
+- **A character entity written in an issue or comment body is no longer escaped a second time on
+  every save.** The component parser decoded entities in attributes but not in prose, while the
+  serializer escaped both — so a body containing `&quot;` was stored as `&amp;quot;`, rendered as
+  the literal text `&quot;`, and grew one `amp;` for each re-save. `forge_comments.update`
+  re-saves, so an edited body degraded further every time it was corrected.
+
+  `normalize.ts` has always declared itself idempotent and the test asserting it used an
+  entity-free body, which is the one shape that cannot see the defect. A non-raw text node now
+  holds decoded characters, the projection every prompt, embedding and MCP serializer reads
+  returns the character rather than the entity, and the idempotence test carries the entity case.
+  Markdown bodies are a passthrough that is never parsed, so only the five `html` rows written
+  since 2026-09-03 were affected and none needed a backfill.
+
 - **A typed record of any block count now lands in one comment write.** A comment body was capped
   at 10,000 characters, and the plugin's issue-flow contract posts every typed record — plan,
   confirmation, review, verdict, verification — as a comment, because a comment is the only

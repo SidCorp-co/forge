@@ -181,11 +181,13 @@ interface Frame {
   children: BodyNode[];
 }
 
+// cm:guard a non-raw text node holds DECODED characters, so `normalize.ts` can escape it unconditionally and stay idempotent. Decoding only in `textOf` left the write path escaping `&quot;` into `&amp;quot;`, growing one `amp;` per re-prepare — and `forge_comments.update` re-prepares.
 function pushText(into: BodyNode[], value: string, raw = false): void {
   if (value.length === 0) return;
+  const decoded = raw ? value : decodeEntities(value);
   const last = into[into.length - 1];
-  if (!raw && last && last.type === 'text' && !last.raw) last.value += value;
-  else into.push(raw ? { type: 'text', value, raw: true } : { type: 'text', value });
+  if (!raw && last && last.type === 'text' && !last.raw) last.value += decoded;
+  else into.push(raw ? { type: 'text', value, raw: true } : { type: 'text', value: decoded });
 }
 
 /** Source → AST. Throws `BodyInvalidError` on anything it cannot read. */
@@ -272,11 +274,11 @@ export function parseBody(src: string): BodyNode[] {
   return root;
 }
 
-/** Text a node and its descendants carry, entity-decoded, markup discarded. */
+/** Text a node and its descendants carry, markup discarded. */
 export function textOf(nodes: BodyNode[]): string {
   let out = '';
   for (const n of nodes) {
-    if (n.type === 'text') out += n.raw ? n.value : decodeEntities(n.value);
+    if (n.type === 'text') out += n.value;
     else if (n.type === 'element') out += textOf(n.children);
   }
   return out;
