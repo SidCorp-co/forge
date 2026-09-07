@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, count, desc, eq, exists, inArray, isNotNull, notInArray, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, exists, inArray, isNotNull, notInArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -12,7 +12,6 @@ import {
   jobs,
   usageRecords,
 } from '../db/schema.js';
-import { identifierTsQuery } from '../db/schema-types.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -24,6 +23,7 @@ import {
 } from './creator.js';
 import { listModulesForIssues, resolveModuleIdsTolerant } from './label-service.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
+import { buildIssueSearchCondition, issueSearchMatchedFields } from './search-predicate.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
 const coerceArray = <T>(v: T | T[] | undefined): T[] | undefined =>
@@ -67,11 +67,9 @@ const searchQuerySchema = z
     limit: z.coerce.number().int().min(1).max(200).default(50),
     offset: z.coerce.number().int().min(0).default(0),
     withAgentSessions: z.coerce.boolean().optional().default(false),
-    // ISS-437 — opt-in per-issue `estimatedCost` rollup (one grouped query for
-    // the whole page; replaces the web list's per-row cost-summary N+1).
+    // cm:why opt-in because the rollup is one extra grouped query per page; it replaced the web list's per-row cost-summary N+1 (ISS-437)
     withCost: z.coerce.boolean().optional().default(false),
-    // ISS-700 — opt-in latest-failed-job info per issue (one grouped query,
-    // same shape as withCost) to back the row's Failed-badge tooltip.
+    // cm:why same grouped-query shape and same opt-in reason as withCost above; it backs the list row's Failed-badge tooltip (ISS-700)
     withFailureInfo: z.coerce.boolean().optional().default(false),
     // cm:why opt-in like withCost/withFailureInfo: it costs ~9 batched round trips, and the callers that need it are the board and the issues list, where a queued-but-undispatched issue otherwise renders as actively worked
     withPipelineHealth: z.coerce.boolean().optional().default(false),
@@ -87,15 +85,6 @@ const badRequest = (details: unknown) =>
 
 const forbidden = () =>
   new HTTPException(403, { message: 'not a project member', cause: { code: 'FORBIDDEN' } });
-
-/**
- * Escape ILIKE wildcard metacharacters so user input can't inject patterns.
- * Pair with an ESCAPE '\\' clause in the SQL.
- */
-export function buildIlikePattern(q: string): string {
-  const escaped = q.replace(/[\\%_]/g, (m) => `\\${m}`);
-  return `%${escaped}%`;
-}
 
 /**
  * ISS-437 — per-issue estimated cost for one page of issues, in ONE grouped
@@ -195,15 +184,7 @@ searchRoutes.get(
     const conditions = [eq(issues.projectId, projectId)];
 
     if (q.q) {
-      const pattern = buildIlikePattern(q.q);
-      conditions.push(
-        // biome-ignore lint/style/noNonNullAssertion: or() with two clauses is always defined
-        or(
-          sql`${issues.title} ILIKE ${pattern} ESCAPE '\\'`,
-          sql`${issues.description} ILIKE ${pattern} ESCAPE '\\'`,
-          sql`${issues.identSearch} @@ ${identifierTsQuery(q.q)}`,
-        )!,
-      );
+      conditions.push(buildIssueSearchCondition(q.q));
     }
     if (q.status && q.status.length > 0) {
       conditions.push(inArray(issues.status, q.status));
@@ -272,9 +253,11 @@ searchRoutes.get(
 
     const total = Number(n);
 
+    // cm:why ISS-960 — `matchedFields` appears ONLY when `q` was sent, so a caller can tell "this row matched on its acceptance criteria" from "this row was not searched for at all"; the fields are already on `r` (the select is whole-row), so naming them costs no second read
     let serialized: Record<string, unknown>[] = rows.map((r) => ({
       ...r,
       displayId: `ISS-${(r as { issSeq: number }).issSeq}`,
+      ...(q.q ? { matchedFields: issueSearchMatchedFields(q.q, r) } : {}),
     }));
 
     // ISS-437 — attach `estimatedCost` when requested. Issues with no usage

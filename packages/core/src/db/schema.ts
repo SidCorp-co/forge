@@ -607,8 +607,7 @@ export const pipelineRuns = pgTable(
     projectStatusIdx: index('pipeline_runs_project_status_idx').on(t.projectId, t.status),
     issueIdx: index('pipeline_runs_issue_idx').on(t.issueId),
     projectStartedAtIdx: index('pipeline_runs_started_at_idx').on(t.projectId, t.startedAt),
-    // Mirror of the partial unique index in 0054 — at most one open issue-run
-    // per issue. Lets `openIssueRun` use INSERT ... ON CONFLICT DO NOTHING.
+    // cm:guard at most one open issue-run per issue, mirroring the partial unique index in migration 0054 — `openIssueRun` relies on it for INSERT ... ON CONFLICT DO NOTHING, so widening the predicate here turns that conflict-free insert into a second live run for one issue
     issueOpenUq: uniqueIndex('pipeline_runs_issue_open_uq')
       .on(t.issueId)
       .where(sql`kind = 'issue' AND status IN ('running','paused')`),
@@ -1071,8 +1070,10 @@ export const issues = pgTable(
     releaseBatchRunId: uuid('release_batch_run_id').references(() => pipelineRuns.id, {
       onDelete: 'set null',
     }),
+    // cm:edge lockstep -> packages/core/src/issues/search-predicate.ts — `ISSUE_SEARCH_FIELDS` names these same four columns; widening one without the other makes the substring arm and the identifier arm disagree about which fields are searchable (ISS-960)
     identSearch: identSearchColumn(
-      (): SQL => sql`left(${issues.title} || ' ' || coalesce(${issues.description}, ''), 100000)`,
+      (): SQL =>
+        sql`left(${issues.title} || ' ' || coalesce(${issues.description}, '') || ' ' || coalesce(${issues.plan}, '') || ' ' || coalesce(${issues.acceptanceCriteria}, ''), 100000)`,
     ),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

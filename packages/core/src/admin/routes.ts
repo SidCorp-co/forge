@@ -14,7 +14,7 @@ import {
   retrievalAnalytics,
   users,
 } from '../db/schema.js';
-import { buildIlikePattern } from '../issues/search.js';
+import { buildIlikePattern } from '../issues/search-predicate.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
@@ -42,10 +42,6 @@ const auditQuerySchema = paginationSchema.extend({
 });
 
 export const adminRoutes = new Hono<{ Variables: AuthVars }>();
-
-// The whoami check must run under requireAuth but NOT under requireAdmin —
-// it's what the client uses to discover whether it *is* an admin. Separate
-// mount below.
 
 const adminProtected = new Hono<{ Variables: AuthVars }>();
 adminProtected.use('*', requireAuth(), assertEmailVerified(), requireAdmin());
@@ -219,8 +215,7 @@ adminProtected.get(
   },
 );
 
-// Mount whoami without requireAdmin — the point is to let any authenticated
-// user discover admin status via the 200/403 split. requireAuth still runs.
+// cm:guard whoami mounts under requireAuth but NEVER requireAdmin — it is how a client discovers whether it IS an admin, via the 200/403 split, so putting it behind the admin gate makes every non-admin read as an error instead of a No
 const whoamiRoutes = new Hono<{ Variables: AuthVars }>();
 whoamiRoutes.use('*', requireAuth(), assertEmailVerified());
 whoamiRoutes.get('/whoami', async (c) => {
@@ -233,9 +228,7 @@ whoamiRoutes.get('/whoami', async (c) => {
   if (!row) {
     throw new HTTPException(401, { message: 'user not found', cause: { code: 'UNAUTHENTICATED' } });
   }
-  // Mirror the allow-list check from requireAdmin, but answer Yes/No
-  // instead of throwing 403. This lets the /admin layout branch on the
-  // result without UI flicker.
+  // cm:edge lockstep -> packages/core/src/middleware/auth.ts — the same ADMIN_EMAILS allow-list as `requireAdmin`, answering Yes/No instead of throwing, so the two must read the env the same way or the layout branches one way and the API the other
   const { env } = await import('../config/env.js');
   const allowed = (env.ADMIN_EMAILS ?? '')
     .split(',')

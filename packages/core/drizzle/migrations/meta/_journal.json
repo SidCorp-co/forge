@@ -1527,6 +1527,13 @@
       "when": 1792368000000,
       "tag": "0219_unaudited_transition_reach",
       "breakpoints": true
+    },
+    {
+      "idx": 220,
+      "version": "7",
+      "when": 1792454400000,
+      "tag": "0220_issue_search_criteria_plan",
+      "breakpoints": true
     }
   ]
 }

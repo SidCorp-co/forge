@@ -311,7 +311,6 @@ describe('forge_issues tool', () => {
       issues: Array<Record<string, unknown>>;
     };
     const row = result.issues[0] as Record<string, unknown>;
-    // light fields present
     expect(row.documentId).toBe(ISSUE_ID);
     expect(row.issueId).toBe('ISS-1');
     expect(row.title).toBe('Test issue');
@@ -343,11 +342,9 @@ describe('forge_issues tool', () => {
 
     await tool.handler({ action: 'list' });
 
-    // db.select was called with a projection object (not undefined/no-args)
     const selectSpy = vi.mocked(mockDb.select);
     const callArg = selectSpy.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined;
     expect(callArg).toBeDefined();
-    // Light fields present in projection
     for (const light of [
       'id',
       'issSeq',
@@ -364,7 +361,6 @@ describe('forge_issues tool', () => {
     ]) {
       expect(callArg).toHaveProperty(light);
     }
-    // Heavy fields absent from projection
     for (const heavy of [
       'description',
       'plan',
@@ -2012,6 +2008,30 @@ describe('forge_issues tool', () => {
         ISSUE_ID,
         expect.objectContaining({ status: 'in_progress' }),
       );
+    });
+
+    it('list: refuses filters.issue by name rather than answering with other issues (ISS-960)', async () => {
+      const tool = forgeIssuesTool({
+        principal: fakePrincipal,
+        projectSlug: PROJECT_SLUG,
+      });
+      selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
+      await expect(tool.handler({ action: 'list', filters: { issue: ISSUE_ID } })).rejects.toThrow(
+        /BAD_REQUEST: filters.issue is applied only by action 'listTasks'/,
+      );
+    });
+
+    it('list: refuses filters.taskStatus the same way (ISS-960)', async () => {
+      const tool = forgeIssuesTool({
+        principal: fakePrincipal,
+        projectSlug: PROJECT_SLUG,
+      });
+      selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+      selectLimit.mockResolvedValueOnce([memberAccessRow]);
+      await expect(
+        tool.handler({ action: 'list', filters: { taskStatus: 'todo' } }),
+      ).rejects.toThrow(/BAD_REQUEST: filters.taskStatus/);
     });
 
     it('listTasks: requires filters.issue', async () => {
