@@ -1,0 +1,69 @@
+name: Sentry release
+
+# Registers the merge commit as a Sentry release for both reporting surfaces, so an event
+# resolves to the change that caused it instead of to a version string shared by every deploy.
+#
+# NOT a check and deliberately not a job in ci.yml: `pnpm verify --ci-parity` requires every
+# `- run:` in ci.yml to be a gate `verify` runs or declares, and a post-merge registration is
+# neither. Nothing here can fail a merge — the merge has already happened when it runs.
+#
+# The release ID is the bare commit SHA, the same value `GET /version` serves and both
+# `sentry.ts` files hand the SDK. If those three ever disagree, an event resolves to a release
+# no deploy carries.
+#
+# SENTRY_AUTH_TOKEN and SENTRY_URL are owner-lane: no agent on this project can write a
+# repository secret or variable, and without them this workflow says which one is missing in the
+# run summary rather than failing. What it needs:
+#   secret SENTRY_AUTH_TOKEN — scope `project:releases`
+#   variable SENTRY_URL      — this org's Sentry is SELF-HOSTED, so there is deliberately no
+#                              default: sentry.io would authenticate against the wrong instance
+#                              and fail with a token error that names nothing.
+#   variable SENTRY_ORG      — defaults to `canawan`, the org both projects live under.
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: sentry-release-${{ github.sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    env:
+      SENTRY_URL: ${{ vars.SENTRY_URL }}
+      SENTRY_ORG: ${{ vars.SENTRY_ORG || 'canawan' }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # set-commits --auto reads the commit range between this release and the previous
+          # one, which a depth-1 checkout cannot show it.
+          fetch-depth: 0
+
+      - name: Register the commit as a release for forge-core and forge-web
+        run: |
+          set -euo pipefail
+          # `set -e` tolerates a false test in an && list, but only while the test is not the
+          # list's last command — an editor reordering these lines would make the step exit 1
+          # on a repository that has both. Explicit ifs cannot acquire that behaviour.
+          missing=""
+          if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
+            missing="secret SENTRY_AUTH_TOKEN (scope project:releases)"
+          fi
+          if [ -z "${SENTRY_URL:-}" ]; then
+            [ -n "$missing" ] && missing="$missing and "
+            missing="${missing}variable SENTRY_URL (this org's Sentry is self-hosted, so there is no default)"
+          fi
+          if [ -n "$missing" ]; then
+            echo "::warning title=Sentry release not registered::${GITHUB_SHA} was not registered as a Sentry release because this repository is missing ${missing}. Both surfaces still REPORT this SHA as their release id, so events group correctly and /version already names the commit; what is missing is only the release-to-commit association Sentry needs before it can name a suspect commit."
+            exit 0
+          fi
+          npx --yes @sentry/cli@2 releases new "${GITHUB_SHA}" -p forge-core -p forge-web
+          npx --yes @sentry/cli@2 releases set-commits "${GITHUB_SHA}" --auto
+          npx --yes @sentry/cli@2 releases finalize "${GITHUB_SHA}"
+          echo "Registered ${GITHUB_SHA} for forge-core and forge-web on ${SENTRY_ORG}."
