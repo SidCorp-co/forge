@@ -103,19 +103,36 @@ describe('mindmap', () => {
     expect(indent(lines[child])).toBeGreaterThan(indent(lines[parent]));
   });
 
+  it('writes a bracket in a module name as an entity, never as mindmap shape syntax', () => {
+    const out = generateModuleDiagram(
+      'mindmap',
+      snap({
+        modules: [
+          mod({
+            id: 'a',
+            name: 'API (v2)',
+            node: { body: 'x', relatedIssueCount: 1, actor: null },
+          }),
+        ],
+      }),
+    );
+    expect(out).toContain('API #40;v2#41; · 1');
+    expect(out).not.toContain('API (v2)');
+  });
+
   it('carries the bound node’s related-issue count', () => {
-    expect(generateModuleDiagram('mindmap', snap({ modules }))).toContain('Issue work (7)');
+    expect(generateModuleDiagram('mindmap', snap({ modules }))).toContain('Issue work · 7');
   });
 
   it('draws a module with no knowledge node in its place, with no count', () => {
     const out = generateModuleDiagram('mindmap', snap({ modules }));
     expect(out).toContain('Attachments');
-    expect(out).not.toContain('Attachments (');
+    expect(out).not.toContain('Attachments ·');
   });
 
   it('distinguishes a node relating to nothing from a module having no node', () => {
     const out = generateModuleDiagram('mindmap', snap({ modules }));
-    expect(out).toContain('Runners (0)');
+    expect(out).toContain('Runners · 0');
   });
 });
 

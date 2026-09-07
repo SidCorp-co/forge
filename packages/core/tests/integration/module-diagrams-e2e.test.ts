@@ -175,7 +175,7 @@ describe('GET /api/projects/:id/module-diagrams/:kind', () => {
     const { status, body } = await diagram('mindmap');
     expect(status).toBe(200);
     expect(body.mermaid).toContain('Issue work');
-    expect(body.mermaid).not.toContain('Issue work (');
+    expect(body.mermaid).not.toContain('Issue work ·');
   });
 
   it('counts a shared issue once per pair, not once per direction', async () => {
@@ -220,7 +220,7 @@ describe('GET /api/projects/:id/module-diagrams/:kind', () => {
     `);
     await createModule('Issue work', { knowledgeEntryId: nodeId });
 
-    expect((await diagram('mindmap')).body.mermaid).toContain('Issue work (2)');
+    expect((await diagram('mindmap')).body.mermaid).toContain('Issue work · 2');
   });
 
   it('refuses user-flow when no module node stores a flow', async () => {

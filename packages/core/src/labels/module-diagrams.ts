@@ -69,9 +69,14 @@ function nodeId(prefix: string, index: number): string {
   return `${prefix}${index}`;
 }
 
-// cm:guard every label goes through here — mermaid reads `"`, `(`, `[` and `#` inside a label as syntax and answers a parse error rather than a diagram, so a module named `API (v2)` is the whole diagram's failure unless its text is escaped at the one place labels are written.
+// cm:guard every flowchart label goes through here — mermaid reads `"` and `#` inside a label as syntax and answers a parse error rather than a diagram, so a module named `API "v2" #1` is the whole diagram's failure unless its text is escaped at the one place labels are written.
 function quote(text: string): string {
   return `"${text.replace(/["#]/g, (c) => `#${c.codePointAt(0)};`)}"`;
+}
+
+// cm:guard mindmap node text is UNQUOTABLE — `(`, `[` and `{` are the shape delimiters, so `Issue work (3)` parses as a rounded node whose text is `3` and the module's name is silently gone (seen rendered, 2026-09-07). Every bracket becomes a `#nn;` entity here and the count is written with a separator that is not one; putting the count back in parentheses reintroduces exactly that.
+function mindmapText(text: string): string {
+  return text.replace(/[#()[\]{}]/g, (c) => `#${c.codePointAt(0)};`);
 }
 
 function childrenOf(modules: ModuleSnapshot[], parentId: string | null): ModuleSnapshot[] {
@@ -84,16 +89,16 @@ function childrenOf(modules: ModuleSnapshot[], parentId: string | null): ModuleS
  * The mindmap: the hierarchy, and on every module that has a node, what that node relates to.
  *
  * A module with no knowledge node is drawn with its name and its place and no count. That is the
- * issue's rule, and it is why the count is absent rather than `(0)`: nothing was counted.
+ * issue's rule, and it is why the count is absent rather than `0`: nothing was counted.
  */
 function mindmap(snapshot: ModuleDiagramSnapshot): string {
   const { modules } = snapshot;
-  const lines = ['mindmap', `  root((${snapshot.projectName}))`];
+  const lines = ['mindmap', `  root((${mindmapText(snapshot.projectName)}))`];
 
   const walk = (parentId: string | null, depth: number): void => {
     for (const module of childrenOf(modules, parentId)) {
-      const count = module.node ? ` (${module.node.relatedIssueCount})` : '';
-      lines.push(`${'  '.repeat(depth)}${module.name}${count}`);
+      const count = module.node ? ` · ${module.node.relatedIssueCount}` : '';
+      lines.push(`${'  '.repeat(depth)}${mindmapText(module.name)}${count}`);
       walk(module.id, depth + 1);
     }
   };
