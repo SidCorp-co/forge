@@ -14,7 +14,8 @@ flowchart LR
   I --> AL[activity_log]
   I --> DEP{{issue_dependencies}}
   DEP -->|blocks| G[gates dispatch]
-  DEP -->|relates · duplicates · parent · decomposes| MET[PM metadata only]
+  DEP -->|decomposes| WE[waives the work-evidence gate]
+  DEP -->|relates · duplicates · parent| MET[PM metadata only]
 ```
 
 ## What it owns
@@ -49,11 +50,18 @@ flowchart LR
   see `labels.kind` from a junction row, so that half has no database backstop. Drawn in
   [`docs/flows/issue-work-module-attribution.html`](../../flows/issue-work-module-attribution.html).
 - **Only `kind='blocks'` gates dispatch.** An edge `(from=A, to=B, 'blocks')` means A must reach a
-  terminal status before B may dispatch, and cross-project edges are legal. Every other kind —
-  `relates`, `duplicates`, `parent`, `decomposes` — is metadata a dispatch path must never read. The
-  `cm:guard` is on `schema.ts:issueDependencyKinds`.
-- **`decomposes` gates nothing.** It reads epic → child and is useful for showing structure; the
-  parent lifecycle it once drove was removed 2026-09. Ordering under an epic is a `blocks` edge.
+  terminal status before B may dispatch, and cross-project edges are legal. `relates`, `duplicates`
+  and `parent` are metadata no dispatch path may read. The `cm:guard` is on
+  `schema.ts:issueDependencyKinds`.
+- **`decomposes` gates no dispatch, but it is not inert.** `work-evidence.ts:hasChildIssues` reads
+  this one kind, so a single live outgoing `decomposes` edge waives the ISS-786 work-evidence gate
+  for the `from` issue: it can be marked merged and moved to `developed`/`testing` with no branch,
+  no commit and no code handoff of its own. That exemption is for grouping parents whose children
+  carry the code. The sentence every agent-facing surface renders is
+  `issues/dependency-effects.ts:WORK_EVIDENCE_WAIVER_NOTE`, and the kind that query reads is
+  `WORK_EVIDENCE_WAIVER_KIND` in the same file — the two moved apart once and three documents
+  called the edge inert for it (ISS-935). Ordering under an epic is still a `blocks` edge; the
+  parent lifecycle this kind once drove was removed 2026-09.
 - The status ladder itself belongs to [lifecycle-pipeline](../lifecycle-pipeline/). This domain owns
   the issue as an object, not the machine that moves it.
 

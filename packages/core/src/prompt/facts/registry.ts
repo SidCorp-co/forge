@@ -19,6 +19,8 @@
 // is pure.
 
 import type { IssueStatus, JobType } from '../../db/schema.js';
+// cm:guard the only non-type import this module may carry, and only because `dependency-effects.ts` is a leaf whose own schema import erases — the cycle constraint above is what it would otherwise break.
+import { WORK_EVIDENCE_WAIVER_NOTE } from '../../issues/dependency-effects.js';
 
 export type FactCategory = 'enum' | 'protocol' | 'format' | 'reference';
 export type FactTier = 'mandatory' | 'contextual';
@@ -193,7 +195,6 @@ const HANDOFF_KEYS: Partial<Record<JobType, string>> = {
 };
 
 export const FORGE_FACTS: readonly ForgeFact[] = [
-  // ── Tier 1: mandatory (always auto-injected by system.ts) ───────────────
   {
     id: 'pipeline-rules',
     title: 'Pipeline rules & status discipline',
@@ -215,7 +216,6 @@ export const FORGE_FACTS: readonly ForgeFact[] = [
     render: () => TOOL_REFERENCE_TEXT,
   },
 
-  // ── Tier 2: issue-detail facts (enums + relations) ──────────────────────
   {
     id: 'complexity-scale',
     title: 'Complexity scale (t-shirt sizing)',
@@ -280,11 +280,10 @@ Edges are directional \`fromIssue --kind--> toIssue\`. Allowed \`kind\` values:
 - \`relates\` — soft "see also"; PM/UX metadata only.
 - \`duplicates\` — A duplicates B; metadata only.
 - \`parent\` — A is the parent of B; metadata only.
-- \`decomposes\` — epic → child; a grouping label only. It gates nothing: if a child must land before the parent's own work, say so with a \`blocks\` edge.
+- \`decomposes\` — epic → child. ${WORK_EVIDENCE_WAIVER_NOTE} If a child must land before the parent's own work, say so with a \`blocks\` edge.
 (Do not invent names like \`blocked_by\`/\`depends_on\` — those are not valid kinds.)`,
   },
 
-  // ── Tier 2: process facts ───────────────────────────────────────────────
   {
     id: 'status-ladder',
     title: 'Status ladder (this project)',
@@ -337,7 +336,6 @@ Project memory is NOT auto-loaded into this prompt. BEFORE you design/reproduce/
 Run one or two focused queries on the concrete nouns of THIS task. Hits are point-in-time — verify against the live code/git before relying on them. Then REPORT the verification outcome for note/knowledge hits: \`forge_memory.feedback({ projectId, source, sourceRef, verdict: 'confirmed' })\` when the code agrees, or \`verdict: 'outdated', evidence: '<what disproved it>'\` to archive a stale row on the spot — a verification you don't report is a cleaning signal thrown away. This READ step is the counterpart to the "Capture Learnings" write step in Pipeline Rules.`,
   },
 
-  // ── Tier 2: format facts ────────────────────────────────────────────────
   {
     id: 'release-notes-format',
     title: 'Release-notes field shape',
@@ -395,7 +393,6 @@ ${tail}`;
     },
   },
 
-  // ── Tier 2: ops facts ───────────────────────────────────────────────────
   {
     id: 'worktree-protocol',
     title: 'Worktree isolation protocol',
