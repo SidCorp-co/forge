@@ -132,7 +132,6 @@ describe('the claim split', () => {
     });
     expect(prepared.ok).toBe(true);
     if (!prepared.ok) return;
-    expect(prepared.jobToken).toBeTruthy();
     expect(prepared.prepared.agentSessionId).toBeTruthy();
 
     const [row] = (await harness.db.execute(sql`

@@ -48,7 +48,6 @@ const KEEP_FOREVER = [
 function sessionPrincipal(tokenId: string) {
   return makeFakePrincipal(tokenId, USER_ID, {
     agency: 'agent',
-    machine: { kind: 'session', id: SESSION_ID },
   });
 }
 

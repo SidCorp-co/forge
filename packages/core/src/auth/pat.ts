@@ -20,7 +20,6 @@ import { personalAccessTokens, type UserKind, users } from '../db/schema.js';
 import {
   generatePatPlaintext,
   isPatValid,
-  machineTokenNameLikes,
   PAT_PREFIX_LEN,
   patEnvForNodeEnv,
   patPrefixOf,
@@ -134,10 +133,7 @@ export async function verifyPat(plaintext: unknown): Promise<VerifiedPat | null>
     );
 
   if (rows.length === 0) {
-    // Constant-time guard: run a dummy argon2.verify so an empty bucket
-    // costs the same as a populated-but-mismatched bucket. The dummy hash
-    // is a one-time computation; argon2.verify uses the parameters embedded
-    // in the hash so this stays aligned with ARGON2_OPTIONS.
+    // cm:guard verify a dummy hash when the bucket is empty so an absent prefix costs the same as a wrong secret — skipping it makes prefix existence measurable by timing.
     try {
       await argon2.verify(await getDummyHash(), plaintext + env.PAT_PEPPER);
     } catch {}
@@ -291,7 +287,8 @@ export async function countActivePatsForUser(userId: string): Promise<number> {
       and(
         eq(personalAccessTokens.userId, userId),
         isNull(personalAccessTokens.revokedAt),
-        ...machineTokenNameLikes.map((p) => not(like(personalAccessTokens.name, p))),
+        // cm:guard the cap counts tokens a PERSON hand-made, and a machine's is excluded by being BOUND TO A BOX rather than by being named like one (ISS-932 wave 4). An operator pairing five machines would otherwise spend five of `PAT_MAX_PER_USER` on tokens they never minted; keying that off the name let a hand-made `device:` token buy the same exemption.
+        isNull(personalAccessTokens.deviceId),
       ),
     );
   return rows.length;

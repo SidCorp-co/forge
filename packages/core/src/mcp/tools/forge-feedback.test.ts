@@ -10,8 +10,6 @@ vi.mock('../../config/env.js', () => ({
   },
 }));
 
-// Drizzle mock chain for select + insert queries.
-// Mirrors the pattern from forge-issues.test.ts.
 // effectiveProjectRole chains: select().from().leftJoin().leftJoin().where().limit()
 // count / list:                 select().from().where()[.orderBy()].limit()
 const selectLimit = vi.fn();
@@ -191,7 +189,6 @@ describe('forge_feedback submit', () => {
         projectIds: null,
         boundProjectId: PROJECT_ID,
         deviceId: null,
-        machine: null,
       },
       projectSlug: null,
       boundProjectId: PROJECT_ID,

@@ -20,7 +20,6 @@ vi.mock('../../db/client.js', () => ({
   db: { select: vi.fn(() => ({ from: selectFrom })) },
 }));
 
-// authz mock — loadUserProjectRoleFlags relies on effectiveProjectRole.
 const effectiveProjectRole = vi.fn();
 vi.mock('../../lib/authz.js', () => ({
   effectiveProjectRole: (...args: unknown[]) => effectiveProjectRole(...args),
@@ -55,7 +54,6 @@ function patPrincipal(over: Partial<McpPrincipal> = {}): McpPrincipal {
     projectIds: null,
     boundProjectId: null,
     deviceId: null,
-    machine: null,
     ...over,
   };
 }

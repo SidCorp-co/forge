@@ -1,17 +1,18 @@
-// Resolve the pipeline job an agent's MCP call is running inside, so
-// agent-facing tools can stamp issue/run/job provenance server-side instead of
-// trusting the agent to supply it.
+// Resolve the agent session an MCP call is running inside — and the job that
+// session is running, when it has one — so agent-facing tools stamp provenance
+// server-side instead of trusting the agent to supply it.
 //
-// The handle is the CALLER'S OWN TOKEN. A machine credential is named
-// `job:<jobId>` or `session:<sessionId>` (auth/pat-format.ts), so the job is
-// identified exactly rather than guessed from which box is busy.
+// The handle is the CALLER'S BOX, fenced by the token's project. An agent
+// credential carries `device_id` (the box it was issued to) and
+// `bound_project_id` (the one project it may reach), and those two together
+// name at most one live session. Nothing is read off the token's NAME, and
+// nothing is passed by the caller.
 
-import { and, desc, eq, inArray } from 'drizzle-orm';
-import type { MachineTokenRef } from '../auth/pat-format.js';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
 
-// cm:guard NEVER narrow this to `= 'running'` — nothing in core ever writes that job status (queued → dispatched → terminal), so an equality test matches zero rows forever and every caller silently degrades. That was the whole of ISS-573/ISS-787: forge_ux_findings answered `no_active_issue` 100% of the time (zero rows on every project since the feature shipped) and forge_feedback recorded all 8 of its reports with null issueId/runId/jobId/stage.
+// cm:guard NEVER narrow this to `= 'running'` — nothing in core ever writes that job status (queued → dispatched → terminal), so an equality test matches zero rows forever and every caller silently degrades (ISS-573/ISS-787: forge_ux_findings answered `no_active_issue` on 100% of calls, and forge_feedback recorded all 8 reports with null issueId/runId/jobId/stage).
 // cm:edge lockstep -> packages/core/src/jobs/queued-gates.ts — "in flight" must match `runner_load` there, NOT the wider `issueBusyJob` set: `held` is deliberately absent from both, because a held job has no live agent to attribute a tool call to (RFC 0002)
 const IN_FLIGHT_JOB_STATUSES = ['dispatched', 'running'] as const;
 
@@ -19,89 +20,103 @@ const IN_FLIGHT_JOB_STATUSES = ['dispatched', 'running'] as const;
 const ACTIVE_SESSION_STATUSES = ['queued', 'running', 'idle'] as const;
 
 export type ActiveJobContext = {
-  jobId: string;
-  runId: string;
+  /** Always present: the session IS the context, and a job is what it may be running. */
+  agentSessionId: string;
+  /** Null for a session with no job — a steward or schedule run (ISS-557). */
+  jobId: string | null;
+  runId: string | null;
   issueId: string | null;
   /** The job's type — `review`, `test`, `code`, … — recorded as the emitting stage. */
-  stage: string;
-  /** The box the job was dispatched to, for the columns that still record one. */
+  stage: string | null;
+  /** The box the session is running on, for the columns that still record one. */
   deviceId: string | null;
-  agentSessionId: string | null;
 };
 
+/** What a caller holds: the two fields that together name a job. */
+export type PipelineCaller = {
+  deviceId: string | null;
+  boundProjectId: string | null;
+};
+
+export type PipelineContextResult =
+  | { ok: true; context: ActiveJobContext }
+  | { ok: false; reason: 'not_pipeline_context' | 'ambiguous_pipeline_context'; detail: string };
+
 /**
- * The pipeline job a machine token was minted for, or `null` when the caller
- * holds a person's PAT (no `job:`/`session:` name) or the job/session has since
- * gone terminal.
+ * The pipeline job this credential is running inside.
  *
- * A `job:` token answers directly. A `session:` token — an unattended chat or
- * schedule session — answers through the job that session backs, if any; a
- * steward or interactive session legitimately has none.
+ * A person's PAT carries no `device_id` and resolves to nothing. An agent
+ * credential names its box and its project, and those two select the in-flight
+ * job with a live session on that box for that project.
  */
-// cm:why keyed on the token and not on `devices.id` any more (ISS-931). The device lookup had to take "the most recently dispatched job on that box" because the MCP context carried no job id, so a runner at concurrency 3 attributed a tool call to whichever of its three jobs was newest. The token names one job, so there is nothing left to guess — and it is the same reason a session PAT can reach this at all, having no device to look up.
-export async function resolveMachineTokenContext(
-  ref: MachineTokenRef | null,
-): Promise<ActiveJobContext | null> {
-  if (!ref) return null;
-  if (ref.kind === 'job') {
-    const [row] = await db
-      .select({
-        jobId: jobs.id,
-        runId: jobs.pipelineRunId,
-        issueId: jobs.issueId,
-        stage: jobs.type,
-        deviceId: jobs.deviceId,
-        agentSessionId: jobs.agentSessionId,
-      })
-      .from(jobs)
-      .where(and(eq(jobs.id, ref.id), inArray(jobs.status, IN_FLIGHT_JOB_STATUSES)))
-      .limit(1);
-    return row ?? null;
+// cm:guard more than one match is REFUSED, never picked. The predecessor of this lookup took "the most recently dispatched job on that box" and mis-attributed every tool call on a runner at concurrency 3 (ISS-931); a guess that is right most of the time writes the wrong issue's finding the rest of it, and nothing downstream can tell. ISS-933 makes a run carry a group of issues, so one live run per box-and-project becomes an invariant and this branch stops being reachable — until then a named refusal is the correct answer.
+export async function resolvePipelineContext(
+  caller: PipelineCaller,
+): Promise<PipelineContextResult> {
+  if (!caller.deviceId) {
+    return {
+      ok: false,
+      reason: 'not_pipeline_context',
+      detail:
+        'This call carries a credential that is not issued to a box, so it is running inside no pipeline job. A personal access token is one such credential.',
+    };
   }
-  const [row] = await db
+  if (!caller.boundProjectId) {
+    return {
+      ok: false,
+      reason: 'not_pipeline_context',
+      detail:
+        'This credential is issued to a box but is not bound to a project, so it names no job. An agent credential is bound to exactly one project.',
+    };
+  }
+
+  // cm:guard the SESSION is the handle and the job is a LEFT JOIN off it, never the other way round. A steward or schedule run is a session with NO job row (ISS-557), so a job-first lookup drops its attribution entirely and its reports record null everywhere.
+  const rows = await db
     .select({
+      agentSessionId: agentSessions.id,
       jobId: jobs.id,
       runId: jobs.pipelineRunId,
       issueId: jobs.issueId,
       stage: jobs.type,
-      deviceId: jobs.deviceId,
-      agentSessionId: jobs.agentSessionId,
+      deviceId: agentSessions.deviceId,
     })
     .from(agentSessions)
-    .innerJoin(jobs, eq(jobs.agentSessionId, agentSessions.id))
+    .leftJoin(
+      jobs,
+      and(eq(jobs.agentSessionId, agentSessions.id), inArray(jobs.status, IN_FLIGHT_JOB_STATUSES)),
+    )
     .where(
       and(
-        eq(agentSessions.id, ref.id),
+        eq(agentSessions.deviceId, caller.deviceId),
+        eq(agentSessions.projectId, caller.boundProjectId),
         inArray(agentSessions.status, ACTIVE_SESSION_STATUSES),
-        inArray(jobs.status, IN_FLIGHT_JOB_STATUSES),
       ),
     )
-    .orderBy(desc(jobs.dispatchedAt))
-    .limit(1);
-  return row ?? null;
-}
+    .limit(2);
 
-/**
- * The device a machine token's session is running on, for the columns that
- * still record one. `null` for a person's PAT, and for a session with no
- * device row (a cloud/schedule session).
- */
-export async function resolveMachineTokenDeviceId(
-  ref: MachineTokenRef | null,
-): Promise<string | null> {
-  if (!ref) return null;
-  if (ref.kind === 'session') {
-    const [row] = await db
-      .select({ deviceId: agentSessions.deviceId })
-      .from(agentSessions)
-      .where(eq(agentSessions.id, ref.id))
-      .limit(1);
-    return row?.deviceId ?? null;
+  if (rows.length === 0) {
+    return {
+      ok: false,
+      reason: 'not_pipeline_context',
+      detail:
+        'No live agent session is running on this box for this project, so there is nothing to attribute this call to.',
+    };
   }
-  const [row] = await db
-    .select({ deviceId: jobs.deviceId })
-    .from(jobs)
-    .where(eq(jobs.id, ref.id))
-    .limit(1);
-  return row?.deviceId ?? null;
+  if (rows.length > 1) {
+    return {
+      ok: false,
+      reason: 'ambiguous_pipeline_context',
+      detail:
+        'This box is running more than one session for this project, so the call names no single one. Nothing was written: a guess here attributes the write to the wrong issue and nothing downstream can tell.',
+    };
+  }
+  const row = rows[0];
+  if (!row) {
+    return {
+      ok: false,
+      reason: 'not_pipeline_context',
+      detail: 'No live agent session is running on this box for this project.',
+    };
+  }
+  return { ok: true, context: row };
 }

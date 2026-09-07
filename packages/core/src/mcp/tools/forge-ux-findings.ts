@@ -1,7 +1,9 @@
 import { z } from 'zod';
-import type { MachineTokenRef } from '../../auth/pat-format.js';
 import { uxFindingKinds, uxFindingStages, uxRuleSeverities } from '../../db/schema.js';
-import { resolveMachineTokenContext } from '../../jobs/active-job-context.js';
+import {
+  type PipelineCaller,
+  resolvePipelineContext,
+} from '../../jobs/active-job-context.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
 import {
   countFindingsFor,
@@ -19,8 +21,7 @@ import {
 } from './lib.js';
 import { buildListEnvelope, overfetch } from './list-envelope.js';
 
-// Defensive cap: one review/verify-live job legitimately emits several findings
-// (one per missing state), but a looping agent must not flood the table.
+// cm:why one review or verify-live job legitimately emits several findings, one per missing state, so the cap is per job rather than per call — a looping agent is what it is defending the table against.
 const MAX_FINDINGS_PER_JOB = 50;
 
 const inputSchema = z
@@ -60,23 +61,16 @@ type FindingTarget =
   | { ok: true; issueId: string; runId: string | null }
   | { ok: false; reason: string; detail: string };
 
-async function resolveTargetFromActiveJob(machine: MachineTokenRef | null): Promise<FindingTarget> {
-  if (!machine) {
+async function resolveTargetFromActiveJob(caller: PipelineCaller): Promise<FindingTarget> {
+  const resolved = await resolvePipelineContext(caller);
+  if (!resolved.ok) {
     return {
       ok: false,
-      reason: 'not_pipeline_context',
-      detail:
-        'Findings resolve their issue from the pipeline job your token was minted for, and this call came on a personal access token, which names no job. Pass an explicit `issueId` to write the finding anyway.',
+      reason: resolved.reason,
+      detail: `${resolved.detail} Pass an explicit \`issueId\` to write the finding anyway.`,
     };
   }
-  const active = await resolveMachineTokenContext(machine);
-  if (!active) {
-    return {
-      ok: false,
-      reason: 'no_active_job',
-      detail: `The ${machine.kind} this token was minted for has no dispatched/running job, so there is no pipeline context to attribute the finding to. Pass an explicit \`issueId\` to write it anyway.`,
-    };
-  }
+  const active = resolved.context;
   if (!active.issueId) {
     return {
       ok: false,
@@ -128,7 +122,7 @@ export const forgeUxFindingsTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         const target = input.issueId
           ? await resolveExplicitTarget(input.issueId, projectId)
-          : await resolveTargetFromActiveJob(principal.machine);
+          : await resolveTargetFromActiveJob(principal);
         if (!target.ok) return target;
 
         const written = await countFindingsFor(target.issueId, target.runId);

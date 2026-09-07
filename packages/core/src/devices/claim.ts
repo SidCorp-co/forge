@@ -21,7 +21,6 @@ import { withKernelMarker } from '../db/kernel-marker.js';
 import { jobs } from '../db/schema.js';
 import { endJobForBudgetBreach } from '../jobs/budget-breach.js';
 import { checkMonthlyBudget, shouldEmitWarn } from '../jobs/budget-check.js';
-import { mintJobToken } from '../jobs/job-token.js';
 import {
   canNameItsAgent,
   type PreparedJob,
@@ -35,7 +34,6 @@ export type PrepareResult =
   | {
       ok: true;
       jobId: string;
-      jobToken: string;
       issueKey: string | null;
       prepared: PreparedJob;
     }
@@ -83,7 +81,6 @@ export async function prepareJobForMaster(args: {
     return { ok: false, reason: admission.reason };
   }
 
-  // cm:guard the token is minted AFTER this transaction commits, never inside it. `mintJobToken` writes through the module-level `db` rather than the passed `tx`, so a mint placed inside would survive a rollback — a live credential for a job whose hold never landed, with nothing left pointing at it to revoke.
   const claimed = await db.transaction(async (tx) => {
     const held = await tx
       .update(jobs)
@@ -135,17 +132,6 @@ export async function prepareJobForMaster(args: {
 
   if (claimed.kind !== 'held') return { ok: false, reason: claimed.kind };
 
-  const jobToken = await mintJobToken({
-    id: claimed.job.id,
-    projectId: claimed.job.projectId,
-    createdBy: claimed.job.createdBy,
-  });
-  // cm:guard a mint that fails MUST give the hold back before returning. Leaving it set would park the job on a master that never received a credential for it, and only the 3-minute reaper would notice — a slot lost to a failure that was visible right here.
-  if (!jobToken) {
-    await releaseJobFromMaster({ jobId: claimed.job.id, sessionId: args.sessionId });
-    return { ok: false, reason: 'not_found' };
-  }
-
   // cm:guard the breach ENDS the job (ISS-823 shape: terminal + a `held` retry), it does not merely refuse it. The reason returned here is for the master's next choice; the rows `endJobForBudgetBreach` writes are the kernel's record, and leaving the job `queued` instead would have the next master claim it and post the same comment again.
   const budget = await checkMonthlyBudget(claimed.job);
   if (budget.action === 'pause') {
@@ -180,7 +166,6 @@ export async function prepareJobForMaster(args: {
   return {
     ok: true,
     jobId: claimed.job.id,
-    jobToken,
     issueKey: claimed.issSeq == null ? null : `ISS-${claimed.issSeq}`,
     prepared,
   };

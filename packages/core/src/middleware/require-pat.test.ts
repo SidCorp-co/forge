@@ -101,7 +101,8 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
     );
   });
 
-  it('carries the job a `job:` token names onto the principal', async () => {
+  // cm:guard the name is INERT — a person may hand-mint a token called `job:...` and it must reach `human`, because agency is a property of the PRINCIPAL since ISS-932 wave 4. Before it, `isMachineTokenName` read this name and stamped `agent`, which let a hand-made token skip the ISS-786/812 evidence gates.
+  it('stamps `human` on a person-owned token whose name imitates a machine token', async () => {
     const jobId = '77777777-7777-4777-8777-777777777777';
     vi.mocked(verifyPat).mockResolvedValue({
       ownerKind: 'human',
@@ -112,39 +113,23 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
       headers: { authorization: `Bearer ${PAT_TOKEN}` },
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      agency: string;
-      machine: { kind: string; id: string } | null;
-    };
-    expect(body.machine).toEqual({ kind: 'job', id: jobId });
-    expect(body.agency).toBe('agent');
+    const body = (await res.json()) as { agency: string; machine?: unknown };
+    expect(body.agency).toBe('human');
+    expect(body.machine).toBeUndefined();
   });
 
-  it('carries the session a `session:` token names, and null for a person', async () => {
-    const sessionId = '88888888-8888-4888-8888-888888888888';
-    vi.mocked(verifyPat).mockResolvedValue({
-      ownerKind: 'human',
-      row: { ...testPatRow, name: `session:${sessionId}` },
-    } as never);
-    let res = await makeApp().request('/whoami', {
-      headers: { authorization: `Bearer ${PAT_TOKEN}` },
-    });
-    expect(((await res.json()) as { machine: unknown }).machine).toEqual({
-      kind: 'session',
-      id: sessionId,
-    });
-
-    __resetPatBuckets();
-    vi.mocked(verifyPat).mockResolvedValue({
-      ownerKind: 'human',
-      row: { ...testPatRow, name: 'my laptop' },
-    } as never);
-    res = await makeApp().request('/whoami', {
-      headers: { authorization: `Bearer ${PAT_TOKEN}` },
-    });
-    const body = (await res.json()) as { machine: unknown; agency: string };
-    expect(body.machine).toBeNull();
-    expect(body.agency).toBe('human');
+  it('stamps `agent` from the owner alone, whatever the token is called', async () => {
+    for (const name of ['session:88888888-8888-4888-8888-888888888888', 'a plain name']) {
+      __resetPatBuckets();
+      vi.mocked(verifyPat).mockResolvedValue({
+        ownerKind: 'agent',
+        row: { ...testPatRow, name },
+      } as never);
+      const res = await makeApp().request('/whoami', {
+        headers: { authorization: `Bearer ${PAT_TOKEN}` },
+      });
+      expect(((await res.json()) as { agency: string }).agency).toBe('agent');
+    }
   });
 
   it('returns 401 with bearer challenge when no Authorization header is provided', async () => {

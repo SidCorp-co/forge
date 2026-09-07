@@ -33,8 +33,6 @@ export function buildChatToolContext(opts: {
     scopes: ['read'],
     projectIds: [opts.projectId],
     boundProjectId: opts.projectId,
-    // cm:guard `null`, and it must stay null: `machine` is what a tool reads to resolve the pipeline job its caller is running inside, and provider chat is running inside none. A non-null value invented here would attribute a chat message's findings and feedback to somebody else's job.
-    machine: null,
   };
   return {
     principal,

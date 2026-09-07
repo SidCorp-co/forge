@@ -54,7 +54,6 @@ vi.mock('../db/client.js', () => ({
 vi.mock('../ws/server.js', () => ({ roomManager: { publish: vi.fn() } }));
 vi.mock('../ws/rooms.js', () => ({ userRoom: () => 'room' }));
 
-const { MACHINE_TOKEN_NAME_PREFIXES } = await import('../auth/pat-format.js');
 const { patRoutes } = await import('./routes.js');
 
 const BOUND = '11111111-1111-4111-8111-111111111111';
@@ -104,8 +103,7 @@ describe('POST /api/pat — boundProjectId', () => {
     expect(res.status).toBe(201);
     const json = (await res.json()) as Record<string, unknown>;
     expect(json.boundProjectId).toBe(BOUND);
-    expect(json.plaintext).toBe('forge_pat_test_secret'); // plaintext exactly once
-    expect(mintPat).toHaveBeenCalledWith(expect.objectContaining({ boundProjectId: BOUND }));
+    expect(json.plaintext).toBe('forge_pat_test_secret');    expect(mintPat).toHaveBeenCalledWith(expect.objectContaining({ boundProjectId: BOUND }));
   });
 
   it('rejects a bound project the caller cannot access → FORBIDDEN_PROJECT', async () => {
@@ -132,18 +130,18 @@ describe('POST /api/pat — boundProjectId', () => {
   });
 });
 
-describe('POST /api/pat — the machine-token prefixes are reserved', () => {
-  // cm:guard driven from the exported array, not from a literal list here. A species added to `MACHINE_TOKEN_NAME_PREFIXES` and forgotten on this route is a name a person can mint by hand that escapes their PAT cap, is swept by somebody else's revoke, and authenticates `agency:'agent'` — and a hand-written case list is exactly how that goes unnoticed.
-  it.each([...MACHINE_TOKEN_NAME_PREFIXES])(
-    'refuses a hand-made token wearing %s, before mintPat is reached',
+describe('POST /api/pat — a machine-looking name buys nothing', () => {
+  // cm:guard the name is INERT since ISS-932 wave 4, so this route no longer refuses one and MUST NOT start again. Agency comes from the owner's `users.kind` and the PAT cap excludes a token by its `device_id`, so a hand-made `job:` name reaches neither; refusing it here would only take a name away from a person who has every right to it.
+  it.each(['job:', 'session:', 'device:'])(
+    'mints a hand-made token wearing %s like any other name',
     async (prefix) => {
+      mintPat.mockResolvedValue({ row: mkRow(), plaintext: 'forge_pat_test_secret' });
       const res = await post({ name: `${prefix}5f2e` });
-      expect(res.status).toBe(400);
-      expect(mintPat).not.toHaveBeenCalled();
+      expect(res.status).toBe(201);
+      expect(mintPat).toHaveBeenCalled();
     },
   );
 
-  // cm:guard keep this case: the reservation is on a PREFIX, and a name that merely contains `job:` is an ordinary token. Widening the refusal to a substring match is the easy mistake here, and it would refuse names a person has every right to use while reading, in review, exactly like a tightening.
   it('leaves a name that only mentions the word alone', async () => {
     mintPat.mockResolvedValue({ row: mkRow(), plaintext: 'forge_pat_test_secret' });
     const res = await post({ name: 'my job: laptop' });

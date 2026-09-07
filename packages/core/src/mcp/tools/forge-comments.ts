@@ -197,7 +197,7 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
       }
 
       // cm:guard ISS-519 — `authorId` stays the human owner; `authorDeviceId` is the AGENT marker and is resolved from the caller's OWN TOKEN (`job:`/`session:` → the job's or session's `device_id`), never from a principal. A PAT's synthetic device id used to be the hazard here (ISS-638); since ISS-931 there is no synthetic device, and the hazard inverted — a null on an agent's comment makes it read as a person's to `answered()` in forge-plugin.
-      const authorDeviceId = await principalAuthorDeviceId(principal);
+      const authorDeviceId = principalAuthorDeviceId(principal);
       let inserted: CommentRow | undefined;
       let bodyWarnings: string[] = [];
       try {

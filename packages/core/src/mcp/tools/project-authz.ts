@@ -57,6 +57,6 @@ export async function assertPmActor(principal: McpPrincipal): Promise<void> {
       'To set or retract a blocks/relates edge, use forge_issues create/update with ' +
       'data.relations (retract by re-sending the same edge with validUntil in the past), ' +
       'and read edges back from forge_issues get. ' +
-      `Caller: ${principal.machine ? `${principal.machine.kind} token` : 'personal access token'}.`,
+      `Caller: ${principal.deviceId ? 'a credential issued to a box' : 'personal access token'}.`,
   );
 }
