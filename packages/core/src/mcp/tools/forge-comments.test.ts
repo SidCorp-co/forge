@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakeJobPrincipal, makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -72,13 +72,17 @@ const COMMENT_ID = '55555555-5555-4555-8555-555555555555';
 const OWNER_ID = '33333333-3333-4333-8333-333333333333';
 const OTHER_USER_ID = '66666666-6666-4666-8666-666666666666';
 const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
+const TOKEN_ID = '99999999-9999-4999-8999-99999999aaaa';
+const JOB_ID = '99999999-9999-4999-8999-99999999bbbb';
 const ORG_ID = '88888888-8888-4888-8888-888888888888';
 
 // effectiveProjectRole (lib/authz.ts) result rows — ONE org-aware select.
 const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
 const adminAccessRow = { orgId: ORG_ID, memberRole: 'admin', orgRole: null };
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+const fakePrincipal = makeFakePrincipal(TOKEN_ID, OWNER_ID);
+// cm:guard the agent marker is resolved from a MACHINE token's name, so the cases that assert `authorDeviceId` need one. A `makeFakePrincipal` is a person's PAT (`machine: null`) and correctly leaves the column null — assert the marker with that and the case passes while proving the opposite of what it says (ISS-931).
+const jobPrincipal = makeFakeJobPrincipal(TOKEN_ID, OWNER_ID, JOB_ID);
 
 const baseCommentRow = {
   id: COMMENT_ID,
@@ -103,13 +107,13 @@ const humanPat = (projectIds: string[] | null) =>
     scopes: ['read', 'write'],
     projectIds,
     boundProjectId: null,
+    machine: null,
   }) as const;
 
 describe('forge_comments tool', () => {
   it('rejects unknown action', async () => {
     const tool = forgeCommentsTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
     await expect(
@@ -119,22 +123,19 @@ describe('forge_comments tool', () => {
 
   it('list requires filters.issue', async () => {
     const tool = forgeCommentsTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
     await expect(tool.handler({ action: 'list' })).rejects.toThrow(/BAD_REQUEST/);
   });
 
-  it('list returns comments when device owner is member', async () => {
+  it('list returns comments when the caller is a member', async () => {
     const tool = forgeCommentsTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
     // 1. loadIssueProjectId
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
-    // 2. assertDeviceOwnerIsMember → project owned by device owner
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     // 3. comment list query
     selectLimit.mockResolvedValueOnce([baseCommentRow]);
@@ -156,8 +157,7 @@ describe('forge_comments tool', () => {
 
   it('list attaches each comment its attachments[] from the join', async () => {
     const tool = forgeCommentsTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
@@ -185,8 +185,7 @@ describe('forge_comments tool', () => {
 
   it('list returns truncated:true and keeps newest when response exceeds 38K chars (ISS-562)', async () => {
     const tool = forgeCommentsTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
@@ -223,8 +222,7 @@ describe('forge_comments tool', () => {
 
   it('list throws NOT_FOUND when issue is missing', async () => {
     const tool = forgeCommentsTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
     selectLimit.mockResolvedValueOnce([]); // no issue
@@ -235,8 +233,7 @@ describe('forge_comments tool', () => {
 
   it('create requires data.issue + data.body', async () => {
     const tool = forgeCommentsTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
     await expect(tool.handler({ action: 'create', data: { body: 'hi' } })).rejects.toThrow(
@@ -247,14 +244,14 @@ describe('forge_comments tool', () => {
     );
   });
 
-  it('create attributes authorId to device.ownerId, stamps authorDeviceId, and emits commentCreated hook', async () => {
+  it("create attributes authorId to the token's user, stamps the agent marker from the token's job, and emits commentCreated", async () => {
     const tool = forgeCommentsTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: jobPrincipal,
       projectSlug: null,
     });
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
     selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
+    selectLimit.mockResolvedValueOnce([{ deviceId: DEVICE_ID }]);
     insertReturning.mockResolvedValueOnce([baseCommentRow]); // insert
 
     const result = (await tool.handler({
@@ -274,17 +271,10 @@ describe('forge_comments tool', () => {
     );
   });
 
-  // ISS-638 — a PAT/API-key principal has no `devices` row; `ctx.device` is a
-  // transient stub (`stubDeviceForPat`) whose `id` is the PAT *token* id, not
-  // a real device. Stamping it into author_device_id trips the FK (comment
-  // creation fails for EVERY PAT caller). Fix: null out authorDeviceId for
-  // non-device principals; authorId still resolves to the PAT's owning user.
-  it('create with a PAT principal inserts authorDeviceId: null and succeeds', async () => {
+  // cm:guard ISS-638 was the FK trip: a PAT principal has no `devices` row, and the stub `mcp/handler.ts` fabricated for it carried the PAT *token* id, so stamping that into `author_device_id` failed comment creation for every PAT caller. ISS-931 deleted the stub and the marker now comes off the token's own `job:`/`session:` name, so a person's PAT names no job and this asserts the null — keep asserting it, because a non-null here is both the old FK trip and, in forge-plugin's `answered()`, a person's comment read as an agent's.
+  it("create with a person's PAT inserts authorDeviceId: null and succeeds", async () => {
     const tool = forgeCommentsTool({
       principal: humanPat(null),
-      // ctx.device is the transient stub the MCP handler builds for a PAT
-      // principal — its id is the PAT token id, never a real devices row.
-      device: { ...fakeDevice, id: '55555555-5555-4555-8555-555555555555' },
       projectSlug: null,
     });
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
@@ -313,8 +303,7 @@ describe('forge_comments tool', () => {
   // clean 4xx, not a raw Postgres error.
   it('create maps a genuine author_device_id FK violation to a clean BAD_REQUEST', async () => {
     const tool = forgeCommentsTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
@@ -332,15 +321,13 @@ describe('forge_comments tool', () => {
 
   it('delete by author succeeds', async () => {
     const tool = forgeCommentsTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
     // loadCommentForAccess (joins comments + issues)
     selectLimit.mockResolvedValueOnce([
       { id: COMMENT_ID, issueId: ISSUE_ID, authorId: OWNER_ID, projectId: PROJECT_ID },
     ]);
-    // membership check (author path uses assertDeviceOwnerIsMember)
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     deleteWhere.mockResolvedValueOnce(undefined);
 
@@ -355,8 +342,7 @@ describe('forge_comments tool', () => {
 
   it('delete by non-author non-admin throws FORBIDDEN', async () => {
     const tool = forgeCommentsTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
     selectLimit.mockResolvedValueOnce([
@@ -374,8 +360,7 @@ describe('forge_comments tool', () => {
 
   it('delete by non-author project admin succeeds', async () => {
     const tool = forgeCommentsTool({
-      principal: { kind: 'device', device: fakeDevice },
-      device: fakeDevice,
+      principal: fakePrincipal,
       projectSlug: null,
     });
     selectLimit.mockResolvedValueOnce([
@@ -406,7 +391,6 @@ describe('forge_comments tool', () => {
     function makePatTool(projectIds: string[] | null) {
       return forgeCommentsTool({
         principal: humanPat(projectIds),
-        device: fakeDevice,
         projectSlug: null,
       });
     }
@@ -470,8 +454,7 @@ describe('forge_comments tool', () => {
 
     it('persists a single attachment and returns its url', async () => {
       const tool = forgeCommentsTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: null,
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
@@ -504,8 +487,7 @@ describe('forge_comments tool', () => {
 
     it('persists 5 attachments in one call', async () => {
       const tool = forgeCommentsTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: null,
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
@@ -530,14 +512,14 @@ describe('forge_comments tool', () => {
       expect(storagePut).toHaveBeenCalledTimes(5);
     });
 
-    it('records uploaderDeviceId on the attachment insert', async () => {
+    it("records the agent marker from the token's job on the attachment insert", async () => {
       const tool = forgeCommentsTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: jobPrincipal,
         projectSlug: null,
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
       selectLimit.mockResolvedValueOnce([memberAccessRow]);
+      selectLimit.mockResolvedValueOnce([{ deviceId: DEVICE_ID }]);
       insertReturning.mockResolvedValueOnce([baseCommentRow]);
       insertReturning.mockResolvedValueOnce([makeAttachmentRow(0)]);
 
@@ -565,8 +547,7 @@ describe('forge_comments tool', () => {
 
     it('rejects PAYLOAD_TOO_LARGE when total exceeds UPLOADS_MAX_BYTES', async () => {
       const tool = forgeCommentsTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: null,
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
@@ -596,8 +577,7 @@ describe('forge_comments tool', () => {
 
     it('rejects PAYLOAD_TOO_LARGE when a single entry exceeds the cap', async () => {
       const tool = forgeCommentsTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: null,
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
@@ -620,8 +600,7 @@ describe('forge_comments tool', () => {
 
     it('returns MIME_NOT_ALLOWED in attachmentErrors and keeps the comment', async () => {
       const tool = forgeCommentsTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: null,
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
@@ -651,8 +630,7 @@ describe('forge_comments tool', () => {
 
     it('rejects invalid base64 with BAD_REQUEST before inserting the comment', async () => {
       const tool = forgeCommentsTool({
-        principal: { kind: 'device', device: fakeDevice },
-        device: fakeDevice,
+        principal: fakePrincipal,
         projectSlug: null,
       });
       selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);

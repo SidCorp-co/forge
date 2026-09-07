@@ -3,7 +3,7 @@
  *
  * Mounted under `/api/pat`. All routes require an authenticated, email-verified
  * user (browser JWT or Authorization: Bearer JWT). The MCP middleware
- * (`require-pat-or-device.ts`) handles PAT use for MCP traffic — these routes
+ * (`require-pat.ts`) handles PAT use for MCP traffic — these routes
  * are user-management only.
  *
  *   POST   /api/pat              — mint (returns plaintext exactly once)
@@ -26,7 +26,7 @@ import { mcpAuditLog, personalAccessTokens } from '../db/schema.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
-import { forgetPatThrottle } from '../middleware/require-pat-or-device.js';
+import { forgetPatThrottle } from '../middleware/require-pat.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 
@@ -108,7 +108,6 @@ patRoutes.post(
     const userId = c.get('userId');
     const body = c.req.valid('json');
 
-    // Per-user cap.
     const active = await countActivePatsForUser(userId);
     if (active >= env.PAT_MAX_PER_USER) {
       throw new HTTPException(422, {

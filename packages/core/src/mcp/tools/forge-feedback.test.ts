@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakeJobPrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -13,7 +13,6 @@ vi.mock('../../config/env.js', () => ({
 // Drizzle mock chain for select + insert queries.
 // Mirrors the pattern from forge-issues.test.ts.
 // effectiveProjectRole chains: select().from().leftJoin().leftJoin().where().limit()
-// resolveActiveJobContext:      select().from().innerJoin().where().limit()
 // count / list:                 select().from().where()[.orderBy()].limit()
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
@@ -63,7 +62,7 @@ const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_SLUG = 'forge-dev';
 const PROJECT_ID_2 = '22222222-2222-4222-8222-222222222222';
 const OWNER_ID = '33333333-3333-4333-8333-333333333333';
-const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
+const TOKEN_ID = '99999999-9999-4999-8999-99999999aaaa';
 const JOB_ID = '55555555-5555-4555-8555-555555555555';
 const RUN_ID = '66666666-6666-4666-8666-666666666666';
 const ISSUE_ID = '77777777-7777-4777-8777-777777777777';
@@ -77,12 +76,12 @@ function queueSlugAndMember(...then: unknown[][]): void {
   for (const rows of [[memberAccessRow], ...then]) m = m.mockResolvedValueOnce(rows);
 }
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+// cm:guard the pipeline ctx carries a MACHINE principal — since ISS-931 the job comes off the `job:<id>` name on the caller's own token, so a person's PAT (`machine: null`) makes every context field null and the happy path stops asserting anything about attribution.
+const jobPrincipal = makeFakeJobPrincipal(TOKEN_ID, OWNER_ID, JOB_ID);
 
 function makeCtx(projectSlug = PROJECT_SLUG) {
   return {
-    principal: { kind: 'device' as const, device: fakeDevice },
-    device: fakeDevice,
+    principal: jobPrincipal,
     projectSlug,
   };
 }
@@ -117,12 +116,16 @@ describe('forge_feedback submit', () => {
     const tool = forgeFeedbackTool(makeCtx());
 
     queueSlugAndMember();
-    // resolveActiveJobContext: agentSessions innerJoin jobs → running session
     selectLimit.mockResolvedValueOnce([
-      { jobId: JOB_ID, runId: RUN_ID, issueId: ISSUE_ID, stage: 'code' },
+      {
+        jobId: JOB_ID,
+        runId: RUN_ID,
+        issueId: ISSUE_ID,
+        stage: 'code',
+        deviceId: null,
+        agentSessionId: 'sess-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      },
     ]);
-    // resolveActiveSessionId: running session for device (ISS-557)
-    selectLimit.mockResolvedValueOnce([{ id: 'sess-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }]);
     // per-job count check: 0 existing
     selectLimit.mockResolvedValueOnce([{ n: 0 }]);
     insertReturning.mockResolvedValueOnce([
@@ -155,10 +158,15 @@ describe('forge_feedback submit', () => {
 
     queueSlugAndMember();
     selectLimit.mockResolvedValueOnce([
-      { jobId: JOB_ID, runId: RUN_ID, issueId: null, stage: 'code' },
+      {
+        jobId: JOB_ID,
+        runId: RUN_ID,
+        issueId: null,
+        stage: 'code',
+        deviceId: null,
+        agentSessionId: 'sess-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      },
     ]);
-    // resolveActiveSessionId (ISS-557)
-    selectLimit.mockResolvedValueOnce([{ id: 'sess-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }]);
     // count = 5 (at limit)
     selectLimit.mockResolvedValueOnce([{ n: 5 }]);
 
@@ -183,8 +191,8 @@ describe('forge_feedback submit', () => {
         scopes: ['read', 'write'],
         projectIds: null,
         boundProjectId: PROJECT_ID,
+        machine: null,
       },
-      device: fakeDevice,
       projectSlug: null,
       boundProjectId: PROJECT_ID,
     });
@@ -192,7 +200,6 @@ describe('forge_feedback submit', () => {
     // resolveEffectiveProjectId from boundProjectId (no slug, no explicit arg)
     // assertPrincipalIsMember (PAT path, effectiveProjectRole)
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    // No job context resolution (principal.kind !== 'device')
     // No count check (no jobId)
     insertReturning.mockResolvedValueOnce([
       {
@@ -252,7 +259,7 @@ describe('forge_feedback submit', () => {
     const tool = forgeFeedbackTool(makeCtx());
 
     queueSlugAndMember();
-    // handler throws at !input.summary before reaching resolveActiveJobContext — no 3rd mock needed
+    // cm:why only two rows are queued: the handler throws on the missing `summary` before it resolves the token's job, so a third would never be consumed and would leak into the next test
 
     await expect(
       tool.handler({ action: 'submit', kind: 'friction', target: 'skill' }),
@@ -495,7 +502,7 @@ describe('forge_feedback get', () => {
     // effectiveProjectRole for PROJECT_ID_2 finds no membership row
     selectLimit.mockResolvedValueOnce([]);
 
-    await expect(tool.handler({ action: 'get', reportId: REPORT_ID })).rejects.toThrow(/FORBIDDEN/);
+    await expect(tool.handler({ action: 'get', reportId: REPORT_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 });
 

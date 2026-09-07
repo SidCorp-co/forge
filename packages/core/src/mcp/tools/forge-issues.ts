@@ -98,7 +98,6 @@ const filtersSchema = z
     createdAfter: z.string().optional(),
     createdBefore: z.string().optional(),
     updatedAfter: z.string().optional(),
-    // listTasks: filter tasks by parent issue UUID + optional task status.
     // `taskStatus` is named separately from the issue-level `status` so a
     // listTasks call cannot accidentally match against issue.status.
     issue: z.uuid().optional(),
@@ -527,7 +526,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'parent issue. ' +
     'Relations (ISS-571, ISS-868): data.relations (optional array, max 20) is applied by ' +
     'BOTH create and update, and works with a personal access token — unlike ' +
-    'forge_project_pm set_dependency, which needs a paired device. Edges commit before ' +
+    'forge_project_pm set_dependency. Edges commit before ' +
     // cm:edge naming -> packages/core/src/issues/relations-service.ts — this prose spells the kind vocabulary out for the agent, so it is a second copy of RELATION_KINDS that no type checks; the guard there forbids widening, and if that ever changes this sentence is the other half
     'the dispatch trigger (issueCreated on create, the status transition on update), so ' +
     'the dispatcher cannot pick the issue up ahead of its blocker. Each entry takes kind ' +
@@ -556,7 +555,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    const { device, principal } = ctx;
+    const { principal } = ctx;
 
     // cm:guard `data` is ONE shared schema across all 11 actions, so a field only `create`/`update` apply is accepted and dropped by the other nine — refuse it by name here rather than returning 200 on a write that did nothing (ISS-868). `transition` is the dangerous one: it wakes considerEnqueue→dispatch, so a discarded `blocks` edge ships the dependent ahead of its blocker.
     if (
@@ -651,9 +650,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           result = await createIssue(
             { ...input.data, projectId, title: input.data.title },
             {
-              createdById: device.ownerId,
+              createdById: principal.userId,
               createdVia: 'mcp',
-              actor: principalHookActor(principal, device),
+              actor: principalHookActor(principal),
             },
           );
         } catch (err) {
@@ -725,20 +724,20 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             issueId: issue.id,
             updates,
             labelIds,
-            actor: { type: 'device', id: device.id, agency: 'agent' },
+            actor: principalHookActor(principal),
           });
         }
 
         // cm:edge ordering -> packages/core/src/jobs/queued-gates.ts — relations commit BEFORE the transition below, for the same reason create commits them before issueCreated: the transition is what wakes considerEnqueue→dispatch, so a blocks edge written after it misses the first tick and the dependent ships ahead of its blocker. This order is also the SAFE side of a partial failure, which is why the two writes are deliberately not one transaction: edges landed + transition failed leaves an extra `blocks` edge holding a job, which a human can retract, where the reverse ships a dependent ahead of its blocker and cannot be undone.
         const r = await applyIssueRelations(
-          { actor: principalHookActor(principal, device), createdById: device.ownerId },
+          { actor: principalHookActor(principal), createdById: principal.userId },
           issue.projectId,
           issue.id,
           input.data.relations,
         );
 
         if (input.data.status && input.data.status !== issue.status) {
-          await transitionIssueStatus(issue, input.data.status, principalActor(principal, device), {
+          await transitionIssueStatus(issue, input.data.status, principalActor(principal), {
             transitionReason: input.data.reason ?? input.data.note,
             waitingKind: input.data.waitingKind,
           });
@@ -763,7 +762,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!target) throw new Error('BAD_REQUEST: data.status is required for transition');
         const issue = await loadIssue(input.documentId);
         await assertPrincipalIsWriter(principal, issue.projectId);
-        await transitionIssueStatus(issue, target, principalActor(principal, device), {
+        await transitionIssueStatus(issue, target, principalActor(principal), {
           transitionReason: input.data?.reason ?? input.data?.note,
           waitingKind: input.data?.waitingKind,
         });
@@ -796,9 +795,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
               ? { mergedAt: parseDate(input.data.mergedAt, 'mergedAt') }
               : {}),
             actor: {
-              agency: actorAgency(principalActor(principal, device)),
-              commentAuthorId: device.ownerId,
-              hookActor: principalHookActor(principal, device),
+              agency: actorAgency(principalActor(principal)),
+              commentAuthorId: principal.userId,
+              hookActor: principalHookActor(principal),
             },
           });
           // cm:guard report the ACTION under `action`, never by overwriting `status` — `merged`/`unmarked` are not `issueStatuses` members, so a caller read a lifecycle value that cannot exist (§10)
@@ -846,7 +845,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           priority: data.taskPriority,
           isAgentTask: data.isAgentTask,
           acceptanceCriteria: data.taskAcceptanceCriteria ?? null,
-          actor: { type: 'device', id: device.id, agency: 'agent' },
+          actor: principalHookActor(principal),
         });
 
         return { task: serializeTask(created) };
@@ -870,12 +869,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           updates.acceptanceCriteria = data.taskAcceptanceCriteria;
         }
 
-        const updated = await updateTaskRow(
-          row,
-          updates,
-          { type: 'device', id: device.id, agency: 'agent' },
-          ['acceptanceCriteria'],
-        );
+        const updated = await updateTaskRow(row, updates, principalHookActor(principal), [
+          'acceptanceCriteria',
+        ]);
         if (!updated) throw new Error('NOT_FOUND: task not found');
 
         return { task: serializeTask(updated) };
@@ -887,7 +883,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
         const row = await loadTaskForAccess(input.documentId);
         await assertPrincipalIsWriter(principal, row.projectId);
-        await deleteTaskRow(row, { type: 'device', id: device.id, agency: 'agent' });
+        await deleteTaskRow(row, principalHookActor(principal));
         return { deleted: true, documentId: input.documentId };
       }
     }

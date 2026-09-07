@@ -12,6 +12,8 @@ export function pipelineConfigHttpError(err: unknown): unknown {
   switch (err.code) {
     case 'OPEN_LOCKED_ON':
     case 'STAGE_POOL_UNKNOWN_RUNNER':
+    // cm:why 400, not 409: the two settings CONFLICT with each other, they do not conflict with live state the operator could wait out. Retrying is never the answer; editing one of the two named settings is.
+    case 'CONFIG_CONFLICT':
       return new HTTPException(400, { message: err.message, cause });
     case 'STAGE_HAS_ISSUES':
       return new HTTPException(409, { message: err.message, cause });

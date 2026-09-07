@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -31,14 +31,17 @@ const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const _OTHER_OWNER_ID = '22222222-2222-4222-8222-222222222222';
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 const RUNNER_ID = '55555555-5555-4555-8555-555555555555';
-const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
+const TOKEN_ID = '44444444-4444-4444-8444-444444444444';
+const DEVICE_ID = '66666666-6666-4666-8666-666666666666';
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
+// cm:guard `admin` is in these scopes because the ACTIONS under test are admin-gated, and it is the one thing a device token never had to carry. Until ISS-931 a paired device reached `assertPrincipalIsAdmin` with no scopes at all — the check reads `principal.scopes` and a device had none, so the scope half was skipped and only the project role was asked. Drop `admin` here and every write case below fails `this token lacks the admin scope`, which is the new, correct answer for a machine token.
+const fakePrincipal = makeFakePrincipal(TOKEN_ID, OWNER_ID, {
+  scopes: ['read', 'write', 'admin'],
+});
 
 function buildCtx() {
   return {
-    principal: { kind: 'device' as const, device: fakeDevice },
-    device: fakeDevice,
+    principal: fakePrincipal,
     projectSlug: null,
   };
 }
@@ -98,7 +101,7 @@ beforeEach(() => {
 describe('forge_runners', () => {
   it('list attaches inFlightCount per runner, scoped to visible projects', async () => {
     mockVisible([PROJECT_ID]);
-    // primary list query
+
     selectImpl.mockImplementationOnce(() => ({
       from: () => ({
         where: () =>

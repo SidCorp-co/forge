@@ -12,7 +12,7 @@ import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { type PatScope, runWithPatScope } from '../auth/pat-scope.js';
 import { patEffectiveProjectIds } from '../mcp/tools/project-scope.js';
-import { authenticatePat, type PatPrincipal } from './require-pat-or-device.js';
+import { authenticatePat, type PatPrincipal } from './require-pat.js';
 
 /**
  * The project data plane, and nothing else. Matched as a path prefix against

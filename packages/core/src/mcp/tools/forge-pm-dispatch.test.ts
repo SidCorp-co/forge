@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -21,7 +21,7 @@ describe('forge_pm.dispatch after the staged lane was removed (ISS-895)', () => 
   it('refuses every job type by name rather than enqueuing something unrunnable', async () => {
     for (const jobType of ['code', 'plan', 'review', 'test', 'fix', 'release', 'drive'] as const) {
       await expect(
-        pmDispatchHandler(makeFakeDevice('dev-1', 'user-1'), {
+        pmDispatchHandler(makeFakePrincipal('dev-1', 'user-1'), {
           projectId: PROJECT_ID,
           issueId: ISSUE_ID,
           jobType,
@@ -33,7 +33,7 @@ describe('forge_pm.dispatch after the staged lane was removed (ISS-895)', () => 
 
   it('names the job type asked for, so an operator can tell which call failed', async () => {
     await expect(
-      pmDispatchHandler(makeFakeDevice('dev-1', 'user-1'), {
+      pmDispatchHandler(makeFakePrincipal('dev-1', 'user-1'), {
         projectId: PROJECT_ID,
         issueId: ISSUE_ID,
         jobType: 'code',

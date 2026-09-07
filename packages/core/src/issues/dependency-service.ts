@@ -54,7 +54,7 @@ export type SetIssueDependencyInput = {
  * Who the write is attributed to. `createdById` lands in the row; `actor` is
  * what the activity log records.
  */
-// cm:guard pass `actor` explicitly whenever the caller knows its principal — a PAT reaches MCP behind a SYNTHETIC device (mcp/handler.ts stubDeviceForPat) whose id is an api_tokens row, so a device-shaped default writes an activity_log actor_id matching no `devices` row while the same request's status transition is attributed correctly through principalActor()
+// cm:guard pass `actor` explicitly whenever the caller knows its principal, and derive it through `mcp/tools/lib.ts:principalActor` on the MCP side. A device-shaped default cannot be right there: since ISS-931 no device authenticates `/mcp` at all, so a person's token must record the person, and an agent's records `{type:'device', id: tokenId}` — an `api_tokens` id, matching no `devices` row. Default it here and the same request's dependency edge and status transition get two different actors.
 export type IssueDependencyWriter = {
   actor: Actor;
   createdById: string;

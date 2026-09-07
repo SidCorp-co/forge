@@ -25,6 +25,8 @@ import { pmSetDependencyHandler } from './forge-pm-set-dependency.js';
 import { pmSnapshotHandler } from './forge-pm-snapshot.js';
 import { pmWriteDecisionHandler } from './forge-pm-write-decision.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from './lib.js';
+import { PM_ACTIONS } from './pm-actions.js';
+import { assertPmActor } from './project-authz.js';
 
 const escalateSchema = z
   .object({
@@ -39,21 +41,11 @@ const escalateSchema = z
   })
   .strict();
 
-// cm:edge contract -> packages/core/src/mcp/server.ts — DEVICE_REQUIRED classifies these actions and the PM_DEVICE_REFUSAL text names the complement; adding an action here without classifying it there both leaves it PAT-reachable by default and makes the refusal advertise it as read-only
-export const PM_ACTIONS = [
-  'snapshot',
-  'graph',
-  'runner_load',
-  'dispatch',
-  'set_dependency',
-  'write_decision',
-] as const;
-
 const inputSchema = z
   .object({
     action: z.enum(PM_ACTIONS),
     projectId: z.uuid(),
-    // graph
+
     rootIssueId: z.uuid().optional(),
     depth: z.number().int().min(1).max(PM_GRAPH_MAX_DEPTH).optional(),
     // dispatch
@@ -79,15 +71,15 @@ const inputSchema = z
   })
   .strict();
 
-export const forgeProjectPmTool: ContextScopedMcpToolFactory = ({ device }) => ({
+export const forgeProjectPmTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_project_pm',
   description:
     `PM agent action dispatcher. Actions: ${PM_ACTIONS.join(' | ')}. ` +
-    // cm:guard do NOT enumerate the device/PAT split here — `PM_DEVICE_REFUSAL` in mcp/server.ts derives that list from DEVICE_REQUIRED and delivers it at the moment a caller hits the gate, and this description cannot import DEVICE_REQUIRED back (server.ts already imports PM_ACTIONS from here, so the reverse edge is a real ESM cycle over top-level const init). A hand-typed copy here would advertise a newly-gated action as PAT-safe with every test still green.
-    'CREDENTIAL CLASS: some actions require a paired-device token and refuse a personal access token with PM_REQUIRES_DEVICE; the refusal names the actions a PAT can still call. With a PAT, set or retract a blocks/relates edge through forge_issues create/update data.relations and read edges back from forge_issues get. ' +
+    // cm:guard do NOT enumerate the reachable/unreachable split here — `assertPmActor` in project-authz.ts derives it from PM_ACTIONS and delivers it at the moment a caller hits the gate. A hand-typed copy here would advertise a device-only action as reachable with every test still green.
+    'CREDENTIAL CLASS: dispatch and write_decision act on runner state and are not reachable over MCP — they refuse with PM_REQUIRES_DEVICE, and the refusal names the actions that do work. To set or retract a blocks/relates edge, forge_issues create/update data.relations also works and reads back from forge_issues get. ' +
     'snapshot/graph/runner_load: read-only; require projectId + project membership. ' +
     'graph also accepts optional rootIssueId (BFS) and depth (default 2, max 5); without rootIssueId returns the full graph capped at 200 nodes with truncated:true + remainingNodes:N. ' +
-    'dispatch: enqueue a coder-skill job for an issue (projectId, issueId, jobType, reason; optional payload, modelTier); requires PM-actor capability. ' +
+    'dispatch: enqueue a coder-skill job for an issue (projectId, issueId, jobType, reason; optional payload, modelTier); requires PM-actor capability, so not reachable over MCP. ' +
     'set_dependency: record a dependency edge (projectId, fromIssueId, toIssueId, kind; optional reason, validUntil); idempotent — a repeat call returns created:false and applies whichever of `validUntil`/`reason` you passed (`updated:true` when it changed something). Expire a stale edge by setting `validUntil` in the past; that is the only agent-reachable retraction (DELETE is JWT-only REST). When creating a NEW issue that needs a blocking edge, prefer forge_issues.create { data.relations } (atomic, edges committed before issueCreated fires) or create the issue as status:draft first — a blocks edge set after an open create can miss the first dispatch tick. ' +
     'write_decision: durable PM decision turn (projectId, cause, summary; optional sessionId, eventRef, actions, confidence, modelTier, tookMs, escalate); requires PM-actor capability. To escalate alongside the decision, pass an `escalate` object — top-level `summary` is the decision summary, `escalate.summary` becomes the notification title.',
   inputSchema: zodToMcpSchema(inputSchema),
@@ -95,19 +87,20 @@ export const forgeProjectPmTool: ContextScopedMcpToolFactory = ({ device }) => (
     const input = inputSchema.parse(args);
     switch (input.action) {
       case 'snapshot': {
-        return pmSnapshotHandler(device, { projectId: input.projectId });
+        return pmSnapshotHandler(principal, { projectId: input.projectId });
       }
       case 'graph': {
-        return pmGraphHandler(device, {
+        return pmGraphHandler(principal, {
           projectId: input.projectId,
           rootIssueId: input.rootIssueId,
           depth: input.depth ?? 2,
         });
       }
       case 'runner_load': {
-        return pmRunnerLoadHandler(device, { projectId: input.projectId });
+        return pmRunnerLoadHandler(principal, { projectId: input.projectId });
       }
       case 'dispatch': {
+        // cm:guard `dispatch` gets NO credential refusal, and that is deliberate: `dispatchPmJob` already throws unconditionally because ISS-895 removed the staged lane, and THAT is the condition a caller needs to read. Adding `assertPmActor` here would preempt it with "needs a paired device", sending an operator to pair a box for an action that has no lane to run in either way — the wrong condition, which is what ISS-787/ISS-868 were about.
         if (!input.issueId) {
           throw new Error('BAD_REQUEST: issueId is required for dispatch');
         }
@@ -117,7 +110,7 @@ export const forgeProjectPmTool: ContextScopedMcpToolFactory = ({ device }) => (
         if (!input.reason) {
           throw new Error('BAD_REQUEST: reason is required for dispatch');
         }
-        return pmDispatchHandler(device, {
+        return pmDispatchHandler(principal, {
           projectId: input.projectId,
           issueId: input.issueId,
           jobType: input.jobType,
@@ -136,7 +129,7 @@ export const forgeProjectPmTool: ContextScopedMcpToolFactory = ({ device }) => (
         if (!input.kind) {
           throw new Error('BAD_REQUEST: kind is required for set_dependency');
         }
-        return pmSetDependencyHandler(device, {
+        return pmSetDependencyHandler(principal, {
           projectId: input.projectId,
           fromIssueId: input.fromIssueId,
           toIssueId: input.toIssueId,
@@ -146,13 +139,15 @@ export const forgeProjectPmTool: ContextScopedMcpToolFactory = ({ device }) => (
         });
       }
       case 'write_decision': {
+        // cm:guard the CREDENTIAL refusal comes before the required-field checks. `assertPmActor` refuses every caller `/mcp` can produce (ISS-931), so validating `cause` first answers "cause is required" to a caller who could not use the action with every field supplied. Until ISS-931 this ordering came from `DEVICE_REQUIRED` in `mcp/server.ts`, which ran before the tool; that map is gone and this line is what replaced it.
+        await assertPmActor(principal);
         if (!input.cause) {
           throw new Error('BAD_REQUEST: cause is required for write_decision');
         }
         if (!input.summary) {
           throw new Error('BAD_REQUEST: summary is required for write_decision');
         }
-        return pmWriteDecisionHandler(device, {
+        return pmWriteDecisionHandler(principal, {
           projectId: input.projectId,
           sessionId: input.sessionId,
           cause: input.cause,
