@@ -39,9 +39,6 @@ export interface ProjectProgress {
 
 const REMAINING_STATUSES = new Set<IssueStatus>(['draft', 'waiting', 'needs_info', 'on_hold']);
 
-// cm:why reached only once a code step has run — paired with `merged_at` as evidence a manual/owner-lane close (skipping the release rung) still shipped code (review B2)
-const POST_CODE_STATUSES: readonly IssueStatus[] = ['developed', 'testing', 'tested', 'released'];
-
 // cm:guard the ONLY place issue statuses are bucketed into a progress figure — a second counter (chat self-count, a bespoke report) re-opens ISS-671's 54-issue incident
 export function bucketOf(status: IssueStatus, hasShippedEvidence: boolean): ProgressBucket {
   if (status === 'released' || (status === 'closed' && hasShippedEvidence)) return 'shipped';
@@ -82,17 +79,7 @@ export async function computeProjectProgress(
         and ${activityLog.payload}->>'to' in (${baseBranch}, ${productionBranch})
     )`;
 
-    const reachedPostCode = sql`exists (
-      select 1 from ${activityLog}
-      where ${activityLog.issueId} = ${issues.id}
-        and ${activityLog.action} = 'issue.statusChanged'
-        and ${activityLog.payload}->>'to' in (${sql.join(
-          POST_CODE_STATUSES.map((s) => sql`${s}`),
-          sql`, `,
-        )})
-    )`;
-
-    // cm:guard ISS-817 — `merged_at` alone is NOT shipped-evidence: markMergedOnClose stamps it on EVERY close, so dropping this NOT re-degenerates the predicate to "closed after ever reaching developed" and reports never-merged code as shipped
+    // cm:guard ISS-817 — `merged_at` alone is NOT shipped-evidence: markMergedOnClose stamps it on EVERY close, so this is the WHOLE discriminator now that the post-code conjunct is gone. Drop the NOT and the predicate degenerates to "closed", reporting never-merged code as shipped.
     // cm:why the auto-stamp and the close's activity_log row are written in ONE transaction and Postgres now() is transaction-start time, so their timestamps are identical; a genuine base-merge stamp came from an earlier transaction and cannot collide
     // cm:edge lockstep -> packages/core/src/issues/apply-transition.ts — this reads the timestamp identity that markMergedOnClose + the activity_log write produce together; splitting those two writes apart silently re-inflates `shipped`
     const stampedByCloseItself = sql`exists (
@@ -103,7 +90,8 @@ export async function computeProjectProgress(
         and ${activityLog.createdAt} = ${issues.mergedAt}
     )`;
 
-    const hasShippedEvidence = sql<boolean>`(${leftMergeState} or (${issues.mergedAt} is not null and ${reachedPostCode} and not ${stampedByCloseItself}))`;
+    // cm:why ISS-791 — the second disjunct asks only whether the stamp was DELIBERATE, because exactly three writers set `merged_at` and the question partitions them: `markMergedIfLeavingBase` is already the first disjunct, `markMergedOnClose` is the auto-stamp the `not` here excludes, and `applyMergeMarker` is the audited claim gated by `pipeline/work-evidence.ts`. It used to also require a logged transition into developed/testing/tested/released, which no hand-driven issue ever has — so work finished outside the pipeline and claimed through the one sanctioned surface was reported as "closed with NO evidence it shipped".
+    const hasShippedEvidence = sql<boolean>`(${leftMergeState} or (${issues.mergedAt} is not null and not ${stampedByCloseItself}))`;
 
     // cm:why evidence is computed per issue in a derived table then grouped — grouping DIRECTLY on the expression made Postgres reject it ("subquery uses ungrouped column issues.id"): the builder renders it differently in the select list vs the GROUP BY, so the two stop matching
     const rows = await dbi.execute<{
