@@ -6,7 +6,14 @@
 
 import { describe, expect, it } from 'vitest';
 import type { AttachmentTarget } from './attachment-mime.js';
-import { allowedSetForTarget, looksBinary, resolveAttachmentMime } from './attachment-mime.js';
+import {
+  allowedSetForTarget,
+  looksBinary,
+  NAME_MAX_BYTES,
+  nameExceedsByteBudget,
+  resolveAttachmentMime,
+  safeName,
+} from './attachment-mime.js';
 
 const utf8 = (s: string) => Buffer.from(s, 'utf8');
 const ESC = String.fromCharCode(0x1b);
@@ -240,5 +247,65 @@ describe('the byte table is the byte-wise projection of the code-point predicate
     }
 
     expect(disagreed).toEqual([]);
+  });
+});
+
+describe('safeName is an identity, so distinct documents stay distinct', () => {
+  const pairs: [string, string][] = [
+    ['报告.pdf', '设计.pdf'],
+    ['किताब.pdf', 'कुताब.pdf'],
+    ['مُحَمَّد.pdf', 'مُحَمّد.pdf'],
+    ['שָׁלוֹם.txt', 'שָׁלום.txt'],
+    ['Ελλάδα.md', 'Ελλάδας.md'],
+  ];
+
+  it.each(pairs)('keeps %s apart from %s', (left, right) => {
+    expect(safeName(left)).not.toBe(safeName(right));
+  });
+
+  it('folds the two Unicode spellings of one name onto one identity', () => {
+    expect(safeName('café.pdf'.normalize('NFD'))).toBe(safeName('café.pdf'.normalize('NFC')));
+  });
+
+  it('replaces separators, controls and spaces rather than dropping them', () => {
+    expect(safeName('a/b\\c.md')).toBe('a_b_c.md');
+    expect(safeName('a b\tc.md')).toBe('a_b_c.md');
+    expect(safeName('\u0000\u200b.md')).toBe('__.md');
+  });
+
+  it('never returns empty, whatever it was handed', () => {
+    expect(safeName('///')).toBe('_');
+    expect(safeName('')).toBe('file');
+  });
+});
+
+describe('the name byte budget', () => {
+  // cm:guard these count BYTES — an 81-character CJK name overflows a 255-byte ext4 component once the storage key adds its `<epoch>-` prefix, and a UTF-16 length reads it as comfortably short (ISS-963)
+  it('reads a CJK name that fits in 200 characters as over budget', () => {
+    expect('文'.repeat(80).length).toBeLessThan(200);
+    expect(nameExceedsByteBudget(safeName(`${'文'.repeat(80)}.pdf`))).toBe(true);
+  });
+
+  it('admits the same name in ASCII, where the bytes are the characters', () => {
+    expect(nameExceedsByteBudget(safeName(`${'a'.repeat(80)}.pdf`))).toBe(false);
+  });
+
+  it('sits exactly on the boundary', () => {
+    expect(nameExceedsByteBudget('a'.repeat(NAME_MAX_BYTES))).toBe(false);
+    expect(nameExceedsByteBudget('a'.repeat(NAME_MAX_BYTES + 1))).toBe(true);
+  });
+
+  it('refuses an over-long name instead of trimming two of them onto one', () => {
+    const stem = 'あ'.repeat(200);
+    expect(safeName(`${stem}one.pdf`)).not.toBe(safeName(`${stem}two.pdf`));
+    expect(nameExceedsByteBudget(safeName(`${stem}one.pdf`))).toBe(true);
+  });
+
+  // cm:guard a length cap may not cut inside an astral character — the lone high surrogate left behind is shared by all 1,024 code points in its block, so two distinct names arrive at one row through the very rule meant to keep them apart (ISS-963)
+  it('does not split a surrogate pair into a shared prefix', () => {
+    const stem = 'a'.repeat(199);
+    expect(safeName(stem + String.fromCodePoint(0x20000))).not.toBe(
+      safeName(stem + String.fromCodePoint(0x20001)),
+    );
   });
 });
