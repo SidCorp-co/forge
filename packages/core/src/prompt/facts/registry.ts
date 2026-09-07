@@ -7,19 +7,20 @@
 //      static preamble injected on every job (status discipline + tool
 //      catalogue) — so the canonical text lives HERE, not duplicated there.
 //   2. The author-time surfaces (REST `GET /api/skill-facts`, MCP
-//      `forge_skill_facts`, the web Skill Studio palette) list/render the
-//      `tier: 'contextual'` facts so a skill body can reference them by
-//      `{{forge:<id>}}` instead of copy-pasting (P2 wires the expansion).
+//      `forge_skill_facts`, the web Skill Studio palette) render the
+//      `tier: 'contextual'` facts, which an author addresses as
+//      `{{forge:<id>}}`. That is an ADDRESS, not a template: nothing expands
+//      it inside a skill file, and a contextual fact reaches an agent through
+//      consumer 1's preamble, filtered by `appliesTo`.
 //
-// Cycle constraint: this file imports TYPES ONLY from `../../db/schema.js`.
-// It must stay free of DB/env side effects so `@forge/contracts` parity tests
-// and the browser can reason about the fact catalogue without a live DB.
-// Project-resolved facts receive their resolved inputs via `FactRenderContext`
-// (the resolver in `./resolve.ts` fetches `pipelineConfig`); render() itself
-// is pure.
+// Cycle constraint: TYPES ONLY from `../../db/schema.js`, and no DB/env side
+// effects — `@forge/contracts` parity tests and the browser reason about this
+// catalogue without a live DB. `render()` is pure; a project-resolved fact
+// takes its inputs through `FactRenderContext` from `./resolve.ts`.
 
+import { describeComponents } from '../../body/components.js';
 import type { IssueStatus, JobType } from '../../db/schema.js';
-// cm:guard the only non-type import this module may carry, and only because `dependency-effects.ts` is a leaf whose own schema import erases — the cycle constraint above is what it would otherwise break.
+// cm:guard the only two non-type imports this module may carry, and only because both are leaves whose own imports erase — `dependency-effects.ts`'s schema import is type-only, and `body/components.ts` pulls nothing but zod. The cycle constraint above is what a third, DB- or env-touching import would break.
 import { WORK_EVIDENCE_WAIVER_NOTE } from '../../issues/dependency-effects.js';
 
 export type FactCategory = 'enum' | 'protocol' | 'format' | 'reference';
@@ -166,6 +167,19 @@ export const CANONICAL_LADDER: readonly IssueStatus[] = [
 ];
 
 // cm:why `pm` is absent because it has no issue to act on — a fact that names "the issue" reaching a pm job describes something that is not there
+// cm:edge contract -> packages/core/src/body/components.ts — every value is a `root: true` component name there; `registry.test.ts` is what holds the two sides together
+const STAGE_ROOT_COMPONENT: Partial<Record<JobType, string>> = {
+  triage: 'forge-triage',
+  clarify: 'forge-symptom',
+  plan: 'forge-plan',
+  code: 'forge-outcome',
+  fix: 'forge-outcome',
+  review: 'forge-review',
+  test: 'forge-qa-report',
+  release: 'forge-close',
+  drive: 'forge-outcome',
+};
+
 const ISSUE_STAGES: readonly JobType[] = [
   'triage',
   'clarify',
@@ -314,19 +328,38 @@ This ladder is also the authoritative set of statuses. **If your adopted skill's
 Post your findings/decision comment via \`forge_comments.create\` BEFORE the final \`forge_issues.update\` status change — the next pipeline step must see the comment already in place. Status is always the LAST action.`,
   },
   {
+    id: 'body-components',
+    title: 'Issue and comment body components',
+    category: 'format',
+    tier: 'contextual',
+    scope: 'global',
+    namespace: 'forge',
+    appliesTo: [...ISSUE_STAGES, 'drive'],
+    version: 1,
+    // cm:edge contract -> packages/core/src/body/components.ts — the set is RENDERED from `describeComponents()`, never restated here. That is the whole point of this fact: §1 of `docs/proposals/body-templates.md` measured a guide at 14-28 % compliance against near 100 % for what a stage prompt carries, so a pasted example here would re-create the drift at the one place that measures.
+    // cm:guard the per-stage roots below are the only hand-written half, and each must be a name `describeComponents()` prints — a root that is not in the registry is markup the kernel refuses with a 400 the agent cannot diagnose from its prompt. `registry.test.ts` holds every one of them against `ROOT_COMPONENT_NAMES`.
+    render: (ctx) => {
+      const stage = ctx?.stage ?? null;
+      const root = stage ? STAGE_ROOT_COMPONENT[stage] : undefined;
+      const forStage = root
+        ? `Your record comment for this step is a \`<${root}>\`.`
+        : 'Pick the root that matches what you are recording.';
+      return `## Body components
+Issue and comment bodies accept an allowlisted component markup as well as markdown, and \`format\` is what chooses: absent resolves to \`markdown\`, so **plain prose stays valid everywhere and always**. Send \`format: 'html'\` to use the set below. One level of nesting: a root, its declared slots, plain tags inside. \`forge-diagram\` and \`forge-artifact\` are leaves and are legal inside any slot.
+
+${describeComponents()}
+
+\`[name=type]\` is an attribute — \`a|b\` are the only accepted values, \`?\` optional. \`{child}\` is a declared slot — \`*\` repeatable, \`!\` required. Anything else is REFUSED with a 400 naming the element, the attribute and its legal set; an unknown PLAIN tag is repaired and reported instead. ${forStage}`;
+    },
+  },
+  {
     id: 'memory-recall-first',
     title: 'Recall project memory before working',
     category: 'protocol',
     tier: 'contextual',
     scope: 'global',
     namespace: 'forge',
-    // The stages where acting without prior context is the costliest mistake:
-    // plan (wrong design vs an existing convention/decision), clarify
-    // (re-deriving a repro/gotcha already recorded), fix (re-fixing a known
-    // pattern). Other stages (triage/code/review/test/release) may still recall
-    // at will — forge_memory is in the Tool Reference — but it is not mandated.
-    // code is intentionally OUT: the orchestrator already injects a search-first
-    // `preventiveContext` into code jobs, so mandating it here would duplicate.
+    // cm:why the three stages where acting without prior context costs the most: a wrong design against a settled convention, a repro already recorded, a fix pattern already found. Every other stage may recall at will — `forge_memory` is in the Tool Reference — and `code` is out deliberately, because the orchestrator already injects a search-first `preventiveContext` into a code job and mandating it twice buys nothing.
     appliesTo: ['clarify', 'plan', 'fix'],
     version: 2,
     render: () => `## Recall memory first
@@ -450,10 +483,7 @@ A setup step may have run in this checkout seconds before you started, and anyth
 - **A workspace fault is not a reason to abandon the task**, and it is not this issue's work either. Fix what stands between you and the task, do the task, and report the repair under \`Extra fixes:\`.
 - **If the notice says this project declares no setup procedure and you worked one out, record it**: \`forge_projects.update\` with \`workspaceSetup\` = the minimal ordered steps that set this repo up from a fresh clone. Only steps you actually ran and saw succeed. That write is what stops the next job paying to work it out again; if it is refused for lack of permission, say so in your result and move on rather than retrying.`,
   },
-  // ISS-552 (C1) — trigger-phrased red-flag fact for code + fix stages.
-  // Teaches by trigger condition (ISS-541: "if X happened, do Y"), not by
-  // noun-list. Injected via the contextual tier; appliesTo keeps it out of
-  // plan/review/triage where it would just be noise.
+  // cm:why phrased as a trigger condition rather than a noun-list — an agent reaches for an affordance when it recognises the situation, and `appliesTo` keeps it off the stages where the situation cannot arise.
   {
     id: 'feedback-red-flag',
     title: 'Red flag: report friction you worked around',
