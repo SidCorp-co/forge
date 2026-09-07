@@ -1,8 +1,8 @@
 /**
  * ISS-305 — Runner browser-approve device login (OAuth device-authorization
- * flow, cf. `claude login`). Mints a *device token* for the headless
- * `forge-runner` CLI and optionally hands the runner a git push credential so
- * it can push with no manual SSH setup.
+ * flow, cf. `claude login`). Mints a PAT for the approving user, or the chosen
+ * agent's AAT, bound to the box's `devices` row, and optionally hands the runner
+ * a git push credential so it can push with no manual SSH setup.
  *
  *   1. POST /api/devices/login/init    — the CLI mints a short code; backend
  *      hashes + persists it; returns the formatted code + the /pair verify URL.
@@ -10,7 +10,8 @@
  *      typed/linked code, binding it to the signed-in user.
  *   3. GET  /api/devices/login/poll    — the CLI polls every 2 s; 204 while
  *      pending, 200 + {device_token, …} when approved (single-use), 410 when
- *      expired or already consumed.
+ *      expired or already consumed. The `device_token` field name is the wire
+ *      contract three `forge-runner` versions read; only its species changed.
  *
  * Codes are 7 Crockford base32 chars displayed as `XXX-XXXX`. Server stores
  * only sha256(canonical). 10-minute TTL. Live pending→approved is broadcast on
@@ -21,21 +22,21 @@ import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { issueOrRotateDeviceTokenByMachine } from '../auth/deviceToken.js';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
-import { deviceLoginCodes, users } from '../db/schema.js';
+import { deviceLoginCodes, organizationMembers, users } from '../db/schema.js';
 import { provisionGitCredential } from '../git/provision-credential.js';
+import { assertOrgAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { Sentry } from '../observability/sentry.js';
+import { issueDeviceCredential } from './credential.js';
+import { registerDevice } from './register.js';
 
 type LoginPlatform = 'windows' | 'macos' | 'linux';
 
 export const deviceLoginRoutes = new Hono<{ Variables: AuthVars }>();
-
-// === Constants ===
 
 // Crockford base32 with the easy-to-confuse glyphs removed.
 const CROCKFORD_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -46,6 +47,7 @@ const MAX_LABEL_LEN = 100;
 const MAX_HOSTNAME_LEN = 100;
 const MAX_USER_AGENT_LEN = 200;
 const MAX_INSERT_RETRIES = 5;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Crockford-base32 7-char code, rejection-sampled so each glyph is uniform over
@@ -54,9 +56,8 @@ const MAX_INSERT_RETRIES = 5;
 function generateCanonical(): string {
   const out: string[] = [];
   while (out.length < CODE_LEN) {
-    const buf = randomBytes(CODE_LEN * 2);
-    for (let i = 0; i < buf.length && out.length < CODE_LEN; i++) {
-      const b = buf[i]!;
+    for (const b of randomBytes(CODE_LEN * 2)) {
+      if (out.length >= CODE_LEN) break;
       out.push(CROCKFORD_ALPHABET[b & 0x1f]!);
     }
   }
@@ -121,8 +122,6 @@ async function publishLoginEvent(
   }
 }
 
-// === 1) POST /login/init ===
-
 deviceLoginRoutes.post(
   '/login/init',
   rateLimit(RULES.deviceLoginInit, { name: 'deviceLoginInit' }),
@@ -178,11 +177,11 @@ deviceLoginRoutes.post(
     const expiresAt = new Date(Date.now() + LOGIN_TTL_SECONDS * 1000);
 
     let canonical = '';
-    let inserted: { id: string }[] = [];
+    let insertedId: string | null = null;
     for (let attempt = 0; attempt < MAX_INSERT_RETRIES; attempt++) {
       canonical = generateCanonical();
       const codeHash = sha256Hex(canonical);
-      inserted = await db
+      const [row] = await db
         .insert(deviceLoginCodes)
         .values({
           codeHash,
@@ -196,9 +195,12 @@ deviceLoginRoutes.post(
         })
         .onConflictDoNothing({ target: deviceLoginCodes.codeHash })
         .returning({ id: deviceLoginCodes.id });
-      if (inserted.length > 0) break;
+      if (row) {
+        insertedId = row.id;
+        break;
+      }
     }
-    if (inserted.length === 0) {
+    if (insertedId === null) {
       logger.error(
         { retries: MAX_INSERT_RETRIES },
         'device login: code generation collided every attempt',
@@ -210,10 +212,7 @@ deviceLoginRoutes.post(
     }
 
     const formatted = formatCode(canonical);
-    logger.info(
-      { loginCodeId: inserted[0]!.id, platform: devicePlatform },
-      'device login: code issued',
-    );
+    logger.info({ loginCodeId: insertedId, platform: devicePlatform }, 'device login: code issued');
 
     return c.json({
       pairing_code: formatted,
@@ -223,7 +222,37 @@ deviceLoginRoutes.post(
   },
 );
 
-// === 2) POST /login/approve ===
+/**
+ * The agent a browser approval may pair a box as, or `null` when it named none.
+ *
+ * An agent is offered to whoever approves, so the choice has to be authorized
+ * at approval time: only an org admin of the agent's own org may hand a
+ * machine that agent's identity.
+ */
+// cm:guard org `admin` on the AGENT's org, and NOT "the approver can see this agent". Pairing a box as an agent hands that machine every project the agent is a member of, for as long as the box holds the token — the same authority `POST /api/orgs/:orgId/agents` needs to create one, checked again here because this is a second route that dispenses it.
+async function resolveApprovableAgent(raw: unknown, approverId: string): Promise<string | null> {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'string' || !UUID_PATTERN.test(raw)) {
+    throw new HTTPException(400, {
+      message: 'agent_id must be a uuid',
+      cause: { code: 'INVALID_BODY' },
+    });
+  }
+  const [agent] = await db
+    .select({ id: users.id, kind: users.kind, orgId: organizationMembers.orgId })
+    .from(users)
+    .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
+    .where(eq(users.id, raw))
+    .limit(1);
+  if (agent?.kind !== 'agent') {
+    throw new HTTPException(404, {
+      message: 'agent not found',
+      cause: { code: 'AGENT_NOT_FOUND' },
+    });
+  }
+  await assertOrgAccess(agent.orgId, approverId, 'admin');
+  return agent.id;
+}
 
 deviceLoginRoutes.post(
   '/login/approve',
@@ -232,9 +261,9 @@ deviceLoginRoutes.post(
   async (c) => {
     const userId = c.get('userId');
 
-    let body: { pairing_code?: unknown };
+    let body: { pairing_code?: unknown; agent_id?: unknown };
     try {
-      body = (await c.req.json()) as { pairing_code?: unknown };
+      body = (await c.req.json()) as { pairing_code?: unknown; agent_id?: unknown };
     } catch {
       throw new HTTPException(400, {
         message: 'invalid JSON body',
@@ -243,10 +272,11 @@ deviceLoginRoutes.post(
     }
     const canonical = normalizeCode(body.pairing_code);
     const codeHash = sha256Hex(canonical);
+    const agentUserId = await resolveApprovableAgent(body.agent_id, userId);
 
     const updated = await db
       .update(deviceLoginCodes)
-      .set({ approvedUserId: userId, approvedAt: sql`now()` })
+      .set({ approvedUserId: userId, agentUserId, approvedAt: sql`now()` })
       .where(
         and(
           eq(deviceLoginCodes.codeHash, codeHash),
@@ -298,8 +328,6 @@ deviceLoginRoutes.post(
   },
 );
 
-// === 3) GET /login/poll ===
-
 deviceLoginRoutes.get('/login/poll', async (c) => {
   const canonical = normalizeCode(c.req.query('pairing_code'));
   const codeHash = sha256Hex(canonical);
@@ -319,13 +347,14 @@ deviceLoginRoutes.get('/login/poll', async (c) => {
     .returning({
       id: deviceLoginCodes.id,
       approvedUserId: deviceLoginCodes.approvedUserId,
+      agentUserId: deviceLoginCodes.agentUserId,
       deviceLabel: deviceLoginCodes.deviceLabel,
       devicePlatform: deviceLoginCodes.devicePlatform,
       machineId: deviceLoginCodes.machineId,
     });
 
-  if (consumed.length === 1) {
-    const row = consumed[0]!;
+  const [row] = consumed;
+  if (consumed.length === 1 && row) {
     if (!row.approvedUserId) {
       throw new HTTPException(500, {
         message: 'pairing missing user',
@@ -344,14 +373,17 @@ deviceLoginRoutes.get('/login/poll', async (c) => {
       });
     }
 
-    // Mint a DEVICE token (not a user JWT). Dedupes by machine id when the CLI
-    // sent one (re-login from the same machine rotates the token in place,
-    // keeping runner bindings); falls back to always-insert otherwise.
-    const { device, plaintext } = await issueOrRotateDeviceTokenByMachine({
-      ownerId: user.id,
+    // cm:guard the box's principal is `holderId`, which is the chosen AGENT when the approval named one, and `devices.ownerId` follows it. That is the whole point of ISS-932: a master session on this box now has a real principal to write as, instead of core inventing `device.ownerId` because no `user_id` existed. Pointing the row at the approver while the token belongs to the agent would put the two back out of step.
+    const holderId = row.agentUserId ?? user.id;
+    const device = await registerDevice({
+      ownerId: holderId,
       name: row.deviceLabel,
       platform: row.devicePlatform as LoginPlatform,
       machineId: row.machineId,
+    });
+    const plaintext = await issueDeviceCredential({
+      deviceId: device.id,
+      holderUserId: holderId,
     });
 
     // Optional, flag-gated, best-effort git push-credential provisioning.

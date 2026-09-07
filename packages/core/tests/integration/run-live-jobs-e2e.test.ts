@@ -85,6 +85,7 @@ describe('run liveJobs E2E (ISS-789)', () => {
       scopes: ['read', 'write'],
       projectIds: null,
       boundProjectId: null,
+      deviceId: null,
       machine: null,
     };
     const runId = randomUUID();

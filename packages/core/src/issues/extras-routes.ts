@@ -38,10 +38,7 @@ const idParamSchema = z.object({ id: z.uuid() });
 // cm:guard the body takes NO `stage`. It used to name one rung of the staged ladder, and ISS-897 left one job type — accepting the field and ignoring it (which is what `dispatchDriveManual` did for the whole of 2026-09-02) is an API that reports success for a request it did not honour.
 const runPipelineStepBodySchema = z.object({}).strict();
 
-// `complexity` is intentionally omitted: BulkActionBar does not expose a
-// complexity selector, so accepting it server-side would create a client/
-// server surface mismatch. If a future bulk-complexity affordance lands,
-// add `complexity` here AND in `BatchPatchData` on the web side.
+// cm:edge contract -> packages/web-v2/src/features/issues/components/bulk-action-bar.tsx — `complexity` is omitted from this body ON PURPOSE, because that bar exposes no complexity selector; accepting it here would be a server surface no client can reach. A bulk-complexity affordance has to land on both sides in one change. The name this note used to give the web-side type, `BatchPatchData`, exists nowhere in the repo — the file is the anchor that can be checked.
 const batchPatchBodySchema = z
   .object({
     ids: z.array(z.uuid()).min(1).max(100),
@@ -83,6 +80,7 @@ const BATCH_SKIP_BY_CODE = {
   ILLEGAL_TRANSITION: 'illegal_transition',
   TRANSITION_REASON_REQUIRED: 'transition_reason_required',
   WAITING_KIND_REQUIRED: 'waiting_kind_required',
+  WAITING_KIND_NOT_APPLICABLE: 'waiting_kind_not_applicable',
   STALE_TRANSITION: 'stale',
   NO_WORK_EVIDENCE: 'no_work_evidence',
   RELEASE_RECORD_REQUIRED: 'release_record_required',

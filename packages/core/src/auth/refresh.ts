@@ -4,6 +4,7 @@ import { getCookie } from 'hono/cookie';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { refreshTokens } from '../db/schema.js';
+import { assertNotAgentUser } from './agent-login-gate.js';
 import { REFRESH_COOKIE_NAME, setAuthCookie, setRefreshCookie } from './cookie.js';
 import { signUserToken } from './jwt.js';
 import {
@@ -72,11 +73,7 @@ refreshRoutes.post('/refresh', async (c) => {
   if (!raw) throw invalid();
   const prefix = refreshTokenPrefix(raw);
 
-  // The rotation transaction only mutates the matched row + inserts the new
-  // row. Replay/race detection returns a sentinel so the mass-invalidate can
-  // happen AFTER this transaction commits — otherwise throwing inside the
-  // transaction rolls the invalidation back and the replay defense silently
-  // does nothing.
+  // cm:guard replay and race detection return a SENTINEL rather than throwing, so the mass-invalidate runs AFTER this transaction commits. Thrown from inside, it rolls the invalidation back with the rest of the transaction and the replay defence silently does nothing — the token stays live and the attacker keeps it.
   const outcome: RefreshOutcome = await db.transaction(async (tx) => {
     const candidates = await tx
       .select()
@@ -124,6 +121,7 @@ refreshRoutes.post('/refresh', async (c) => {
     throw reused();
   }
 
+  await assertNotAgentUser(outcome.userId);
   const token = await signUserToken(outcome.userId);
   setAuthCookie(c, token);
   setRefreshCookie(c, outcome.refreshToken);

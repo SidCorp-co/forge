@@ -1,6 +1,9 @@
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// cm:guard PAT-SHAPED, because a box now presents an ordinary `forge_pat_*` carrying `device_id` (ISS-932). An opaque string here never reaches the device branch at all — `requireUserOrDevice` routes on `isPatLike` — so the mock would go unconsulted and the suite would prove nothing about the device path.
+const DEVICE_PAT = `forge_pat_dev_${'a'.repeat(64)}`;
+
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
 vi.mock('../config/env.js', () => ({
@@ -32,9 +35,9 @@ vi.mock('../db/client.js', () => {
 
 vi.mock('../ws/server.js', () => ({ roomManager: { publish: vi.fn() } }));
 
-const verifyDeviceTokenMock = vi.fn(async (_token: unknown) => null as { id: string } | null);
-vi.mock('../auth/deviceToken.js', () => ({
-  verifyDeviceToken: (token: unknown) => verifyDeviceTokenMock(token),
+const verifyDeviceCredentialMock = vi.fn(async (_token: unknown) => null as { id: string } | null);
+vi.mock('../auth/device-credential.js', () => ({
+  verifyDeviceCredential: (token: unknown) => verifyDeviceCredentialMock(token),
 }));
 
 vi.mock('../lib/device-pool.js', () => ({
@@ -98,8 +101,8 @@ beforeEach(() => {
   selectLimit.mockResolvedValue([]);
   updateReturning.mockReset();
   projectAccessMock.mockReset();
-  verifyDeviceTokenMock.mockReset();
-  verifyDeviceTokenMock.mockResolvedValue(null);
+  verifyDeviceCredentialMock.mockReset();
+  verifyDeviceCredentialMock.mockResolvedValue(null);
 });
 
 /** Seed the session row the PATCH handler loads, then its post-write return. */
@@ -118,10 +121,10 @@ function seedSession(metadata: Record<string, unknown> | null) {
 }
 
 async function patchAsDevice(body: Record<string, unknown>) {
-  verifyDeviceTokenMock.mockResolvedValueOnce({ id: DEVICE_ID });
+  verifyDeviceCredentialMock.mockResolvedValueOnce({ id: DEVICE_ID });
   return buildApp().request(`/api/agent-sessions/${SESSION_ID}`, {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json', authorization: 'Bearer device-token-xyz' },
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${DEVICE_PAT}` },
     body: JSON.stringify(body),
   });
 }

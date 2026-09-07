@@ -76,6 +76,7 @@ function makePatCtx(projectSlug = PROJECT_SLUG) {
       scopes: ['read', 'write'],
       projectIds: [PROJECT_ID],
       boundProjectId: null,
+      deviceId: null,
       machine: null,
     },
     projectSlug,
@@ -285,7 +286,7 @@ describe('forge_ux_findings write', () => {
     selectLimit.mockResolvedValueOnce([
       { jobId: JOB_ID, runId: RUN_ID, issueId: ISSUE_ID, stage: 'review', deviceId: null },
     ]);
-    selectLimit.mockResolvedValueOnce([{ n: 50 }]); // at cap
+    selectLimit.mockResolvedValueOnce([{ n: 50 }]);
 
     const result = await tool.handler({
       action: 'write',

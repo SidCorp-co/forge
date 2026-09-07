@@ -28,7 +28,7 @@ const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
 const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
-// cm:guard both leftJoin levels must stay mocked — lib/authz.ts effectiveProjectRole chains TWO before where().limit(1), and dropping one makes every authz lookup in this file throw instead of resolving a role
+// cm:guard TWO leftJoins before `where().limit(1)` — that is `effectiveProjectRole`'s real shape, and a mock chain one join short resolves at the wrong link, handing every role check an undefined row that reads as no access.
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 // cm:guard branch on the TABLE, never on the chain shape — the ISS-963 name lookup reads comment_attachments through the same .where().orderBy().limit() shape the auth lookups use, so a shared resolver hands it a row queued for a project row and every attachment is refused as a duplicate of itself
@@ -110,6 +110,7 @@ const humanPat = (projectIds: string[] | null) =>
     scopes: ['read', 'write'],
     projectIds,
     boundProjectId: null,
+    deviceId: null,
     machine: null,
   }) as const;
 
@@ -255,7 +256,7 @@ describe('forge_comments tool', () => {
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]); // loadIssueProjectId
     selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
     selectLimit.mockResolvedValueOnce([{ deviceId: DEVICE_ID }]);
-    insertReturning.mockResolvedValueOnce([baseCommentRow]); // insert
+    insertReturning.mockResolvedValueOnce([baseCommentRow]);
 
     const result = (await tool.handler({
       action: 'create',

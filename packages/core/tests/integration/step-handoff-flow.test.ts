@@ -37,7 +37,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
   let app: Hono<{ Variables: RequestIdVars }>;
   let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
   let embeddingsMod: typeof import('../../src/embeddings/index.js');
-  let issueDeviceToken: typeof import('../../src/auth/deviceToken.js').issueDeviceToken;
+  let pairDevice: typeof import('../helpers/pair-device.js').pairDevice;
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
@@ -62,8 +62,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
     const jwtMod = await import('../../src/auth/jwt.js');
     embeddingsMod = await import('../../src/embeddings/index.js');
     signUserToken = jwtMod.signUserToken;
-    const deviceTokenMod = await import('../../src/auth/deviceToken.js');
-    issueDeviceToken = deviceTokenMod.issueDeviceToken;
+    pairDevice = (await import('../helpers/pair-device.js')).pairDevice;
 
     app = new Hono<{ Variables: RequestIdVars }>();
     app.use('*', requestId());
@@ -125,7 +124,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
       WHERE id = ${project.id}
     `);
     const userToken = await signUserToken(user.id);
-    const issued = await issueDeviceToken({
+    const issued = await pairDevice({
       ownerId: user.id,
       name: 'test-device',
       platform: 'linux',
@@ -172,8 +171,6 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
     `);
     return { jobId, runId, issueId };
   }
-
-  // ---------- Happy path ----------
 
   it('writes handoff + emits DONE → job finalizes as done', async () => {
     const { projectId, userToken, device, deviceToken } = await seedProjectWithHandoffsEnabled();

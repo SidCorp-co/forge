@@ -248,6 +248,7 @@ const humanPat = (userId: string, tokenId: string, projectIds: string[] | null) 
     scopes: ['read', 'write'],
     projectIds,
     boundProjectId: null,
+    deviceId: null,
     machine: null,
   }) as const;
 
@@ -270,7 +271,6 @@ describe('forge_issues tool', () => {
     // 1. resolveProjectIdFromSlug → projects.id
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    // 3. issue list query
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
 
     const result = (await tool.handler({ action: 'list' })) as {

@@ -11,15 +11,12 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// Phase 2.5-F2 integration — skill sync (device) + register-to-stage (user).
-// Uses real Postgres (testcontainer pgvector/pgvector:pg17) + real HTTP via
-// Hono's fetch-compat app. Device tokens are issued via the real
-// `issueDeviceToken` helper so `requireDevice` middleware actually verifies.
+// cm:guard the box's credential comes from the real `pairDevice` helper, never a hand-made string, so `requireDevice` performs the whole resolution it does in production — verify the token, read `device_id`, load the row. A stubbed bearer here would leave the one thing this file exists to exercise unexercised.
 
 describe('F2 skill routes integration', () => {
   let harness: TestDatabase;
   let app: Hono<{ Variables: RequestIdVars }>;
-  let issueDeviceToken: typeof import('../../src/auth/deviceToken.js').issueDeviceToken;
+  let pairDevice: typeof import('../helpers/pair-device.js').pairDevice;
   let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
   let hooksModule: typeof import('../../src/pipeline/hooks.js');
 
@@ -41,9 +38,8 @@ describe('F2 skill routes integration', () => {
     const { errorHandler } = await import('../../src/middleware/error.js');
     const { requestId } = await import('../../src/middleware/request-id.js');
     hooksModule = await import('../../src/pipeline/hooks.js');
-    const deviceTokenMod = await import('../../src/auth/deviceToken.js');
     const jwtMod = await import('../../src/auth/jwt.js');
-    issueDeviceToken = deviceTokenMod.issueDeviceToken;
+    pairDevice = (await import('../helpers/pair-device.js')).pairDevice;
     signUserToken = jwtMod.signUserToken;
 
     app = new Hono<{ Variables: RequestIdVars }>();
@@ -94,7 +90,7 @@ describe('F2 skill routes integration', () => {
 
   it('sync: inserts on first run, returns added', async () => {
     const { user, project } = await seedProjectWith('admin');
-    const { plaintext: deviceToken } = await issueDeviceToken({
+    const { plaintext: deviceToken } = await pairDevice({
       ownerId: user.id,
       name: 'test-device',
       platform: 'linux',
@@ -154,7 +150,7 @@ describe('F2 skill routes integration', () => {
 
   it('sync: second run with same hash → all unchanged', async () => {
     const { user, project } = await seedProjectWith('admin');
-    const { plaintext: deviceToken } = await issueDeviceToken({
+    const { plaintext: deviceToken } = await pairDevice({
       ownerId: user.id,
       name: 'd',
       platform: 'linux',
@@ -185,7 +181,7 @@ describe('F2 skill routes integration', () => {
 
   it('sync: hash change → updated', async () => {
     const { user, project } = await seedProjectWith('admin');
-    const { plaintext: deviceToken } = await issueDeviceToken({
+    const { plaintext: deviceToken } = await pairDevice({
       ownerId: user.id,
       name: 'd',
       platform: 'linux',
@@ -215,7 +211,7 @@ describe('F2 skill routes integration', () => {
 
   it('sync: mode=full removes missing skills', async () => {
     const { user, project } = await seedProjectWith('admin');
-    const { plaintext: deviceToken } = await issueDeviceToken({
+    const { plaintext: deviceToken } = await pairDevice({
       ownerId: user.id,
       name: 'd',
       platform: 'linux',
@@ -256,7 +252,7 @@ describe('F2 skill routes integration', () => {
   it('sync: device whose owner is not a project member → 403', async () => {
     const { project } = await seedProjectWith('admin');
     const strangerUser = await createTestUser(harness.db);
-    const { plaintext: strangerToken } = await issueDeviceToken({
+    const { plaintext: strangerToken } = await pairDevice({
       ownerId: strangerUser.id,
       name: 'stranger',
       platform: 'linux',
@@ -275,7 +271,7 @@ describe('F2 skill routes integration', () => {
 
   it('sync: duplicate names in one payload → 400', async () => {
     const { user, project } = await seedProjectWith('admin');
-    const { plaintext: deviceToken } = await issueDeviceToken({
+    const { plaintext: deviceToken } = await pairDevice({
       ownerId: user.id,
       name: 'd',
       platform: 'linux',
@@ -304,7 +300,7 @@ describe('F2 skill routes integration', () => {
       projectId: project.id,
       role: 'member',
     });
-    const { plaintext: memberDeviceToken } = await issueDeviceToken({
+    const { plaintext: memberDeviceToken } = await pairDevice({
       ownerId: memberUser.id,
       name: 'member-dev',
       platform: 'linux',
@@ -322,7 +318,7 @@ describe('F2 skill routes integration', () => {
 
   it('sync: update bumps version + preserves description when omitted', async () => {
     const { user, project } = await seedProjectWith('admin');
-    const { plaintext: deviceToken } = await issueDeviceToken({
+    const { plaintext: deviceToken } = await pairDevice({
       ownerId: user.id,
       name: 'd',
       platform: 'linux',
@@ -367,7 +363,7 @@ describe('F2 skill routes integration', () => {
 
   it('sync: payload above 500 skills → 400', async () => {
     const { user, project } = await seedProjectWith('admin');
-    const { plaintext: deviceToken } = await issueDeviceToken({
+    const { plaintext: deviceToken } = await pairDevice({
       ownerId: user.id,
       name: 'd',
       platform: 'linux',
@@ -646,9 +642,9 @@ describe('F2 skill routes integration', () => {
     expect(res.status).toBe(401);
   });
 
-  it('register endpoint rejects device token (401 invalid user token)', async () => {
+  it('register endpoint fences a box credential to no project', async () => {
     const { user, project } = await seedProjectWith('admin');
-    const { plaintext: deviceToken } = await issueDeviceToken({
+    const { plaintext: deviceToken } = await pairDevice({
       ownerId: user.id,
       name: 'd',
       platform: 'linux',
@@ -662,7 +658,8 @@ describe('F2 skill routes integration', () => {
       },
       body: JSON.stringify({ stage: 'approved' }),
     });
-    expect(res.status).toBe(401);
+    // cm:guard 404 and NOT 401 since ISS-932, and the change of code IS the assertion. A box's credential is an ordinary PAT now, so it authenticates here — what stops it is the empty `projectIds` allowlist it is minted with, which makes `effectiveProjectRole` answer null for every project. 401 would mean refused at the door; 404 means let in and fenced to nothing, which is also the shape that refuses to confirm the project exists. If this ever reads 200, the fence in `devices/credential.ts` is gone and a paired box speaks for its owner on every project its holder can see.
+    expect(res.status).toBe(404);
   });
 
   it('register: project-scoped skill from different project → 404', async () => {

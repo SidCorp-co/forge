@@ -33,8 +33,8 @@ flowchart TB
     R --> RC --> C --- K
   end
 
-  B -- "REST + WS (user JWT) · MCP (user/device token)" --> E
-  D -- "WS (device token)" --> R
+  B -- "REST + WS (user JWT) · MCP (PAT)" --> E
+  D -- "WS (PAT/AAT carrying device_id)" --> R
 ```
 
 ## Non-goals

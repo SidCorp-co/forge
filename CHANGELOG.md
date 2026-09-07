@@ -171,6 +171,28 @@
   which is the ISS-817 property and is pinned against real Postgres rather than asserted.
 
   The path is drawn end to end in `docs/flows/issue-work-shipped-evidence.html`. (ISS-791)
+- **An org admin can create a named agent, and that agent is a real member of the organization.**
+  Until now every machine token borrowed a person: `job:<id>` was minted from `jobs.created_by`,
+  `session:<id>` from `agent_sessions.user_id`, and a master agent — which has no `user_id` at all —
+  had no valid principal to mint from, so `device.ownerId` was invented to stand in for one. The
+  question *who made this write* had no true answer for the work agents do.
+
+  `POST /api/orgs/:orgId/agents` (org `admin` and above) now creates a `users` row carrying
+  `kind = 'agent'`, joins it to the org and to exactly one project, and mints its **Agent Access
+  Token** through the same `mintPat` a person's PAT comes from. Same table, same middleware, and a
+  permission path that does not differ by a line — an agent is authorized because it *is* a member,
+  through `effectiveProjectRole` and the membership reads that were already there. `GET` lists them;
+  `DELETE` retires one by revoking its tokens and dropping its memberships while keeping the row,
+  because `activity_log.actor_id` points at it and a principal whose history vanishes on retirement
+  answers the original question with nothing.
+
+  An agent cannot sign in. `assertNotAgent` refuses `kind = 'agent'` at every entrance that mints a
+  user JWT, and a test scans the source tree for callers of `signUserToken` and fails on one that
+  does not refuse — the failure mode being guarded is not a broken entrance but a fourth entrance
+  added later. Its address is random at `agents.forge.invalid`, a domain RFC 2606 reserves so no MX
+  ever resolves it. It cannot mint another agent either: `/api/pat` and `/api/orgs` are both absent
+  from `PAT_ALLOWED_PREFIXES`, so no PAT or AAT reaches either route.
+
 
 - **An agent working an issue on a project that keeps modules is now told they exist, and how to
   set the issue's primary one.** ISS-593 made a module a label with `kind='module'` and gave an
@@ -1339,6 +1361,54 @@
   set is now 59.
 
 ### Fixed
+
+- **A `waitingKind` is now refused on every target that cannot store it, instead of being accepted
+  and nulled.** `POST /api/issues/:id/transition` and `forge_issues action=transition` advertise
+  `waitingKind` for any `toStatus`, but the write stores it only for `toStatus === 'waiting'` and
+  `transition-reason.ts`'s `needs_info` heading ignores the argument it is handed. So a kind sent
+  with any other target reached no reader anywhere: not the row, not the comment, not the health
+  surface — and the call reported success, leaving a caller unable to tell a stored park from a
+  dropped one. Measured on 2026-09-07 across sixteen `needs_info` parks made in one pass, each
+  carrying `waitingKind: "needs_decision"`; every write succeeded and not one kind survived.
+
+  It now throws `WAITING_KIND_NOT_APPLICABLE` (422 on REST, `waiting_kind_not_applicable` as a
+  batch skip reason), keyed on the **requested** status and placed outside the
+  `requiresAuthoredReason` block. Both placements are load-bearing: an agent's `waiting` stays legal
+  on an autonomous project, where the park rewrite lands the row on `needs_info` and the kind still
+  reaches the reason comment's heading, while `in_progress` — a target that demands no reason at
+  all — was the commonest silent drop and a check nested in that block would have passed it
+  straight through. The driver's own fact text and the lifecycle guide now name the refusal by
+  code, so an agent is not told one thing and refused another.
+
+  Scope note, because this issue was filed claiming more: a park's `reason` was never lost.
+  `postTransitionReasonComment` posts it as a comment inside the same transaction as the status
+  write, and `REASON_REQUIRED_STATUSES` makes it mandatory for `reopen`, `waiting` and
+  `needs_info`. Nor is an edge's `reason` discarded — `issue_dependencies.reason` stores it and
+  `GET /api/issues/:id/dependencies` returns it; the agent-facing relations digest omits it
+  deliberately, because that payload is inlined into an agent's context without the untrusted-data
+  framing `serialize()` applies. The original report mistook the absence of a field on the issue
+  *document* for the absence of the value.
+
+
+- **A `decomposes` edge no longer waives the work-evidence gate in silence.**
+  `pipeline/work-evidence.ts#hasChildIssues` read exactly one dependency kind — `decomposes` — and
+  a single live edge made `findMissingWorkEvidence` return `null`, which is the whole of ISS-786's
+  anti-fabrication gate: an issue with one decompose child could be marked merged and moved to
+  `developed`/`testing` with no branch, no commit and no code handoff. Three agent-facing documents
+  said the kind was inert (`guides/registry.ts`: "it holds nothing back"; `prompt/facts/registry.ts`:
+  "it gates nothing"; the `set_dependency` tool: "no lifecycle of its own"), so an agent wired a
+  decompose believing the write was a grouping label and removed the check that catches a fabricated
+  merge. Nobody was lying: the record was made, and what the edge actually did was in no document.
+
+  The waiver stays — it is ISS-786's deliberate grouping-parent exemption, and removing it would
+  refuse every epic whose children carry the code. What changed is that nothing can claim otherwise.
+  `issues/dependency-effects.ts` now holds `WORK_EVIDENCE_WAIVER_KIND` (the one kind the query
+  filters on) and `WORK_EVIDENCE_WAIVER_NOTE` (the sentence the surfaces render). The four `.ts`
+  surfaces interpolate the note, so they cannot drift; `db/schema.ts`'s `cm:guard` and
+  `docs/modules/issue-work/README.md` cannot, and `dependency-effects.test.ts` holds those two by
+  reading their source — proven red under a planted change of the kind. `setIssueDependency` now
+  returns `effects { gatesDispatch, waivesWorkEvidence, note }` on every outcome, including the
+  idempotent re-assert, so the write that creates the edge reports the effect it just had.
 
 - **`check-flow-coverage` no longer calls a function-hit "settled end-to-end".** The summary read
   `N step(s) across M flow(s), K settled end-to-end` and marked each row `e2e`, while the whole of
@@ -2769,6 +2839,32 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **Pairing a box is now issuing it a token, and the device credential is gone.** `devices` was
+  both the machine and its secret — `token_hash`, `token_prefix` and an argon2 verifier of its own.
+  It is a registry of machines now. `POST /api/devices/login/approve` takes an optional `agent_id`,
+  and the poll hands back an ordinary PAT (the approver's) or that agent's AAT, carrying the new
+  `personal_access_tokens.device_id`. `requireDevice`, `requireUserOrDevice` and the `/ws` upgrade
+  all resolve the box from that one column through `verifyDeviceCredential`; `auth/deviceToken.ts`
+  and `verifyDeviceToken` are deleted. Four auth middlewares became two species, then one.
+
+  A token with no `device_id` presented to a device route is refused **by name** rather than read as
+  its owner — that fallback is the `device.ownerId` fiction, where a machine borrowed a person's
+  whole account, and the refusal names `forge login` as the remedy.
+
+  **Every paired box must re-run `forge login` once.** There is no backfill and there could not be
+  one: core holds argon2 over a plaintext it never had, so an existing device token cannot be mapped
+  to a PAT. Migration `0215` refuses to drop the credential columns while any non-revoked device
+  still holds one and names the rows, so the break is read at deploy time rather than discovered as
+  a dark fleet. `devices` rows keep their ids, so every `runners` binding, `jobs.device_id`,
+  `agent_sessions.device_id` and `projects.default_device_id` reference survives.
+
+  `agency` now reads `users.kind === 'agent'` OR the token's machine-name prefix, and both halves
+  are load-bearing: an AAT's owner is an agent, while a `job:`/`session:` token is minted from a
+  human and would read `human` off the kind alone. `device:` joined
+  `MACHINE_TOKEN_NAME_PREFIXES` so a fleet's tokens stay off their owner's PAT cap and a daemon's
+  writes are held to the ISS-786/812 evidence gates.
+
 
 - **An agent session authenticates `/mcp` with its own job token, and a device token no longer
   authenticates `/mcp` at all.** Two credential species reached the MCP transport, and one of them
