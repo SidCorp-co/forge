@@ -1499,6 +1499,13 @@
       "when": 1792022400000,
       "tag": "0215_iss932_agent_access_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 216,
+      "version": "7",
+      "when": 1792108800000,
+      "tag": "0216_module_slug_and_knowledge_node",
+      "breakpoints": true
     }
   ]
 }

@@ -3,10 +3,8 @@ import { BodyInvalidError } from '../../body/errors.js';
 import { BODY_FORMATS } from '../../body/formats.js';
 import { bodySlots, bodyText } from '../../body/prepare.js';
 import {
-  AttachmentError,
   listCommentAttachmentsForIssue,
-  type PersistedCommentAttachment,
-  persistCommentAttachment,
+  persistDecodedCommentAttachments,
 } from '../../comments/attachment-service.js';
 import {
   CommentCursorInvalidError,
@@ -96,7 +94,7 @@ function serialize(
     authorId: row.authorId,
     // cm:guard SECOND HALF IN forge-plugin `plugin/src/flow/earned.mjs` — `answered()` asks whether a PERSON replied after a park, and this field is what it asks with now that `is_ai` is gone: non-null means an agent wrote it. Drop it from this projection and every screen the driver parks on becomes unanswerable, because the agent's own comments would read as a person's. Since ISS-931 the value comes from the caller's `job:`/`session:` token rather than from a device principal, which is why a PAT-authored agent comment is marked at all — it never was before.
     authorDeviceId: row.authorDeviceId ?? null,
-    // cm:guard ISS-532 — anyone who can comment can write here, and this projection reaches an agent verbatim with no human in between, so the body ships FRAMED as data. Emit it raw and a comment reads as instructions to the agent working the issue.
+    // cm:guard a comment body reaches the agent verbatim over this MCP surface and anyone can post one, so it must stay inside a DATA frame — unframing it turns every commenter into someone who can issue the agent instructions (ISS-532)
     body: markUntrusted(row.body, { source: 'comment.body' }),
     format: row.format,
     template: row.template,
@@ -113,9 +111,7 @@ function serialize(
   };
 }
 
-// Strict base64 charset check. Buffer.from('xx', 'base64') silently drops
-// invalid characters, so we validate the input string first to surface a
-// useful BAD_REQUEST instead of writing a truncated blob to disk.
+// cm:guard validate the charset BEFORE decoding, never after: `Buffer.from(s, 'base64')` drops invalid characters silently rather than throwing, so a malformed payload decodes to a short buffer and the only remaining symptom is a truncated blob already written to storage.
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 function decodeBase64Strict(input: string): Buffer | null {
   const trimmed = input.trim().replace(/\s+/g, '');
@@ -239,42 +235,13 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
         parentId: inserted.parentId,
       });
 
-      const persistedAttachments: PersistedCommentAttachment[] = [];
-      const attachmentErrors: Array<{
-        index: number;
-        name: string;
-        code: string;
-        message: string;
-      }> = [];
-      for (const [i, d] of decoded.entries()) {
-        try {
-          const row = await persistCommentAttachment({
-            commentId: inserted.id,
-            name: d.name,
-            mime: d.mime,
-            bytes: d.bytes,
-            uploaderId: principal.userId,
-            uploaderDeviceId: authorDeviceId,
-          });
-          persistedAttachments.push(row);
-        } catch (err) {
-          if (err instanceof AttachmentError) {
-            attachmentErrors.push({
-              index: i,
-              name: d.name,
-              code: err.code,
-              message: err.message,
-            });
-          } else {
-            attachmentErrors.push({
-              index: i,
-              name: d.name,
-              code: 'INTERNAL',
-              message: err instanceof Error ? err.message : String(err),
-            });
-          }
-        }
-      }
+      const { persisted: persistedAttachments, errors: attachmentErrors } =
+        await persistDecodedCommentAttachments(
+          inserted.id,
+          decoded,
+          principal.userId,
+          authorDeviceId,
+        );
 
       const result: Record<string, unknown> = serialize(inserted as CommentRow);
       result.attachments = persistedAttachments;

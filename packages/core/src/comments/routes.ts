@@ -43,7 +43,7 @@ const threadQuerySchema = paginationSchema.extend({ cursor: z.string().min(1).op
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-// cm:guard the attachment endpoints answer a FLAT `{message, code}` 400, not the `{message, cause:{code, details}}` shape `badRequest` above returns. The two are not interchangeable: this one was moved here from `upload.ts` with clients already reading `code` off the top level, so unifying them silently breaks every one of those reads.
+// cm:guard the attachment endpoints answer `{message, code}` and the comment CRUD validators above answer `{message:'Invalid input', cause:{code:'BAD_REQUEST', details}}` — collapsing the two rewrites a response shape clients already parse
 const attachmentBadRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });
 
@@ -80,7 +80,6 @@ async function loadComment(commentId: string) {
   return row;
 }
 
-// Mounted on issueRoutes under /issues/:id/comments
 export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>): void {
   router.post(
     '/:id/comments',
@@ -293,12 +292,17 @@ function attachmentErrorToHttp(err: AttachmentError): HTTPException {
     case 'MIME_NOT_ALLOWED':
       return new HTTPException(400, {
         message: err.message,
-        cause: { code: 'MIME_NOT_ALLOWED' },
+        cause: { code: 'MIME_NOT_ALLOWED', details: err.details },
       });
     case 'EMPTY_FILE':
       return new HTTPException(400, { message: 'empty file', cause: { code: 'BAD_REQUEST' } });
     case 'INVALID_NAME':
       return new HTTPException(400, { message: err.message, cause: { code: 'BAD_REQUEST' } });
+    case 'ATTACHMENT_NAME_TAKEN':
+      return new HTTPException(400, {
+        message: err.message,
+        cause: { code: 'ATTACHMENT_NAME_TAKEN', details: err.details },
+      });
   }
 }
 

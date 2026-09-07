@@ -11,6 +11,35 @@
 
 ### Added
 
+- **A module now names its knowledge node, instead of every reader guessing the name.** The module
+  taxonomy (ISS-588) landed `kind='module'`, `parentId` and `is_primary`, but not the half of the
+  epic's locked Q2 that every later tier reads from: a module had no stable identity and no link to
+  the knowledge entry that documents it. The only answer available to "which node is this module's"
+  was `module-${slugify(label.name)}` recomputed at each call site — the name-prefix convention the
+  epic rejected by name, with the extra failure that renaming a module silently orphaned its node.
+
+  `labels` now carries `slug` and `knowledge_entry_id`. The slug is the module's identity: derived
+  from the name on create or on promotion, returned in the response, and never recomputed on a
+  rename — so retitling a module cannot move what its node is found by. Two distinct names deriving
+  one base (`API/v2`, `API v2`) get `api-v2` and `api-v2-2` rather than a refusal, and the migration
+  backfills existing modules by the same rule written in SQL, so a module created before it and one
+  created after answer to the same slug for the same name. The node link is 1:1 in both directions
+  and enforced at the database, not only in the service: `labels_knowledge_entry_id_uq` refuses a
+  second module naming one node, and the CHECK pair `labels_slug_chk` / `labels_knowledge_entry_chk`
+  makes a plain label carrying either field unrepresentable. Deleting a node clears the link
+  (`ON DELETE SET NULL`) rather than deleting the module; deleting a module leaves the node standing.
+  A NULL link means "no node written yet" and never "the node is gone".
+
+  Fixed on the way past: the labels routes reported every unique violation as
+  `LABEL_NAME_TAKEN`, so with three indexes on the table a writer that raced onto the same
+  knowledge node would have been told its label *name* was taken. `labels/unique-conflicts.ts`
+  now answers by the index that fired, and rethrows an index it has not been taught about rather
+  than folding it into the nearest code.
+
+  Additive in every statement, and it ships with no consumer — the refresh loop, the generated
+  diagrams, the rollup and the drift signal are ISS-589's children and now have one stored link to
+  read instead of each re-deriving a name (ISS-947).
+
 - **A status now says only WHERE the work is, and three row fields answer what exists.** Four runs
   on 2026-09-06 reached one identical real state — implemented, gates run, branch pushed, PR open,
   nothing merged — and recorded four different statuses (`developed`, `draft`, `waiting`,
