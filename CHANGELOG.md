@@ -1673,6 +1673,23 @@
 
 ### Fixed
 
+- **`pg-boss` is pinned back to 10, because 12 cannot start against the schema this project's
+  databases hold.** The Dependabot majors group (#317) took it from `10.4.2` to `12.30.0`. Every
+  gate passed — 15 conformance checks, 5,825 unit tests, 1,167 integration tests, the build, CI on
+  two PRs — and the deploy that carried it took the staging API down for 40 minutes: `boss.start()`
+  aborts with *"Cannot migrate pg-boss schema from version 24: the oldest supported starting
+  version is 25"*, before the server listens, so the proxy answered `no available server` on every
+  route including `/health`.
+
+  No suite could have caught it: they all build a fresh schema, where pg-boss installs its own
+  tables at whatever version the installed release wants. The failing state — an existing schema at
+  24 — exists only in a deployed environment.
+
+  The other sixteen updates in that group stand. **The price:** the queue is two majors behind and
+  the same bump will be re-proposed and pass the same gates. Adopting 12 needs two API deploys in
+  sequence (11 to move the schema to 25, then 12), which is a decision about a shared environment
+  rather than a diff — `docs/proposals/pg-boss-12-upgrade.md` carries it.
+
 - **A character entity written in an issue or comment body is no longer escaped a second time on
   every save.** The component parser decoded entities in attributes but not in prose, while the
   serializer escaped both — so a body containing `&quot;` was stored as `&amp;quot;`, rendered as

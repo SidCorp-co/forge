@@ -3,9 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const startMock = vi.fn(async () => {});
 const stopMock = vi.fn(async () => {});
 
+// cm:guard mock the DEFAULT export, matching the pin — pg-boss 10 has no named `PgBoss`, and a mock that supplies one passes while the real module hands back `undefined` (ISS-963, see queue/boss.ts)
 vi.mock('pg-boss', () => ({
   // cm:why vitest 5 constructs a `vi.fn` spy by calling its implementation with `new`; an arrow impl is not a constructor and throws, so the mock uses a regular function.
-  PgBoss: vi.fn(function pgBossMock() {
+  default: vi.fn(function pgBossMock() {
     return { start: startMock, stop: stopMock };
   }),
 }));

@@ -1,4 +1,5 @@
-import { PgBoss } from 'pg-boss';
+// cm:guard pinned to pg-boss 10 and a DEFAULT import — v12 aborts at `start()` on any schema below 25, and forge-beta sits at 24, so the bump to ^12.30.0 (#317) took the API container down for 40 minutes on 2026-09-07 with the proxy answering `no available server`. v11 is the step that moves 24 → 25; adopting either needs that deploy first, and both use the default export. See docs/proposals/pg-boss-12-upgrade.md
+import PgBoss from 'pg-boss';
 import { env } from '../config/env.js';
 
 let instance: PgBoss | null = null;
