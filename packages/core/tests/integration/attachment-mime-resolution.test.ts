@@ -42,6 +42,7 @@ let app: Hono<{ Variables: RequestIdVars }>;
 let uploadsDir: string;
 let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
 let persistIssueAttachmentsFromBase64: typeof import('../../src/issues/attachment-service.js').persistIssueAttachmentsFromBase64;
+let persistDecodedCommentAttachments: typeof import('../../src/comments/attachment-service.js').persistDecodedCommentAttachments;
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -68,6 +69,8 @@ beforeAll(async () => {
   signUserToken = (await import('../../src/auth/jwt.js')).signUserToken;
   persistIssueAttachmentsFromBase64 = (await import('../../src/issues/attachment-service.js'))
     .persistIssueAttachmentsFromBase64;
+  persistDecodedCommentAttachments = (await import('../../src/comments/attachment-service.js'))
+    .persistDecodedCommentAttachments;
 
   app = new Hono<{ Variables: RequestIdVars }>();
   app.use('*', requestId());
@@ -292,5 +295,80 @@ describe('attachment batches land whole or not at all', () => {
     expect(result.persisted).toHaveLength(2);
     expect(await storedMime(issueId, 'good.png')).toBe('image/png');
     expect(await storedMime(issueId, 'gate.log')).toBe('text/plain');
+  });
+});
+
+// cm:guard the comment twin is exercised through persistDecodedCommentAttachments, the function `mcp/tools/forge-comments.ts` actually calls — the issue twin's tests reach `persistIssueAttachmentsFromBase64`, which a repo-wide grep finds no production caller for, so covering only that one leaves the live path of BOTH halves untested (ISS-957)
+describe('the comment twin refuses a batch on the same terms as the issue twin', () => {
+  async function seedComment(issueId: string, authorId: string): Promise<string> {
+    const rows = await harness.db.execute<{ id: string }>(sql`
+      INSERT INTO comments (issue_id, author_id, body)
+      VALUES (${issueId}, ${authorId}, 'batch host')
+      RETURNING id
+    `);
+    return (rows[0] as { id: string }).id;
+  }
+
+  async function countCommentAttachments(commentId: string): Promise<number> {
+    const rows = await harness.db.execute<{ n: string }>(sql`
+      SELECT count(*)::text AS n FROM comment_attachments WHERE comment_id = ${commentId}
+    `);
+    return Number((rows[0] as { n: string }).n);
+  }
+
+  it('leaves the comment as it was when one member of a batch is binary', async () => {
+    const { issueId, owner } = await seed();
+    const commentId = await seedComment(issueId, owner.id);
+
+    const result = await persistDecodedCommentAttachments(
+      commentId,
+      [
+        { name: 'gate.log', mime: '', bytes: PLAIN_LOG },
+        { name: 'core.log', mime: 'text/plain', bytes: BINARY_LOG },
+      ],
+      owner.id,
+      null,
+    );
+
+    expect(result.persisted).toHaveLength(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.index).toBe(1);
+    expect(result.errors[0]?.code).toBe('MIME_NOT_ALLOWED');
+    expect(await countCommentAttachments(commentId)).toBe(0);
+  });
+
+  it('refuses a comment batch carrying one name twice, citing the batch and not a deleted row', async () => {
+    const { issueId, owner } = await seed();
+    const commentId = await seedComment(issueId, owner.id);
+
+    const result = await persistDecodedCommentAttachments(
+      commentId,
+      [
+        { name: 'gate.log', mime: '', bytes: PLAIN_LOG },
+        { name: 'gate.log', mime: '', bytes: Buffer.from('second\n') },
+      ],
+      owner.id,
+      null,
+    );
+
+    expect(result.persisted).toHaveLength(0);
+    expect(result.errors[0]?.code).toBe('ATTACHMENT_NAME_TAKEN');
+    expect(result.errors[0]?.details).toEqual({ duplicateWithinBatch: 'gate.log' });
+    expect(await countCommentAttachments(commentId)).toBe(0);
+  });
+
+  it('refuses a video on a comment that the issue target would have taken', async () => {
+    const { issueId, owner } = await seed();
+    const commentId = await seedComment(issueId, owner.id);
+
+    const result = await persistDecodedCommentAttachments(
+      commentId,
+      [{ name: 'clip.mp4', mime: 'video/mp4', bytes: REAL_PNG }],
+      owner.id,
+      null,
+    );
+
+    expect(result.errors[0]?.code).toBe('MIME_NOT_ALLOWED');
+    expect(await countCommentAttachments(commentId)).toBe(0);
   });
 });
