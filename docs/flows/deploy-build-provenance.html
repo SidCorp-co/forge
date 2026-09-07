@@ -1,0 +1,93 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · deploy-build-provenance — how a running instance comes to name the commit it was built from</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+</style>
+<main>
+
+<h1>deploy-build-provenance — how a running instance comes to name the commit it was built from</h1>
+<p class="sub">One value moves here: the commit SHA, from a git push to two places a person can read
+it — <code>GET /version</code> and a Sentry release. <code>coolify-deploy-controls</code> owns how a
+deploy is triggered, stopped and undone; this file owns what the deploy <em>carries</em>, and every
+hop at which the answer can become <code>null</code>. It is the flow <code>release-gate</code>
+condition 4 is read against: <em>the deploy is live and healthy, with <code>SOURCE_COMMIT</code>
+matching that merge</em>.</p>
+
+<h2>One writer, four consumers</h2>
+<div class="board"><pre class="mermaid">
+flowchart TD
+  P["git push to main"] --> CO["Coolify deploys application<br/>build_pack=dockercompose<br/>git_commit_sha=HEAD → resolved SHA"]
+  CO --> E["SOURCE_COMMIT in the deploy environment<br/><i>Coolify's own predefined variable</i>"]
+  E --> W["docker-compose.prod.yml<br/><b>args: SOURCE_COMMIT: ${SOURCE_COMMIT:-}</b><br/>THE ONE WRITER"]
+  W --> DC["packages/core/Dockerfile<br/>runtime stage<br/>ARG → ENV SOURCE_COMMIT"]
+  W --> DW["packages/web-v2/Dockerfile<br/>ARG → ENV NEXT_PUBLIC_SOURCE_COMMIT<br/><b>above RUN pnpm build</b>"]
+  DC --> RC["observability/source-commit.ts<br/>parse once at module load"]
+  DW --> RW["lib/source-commit.ts<br/>Next inlines the literal"]
+  RC --> V["GET /version<br/>{ version, sourceCommit, uptimeSeconds }"]
+  RC --> SC["Sentry.init release = SHA<br/>project forge-core"]
+  RW --> SW["Sentry.init release = SHA<br/>project forge-web"]
+  P --> GH[".github/workflows/sentry-release.yml<br/>releases new + set-commits --auto"]
+  GH --> SR(["Sentry knows release SHA<br/>↔ its commits"])
+  SC --> SR
+  SW --> SR
+</pre></div>
+
+<h2>Every hop at which the commit goes missing, and what a reader sees</h2>
+<table>
+<thead><tr><th>What breaks</th><th>What a caller sees</th><th>How you tell</th></tr></thead>
+<tbody>
+<tr><td>The build ran with no <code>--build-arg</code> at all (a plain <code>docker build</code>, a CI image, a local compose without the shell variable)</td><td><code>ARG SOURCE_COMMIT=</code> leaves the empty string. <code>/version</code> answers <code>sourceCommit: null</code> and Sentry attaches <strong>no release</strong>.</td><td>The field is present and null. That is the honest answer and the one <code>release-gate</code> condition 4 must read as <em>no</em> — never as a pass.</td></tr>
+<tr><td>The platform hands the build a value that is not a commit: the literal <code>HEAD</code>, an unexpanded <code>${SOURCE_COMMIT}</code>, a tag, <code>unknown</code></td><td>Identical to the row above: <code>null</code>, no release.</td><td>Deliberate. <code>git_commit_sha=HEAD</code> is what the Coolify application row actually holds, so these are values a real build receives — and an identity nobody can look up would make condition 4 pass on a deploy nobody can name.</td></tr>
+<tr><td>The <code>ARG</code>/<code>ENV</code> pair is dropped from <code>packages/core/Dockerfile</code>'s <b>runtime</b> stage, or declared only in the build stage</td><td><span class="bad">Nothing, anywhere.</span> Every test on a dev box still passes; the deployed container serves <code>null</code> forever.</td><td>Only the deploy shows it. This is why the pair carries a <code>cm:edge lockstep</code> to the compose file rather than a comment.</td></tr>
+<tr><td><code>ENV NEXT_PUBLIC_SOURCE_COMMIT</code> moves <em>below</em> <code>RUN pnpm build</code> in web-v2's Dockerfile</td><td>The image has the variable and the browser bundle does not. Web releases silently become <code>undefined</code> again while core stays correct.</td><td>Nothing local fails: Next inlines <code>NEXT_PUBLIC_*</code> at build time, so the value has to exist before that line runs. Guarded in the Dockerfile.</td></tr>
+<tr><td>A second reader of <code>process.env.SOURCE_COMMIT</code> is added beside the module</td><td>Two answers to "which commit is this" that can disagree — and the disagreement is silent, because neither is wrong on its own.</td><td>Both readers are declared <code>cm:guard</code> as the only ones. <code>/version</code> and the Sentry release descend from one constant precisely so a comparison between them is a comparison of a value to itself.</td></tr>
+<tr><td><code>SENTRY_DSN</code> / <code>NEXT_PUBLIC_SENTRY_DSN</code> is unset</td><td>The SDK never attaches. No events, no release, no error.</td><td>Intended and unchanged: an absent DSN is the privacy contract for self-hosted and contributor builds, not a fault.</td></tr>
+<tr><td><code>SENTRY_AUTH_TOKEN</code> is absent from the repository</td><td>Releases are still <em>named</em> by SHA on every event, so grouping is correct; what is missing is the release↔commit association, so Sentry can name no suspect commit.</td><td>A <code>::warning::</code> in the <code>Sentry release</code> run summary naming the secret and the scope it needs. The workflow exits 0 — it is not a gate and the merge has already happened.</td></tr>
+<tr><td>The Sentry organisation has no repository integration for <code>SidCorp-co/forge</code></td><td>Releases are created; <code>set-commits --auto</code> fails.</td><td>The workflow goes <strong>red on main</strong>, naming it. Deliberately loud: the alternative is a green run that registered nothing.</td></tr>
+</tbody>
+</table>
+
+<div class="rule">
+<b>The commit is injected at build time and never read from git at runtime.</b> Both images carry
+no <code>.git</code> — <code>pnpm deploy</code> materialises core's app tree and Next's standalone
+output copies a server bundle — so a <code>git rev-parse</code> placed in either would answer
+nothing on the one machine that matters and succeed on every box it was tested on. That asymmetry,
+not tidiness, is why the value arrives as a build argument.
+</div>
+
+<div class="rule">
+<b>A missing SHA is reported as missing, and that is a feature of the design rather than a
+shortfall.</b> <code>release-gate</code> condition 4 is a gate: it decides whether an agent may
+call a deploy verified. A placeholder, an empty string or <code>unknown</code> in that field would
+make the condition pass on a deploy nobody can identify, which is a worse position than the gap it
+replaces — the gap at least announced itself. So the single reader accepts 7 to 40 hexadecimal
+digits and answers <code>null</code> to everything else, and <code>null</code> is a legitimate
+final answer that a caller must handle as <em>no</em>.
+</div>
+
+<div class="rule">
+<b>Two deploys are distinguishable from outside the box; two <em>restarts</em> of one deploy are
+not, and should not be.</b> The value is frozen into the image, so every container from one build
+reports one SHA however many times it is restarted — which is the point: the field names the
+<em>code</em> that is running, and <code>uptimeSeconds</code> beside it names the process. Reading
+them together tells an operator which build, since when. Reading either alone answers only half of
+what an operator asked.
+</div>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>

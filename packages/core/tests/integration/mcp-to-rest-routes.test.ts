@@ -122,13 +122,20 @@ function call(path: string, token?: string, init: RequestInit = {}) {
 }
 
 describe('GET /version — replaces forge_version', () => {
-  it('answers 200 with version and uptime, unauthenticated', async () => {
+  it('answers 200 with version, source commit and uptime, unauthenticated', async () => {
     const res = await call('/version');
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { version: string; uptimeSeconds: number };
+    const body = (await res.json()) as {
+      version: string;
+      sourceCommit: string | null;
+      uptimeSeconds: number;
+    };
     expect(typeof body.version).toBe('string');
     expect(body.version.length).toBeGreaterThan(0);
     expect(Number.isInteger(body.uptimeSeconds)).toBe(true);
+    // cm:guard the key is served whether or not the build was told its commit, because `release-gate` condition 4 compares this field to a merge SHA and an omitted key is indistinguishable from an older image. A test box passes no build argument, so `null` is the value here and a string is the value on a deploy.
+    expect(Object.keys(body)).toContain('sourceCommit');
+    expect(body.sourceCommit === null || /^[0-9a-f]{7,40}$/i.test(body.sourceCommit)).toBe(true);
   });
 
   it('still serves /health beside it after the move out of index.ts', async () => {

@@ -1,16 +1,10 @@
 import * as Sentry from "@sentry/react";
 import { scrubSentryEvent } from "@forge/observability";
+import { sourceCommit } from "./source-commit";
 
-// web-v2 ships Sentry as an OPTIONAL telemetry surface (the forge-web project on
-// the maintainer's self-hosted instance). The DSN is NEVER hardcoded: it is read
-// from the build-time public env `NEXT_PUBLIC_SENTRY_DSN`. Source builds without
-// it become no-ops, so a contributor cloning the repo never silently reports to
-// the maintainer's Sentry. Privacy scrubbing primitives live in
-// `@forge/observability` so the same key list applies in dev, core, and web.
-//
-// NOTE: `NEXT_PUBLIC_*` is inlined at BUILD time — to enable Sentry on a deploy,
-// set `NEXT_PUBLIC_SENTRY_DSN` in the web-v2 build environment (Coolify), not at
-// runtime.
+// cm:guard the DSN is NEVER hardcoded and Sentry here is opt-in: a source build without `NEXT_PUBLIC_SENTRY_DSN` is a no-op, which is what keeps a contributor who cloned the repo from reporting to the maintainer's instance.
+// cm:guard `NEXT_PUBLIC_*` is inlined at BUILD time, so enabling Sentry on a deploy means setting `NEXT_PUBLIC_SENTRY_DSN` as a Coolify BUILD ARG — a runtime environment row reaches the container and leaves the browser's DSN empty.
+// cm:edge contract -> packages/observability/src/index.ts — `scrubSentryEvent` is the shared `beforeSend`, so one key list applies in dev, core and web.
 
 let initialized = false;
 
@@ -20,9 +14,8 @@ export function initSentry(): boolean {
   if (!dsn) return false;
   Sentry.init({
     dsn,
-    release: process.env.NEXT_PUBLIC_APP_VERSION
-      ? `forge-web@${process.env.NEXT_PUBLIC_APP_VERSION}`
-      : undefined,
+    // cm:edge contract -> packages/core/src/observability/sentry.ts — both surfaces name the deploy by bare SHA from one build argument, so an error in the browser and one in the API resolve to the same commit rather than to two ids nothing reconciles.
+    release: sourceCommit ?? undefined,
     environment: process.env.NEXT_PUBLIC_SENTRY_ENV ?? "production",
     tracesSampleRate: 0,
     sendDefaultPii: false,

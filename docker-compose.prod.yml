@@ -35,6 +35,13 @@ services:
       # Mirrors the web service's pattern.
       context: .
       dockerfile: packages/core/Dockerfile
+      # cm:guard the ONE writer of "which commit is this" for both services below.
+      # `SOURCE_COMMIT` is Coolify's own predefined deploy variable, so this resolves with
+      # no env-var row to add; `:-` keeps a plain `docker compose build` working, and an
+      # empty value is reported as missing rather than served.
+      # cm:edge lockstep -> packages/core/Dockerfile — its runtime-stage ARG/ENV pair.
+      args:
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -169,10 +176,14 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
         NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-}
-        # Next.js bakes NEXT_PUBLIC_* into the client bundle at build
-        # time, so this MUST be a build arg (matching environment: below
-        # without an arg would leave the browser DSN empty).
+        # cm:guard Next.js bakes NEXT_PUBLIC_* into the client bundle at build time, so
+        # this MUST be a build arg — a matching `environment:` row would reach the
+        # container and still leave the browser's DSN empty.
         NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN_WEB:-}
+        # cm:edge lockstep -> packages/web-v2/Dockerfile — becomes
+        # NEXT_PUBLIC_SOURCE_COMMIT above `pnpm build`, and must be the same value core's
+        # build takes or the two halves of one deploy report different commits.
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-}
     restart: unless-stopped
     depends_on:
       - core
@@ -180,12 +191,11 @@ services:
       - "127.0.0.1:19451:3000"
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
-      # SENTRY_DSN_WEB drives both surfaces: the client SDK reads
-      # NEXT_PUBLIC_SENTRY_DSN (already baked in at build), and the
-      # server runtime reads SENTRY_DSN inside instrumentation.ts's
-      # `register()` hook.
-      NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN_WEB:-}
-      SENTRY_DSN: ${SENTRY_DSN_WEB:-}
+      # cm:guard no SENTRY_DSN row belongs here. web-v2's only Sentry surface is the
+      # browser client and its DSN is inlined by Next from the build arg above, so a
+      # runtime row would reach the container and configure nothing. This package has
+      # no `instrumentation.ts` and no server-side SDK; adding a row is a claim that
+      # one of those exists.
 
 volumes:
   postgres_data:

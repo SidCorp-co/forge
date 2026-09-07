@@ -45,6 +45,12 @@ ARG WEB_V2_BASE_PATH=
 ENV WEB_V2_BASE_PATH=$WEB_V2_BASE_PATH
 ARG NEXT_PUBLIC_BASE_PATH=
 ENV NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH
+# cm:guard must stay ABOVE `RUN pnpm build`: `NEXT_PUBLIC_*` is inlined into the client
+# bundle by Next at build time, so a value arriving after this line reaches no browser.
+# cm:edge lockstep -> docker-compose.prod.yml — `web-v2.build.args.SOURCE_COMMIT` fills it,
+# the same argument core's build takes, so the two services cannot name different commits.
+ARG SOURCE_COMMIT=
+ENV NEXT_PUBLIC_SOURCE_COMMIT=$SOURCE_COMMIT
 RUN pnpm build
 
 # Production runtime — Next monorepo standalone places server.js under

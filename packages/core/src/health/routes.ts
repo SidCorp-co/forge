@@ -14,6 +14,7 @@ import { z } from 'zod';
 import pkg from '../../package.json' with { type: 'json' };
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { sourceCommit } from '../observability/source-commit.js';
 import { readLiveness, readOpsHealth } from './service.js';
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
@@ -42,8 +43,13 @@ publicHealthRoutes.get('/health', async (c) => {
 });
 
 // cm:guard a route of its own, never a field on `/health`: `/health` answers 503 when the DB is down, so folding version into it hands a version check a contract that fails exactly when an operator most needs to know which build is running. Unauthenticated for the same reason `forge_version` carried no project scope — measured on forge-beta 2026-09-01, all 290 of that tool's calls named no project, so there is nothing here for the PAT fence to bite on.
+// cm:edge contract -> packages/core/src/observability/source-commit.ts — `sourceCommit` is that module's value verbatim, and `release-gate` condition 4 is answered by comparing this field to a merge SHA. A build that was not told its commit answers `null` here, never a placeholder: a fabricated identity would make the condition pass on a deploy nobody can name.
 publicHealthRoutes.get('/version', (c) =>
-  c.json({ version: pkg.version, uptimeSeconds: Math.floor(process.uptime()) }),
+  c.json({
+    version: pkg.version,
+    sourceCommit,
+    uptimeSeconds: Math.floor(process.uptime()),
+  }),
 );
 
 export const opsHealthProjectRoutes = new Hono<{ Variables: AuthVars }>();

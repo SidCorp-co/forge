@@ -43,11 +43,24 @@ ENV NODE_ENV=production
 #   openssh-client — `ssh`, used by git for SSH remotes in the connection test.
 #   git            — `git ls-remote` for the deploy-key connection test.
 RUN apk add --no-cache openssh-keygen openssh-client git
+
 COPY --from=build /prod/core ./
 # NOTE: the repo `docs/` tree is INTERNAL engineering documentation and is
 # deliberately NOT shipped here or served to users. End-user product docs live
 # in packages/web-v2/content/help and are bundled into the WEB build — the core
 # image serves no documentation.
+
+# cm:guard the commit is BAKED here, in the runtime stage, and never read from git at
+# runtime: this image carries no `.git`, so a `git rev-parse` would answer null on the one
+# machine that matters and succeed on every box it is tested on. Declared in this stage
+# because an ARG from an earlier stage is not in scope here.
+# cm:guard and BELOW the COPY, because this value changes on every commit: above it, the
+# layer carrying the whole app tree is invalidated by a deploy that changed nothing else.
+# cm:edge lockstep -> docker-compose.prod.yml — `core.build.args.SOURCE_COMMIT` is the only
+# thing that fills this; a build with no `--build-arg` leaves the empty string, which
+# `src/observability/source-commit.ts` reports as missing rather than serving.
+ARG SOURCE_COMMIT=
+ENV SOURCE_COMMIT=$SOURCE_COMMIT
 
 EXPOSE 8080
 
