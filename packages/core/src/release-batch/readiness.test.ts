@@ -96,12 +96,28 @@ describe('loadReleaseReadiness', () => {
       productionBranch: 'production',
       facts: { ...CONTRACT_FACTS, 'release-procedure': 'cut a tag, then deploy' },
     });
-    prodBinding({ releaseRunnerLabel: 'prod-box', rollback: 'redeploy the previous tag' });
+    prodBinding({ releaseRunnerLabel: 'prod-box', rollback: { mode: 'coolify-image' } });
 
     const out = await loadReleaseReadiness(PROJECT_ID);
 
     expect(out?.gaps).toEqual([]);
     expect(out?.releaseRunnerLabel).toBe('prod-box');
+    expect(out?.rollbackMode).toBe('coolify-image');
+    expect(out?.rollback).toBeNull();
+  });
+
+  // cm:guard prose on a coolify binding is its OWN gap, never silence: it is a declaration Forge no longer executes, so reporting no gap would show a settled contract for a release that will abort (ISS-925).
+  it('names the binding still declaring a coolify rollback as free text', async () => {
+    project({
+      productionBranch: 'production',
+      facts: { ...CONTRACT_FACTS, 'release-procedure': 'cut a tag, then deploy' },
+    });
+    prodBinding({ releaseRunnerLabel: 'prod-box', rollback: 'redeploy the previous tag' });
+
+    const out = await loadReleaseReadiness(PROJECT_ID);
+
+    expect(out?.gaps).toEqual(['rollback-prose']);
+    expect(out?.rollbackMode).toBe('unrepresentable');
     expect(out?.rollback).toBe('redeploy the previous tag');
   });
 

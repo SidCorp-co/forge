@@ -233,3 +233,121 @@ describe('coolify 403 diagnosis (ISS-924)', () => {
     expect(msg).toContain('the ability that route requires');
   });
 });
+
+describe('CoolifyClient controls', () => {
+  const client = (fetchImpl: typeof fetch) =>
+    new CoolifyClient({ baseUrl: 'https://coolify.example', apiToken: 'tok', fetchImpl });
+
+  it('cancels via POST /api/v1/deployments/{uuid}/cancel', async () => {
+    const fetchImpl = makeFetch(({ url, init }) => {
+      expect(url).toBe('https://coolify.example/api/v1/deployments/dep-1/cancel');
+      expect(init.method).toBe('POST');
+      return new Response(
+        JSON.stringify({
+          message: 'Deployment cancelled successfully.',
+          status: 'cancelled-by-user',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    expect((await client(fetchImpl).cancelDeployment('dep-1')).status).toBe('cancelled-by-user');
+  });
+
+  it("surfaces Coolify's already-finished 400 rather than reporting a cancel", async () => {
+    const fetchImpl = makeFetch(
+      () =>
+        new Response(
+          JSON.stringify({ message: 'Deployment cannot be cancelled. Current status: finished' }),
+          { status: 400, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    const err = await client(fetchImpl)
+      .cancelDeployment('dep-1')
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(CoolifyApiError);
+    expect(err.status).toBe(400);
+    expect(err.body).toContain('Current status: finished');
+  });
+
+  it('reads rollback images with is_current preserved', async () => {
+    const fetchImpl = makeFetch(({ url, init }) => {
+      expect(url).toBe('https://coolify.example/api/v1/applications/app-1/rollback-images');
+      expect(init.method).toBe('GET');
+      return new Response(
+        JSON.stringify({
+          current: 'sha-b',
+          images: [
+            { tag: 'sha-a', created_at: '2026-09-01 10:00:00 +0000 UTC', is_current: false },
+            { tag: 'sha-b', created_at: '2026-09-02 10:00:00 +0000 UTC', is_current: true },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    const res = await client(fetchImpl).listRollbackImages('app-1');
+    expect(res.current).toBe('sha-b');
+    expect(res.images?.map((i) => [i.tag, i.is_current])).toEqual([
+      ['sha-a', false],
+      ['sha-b', true],
+    ]);
+  });
+
+  it('rolls back with the tag in a JSON body', async () => {
+    const fetchImpl = makeFetch(({ url, init }) => {
+      expect(url).toBe('https://coolify.example/api/v1/applications/app-1/rollback');
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body as string)).toEqual({ commit: 'sha-a' });
+      return new Response(
+        JSON.stringify({ message: 'Rollback deployment queued.', deployment_uuid: 'dep-9' }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    expect(
+      (await client(fetchImpl).rollbackApplication({ resourceUuid: 'app-1', commit: 'sha-a' }))
+        .deployment_uuid,
+    ).toBe('dep-9');
+  });
+
+  it('lists applications with the identity fields the picker shows', async () => {
+    const fetchImpl = makeFetch(({ url }) => {
+      expect(url).toBe('https://coolify.example/api/v1/applications');
+      return new Response(
+        JSON.stringify([
+          {
+            uuid: 'app-1',
+            name: 'forge-api',
+            fqdn: 'https://api.example',
+            git_repository: 'git@github.com:acme/forge.git',
+            git_branch: 'main',
+            git_commit_sha: 'abc1234def',
+            status: 'running',
+          },
+        ]),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    const apps = await client(fetchImpl).listApplications();
+    expect(apps[0]).toMatchObject({
+      uuid: 'app-1',
+      name: 'forge-api',
+      fqdn: 'https://api.example',
+      git_repository: 'git@github.com:acme/forge.git',
+      git_branch: 'main',
+      git_commit_sha: 'abc1234def',
+    });
+  });
+
+  it('names the ability each control route needs', () => {
+    expect(coolifyAbilityForRoute('POST /api/v1/deployments/dep-1/cancel')).toBe('deploy');
+    expect(coolifyAbilityForRoute('POST /api/v1/applications/app-1/rollback')).toBe('deploy');
+    expect(coolifyAbilityForRoute('GET /api/v1/applications/app-1/rollback-images')).toBe('read');
+    expect(coolifyAbilityForRoute('GET /api/v1/applications')).toBe('read');
+    expect(coolifyAbilityForRoute('GET /api/v1/applications/app-1')).toBe('read');
+  });
+
+  // cm:guard the deploy-ability rows must not be shadowed by the read rows above them: a cancel misread as `read` tells an operator to widen the wrong ability, which is the ISS-924 mislabel in a new place.
+  it('still names read for the routes that only read', () => {
+    expect(coolifyAbilityForRoute('GET /api/v1/deployments/dep-1')).toBe('read');
+    expect(coolifyAbilityForRoute('GET /api/v1/applications/app-1/logs')).toBe('read');
+  });
+});

@@ -11,36 +11,18 @@ vi.mock('../pipeline/runs.js', () => ({
 
 const { bucketOf, buildProgressFactsBlock, computeProjectProgress } = await import('./progress.js');
 
-/** `computeProjectProgress` reads the project's `agentConfig` via `db.select`
- *  (to resolve `mergeStates`), then runs the grouped evidence aggregate via
+/** `computeProjectProgress` runs one grouped evidence aggregate via
  *  `db.execute`. The shipped-evidence SQL itself is NOT exercised here — this
  *  fake returns whatever rows it is handed. That predicate is covered against
  *  real Postgres in `tests/integration/progress-shipped-evidence-e2e.test.ts`;
  *  keep it there, since a fake that ignores the `where` cannot see it. */
-function fakeDb(
-  rows: Array<Record<string, unknown>>,
-  agentConfig: unknown = null,
-): { select: () => unknown; execute: () => unknown } {
-  return {
-    select: () => ({
-      from: () => ({
-        where: () => ({ limit: () => Promise.resolve([{ agentConfig }]) }),
-      }),
-    }),
-    execute: () => Promise.resolve(rows),
-  };
+function fakeDb(rows: Array<Record<string, unknown>>): { execute: () => unknown } {
+  return { execute: () => Promise.resolve(rows) };
 }
 
-function failingDb(): { select: () => unknown } {
-  return {
-    select: () => ({
-      from: () => ({
-        where: () => ({
-          limit: () => Promise.reject(new Error('connection reset')),
-        }),
-      }),
-    }),
-  };
+// cm:guard reject from `execute`, which is the ONLY query this function makes. It used to reject from a `select` chain that resolved `mergeStates`; when that read was deleted (ISS-863) the fake kept passing — for a TypeError on an absent `execute`, not for the DB error the case names.
+function failingDb(): { execute: () => unknown } {
+  return { execute: () => Promise.reject(new Error('connection reset')) };
 }
 
 const REMAINING: IssueStatus[] = ['draft', 'waiting', 'needs_info', 'on_hold'];
@@ -159,14 +141,6 @@ describe('computeProjectProgress', () => {
     ]);
     const progress = await computeProjectProgress('p1', db as never);
     expect(progress?.shipped).toBe(7);
-  });
-
-  it('resolves the base-merge state from the project agentConfig, defaulting to released', async () => {
-    const db = fakeDb([{ status: 'closed', has_shipped_evidence: true, count: 1 }], {
-      pipelineConfig: { mergeStates: { baseBranch: 'tested' } },
-    });
-    const progress = await computeProjectProgress('p1', db as never);
-    expect(progress?.shipped).toBe(1);
   });
 
   it('returns null (fail-closed) on a DB error', async () => {
