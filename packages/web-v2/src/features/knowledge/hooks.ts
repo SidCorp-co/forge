@@ -6,15 +6,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
 import { knowledgeApi } from "./api";
-import type { IngestDocument, UpsertKnowledgeBody } from "./types";
-
-// --- Knowledge Entries (P1 REST) ---
+import type { IngestDocument, ModuleDiagramKind, UpsertKnowledgeBody } from "./types";
 
 export function useKnowledgeEntries(projectId: string | undefined, kind?: string) {
   return useQuery({
     queryKey: ["knowledge", projectId, "entries", kind ?? "all"],
     queryFn: () => knowledgeApi.listEntries(projectId as string, kind ? { kind } : undefined),
     enabled: !!projectId,
+  });
+}
+
+// cm:why no `staleTime` and no cache warming — the diagram is computed on the read from live rows, and a client that served a remembered one would reintroduce exactly the staleness ISS-950 removed.
+export function useModuleDiagram(projectId: string | undefined, kind: ModuleDiagramKind) {
+  return useQuery({
+    queryKey: ["knowledge", projectId, "module-diagram", kind],
+    queryFn: () => knowledgeApi.getModuleDiagram(projectId as string, kind),
+    enabled: !!projectId,
+    retry: false,
   });
 }
 
@@ -57,8 +65,6 @@ export function useDeleteEntry(projectId: string | undefined) {
     },
   });
 }
-
-// --- Knowledge Edges ---
 
 export function useKnowledgeEdges(projectId: string | undefined) {
   return useQuery({

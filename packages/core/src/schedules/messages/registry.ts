@@ -150,8 +150,6 @@ export const RETIRED_STRATEGY_INPUTS = {
   },
 } as const;
 
-// ── Registry ─────────────────────────────────────────────────────────────────
-
 export const improvementMessages: ImprovementMessage[] = [
   {
     key: 'optimize-skills',
@@ -214,8 +212,10 @@ export const improvementMessages: ImprovementMessage[] = [
       'A product map bootstrapped once rots as features ship — diagrams that no longer ' +
       'match the product mislead both humans and agents. A standing refresh keeps the ' +
       'overview / scenarios / workflows / module nodes current from the issue stream, ' +
-      'so the map stays a living source for mindmap / context / user-flow / swimlane ' +
-      'views rather than a stale snapshot. Pairs with knowledge-drift-check (which only ' +
+      'so the map stays a living account of the product rather than a stale snapshot. ' +
+      'The mindmap / context / user-flow / swimlane views are generated from the module ' +
+      "taxonomy since ISS-950 and are not this agent's to draw. " +
+      'Pairs with knowledge-drift-check (which only ' +
       'flags drift): this one closes the loop by actually refreshing.',
     appliesWhen:
       'The project maintains a product map — curated knowledge_entries of kind ' +
@@ -280,8 +280,6 @@ export const improvementMessages: ImprovementMessage[] = [
     standing: true,
   },
 ];
-
-// ── Lookups ───────────────────────────────────────────────────────────────────
 
 const MESSAGE_BY_KEY = new Map<string, ImprovementMessage>(
   improvementMessages.map((m) => [m.key, m]),

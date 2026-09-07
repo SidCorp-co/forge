@@ -94,12 +94,15 @@ the redraw and no boolean anybody has to remember to clear.
 </div>
 
 <div class="rule">
-<b>Core cannot draw the diagram, and does not pretend to.</b> ISS-587 has the user-flow diagram
-render from a Mermaid flow stored inside the <code>module-&lt;slug&gt;</code> node. That content is
+<b>Core cannot author the flow, and does not pretend to.</b> ISS-587 has the user-flow diagram
+render from a Mermaid flow stored inside the node bound through
+<code>labels.knowledge_entry_id</code>. That content is
 authored — by a person, or by an agent rewriting the node — and core has neither an LLM nor a repo
 checkout at the moment a handoff lands. So the engine refreshes what it can measure (the related
 issues) and records what it cannot author (that the flow is behind, and since when), rather than
-writing a placeholder diagram that a reader could not tell apart from a real one.
+writing a placeholder diagram that a reader could not tell apart from a real one. Drawing the four
+kinds <em>from</em> that content is ISS-950 and lives in
+<code>issue-work-module-diagram-generation</code>.
 </div>
 
 </main>

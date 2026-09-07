@@ -57,6 +57,26 @@
   The aggregation reads `issue_labels` joined to `kind='module'` labels and nothing else: there is
   no second store of module membership. Flow:
   [`docs/flows/issue-work-module-rollup-read.html`](docs/flows/issue-work-module-rollup-read.html).
+- **A project's four module diagrams — mindmap, context, user flow and swimlane — are now generated
+  from its module taxonomy instead of drawn by hand.** `GET /api/projects/:id/module-diagrams/:kind`
+  computes the Mermaid inside the request from the `kind='module'` labels and the knowledge nodes
+  bound to them, and the Knowledge screen carries a **Diagrams** tab that renders it. There is no
+  cache and no schedule, and that absence is the point: a diagram cannot be quietly older than the
+  node it claims to render, because nothing sits between the rows and the answer.
+
+  The mindmap follows `parent_id` and carries each bound node's related-issue count; the context
+  diagram draws modules as nodes with dotted edges for issues a pair shares and solid ones for
+  live `knowledge_edges` triples whose two ends both name modules; user flow and swimlane read the
+  Mermaid flow stored in each node's body, grouped by module and by the node's `metadata.actor`
+  respectively. A module with **no** knowledge node still appears, with its name and its place in
+  the hierarchy and no count — it is neither skipped nor an error.
+
+  A generator that cannot draw what it was asked for **says so by name**: `NO_MODULES`,
+  `NO_MODULE_FLOWS`, and `UNPARSABLE_MODULE_FLOW` naming the module whose stored flow it could not
+  read. None of the three answers with a partial picture that looks complete. The standing
+  `product-map-refresh` schedule keeps authoring its overview / scenario / workflow entries and no
+  longer claims the four generated kinds, so those kinds have exactly one owner. (ISS-950)
+
 
 - **An issue or comment written as `forge-*` components now renders as components, and a
   description can be corrected after it was created.** The registry, the validator and the four

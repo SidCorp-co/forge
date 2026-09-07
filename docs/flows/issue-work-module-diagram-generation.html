@@ -1,0 +1,95 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · issue-work-module-diagram-generation — how a module taxonomy becomes four diagrams, and every hop that refuses</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+</style>
+<main>
+<main>
+
+<h1>issue-work-module-diagram-generation — how a module taxonomy becomes four diagrams, and every hop that refuses</h1>
+<p class="sub">ISS-950, Tier 3c of ISS-587. <code>issue-work-module-knowledge-refresh</code> owns how a
+node stops being stale; <code>web-v2-module-taxonomy</code> owns the slug and the 1:1 node binding.
+This file owns what happens when somebody <em>asks for a diagram</em>: which rows are read, which of
+the four kinds reads which of them, and where a request is refused by name rather than answered with
+a picture that looks complete. Owners:
+<code>packages/core/src/labels/module-diagram-routes.ts</code>,
+<code>packages/core/src/labels/module-diagram-source.ts</code>,
+<code>packages/core/src/labels/module-diagrams.ts</code>.</p>
+
+<h2>One request, four kinds, three refusals</h2>
+<div class="board"><pre class="mermaid">
+flowchart TD
+  Q["GET /api/projects/:id/module-diagrams/:kind"]
+  Q --> AZ{"caller is a<br/>project viewer?"}
+  AZ -- no --> F403(["403 FORBIDDEN"])
+  AZ -- yes --> LD["loadModuleDiagramSnapshot<br/>labels kind='module' LEFT JOIN knowledge_entries<br/>via labels.knowledge_entry_id"]
+  LD --> M{"any module<br/>at all?"}
+  M -- no --> F1(["409 NO_MODULES"])
+  M -- yes --> K{"which kind?"}
+  K -- mindmap --> MM["hierarchy from parent_id<br/>count from the node's related_issue_ids"]
+  K -- context --> CX["issue_labels self-join for the WEIGHTS<br/>+ live knowledge_edges whose BOTH ends name a module"]
+  K -- "user-flow / swimlane" --> PF["parse the first mermaid fence<br/>in each bound node's body"]
+  PF --> P1{"any module<br/>stores a flow?"}
+  P1 -- no --> F2(["409 NO_MODULE_FLOWS"])
+  P1 -- yes --> P2{"every stored flow<br/>inside the subset?"}
+  P2 -- no --> F3(["409 UNPARSABLE_MODULE_FLOW<br/>naming the module's slug"])
+  P2 -- yes --> UF["user-flow: a subgraph per MODULE<br/>swimlane: a subgraph per node's metadata.actor"]
+  MM --> R(["200 { kind, mermaid, moduleCount, generatedAt }"])
+  CX --> R
+  UF --> R
+</pre></div>
+
+<h2>When it goes wrong</h2>
+<table>
+<thead><tr><th>What fails</th><th>What the caller sees</th><th>Why not the other thing</th></tr></thead>
+<tbody>
+<tr><td>The project has no <code>kind='module'</code> label</td><td><code>409 NO_MODULES</code>.</td><td>Not a <code>200</code> with an empty mindmap: an empty frame and a project nobody has classified render identically, and only one of them is a diagram.</td></tr>
+<tr><td>No module's node stores a Mermaid flow</td><td><code>409 NO_MODULE_FLOWS</code> — on <code>user-flow</code> and <code>swimlane</code> only.</td><td><code>mindmap</code> and <code>context</code> never read a flow, so the same project answers them normally. A refusal that applied to all four would report the absence of one input as the absence of the taxonomy.</td></tr>
+<tr><td>A stored flow uses Mermaid the reader does not understand</td><td><span class="bad">The whole request</span> is <code>409 UNPARSABLE_MODULE_FLOW</code>, naming the module's slug.</td><td>Not "the modules it could read". A diagram missing one module's steps is indistinguishable from that module having none, and the reader has no way to find out which.</td></tr>
+<tr><td>A module has no knowledge node</td><td><span class="bad">Nothing.</span> It is drawn — its name, its place in the hierarchy, and no count.</td><td>An unbound module is a legal state (<code>labels_knowledge_entry_chk</code>), not an error and not a row to skip silently. The absent count is the honest rendering of "nothing was counted".</td></tr>
+<tr><td>A declared edge names something that is not a module</td><td>The edge is absent from the context diagram.</td><td>Both ends must resolve or the arrow would point at a node that is not on the diagram. A triple resolving one end only is not an edge between modules.</td></tr>
+<tr><td>A declared edge was retracted</td><td>The edge is absent.</td><td><code>valid_until</code> in the past is the only way a triple is ever withdrawn; a reader ignoring it draws a coupling somebody has already said is gone.</td></tr>
+</tbody>
+</table>
+
+<div class="rule">
+<b>There is no cache, and that absence IS the regeneration rule.</b> ISS-950 requires that a diagram
+cannot be quietly older than the node it claims to render. Nothing schedules a redraw and nothing
+stores one: the Mermaid is computed inside the request from the rows as they are, so there is
+nothing between the taxonomy and the response that could go stale. The client hook holds no
+<code>staleTime</code> for the same reason — a remembered diagram would put the staleness back.
+</div>
+
+<div class="rule">
+<b>Knowledge nodes are the source; <code>issue_labels</code> is read for exactly one thing.</b> Every
+attribute of a module comes from <code>labels</code>, and every fact <em>about</em> a module comes
+from the node bound through <code>labels.knowledge_entry_id</code>. The one exception the epic
+admits is the context diagram's edge <em>weights</em>, which are how many issues a pair of modules
+shares and can come from nowhere else. A generator reading tags for anything more is the wrong shape.
+</div>
+
+<div class="rule">
+<b><code>docs/flows/</code> is not a target of this generator, and must not become one.</b> The four
+kinds are a product surface, per project, rendered from live rows in the browser. This directory is
+this repository's own hand-drawn mechanism diagrams, backfilled by the work; generating into it would
+put churn in git on every issue close and replace mechanism drawings with component maps. Both
+surfaces exist and they answer different questions for different audiences.
+</div>
+
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>
