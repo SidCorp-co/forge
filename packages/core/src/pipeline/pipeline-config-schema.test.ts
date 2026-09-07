@@ -79,10 +79,7 @@ describe('pipelineConfigPatchSchema', () => {
   });
 
   it('silently drops legacy `runnerFallback` field (unknown keys ignored)', () => {
-    // Zod's default `.object()` strips unknown keys rather than throwing.
-    // The behaviour stays "permissive on input, strict on output" so v1
-    // patches replaying via the same endpoint don't 400 — the dropped
-    // field simply has no effect on the merged document.
+    // cm:why Zod's default `.object()` strips unknown keys rather than throwing. The behaviour stays "permissive on input, strict on output" so v1 patches replaying via the same endpoint don't 400 — the dropped field simply has no effect on the merged document.
     const out = pipelineConfigPatchSchema.parse({
       enabled: true,
       runnerFallback: ['claude-code'],
@@ -109,8 +106,7 @@ describe('statesConfigSchema (ISS-110)', () => {
   });
 
   it('rejects unknown status keys at the schema boundary', () => {
-    // Review minor #3: prior `z.record(z.string(), ...)` accepted junk keys
-    // silently. Tighten to z.enum(issueStatuses) so typos surface as 400.
+    // cm:why Review minor #3: prior `z.record(z.string(), ...)` accepted junk keys silently. Tighten to z.enum(issueStatuses) so typos surface as 400.
     const patch = {
       states: {
         not_a_status: { enabled: false },
@@ -249,7 +245,7 @@ describe('stageConfigSchema per-state overrides', () => {
   );
 
   it('does NOT cap fieldCaps server-side (D3: operator owns budget)', () => {
-    // 1 million chars — silly but allowed.
+    // cm:why 1 million chars — silly but allowed.
     expect(() =>
       pipelineConfigSchema.parse({
         states: { open: { userPromptPolicy: { fieldCaps: { description: 1_000_000 } } } },
@@ -402,5 +398,75 @@ describe('mergePipelineConfig', () => {
     expect(parsed.mcpServers).toEqual(doc.mcpServers);
     const merged = mergePipelineConfig({ enabled: false }, parsed);
     expect((merged as { mcpServers?: unknown }).mcpServers).toEqual(doc.mcpServers);
+  });
+});
+
+// cm:why ISS-917 — per-project pool admission. The schema is the only place both transports (REST `PATCH /pipeline-config` and MCP `forge_config`) share, so what it refuses is what neither can store.
+describe('poolBacklog (ISS-917)', () => {
+  it('is optional — an empty document still parses to {} (no backlog, no behaviour change)', () => {
+    const out = pipelineConfigSchema.parse({ enabled: true });
+    expect(out.poolBacklog).toBeUndefined();
+  });
+
+  it('accepts statuses no driver owns', () => {
+    const out = pipelineConfigSchema.parse({
+      poolBacklog: { statuses: ['draft', 'on_hold', 'waiting'], limit: 5 },
+    });
+    expect(out.poolBacklog).toEqual({ statuses: ['draft', 'on_hold', 'waiting'], limit: 5 });
+  });
+
+  // cm:guard AC2 — the driver statuses are the ones that already carry a run and a job, so a backlog row at one could never be promoted. Offering them would be a menu of values `promoteFromBacklog` refuses as `issue_busy` forever.
+  it.each(['open', 'in_progress', 'needs_info', 'closed', 'dropped'])(
+    'rejects the driver-owned status %s',
+    (status) => {
+      const out = pipelineConfigSchema.safeParse({ poolBacklog: { statuses: [status] } });
+      expect(out.success).toBe(false);
+    },
+  );
+
+  it('rejects an unknown key inside poolBacklog (strict)', () => {
+    const out = pipelineConfigSchema.safeParse({
+      poolBacklog: { statuses: ['draft'], cap: 3 },
+    });
+    expect(out.success).toBe(false);
+  });
+
+  it('rejects a limit outside 1..100', () => {
+    expect(
+      pipelineConfigSchema.safeParse({ poolBacklog: { statuses: ['draft'], limit: 0 } }).success,
+    ).toBe(false);
+    expect(
+      pipelineConfigSchema.safeParse({ poolBacklog: { statuses: ['draft'], limit: 101 } }).success,
+    ).toBe(false);
+  });
+
+  // cm:guard AC3/B5 — the refusal must NAME both settings. A message that said only "invalid value" would send an operator to the status list looking for a typo in a value that is, on its own, perfectly legal.
+  it('refuses intakeGate.enabled + draft together, naming both settings', () => {
+    const out = pipelineConfigSchema.safeParse({
+      intakeGate: { enabled: true },
+      poolBacklog: { statuses: ['draft'] },
+    });
+    expect(out.success).toBe(false);
+    if (out.success) return;
+    const msg = out.error.issues.map((i) => i.message).join(' ');
+    expect(msg).toContain('intakeGate');
+    expect(msg).toContain('draft');
+    expect(out.error.issues[0]?.path).toEqual(['poolBacklog', 'statuses']);
+  });
+
+  it('allows intakeGate.enabled beside a NON-draft backlog status', () => {
+    const out = pipelineConfigSchema.safeParse({
+      intakeGate: { enabled: true },
+      poolBacklog: { statuses: ['on_hold'] },
+    });
+    expect(out.success).toBe(true);
+  });
+
+  it('allows draft when the intake gate is off', () => {
+    const out = pipelineConfigSchema.safeParse({
+      intakeGate: { enabled: false },
+      poolBacklog: { statuses: ['draft'] },
+    });
+    expect(out.success).toBe(true);
   });
 });

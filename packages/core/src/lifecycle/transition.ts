@@ -163,7 +163,7 @@ export async function applyKernelTransition(
  * a real transaction on the root `db` and a SAVEPOINT on a caller's `tx`, so the
  * three statements are one atomic unit no matter which executor arrived.
  */
-// cm:edge contract -> packages/core/drizzle/migrations/0214_unaudited_transition_detector.sql — `forge.kernel_txn` is read by `forge_detect_unaudited_transition`, which counts a terminal flip on `jobs`/`pipeline_runs` as a hand-written intervention when the marker is absent. Dropping this `set_config`, or setting it AFTER the UPDATE, charts every kernel flip this repo performs as manual SQL in the north-star metric.
+// cm:edge contract -> packages/core/drizzle/migrations/0215_unaudited_transition_detector.sql — `forge.kernel_txn` is read by `forge_detect_unaudited_transition`, which counts a terminal flip on `jobs`/`pipeline_runs` as a hand-written intervention when the marker is absent. Dropping this `set_config`, or setting it AFTER the UPDATE, charts every kernel flip this repo performs as manual SQL in the north-star metric.
 async function writeTransition(
   exec: KernelExecutor,
   args: JobTransitionArgs | SessionTransitionArgs | RunTransitionArgs,

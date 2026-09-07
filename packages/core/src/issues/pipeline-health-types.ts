@@ -10,6 +10,7 @@
 
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import type { RunnerAvailability } from '../jobs/queued-gates.js';
+import type { PauseResumer } from '../pipeline/run-pause.js';
 
 // cm:guard `job_held` is the ONLY thing that makes RFC 0002 honest — a held job leaves the issue at its stage entry-status, so without this reason the board shows an issue that looks idle and actionable while a step is in fact waiting on a machine. Delete it and you have rebuilt the ambiguity the RFC removed, on the other axis.
 // cm:guard every reason the dispatch CASE can return needs a member here, or the issue renders as idle-and-actionable while the picker refuses it — `run_not_running` and `runner_stale` were the two missing ones, and they are the two that never clear on their own: measured 2026-08-14, forge-dev ISS-576/ISS-652 sat under a `paused` run since 08-11 and 11 jobs across 5 projects sat behind dead runners for 6-22 days, all of them showing NO waitingOn at all.
@@ -47,6 +48,28 @@ export interface PipelineHealth {
   lastTickAt?: string;
   /** Only set when `stage === 'waiting'`. */
   waitingCause?: { kind: WaitingCause };
+  /** ISS-853 — the issue's paused pipeline run, whatever the issue's own status
+   *  says and whether or not a step is queued behind it. */
+  // cm:guard set this UNCONDITIONALLY, above every early return in the classifier — a pause reaches the payload today only through the `run_not_running` gate, which needs a queued job, so a run paused with nothing queued was invisible to every surface and an issue at `approved` read as healthy work nobody was doing
+  pausedRun?: PipelineHealthPausedRun;
+}
+
+/** ISS-853 — the paused parent run, projected for a human surface. `waitingOn`
+ *  answers why a queued STEP has not dispatched; this answers why the RUN is
+ *  not running, which is a question an issue with no queued step still has. */
+export interface PipelineHealthPausedRun {
+  runId: string;
+  /** `metadata.pauseReason` verbatim; null is an operator pause. */
+  pauseReason: string | null;
+  /** The kind half of `<kind>:<detail>`; null for an operator pause. */
+  kind: string | null;
+  /** The detail half — the stage, for `stage_stalled:<stage>`. */
+  detail: string | null;
+  /** Who ends this pause, from `run-pause.ts#describePause`. */
+  resumer: PauseResumer;
+  /** `pipeline_runs.updated_at` — when the row last moved, which for a paused
+   *  run is the pause itself unless something else has written to it since. */
+  since: string;
 }
 
 /** ISS-903 — the queued candidate, projected for a human surface. */
@@ -93,6 +116,8 @@ export interface ClassifyInput {
   /** From `freshRunnerAvailability` — the picker's own runner-pool counts. */
   runnerPool: RunnerAvailability;
   lastTickAt: Date | null;
+  /** ISS-853 — the issue's paused pipeline run, from `loadPausedRunsByIssue`. */
+  pausedRun?: PipelineHealthPausedRun;
   /** Injectable clock for the retry-cooldown comparison; defaults to now. */
   now?: Date;
 }

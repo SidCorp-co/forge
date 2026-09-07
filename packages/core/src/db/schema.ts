@@ -829,7 +829,7 @@ export const kernelTransitions = pgTable(
 );
 
 // cm:why ISS-884 — the flips that never reached `kernel_transitions` at all, written ONLY by the `forge_detect_unaudited_transition` trigger when a terminal status lands on `jobs`/`pipeline_runs` in a transaction carrying no `forge.kernel_txn` marker. Denormalised with no FK to the flipped row on purpose: a hand that edits by SQL may delete by SQL, and the record of the intervention has to outlive the row it was performed on.
-// cm:edge contract -> packages/core/drizzle/migrations/0214_unaudited_transition_detector.sql — the trigger INSERTs this column list positionally through `EXECUTE ... USING`, so reordering or renaming a column here without editing that function writes the wrong value into the wrong column and no type-check sees it.
+// cm:edge contract -> packages/core/drizzle/migrations/0215_unaudited_transition_detector.sql — the trigger INSERTs this column list positionally through `EXECUTE ... USING`, so reordering or renaming a column here without editing that function writes the wrong value into the wrong column and no type-check sees it.
 // cm:guard nothing in TypeScript may INSERT here — a row this table holds means "no code wrote this flip", so a code path that writes one is claiming the opposite of what the row means. One index, and it is (project_id, detected_at): every read arrives through `issue_intervention_events`, which the analytics route filters by project and then by window, so an index on `detected_at` alone would be paid on every write and used by nothing.
 export const unauditedTransitions = pgTable(
   'unaudited_transitions',

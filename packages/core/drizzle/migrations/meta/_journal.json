@@ -1490,7 +1490,14 @@
       "idx": 214,
       "version": "7",
       "when": 1791936000000,
-      "tag": "0214_unaudited_transition_detector",
+      "tag": "0214_duplex_strips_session_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 215,
+      "version": "7",
+      "when": 1792022400000,
+      "tag": "0215_unaudited_transition_detector",
       "breakpoints": true
     }
   ]

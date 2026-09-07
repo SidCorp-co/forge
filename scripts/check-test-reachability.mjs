@@ -18,6 +18,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { absentPrerequisites, remedyLines } from './lib/prerequisite.mjs';
 import {
   CONFIG_RE,
   isSuiteSkip,
@@ -78,6 +79,13 @@ const configs = tracked.filter((f) => CONFIG_RE.test(f));
 
 if (configs.length === 0) {
   console.error('test-reachability: found no vitest config — nothing could collect anything');
+  process.exit(2);
+}
+
+// cm:guard preflight before `vitest list`. With no node_modules every runner answers `null`, `judge` reports `\`vitest list\` failed` for the first config, and that names vitest as the thing that broke — a reader chases a runner that was never installed. The absence has to be stated before the collection that misattributes it.
+const missingDeps = absentPrerequisites(ROOT, ['deps']);
+if (missingDeps.length > 0) {
+  console.error(`test-reachability: could not run — ${remedyLines(missingDeps)[0]}`);
   process.exit(2);
 }
 

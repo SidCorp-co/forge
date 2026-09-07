@@ -39,7 +39,7 @@ passed, because the external record of what shipped belonged to none of them.
 | relations | `archmap check` — `archmap` | which module may depend on which | how a file is written |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
-| flows | `check-flow-coverage` — `core-integration` | whether every declared `cm:flow` step is executed end-to-end | which flows exist — codemap declares them |
+| flows | `check-flow-coverage` — `core-integration` | whether the integration suite ENTERS the function every declared `cm:flow` step sits on | whether the flow ran through it — a function-hit cannot tell; which flows exist, codemap declares |
 | language | `check-source-language` — `lang-check` | English-only source policy | everything else |
 | record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, and whether a published entry can leave without a declared reason | whether an entry is TRUE, or whether a change deserved one — that is review's |
 
@@ -195,6 +195,48 @@ Four contracts:
    printing the guards / edges / flows you should read. This is the pull-side stand-in for the
    PreToolUse hook, and it works with no plugin installed.
 
+### One proposition per verdict
+
+**A gate must distinguish "I ran and the code is wrong" from "I could not run", and a failure must
+name which condition it represents.** They are answers to different questions — one is about the
+repo, the other about the machine the gate is standing on — and a signal with no field for the
+difference hands the reader the wrong one silently.
+
+Five marks, each asserting exactly one thing:
+
+| Mark | Means | Exit | Statement about |
+|---|---|---|---|
+| `ok` | ran, found nothing | 0 | the repo |
+| `red` | ran, found violations | 1 | the repo |
+| `FAIL` | ran, but its output could not be audited — no file count, or a count of zero | 2 | the repo |
+| `n/a` | did not run: a declared prerequisite is absent. Names it and the command that installs it | 2 | this checkout |
+| `skip` | did not run: absent locally by design, and CI provably runs it | 0 | this checkout |
+
+`n/a` is not an amnesty. It exits `2` exactly as `FAIL` does, because an unrun gate is no evidence
+and this script does not forward no-evidence as a pass — what changes is only the sentence a reader
+gets. Prerequisites are declared per check as `needs:` and resolved against the **filesystem** by
+`lib/prerequisite.mjs`, never against a tool's output text: a missing binary and a genuinely broken
+import both print `Cannot find module`, and classifying by message would turn a real defect into
+"could not run", which is this bug inverted and strictly worse because it goes green.
+
+Preflight happens **before** the spawn. A checker run without its tool produces a sentence about its
+own subject — `biome output in packages/core was not JSON`, `archmap: scope matched no files` — and
+once that sentence exists nothing downstream can unsay it.
+
+Measured 2026-09-07 in a worktree with no `node_modules`: `pnpm verify` reported `FAIL R7 the
+relations gate can resolve the graph it claims to cover` and `conformance: claims "hardened" and
+does not meet it`. Both accuse the repo; both were false; `archmap` and `tsc` were not on disk.
+Nine checks were affected, not the two the report named. Unlike contention this survives a serial
+re-run identically, so it wears the exact signature a reader is told to trust as a real defect
+(ISS-938).
+
+The run ends on a tally — `19 passed · 2 did not run · 1 red` — because the marks alone left the
+reader to total twenty-two rows by eye, and the line that actually gets read is the last one. `skip`
+and `n/a` are counted as **did not run**, never folded into `passed`: that fold is the exact merge
+the five marks exist to prevent (ISS-955). The marks and the tally live in `lib/verify-report.mjs`
+so both have a runner — `verify.mjs` executes its whole run at import and nothing inside it can be
+unit-tested.
+
 ### Modes
 
 - (none) — full run
@@ -216,6 +258,13 @@ claim; this is the check that tests the claim.
 
 Also fails when an axis is declared with no probe, or probed with no declaration, so neither half can
 drift out of the other's sight.
+
+An axis whose probe is not on disk has **no measured level** — reported as `n/a`, compared against
+nothing, and taking the script to exit `2`. Level `0` is not the answer there: `0` means "no checker
+exists", a measured fact about the repo, and returning it for an absent binary reported three axes
+as having lost their gates. `conformance-audit.mjs` draws the same line for `R7`, its one rule that
+runs a tool: `n/a` rather than a rule this repo fails, and exit `2` before either profile verdict —
+a `--` mark means the rule does not apply, `n/a` means it applies and was not answered.
 
 ## check-size-budget.mjs — file and function length
 
@@ -515,7 +564,21 @@ and executed by nothing is a step the next editor believes is defended.
 It is measured, never declared — a `// covers dispatch/tick` comment in a test file would be exactly
 the claim-instead-of-measurement that `conformance-status.mjs` exists to catch.
 
-**Authoritative vs not.** A step reached only by unit tests is printed as `UNIT` and does **not**
+**What the evidence is, exactly.** `f` — istanbul's per-function invocation count. A step counts
+as reached when the authoritative suite *entered* the function the annotation sits on, whatever
+that call then did. It is NOT proof the flow ran through the step, and the report says so in those
+words rather than calling it end-to-end (ISS-955: the summary used to read `N settled end-to-end`
+and each row `e2e`, which readers took for "the flow ran"). Marks are `fn:e2e` / `fn:unit` / `--`.
+
+The stronger reading — whether the annotated *statement* itself executed (`s`) — is measured on
+every run and printed as an advisory count, because moving the gate onto it re-opens every settled
+step at once and that is a decision about the gate. **Measured 2026-09-07 on a green 129-file
+integration suite: 0 of 7 reached steps fail the statement rule.** So the level is not what was
+wrong; `release/deploy`, the step that motivated ISS-955, has `fn=3 stmt=3` — the statement just
+below its annotation is the early return, which runs. Statement-level evidence would have caught
+nothing here.
+
+**Authoritative vs not.** A step reached only by unit tests is printed as `fn:unit` and does **not**
 count. With 974 `vi.mock` calls in `packages/core`, a unit test can execute a step's function with
 every neighbour stubbed out — that proves the function runs, not that the flow connects. Only
 sources marked `authoritative` in `.forge/conformance.json` (today: the integration suite) settle a

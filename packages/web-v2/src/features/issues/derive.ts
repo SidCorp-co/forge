@@ -9,7 +9,7 @@ import {
 	STATUS_KEY_TONE,
 	type StatusKey,
 } from "@/design/status";
-import { gateView } from "./waiting";
+import { gateView, pausedRunView } from "./waiting";
 import type {
 	CommentKind,
 	GroupBy,
@@ -227,15 +227,18 @@ export function statusToTone(status: IssueStatus): SemanticTone {
  * (`pipeline/state-machine.ts`): the lifecycle is permissive — any state may
  * branch to needs_info / on_hold / reopen / forward — the ONLY hard rules are
  * (1) `draft` is never a transition target and (2) a `draft` may only be
- * promoted to `open`, handed off direct-ship to `developed` (ISS-431 — work
- * done outside the pipeline enters at the review gate), or discarded to
- * `dropped` (`closed` is accepted too, for callers older than `dropped`).
+ * promoted to `open`, taken up in place at `in_progress` (ISS-940 — a session
+ * already building it says so without dispatching), handed off direct-ship to
+ * `developed` (ISS-431 — work done outside the pipeline enters at the review
+ * gate), or discarded to `dropped` (`closed` is accepted too, for callers
+ * older than `dropped`).
  * Filtering to this set stops the menu from offering picks that 409 and
  * silently snap back (ISS-308 E1).
  */
 // cm:edge lockstep -> packages/core/src/pipeline/state-machine.ts — this array is the second copy of DRAFT_EXIT_TARGETS, and core's refusal message now RENDERS that constant member by member, so a member missing here is a menu that hides a discard the server names to the user by that exact word. `dropped` was missing until 2026-08-27 (ISS-787), leaving `closed` the only discard the UI offered — the one that stamps merged_at and unblocks every dependent of work that never existed.
 export function allowedTransitions(from: IssueStatus): IssueStatus[] {
-	if (from === "draft") return ["open", "developed", "closed", "dropped"];
+	if (from === "draft")
+		return ["open", "in_progress", "developed", "closed", "dropped"];
 	return ISSUE_STATUSES.filter((s) => s !== from && s !== "draft");
 }
 
@@ -483,7 +486,7 @@ export function parseChecklist(
 	for (const raw of text.split("\n")) {
 		const line = raw.trim();
 		if (!line) continue;
-		if (/^#{1,6}\s/.test(line)) continue; // skip headings
+		if (/^#{1,6}\s/.test(line)) continue;
 		const task = line.match(/^[-*]\s*\[( |x|X)\]\s*(.+)$/);
 		if (task) {
 			items.push({
@@ -501,8 +504,6 @@ export function parseChecklist(
 	}
 	return items;
 }
-
-// ─── ISS-377: blocker banner · live-agent heartbeat · per-stage outcomes ─────
 
 /** Heartbeat staleness threshold. Mirrors core's sweeper
  *  `HEARTBEAT_TIMEOUT_MS_DEFAULT = 3*60_000` (`pipeline/sweeper.ts`, env
@@ -530,9 +531,9 @@ export type BlockerCtaKind =
 	| "approve"
 	| "provide-info"
 	| "resume"
+	| "resume-run"
 	| "open-blocker"
-	| "none"
-	| "reopen";
+	| "none";
 
 /** A blocking dependency endpoint, ready to render as a clickable ISS-x chip. */
 export interface BlockingRef {
@@ -551,6 +552,9 @@ export interface BlockerState {
 	reason: string;
 	whoMustAct: string;
 	cta: { label: string; kind: BlockerCtaKind };
+	/** The paused `pipeline_runs.id` the `resume-run` CTA acts on. Set only
+	 *  alongside that kind. */
+	runId?: string;
 	/** The actual question to answer, for `needs_info`. */
 	question?: string;
 	/** Open `blocks` issues this one is waiting on. */
@@ -585,7 +589,6 @@ export function openBlockingRefs(
 		}));
 }
 
-
 /**
  * Derive the single blocker verdict for an issue, or `null` when it is actively
  * progressing. Precedence (richest signal first): needs_info →
@@ -605,7 +608,21 @@ export function deriveBlockerState(
 ): BlockerState | null {
 	const blockingRefs = openBlockingRefs(deps);
 
-	// 1. needs_info — a human owes an answer.
+	// cm:guard ISS-853 — this arm is FIRST, above needs_info and both waiting kinds, and moving it down re-hides the pause: while a run is paused NOTHING dispatches whatever the issue's status says, so every arm below would show a CTA ("Approve", "Provide info") promising movement that cannot happen. The cost is named in the plan: an issue that is both `needs_info` and paused shows the pause, and the question stays in the comments below.
+	const paused = pausedRunView(pipelineHealth?.pausedRun);
+	if (paused) {
+		return {
+			tone: paused.needsAction ? "attention" : "info",
+			reason: paused.reason,
+			whoMustAct: paused.who,
+			cta: paused.needsAction
+				? { label: "Resume run", kind: "resume-run" }
+				: { label: "", kind: "none" },
+			...(paused.needsAction ? { runId: paused.runId } : {}),
+			...(blockingRefs.length ? { blockingRefs } : {}),
+		};
+	}
+
 	if (issue.status === "needs_info") {
 		return {
 			tone: "attention",
@@ -646,7 +663,6 @@ export function deriveBlockerState(
 		};
 	}
 
-	// 4. on_hold status — deliberately paused via the state machine.
 	if (issue.status === "on_hold") {
 		return {
 			tone: "attention",
@@ -686,7 +702,6 @@ export function deriveBlockerState(
 		};
 	}
 
-	// 6. Open `blocks` edge with no health signal — still blocked-by an open issue.
 	if (blockingRefs.length) {
 		return {
 			tone: "info",
@@ -789,7 +804,6 @@ export function deriveStageOutcomes(
 		}
 	}
 
-
 	// Duration + cost per stage, scoped to the MOST-RECENT run for that stage so a
 	// reopened issue (multiple runs of the same step) doesn't double-count. Within
 	// the chosen run, sum across attempts. ISS-377 review fix.
@@ -865,8 +879,6 @@ export function deriveStageOutcomes(
 	}
 	return cells;
 }
-
-// ─── ISS-376: session-group continuity (resumed / fresh) ────────────────────
 
 /** Known session-group keys → humanized labels. The label set is data-driven:
  *  any unknown key (a project may define its own groups) gets a Title-Case

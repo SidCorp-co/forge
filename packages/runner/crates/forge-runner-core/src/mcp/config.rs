@@ -28,6 +28,34 @@ pub fn write(
     job_id: &str,
     override_servers: Option<&Value>,
 ) -> Result<PathBuf> {
+    write_in(
+        &mcp_config_dir(),
+        core_url,
+        job_token,
+        project_slug,
+        job_id,
+        override_servers,
+    )
+}
+
+/// [`write`] with the directory named rather than resolved.
+///
+/// The seam exists for the tests. The file NAME is the property two of them
+/// assert — it is stable, derived from slug and job id, never a uuid — so it
+/// cannot be randomised to make a run independent of every other run on the
+/// box. Isolation has to come from the directory instead: with a single shared
+/// one, two `cargo test --workspace` runs write the same path and the loser
+/// panics on a file the winner already unlinked, which reads as a defect in the
+/// config writer rather than as two runs colliding (ISS-939).
+// cm:guard tests pass a directory of their own; production passes `mcp_config_dir()` and nothing else. A test that reaches this through `write` is back on the shared path and will fail somebody else's run instead of its own.
+fn write_in(
+    dir: &Path,
+    core_url: &str,
+    job_token: Option<&str>,
+    project_slug: &str,
+    job_id: &str,
+    override_servers: Option<&Value>,
+) -> Result<PathBuf> {
     let mcp_url = format!("{}/mcp", core_url.trim_end_matches('/'));
     let token = match job_token {
         Some(t) if !t.trim().is_empty() => Some(t.to_string()),
@@ -84,8 +112,7 @@ pub fn write(
     // config, skills-cache); the per-job MCP config lives beside them in `mcp/`,
     // never as a UUID in the shared `/tmp` root.
     // cm:guard one file per JOB, not per slug, and the unlink at completion is why. A shared per-slug path was safe only while the repo-root lock serialised same-project spawns through `runner.start`; ISS-920 released that lock earlier on purpose, so a sibling's completion would unlink the path this job is about to hand `claude` — read back as `agent_startup_failed: MCP config file not found`.
-    let dir = mcp_config_dir();
-    sweep_stale(&dir);
+    sweep_stale(dir);
     let path = dir.join(format!(
         "forge-mcp-{}-{}.json",
         sanitize_slug(project_slug),
@@ -284,6 +311,15 @@ mod tests {
         dir
     }
 
+    /// A config directory belonging to this process alone.
+    // cm:guard every test that writes a per-job config takes one of these and calls `write_in`. The path `write` resolves is `~/.config/forge-runner/mcp/`, shared by every run on the box AND by the operator's own daemon, so a test on it deletes a sibling run's file — measured 2026-09-06 as `write_uses_a_stable_named_path_not_a_uuid ... FAILED` under two concurrent `cargo test --workspace` runs, 311 passed serially (ISS-939). The pid is the isolation; the file name inside stays stable, which is the property these tests are for.
+    fn tmp_mcp_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("forge-mcp-cfg-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
     fn read_doc(repo: &Path) -> Value {
         let s = std::fs::read_to_string(repo.join(".mcp.json")).unwrap();
         serde_json::from_str(&s).unwrap()
@@ -308,7 +344,9 @@ mod tests {
     #[test]
     fn write_uses_a_stable_named_path_not_a_uuid() {
         let slug = "forge-test-stable-slug-xyz";
-        let p1 = write(
+        let dir = tmp_mcp_dir("stable");
+        let p1 = write_in(
+            &dir,
             "https://core.example",
             Some("forge_pat_dev_job"),
             slug,
@@ -316,7 +354,8 @@ mod tests {
             None,
         )
         .unwrap();
-        let p2 = write(
+        let p2 = write_in(
+            &dir,
             "https://core.example",
             Some("forge_pat_dev_job"),
             slug,
@@ -337,13 +376,61 @@ mod tests {
         let _ = std::fs::remove_file(&p1);
     }
 
+    /// The file name is stable and the directory is not, which is the whole of
+    /// ISS-939: two `cargo test --workspace` runs on one box must not resolve to
+    /// the same path, while the name inside each run stays derived from the slug
+    /// and job id rather than randomised.
+    // cm:guard assert BOTH halves in one test. Asserting only the stable name leaves a suite that passes while every run shares a path; asserting only that the paths differ would pass against the uuid naming this file exists to refuse.
+    #[test]
+    fn the_directory_isolates_runs_and_the_file_name_stays_stable() {
+        let one = tmp_mcp_dir("iso-one");
+        let two = tmp_mcp_dir("iso-two").join("second");
+        std::fs::create_dir_all(&two).unwrap();
+
+        let a = write_in(
+            &one,
+            "https://core.example",
+            Some("forge_pat_dev_job"),
+            "iso",
+            "job-a",
+            None,
+        )
+        .unwrap();
+        let b = write_in(
+            &two,
+            "https://core.example",
+            Some("forge_pat_dev_job"),
+            "iso",
+            "job-a",
+            None,
+        )
+        .unwrap();
+
+        assert_ne!(a, b, "two runs must not write the same path");
+        assert_eq!(a.file_name(), b.file_name());
+        assert_eq!(
+            a.file_name().unwrap().to_str().unwrap(),
+            "forge-mcp-iso-job-a.json"
+        );
+
+        std::fs::remove_file(&a).unwrap();
+        assert!(
+            b.exists(),
+            "one run's cleanup must not unlink another run's file"
+        );
+        let _ = std::fs::remove_dir_all(&one);
+        let _ = std::fs::remove_dir_all(&two);
+    }
+
     /// Two jobs on one project overlap inside `runner.start` since ISS-920, and
     /// each unlinks its config when it finishes. A shared path would let the
     /// first one home delete the file the second is about to hand `claude`.
     #[test]
     fn two_jobs_on_one_project_do_not_share_a_config_file() {
         let slug = "forge-test-two-jobs";
-        let a = write(
+        let dir = tmp_mcp_dir("two-jobs");
+        let a = write_in(
+            &dir,
             "https://core.example",
             Some("forge_pat_dev_job"),
             slug,
@@ -351,7 +438,8 @@ mod tests {
             None,
         )
         .unwrap();
-        let b = write(
+        let b = write_in(
+            &dir,
             "https://core.example",
             Some("forge_pat_dev_job"),
             slug,
@@ -377,7 +465,8 @@ mod tests {
             "chrome-devtools-mcp": true,
             "playwright": { "type": "stdio", "command": "npx" },
         });
-        let path = write(
+        let path = write_in(
+            &tmp_mcp_dir("skip-non-object"),
             "https://core.example",
             Some("forge_pat_dev_job"),
             "skip-non-object-slug",
@@ -396,7 +485,8 @@ mod tests {
     // cm:guard assert the header VALUE, not merely that a `forge` entry exists. The entry existed before this change too, carrying the device token; a presence-only test stays green against exactly the config `requirePat` now refuses.
     #[test]
     fn per_job_config_carries_the_job_token() {
-        let path = write(
+        let path = write_in(
+            &tmp_mcp_dir("job-token"),
             "https://core.example",
             Some("forge_pat_dev_thejobtoken"),
             "job-token-slug",
@@ -484,7 +574,8 @@ mod tests {
         // -- a box against an older core: no job token on the frame, the
         //    operator's PAT stands in. This is what lets core and the fleet
         //    upgrade in either order.
-        let path = write(
+        let path = write_in(
+            &tmp_mcp_dir("fallback"),
             "https://core.example",
             None,
             "fallback-slug",
@@ -501,7 +592,8 @@ mod tests {
 
         // -- a blank token is the shape a frame carries when core could not
         //    mint; treat it as absent, never write `Bearer `.
-        let path = write(
+        let path = write_in(
+            &tmp_mcp_dir("blank"),
             "https://core.example",
             Some("   "),
             "blank-slug",
@@ -530,7 +622,8 @@ mod tests {
         let overrides = serde_json::json!({
             "playwright": { "type": "stdio", "command": "npx" },
         });
-        let path = write(
+        let path = write_in(
+            &tmp_mcp_dir("no-cred"),
             "https://core.example",
             None,
             "no-cred-slug",

@@ -1,0 +1,168 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · gate-signal-honesty — a red separates the repo from the box</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --warn:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .warn { color:var(--warn); font-weight:600; }
+  .ok { color:var(--acc); font-weight:600; }
+  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
+  text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
+  text.m { font-size:11px; fill:var(--mut); }
+  text.t { font:600 12px ui-monospace,Menlo,monospace; }
+  .box { fill:#fff; stroke:var(--line); }
+  .repo { fill:#fdf0f3; stroke:#e3c2cb; }
+  .env { fill:#fdf6e8; stroke:#e6d3ac; }
+  .pass { fill:#eef6f1; stroke:#bcd9c8; }
+  .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
+</style>
+<main>
+
+<h1>gate-signal-honesty — a red separates the repo from the box</h1>
+<p class="sub">Every check in this repo answers one question: does the code obey the rule? It can
+answer it only when its tools are on disk and nothing else is using the resources it needs. This is
+the fork from a check's outcome to the <em>kind</em> of statement it is allowed to make. Owners:
+<code>scripts/lib/prerequisite.mjs</code> (what a gate needs before it may speak),
+<code>scripts/verify.mjs</code> (the five marks),
+<code>packages/core/tests/helpers/scratch-db.ts</code> (per-run database names),
+<code>packages/runner/crates/forge-runner-core/src/mcp/config.rs</code> (per-run config directory).</p>
+
+<div class="rule"><strong>A gate must distinguish “I ran and the code is wrong” from “I could not
+run”, and a failure must name which condition it represents.</strong> The two are answers to
+different questions — one about the repo, one about the machine — and a signal with no field for the
+difference hands the reader the wrong one in silence. The reader’s usual defence, <em>“a red that
+survives a serial re-run is real rather than contention”</em>, does not help: every failure on this
+page survives a serial re-run identically.</div>
+
+<h2>The fork</h2>
+<svg viewBox="0 0 900 470" role="img" aria-label="Flowchart from a check outcome to one of five marks, split into statements about the repo and statements about this machine">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/>
+    </marker>
+  </defs>
+
+  <rect class="box" x="330" y="16" width="240" height="52" rx="4"/>
+  <text class="t" x="344" y="38">a check is about to run</text>
+  <text class="m" x="344" y="56">verify.mjs · runCheck</text>
+
+  <path class="arrow" d="M450,68 L450,100"/>
+  <rect class="box" x="300" y="100" width="300" height="60" rx="4"/>
+  <text class="t" x="314" y="123">are its declared `needs:` on disk?</text>
+  <text class="m" x="314" y="142">resolved against the FILESYSTEM, before the spawn</text>
+
+  <path class="arrow" d="M300,130 L160,130 L160,196"/>
+  <text class="m" x="196" y="124">no</text>
+  <rect class="env" x="20" y="196" width="270" height="72" rx="4"/>
+  <text class="t" x="34" y="219">n/a — could not run</text>
+  <text class="m" x="34" y="238">names the prerequisite and its remedy</text>
+  <text class="m" x="34" y="256">exit 2 · asserts nothing about the repo</text>
+
+  <path class="arrow" d="M450,160 L450,196"/>
+  <text class="m" x="460" y="182">yes — spawn it</text>
+  <rect class="box" x="330" y="196" width="240" height="60" rx="4"/>
+  <text class="t" x="344" y="219">what did it exit with?</text>
+  <text class="m" x="344" y="238">0 · 1 · 2, plus its own file count</text>
+
+  <path class="arrow" d="M570,226 L700,226 L700,290"/>
+  <text class="m" x="606" y="220">2</text>
+  <rect class="env" x="610" y="290" width="270" height="72" rx="4"/>
+  <text class="t" x="624" y="313">n/a — the checker says so</text>
+  <text class="m" x="624" y="332">2 means “could not run” by convention</text>
+  <text class="m" x="624" y="350">its own output carries the reason</text>
+
+  <path class="arrow" d="M410,256 L410,290"/>
+  <text class="m" x="300" y="280">0, and it declared a skip</text>
+  <rect class="pass" x="300" y="290" width="230" height="52" rx="4"/>
+  <text class="t" x="314" y="313">skip — absent by design</text>
+  <text class="m" x="314" y="331">CI provably runs it · exit 0</text>
+
+  <path class="arrow" d="M490,256 L490,384"/>
+  <text class="m" x="500" y="300">0 or 1, with a file count</text>
+  <rect class="repo" x="300" y="384" width="290" height="66" rx="4"/>
+  <text class="t" x="314" y="407">ok · red · FAIL</text>
+  <text class="m" x="314" y="426">the only marks that are claims about the repo</text>
+  <text class="m" x="314" y="444">FAIL = ran, but no count to audit it by</text>
+
+  <rect class="env" x="20" y="384" width="250" height="66" rx="4"/>
+  <text class="t" x="34" y="407">statements about THIS BOX</text>
+  <text class="m" x="34" y="426">n/a and skip. A reader acting on one</text>
+  <text class="m" x="34" y="444">of these fixes their machine, not the code.</text>
+</svg>
+
+<h2>Where it went wrong, three times</h2>
+<p>All three are one defect: a fixed, unowned resource or an unstated prerequisite, reported in a
+signal with no field for the condition it represents.</p>
+<table>
+<thead><tr><th>Issue</th><th>The shared thing</th><th>What the failure said</th><th>What it meant</th></tr></thead>
+<tbody>
+<tr>
+  <td>ISS-938</td>
+  <td>an <em>unstated</em> prerequisite: <code>archmap</code>, <code>tsc</code>, <code>biome</code>, <code>vitest</code></td>
+  <td class="bad">FAIL R7 the relations gate can resolve the graph it claims to cover · conformance: claims “hardened” and does not meet it</td>
+  <td>no <code>node_modules</code>. Nine checks affected, not the two the report named.</td>
+</tr>
+<tr>
+  <td>ISS-937</td>
+  <td>one fixed template database, <code>forge_test_tpl</code>, dropped and recreated per run</td>
+  <td class="bad">template database "forge_test_tpl" does not exist</td>
+  <td>another run on this box entered global setup at the same moment.</td>
+</tr>
+<tr>
+  <td>ISS-939</td>
+  <td>one fixed MCP config path in the shared <code>~/.config/forge-runner/mcp/</code></td>
+  <td class="bad">write_uses_a_stable_named_path_not_a_uuid … FAILED</td>
+  <td>a second <code>cargo test --workspace</code> unlinked the file first.</td>
+</tr>
+</tbody>
+</table>
+
+<h2>The two shapes of the fix</h2>
+<div class="rule">
+<p><strong>Name the condition, or remove the sharing.</strong> Which one applies depends on whether
+the contention can be designed away.</p>
+<ul>
+<li><b>ISS-938 — name it.</b> The prerequisite genuinely is absent, and no amount of design makes
+<code>tsc</code> appear. So the gate says which prerequisite, and which command installs it, and
+still exits <span class="warn">2</span>: an unrun gate is no evidence, and no-evidence is never
+forwarded as a pass. <em>Nothing here goes green that did not go green before.</em></li>
+<li><b>ISS-937 and ISS-939 — remove it.</b> Nothing needs a fixed name for a mutable resource. The
+template becomes <code>forge_test_tpl_&lt;stamp&gt;_&lt;rand&gt;</code>, the per-job config moves
+into a directory the process owns, and the collision has nowhere left to happen. Both keep a
+condition-naming message for what remains: <code>db.ts</code> says <em>this is an ENVIRONMENT
+condition, not a failure of the code under test</em> when a clone still fails, and
+<code>container.ts</code> says it when no docker daemon answers.</li>
+</ul>
+</div>
+
+<h2>What has to stay true</h2>
+<table>
+<thead><tr><th>Rule</th><th>Because</th></tr></thead>
+<tbody>
+<tr><td>Prerequisites resolve against the <b>filesystem</b>, never against a tool's output text.</td>
+    <td>A missing binary and a genuinely broken import both print <code>Cannot find module</code>. Classifying by message turns a real defect into “could not run” — this bug inverted, and worse, because it goes <span class="ok">green</span>.</td></tr>
+<tr><td>Preflight runs <b>before</b> the spawn.</td>
+    <td>A checker without its tool produces a sentence about its own subject — <code>archmap: scope matched no files</code> — and once that sentence exists nothing downstream can unsay it.</td></tr>
+<tr><td><code>n/a</code> exits 2, exactly as <code>FAIL</code> does.</td>
+    <td>The change is what the reader is told, never what the gate lets through. A softer exit code would make this an amnesty rather than a correction.</td></tr>
+<tr><td>An unmeasurable axis is <b>not</b> level 0.</td>
+    <td>Level 0 means “no checker exists”, a measured fact about the repo. Returning it for an absent binary reported three axes as having lost their gates.</td></tr>
+<tr><td>A run drops only the databases it created; the rest leave <b>by age</b>.</td>
+    <td>A reaper that cannot date a database can only reap by prefix, and reaping by prefix is dropping whatever another run is using — ISS-937 again, committed by its own fix. Postgres refusing a plain <code>DROP</code> on a database with sessions is the second defence behind the age cutoff.</td></tr>
+<tr><td>The MCP config <b>file name</b> stays stable; only its directory varies.</td>
+    <td>Two tests exist to assert the name is derived from slug and job id rather than randomised. Randomising it to dodge the collision would delete the property under test.</td></tr>
+</tbody>
+</table>
+
+</main>

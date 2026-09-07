@@ -11,17 +11,21 @@
 //      covered by another root script. `--ci-parity` proves it.
 //   2. Fail-closed — a checker that scanned zero files exits 2, never 0. A
 //      green report from a check that never ran is worse than no check at all.
+//   2b. One proposition per verdict — "the rule holds", "the rule is broken"
+//      and "I could not run" are three answers; see `MARKS` in lib/verify-report.mjs.
 //   3. Report everything — no early exit, so one fix cycle instead of six.
 //   4. Advisory — `cm impact` on changed files: the pull-side replacement for
 //      the PreToolUse hook that used to push guards into an agent's context.
 //
-// Modes: (none) full run · --ci-parity only the parity proof · --no-advisory
+// Modes: (none) full · --ci-parity the parity proof · --no-advisory
 // Exit: 0 clean · 1 violations · 2 a check could not run.
 
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { absentPrerequisites, blockedAside, remedyLines } from './lib/prerequisite.mjs';
+import { markFor, tally, tallyLine } from './lib/verify-report.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CI_PATH = join(ROOT, '.github', 'workflows', 'ci.yml');
@@ -58,6 +62,7 @@ const CHECKS = [
     // cm:edge naming -> scripts/check-test-reachability.mjs — parses that script's success line
     cmd: ['node', 'scripts/check-test-reachability.mjs'],
     scanned: /^test-reachability: (\d+) tracked test file/m,
+    needs: ['deps'],
     unit: 'test files',
   },
   {
@@ -123,12 +128,14 @@ const CHECKS = [
     label: 'archmap',
     cmd: ['./.forge/archmap/archmap', 'check'],
     scanned: /archmap · (\d+) files/,
+    needs: ['deps'],
   },
   {
     axis: 'form',
     label: 'core lint',
     cmd: ['pnpm', '--filter', '@forge/core', 'lint'],
     scanned: /Checked (\d+)/,
+    needs: ['deps'],
   },
   {
     axis: 'form',
@@ -136,6 +143,7 @@ const CHECKS = [
     cmd: ['node', 'scripts/check-lint-budget.mjs', '--all'],
     // cm:edge naming -> scripts/check-lint-budget.mjs — parses that script's success line
     scanned: /^lint-budget: (\d+) file/m,
+    needs: ['deps'],
   },
   {
     axis: 'form',
@@ -143,6 +151,7 @@ const CHECKS = [
     cmd: ['node', 'scripts/check-size-budget.mjs', '--all'],
     // cm:edge naming -> scripts/check-size-budget.mjs — parses that script's success line
     scanned: /^size-budget: (\d+) file/m,
+    needs: ['deps'],
   },
   // cm:guard the checkers in `scripts/` hold every other axis and were themselves held by nothing — no lint, no typecheck, because `turbo run lint` only fans out to workspace packages and this directory is in none. Measured 2026-08-25 the day it got a config: 21 diagnostics, one of them a real `useIterableCallbackReturn`. Fixed rather than frozen, so this check has no baseline and none is wanted.
   {
@@ -151,6 +160,7 @@ const CHECKS = [
     // cm:edge lockstep -> scripts/biome.json — that file is the config biome resolves for this directory; `root: false` is what stops it leaking into the package configs
     cmd: ['pnpm', 'exec', 'biome', 'check', 'scripts'],
     scanned: /^Checked (\d+) files/m,
+    needs: ['deps'],
   },
   {
     axis: 'form',
@@ -158,6 +168,7 @@ const CHECKS = [
     // cm:why `tsc --noEmit` alone prints NOTHING on success, so a tsconfig whose include matched no file is indistinguishable from a clean compile — --extendedDiagnostics is here only for its `Files:` count, and CI's plain `typecheck` script stays a subset of this
     cmd: ['pnpm', '--filter', '@forge/core', 'exec', 'tsc', '--noEmit', '--extendedDiagnostics'],
     scanned: /^Files:\s+(\d+)/m,
+    needs: ['deps', 'observability-build'],
   },
   // cm:guard this check exists because `pnpm verify` was 13/13 green while the `runner` job in ci.yml was red: 0.7.6 shipped with an unformatted file, which failed runner-ci AND runner-release, so no GitHub Release was cut and the install channel had nothing to serve (2026-08-18). CI_COVERAGE had declared the hole honestly the whole time — a declared hole is still a hole.
   // cm:edge lockstep -> scripts/check-runner-gates.mjs — that script runs the four cargo commands; its own edge points back at the ci.yml step they mirror
@@ -246,13 +257,24 @@ function assertEveryCheckProvesScan() {
 }
 
 // cm:guard one copy of the verdict rules — a second inside the spawn callback gets a fail-closed rule fixed on one path only, and the report cannot tell the two apart
+// cm:guard `condition` and `code` are two INDEPENDENT fields and must stay so. `code` is how bad it is; `condition` is what kind of statement it is. Collapsing them is the whole defect: exit 2 already meant "could not run" while the row printed FAIL and the text asserted a rule the repo breaks, so the process status and the words a human reads disagreed about which axis they were on (ISS-938).
 function verdict(check, status, out) {
-  if (status === 2) return { ...check, code: 2, out, why: 'checker reported it could not run' };
+  // cm:guard a child's exit 2 is that child SAYING it could not run — every checker in this repo documents 2 that way. Read it as the child's own claim about its condition, never re-judged here against its output: the checker knows why it could not run and this script does not.
+  if (status === 2) {
+    return {
+      ...check,
+      code: 2,
+      condition: 'blocked',
+      out,
+      why: 'could not run — the checker says so; its reason is below',
+    };
+  }
 
   if (check.skipIf?.test(out)) {
     return {
       ...check,
       code: status ?? 0,
+      condition: 'skipped',
       out,
       note: 'skipped — prerequisite absent locally, CI runs it',
     };
@@ -270,12 +292,25 @@ function verdict(check, status, out) {
   return { ...check, code: status ?? 1, out };
 }
 
+// cm:guard preflight BEFORE the spawn, and never after. A checker run without its tool produces a message about its own subject — `biome output in packages/core was not JSON`, `archmap: scope matched no files` — which reads as a defect in the thing being measured. Once that sentence exists nothing downstream can unsay it, so the only place to catch an absent prerequisite is before the process that would misattribute it starts.
 function runCheck(check, base) {
+  const missing = absentPrerequisites(ROOT, check.needs);
+  if (missing.length > 0) {
+    return Promise.resolve({
+      ...check,
+      code: 2,
+      condition: 'blocked',
+      missing,
+      why: blockedAside(missing),
+    });
+  }
+
   const cmd = check.cmd.map((a) => (a === '@@MERGE_BASE@@' ? base : a));
   if (cmd.includes('@@MERGE_BASE@@') || (check.scopeMayBeEmpty && base === null)) {
     return Promise.resolve({
       ...check,
       code: 2,
+      condition: 'blocked',
       why: 'origin/main not available — cannot scope the diff',
     });
   }
@@ -290,7 +325,13 @@ function runCheck(check, base) {
       out += d;
     });
     child.on('error', (err) =>
-      done({ ...check, code: 2, out, why: `could not spawn: ${err.message}` }),
+      done({
+        ...check,
+        code: 2,
+        condition: 'blocked',
+        out,
+        why: `could not spawn: ${err.message}`,
+      }),
     );
     child.on('close', (status) => done(verdict(check, status, out)));
   });
@@ -461,11 +502,27 @@ function reportNotRunHere() {
 // cm:guard keep to gates a local run can actually reproduce — a step needing a CI-only secret prints advice nobody can take, and unusable advice is how the usable lines stop being read
 const RUN_ELSEWHERE_HINT = ['test:integration', 'web-v2', '@forge/core test', '@forge/core build'];
 
+// cm:guard a blocked gate is NOT green. It exits 2 exactly as a fail-closed FAIL does, because an unrun gate is no evidence and this script refuses to forward no-evidence as a pass. What changes is only the sentence a reader gets — the verdict is unmoved, so nothing here is an amnesty.
+function reportBlocked(results) {
+  const blocked = results.filter((r) => r.condition === 'blocked');
+  if (blocked.length === 0) return;
+  const remedies = [...new Set(blocked.flatMap((r) => remedyLines(r.missing ?? [])))];
+  console.log(
+    `\n  ${blocked.length} check(s) could not run. This is a report about THIS CHECKOUT,\n` +
+      '  not a verdict on the repo — no rule below was measured, so none of them is\n' +
+      '  claimed broken. Exit 2 all the same: a gate that did not run is not a pass.',
+  );
+  for (const line of remedies) console.log(`    ${line}`);
+  if (remedies.length === 0) {
+    console.log('    each names its own reason in its output below');
+  }
+}
+
 function report(results, adv, parity) {
   const width = Math.max(...results.map((r) => r.label.length), 18);
   console.log('');
   for (const r of results) {
-    const mark = r.code === 0 ? 'ok  ' : r.code === 2 ? 'FAIL' : 'red ';
+    const mark = markFor(r);
     const files = r.files === undefined ? '' : `${r.files} ${r.unit ?? 'files'}`;
     const aside = r.why ?? r.note;
     console.log(
@@ -473,9 +530,11 @@ function report(results, adv, parity) {
     );
   }
   console.log(`  ${parity === 0 ? 'ok  ' : 'FAIL'}  ${'meta'.padEnd(10)} ci-parity`);
+  console.log(`\n  ${tallyLine(tally([...results, { code: parity }]))}`);
+  reportBlocked(results);
   reportNotRunHere();
 
-  const failed = results.filter((r) => r.code !== 0);
+  const failed = results.filter((r) => r.code !== 0 && r.out !== undefined);
   for (const r of failed) {
     console.error(`\n${'─'.repeat(72)}\n${r.axis} · ${r.label}\n`);
     console.error((r.out ?? '').trimEnd());
