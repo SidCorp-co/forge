@@ -65,7 +65,8 @@ flowchart TD
   R2 -->|no| R3{"RULE 3 - any other<br/>caller still on a token?"}
 
   R3 -->|"token_id rows · skills.skill_md<br/>· runner orientation text"| REFUSE2["REFUSE BY NAME<br/>name the caller, never widen a filter"]
-  R3 -->|"cannot be measured<br/>from a box"| STOP2["STOP - do not estimate.<br/>ISS-946"]
+  R3 -->|"an agent cannot read<br/>the counts itself"| ASK["ASK A HUMAN<br/>GET /api/admin/mcp-audit/tools<br/>admin-only - counts are cross-project.<br/>STOP: never estimate"]
+  ASK --> R3
   R3 -->|"zero, and measured"| TWIN{"does the replacement route<br/>accept a forge_pat_*?"}
 
   TWIN -->|no| REFUSE3["REFUSE BY NAME<br/>the /api/skill-facts shape:<br/>a twin behind the wrong middleware<br/>is not a replacement"]
@@ -141,12 +142,20 @@ workspace's orientation. Every agent on every box is told to call it by name, in
 ships. <span class="bad">Grep the runner's bundled prose as well as the tables.</span></p>
 
 <div class="rule">
-<b>Rule 3 cannot be finished from a runner box.</b> It needs whole-table
-<code>mcp_audit_log</code> counts, and the only route over that table is
-<code>GET /api/pat/:id/audit</code> — one token, last-N rows — with <code>/api/pat</code> off
-<code>PAT_ALLOWED_PREFIXES</code> by design. An agent session that reaches this node stops and does
-not estimate. <code>ISS-946</code> decides whether the fence grows a read-only aggregate or the
-rule stops being written against a number no agent can read.
+<b>Rule 3 is answerable, and not by the agent that needs it — the rule is two-party by design.</b>
+<code>GET /api/admin/mcp-audit/tools</code> (<code>ISS-946</code>) returns the whole-table
+per-tool counts: <code>deviceCalls</code>, <code>tokenCalls</code>, <code>unattributedCalls</code>,
+<code>notFoundCalls</code>, <code>totalCalls</code>, <code>firstSeen</code>,
+<code>lastSeen</code>, spelling normalised, registry FULL OUTER joined so a never-called tool
+comes back at zero. It sits behind <code>requireAdmin</code> because a tool's callers span every
+project on the instance, which resolves no project for the PAT fence to bite on — the
+<code>/api/me/ops-health</code> shape. So an agent on a box gathers the <em>refusals</em> (rules 1
+and 2, both static and both greppable there) and a human runs this route for the
+<em>clearance</em>. <span class="bad">A project-scoped twin is refused by name, not merely
+unbuilt</span>: a tool idle in this project and busy in the next would read <em>clear</em>, which
+is the <code>7f0c5a56</code> substitution again. And the route returns <code>oldestRow</code>, so
+whether these are lifetime counts is something you read rather than assume — it starts reading ~90
+days back the day <code>enforceMcpAuditRetention</code> is wired.
 </div>
 
 <h2>What refuses, and what must never happen instead</h2>

@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { adminAggregateRoutes } from './admin/aggregate-routes.js';
 import { adminAlertRoutes } from './admin/alert-routes.js';
+import { adminMcpAuditRoutes } from './admin/mcp-audit-routes.js';
 import { pipelineHealthAdminRoutes } from './admin/pipeline-health-routes.js';
 import { adminRoutes } from './admin/routes.js';
 import { adminThresholdRoutes } from './admin/thresholds-routes.js';
@@ -296,9 +297,7 @@ app.route('/api', patRoutes);
 // ISS-314 — OAuth/OIDC (GitHub + Google + generic OIDC). Internally gated
 // by `socialAuth` feature flag; safe to mount unconditionally.
 app.route('/api/auth', oauthRoutes);
-// projectHealthRoutes mounts /health (static) and must register before
-// projectRoutes which has GET /:id with a z.uuid() validator that would
-// 400-reject the literal "health" segment.
+// cm:guard mount projectHealthRoutes BEFORE projectRoutes — the latter's `GET /:id` carries a `z.uuid()` validator that 400-rejects the literal "health" segment, so the wrong order turns this route into a validation error rather than a 404 anyone would notice
 app.route('/api/projects', projectHealthRoutes);
 app.route('/api/projects', opsHealthProjectRoutes);
 app.route('/api/me', opsHealthMeRoutes);
@@ -391,6 +390,7 @@ app.route('/api/projects', pipelineRunProjectRoutes);
 app.route('/api/admin', adminRoutes);
 app.route('/api/admin', adminAggregateRoutes);
 app.route('/api/admin', adminAlertRoutes);
+app.route('/api/admin', adminMcpAuditRoutes);
 app.route('/api/admin', adminThresholdRoutes);
 app.route('/api/admin/pipeline', pipelineHealthAdminRoutes);
 app.route('/api/devices', devicePublicRoutes);

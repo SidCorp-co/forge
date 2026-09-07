@@ -178,10 +178,11 @@ So rule 3 is not one input among three; **it is the only one that can settle the
 `mcp_audit_log` is the only place that holds it. `mcp/server.ts` stamps `tool: request.params.name`
 on every `tools/call` before dispatch — including calls to names it does not recognise, which land
 as `not_found` rows — so a passthrough call is recorded exactly like a wrapped one. That is the
-evidence rules 1 and 2 cannot supply, and it is the evidence no agent session can read
-(`ISS-946`). Which makes `ISS-946` the wave's precondition rather than a convenience: until it is
-answered, no tool reachable through `forge call` can be *proven* safe to delete from a runner box,
-whatever the greps say.
+evidence rules 1 and 2 cannot supply. It was, until `ISS-946`, evidence no surface exposed at all;
+`GET /api/admin/mcp-audit/tools` now answers it, and the section below says why that route is
+admin-only and what it therefore costs. No tool reachable through `forge call` is *proven* safe to
+delete on greps alone, whatever they say — the clearance comes off that route or the deletion does
+not happen.
 
 **What `ISS-931` did change is the credential the replacement must accept.** The old rule asked for
 a route that accepts a *device token*. Every caller that returns holds a `forge_pat_*` instead, so
@@ -237,15 +238,40 @@ it was. The shrink this page describes is a sequence of deletions, so the pinnin
 survive it, and a deletion is the caller-visible change an insertion was written to avoid. Say so in
 the commit that takes one out, and treat a caller that pins by index as already broken.
 
-**The count is only readable with direct database access.** There is no aggregate route over
-`mcp_audit_log` — the one route that reads the table at all is `GET /api/pat/:id/audit`, per-token
-and last-N rows, and `/api/pat` is off `PAT_ALLOWED_PREFIXES` for the reason the fence section of
-[data-plane-surface.md](data-plane-surface.md) gives. So an agent session on a runner box cannot
-satisfy rule 3 of the deletion rule and must not delete on an estimate. Rule 2 it CAN satisfy — the
-installed plugin artifact is on the box and greppable — and that is the half that caught
-`forge_memory.search`, `forge_projects.get` and `forge_projects.list`, all three of which the
-"free to go" row had held. Whether the fence should grow a read-only aggregate, or the rule should
-stop being written against a number no agent can read, is `ISS-946`.
+**The count is readable, and not by the agent that needs it. `GET /api/admin/mcp-audit/tools`
+answers rule 3, behind `requireAdmin`, and that is `ISS-946`'s answer.** It returns one row per
+tool — `deviceCalls`, `tokenCalls`, `unattributedCalls`, `notFoundCalls`, `totalCalls`,
+`firstSeen`, `lastSeen` — over the whole table with no date filter, spelling normalised on both
+sides, and the registry FULL OUTER joined to the aggregate so a never-called tool comes back at
+zero and a *called but unregistered* name comes back too. It carries no request bodies, no ips and
+no payload digests: the deletion rule needs counts, and nothing here is shaped to answer any other
+question.
+
+**`ISS-946` offered three roads and the fence closed the one that would have been convenient.** A
+cross-project aggregate inside `PAT_ALLOWED_PREFIXES` was not rejected as risky, it is excluded by
+what the fence *is*: `pat-rest-surface.ts` admits a prefix only when the route resolves a project
+for the scope to bite on, and a tool's callers span every project on the instance. That is the
+`/api/me/ops-health` shape exactly. **And a project-scoped twin is worse than no route at all** —
+a tool at zero calls in this project and four hundred in the next would read CLEAR, which is not a
+smaller version of the evidence but the `7f0c5a56` substitution with a fresh coat on it. It is
+refused by name here so nobody builds it as a courtesy later.
+
+**So the rule is two-party from here, and that is the price `ISS-946` paid rather than a shortfall
+it left.** An agent on a runner box gathers the *refusals* — rules 1 and 2, the static half, which
+is what caught `forge_memory.search`, `forge_projects.get` and `forge_projects.list`, all three of
+which the "free to go" row had held. It cannot gather the *clearance*, and it must still not
+delete on an estimate. A human with admin runs this route and puts the numbers on the issue, where
+the next reader can check them; what changed is that the number is now reproducible from a named
+route instead of requiring a psql session and a hand-written query nobody reviewed. The third
+option `ISS-946` listed — gate deletions on something an agent *can* read — stays closed for the
+reason the section above gives: `forge call <tool>` makes static evidence insufficient for every
+tool, so there is nothing greppable to promote into a clearance.
+
+`enforceMcpAuditRetention` is still unwired, so these are lifetime counts — and the route does not
+merely assert that. It returns `oldestRow`, the oldest row in the table, so a reader sees the
+window instead of trusting this paragraph. Wire the pruner and that field starts reading ~90 days
+back, which is the signal that this page's rule 1 and the "whole table" clause both need rewriting
+in that same commit.
 
 ## Who delivers the target
 
@@ -256,7 +282,7 @@ stop being written against a number no agent can read, is `ISS-946`.
 | the runner stops handing sessions a device token | `ISS-931` here | merged 2026-09-06T19:09Z (`4e85fb69`, an ancestor of `main`), tracker row still `open` — `requirePat` on `/mcp` + the job token in `mcp/config.rs`; needs a `runner-v*` release before a box stops writing the device token |
 | the waves themselves, and the record of the ones already run | `ISS-894` here | unblocked — every `blocks` edge on it is merged. Wave 4 reads the deletion rule above, and what it waits on is the fleet-upgrade row, not an issue |
 | the boundary is written down | `ISS-926` here | closed, merged 2026-09-06T07:46Z |
-| the rule becomes evaluable by the thing that runs it | `ISS-946` here | open — no surface aggregates `mcp_audit_log`, so rule 3 above is unreachable from a box |
+| the rule becomes evaluable at all | `ISS-946` here | answered — `GET /api/admin/mcp-audit/tools` aggregates the whole table. NOT by the thing that runs it: the counts are cross-project, so the route is admin-only and the rule is two-party by design, not by omission |
 
 A dependency edge does not cross projects, so `ISS-508`'s ordering lived in both bodies as prose;
 it is discharged, and so is `ISS-931`'s edge. What the remaining deletions wait on is no longer an

@@ -11,6 +11,39 @@
 
 ### Added
 
+- **The MCP deletion rule was written against per-tool call counts nothing could read, and now
+  there is a route that returns them — deliberately not one an agent can call.**
+  `docs/architecture/agent-surface.md` gates every tool deletion on whole-table `mcp_audit_log`
+  counts, and the only route over that table was `GET /api/pat/:id/audit`: one token, last-N rows,
+  behind a prefix that is off `PAT_ALLOWED_PREFIXES` by design. So the rule's own instruction —
+  *"must not delete on an estimate"* — could not be satisfied by anything short of a psql session
+  and a hand-written query nobody reviewed. `GET /api/admin/mcp-audit/tools` now answers it:
+  `deviceCalls`, `tokenCalls`, `unattributedCalls`, `notFoundCalls`, `totalCalls`, `firstSeen` and
+  `lastSeen` per tool, whole table, no date filter, no request bodies or ips.
+
+  Three things about the query are the finding rather than the plumbing, and each is a defect this
+  rule has already shipped. The split is on `device_id` / `token_id` and **never** `user_id`, which
+  is stamped `device.ownerId` for a device caller and so reads 100% user for every tool — the
+  reading `7f0c5a56` deleted six live tools on. The spelling is normalised on both sides, because
+  agents send the underscore form their MCP client shows them and a query for the dotted name finds
+  none of those rows. And the registry is **FULL OUTER** joined to the aggregate: a tool nothing has
+  ever called has no row at all, so an inner join drops exactly the tools the rule is hunting, while
+  a name that was called but is not registered has no registry row and is itself a finding. All
+  three go red under a real Postgres when reverted.
+
+  **It is admin-only, and that is the decision rather than a shortfall.** A per-tool count spans
+  every project on the instance, so the route resolves no project for the PAT fence to bite on —
+  the `/api/me/ops-health` shape, which `PAT_ALLOWED_PREFIXES` exists to keep out. A project-scoped
+  twin is refused by name: a tool idle in one project and busy in the next would read *clear*, which
+  is not a smaller version of the evidence but the same substitution in a new coat. So the rule is
+  two-party from here — an agent on a box gathers the refusals, which are static and greppable
+  there, and a human with admin runs this route for the clearance. `/api/admin` and `/api/pat` are
+  now held off the allowlist by an assertion instead of by prose.
+
+  The counts are lifetime counts only while `enforceMcpAuditRetention` stays unwired, and the route
+  does not merely claim so: it returns `oldestRow`, so a reader sees the window rather than trusting
+  a paragraph. (ISS-946)
+
 - **A status now says only WHERE the work is, and three row fields answer what exists.** Four runs
   on 2026-09-06 reached one identical real state — implemented, gates run, branch pushed, PR open,
   nothing merged — and recorded four different statuses (`developed`, `draft`, `waiting`,
