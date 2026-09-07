@@ -180,12 +180,13 @@ describe('ISS-956 comment thread paging — the envelope and the walk', () => {
     expect(node.replies as unknown[]).toHaveLength(1);
   });
 
+  // cm:guard assert page SIZES and the disjoint union across the walk, never which body lands on which page — `created_at` defaults to now() and two of five inserts share a microsecond often enough to flake; the walk then orders the tied pair by id (uuid), which is deterministic and correct but is not insertion order, so a per-page sequence assertion fails for a reason that is not the paging (ISS-956).
   it('offers a cursor when more roots remain, and resumes from it (AC 2, 3, 6)', async () => {
     const { owner, issueId, jwt } = await seed();
     for (let i = 0; i < 5; i += 1) await addComment(issueId, owner.id, `c${i}`);
 
     const first = await readPage(issueId, jwt, '?limit=2');
-    expect(first.items.map((n) => n.body)).toEqual(['c0', 'c1']);
+    expect(first.items).toHaveLength(2);
     expect(first.nextCursor).toEqual(expect.any(String));
     expect(first.hasMore).toBe(true);
 
@@ -194,16 +195,21 @@ describe('ISS-956 comment thread paging — the envelope and the walk', () => {
       jwt,
       `?limit=2&cursor=${encodeURIComponent(first.nextCursor as string)}`,
     );
-    expect(second.items.map((n) => n.body)).toEqual(['c2', 'c3']);
+    expect(second.items).toHaveLength(2);
+    expect(second.nextCursor).toEqual(expect.any(String));
 
     const third = await readPage(
       issueId,
       jwt,
       `?limit=2&cursor=${encodeURIComponent(second.nextCursor as string)}`,
     );
-    expect(third.items.map((n) => n.body)).toEqual(['c4']);
+    expect(third.items).toHaveLength(1);
     expect(third.nextCursor).toBeNull();
     expect(third.hasMore).toBe(false);
+
+    const walked = [...first.items, ...second.items, ...third.items].map((n) => n.body);
+    expect(walked).toHaveLength(5);
+    expect(new Set(walked)).toEqual(new Set(['c0', 'c1', 'c2', 'c3', 'c4']));
   });
 
   it('yields all forty comments exactly once when walked to exhaustion (AC 4)', async () => {

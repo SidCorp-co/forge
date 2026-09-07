@@ -33,6 +33,7 @@ let harness: TestDatabase;
 let app: Hono<AppVars>;
 let projectId: string;
 let issueId: string;
+let userId: string;
 let token: string;
 let resetPatBuckets: () => void;
 
@@ -52,6 +53,7 @@ beforeAll(async () => {
 
   await truncateAll(harness.db);
   const user = await createTestUser(harness.db);
+  userId = user.id;
   await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
   const org = await seedOrg(harness.db, user.id);
   const project = await createTestProject(harness.db, user.id, { orgId: org.id });
@@ -75,14 +77,14 @@ afterAll(async () => {
   await harness.cleanup();
 });
 
-const auth = () => ({ authorization: `Bearer ${token}` });
+const auth = (t = token) => ({ authorization: `Bearer ${t}` });
 
-const read = () => app.request(`/api/projects/${projectId}/issues`, { headers: auth() });
+const read = (t = token) => app.request(`/api/projects/${projectId}/issues`, { headers: auth(t) });
 
-const write = () =>
+const write = (t = token) =>
   app.request(`/api/issues/${issueId}`, {
     method: 'PATCH',
-    headers: { ...auth(), 'content-type': 'application/json' },
+    headers: { ...auth(t), 'content-type': 'application/json' },
     body: JSON.stringify({ priority: 'low' }),
   });
 
@@ -181,18 +183,20 @@ describe('a wave of sessions on one token', () => {
    * 66 requests while reporting 600.
    */
   // cm:guard this asserts an EXACT decrement, not "at most a few". A tolerance is what let nine charges look like one for as long as nobody read `X-RateLimit-Remaining`, and the number is the property: one request, one charge.
+  // cm:guard exact decrements demand a bucket no other test can charge, so this mints its OWN PAT — buckets are keyed by PAT, and the module token's buckets still carry in-flight charges from the wave tests above that resetPatBuckets() cannot cancel, which read back here as phantom decrements (off-by-two under the full suite, green in isolation).
   it('charges the bucket exactly once per request, however many routers gate the path', async () => {
-    resetPatBuckets();
+    const { mintPat } = await import('../../src/auth/pat.js');
+    const solo = (await mintPat({ userId, name: 'exact-charge-probe' })).plaintext;
     const { RULES } = await import('../../src/config/rate-limits.js');
 
-    const first = await read();
+    const first = await read(solo);
     expect(Number(first.headers.get('X-RateLimit-Remaining'))).toBe(RULES.patRead.max - 1);
-    const second = await read();
+    const second = await read(solo);
     expect(Number(second.headers.get('X-RateLimit-Remaining'))).toBe(RULES.patRead.max - 2);
 
-    const firstWrite = await write();
+    const firstWrite = await write(solo);
     expect(Number(firstWrite.headers.get('X-RateLimit-Remaining'))).toBe(RULES.patWrite.max - 1);
-    const secondWrite = await write();
+    const secondWrite = await write(solo);
     expect(Number(secondWrite.headers.get('X-RateLimit-Remaining'))).toBe(RULES.patWrite.max - 2);
   });
 
