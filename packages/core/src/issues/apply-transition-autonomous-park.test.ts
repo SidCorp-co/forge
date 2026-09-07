@@ -173,7 +173,23 @@ describe('every other transition is untouched', () => {
   });
 
   // cm:guard the resolver must stay behind the cheap `isRewritablePark` status test — it runs on EVERY transition from every surface, and moving the project read in front of that test adds a query to every status write in the product for the two targets that can use it
-  it('reads no project row for a target that is neither `reopen` nor `waiting`', async () => {
+  it('reads no project row at all under the orchestrator skip, where neither the park resolver nor the criteria resolver can matter', async () => {
+    queueUpdate('in_progress');
+
+    await transitionIssueStatus(
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'open', reopenCount: 0 },
+      'in_progress',
+      { type: 'user', id: ACTOR_ID },
+      { skip: true },
+    );
+
+    expect(dbSelect).not.toHaveBeenCalled();
+    expect(updateSet.mock.calls[0]?.[0]?.reopenCount).toBe(issues.reopenCount);
+  });
+
+  // cm:guard ONE project read, not two: an actor-chosen transition to a target the park resolver ignores still owes the ISS-959 criteria read, and that read is the whole cost this rule adds. A second read here would mean the park resolver stopped short-circuiting.
+  it('reads the project exactly once for an actor-chosen target the park resolver ignores', async () => {
+    projectRow(null);
     queueUpdate('in_progress');
 
     await transitionIssueStatus(
@@ -182,8 +198,7 @@ describe('every other transition is untouched', () => {
       { type: 'user', id: ACTOR_ID },
     );
 
-    expect(dbSelect).not.toHaveBeenCalled();
-    expect(updateSet.mock.calls[0]?.[0]?.reopenCount).toBe(issues.reopenCount);
+    expect(dbSelect).toHaveBeenCalledTimes(1);
   });
 });
 

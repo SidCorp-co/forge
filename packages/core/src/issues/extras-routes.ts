@@ -84,6 +84,7 @@ const BATCH_SKIP_BY_CODE = {
   STALE_TRANSITION: 'stale',
   NO_WORK_EVIDENCE: 'no_work_evidence',
   RELEASE_RECORD_REQUIRED: 'release_record_required',
+  ENTRY_CRITERIA_UNMET: 'entry_criteria_unmet',
 } as const satisfies Record<TransitionErrorCode, string>;
 
 type BatchSkipReason = 'forbidden' | 'not_found' | (typeof BATCH_SKIP_BY_CODE)[TransitionErrorCode];
@@ -98,11 +99,7 @@ type BatchResult = {
   failed: Array<{ id: string; error: string }>;
 };
 
-// PATCH /api/issues/batch — partial-success batch update across N issues.
-// Each field uses the per-issue mutation path (transition / plain patch) so
-// activity + WS semantics match the single-issue routes.
-// Inaccessible or invalid rows land in `skipped`; one failure does not abort
-// the rest. Registered before `/:id` so `/batch` matches ahead of the UUID.
+// cm:guard ordering -> this route must stay registered ahead of `/:id`, whose param is a uuid — `/batch` is not one, so a later registration makes every batch call a 400 on the id validator instead of reaching here
 issueExtrasRoutes.patch(
   '/batch',
   zValidator('json', batchPatchBodySchema, (r) => {

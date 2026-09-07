@@ -121,6 +121,18 @@ writers), <code>packages/core/src/issues/merge-marker.ts</code> (the deliberate 
   <li><b>An under-count is silent too, and it is what ISS-791 measured.</b> Nothing is lying:
       the record is made, the API is truthful, and the work is simply not counted. The only signal
       is a person noticing that a project they shipped reads as having shipped nothing.</li>
+  <li><b>The claim now records WHICH commit it was made at (ISS-959).</b>
+      <code>issues.merged_commit_sha</code> is written by the same conditional
+      <code>UPDATE ... WHERE merged_at IS NULL</code> that sets the timestamp, so the two are one
+      stamp: a repeat mark that finds the timestamp already set changes neither column, and the sha
+      on the row therefore always belongs to the call that actually stamped it — never to a later
+      corrected note. A caller that sends no <code>commit</code> gets the sha off the recorded
+      implementation handoff (<code>collectWorkEvidence().handoffCommitSha</code>), which is the only
+      commit core can know: core has no checkout, so this is a RECORDED claim and not a verified
+      ancestor. <code>unmark</code> clears both columns together, because a retracted mark that kept
+      its commit would claim a landing the retraction withdrew. The two automatic writers
+      (<code>markMergedIfLeavingBase</code>, <code>markMergedOnClose</code>) know no commit and
+      leave it null, which is the old shape and stays legal.</li>
   <li><b>An agent cannot make the claim on evidence it does not have.</b>
       <code>applyMergeMarker</code> runs <code>pipeline/work-evidence.ts</code> when the actor's
       agency is <code>agent</code>: no branch, no commit and no code handoff is a refusal, and a
@@ -145,7 +157,7 @@ writers), <code>packages/core/src/issues/merge-marker.ts</code> (the deliberate 
     <td>nothing the tracker can see</td></tr>
 <tr><td>Claim it: Mark merged on the issue's Properties rail, or <code>forge_issues action=mark</code>, or <code>POST /api/issues/:id/merge</code></td>
     <td><code>features/issues/components/merge-marker-control.tsx</code> → <code>issues/merge-routes.ts</code> → <code>applyMergeMarker</code></td>
-    <td><code>merged_at</code> in its own transaction, an audit comment naming the target, an <code>issueUpdated</code> hook</td></tr>
+    <td><code>merged_at</code> AND <code>merged_commit_sha</code> in one transaction, an audit comment naming the target and the commit, an <code>issueUpdated</code> hook carrying both fields</td></tr>
 <tr><td>Every issue blocked on this one is released</td><td><code>jobs/queued-gates.ts</code></td>
     <td>dependents become dispatchable</td></tr>
 <tr><td>Close the issue</td><td>any surface</td>
@@ -153,7 +165,7 @@ writers), <code>packages/core/src/issues/merge-marker.ts</code> (the deliberate 
 <tr><td>It counts</td><td><code>issues/progress.ts</code></td>
     <td><span class="ok">shipped</span>, with no pipeline status ever having been entered</td></tr>
 <tr><td>It was wrong</td><td>Unmark, or <code>DELETE /api/issues/:id/merge</code></td>
-    <td><code>merged_at</code> cleared, dependents re-blocked, a second audit comment — the claim is reversible in full</td></tr>
+    <td><code>merged_at</code> and <code>merged_commit_sha</code> cleared together, dependents re-blocked, a second audit comment — the claim is reversible in full</td></tr>
 </tbody>
 </table>
 

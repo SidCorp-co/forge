@@ -9,9 +9,7 @@ vi.mock('../config/env.js', () => ({
 
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
-// ISS-64 — `triggerTerminalDispatch` reads dependents via
-// `db.select(...).from(issueDependencies).innerJoin(issues, ...).where(...)`.
-// The where step resolves to an array of dependent rows.
+// cm:why the dependents stub is awaitable at the `where` step rather than at a `limit`: `triggerTerminalDispatch` resolves its join there, so a `limit`-shaped stub would answer a promise nothing awaits
 const dependentsAwait = vi.fn(
   async () =>
     [] as Array<
@@ -30,9 +28,6 @@ const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn((_values: Record<string, unknown>) => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
-// ISS-196 — `withActorContext` calls `tx.execute(SELECT set_config(...))`
-// before the UPDATE. Stub `tx.execute` so it does not throw under the
-// in-memory db mock.
 const txExecute = vi.fn(async () => undefined);
 
 vi.mock('../db/client.js', () => {
@@ -430,6 +425,8 @@ describe('POST /api/issues/:id/transition — draft as a target (ISS-787)', () =
   it('blames the status race, not a phantom run, when the conditional UPDATE loses', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'open' });
+    // cm:why an empty `agentConfig` here is the ISS-959 criteria read declaring NOTHING — a row with criteria on it would refuse this transition for a reason this suite is not about
+    selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]);
     selectLimit.mockResolvedValueOnce([{ n: 0 }]);
     selectLimit.mockResolvedValueOnce([{ n: 0 }]);
     updateReturning.mockResolvedValueOnce([]);
