@@ -5,6 +5,8 @@ import {
   SKILL_FACT_TIERS,
 } from '@forge/contracts';
 import { describe, expect, it } from 'vitest';
+import type { JobType } from '../../db/schema.js';
+import { stepHandoffSchema } from '../../memory/step-handoff-schema.js';
 import {
   FORGE_FACTS,
   getFact,
@@ -133,8 +135,27 @@ describe('forge facts registry', () => {
   it('handoff fact renders the per-stage payload keys', () => {
     expect(renderFact('handoff', { stage: 'plan' })).toContain('planSummary');
     expect(renderFact('handoff', { stage: 'review' })).toContain('verdict');
-    // Unknown/absent stage degrades to the generic instruction.
     expect(renderFact('handoff', { stage: 'pm' })).toContain('forge_step_handoff.write');
+  });
+
+  // cm:guard read the expectation off `stepHandoffSchema` and NEVER off a second copy of the key list — a literal spelled here too would make this pass while the prompt and the schema disagree, which is the whole failure it exists to catch. A `z.literal` field is one the write refuses to default, so a stage whose rendered text omits it briefs the agent into a 400; both discriminator fields were missing from all eight lists until ISS-953.
+  it('every stage names the payload fields its schema branch will not default', () => {
+    const branches = stepHandoffSchema.options as ReadonlyArray<{
+      shape: Record<string, { def: { type: string; values?: readonly unknown[] } }>;
+    }>;
+    expect(branches.length).toBeGreaterThan(0);
+
+    for (const branch of branches) {
+      const literals = Object.entries(branch.shape).filter(([, f]) => f.def.type === 'literal');
+      const stage = branch.shape.step?.def.values?.[0] as JobType;
+      expect(stage, 'each branch is keyed on a step literal').toBeTruthy();
+      expect(literals.length, `${stage} has literal-keyed fields`).toBeGreaterThan(1);
+
+      const text = renderFact('handoff', { stage }) ?? '';
+      for (const [field] of literals) {
+        expect(text, `${stage} handoff text must name \`${field}\``).toContain(field);
+      }
+    }
   });
 
   it('relations fact states the real kinds and warns off invented names', () => {
