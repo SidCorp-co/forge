@@ -1362,6 +1362,34 @@
 
 ### Fixed
 
+- **A `waitingKind` is now refused on every target that cannot store it, instead of being accepted
+  and nulled.** `POST /api/issues/:id/transition` and `forge_issues action=transition` advertise
+  `waitingKind` for any `toStatus`, but the write stores it only for `toStatus === 'waiting'` and
+  `transition-reason.ts`'s `needs_info` heading ignores the argument it is handed. So a kind sent
+  with any other target reached no reader anywhere: not the row, not the comment, not the health
+  surface — and the call reported success, leaving a caller unable to tell a stored park from a
+  dropped one. Measured on 2026-09-07 across sixteen `needs_info` parks made in one pass, each
+  carrying `waitingKind: "needs_decision"`; every write succeeded and not one kind survived.
+
+  It now throws `WAITING_KIND_NOT_APPLICABLE` (422 on REST, `waiting_kind_not_applicable` as a
+  batch skip reason), keyed on the **requested** status and placed outside the
+  `requiresAuthoredReason` block. Both placements are load-bearing: an agent's `waiting` stays legal
+  on an autonomous project, where the park rewrite lands the row on `needs_info` and the kind still
+  reaches the reason comment's heading, while `in_progress` — a target that demands no reason at
+  all — was the commonest silent drop and a check nested in that block would have passed it
+  straight through. The driver's own fact text and the lifecycle guide now name the refusal by
+  code, so an agent is not told one thing and refused another.
+
+  Scope note, because this issue was filed claiming more: a park's `reason` was never lost.
+  `postTransitionReasonComment` posts it as a comment inside the same transaction as the status
+  write, and `REASON_REQUIRED_STATUSES` makes it mandatory for `reopen`, `waiting` and
+  `needs_info`. Nor is an edge's `reason` discarded — `issue_dependencies.reason` stores it and
+  `GET /api/issues/:id/dependencies` returns it; the agent-facing relations digest omits it
+  deliberately, because that payload is inlined into an agent's context without the untrusted-data
+  framing `serialize()` applies. The original report mistook the absence of a field on the issue
+  *document* for the absence of the value.
+
+
 - **A `decomposes` edge no longer waives the work-evidence gate in silence.**
   `pipeline/work-evidence.ts#hasChildIssues` read exactly one dependency kind — `decomposes` — and
   a single live edge made `findMissingWorkEvidence` return `null`, which is the whole of ISS-786's

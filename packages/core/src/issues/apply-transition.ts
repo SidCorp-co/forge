@@ -63,7 +63,8 @@ export type TransitionErrorCode =
   | 'WAITING_KIND_REQUIRED'
   | 'STALE_TRANSITION'
   | 'NO_WORK_EVIDENCE'
-  | 'RELEASE_RECORD_REQUIRED';
+  | 'RELEASE_RECORD_REQUIRED'
+  | 'WAITING_KIND_NOT_APPLICABLE';
 
 /**
  * Typed transition failure. `message` keeps the legacy `CODE: detail` shape
@@ -311,6 +312,17 @@ export async function transitionIssueStatus(
     }
   }
 
+  // cm:guard refuse a `waitingKind` this write cannot keep instead of accepting it: the UPDATE below stores the kind only for `toStatus === 'waiting'` and `HEADINGS.needs_info` ignores the argument it is handed, so a kind sent with any other target reached no reader anywhere and was nulled in silence. Measured on 16 `needs_info` parks, 2026-09-07 (ISS-965).
+  // cm:guard keyed on the REQUESTED status and placed OUTSIDE the `requiresAuthoredReason` block below, both deliberately: an agent's `waiting` must stay legal on an autonomous project, where the rewrite lands the row on `needs_info` and the kind still reaches the reason comment's heading, while a target that demands no reason at all (`in_progress`) is the commonest silent drop and a check nested in that block would pass it straight through.
+  // cm:edge contract -> packages/core/src/prompt/facts/registry.ts — the driver's own fact text names this refusal by code, and `guides/registry.ts` repeats it; widen or drop the rule here and an agent is told one thing and refused another, with nothing type-checking the pair
+  if (options.waitingKind && requestedStatus !== 'waiting') {
+    throw new TransitionError(
+      'WAITING_KIND_NOT_APPLICABLE',
+      `\`waitingKind\` is stored only for a \`waiting\` park, and \`${requestedStatus}\` cannot hold it. Say what the issue is waiting for in \`reason\` instead — that is posted as a comment before the status flips and is kept.`,
+      { from: fromStatus, to: requestedStatus, waitingKind: options.waitingKind },
+    );
+  }
+
   // cm:guard the reason is posted BEFORE the status write, and a failed post must reject the whole transition — a park that commits without its reason is the unexplained park every guard deleted with the reopen cap tried to detect afterwards
   // cm:guard `skip: true` is exempt ON PURPOSE — it marks a transition the system made rather than one an actor chose (the park rewrites), and each of those paths posts its own comment; requiring a second one would double-comment, and refusing the write would freeze the cascade mid-flight
   if (requiresAuthoredReason(fromStatus, requestedStatus) && options.skip !== true) {
@@ -398,11 +410,7 @@ export async function transitionIssueStatus(
 
   if (txResult?.stampedOnClose && !held) {
     try {
-      // ISS-786 child B, requirement 5 — name whether any code evidence
-      // exists so a false unblock (ISS-75/76/77/78 shape) becomes visible
-      // instead of silent. Best-effort: a read failure here must not change
-      // the comment into a false-negative claim, so it falls back to the
-      // evidence-exists text (unmark is still the correct remedy either way).
+      // cm:why the `.catch(() => true)` fails toward EVIDENCE-EXISTS deliberately: the other branch of this comment asserts "no branch, commit or code handoff is recorded for this issue", and a reader acts on that by unmarking, so a transient read failure must never be allowed to author that claim. `unmark` remains the correct remedy under either wording, which is why the safe direction is the one that says less (ISS-786 child B requirement 5, against the ISS-75/76/77/78 false-unblock shape).
       const evidenceFound = await collectWorkEvidence(issue.id)
         .then(hasCodeEvidence)
         .catch(() => true);
