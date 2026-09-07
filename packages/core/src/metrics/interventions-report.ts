@@ -4,9 +4,9 @@
  * ISS-944 — this lived inside the `/api/pipeline/interventions` handler, which
  * is a cross-project fan-out and therefore off `PAT_ALLOWED_PREFIXES`, so the
  * one metric the project calls its north star had no shape any token could
- * reach. Moved here so the fan-out, the project-scoped twin in `routes.ts` and
- * `forge_metrics.project_interventions` all answer from one query and one
- * rollup.
+ * reach. Moved here so the fan-out and the project-scoped twin in `routes.ts`
+ * answer from one query and one rollup rather than two copies of the
+ * bucketing.
  *
  * Reads the `issue_intervention_events` view: one row per intervention-class
  * event — `wedge` (pipeline_wedge notifications), `manual_<action>` (C0's
