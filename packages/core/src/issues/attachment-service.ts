@@ -325,21 +325,6 @@ export async function persistDecodedIssueAttachments(
   return { persisted, errors };
 }
 
-/**
- * Convenience: validate + persist in one call. Use when the parent row is
- * already committed (e.g. MCP forge_issues create which inserts the issue
- * row before processing attachments).
- */
-export async function persistIssueAttachmentsFromBase64(
-  issueId: string,
-  items: readonly Base64AttachmentInput[],
-  uploaderId: string,
-  uploaderAgency: ActorAgency,
-): Promise<{ persisted: PersistedIssueAttachment[]; errors: AttachmentErrorEntry[] }> {
-  const decoded = decodeAndValidateAttachments(items);
-  return persistDecodedIssueAttachments(issueId, decoded, uploaderId, uploaderAgency);
-}
-
 /** Metadata view of an issue attachment (no bytes). Mirrors the comment
  * `CommentAttachmentLite` shape so MCP serializers render both uniformly. */
 export interface IssueAttachmentLite {

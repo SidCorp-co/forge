@@ -88,8 +88,8 @@ functions, and the type resolution lives inside those rather than at any entranc
 
   <rect class="box" x="610" y="30" width="270" height="66" rx="4"/>
   <text class="t" x="620" y="50">resolveAttachmentMime</text>
-  <text class="m" x="620" y="68">bytes FIRST, name second; then</text>
-  <text class="m" x="620" y="84">narrowed to the target's own set</text>
+  <text class="m" x="620" y="68">a CLAIM binds, a guess does not;</text>
+  <text class="m" x="620" y="84">a text type must carry text</text>
   <path class="arrow" d="M550,140 C580,140 590,80 608,68"/>
 
   <rect class="exit" x="610" y="118" width="270" height="58" rx="4"/>
@@ -137,7 +137,7 @@ functions, and the type resolution lives inside those rather than at any entranc
     <td><code>details.allowed</code> or <code>details.existing</code>.</td>
     <td class="ok">Nothing — no ticket row, no bytes sent.</td></tr>
 <tr><td><code>resolveAttachmentMime</code></td>
-    <td><code>not-allowed</code>: binary bytes under a type the set does not hold. <code>not-text</code>: a text-format type (<code>text/*</code>, <code>image/svg+xml</code>) whose bytes are not UTF-8 text.</td>
+    <td><code>not-allowed</code>: a type the client CLAIMED that the target's set does not hold, whatever the bytes are; or binary bytes under a guessed type it does not hold. <code>not-text</code>: a text-format type (<code>text/*</code>, <code>image/svg+xml</code>) whose bytes are binary. Binary means a control byte no text carries, anywhere in the file — <em>not</em> a failed UTF-8 decode, so a Windows-1252 CSV and a BOM-marked UTF-16 <code>.txt</code> still land.</td>
     <td><code>details.allowed = {mimes[], extensions[]}</code> — the whole set, so a client prints it instead of keeping a copy that goes stale.</td>
     <td class="ok">Nothing — the check runs before <code>storage.put</code>.</td></tr>
 <tr><td><code>findIssueAttachmentByName</code> / <code>findCommentAttachmentByName</code></td>
@@ -171,10 +171,15 @@ atomicity and name identity shipped together (ISS-957 + ISS-963).
 
 <h2>Where a reader gets this wrong</h2>
 <ul>
-  <li><b>The type is not read from the extension.</b> A file of plain text named <code>photo.png</code>
-      is stored <code>text/plain</code>, not <code>image/png</code>. The extension only chooses
-      <em>among the types the bytes already allow</em>. <code>image/svg+xml</code> survives a text
-      sniff because SVG <em>is</em> XML source; no other image, video or office type does.</li>
+  <li><b>A claim binds; a guess does not.</b> A file of plain text named <code>photo.png</code> is
+      stored <code>image/png</code> — the name asks for a type the target allows, and retyping a
+      believed declaration would be a silent substitution. What the bytes rescue is the
+      <em>guess</em>: <code>report.log</code>, <code>schema.sql</code> and every unmapped extension
+      guess <code>text/plain</code>, and text bytes make that guess stand even when the guessed type
+      is one the target refuses. <code>application/octet-stream</code> counts as no declaration at
+      all, because the multipart routes write it themselves for every <code>.log</code> a person
+      drags in. <code>image/svg+xml</code> survives a text sniff because SVG <em>is</em> XML source;
+      no other image, video or office type does.</li>
   <li><b>The symmetric half bites too.</b> A <code>notes.txt</code> whose bytes are binary used to be
       stored as <code>text/plain</code> and is now refused <code>not-text</code>. That is a removal,
       not an addition.</li>

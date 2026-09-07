@@ -165,3 +165,84 @@ describe('project-scoped metrics a token can reach', () => {
     },
   );
 });
+
+// cm:guard the interventions half, and it is asserted against the REAL view rather than a shape: `issue_intervention_events` unions four sources and the rollup buckets on the `manual_` PREFIX, so a seed of one wedge and one `manual_inject` is what distinguishes a working bucket from a route that merely answers. The stranger's row is the fence — the failure being guarded is one project's north-star number carrying another project's flips (ISS-944).
+describe('GET /api/projects/:id/metrics/interventions', () => {
+  async function seedInterventions(owner: { id: string }, projectId: string) {
+    const issueId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
+      VALUES (${issueId}, ${projectId}, 2, 'intervention fixture', 'open', ${owner.id})`);
+    await harness.db.execute(sql`
+      INSERT INTO notifications (id, user_id, project_id, issue_id, type, title)
+      VALUES (${randomUUID()}, ${owner.id}, ${projectId}, ${issueId}, 'pipeline_wedge',
+              'run wedged')`);
+    const runId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
+      VALUES (${runId}, ${projectId}, ${issueId}, 'issue', 'completed', now())`);
+    const jobId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, payload,
+                        created_by, queued_at)
+      VALUES (${jobId}, ${projectId}, ${issueId}, ${runId}, 'code', 'done', '{}'::jsonb,
+              ${owner.id}, now())`);
+    await harness.db.execute(sql`
+      INSERT INTO job_events (id, job_id, seq, kind, data, ts)
+      VALUES (${randomUUID()}, ${jobId}, 1, 'intervention',
+              '{"action":"inject","reason":"a person reached in"}'::jsonb, now())`);
+    return issueId;
+  }
+
+  it('serves a member the rollup, bucketed, and never another project rows', async () => {
+    const mine = await seedProjectWithOneStep('code');
+    const theirs = await seedProjectWithOneStep('review');
+    const myIssue = await seedInterventions(mine.owner, mine.project.id);
+    await seedInterventions(theirs.owner, theirs.project.id);
+
+    const res = await app.request(
+      `/api/projects/${mine.project.id}/metrics/interventions?days=30`,
+      { headers: { authorization: `Bearer ${mine.token}` } },
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      total: number;
+      byIssue: Array<{
+        issueId: string;
+        projectId: string;
+        wedges: number;
+        manualJobActions: number;
+        total: number;
+      }>;
+      events: Array<{ source: string; projectId: string }>;
+    };
+    expect(body.total).toBe(2);
+    expect(body.byIssue).toHaveLength(1);
+    expect(body.byIssue[0]).toMatchObject({
+      issueId: myIssue,
+      projectId: mine.project.id,
+      wedges: 1,
+      manualJobActions: 1,
+      total: 2,
+    });
+    expect(body.events.map((e) => e.source).sort()).toEqual(['manual_inject', 'wedge']);
+    expect(body.events.every((e) => e.projectId === mine.project.id)).toBe(true);
+  });
+
+  it('refuses a caller who is not a member', async () => {
+    const mine = await seedProjectWithOneStep('code');
+    await seedInterventions(mine.owner, mine.project.id);
+    const stranger = await createTestUser(harness.db);
+    await harness.db.execute(
+      sql`UPDATE users SET email_verified_at = now() WHERE id = ${stranger.id}`,
+    );
+
+    const res = await app.request(
+      `/api/projects/${mine.project.id}/metrics/interventions?days=30`,
+      { headers: { authorization: `Bearer ${await signUserToken(stranger.id)}` } },
+    );
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain('manual_inject');
+  });
+});

@@ -7,6 +7,7 @@ import { db } from '../db/client.js';
 import { activityLog, issues, jobTypes } from '../db/schema.js';
 import { effectiveProjectRole, loadVisibleProjectIds } from '../lib/authz.js';
 import { utcDayText } from '../lib/time-buckets.js';
+import { buildInterventionsReport } from '../metrics/interventions-report.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { driverComparison } from './driver-comparison.js';
 
@@ -222,18 +223,6 @@ pipelineAnalyticsRoutes.get(
 );
 
 /**
- * ISS-452 (ISS-442 C6 / I7 amendment 1) — queryable interventions metric.
- * Reads the `issue_intervention_events` view: one row per intervention-class
- * event — `wedge` (pipeline_wedge notifications), `manual_<action>` (C0's
- * audited job_events.kind='intervention', labelled by the row's own action
- * since migration 0181), `user_run_flip` (C1 kernel_transitions, entity='run',
- * actor_type='user') and `direct_sql` (ISS-884: a terminal flip on a job or run
- * that no `applyKernelTransition` transaction produced, i.e. written by hand).
- * Returns the per-issue rollup plus the raw events so interventions per issue
- * closed is chartable. `issueId: null` groups the project-scoped events
- * (pm/system runs).
- */
-/**
  * ISS-826 — retry failures that a later attempt rescued, reconstructed from
  * the durable `retry_rescues` view. Grouping by the original failure reason
  * makes repeated eventually-green failures observable as one operational signal.
@@ -292,69 +281,7 @@ pipelineAnalyticsRoutes.get(
     const userId = c.get('userId');
 
     const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
-    if (projectIds.length === 0) return c.json({ total: 0, byIssue: [], events: [] });
-
-    const rows = await db.execute(sql`
-      SELECT source, project_id, issue_id, occurred_at, detail
-      FROM issue_intervention_events
-      WHERE project_id IN ${projectIds}
-        AND occurred_at >= now() - (${days}::int * interval '1 day')
-      ORDER BY occurred_at DESC
-      LIMIT 2000
-    `);
-
-    // cm:edge contract -> packages/core/drizzle/migrations/0217_unaudited_transition_detector.sql — the view is what decides these strings, and `manual_` is a PREFIX with the action appended, not a fixed value. This union read `'manual_cancel'` until ISS-884 while 0181 had been emitting `manual_resume` / `manual_answer` / `manual_inject` for months, and the rollup below charted every one of them as a run flip.
-    type Row = {
-      source: 'wedge' | `manual_${string}` | 'user_run_flip' | 'direct_sql';
-      project_id: string;
-      issue_id: string | null;
-      occurred_at: string;
-      detail: string | null;
-    };
-    const events = (rows as unknown as Row[]).map((r) => ({
-      source: r.source,
-      projectId: r.project_id,
-      issueId: r.issue_id,
-      occurredAt: r.occurred_at,
-      detail: r.detail,
-    }));
-
-    const byIssueMap = new Map<
-      string,
-      {
-        issueId: string | null;
-        projectId: string;
-        wedges: number;
-        manualJobActions: number;
-        userRunFlips: number;
-        directSql: number;
-        total: number;
-        lastAt: string;
-      }
-    >();
-    for (const e of events) {
-      const key = `${e.projectId}:${e.issueId ?? ''}`;
-      const agg = byIssueMap.get(key) ?? {
-        issueId: e.issueId,
-        projectId: e.projectId,
-        wedges: 0,
-        manualJobActions: 0,
-        userRunFlips: 0,
-        directSql: 0,
-        total: 0,
-        lastAt: e.occurredAt,
-      };
-      if (e.source === 'wedge') agg.wedges++;
-      else if (e.source.startsWith('manual_')) agg.manualJobActions++;
-      else if (e.source === 'direct_sql') agg.directSql++;
-      else agg.userRunFlips++;
-      agg.total++;
-      if (e.occurredAt > agg.lastAt) agg.lastAt = e.occurredAt;
-      byIssueMap.set(key, agg);
-    }
-    const byIssue = [...byIssueMap.values()].sort((a, b) => b.total - a.total);
-
-    return c.json({ total: events.length, byIssue, events });
+    return c.json(await buildInterventionsReport(projectIds, days));
   },
 );
 
