@@ -12,9 +12,13 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import { cn } from "@/lib/utils/cn";
+import {
+  CODE_BLOCK_CLASS,
+  CODE_INLINE_CLASS,
+  COMPACT_TAG_CLASS as T,
+  LINK_CLASS,
+} from "./body-tags";
 import { MermaidDiagram } from "./mermaid";
-
-const LINK_CLASS = "text-[color:var(--link)] underline underline-offset-2 hover:opacity-80";
 
 /** A relative link to another doc page (not scheme:/protocol-relative/absolute/
  *  anchor). Covers slug links (`pair-a-runner`) and legacy `.md` links. */
@@ -37,7 +41,6 @@ function resolveDocPath(baseFile: string, href: string): string {
   return out.join("/");
 }
 
-// Shared renderers — identical across variants (external link / image mapping).
 function renderExternalLink(href: string | undefined, children: ReactNode) {
   return (
     <a
@@ -72,7 +75,7 @@ const imgRenderer: Components["img"] = ({ src, alt }) => (
   <img
     src={typeof src === "string" ? coreFileUrl(src) : undefined}
     alt={alt ?? ""}
-    className="my-3 max-w-full rounded-md border border-line"
+    className={T.img}
   />
 );
 
@@ -98,31 +101,26 @@ function makeCodeRenderer(blockClass: string, inlineClass: string): Components["
 // COMPACT — dense styling for inline embeds (issue descriptions, comments,
 // plans). Small body, flattened heading scale.
 const compactComponents: Components = {
-  h1: ({ children }) => <h1 className="fg-h3 mt-4 mb-2 first:mt-0">{children}</h1>,
-  h2: ({ children }) => <h2 className="fg-h3 mt-4 mb-2 first:mt-0">{children}</h2>,
-  h3: ({ children }) => <h3 className="fg-label mt-3 mb-1.5 first:mt-0">{children}</h3>,
-  p: ({ children }) => <p className="fg-body-sm my-2 leading-relaxed first:mt-0 last:mb-0">{children}</p>,
+  h1: ({ children }) => <h1 className={T.h1}>{children}</h1>,
+  h2: ({ children }) => <h2 className={T.h2}>{children}</h2>,
+  h3: ({ children }) => <h3 className={T.h3}>{children}</h3>,
+  p: ({ children }) => <p className={T.p}>{children}</p>,
   a: linkRenderer,
-  ul: ({ children }) => <ul className="fg-body-sm my-2 list-disc space-y-1 pl-5">{children}</ul>,
-  ol: ({ children }) => <ol className="fg-body-sm my-2 list-decimal space-y-1 pl-5">{children}</ol>,
-  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-  blockquote: ({ children }) => (
-    <blockquote className="my-2 border-l-2 border-line-strong pl-3 text-muted">{children}</blockquote>
-  ),
-  code: makeCodeRenderer(
-    "block overflow-x-auto rounded-md bg-sunken p-3 font-mono text-[12.5px] text-fg",
-    "rounded-sm bg-sunken px-1 py-0.5 font-mono text-[12.5px] text-fg",
-  ),
-  pre: ({ children }) => <pre className="my-2 overflow-x-auto">{children}</pre>,
+  ul: ({ children }) => <ul className={T.ul}>{children}</ul>,
+  ol: ({ children }) => <ol className={T.ol}>{children}</ol>,
+  li: ({ children }) => <li className={T.li}>{children}</li>,
+  blockquote: ({ children }) => <blockquote className={T.blockquote}>{children}</blockquote>,
+  code: makeCodeRenderer(CODE_BLOCK_CLASS, CODE_INLINE_CLASS),
+  pre: ({ children }) => <pre className={T.pre}>{children}</pre>,
   img: imgRenderer,
   table: ({ children }) => (
     <div className="my-2 overflow-x-auto">
-      <table className="w-full border-collapse text-left text-[12.5px]">{children}</table>
+      <table className={T.table}>{children}</table>
     </div>
   ),
-  th: ({ children }) => <th className="border-b border-line px-2 py-1 font-mono text-muted">{children}</th>,
-  td: ({ children }) => <td className="border-b border-line-subtle px-2 py-1 text-fg">{children}</td>,
-  hr: () => <hr className="my-3 border-line" />,
+  th: ({ children }) => <th className={T.th}>{children}</th>,
+  td: ({ children }) => <td className={T.td}>{children}</td>,
+  hr: () => <hr className={T.hr} />,
 };
 
 // PROSE — long-form reading styling for the Docs viewer. Real heading

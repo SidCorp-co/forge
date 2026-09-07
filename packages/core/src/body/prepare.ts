@@ -16,7 +16,7 @@
 import { BodyInvalidError } from './errors.js';
 import type { BodyFormat } from './formats.js';
 import { serializeBody } from './normalize.js';
-import { parseBody } from './parse.js';
+import { type BodyNode, parseBody } from './parse.js';
 import { bodyToText, validateBody } from './validate.js';
 
 export interface PreparedBody {
@@ -120,6 +120,25 @@ function readsAsHtml(body: string, format: string | null | undefined): boolean {
   if (format === 'html') return true;
   if (format) return false;
   return body.trimStart().startsWith('<forge-');
+}
+
+/**
+ * The node tree of a STORED body, for the web renderer. Never throws.
+ *
+ * `parseBody` alone, deliberately without `validateBody`: the bytes in the
+ * column were validated on the way in, and a row written against an OLDER
+ * registry must still reach the screen. A component this build no longer
+ * declares arrives as an ordinary element and web draws its generic card —
+ * which is the whole of ISS-967 gap 6, with no second name list anywhere.
+ */
+// cm:guard never let this throw, for `bodyText`'s reason and one more: this feeds the ISSUE DETAIL screen, so a row the scanner cannot read must degrade to `null` and let the caller fall back to the raw bytes, never take the screen down with it
+export function bodyNodes(body: string, format: string | null | undefined): BodyNode[] | null {
+  if (!readsAsHtml(body, format)) return null;
+  try {
+    return parseBody(body);
+  } catch {
+    return null;
+  }
 }
 
 /** Parsed slots of a STORED body, for the MCP read surface. Never throws. */

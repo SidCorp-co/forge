@@ -321,49 +321,6 @@ const SPECS: ComponentSpec[] = [
   proseBlock('forge-files'),
 ];
 
-/**
- * The component set as one text block, for the `body-components` Forge Fact
- * (`prompt/facts/registry.ts`) that every stage prompt carries.
- *
- * Derived from `SPECS` rather than written beside it: a fact that repeats the
- * registry in prose is the drift ISS-968 exists to remove, and the one property
- * that makes it worth having is that adding a component here reaches every
- * agent with no prompt edit.
- */
-// cm:guard derive every line from `SPECS` — a hand-written example here is a second copy of the registry, and the moment it disagrees the agent writes markup the kernel refuses with a 400 it cannot diagnose from the prompt it was given
-export function describeComponents(): string {
-  const roots = SPECS.filter((s) => s.root).map(describeSpec);
-  const children = SPECS.filter((s) => !s.root).map(describeSpec);
-  return [`Roots — ${roots.join(' · ')}`, `Slots — ${children.join(' · ')}`].join('\n');
-}
-
-function describeSpec(spec: ComponentSpec): string {
-  const attrs = describeAttrs(spec.attrs);
-  const slots = spec.slots
-    .map((s) => `${s.component}${s.repeat ? '*' : ''}${s.required ? '!' : ''}`)
-    .join(' ');
-  const parts = [attrs && `[${attrs}]`, slots && `{${slots}}`].filter(Boolean);
-  return parts.length > 0 ? `${spec.name} ${parts.join(' ')}` : spec.name;
-}
-
-function describeAttrs(schema: z.ZodType): string {
-  const shape = schema instanceof z.ZodObject ? schema.shape : {};
-  return Object.entries(shape)
-    .map(([name, field]) => `${name}=${describeField(field as z.ZodType)}`)
-    .join(' ');
-}
-
-function describeField(field: z.ZodType): string {
-  const def = field.def as {
-    type: string;
-    entries?: Record<string, string>;
-    innerType?: z.ZodType;
-  };
-  if (def.type === 'optional' && def.innerType) return `${describeField(def.innerType)}?`;
-  if (def.type === 'enum' && def.entries) return Object.values(def.entries).join('|');
-  return def.type;
-}
-
 export const SPEC_BY_NAME: ReadonlyMap<string, ComponentSpec> = new Map(
   SPECS.map((s) => [s.name, s]),
 );

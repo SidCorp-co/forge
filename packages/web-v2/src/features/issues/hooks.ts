@@ -47,7 +47,7 @@ export function useIssues(projectId: string | undefined, opts: IssueSearchOpts) 
     queryKey: ["issues", "search", projectId, opts],
     queryFn: () => issuesApi.search(projectId as string, opts),
     enabled: !!projectId,
-    placeholderData: (prev) => prev, // keep rows visible across page/filter changes
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -179,6 +179,31 @@ export function usePatchIssue() {
   return useIssueMutation((args: { id: string; body: PatchIssueInput }) =>
     issuesApi.patch(args.id, args.body),
   );
+}
+
+/**
+ * A description write, which differs from `usePatchIssue` in the one way that
+ * matters on the detail screen: it invalidates `['issue', id]`, so the saved
+ * body comes back rendered without a reload.
+ */
+// cm:edge contract -> packages/web-v2/src/lib/ws/event-router.ts#routeEvent — `['issue', id]` is the exact key that router invalidates on `issue.updated`; any other prefix leaves the card showing the old body until a navigation.
+export function useSaveDescription(id: string) {
+  const qc = useQueryClient();
+  const mut = useIssueMutation(
+    (args: { id: string; body: PatchIssueInput }) => issuesApi.patch(args.id, args.body),
+    { successMessage: "Description saved" },
+  );
+  return {
+    ...mut,
+    mutate: (args: { id: string; body: PatchIssueInput }, options?: { onSuccess?: () => void }) =>
+      mut.mutate(args, {
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: ["issue", id] });
+          qc.invalidateQueries({ queryKey: ["activities", id] });
+          options?.onSuccess?.();
+        },
+      }),
+  };
 }
 
 export function useTransitionIssue() {

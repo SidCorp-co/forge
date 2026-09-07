@@ -35,6 +35,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useCreateIssue } from "../hooks";
 import type { IssueComplexity, IssuePriority } from "../types";
+import { BodyEditor } from "./body-editor";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
 
 // cm:edge lockstep -> packages/core/src/lib/attachment-mime.ts#allowedSetForTarget — this list must mirror the server's `issue` target so a file is refused here rather than after an upload round-trip. The note this replaces pointed at core's `issueCreateSchema` allow-list, which no longer holds the set — the three per-target sets are now one table in that module.
@@ -116,8 +117,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Reset the whole form each time the dialog opens — never leak a prior draft
-  // or stale error into a fresh create.
+  // cm:guard reset on OPEN, not on close — a dialog dismissed mid-create must not carry its draft or its error into the next issue somebody files.
   useEffect(() => {
     if (open) {
       setMode("standard");
@@ -326,11 +326,11 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
         {mode === "standard" && (
           <>
             <Field label="Description" hint="Optional — context, repro steps, or links.">
-              <Textarea
+              <BodyEditor
+                label="Description"
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={setDescription}
                 placeholder="What needs to happen and why…"
-                maxLength={100_000}
                 rows={5}
               />
             </Field>

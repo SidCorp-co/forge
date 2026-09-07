@@ -73,6 +73,7 @@ import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 import { BlockerBanner } from "./blocker-banner";
 import { useGuardedTransition } from "./use-guarded-transition";
 import { CommentThread } from "./comment-thread";
+import { DescriptionCard } from "./description-card";
 import { type LiveAgentState, LiveAgentPanel } from "./live-agent-panel";
 import { ModulePicker } from "./module-picker";
 import { PropertiesRail } from "./properties-rail";
@@ -498,21 +499,11 @@ export function IssueDetailScreen({
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Description</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {issue.description ? (
-                // Fill the full column width (ISS-351) — wide tables, code
-                // blocks, and long lines use the available space rather than a
-                // narrow ~70ch clamp.
-                <Markdown>{issue.description}</Markdown>
-              ) : (
-                <p className="fg-body-sm text-muted">No description.</p>
-              )}
-            </CardContent>
-          </Card>
+          <DescriptionCard
+            issue={issue}
+            attachments={attachmentsQ.data ?? []}
+            canWrite={canWrite}
+          />
 
           <Card>
             <CardHeader>

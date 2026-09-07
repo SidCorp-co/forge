@@ -1,3 +1,5 @@
+import type { BodyNode } from '../body/parse.js';
+import { bodyNodes } from '../body/prepare.js';
 import { actorKey, type ResolvedActor } from '../issues/actor-identity.js';
 
 export interface CommentRow {
@@ -10,6 +12,8 @@ export interface CommentRow {
   // select it still satisfy the type.
   authorDeviceId?: string | null;
   body: string;
+  /** ISS-898 renderer the body was stored for; absent reads as `markdown`. */
+  format?: string | null;
   parentId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -30,6 +34,8 @@ export interface CommentAttachmentLite {
 export type CommentNode<R extends CommentRow = CommentRow> = R & {
   replies: CommentNode<R>[];
   attachments: CommentAttachmentLite[];
+  // cm:guard the tree ships on EVERY comment surface because web-v2 has no `@forge/core` dependency and cannot parse a component body; a builder that drops it renders literal `<forge-…>` markup with every test still green (ISS-967). `null` is markdown, or bytes this build's scanner cannot read.
+  nodes: BodyNode[] | null;
   // ISS-519 — resolved author identity (email for a human, device name + Agent
   // marker for an agent comment). Optional so existing builders/tests that
   // don't enrich the tree still compile; the comments route attaches it (null
@@ -56,6 +62,7 @@ export function buildCommentTree<R extends CommentRow>(
       ...r,
       replies: [],
       attachments: attachmentsByCommentId?.get(r.id) ?? [],
+      nodes: bodyNodes(r.body, r.format),
     });
   const roots: CommentNode<R>[] = [];
   for (const r of rows) {
@@ -66,8 +73,8 @@ export function buildCommentTree<R extends CommentRow>(
       continue;
     }
     const parent = byId.get(r.parentId);
+    // cm:guard a reply whose parent is not in `rows` is DROPPED, never promoted to a root — a cap-truncated page would otherwise present a mid-thread reply as a top-level comment, which reads as a different statement than the one that was made.
     if (parent) parent.replies.push(node);
-    // else: orphan reply (parent beyond cap) — drop silently
   }
   return roots;
 }

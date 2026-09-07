@@ -28,6 +28,8 @@ export type LabelAttach = string | { labelId: string; isPrimary?: boolean };
 export interface PatchIssueInput {
   priority?: IssuePriority;
   complexity?: IssueComplexity | null;
+  // cm:why `descriptionFormat` is deliberately NOT here: core's `resolveFormat` sniffs a body opening with `<forge-` as html and everything else as markdown, and that sniff is the same rule `bodyText`/`bodyNodes` read a stored row back with. Sending the format from the browser adds a second opinion that can disagree with the bytes.
+  description?: string;
 }
 
 /** Body for `POST /api/projects/:id/issues`. Mirrors the core
@@ -89,8 +91,8 @@ export const issuesApi = {
     return apiClientList<IssueRow>(`/projects/${projectId}/issues/search?${params}`);
   },
 
-  /** `PATCH /api/issues/:id` — priority/complexity (status is NOT patchable
-   *  here; use `transition`). */
+  /** `PATCH /api/issues/:id` — priority/complexity/description (status is NOT
+   *  patchable here; use `transition`). */
   patch: (id: string, body: PatchIssueInput) =>
     apiClient<IssueRow>(`/issues/${id}`, {
       method: "PATCH",
