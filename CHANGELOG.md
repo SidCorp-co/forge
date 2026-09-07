@@ -23,6 +23,20 @@
 
 ### Added
 
+- **The backlog can be read by module: counts, open and closed, and recent activity.** Tier 2
+  shipped the `?module=` filter, which answers "show me the issues in module X"; nothing answered
+  "which module is hot" or "what is open against each". The Issues screen has a fourth view,
+  **Modules** (`?tab=modules`), listing every module of the project with its total, open, closed
+  and recently-active counts, and `GET /api/projects/:id/modules/rollup` serves the same numbers.
+  Primary and secondary attributions are counted and shown separately — an issue has one primary
+  module and any number of secondaries, and summing them would lose the distinction. A parent
+  module's counts say which part is its own and which is inherited from its children, with an
+  issue attributed to both counted once. A module with no issues appears with zeroes rather than
+  vanishing, and the issues carrying no module at all are their own row rather than being dropped.
+  The aggregation reads `issue_labels` joined to `kind='module'` labels and nothing else: there is
+  no second store of module membership. Flow:
+  [`docs/flows/issue-work-module-rollup-read.html`](docs/flows/issue-work-module-rollup-read.html).
+
 - **An issue or comment written as `forge-*` components now renders as components, and a
   description can be corrected after it was created.** The registry, the validator and the four
   columns shipped in ISS-898, but nothing drew them: a body stored as components reached the

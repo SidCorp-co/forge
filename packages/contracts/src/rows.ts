@@ -63,6 +63,43 @@ export interface ModuleAttribution {
   isPrimary: boolean;
 }
 
+// cm:edge contract -> packages/core/src/labels/module-rollup.ts — ISS-949: the rollup's response, re-declared for the same reason `ModuleAttribution` is, and because one more module reached from `public.ts` trips the coordinator-blob limit; a field added there and not here reaches no client
+export interface ModuleCounts {
+  total: number;
+  open: number;
+  closed: number;
+  recentlyActive: number;
+}
+
+/** ISS-949 — primary and secondary attributions, counted apart and never summed. */
+export interface ModuleAttributionCounts {
+  primary: ModuleCounts;
+  secondary: ModuleCounts;
+}
+
+export interface ModuleRollupRow {
+  id: string;
+  name: string;
+  slug: string | null;
+  color: string;
+  parentId: string | null;
+  depth: number;
+  /** Issues attributed to this module itself. */
+  own: ModuleAttributionCounts;
+  /** Issues attributed to a descendant, minus what `own` already counts for that kind. */
+  inherited: ModuleAttributionCounts;
+  /** `own + inherited`, which is addition exactly because `inherited` excluded the overlap. */
+  rollup: ModuleAttributionCounts;
+}
+
+export interface ModuleRollupResponse {
+  activeWithinDays: number;
+  generatedAt: string;
+  modules: ModuleRollupRow[];
+  /** Issues carrying no module attribution at all. */
+  unassigned: ModuleCounts;
+}
+
 // Core serializes issues with a `displayId: "ISS-N"` added on top of the
 // stored row (see `packages/core/src/issues/routes.ts:serializeIssue`).
 // `agentSessions` / `agentStatus` are populated only when the caller opts in
@@ -96,8 +133,7 @@ export type JobEvent = typeof schema.jobEvents.$inferSelect;
 
 export type Device = typeof schema.devices.$inferSelect;
 
-// ISS-305 — runner browser-approve device-login grant code (mints a device
-// token, distinct from the desktop user-JWT pairing flow).
+// cm:why ISS-305 — this grant code mints a DEVICE token; the desktop user-JWT pairing flow is a separate path and the two are not interchangeable
 export type DeviceLoginCode = typeof schema.deviceLoginCodes.$inferSelect;
 
 // ISS-271 — runner row now carries the per (device × project) repo checkout
