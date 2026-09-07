@@ -33,7 +33,7 @@ interface Refusal {
   message?: string;
   details?: {
     reason?: string;
-    allowed?: { mimes?: string[]; extensions?: string[] };
+    allowed?: { mimes?: string[]; extensions?: string[]; anyExtensionIfText?: boolean };
   };
 }
 
@@ -196,7 +196,7 @@ describe('attachment type resolution — a refusal names the set it enforces', (
     const body = (await res.json()) as Refusal;
     expect(body.code).toBe('MIME_NOT_ALLOWED');
     expect(body.details?.reason).toBe('not-text');
-    expect(body.message).toContain('not UTF-8 text');
+    expect(body.message).toContain('the bytes are binary');
     expect(await countAttachments(issueId)).toBe(0);
   });
 
@@ -214,6 +214,7 @@ describe('attachment type resolution — a refusal names the set it enforces', (
     expect(body.details?.allowed?.extensions).toEqual(
       expect.arrayContaining(['.txt', '.png', '.csv']),
     );
+    expect(body.details?.allowed?.anyExtensionIfText).toBe(true);
   });
 
   it('writes no blob for a refused upload', async () => {
@@ -247,6 +248,29 @@ describe('attachment batches land whole or not at all', () => {
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]?.index).toBe(1);
     expect(result.errors[0]?.code).toBe('MIME_NOT_ALLOWED');
+    expect(await countAttachments(issueId)).toBe(0);
+    expect(blobsFor(issueId)).toEqual([]);
+  });
+
+  it('refuses a batch carrying one name twice without landing either copy', async () => {
+    const { issueId, owner } = await seed();
+
+    const result = await persistIssueAttachmentsFromBase64(
+      issueId,
+      [
+        { name: 'gate.log', mime: '', dataBase64: PLAIN_LOG.toString('base64') },
+        { name: 'gate.log', mime: '', dataBase64: Buffer.from('second\n').toString('base64') },
+      ],
+      owner.id,
+      'human',
+    );
+
+    expect(result.persisted).toHaveLength(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.index).toBe(1);
+    expect(result.errors[0]?.code).toBe('ATTACHMENT_NAME_TAKEN');
+    // cm:guard this is the load-bearing assertion, not the count: without the pre-flight the batch still ends empty, but member 2 collides with member 1, the rollback deletes it, and the refusal cites an `existing` row id that no longer resolves (ISS-957)
+    expect(result.errors[0]?.details).toEqual({ duplicateWithinBatch: 'gate.log' });
     expect(await countAttachments(issueId)).toBe(0);
     expect(blobsFor(issueId)).toEqual([]);
   });

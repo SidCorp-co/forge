@@ -65,7 +65,7 @@ export interface RocketChatImageRef {
 
 const IMAGE_MIME_RE = /^image\/(png|jpe?g|gif|webp)$/i;
 
-// cm:guard normalize to the spelling `issues/attachment-service.ts` ALLOWED_MIMES lists — RC forwards whatever the client claimed, and `image/jpg` (which browsers do send) is not in that set, so an un-normalized jpeg is downloaded, spends the budget, and is then rejected at persist time, filing the issue without its picture
+// cm:guard normalize to the spelling `lib/attachment-mime.ts` ALLOWED_BY_TARGET lists — RC forwards whatever the client claimed, and `image/jpg` (which browsers do send) is not in that set, so an un-normalized jpeg is downloaded, spends the budget, and is then rejected at persist time, filing the issue without its picture
 function normalizeMime(raw: string): string {
   const mime = raw.toLowerCase();
   return mime === 'image/jpg' ? 'image/jpeg' : mime;

@@ -282,13 +282,22 @@ export async function persistDecodedIssueAttachments(
   uploaderAgency: ActorAgency,
 ): Promise<{ persisted: PersistedIssueAttachment[]; errors: AttachmentErrorEntry[] }> {
   const errors: AttachmentErrorEntry[] = [];
+  // cm:guard the name collision is checked HERE as well as in persistIssueAttachment, and both are load-bearing: without this pass a batch carrying the same name twice passes validation, member 1 lands, member 2 collides with it, the rollback deletes member 1, and the refusal hands the caller the id of a row that no longer exists (ISS-957)
+  const seen = new Set<string>();
   for (const [i, d] of decoded.entries()) {
+    const name = safeName(d.name || 'file');
     try {
-      validateIssueAttachment({
-        name: safeName(d.name || 'file'),
-        mime: d.mime,
-        bytes: d.bytes,
-      });
+      validateIssueAttachment({ name, mime: d.mime, bytes: d.bytes });
+      if (seen.has(name)) {
+        throw new AttachmentError(
+          'ATTACHMENT_NAME_TAKEN',
+          `this batch carries "${name}" more than once — an attachment name is one document`,
+          { duplicateWithinBatch: name },
+        );
+      }
+      seen.add(name);
+      const taken = await findIssueAttachmentByName(issueId, name);
+      if (taken) throw nameTakenError(taken, 'issue');
     } catch (err) {
       errors.push(toErrorEntry(i, d.name, err));
     }
