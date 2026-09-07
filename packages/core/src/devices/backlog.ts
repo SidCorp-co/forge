@@ -19,6 +19,7 @@ import type { PoolRelation } from './pool.js';
 
 const DEFAULT_BACKLOG_LIMIT = 20;
 
+// cm:guard `mergedAt` and `branch` are RAW EVIDENCE and must stay raw — never a `shipped`, `done` or `ready` boolean derived from them. A status answers only WHERE the work is (`pipeline/status-assertions.ts`); these two answer what EXISTS, and a master reading a backlog needs both to tell finished work from unstarted work. Without them a `draft` built by hand and a `draft` nobody has touched are the same row, because a hand-worked issue mints no job and the exclusions below key on jobs (ISS-940).
 // cm:guard NO `jobId` on this type, and never add one. A row a master could pass to `pool claim` is a malformed claim waiting to happen, and keeping one off it is the whole reason (ISS-917 B6) the backlog is a sibling key of the pool response rather than more `items`.
 export type BacklogEntry = {
   issueId: string;
@@ -31,6 +32,9 @@ export type BacklogEntry = {
   status: string;
   ageMinutes: number;
   relations: PoolRelation[];
+  /** Raw evidence fields (`pipeline/status-assertions.ts`). Facts, not a verdict. */
+  mergedAt: string | null;
+  branch: string | null;
 };
 
 /** Statuses this project admits, and how many rows it lets a master read. */
@@ -100,6 +104,7 @@ const RELATIONS = sql`
  * no gain.
  */
 // cm:guard the exclusions are "no work has been opened for this issue" and NOTHING else — no dependency filter, no priority ordering, no cap beyond the project's own declared `limit`. Same rule `readPool` carries and for the same reason: those are the master's judgements, and a backlog that pre-decides them is the kernel routing again through a second door.
+// cm:guard a row carrying `mergedAt` is NOT excluded here, and adding such a filter is the wrong repair. `merged_at` is caller-asserted — any hop out of the base merge state stamps it, merge or not — so it is a fact to show the master, never grounds for the kernel to hide the row. Measured 2026-09-06: ISS-931 sat at `open` with its code on `origin/main` and was still offered as work (ISS-940).
 export async function readBacklog(args: {
   deviceId: string;
   projectId?: string | undefined;
@@ -115,7 +120,8 @@ export async function readBacklog(args: {
     );
     const rows = (await db.execute(sql`
       SELECT i.id, i.iss_seq, i.project_id, i.title, i.description, i.priority,
-             i.category, i.status,
+             i.category, i.status, i.merged_at,
+             i.session_context->>'branch' AS branch,
              EXTRACT(EPOCH FROM (now() - i.created_at)) / 60 AS age_minutes,
              ${RELATIONS}
       FROM issues i
@@ -142,6 +148,8 @@ export async function readBacklog(args: {
         status: String(row.status),
         ageMinutes: Number(row.age_minutes ?? 0),
         relations: (row.relations as PoolRelation[] | null) ?? [],
+        mergedAt: row.merged_at == null ? null : new Date(row.merged_at as string).toISOString(),
+        branch: (row.branch as string | null) || null,
       });
     }
   }

@@ -28,6 +28,22 @@ export const AUTONOMOUS_DRIVER_STATUSES: readonly IssueStatus[] = [
 
 export const AUTONOMOUS_JOB_TYPE: JobType = 'drive';
 
+/**
+ * What the autonomous driver wants done for an issue that just landed on
+ * `status`: a single drive job at the entry status, and nothing anywhere else.
+ *
+ * It lives beside the constants rather than in `autonomous-dispatch.ts` for
+ * the reason this module exists at all — asking whether a status dispatches
+ * must not boot the queue. `status-assertions.ts` asks exactly that.
+ */
+// cm:guard returning `null` here must mean "enqueue nothing", NOT "no skill is registered" — the staged path reads a null resolution as a misconfiguration and pauses the run with a missing-skill comment, which on an autonomous project would park every issue the moment its agent moved it
+export function autonomousStepFor(
+  status: IssueStatus,
+): { type: JobType; skillName: string } | null {
+  if (status !== AUTONOMOUS_ENTRY_STATUS) return null;
+  return { type: AUTONOMOUS_JOB_TYPE, skillName: AUTONOMOUS_SKILL_NAME };
+}
+
 // cm:guard DERIVED by subtraction, never written out by hand. A status the driver already owns carries a run and a job by the time it holds it, so a backlog row at one of those names offers a master work it can never promote — `promoteFromBacklog` would refuse it as `issue_busy` every time, and a menu of statuses that cannot be used reads as a bug in the promote path rather than in this list.
 // cm:edge lockstep -> packages/core/src/pipeline/pipeline-config-schema.ts — `poolBacklog.statuses` is `z.enum` of exactly this array, so a status added to AUTONOMOUS_DRIVER_STATUSES leaves the admissible set through this filter and a config already holding it stops parsing (which reads as `poolBacklog` absent, i.e. no backlog — the safe direction)
 export const BACKLOG_ADMISSIBLE_STATUSES: readonly IssueStatus[] = issueStatuses.filter(
