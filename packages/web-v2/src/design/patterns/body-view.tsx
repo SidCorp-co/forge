@@ -85,7 +85,10 @@ function renderNode(node: BodyNode, ctx: RenderCtx, key: string): ReactNode {
   if (node.type === "text") return node.value;
   if (isComponent(node)) return <ComponentNode key={key} node={node} ctx={ctx} />;
 
-  const cls = COMPACT_TAG_CLASS[node.name];
+  // cm:guard look the tag up with `Object.hasOwn`, never with a bare index. The scanner accepts any `[A-Za-z][A-Za-z0-9-]*` name, so `<constructor>` and `<tostring>` are bodies a person can write, and a plain index reaches `Object.prototype` and emits the tag instead of unwrapping it.
+  const cls = Object.hasOwn(COMPACT_TAG_CLASS, node.name)
+    ? COMPACT_TAG_CLASS[node.name]
+    : undefined;
   const children = renderNodes(node.children, ctx, key);
 
   if (node.name === "a") {
@@ -145,18 +148,14 @@ function ComponentNode({ node, ctx }: { node: BodyNode; ctx: RenderCtx }) {
     return <>{ctx.renderArtifact(node.attrs.id)}</>;
   }
 
-  const slots = node.children.filter(isComponent);
-  const prose = node.children.filter((c) => !isComponent(c));
+  // cm:guard render `children` IN ORDER — do not split prose from slots and concatenate. A slot is an ordinary child, so partitioning moves a `forge-artifact` written mid-paragraph to the end of the block and silently reorders what the author wrote.
   return (
     <section className="my-3 rounded-md border border-line bg-surface first:mt-0">
       <header className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-3 py-2">
         <span className="fg-label text-fg">{componentLabel(node.name)}</span>
         <AttrChips attrs={node.attrs} />
       </header>
-      <div className="px-3 py-2">
-        {renderNodes(prose, ctx, `${node.name}-prose`)}
-        {renderNodes(slots, ctx, `${node.name}-slot`)}
-      </div>
+      <div className="px-3 py-2">{renderNodes(node.children, ctx, node.name)}</div>
     </section>
   );
 }

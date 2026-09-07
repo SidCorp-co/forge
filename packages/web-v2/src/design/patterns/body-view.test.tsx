@@ -99,4 +99,40 @@ describe("BodyView", () => {
     expect(screen.getByText("kept")).toBeInTheDocument();
     expect(document.querySelector("marquee")).toBeNull();
   });
+
+  // cm:guard the scanner accepts any `[A-Za-z][A-Za-z0-9-]*` name, so these are tags a person can really write. A bare index into the class map reaches `Object.prototype` and emits them.
+  it("unwraps a tag whose name collides with Object.prototype", () => {
+    render(
+      <BodyView
+        body="…"
+        format="html"
+        nodes={[el("constructor", {}, [text("still prose")]), el("tostring", {}, [text("also")])]}
+      />,
+    );
+    expect(screen.getByText("still prose")).toBeInTheDocument();
+    expect(screen.getByText("also")).toBeInTheDocument();
+    expect(document.querySelector("constructor")).toBeNull();
+    expect(document.querySelector("tostring")).toBeNull();
+  });
+
+  it("keeps a leaf written mid-prose where the author put it", () => {
+    render(
+      <BodyView
+        body="…"
+        format="html"
+        nodes={[
+          el("forge-summary", {}, [
+            el("p", {}, [text("before")]),
+            el("forge-artifact", { id: "a-1" }),
+            el("p", {}, [text("after")]),
+          ]),
+        ]}
+        renderArtifact={() => <span>THE ARTIFACT</span>}
+      />,
+    );
+    const order = [...document.querySelectorAll("p, span")]
+      .map((e) => e.textContent)
+      .filter((t) => t === "before" || t === "after" || t === "THE ARTIFACT");
+    expect(order).toEqual(["before", "THE ARTIFACT", "after"]);
+  });
 });
