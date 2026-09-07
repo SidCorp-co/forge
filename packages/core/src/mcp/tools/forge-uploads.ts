@@ -34,9 +34,7 @@ const inputSchema = z
         name: z.string().trim().min(1).max(200).optional(),
         // cm:why omitting this is the better default now: the extension only picks a candidate, and the PUT resolves the stored type from the bytes, so a declared type can only narrow what the file is allowed to be (ISS-957)
         mime: z.string().trim().min(1).max(255).optional(),
-        // fetch: the attachment to read (issue_attachments.id /
-        // comment_attachments.id), as returned in any `attachments[].id` from
-        // forge_issues / forge_step_start / forge_comments.
+        // cm:guard this is an `issue_attachments.id` / `comment_attachments.id`, the value `attachments[].id` carries on forge_issues, forge_step_start and forge_comments — not the upload ticket id, which is a different table and would resolve to nothing
         attachmentId: z.uuid().optional(),
       })
       .strict(),
@@ -210,8 +208,11 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
         mime,
       });
     } catch (err) {
-      // cm:why the whole refusal has to fit in the message string — an MCP handler that throws has no structured error channel, so an agent told only `ATTACHMENT_NAME_TAKEN` would have to list the attachments to find what it collided with (ISS-963)
-      if (err instanceof UploadTicketError) throw new Error(`${err.code}: ${err.message}`);
+      // cm:guard `details` must ride in the message and stay JSON — an MCP handler that throws has no structured error channel (mcp/server.ts renders `Error: <message>` and nothing else), so dropping it is what makes a client keep its own copy of the allowed set, which is the staleness ISS-957 was filed for
+      if (err instanceof UploadTicketError) {
+        const details = err.details === undefined ? '' : ` details=${JSON.stringify(err.details)}`;
+        throw new Error(`${err.code}: ${err.message}${details}`);
+      }
       throw err;
     }
 
