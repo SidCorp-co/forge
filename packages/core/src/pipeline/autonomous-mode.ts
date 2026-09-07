@@ -6,7 +6,7 @@
 // pg-boss through the enqueue helper, and a caller that only wants to ASK
 // whether a project is autonomous must not boot the queue to find out.
 
-import type { IssueStatus, JobType } from '../db/schema.js';
+import { type IssueStatus, issueStatuses, type JobType } from '../db/schema.js';
 import type { PipelineConfig } from './pipeline-config-schema.js';
 
 /** The status at which the driver is handed the issue. */
@@ -27,6 +27,12 @@ export const AUTONOMOUS_DRIVER_STATUSES: readonly IssueStatus[] = [
 ] as const;
 
 export const AUTONOMOUS_JOB_TYPE: JobType = 'drive';
+
+// cm:guard DERIVED by subtraction, never written out by hand. A status the driver already owns carries a run and a job by the time it holds it, so a backlog row at one of those names offers a master work it can never promote — `promoteFromBacklog` would refuse it as `issue_busy` every time, and a menu of statuses that cannot be used reads as a bug in the promote path rather than in this list.
+// cm:edge lockstep -> packages/core/src/pipeline/pipeline-config-schema.ts — `poolBacklog.statuses` is `z.enum` of exactly this array, so a status added to AUTONOMOUS_DRIVER_STATUSES leaves the admissible set through this filter and a config already holding it stops parsing (which reads as `poolBacklog` absent, i.e. no backlog — the safe direction)
+export const BACKLOG_ADMISSIBLE_STATUSES: readonly IssueStatus[] = issueStatuses.filter(
+  (s) => !AUTONOMOUS_DRIVER_STATUSES.includes(s),
+);
 
 // cm:guard this name reaches the agent ONLY as text in the drive prompt — nothing in core or the runner resolves it. Since 2026-09-02 the skill is delivered by the `forge` Claude Code plugin (github.com/SidCorp-co/forge-plugin), installed on a device when a bound project designates it in `pipelineConfig.plugins` AND that box has `[plugins] enabled = true`; a project missing either dispatches a driver that is told to use a skill it does not have. `skill_registrations` never resolves this name and must not start to.
 export const AUTONOMOUS_SKILL_NAME = 'issue-flow';

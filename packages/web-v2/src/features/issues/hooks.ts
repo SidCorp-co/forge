@@ -190,11 +190,7 @@ export function useTransitionIssue() {
         waitingKind: args.waitingKind,
       }),
   );
-  // Also refresh the single-issue + activity caches (detail view) on success.
-  // `onSuccess` is an optional per-call passthrough (ISS-828 blocker-banner
-  // actions toast their own success copy on top of the shared invalidation).
-  // Errors are NOT passed through here — `useIssueMutation`'s own `onError`
-  // already toasts `formatApiError`; adding a second would double-toast.
+  // cm:guard `onSuccess` is a passthrough and `onError` is deliberately NOT — `useIssueMutation` already toasts `formatApiError`, so a second handler here double-toasts every failure (ISS-828 blocker-banner actions add their own success copy on top of the shared invalidation)
   return {
     ...mut,
     mutate: (
@@ -208,6 +204,34 @@ export function useTransitionIssue() {
           options?.onSuccess?.();
         },
       }),
+  };
+}
+
+/**
+ * ISS-791 — the shipped-work claim for an issue finished by hand, outside the pipeline.
+ *
+ * `merged_at` is what `issues/progress.ts` reads to count an issue as shipped rather than "closed
+ * with no evidence it shipped", and what releases every `blocks` dependent, so both directions
+ * refresh the single-issue and activity caches: the server writes an audit comment on each call.
+ */
+export function useMergeMarker(issueId: string) {
+  const qc = useQueryClient();
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["issue", issueId] });
+    qc.invalidateQueries({ queryKey: ["activities", issueId] });
+  };
+  const mark = useIssueMutation(
+    (args: { target: string; note?: string }) => issuesApi.markMerged(issueId, args),
+    { successMessage: "Marked merged" },
+  );
+  const unmark = useIssueMutation(
+    (args: { note?: string } = {}) => issuesApi.unmarkMerged(issueId, args),
+    { successMessage: "Merge mark removed" },
+  );
+  return {
+    isPending: mark.isPending || unmark.isPending,
+    mark: (args: { target: string; note?: string }) => mark.mutate(args, { onSuccess: refresh }),
+    unmark: () => unmark.mutate({}, { onSuccess: refresh }),
   };
 }
 

@@ -621,8 +621,6 @@ pub async fn handle(
         permission_mode: ja.permission_mode.clone(),
         timeout_seconds: ja.timeout_seconds,
         mcp_servers_override: ja.mcp_servers_override.clone(),
-        // cm:guard OPT-IN, and the default direction is the whole safety of it: only the literal `"duplex"` flips a job, so a project that never set `pipelineConfig.sessionMode`, a core that does not send the field, and a value nobody recognises all stay print. The fleet-wide default flip is phase 5 and is bounded by a measured release, not by this line.
-        duplex: ja.session_mode.as_deref() == Some("duplex"),
         counts_against_session_cap: true,
         session_residency_seconds: ja.session_residency_seconds,
         resume_id: ja.claude_session_id.clone(),
@@ -841,16 +839,6 @@ mod tests {
     use super::*;
     use crate::config::Binding;
 
-    fn frame(session_mode: Option<&str>) -> ClaimedJob {
-        let prepared: crate::transport::pool::Prepared =
-            serde_json::from_value(serde_json::json!({
-                "jobId": "j1", "projectId": "p1", "type": "code",
-                "sessionMode": session_mode,
-            }))
-            .expect("a preparation must parse");
-        prepared.into_claimed(None, None, "test-agent".into())
-    }
-
     fn unrefreshed(foreign_work: bool) -> refresh::WorkspaceGit {
         refresh::WorkspaceGit {
             head_sha: Some("aaaaaaaa".into()),
@@ -903,22 +891,21 @@ mod tests {
         );
     }
 
-    // cm:guard opt-in, and the DEFAULT direction is the safety. A core that does not send the field, a project that never set it, and a value nobody recognises must all stay print — the fleet-wide flip is phase 5 and is bounded by a measured release.
+    // cm:guard core STILL SENDS `sessionMode` and this runner no longer has a field for it — that pairing is the ISS-873 phase 6 compat shim, and this is the test that keeps it survivable. A `#[serde(deny_unknown_fields)]` anywhere on the claim types, or a field deserialised into an enum, turns the shim into every box failing every claim at once with the error inside serde. `telepathy` stands in for any value: none of them may reach the parse.
     #[test]
-    fn only_the_literal_duplex_opts_a_job_in() {
-        assert!(frame(Some("duplex")).session_mode.as_deref() == Some("duplex"));
-        for m in [None, Some("print"), Some("Duplex"), Some("stream-json")] {
-            assert!(
-                frame(m).session_mode.as_deref() != Some("duplex"),
-                "{m:?} must not flip a job to duplex"
-            );
-        }
-    }
-
-    // cm:guard a frame carrying a mode this runner has never heard of must still PARSE — deserialising into an enum would make every job undeliverable to a runner that predates a new mode, which is a fleet outage caused by a field it did not need.
-    #[test]
-    fn an_unknown_mode_still_parses_the_frame() {
-        assert_eq!(frame(Some("telepathy")).job_id, "j1");
+    fn a_wire_field_this_runner_no_longer_reads_still_parses() {
+        let prepared: crate::transport::pool::Prepared =
+            serde_json::from_value(serde_json::json!({
+                "jobId": "j1", "projectId": "p1", "type": "code",
+                "sessionMode": "telepathy",
+            }))
+            .expect("an unknown wire field must never fail a claim");
+        assert_eq!(
+            prepared
+                .into_claimed(None, None, "test-agent".into())
+                .job_id,
+            "j1"
+        );
     }
 
     // cm:guard the KEY is the contract, not the presence of a row — core reads `data.runtimeState` by that exact name to decide the batch is not a heartbeat (`jobs/events-routes.ts`). Asserting only that map_event returned Some would pass a rename that silently makes every park count as activity.

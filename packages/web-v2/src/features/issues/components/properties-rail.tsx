@@ -8,6 +8,7 @@
 import { Avatar, Badge, Button, MonoTag, Stat } from "@/design";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
 import { IssueRefBadge } from "./issue-ref-badge";
+import { MergeMarkerControl } from "./merge-marker-control";
 import { InlineSelect, StatusEdit } from "./inline-edit-cell";
 import { creatorLabelOf, initials } from "../derive";
 import type {
@@ -115,6 +116,8 @@ interface PropertiesRailProps {
   onTransition: (toStatus: IssueStatus) => void;
   /** Open the module picker. Absent for a reader who cannot write. */
   onEditModules?: (() => void) | undefined;
+  /** ISS-791 — offer the shipped-work claim. False for a reader who cannot write. */
+  canMarkMerged?: boolean | undefined;
 }
 
 export function PropertiesRail({
@@ -126,6 +129,7 @@ export function PropertiesRail({
   onPatch,
   onTransition,
   onEditModules,
+  canMarkMerged,
 }: PropertiesRailProps) {
   // cm:why modules and plain labels arrive in ONE `labels[]` told apart by `kind` (ISS-593), and split into two rows here because they answer two different questions
   const modules = (issue.labels ?? []).filter((l) => l.kind === "module");
@@ -217,7 +221,16 @@ export function PropertiesRail({
         <MonoTag>{`ISS-${issue.issSeq}`}</MonoTag>
       </Row>
       <Row label="Merged">
-        <span className="fg-body-sm font-mono text-muted">{fmtDate(issue.mergedAt)}</span>
+        <div className="flex items-center justify-end gap-2">
+          <span className="fg-body-sm font-mono text-muted">{fmtDate(issue.mergedAt)}</span>
+          {canMarkMerged && (
+            <MergeMarkerControl
+              issueId={issue.id}
+              mergedAt={issue.mergedAt}
+              suggestedTarget={`ISS-${issue.issSeq}`}
+            />
+          )}
+        </div>
       </Row>
       <Row label="Cost">
         <Stat icon="dollar">

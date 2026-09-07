@@ -20,9 +20,8 @@ vi.mock('../integrations/store.js', async (importActual) => {
   return { ...actual, listActiveBindingsForEnvironment: () => listBindings() };
 });
 
-const { resolveReleaseChannel, resolveReleaseDeviceIds, resolveReleasePlan } = await import(
-  './channel.js'
-);
+const { classifyRollback, resolveReleaseChannel, resolveReleaseDeviceIds, resolveReleasePlan } =
+  await import('./channel.js');
 
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 
@@ -126,5 +125,43 @@ describe('resolveReleaseDeviceIds', () => {
   // cm:guard an empty pool must reach the caller as an empty list, never as null: the service reads null as "no pool declared" and falls back to the whole fleet, which is the one thing a declared pool exists to prevent
   it('returns an empty list when no runner carries the label', async () => {
     expect(await resolveReleaseDeviceIds(PROJECT_ID, 'nobody-has-this')).toEqual([]);
+  });
+});
+
+describe('classifyRollback', () => {
+  it('reads prose on a coolify binding as unrepresentable, never as a procedure to follow', () => {
+    expect(classifyRollback('coolify', 'ssh in and redeploy the previous tag')).toEqual({
+      kind: 'unrepresentable',
+      text: 'ssh in and redeploy the previous tag',
+    });
+  });
+
+  it('keeps prose on a channel whose API cannot roll anything back', () => {
+    expect(classifyRollback('epodsystem', 'promote the previous theme revision')).toEqual({
+      kind: 'manual',
+      text: 'promote the previous theme revision',
+    });
+  });
+
+  it('reads the declared coolify action', () => {
+    expect(classifyRollback('coolify', { mode: 'coolify-image' })).toEqual({
+      kind: 'coolify-image',
+    });
+  });
+
+  it('reads whitespace and anything unrecognised as no declaration at all', () => {
+    expect(classifyRollback('coolify', '   ')).toBeNull();
+    expect(classifyRollback('coolify', { mode: 'something-else' })).toBeNull();
+    expect(classifyRollback('coolify', undefined)).toBeNull();
+  });
+
+  it('is what resolveReleaseChannel returns for the prod binding', async () => {
+    listBindings.mockResolvedValue([
+      binding({ provider: 'coolify', bindingConfig: { rollback: 'redeploy by hand' } }),
+    ]);
+    expect((await resolveReleaseChannel(PROJECT_ID)).rollback).toEqual({
+      kind: 'unrepresentable',
+      text: 'redeploy by hand',
+    });
   });
 });
