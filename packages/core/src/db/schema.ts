@@ -462,7 +462,7 @@ export const personalAccessTokens = pgTable(
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
     lastUsedIp: text('last_used_ip'),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
-    // null = use RULES.patPerToken default; otherwise per-token override.
+    // cm:why null is not "unlimited" but "take the operator's default" (`RULES.patRead` / `RULES.patWrite`); a number here is the ceiling of EACH class, not of the two together, because the three credentials that set one are single-session tokens whose 600 was sized as 6x that session's measured peak and that intent is per axis (ISS-961).
     rateLimitMax: integer('rate_limit_max'),
   },
   (t) => ({
