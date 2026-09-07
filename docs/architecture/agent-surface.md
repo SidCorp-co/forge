@@ -61,8 +61,10 @@ upgrade, not by a decision — nine wrapped verbs, plus whatever reaches `/mcp` 
 refuses every other bearer with a 401 naming the class and the remedy
 (`packages/core/src/middleware/require-pat.ts`). `forge-runner` writes each job's `.mcp.json` with
 that job's own token, the same credential the spawn exports as `$FORGE_PAT`
-(`packages/runner/crates/forge-runner-core/src/mcp/config.rs`). What the device token still holds:
-`/ws`, and the REST routes behind `requireDevice` — chiefly the pool a master claims from.
+(`packages/runner/crates/forge-runner-core/src/mcp/config.rs`). ISS-932 then removed the device
+token itself: `/ws` and the REST routes behind `requireDevice` — chiefly the pool a master claims
+from — now take an ordinary PAT or AAT whose `device_id` names the box, so there is one credential
+species on every surface and no second verifier left to fall back to.
 
 **This ships on two clocks and the second one is a binary.** Core refuses the device at deploy; a
 box only starts writing the job token when it installs a `forge-runner` that does. In between,
@@ -279,7 +281,8 @@ in that same commit.
 |---|---|---|
 | the CLI moves to REST | `ISS-508` on the **forge-plugin** project | closed, merged 2026-09-06T14:13Z — the boxes still run the old copy |
 | one credential form for the API | `ISS-927` here | closed, merged `3291d537` |
-| the runner stops handing sessions a device token | `ISS-931` here | merged 2026-09-06T19:09Z (`4e85fb69`, an ancestor of `main`), tracker row still `open` — `requirePat` on `/mcp` + the job token in `mcp/config.rs`; needs a `runner-v*` release before a box stops writing the device token |
+| the runner stops handing sessions a device token | `ISS-931` here | closed, merged — `requirePat` on `/mcp` + the job token in `mcp/config.rs`; needs a `runner-v*` release before a box stops writing the device token |
+| the device token stops existing at all | `ISS-932` here | waves 1-3 landed: `users.kind` + the AAT, pairing issues a PAT/AAT, `verifyDeviceToken` deleted and `devices.token_hash`/`token_prefix` dropped. Wave 4 (kill `job:` tokens and the `agency` axis) is NOT in it — see the issue's own comment for why the two halves are one unit and what it is blocked on |
 | the waves themselves, and the record of the ones already run | `ISS-894` here | unblocked — every `blocks` edge on it is merged. Wave 4 reads the deletion rule above, and what it waits on is the fleet-upgrade row, not an issue |
 | the boundary is written down | `ISS-926` here | closed, merged 2026-09-06T07:46Z |
 | the rule becomes evaluable at all | `ISS-946` here | answered — `GET /api/admin/mcp-audit/tools` aggregates the whole table. NOT by the thing that runs it: the counts are cross-project, so the route is admin-only and the rule is two-party by design, not by omission |

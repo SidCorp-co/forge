@@ -43,6 +43,57 @@
   The counts are lifetime counts only while `enforceMcpAuditRetention` stays unwired, and the route
   does not merely claim so: it returns `oldestRow`, so a reader sees the window rather than trusting
   a paragraph. (ISS-946)
+- **A module's knowledge now refreshes itself when work lands against it.** The taxonomy could say
+  which module an issue touched (ISS-588) and a module could name its knowledge node (ISS-947), but
+  nothing kept that node current: its related issues stayed at whatever the last person wrote, and
+  no reader could tell a current flow diagram from a stale one. One project wired the refresh loop
+  inside its own skill body; everywhere else it simply did not happen.
+
+  A `test` handoff whose result is `pass` or `verified_by_test` now refreshes the primary module's
+  node — the issue is appended to its related issues, and the node records that its stored flow is
+  behind that work and since when. Modules the issue also touched get the append and nothing else.
+  The trigger is the passing test rather than a status change, on purpose: a status is a claim
+  somebody made, a green test is a thing that happened.
+
+  Every declining case declines out loud instead of failing. An issue with no primary module
+  refreshes nothing and that is not an error. A module with no knowledge node refreshes nothing and
+  names itself in the issue's activity feed, rather than getting a node invented under a guessed
+  name. The same issue landing twice does not append twice. And a refresh that fails is reported to
+  the log and the activity feed without failing the pipeline of the issue that triggered it.
+
+  What the engine cannot do, it does not fake: core has no LLM and no repo checkout when a handoff
+  arrives, so it cannot redraw a module's flow diagram. It records that the flow is behind the work
+  and which body it was behind as of, and leaves the drawing to whoever authors the node — a
+  placeholder diagram nobody could tell apart from a real one would be worse than a stale one.
+
+- **A module now names its knowledge node, instead of every reader guessing the name.** The module
+  taxonomy (ISS-588) landed `kind='module'`, `parentId` and `is_primary`, but not the half of the
+  epic's locked Q2 that every later tier reads from: a module had no stable identity and no link to
+  the knowledge entry that documents it. The only answer available to "which node is this module's"
+  was `module-${slugify(label.name)}` recomputed at each call site — the name-prefix convention the
+  epic rejected by name, with the extra failure that renaming a module silently orphaned its node.
+
+  `labels` now carries `slug` and `knowledge_entry_id`. The slug is the module's identity: derived
+  from the name on create or on promotion, returned in the response, and never recomputed on a
+  rename — so retitling a module cannot move what its node is found by. Two distinct names deriving
+  one base (`API/v2`, `API v2`) get `api-v2` and `api-v2-2` rather than a refusal, and the migration
+  backfills existing modules by the same rule written in SQL, so a module created before it and one
+  created after answer to the same slug for the same name. The node link is 1:1 in both directions
+  and enforced at the database, not only in the service: `labels_knowledge_entry_id_uq` refuses a
+  second module naming one node, and the CHECK pair `labels_slug_chk` / `labels_knowledge_entry_chk`
+  makes a plain label carrying either field unrepresentable. Deleting a node clears the link
+  (`ON DELETE SET NULL`) rather than deleting the module; deleting a module leaves the node standing.
+  A NULL link means "no node written yet" and never "the node is gone".
+
+  Fixed on the way past: the labels routes reported every unique violation as
+  `LABEL_NAME_TAKEN`, so with three indexes on the table a writer that raced onto the same
+  knowledge node would have been told its label *name* was taken. `labels/unique-conflicts.ts`
+  now answers by the index that fired, and rethrows an index it has not been taught about rather
+  than folding it into the nearest code.
+
+  Additive in every statement, and it ships with no consumer — the refresh loop, the generated
+  diagrams, the rollup and the drift signal are ISS-589's children and now have one stored link to
+  read instead of each re-deriving a name (ISS-947).
 
 - **A status now says only WHERE the work is, and three row fields answer what exists.** Four runs
   on 2026-09-06 reached one identical real state — implemented, gates run, branch pushed, PR open,
@@ -204,6 +255,28 @@
   which is the ISS-817 property and is pinned against real Postgres rather than asserted.
 
   The path is drawn end to end in `docs/flows/issue-work-shipped-evidence.html`. (ISS-791)
+- **An org admin can create a named agent, and that agent is a real member of the organization.**
+  Until now every machine token borrowed a person: `job:<id>` was minted from `jobs.created_by`,
+  `session:<id>` from `agent_sessions.user_id`, and a master agent — which has no `user_id` at all —
+  had no valid principal to mint from, so `device.ownerId` was invented to stand in for one. The
+  question *who made this write* had no true answer for the work agents do.
+
+  `POST /api/orgs/:orgId/agents` (org `admin` and above) now creates a `users` row carrying
+  `kind = 'agent'`, joins it to the org and to exactly one project, and mints its **Agent Access
+  Token** through the same `mintPat` a person's PAT comes from. Same table, same middleware, and a
+  permission path that does not differ by a line — an agent is authorized because it *is* a member,
+  through `effectiveProjectRole` and the membership reads that were already there. `GET` lists them;
+  `DELETE` retires one by revoking its tokens and dropping its memberships while keeping the row,
+  because `activity_log.actor_id` points at it and a principal whose history vanishes on retirement
+  answers the original question with nothing.
+
+  An agent cannot sign in. `assertNotAgent` refuses `kind = 'agent'` at every entrance that mints a
+  user JWT, and a test scans the source tree for callers of `signUserToken` and fails on one that
+  does not refuse — the failure mode being guarded is not a broken entrance but a fourth entrance
+  added later. Its address is random at `agents.forge.invalid`, a domain RFC 2606 reserves so no MX
+  ever resolves it. It cannot mint another agent either: `/api/pat` and `/api/orgs` are both absent
+  from `PAT_ALLOWED_PREFIXES`, so no PAT or AAT reaches either route.
+
 
 - **An agent working an issue on a project that keeps modules is now told they exist, and how to
   set the issue's primary one.** ISS-593 made a module a label with `kind='module'` and gave an
@@ -1372,6 +1445,145 @@
   set is now 59.
 
 ### Fixed
+
+- **Every step-handoff payload the prompt asks for now validates.** `prompt/facts/registry.ts`'s
+  `HANDOFF_KEYS` named each step's own fields and omitted the two that every branch of
+  `stepHandoffSchema` keys on as `z.literal` — `step` and `schema_version` — for all eight step
+  types at once. An agent that sent exactly what the prompt listed got a `400 Invalid input`, and
+  the `cm:edge lockstep` on that map exists to catch precisely this drift but could not: it fires
+  when one half moves, and the field had been missing from both halves' agreement since the map was
+  written. Measured on `drive`, where the handoff is the only record a human reads of the turn.
+
+  The two fields are now named once in the renderer rather than copied into eight lists, so the
+  next step type added cannot omit them, and `registry.test.ts` asserts the parity by reading the
+  required literals off `stepHandoffSchema` itself — a list spelled twice would pass while the two
+  modules disagreed. `mcp/tools/forge-step-handoff.ts`'s docblock said agents "never specify the
+  discriminator"; only `kind='handoff'` was ever hardcoded for them.
+- **A comment thread is now readable to its end by a client with no browser.**
+  `GET /api/issues/:id/comments` answered the whole tree under a fixed 1,000-row cap and said so —
+  `hasMore: true`, `truncatedBy: "response-size"`, and a notice whose remedy was *"a higher limit
+  will NOT help — read the full thread in the UI"*. That was accurate and left a CLI caller with no
+  move at all: the forge-plugin CLI met the bound on every long issue and broke in five places at
+  once, including a status judged off the whole record refusing every operation on a long issue
+  because it could not read the record whole. Both surfaces now take a cursor — REST `?cursor=`,
+  MCP `forge_comments {cursor}` — and answer `nextCursor` under the same name and meaning, from one
+  codec, so a token either transport mints decodes in the other. The size budget still bounds one
+  page; nothing bounds the thread.
+
+  Three things this change had to get right, each of which fails as a *clean* walk over an
+  incomplete thread. The cursor walks **root** comments, not comments: `buildCommentTree`
+  deliberately drops a reply whose parent is off-page rather than promoting it, so roots are the
+  only row set for which the tree builder is correct on a partial fetch. The token carries the DB's
+  own microsecond rendering of `created_at` rather than a JS `Date` — a `Date` holds milliseconds,
+  and a token minted from one names an instant at or before its own row, which made every page
+  repeat its predecessor's last root (measured: 47 rows read off a 40-comment thread at limit 7).
+  And `hasMore` is `nextCursor !== null` and nothing else, because `total` counts every comment flat
+  while a page carries roots, so `returned < total` stays true on a thread already walked to its
+  end. On the MCP side the size trim now sheds whole subtrees from the newest end and keeps at least
+  one row: an empty page under a cursor is a dead end, and a 20K-character agent report over the
+  budget is ordinary. `lib/pagination.ts` gains `cursorList`, the third of the three REST list
+  shapes — its own "two shapes and no third" rule (ISS-889) is rewritten here, because a keyset
+  route can honestly state neither an `offset` nor a `hasMore` computed off a count. The walk, its
+  three bounds and every way it ends early are drawn in
+  `docs/flows/issue-work-comment-thread-read.html`. The plugin's own client half is its issue,
+  there. (ISS-956)
+
+- **A `waitingKind` is now refused on every target that cannot store it, instead of being accepted
+  and nulled.** `POST /api/issues/:id/transition` and `forge_issues action=transition` advertise
+  `waitingKind` for any `toStatus`, but the write stores it only for `toStatus === 'waiting'` and
+  `transition-reason.ts`'s `needs_info` heading ignores the argument it is handed. So a kind sent
+  with any other target reached no reader anywhere: not the row, not the comment, not the health
+  surface — and the call reported success, leaving a caller unable to tell a stored park from a
+  dropped one. Measured on 2026-09-07 across sixteen `needs_info` parks made in one pass, each
+  carrying `waitingKind: "needs_decision"`; every write succeeded and not one kind survived.
+
+  It now throws `WAITING_KIND_NOT_APPLICABLE` (422 on REST, `waiting_kind_not_applicable` as a
+  batch skip reason), keyed on the **requested** status and placed outside the
+  `requiresAuthoredReason` block. Both placements are load-bearing: an agent's `waiting` stays legal
+  on an autonomous project, where the park rewrite lands the row on `needs_info` and the kind still
+  reaches the reason comment's heading, while `in_progress` — a target that demands no reason at
+  all — was the commonest silent drop and a check nested in that block would have passed it
+  straight through. The driver's own fact text and the lifecycle guide now name the refusal by
+  code, so an agent is not told one thing and refused another.
+
+  Scope note, because this issue was filed claiming more: a park's `reason` was never lost.
+  `postTransitionReasonComment` posts it as a comment inside the same transaction as the status
+  write, and `REASON_REQUIRED_STATUSES` makes it mandatory for `reopen`, `waiting` and
+  `needs_info`. Nor is an edge's `reason` discarded — `issue_dependencies.reason` stores it and
+  `GET /api/issues/:id/dependencies` returns it; the agent-facing relations digest omits it
+  deliberately, because that payload is inlined into an agent's context without the untrusted-data
+  framing `serialize()` applies. The original report mistook the absence of a field on the issue
+  *document* for the absence of the value.
+
+
+- **A token shared by a dispatcher and the agents it runs is rate-limited for that load, and a
+  refusal now says exactly how long to wait.** The `forge` CLI's credential file is per-user, so on
+  a box running a dispatching session plus four to six agents, one PAT carries every issue read,
+  comment list and knowledge search all of them make. That was one bucket of 600 requests a minute,
+  and under a wave it was ordinary reads that exhausted it: a single `forge next --why` on
+  2026-09-07 was answered with twelve rate-limit waits, and the CLI's filing gate — registered with
+  a ten-second budget — printed `waiting 19s` and took twenty, so the gate failed open.
+
+  The per-token bucket is now **two** buckets, reads counted apart from writes, so a wave's reads
+  can no longer spend the budget its writes then queue behind. Reads get 2400 a minute, which is
+  eight sessions at three hundred each rather than a round number: 108 calls in a minute is the
+  measured peak of ONE busy session (30 days of `mcp_audit_log`, ISS-894), a dispatcher plus its
+  agents is eight of them, and `forge next --why` fans out over every open issue in one command, so
+  the per-session figure is above the steady peak on purpose. Writes keep 600 — six times that same
+  measurement — because writes were never what starved.
+
+  Which bucket a request charges is decided where the answer is knowable: REST reads it off the HTTP
+  method, and `/mcp` — where every call is a `POST` and the method says nothing — off the JSON-RPC
+  envelope, from a clone of the body so the transport still gets its stream. An unrecognised tool,
+  an unparseable body and an unknown method all charge the *write* budget, the stricter of the two,
+  so a tool registered next release keeps exactly the ceiling it has today rather than escaping the
+  limiter.
+
+  Which verbs count as reads is judged by what the handler does, not by how the verb reads. Review
+  caught `fetch` in that set on the strength of its name: its only consumer, `forge_uploads
+  action=fetch`, calls `assertPrincipalIsWriter` and inserts a `download_tickets` row on every
+  call, so a writer-gated mutation was being charged the larger read budget. It is out, and the
+  test that pins it out asserts the consumer's authz rather than the spelling. The same pass added
+  the member-gated reads that were being charged the smaller budget for no reason —
+  `forge_issues action=listTasks` and `forge_coolify_deploy`'s `status`, `logs`, `runtime-logs`,
+  `applications`, `targets` and `rollback-images`, which is exactly the poll-heavy traffic this
+  issue was filed over.
+
+  A `429` was already carrying `Retry-After`, and the CLI was already honouring it; what it could not
+  say was whether to stop at all. The body's `details` now names the window, the ceiling, the
+  remaining budget and **which class was refused**, and `X-RateLimit-Reset` and `X-RateLimit-Scope`
+  ride on every response — so a client whose reads are exhausted can see that its writes are not.
+
+  `RATE_LIMIT_PAT_MAX` and `RATE_LIMIT_PAT_WINDOW_MS` are **retired**, and core refuses to boot
+  while either is set, naming both replacements. There is no single value left for the old name to
+  mean, and a schema that simply stops reading a key an operator deliberately lowered would leave
+  that number silently unenforced. The four replacements
+  (`RATE_LIMIT_PAT_{READ,WRITE}_{MAX,WINDOW_MS}`) are declared with `${VAR}` lines in
+  `docker-compose.prod.yml` and in both `.env.example` files, which is the whole point of the
+  `8ff505af` fix they inherit. A token's own `rate_limit_max` column, where set, now caps each class
+  rather than the two together — the three credentials that pin one (a paired box, a `job:` token, a
+  `session:` token) are single-session tokens whose 600 was sized as six times that session's peak,
+  and that intent is per axis. Flow: `docs/flows/organization-access-token-throttle.html` (ISS-961).
+
+- **A `decomposes` edge no longer waives the work-evidence gate in silence.**
+  `pipeline/work-evidence.ts#hasChildIssues` read exactly one dependency kind — `decomposes` — and
+  a single live edge made `findMissingWorkEvidence` return `null`, which is the whole of ISS-786's
+  anti-fabrication gate: an issue with one decompose child could be marked merged and moved to
+  `developed`/`testing` with no branch, no commit and no code handoff. Three agent-facing documents
+  said the kind was inert (`guides/registry.ts`: "it holds nothing back"; `prompt/facts/registry.ts`:
+  "it gates nothing"; the `set_dependency` tool: "no lifecycle of its own"), so an agent wired a
+  decompose believing the write was a grouping label and removed the check that catches a fabricated
+  merge. Nobody was lying: the record was made, and what the edge actually did was in no document.
+
+  The waiver stays — it is ISS-786's deliberate grouping-parent exemption, and removing it would
+  refuse every epic whose children carry the code. What changed is that nothing can claim otherwise.
+  `issues/dependency-effects.ts` now holds `WORK_EVIDENCE_WAIVER_KIND` (the one kind the query
+  filters on) and `WORK_EVIDENCE_WAIVER_NOTE` (the sentence the surfaces render). The four `.ts`
+  surfaces interpolate the note, so they cannot drift; `db/schema.ts`'s `cm:guard` and
+  `docs/modules/issue-work/README.md` cannot, and `dependency-effects.test.ts` holds those two by
+  reading their source — proven red under a planted change of the kind. `setIssueDependency` now
+  returns `effects { gatesDispatch, waivesWorkEvidence, note }` on every outcome, including the
+  idempotent re-assert, so the write that creates the edge reports the effect it just had.
 
 - **`check-flow-coverage` no longer calls a function-hit "settled end-to-end".** The summary read
   `N step(s) across M flow(s), K settled end-to-end` and marked each row `e2e`, while the whole of
@@ -2840,6 +3052,65 @@
   No tool is deleted by this change. `docs/architecture/agent-surface.md` carries the rule,
   `docs/flows/mcp-tool-deletion.html` draws the decision path, and ISS-946 carries the fact that
   the third population cannot be measured from a runner box at all. (ISS-894)
+- **The always-inject flag now says what it buys, and stops implying the rule will be followed.**
+  Flagging a project fact `alwaysInject` splices its full body into every agent prompt under
+  *"Hard rules for this project — always-injected by the project owner. Follow them exactly"*, and
+  nothing has ever read the rule back: no gate refuses a step that ignored it, no step is asked
+  whether it complied, no surface counts observance. The settings tab nevertheless told the owner
+  to *"use it for hard rules the agent must always follow"* — an enforcement promise the control
+  plane was not making.
+
+One sentence, `ALWAYS_INJECT_GUARANTEE_NOTE`, now states the split: the body reaches every
+  agent prompt, and nothing checks whether the agent followed it. `GET`/`PATCH
+  /api/projects/:id/project-facts` both serve it — the PATCH answer replaces the GET's in the
+  tab's query cache, so a field on only one of them would leave the screen on the owner's first
+  save — and the browser holds no second copy of the string. `ALWAYS_INJECT_ENFORCEMENT_NOTE`
+  carries the detail a settings tab has no room for, appended to `forge_config`'s description and
+  rendered into the `project-settings-and-test-credentials` guide: which three checks do not
+  exist, and the one obligation on this deployment that DOES have a readback — the UX contract,
+  whose rules are `ux_contract_rules` rows with ids and whose violations agents cite in
+  `ux_findings`. That is the price of an enforceable rule, ids to cite, and a free-text fact has
+  none — which is why this is a correction to the claim rather than a new checker.
+
+  **Found on the way, and fixed here.** `forge_config`'s issue-aware branch resolution read the
+  issue through a query that selected only `session_context`, while
+  `extractIssueBranchOverride` prefers `metadata.branchConfig` — so an issue carrying a real
+  per-issue base-branch override was answered with the project default, silently, and the comment
+  above the cast still said the `issues.metadata` column had not landed. It had. The reader now
+  selects both fields and is named `readIssueBranchInputs`; its single caller uses the shared
+  extractor instead of a hand-rolled copy of the same precedence. The unit lane could not have
+  caught this — it mocks the row, and a mocked row carries `metadata` whatever the SELECT asked
+  for — so the assertion is an integration test against real Postgres.
+
+  The agent's own prompt is unchanged, deliberately. Telling an agent inside a rule that nothing
+  checks the rule converts an unverified rule into an ignored one; the false promise was the one
+  made to the owner, and that is where it was withdrawn.
+
+- **Pairing a box is now issuing it a token, and the device credential is gone.** `devices` was
+  both the machine and its secret — `token_hash`, `token_prefix` and an argon2 verifier of its own.
+  It is a registry of machines now. `POST /api/devices/login/approve` takes an optional `agent_id`,
+  and the poll hands back an ordinary PAT (the approver's) or that agent's AAT, carrying the new
+  `personal_access_tokens.device_id`. `requireDevice`, `requireUserOrDevice` and the `/ws` upgrade
+  all resolve the box from that one column through `verifyDeviceCredential`; `auth/deviceToken.ts`
+  and `verifyDeviceToken` are deleted. Four auth middlewares became two species, then one.
+
+  A token with no `device_id` presented to a device route is refused **by name** rather than read as
+  its owner — that fallback is the `device.ownerId` fiction, where a machine borrowed a person's
+  whole account, and the refusal names `forge login` as the remedy.
+
+  **Every paired box must re-run `forge login` once.** There is no backfill and there could not be
+  one: core holds argon2 over a plaintext it never had, so an existing device token cannot be mapped
+  to a PAT. Migration `0215` refuses to drop the credential columns while any non-revoked device
+  still holds one and names the rows, so the break is read at deploy time rather than discovered as
+  a dark fleet. `devices` rows keep their ids, so every `runners` binding, `jobs.device_id`,
+  `agent_sessions.device_id` and `projects.default_device_id` reference survives.
+
+  `agency` now reads `users.kind === 'agent'` OR the token's machine-name prefix, and both halves
+  are load-bearing: an AAT's owner is an agent, while a `job:`/`session:` token is minted from a
+  human and would read `human` off the kind alone. `device:` joined
+  `MACHINE_TOKEN_NAME_PREFIXES` so a fleet's tokens stay off their owner's PAT cap and a daemon's
+  writes are held to the ISS-786/812 evidence gates.
+
 
 - **An agent session authenticates `/mcp` with its own job token, and a device token no longer
   authenticates `/mcp` at all.** Two credential species reached the MCP transport, and one of them

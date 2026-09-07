@@ -16,6 +16,7 @@
 
 import { z } from 'zod';
 import { issueDependencyKinds, jobTypes, modelTiers } from '../../db/schema.js';
+import { WORK_EVIDENCE_WAIVER_NOTE } from '../../issues/dependency-effects.js';
 import { PM_DECISION_CAUSES } from '../../pm/decisions-service.js';
 import { PM_GRAPH_MAX_DEPTH } from '../../pm/graph-service.js';
 import { pmDispatchHandler } from './forge-pm-dispatch.js';
@@ -48,18 +49,15 @@ const inputSchema = z
 
     rootIssueId: z.uuid().optional(),
     depth: z.number().int().min(1).max(PM_GRAPH_MAX_DEPTH).optional(),
-    // dispatch
     issueId: z.uuid().optional(),
     jobType: z.enum(jobTypes).optional(),
     reason: z.string().min(1).max(2000).optional(),
     payload: z.record(z.string(), z.unknown()).optional(),
     modelTier: z.enum(modelTiers).optional(),
-    // set_dependency
     fromIssueId: z.uuid().optional(),
     toIssueId: z.uuid().optional(),
     kind: z.enum(issueDependencyKinds).optional(),
     validUntil: z.iso.datetime().optional(),
-    // write_decision
     sessionId: z.uuid().optional(),
     cause: z.enum(PM_DECISION_CAUSES).optional(),
     eventRef: z.record(z.string(), z.unknown()).optional(),
@@ -80,7 +78,7 @@ export const forgeProjectPmTool: ContextScopedMcpToolFactory = ({ principal }) =
     'snapshot/graph/runner_load: read-only; require projectId + project membership. ' +
     'graph also accepts optional rootIssueId (BFS) and depth (default 2, max 5); without rootIssueId returns the full graph capped at 200 nodes with truncated:true + remainingNodes:N. ' +
     'dispatch: enqueue a coder-skill job for an issue (projectId, issueId, jobType, reason; optional payload, modelTier); requires PM-actor capability, so not reachable over MCP. ' +
-    'set_dependency: record a dependency edge (projectId, fromIssueId, toIssueId, kind; optional reason, validUntil); idempotent — a repeat call returns created:false and applies whichever of `validUntil`/`reason` you passed (`updated:true` when it changed something). Expire a stale edge by setting `validUntil` in the past; that is the only agent-reachable retraction (DELETE is JWT-only REST). When creating a NEW issue that needs a blocking edge, prefer forge_issues.create { data.relations } (atomic, edges committed before issueCreated fires) or create the issue as status:draft first — a blocks edge set after an open create can miss the first dispatch tick. ' +
+    `set_dependency: record a dependency edge (projectId, fromIssueId, toIssueId, kind; optional reason, validUntil). Only \`blocks\` gates dispatch. ${WORK_EVIDENCE_WAIVER_NOTE} The result's \`effects\` names what the edge you just wrote actually does. Idempotent — a repeat call returns created:false and applies whichever of \`validUntil\`/\`reason\` you passed (\`updated:true\` when it changed something). Expire a stale edge by setting \`validUntil\` in the past; that is the only agent-reachable retraction (DELETE is JWT-only REST). When creating a NEW issue that needs a blocking edge, prefer forge_issues.create { data.relations } (atomic, edges committed before issueCreated fires) or create the issue as status:draft first — a blocks edge set after an open create can miss the first dispatch tick. ` +
     'write_decision: durable PM decision turn (projectId, cause, summary; optional sessionId, eventRef, actions, confidence, modelTier, tookMs, escalate); requires PM-actor capability. To escalate alongside the decision, pass an `escalate` object — top-level `summary` is the decision summary, `escalate.summary` becomes the notification title.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {

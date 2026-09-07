@@ -44,7 +44,7 @@ flowchart LR
   MP -- "useProjectModules<br/>(filters kind='module')" --> Q
   LV -- "useProjectModules" --> Q
   Q -- "GET /projects/:id/labels" --> L
-  MT -- "POST /projects/:id/labels<br/>PATCH · DELETE /labels/:id" --> L
+  MT -- "POST /projects/:id/labels<br/>PATCH · DELETE /labels/:id<br/>(derives slug, binds node)" --> L
   MP -- "PATCH /issues/:id { labels }" --> I
   LV -- "GET …/issues/search?module=&amp;withModules=1" --> S
 </pre></div>
@@ -118,9 +118,35 @@ options: one <code>GET /issues/:id</code> per row, or no column. The flag is the
 <tr><td><code>MODULE_IN_USE</code></td><td>"Other modules or issues still depend on this one." Raised on demoting a module that is a parent or a primary.</td></tr>
 <tr><td><code>LABEL_IN_USE</code> (409 on delete)</td><td>"Issues are still tagged with this — remove it from them first." The confirm step fires <em>before</em> the request, so the reader has already agreed to a delete the server then refuses.</td></tr>
 <tr><td><code>PRIMARY_NOT_MODULE</code> · <code>MULTIPLE_PRIMARY</code></td><td>Toast; the picker stays open with the reader's selection intact.</td></tr>
+<tr><td><code>KNOWLEDGE_NODE_TAKEN</code></td><td>"Another module is already bound to that entry." The binding is 1:1, so the reader must clear the other module's link first.</td></tr>
+<tr><td><code>MODULE_SLUG_TAKEN</code></td><td>"Another module took that slug while this write was in flight; retry." Only a writer that raced the server's own derivation reaches this — the slug is derived, so the reader has nothing to correct and the retry succeeds.</td></tr>
+<tr><td><code>INVALID_KNOWLEDGE_NODE</code> · <code>KNOWLEDGE_NODE_NOT_IN_PROJECT</code> · <code>KNOWLEDGE_NODE_ON_NON_MODULE</code></td><td>Toast naming the cause; the row keeps its old binding. A node in another project is refused by name rather than silently ignored — the registry is per-project.</td></tr>
 <tr><td>Project has no modules</td><td>Not an error: the picker's <code>EmptyState</code> links to the Modules tab. A picker that rendered an empty list here would be a dead end.</td></tr>
 </tbody>
 </table>
+
+<div class="rule">
+<b>The slug is derived once, and a rename does not move it.</b> <code>POST /projects/:id/labels</code>
+with <code>kind='module'</code> derives <code>slug</code> from the name and stores it;
+<code>PATCH /labels/:id</code> derives it again only on a promotion
+(<code>label</code>&nbsp;&rarr;&nbsp;<code>module</code>), clears it together with
+<code>knowledgeEntryId</code> on a demotion, and leaves it untouched on every rename. That is the
+whole point of storing it: the module's knowledge node is found through the slug, so a slug that
+followed the display name would orphan the node every time somebody retitled a module. Two distinct
+names that derive one base (<code>API/v2</code> and <code>API&nbsp;v2</code>) get
+<code>api-v2</code> and <code>api-v2-2</code> rather than a refusal, and the chosen slug comes back
+in the response so the disambiguation is visible (ISS-947).
+</div>
+
+<div class="rule">
+<b>Deleting a node clears the link; deleting a module leaves the node.</b> The FK is
+<code>ON DELETE SET NULL</code>, so a knowledge entry can be removed without taking its module with
+it — the module comes back with <code>knowledgeEntryId: null</code>, which is the same state as a
+module whose node was never written. Nothing runs in the other direction:
+<code>DELETE /labels/:id</code> removes the module and the <code>knowledge_entries</code> row
+stands. A NULL link therefore means "no node right now" and never "the node is gone", which is why
+the column is nullable rather than carrying a tombstone.
+</div>
 
 <div class="rule">
 <b>Delete is refused, not confirmed away.</b> <code>DELETE /labels/:id</code> answers 409

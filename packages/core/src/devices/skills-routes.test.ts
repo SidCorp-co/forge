@@ -7,7 +7,7 @@ vi.mock('../config/env.js', () => ({
   env: { DEVICE_TOKEN_PEPPER: TEST_PEPPER, NODE_ENV: 'test' },
 }));
 
-const verifyDeviceToken = vi.fn(async (token: string) => {
+const verifyDeviceCredential = vi.fn(async (token: string) => {
   if (token === 'good') {
     return { id: 'dev-1', ownerId: 'u-1', status: 'offline', name: 'laptop', platform: 'linux' };
   }
@@ -16,8 +16,8 @@ const verifyDeviceToken = vi.fn(async (token: string) => {
   }
   return null;
 });
-vi.mock('../auth/deviceToken.js', () => ({
-  verifyDeviceToken: (t: string) => verifyDeviceToken(t),
+vi.mock('../auth/device-credential.js', () => ({
+  verifyDeviceCredential: (t: string) => verifyDeviceCredential(t),
 }));
 
 const selectLimit = vi.fn();
@@ -80,7 +80,6 @@ describe('GET /api/devices/me/skills', () => {
     const res = await buildApp().request(`/api/devices/me/skills?projectId=${PROJECT_ID}`, {
       headers: { authorization: 'Bearer revoked' },
     });
-    // verifyDeviceToken returns a revoked device row -> defence-in-depth 401.
     expect(res.status).toBe(401);
   });
 

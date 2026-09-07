@@ -1,6 +1,6 @@
-import { and, count, eq } from 'drizzle-orm';
+import { and, count, eq, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issueLabels, type LabelKind, labels } from '../db/schema.js';
+import { issueLabels, knowledgeEntries, type LabelKind, labels } from '../db/schema.js';
 
 /**
  * ISS-593 — the module half of the labels table. A module IS a label with
@@ -15,7 +15,11 @@ export type ModuleErrorCode =
   | 'PARENT_NOT_MODULE'
   | 'CIRCULAR_HIERARCHY'
   | 'MODULE_IN_USE'
-  | 'PARENT_ON_NON_MODULE';
+  | 'PARENT_ON_NON_MODULE'
+  | 'INVALID_KNOWLEDGE_NODE'
+  | 'KNOWLEDGE_NODE_NOT_IN_PROJECT'
+  | 'KNOWLEDGE_NODE_TAKEN'
+  | 'KNOWLEDGE_NODE_ON_NON_MODULE';
 
 export class ModuleHierarchyError extends Error {
   constructor(
@@ -145,6 +149,104 @@ export async function assertDemotionIsLegal(labelId: string): Promise<void> {
     throw new ModuleHierarchyError(
       'MODULE_IN_USE',
       "that module is some issue's primary; clear the attribution first",
+    );
+  }
+}
+
+/**
+ * ISS-947 — the slug a module's name derives, before uniqueness is applied.
+ *
+ * Lowercase, non-alphanumerics collapsed to a single `-`, trimmed. A name made entirely of
+ * punctuation derives nothing, so it falls back to `module` rather than to the empty string the
+ * CHECK would then have to call a valid slug.
+ */
+// cm:edge lockstep -> packages/core/drizzle/migrations/0216_module_slug_and_knowledge_node.sql — the migration backfills every existing module with this same derivation written in SQL (`lower`, `regexp_replace`, `row_number`). The two must agree, or a module created before the migration and one created after answer to different slugs for the same name.
+export function moduleSlugBase(name: string): string {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return base === '' ? 'module' : base;
+}
+
+/**
+ * The slug this module will carry: `base`, or the lowest free `base-<n>` from 2 up.
+ *
+ * `slugify` is not injective — "API/v2" and "API v2" derive one base — and the issue forbids the
+ * backfill failing on a project that already has modules. Refusing here instead would leave two
+ * policies for one identity, so both suffix. The chosen slug is returned to the caller in the
+ * response body, so the disambiguation is visible rather than silent.
+ */
+export async function deriveModuleSlug(projectId: string, name: string): Promise<string> {
+  const base = moduleSlugBase(name);
+  const taken = new Set(
+    (
+      await db
+        .select({ slug: labels.slug })
+        .from(labels)
+        .where(and(eq(labels.projectId, projectId), isNotNull(labels.slug)))
+    ).map((r) => r.slug),
+  );
+  if (!taken.has(base)) return base;
+  for (let n = 2; ; n++) {
+    const candidate = `${base}-${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
+/**
+ * Validate the knowledge node `labelId` would bind to.
+ *
+ * Four refusals, each by its own code: the node is absent (`INVALID_KNOWLEDGE_NODE`), it belongs to
+ * another project (`KNOWLEDGE_NODE_NOT_IN_PROJECT`), another module already names it
+ * (`KNOWLEDGE_NODE_TAKEN`), or the row being written is not a module
+ * (`KNOWLEDGE_NODE_ON_NON_MODULE`, raised by the caller). `labelId` is undefined on create, where
+ * no row can yet hold the binding.
+ */
+export async function assertKnowledgeNodeIsLegal(
+  projectId: string,
+  knowledgeEntryId: string,
+  labelId: string | undefined,
+): Promise<void> {
+  const [node] = await db
+    .select({ projectId: knowledgeEntries.projectId })
+    .from(knowledgeEntries)
+    .where(eq(knowledgeEntries.id, knowledgeEntryId))
+    .limit(1);
+  if (!node) {
+    throw new ModuleHierarchyError(
+      'INVALID_KNOWLEDGE_NODE',
+      'knowledgeEntryId does not name a knowledge entry',
+    );
+  }
+  // cm:guard the FK cannot express this — a node in another project is a binding the "thin per-project registry" cannot mean anything by, and widening the read to swallow it would answer one project's module with another project's documentation.
+  if (node.projectId !== projectId) {
+    throw new ModuleHierarchyError(
+      'KNOWLEDGE_NODE_NOT_IN_PROJECT',
+      'that knowledge entry belongs to a different project',
+    );
+  }
+
+  // cm:guard checked here as well as by `labels_knowledge_entry_id_uq` so the caller gets a code rather than a 500 on a unique violation; the index is what holds when a writer bypasses this path.
+  const [owner] = await db
+    .select({ id: labels.id })
+    .from(labels)
+    .where(eq(labels.knowledgeEntryId, knowledgeEntryId))
+    .limit(1);
+  if (owner && owner.id !== labelId) {
+    throw new ModuleHierarchyError(
+      'KNOWLEDGE_NODE_TAKEN',
+      'another module is already bound to that knowledge entry',
+    );
+  }
+}
+
+/** The knowledge binding belongs to a module and to nothing else — the database says the same thing in `labels_knowledge_entry_chk`, and this is what turns it into a code the caller can act on. */
+export function assertKnowledgeNodeIsForModule(isModule: boolean): void {
+  if (!isModule) {
+    throw new ModuleHierarchyError(
+      'KNOWLEDGE_NODE_ON_NON_MODULE',
+      'only a module can name a knowledge entry; set kind to module, or clear knowledgeEntryId',
     );
   }
 }

@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { verifyDeviceToken } from '../auth/deviceToken.js';
+import { verifyDeviceCredential } from '../auth/device-credential.js';
 import { verifyUserToken } from '../auth/jwt.js';
 import { isPatLike } from '../auth/pat-format.js';
 import { db } from '../db/client.js';
@@ -89,17 +89,23 @@ export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }
   return async (c, next) => {
     const token = readBearerToken(c);
 
-    try {
-      const claims = await verifyUserToken(token);
-      c.set('userId', claims.sub);
-      c.set('principal', 'user');
-      await next();
-      return;
-    } catch {
-      // Not a user token — fall through to device-token verification.
+    if (!isPatLike(token)) {
+      try {
+        const claims = await verifyUserToken(token);
+        c.set('userId', claims.sub);
+        c.set('principal', 'user');
+        await next();
+        return;
+      } catch {
+        throw new HTTPException(401, {
+          message: 'invalid token',
+          cause: { code: 'INVALID_TOKEN' },
+        });
+      }
     }
 
-    const device = await verifyDeviceToken(token);
+    // cm:guard the PAT branch resolves a DEVICE and sets no `userId`, and it must not gain one. A `forge_pat_*` reaching here is a box's credential; giving it its holder's `userId` is precisely the `requireAnyAuth` branch ISS-927 deleted, where a machine silently became a person. A token with no `device_id` is refused rather than accepted as its owner (ISS-932).
+    const device = await verifyDeviceCredential(token);
     if (!device) {
       throw new HTTPException(401, {
         message: 'invalid token',
@@ -108,6 +114,7 @@ export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }
     }
     c.set('deviceId', device.id);
     c.set('principal', 'device');
+    c.set('agency', 'agent');
     await next();
   };
 }

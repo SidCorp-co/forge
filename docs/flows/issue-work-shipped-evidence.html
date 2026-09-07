@@ -125,6 +125,15 @@ writers), <code>packages/core/src/issues/merge-marker.ts</code> (the deliberate 
       <code>applyMergeMarker</code> runs <code>pipeline/work-evidence.ts</code> when the actor's
       agency is <code>agent</code>: no branch, no commit and no code handoff is a refusal, and a
       human's own claim is not gated because a human is accountable for it.</li>
+  <li><b>One edge waives that refusal, and three documents used to call it inert.</b>
+      <code>work-evidence.ts:hasChildIssues</code> returns before any evidence is collected when the
+      issue has one live outgoing <code>decomposes</code> edge — the grouping-parent exemption, so an
+      epic whose children carry the code is not refused for having none of its own. It is applied by
+      edge, not by role: wire a <code>decomposes</code> child onto an issue that was meant to prove
+      its own work and the refusal above stops existing for it. Every agent-facing surface now
+      renders <code>issues/dependency-effects.ts:WORK_EVIDENCE_WAIVER_NOTE</code>, and
+      <code>set_dependency</code>'s result names the effect at the moment the edge is written
+      (ISS-935).</li>
 </ul>
 </div>
 

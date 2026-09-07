@@ -7,6 +7,7 @@ import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import { rateLimit } from '../middleware/rate-limit.js';
+import { assertNotAgent } from './agent-account.js';
 import { setAuthCookie, setRefreshCookie } from './cookie.js';
 import { signUserToken } from './jwt.js';
 import { getDummyPasswordHash, verifyPassword } from './password.js';
@@ -36,7 +37,7 @@ loginRoutes.post(
   async (c) => {
     const { email, password } = c.req.valid('json');
 
-    // Generic 401 for unknown email AND bad password — no user enumeration.
+    // cm:guard ONE error shape for an unknown email and for a wrong password, and the dummy verify above it is the other half — a caller who can tell the two apart can enumerate accounts, and a fast 401 says as much as a different message.
     const invalidCredentials = () =>
       new HTTPException(401, {
         message: 'invalid credentials',
@@ -60,6 +61,9 @@ loginRoutes.post(
     }
     const ok = await verifyPassword(password, user.passwordHash);
     if (!ok) throw invalidCredentials();
+
+    // cm:guard AFTER the password verify, not before. An agent's `password_hash` is NULL so the branch above already refuses it generically; this is the belt for a row that somehow has one, and running it after keeps the timing and the response identical to a wrong password rather than turning `kind` into an enumeration oracle for which accounts are agents.
+    assertNotAgent(user.kind, user.id);
 
     const token = await signUserToken(user.id);
     const { raw: refreshToken } = await db.transaction((tx) => issueRefreshToken(tx, user.id));

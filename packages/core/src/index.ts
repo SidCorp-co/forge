@@ -98,6 +98,7 @@ import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
 import { isEnabled } from './lib/feature-flags.js';
 import { logger } from './logger.js';
 import { mcpHandler } from './mcp/handler.js';
+import { mcpRequestClass } from './mcp/request-class.js';
 import { meAttentionRoutes } from './me/attention-routes.js';
 import { meRecentChangesRoutes } from './me/recent-changes-routes.js';
 import { registerCandidatesDecay } from './memory/candidates-decay.js';
@@ -196,16 +197,21 @@ app.use('*', requestLogger());
 const CORS_ORIGINS = env.CORS_ORIGINS.split(',')
   .map((s) => s.trim())
   .filter((s) => s.length > 0);
-// ISS-161 — /mcp is reachable from the browser (settings/mcp Test Connection
-// panel) so the same CORS allow-list must cover it. `X-Forge-Project-Slug`
-// is added to allowHeaders so the preflight passes for the per-project
-// header the web UI sends alongside the bearer PAT.
+// cm:why `/mcp` is mounted below with the same allow-list because it is reached from a BROWSER, not only by CLIs — the settings/mcp Test Connection panel calls it — and `X-Forge-Project-Slug` is in `allowHeaders` for that panel's preflight, alongside the bearer PAT (ISS-161).
 const corsMiddleware = cors({
   origin: (origin) => (CORS_ORIGINS.includes(origin) ? origin : null),
   credentials: true,
   allowHeaders: ['Content-Type', 'Authorization', 'X-Device-Token', 'X-Forge-Project-Slug'],
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  exposeHeaders: ['X-Total-Count'],
+  // cm:guard a response header a browser must READ has to be listed here or `fetch` hides it, whatever the server sent. `Retry-After` and the `X-RateLimit-*` set are the whole of what a 429 tells a client (ISS-961), and none of them is CORS-safelisted, so omitting one leaves the web UI guessing exactly as the CLI used to.
+  exposeHeaders: [
+    'X-Total-Count',
+    'Retry-After',
+    'X-RateLimit-Limit',
+    'X-RateLimit-Remaining',
+    'X-RateLimit-Reset',
+    'X-RateLimit-Scope',
+  ],
 });
 app.use('/api/*', corsMiddleware);
 app.use('/mcp', corsMiddleware);
@@ -257,6 +263,8 @@ export async function runShutdown(
 
 registerEagerSubscribers(hooks);
 
+// cm:edge ordering -> packages/core/src/mcp/request-class.ts — this mount must stay ABOVE `requirePat()`: it decides which of the two per-token budgets the request spends, and `requirePat` is what charges it. Reversed, every MCP call falls back to the `write` bucket and ISS-961's split stops applying to the surface it was reported from.
+app.use('/mcp', mcpRequestClass());
 app.use('/mcp', requirePat());
 app.post('/mcp', mcpHandler);
 app.get('/mcp', mcpHandler);

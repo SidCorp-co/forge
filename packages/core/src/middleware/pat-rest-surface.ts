@@ -38,7 +38,7 @@ export const PAT_ALLOWED_PREFIXES: readonly string[] = [
   '/api/tasks',
 ];
 
-// cm:edge contract -> packages/core/src/agent-sessions/routes.ts — `/api/agent-sessions` is deliberately NOT here and must not be added while its list route keeps a cross-project branch: `GET /api/agent-sessions` with no `projectId` returns every session of every project the caller can see, `messages[]` included. It was listed until 2026-09-01, inert only because `requireUserOrDevice` has no PAT branch — so the entry pre-approved that fan-out for whoever added one, and adding one is the next step of the device-token unification. A PAT belongs on a project-scoped twin under `/api/projects/:id`, never on the fan-out.
+// cm:edge contract -> packages/core/src/agent-sessions/routes.ts — `/api/agent-sessions` is deliberately NOT here and must not be added while its list route keeps a cross-project branch: `GET /api/agent-sessions` with no `projectId` returns every session of every project the caller can see, `messages[]` included. This list is now the ONLY thing keeping a PAT off it: the "inert because `requireUserOrDevice` has no PAT branch" reading held until ISS-932 gave that middleware one, and the branch resolves a device and sets no `userId` precisely so the fan-out stays out of reach. A PAT belongs on a project-scoped twin under `/api/projects/:id`, never on the fan-out.
 
 // cm:edge contract -> packages/core/src/uploads/routes.ts — `/api/uploads` is deliberately NOT here and must not be added: both its routes are mounted with no auth middleware at all (the ticket id IS the credential), so the entry would grant nothing today while pre-approving PAT reach the day someone bolts a gate on. It was listed until 2026-09-01 on the assumption that an allowlisted prefix is inert where no PAT branch runs; inert is exactly the problem — nobody would be making that decision when it stopped being inert.
 
@@ -51,6 +51,29 @@ export const PAT_ALLOWED_PREFIXES: readonly string[] = [
 export function patAllowedFor(path: string): boolean {
   return PAT_ALLOWED_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`));
 }
+
+/**
+ * The token this request already resolved, so a second `beginPatRequest` on
+ * the same request is free.
+ *
+ * Not an optimisation. Every router in this app self-gates with
+ * `use('*', requireAuth(), …)` so it cannot be mounted unguarded, and Hono runs
+ * the middleware of EVERY router whose prefix matches — nine of them on
+ * `GET /api/projects/:id/issues`. Each one used to verify the token and charge
+ * the rate-limit bucket again, so a token's real ceiling was its stated one
+ * divided by however many routers happened to share a prefix, and an operator
+ * reading `X-RateLimit-Limit: 600` was being refused after 66 requests.
+ * Measured with `X-RateLimit-Remaining` on 2026-09-07: 9 per read request,
+ * 3 per write (ISS-961).
+ */
+// cm:guard the memo is keyed on the TOKEN, not merely present, so a request that somehow carries two credentials re-verifies rather than inheriting the first one's principal. Every check `beginPatRequest` performs — the allowlist, the method's scope — reads `c.req.path` and `c.req.method`, which cannot change within one request, so replaying the answer is sound; a check added here that reads anything else is not memoizable and must invalidate this.
+const PAT_REQUEST_VAR = 'patRequestResolution';
+
+type PatRequestResolution = {
+  token: string;
+  principal: PatPrincipal;
+  scope: PatScope;
+};
 
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -76,7 +99,10 @@ export async function beginPatRequest(
   c: Context,
   token: string,
 ): Promise<{ principal: PatPrincipal; scope: PatScope }> {
-  const principal = await authenticatePat(c, token);
+  const cached = c.get(PAT_REQUEST_VAR) as PatRequestResolution | undefined;
+  if (cached && cached.token === token) return { principal: cached.principal, scope: cached.scope };
+
+  const principal = await authenticatePat(c, token, scopeForMethod(c.req.method));
   if (!principal) {
     throw new HTTPException(401, {
       message: 'invalid token',
@@ -98,10 +124,13 @@ export async function beginPatRequest(
       cause: { code: 'INSUFFICIENT_SCOPE' },
     });
   }
-  return {
+  const resolution: PatRequestResolution = {
+    token,
     principal,
     scope: { projectIds: patEffectiveProjectIds(principal), tokenId: principal.tokenId },
   };
+  c.set(PAT_REQUEST_VAR, resolution);
+  return { principal: resolution.principal, scope: resolution.scope };
 }
 
 /** Run `next()` inside the request's PAT scope. */

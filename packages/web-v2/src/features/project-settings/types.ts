@@ -25,6 +25,9 @@ export interface ProjectFactsResponse {
 	projectFactsConfig: ProjectFactsConfig;
 	/** Char budget for the SUM of always-inject bodies (warn-on-overflow). */
 	maxAlwaysInjectChars: number;
+	// cm:edge contract -> packages/core/src/projects/project-facts.ts — `ALWAYS_INJECT_GUARANTEE_NOTE`, served rather than copied: core may not value-import `@forge/contracts` and web-v2 cannot import core, so a string both sides must agree on otherwise lives twice behind a parity test
+	/** What the always-inject flag does and does not promise, for the owner setting it. */
+	alwaysInjectGuarantee: string;
 }
 
 /** `PATCH /api/projects/:id/project-facts` body. Per-key merge: a `null` value
@@ -142,11 +145,16 @@ export interface ProjectLabel {
 	kind: LabelKind;
 	/** Modules only — the parent module, or null at the root of the taxonomy. */
 	parentId: string | null;
+	/** Modules only — the module's stable identity, derived from its name on create and never moved by a rename. */
+	slug: string | null;
+	/** Modules only — the module's knowledge node, or null when nobody has written one yet. */
+	knowledgeEntryId: string | null;
 	description: string | null;
 }
 
 /** Body for creating a label or a module. `color` may be omitted for a module — the server
  *  derives a stable one from the name; it is REQUIRED for a plain label. */
+// cm:guard `slug` is deliberately absent — the server derives it and refuses to accept one, so a field here would be silently dropped rather than honoured (ISS-947).
 export interface LabelCreateInput {
 	name: string;
 	color?: string;

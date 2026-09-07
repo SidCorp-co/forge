@@ -16,6 +16,12 @@
 // Search already supplies those) and do not restate the status ladder /
 // enums (`prompt/facts/registry.ts` owns those).
 
+// cm:guard both note modules are leaves — `issues/dependency-effects.ts` imports the schema as `import type` only and `projects/project-facts.ts` imports nothing but zod — so neither breaches the no-DB rule below. Keep them that way, or this module and both its read surfaces start needing a live DB.
+import { WORK_EVIDENCE_WAIVER_NOTE } from '../issues/dependency-effects.js';
+import {
+  ALWAYS_INJECT_ENFORCEMENT_NOTE,
+  ALWAYS_INJECT_GUARANTEE_NOTE,
+} from '../projects/project-facts.js';
 import { CONFORMANCE_GUIDE } from './conformance-guide.js';
 import type { ForgeGuide } from './types.js';
 
@@ -28,13 +34,16 @@ export const FORGE_GUIDES: readonly ForgeGuide[] = [
     title: 'Project settings & test credentials',
     summary:
       'Where to fetch repo paths, branches, workspace setup, preview URLs, and test credentials — and why forge_config never returns them.',
-    version: 2,
+    // cm:edge contract -> packages/core/src/projects/project-facts.ts — the body interpolates both always-inject notes where it names the tier
+    version: 3,
     body: `## Project settings & test credentials
 
 Two tools, two different jobs — mixing them up is the single most common Forge discoverability miss.
 
 - **\`forge_projects.get\`** — deployment-shaped facts: repo path, base/production branch, \`workspaceSetup\` (how to bring this repo's workspace to a buildable state), and \`previewDeploy\` (staging/beta URLs + \`testCredentials\` for logging into a preview environment as a test user). This is the ONLY place test credentials live.
 - **\`forge_config\`** — process-shaped facts: \`pipelineConfig\` (stage gates, status ladder overrides), \`stateContext\`, \`projectFacts\` (+ \`projectFactsConfig\` for the always-inject tier), categories. It deliberately does **not** return credentials or preview URLs — don't go looking for them there, and don't add them there either.
+
+  ${ALWAYS_INJECT_GUARANTEE_NOTE} ${ALWAYS_INJECT_ENFORCEMENT_NOTE}
 
 ### Rules
 1. Never hardcode a repo path, branch name, or test credential in a skill body, prompt, or comment — always fetch it live. A hardcoded value silently drifts the moment the project's settings change.
@@ -59,7 +68,8 @@ The same shape costs tokens rather than a stall: a stage lands in a checkout who
 ### Relation kinds
 Edges are directional \`fromIssue --kind--> toIssue\`:
 - \`blocks\` — **the only kind that affects dispatch.** A → blocks → B means B cannot dispatch until A's code has reached the base branch — normally, until A has \`merged_at\` set. A reopened issue stays a blocker even if its prior merge stamp remains. A closed issue without \`merged_at\` unblocks B only when the project's base branch cannot be stamped structurally. It is **not** gated on A reaching \`released\`: a blocker parked at a manual release gate already unblocks B the instant its \`merged_at\` is stamped.
-- \`relates\`, \`duplicates\`, \`parent\`, \`decomposes\` — grouping labels, no dispatch effect. \`decomposes\` reads epic → child and is useful for showing structure; it holds nothing back, so ordering between the two is still a \`blocks\` edge.
+- \`relates\`, \`duplicates\`, \`parent\` — grouping labels, no dispatch effect.
+- \`decomposes\` — epic → child. ${WORK_EVIDENCE_WAIVER_NOTE} Ordering between the two is still a \`blocks\` edge.
 
 ### Setting a blocks edge — avoid the create-then-block race
 - Blocker known **at create time** → pass it in the create call itself (\`data.relations: [{ kind: 'blocks', dependsOnId }]\`), committed before the issue dispatches. This is atomic.
@@ -322,7 +332,7 @@ The kind is REQUIRED and core never guesses it. A plan awaiting approval and a t
 **A step that cannot RUN is not \`waiting\`.** No runner, provider quota, project budget, retries spent — the JOB is \`held\` and the issue stays at its stage. \`pipelineHealth.waitingOn.reason = 'job_held'\` names the condition, and nothing is being asked of you: a capacity hold resumes itself when capacity returns.
 
 ### Stopping the pipeline costs you a written reason
-\`reopen\`, \`waiting\` and \`needs_info\` are the three statuses that stop the pipeline, and all three are **rejected without a \`reason\`** (422). Pass it on the \`forge_issues\` call (\`note\` also counts); it is posted as a comment before the status flips, so it cannot go missing afterwards. \`waiting\` additionally requires \`waitingKind\`.
+\`reopen\`, \`waiting\` and \`needs_info\` are the three statuses that stop the pipeline, and all three are **rejected without a \`reason\`** (422). Pass it on the \`forge_issues\` call (\`note\` also counts); it is posted as a comment before the status flips, so it cannot go missing afterwards. \`waiting\` additionally requires \`waitingKind\`, and \`waitingKind\` is REFUSED on every other target (422 \`WAITING_KIND_NOT_APPLICABLE\`) — no other status stores it, so put the ask in \`reason\`.
 
 Entering a park costs a sentence; leaving one costs nothing. That asymmetry is deliberate and it is the opposite of the old rule, which let anyone stop the pipeline silently and then argued about who was allowed to restart it.
 

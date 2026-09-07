@@ -335,7 +335,7 @@ describe('a session token authenticates as an agent, not as the human who owns i
       userId: user.id,
     })) as string;
 
-    const principal = await authenticatePat(ctx(), plaintext);
+    const principal = await authenticatePat(ctx(), plaintext, 'read');
     expect(principal?.agency).toBe('agent');
     expect(gateApplies(principal)).toBe(true);
   });

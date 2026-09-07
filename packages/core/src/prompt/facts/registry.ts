@@ -19,6 +19,8 @@
 // is pure.
 
 import type { IssueStatus, JobType } from '../../db/schema.js';
+// cm:guard the only non-type import this module may carry, and only because `dependency-effects.ts` is a leaf whose own schema import erases — the cycle constraint above is what it would otherwise break.
+import { WORK_EVIDENCE_WAIVER_NOTE } from '../../issues/dependency-effects.js';
 
 export type FactCategory = 'enum' | 'protocol' | 'format' | 'reference';
 export type FactTier = 'mandatory' | 'contextual';
@@ -73,11 +75,7 @@ export interface ForgeFact {
 
 // cm:guard these strings are the ONLY text injected into every job rather than fetched on demand, so a mode-specific claim here reaches projects of every mode: `rule-parity.test.ts` holds them against the runner's orientation template by INTENT (never bytes — the surfaces differ in escaping and audience), and `check-injected-doc-modes.mjs` holds every status transition in them to naming the mode it belongs to.
 
-// Operating affordances — teach Forge's own tools as trigger → tool → red-flag
-// (not a noun-list), so connected agents reach for the affordance instead of
-// re-encoding it in prose (e.g. a dependency written as text rather than a
-// `blocks` edge). Authored ONCE here and reused by the interactive chat
-// orientation (prompt/system.ts CHAT_NUDGE) so the two surfaces never drift.
+// cm:edge lockstep -> packages/core/src/prompt/system.ts — this text is authored once and imported there as `OPERATING_AFFORDANCES_TEXT`, so the injected job orientation and the interactive chat orientation cannot drift; the shape is deliberate too — trigger → tool → red-flag rather than a noun-list, so an agent reaches for the affordance instead of re-encoding it in prose (a dependency written as text rather than a `blocks` edge). This note used to name its consumer `CHAT_NUDGE`, a symbol that no longer exists anywhere in the repo.
 export const OPERATING_AFFORDANCES_TEXT = `## Operating affordances
 Forge gives you a tool for things agents routinely do in prose. When you hit the trigger, reach for the tool — and avoid the red flag.
 
@@ -107,7 +105,7 @@ const PIPELINE_RULES_TEXT = `## Pipeline Rules
 - **Always advance the state — never leave an issue parked.** The FINAL action of every step MUST be a \`forge_issues.update\` that moves \`status\`. Setting status is what triggers the next step; an issue left in its current status stalls the pipeline forever. Do this even if your skill instructions don't mention a transition.
 - **Single-shot turn — never background-and-exit.** Your step is ONE headless turn; when you stop, the whole process group is killed. Any \`run_in_background\` task dies with it and you never see its result — so NEVER end your turn while still waiting on background output (the job reports \`done\` but the issue is left parked, the silent stall above). To wait on an async result (deploy / build / migration), poll in the FOREGROUND so the turn blocks until you have the answer, then verify and set status. If the wait would exceed your budget, set the handoff status and exit cleanly — do NOT background-poll-and-exit. Backgrounding is fine ONLY for a helper you consume within the SAME turn (e.g. a dev server you query before finishing).
 - **Where to move next.** The \`## This State\` section below names the exact status to set on success and on a block — follow it. Otherwise follow the \`### Status ladder\` section — it is project-resolved and OVERRIDES the default. Only when neither is present, default forward along the staged ladder: \`open → confirmed → clarified → approved → developed → testing → tested → released → closed\` (intermediate states you don't own auto-advance). An \`autonomous\` project has no ladder to walk — its driver writes \`open\`, \`in_progress\`, \`needs_info\`, \`closed\`, \`dropped\` and nothing else, so reach for the status your step names, never the next rung.
-- **Deviate freely when warranted.** Transitions are NOT restricted to the happy path. From ANY state you may set \`needs_info\` (requirements missing/unclear — put the QUESTION in \`reason\`, it is the only place the reporter sees it), \`waiting\` (blocked on a human decision / can't proceed), \`reopen\` (regression or failed check), or \`on_hold\` (deliberate pause) the moment you hit that condition — don't force the ladder. Only \`draft\` is never a valid target. **Three of them STOP the pipeline and are REJECTED without a \`reason\`: \`reopen\`, \`waiting\`, \`needs_info\`.** Pass \`reason\` on the same \`forge_issues\` call; it is posted as a comment before the status flips. \`waiting\` additionally requires \`waitingKind\`. This is not paperwork — a stopped pipeline that does not say what it is waiting for is a question nobody can answer, and 43 issues sat exactly like that before the rule existed.
+- **Deviate freely when warranted.** Transitions are NOT restricted to the happy path. From ANY state you may set \`needs_info\` (requirements missing/unclear — put the QUESTION in \`reason\`, it is the only place the reporter sees it), \`waiting\` (blocked on a human decision / can't proceed), \`reopen\` (regression or failed check), or \`on_hold\` (deliberate pause) the moment you hit that condition — don't force the ladder. Only \`draft\` is never a valid target. **Three of them STOP the pipeline and are REJECTED without a \`reason\`: \`reopen\`, \`waiting\`, \`needs_info\`.** Pass \`reason\` on the same \`forge_issues\` call; it is posted as a comment before the status flips. \`waiting\` additionally requires \`waitingKind\`, and \`waitingKind\` is REFUSED on every other target (422 \`WAITING_KIND_NOT_APPLICABLE\`) — no other status stores it, so put the ask in \`reason\`. This is not paperwork — a stopped pipeline that does not say what it is waiting for is a question nobody can answer, and 43 issues sat exactly like that before the rule existed.
 - **\`waiting\` means a human is needed, and YOU are its only author.** Set it when something only a person can supply is missing — a decision between tradeoffs (\`needs_decision\`) or a resource you cannot create, e.g. a test account, credentials, third-party data (\`needs_resource\`). Pass BOTH \`waitingKind\` and \`reason\` on the same \`forge_issues\` call — the write is REJECTED without either (core never guesses the kind, and never will). Write the \`reason\` as the actual ask, addressed to the person who will read it: name what you need, why you cannot get it yourself, and what happens once you have it. The system never writes \`waiting\` by itself: an agent or a human put it there deliberately. Leaving it needs nothing special: set the next status and the pipeline dispatches, from any actor and any surface. Park semantics in full: \`${LIFECYCLE_GUIDE_POINTER}\`.
 - **You never self-rescue a crash, and a crash never touches the issue.** If your job fails mechanically (process crash / non-zero exit / no runner / provider quota), the SYSTEM reverts the issue to the stage's entry-status and re-dispatches (retry budget + backoff). When the budget is spent, the JOB is \`held\` — the issue stays where it is and is NOT parked at \`waiting\`, because nothing is being asked of a human. Do NOT set \`on_hold\` or \`waiting\` to "hold" a failure.
 - **Five rounds with no movement is your stop signal, not a cap.** Nothing limits how many times an issue may be reopened. But if you have fixed the same problem ~5 times and nothing has changed — same failure, same symptom, no new information — stop fixing and set \`waiting\` with a comment saying what you tried and what you now need from a human. Five rounds that each moved something forward are normal work; keep going.
@@ -192,8 +190,10 @@ const HANDOFF_KEYS: Partial<Record<JobType, string>> = {
   drive: 'outcome, summary, workDone[], openQuestions[], commitSha',
 };
 
+// cm:guard named ONCE and prepended by the renderer, never copied into the eight lists above. Every branch of `stepHandoffSchema` is `z.literal`-keyed on both, so a list that omits them briefs the agent on a payload that cannot validate — and eight copies is eight chances to leave one out, which is the drift the `cm:edge lockstep` above exists to catch and did not, because the field was missing from all eight at once rather than one.
+const HANDOFF_UNIVERSAL_KEYS = 'step, schema_version: 1';
+
 export const FORGE_FACTS: readonly ForgeFact[] = [
-  // ── Tier 1: mandatory (always auto-injected by system.ts) ───────────────
   {
     id: 'pipeline-rules',
     title: 'Pipeline rules & status discipline',
@@ -215,7 +215,6 @@ export const FORGE_FACTS: readonly ForgeFact[] = [
     render: () => TOOL_REFERENCE_TEXT,
   },
 
-  // ── Tier 2: issue-detail facts (enums + relations) ──────────────────────
   {
     id: 'complexity-scale',
     title: 'Complexity scale (t-shirt sizing)',
@@ -280,11 +279,10 @@ Edges are directional \`fromIssue --kind--> toIssue\`. Allowed \`kind\` values:
 - \`relates\` — soft "see also"; PM/UX metadata only.
 - \`duplicates\` — A duplicates B; metadata only.
 - \`parent\` — A is the parent of B; metadata only.
-- \`decomposes\` — epic → child; a grouping label only. It gates nothing: if a child must land before the parent's own work, say so with a \`blocks\` edge.
+- \`decomposes\` — epic → child. ${WORK_EVIDENCE_WAIVER_NOTE} If a child must land before the parent's own work, say so with a \`blocks\` edge.
 (Do not invent names like \`blocked_by\`/\`depends_on\` — those are not valid kinds.)`,
   },
 
-  // ── Tier 2: process facts ───────────────────────────────────────────────
   {
     id: 'status-ladder',
     title: 'Status ladder (this project)',
@@ -337,7 +335,6 @@ Project memory is NOT auto-loaded into this prompt. BEFORE you design/reproduce/
 Run one or two focused queries on the concrete nouns of THIS task. Hits are point-in-time — verify against the live code/git before relying on them. Then REPORT the verification outcome for note/knowledge hits: \`forge_memory.feedback({ projectId, source, sourceRef, verdict: 'confirmed' })\` when the code agrees, or \`verdict: 'outdated', evidence: '<what disproved it>'\` to archive a stale row on the spot — a verification you don't report is a cleaning signal thrown away. This READ step is the counterpart to the "Capture Learnings" write step in Pipeline Rules.`,
   },
 
-  // ── Tier 2: format facts ────────────────────────────────────────────────
   {
     id: 'release-notes-format',
     title: 'Release-notes field shape',
@@ -369,11 +366,9 @@ ${
     tier: 'contextual',
     scope: 'global',
     namespace: 'forge',
-    // Only the stages with a handoff schema — `release`/`custom`/`pm` have
-    // none, so injecting the generic "write a handoff" instruction there would
-    // send the agent after a payload that cannot validate.
+    // cm:guard derived from `HANDOFF_KEYS`, and it must stay derived — `release`/`custom`/`pm` have no branch in `stepHandoffSchema`, so a stage listed here without a key list is an agent sent after a payload that cannot validate, and one with a key list left out never reads the instruction at all.
     appliesTo: Object.keys(HANDOFF_KEYS) as JobType[],
-    version: 2,
+    version: 3,
     // cm:guard name the transport the STAGE is told to use everywhere else: `drive`'s skill and preamble both speak `forge-runner api`, and this fact applied to it while naming `forge_step_handoff.write` — a third name for one write, in the same context window as a driver skill that names none. `HANDOFF_KEYS` carries a `drive` entry, so `appliesTo` includes it and the fork is not optional.
     render: (ctx) => {
       const stage = ctx?.stage ?? null;
@@ -383,8 +378,8 @@ ${
           ? '`forge-runner api issue-step-contexts -X POST`'
           : '`forge_step_handoff.write`';
       const body = keys
-        ? `For the \`${stage}\` step, call ${call} with: \`${keys}\`.`
-        : `Call ${call} with the structured payload for your step (triage/clarify/plan/code/review/test/fix each have a schema).`;
+        ? `For the \`${stage}\` step, call ${call} with \`payload\`: \`${HANDOFF_UNIVERSAL_KEYS}, ${keys}\`.`
+        : `Call ${call} with the structured payload for your step (triage/clarify/plan/code/review/test/fix each have a schema). Every one of them carries \`${HANDOFF_UNIVERSAL_KEYS}\` inside \`payload\` alongside its own fields.`;
       const tail =
         stage === 'drive'
           ? 'Nothing dispatches after you, so this is not context for a next step — it is the summary of the turn a human reads on the issue.'
@@ -395,7 +390,6 @@ ${tail}`;
     },
   },
 
-  // ── Tier 2: ops facts ───────────────────────────────────────────────────
   {
     id: 'worktree-protocol',
     title: 'Worktree isolation protocol',

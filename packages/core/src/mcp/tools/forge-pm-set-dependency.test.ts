@@ -163,6 +163,52 @@ describe('forge_pm.set_dependency', () => {
     expect(depSpy).not.toHaveBeenCalled();
   });
 
+  // cm:edge lockstep -> packages/core/src/issues/dependency-effects.ts — the result's `effects` is the only place a caller learns what the edge it just wrote does; ISS-935 shipped it because `created:true` on a `decomposes` edge said nothing about the work-evidence gate it had just opened.
+  it('a decomposes edge reports the work-evidence waiver it just applied', async () => {
+    const tool = forgePmSetDependencyTool(ctx);
+    pushMemberOk();
+    queue.push([
+      { id: FROM_ID, projectId: PROJECT_ID },
+      { id: TO_ID, projectId: PROJECT_ID },
+    ]);
+    queue.push([{ id: EDGE_ID }]);
+
+    const result = (await tool.handler({
+      projectId: PROJECT_ID,
+      fromIssueId: FROM_ID,
+      toIssueId: TO_ID,
+      kind: 'decomposes',
+    })) as {
+      created: boolean;
+      effects: { gatesDispatch: boolean; waivesWorkEvidence: boolean; note: string };
+    };
+
+    expect(result.created).toBe(true);
+    expect(result.effects.waivesWorkEvidence).toBe(true);
+    expect(result.effects.gatesDispatch).toBe(false);
+    expect(result.effects.note).toContain('work-evidence gate');
+  });
+
+  it('a blocks edge reports dispatch gating and no waiver', async () => {
+    const tool = forgePmSetDependencyTool(ctx);
+    pushMemberOk();
+    queue.push([
+      { id: FROM_ID, projectId: PROJECT_ID },
+      { id: TO_ID, projectId: PROJECT_ID },
+    ]);
+    queue.push([{ id: EDGE_ID }]);
+
+    const result = (await tool.handler({
+      projectId: PROJECT_ID,
+      fromIssueId: FROM_ID,
+      toIssueId: TO_ID,
+      kind: 'blocks',
+    })) as { effects: { gatesDispatch: boolean; waivesWorkEvidence: boolean } };
+
+    expect(result.effects.gatesDispatch).toBe(true);
+    expect(result.effects.waivesWorkEvidence).toBe(false);
+  });
+
   // cm:guard the `runners` table must NOT be consulted here. Re-adding a `capabilities.pm` requirement locks out exactly the caller this tool exists for — a plan-pipeline agent on a claude-code runner, which never carries the PM flag — and it fails as FORBIDDEN, which reads as a permissions problem rather than a gate that should not be there (ISS-131).
   it('admits a project owner with no PM capability (ISS-131 gate relaxation)', async () => {
     const tool = forgePmSetDependencyTool(ctx);

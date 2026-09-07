@@ -74,7 +74,7 @@ export const projectSettingsApi = {
 		apiClient<ReleaseReadiness>(`/projects/${id}/release-readiness`),
 
 	/** `GET /api/projects/:id/project-facts` → `{ projectFacts, projectFactsConfig,
-	 *  maxAlwaysInjectChars }`. Member-gated. */
+	 *  maxAlwaysInjectChars, alwaysInjectGuarantee }`. Member-gated. */
 	getProjectFacts: (id: string) =>
 		apiClient<ProjectFactsResponse>(`/projects/${id}/project-facts`),
 

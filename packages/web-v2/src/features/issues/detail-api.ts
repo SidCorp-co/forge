@@ -2,7 +2,7 @@
 // against core: `issues/routes.ts` (GET /:id), `comments/routes.ts`,
 // `issues/activity-routes.ts`, `tasks/routes.ts`, `issues/attachment-routes.ts`.
 
-import { apiClient, apiClientList, apiMultipart } from "@/lib/api/client";
+import { apiClient, apiClientCursorAll, apiMultipart } from "@/lib/api/client";
 import type {
   ActivityItem,
   AttachmentRow,
@@ -24,9 +24,10 @@ export const issueDetailApi = {
   get: (id: string) => apiClient<IssueDetail>(`/issues/${id}`),
 
   /** `GET /api/issues/:id/comments` — comment TREE (nested via `replies`),
-   *  with `totalCount` = every comment on the issue, replies included. */
-  // cm:edge contract -> packages/core/src/comments/routes.ts — the route answers `wholeList`, so the body is `{ items, total, … }` and `items` is the TREE while `total` counts every comment flat. Read as a bare array it is an object that passes every truthiness guard and throws `is not iterable` in the first walk of it (ISS-893: every issue-detail page on the deploy). `apiClientList` is the one place that knows both shapes — do not hand-unwrap `{ items }` here.
-  listComments: (id: string) => apiClientList<CommentNode>(`/issues/${id}/comments`),
+   *  every page of it, with `totalCount` = every comment on the issue. */
+  // cm:edge contract -> packages/core/src/comments/routes.ts — the route answers `cursorList`, so the body is `{ items, total, nextCursor, … }` and `items` is the TREE for THIS PAGE while `total` counts every comment flat. Read as a bare array it is an object that passes every truthiness guard and throws `is not iterable` in the first walk of it (ISS-893: every issue-detail page on the deploy). `apiClientCursorAll` is the one place that knows the envelope — do not hand-unwrap `{ items }` here.
+  // cm:guard the screen renders the WHOLE thread, so this walks every page rather than showing the first one — a first page rendered as the thread is a silent truncation, and the route pages at 50 roots where it used to cap at 1000 comments (ISS-956). A load-more control instead of the walk is a screen change and owes the UX contract.
+  listComments: (id: string) => apiClientCursorAll<CommentNode>(`/issues/${id}/comments`),
 
   /** `POST /api/issues/:id/comments` — create (optional `parentId`). */
   createComment: (id: string, body: string, parentId?: string) =>

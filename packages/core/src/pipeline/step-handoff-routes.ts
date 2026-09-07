@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { assertProjectAccess } from '../lib/authz.js';
 import { stepHandoffSchema } from '../memory/step-handoff-schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { resolveActor } from './activity.js';
 import { deleteIssueContext, getIssueContexts, writeIssueContext } from './issue-context-store.js';
 
 /**
@@ -26,8 +27,7 @@ const listQuerySchema = z.object({
   projectId: z.uuid(),
   issueId: z.uuid(),
   pipelineRunId: z.uuid().optional(),
-  // CSV in query string — clients pass `?steps=triage,plan` for the
-  // injection allow-list path.
+  // cm:why CSV rather than repeated params because the caller is the dispatcher's injection allow-list, which holds the step list as one string.
   steps: z
     .string()
     .optional()
@@ -65,7 +65,7 @@ stepHandoffRoutes.post(
     const body = c.req.valid('json');
     const userId = c.get('userId');
     await assertProjectAccess(body.projectId, userId);
-    const r = await writeIssueContext({ ...body, kind: 'handoff' });
+    const r = await writeIssueContext({ ...body, kind: 'handoff', actor: resolveActor(c) });
     return c.json(r, 201);
   },
 );

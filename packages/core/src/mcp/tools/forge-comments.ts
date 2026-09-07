@@ -3,17 +3,20 @@ import { BodyInvalidError } from '../../body/errors.js';
 import { BODY_FORMATS } from '../../body/formats.js';
 import { bodySlots, bodyText } from '../../body/prepare.js';
 import {
-  AttachmentError,
   listCommentAttachmentsForIssue,
-  type PersistedCommentAttachment,
-  persistCommentAttachment,
+  persistDecodedCommentAttachments,
 } from '../../comments/attachment-service.js';
+import {
+  CommentCursorInvalidError,
+  decodeCommentCursor,
+  encodeCommentCursor,
+} from '../../comments/cursor.js';
 import { pgConstraintName, pgErrorCode } from '../../comments/error-mapping.js';
 import {
   type CommentThreadRow,
   deleteComment,
   insertComment,
-  listIssueComments,
+  listIssueCommentPage,
   loadCommentForAccess,
   loadIssueProjectId,
   updateCommentBody,
@@ -30,7 +33,7 @@ import {
   principalHookActor,
   zodToMcpSchema,
 } from './lib.js';
-import { buildListEnvelope, overfetch } from './list-envelope.js';
+import { buildListEnvelope } from './list-envelope.js';
 
 /**
  * Action-based parity port of the legacy Strapi MCP `forge_comments` tool.
@@ -75,6 +78,7 @@ const inputSchema = z
     filters: filtersSchema,
     data: commentCreateDataSchema,
     limit: z.number().int().min(1).max(200).optional(),
+    cursor: z.string().min(1).optional(),
   })
   .strict();
 
@@ -90,8 +94,7 @@ function serialize(
     authorId: row.authorId,
     // cm:guard SECOND HALF IN forge-plugin `plugin/src/flow/earned.mjs` — `answered()` asks whether a PERSON replied after a park, and this field is what it asks with now that `is_ai` is gone: non-null means an agent wrote it. Drop it from this projection and every screen the driver parks on becomes unanswerable, because the agent's own comments would read as a person's. Since ISS-931 the value comes from the caller's `job:`/`session:` token rather than from a device principal, which is why a PAT-authored agent comment is marked at all — it never was before.
     authorDeviceId: row.authorDeviceId ?? null,
-    // ISS-532: comment bodies are untrusted (anyone can post) and reach the
-    // agent verbatim via this MCP surface — frame as DATA, never instructions.
+    // cm:guard a comment body reaches the agent verbatim over this MCP surface and anyone can post one, so it must stay inside a DATA frame — unframing it turns every commenter into someone who can issue the agent instructions (ISS-532)
     body: markUntrusted(row.body, { source: 'comment.body' }),
     format: row.format,
     template: row.template,
@@ -108,9 +111,7 @@ function serialize(
   };
 }
 
-// Strict base64 charset check. Buffer.from('xx', 'base64') silently drops
-// invalid characters, so we validate the input string first to surface a
-// useful BAD_REQUEST instead of writing a truncated blob to disk.
+// cm:guard validate the charset BEFORE decoding, never after: `Buffer.from(s, 'base64')` drops invalid characters silently rather than throwing, so a malformed payload decodes to a short buffer and the only remaining symptom is a truncated blob already written to storage.
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 function decodeBase64Strict(input: string): Buffer | null {
   const trimmed = input.trim().replace(/\s+/g, '');
@@ -123,7 +124,8 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_comments',
   description:
     'List, create, update or delete issue comments. List requires filters.issue (issue UUID). ' +
-    'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. ' +
+    'EVERY list response carries `returned`, `limit`, `hasMore` and `nextCursor` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. ' +
+    'To read a whole thread: call list, then pass the `nextCursor` you got back as `cursor`, and repeat until `nextCursor` is null. Each page carries the next top-level comments with their replies, so no comment is returned twice and none is skipped. The cursor is the SAME token the REST route `GET /api/issues/:id/comments` mints and accepts. ' +
     'Create requires data.issue + data.body. Update requires documentId + data.body (use it to ' +
     'place a <forge-artifact id="…"> once the attachment exists, or to correct a refused body). ' +
     'Delete requires documentId. All actions ' +
@@ -170,9 +172,7 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
       const projectId = await loadIssueProjectId(issueId);
       await assertPrincipalIsWriter(principal, projectId);
 
-      // Pre-decode + size-validate attachments BEFORE writing the comment row.
-      // A size-cap rejection here returns PAYLOAD_TOO_LARGE without leaving an
-      // empty comment behind.
+      // cm:guard decode and size-check every attachment BEFORE the comment INSERT, never after — a PAYLOAD_TOO_LARGE raised once the row exists leaves an empty comment behind that the caller was told failed, and nothing deletes it.
       const rawAttachments = input.data?.attachments ?? [];
       const decoded: Array<{ name: string; mime: string; bytes: Buffer }> = [];
       if (rawAttachments.length > 0) {
@@ -233,42 +233,13 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
         parentId: inserted.parentId,
       });
 
-      const persistedAttachments: PersistedCommentAttachment[] = [];
-      const attachmentErrors: Array<{
-        index: number;
-        name: string;
-        code: string;
-        message: string;
-      }> = [];
-      for (const [i, d] of decoded.entries()) {
-        try {
-          const row = await persistCommentAttachment({
-            commentId: inserted.id,
-            name: d.name,
-            mime: d.mime,
-            bytes: d.bytes,
-            uploaderId: principal.userId,
-            uploaderDeviceId: authorDeviceId,
-          });
-          persistedAttachments.push(row);
-        } catch (err) {
-          if (err instanceof AttachmentError) {
-            attachmentErrors.push({
-              index: i,
-              name: d.name,
-              code: err.code,
-              message: err.message,
-            });
-          } else {
-            attachmentErrors.push({
-              index: i,
-              name: d.name,
-              code: 'INTERNAL',
-              message: err instanceof Error ? err.message : String(err),
-            });
-          }
-        }
-      }
+      const { persisted: persistedAttachments, errors: attachmentErrors } =
+        await persistDecodedCommentAttachments(
+          inserted.id,
+          decoded,
+          principal.userId,
+          authorDeviceId,
+        );
 
       const result: Record<string, unknown> = serialize(inserted as CommentRow);
       result.attachments = persistedAttachments;
@@ -307,22 +278,73 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
 type ToolInput = z.infer<typeof inputSchema>;
 type Principal = Parameters<typeof assertPrincipalIsWriter>[0];
 
+// cm:edge protocol -> packages/core/src/mcp/tools/list-envelope.ts — the ordering pair this surface depends on: `sizeTrimSheds: 'newest'` must be set BEFORE a cursor is offered, and the cursor must be minted from the last KEPT item. Set one without the other and the trim sheds rows the cursor has already gone past, so a walk skips them and nothing says it did (ISS-956).
+// cm:guard the trim unit is a ROOT AND ITS REPLIES, never a bare row. A trim that sheds rows can drop a reply while keeping its root, and then no cursor is correct: resuming after the root skips the reply, resuming before it repeats the root. Shedding whole subtrees leaves the last surviving root's token exact, which is what makes AC 4 (every comment exactly once) hold under the size cap.
 async function listAction(principal: Principal, input: ToolInput): Promise<unknown> {
   const issueId = input.filters?.issue;
   if (!issueId) throw new Error('BAD_REQUEST: filters.issue is required for list');
   await assertPrincipalIsWriter(principal, await loadIssueProjectId(issueId));
 
+  let after: ReturnType<typeof decodeCommentCursor> | undefined;
+  if (input.cursor !== undefined) {
+    try {
+      after = decodeCommentCursor(input.cursor);
+    } catch (err) {
+      if (err instanceof CommentCursorInvalidError) {
+        throw new Error(`BAD_REQUEST: cursor: ${err.message}`);
+      }
+      throw err;
+    }
+  }
+
   const commentsLimit = input.limit ?? 50;
-  const rows = await listIssueComments(issueId, overfetch(commentsLimit));
+  const page = await listIssueCommentPage(issueId, { after, limit: commentsLimit });
   const attachmentsByCommentId = await listCommentAttachmentsForIssue(issueId);
 
-  return buildListEnvelope({
+  const subtrees = groupBySubtree(page.rows, page.roots).map((rows) => ({
+    root: rows[0] as CommentThreadRow,
+    rows: rows.map((r) => serialize(r as CommentRow, attachmentsByCommentId.get(r.id) ?? [])),
+  }));
+
+  const envelope = buildListEnvelope({
     key: 'comments',
-    items: rows.map((r) => serialize(r as CommentRow, attachmentsByCommentId.get(r.id) ?? [])),
+    items: subtrees,
     limit: commentsLimit,
-    hint: 'read the full thread in the UI',
+    hint: 'pass `nextCursor` back as `cursor`',
     order: 'asc',
+    sizeTrimSheds: 'newest',
+    cursor: {
+      more: page.nextCursor !== null,
+      of: (item) =>
+        encodeCommentCursor({
+          createdAtKey: page.cursorKeyById.get(item.root.id) as string,
+          id: item.root.id,
+        }),
+    },
   });
+  // cm:guard `returned` counts the COMMENTS under `comments`, not the subtrees the size trim shed by — `limit` bounds top-level comments, so the two numbers differ on any page carrying a reply, and leaving `returned` at the subtree count states a length the array it names contradicts. That is exactly what `buildNotice`'s own guard refuses one layer up, so it is overwritten here rather than inside the envelope, whose trim unit legitimately is the subtree.
+  const flat = (envelope.comments as typeof subtrees).flatMap((s) => s.rows);
+  envelope.comments = flat;
+  envelope.returned = flat.length;
+  return envelope;
+}
+
+/**
+ * A page's rows split into one group per root, each group being the root
+ * followed by its descendants in `createdAt` order.
+ */
+function groupBySubtree(rows: CommentThreadRow[], roots: CommentThreadRow[]): CommentThreadRow[][] {
+  const groupOf = new Map<string, string>();
+  for (const r of roots) groupOf.set(r.id, r.id);
+  const groups = new Map<string, CommentThreadRow[]>(roots.map((r) => [r.id, [r]]));
+  for (const r of rows) {
+    if (r.parentId === null) continue;
+    const owner = groupOf.get(r.parentId);
+    if (owner === undefined) continue;
+    groupOf.set(r.id, owner);
+    groups.get(owner)?.push(r);
+  }
+  return roots.map((r) => groups.get(r.id) ?? [r]);
 }
 
 // cm:why `update` exists so an agent can place a `<forge-artifact id>` at all (ISS-898 UC5): an attachment needs a comment id to target, so the id the body must reference does not exist until after the create. It writes through the comments service rather than REST `PATCH /api/comments/:id`, which is `requireAuth()` and is not on the MCP plane.

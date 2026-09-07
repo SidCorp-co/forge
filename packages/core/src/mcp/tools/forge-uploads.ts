@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { env } from '../../config/env.js';
+import { mimeFromName } from '../../lib/attachment-mime.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
 import { getStorage } from '../../storage/index.js';
@@ -22,10 +23,7 @@ import {
   zodToMcpSchema,
 } from './lib.js';
 
-// Single top-level object schema (NOT a discriminated union) — MCP tool
-// inputSchemas MUST be `type:object`, so per-action fields are optional here
-// and validated in the handler. `action=request` needs data.targetId+name;
-// `action=fetch` needs data.attachmentId.
+// cm:guard keep this ONE object schema and never split it into a discriminated union — an MCP tool inputSchema must be `type:object`, so the per-action fields stay optional here and the handler enforces them: `action=request` needs data.targetId+name, `action=fetch` needs data.attachmentId
 const inputSchema = z
   .object({
     action: z.enum(['request', 'fetch']),
@@ -34,42 +32,14 @@ const inputSchema = z
         target: z.enum(['issue', 'comment', 'session']),
         targetId: z.uuid().optional(),
         name: z.string().trim().min(1).max(200).optional(),
-        // Optional — inferred from the file extension when omitted; the ticket
-        // service rejects anything outside ALLOWED_MIMES regardless.
+        // cm:why omitting this is the better default now: the extension only picks a candidate, and the PUT resolves the stored type from the bytes, so a declared type can only narrow what the file is allowed to be (ISS-957)
         mime: z.string().trim().min(1).max(255).optional(),
-        // fetch: the attachment to read (issue_attachments.id /
-        // comment_attachments.id), as returned in any `attachments[].id` from
-        // forge_issues / forge_step_start / forge_comments.
+        // cm:guard this is an `issue_attachments.id` / `comment_attachments.id`, the value `attachments[].id` carries on forge_issues, forge_step_start and forge_comments — not the upload ticket id, which is a different table and would resolve to nothing
         attachmentId: z.uuid().optional(),
       })
       .strict(),
   })
   .strict();
-
-const EXT_MIME: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  gif: 'image/gif',
-  webp: 'image/webp',
-  pdf: 'application/pdf',
-  mp4: 'video/mp4',
-  webm: 'video/webm',
-  mov: 'video/quicktime',
-  qt: 'video/quicktime',
-  txt: 'text/plain',
-  md: 'text/markdown',
-  markdown: 'text/markdown',
-  csv: 'text/csv',
-  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  xls: 'application/vnd.ms-excel',
-  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-};
-
-function mimeFromName(name: string): string {
-  const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : '';
-  return EXT_MIME[ext] ?? 'application/octet-stream';
-}
 
 const INLINE_TEXT_MIMES = new Set(['text/plain', 'text/markdown', 'text/csv']);
 
@@ -103,7 +73,11 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Upload (action=request) or READ (action=fetch) an issue/comment/session attachment.\n' +
     'action=request — mint a short-lived, single-use upload URL WITHOUT base64-inlining ' +
     'bytes through the model context (presigned-URL pattern). data={target:"issue"|"comment"|"session", ' +
-    'targetId:<uuid>, name:"<filename>", mime?:"<type>"}. Returns {uploadId, method:"PUT", ' +
+    'targetId:<uuid>, name:"<filename>", mime?:"<type>"}. LEAVE `mime` OFF unless you mean to ' +
+    'constrain the file: the type is read from the BYTES at upload time, so ANY extension of ' +
+    'plain UTF-8 text (.log, .sql, .diff, none at all) lands as text/plain. A refusal carries ' +
+    '`details.allowed` with the accepted types and extensions, so print that rather than ' +
+    'guessing. Returns {uploadId, method:"PUT", ' +
     'uploadUrl, uploadPath, expiresIn (~300s), maxBytes}. Upload out-of-band with NO auth ' +
     'header: `curl -X PUT -T <localPath> "<uploadUrl>"` (if uploadUrl is null, prepend your ' +
     'Forge API origin to uploadPath). The PUT returns the attachment {id,name,mime,size,url}.\n' +
@@ -234,7 +208,11 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
         mime,
       });
     } catch (err) {
-      if (err instanceof UploadTicketError) throw new Error(`${err.code}: ${err.message}`);
+      // cm:guard `details` must ride in the message and stay JSON — an MCP handler that throws has no structured error channel (mcp/server.ts renders `Error: <message>` and nothing else), so dropping it is what makes a client keep its own copy of the allowed set, which is the staleness ISS-957 was filed for
+      if (err instanceof UploadTicketError) {
+        const details = err.details === undefined ? '' : ` details=${JSON.stringify(err.details)}`;
+        throw new Error(`${err.code}: ${err.message}${details}`);
+      }
       throw err;
     }
 

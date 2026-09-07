@@ -7,7 +7,8 @@
  * so the generic rate-limit middleware (`by: 'token'`) can key off it.
  *
  * The dispatcher also:
- *   - enforces a per-token rolling rate limit (RULES.patPerToken) honoring
+ *   - enforces a per-token rolling rate limit in two buckets, reads apart from
+ *     writes (RULES.patRead / RULES.patWrite), honoring
  *     `personal_access_tokens.rate_limit_max` overrides, and audits the first
  *     rejection of each window as `rate_limited`
  *   - records last-used timestamp + IP asynchronously
@@ -23,7 +24,7 @@ import {
   type MachineTokenRef,
   parseMachineTokenName,
 } from '../auth/pat-format.js';
-import { RULES } from '../config/rate-limits.js';
+import { type PatRequestClass, patRuleFor } from '../config/rate-limits.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { parseBearerHeader } from './bearer.js';
@@ -51,6 +52,13 @@ export type PatPrincipal = {
    * context now that the caller has no device to look one up by.
    */
   machine: MachineTokenRef | null;
+  /**
+   * The paired box this token was issued to, or `null` for a token a person
+   * holds. It is what `requireDevice` and `/ws` resolve a device from now that
+   * a device is a registry row rather than a credential (ISS-932).
+   */
+  // cm:guard non-null is the ENTIRE authority to act as a box, so no surface may fall back to `userId` when it is null — that is the `device.ownerId` fiction the AAT exists to remove, where a machine borrowed its owner's whole account. `middleware/require-device.ts` refuses by name instead.
+  deviceId: string | null;
 };
 
 // cm:guard ONE species reaches `/mcp`, and this alias staying a single member is the whole of ISS-931. A device token authenticates `/ws` and the `requireDevice` REST routes and NOTHING here; widening it back into a union restores the second live path that ISS-894's deletions exist to remove, and it does so silently — every `principal.kind === 'pat'` test in `mcp/**` was deleted as unreachable, so the device branch would come back with no gate reading it.
@@ -59,6 +67,7 @@ export type McpPrincipal = PatPrincipal;
 export type PrincipalVars = {
   principal: McpPrincipal;
   patTokenId?: string;
+  patRequestClass?: PatRequestClass;
 };
 
 /**
@@ -93,12 +102,15 @@ const unauth = (message: string, options?: { invalidToken?: boolean; invalidRequ
     },
   });
 
-// cm:guard a 429 from this bucket is a throttle and may never escalate into a revoke. The bucket only ever counts tokens `verifyPat` already accepted, so a guesser never reaches it and the only client it can punish is a legitimate one that is busy; the three-breaches-an-hour auto-revoke that lived here burned four of one user's tokens in a day (2026-09-03) and protected nothing. In-memory by design: a restart forgets it, which only grants a fresh window.
+// cm:guard a 429 from these buckets is a throttle and may never escalate into a revoke. The bucket only ever counts tokens `verifyPat` already accepted, so a guesser never reaches it and the only client it can punish is a legitimate one that is busy; the three-breaches-an-hour auto-revoke that lived here burned four of one user's tokens in a day (2026-09-03) and protected nothing. In-memory by design: a restart forgets it, which only grants a fresh window.
 type PatBucket = {
   minuteCount: number;
   minuteResetAt: number;
 };
+// cm:guard keyed by token AND class, never by token alone: one shared bucket is what let a wave's ordinary reads spend the budget its writes then queued behind (ISS-961). `bucketKey` is the only place the two halves are named, so a class added to `PatRequestClass` needs nothing here.
 const patBuckets = new Map<string, PatBucket>();
+
+const bucketKey = (tokenId: string, requestClass: PatRequestClass) => `${tokenId}:${requestClass}`;
 
 /**
  * Throttle map for `pat.used` WS events. The dispatcher fires once per
@@ -123,40 +135,51 @@ export function __resetPatBuckets(): void {
  */
 export function forgetPatThrottle(tokenId: string): void {
   patUsedLastEmit.delete(tokenId);
-  patBuckets.delete(tokenId);
+  patBuckets.delete(bucketKey(tokenId, 'read'));
+  patBuckets.delete(bucketKey(tokenId, 'write'));
 }
 
 interface RateLimitOutcome {
   allowed: boolean;
+  max: number;
+  windowMs: number;
   remaining: number;
   resetMs: number;
   firstRejectionInWindow: boolean;
 }
 
-function checkPatRateLimit(tokenId: string, maxOverride: number | null): RateLimitOutcome {
-  const max = maxOverride ?? RULES.patPerToken.max;
-  const windowMs = RULES.patPerToken.windowMs;
+// cm:why an explicit `rate_limit_max` caps EACH class rather than the two together: the three credentials that pin one (`devices/credential.ts`, `jobs/job-token.ts`, `agent-sessions/session-token.ts`) are all one-session tokens whose 600 was sized as 6x that session's measured peak, and that intent is per axis — a job doing 600 reads and 600 writes in a minute is still six times anything measured.
+function checkPatRateLimit(
+  tokenId: string,
+  requestClass: PatRequestClass,
+  maxOverride: number | null,
+): RateLimitOutcome {
+  const rule = patRuleFor(requestClass);
+  const max = maxOverride ?? rule.max;
+  const windowMs = rule.windowMs;
 
+  const key = bucketKey(tokenId, requestClass);
   const now = Date.now();
-  let bucket = patBuckets.get(tokenId);
+  let bucket = patBuckets.get(key);
   if (!bucket || now >= bucket.minuteResetAt) {
     bucket = { minuteCount: 0, minuteResetAt: now + windowMs };
-    patBuckets.set(tokenId, bucket);
+    patBuckets.set(key, bucket);
   }
 
   bucket.minuteCount += 1;
+  const base = { max, windowMs, resetMs: bucket.minuteResetAt - now };
   if (bucket.minuteCount > max) {
     return {
+      ...base,
       allowed: false,
       remaining: 0,
-      resetMs: bucket.minuteResetAt - now,
       firstRejectionInWindow: bucket.minuteCount === max + 1,
     };
   }
   return {
+    ...base,
     allowed: true,
     remaining: Math.max(0, max - bucket.minuteCount),
-    resetMs: bucket.minuteResetAt - now,
     firstRejectionInWindow: false,
   };
 }
@@ -179,17 +202,30 @@ function maybeEmitPatUsed(tokenId: string, userId: string): void {
  *
  * Shared with `requireAuth()` in `middleware/auth.ts`, which authenticates the
  * same tokens on the REST data plane. Extracted rather than copied so every
- * surface that accepts a PAT charges the SAME bucket: the ceiling a token
- * owner reads in `X-RateLimit-Limit` is one number, not one per surface.
+ * surface that accepts a PAT charges the SAME pair of buckets: the ceiling a
+ * token owner reads in `X-RateLimit-Limit` is one number per class, not one
+ * per surface.
+ *
+ * `requestClass` is which of the two budgets this request spends, decided by
+ * the caller because only it knows: REST reads it off the HTTP method
+ * (`pat-rest-surface.ts:scopeForMethod`), `/mcp` off the JSON-RPC envelope
+ * (`mcp/request-class.ts`).
  */
-export async function authenticatePat(c: Context, token: string): Promise<PatPrincipal | null> {
+export async function authenticatePat(
+  c: Context,
+  token: string,
+  requestClass: PatRequestClass,
+): Promise<PatPrincipal | null> {
   const verified = await verifyPat(token);
   if (!verified) return null;
-  const { row } = verified;
+  const { row, ownerKind } = verified;
 
-  const outcome = checkPatRateLimit(row.id, row.rateLimitMax);
-  c.header('X-RateLimit-Limit', String(row.rateLimitMax ?? RULES.patPerToken.max));
+  const outcome = checkPatRateLimit(row.id, requestClass, row.rateLimitMax);
+  c.header('X-RateLimit-Limit', String(outcome.max));
   c.header('X-RateLimit-Remaining', String(outcome.remaining));
+  // cm:why the epoch second the window resets, not the seconds left: `Retry-After` already carries the delta, and a client that retries twice against a duration recomputes a moving target while an absolute reset stays true for the whole window. The generic `rateLimit()` middleware has always sent all three; this surface sent two until ISS-961.
+  c.header('X-RateLimit-Reset', String(Math.ceil((Date.now() + outcome.resetMs) / 1000)));
+  c.header('X-RateLimit-Scope', requestClass);
   if (!outcome.allowed) {
     // cm:why one audit row per breached window, not per rejected request — the row answers "was this token throttled, when, from where", and a client retrying at 4 Hz would otherwise write 240 rows a minute of the same answer.
     if (outcome.firstRejectionInWindow) {
@@ -205,10 +241,23 @@ export async function authenticatePat(c: Context, token: string): Promise<PatPri
       });
     }
     const retryAfterSeconds = Math.max(1, Math.ceil(outcome.resetMs / 1000));
+    const windowSeconds = Math.ceil(outcome.windowMs / 1000);
     c.header('Retry-After', String(retryAfterSeconds));
+    // cm:why the body names the window, the ceiling and which of the two classes refused, because `Retry-After` alone tells a client how long to sleep and nothing about whether to sleep at all. A wave whose READS are exhausted may still write, and `scope` is the only thing in the response that says so.
     throw new HTTPException(429, {
-      message: 'rate limit exceeded',
-      cause: { code: 'RATE_LIMITED', details: { retryAfterSeconds } },
+      message:
+        `rate limit exceeded: ${outcome.max} ${requestClass} request(s) per ` +
+        `${windowSeconds}s on this token — retry after ${retryAfterSeconds}s`,
+      cause: {
+        code: 'RATE_LIMITED',
+        details: {
+          retryAfterSeconds,
+          windowSeconds,
+          limit: outcome.max,
+          remaining: outcome.remaining,
+          scope: requestClass,
+        },
+      },
     });
   }
 
@@ -217,12 +266,14 @@ export async function authenticatePat(c: Context, token: string): Promise<PatPri
   // cm:guard derive `agency` from the token, never assume `human` — this is the ONE place a PAT principal is built, for `/mcp` AND for REST (`pat-rest-surface.ts:beginPatRequest` calls straight into here), so a wrong constant here is wrong on every surface at once. A `job:` token is minted for an agent, delivered to the runner on `job.assigned`, and exported as `$FORGE_PAT`; a `session:` token is the same thing for an unattended chat/schedule session, delivered on `agent:start` (ISS-927). Stamped `human` either makes `principalActor` return `{type:'user'}`, which is the exact input `checkTransitionEvidence` and `mark_merged` use to SKIP the ISS-786/812 evidence gates. The gates were added because agents fabricate evidence, so the credential built for agents was the one class exempt from them. Read the FAMILY (`isMachineTokenName`), never one member — a species minted but tested for by name is the same hole wearing a new prefix.
   return {
     kind: 'pat',
-    agency: isMachineTokenName(row.name) ? 'agent' : 'human',
+    // cm:guard the OR is the whole shape and neither half may be dropped. `users.kind` answers for an AAT, whose owner IS an agent (ISS-932); `isMachineTokenName` answers for a `job:`/`session:` token, which is minted from a HUMAN's `jobs.created_by` and would read `human` off the kind alone. Deleting the name half is wave 4 of ISS-932 and cannot happen while those tokens are minted, or every job write is stamped a person's and skips the ISS-786/812 evidence gates.
+    agency: ownerKind === 'agent' || isMachineTokenName(row.name) ? 'agent' : 'human',
     userId: row.userId,
     tokenId: row.id,
     scopes: row.scopes,
     projectIds: row.projectIds ?? null,
     boundProjectId: row.boundProjectId ?? null,
+    deviceId: row.deviceId ?? null,
     machine: parseMachineTokenName(row.name),
   };
 }
@@ -244,7 +295,8 @@ export const requirePat = (): MiddlewareHandler<{ Variables: PrincipalVars }> =>
 
     if (!isPatLike(token)) throw unauth(DEVICE_TOKEN_REFUSAL, { invalidToken: true });
 
-    const principal = await authenticatePat(c, token);
+    // cm:edge ordering -> packages/core/src/mcp/request-class.ts — `mcpRequestClass()` mounts ABOVE this middleware and is what sets the var; the `write` fallback is the stricter of the two, so a request that reached here unclassified spends the smaller budget rather than the larger one.
+    const principal = await authenticatePat(c, token, c.get('patRequestClass') ?? 'write');
     if (!principal) throw unauth('invalid personal access token', { invalidToken: true });
     c.set('patTokenId', principal.tokenId);
     c.set('principal', principal);

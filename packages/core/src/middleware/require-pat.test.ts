@@ -2,7 +2,7 @@
  * `/mcp` credential middleware unit tests (ISS-150, narrowed by ISS-931).
  *
  * One species authenticates: a PAT. A device token is refused BY NAME, the
- * refusal never reaches `verifyDeviceToken`, and the principal carries the
+ * refusal names the credential class, and the principal carries the
  * job/session the token names. Plus the 401 envelopes and the rate limit.
  */
 import { Hono } from 'hono';
@@ -14,12 +14,9 @@ vi.mock('../config/env.js', () => ({
     NODE_ENV: 'test',
     DATABASE_URL: 'postgres://localhost/stub',
     PAT_PEPPER: 'pat-test-pepper',
-    RATE_LIMIT_PAT_MAX: 60,
+    RATE_LIMIT_PAT_READ_MAX: 2400,
+    RATE_LIMIT_PAT_WRITE_MAX: 600,
   },
-}));
-
-vi.mock('../auth/deviceToken.js', () => ({
-  verifyDeviceToken: vi.fn(),
 }));
 
 vi.mock('../auth/pat.js', () => ({
@@ -33,27 +30,10 @@ vi.mock('../auth/mcp-audit.js', () => ({
 
 const { errorHandler } = await import('./error.js');
 const { requirePat, __resetPatBuckets } = await import('./require-pat.js');
-const { verifyDeviceToken } = await import('../auth/deviceToken.js');
 const { verifyPat } = await import('../auth/pat.js');
 const { writeMcpAudit } = await import('../auth/mcp-audit.js');
 
 const PAT_TOKEN = `forge_pat_dev_${'a'.repeat(64)}`;
-
-const testDevice = {
-  id: 'dev-1',
-  ownerId: 'user-1',
-  name: 'macbook',
-  platform: 'macos' as const,
-  agentVersion: null,
-  tokenHash: 'hash',
-  tokenPrefix: 'abcd1234',
-  disabledAt: null,
-  status: 'online' as const,
-  lastSeenAt: null,
-  pairedAt: new Date(0),
-  capabilities: null,
-  createdAt: new Date('2026-01-01T00:00:00Z'),
-};
 
 const testPatRow = {
   id: '00000000-0000-4000-8000-0000000000aa',
@@ -81,7 +61,6 @@ function makeApp() {
 }
 
 beforeEach(() => {
-  vi.mocked(verifyDeviceToken).mockReset();
   vi.mocked(verifyPat).mockReset();
   vi.mocked(writeMcpAudit).mockReset();
   __resetPatBuckets();
@@ -89,7 +68,7 @@ beforeEach(() => {
 
 describe('requirePat middleware (ISS-150, ISS-931)', () => {
   it('routes a forge_pat_* token to the PAT verifier and attaches a PAT principal', async () => {
-    vi.mocked(verifyPat).mockResolvedValue({ row: testPatRow } as never);
+    vi.mocked(verifyPat).mockResolvedValue({ row: testPatRow, ownerKind: 'human' } as never);
     const app = makeApp();
     const res = await app.request('/whoami', {
       headers: { authorization: `Bearer ${PAT_TOKEN}` },
@@ -100,19 +79,16 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
     expect(body.userId).toBe(testPatRow.userId);
     expect(body.tokenId).toBe(testPatRow.id);
     expect(vi.mocked(verifyPat)).toHaveBeenCalledWith(PAT_TOKEN);
-    expect(vi.mocked(verifyDeviceToken)).not.toHaveBeenCalled();
     expect(res.headers.get('WWW-Authenticate')).toBeNull();
   });
 
-  // cm:guard THE point of ISS-931, and the assertion that keeps it: a device token must be refused WITHOUT `verifyDeviceToken` being consulted. A `toBe(401)` alone would stay green against a middleware that verified the device and then rejected it, which is a second live credential path wearing a 401.
-  it('refuses a device token by name and never reaches the device verifier', async () => {
-    vi.mocked(verifyDeviceToken).mockResolvedValue(testDevice as never);
+  // cm:guard ISS-931 asserted this refusal happened WITHOUT `verifyDeviceToken` being consulted, because a bare `toBe(401)` would stay green against a middleware that verified a device and then rejected it. ISS-932 deleted that verifier from the process, so the surviving half is that `verifyPat` is not consulted either and the message still names the class — a pre-ISS-932 box reads this line and nothing else.
+  it('refuses the opaque token a pre-ISS-932 box holds, by name', async () => {
     const app = makeApp();
     const res = await app.request('/whoami', {
       headers: { authorization: 'Bearer legacy-device-token-string' },
     });
     expect(res.status).toBe(401);
-    expect(vi.mocked(verifyDeviceToken)).not.toHaveBeenCalled();
     expect(vi.mocked(verifyPat)).not.toHaveBeenCalled();
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('UNAUTHENTICATED');
@@ -128,6 +104,7 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
   it('carries the job a `job:` token names onto the principal', async () => {
     const jobId = '77777777-7777-4777-8777-777777777777';
     vi.mocked(verifyPat).mockResolvedValue({
+      ownerKind: 'human',
       row: { ...testPatRow, name: `job:${jobId}` },
     } as never);
     const app = makeApp();
@@ -146,6 +123,7 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
   it('carries the session a `session:` token names, and null for a person', async () => {
     const sessionId = '88888888-8888-4888-8888-888888888888';
     vi.mocked(verifyPat).mockResolvedValue({
+      ownerKind: 'human',
       row: { ...testPatRow, name: `session:${sessionId}` },
     } as never);
     let res = await makeApp().request('/whoami', {
@@ -157,7 +135,10 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
     });
 
     __resetPatBuckets();
-    vi.mocked(verifyPat).mockResolvedValue({ row: { ...testPatRow, name: 'my laptop' } } as never);
+    vi.mocked(verifyPat).mockResolvedValue({
+      ownerKind: 'human',
+      row: { ...testPatRow, name: 'my laptop' },
+    } as never);
     res = await makeApp().request('/whoami', {
       headers: { authorization: `Bearer ${PAT_TOKEN}` },
     });
@@ -206,7 +187,6 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
       headers: { authorization: `Bearer ${PAT_TOKEN}` },
     });
     expect(res.status).toBe(401);
-    expect(vi.mocked(verifyDeviceToken)).not.toHaveBeenCalled();
     // cm:why token present but invalid: `error="invalid_token"` is what makes an MCP client surface the failure instead of falling back to OAuth DCR
     expect(res.headers.get('WWW-Authenticate')).toBe(
       'Bearer realm="forge-mcp", error="invalid_token"',
@@ -219,7 +199,6 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
       headers: { authorization: 'Bearer not-a-pat-or-device' },
     });
     expect(res.status).toBe(401);
-    expect(vi.mocked(verifyDeviceToken)).not.toHaveBeenCalled();
     expect(res.headers.get('WWW-Authenticate')).toBe(
       'Bearer realm="forge-mcp", error="invalid_token"',
     );
@@ -227,6 +206,7 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
 
   it('enforces per-PAT rate limit and returns 429 with Retry-After', async () => {
     vi.mocked(verifyPat).mockResolvedValue({
+      ownerKind: 'human',
       row: { ...testPatRow, rateLimitMax: 2 },
     } as never);
     const app = makeApp();
@@ -240,6 +220,7 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
 
   it('audits the first rejection of a window as rate_limited, once per window', async () => {
     vi.mocked(verifyPat).mockResolvedValue({
+      ownerKind: 'human',
       row: { ...testPatRow, rateLimitMax: 1 },
     } as never);
     const app = makeApp();
@@ -264,6 +245,7 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
 
   it('keeps rejecting for the whole window and never revokes the token', async () => {
     vi.mocked(verifyPat).mockResolvedValue({
+      ownerKind: 'human',
       row: { ...testPatRow, rateLimitMax: 1 },
     } as never);
     const app = makeApp();
@@ -274,5 +256,163 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
     }
     const pat = await import('../auth/pat.js');
     expect('forceRevokePat' in pat).toBe(false);
+  });
+});
+
+/**
+ * ISS-961 — reads and writes are two budgets on one token, and the 429 says
+ * enough for a client to act without guessing.
+ *
+ * The falsifying case is `a read that spends its whole budget still writes`:
+ * every other assertion here passes for the single shared bucket this
+ * replaced, because a shared bucket also returns 429 and also carries
+ * `Retry-After`. Only the cross-class probe tells the two apart.
+ */
+describe('requirePat rate limit, split by request class', () => {
+  const RULES_READ_MAX = 2400;
+
+  function classedApp(requestClass: 'read' | 'write') {
+    const app = new Hono();
+    app.use('*', async (c, next) => {
+      c.set('patRequestClass' as never, requestClass as never);
+      await next();
+    });
+    app.use('*', requirePat());
+    app.get('/read', (c) => c.json({ ok: true }));
+    app.post('/write', (c) => c.json({ ok: true }));
+    app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
+    return app;
+  }
+
+  const hdrs = { authorization: `Bearer ${PAT_TOKEN}` };
+
+  function tokenWith(rateLimitMax: number | null) {
+    vi.mocked(verifyPat).mockResolvedValue({
+      ownerKind: 'human',
+      row: { ...testPatRow, rateLimitMax },
+    } as never);
+  }
+
+  it('lets a token with no override spend the whole read budget in one window', async () => {
+    tokenWith(null);
+    const app = classedApp('read');
+    for (let i = 0; i < RULES_READ_MAX; i += 1) {
+      const res = await app.request('/read', { headers: hdrs });
+      if (res.status !== 200) throw new Error(`refused at request ${i + 1}: ${res.status}`);
+    }
+    expect((await app.request('/read', { headers: hdrs })).status).toBe(429);
+  });
+
+  // cm:guard THE falsifying assertion for the whole split. A single shared bucket passes every other test in this block; only a write succeeding after the read budget is spent distinguishes two buckets from one, and that is the property ISS-961 was filed for.
+  it('still accepts a write once the read budget is spent', async () => {
+    tokenWith(3);
+    const reads = classedApp('read');
+    const writes = classedApp('write');
+    expect((await reads.request('/read', { headers: hdrs })).status).toBe(200);
+    expect((await reads.request('/read', { headers: hdrs })).status).toBe(200);
+    expect((await reads.request('/read', { headers: hdrs })).status).toBe(200);
+    expect((await reads.request('/read', { headers: hdrs })).status).toBe(429);
+
+    expect((await writes.request('/write', { method: 'POST', headers: hdrs })).status).toBe(200);
+  });
+
+  it('does not let a write spend the read budget either', async () => {
+    tokenWith(1);
+    const reads = classedApp('read');
+    const writes = classedApp('write');
+    expect((await writes.request('/write', { method: 'POST', headers: hdrs })).status).toBe(200);
+    expect((await writes.request('/write', { method: 'POST', headers: hdrs })).status).toBe(429);
+    expect((await reads.request('/read', { headers: hdrs })).status).toBe(200);
+  });
+
+  it('sends Retry-After, X-RateLimit-Reset and the scope that refused', async () => {
+    tokenWith(1);
+    const app = classedApp('read');
+    await app.request('/read', { headers: hdrs });
+    const res = await app.request('/read', { headers: hdrs });
+    expect(res.status).toBe(429);
+
+    const retryAfter = Number(res.headers.get('Retry-After'));
+    expect(Number.isInteger(retryAfter)).toBe(true);
+    expect(retryAfter).toBeGreaterThan(0);
+    expect(retryAfter).toBeLessThanOrEqual(60);
+
+    const reset = Number(res.headers.get('X-RateLimit-Reset'));
+    const nowSec = Math.ceil(Date.now() / 1000);
+    expect(reset).toBeGreaterThanOrEqual(nowSec);
+    expect(reset).toBeLessThanOrEqual(nowSec + 60);
+
+    expect(res.headers.get('X-RateLimit-Scope')).toBe('read');
+    expect(res.headers.get('X-RateLimit-Limit')).toBe('1');
+    expect(res.headers.get('X-RateLimit-Remaining')).toBe('0');
+  });
+
+  it('names the window, the limit, the remaining budget and the class in the body', async () => {
+    tokenWith(1);
+    const app = classedApp('write');
+    await app.request('/write', { method: 'POST', headers: hdrs });
+    const res = await app.request('/write', { method: 'POST', headers: hdrs });
+    expect(res.status).toBe(429);
+    const body = (await res.json()) as {
+      code: string;
+      message: string;
+      details: Record<string, unknown>;
+    };
+    expect(body.code).toBe('RATE_LIMITED');
+    expect(body.details).toMatchObject({
+      windowSeconds: 60,
+      limit: 1,
+      remaining: 0,
+      scope: 'write',
+    });
+    expect(body.details.retryAfterSeconds).toBe(Number(res.headers.get('Retry-After')));
+    expect(body.message).toContain('60s');
+    expect(body.message).toContain('write');
+  });
+
+  it('honours the header it sent: one wait of Retry-After seconds is enough', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-09-07T00:00:00.000Z'));
+      tokenWith(1);
+      const app = classedApp('read');
+      expect((await app.request('/read', { headers: hdrs })).status).toBe(200);
+      const refused = await app.request('/read', { headers: hdrs });
+      expect(refused.status).toBe(429);
+
+      const wait = Number(refused.headers.get('Retry-After'));
+      vi.setSystemTime(new Date(Date.now() + wait * 1000));
+      expect((await app.request('/read', { headers: hdrs })).status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('audits the first rejection of each class separately, once per window', async () => {
+    tokenWith(1);
+    const reads = classedApp('read');
+    const writes = classedApp('write');
+    await reads.request('/read', { headers: hdrs });
+    await reads.request('/read', { headers: hdrs });
+    await reads.request('/read', { headers: hdrs });
+    await writes.request('/write', { method: 'POST', headers: hdrs });
+    await writes.request('/write', { method: 'POST', headers: hdrs });
+    await writes.request('/write', { method: 'POST', headers: hdrs });
+
+    expect(vi.mocked(writeMcpAudit)).toHaveBeenCalledTimes(2);
+    const actions = vi.mocked(writeMcpAudit).mock.calls.map(([row]) => row.action);
+    expect(actions).toEqual(['GET /read', 'POST /write']);
+  });
+
+  it('charges the write bucket when nothing upstream set a class', async () => {
+    tokenWith(1);
+    const app = new Hono();
+    app.use('*', requirePat());
+    app.get('/read', (c) => c.json({ ok: true }));
+    app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
+    await app.request('/read', { headers: hdrs });
+    const res = await app.request('/read', { headers: hdrs });
+    expect(res.status).toBe(429);
+    expect(res.headers.get('X-RateLimit-Scope')).toBe('write');
   });
 });
