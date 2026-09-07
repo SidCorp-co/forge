@@ -5,11 +5,14 @@
  * `projectIds: null` / `boundProjectId: null`, so `allow !== null` is false and
  * the branch has never executed once.
  *
- * That matters most for the fourteen "device-scoped" tools. A PAT reaches them
- * — `ctx.device` is a synthesized stub carrying the PAT's user — and their
- * handlers call `assertDeviceOwnerIsMember`, which reads only `ownerId` and
- * knows nothing about the token's binding. This fence, and nothing in those
- * handlers, is what stops a token bound to one project reading another.
+ * It mattered most for the fourteen tools that took a device. Until ISS-931 a
+ * PAT reached them through a synthesized `ctx.device` carrying the PAT's user,
+ * and their handlers asked `assertDeviceOwnerIsMember`, which read only
+ * `ownerId` and knew nothing about the token's binding — so this fence, and
+ * nothing in those handlers, was what stopped a bound token reading another
+ * project. Those handlers now ask `assertPrincipalIsMember`, which reads the
+ * allowlist itself, and the cases below assert the two fences agree: the
+ * refusal reads NOT_FOUND either way.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -62,13 +65,13 @@ const boundPat = () =>
     scopes: ['read', 'write'],
     projectIds: [BOUND],
     boundProjectId: null,
+    machine: null,
   }) as const;
 
 async function connect() {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const server = createMcpServer({
     principal: boundPat(),
-    device: stubDevice,
     projectSlug: null,
   });
   await server.connect(serverTransport);

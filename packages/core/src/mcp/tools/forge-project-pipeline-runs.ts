@@ -6,8 +6,8 @@
  * Implementation lives in the per-action pure handlers exported by
  * `./forge-pipeline-runs.ts`. This file owns input validation, required-field
  * checks per action, and routing. Authorization is re-applied inside each
- * handler — list uses `assertDeviceOwnerIsMember`, the runId-resolved
- * actions use `assertPrincipalIsMember` (after the run lookup) — so the
+ * handler — list gates on the projectId argument, the runId-resolved actions
+ * gate after the run lookup, both through `assertPrincipalIsMember` — so the
  * dispatcher does NOT collapse auth into a single pre-switch call.
  */
 
@@ -25,7 +25,7 @@ import { type ContextScopedMcpToolFactory, zodToMcpSchema } from './lib.js';
 const inputSchema = z
   .object({
     action: z.enum(['list', 'get', 'pause', 'resume', 'cancel']),
-    // list args
+
     projectId: z.uuid().optional(),
     issueId: z.uuid().optional(),
     status: z.enum(pipelineRunStatuses).optional(),
@@ -36,10 +36,7 @@ const inputSchema = z
   })
   .strict();
 
-export const forgeProjectPipelineRunsTool: ContextScopedMcpToolFactory = ({
-  device,
-  principal,
-}) => ({
+export const forgeProjectPipelineRunsTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_project_pipeline_runs',
   description:
     'Lifecycle controls for project pipeline_runs. Actions: list | get | pause | resume | cancel. ' +
@@ -48,7 +45,7 @@ export const forgeProjectPipelineRunsTool: ContextScopedMcpToolFactory = ({
     'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. ' +
     'get/pause/resume/cancel: require runId. ' +
     'cancel parks the linked issue at `on_hold` by default, because every other status it could be left at is actionable and the orchestrator would open a replacement run within seconds. Pass `parkIssue: false` for the other intent — "kill this run so a clean one starts" — and that re-dispatch becomes the point. Cancelling returns `issueParked` so you can tell which happened. ' +
-    'Authorization: list scopes to the device owner being a project member; get/pause/resume/cancel resolve the run first then enforce project membership (PAT principals additionally pass the projectIds allowlist).',
+    'Authorization: list scopes to project membership; get/pause/resume/cancel resolve the run first then enforce project membership; both additionally pass the token projectIds allowlist.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -57,7 +54,7 @@ export const forgeProjectPipelineRunsTool: ContextScopedMcpToolFactory = ({
         if (!input.projectId) {
           throw new Error('BAD_REQUEST: projectId is required for list');
         }
-        return pipelineRunsListHandler(device, {
+        return pipelineRunsListHandler(principal, {
           projectId: input.projectId,
           issueId: input.issueId,
           status: input.status,

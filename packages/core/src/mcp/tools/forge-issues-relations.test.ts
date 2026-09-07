@@ -10,7 +10,7 @@
  */
 
 import { beforeEach, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakeJobPrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -110,7 +110,12 @@ const BLOCKED_ID = '88888888-8888-4888-8888-888888888888';
 const ORG_ID = '99999999-9999-4999-8999-999999999999';
 const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
 
-const fakeDevice = makeFakeDevice('44444444-4444-4444-8444-444444444444', OWNER_ID);
+// cm:guard a MACHINE principal, because a paired device is what these cases used to run as and `agency: 'agent'` is the load-bearing half of that. It is what turns the ISS-786/812 evidence gates ON — a `makeFakePrincipal` here reads as a person, the gates skip, and `mark_merged refuses ... with no recorded code evidence` passes for the wrong reason (ISS-931).
+const fakePrincipal = makeFakeJobPrincipal(
+  '44444444-4444-4444-8444-444444444444',
+  OWNER_ID,
+  '00000000-0000-4000-8000-00000000abcd',
+);
 
 const baseIssueRow = {
   id: ISSUE_ID,
@@ -137,8 +142,7 @@ const baseIssueRow = {
 
 const tool = () =>
   forgeIssuesTool({
-    principal: { kind: 'device' as const, device: fakeDevice },
-    device: fakeDevice,
+    principal: fakePrincipal,
     projectSlug: PROJECT_SLUG,
   });
 
@@ -174,7 +178,10 @@ it('update writes the edge with dependsOnId on the from side and reports it back
       toIssueId: ISSUE_ID,
       kind: 'blocks',
     }),
-    { actor: { type: 'device', id: fakeDevice.id, agency: 'agent' }, createdById: OWNER_ID },
+    {
+      actor: { type: 'device', id: fakePrincipal.tokenId, agency: 'agent' },
+      createdById: OWNER_ID,
+    },
     expect.anything(),
   );
   // cm:guard the deferral moved with the announcement: `deferHealthPublish` is an EFFECTS option now, and asserting it on the write spy would silently pass against the executor argument that took its place.
@@ -207,7 +214,10 @@ it('update writes the edge with blocksId on the to side', async () => {
 
   expect(setEdgeMock).toHaveBeenCalledWith(
     expect.objectContaining({ fromIssueId: ISSUE_ID, toIssueId: BLOCKED_ID }),
-    { actor: { type: 'device', id: fakeDevice.id, agency: 'agent' }, createdById: OWNER_ID },
+    {
+      actor: { type: 'device', id: fakePrincipal.tokenId, agency: 'agent' },
+      createdById: OWNER_ID,
+    },
     expect.anything(),
   );
   // cm:guard the deferral moved with the announcement: `deferHealthPublish` is an EFFECTS option now, and asserting it on the write spy would silently pass against the executor argument that took its place.
@@ -240,7 +250,10 @@ it('update passes validUntil through so an existing edge can be retracted', asyn
 
   expect(setEdgeMock).toHaveBeenCalledWith(
     expect.objectContaining({ validUntil: '2020-01-01T00:00:00.000Z' }),
-    { actor: { type: 'device', id: fakeDevice.id, agency: 'agent' }, createdById: OWNER_ID },
+    {
+      actor: { type: 'device', id: fakePrincipal.tokenId, agency: 'agent' },
+      createdById: OWNER_ID,
+    },
     expect.anything(),
   );
   // cm:guard the deferral moved with the announcement: `deferHealthPublish` is an EFFECTS option now, and asserting it on the write spy would silently pass against the executor argument that took its place.
@@ -313,7 +326,7 @@ it('get returns the edges on both sides of the issue', async () => {
   expect(result.relations.blockedBy[0]).toMatchObject({ edgeId: 'dep-id-1', expired: false });
 });
 
-it('attributes the edge to the PAT user, not to the synthetic device standing in for it', async () => {
+it('attributes the edge to the PAT user — the synthetic device that used to stand in for it is gone', async () => {
   const PAT_USER = '55555555-5555-4555-8555-555555555555';
   stageUpdate();
   selectLimit.mockResolvedValueOnce([memberAccessRow]);
@@ -326,9 +339,8 @@ it('attributes the edge to the PAT user, not to the synthetic device standing in
       scopes: ['read', 'write'],
       projectIds: null,
       boundProjectId: null,
+      machine: null,
     },
-    // cm:guard this device is the SYNTHETIC one mcp/handler.ts builds for a PAT — its id is an api_tokens row, not a devices row, which is exactly why the edge must not be attributed to it; give it a real device id and the test stops proving anything
-    device: { ...fakeDevice, id: '66666666-6666-4666-8666-666666666666', ownerId: PAT_USER },
     projectSlug: PROJECT_SLUG,
   });
 

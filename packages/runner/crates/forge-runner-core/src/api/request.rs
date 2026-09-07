@@ -86,7 +86,7 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
         .request(method, &url)
         .bearer_auth(client.device_token());
 
-    // cm:edge contract -> packages/core/src/middleware/require-pat-or-device.ts — the slug header is how a device token, which is not itself scoped to a project, tells core which project the call is for; omit it and every project-scoped route 403s with the token still perfectly valid
+    // cm:edge contract -> packages/core/src/mcp/handler.ts — the ONE reader of `X-Forge-Project-Slug` in core, and it reads it off the MCP transport, not this REST client. The header used to be how a device token — which carries no project scope of its own — named the project for a call; no REST route resolves a project from it today, so on this path it is inert rather than load-bearing. ISS-931 renamed the middleware the old target named (`require-pat-or-device.ts` -> `require-pat.ts`) and did not measure whether this send can go; a change that does may delete it, and `the_token_and_the_project_slug_are_both_on_the_wire` below is the test that says what would stop being sent.
     if let Some(slug) = &req.project_slug {
         rb = rb.header("X-Forge-Project-Slug", slug.as_str());
     }

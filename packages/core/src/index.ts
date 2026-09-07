@@ -116,7 +116,7 @@ import { projectMetricsRoutes } from './metrics/routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
-import { requirePatOrDevice } from './middleware/require-pat-or-device.js';
+import { requirePat } from './middleware/require-pat.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { orgInvitationRoutes } from './orgs/invitations-routes.js';
 import { orgRoutes } from './orgs/routes.js';
@@ -256,7 +256,7 @@ export async function runShutdown(
 
 registerEagerSubscribers(hooks);
 
-app.use('/mcp', requirePatOrDevice());
+app.use('/mcp', requirePat());
 app.post('/mcp', mcpHandler);
 app.get('/mcp', mcpHandler);
 app.delete('/mcp', mcpHandler);
@@ -292,7 +292,6 @@ app.route('/api/auth', logoutRoutes);
 // device revoke, password change). Sibling children attach the
 // requireFreshAuth() middleware at the gated routes.
 app.route('/api/auth', reauthRoutes);
-// ISS-150 — Personal Access Tokens (PAT) CRUD. User-scoped via JWT.
 app.route('/api', patRoutes);
 // ISS-314 — OAuth/OIDC (GitHub + Google + generic OIDC). Internally gated
 // by `socialAuth` feature flag; safe to mount unconditionally.

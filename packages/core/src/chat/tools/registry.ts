@@ -77,10 +77,7 @@ export const CHAT_TOOL_ALLOWLIST: ChatToolSpec[] = [
   },
   { factory: forgeCommentsTool, allowedActions: ['list', 'create'] },
   { factory: forgeKnowledgeTool, allowedActions: ['list', 'get', 'search'] },
-  // Project memory (ISS-609 agency follow-up) — the deepest project-context
-  // source; memory tools are device-scoped, so adapt via the ctx stub device
-  // (its ownerId carries the chat principal for the membership fence).
-  { factory: (ctx) => forgeMemorySearchTool(ctx.device) },
+  { factory: forgeMemorySearchTool },
   { factory: forgeProjectsGetTool },
   { factory: forgePipelineRunsGetTool },
   { factory: forgeProjectPipelineRunsTool },

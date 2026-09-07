@@ -1153,6 +1153,24 @@
 
 ### Fixed
 
+- **Every chart went blank on a server whose Postgres was not set to UTC, and nothing said so.**
+  The metrics timeseries built its bucket list in JavaScript floored to UTC midnight, then grouped
+  the rows in SQL with a bare `date_trunc`, which Postgres evaluates in the database session's
+  timezone. On a UTC database the two agreed; anywhere else every row landed in a bucket the
+  densifier was not looking for, the join matched nothing, and the series came back as zeroes with
+  a `null` rate. No error, no warning — a chart reading "this project did no work" is
+  indistinguishable from one reading "this project's rows were all discarded".
+
+  All nine bucketed metrics were affected (cost, throughput, cycle time, queue wait, runner
+  utilization, cache hit rate, pass rate, approve rate, queue depth), and so was the whole admin
+  overview, which had the same JS-floors-UTC / SQL-floors-session split behind a different
+  function. Two more surfaces reported the wrong calendar day rather than an empty one: the
+  per-project daily analytics and the usage-record daily breakdown both labelled a day by the
+  server's clock. One truncation helper now pins all of them to UTC.
+
+  Surfaced by `core-integration` failing only on developer machines in UTC+7 while CI, whose
+  Postgres is UTC, stayed green — the test was right and the query was wrong. (ISS-942, ISS-954)
+
 - **`POST /api/memory/search` ignored the `strategy` you asked for and told you it had honoured
   it.** The route validated `strategy` in its body schema and then never passed it to
   `runMemorySearch`, which applied its own `'semantic'` default — so a caller asking for `keyword`
@@ -2446,6 +2464,32 @@
   parked or blocked — there is still no limit on how many rounds an issue may take. (ISS-878)
 
 ### Changed
+
+- **An agent session authenticates `/mcp` with its own job token, and a device token no longer
+  authenticates `/mcp` at all.** Two credential species reached the MCP transport, and one of them
+  was a fiction: for every PAT call, core fabricated a `Device` row — a token id in its `id` column
+  and `__pat_synthetic__` for a name — and handed it to fourteen tools. The membership helpers those
+  tools used read only that stub's `ownerId`, so none of the fourteen ever consulted the PAT's
+  `projectIds` allowlist. `requirePat` (renamed from `require-pat-or-device.ts`) now accepts
+  `forge_pat_*` and refuses every other bearer, and `McpContext` has no `device` field to
+  reintroduce. `forge-runner` writes the job's own `job:`/`session:` token into the per-job
+  `.mcp.json` and never falls back to the device token; `/ws` and the device REST routes are
+  unchanged, because that is the daemon's own channel.
+
+  Two reachability consequences are deliberate and documented rather than papered over. A
+  non-member of a project now reads `NOT_FOUND` from those fourteen tools instead of `FORBIDDEN`,
+  so a tool is no longer an existence oracle. And an admin-gated tool asks for the `admin` scope,
+  which a machine-minted token does not carry — an operator who wants `forge_skills.*`,
+  `forge_runners` writes or `forge_reconcile` from an agent mints a PAT with `admin` rather than
+  having the mint widened, because ambient admin authority is the thing ISS-927 removed.
+
+  This ships on two clocks and the second one is a binary: core refuses at deploy, a runner box
+  changes at binary install. A box on an older `forge-runner` writes the device token, every MCP
+  call 401s at once, and the refusal names that remedy in its own text rather than leaving an
+  operator to read it as a core outage. The two `forge_project_pm` actions that genuinely need a
+  paired device (`dispatch`, `write_decision`) refuse by name and list the actions a PAT can reach;
+  `write_decision` has no REST twin left, and that open decision is
+  `docs/proposals/pm-dispatch-has-no-rest-twin.md`. (ISS-931)
 
 - **A device token no longer reaches the API as its owner.** `requireAnyAuth` — the middleware
   behind attachment uploads and two comment routes — used to accept a runner's device token and set

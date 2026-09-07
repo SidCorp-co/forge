@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeFakeDevice } from '../fake-device.fixture.js';
+import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -43,11 +43,11 @@ vi.mock('../../pipeline/hooks.js', () => ({
 const { pmWriteDecisionHandler, pmWriteDecisionInputSchema } = await import(
   './forge-pm-write-decision.js'
 );
+const { writePmDecision } = await import('../../pm/decisions-service.js');
 
-// cm:why these cases used to run through the deprecated `forge_pm.<action>` shim factory, which was deleted once nothing named it; the handler and its schema are what `forge_project_pm` actually dispatches into, so the coverage moves down one layer instead of leaving with the shim — for runner_load, dispatch and write_decision this file is still the only place that behaviour is tested
-const forgePmWriteDecisionTool = (c: typeof ctx) => ({
-  handler: async (args: unknown) =>
-    pmWriteDecisionHandler(c.device, pmWriteDecisionInputSchema.parse(args)),
+// cm:why these cases have moved down a layer TWICE, each time to the layer that still runs. First off the deprecated `forge_pm.<action>` shim, when that was deleted; now off `pmWriteDecisionHandler`, because ISS-931 put an unconditional credential refusal in front of it — the action needs a `runners` row keyed on a paired device and `/mcp` no longer authenticates one. `writePmDecision` is live code with no other caller and no REST twin, so its behaviour is asserted here directly; the refusal itself is the last case in this file.
+const forgePmWriteDecisionTool = () => ({
+  handler: async (args: unknown) => writePmDecision(pmWriteDecisionInputSchema.parse(args)),
 });
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
@@ -56,18 +56,7 @@ const NOTIFICATION_ID = '33333333-3333-4333-8333-333333333333';
 const OWNER_ID = '44444444-4444-4444-8444-444444444444';
 const DEVICE_ID = '55555555-5555-4555-8555-555555555555';
 
-const fakeDevice = makeFakeDevice(DEVICE_ID, OWNER_ID);
-
-const ctx = {
-  principal: { kind: 'device' as const, device: fakeDevice },
-  device: fakeDevice,
-  projectSlug: null,
-};
-
-function pushPmActorOk() {
-  queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
-  queue.push([{ capabilities: { pm: true } }]);
-}
+const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID);
 
 beforeEach(() => {
   queue.length = 0;
@@ -76,7 +65,7 @@ beforeEach(() => {
 
 describe('forge_pm.write_decision', () => {
   it('rejects unknown cause', async () => {
-    const tool = forgePmWriteDecisionTool(ctx);
+    const tool = forgePmWriteDecisionTool();
     await expect(
       tool.handler({
         projectId: PROJECT_ID,
@@ -87,8 +76,7 @@ describe('forge_pm.write_decision', () => {
   });
 
   it('inserts decision + queues memory indexer', async () => {
-    const tool = forgePmWriteDecisionTool(ctx);
-    pushPmActorOk();
+    const tool = forgePmWriteDecisionTool();
     const decisionInsert = [{ id: DECISION_ID }];
     queue.push(decisionInsert);
 
@@ -114,23 +102,8 @@ describe('forge_pm.write_decision', () => {
     );
   });
 
-  it('rejects non-pm-actor', async () => {
-    const tool = forgePmWriteDecisionTool(ctx);
-    queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
-    const pmFlagMissing = [{ capabilities: {} }];
-    queue.push(pmFlagMissing);
-    await expect(
-      tool.handler({
-        projectId: PROJECT_ID,
-        cause: 'tick',
-        summary: 'tick',
-      }),
-    ).rejects.toThrow(/capabilities\.pm/);
-  });
-
   it('with escalate: inserts notification + emits hook + returns escalation', async () => {
-    const tool = forgePmWriteDecisionTool(ctx);
-    pushPmActorOk();
+    const tool = forgePmWriteDecisionTool();
     const decisionInsert = [{ id: DECISION_ID }];
     const escalationProjectLookup = [{ createdBy: OWNER_ID }];
     const notificationInsert = [{ id: NOTIFICATION_ID }];
@@ -172,8 +145,7 @@ describe('forge_pm.write_decision', () => {
   });
 
   it('with escalate but missing project: throws NOT_FOUND', async () => {
-    const tool = forgePmWriteDecisionTool(ctx);
-    pushPmActorOk();
+    const tool = forgePmWriteDecisionTool();
     const decisionInsert = [{ id: DECISION_ID }];
     const projectLookupEmpty: unknown[] = [];
     queue.push(decisionInsert, projectLookupEmpty);
@@ -196,7 +168,7 @@ describe('forge_pm.write_decision', () => {
   });
 
   it('rejects escalate with empty options', async () => {
-    const tool = forgePmWriteDecisionTool(ctx);
+    const tool = forgePmWriteDecisionTool();
     await expect(
       tool.handler({
         projectId: PROJECT_ID,
@@ -212,5 +184,20 @@ describe('forge_pm.write_decision', () => {
         },
       }),
     ).rejects.toThrow();
+  });
+  // cm:guard the MCP action is refused on the CREDENTIAL, and this is the case that says so. Without it, `writePmDecision` above looks reachable from an agent and the three cases before it read as coverage of a live MCP action rather than of a service behind a permanent refusal (ISS-931).
+  it('the MCP action itself refuses every caller /mcp can produce', async () => {
+    await expect(
+      pmWriteDecisionHandler(
+        fakePrincipal,
+        pmWriteDecisionInputSchema.parse({
+          projectId: PROJECT_ID,
+          cause: 'job-failed',
+          summary: 'a decision nobody can write over MCP',
+          eventRef: {},
+          actions: [],
+        }),
+      ),
+    ).rejects.toThrow(/PM_REQUIRES_DEVICE/);
   });
 });

@@ -72,7 +72,7 @@ export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
   };
 }
 
-// cm:guard FIVE middlewares verify a device token and exactly ONE of them — `requireAnyAuth` — hands the device its owner's account authority by setting `userId = device.ownerId`; `requireAuth` rejects devices outright and `requireUserOrDevice`, `requireDevice` and `requirePatOrDevice` (`/mcp`) all make the device its own principal with `userId` left unset so `loadProjectAccess` fails closed. Measured 2026-09-01: that one exception is the whole disagreement, so choosing a middleware for a new route chooses whether the caller gets ambient owner authority. Pick `requireAnyAuth` only if you mean that, and say so.
+// cm:guard FOUR middlewares verify a device token and NONE of them hands the device its owner's account authority — `requireAnyAuth` did until ISS-927 by setting `userId = device.ownerId`, and that was the single place a credential silently became a person. `requireAuth` rejects devices outright; `requireUserOrDevice` and `requireDevice` make the device its own principal with `userId` left unset so `loadProjectAccess` fails closed. `/mcp` is no longer on this list at all: `requirePat` takes one species (ISS-931). Choosing a middleware for a new route still chooses the caller's authority, so say which you mean.
 /**
  * Accept EITHER a user JWT (web/desktop) OR a device token (a CLI runner).
  *
