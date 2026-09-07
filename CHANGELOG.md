@@ -11,6 +11,29 @@
 
 ### Added
 
+- **A module's knowledge now refreshes itself when work lands against it.** The taxonomy could say
+  which module an issue touched (ISS-588) and a module could name its knowledge node (ISS-947), but
+  nothing kept that node current: its related issues stayed at whatever the last person wrote, and
+  no reader could tell a current flow diagram from a stale one. One project wired the refresh loop
+  inside its own skill body; everywhere else it simply did not happen.
+
+  A `test` handoff whose result is `pass` or `verified_by_test` now refreshes the primary module's
+  node — the issue is appended to its related issues, and the node records that its stored flow is
+  behind that work and since when. Modules the issue also touched get the append and nothing else.
+  The trigger is the passing test rather than a status change, on purpose: a status is a claim
+  somebody made, a green test is a thing that happened.
+
+  Every declining case declines out loud instead of failing. An issue with no primary module
+  refreshes nothing and that is not an error. A module with no knowledge node refreshes nothing and
+  names itself in the issue's activity feed, rather than getting a node invented under a guessed
+  name. The same issue landing twice does not append twice. And a refresh that fails is reported to
+  the log and the activity feed without failing the pipeline of the issue that triggered it.
+
+  What the engine cannot do, it does not fake: core has no LLM and no repo checkout when a handoff
+  arrives, so it cannot redraw a module's flow diagram. It records that the flow is behind the work
+  and which body it was behind as of, and leaves the drawing to whoever authors the node — a
+  placeholder diagram nobody could tell apart from a real one would be worse than a stale one.
+
 - **A module now names its knowledge node, instead of every reader guessing the name.** The module
   taxonomy (ISS-588) landed `kind='module'`, `parentId` and `is_primary`, but not the half of the
   epic's locked Q2 that every later tier reads from: a module had no stable identity and no link to

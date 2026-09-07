@@ -135,11 +135,23 @@ async function readNode(nodeId: string): Promise<NodeState> {
   return (rows as unknown as NodeState[])[0] as NodeState;
 }
 
-async function activityActions(issueId: string): Promise<Array<{ action: string; payload: unknown }>> {
+interface ActivityRow {
+  action: string;
+  payload: unknown;
+}
+
+async function activityActions(issueId: string): Promise<ActivityRow[]> {
   const rows = await harness.db.execute(sql`
     SELECT action, payload FROM activity_log WHERE issue_id = ${issueId} ORDER BY created_at
   `);
-  return rows as unknown as Array<{ action: string; payload: unknown }>;
+  return rows as unknown as ActivityRow[];
+}
+
+/** The first activity row's payload, refusing rather than short-circuiting when there is none. */
+function firstPayload<T>(rows: ActivityRow[]): T {
+  const first = rows[0];
+  if (!first) throw new Error('expected at least one activity_log row, found none');
+  return first.payload as T;
 }
 
 type TestResult = 'pass' | 'fail' | 'blocked_fixture' | 'verified_by_test';
@@ -232,15 +244,17 @@ describe('ISS-948 · a passing test refreshes the primary module and touches the
 
     const rows = await activityActions(issueId);
     expect(rows.map((r) => r.action)).toEqual(['module_knowledge_refreshed']);
-    const payload = rows[0]?.payload as {
+    const payload = firstPayload<{
       primary: { slug: string; nodeId: string; appended: boolean };
       touched: Array<{ slug: string; nodeId: string; appended: boolean }>;
       skipped: unknown[];
-    };
-    expect(payload.primary).toMatchObject({ slug: 'pipeline', nodeId: primaryNode, appended: true });
-    expect(payload.touched).toEqual([
-      { slug: 'web', nodeId: secondaryNode, appended: true },
-    ]);
+    }>(rows);
+    expect(payload.primary).toMatchObject({
+      slug: 'pipeline',
+      nodeId: primaryNode,
+      appended: true,
+    });
+    expect(payload.touched).toEqual([{ slug: 'web', nodeId: secondaryNode, appended: true }]);
     expect(payload.skipped).toEqual([]);
   });
 });
@@ -334,11 +348,11 @@ describe('ISS-948 · the cases that refresh nothing', () => {
     await landTest(issueId);
 
     const rows = await harness.db.execute(sql`SELECT count(*)::int AS n FROM knowledge_entries`);
-    expect((rows as unknown as Array<{ n: number }>)[0]?.n).toBe(0);
+    expect((rows as unknown as Array<{ n: number }>)[0]).toEqual({ n: 0 });
 
     const activity = await activityActions(issueId);
     expect(activity.map((r) => r.action)).toEqual(['module_knowledge_refreshed']);
-    expect((activity[0]?.payload as { skipped: unknown[] }).skipped).toEqual([
+    expect(firstPayload<{ skipped: unknown[] }>(activity).skipped).toEqual([
       { slug: 'pipeline', reason: 'no_knowledge_node' },
     ]);
   });
@@ -414,7 +428,7 @@ describe('ISS-948 · the cases that refresh nothing', () => {
     expect(written.id).toBeTruthy();
     expect((await readNode(foreignNode)).related_issue_ids).toEqual([]);
     const activity = await activityActions(issueId);
-    expect((activity[0]?.payload as { skipped: unknown[] }).skipped).toEqual([
+    expect(firstPayload<{ skipped: unknown[] }>(activity).skipped).toEqual([
       { slug: 'pipeline', reason: 'node_not_in_project' },
     ]);
   });
