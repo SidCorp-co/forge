@@ -8,6 +8,18 @@
 
 ## [Unreleased]
 
+### Security
+
+- **Six vulnerable transitive dependencies pinned to patched versions, closing 19 Dependabot alerts
+  (12 high).** `fast-uri` (→3.1.7), `undici` (→7.29.1), `qs` (→6.16.0), `protobufjs` (→7.6.6),
+  `brace-expansion` (→2.1.4) and `nanoid` (→3.3.18) each resolved below the first-patched version of
+  its advisory. Four `pnpm.overrides` were stale — lower bounds written before the CVEs
+  (`qs>=6.15.2`, `undici>=7.28.0`, `protobufjs>=7.6.3`, `fast-uri>=3.1.2`) still admitted a
+  vulnerable release — and `brace-expansion`/`nanoid` had no override at all. The two new overrides
+  are scoped to the vulnerable major line (`brace-expansion@2`, `nanoid@3`) so the pin cannot
+  silently carry a consumer across a major. CodeQL code scanning and GitHub private vulnerability
+  reporting were enabled on the repository in the same change.
+
 
 ### Added
 

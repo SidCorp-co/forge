@@ -44,8 +44,8 @@ beforeAll(async () => {
   process.env.APP_BASE_URL ??= 'http://localhost:3000';
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV = 'test';
-  // cm:guard the stock defaults are the SUBJECT here, so unlike `pat-rest-fence.test.ts` this file must NOT lift them — a raised ceiling would make every assertion below pass against the single 600 bucket this issue replaced.
-  delete process.env.RATE_LIMIT_PAT_READ_MAX;
+  // cm:guard the read ceiling is pinned to 600 — the single shared bucket ISS-961 replaced — and may be LOWERED but never raised. Draining it is how the write-after-drain test tells two buckets from one, so a ceiling above 600 lets that test pass against a single bucket, and a drain longer than `windowMs` refills the bucket mid-test: at the stock 2400 the drain measured 62.5s against a 60s window on CI and asserted 200 where it wanted 429.
+  process.env.RATE_LIMIT_PAT_READ_MAX = '600';
   delete process.env.RATE_LIMIT_PAT_WRITE_MAX;
   delete process.env.RATE_LIMIT_PAT_READ_WINDOW_MS;
   delete process.env.RATE_LIMIT_PAT_WRITE_WINDOW_MS;
