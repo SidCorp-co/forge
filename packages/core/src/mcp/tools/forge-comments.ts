@@ -6,6 +6,7 @@ import {
   listCommentAttachmentsForIssue,
   persistDecodedCommentAttachments,
 } from '../../comments/attachment-service.js';
+import { commentBodyField } from '../../comments/body-input.js';
 import {
   CommentCursorInvalidError,
   decodeCommentCursor,
@@ -61,7 +62,7 @@ const attachmentInputSchema = z
 // cm:edge contract -> packages/core/skills — shipped Markdown templates carry `forge_comments → create` examples an agent copies verbatim; this schema is `.strict()`, so a key in an example that is not here is a hard rejection at the agent's first call. `skills/shipped-templates.test.ts` parses every template against this export.
 export const commentCreateDataSchema = z
   .object({
-    body: z.string().trim().min(1).max(10_000).optional(),
+    body: commentBodyField.optional(),
     // cm:edge contract -> packages/core/src/body/formats.ts — ISS-898. OPTIONAL on purpose: every shipped template omits it and must keep working, and absent resolves to `markdown` in `prepareBody`. Adding a value here without teaching `prepareBody` a branch accepts a body no reader can render.
     format: z.enum(BODY_FORMATS).optional(),
     issue: z.uuid().optional(),
@@ -301,8 +302,9 @@ async function listAction(principal: Principal, input: ToolInput): Promise<unkno
   const page = await listIssueCommentPage(issueId, { after, limit: commentsLimit });
   const attachmentsByCommentId = await listCommentAttachmentsForIssue(issueId);
 
+  // cm:guard the trim item carries the root's ID and NOT the root ROW — `trimToBudget` sizes each item with `JSON.stringify`, so an item holding both the raw row and its serialized twin measures its body twice and sheds a page at roughly half the declared budget. Measured on ISS-958: a 25,235-character thread came back cut to 2 of 7 comments under a 38,000 budget.
   const subtrees = groupBySubtree(page.rows, page.roots).map((rows) => ({
-    root: rows[0] as CommentThreadRow,
+    rootId: (rows[0] as CommentThreadRow).id,
     rows: rows.map((r) => serialize(r as CommentRow, attachmentsByCommentId.get(r.id) ?? [])),
   }));
 
@@ -317,8 +319,8 @@ async function listAction(principal: Principal, input: ToolInput): Promise<unkno
       more: page.nextCursor !== null,
       of: (item) =>
         encodeCommentCursor({
-          createdAtKey: page.cursorKeyById.get(item.root.id) as string,
-          id: item.root.id,
+          createdAtKey: page.cursorKeyById.get(item.rootId) as string,
+          id: item.rootId,
         }),
     },
   });
