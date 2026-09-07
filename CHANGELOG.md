@@ -11,6 +11,56 @@
 
 ### Added
 
+- **A write to an issue's session field can now carry the value it read, and is refused when the
+  field moved underneath it.** `sessionContext` is where a driver's lease lives, and until now a
+  write always won: two runs that both read no holder both claimed, and the later write erased the
+  earlier with neither able to tell. The CLI said so out loud on every claim — *"the lease is
+  advisory: the tracker refuses no stale write yet"* — and carried the whole rule client-side,
+  where nothing could enforce it.
+
+  A `PATCH /api/issues/:id` (and MCP `forge_issues.update`) may now send
+  `expect: { sessionContext: <what it read> }`. The precondition is a term in the same `UPDATE`'s
+  own `WHERE`, never a read above it: a check placed there is the exact race this closes, because
+  two writers that both read the same value both pass it. The loser gets `409
+  SESSION_CONTEXT_MISMATCH` carrying, under `details.current`, the value the field holds now — a
+  bare refusal would leave it one move, a blind unconditional overwrite, which is the write being
+  prevented. A write with no `expect` behaves exactly as before, so every existing client keeps
+  working, and an `expect` sent with no field to write is refused on both doors rather than
+  ignored — it holds nothing against a status or relations change, and a caller who read the call
+  as guarded would be wrong.
+
+- **The merged mark now records the commit it was made at.** `merged_at` was a bare timestamp, and
+  the commit lived in the prose of the mark's note — so "did THIS commit land?" was a judgement
+  call a reader could not check, on the one field that releases every `blocks` dependent as if the
+  work had shipped. `issues.merged_commit_sha` is written by the same conditional statement that
+  sets the timestamp, so the pair is stamped together or not at all and the sha always belongs to
+  the call that actually stamped it rather than to a later corrected note. A caller that sends no
+  `commit` gets the sha off the recorded implementation handoff, which is the only commit core can
+  know — core has no checkout, so this is a recorded claim and not a verified ancestor, and the
+  module says so. `unmark` clears both columns together, because a retracted mark that kept its
+  commit would claim a landing the retraction withdrew.
+
+- **A project can declare which records a status entry requires, and the declaration is checked for
+  every client.** Every content rule on the status writer returned early unless the actor was an
+  agent, so the same status set from the tracker's own screens was neither earned nor refused —
+  measured twice on forge-dev the day this was written, when an ordinary `forge record` write and
+  an ordinary `forge comment` write each moved an issue from `needs_info` back to `open`. On a
+  project where `open` is what makes an issue claimable, that silent un-park is a live path to two
+  agents on one issue.
+
+  `pipelineConfig.statusEntryCriteria` maps a status to the records its entry requires, from a
+  vocabulary core implements: `plan`, `acceptance_criteria`, `release_note`, `work_evidence`,
+  `merged_mark`. Every key reads the tracker record and never a working tree — a check that read a
+  checkout would answer differently on every machine that ran it. An unmet declaration is `422
+  ENTRY_CRITERIA_UNMET` naming the records that are missing and how to write each one, and naming
+  only what is unmet rather than everything the status declares. Which criteria a status carries is
+  the project's decision, not core's: a project that declares nothing is unchanged, and a config
+  that cannot be read declares nothing rather than freezing every status write on the project.
+
+  `no_work_evidence` stays agent-only, and the carve-out moved from the whole checker onto that one
+  rule: a person hand-advancing makes the shipped claim deliberately and owns it. A project that
+  wants it held against people too declares `work_evidence`.
+
 - **The MCP deletion rule was written against per-tool call counts nothing could read, and now
   there is a route that returns them — deliberately not one an agent can call.**
   `docs/architecture/agent-surface.md` gates every tool deletion on whole-table `mcp_audit_log`

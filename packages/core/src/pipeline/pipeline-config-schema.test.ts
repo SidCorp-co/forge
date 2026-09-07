@@ -245,7 +245,6 @@ describe('stageConfigSchema per-state overrides', () => {
   );
 
   it('does NOT cap fieldCaps server-side (D3: operator owns budget)', () => {
-    // cm:why 1 million chars — silly but allowed.
     expect(() =>
       pipelineConfigSchema.parse({
         states: { open: { userPromptPolicy: { fieldCaps: { description: 1_000_000 } } } },
@@ -468,5 +467,45 @@ describe('poolBacklog (ISS-917)', () => {
       poolBacklog: { statuses: ['draft'] },
     });
     expect(out.success).toBe(true);
+  });
+});
+
+describe('statusEntryCriteria (ISS-959)', () => {
+  it('accepts a declaration whose keys are statuses and whose values are implemented criteria', () => {
+    const out = pipelineConfigSchema.safeParse({
+      statusEntryCriteria: { closed: ['plan', 'release_note'], developed: ['work_evidence'] },
+    });
+    expect(out.success).toBe(true);
+    expect(out.data?.statusEntryCriteria?.closed).toEqual(['plan', 'release_note']);
+  });
+
+  it('refuses a criterion key core does not implement, so a declaration cannot silently check nothing', () => {
+    const out = pipelineConfigSchema.safeParse({
+      statusEntryCriteria: { closed: ['plan', 'deploy_receipt'] },
+    });
+    expect(out.success).toBe(false);
+    expect(out.error?.issues[0]?.path).toEqual(['statusEntryCriteria', 'closed', 1]);
+  });
+
+  it('refuses a key that is not an issue status', () => {
+    const out = pipelineConfigSchema.safeParse({ statusEntryCriteria: { shipped: ['plan'] } });
+    expect(out.success).toBe(false);
+  });
+
+  it('refuses an empty criterion list — a status declaring nothing says so by being absent', () => {
+    const out = pipelineConfigSchema.safeParse({ statusEntryCriteria: { closed: [] } });
+    expect(out.success).toBe(false);
+  });
+
+  it('refuses the same unknown key through the PATCH schema the config route validates with', () => {
+    const out = pipelineConfigPatchSchema.safeParse({
+      statusEntryCriteria: { closed: ['deploy_receipt'] },
+    });
+    expect(out.success).toBe(false);
+  });
+
+  it('leaves a document that declares nothing without the key at all', () => {
+    const out = pipelineConfigSchema.parse({ enabled: true });
+    expect('statusEntryCriteria' in out).toBe(false);
   });
 });

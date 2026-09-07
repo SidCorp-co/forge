@@ -55,6 +55,8 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
     case 'WAITING_KIND_REQUIRED':
     case 'WAITING_KIND_NOT_APPLICABLE':
     case 'RELEASE_RECORD_REQUIRED':
+    // cm:guard 422 and not 409, beside its sibling: the request is well-formed and the state is not in conflict — a record the project declared is simply not written yet, and the message names which. A 409 reads as "retry" to every client library that special-cases it.
+    case 'ENTRY_CRITERIA_UNMET':
       return new HTTPException(422, { message: err.detail, cause });
     case 'NO_WORK_EVIDENCE':
       return new HTTPException(409, { message: err.detail, cause });
@@ -212,9 +214,7 @@ transitionRoutes.post(
       throw err;
     }
 
-    // ISS-40 PR-E — when an issue reaches a terminal status it may unblock
-    // children via Layer 2. Tick this project, plus every distinct child
-    // project for cross-project blocking edges.
+    // cm:why every distinct CHILD project is ticked as well as this one — a `blocks` edge may cross projects, and a dependent whose project is never ticked waits out the reconciler backstop instead of dispatching
     if (result.terminal) {
       await triggerTerminalDispatch([
         {

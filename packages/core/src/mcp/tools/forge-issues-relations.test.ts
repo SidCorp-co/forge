@@ -267,7 +267,11 @@ it('update passes validUntil through so an existing edge can be retracted', asyn
 });
 
 it('update commits the edge BEFORE the status transition that wakes the dispatcher', async () => {
-  stageUpdate({ ...baseIssueRow, status: 'draft' });
+  selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, status: 'draft' }]);
+  selectLimit.mockResolvedValueOnce([memberAccessRow]);
+  // cm:why the third staged row is the ISS-959 criteria read, which a STATUS write does and a plain field write does not — staging it inside `stageUpdate` would leave one row unconsumed for every case that writes no status
+  selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]);
+  selectLimit.mockResolvedValueOnce([baseIssueRow]);
   updateReturning.mockResolvedValue([baseIssueRow]);
 
   await tool().handler({

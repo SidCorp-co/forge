@@ -5,6 +5,9 @@
  * to release every `blocks` dependent, so writing it says work shipped. These
  * two routes exist so an agent on the CLI can say that over REST instead of
  * through `forge_issues.mark_merged`.
+ *
+ * ISS-959 — the mark also records the commit it was made at, so the claim is
+ * checkable rather than a judgement call read out of the note's prose.
  */
 
 import { zValidator } from '@hono/zod-validator';
@@ -16,7 +19,7 @@ import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { applyMergeMarker, MergeMarkerError } from './merge-marker.js';
+import { applyMergeMarker, MergeMarkerError, mergedCommitShaSchema } from './merge-marker.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -35,6 +38,8 @@ const mergeMarkerBodySchema = z
   .object({
     target: z.string().trim().min(1).max(200).optional(),
     note: z.string().trim().min(1).max(2000).optional(),
+    // cm:edge contract -> packages/core/src/mcp/tools/forge-issues.ts — the same field on the MCP door, sharing this schema so one surface cannot accept a sha shape the other refuses
+    commit: mergedCommitShaSchema.optional(),
     mergedAt: z.iso.datetime().optional(),
   })
   .strict();
@@ -69,6 +74,7 @@ async function runMergeMarker(
       op,
       ...(body.target ? { target: body.target } : {}),
       ...(body.note ? { note: body.note } : {}),
+      ...(body.commit ? { commit: body.commit } : {}),
       ...(body.mergedAt ? { mergedAt: new Date(body.mergedAt) } : {}),
       actor: {
         agency: actor.agency,

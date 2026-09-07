@@ -39,9 +39,13 @@ import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fie
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
 import { issueRelationInputSchema } from './relations-service.js';
-import { sessionContextSchema } from './session-context.js';
+import { sessionContextExpectSchema, sessionContextSchema } from './session-context.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
-import { IssueUpdateNotFound, updateIssueFields } from './update-service.js';
+import {
+  IssueUpdateNotFound,
+  SessionContextExpectMismatch,
+  updateIssueFields,
+} from './update-service.js';
 
 const attachmentInputSchema = z
   .object({
@@ -111,9 +115,14 @@ export const issuePatchSchema = z
     // cm:guard these two were MCP-only until the CLI needed them, and they are the reason `sessionContextSchema` is imported rather than re-declared: `sessionContext.branch` is what `pipeline/work-evidence.ts` reads as proof that work exists, so an agent that cannot write it here cannot satisfy the very evidence gate this surface now enforces. Widening it to REST also hands it to a browser session, which is deliberate — a person may edit it, and the ISS-820 verified-claim walk still applies to them.
     sessionContext: sessionContextSchema,
     detectorKey: z.string().trim().min(1).max(120).optional(),
+    // cm:guard ISS-959 — `expect` is a PRECONDITION, not a field: it must never reach `SHARED_ISSUE_PATCH_FIELDS`, or the value a client read back would be written to a column. The refine below is what keeps it from standing alone — a compare-and-set with nothing to write is a read wearing a write's verb, and it would still bump `updated_at`.
+    expect: sessionContextExpectSchema.optional(),
   })
   .strict()
-  .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
+  .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' })
+  .refine((o) => Object.keys(o).some((k) => k !== 'expect'), {
+    message: '`expect` is a precondition on a write — send the field(s) to write alongside it',
+  });
 
 export type IssuePatchInput = z.infer<typeof issuePatchSchema>;
 
@@ -123,8 +132,7 @@ export const issueFiltersSchema = paginationSchema.extend({
   assigneeId: z.uuid().optional(),
   category: z.string().trim().min(1).max(100).optional(),
   sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
-  // ISS-128 — opt-in hydration of `agentSessions[]` + derived `agentStatus`.
-  // Off by default so existing callers don't pay the extra query.
+  // cm:why default false rather than true: hydration is a second query per page, and the callers that want sessions are the two screens that render them
   withAgentSessions: z.coerce.boolean().optional().default(false),
 });
 
@@ -141,6 +149,15 @@ const notFound = (message: string) =>
 
 const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
+
+// cm:guard the CURRENT value must travel with the refusal. A bare 409 tells the loser its write failed and nothing about what to do next, so the only move left is to read again and write unconditionally — which is the overwrite this refusal exists to prevent.
+const sessionContextMoved = (err: SessionContextExpectMismatch) =>
+  new HTTPException(409, {
+    message:
+      '`sessionContext` no longer holds the value this write expected — another writer moved it. ' +
+      'Re-read it from `details.current`, decide whether your claim still stands, and send the write again with the new `expect`.',
+    cause: { code: 'SESSION_CONTEXT_MISMATCH', details: { current: err.current } },
+  });
 
 function serializeIssue<T extends { issSeq: number }>(row: T): T & { displayId: string } {
   return { ...row, displayId: `ISS-${row.issSeq}` };
@@ -520,10 +537,12 @@ issueRoutes.patch(
         issueId: id,
         updates,
         labelIds: resolvedLabelIds,
+        ...(patch.expect ? { expect: patch.expect } : {}),
         actor,
       });
     } catch (err) {
       if (err instanceof IssueUpdateNotFound) throw notFound('issue not found');
+      if (err instanceof SessionContextExpectMismatch) throw sessionContextMoved(err);
       throw err;
     }
 
