@@ -119,8 +119,7 @@ export function IssueDetailScreen({
 
   useRoom(projectRoom(projectId));
 
-  // Viewer role is read-only: hide transition/edit/comment affordances (the
-  // server 403s regardless — this is UX, not the gate).
+  // cm:why hiding the write affordances from a viewer is UX, never the gate — the server 403s a viewer's transition, edit and comment regardless, so a bug here costs a confusing button and not an unauthorised write
   const projectsQ = useProjects();
   const projectRole = projectsQ.data?.find((p) => p.id === projectId)?.role;
   const canWrite = projectRole !== "viewer";
@@ -419,7 +418,6 @@ export function IssueDetailScreen({
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
-        {/* Main column */}
         <div className="min-w-0 space-y-4">
           {/* Tier-1: "why is it stuck" — shown only when blocked (ISS-377 AC#1). */}
           {blocker && (
@@ -629,6 +627,7 @@ export function IssueDetailScreen({
                 onPatch={onPatch}
                 onTransition={onTransition}
                 onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
+                canMarkMerged={canWrite}
               />
             </CardContent>
           </Card>
@@ -644,6 +643,7 @@ export function IssueDetailScreen({
               onPatch={onPatch}
               onTransition={onTransition}
               onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
+              canMarkMerged={canWrite}
             />
           </Collapsible>
         </div>
