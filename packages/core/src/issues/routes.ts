@@ -10,13 +10,11 @@ import { registerIssueCommentRoutes } from '../comments/routes.js';
 import { db } from '../db/client.js';
 import {
   issueComplexities,
-  issueLabels,
   issuePriorities,
   issueStatuses,
   issues,
   jobs,
   jobTypes,
-  labels,
   projectMembers,
   usageRecords,
 } from '../db/schema.js';
@@ -32,6 +30,7 @@ import { createIssue, IssueCreateError } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
 import {
   LabelResolutionError,
+  listIssueLabels,
   PrimaryModuleError,
   type ResolvedLabelAttach,
   resolveLabelIdsForWrite,
@@ -247,17 +246,7 @@ issueProjectRoutes.get(
     const issue = await findIssueByDisplaySeq(projectId, issSeq);
     if (!issue) throw notFound('issue not found');
 
-    const labelRows = await db
-      .select({
-        id: labels.id,
-        name: labels.name,
-        color: labels.color,
-        kind: labels.kind,
-        isPrimary: issueLabels.isPrimary,
-      })
-      .from(issueLabels)
-      .innerJoin(labels, eq(labels.id, issueLabels.labelId))
-      .where(eq(issueLabels.issueId, issue.id));
+    const labelRows = await listIssueLabels(issue.id);
 
     const serialized = serializeIssue(issue);
     const healthMap = await safeHydratePipelineHealthForIssues(projectId, [issue.id]);
@@ -367,9 +356,7 @@ export const issueRoutes = new Hono<{ Variables: AuthVars }>();
 issueRoutes.use('*', requireAuth(), assertEmailVerified());
 
 registerIssueCommentRoutes(issueRoutes);
-// NOTE: issue attachment endpoints (POST/GET /:id/attachments) are now in a
-// standalone router (`issueAttachmentRoutes` in attachment-routes.ts) so they
-// can accept PAT + device auth. Mounted directly at /api/issues in index.ts.
+// cm:why the issue attachment endpoints are a SEPARATE router (`issueAttachmentRoutes`, mounted at /api/issues in index.ts) rather than registered here: this router applies `requireAuth()` to everything, and those two endpoints must also accept a PAT and a device credential — mounting them here would silently narrow that to browser sessions.
 
 async function loadIssue(issueId: string): Promise<IssueRow> {
   const row = await findIssueById(issueId);
@@ -390,24 +377,11 @@ issueRoutes.get(
     const access = await loadProjectAccess(issue.projectId, userId);
     if (!access.role) throw forbidden('not a project member');
 
-    const labelRows = await db
-      .select({
-        id: labels.id,
-        name: labels.name,
-        color: labels.color,
-        kind: labels.kind,
-        isPrimary: issueLabels.isPrimary,
-      })
-      .from(issueLabels)
-      .innerJoin(labels, eq(labels.id, issueLabels.labelId))
-      .where(eq(issueLabels.issueId, id));
+    const labelRows = await listIssueLabels(id);
 
     const healthMap = await safeHydratePipelineHealthForIssues(issue.projectId, [issue.id]);
     const serialized = serializeIssue(issue);
-    // ISS-308 A1 — hydrate the derived agentStatus on the single-issue detail
-    // payload too (the list/search endpoints already do). Without it the detail
-    // PipelineTracker can't render a failed/queued run state and falls back to a
-    // status-only bead, so a `testing` issue whose agent FAILED still drew green.
+    // cm:guard the detail payload hydrates `agentStatus` like the list and search payloads do — without it PipelineTracker falls back to a status-only bead and an issue whose agent FAILED still draws green (ISS-308).
     const agentMap = await hydrateAgentSessionsForIssues(issue.projectId, [issue.id]);
     const agentBucket = agentMap.get(issue.id);
     const creatorMap = await hydrateCreatorsForIssues([

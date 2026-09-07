@@ -11,6 +11,35 @@
 
 ### Added
 
+- **A module now names its knowledge node, instead of every reader guessing the name.** The module
+  taxonomy (ISS-588) landed `kind='module'`, `parentId` and `is_primary`, but not the half of the
+  epic's locked Q2 that every later tier reads from: a module had no stable identity and no link to
+  the knowledge entry that documents it. The only answer available to "which node is this module's"
+  was `module-${slugify(label.name)}` recomputed at each call site — the name-prefix convention the
+  epic rejected by name, with the extra failure that renaming a module silently orphaned its node.
+
+  `labels` now carries `slug` and `knowledge_entry_id`. The slug is the module's identity: derived
+  from the name on create or on promotion, returned in the response, and never recomputed on a
+  rename — so retitling a module cannot move what its node is found by. Two distinct names deriving
+  one base (`API/v2`, `API v2`) get `api-v2` and `api-v2-2` rather than a refusal, and the migration
+  backfills existing modules by the same rule written in SQL, so a module created before it and one
+  created after answer to the same slug for the same name. The node link is 1:1 in both directions
+  and enforced at the database, not only in the service: `labels_knowledge_entry_id_uq` refuses a
+  second module naming one node, and the CHECK pair `labels_slug_chk` / `labels_knowledge_entry_chk`
+  makes a plain label carrying either field unrepresentable. Deleting a node clears the link
+  (`ON DELETE SET NULL`) rather than deleting the module; deleting a module leaves the node standing.
+  A NULL link means "no node written yet" and never "the node is gone".
+
+  Fixed on the way past: the labels routes reported every unique violation as
+  `LABEL_NAME_TAKEN`, so with three indexes on the table a writer that raced onto the same
+  knowledge node would have been told its label *name* was taken. `labels/unique-conflicts.ts`
+  now answers by the index that fired, and rethrows an index it has not been taught about rather
+  than folding it into the nearest code.
+
+  Additive in every statement, and it ships with no consumer — the refresh loop, the generated
+  diagrams, the rollup and the drift signal are ISS-589's children and now have one stored link to
+  read instead of each re-deriving a name (ISS-947).
+
 - **A status now says only WHERE the work is, and three row fields answer what exists.** Four runs
   on 2026-09-06 reached one identical real state — implemented, gates run, branch pushed, PR open,
   nothing merged — and recorded four different statuses (`developed`, `draft`, `waiting`,
@@ -1411,6 +1440,55 @@
   framing `serialize()` applies. The original report mistook the absence of a field on the issue
   *document* for the absence of the value.
 
+
+- **A token shared by a dispatcher and the agents it runs is rate-limited for that load, and a
+  refusal now says exactly how long to wait.** The `forge` CLI's credential file is per-user, so on
+  a box running a dispatching session plus four to six agents, one PAT carries every issue read,
+  comment list and knowledge search all of them make. That was one bucket of 600 requests a minute,
+  and under a wave it was ordinary reads that exhausted it: a single `forge next --why` on
+  2026-09-07 was answered with twelve rate-limit waits, and the CLI's filing gate — registered with
+  a ten-second budget — printed `waiting 19s` and took twenty, so the gate failed open.
+
+  The per-token bucket is now **two** buckets, reads counted apart from writes, so a wave's reads
+  can no longer spend the budget its writes then queue behind. Reads get 2400 a minute, which is
+  eight sessions at three hundred each rather than a round number: 108 calls in a minute is the
+  measured peak of ONE busy session (30 days of `mcp_audit_log`, ISS-894), a dispatcher plus its
+  agents is eight of them, and `forge next --why` fans out over every open issue in one command, so
+  the per-session figure is above the steady peak on purpose. Writes keep 600 — six times that same
+  measurement — because writes were never what starved.
+
+  Which bucket a request charges is decided where the answer is knowable: REST reads it off the HTTP
+  method, and `/mcp` — where every call is a `POST` and the method says nothing — off the JSON-RPC
+  envelope, from a clone of the body so the transport still gets its stream. An unrecognised tool,
+  an unparseable body and an unknown method all charge the *write* budget, the stricter of the two,
+  so a tool registered next release keeps exactly the ceiling it has today rather than escaping the
+  limiter.
+
+  Which verbs count as reads is judged by what the handler does, not by how the verb reads. Review
+  caught `fetch` in that set on the strength of its name: its only consumer, `forge_uploads
+  action=fetch`, calls `assertPrincipalIsWriter` and inserts a `download_tickets` row on every
+  call, so a writer-gated mutation was being charged the larger read budget. It is out, and the
+  test that pins it out asserts the consumer's authz rather than the spelling. The same pass added
+  the member-gated reads that were being charged the smaller budget for no reason —
+  `forge_issues action=listTasks` and `forge_coolify_deploy`'s `status`, `logs`, `runtime-logs`,
+  `applications`, `targets` and `rollback-images`, which is exactly the poll-heavy traffic this
+  issue was filed over.
+
+  A `429` was already carrying `Retry-After`, and the CLI was already honouring it; what it could not
+  say was whether to stop at all. The body's `details` now names the window, the ceiling, the
+  remaining budget and **which class was refused**, and `X-RateLimit-Reset` and `X-RateLimit-Scope`
+  ride on every response — so a client whose reads are exhausted can see that its writes are not.
+
+  `RATE_LIMIT_PAT_MAX` and `RATE_LIMIT_PAT_WINDOW_MS` are **retired**, and core refuses to boot
+  while either is set, naming both replacements. There is no single value left for the old name to
+  mean, and a schema that simply stops reading a key an operator deliberately lowered would leave
+  that number silently unenforced. The four replacements
+  (`RATE_LIMIT_PAT_{READ,WRITE}_{MAX,WINDOW_MS}`) are declared with `${VAR}` lines in
+  `docker-compose.prod.yml` and in both `.env.example` files, which is the whole point of the
+  `8ff505af` fix they inherit. A token's own `rate_limit_max` column, where set, now caps each class
+  rather than the two together — the three credentials that pin one (a paired box, a `job:` token, a
+  `session:` token) are single-session tokens whose 600 was sized as six times that session's peak,
+  and that intent is per axis. Flow: `docs/flows/organization-access-token-throttle.html` (ISS-961).
 
 - **A `decomposes` edge no longer waives the work-evidence gate in silence.**
   `pipeline/work-evidence.ts#hasChildIssues` read exactly one dependency kind — `decomposes` — and

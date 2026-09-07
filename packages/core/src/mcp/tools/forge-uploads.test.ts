@@ -34,11 +34,21 @@ vi.mock('../../storage/index.js', () => ({
   isEnoent: () => false,
 }));
 
-// Request path imports these; stub so the module loads (fetch path never calls them).
+// cm:guard this stub must keep `details` on the class — the request path's whole refusal contract is that `code`, `message` AND `details` reach the caller in one string, and a stub without the field lets that regress green (ISS-957)
+class StubUploadTicketError extends Error {
+  readonly code: string;
+  readonly details: unknown;
+  constructor(code: string, message: string, details?: unknown) {
+    super(message);
+    this.code = code;
+    this.details = details;
+  }
+}
+const createUploadTicketMock = vi.fn();
 vi.mock('../../uploads/ticket-service.js', () => ({
   UPLOAD_TICKET_TTL_MS: 300_000,
-  UploadTicketError: class extends Error {},
-  createUploadTicket: vi.fn(),
+  UploadTicketError: StubUploadTicketError,
+  createUploadTicket: createUploadTicketMock,
 }));
 
 const { forgeUploadsTool } = await import('./forge-uploads.js');
@@ -212,5 +222,66 @@ describe('forge_uploads action=fetch', () => {
     await expect(
       tool.handler({ action: 'fetch', data: { target: 'issue', attachmentId: ATT_ID } }),
     ).rejects.toThrow(/NOT_FOUND/);
+  });
+});
+
+describe('forge_uploads action=request — a refusal carries the set it enforces', () => {
+  const ISSUE_ID = '77777777-7777-4777-8777-777777777777';
+
+  function queueIssueLookup() {
+    queue.push(
+      [{ projectId: PROJECT_ID }],
+      [{ orgId: '66666666-6666-4666-8666-666666666666', memberRole: 'member', orgRole: null }],
+    );
+  }
+
+  it('puts the allowed types and extensions in the message a MIME_NOT_ALLOWED throws', async () => {
+    queueIssueLookup();
+    createUploadTicketMock.mockRejectedValueOnce(
+      new StubUploadTicketError('MIME_NOT_ALLOWED', 'mime not allowed: application/x-msdownload', {
+        reason: 'not-allowed',
+        allowed: { mimes: ['text/plain', 'image/png'], extensions: ['.txt', '.png'] },
+      }),
+    );
+
+    const tool = forgeUploadsTool(ctx);
+    await expect(
+      tool.handler({
+        action: 'request',
+        data: { target: 'issue', targetId: ISSUE_ID, name: 'evil.exe' },
+      }),
+    ).rejects.toThrow(/MIME_NOT_ALLOWED: .*details=\{.*"mimes":\["text\/plain","image\/png"\]/);
+  });
+
+  it('puts the colliding document in the message an ATTACHMENT_NAME_TAKEN throws', async () => {
+    queueIssueLookup();
+    createUploadTicketMock.mockRejectedValueOnce(
+      new StubUploadTicketError('ATTACHMENT_NAME_TAKEN', 'already on this issue', {
+        existing: { id: ATT_ID, name: 'evidence.md', url: `/api/attachments/${ATT_ID}/download` },
+      }),
+    );
+
+    const tool = forgeUploadsTool(ctx);
+    await expect(
+      tool.handler({
+        action: 'request',
+        data: { target: 'issue', targetId: ISSUE_ID, name: 'evidence.md' },
+      }),
+    ).rejects.toThrow(new RegExp(`ATTACHMENT_NAME_TAKEN: .*details=.*"id":"${ATT_ID}"`));
+  });
+
+  it('leaves the message alone when the refusal carries no details', async () => {
+    queueIssueLookup();
+    createUploadTicketMock.mockRejectedValueOnce(
+      new StubUploadTicketError('MIME_NOT_ALLOWED', 'mime not allowed: x/y'),
+    );
+
+    const tool = forgeUploadsTool(ctx);
+    await expect(
+      tool.handler({
+        action: 'request',
+        data: { target: 'issue', targetId: ISSUE_ID, name: 'a.bin' },
+      }),
+    ).rejects.toThrow('MIME_NOT_ALLOWED: mime not allowed: x/y');
   });
 });

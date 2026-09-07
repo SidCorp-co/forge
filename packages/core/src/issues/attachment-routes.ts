@@ -82,7 +82,7 @@ issueAttachmentRoutes.post(
       return c.json(row, 201);
     } catch (err) {
       if (err instanceof AttachmentError) {
-        throw badRequest(err.message, err.code);
+        throw badRequest(err.message, err.code, err.details);
       }
       throw err;
     }

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { issueAttachments } from '../../db/schema.js';
 import { makeFakeJobPrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
@@ -27,10 +28,16 @@ vi.mock('../../storage/index.js', () => ({
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-// lib/authz.ts effectiveProjectRole chains TWO leftJoins before where().limit(1).
+// cm:guard both leftJoin levels must stay mocked — lib/authz.ts effectiveProjectRole chains TWO before where().limit(1), and dropping one makes every authz lookup in this file throw instead of resolving a role
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
-const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
+// cm:guard branch on the TABLE, never on the chain shape — the ISS-963 name lookup reads issue_attachments through the same .where().orderBy().limit() shape the authz lookups use, so a shared resolver hands it a row queued for a project row and every attachment is refused as a duplicate of itself
+const noCollision = { orderBy: () => ({ limit: async () => [] as unknown[] }) };
+const selectFrom = vi.fn((table: unknown) =>
+  table === issueAttachments
+    ? { where: () => noCollision, leftJoin: selectLeftJoin }
+    : { where: selectWhere, leftJoin: selectLeftJoin },
+);
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
 const updateReturning = vi.fn();

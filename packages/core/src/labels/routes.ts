@@ -6,15 +6,18 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issueLabels, labelKinds, labels } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   assertDemotionIsLegal,
+  assertKnowledgeNodeIsForModule,
+  assertKnowledgeNodeIsLegal,
   assertParentIsForModule,
   assertParentIsLegal,
   autoModuleColor,
+  deriveModuleSlug,
   ModuleHierarchyError,
 } from './module-service.js';
+import { labelUniqueConflict } from './unique-conflicts.js';
 
 const colorRegex = /^#[0-9a-f]{6}$/i;
 
@@ -25,6 +28,7 @@ const labelCreateSchema = z
     color: z.string().regex(colorRegex, 'color must be #rrggbb hex').optional(),
     kind: z.enum(labelKinds).optional(),
     parentId: z.uuid().nullable().optional(),
+    knowledgeEntryId: z.uuid().nullable().optional(),
     description: z.string().max(2000).nullable().optional(),
   })
   .strict()
@@ -39,9 +43,11 @@ const labelPatchSchema = z
     color: z.string().regex(colorRegex).optional(),
     kind: z.enum(labelKinds).optional(),
     parentId: z.uuid().nullable().optional(),
+    knowledgeEntryId: z.uuid().nullable().optional(),
     description: z.string().max(2000).nullable().optional(),
   })
   .strict()
+  // cm:guard `slug` is absent from BOTH schemas on purpose — it is the module's identity, derived once from the name, and a caller who could send it could also move it, which orphans the knowledge node every later tier resolves through it (ISS-947).
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
@@ -56,7 +62,13 @@ const notFound = (message: string) =>
 const conflict = (message: string, code: string) =>
   new HTTPException(409, { message, cause: { code } });
 
-// cm:guard every projection in this file must list the same columns — a route that omits `kind` answers a module as an indistinguishable plain label, and the client has no second call to tell them apart with.
+// cm:guard a 23505 is reported by the index that fired, never as the name one — `labels/unique-conflicts.ts` owns that mapping and answers undefined for an index it does not know, which rethrows rather than mislabelling (ISS-947).
+const uniqueConflict = (err: unknown): HTTPException | undefined => {
+  const named = labelUniqueConflict(err);
+  return named && conflict(named.message, named.code);
+};
+
+// cm:guard every projection in this file must list the same columns — a route that omits `kind` answers a module as an indistinguishable plain label, and one that omits `knowledgeEntryId` leaves `module-${slugify(name)}` as the only answer available to a caller asking which node a module owns, which is the name-prefix convention ISS-947 exists to replace.
 const labelColumns = {
   id: labels.id,
   projectId: labels.projectId,
@@ -64,6 +76,8 @@ const labelColumns = {
   color: labels.color,
   kind: labels.kind,
   parentId: labels.parentId,
+  slug: labels.slug,
+  knowledgeEntryId: labels.knowledgeEntryId,
   description: labels.description,
   createdAt: labels.createdAt,
 };
@@ -86,16 +100,21 @@ labelProjectRoutes.post(
   }),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
-    const { name, color, kind, parentId, description } = c.req.valid('json');
+    const { name, color, kind, parentId, knowledgeEntryId, description } = c.req.valid('json');
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
     assertProjectRole(access, 'admin', 'not a project admin');
 
+    const isModule = (kind ?? 'label') === 'module';
     try {
       if (parentId) {
-        assertParentIsForModule((kind ?? 'label') === 'module');
+        assertParentIsForModule(isModule);
         await assertParentIsLegal(projectId, parentId, undefined);
+      }
+      if (knowledgeEntryId) {
+        assertKnowledgeNodeIsForModule(isModule);
+        await assertKnowledgeNodeIsLegal(projectId, knowledgeEntryId, undefined);
       }
     } catch (err) {
       throw moduleError(err);
@@ -110,16 +129,15 @@ labelProjectRoutes.post(
           color: color ?? autoModuleColor(name),
           kind: kind ?? 'label',
           parentId: parentId ?? null,
+          slug: isModule ? await deriveModuleSlug(projectId, name) : null,
+          knowledgeEntryId: knowledgeEntryId ?? null,
           description: description ?? null,
         })
         .returning(labelColumns);
       if (!inserted) throw new Error('labels: insert returned no row');
       return c.json(inserted, 201);
     } catch (err) {
-      if (isUniqueViolation(err)) {
-        throw conflict('label name already taken in this project', 'LABEL_NAME_TAKEN');
-      }
-      throw err;
+      throw uniqueConflict(err) ?? err;
     }
   },
 );
@@ -150,6 +168,7 @@ async function loadLabel(labelId: string) {
     .select({
       id: labels.id,
       projectId: labels.projectId,
+      name: labels.name,
       kind: labels.kind,
       parentId: labels.parentId,
     })
@@ -180,10 +199,16 @@ labelRoutes.patch(
     // cm:guard judge the RESULTING row, not the patch — `kind` and `parentId` can move in the same request, so checking either alone lets a demotion keep its parent, or a new parent land on a row that is about to stop being a module
     const nextKind = patch.kind ?? label.kind;
     const nextParentId = patch.parentId !== undefined ? patch.parentId : label.parentId;
+    const isPromotion = nextKind === 'module' && label.kind === 'label';
+    const isDemotion = nextKind === 'label' && label.kind === 'module';
     try {
       if (nextParentId) assertParentIsForModule(nextKind === 'module');
       if (patch.parentId) await assertParentIsLegal(label.projectId, patch.parentId, id);
-      if (nextKind === 'label' && label.kind === 'module') await assertDemotionIsLegal(id);
+      if (patch.knowledgeEntryId) {
+        assertKnowledgeNodeIsForModule(nextKind === 'module');
+        await assertKnowledgeNodeIsLegal(label.projectId, patch.knowledgeEntryId, id);
+      }
+      if (isDemotion) await assertDemotionIsLegal(id);
     } catch (err) {
       throw moduleError(err);
     }
@@ -193,7 +218,15 @@ labelRoutes.patch(
     if (patch.color !== undefined) updates.color = patch.color;
     if (patch.kind !== undefined) updates.kind = patch.kind;
     if (patch.parentId !== undefined) updates.parentId = patch.parentId;
+    if (patch.knowledgeEntryId !== undefined) updates.knowledgeEntryId = patch.knowledgeEntryId;
     if (patch.description !== undefined) updates.description = patch.description;
+    // cm:guard the slug moves on exactly two edits and never on a rename — a promotion derives it (the CHECK requires a module to have one) and a demotion clears both module-only fields (the CHECK forbids a plain label from keeping them). A `name` patch deliberately leaves it alone: that is the whole point of storing it (ISS-947).
+    if (isPromotion)
+      updates.slug = await deriveModuleSlug(label.projectId, patch.name ?? label.name);
+    if (isDemotion) {
+      updates.slug = null;
+      updates.knowledgeEntryId = null;
+    }
 
     try {
       const [updated] = await db
@@ -204,10 +237,7 @@ labelRoutes.patch(
       if (!updated) throw notFound('label not found');
       return c.json(updated);
     } catch (err) {
-      if (isUniqueViolation(err)) {
-        throw conflict('label name already taken in this project', 'LABEL_NAME_TAKEN');
-      }
-      throw err;
+      throw uniqueConflict(err) ?? err;
     }
   },
 );

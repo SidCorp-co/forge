@@ -40,6 +40,7 @@ flowchart LR
 | `issues.reportedBy` | set by webhook/MCP imports; `NULL` when `createdById` already names the actor |
 | `schema.ts:issueDependencyKinds` | `blocks` · `relates` · `duplicates` · `parent` · `decomposes` |
 | `schema.ts:labelKinds` | `label` · `module` — a module IS a label, told apart only by this column |
+| `labels.slug` · `labels.knowledge_entry_id` | modules only, and every module has a slug — the CHECK pair makes both halves of that unrepresentable otherwise |
 
 ## Guards
 
@@ -49,6 +50,16 @@ flowchart LR
   `resolveLabelIdsForWrite`, which also refuses a primary that is not `kind='module'` — SQL cannot
   see `labels.kind` from a junction row, so that half has no database backstop. Drawn in
   [`docs/flows/issue-work-module-attribution.html`](../../flows/issue-work-module-attribution.html).
+- **A module's identity is `labels.slug`, and its knowledge node is `labels.knowledge_entry_id`.**
+  The slug is derived from the name on create and on promotion and never on a rename, so retitling
+  a module cannot move what its node is found by; `module-${slugify(name)}` computed at a call site
+  is the convention this column exists to replace. The binding is 1:1 in both directions, held by
+  `labels_knowledge_entry_id_uq`, and a plain label may carry neither field —
+  `labels_slug_chk` and `labels_knowledge_entry_chk` make that row unrepresentable rather than
+  leaving it to the service. Deleting a node clears the link (`ON DELETE SET NULL`) and deleting a
+  module leaves the node, so a NULL link means "no node written yet" and never "the node is gone".
+  Drawn in
+  [`docs/flows/web-v2-module-taxonomy.html`](../../flows/web-v2-module-taxonomy.html).
 - **Only `kind='blocks'` gates dispatch.** An edge `(from=A, to=B, 'blocks')` means A must reach a
   terminal status before B may dispatch, and cross-project edges are legal. `relates`, `duplicates`
   and `parent` are metadata no dispatch path may read. The `cm:guard` is on

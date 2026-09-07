@@ -25,7 +25,7 @@ import { db } from '../db/client.js';
 import { personalAccessTokens } from '../db/schema.js';
 import { logger } from '../logger.js';
 
-// cm:guard the same pinned 600/min as `jobs/job-token.ts`, and pinned for the same reason: `RULES.patPerToken` is an operator knob (`RATE_LIMIT_PAT_MAX`) sized for humans, and lowering it must not throttle the fleet. The number is the one ISS-894 measured — a single project peaked at 108 calls in one minute (p50 2, p95 6, p99 10) — not a fresh guess. A session mints its token once at cold start and has no way to ask for another, so a 429 storm does not degrade the session, it stalls it.
+// cm:guard the same pinned 600/min as `jobs/job-token.ts`, and pinned for the same reason: `RULES.patRead`/`RULES.patWrite` are operator knobs (`RATE_LIMIT_PAT_READ_MAX`, `RATE_LIMIT_PAT_WRITE_MAX`), the read half is budgeted for a whole box sharing one credential, and lowering either must not throttle the fleet. Pinned here means 600 per class, reads and writes counted apart (ISS-961). The number is the one ISS-894 measured — a single project peaked at 108 calls in one minute (p50 2, p95 6, p99 10) — not a fresh guess. A session mints its token once at cold start and has no way to ask for another, so a 429 storm does not degrade the session, it stalls it.
 const SESSION_TOKEN_RATE_LIMIT_PER_MINUTE = 600;
 
 /**
