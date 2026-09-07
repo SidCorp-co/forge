@@ -12,18 +12,7 @@ import { z } from 'zod';
 import { BODY_FORMATS } from '../body/formats.js';
 import { prepareBodyOrThrow, rethrowBodyInvalid } from '../body/http-error.js';
 
-/**
- * One number for every comment body, because a client has to be able to refuse
- * locally before it uploads evidence it cannot take back (ISS-958).
- *
- * A typed record — `format:'html'` with a root `<forge-*>` component — carries one
- * block per acceptance criterion, and a 34-criterion verdict measures ~48,000
- * characters. Under the old 10,000 the client split one record across five
- * comments, and the refusal arrived after the evidence uploads. This is NOT
- * tiered by record kind: a cap that differs per kind cannot be written as the one
- * `maxLength` a client reads out of the tool schema, and a client that has to know
- * its tier first cannot refuse before sending.
- */
+// cm:why one number for EVERY comment body, not a tier per record kind: a typed record (`format:'html'`, root `<forge-*>`) carries one block per acceptance criterion, and a 34-criterion verdict measures ~48,000 chars. A cap that differs by kind cannot be written as the single `maxLength` a client reads out of the tool schema, and a client that must know its tier before it can refuse cannot refuse before it uploads evidence it cannot take back (ISS-958).
 // cm:edge contract -> packages/core/src/mcp/tools/forge-comments.ts — this constant is what `z.toJSONSchema` publishes as `data.body.maxLength`, and that number IS the client-side contract (forge-plugin ISS-456 reads it). Restate the literal at the MCP door instead of importing this and the two drift, which is the state ISS-958 found them in.
 export const COMMENT_BODY_MAX_CHARS = 64_000;
 

@@ -1414,6 +1414,28 @@
 
 ### Fixed
 
+- **A typed record of any block count now lands in one comment write.** A comment body was capped
+  at 10,000 characters, and the plugin's issue-flow contract posts every typed record — plan,
+  confirmation, review, verdict, verification — as a comment, because a comment is the only
+  per-issue write the API offers. A verdict record carries one block per acceptance criterion, so
+  a thirty-four-criterion verdict measured about forty-eight thousand characters and was refused
+  outright — after the evidence uploads, which cannot be undone. The client's answer was to split
+  one record across five comments, which lands but makes the record five things to read back and
+  re-assemble.
+
+  The cap is now 64,000 characters at all three doors — `POST /api/issues/:id/comments`,
+  `PATCH /api/comments/:id` and `forge_comments action=create|update`. It is one number for every
+  body rather than a tier per record kind, and that is the point: a cap that differs by kind
+  cannot be written as the single `maxLength` a client reads out of the tool's `inputSchema`, and
+  a client that must first learn which tier it is in cannot refuse locally before it uploads. The
+  number is now published on `data.body.maxLength`, so a client refuses before sending rather
+  than after.
+
+  No migration: `comments.body` is Postgres `text`, so the 10,000 was only ever a validator. The
+  MCP page budget stays 38,000 — the cap bounds one comment, the budget bounds one page, and the
+  one-row floor between them is what lets a 64,000-character record come back whole in a page of
+  its own.
+
 - **Every step-handoff payload the prompt asks for now validates.** `prompt/facts/registry.ts`'s
   `HANDOFF_KEYS` named each step's own fields and omitted the two that every branch of
   `stepHandoffSchema` keys on as `z.literal` — `step` and `schema_version` — for all eight step

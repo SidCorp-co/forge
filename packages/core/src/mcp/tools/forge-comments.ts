@@ -212,9 +212,7 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
         inserted = written.row;
         bodyWarnings = written.warnings;
       } catch (err) {
-        // 23503: FK violated. The branch above should make an author_device_id
-        // violation unreachable, but guard defensively (e.g. a stale device
-        // row) rather than surfacing a raw DB error to the caller.
+        // cm:why the branch above should make a 23503 on `author_device_id` unreachable, but a stale device row would surface a raw Postgres error to an agent that can do nothing with it — this maps it to the refusal that names the cause
         if (
           pgErrorCode(err) === '23503' &&
           pgConstraintName(err) === 'comments_author_device_id_devices_id_fk'
