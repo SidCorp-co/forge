@@ -22,6 +22,12 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../../src/ws/broadcast.js', () => ({
+  broadcast: vi.fn(),
+  broadcastToProject: vi.fn(),
+}));
+
 import {
   createTestProject,
   createTestUser,
@@ -46,10 +52,6 @@ beforeAll(async () => {
   process.env.NODE_ENV ??= 'test';
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-  vi.mock('../../src/ws/broadcast.js', () => ({
-    broadcast: vi.fn(),
-    broadcastToProject: vi.fn(),
-  }));
 
   const { jobEventsRoutes } = await import('../../src/jobs/events-routes.js');
   const { errorHandler } = await import('../../src/middleware/error.js');

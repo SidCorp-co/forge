@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import {
   deviceRoom,
   GLOBAL_ROOM,
@@ -12,8 +12,8 @@ import {
 const OPEN = 1;
 const CLOSED = 3;
 
-function makeSub(readyState = OPEN): Subscriber & { send: ReturnType<typeof vi.fn> } {
-  return { send: vi.fn(), readyState };
+function makeSub(readyState = OPEN): Subscriber & { send: Mock<(data: string) => void> } {
+  return { send: vi.fn<(data: string) => void>(), readyState };
 }
 
 describe('RoomManager', () => {
@@ -167,7 +167,6 @@ describe('RoomManager', () => {
     it('globalRoom returns the literal "global" key and never collides with prefix-keyed rooms', () => {
       expect(globalRoom()).toBe('global');
       expect(GLOBAL_ROOM).toBe('global');
-      // Sanity: no prefix helper produces the global key for any UUID.
       const id = '99999999-9999-9999-9999-999999999999';
       expect(projectRoom(id)).not.toBe(globalRoom());
       expect(deviceRoom(id)).not.toBe(globalRoom());

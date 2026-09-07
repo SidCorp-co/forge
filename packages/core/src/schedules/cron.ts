@@ -1,4 +1,4 @@
-import cronParser from 'cron-parser';
+import { type CronExpression, CronExpressionParser } from 'cron-parser';
 
 export interface CronValidationResult {
   ok: boolean;
@@ -8,15 +8,15 @@ export interface CronValidationResult {
 
 const MIN_INTERVAL_MS = 60 * 60 * 1000;
 
-function nextDate(interval: ReturnType<typeof cronParser.parseExpression>): Date {
+function nextDate(interval: CronExpression): Date {
   const result = interval.next() as unknown as { toDate(): Date };
   return result.toDate();
 }
 
 export function validateCron(cron: string): CronValidationResult {
-  let interval: ReturnType<typeof cronParser.parseExpression>;
+  let interval: CronExpression;
   try {
-    interval = cronParser.parseExpression(cron);
+    interval = CronExpressionParser.parse(cron);
   } catch {
     return { ok: false, error: 'Invalid cron expression' };
   }
@@ -36,7 +36,7 @@ export function validateCron(cron: string): CronValidationResult {
 
 export function nextRunFor(cron: string, fromDate: Date = new Date()): Date | null {
   try {
-    const interval = cronParser.parseExpression(cron, { currentDate: fromDate });
+    const interval = CronExpressionParser.parse(cron, { currentDate: fromDate });
     return nextDate(interval);
   } catch {
     return null;

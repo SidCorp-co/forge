@@ -7,7 +7,7 @@
  * let the two copies disagree about which pass a query belongs to.
  */
 
-import { vi } from 'vitest';
+import { type Mock, vi } from 'vitest';
 
 export interface StuckRow {
   id: string;
@@ -72,7 +72,7 @@ export const capMock = vi.fn(async () => ({
 }));
 export const recordRescueMock = vi.fn(async () => undefined);
 export const applyStatusTransitionMock = vi.fn(async () => undefined);
-export const sentryAddBreadcrumb = vi.fn();
+export const sentryAddBreadcrumb: Mock = vi.fn();
 
 export function resetHarness(): void {
   stuckQueue.length = 0;
