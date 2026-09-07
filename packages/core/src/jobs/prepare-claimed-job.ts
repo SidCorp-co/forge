@@ -67,7 +67,7 @@ export interface PreparedJob {
   runnerId: string;
   runnerType: string;
   attempts: number;
-  // cm:hack ISS-941 until:every runner bound to any project reports the first release carrying ISS-873 phase 6 — a CONSTANT on the wire, never read from config. Core and the runner ship on different clocks: a core deploy reaches every box at once, a runner binary reaches one on its own 6-hour update check. A 0.9.x runner still derives its process model from the literal `"duplex"` in this field, so dropping the field before the fleet converges makes every un-upgraded box read it absent and run the print lane for a core that no longer has one — a silent fleet-wide revert with nothing reporting it. Sending the constant makes BOTH runner generations correct.
+  // cm:hack ISS-941 until:every device holding a runner row reports agent_version >= 0.12.1 (`runner-v0.12.1` is the first release whose crate has no `session_mode` read — 9efa379a is contained in that tag and no lower one; 0.12.0's `transport/pool.rs` still reads it). Measured 2026-09-07: 3 devices, only one there — read the whole fleet at once from the project's read-only Postgres cross-check surface (`devices` JOIN `runners`, `agent_version` is what each box heartbeats), because `GET /api/devices` needs a browser session and one project's device pool answers for one project. A CONSTANT on the wire, never read from config: an older binary derives its process model from the literal `"duplex"` alone, so a core that has stopped sending the field reads to it as absent, `duplex: false`, and the print lane — for a core that no longer has one, with nothing going red. Sending the constant makes BOTH runner generations correct.
   sessionMode: 'duplex';
   sessionResidencySeconds?: number;
 }
