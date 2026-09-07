@@ -3,6 +3,17 @@ import { type IssueStatus, issueStatuses } from '../db/schema.js';
 export type { IssueStatus };
 export { issueStatuses };
 
+// cm:guard `dropped` is the RIGHT discard for a draft and `closed` is the wrong one: closing stamps merged_at, so discarding a draft today unblocks every dependent of an issue whose work never existed. Keep `closed` only because callers predate the status.
+// cm:guard exported so the refusal in apply-transition.ts can NAME these instead of restating them — the message has to list the legal exits, and a second copy of the list is a message that goes stale without a single test going red
+// cm:guard `in_progress` is a PLACEMENT exit and must not acquire an evidence meaning (packages/core/src/pipeline/status-assertions.ts): it says a session holds this draft, not that anything was built. It is safe from `resetAutonomousWedgesOnce` only because that pass requires a prior `drive` job row and a running issue run, and a draft worked by hand has neither — a wedge pass that stopped requiring a job would roll a live hand session's issue back to `open` and dispatch an agent into its worktree (ISS-940).
+export const DRAFT_EXIT_TARGETS: readonly IssueStatus[] = [
+  'open',
+  'closed',
+  'dropped',
+  'developed',
+  'in_progress',
+];
+
 // cm:guard ADVISORY, NOT A GATE. Nothing enforces this map. `canTransitionFree` below is the only runtime check and it permits ANY non-draft from → ANY non-draft to; reading a missing pair here as "illegal" has produced wrong conclusions and pointless multi-hop workarounds. Consumers are system-prompt generation, UI next-state suggestions and the soft-skip resolver.
 export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   open: ['confirmed', 'needs_info', 'on_hold'],
@@ -30,9 +41,8 @@ export const transitions: Record<IssueStatus, readonly IssueStatus[]> = {
   reopen: ['developed', 'testing', 'in_progress', 'on_hold'],
   on_hold: issueStatuses.filter((s) => s !== 'on_hold' && s !== 'draft'),
   needs_info: ['open', 'confirmed', 'on_hold'],
-  // ISS-236 — drafts are AI-generated proposals; user either promotes them
-  // into the normal pipeline or discards them. No other status maps INTO draft.
-  draft: ['open', 'closed', 'dropped'],
+  // cm:guard this row is the ADVISORY twin of `DRAFT_EXIT_TARGETS` and must list the same statuses — it is what the UI offers as next states, and offering three of the five legal exits is how a person concludes the other two are refused (ISS-940)
+  draft: [...DRAFT_EXIT_TARGETS],
   // cm:guard terminal with NO exit, unlike `closed → reopen`: reopening a dropped issue would leave `merged_at` NULL on an issue that then ships, so re-filing is the correct move and this map must not offer a shortcut past it
   dropped: [],
 };
@@ -71,28 +81,26 @@ export const NON_TARGETABLE_STATUSES: ReadonlySet<IssueStatus> = new Set(['draft
  *
  * Two guardrails survive (the "moderate" in moderately-strict):
  *   1. `draft` is never a target (issues only enter draft at creation).
- *   2. A `draft` may only move to the four `DRAFT_EXIT_TARGETS` — promoted to
- *      `open`, discarded to `dropped` (or `closed`), or handed off DIRECT-SHIP
- *      to `developed` (ISS-431). An unaccepted AI proposal cannot teleport
- *      into early/mid pipeline stages.
+ *   2. A `draft` may only move to the five `DRAFT_EXIT_TARGETS` — promoted to
+ *      `open`, discarded to `dropped` (or `closed`), taken up in place at
+ *      `in_progress`, or handed off DIRECT-SHIP to `developed` (ISS-431). An
+ *      unaccepted AI proposal cannot teleport into early/mid pipeline stages.
  *
  * Direct-ship (`draft → developed`): work implemented OUTSIDE the pipeline
  * (an operator/assistant session pushing its own ISS-* branch) enters at the
- * review gate instead of bypassing it. `developed` dispatches forge-review;
- * the dispatcher opens the issue run on first dispatch (`openIssueRun` is
- * get-or-create), so no prior pipeline stage needs to have run. Walking
- * draft→open instead would auto-dispatch triage/clarify/plan/code onto
- * already-finished work. Callers should set `sessionContext.branch` so the
- * reviewer knows what to diff.
+ * review gate instead of bypassing it. Nothing dispatches there — `open` is
+ * the only status a job is enqueued at — so the rung says where the work
+ * sits and whose move is next, and says nothing about a merge. Walking
+ * draft→open instead would auto-dispatch a drive job onto already-finished
+ * work. Callers should set `sessionContext.branch` so a reviewer knows what
+ * to diff.
+ *
+ * Taking it up in place (`draft → in_progress`): a session already building
+ * the branch says so without promoting. ISS-940 measured the alternative —
+ * ISS-933 sat at `draft` with a green-gated PR because `in_progress` was the
+ * one rung refused here and `open` would have raced a runner-dispatched agent
+ * against the session already in the worktree.
  */
-// cm:guard `dropped` is the RIGHT discard for a draft and `closed` is the wrong one: closing stamps merged_at, so discarding a draft today unblocks every dependent of an issue whose work never existed. Keep `closed` only because callers predate the status.
-// cm:guard exported so the refusal in apply-transition.ts can NAME these instead of restating them — the message has to list the legal exits, and a second copy of the list is a message that goes stale without a single test going red
-export const DRAFT_EXIT_TARGETS: readonly IssueStatus[] = [
-  'open',
-  'closed',
-  'dropped',
-  'developed',
-];
 
 export function canTransitionFree(from: IssueStatus, to: IssueStatus): boolean {
   if (NON_TARGETABLE_STATUSES.has(to)) return false;

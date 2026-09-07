@@ -6,7 +6,8 @@ import { issues, notifications } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { AUTONOMOUS_QUESTION_STATUS } from '../pipeline/autonomous-mode.js';
 import type { HooksBus } from '../pipeline/hooks.js';
-import { strandedResolutionKey } from '../pipeline/stranded-issues.js';
+import { isTerminalPlacement } from '../pipeline/status-assertions.js';
+import { owedCloseResolutionKey, strandedResolutionKey } from '../pipeline/stranded-issues.js';
 import { resolveNotifications } from './auto-resolve.js';
 import { emitNotification } from './emit.js';
 
@@ -164,6 +165,11 @@ export function registerTransitionNotifications(bus: HooksBus): void {
       await resolveNotifications(strandedResolutionKey(p.issueId));
     }
 
+    // cm:why ISS-940 — the owed-close alarm asks for a terminal placement and nothing else clears it; `unmark` clears the mark instead and leaves the alarm lit until the next sweep re-reads the predicate and auto-resolve is not the path for that
+    if (isTerminalPlacement(p.to)) {
+      await resolveNotifications(owedCloseResolutionKey(p.issueId));
+    }
+
     // cm:why same shape as the stranded rule above, and for the same reason: a move OFF the park is the human answering. It cannot be gated on HEALTHY_STATUSES — `answer-resume.ts` restarts the driver at AUTONOMOUS_ENTRY_STATUS (`open`), which is not healthy and never becomes healthy, so a health-gated key would stay lit from the answer until `developed`.
     if (p.from === AUTONOMOUS_QUESTION_STATUS && p.to !== AUTONOMOUS_QUESTION_STATUS) {
       await resolveNotifications(questionResolutionKey(p.issueId));
@@ -191,7 +197,6 @@ export function registerTransitionNotifications(bus: HooksBus): void {
       const recipient = row.assigneeId ?? row.createdById;
       if (!recipient) return;
 
-      // Skip self-notify: don't ping someone about their own transition.
       if (p.actor.type === 'user' && p.actor.id === recipient) return;
 
       const displayId = `ISS-${row.issSeq}`;

@@ -1401,13 +1401,15 @@ describe('forge_issues tool', () => {
     };
     const STAMPED = new Date('2026-05-30T00:00:00.000Z');
 
-    it('mark_merged stamps merged_at via COALESCE, writes audit comment, and broadcasts', async () => {
+    it('mark_merged answers `merged`, writes audit comment, and broadcasts', async () => {
       const tool = forgeIssuesTool({
         principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       // loadIssue (merged_at currently null)
       selectLimit.mockResolvedValueOnce([baseIssueRow]);
+      // cm:guard one row back is how `stampIssueMergedAt` says THIS call set the value; queue nothing and the stamp reads as a no-op and the tool answers `already_merged`
+      updateReturning.mockResolvedValueOnce([{ mergedAt: STAMPED }]);
       // membership
       selectLimit.mockResolvedValueOnce([memberAccessRow]);
       // audit comment insert
@@ -1424,18 +1426,6 @@ describe('forge_issues tool', () => {
 
       expect(result.action).toBe('merged');
       expect(result.mergedAt).toEqual(STAMPED);
-
-      // Idempotency rests on COALESCE — assert the SQL shape (mock can't run
-      // SQL), confirming the write is not an unconditional overwrite. The SQL
-      // object embeds the column (circular), so read the literal StringChunks
-      // out of queryChunks rather than JSON.stringify-ing the whole object.
-      const setArg = updateSet.mock.calls[0]?.[0] as {
-        mergedAt: { queryChunks?: Array<{ value?: unknown }> };
-      };
-      const literal = (setArg.mergedAt.queryChunks ?? [])
-        .map((c) => (Array.isArray(c?.value) ? c.value.join('') : ''))
-        .join('');
-      expect(literal).toMatch(/coalesce/i);
 
       // audit comment on the issue
       expect(insertValues).toHaveBeenCalledWith(
@@ -1462,15 +1452,14 @@ describe('forge_issues tool', () => {
     });
 
     it('mark_merged with explicit mergedAt binds an ISO string with a ::timestamptz cast', async () => {
-      // Regression: a bare `sql`${date}`` binds an untyped param that Postgres
-      // cannot type inside COALESCE (live 500 on forge-beta). The stamp must
-      // be an ISO string carrying an explicit ::timestamptz cast.
+      // cm:guard the bound param must be the ISO STRING, never a Date — an untyped Date param is what failed type inference on real Postgres (live 500 on forge-beta for every mergedAt-supplied call)
       const tool = forgeIssuesTool({
         principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
       selectLimit.mockResolvedValueOnce([baseIssueRow]); // loadIssue
       selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership
+      updateReturning.mockResolvedValueOnce([{ mergedAt: STAMPED }]);
       insertReturning.mockResolvedValueOnce([auditCommentRow]); // audit comment
       selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, mergedAt: STAMPED }]); // fresh
 
@@ -1479,9 +1468,6 @@ describe('forge_issues tool', () => {
         data: { issueId: ISSUE_ID, target: 'prod', mergedAt: '2026-05-30T00:00:00.000Z' },
       });
 
-      // The COALESCE wraps the stamp SQL as a NESTED sql object, so walk
-      // queryChunks recursively: StringChunks (value:string[]) form the
-      // literal, Params (value:scalar) are the bound values.
       // drizzle chunks are: StringChunk (value:string[] → SQL literal), nested
       // SQL (queryChunks), or a raw interpolated value (the bound param, stored
       // directly — a string/Date/Param, not wrapped).
@@ -1618,6 +1604,7 @@ describe('forge_issues tool', () => {
       findMissingWorkEvidenceMock.mockResolvedValueOnce('no evidence at all');
       selectLimit.mockResolvedValueOnce([baseIssueRow]); // loadIssue
       selectLimit.mockResolvedValueOnce([memberAccessRow]); // membership/writer role
+      updateReturning.mockResolvedValueOnce([{ mergedAt: STAMPED }]);
       insertReturning.mockResolvedValueOnce([auditCommentRow]); // audit comment
       selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, mergedAt: STAMPED }]); // fresh
 

@@ -70,8 +70,7 @@ export const issuesApi = {
     params.set("withAgentSessions", "1");
     // cm:why one grouped query on this response replaced a per-row cost-summary N+1 (ISS-437) — dropping the flag brings the N+1 back rather than losing a column
     params.set("withCost", "1");
-    // ISS-700 — same grouped-query pattern for the latest-failed-job info
-    // backing the Failed-badge tooltip (no per-row/hover fetch).
+    // cm:why ISS-700 — the same grouped-query pattern as `withCost`: it backs the Failed-badge tooltip, so dropping the flag reintroduces a per-row fetch on hover rather than losing the badge
     params.set("withFailureInfo", "1");
     // cm:why carries the queued step + its gate, without which a queued-but-undispatched row renders as actively worked
     params.set("withPipelineHealth", "1");
@@ -148,6 +147,26 @@ export const issuesApi = {
     apiClient<unknown>(`/issues/${id}/run-pipeline-step`, {
       method: "POST",
       body: "{}",
+    }),
+
+  /**
+   * `POST /api/issues/:id/merge` — claim that this issue's work shipped, for work finished outside
+   * the pipeline. `target` names where it landed and is required; `note` is free text kept on the
+   * audit comment the server writes.
+   */
+  // cm:edge contract -> packages/core/src/issues/merge-routes.ts — `target` required on mark, `note` optional, both `.strict()`; an extra key is a 400, and `merged_at` is the feature-branch barrier's release signal rather than a field edit
+  markMerged: (id: string, body: { target: string; note?: string }) =>
+    apiClient<{ id: string; action: "merged" | "unmarked" }>(`/issues/${id}/merge`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  /** `DELETE /api/issues/:id/merge` — retract the claim, which re-blocks every `blocks` dependent. */
+  // cm:guard the empty body is REQUIRED, not cosmetic — the route runs the same `zValidator('json')` on DELETE as on POST, and omitting it is a 400
+  unmarkMerged: (id: string, body: { note?: string } = {}) =>
+    apiClient<{ id: string; action: "merged" | "unmarked" }>(`/issues/${id}/merge`, {
+      method: "DELETE",
+      body: JSON.stringify(body),
     }),
 };
 

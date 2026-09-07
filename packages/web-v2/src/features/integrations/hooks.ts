@@ -103,6 +103,30 @@ export function useGitHubRepositories(
   });
 }
 
+/** ISS-925 — the deploy-target pick-list. `auth` is either a saved binding or
+ *  the credential still in the create form, so the picker works on a first save. */
+export function useCoolifyApplications(
+  projectId: string | undefined,
+  auth: { integrationId: string } | { baseUrl: string; apiToken: string } | null,
+) {
+  return useQuery({
+    queryKey: ["integrations", "coolify-apps", projectId, JSON.stringify(auth)],
+    queryFn: () => integrationsApi.coolifyApplications(projectId as string, auth as never),
+    enabled: !!projectId && !!auth,
+    retry: false,
+  });
+}
+
+/** The bound targets with the identity Coolify reports for each. */
+export function useCoolifyTargets(projectId: string | undefined, integrationId: string | undefined) {
+  return useQuery({
+    queryKey: ["integrations", "coolify-targets", projectId, integrationId],
+    queryFn: () => integrationsApi.coolifyTargets(projectId as string, integrationId as string),
+    enabled: !!projectId && !!integrationId,
+    retry: false,
+  });
+}
+
 export function useTestIntegration(projectId: string | undefined) {
   const invalidate = useInvalidateIntegrations(projectId);
   return useMutation({
@@ -111,9 +135,6 @@ export function useTestIntegration(projectId: string | undefined) {
   });
 }
 
-// === ISS-395 — provider-agnostic hooks for the Coolify + Epodsystem sections.
-// These use the generic `create`/`update` api over the discriminated body so a
-// single hook serves both providers; the Postman hooks above stay unchanged. ===
 
 /** Create a Coolify/Epodsystem integration. Returns the one-time `integrationSecret`. */
 export function useCreateProviderIntegration(projectId: string | undefined) {

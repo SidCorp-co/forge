@@ -154,10 +154,14 @@ fn default_skill_auto_pull() -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunnerSettings {
-    /// Max live duplex claude PROCESSES this device runs for PIPELINE jobs
-    /// (`pipelineConfig.sessionMode='duplex'`). Chat is not counted here and has
-    /// no ceiling of its own — a chat process is bounded by its residency
-    /// timeout alone. Clamped to >= 1 at use.
+    /// Max live claude PROCESSES this device runs for PIPELINE jobs. Chat is not
+    /// counted here and has no ceiling of its own — a chat process is bounded by
+    /// its residency timeout alone. Clamped to >= 1 at use.
+    ///
+    /// The name kept its `duplex_` prefix through ISS-873 phase 6, which deleted
+    /// the mode the prefix distinguished. Renaming it is a config-file break for
+    /// every box that sets it, for no behaviour: there is one process model now,
+    /// so the prefix reads as redundant rather than as wrong.
     // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — this number sizes `session_sem`, whose permit is taken only when a spec sets `counts_against_session_cap`. Renamed from `chat_max_concurrent` on 2026-09-04 because chat stopped taking permits and the old name then described nothing the number does.
     #[serde(default = "default_duplex_max_sessions")]
     pub duplex_max_sessions: u32,

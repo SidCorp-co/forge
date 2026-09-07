@@ -22,6 +22,7 @@ import {
 import { formatApiError } from "@/lib/api/error";
 import { useMemo, useState } from "react";
 import { ConnectionOwnerField } from "./connection-owner-field";
+import { CoolifyTargetsField } from "./coolify-targets-field";
 import { ENV_OPTIONS } from "./status-pill";
 import {
   useConfirmProdDeploy,
@@ -161,16 +162,6 @@ function EnvironmentPanel({
     existing && !(bindingCfg.targets && bindingCfg.targets.length > 0) && cfg.targets?.length,
   );
 
-  function updateTarget(idx: number, patch: Partial<CoolifyTargetInput>) {
-    setTargets((prev) => prev.map((t, i) => (i === idx ? { ...t, ...patch } : t)));
-  }
-  function addTarget() {
-    setTargets((prev) => [...prev, { label: "", resourceUuid: "" }]);
-  }
-  function removeTarget(idx: number) {
-    setTargets((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)));
-  }
-
   async function handleSave() {
     setError(null);
     setTestResult(null);
@@ -301,57 +292,16 @@ function EnvironmentPanel({
         )}
       </fieldset>
 
-      {/* ── Section 2: DEPLOY TARGETS (binding-tier, per project+env) ───── */}
-      <fieldset className="flex flex-col gap-3 rounded-md border border-subtle p-3">
-        <legend className="fg-label px-1 text-subtle">
-          Deploy targets · this project · {environment}
-        </legend>
-        <p className="fg-body-sm text-muted">
-          The Coolify application(s) this project deploys for {environment}. Add
-          one row per app — e.g. a separate backend and frontend; they deploy
-          together and the pipeline only completes once all succeed.
-          {targetsInherited
-            ? " Currently inherited from the shared connection — saving stores project-level targets."
-            : ""}
-        </p>
-        {targets.map((t, idx) => (
-          <div
-            key={t.id ?? idx}
-            className="flex items-end gap-2"
-          >
-            <div className="w-40 shrink-0">
-              {idx === 0 && <span className="fg-label mb-1 block text-subtle">Label</span>}
-              <Input
-                value={t.label}
-                onChange={(e) => updateTarget(idx, { label: e.target.value })}
-                placeholder="Backend"
-              />
-            </div>
-            <div className="flex-1">
-              {idx === 0 && (
-                <span className="fg-label mb-1 block text-subtle">Resource UUID</span>
-              )}
-              <Input
-                value={t.resourceUuid}
-                onChange={(e) => updateTarget(idx, { resourceUuid: e.target.value })}
-                placeholder="application uuid from Coolify"
-              />
-            </div>
-            <Button
-              variant="ghost"
-              icon="trash"
-              aria-label="Remove target"
-              disabled={targets.length <= 1}
-              onClick={() => removeTarget(idx)}
-            />
-          </div>
-        ))}
-        <div>
-          <Button variant="secondary" size="sm" icon="plus" onClick={addTarget}>
-            Add target
-          </Button>
-        </div>
-      </fieldset>
+      <CoolifyTargetsField
+        projectId={projectId}
+        environment={environment}
+        integrationId={existing?.id}
+        baseUrl={baseUrl}
+        apiToken={apiToken}
+        targets={targets}
+        onChange={setTargets}
+        inherited={targetsInherited}
+      />
 
       {error && <Banner tone="danger">{error}</Banner>}
       {testResult &&
