@@ -31,7 +31,7 @@ export type IssueRelationInput = {
   validUntil?: string | undefined;
 };
 
-// cm:guard this list is what BOTH the PAT-reachable MCP write path (ISS-868) and REST create accept, so a kind added here becomes creatable by every credential class — widen it only for a kind that is pure metadata with no side effect at all. `decomposes`/`duplicates`/`parent` are excluded because they carry no ordering worth an atomic write; route them through forge_project_pm set_dependency.
+// cm:guard this list is what BOTH the PAT-reachable MCP write path (ISS-868) and REST create accept, so a kind added here becomes creatable by every credential class — widen it only for a kind that is pure metadata with no side effect at all. `duplicates`/`parent` are excluded because they carry no ordering worth an atomic write, and `decomposes` because it is not pure metadata at all — it waives the work-evidence gate (`dependency-effects.ts#WORK_EVIDENCE_WAIVER_KIND`), so it must not be reachable from an atomic create. Route those three through forge_project_pm set_dependency.
 export const RELATION_KINDS = ['blocks', 'relates'] as const;
 
 /**

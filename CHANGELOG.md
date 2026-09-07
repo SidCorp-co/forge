@@ -1340,6 +1340,26 @@
 
 ### Fixed
 
+- **A `decomposes` edge no longer waives the work-evidence gate in silence.**
+  `pipeline/work-evidence.ts#hasChildIssues` read exactly one dependency kind — `decomposes` — and
+  a single live edge made `findMissingWorkEvidence` return `null`, which is the whole of ISS-786's
+  anti-fabrication gate: an issue with one decompose child could be marked merged and moved to
+  `developed`/`testing` with no branch, no commit and no code handoff. Three agent-facing documents
+  said the kind was inert (`guides/registry.ts`: "it holds nothing back"; `prompt/facts/registry.ts`:
+  "it gates nothing"; the `set_dependency` tool: "no lifecycle of its own"), so an agent wired a
+  decompose believing the write was a grouping label and removed the check that catches a fabricated
+  merge. Nobody was lying: the record was made, and what the edge actually did was in no document.
+
+  The waiver stays — it is ISS-786's deliberate grouping-parent exemption, and removing it would
+  refuse every epic whose children carry the code. What changed is that nothing can claim otherwise.
+  `issues/dependency-effects.ts` now holds `WORK_EVIDENCE_WAIVER_KIND` (the one kind the query
+  filters on) and `WORK_EVIDENCE_WAIVER_NOTE` (the sentence the surfaces render). The four `.ts`
+  surfaces interpolate the note, so they cannot drift; `db/schema.ts`'s `cm:guard` and
+  `docs/modules/issue-work/README.md` cannot, and `dependency-effects.test.ts` holds those two by
+  reading their source — proven red under a planted change of the kind. `setIssueDependency` now
+  returns `effects { gatesDispatch, waivesWorkEvidence, note }` on every outcome, including the
+  idempotent re-assert, so the write that creates the edge reports the effect it just had.
+
 - **`check-flow-coverage` no longer calls a function-hit "settled end-to-end".** The summary read
   `N step(s) across M flow(s), K settled end-to-end` and marked each row `e2e`, while the whole of
   the verdict was `entry.f[id] > 0` — istanbul's per-function *invocation count*. Any call that
