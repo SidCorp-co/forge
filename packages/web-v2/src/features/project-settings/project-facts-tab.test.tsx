@@ -59,14 +59,14 @@ describe("ProjectFactsTab — what the always-inject flag promises", () => {
 		expect(onScreen).not.toMatch(/the agent must|must always follow/);
 	});
 
-	it("says only that the body reaches every prompt", () => {
+	it("says only what the flag does, and leaves the promise to the served line", () => {
 		withFacts();
 		const { container } = render(
 			<ProjectFactsTab projectId="proj-1" canEdit={true} />,
 		);
 
 		const onScreen = (container.textContent ?? "").replace(/\s+/g, " ");
-		expect(onScreen).toContain("agent prompt, so an agent cannot miss it");
+		expect(onScreen).toContain("to splice its full body into every agent prompt.");
 	});
 
 	// cm:guard the sentence is SERVED, so an older API answer has none — the paragraph must not render empty rather than not render at all.

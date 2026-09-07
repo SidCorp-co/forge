@@ -78,7 +78,6 @@ export function ProjectFactsTab({
 	const maxChars = factsQ.data?.maxAlwaysInjectChars ?? 6000;
 	const guarantee = factsQ.data?.alwaysInjectGuarantee ?? "";
 
-	// Live always-inject budget: sum of the bodies of every always-inject row.
 	const injectedChars = useMemo(
 		() =>
 			rows
@@ -201,8 +200,8 @@ export function ProjectFactsTab({
 				<p className="fg-body-sm mb-3 text-muted">
 					Author-maintained rules and guides for this project. By default a fact
 					is listed to agents as a fetch-on-demand pointer. Flag a fact{" "}
-					<b>always-inject</b> to splice its full body verbatim into{" "}
-					<b>every</b> agent prompt, so an agent cannot miss it.
+					<b>always-inject</b> to splice its full body into <b>every</b> agent
+					prompt.
 				</p>
 
 				{
@@ -218,7 +217,6 @@ export function ProjectFactsTab({
 					tab, which renders them as a runtime pointer.
 				</Banner>
 
-				{/* Always-inject token budget meter (AC #2). */}
 				<div className="mt-4 rounded-md border border-line bg-surface px-3 py-2.5">
 					<div className="mb-1 flex items-center justify-between">
 						<span className="fg-label text-fg">Always-inject budget</span>
