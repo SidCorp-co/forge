@@ -193,15 +193,6 @@ export async function countActiveSessions(projectId: string): Promise<number> {
   return Number(row?.active ?? 0);
 }
 
-/** Delete the project row; `false` when there was nothing to delete. */
-export async function deleteProject(projectId: string): Promise<boolean> {
-  const deleted = await db
-    .delete(projects)
-    .where(eq(projects.id, projectId))
-    .returning({ id: projects.id });
-  return deleted.length > 0;
-}
-
 /** The project's identity and branches plus its whole agentConfig blob. */
 export async function readProjectWithConfig(projectId: string) {
   const [row] = await db

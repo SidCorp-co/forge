@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
+import { withKernelMarker } from '../db/kernel-marker.js';
 import {
   type AgentSessionStatus,
   agentSessionStatuses,
@@ -720,36 +721,21 @@ agentSessionRoutes.patch(
     // legacy blob and turn rows can never diverge. Streaming-tail debounce is
     // handled by broadcastTurnAppended so we don't spam clients while the
     // runner streams.
-    // Only open a transaction when the messages array is being mirrored into
-    // agent_session_turns — otherwise high-frequency status/heartbeat PATCHes
-    // from the runner pay an unnecessary tx round-trip.
     const messagesPatched = patch.messages !== undefined;
-    let updated: typeof agentSessions.$inferSelect | undefined;
-    let sync: Awaited<ReturnType<typeof syncTurnsWithMessages>> | null = null;
-    if (messagesPatched) {
-      const txResult = await db.transaction(async (tx) => {
-        const [row] = await tx
-          .update(agentSessions)
-          .set(updates)
-          .where(eq(agentSessions.id, id))
-          .returning();
-        if (!row) throw notFound('agent session not found');
-        const prevMessages = Array.isArray(existing.messages) ? existing.messages : [];
-        const nextMessages = Array.isArray(patch.messages) ? patch.messages : [];
-        const result = await syncTurnsWithMessages(row.id, prevMessages, nextMessages, tx);
-        return { updated: row, sync: result };
-      });
-      updated = txResult.updated;
-      sync = txResult.sync;
-    } else {
-      const [row] = await db
+    // cm:why PRICED: this handler used to skip the transaction whenever the messages array was not being mirrored, to spare the runner's status/heartbeat PATCHes a round-trip. It no longer does, and the cost is one `SELECT set_config` per PATCH. Bought because `updates.status` — not `patch.status`, since the queued→running promotion above writes a status the request never named — decides whether `trg_agent_sessions_unaudited_transition` fires, and a marker gated on a runtime condition is a marker `kernel-marker-guard.test.ts` cannot see: its enclosure test is lexical. Exempting this one file instead would exempt exactly the writer whose invisibility to `transition-guard.test.ts` left the whole session class uncounted until ISS-943.
+    const { updated, sync } = await withKernelMarker(db, async (tx) => {
+      const [row] = await tx
         .update(agentSessions)
         .set(updates)
         .where(eq(agentSessions.id, id))
         .returning();
       if (!row) throw notFound('agent session not found');
-      updated = row;
-    }
+      if (!messagesPatched) return { updated: row, sync: null };
+      const prevMessages = Array.isArray(existing.messages) ? existing.messages : [];
+      const nextMessages = Array.isArray(patch.messages) ? patch.messages : [];
+      const result = await syncTurnsWithMessages(row.id, prevMessages, nextMessages, tx);
+      return { updated: row, sync: result };
+    });
 
     if (sync) {
       // First new turn fires immediately so the client learns the turn id.
@@ -817,7 +803,9 @@ agentSessionRoutes.delete(
     // own chat; project owners/admins can delete any session.
     const { session: existing } = await ensureSessionOwnerOrAdmin(id, userId);
 
-    await db.delete(agentSessions).where(eq(agentSessions.id, id));
+    await withKernelMarker(db, async (tx) =>
+      tx.delete(agentSessions).where(eq(agentSessions.id, id)),
+    );
     broadcastSession(existing, 'agent-session.deleted');
     return c.body(null, 204);
   },

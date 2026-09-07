@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type IssueBranchOverride, resolveIssueBranches } from '../branches/resolve.js';
 import { db } from '../db/client.js';
+import { withKernelMarker } from '../db/kernel-marker.js';
 import {
   devices,
   issues,
@@ -53,8 +54,6 @@ export const createProjectSchema = z.object({
     .min(3)
     .max(64),
   name: z.string().trim().min(1).max(200),
-  // ISS-273 — `projects.description` already exists; the create path now
-  // persists it instead of silently dropping the field the modal collects.
   description: z.string().trim().max(2000).nullable().optional(),
   // ISS-387 — project kind. `standard` (default) = code repo project;
   // `website` = an Epodsystem storefront project (git repo optional).
@@ -519,7 +518,8 @@ projectRoutes.delete(
     const access = await loadProjectAccess(id, userId);
     assertOrgRoleOnProject(access, 'admin', 'org admin required');
 
-    await db.delete(projects).where(eq(projects.id, id));
+    // cm:edge contract -> packages/core/drizzle/migrations/0219_unaudited_transition_reach.sql — `jobs`, `agent_sessions` and `pipeline_runs` all cascade off `project_id`, so this one statement deletes kernel rows and owes the `forge.kernel_txn` marker.
+    await withKernelMarker(db, async (tx) => tx.delete(projects).where(eq(projects.id, id)));
     return c.body(null, 204);
   },
 );

@@ -16,6 +16,7 @@
 
 import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { withKernelMarker } from '../db/kernel-marker.js';
 import { type JobType, jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { resolvePipelineWedge } from '../pipeline/wedge.js';
@@ -273,11 +274,13 @@ export async function releaseHeldJobs(projectId: string): Promise<number> {
     }
     if (!cleared) continue;
 
-    const [updated] = await db
-      .update(jobs)
-      .set(buildRequeueUpdate(job, now))
-      .where(and(eq(jobs.id, job.id), eq(jobs.status, 'held')))
-      .returning({ id: jobs.id, type: jobs.type, issueId: jobs.issueId });
+    const [updated] = await withKernelMarker(db, async (tx) =>
+      tx
+        .update(jobs)
+        .set(buildRequeueUpdate(job, now))
+        .where(and(eq(jobs.id, job.id), eq(jobs.status, 'held')))
+        .returning({ id: jobs.id, type: jobs.type, issueId: jobs.issueId }),
+    );
     if (!updated) continue;
 
     released += 1;

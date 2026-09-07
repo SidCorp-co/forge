@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
+import { withKernelMarker } from '../db/kernel-marker.js';
 import { agentSessions, agentSessionTurns, projects } from '../db/schema.js';
 import { assertProjectRole } from '../lib/authz.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
@@ -64,8 +65,7 @@ const forkBodySchema = z
   })
   .strict();
 
-// NOTE: no auth middleware here — the aggregator (`routes.ts`) applies it
-// once for the whole `/api/agent-sessions` surface before mounting this.
+// cm:guard no auth middleware here on purpose — `routes.ts` applies it once for the whole `/api/agent-sessions` surface before mounting this router. Adding a second layer here would double-charge every request; removing the aggregator's would leave this one unauthenticated with nothing saying so.
 export const agentSessionTurnsRoutes = new Hono<{ Variables: AuthVars }>();
 
 agentSessionTurnsRoutes.get(
@@ -221,7 +221,7 @@ agentSessionTurnsRoutes.post(
     const priorMessages = replayMessages.slice(0, -1);
     const truncatedFromIndex = priorMessages.length;
     const regenNow = new Date();
-    const locked = await db.transaction(async (tx) => {
+    const locked = await withKernelMarker(db, async (tx) => {
       const [row] = await tx
         .update(agentSessions)
         .set({

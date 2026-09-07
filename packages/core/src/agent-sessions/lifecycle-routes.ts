@@ -15,6 +15,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
+import { withKernelMarker } from '../db/kernel-marker.js';
 import { agentSessions, devices, issues, projects, runners, schedules } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import {
@@ -99,10 +100,7 @@ agentSessionLifecycleRoutes.post(
     const access = await loadProjectAccess(project.id, userId);
     assertProjectRole(access, 'member');
 
-    // Single device-resolution shared with /send + schedule: desktop runs
-    // Claude locally (no device); web/automation needs an online runner or 409.
-    // Without a live client a non-desktop session would be created `running`
-    // with no listener and hang forever (the sweeper only reaps pipeline/pm).
+    // cm:guard a non-desktop session with no live client must 409, never be created — it would land `running` with no listener and hang forever, and the sweeper only reaps `pipeline`/`pm` runs. Desktop is the exemption because it runs Claude locally and has no device to resolve.
     const client = await resolveChatDevice(
       { projectId: project.id, deviceId: null, metadata: null },
       input.origin,
@@ -232,11 +230,13 @@ agentSessionLifecycleRoutes.post(
 
     await ensureSessionOwnerOrAdmin(input.sessionId, userId);
 
-    const [updated] = await db
-      .update(agentSessions)
-      .set({ status: 'idle', updatedAt: new Date() })
-      .where(eq(agentSessions.id, input.sessionId))
-      .returning();
+    const [updated] = await withKernelMarker(db, async (tx) =>
+      tx
+        .update(agentSessions)
+        .set({ status: 'idle', updatedAt: new Date() })
+        .where(eq(agentSessions.id, input.sessionId))
+        .returning(),
+    );
     if (!updated) throw notFound('agent session not found');
 
     // Aborting a pipeline session just flips it to `idle`; the failure path
@@ -501,11 +501,9 @@ agentSessionLifecycleRoutes.post(
           })
         : null;
 
-    const [updated] = await db
-      .update(agentSessions)
-      .set(statusSet)
-      .where(eq(agentSessions.id, sessionId))
-      .returning();
+    const [updated] = await withKernelMarker(db, async (tx) =>
+      tx.update(agentSessions).set(statusSet).where(eq(agentSessions.id, sessionId)).returning(),
+    );
     if (!updated) throw notFound('agent session not found');
 
     // ISS-101 — close one-shot runs on terminal status writes. No-op on

@@ -17,6 +17,7 @@
 
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { withKernelMarker } from '../db/kernel-marker.js';
 import { jobs } from '../db/schema.js';
 import { endJobForBudgetBreach } from '../jobs/budget-breach.js';
 import { checkMonthlyBudget, shouldEmitWarn } from '../jobs/budget-check.js';
@@ -212,18 +213,22 @@ export async function startJobForMaster(args: {
   if (!job) return { ok: false, reason: 'hold_lost' };
   const runner = await resolveRunnerForDevice(job.projectId, args.deviceId);
 
-  const stamped = await db
-    .update(jobs)
-    .set({
-      status: 'dispatched',
-      deviceId: args.deviceId,
-      runnerId: runner.id,
-      dispatchedAt: new Date(),
-      heldBy: null,
-      heldAt: null,
-    })
-    .where(and(eq(jobs.id, args.jobId), eq(jobs.status, 'queued'), eq(jobs.heldBy, args.sessionId)))
-    .returning({ id: jobs.id });
+  const stamped = await withKernelMarker(db, async (tx) =>
+    tx
+      .update(jobs)
+      .set({
+        status: 'dispatched',
+        deviceId: args.deviceId,
+        runnerId: runner.id,
+        dispatchedAt: new Date(),
+        heldBy: null,
+        heldAt: null,
+      })
+      .where(
+        and(eq(jobs.id, args.jobId), eq(jobs.status, 'queued'), eq(jobs.heldBy, args.sessionId)),
+      )
+      .returning({ id: jobs.id }),
+  );
   // cm:guard a lost hold here means the reaper took the job back between the two acts. Refuse rather than stamping anyway: another master may already hold it, and two boxes stamped onto one job is the state nothing downstream can untangle.
   if (!stamped.length) {
     await releaseJobFromMaster({ jobId: args.jobId, sessionId: args.sessionId });

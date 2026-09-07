@@ -47,7 +47,7 @@ const jobCreateSchema = z
   })
   .strict();
 
-// status changes go through enqueue + lifecycle endpoints (F3), not PATCH.
+// cm:guard PATCH never carries a status — every status change goes through the enqueue and lifecycle endpoints, which is what keeps this route out of the kernel-marker obligation (`db/kernel-marker-guard.test.ts`).
 const jobPatchSchema = z
   .object({
     payload: z.record(z.string(), z.unknown()).optional(),
@@ -265,11 +265,15 @@ jobRoutes.patch(
       throw conflict('jobs can only be patched while queued', 'JOB_NOT_QUEUED');
     }
 
-    const updates: Record<string, unknown> = {};
-    if (patch.payload !== undefined) updates.payload = patch.payload;
-    if (patch.modelTier !== undefined) updates.modelTier = patch.modelTier;
-
-    const [updated] = await db.update(jobs).set(updates).where(eq(jobs.id, id)).returning();
+    // cm:why a literal SET list rather than a built object, for the reason `jobs/session-transcript.ts` states: `kernel-marker-guard.test.ts` can prove a literal carries no `status` and cannot prove it of a variable, so the shape is what saves this route a marker it does not need.
+    const [updated] = await db
+      .update(jobs)
+      .set({
+        ...(patch.payload !== undefined ? { payload: patch.payload } : {}),
+        ...(patch.modelTier !== undefined ? { modelTier: patch.modelTier } : {}),
+      })
+      .where(eq(jobs.id, id))
+      .returning();
     if (!updated) throw notFound('job not found');
     return c.json(updated);
   },
