@@ -172,9 +172,7 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
       const projectId = await loadIssueProjectId(issueId);
       await assertPrincipalIsWriter(principal, projectId);
 
-      // Pre-decode + size-validate attachments BEFORE writing the comment row.
-      // A size-cap rejection here returns PAYLOAD_TOO_LARGE without leaving an
-      // empty comment behind.
+      // cm:guard decode and size-check every attachment BEFORE the comment INSERT, never after — a PAYLOAD_TOO_LARGE raised once the row exists leaves an empty comment behind that the caller was told failed, and nothing deletes it.
       const rawAttachments = input.data?.attachments ?? [];
       const decoded: Array<{ name: string; mime: string; bytes: Buffer }> = [];
       if (rawAttachments.length > 0) {
