@@ -123,7 +123,7 @@ describe('PATCH /api/issues/batch honours agency, not just device-ness', () => {
 
   // cm:guard the human half is not decoration — it is what proves the gate is reading agency rather than simply refusing everyone. Identical request, identical missing evidence; only the token's name prefix differs, and a person hand-advancing their own issue must keep working (that carve-out is the whole reason the gate is scoped at all).
   it('lets a person through the same request', async () => {
-    const { project, issueId } = await seedEvidenceLessIssue();
+    const { user, project, issueId } = await seedEvidenceLessIssue();
     const { plaintext } = await mintPat({
       userId: user.id,
       name: 'my laptop',
@@ -164,7 +164,7 @@ describe('POST/DELETE /api/issues/:id/merge — the CLI route for a merge claim'
   });
 
   it('lets a person make the same claim, and take it back', async () => {
-    const { project, issueId } = await seedEvidenceLessIssue();
+    const { user, project, issueId } = await seedEvidenceLessIssue();
     const { plaintext } = await mintPat({
       userId: user.id,
       name: 'my laptop',
@@ -180,7 +180,7 @@ describe('POST/DELETE /api/issues/:id/merge — the CLI route for a merge claim'
 
   // cm:guard `target` is the audit label the claim is recorded under, so a POST without one records "merged" with no statement of where — refuse it here rather than defaulting, because a default is indistinguishable in the audit trail from a caller who meant it.
   it('refuses a claim that does not say where it merged', async () => {
-    const { project, issueId } = await seedEvidenceLessIssue();
+    const { user, project, issueId } = await seedEvidenceLessIssue();
     const { plaintext } = await mintPat({
       userId: user.id,
       name: 'my laptop',
