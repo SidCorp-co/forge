@@ -1340,6 +1340,17 @@
 
 ### Fixed
 
+- **A second `mark_merged` no longer answers as though it had stamped anything.** The first stamp
+  wins by design (ISS-286), but the caller was told `merged` either way, so a later mark — a
+  corrected note, a different target, a more accurate time — changed nothing while answering
+  identically, and the audit comment it wrote read as the justification for a timestamp some
+  earlier write had set. Observed 2026-09-07 on ISS-925: a throwaway probe claimed `merged_at` and
+  the real note never moved it. `applyMergeMarker` now answers `already_merged`, and the audit
+  comment says the value belongs to an earlier write and that `unmark` then `mark` is the only
+  correction — which itself re-blocks every dependent. The stamp is now `WHERE merged_at IS NULL`,
+  the same predicate the other two writers use, because `RETURNING` reports the row *after* the
+  write and so cannot answer "was it null before".
+
 - **An issue whose code merged and deployed is no longer re-dispatched as claimable work.**
   ISS-920 and ISS-931 both had their change on `origin/main` and serving production traffic while
   the tracker read `open`, because the run that owed the close died before writing it. The

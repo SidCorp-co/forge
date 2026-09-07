@@ -59,7 +59,7 @@ single rung can be honest about both.</p>
     <td><code>packages/core/src/pipeline/status-assertions.ts</code> &rarr; <code>STATUS_ASSERTIONS</code></td>
     <td>Exhaustive <code>Record&lt;IssueStatus, {gate, nextActor}&gt;</code> &mdash; two fields, both placement, and a status added to the schema without an entry fails <code>tsc</code></td></tr>
 <tr><td>Did it land</td><td><code>issues.merged_at</code></td>
-    <td>Caller-asserted: any hop out of the base merge state stamps it, merge or not</td></tr>
+    <td>Caller-asserted: any hop out of the base merge state stamps it, merge or not — and the <b>first</b> stamp wins, so a later mark answers <code>already_merged</code> rather than moving it</td></tr>
 <tr><td>Does a branch exist</td><td><code>issues.session_context.branch</code></td>
     <td>Written by the session; the project's own base/production branch does not count</td></tr>
 <tr><td>Which of those a master sees on a backlog row</td>
@@ -196,6 +196,8 @@ is to put it in front of the person who can check.</p>
     <td>It falls into <code>AUTONOMOUS_INFLIGHT_STATUSES</code> by subtraction, and <code>resetAutonomousWedgesOnce</code> rolls finished work back to <code>open</code> and re-dispatches it.</td></tr>
 <tr><td>A wedge pass that stops requiring a prior <code>drive</code> job row</td>
     <td><code>draft &rarr; in_progress</code> stops being safe: a live hand session gets an agent dropped into the worktree it is working in.</td></tr>
+<tr><td>Reporting <code>merged</code> from <code>applyMergeMarker</code> when the stamp did not move</td>
+    <td>The audit trail grows a corrected note beside a timestamp an earlier write set, and nobody can see that <code>unmark</code> then <code>mark</code> is the only correction — which itself re-blocks every dependent. The <code>WHERE merged_at IS NULL</code> predicate is what makes the question answerable; <code>RETURNING</code> reports the row AFTER the write and cannot.</td></tr>
 <tr><td>Excluding rows with <code>merged_at</code> set from the declared backlog</td>
     <td>The kernel silently hides an issue whose stamp may be wrong, and the master cannot tell that from an empty backlog. Show the fact; do not take the decision.</td></tr>
 <tr><td>Dropping the live-job or running-run arm from <code>detectOwedCloses</code></td>
@@ -213,6 +215,7 @@ is to put it in front of the person who can check.</p>
 <tr><td>The one status that dispatches</td><td><code>packages/core/src/pipeline/autonomous-mode.ts</code> &rarr; <code>autonomousStepFor</code></td></tr>
 <tr><td>Re-dispatch, and its refusal on a merged row</td><td><code>packages/core/src/pipeline/reconciler.ts</code></td></tr>
 <tr><td>What a master reads before promoting</td><td><code>packages/core/src/devices/backlog.ts</code></td></tr>
+<tr><td>Who stamped <code>merged_at</code>, and whether this call did</td><td><code>packages/core/src/issues/merge-marker.ts</code></td></tr>
 <tr><td>Surfacing the owed close</td><td><code>packages/core/src/pipeline/stranded-issues.ts</code> &rarr; <code>detectOwedCloses</code></td></tr>
 <tr><td>What the agent is told</td><td><code>packages/core/src/guides/registry.ts</code> &rarr; <code>pipeline-and-issue-lifecycle</code></td></tr>
 </tbody>
