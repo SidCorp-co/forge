@@ -190,6 +190,9 @@ const HANDOFF_KEYS: Partial<Record<JobType, string>> = {
   drive: 'outcome, summary, workDone[], openQuestions[], commitSha',
 };
 
+// cm:guard named ONCE and prepended by the renderer, never copied into the eight lists above. Every branch of `stepHandoffSchema` is `z.literal`-keyed on both, so a list that omits them briefs the agent on a payload that cannot validate — and eight copies is eight chances to leave one out, which is the drift the `cm:edge lockstep` above exists to catch and did not, because the field was missing from all eight at once rather than one.
+const HANDOFF_UNIVERSAL_KEYS = 'step, schema_version: 1';
+
 export const FORGE_FACTS: readonly ForgeFact[] = [
   {
     id: 'pipeline-rules',
@@ -363,11 +366,9 @@ ${
     tier: 'contextual',
     scope: 'global',
     namespace: 'forge',
-    // Only the stages with a handoff schema — `release`/`custom`/`pm` have
-    // none, so injecting the generic "write a handoff" instruction there would
-    // send the agent after a payload that cannot validate.
+    // cm:guard derived from `HANDOFF_KEYS`, and it must stay derived — `release`/`custom`/`pm` have no branch in `stepHandoffSchema`, so a stage listed here without a key list is an agent sent after a payload that cannot validate, and one with a key list left out never reads the instruction at all.
     appliesTo: Object.keys(HANDOFF_KEYS) as JobType[],
-    version: 2,
+    version: 3,
     // cm:guard name the transport the STAGE is told to use everywhere else: `drive`'s skill and preamble both speak `forge-runner api`, and this fact applied to it while naming `forge_step_handoff.write` — a third name for one write, in the same context window as a driver skill that names none. `HANDOFF_KEYS` carries a `drive` entry, so `appliesTo` includes it and the fork is not optional.
     render: (ctx) => {
       const stage = ctx?.stage ?? null;
@@ -377,8 +378,8 @@ ${
           ? '`forge-runner api issue-step-contexts -X POST`'
           : '`forge_step_handoff.write`';
       const body = keys
-        ? `For the \`${stage}\` step, call ${call} with: \`${keys}\`.`
-        : `Call ${call} with the structured payload for your step (triage/clarify/plan/code/review/test/fix each have a schema).`;
+        ? `For the \`${stage}\` step, call ${call} with \`payload\`: \`${HANDOFF_UNIVERSAL_KEYS}, ${keys}\`.`
+        : `Call ${call} with the structured payload for your step (triage/clarify/plan/code/review/test/fix each have a schema). Every one of them carries \`${HANDOFF_UNIVERSAL_KEYS}\` inside \`payload\` alongside its own fields.`;
       const tail =
         stage === 'drive'
           ? 'Nothing dispatches after you, so this is not context for a next step — it is the summary of the turn a human reads on the issue.'
