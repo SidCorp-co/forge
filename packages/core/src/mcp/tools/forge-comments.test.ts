@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { commentAttachments } from '../../db/schema.js';
 import { makeFakeJobPrincipal, makeFakePrincipal } from '../fake-principal.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
@@ -30,11 +31,13 @@ const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
 // cm:guard TWO leftJoins before `where().limit(1)` — that is `effectiveProjectRole`'s real shape, and a mock chain one join short resolves at the wrong link, handing every role check an undefined row that reads as no access.
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
-const selectFrom = vi.fn(() => ({
-  where: selectWhere,
-  innerJoin: selectInnerJoin,
-  leftJoin: selectLeftJoin,
-}));
+// cm:guard branch on the TABLE, never on the chain shape — the ISS-963 name lookup reads comment_attachments through the same .where().orderBy().limit() shape the auth lookups use, so a shared resolver hands it a row queued for a project row and every attachment is refused as a duplicate of itself
+const noCollision = { orderBy: () => ({ limit: async () => [] as unknown[] }) };
+const selectFrom = vi.fn((table: unknown) =>
+  table === commentAttachments
+    ? { where: () => noCollision, innerJoin: selectInnerJoin, leftJoin: selectLeftJoin }
+    : { where: selectWhere, innerJoin: selectInnerJoin, leftJoin: selectLeftJoin },
+);
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
 const deleteWhere = vi.fn();
@@ -50,8 +53,7 @@ vi.mock('../../pipeline/hooks.js', () => ({
   hooks: { emit: vi.fn().mockResolvedValue(undefined) },
 }));
 
-// Keep the real create-path helper (persistCommentAttachment) but stub the
-// read-side join so `list` doesn't need a programmed query chain for it.
+// cm:guard stub only the READ-side join — the create path must keep the real persistCommentAttachment, because the mime resolution and the name-collision refusal this suite asserts both live inside it and a stub would assert the stub
 const listCommentAttachmentsForIssueMock = vi.fn(
   async (..._args: unknown[]) => new Map<string, unknown[]>(),
 );

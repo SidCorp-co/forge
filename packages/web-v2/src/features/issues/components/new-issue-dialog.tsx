@@ -7,11 +7,7 @@
 // (done by the hook) and navigate to the new issue's detail page. Modeled on
 // the New Project dialog (ISS-319).
 //
-// ISS-454 — adds a "Quick capture" mode (tab) for small-request intake: a
-// one-liner title plus an optional Context textarea, sent as `description` so
-// triage has enough to act on without bouncing to needs_info. The issue enters
-// at the server default status (`open`) and rides the normal pipeline — the
-// standard form is unchanged.
+// cm:why ISS-454 — Quick capture sends its Context textarea as `description` rather than a field of its own, so a one-liner still reaches triage with enough to act on instead of bouncing to needs_info
 
 import {
   type ClipboardEvent,
@@ -41,9 +37,7 @@ import { useCreateIssue } from "../hooks";
 import type { IssueComplexity, IssuePriority } from "../types";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
 
-// Attachment staging limits — mirror core's `issueCreateSchema` allow-list so
-// we reject client-side before burning an upload round-trip. Office/data types
-// (docx, csv, xls, xlsx) are allowed alongside images, video, PDF, and text.
+// cm:edge lockstep -> packages/core/src/lib/attachment-mime.ts#allowedSetForTarget — this list must mirror the server's `issue` target so a file is refused here rather than after an upload round-trip. The note this replaces pointed at core's `issueCreateSchema` allow-list, which no longer holds the set — the three per-target sets are now one table in that module.
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_FILES = 10;
 // cm:edge lockstep -> packages/core/src/issues/attachment-service.ts — this set exists only to reject before an upload round-trip, so a mime core accepts and this omits is invisible: the picker silently filters the file and the person is told the type is unsupported, while an agent posting the same file through forge_uploads succeeds. `image/svg+xml` is STILL omitted deliberately — core serves it `Content-Disposition: attachment`, and whether an <img> thumbnail renders under that header is unverified here; route it through the sandboxed HtmlArtifact path before adding it.
@@ -65,7 +59,12 @@ const ALLOWED_MIMES = new Set([
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
 const ACCEPT_ATTR =
-  "image/png,image/jpeg,image/gif,image/webp,application/pdf,text/html,video/mp4,video/webm,video/quicktime,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.png,.jpg,.jpeg,.gif,.webp,.pdf,.html,.mp4,.webm,.mov,.txt,.md,.csv,.docx,.xls,.xlsx";
+  "image/png,image/jpeg,image/gif,image/webp,application/pdf,text/html,video/mp4,video/webm,video/quicktime,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.png,.jpg,.jpeg,.gif,.webp,.pdf,.html,.mp4,.webm,.mov,.txt,.md,.csv,.docx,.xls,.xlsx,.log,.sql,text/*";
+
+// cm:guard the browser reports `""` for a `.log` or `.sql` and cannot read the bytes, so this must let an unknown type through to the server rather than filter it — core resolves the type from the bytes now and refuses only what is not UTF-8 text (ISS-957)
+function isStageable(mime: string): boolean {
+  return ALLOWED_MIMES.has(mime) || mime === "" || mime.startsWith("text/");
+}
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -151,9 +150,8 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
         errs.push(`Too large (max 10 MB): ${f.name || "(unnamed)"}`);
         continue;
       }
-      const mime = f.type || "application/octet-stream";
-      if (!ALLOWED_MIMES.has(mime)) {
-        errs.push(`File type not allowed: ${f.name || mime}`);
+      if (!isStageable(f.type)) {
+        errs.push(`File type not allowed: ${f.name || f.type}`);
         continue;
       }
       accepted.push(f);
@@ -270,8 +268,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
   }
 
   return (
-    // cm:edge contract -> packages/core/src/guides/registry.ts#what-is-an-issue — the caption below
-    //   states the same admission test as that guide and the job preamble; keep all three in step
+    // cm:edge contract -> packages/core/src/guides/registry.ts#what-is-an-issue — the caption below states the same admission test as that guide and the job preamble; keep all three in step
     <SlideOver open={open} onClose={onClose} title="New issue" width={480}>
       <form onSubmit={onSubmit} onPaste={onPaste} className="flex h-full flex-col gap-4">
         <Tabs
@@ -384,7 +381,8 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
                 <Icon name="plus" size={18} className="text-subtle" />
                 <p className="fg-body-sm text-fg">Drop files or paste an image to attach</p>
                 <p className="fg-caption">
-                  Max 10 MB each · up to {MAX_FILES} · images, video, PDF, text, markdown, CSV, Word, Excel.
+                  Max 10 MB each · up to {MAX_FILES} · images, video, PDF, Word, Excel, and any
+                  plain-text file whatever its extension — .log and .sql included.
                 </p>
                 <Button
                   type="button"

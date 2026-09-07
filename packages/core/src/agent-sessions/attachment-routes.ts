@@ -25,7 +25,10 @@ function attachmentErrorToHttp(err: SessionAttachmentError): HTTPException {
         cause: { code: 'FILE_TOO_LARGE' },
       });
     case 'MIME_NOT_ALLOWED':
-      return new HTTPException(400, { message: err.message, cause: { code: 'MIME_NOT_ALLOWED' } });
+      return new HTTPException(400, {
+        message: err.message,
+        cause: { code: 'MIME_NOT_ALLOWED', details: err.details },
+      });
     case 'EMPTY_FILE':
       return new HTTPException(400, { message: 'empty file', cause: { code: 'BAD_REQUEST' } });
     case 'INVALID_NAME':
@@ -96,9 +99,7 @@ agentSessionAttachmentRoutes.post(
     const { sessionId } = c.req.valid('param');
     await authorizeSession(c, sessionId);
 
-    // Upload is a user-only action (the web composer). A device principal has no
-    // userId, and session_attachments.uploader_id is NOT NULL — reject rather
-    // than crash on the insert. Runners only ever GET (download), never POST.
+    // cm:guard refuse a device principal HERE, before the insert: `session_attachments.uploader_id` is NOT NULL and a device has no userId, so letting one through turns an authorization decision into a constraint violation at write time. Upload is the web composer's action alone; runners only ever GET.
     if (c.get('principal') === 'device') {
       throw forbidden('device principals cannot upload chat attachments');
     }
