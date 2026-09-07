@@ -60,6 +60,8 @@ single rung can be honest about both.</p>
     <td>Exhaustive <code>Record&lt;IssueStatus, {gate, nextActor}&gt;</code> &mdash; two fields, both placement, and a status added to the schema without an entry fails <code>tsc</code></td></tr>
 <tr><td>Did it land</td><td><code>issues.merged_at</code></td>
     <td>Caller-asserted: any hop out of the base merge state stamps it, merge or not — and the <b>first</b> stamp wins, so a later mark answers <code>already_merged</code> rather than moving it</td></tr>
+<tr><td>Which commit it landed at</td><td><code>issues.merged_commit_sha</code></td>
+    <td>ISS-959. Written by the same conditional statement as <code>merged_at</code>, so the pair is stamped together or not at all; a deliberate mark carries it (or core fills it from the recorded handoff), and the two automatic writers know no commit and leave it null</td></tr>
 <tr><td>Does a branch exist</td><td><code>issues.session_context.branch</code></td>
     <td>Written by the session; the project's own base/production branch does not count</td></tr>
 <tr><td>Which of those a master sees on a backlog row</td>
@@ -186,10 +188,45 @@ read the repository must not make it — <code>merged_at</code> is caller-assert
 is to put it in front of the person who can check.</p>
 </div>
 
+<h2>The refusal every actor now meets (ISS-959)</h2>
+<div class="rule">
+<p>Every content rule on the transition writer used to return early unless the actor was an
+<em>agent</em> — <code>issues/transition-evidence.ts</code>, <code>release-record-required.ts</code>
+and <code>release-gate-hold.ts</code> all short-circuit on
+<code>agency !== 'agent'</code>. The same status set from the tracker's own screens was therefore
+neither earned nor refused: measured twice on forge-dev on 2026-09-07, an ordinary
+<code>forge record</code> write and an ordinary <code>forge comment</code> write each moved an issue
+from <code>needs_info</code> back to <code>open</code>, and on that project <code>open</code> is what
+makes an issue claimable — a silent un-park is a live path to two agents on one issue.</p>
+<p>A project now DECLARES which records a status entry requires, as
+<code>pipelineConfig.statusEntryCriteria</code>, and the declaration is checked for every actor. The
+vocabulary is core's (<code>plan</code>, <code>acceptance_criteria</code>, <code>release_note</code>,
+<code>work_evidence</code>, <code>merged_mark</code>) and every key reads the TRACKER RECORD, never a
+working tree — a check that read a checkout would answer differently on every machine that ran it.
+Which criteria a status carries is the project's decision, not this repo's.</p>
+<p>Three things bound it, in the order they matter. The declaration is resolved from the project
+config <b>outside</b> the transaction and handed in, because ISS-863 removed a <code>projects</code>
+SELECT from inside every status transition and this would put one back. It is keyed on the status the
+actor <em>asked for</em>, not on the park rewrite's target. And it is skipped entirely under
+<code>options.skip</code> — the orchestrator's curated soft-skip/failover chain is the
+highest-volume status writer in the product, and the checker exempts it anyway, so a read there
+would be a query whose answer is discarded. A project that declares nothing is byte-for-byte
+unchanged, and a config that cannot be read declares nothing rather than freezing every status
+write on the project.</p>
+<p><code>no_work_evidence</code> stays agent-only, and the carve-out is now on the rule rather than
+on the checker: an operator advancing by hand makes the shipped claim deliberately and owns it. A
+project that wants that rule held against people too declares <code>work_evidence</code>, which is
+the door built for that decision.</p>
+</div>
+
 <h2>What breaks this</h2>
 <table>
 <thead><tr><th>Change</th><th>What goes wrong</th></tr></thead>
 <tbody>
+<tr><td>Putting the declared-criteria read back inside the transaction, or keying it on <code>toStatus</code></td>
+    <td>The first re-adds the per-transition <code>projects</code> SELECT that ISS-863 removed from inside the write. The second checks the park rewrite's target rather than the ask, so a project declaring criteria for <code>waiting</code> would refuse a <code>needs_info</code> park it never mentioned.</td></tr>
+<tr><td>Moving the agency carve-out back onto the whole checker</td>
+    <td>Declared criteria stop holding against a person, which is the entire half of the surface this rule exists for — and it fails silently, because the happy path passes either way.</td></tr>
 <tr><td>A third field on <code>StatusAssertion</code> naming a commit, a branch or a merge</td>
     <td>An evidence claim is back inside a status and the next pair of runs splits on it again. The key set is compared literally in <code>status-assertions.test.ts</code> for exactly this.</td></tr>
 <tr><td>Adding a status to <code>AUTONOMOUS_DRIVER_STATUSES</code> to mean &ldquo;done, awaiting a human&rdquo;</td>
@@ -212,6 +249,8 @@ is to put it in front of the person who can check.</p>
 <tr><td>What each status claims</td><td><code>packages/core/src/pipeline/status-assertions.ts</code></td></tr>
 <tr><td>The five draft exits, and the only runtime gate on them</td><td><code>packages/core/src/pipeline/state-machine.ts</code> &rarr; <code>DRAFT_EXIT_TARGETS</code>, <code>canTransitionFree</code></td></tr>
 <tr><td>The refusal an illegal exit gets</td><td><code>packages/core/src/issues/apply-transition.ts</code></td></tr>
+<tr><td>The records a project declares for a status, and which are unmet</td><td><code>packages/core/src/issues/entry-criteria.ts</code>, vocabulary in <code>entry-criteria-keys.ts</code></td></tr>
+<tr><td>Which rules hold against whom</td><td><code>packages/core/src/issues/transition-evidence.ts</code> &rarr; <code>EvidenceRule.agentOnly</code></td></tr>
 <tr><td>The one status that dispatches</td><td><code>packages/core/src/pipeline/autonomous-mode.ts</code> &rarr; <code>autonomousStepFor</code></td></tr>
 <tr><td>Re-dispatch, and its refusal on a merged row</td><td><code>packages/core/src/pipeline/reconciler.ts</code></td></tr>
 <tr><td>What a master reads before promoting</td><td><code>packages/core/src/devices/backlog.ts</code></td></tr>

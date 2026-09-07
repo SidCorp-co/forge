@@ -1513,6 +1513,13 @@
       "when": 1792195200000,
       "tag": "0217_unaudited_transition_detector",
       "breakpoints": true
+    },
+    {
+      "idx": 218,
+      "version": "7",
+      "when": 1792281600000,
+      "tag": "0218_merged_commit_sha",
+      "breakpoints": true
     }
   ]
 }

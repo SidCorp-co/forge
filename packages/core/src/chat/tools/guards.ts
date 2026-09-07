@@ -36,11 +36,15 @@ export const CHAT_TOLERATED_DATA_KEYS: readonly string[] = [
   'acceptanceCriteria',
   'attachments',
   'category',
+  // cm:why TOLERATED (ISS-959): the sha a merged mark records. It rides the same claim `target`/`mergedAt`/`note` already carry from chat, and on its own it writes nothing — a `commit` with no `mark_merged` is inert, and a refused shape is a 400 at the write door.
+  'commit',
   'complexity',
   'description',
   // cm:why TOLERATED rather than refused (ISS-898): it names the renderer for a description chat is already allowed to write, has no side effect of its own, and an invalid `forge-*` body is refused at the write door with a message naming the element — so widening chat here cannot store markup no reader can render
   'descriptionFormat',
   'detectorKey',
+  // cm:why TOLERATED (ISS-959): `expect` is a PRECONDITION and can only ever narrow a write — it makes a write fail that would otherwise have succeeded, and never the reverse, so it is the one key that cannot widen what chat reaches.
+  'expect',
   'isAgentTask',
   'issueId',
   'labels',

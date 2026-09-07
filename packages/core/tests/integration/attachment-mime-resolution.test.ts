@@ -41,7 +41,12 @@ let harness: TestDatabase;
 let app: Hono<{ Variables: RequestIdVars }>;
 let uploadsDir: string;
 let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
-let persistIssueAttachmentsFromBase64: typeof import('../../src/issues/attachment-service.js').persistIssueAttachmentsFromBase64;
+let decodeAndValidateAttachments: typeof import('../../src/issues/attachment-service.js').decodeAndValidateAttachments;
+let persistDecodedIssueAttachments: typeof import('../../src/issues/attachment-service.js').persistDecodedIssueAttachments;
+let persistDecodedCommentAttachments: typeof import('../../src/comments/attachment-service.js').persistDecodedCommentAttachments;
+let createUploadTicket: typeof import('../../src/uploads/ticket-service.js').createUploadTicket;
+let mimeFromName: typeof import('../../src/lib/attachment-mime.js').mimeFromName;
+let createDownloadTicket: typeof import('../../src/uploads/download-ticket-service.js').createDownloadTicket;
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -63,16 +68,25 @@ beforeAll(async () => {
   const { issueAttachmentRoutes, attachmentRoutes } = await import(
     '../../src/issues/attachment-routes.js'
   );
+  const { uploadRoutes } = await import('../../src/uploads/routes.js');
   const { errorHandler } = await import('../../src/middleware/error.js');
   const { requestId } = await import('../../src/middleware/request-id.js');
   signUserToken = (await import('../../src/auth/jwt.js')).signUserToken;
-  persistIssueAttachmentsFromBase64 = (await import('../../src/issues/attachment-service.js'))
-    .persistIssueAttachmentsFromBase64;
+  const issueAttachmentService = await import('../../src/issues/attachment-service.js');
+  decodeAndValidateAttachments = issueAttachmentService.decodeAndValidateAttachments;
+  persistDecodedIssueAttachments = issueAttachmentService.persistDecodedIssueAttachments;
+  persistDecodedCommentAttachments = (await import('../../src/comments/attachment-service.js'))
+    .persistDecodedCommentAttachments;
+  createUploadTicket = (await import('../../src/uploads/ticket-service.js')).createUploadTicket;
+  mimeFromName = (await import('../../src/lib/attachment-mime.js')).mimeFromName;
+  createDownloadTicket = (await import('../../src/uploads/download-ticket-service.js'))
+    .createDownloadTicket;
 
   app = new Hono<{ Variables: RequestIdVars }>();
   app.use('*', requestId());
   app.route('/api/issues', issueAttachmentRoutes);
   app.route('/api/attachments', attachmentRoutes);
+  app.route('/api/uploads', uploadRoutes);
   app.onError(errorHandler);
 }, 120_000);
 
@@ -225,11 +239,25 @@ describe('attachment type resolution — a refusal names the set it enforces', (
   });
 });
 
+// cm:guard decode THEN persist, exactly as `issues/create-service.ts` does — the base64 batch has no single production entrypoint, so a test that invents one is judging a function nothing calls (ISS-957)
+function persistBatch(
+  issueId: string,
+  items: Parameters<typeof decodeAndValidateAttachments>[0],
+  uploaderId: string,
+) {
+  return persistDecodedIssueAttachments(
+    issueId,
+    decodeAndValidateAttachments(items),
+    uploaderId,
+    'human',
+  );
+}
+
 describe('attachment batches land whole or not at all', () => {
   it('leaves the issue exactly as it was when one member of a batch is binary', async () => {
     const { issueId, owner } = await seed();
 
-    const result = await persistIssueAttachmentsFromBase64(
+    const result = await persistBatch(
       issueId,
       [
         { name: 'good.png', mime: 'image/png', dataBase64: REAL_PNG.toString('base64') },
@@ -241,7 +269,6 @@ describe('attachment batches land whole or not at all', () => {
         },
       ],
       owner.id,
-      'human',
     );
 
     expect(result.persisted).toHaveLength(0);
@@ -255,14 +282,13 @@ describe('attachment batches land whole or not at all', () => {
   it('refuses a batch carrying one name twice without landing either copy', async () => {
     const { issueId, owner } = await seed();
 
-    const result = await persistIssueAttachmentsFromBase64(
+    const result = await persistBatch(
       issueId,
       [
         { name: 'gate.log', mime: '', dataBase64: PLAIN_LOG.toString('base64') },
         { name: 'gate.log', mime: '', dataBase64: Buffer.from('second\n').toString('base64') },
       ],
       owner.id,
-      'human',
     );
 
     expect(result.persisted).toHaveLength(0);
@@ -278,19 +304,172 @@ describe('attachment batches land whole or not at all', () => {
   it('persists every member of a batch that passes, resolving each type from its own bytes', async () => {
     const { issueId, owner } = await seed();
 
-    const result = await persistIssueAttachmentsFromBase64(
+    const result = await persistBatch(
       issueId,
       [
         { name: 'good.png', mime: 'image/png', dataBase64: REAL_PNG.toString('base64') },
         { name: 'gate.log', mime: '', dataBase64: PLAIN_LOG.toString('base64') },
       ],
       owner.id,
-      'human',
     );
 
     expect(result.errors).toHaveLength(0);
     expect(result.persisted).toHaveLength(2);
     expect(await storedMime(issueId, 'good.png')).toBe('image/png');
     expect(await storedMime(issueId, 'gate.log')).toBe('text/plain');
+  });
+});
+
+// cm:guard both twins are exercised through the function their production caller actually calls — `persistDecodedIssueAttachments` for the issue side (from `issues/create-service.ts`, over `decodeAndValidateAttachments` output) and `persistDecodedCommentAttachments` for the comment side (from `mcp/tools/forge-comments.ts`); a convenience wrapper judged instead leaves the live path of both halves untested (ISS-957)
+describe('the comment twin refuses a batch on the same terms as the issue twin', () => {
+  async function seedComment(issueId: string, authorId: string): Promise<string> {
+    const rows = await harness.db.execute<{ id: string }>(sql`
+      INSERT INTO comments (issue_id, author_id, body)
+      VALUES (${issueId}, ${authorId}, 'batch host')
+      RETURNING id
+    `);
+    return (rows[0] as { id: string }).id;
+  }
+
+  async function countCommentAttachments(commentId: string): Promise<number> {
+    const rows = await harness.db.execute<{ n: string }>(sql`
+      SELECT count(*)::text AS n FROM comment_attachments WHERE comment_id = ${commentId}
+    `);
+    return Number((rows[0] as { n: string }).n);
+  }
+
+  it('leaves the comment as it was when one member of a batch is binary', async () => {
+    const { issueId, owner } = await seed();
+    const commentId = await seedComment(issueId, owner.id);
+
+    const result = await persistDecodedCommentAttachments(
+      commentId,
+      [
+        { name: 'gate.log', mime: '', bytes: PLAIN_LOG },
+        { name: 'core.log', mime: 'text/plain', bytes: BINARY_LOG },
+      ],
+      owner.id,
+      null,
+    );
+
+    expect(result.persisted).toHaveLength(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.index).toBe(1);
+    expect(result.errors[0]?.code).toBe('MIME_NOT_ALLOWED');
+    expect(await countCommentAttachments(commentId)).toBe(0);
+  });
+
+  it('refuses a comment batch carrying one name twice, citing the batch and not a deleted row', async () => {
+    const { issueId, owner } = await seed();
+    const commentId = await seedComment(issueId, owner.id);
+
+    const result = await persistDecodedCommentAttachments(
+      commentId,
+      [
+        { name: 'gate.log', mime: '', bytes: PLAIN_LOG },
+        { name: 'gate.log', mime: '', bytes: Buffer.from('second\n') },
+      ],
+      owner.id,
+      null,
+    );
+
+    expect(result.persisted).toHaveLength(0);
+    expect(result.errors[0]?.code).toBe('ATTACHMENT_NAME_TAKEN');
+    expect(result.errors[0]?.details).toEqual({ duplicateWithinBatch: 'gate.log' });
+    expect(await countCommentAttachments(commentId)).toBe(0);
+  });
+
+  it('refuses a video on a comment that the issue target would have taken', async () => {
+    const { issueId, owner } = await seed();
+    const commentId = await seedComment(issueId, owner.id);
+
+    const result = await persistDecodedCommentAttachments(
+      commentId,
+      [{ name: 'clip.mp4', mime: 'video/mp4', bytes: REAL_PNG }],
+      owner.id,
+      null,
+    );
+
+    expect(result.errors[0]?.code).toBe('MIME_NOT_ALLOWED');
+    expect(await countCommentAttachments(commentId)).toBe(0);
+  });
+});
+
+describe('the presigned PUT resolves the type from the bytes it receives', () => {
+  async function mint(issueId: string, uploaderId: string, name: string) {
+    return createUploadTicket({
+      targetType: 'issue',
+      targetId: issueId,
+      uploaderId,
+      uploaderDeviceId: null,
+      name,
+      mime: mimeFromName(name),
+    });
+  }
+
+  function put(uploadId: string, bytes: Buffer) {
+    return app.request(`/api/uploads/${uploadId}`, {
+      method: 'PUT',
+      body: new Uint8Array(bytes),
+    });
+  }
+
+  it('mints a ticket for an extension the table does not know', async () => {
+    const { issueId, owner } = await seed();
+
+    const ticket = await mint(issueId, owner.id, 'trace.wibble');
+
+    expect(ticket.id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('stores a plain-text .sql streamed through the ticket as text/plain', async () => {
+    const { issueId, owner } = await seed();
+    const ticket = await mint(issueId, owner.id, 'schema.sql');
+
+    const res = await put(ticket.id, Buffer.from('ALTER TABLE issues ADD COLUMN mime text;\n'));
+
+    expect(res.status).toBe(201);
+    expect(await storedMime(issueId, 'schema.sql')).toBe('text/plain');
+  });
+
+  it('refuses binary bytes streamed under a text name, carrying the allowed set', async () => {
+    const { issueId, owner } = await seed();
+    const ticket = await mint(issueId, owner.id, 'core.log');
+
+    const res = await put(ticket.id, BINARY_LOG);
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as Refusal;
+    expect(body.code).toBe('MIME_NOT_ALLOWED');
+    expect(body.details?.reason).toBe('not-text');
+    expect(body.details?.allowed?.mimes).toEqual(expect.arrayContaining(['text/plain']));
+    expect(body.details?.allowed?.extensions).toEqual(expect.arrayContaining(['.txt']));
+    expect(await countAttachments(issueId)).toBe(0);
+    expect(blobsFor(issueId)).toEqual([]);
+  });
+});
+
+describe('the download-ticket route serves uploaded bytes with the same sniffing rule as its twins', () => {
+  it('sends nosniff, as lib/attachment-headers.ts does on every bearer-guarded route', async () => {
+    const { issueId, token, project } = await seed();
+    expect((await upload(issueId, token, 'gate.log', PLAIN_LOG)).status).toBe(201);
+    const rows = await harness.db.execute<{ id: string }>(sql`
+      SELECT id FROM issue_attachments WHERE issue_id = ${issueId} AND name = 'gate.log'
+    `);
+    const attachmentId = (rows[0] as { id: string }).id;
+    const ticket = await createDownloadTicket({
+      targetType: 'issue',
+      attachmentId,
+      projectId: project.id,
+      issuedToUserId: null,
+      issuedToDeviceId: null,
+    });
+
+    const res = await app.request(`/api/uploads/download/${ticket.id}`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('text/plain');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('content-disposition')).toContain('attachment');
   });
 });
