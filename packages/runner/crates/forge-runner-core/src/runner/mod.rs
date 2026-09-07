@@ -14,6 +14,7 @@ use crate::error::Result;
 
 pub mod claude_code;
 pub mod inflight;
+pub mod ledger;
 pub mod process;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

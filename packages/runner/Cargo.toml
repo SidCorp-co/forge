@@ -21,6 +21,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 which = "8"
+# ISS-933 — the run/worktree register on the box. `bundled` because a runner
+# release is one static binary per platform and must not need a system libsqlite3.
+rusqlite = { version = "0.38", features = ["bundled"] }
 
 # Declared ahead for M1+ (not referenced by any crate yet — pulled in lazily)
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
