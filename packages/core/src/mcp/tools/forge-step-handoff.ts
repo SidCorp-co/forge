@@ -14,10 +14,12 @@ import {
 
 /**
  * MCP tools for step-handoff persistence (proposal Y). Thin wrappers over
- * `pipeline/issue-context-store.ts` with `kind='handoff'` hardcoded — agents
- * never specify the discriminator. The shared `stepHandoffSchema` validates
- * payloads (and the store cross-checks payload.step against scope.step so an
- * agent can't slip a plan payload into a triage slot).
+ * `pipeline/issue-context-store.ts` with `kind='handoff'` hardcoded — that is
+ * the field agents never specify. `payload.step` and `payload.schema_version`
+ * they DO: `stepHandoffSchema` is a discriminated union whose every branch is
+ * `z.literal`-keyed on both, so a payload omitting either is a 400 rather than
+ * a defaulted write. The store then cross-checks `payload.step` against
+ * `scope.step`, so an agent cannot slip a plan payload into a triage slot.
  */
 
 const writeInputSchema = z.object({

@@ -1362,6 +1362,20 @@
 
 ### Fixed
 
+- **Every step-handoff payload the prompt asks for now validates.** `prompt/facts/registry.ts`'s
+  `HANDOFF_KEYS` named each step's own fields and omitted the two that every branch of
+  `stepHandoffSchema` keys on as `z.literal` — `step` and `schema_version` — for all eight step
+  types at once. An agent that sent exactly what the prompt listed got a `400 Invalid input`, and
+  the `cm:edge lockstep` on that map exists to catch precisely this drift but could not: it fires
+  when one half moves, and the field had been missing from both halves' agreement since the map was
+  written. Measured on `drive`, where the handoff is the only record a human reads of the turn.
+
+  The two fields are now named once in the renderer rather than copied into eight lists, so the
+  next step type added cannot omit them, and `registry.test.ts` asserts the parity by reading the
+  required literals off `stepHandoffSchema` itself — a list spelled twice would pass while the two
+  modules disagreed. `mcp/tools/forge-step-handoff.ts`'s docblock said agents "never specify the
+  discriminator"; only `kind='handoff'` was ever hardcoded for them.
+
 - **A `decomposes` edge no longer waives the work-evidence gate in silence.**
   `pipeline/work-evidence.ts#hasChildIssues` read exactly one dependency kind — `decomposes` — and
   a single live edge made `findMissingWorkEvidence` return `null`, which is the whole of ISS-786's
