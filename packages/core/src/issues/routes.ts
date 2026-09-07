@@ -64,6 +64,7 @@ export {
   issueMetadataSchema,
 } from './metadata.js';
 
+import { withKernelMarker } from '../db/kernel-marker.js';
 import { ReleaseNotesSchema } from './release-notes.js';
 
 // cm:guard the object arm's `labelId` accepts a NAME or a uuid, exactly as the bare string does — both arms go through `resolveLabelIdsForWrite`, so a caller can never have one value mean an id here and a name there. `isPrimary` is legal only on a `kind='module'` label; the resolver refuses the rest with PRIMARY_NOT_MODULE / MULTIPLE_PRIMARY.
@@ -323,9 +324,7 @@ issueProjectRoutes.get(
       return c.json(listResponse(c, serialized, total, q));
     }
 
-    // ISS-164 — always hydrate pipelineHealth on the list payload. Cheap
-    // (6 queries flat regardless of page size) and the FE wants it on every
-    // row to render gate-aware badges.
+    // cm:why pipelineHealth is hydrated unconditionally here while `agentSessions` is opt-in above, and the asymmetry is measured: this is 6 queries flat regardless of page size, and every row on the list renders a gate-aware badge from it (ISS-164).
     const ids = serialized.map((r) => r.id);
     const healthMap = await safeHydratePipelineHealthForIssues(projectId, ids);
     // cm:why no opt-in flag here — every list/detail surface needs the creator fields, unlike withCost/withAgentSessions
@@ -577,7 +576,8 @@ issueRoutes.delete(
     const access = await loadProjectAccess(issue.projectId, userId);
     assertProjectRole(access, 'admin', 'not a project admin');
 
-    await db.delete(issues).where(eq(issues.id, id));
+    // cm:edge contract -> packages/core/drizzle/migrations/0219_unaudited_transition_reach.sql — `pipeline_runs.issue_id` is `ON DELETE CASCADE`, so this statement deletes kernel rows and owes the `forge.kernel_txn` marker; without it every issue delete is charged to the interventions metric as a hand on the database.
+    await withKernelMarker(db, async (tx) => tx.delete(issues).where(eq(issues.id, id)));
 
     // The issue's memory row references it only by sourceRef (no FK), so a
     // hard delete would otherwise leave the title/description searchable

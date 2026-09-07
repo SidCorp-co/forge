@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
+import { withKernelMarker } from '../db/kernel-marker.js';
 import {
   agentSessions,
   devices,
@@ -374,10 +375,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   // cm:guard an explicit Default must emit `--model default` on resume, because omission inherits the prior Claude session model instead of the configured default
   const model =
     args.model === undefined ? readSessionModel(session.metadata) : (args.model ?? 'default');
-  // Fail BEFORE any write when the shape is wrong, rather than after the user
-  // turn + status='running' have already been committed with nothing to
-  // dispatch it (the previous validation point was inside the cold-start
-  // publish branch, after this transaction).
+  // cm:guard validate BEFORE any write, never inside the cold-start publish branch below — a bad `skillName` caught after the transaction leaves the user turn and `status='running'` committed with nothing that will ever dispatch them, and the session sits live with no listener.
   if (args.skillName && !isSlashCommandSkillName(args.skillName)) {
     throw new Error(`dispatchChatTurn: invalid skillName '${args.skillName}'`);
   }
@@ -434,7 +432,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     if (fallbackTitle) updates.title = fallbackTitle;
   }
 
-  const { updated, sync } = await db.transaction(async (tx) => {
+  const { updated, sync } = await withKernelMarker(db, async (tx) => {
     const [row] = await tx
       .update(agentSessions)
       .set(updates)
