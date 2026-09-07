@@ -12,7 +12,7 @@
 //   2. Fail-closed — a checker that scanned zero files exits 2, never 0. A
 //      green report from a check that never ran is worse than no check at all.
 //   2b. One proposition per verdict — "the rule holds", "the rule is broken"
-//      and "I could not run" are three answers; see `MARKS` below.
+//      and "I could not run" are three answers; see `MARKS` in lib/verify-report.mjs.
 //   3. Report everything — no early exit, so one fix cycle instead of six.
 //   4. Advisory — `cm impact` on changed files: the pull-side replacement for
 //      the PreToolUse hook that used to push guards into an agent's context.
@@ -25,6 +25,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { absentPrerequisites, blockedAside, remedyLines } from './lib/prerequisite.mjs';
+import { markFor, tally, tallyLine } from './lib/verify-report.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CI_PATH = join(ROOT, '.github', 'workflows', 'ci.yml');
@@ -501,13 +502,6 @@ function reportNotRunHere() {
 // cm:guard keep to gates a local run can actually reproduce — a step needing a CI-only secret prints advice nobody can take, and unusable advice is how the usable lines stop being read
 const RUN_ELSEWHERE_HINT = ['test:integration', 'web-v2', '@forge/core test', '@forge/core build'];
 
-// cm:guard five marks, and each one asserts exactly ONE thing. `red` and `FAIL` are statements ABOUT THE REPO — the rule is broken, or the checker's output could not be audited. `n/a` and `skip` are statements about THIS MACHINE and say nothing about the repo either way. Merging `n/a` into `FAIL` is what let a worktree with no node_modules report the relations gate as a rule this repo fails; merging `skip` into `ok` lets a check that never ran print as a pass. Neither may come back.
-const MARKS = {
-  ran: (code) => (code === 0 ? 'ok  ' : code === 2 ? 'FAIL' : 'red '),
-  blocked: () => 'n/a ',
-  skipped: () => 'skip',
-};
-
 // cm:guard a blocked gate is NOT green. It exits 2 exactly as a fail-closed FAIL does, because an unrun gate is no evidence and this script refuses to forward no-evidence as a pass. What changes is only the sentence a reader gets — the verdict is unmoved, so nothing here is an amnesty.
 function reportBlocked(results) {
   const blocked = results.filter((r) => r.condition === 'blocked');
@@ -528,7 +522,7 @@ function report(results, adv, parity) {
   const width = Math.max(...results.map((r) => r.label.length), 18);
   console.log('');
   for (const r of results) {
-    const mark = (MARKS[r.condition] ?? MARKS.ran)(r.code);
+    const mark = markFor(r);
     const files = r.files === undefined ? '' : `${r.files} ${r.unit ?? 'files'}`;
     const aside = r.why ?? r.note;
     console.log(
@@ -536,6 +530,7 @@ function report(results, adv, parity) {
     );
   }
   console.log(`  ${parity === 0 ? 'ok  ' : 'FAIL'}  ${'meta'.padEnd(10)} ci-parity`);
+  console.log(`\n  ${tallyLine(tally([...results, { code: parity }]))}`);
   reportBlocked(results);
   reportNotRunHere();
 
