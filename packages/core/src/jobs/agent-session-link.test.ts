@@ -1,10 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// In-memory mock of drizzle's chained query builder. Each describe spec
-// pre-loads `selectQueue` with the row the next `select…limit(1)` should
-// return; updates and inserts are recorded to `updateCalls` / `insertCalls`
-// for assertion. Mirrors the style used in lifecycle-routes.test.ts.
-
 type Row = Record<string, unknown> | undefined;
 
 const selectQueue: Row[] = [];
@@ -26,8 +21,11 @@ const kernelTransitions = tagTable('kernel_transitions');
 
 vi.mock('../db/schema.js', () => ({ agentSessions, issues, jobs, kernelTransitions }));
 
-vi.mock('../db/client.js', () => ({
-  db: {
+vi.mock('../db/client.js', () => {
+  const dbStub: Record<string, unknown> = {
+    // cm:why applyKernelTransition reaches its write through `exec.transaction`, and stamps `forge.kernel_txn` through `exec.execute`, so a double without both never runs the body under test
+    transaction: async <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(dbStub),
+    execute: async () => undefined,
     select: () => ({
       from: (tbl: object) => ({
         where: () => ({
@@ -60,10 +58,12 @@ vi.mock('../db/client.js', () => ({
         return { returning: () => Promise.resolve([{ id: 'sess-new' }]) };
       },
     }),
-  },
-}));
+  };
+  return { db: dbStub };
+});
 
 vi.mock('drizzle-orm', () => ({
+  sql: () => ({ _sql: 'raw' }),
   eq: () => ({ _sql: 'eq' }),
   ne: (_col: unknown, v: unknown) => ({ _sql: 'ne', value: v }),
   and: (...parts: unknown[]) => ({ _sql: 'and', parts: parts.filter(Boolean) }),

@@ -12,7 +12,10 @@ const { applyKernelTransition } = await import('./transition.js');
 const auditValues = vi.fn(async (..._args: unknown[]) => undefined);
 
 function makeExec(returningRows: unknown[]) {
-  return {
+  const exec: Record<string, unknown> = {
+    // cm:why the chokepoint reaches its write through `exec.transaction`, so a double lacking one never executes the body it is meant to be asserting on
+    transaction: (fn: (tx: unknown) => unknown) => fn(exec),
+    execute: vi.fn(async (..._args: unknown[]) => undefined),
     update: vi.fn(() => ({
       set: vi.fn(() => ({
         where: vi.fn(() => ({
@@ -21,7 +24,8 @@ function makeExec(returningRows: unknown[]) {
       })),
     })),
     insert: vi.fn(() => ({ values: (...args: unknown[]) => auditValues(...args) })),
-  } as never;
+  };
+  return exec as never;
 }
 
 /** The single `kernel_transitions` row this call wrote. */
@@ -62,7 +66,7 @@ describe('applyKernelTransition — ISS-675 escalation bridge hook', () => {
       source: 'test',
     });
 
-    // Give any (incorrect) fire-and-forget call a chance to land before asserting absence.
+    // cm:why an absence assertion on a fire-and-forget call is vacuous unless the call has had a turn of the loop to land in
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(deliverEscalationReplyOnce).not.toHaveBeenCalled();
   });

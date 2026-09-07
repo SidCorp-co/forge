@@ -31,8 +31,9 @@
 <h1>issue-work-comment-thread-read — how a client reads a whole comment thread</h1>
 <p class="sub">One issue's comments are longer than one response, on both transports. This is the
 walk that reads them all, and every way it goes wrong. The reason it is a flow rather than a
-signature is that <strong>three separate bounds</strong> sit between the rows and the caller — a page
-bound, a response-size budget, and the tree builder's refusal to promote an orphan reply — and each
+signature is that <strong>four separate bounds</strong> sit between the rows and the caller — a page
+bound, a response-size budget, the write cap on one body, and the tree builder's refusal to promote
+an orphan reply — and each
 one, mishandled, produces a walk that <em>terminates cleanly on an incomplete thread</em>. Owners:
 <code>packages/core/src/comments/service.ts</code> (the keyset query),
 <code>packages/core/src/comments/cursor.ts</code> (the token both transports mint),
@@ -93,7 +94,7 @@ one, mishandled, produces a walk that <em>terminates cleanly on an incomplete th
   <text class="m" x="108" y="361">thread ended</text>
 </svg>
 
-<h2>The three bounds, and what each one does to the walk</h2>
+<h2>The four bounds, and what each one does to the walk</h2>
 <table>
 <thead><tr><th>Bound</th><th>Where</th><th>What it bounds</th><th>What it must never bound</th></tr></thead>
 <tbody>
@@ -101,8 +102,11 @@ one, mishandled, produces a walk that <em>terminates cleanly on an incomplete th
     <td>How many <strong>root</strong> comments one page carries, each with its whole subtree</td>
     <td>The thread. A page short of the limit is not the end — <code>nextCursor</code> is.</td></tr>
 <tr><td>response-size budget</td><td><code>MAX_RESPONSE_CHARS</code> (38,000) in <code>list-envelope.ts</code>, MCP only</td>
-    <td>Bytes in one MCP page; it sheds whole subtrees from the <em>newest</em> end</td>
+    <td>Bytes in one MCP page; it sheds whole subtrees from the <em>newest</em> end. The trim item carries the root's <em>id</em>, not the root row — an item holding both the raw row and its serialized twin measures its body twice and sheds at roughly half the declared budget (ISS-958: a 25,235-character thread came back cut to 2 of 7).</td>
     <td>The thread, and the cursor. The token is minted from the last <strong>kept</strong> subtree, so the next page resumes at what the caller actually received.</td></tr>
+<tr><td>the write cap</td><td><code>COMMENT_BODY_MAX_CHARS</code> (64,000) in <code>comments/body-input.ts</code>, every door</td>
+    <td>One comment body, so a typed record of any block count is one write and one read (ISS-958)</td>
+    <td>The read. It is deliberately larger than the page budget: <code>trimToBudget</code>'s one-row floor keeps a single over-budget row, so a 64,000-character record comes back whole in a page of its own with a <code>nextCursor</code> to continue.</td></tr>
 <tr><td>the tree builder's orphan rule</td><td><code>buildCommentTree</code> in <code>comments/tree.ts</code></td>
     <td>Nothing — it <em>drops</em> a reply whose parent is off-page rather than promoting it</td>
     <td>Anything, once the cursor walks <strong>roots</strong>. That rule is why it must: paging over comments would silently lose replies whose root fell on the previous page.</td></tr>

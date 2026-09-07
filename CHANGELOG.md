@@ -61,6 +61,38 @@
   rule: a person hand-advancing makes the shipped claim deliberately and owns it. A project that
   wants it held against people too declares `work_evidence`.
 
+- **The MCP deletion rule was written against per-tool call counts nothing could read, and now
+  there is a route that returns them — deliberately not one an agent can call.**
+  `docs/architecture/agent-surface.md` gates every tool deletion on whole-table `mcp_audit_log`
+  counts, and the only route over that table was `GET /api/pat/:id/audit`: one token, last-N rows,
+  behind a prefix that is off `PAT_ALLOWED_PREFIXES` by design. So the rule's own instruction —
+  *"must not delete on an estimate"* — could not be satisfied by anything short of a psql session
+  and a hand-written query nobody reviewed. `GET /api/admin/mcp-audit/tools` now answers it:
+  `deviceCalls`, `tokenCalls`, `unattributedCalls`, `notFoundCalls`, `totalCalls`, `firstSeen` and
+  `lastSeen` per tool, whole table, no date filter, no request bodies or ips.
+
+  Three things about the query are the finding rather than the plumbing, and each is a defect this
+  rule has already shipped. The split is on `device_id` / `token_id` and **never** `user_id`, which
+  is stamped `device.ownerId` for a device caller and so reads 100% user for every tool — the
+  reading `7f0c5a56` deleted six live tools on. The spelling is normalised on both sides, because
+  agents send the underscore form their MCP client shows them and a query for the dotted name finds
+  none of those rows. And the registry is **FULL OUTER** joined to the aggregate: a tool nothing has
+  ever called has no row at all, so an inner join drops exactly the tools the rule is hunting, while
+  a name that was called but is not registered has no registry row and is itself a finding. All
+  three go red under a real Postgres when reverted.
+
+  **It is admin-only, and that is the decision rather than a shortfall.** A per-tool count spans
+  every project on the instance, so the route resolves no project for the PAT fence to bite on —
+  the `/api/me/ops-health` shape, which `PAT_ALLOWED_PREFIXES` exists to keep out. A project-scoped
+  twin is refused by name: a tool idle in one project and busy in the next would read *clear*, which
+  is not a smaller version of the evidence but the same substitution in a new coat. So the rule is
+  two-party from here — an agent on a box gathers the refusals, which are static and greppable
+  there, and a human with admin runs this route for the clearance. `/api/admin` and `/api/pat` are
+  now held off the allowlist by an assertion instead of by prose.
+
+  The counts are lifetime counts only while `enforceMcpAuditRetention` stays unwired, and the route
+  does not merely claim so: it returns `oldestRow`, so a reader sees the window rather than trusting
+  a paragraph. (ISS-946)
 - **A module's knowledge now refreshes itself when work lands against it.** The taxonomy could say
   which module an issue touched (ISS-588) and a module could name its knowledge node (ISS-947), but
   nothing kept that node current: its related issues stayed at whatever the last person wrote, and
@@ -295,6 +327,28 @@
   ever resolves it. It cannot mint another agent either: `/api/pat` and `/api/orgs` are both absent
   from `PAT_ALLOWED_PREFIXES`, so no PAT or AAT reaches either route.
 
+
+- **Interventions performed by hand at the database are now counted, instead of being invisible to
+  the number that exists to count them.** Forge's north-star metric is *interventions per issue
+  closed*, and until now it could only see interventions that travelled through Forge: a cancel from
+  the UI or MCP, a resume, an answer, a wedge notification. The one route operators actually reach
+  for when a fleet is stuck — a `psql` session and an `UPDATE` — reached nothing that records
+  anything. Two people cancelling two runs by hand moved the metric by zero, so the number fell
+  while the work of running the system did not.
+
+  The metric had also been *defined* by its own recorder — "wedge events plus audited manual
+  cancels" — which is why the gap read as out of scope rather than as a gap. The definition now
+  names the thing being measured (a human hand entering a run that was supposed to proceed without
+  one) and lives in `docs/modules/control-observability/README.md` with the four sources that
+  currently reach it and, just as explicitly, the ones they do not.
+
+  A hand-written terminal flip on a job or a run is now recorded with the database role, the client
+  application and both statuses, and shows up in the interventions view and the analytics endpoint
+  as `direct_sql`, attributed to the issue it was performed on. **Manual SQL is not blocked, slowed
+  or refused** — sometimes it is the only way to free a stuck fleet. It simply stops being
+  invisible. Deliberately out of reach, because catching them would overcount ordinary work rather
+  than count interventions: session-status writes, non-terminal flips such as a hand-written
+  re-dispatch, and row deletion. (ISS-884)
 
 - **An agent working an issue on a project that keeps modules is now told they exist, and how to
   set the issue's primary one.** ISS-593 made a module a label with `kind='module'` and gave an
@@ -1464,6 +1518,28 @@
 
 ### Fixed
 
+- **A typed record of any block count now lands in one comment write.** A comment body was capped
+  at 10,000 characters, and the plugin's issue-flow contract posts every typed record — plan,
+  confirmation, review, verdict, verification — as a comment, because a comment is the only
+  per-issue write the API offers. A verdict record carries one block per acceptance criterion, so
+  a thirty-four-criterion verdict measured about forty-eight thousand characters and was refused
+  outright — after the evidence uploads, which cannot be undone. The client's answer was to split
+  one record across five comments, which lands but makes the record five things to read back and
+  re-assemble.
+
+  The cap is now 64,000 characters at all three doors — `POST /api/issues/:id/comments`,
+  `PATCH /api/comments/:id` and `forge_comments action=create|update`. It is one number for every
+  body rather than a tier per record kind, and that is the point: a cap that differs by kind
+  cannot be written as the single `maxLength` a client reads out of the tool's `inputSchema`, and
+  a client that must first learn which tier it is in cannot refuse locally before it uploads. The
+  number is now published on `data.body.maxLength`, so a client refuses before sending rather
+  than after.
+
+  No migration: `comments.body` is Postgres `text`, so the 10,000 was only ever a validator. The
+  MCP page budget stays 38,000 — the cap bounds one comment, the budget bounds one page, and the
+  one-row floor between them is what lets a 64,000-character record come back whole in a page of
+  its own.
+
 - **Every step-handoff payload the prompt asks for now validates.** `prompt/facts/registry.ts`'s
   `HANDOFF_KEYS` named each step's own fields and omitted the two that every branch of
   `stepHandoffSchema` keys on as `z.literal` — `step` and `schema_version` — for all eight step
@@ -1727,6 +1803,22 @@
 
   Surfaced by `core-integration` failing only on developer machines in UTC+7 while CI, whose
   Postgres is UTC, stayed green — the test was right and the query was wrong. (ISS-942, ISS-954)
+
+- **A resume, an answer or a steer no longer reads as a cancelled run in the interventions
+  breakdown.** The per-issue rollup returned by the interventions endpoint had been sorting events
+  by a source name that stopped being accurate months ago: only `manual_cancel` was recognised, so
+  every operator resume, every answer and every steer fell through to the "user flipped the run"
+  bucket. The totals were right and the breakdown was not — an operator rescuing work was charted
+  as an operator killing it, which is the exact mislabelling the source-naming migration had been
+  written to end. Each source is now counted as what it is. (ISS-884)
+
+- **A terminal status flip and its audit row can no longer be separated by a crash.** The single
+  kernel-transition writer documented itself as writing the status change and its audit trail
+  together, and did for callers inside a transaction — but twenty call sites hand it a plain
+  connection, where the two statements committed independently. A failure between them left a job
+  or run terminal with nothing recording who ended it, which is the same silence this release
+  closes elsewhere, produced by the audited path itself. Both writes now always commit together.
+  (ISS-884)
 
 - **`POST /api/memory/search` ignored the `strategy` you asked for and told you it had honoured
   it.** The route validated `strategy` in its body schema and then never passed it to
@@ -3033,6 +3125,43 @@
 
 ### Changed
 
+- **The rule that decides which MCP tools may be deleted was measured against the copy of the
+  `forge` CLI the fleet actually runs, and three tools it had cleared turned out to have live
+  callers.** The rule gated a deletion on a tool's *device* call count and on the replacement route
+  accepting a device token. ISS-931 changed what both clauses are about, and the page had not
+  caught up.
+
+  A device count is no longer a record of traffic that happened — it is a forecast of traffic that
+  returns. `requirePat` refuses a device, so those ~20 tools' counts stopped rising, but the
+  sessions behind them are paused rather than retired: a box installs a `runner-v*` that writes the
+  job token and the same MCP client resumes against the same tool list, on a PAT. So the count
+  stays a refusal, and the clause that genuinely went obsolete is the second one — the replacement
+  must accept a `forge_pat_*`, because that is what every returning caller holds.
+
+  The gate now names three caller populations rather than one, and the second is what this change
+  found. The `forge` CLI on the boxes holds a PAT, so ISS-931 left its access untouched and its
+  calls are indistinguishable from any other token traffic — invisible to a device split.
+  Re-measuring against the installed artifact (forge-plugin 3.35.140, which this repo cannot see)
+  corrected the protected list in both directions: `forge_memory.search`, `forge_projects.get` and
+  `forge_projects.list` are called by it and had been filed *free to go*, while
+  `forge_projects.create` was listed as blocked with no call site in it at all. Two more,
+  `forge_memory.write` and `forge_memory.feedback`, are hard-coded nowhere and reached through
+  `forge call`, the raw passthrough the CLI's own guide text points agents at — so a grep for tool
+  names is necessary and not sufficient. `forge_memory.search` also has a caller no audit query
+  would surface: the runner writes "Recall memory FIRST — `forge_memory_search`" into every project
+  workspace's orientation.
+
+  Deleting one of these is not uniformly fatal, and the page now says which is which: the plugin's
+  `callTool` degrades softly where its `soft` flag is set, so `forge_memory.search` would have gone
+  quiet rather than loud. Only `forge_projects.list` exits.
+
+  Separately, the page's *stay* row listed two of the four keep-forever families, leaving
+  `forge_phase` and `forge_step_handoff.*` filed as deletable — and all four have REST twins, so
+  the twin test does not protect them.
+
+  No tool is deleted by this change. `docs/architecture/agent-surface.md` carries the rule,
+  `docs/flows/mcp-tool-deletion.html` draws the decision path, and ISS-946 carries the fact that
+  the third population cannot be measured from a runner box at all. (ISS-894)
 - **The always-inject flag now says what it buys, and stops implying the rule will be followed.**
   Flagging a project fact `alwaysInject` splices its full body into every agent prompt under
   *"Hard rules for this project — always-injected by the project owner. Follow them exactly"*, and

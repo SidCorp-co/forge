@@ -17,12 +17,13 @@ import {
 } from './runs-cascade.js';
 
 vi.mock('drizzle-orm', () => ({
+  sql: () => ({ _sql: 'raw' }),
   and: (...args: unknown[]) => ({ _and: args }),
   eq: (...args: unknown[]) => ({ _eq: args }),
   inArray: (...args: unknown[]) => ({ _inArray: args }),
 }));
 
-// Schema identities are plain strings so makeTx can branch on `table ===`.
+// cm:why the schema identities are plain strings so `makeTx` can branch on `table ===` without importing the real tables
 vi.mock('../db/schema.js', () => ({
   agentSessions: 'agent_sessions-table',
   jobs: 'jobs-table',
@@ -53,7 +54,10 @@ interface UpdateCapture {
  */
 function makeTx(cancelledJobRows: Array<Record<string, unknown>>) {
   const captures: UpdateCapture[] = [];
-  const tx = {
+  // cm:why applyKernelTransition reaches its write through `exec.transaction` and stamps `forge.kernel_txn` through `exec.execute`, so a double lacking either never runs the body these assertions are about
+  const tx: Record<string, unknown> = {
+    transaction: async <T>(cb: (t: unknown) => Promise<T>): Promise<T> => cb(tx),
+    execute: async () => undefined,
     update(table: unknown) {
       const isJobs = table === 'jobs-table';
       const capture: UpdateCapture = { table, set: {} };

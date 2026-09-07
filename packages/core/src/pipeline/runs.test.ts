@@ -123,8 +123,7 @@ vi.mock('../db/client.js', () => {
           setCapture = s;
           return {
             where: () => {
-              // Record the UPDATE immediately so the no-`.returning()`
-              // callers (setCurrentStep) still produce an updateCalls entry.
+              // cm:why recorded here rather than in `.returning()` so the callers that never call it (setCurrentStep) still produce an entry
               const idx = updateCalls.length;
               updateCalls.push({ set: setCapture, returnedRows: [] });
               const p = Promise.resolve(undefined) as Promise<unknown> & {
@@ -164,6 +163,9 @@ vi.mock('../db/client.js', () => {
     // db handle — drizzle's tx surface is structurally identical to db
     // for the calls these helpers issue (update/select/execute).
     transaction: async <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(mockDb),
+    // cm:why applyKernelTransition stamps `forge.kernel_txn` through `exec.execute` before its
+    // CAS, so the detector trigger can tell an audited flip from a hand-written one
+    execute: async () => undefined,
   });
   return { db: mockDb };
 });

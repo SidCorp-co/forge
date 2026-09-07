@@ -61,14 +61,19 @@ describe('every PAT-allowlisted prefix is reachable by a PAT', () => {
 });
 
 /**
- * The inverse rule, for the two prefixes whose absence is a decision rather
- * than an oversight. Reachability alone does not protect them: both WOULD be
- * reachable the moment someone added them, which is exactly why they are named.
+ * The inverse rule, for the prefixes whose absence is a decision rather than
+ * an oversight. Reachability alone does not protect them: every one WOULD be
+ * reachable the moment someone added it, which is exactly why they are named.
  */
 describe('the prefixes that must stay off the list', () => {
   // cm:guard `/api/agent-sessions` is the one the `cm:edge` on `pat-rest-surface.ts` predicted would be added by this very issue — its list route returns every session of every project the caller can see, `messages[]` included, so a PAT there is a project-scoped label on an account-scoped read. A PAT belongs on a project-scoped twin under `/api/projects/:id`; adding the fan-out prefix is not that twin.
   // cm:guard `/api/uploads` mounts with NO auth middleware at all — the ticket id IS the credential. Listing it grants nothing today, which is precisely the danger: nobody would be making this decision on the day someone bolts a gate on and it stops being inert.
-  it.each(['/api/agent-sessions', '/api/uploads'])('%s is not allowlisted', (prefix) => {
-    expect(PAT_ALLOWED_PREFIXES).not.toContain(prefix);
-  });
+  // cm:guard `/api/admin` carries `GET /api/admin/mcp-audit/tools` (ISS-946), whose per-tool call counts span every project on the instance — so it resolves no project for the fence to bite on, exactly like `/api/me/ops-health`. An agent that needs those numbers gets them from a human running the route, NOT from this prefix being added; `admin/mcp-audit-routes.ts` carries the price of that decision.
+  // cm:guard `/api/pat` must never be listed: a scoped token that can mint an unscoped one has no scope. It was named only in `pat-rest-surface.ts`'s prose until ISS-946, and prose is not a gate.
+  it.each(['/api/agent-sessions', '/api/uploads', '/api/admin', '/api/pat'])(
+    '%s is not allowlisted',
+    (prefix) => {
+      expect(PAT_ALLOWED_PREFIXES).not.toContain(prefix);
+    },
+  );
 });
