@@ -54,9 +54,8 @@ const projectFactsPatchBodySchema = z
   })
   .strict();
 
-// NOTE: mounted under `projectRoutes` (see ./routes.ts), which applies
-// requireAuth() + assertEmailVerified() to every request — no own middleware
-// here, or auth (and its email-verified DB lookup) would run twice.
+// cm:guard add NO middleware here: this router is mounted under `projectRoutes`, which already applies `requireAuth()` + `assertEmailVerified()` to every request, so a second copy runs auth and its email-verified DB lookup twice per call.
+// cm:edge protocol -> packages/core/src/projects/routes.ts — that mount is what supplies `userId`; mounted anywhere else, every handler here reads it as undefined
 export const projectFactsRoutes = new Hono<{ Variables: AuthVars }>();
 
 projectFactsRoutes.get(
@@ -174,6 +173,8 @@ projectFactsRoutes.patch(
       projectFactsConfig:
         (ac.projectFactsConfig as Record<string, { alwaysInject?: boolean }> | undefined) ?? {},
       maxAlwaysInjectChars: PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS,
+      // cm:guard the PATCH answer replaces the GET's in the tab's query cache (`useUpdateProjectFacts` calls `setQueryData` on the same key), so a field served by only ONE of these two routes disappears from the screen on the owner's first save.
+      alwaysInjectGuarantee: ALWAYS_INJECT_GUARANTEE_NOTE,
     });
   },
 );

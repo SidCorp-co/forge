@@ -2958,7 +2958,9 @@
   One sentence, `ALWAYS_INJECT_GUARANTEE_NOTE`, now states the split: delivery is guaranteed and
   visible afterwards on the job, observance is the model's. `forge_config`'s description and the
   `project-settings-and-test-credentials` guide interpolate it, and the settings tab's own
-  `GET /api/projects/:id/project-facts` serves it so the browser holds no second copy of the string.
+  `GET`/`PATCH /api/projects/:id/project-facts` both serve it — the PATCH answer replaces the GET's
+  in the tab's query cache, so a field on only one of them would leave the screen on the owner's
+  first save — and the browser holds no second copy of the string.
   It also names the one obligation on this deployment that DOES have a readback — the UX contract,
   whose rules are `ux_contract_rules` rows with ids and whose violations agents cite in
   `ux_findings` — because that is the price of an enforceable rule: ids to cite. A free-text fact
