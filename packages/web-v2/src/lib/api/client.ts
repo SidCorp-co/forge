@@ -136,6 +136,40 @@ export async function apiClientList<T>(
 }
 
 /**
+ * Cursor-paged list client: walks every page and answers the whole set.
+ *
+ * `total` on a cursor envelope counts what the query matched, which for the
+ * comment thread is every comment while a page carries only top-level ones —
+ * so it is reported as the caller's `totalCount` and is NOT what the walk
+ * stops on.
+ */
+// cm:guard the walk stops on `nextCursor === null` and on nothing else, and the page cap is what keeps a server that always returns a cursor from spinning here forever. Deriving the stop from `items.length` or from `total` is what `apiClientList`'s own guard refuses one shape up: a page is indistinguishable from a whole list by its size.
+// cm:edge contract -> packages/core/src/lib/pagination.ts — `cursorList` builds the envelope this reads; a route that answers `{items,total,nextCursor}` from anywhere else has to keep those three names for this to walk it
+export async function apiClientCursorAll<T>(
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<{ items: T[]; totalCount: number }> {
+  const MAX_PAGES = 200;
+  const joiner = endpoint.includes("?") ? "&" : "?";
+  const items: T[] = [];
+  let cursor: string | null = null;
+  let totalCount = 0;
+
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const url = cursor === null ? endpoint : `${endpoint}${joiner}cursor=${encodeURIComponent(cursor)}`;
+    const res = await fetchRaw(url, options);
+    if (res.status === 204) return { items, totalCount };
+
+    const body = (await res.json()) as { items: T[]; total: number; nextCursor: string | null };
+    items.push(...(body.items ?? []));
+    totalCount = body.total;
+    cursor = body.nextCursor ?? null;
+    if (cursor === null) return { items, totalCount };
+  }
+  throw new Error(`${endpoint}: still returning a cursor after ${MAX_PAGES} pages`);
+}
+
+/**
  * Unwrap a Strapi-style `{ data: T }` envelope. Agent API responses wrap
  * payloads in `{ data: ... }` for legacy compat; use this at call sites
  * instead of `res.data` to make the unwrap intent explicit and centralized.

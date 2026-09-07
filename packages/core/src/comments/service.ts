@@ -8,11 +8,12 @@
  * which is where the credential is known.
  */
 
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull, or } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
 import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
+import { type CommentCursor, encodeCommentCursor } from './cursor.js';
 
 export type CommentThreadRow = {
   id: string;
@@ -40,14 +41,87 @@ const threadColumns = {
   updatedAt: comments.updatedAt,
 } as const;
 
-/** One issue's comments, oldest first. `limit` may overfetch by one to test for more. */
-export async function listIssueComments(issueId: string, limit?: number) {
-  const q = db
+/** One issue's comments, oldest first, all of them. */
+export async function listIssueComments(issueId: string) {
+  return db
     .select(threadColumns)
     .from(comments)
     .where(eq(comments.issueId, issueId))
-    .orderBy(asc(comments.createdAt));
-  return limit === undefined ? q : q.limit(limit);
+    .orderBy(asc(comments.createdAt), asc(comments.id));
+}
+
+/**
+ * Comment depth the DB trigger allows. A root plus this many rounds of
+ * `parent_id IN (…)` reaches every descendant of the roots on a page.
+ */
+// cm:edge lockstep -> packages/core/drizzle/migrations — the depth-3 check trigger is what makes a fixed number of rounds complete rather than a guess. Raising the trigger's depth without raising this leaves the deepest replies off every page, silently, because `buildCommentTree` drops a reply whose parent it was not given.
+const COMMENT_MAX_DEPTH = 3;
+
+export type CommentPage = {
+  /** Roots and every descendant of them, ascending by `(createdAt, id)`. */
+  rows: CommentThreadRow[];
+  /** The roots this page carries, in the order the cursor walks them. */
+  roots: CommentThreadRow[];
+  /** Where the next page resumes, or null when this page ended the thread. */
+  nextCursor: string | null;
+};
+
+/**
+ * One page of an issue's thread: the next `limit` ROOT comments after
+ * `after`, each with its whole subtree.
+ *
+ * ISS-956. The cursor walks roots rather than comments because
+ * `buildCommentTree` drops a reply whose parent is absent from the row set it
+ * is given — a deliberate guard, so that a partial fetch cannot promote a
+ * reply to a top-level comment. Paging over roots is the one row set for
+ * which that builder is correct on a partial fetch, and it is also what makes
+ * a page self-contained for a flat reader: every `parentId` on the page names
+ * a row that is on it.
+ */
+// cm:guard the keyset is `(createdAt, id)`, and the tie-breaking `id` comparison is the whole of it — dropping to `createdAt > x` alone loses every root that shares a millisecond with the last one of the previous page. Agent-written threads produce those ties routinely (ISS-956 measured two at 2026-09-06T18:58).
+export async function listIssueCommentPage(
+  issueId: string,
+  opts: { after?: CommentCursor | undefined; limit: number },
+): Promise<CommentPage> {
+  const { after, limit } = opts;
+  const rootFilters = [eq(comments.issueId, issueId), isNull(comments.parentId)];
+  if (after) {
+    rootFilters.push(
+      or(
+        gt(comments.createdAt, after.createdAt),
+        and(eq(comments.createdAt, after.createdAt), gt(comments.id, after.id)),
+      ) as NonNullable<ReturnType<typeof gt>>,
+    );
+  }
+
+  const probed = await db
+    .select(threadColumns)
+    .from(comments)
+    .where(and(...rootFilters))
+    .orderBy(asc(comments.createdAt), asc(comments.id))
+    .limit(limit + 1);
+
+  const roots = probed.slice(0, limit);
+  const last = roots.at(-1);
+  const nextCursor =
+    probed.length > limit && last
+      ? encodeCommentCursor({ createdAt: last.createdAt, id: last.id })
+      : null;
+
+  const rows = [...roots];
+  let frontier = roots.map((r) => r.id);
+  for (let depth = 1; depth < COMMENT_MAX_DEPTH && frontier.length > 0; depth += 1) {
+    const replies = await db
+      .select(threadColumns)
+      .from(comments)
+      .where(inArray(comments.parentId, frontier))
+      .orderBy(asc(comments.createdAt), asc(comments.id));
+    rows.push(...replies);
+    frontier = replies.map((r) => r.id);
+  }
+
+  rows.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
+  return { rows, roots, nextCursor };
 }
 
 /** The project an issue belongs to; throws when the issue is gone. */

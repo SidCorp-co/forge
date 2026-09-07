@@ -92,7 +92,10 @@ describe('buildListEnvelope', () => {
     expect((result.comments as Array<{ id: number }>).at(-1)?.id).toBe(4);
   });
 
-  it('drops a row that alone exceeds the response-size cap and discloses it', () => {
+  it('keeps the one row that alone exceeds the response-size cap', () => {
+    // ISS-956: this used to return zero rows. Under a cursor an empty page is a
+    // dead end — nothing to resume from and no progress made — and a single
+    // 20K-character agent report over the budget is ordinary, not pathological.
     const huge = [{ id: 0, blob: 'x'.repeat(50_000) }];
     const result = buildListEnvelope({
       key: 'issues',
@@ -101,14 +104,16 @@ describe('buildListEnvelope', () => {
       hint: 'f',
       maxChars: 100,
     });
-    expect(result).toMatchObject({
-      issues: [],
-      returned: 0,
-      hasMore: true,
-      truncated: true,
-      truncatedBy: 'response-size',
-    });
-    expect(JSON.stringify({ issues: result.issues }).length).toBeLessThanOrEqual(100);
+    expect(result).toMatchObject({ issues: huge, returned: 1, hasMore: false });
+    expect('truncated' in result).toBe(false);
+  });
+
+  it('still sheds every row but one when the budget cannot hold them', () => {
+    const fat = Array.from({ length: 4 }, (_, i) => ({ id: i, blob: 'x'.repeat(200) }));
+    const result = buildListEnvelope({ key: 'issues', items: fat, limit: 25, hint: 'f', maxChars: 100 });
+    expect(result.returned).toBe(1);
+    expect(result.truncated).toBe(true);
+    expect(result.truncatedBy).toBe('response-size');
   });
 });
 
@@ -150,5 +155,106 @@ describe('buildListEnvelope notice — an oldest-first list is not described as 
     expect(res.truncatedBy).toBe('limit+response-size');
     expect(res.notice).toContain('bound this to the first 2');
     expect(res.notice).toContain('most recent of them');
+  });
+});
+
+describe('buildListEnvelope cursor (ISS-956)', () => {
+  const of = (item: { id: number }) => `cursor-${item.id}`;
+
+  it('carries nextCursor:null and hasMore:false when the query found no more', () => {
+    const result = buildListEnvelope({
+      key: 'comments',
+      items: rows(3),
+      limit: 50,
+      hint: 'h',
+      order: 'asc',
+      sizeTrimSheds: 'newest',
+      cursor: { more: false, of },
+    });
+    expect(result.nextCursor).toBeNull();
+    expect(result.hasMore).toBe(false);
+  });
+
+  it('offers the last row as the cursor when the query found more', () => {
+    const result = buildListEnvelope({
+      key: 'comments',
+      items: rows(3),
+      limit: 50,
+      hint: 'h',
+      order: 'asc',
+      sizeTrimSheds: 'newest',
+      cursor: { more: true, of },
+    });
+    expect(result.nextCursor).toBe('cursor-2');
+    expect(result.hasMore).toBe(true);
+  });
+
+  it('does not call a page followed by another page "truncated"', () => {
+    const result = buildListEnvelope({
+      key: 'comments',
+      items: rows(3),
+      limit: 50,
+      hint: 'h',
+      order: 'asc',
+      sizeTrimSheds: 'newest',
+      cursor: { more: true, of },
+    });
+    expect(result.truncated).toBeUndefined();
+    expect(result.notice).toBeUndefined();
+  });
+
+  it('mints the cursor from the last row the size trim KEPT, not the last fetched', () => {
+    const fat = Array.from({ length: 6 }, (_, i) => ({ id: i, blob: 'x'.repeat(200) }));
+    const result = buildListEnvelope({
+      key: 'comments',
+      items: fat,
+      limit: 50,
+      hint: 'h',
+      order: 'asc',
+      sizeTrimSheds: 'newest',
+      cursor: { more: false, of },
+      maxChars: 700,
+    });
+    const kept = result.comments as Array<{ id: number }>;
+    expect(kept.length).toBeLessThan(6);
+    expect(result.nextCursor).toBe(`cursor-${kept.at(-1)?.id}`);
+    expect(result.hasMore).toBe(true);
+  });
+
+  it('sheds the NEWEST rows under a cursor, so the walk never steps over one', () => {
+    const fat = Array.from({ length: 6 }, (_, i) => ({ id: i, blob: 'x'.repeat(200) }));
+    const result = buildListEnvelope({
+      key: 'comments',
+      items: fat,
+      limit: 50,
+      hint: 'h',
+      order: 'asc',
+      sizeTrimSheds: 'newest',
+      cursor: { more: false, of },
+      maxChars: 700,
+    });
+    expect((result.comments as Array<{ id: number }>)[0]?.id).toBe(0);
+  });
+
+  it('offers the cursor as the remedy in the notice rather than "read it in the UI"', () => {
+    const fat = Array.from({ length: 6 }, (_, i) => ({ id: i, blob: 'x'.repeat(200) }));
+    const result = buildListEnvelope({
+      key: 'comments',
+      items: fat,
+      limit: 50,
+      hint: 'read the full thread in the UI',
+      order: 'asc',
+      sizeTrimSheds: 'newest',
+      cursor: { more: false, of },
+      maxChars: 700,
+    });
+    expect(result.notice).toContain('nextCursor');
+    expect(result.notice).not.toContain('will NOT help');
+  });
+
+  it('leaves a non-cursor surface exactly as it was — no nextCursor key at all', () => {
+    const result = buildListEnvelope({ key: 'issues', items: rows(11), limit: 10, hint: 'f' });
+    expect('nextCursor' in result).toBe(false);
+    expect(result.hasMore).toBe(true);
   });
 });
