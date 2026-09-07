@@ -35,22 +35,35 @@ afterEach(() => {
 describe("issueDetailApi.listComments", () => {
   it("unwraps the envelope core answers, and states core's total rather than the page length", async () => {
     fetchMock.mockResolvedValueOnce(
-      json({ items: [node], returned: 1, total: 7, limit: 1000, offset: 0, hasMore: false }),
+      json({ items: [node], returned: 1, total: 7, limit: 50, nextCursor: null, hasMore: false }),
     );
 
     const res = await issueDetailApi.listComments("i1");
 
     expect(res.items).toEqual([node]);
-    // cm:why 7 rather than the 1 node returned — core's `total` counts every comment on the issue including replies, which is what makes it the only count that stays right when the tree is capped at COMMENT_TREE_HARD_CAP
+    // cm:why 7 rather than the 1 node returned — core's `total` counts every comment on the issue including replies, and a page carries only its roots, so it is the one count that means the same thing on page one as on the last page
     expect(res.totalCount).toBe(7);
   });
 
-  it("still reads a bare array + X-Total-Count, for routes not yet on the envelope", async () => {
-    fetchMock.mockResolvedValueOnce(json([node], { "X-Total-Count": "1" }));
+  it("walks every page, so the screen shows the thread and not its first page", async () => {
+    fetchMock.mockResolvedValueOnce(
+      json({ items: [node], returned: 1, total: 2, limit: 1, nextCursor: "tok", hasMore: true }),
+    );
+    const second = { id: "c2", body: "there", replies: [] };
+    fetchMock.mockResolvedValueOnce(
+      json({ items: [second], returned: 1, total: 2, limit: 1, nextCursor: null, hasMore: false }),
+    );
 
     await expect(issueDetailApi.listComments("i1")).resolves.toEqual({
-      items: [node],
-      totalCount: 1,
+      items: [node, second],
+      totalCount: 2,
     });
+  });
+
+  // cm:guard ISS-893's bare-array case is GONE from this route on purpose, and its replacement must be a throw. A bare array carries no cursor, so a walk that tolerated it would stop after page one having pushed nothing and hand the screen an empty thread — the same silent truncation ISS-893 was about, arriving through the fix for it.
+  it("refuses a shape it cannot page rather than answering an empty thread", async () => {
+    fetchMock.mockResolvedValueOnce(json([node], { "X-Total-Count": "1" }));
+
+    await expect(issueDetailApi.listComments("i1")).rejects.toThrow(/no cursor envelope/);
   });
 });

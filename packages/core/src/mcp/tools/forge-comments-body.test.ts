@@ -22,7 +22,13 @@ vi.mock('../../config/env.js', () => ({
 }));
 
 const selectLimit = vi.fn();
-const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
+// cm:guard `.orderBy()` must be awaitable AND `.limit()`-able, and LAZILY so — the reply query in `listIssueCommentPage` awaits at `orderBy` with no `limit` after it while the root query calls `.limit()` on the same object. Resolve eagerly and the root query's own `orderBy()` eats a `mockResolvedValueOnce` it never reads (ISS-956).
+const selectOrderByRows = vi.fn(async (): Promise<unknown[]> => []);
+const selectOrderBy = vi.fn(() => ({
+  limit: selectLimit,
+  then: <R>(onOk: (rows: unknown[]) => R, onErr?: (e: unknown) => R) =>
+    selectOrderByRows().then(onOk, onErr),
+}));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
 const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
