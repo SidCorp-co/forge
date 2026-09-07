@@ -18,7 +18,7 @@
 // catalogue without a live DB. `render()` is pure; a project-resolved fact
 // takes its inputs through `FactRenderContext` from `./resolve.ts`.
 
-import { describeComponents } from '../../body/components.js';
+import { describeComponents } from '../../body/registry-view.js';
 import type { IssueStatus, JobType } from '../../db/schema.js';
 // cm:guard the only two non-type imports this module may carry, and only because both are leaves whose own imports erase — `dependency-effects.ts`'s schema import is type-only, and `body/components.ts` pulls nothing but zod. The cycle constraint above is what a third, DB- or env-touching import would break.
 import { WORK_EVIDENCE_WAIVER_NOTE } from '../../issues/dependency-effects.js';

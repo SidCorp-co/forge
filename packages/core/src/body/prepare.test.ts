@@ -319,4 +319,22 @@ describe('bodyNodes — the tree web renders from', () => {
   it('degrades to null instead of throwing on bytes it cannot scan', () => {
     expect(bodyNodes('<forge-review sha="60e8d635"', 'html')).toBeNull();
   });
+
+  // cm:edge contract -> packages/core/src/body/parse.ts — `ad14294a` made a non-raw text node hold DECODED characters, so what the web renderer receives is `"` and `&`, not `&quot;` and `&amp;`. React escapes on output; a renderer that unescaped again would double-unescape, and one written against the pre-ad14294a tree would print the entity.
+  it('hands the renderer decoded characters, so nothing downstream unescapes twice', () => {
+    const raw =
+      '<forge-blocked on="decision"><p>a &amp; b, &quot;quoted&quot;, 3 &lt; 4</p></forge-blocked>';
+    const stored = prepareBody({ raw, format: 'html' }).body;
+    const root = bodyNodes(stored, 'html')?.[0];
+    if (root?.type !== 'element') throw new Error('expected an element');
+    const p = root.children[0];
+    if (p?.type !== 'element') throw new Error('expected a <p>');
+    expect(p.children).toEqual([{ type: 'text', value: 'a & b, "quoted", 3 < 4' }]);
+  });
+
+  it('stores the same bytes on a second save of a body carrying entities', () => {
+    const raw = '<forge-blocked on="decision"><p>a &amp; b</p></forge-blocked>';
+    const once = prepareBody({ raw, format: 'html' }).body;
+    expect(prepareBody({ raw: once, format: 'html' }).body).toBe(once);
+  });
 });

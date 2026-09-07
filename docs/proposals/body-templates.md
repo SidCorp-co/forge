@@ -29,6 +29,21 @@ Compliance tracks where the format lives, not how well it is written. Measured o
 20 fleet issues already contain raw `<p>` / `<div>` / `<img>` that render as literal text: the
 renderer has no `rehype-raw`. People wanted HTML before the system accepted it.
 
+**Adoption after P1, measured 2026-09-07 on the forge-beta read-only replica.** The kernel accepted
+the format on 2026-09-03 and no writer routed to it, which is P1's deliberate design (§6, gap 3)
+and not a defect — but the number is what P3 and P4 are measured against, so it is recorded here
+rather than in a comment:
+
+| Since P1 landed 2026-09-03 | Count |
+|---|---|
+| issues with `description_template` not null, all time | 4 — every one an ISS-898 live-walk probe titled *delete me*, created 15:35–15:49 on 2026-09-03 |
+| comments with `template` not null, all time | 1 — a `forge-blocked` probe on that same probe issue |
+| comments created in the window | 11,684 · 11,683 markdown, 1 html |
+
+Real adoption is therefore **zero rows written by anyone doing real work**. P2 (ISS-967) is what
+gives a human an entry path at all — the composer's insert menu and preview — and it is the thing
+that can move this count off zero before P3 switches the writers.
+
 ## 2. Two kinds of HTML, two paths
 
 |  | Self-contained styled page | Allowlisted component markup |

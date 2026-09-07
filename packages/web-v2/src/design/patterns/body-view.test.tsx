@@ -135,4 +135,18 @@ describe("BodyView", () => {
       .filter((t) => t === "before" || t === "after" || t === "THE ARTIFACT");
     expect(order).toEqual(["before", "THE ARTIFACT", "after"]);
   });
+
+  // cm:edge contract -> packages/core/src/body/parse.ts — since `ad14294a` a non-raw text node holds DECODED characters. React escapes them on output, so the renderer must pass them straight through; unescaping here would double-unescape, and escaping here would print the entity.
+  it("prints a decoded character as itself, not as its entity", () => {
+    render(
+      <BodyView
+        body="…"
+        format="html"
+        nodes={[el("p", {}, [text('a & b, "quoted", 3 < 4')])]}
+      />,
+    );
+    expect(screen.getByText('a & b, "quoted", 3 < 4')).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("&amp;");
+    expect(document.body.textContent).not.toContain("&quot;");
+  });
 });
