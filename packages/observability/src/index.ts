@@ -2,6 +2,9 @@
 // adapter (dev renderer, core, web client + server) so the privacy
 // contract is defined exactly once. Add new sensitive keys here, not
 // in per-surface adapters.
+//
+// `parseSourceCommit` sits here for the same reason: every surface names a deploy
+// by the same rule or the surfaces cannot be compared.
 
 /** Header names whose values must be replaced before send. Compared case-insensitively. */
 export const SCRUB_HEADER_KEYS: ReadonlySet<string> = new Set([
@@ -160,8 +163,7 @@ function escapeRegExp(s: string): string {
  * shredding the log with spurious matches.
  */
 export function scrubLogText(text: string, extraSecrets: string[] = []): string {
-  // Header value is the REST of the line (we scrub per line), so `Authorization:
-  // Bearer <token>` redacts the whole credential, not just the `Bearer` word.
+  // cm:why the header value is matched as the REST of the line, because scrubbing runs per line: a pattern stopping at the first space would redact the word `Bearer` and leave the credential behind it.
   const headerKeys = Array.from(SCRUB_HEADER_KEYS).map(escapeRegExp).join('|');
   const headerRe = new RegExp(`\\b(${headerKeys})(\\s*[:=]\\s*).+`, 'gi');
   // Value stops at whitespace, quote, comma, brace, or `&` — the `&` guard
@@ -179,10 +181,7 @@ export function scrubLogText(text: string, extraSecrets: string[] = []): string 
       for (const s of extraSecrets) {
         if (s && s.length >= 6) out = out.split(s).join(FILTERED);
       }
-      // ISS-412 — last-pass env-assignment redaction. Runs AFTER extraSecrets
-      // so an integration token echoed inside an env value is already
-      // scrubbed; runs LAST among per-line rules because the suffix match is
-      // the strongest signal and must not be undone by an earlier replacement.
+      // cm:guard this env-assignment pass must stay LAST among the per-line rules: it runs after `extraSecrets` so an integration token echoed inside an env value is already scrubbed, and its suffix match is the strongest signal, so an earlier replacement moved below it would undo the redaction.
       out = out.replace(ENV_SECRET_ASSIGNMENT_PATTERN, `$1=${FILTERED}`);
       return out;
     })
@@ -237,4 +236,14 @@ interface SentryLikeEvent {
     data?: unknown;
   };
   breadcrumbs?: Array<{ message?: string; data?: unknown }>;
+}
+
+// cm:guard the one rule that decides whether a build knows its own commit, shared because every reporting surface must answer this question identically: `/version` is compared to a Sentry release by hand, and two parses that disagree make that comparison meaningless.
+// cm:why 7 to 40 hex digits and nothing else: a deploy platform hands a build whatever its own config holds, and Coolify's application row for this repo reads `git_commit_sha=HEAD`, so the literal `HEAD`, a tag and an unexpanded `${SOURCE_COMMIT}` are all values that really arrive. Reporting one of them as an identity is worse than reporting none, because a caller cannot tell it is not a commit.
+const SOURCE_COMMIT_PATTERN = /^[0-9a-f]{7,40}$/i;
+
+/** The commit a build was told it was made from, or `null` for anything that is not one. */
+export function parseSourceCommit(raw: string | undefined): string | null {
+  const value = raw?.trim();
+  return value && SOURCE_COMMIT_PATTERN.test(value) ? value : null;
 }

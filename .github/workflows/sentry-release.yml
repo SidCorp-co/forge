@@ -11,9 +11,14 @@ name: Sentry release
 # `sentry.ts` files hand the SDK. If those three ever disagree, an event resolves to a release
 # no deploy carries.
 #
-# SENTRY_AUTH_TOKEN is owner-lane: no agent on this project can write a repository secret, and
-# without it this workflow says so in the run summary rather than failing. Scope needed:
-# `project:releases` on org `canawan`.
+# SENTRY_AUTH_TOKEN and SENTRY_URL are owner-lane: no agent on this project can write a
+# repository secret or variable, and without them this workflow says which one is missing in the
+# run summary rather than failing. What it needs:
+#   secret SENTRY_AUTH_TOKEN — scope `project:releases`
+#   variable SENTRY_URL      — this org's Sentry is SELF-HOSTED, so there is deliberately no
+#                              default: sentry.io would authenticate against the wrong instance
+#                              and fail with a token error that names nothing.
+#   variable SENTRY_ORG      — defaults to `canawan`, the org both projects live under.
 
 on:
   push:
@@ -30,7 +35,7 @@ jobs:
   register:
     runs-on: ubuntu-latest
     env:
-      SENTRY_URL: ${{ vars.SENTRY_URL || 'https://sentry.io/' }}
+      SENTRY_URL: ${{ vars.SENTRY_URL }}
       SENTRY_ORG: ${{ vars.SENTRY_ORG || 'canawan' }}
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
     steps:
@@ -43,8 +48,19 @@ jobs:
       - name: Register the commit as a release for forge-core and forge-web
         run: |
           set -euo pipefail
+          # `set -e` tolerates a false test in an && list, but only while the test is not the
+          # list's last command — an editor reordering these lines would make the step exit 1
+          # on a repository that has both. Explicit ifs cannot acquire that behaviour.
+          missing=""
           if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
-            echo "::warning title=Sentry release not registered::SENTRY_AUTH_TOKEN is not set on this repository, so ${GITHUB_SHA} was not registered as a Sentry release. Both surfaces still REPORT this SHA as their release id, so events are grouped correctly; what is missing is the commit association Sentry needs to name a suspect commit. Add a repository secret SENTRY_AUTH_TOKEN with scope project:releases on org ${SENTRY_ORG} to enable it."
+            missing="secret SENTRY_AUTH_TOKEN (scope project:releases)"
+          fi
+          if [ -z "${SENTRY_URL:-}" ]; then
+            [ -n "$missing" ] && missing="$missing and "
+            missing="${missing}variable SENTRY_URL (this org's Sentry is self-hosted, so there is no default)"
+          fi
+          if [ -n "$missing" ]; then
+            echo "::warning title=Sentry release not registered::${GITHUB_SHA} was not registered as a Sentry release because this repository is missing ${missing}. Both surfaces still REPORT this SHA as their release id, so events group correctly and /version already names the commit; what is missing is only the release-to-commit association Sentry needs before it can name a suspect commit."
             exit 0
           fi
           npx --yes @sentry/cli@2 releases new "${GITHUB_SHA}" -p forge-core -p forge-web
