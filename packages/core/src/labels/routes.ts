@@ -218,7 +218,8 @@ labelRoutes.patch(
     if (patch.knowledgeEntryId !== undefined) updates.knowledgeEntryId = patch.knowledgeEntryId;
     if (patch.description !== undefined) updates.description = patch.description;
     // cm:guard the slug moves on exactly two edits and never on a rename — a promotion derives it (the CHECK requires a module to have one) and a demotion clears both module-only fields (the CHECK forbids a plain label from keeping them). A `name` patch deliberately leaves it alone: that is the whole point of storing it (ISS-947).
-    if (isPromotion) updates.slug = await deriveModuleSlug(label.projectId, patch.name ?? label.name);
+    if (isPromotion)
+      updates.slug = await deriveModuleSlug(label.projectId, patch.name ?? label.name);
     if (isDemotion) {
       updates.slug = null;
       updates.knowledgeEntryId = null;

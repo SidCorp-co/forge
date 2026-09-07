@@ -225,8 +225,8 @@ describe('ISS-593 · module create and update', () => {
     const other = await createTestProject(harness.db, user.id);
     const foreignId = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO labels (id, project_id, name, color, kind)
-      VALUES (${foreignId}, ${other.id}, 'elsewhere', '#aabbcc', 'module')
+      INSERT INTO labels (id, project_id, name, color, kind, slug)
+      VALUES (${foreignId}, ${other.id}, 'elsewhere', '#aabbcc', 'module', 'elsewhere')
     `);
     const { status, body } = await createLabel({
       name: 'child',

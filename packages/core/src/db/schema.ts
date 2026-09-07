@@ -234,7 +234,7 @@ export const orgInvitations = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: 'cascade' }),
     email: text('email').notNull(),
-    // 'owner' is never invitable — granting owner is an explicit in-app act.
+    // cm:guard an invite may NEVER carry `owner`, though the column's enum permits it: ownership is granted only by an explicit in-app act, so a writer that accepts this field from an invite payload hands the org away by email. Validated at the route, not by the type.
     role: text('role', { enum: orgMemberRoles }).notNull(),
     inviterId: uuid('inviter_id')
       .notNull()
@@ -1191,9 +1191,12 @@ export const labels = pgTable(
     // cm:guard ISS-947 — the module's IDENTITY, and `name` is only its display. Derived from the name ONCE, on create or on promotion, and never recomputed after: a rename that moved the slug would orphan the knowledge node every later tier resolves through it, which is the failure the name-prefix convention had and this column exists to remove.
     slug: text('slug'),
     // cm:why ISS-947 — the 1:1 binding to `module-<slug>`'s knowledge node, stored rather than derived. NULL is a legal state (a module may exist before anyone writes its node) and is what a deleted node leaves behind, which is why the FK is `set null` and not `cascade`: deleting a node must not delete the module.
-    knowledgeEntryId: uuid('knowledge_entry_id').references((): AnyPgColumn => knowledgeEntries.id, {
-      onDelete: 'set null',
-    }),
+    knowledgeEntryId: uuid('knowledge_entry_id').references(
+      (): AnyPgColumn => knowledgeEntries.id,
+      {
+        onDelete: 'set null',
+      },
+    ),
     description: text('description'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

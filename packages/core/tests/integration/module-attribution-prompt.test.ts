@@ -69,8 +69,9 @@ async function insertLabel(
 ): Promise<string> {
   const id = randomUUID();
   await harness.db.execute(sql`
-    INSERT INTO labels (id, project_id, name, color, kind, parent_id)
-    VALUES (${id}, ${projectId}, ${name}, '#1f6f4a', ${kind}, ${parentId})
+    INSERT INTO labels (id, project_id, name, color, kind, parent_id, slug)
+    VALUES (${id}, ${projectId}, ${name}, '#1f6f4a', ${kind}, ${parentId},
+            CASE WHEN ${kind} = 'module' THEN ${id}::text ELSE NULL END)
   `);
   return id;
 }

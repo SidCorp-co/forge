@@ -10,13 +10,11 @@ import { registerIssueCommentRoutes } from '../comments/routes.js';
 import { db } from '../db/client.js';
 import {
   issueComplexities,
-  issueLabels,
   issuePriorities,
   issueStatuses,
   issues,
   jobs,
   jobTypes,
-  labels,
   projectMembers,
   usageRecords,
 } from '../db/schema.js';
@@ -358,9 +356,7 @@ export const issueRoutes = new Hono<{ Variables: AuthVars }>();
 issueRoutes.use('*', requireAuth(), assertEmailVerified());
 
 registerIssueCommentRoutes(issueRoutes);
-// NOTE: issue attachment endpoints (POST/GET /:id/attachments) are now in a
-// standalone router (`issueAttachmentRoutes` in attachment-routes.ts) so they
-// can accept PAT + device auth. Mounted directly at /api/issues in index.ts.
+// cm:why the issue attachment endpoints are a SEPARATE router (`issueAttachmentRoutes`, mounted at /api/issues in index.ts) rather than registered here: this router applies `requireAuth()` to everything, and those two endpoints must also accept a PAT and a device credential — mounting them here would silently narrow that to browser sessions.
 
 async function loadIssue(issueId: string): Promise<IssueRow> {
   const row = await findIssueById(issueId);

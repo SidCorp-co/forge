@@ -245,8 +245,8 @@ describe('ISS-588 · the module axis through forge_issues', () => {
     const otherOwner = await createTestUser(harness.db);
     const otherProject = await createTestProject(harness.db, otherOwner.id);
     await harness.db.execute(sql`
-      INSERT INTO labels (id, project_id, name, color, kind)
-      VALUES (${randomUUID()}, ${otherProject.id}, 'core', '#123456', 'module')
+      INSERT INTO labels (id, project_id, name, color, kind, slug)
+      VALUES (${randomUUID()}, ${otherProject.id}, 'core', '#123456', 'module', 'core')
     `);
     const issueId = await createIssue('this project has no module called core');
     void issueId;
