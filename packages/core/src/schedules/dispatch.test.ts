@@ -37,7 +37,16 @@ vi.mock('../db/client.js', () => ({
     select: vi.fn(() => ({ from: selectFrom })),
     insert: vi.fn(() => ({ values: insertValues })),
     update: vi.fn(() => ({ set: updateSet })),
-    transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb({ update: txUpdate })),
+    transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => {
+      // cm:why applyKernelTransition opens its own transaction on whatever executor it is handed and stamps `forge.kernel_txn` through `execute`, so this tx double owes both
+      const tx: Record<string, unknown> = {
+        update: txUpdate,
+        insert: () => ({ values: async () => undefined }),
+        execute: async () => undefined,
+      };
+      tx.transaction = async (inner: (t: unknown) => Promise<unknown>) => inner(tx);
+      return cb(tx);
+    }),
   },
 }));
 
@@ -462,9 +471,8 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
       status: 'failed',
       sessionId: SESSION_ID,
     });
-    // The cleanup must flip the freshly-inserted session to status='failed'
-    // so it doesn't sit in `running` forever with no runner backing it.
-    const setPayloads = updateSet.mock.calls.map((c) => c[0] as { status?: string });
+    // cm:why read off the TRANSACTION-level update rather than the bare `db.update`: the cleanup routes through applyKernelTransition, which opens a transaction of its own before its CAS, so the payload never reaches the outer handle
+    const setPayloads = txUpdateSet.mock.calls.map((c) => c[0] as { status?: string });
     expect(setPayloads.some((p) => p?.status === 'failed')).toBe(true);
   });
 

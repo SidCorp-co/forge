@@ -275,9 +275,7 @@ export const projects = pgTable(
     orgId: uuid('org_id')
       .notNull()
       .references(() => organizations.id, { onDelete: 'restrict' }),
-    // Audit-only: who created the project. Carries NO authz semantics — the
-    // creator is granted a project_members `admin` row at create time and the
-    // effective role is always resolved via lib/authz.ts.
+    // cm:guard audit-only, and it carries NO authz semantics. The creator is granted a `project_members` admin row at create time and the effective role is always resolved through `lib/authz.ts`, so reading permission off this column reaches a different answer than every other caller.
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
