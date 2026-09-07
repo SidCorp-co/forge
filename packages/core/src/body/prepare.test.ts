@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { COMPONENT_NAMES, ROOT_COMPONENT_NAMES, specFor } from './components.js';
 import { BodyInvalidError } from './errors.js';
 import { RAW_TEXT_ELEMENTS } from './parse.js';
-import { bodySlots, bodyText, prepareBody, resolveFormat } from './prepare.js';
+import { bodyNodes, bodySlots, bodyText, prepareBody, resolveFormat } from './prepare.js';
 
 const review = (verdict = 'request-changes') => `
 <forge-review sha="60e8d635" verdict="${verdict}">
@@ -263,5 +263,50 @@ describe('the registry itself', () => {
         'nope',
       );
     }
+  });
+});
+
+describe('bodyNodes — the tree web renders from', () => {
+  it('hands back the parsed tree of a stored component body', () => {
+    const stored = prepareBody({ raw: review(), format: 'html' }).body;
+    const nodes = bodyNodes(stored, 'html');
+    expect(nodes?.[0]).toMatchObject({ type: 'element', name: 'forge-review' });
+    expect(nodes?.[0]).toHaveProperty('attrs.verdict', 'request-changes');
+  });
+
+  it('is null for a markdown body, so the caller renders it as markdown', () => {
+    expect(bodyNodes('## Plain\n\n- one', 'markdown')).toBeNull();
+  });
+
+  it('sniffs an absent format the same way the other two readers do', () => {
+    expect(bodyNodes('<forge-blocked on="decision">x</forge-blocked>', null)).not.toBeNull();
+    expect(bodyNodes('a < b is prose', null)).toBeNull();
+  });
+
+  it('keeps a raw diagram byte-identical rather than reading `<br/>` as markup', () => {
+    const raw =
+      '<forge-diagram kind="mermaid">flowchart TB\n  A --> B\n  B --> C<br/>D</forge-diagram>';
+    const stored = prepareBody({ raw, format: 'html' }).body;
+    const child = bodyNodes(stored, 'html')?.[0];
+    expect(child).toMatchObject({ type: 'element', name: 'forge-diagram' });
+    if (child?.type !== 'element') throw new Error('expected an element');
+    expect(child.children).toEqual([
+      { type: 'text', value: 'flowchart TB\n  A --> B\n  B --> C<br/>D', raw: true },
+    ]);
+  });
+
+  it('reads a component this build no longer declares rather than refusing it', () => {
+    const nodes = bodyNodes(
+      '<forge-from-the-future tone="calm">hi</forge-from-the-future>',
+      'html',
+    );
+    expect(nodes?.[0]).toMatchObject({ type: 'element', name: 'forge-from-the-future' });
+    expect(() => prepareBody({ raw: '<forge-from-the-future/>', format: 'html' })).toThrow(
+      BodyInvalidError,
+    );
+  });
+
+  it('degrades to null instead of throwing on bytes it cannot scan', () => {
+    expect(bodyNodes('<forge-review sha="60e8d635"', 'html')).toBeNull();
   });
 });

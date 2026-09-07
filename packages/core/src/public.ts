@@ -11,16 +11,19 @@ export { type RegisterInput, registerSchema } from './auth/register.js';
 export {
   BODY_FORMATS,
   type BodyFormat,
+  type BodyNode,
   COMPONENT_NAMES,
   type ComponentSpec,
   type ComponentView,
   ROOT_COMPONENT_NAMES,
 } from './body/index.js';
+export type {
+  BodyAttrDescriptor,
+  BodyComponentDescriptor,
+  BodySlotDescriptor,
+} from './body/registry-view.js';
 export * as schema from './db/schema.js';
-// Integration provider + capability descriptor surface for `@forge/contracts`.
-// Type-only: the runtime `capabilitiesFor` / `DEFAULT_CAPABILITIES` values stay
-// core-internal so no integration runtime leaks into clients. The owner /
-// environment / delivery enums are already reachable via the `schema` namespace.
+// cm:guard type-only: `capabilitiesFor` and `DEFAULT_CAPABILITIES` stay core-internal, or integration runtime is bundled into every client. The owner / environment / delivery enums are already reachable through the `schema` namespace.
 export type { IntegrationCapabilities, IntegrationProvider } from './integrations/types.js';
 export {
   type ReleaseNotes,

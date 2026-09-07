@@ -1,20 +1,19 @@
 "use client";
 
 // Comment thread for the issue detail. Renders the nested comment tree with a
-// derived lifecycle-kind badge (`deriveCommentKind`), markdown body (inline
-// images resolve via the design Markdown's `coreFileUrl` mapping), author
-// initials resolved against the project members, and reply/add boxes.
+// derived lifecycle-kind badge (`deriveCommentKind`), the body through
+// `<BodyView>` (markdown or a `forge-*` component tree), author initials
+// resolved against the project members, and reply/add boxes.
 
 import {
   Avatar,
   Badge,
   Banner,
+  BodyView,
   Button,
   EmptyState,
   Icon,
   IconButton,
-  Markdown,
-  Textarea,
 } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
 import {
@@ -33,6 +32,7 @@ import {
 import { useCreateComment } from "../detail-hooks";
 import type { CommentNode, ProjectMember } from "../types";
 import { AttachmentList } from "./attachment-list";
+import { BodyEditor } from "./body-editor";
 
 // cm:edge lockstep -> packages/core/src/lib/attachment-mime.ts#allowedSetForTarget — this list must mirror the server's `comment` target, which is narrower than `issue` (no video); a client that stages what the server refuses turns a preventable client-side rejection into a 400 after the bytes are sent. The note this replaces pointed at `attachment-service.ts ALLOWED_MIMES`, which no longer exists — the three per-target sets are now one table in that module.
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -131,9 +131,7 @@ function AddCommentBox({
     [acceptFiles],
   );
 
-  // Clipboard paste of a copied/screenshotted image. Only image file blobs are
-  // pulled in; pasted text falls through to the Textarea so we never
-  // double-insert. Clipboard images often have an empty name → supply one.
+  // cm:guard only image FILE blobs are pulled in — pasted text must fall through to the editor untouched or it is inserted twice. A clipboard image usually arrives with an empty name, so one is supplied here.
   const onPaste = useCallback(
     (e: ClipboardEvent) => {
       const blobs: File[] = [];
@@ -194,11 +192,13 @@ function AddCommentBox({
           dragOver ? "ring-2 ring-cobalt-400 ring-offset-1" : ""
         }`}
       >
-        <Textarea
+        <BodyEditor
+          label={parentId ? "Reply" : "Comment"}
           rows={parentId ? 2 : 3}
           placeholder={placeholder}
           value={body}
-          onChange={(e) => setBody(e.target.value)}
+          onChange={setBody}
+          disabled={create.isPending}
         />
       </div>
 
@@ -331,7 +331,15 @@ function CommentItem({
             <div className="fg-caption">via {ownerEmail}</div>
           )}
           <div className="mt-1">
-            <Markdown>{node.body}</Markdown>
+            <BodyView
+              body={node.body}
+              format={node.format}
+              nodes={node.nodes}
+              renderArtifact={(id) => {
+                const row = node.attachments.find((a) => a.id === id);
+                return row ? <AttachmentList rows={[row]} /> : null;
+              }}
+            />
           </div>
           {node.attachments.length > 0 && (
             <div className="mt-2">

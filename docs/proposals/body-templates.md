@@ -4,8 +4,10 @@ Issue and comment bodies as allowlisted HTML: a set of `forge-*` components with
 attributes and slots, plus a fixed set of plain text tags. Markdown stays for existing rows.
 
 **Status:** P1 shipped by ISS-898 (2026-09-03) — the registry, the kernel gate, the columns,
-`forge_comments.update`, and the read projection. P2–P4 are unstarted and unfiled. Decisions
-1–9 were locked by the owner on 2026-09-03; a rejected option in §7 stays rejected.
+`forge_comments.update`, and the read projection. P2 shipped by ISS-967 (2026-09-07) — the web
+renderer, the fallback card, the composer's insert menu and preview, and description editing.
+P3–P4 are unstarted and unfiled. Decisions 1–9 were locked by the owner on 2026-09-03; a rejected
+option in §7 stays rejected.
 
 ## 1. Why a guide was not enough
 
@@ -50,7 +52,7 @@ flowchart TB
     V -- "yes" --> N["normalize → body · format · template"]
   end
   subgraph READ["Read"]
-    W["web: components → design system (P2)"]
+    W["web: node tree → design system"]
     G["MCP: body + slots + text"]
     T["prompt · embedding: toText()"]
   end
@@ -113,10 +115,10 @@ A fourth, smaller: MCP `update` writes through the comments service, not REST
 | 1 | prompt and embedding would receive raw HTML, so the 8,000-char cap holds fewer requirements | `toText()` in the registry, called at all four read paths | **P1 done** |
 | 2 | MCP cannot edit a comment, so `<forge-artifact id>` can never be placed — the attachment needs a comment id that does not exist until after the create | `forge_comments` action `update` | **P1 done** |
 | 3 | six skills parse upstream comments by string prefix, across two repos | readers accept both forms, THEN writers switch, THEN the regex goes | P3 — the order is mandatory |
-| 4 | web cannot edit a description after create (`PatchIssueInput` carries only priority + complexity) | add `description` to the client input, plus a slot-shaped editor | P2 |
+| 4 | web cannot edit a description after create (`PatchIssueInput` carries only priority + complexity) | `description` on the client input; core already accepted it. Edit affordance on the Description card | **P2 done** |
 | 5 | `forge-diagram` content contains `-->` and `<br/>` and confuses any markup scanner | lifted out as raw text at the opening tag | **P1 done** |
-| 6 | an older web build meets a component it does not know | generic fallback card listing attributes and slots — never a blank screen | P2 |
-| 7 | the composer has no preview | debounced preview pane, reusing the rules tab's | P2 |
+| 6 | an older web build meets a component it does not know | the generic block IS the only block: web holds no component list, so a known and an unknown component render identically | **P2 done** |
+| 7 | the composer has no preview | debounced pane, the rules tab's own component, fed by `POST /api/body/preview` — the same `prepareBody` a save runs | **P2 done** |
 
 Gap 3 is the largest risk in the whole plan, and it is a sequencing risk rather than a design
 one. P1 deliberately changes no writer: `format` absent resolves to `markdown`, and
@@ -138,7 +140,7 @@ still validates and no reader is blinded.
 | Phase | Scope | Touches |
 |---|---|---|
 | **P1** (ISS-898, shipped) | registry, kernel validate/normalize on write for comments and issue descriptions, the four columns + CHECKs, `forge_comments.update`, `slots`/`text` on read, projection at four sites, tests | `core`, `contracts` |
-| P2 | web renderer (components → design system), fallback card, composer slash-insert + preview, new-issue shape picker, description editing on the detail screen | `web-v2` |
+| **P2** (ISS-967, shipped) | web renderer (components → design system), fallback card, composer insert menu + preview, description editing on the detail screen. Added `GET /api/body/components` and `POST /api/body/preview`, and `descriptionNodes` / comment `nodes` on the read paths | `web-v2`, `core` |
 | P3 | readers accept both forms → writers switch → regex removed. A `{{forge:body-components}}` fact so a skill embeds the component list rather than copying examples. Lockstep with `forge-plugin` | `core/skills`, `prompt/facts`, `forge-plugin` |
 | P4 | `bodyPolicy` per project and stage (the `RELEASE_RECORD_REQUIRED` mechanism, requiring a component rather than only validating one), adoption metrics per stage | `core`, `web-v2` |
 
@@ -153,9 +155,9 @@ from day one (P1), but *requiring* a component at a stage waits for two weeks of
 | A ~250-line HTML scanner this repo now owns and maintains, with no HTML5 repair semantics — malformed markup is refused rather than fixed up | whoever next changes the body format |
 | A second body syntax exists. Until P3 completes, a reader must handle `markdown` and `html`, and `deriveCommentKind` stays alive beside `template` | every reader of a body, for as long as P3 is unfinished |
 | A refused write is a failed call. An agent that gets the component wrong loses a turn to the 400 — the price of the mechanism that produced 100 % compliance for `releaseNotes` | every agent, on its first mistake with a new component |
-| Adding a component now means touching the registry, giving web a renderer, and (from P2) a fallback path — where before it meant writing a heading | whoever adds the next body shape |
+| Adding a component now means touching the registry — nothing else. Since P2 (ISS-967) web needs no renderer and no fallback path per component; a new one draws as the generic block on the day it ships | whoever adds the next body shape |
 | Four new columns and two CHECK constraints on the two largest tables | the migration, and any consumer reading `SELECT *` |
-| The registry is core-internal, so P2's web renderer cannot import it and must hold its own component→React map. Two lists that must agree, with only `body/doors.test.ts`-style checks available to keep them honest | P2 |
+| The registry is core-internal, so web cannot import it. **P2 (ISS-967) did not pay this cost** — it removed it. Core parses and the read paths hand back the node tree (`descriptionNodes`, comment `nodes`), and web holds no component→React map at all: `forge-diagram` and `forge-artifact` get a renderer each, everything else draws one generic block. The price paid instead is a node tree on the wire for every `format:'html'` row, and a `POST /api/body/preview` round-trip per composer pause | paid, differently |
 
 ## Evidence
 

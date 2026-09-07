@@ -10,6 +10,7 @@
 // `pipelineHealth`, mirroring how
 // `features/sessions/types.ts` re-typed the flat `agent_sessions` row.
 
+import type { BodyNode } from "@forge/contracts";
 import {
   REGISTRY_ISSUE_COMPLEXITIES,
   REGISTRY_ISSUE_PRIORITIES,
@@ -234,6 +235,12 @@ export interface IssueLabel {
 export interface IssueDetail extends IssueRow {
   plan: string | null;
   acceptanceCriteria: string | null;
+  /** ISS-898 — the renderer the description was stored for. */
+  descriptionFormat?: string | null;
+  /** ISS-898 — the root component name, null for prose and every markdown row. */
+  descriptionTemplate?: string | null;
+  // cm:edge contract -> packages/core/src/issues/routes.ts#serializeIssue — the tree comes from `parseBody` WITHOUT `validateBody`, so a `forge-*` name this build never heard of arrives as an ordinary element. `<BodyView>` draws it; code here that assumes a known name draws nothing (ISS-967).
+  descriptionNodes?: BodyNode[] | null;
   labels?: IssueLabel[];
   metadata: Record<string, unknown> | null;
 }
@@ -358,6 +365,11 @@ export interface CommentNode {
   id: string;
   issueId: string;
   authorId: string;
+  /** ISS-898 — `markdown` for every pre-existing row. */
+  format?: string | null;
+  template?: string | null;
+  /** ISS-967 — parsed tree for a `format:'html'` body, null otherwise. */
+  nodes?: BodyNode[] | null;
   /** Non-null when posted by an agent/device (ISS-519). */
   authorDeviceId?: string | null;
   body: string;

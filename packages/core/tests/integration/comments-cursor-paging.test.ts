@@ -164,6 +164,7 @@ describe('ISS-956 comment thread paging — the envelope and the walk', () => {
         'format',
         'id',
         'issueId',
+        'nodes',
         'parentId',
         'replies',
         'template',

@@ -6,6 +6,8 @@ import { z } from 'zod';
 import { BodyInvalidError } from '../body/errors.js';
 import { BODY_FORMATS } from '../body/formats.js';
 import { bodyInvalidHttp } from '../body/http-error.js';
+import type { BodyNode } from '../body/parse.js';
+import { bodyNodes } from '../body/prepare.js';
 import { registerIssueCommentRoutes } from '../comments/routes.js';
 import { db } from '../db/client.js';
 import {
@@ -159,8 +161,20 @@ const sessionContextMoved = (err: SessionContextExpectMismatch) =>
     cause: { code: 'SESSION_CONTEXT_MISMATCH', details: { current: err.current } },
   });
 
-function serializeIssue<T extends { issSeq: number }>(row: T): T & { displayId: string } {
-  return { ...row, displayId: `ISS-${row.issSeq}` };
+interface IssueBodyColumns {
+  description?: string | null;
+  descriptionFormat?: string | null;
+}
+
+// cm:guard the tree ships from HERE, the one projection both issue-detail surfaces already share, and never from a call site. web-v2 has no `@forge/core` dependency and cannot parse a component body, so a surface that forgets the field renders literal `<forge-…>` markup with every unit test still green (ISS-967).
+function serializeIssue<T extends { issSeq: number } & IssueBodyColumns>(
+  row: T,
+): T & { displayId: string; descriptionNodes: BodyNode[] | null } {
+  return {
+    ...row,
+    displayId: `ISS-${row.issSeq}`,
+    descriptionNodes: bodyNodes(row.description ?? '', row.descriptionFormat),
+  };
 }
 
 async function assertAssigneeIsMember(projectId: string, assigneeId: string): Promise<void> {
@@ -176,6 +190,9 @@ async function assertAssigneeIsMember(projectId: string, assigneeId: string): Pr
     });
   }
 }
+
+// cm:why the ISS-967 body routes are re-exported through here rather than imported straight into `index.ts`: `.arch.baseline.json` freezes that file's fan-out at 48 modules with `improves: down`, so a 49th — `core-body` — is refused outright and there is no widening available. This module is where the choice belongs anyway: it already owns issue bodies, already imports `core-body` (so this costs its own frozen 7 nothing), and already hosts the comment surface via `registerIssueCommentRoutes`. `index.ts` stays a mount list.
+export { bodyRoutes } from '../body/routes.js';
 
 export const issueProjectRoutes = new Hono<{ Variables: AuthVars }>();
 issueProjectRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -323,9 +340,7 @@ issueProjectRoutes.get(
       return c.json(listResponse(c, serialized, total, q));
     }
 
-    // ISS-164 — always hydrate pipelineHealth on the list payload. Cheap
-    // (6 queries flat regardless of page size) and the FE wants it on every
-    // row to render gate-aware badges.
+    // cm:why ISS-164 — hydrated unconditionally because the cost does not scale with the page: 6 queries flat regardless of page size, and every row's gate-aware badge needs it.
     const ids = serialized.map((r) => r.id);
     const healthMap = await safeHydratePipelineHealthForIssues(projectId, ids);
     // cm:why no opt-in flag here — every list/detail surface needs the creator fields, unlike withCost/withAgentSessions

@@ -12,9 +12,11 @@ import {
   Icon,
   Input,
   Markdown,
+  PreviewPane,
   Skeleton,
   Textarea,
   Toggle,
+  useDebounced,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useDeleteEntry, useKnowledgeEntries, useKnowledgeEntry, useUpsertEntry } from "../hooks";
@@ -23,15 +25,6 @@ import type { KnowledgeInjection, KnowledgeKind, KnowledgeListRow } from "../typ
 const ALWAYS_INJECT_MAX_CHARS = 6000;
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const ENTRY_MAX_CHARS = 100_000;
-
-function useDebounced<T>(value: T, ms: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return debounced;
-}
 
 interface EditRow {
   rid: number;
@@ -102,7 +95,7 @@ function RulesEditor({
 }) {
   const [editRows, setEditRows] = useState<EditRow[]>([]);
   const [nextRid, setNextRid] = useState(1);
-  // rid-keyed so multiple unsaved new rows (all slug="") don't share a delete-confirm state.
+  // cm:guard keyed by `rid` and never by slug — every unsaved new row carries slug="", so a slug key makes one Remove confirmation arm all of them.
   const [confirmRid, setConfirmRid] = useState<number | null>(null);
   const [loadedBodies, setLoadedBodies] = useState<Map<string, string>>(new Map());
   const [loadedMeta, setLoadedMeta] = useState<Map<string, Record<string, unknown>>>(new Map());
@@ -433,26 +426,9 @@ function RuleRow({
             </div>
           </Field>
 
-          <div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowPreview((p) => !p)}
-            >
-              <Icon
-                name="chevronRight"
-                size={12}
-                className="mr-1 shrink-0 transition-transform duration-[150ms]"
-                style={{ transform: showPreview ? "rotate(90deg)" : "none" }}
-              />
-              Preview
-            </Button>
-            {showPreview && (
-              <div className="mt-2 overflow-x-auto rounded-md border border-line bg-sunken p-3">
-                <Markdown>{debouncedBody}</Markdown>
-              </div>
-            )}
-          </div>
+          <PreviewPane open={showPreview} onToggle={() => setShowPreview((p) => !p)}>
+            <Markdown>{debouncedBody}</Markdown>
+          </PreviewPane>
 
           <div className="flex items-center justify-between gap-3 border-t border-line pt-3">
             <div className="min-w-0">

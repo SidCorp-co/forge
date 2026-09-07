@@ -78,6 +78,8 @@ export { SlideOver, type SlideOverProps } from "./patterns/slide-over";
 export { Menu, type MenuProps, type MenuItem } from "./patterns/menu";
 export { RouteProgress } from "./patterns/route-progress";
 export { Markdown, type MarkdownProps } from "./patterns/markdown";
+export { BodyView, type BodyViewProps } from "./patterns/body-view";
+export { PreviewPane, type PreviewPaneProps } from "./patterns/preview-pane";
 export { HtmlArtifact, type HtmlArtifactProps } from "./patterns/html-artifact";
 export { MermaidDiagram } from "./patterns/mermaid";
 export { ForgeMascot, type ForgeMascotProps, STAGE_RING } from "./patterns/forge-mascot";
@@ -88,6 +90,7 @@ export {
   SessionRowSkeleton, ProjectCardSkeleton,
 } from "./skeletons";
 
+export { useDebounced } from "./hooks/use-debounced";
 export { useElapsed } from "./hooks/use-elapsed";
 export { useNow } from "./hooks/use-now";
 export { useAnimatedNumber } from "./hooks/use-animated-number";

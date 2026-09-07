@@ -11,6 +11,36 @@
 
 ### Added
 
+- **An issue or comment written as `forge-*` components now renders as components, and a
+  description can be corrected after it was created.** The registry, the validator and the four
+  columns shipped in ISS-898, but nothing drew them: a body stored as components reached the
+  browser as the projection's plain text, so the one surface a person reads was the one that did
+  not show the shape they wrote. Twenty issues on the fleet already carried raw `<p>`/`<div>`/`<img>`
+  that rendered as literal text.
+
+  The scanner and the registry stay core-internal — `packages/web-v2` has no dependency on
+  `@forge/core` and cannot parse a body — so **core parses and the read paths hand back the node
+  tree**: `GET /api/issues/:id` carries `descriptionNodes`, and every comment carries `nodes`.
+  Both are `null` for a markdown row, which is every row written before this. A markdown body
+  renders exactly as it did.
+
+  Web holds **no component list at all**. `forge-diagram` draws as a mermaid diagram and
+  `forge-artifact` as an attachment card; every other `forge-*` draws one generic block with its
+  attributes and its slots. So a build that has never heard of a component and a build that used to
+  know it render identically, and neither draws a blank — the rollout case is ordinary rather than
+  broken.
+
+  Two new reads back the composer, both without touching a row. `GET /api/body/components` is the
+  registry itself, so the insert menu offers exactly what a save accepts and there is no second
+  list to drift. `POST /api/body/preview` runs the same `prepareBody` a save runs, so the preview
+  pane shows the bytes that would be stored and, on a bad body, the kernel's own 400 naming the
+  element, the attribute and its legal set.
+
+  `PATCH /api/issues/:id` has always accepted `description`; the browser never sent it. The
+  Description card now has an Edit control for anyone who may write, with the same insert menu and
+  preview pane, a toast on both outcomes, and a Cancel that restores the stored body. The knowledge
+  rules tab's preview and the composer's are now one component.
+
 - **A running instance now names the commit it was built from, and an error can be attributed to
   the deploy that introduced it.** `GET /version` answered `{ version, uptimeSeconds }` where
   `version` was the package version — `0.3.0` for every deploy this repo has ever made. Two

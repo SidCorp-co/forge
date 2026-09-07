@@ -18,6 +18,7 @@ import {
   ScreenTabs,
   Select,
   Skeleton,
+  useDebounced,
   type SelectOption,
   type TabItem,
 } from "@/design";
@@ -43,15 +44,6 @@ const SOURCE_OPTIONS: SelectOption[] = [
   ...MEMORY_SOURCES.map((s) => ({ value: s, label: s })),
 ];
 
-function useDebounced<T>(value: T, ms: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return debounced;
-}
-
 interface BreadcrumbItem {
   id: string;
   source: MemorySource;
@@ -71,7 +63,7 @@ export function MemoryScreen({ scope }: MemoryScreenProps) {
   const debouncedQuery = useDebounced(query, 300);
   const searching = debouncedQuery.trim().length > 0;
 
-  // Reset to page 1 when the source filter changes.
+
   useEffect(() => setPage(1), [source]);
 
   const sourceFilter = source ? [source as MemorySource] : undefined;

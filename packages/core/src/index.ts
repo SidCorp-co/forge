@@ -81,7 +81,7 @@ import { attachmentRoutes, issueAttachmentRoutes } from './issues/attachment-rou
 import { issueDependencyRoutes } from './issues/dependency-routes.js';
 import { issueExtrasRoutes } from './issues/extras-routes.js';
 import { issueMergeRoutes } from './issues/merge-routes.js';
-import { issueProjectRoutes, issueRoutes } from './issues/routes.js';
+import { bodyRoutes, issueProjectRoutes, issueRoutes } from './issues/routes.js';
 import { searchRoutes } from './issues/search.js';
 import { issueSteerRoutes } from './issues/steer-routes.js';
 import { transitionRoutes } from './issues/transition.js';
@@ -297,9 +297,7 @@ app.route('/api/auth', devForceVerifyRoutes);
 app.route('/api/auth', meRoutes);
 app.route('/api/auth', preferenceRoutes);
 app.route('/api/auth', logoutRoutes);
-// ISS-158 — Fresh re-auth primitive for sensitive surfaces (PAT creation,
-// device revoke, password change). Sibling children attach the
-// requireFreshAuth() middleware at the gated routes.
+// cm:why ISS-158 — this router only ISSUES the fresh-auth proof; the gating lives on the sensitive routes themselves (PAT creation, device revoke, password change) via `requireFreshAuth()`, so mounting it here gates nothing on its own.
 app.route('/api/auth', reauthRoutes);
 app.route('/api', patRoutes);
 // ISS-314 — OAuth/OIDC (GitHub + Google + generic OIDC). Internally gated
@@ -365,6 +363,7 @@ app.route('/api/issues', issueDependencyRoutes);
 app.route('/api/issues', issueSteerRoutes);
 app.route('/api/issues', taskIssueRoutes);
 app.route('/api/tasks', taskRoutes);
+app.route('/api/body', bodyRoutes);
 app.route('/api/comments', commentRoutes);
 app.route('/api/attachments', attachmentRoutes);
 app.route('/api/labels', labelRoutes);
