@@ -54,17 +54,11 @@ export interface InterventionsReport {
   events: InterventionEvent[];
 }
 
-export const EMPTY_INTERVENTIONS_REPORT: InterventionsReport = {
-  total: 0,
-  byIssue: [],
-  events: [],
-};
-
 export async function buildInterventionsReport(
   projectIds: readonly string[],
   days: number,
 ): Promise<InterventionsReport> {
-  if (projectIds.length === 0) return EMPTY_INTERVENTIONS_REPORT;
+  if (projectIds.length === 0) return { total: 0, byIssue: [], events: [] };
 
   const rows = await db.execute(sql`
     SELECT source, project_id, issue_id, occurred_at, detail
