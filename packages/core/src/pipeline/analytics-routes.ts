@@ -303,7 +303,7 @@ pipelineAnalyticsRoutes.get(
       LIMIT 2000
     `);
 
-    // cm:edge contract -> packages/core/drizzle/migrations/0215_unaudited_transition_detector.sql — the view is what decides these strings, and `manual_` is a PREFIX with the action appended, not a fixed value. This union read `'manual_cancel'` until ISS-884 while 0181 had been emitting `manual_resume` / `manual_answer` / `manual_inject` for months, and the rollup below charted every one of them as a run flip.
+    // cm:edge contract -> packages/core/drizzle/migrations/0216_unaudited_transition_detector.sql — the view is what decides these strings, and `manual_` is a PREFIX with the action appended, not a fixed value. This union read `'manual_cancel'` until ISS-884 while 0181 had been emitting `manual_resume` / `manual_answer` / `manual_inject` for months, and the rollup below charted every one of them as a run flip.
     type Row = {
       source: 'wedge' | `manual_${string}` | 'user_run_flip' | 'direct_sql';
       project_id: string;
