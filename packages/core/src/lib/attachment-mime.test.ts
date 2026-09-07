@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { AttachmentTarget } from './attachment-mime.js';
-import { allowedSetForTarget, resolveAttachmentMime } from './attachment-mime.js';
+import { allowedSetForTarget, looksBinary, resolveAttachmentMime } from './attachment-mime.js';
 
 const utf8 = (s: string) => Buffer.from(s, 'utf8');
 const ESC = String.fromCharCode(0x1b);
@@ -226,5 +226,19 @@ describe('allowedSetForTarget', () => {
   it('lists only extensions whose type the target allows', () => {
     expect(allowedSetForTarget('session').extensions).not.toContain('.mp4');
     expect(allowedSetForTarget('issue').extensions).toContain('.mp4');
+  });
+});
+
+describe('the byte table is the byte-wise projection of the code-point predicate', () => {
+  const TEXT_CONTROLS = [0x08, 0x09, 0x0a, 0x0c, 0x0d, 0x1b];
+
+  it('judges all 256 single bytes exactly as the predicate reads', () => {
+    const disagreed: number[] = [];
+    for (let byte = 0; byte < 256; byte++) {
+      const expected = TEXT_CONTROLS.includes(byte) ? false : byte < 0x20 || byte === 0x7f;
+      if (looksBinary(Buffer.from([byte])) !== expected) disagreed.push(byte);
+    }
+
+    expect(disagreed).toEqual([]);
   });
 });

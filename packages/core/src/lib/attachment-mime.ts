@@ -98,6 +98,10 @@ function isBinaryControl(codePoint: number): boolean {
   return codePoint < 0x20 || codePoint === 0x7f;
 }
 
+// cm:guard this table must stay the byte-wise projection of isBinaryControl — it exists only because an indexed scan over 10 MB (UPLOADS_MAX_BYTES) costs ~20 ms where the same loop through the Set costs ~400 ms of blocked event loop, and two predicates that disagree is the bug this file already paid for once (ISS-957)
+const BINARY_BYTE = new Uint8Array(256);
+for (let byte = 0; byte < 256; byte++) BINARY_BYTE[byte] = isBinaryControl(byte) ? 1 : 0;
+
 /**
  * The text a UTF-16 byte-order mark promises, or null when there is no BOM or
  * the bytes do not actually decode under it.
@@ -139,8 +143,8 @@ export function looksBinary(bytes: Buffer): boolean {
     return false;
   }
   // cm:guard scan every byte, never a prefix — a window means the payload only has to start past it, and 8 KB of ASCII in front of an ELF header is not a hard file to make. The buffer is already whole in memory and capped by UPLOADS_MAX_BYTES, so there is nothing to stream around.
-  for (const byte of bytes) {
-    if (isBinaryControl(byte)) return true;
+  for (let i = 0; i < bytes.length; i++) {
+    if (BINARY_BYTE[bytes[i] as number] === 1) return true;
   }
   return false;
 }

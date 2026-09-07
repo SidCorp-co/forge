@@ -45,6 +45,7 @@ let persistIssueAttachmentsFromBase64: typeof import('../../src/issues/attachmen
 let persistDecodedCommentAttachments: typeof import('../../src/comments/attachment-service.js').persistDecodedCommentAttachments;
 let createUploadTicket: typeof import('../../src/uploads/ticket-service.js').createUploadTicket;
 let mimeFromName: typeof import('../../src/lib/attachment-mime.js').mimeFromName;
+let createDownloadTicket: typeof import('../../src/uploads/download-ticket-service.js').createDownloadTicket;
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -76,6 +77,8 @@ beforeAll(async () => {
     .persistDecodedCommentAttachments;
   createUploadTicket = (await import('../../src/uploads/ticket-service.js')).createUploadTicket;
   mimeFromName = (await import('../../src/lib/attachment-mime.js')).mimeFromName;
+  createDownloadTicket = (await import('../../src/uploads/download-ticket-service.js'))
+    .createDownloadTicket;
 
   app = new Hono<{ Variables: RequestIdVars }>();
   app.use('*', requestId());
@@ -430,5 +433,30 @@ describe('the presigned PUT resolves the type from the bytes it receives', () =>
     expect(body.details?.allowed?.extensions).toEqual(expect.arrayContaining(['.txt']));
     expect(await countAttachments(issueId)).toBe(0);
     expect(blobsFor(issueId)).toEqual([]);
+  });
+});
+
+describe('the download-ticket route serves uploaded bytes with the same sniffing rule as its twins', () => {
+  it('sends nosniff, as lib/attachment-headers.ts does on every bearer-guarded route', async () => {
+    const { issueId, token, project } = await seed();
+    expect((await upload(issueId, token, 'gate.log', PLAIN_LOG)).status).toBe(201);
+    const rows = await harness.db.execute<{ id: string }>(sql`
+      SELECT id FROM issue_attachments WHERE issue_id = ${issueId} AND name = 'gate.log'
+    `);
+    const attachmentId = (rows[0] as { id: string }).id;
+    const ticket = await createDownloadTicket({
+      targetType: 'issue',
+      attachmentId,
+      projectId: project.id,
+      issuedToUserId: null,
+      issuedToDeviceId: null,
+    });
+
+    const res = await app.request(`/api/uploads/download/${ticket.id}`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('text/plain');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('content-disposition')).toContain('attachment');
   });
 });
