@@ -4,6 +4,8 @@
 import { apiClient } from "@/lib/api/client";
 import type {
   IngestDocument,
+  ModuleDiagram,
+  ModuleDiagramKind,
   IngestResult,
   KnowledgeEdge,
   KnowledgeEntry,
@@ -13,8 +15,6 @@ import type {
 } from "./types";
 
 export const knowledgeApi = {
-  // --- Knowledge Entries (P1 REST /api/projects/:id/knowledge) ---
-
   /** `GET /api/projects/:id/knowledge?kind=&injection=` — body-free list. */
   listEntries: (projectId: string, params?: { kind?: string; injection?: string }) => {
     const sp = new URLSearchParams();
@@ -46,7 +46,11 @@ export const knowledgeApi = {
       { method: "DELETE" },
     ),
 
-  // --- Knowledge Edges ---
+  /** `GET /api/projects/:id/module-diagrams/:kind` — generated on the read; a refusal is a 409 carrying its code. */
+  getModuleDiagram: (projectId: string, kind: ModuleDiagramKind) =>
+    apiClient<ModuleDiagram>(
+      `/projects/${encodeURIComponent(projectId)}/module-diagrams/${kind}`,
+    ),
 
   /** `GET /api/knowledge-edges?projectId=&limit=` — newest first. */
   listEdges: (projectId: string, limit = 200) =>

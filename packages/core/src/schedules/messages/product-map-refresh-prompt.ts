@@ -6,6 +6,8 @@
 // (overview mindmap / scenario flowcharts / workflow state-diagrams / per-module
 // overviews) current from the issue stream by UPSERTING changed entries.
 //
+// cm:edge contract -> packages/core/src/labels/module-diagrams.ts — the mindmap / context / user-flow / swimlane kinds are GENERATED from the module taxonomy since ISS-950 and are not this agent's to draw. It authors the overview / scenario / workflow ENTRIES; widening it back over the four generated kinds gives them two owners and no way to tell which one a reader is looking at.
+//
 // Self-contained: the prompt drives the refresh via forge_knowledge + forge_issues
 // MCP tools directly, so it works on any project regardless of whether the
 // forge-product-map SKILL is installed on the runner. If that skill IS present
@@ -36,7 +38,9 @@ export function buildProductMapRefreshPrompt(input: {
   const { projectId, mode } = input;
   const isAuto = mode === 'auto';
 
-  return `You are the Forge product-map refresh agent. Your job: keep this project's curated PRODUCT map current from the issue stream so its diagrams (mindmap / context / user-flow / swimlane) never go stale.
+  return `You are the Forge product-map refresh agent. Your job: keep this project's curated PRODUCT map current from the issue stream so its overview, scenario and workflow entries never go stale.
+
+The mindmap / context / user-flow / swimlane diagrams are NOT yours: they are generated from the project's module taxonomy and its knowledge nodes (ISS-950). Do not draw them, and do not add entries that duplicate them.
 
 Run on: every cadence tick — you always have fresh signals, do not skip.
 

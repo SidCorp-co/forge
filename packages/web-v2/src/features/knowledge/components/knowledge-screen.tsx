@@ -1,8 +1,6 @@
 "use client";
 
-// Knowledge workspace — 7-inner-tab shell replacing the old edges-only screen.
-// Tabs: Overview · Scenarios · Workflow · Rules · References · Graph · Memory
-// Inner tab state is local (useState) — outer Library tab already URL deep-links via ?tab=.
+// cm:why inner tab state is local `useState` and not a URL param — the outer Library tab already deep-links via `?tab=`, and a second one would need the two to agree on precedence for a link nobody sends.
 import { useState } from "react";
 import {
   EmptyState,
@@ -16,13 +14,15 @@ import { MemoryScreen } from "@/features/memory/components/memory-screen";
 import { formatApiError } from "@/lib/api/error";
 import { useKnowledgeEntries } from "../hooks";
 import { EntryCard } from "./entry-card";
+import { DiagramsTab } from "./diagrams-tab";
 import { GraphTab } from "./graph-tab";
 import { RulesTab } from "./rules-tab";
 
-type KTab = "overview" | "scenarios" | "workflow" | "rules" | "references" | "graph" | "memory";
+type KTab = "overview" | "diagrams" | "scenarios" | "workflow" | "rules" | "references" | "graph" | "memory";
 
 const KTABS: TabItem[] = [
   { value: "overview", label: "Overview" },
+  { value: "diagrams", label: "Diagrams" },
   { value: "scenarios", label: "Scenarios" },
   { value: "workflow", label: "Workflow" },
   { value: "rules", label: "Rules" },
@@ -57,6 +57,7 @@ export function KnowledgeScreen({ scope }: KnowledgeScreenProps) {
 
       <div className="mt-6">
         {ktab === "overview" && <OverviewTab projectId={projectId} canManage={canManage} />}
+        {ktab === "diagrams" && <DiagramsTab projectId={projectId} />}
         {ktab === "scenarios" && (
           <EntriesTab
             projectId={projectId}

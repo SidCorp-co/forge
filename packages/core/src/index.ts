@@ -94,6 +94,7 @@ import { registerStaleDetector } from './jobs/stale-detector.js';
 import { knowledgeIngestRoutes } from './knowledge/ingest-routes.js';
 import { knowledgeRoutes } from './knowledge/routes.js';
 import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
+import { moduleDiagramRoutes } from './labels/module-diagram-routes.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
 import { isEnabled } from './lib/feature-flags.js';
 import { logger } from './logger.js';
@@ -300,8 +301,6 @@ app.route('/api/auth', logoutRoutes);
 // cm:why ISS-158 — this router only ISSUES the fresh-auth proof; the gating lives on the sensitive routes themselves (PAT creation, device revoke, password change) via `requireFreshAuth()`, so mounting it here gates nothing on its own.
 app.route('/api/auth', reauthRoutes);
 app.route('/api', patRoutes);
-// ISS-314 — OAuth/OIDC (GitHub + Google + generic OIDC). Internally gated
-// by `socialAuth` feature flag; safe to mount unconditionally.
 app.route('/api/auth', oauthRoutes);
 // cm:guard mount projectHealthRoutes BEFORE projectRoutes — the latter's `GET /:id` carries a `z.uuid()` validator that 400-rejects the literal "health" segment, so the wrong order turns this route into a validation error rather than a 404 anyone would notice
 app.route('/api/projects', projectHealthRoutes);
@@ -341,6 +340,7 @@ app.route('/api/invitations', invitationRoutes);
 app.route('/api/projects', issueProjectRoutes);
 app.route('/api/projects', searchRoutes);
 app.route('/api/projects', labelProjectRoutes);
+app.route('/api/projects', moduleDiagramRoutes);
 app.route('/api/projects', uxContractProjectRoutes);
 app.route('/api/projects', projectActivityRoutes);
 app.route('/api/projects', jobProjectRoutes);

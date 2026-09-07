@@ -27,6 +27,10 @@ const FRIENDLY_CODES: Record<string, string> = {
   MODULE_IN_USE: 'Other modules or issues still depend on this one.',
   PRIMARY_NOT_MODULE: 'Only a module can be an issue’s primary.',
   MULTIPLE_PRIMARY: 'An issue has at most one primary module.',
+  // cm:why ISS-950 — a generator that cannot draw says which of the three reasons it is, because "no diagram" is a different instruction to the reader in each case
+  NO_MODULES: 'This project has no modules yet — create one to draw its diagrams.',
+  NO_MODULE_FLOWS: 'No module stores a flow yet — add a mermaid block to a module’s knowledge node.',
+  UNPARSABLE_MODULE_FLOW: 'A module stores a flow this generator cannot read.',
 };
 
 export function formatApiError(err: unknown): string {

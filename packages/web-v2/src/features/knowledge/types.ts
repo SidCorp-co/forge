@@ -4,8 +4,6 @@
 // Knowledge entries (ISS-566/P2): shapes mirrored verbatim from
 // `packages/core/src/knowledge/service.ts` (NOT in @forge/contracts).
 
-// --- Knowledge Entries (P1 REST /api/projects/:id/knowledge) ---
-
 export type KnowledgeKind =
   | "overview"
   | "scenario"
@@ -66,8 +64,6 @@ export interface UpsertKnowledgeResult {
   truncated: boolean;
 }
 
-// --- Knowledge Edges ---
-
 export interface KnowledgeEdge {
   id: string;
   projectId: string;
@@ -96,4 +92,15 @@ export interface IngestResult {
   processed: number;
   totalChunks: number;
   skipped: Array<{ id: string; reason: string }>;
+}
+
+/** ISS-950 — the four generated module diagrams. `mermaid` is the whole diagram; there is no partial one. */
+export const MODULE_DIAGRAM_KINDS = ["mindmap", "context", "user-flow", "swimlane"] as const;
+export type ModuleDiagramKind = (typeof MODULE_DIAGRAM_KINDS)[number];
+
+export interface ModuleDiagram {
+  kind: ModuleDiagramKind;
+  mermaid: string;
+  moduleCount: number;
+  generatedAt: string;
 }
