@@ -83,6 +83,11 @@ describe('resolveDeclaredEntryCriteria', () => {
     readPipelineConfigMock.mockResolvedValue(null);
     expect(await resolveDeclaredEntryCriteria(PROJECT_ID, 'closed')).toEqual([]);
   });
+
+  it('declares nothing when the config read THROWS, so a broken read cannot freeze every status write on the project', async () => {
+    readPipelineConfigMock.mockRejectedValue(new Error('connection terminated'));
+    expect(await resolveDeclaredEntryCriteria(PROJECT_ID, 'closed')).toEqual([]);
+  });
 });
 
 describe('findUnmetEntryCriteria', () => {

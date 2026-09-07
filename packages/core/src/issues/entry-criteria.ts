@@ -22,6 +22,7 @@
 import { eq } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
+import { logger } from '../logger.js';
 import { readPipelineConfig } from '../pipeline/autonomous-project.js';
 import { findMissingWorkEvidence } from '../pipeline/work-evidence.js';
 import type { EntryCriterionKey } from './entry-criteria-keys.js';
@@ -77,13 +78,18 @@ const CRITERIA: Record<EntryCriterionKey, Criterion> = {
  * SELECT inside every status transition's transaction is what ISS-863 removed
  * from `merged-at.ts`, and re-adding one here would put it back.
  */
-// cm:guard an unreadable config declares NOTHING, on purpose. This gate refuses writes, so failing closed on a config nobody can see would freeze every transition on the project — the opposite direction from `assertIssueNeverEnteredPipeline`, whose failure mode is granting an exemption rather than blocking the tracker.
+// cm:guard an unreadable config declares NOTHING, on purpose, and that covers a THROWN read as well as a `null` one. This gate refuses writes, so failing closed on a config nobody can see would freeze every status write on the project — the same direction `checkTransitionEvidence` fails, and the opposite of `assertIssueNeverEnteredPipeline`, whose failure mode is granting an exemption rather than blocking the tracker.
 export async function resolveDeclaredEntryCriteria(
   projectId: string,
   toStatus: IssueStatus,
 ): Promise<EntryCriterionKey[]> {
-  const config = await readPipelineConfig(projectId);
-  return config?.statusEntryCriteria?.[toStatus] ?? [];
+  try {
+    const config = await readPipelineConfig(projectId);
+    return config?.statusEntryCriteria?.[toStatus] ?? [];
+  } catch (err) {
+    logger.warn({ err, projectId, toStatus }, 'entry_criteria.read_failed');
+    return [];
+  }
 }
 
 /**

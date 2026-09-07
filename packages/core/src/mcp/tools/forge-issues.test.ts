@@ -93,6 +93,7 @@ type UpdateIssueFieldsInput = {
   issueId: string;
   updates: Record<string, unknown>;
   labelIds?: Array<{ labelId: string; isPrimary: boolean }>;
+  expect?: { sessionContext: Record<string, unknown> | null };
   actor: { type: string; id: string };
 };
 const updateIssueFieldsMock = vi.fn(async (_input: UpdateIssueFieldsInput) => ({}) as never);
@@ -141,8 +142,13 @@ vi.mock('../../pipeline/hooks.js', () => ({
 // mark_merged tests don't need to stage extra queries; the refusal path tests
 // below override per-call.
 const findMissingWorkEvidenceMock = vi.fn<() => Promise<string | null>>(async () => null);
+// cm:why `collectWorkEvidence` is mocked beside it because ISS-959's merge mark fills an absent `commit` from the recorded handoff sha, so every `mark_merged` with no `commit` now reaches this module — unmocked it would consume reads staged for `findIssueById` and the failure would surface there instead of here
+const collectWorkEvidenceMock = vi.fn<() => Promise<{ handoffCommitSha: string | null }>>(
+  async () => ({ handoffCommitSha: null }),
+);
 vi.mock('../../pipeline/work-evidence.js', () => ({
   findMissingWorkEvidence: (...args: unknown[]) => findMissingWorkEvidenceMock(...(args as [])),
+  collectWorkEvidence: (...args: unknown[]) => collectWorkEvidenceMock(...(args as [])),
 }));
 
 vi.mock('../../ws/server.js', () => ({
@@ -231,6 +237,7 @@ const baseIssueRow = {
   sessionContext: null,
   releaseNotes: null,
   mergedAt: null,
+  mergedCommitSha: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -1123,6 +1130,48 @@ describe('forge_issues tool', () => {
     );
   });
 
+  it("update carries `expect` through as the write's precondition, not as a field to write", async () => {
+    const tool = forgeIssuesTool({
+      principal: fakePrincipal,
+      projectSlug: PROJECT_SLUG,
+    });
+    selectLimit.mockResolvedValueOnce([baseIssueRow]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, plan: 'new plan' }]);
+
+    await tool.handler({
+      action: 'update',
+      documentId: ISSUE_ID,
+      data: { plan: 'new plan', expect: { sessionContext: { lease: { holder: 'a' } } } },
+    });
+
+    const call = updateIssueFieldsMock.mock.lastCall?.[0];
+    expect(call?.expect).toEqual({ sessionContext: { lease: { holder: 'a' } } });
+    expect(call?.updates).not.toHaveProperty('expect');
+  });
+
+  // cm:guard the refusal must carry the CURRENT value, because MCP has no `details` channel and an agent told only "you lost" has one move left — a blind unconditional overwrite, which is the write the refusal exists to stop
+  it('update refuses a mismatched `expect` with the same code REST answers, naming the value the field now holds', async () => {
+    const tool = forgeIssuesTool({
+      principal: fakePrincipal,
+      projectSlug: PROJECT_SLUG,
+    });
+    selectLimit.mockResolvedValueOnce([baseIssueRow]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    const { SessionContextExpectMismatch } = await import('../../issues/update-service.js');
+    updateIssueFieldsMock.mockRejectedValueOnce(
+      new SessionContextExpectMismatch({ lease: { holder: 'session-b' } }),
+    );
+
+    await expect(
+      tool.handler({
+        action: 'update',
+        documentId: ISSUE_ID,
+        data: { plan: 'new plan', expect: { sessionContext: { lease: { holder: 'a' } } } },
+      }),
+    ).rejects.toThrow(/SESSION_CONTEXT_MISMATCH[\s\S]*session-b/);
+  });
+
   it('update with status routes through state machine and rejects illegal transition', async () => {
     const tool = forgeIssuesTool({
       principal: fakePrincipal,
@@ -1205,6 +1254,8 @@ describe('forge_issues tool', () => {
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     // cm:why the third read is the project's pipeline mode: a `reopen` on an autonomous project is rewritten to `open` before the write (issues/autonomous-park.ts), and an empty agentConfig is the staged answer that leaves this transition alone
     selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]);
+    // cm:why two project reads, in this order: the autonomous-park rewrite reads first and the ISS-959 criteria read follows, so swapping them hands the park resolver a config it did not ask for
+    selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]);
     updateReturning.mockResolvedValueOnce([
       { id: ISSUE_ID, reopenCount: 1, updatedAt: new Date() },
     ]);
@@ -1227,6 +1278,8 @@ describe('forge_issues tool', () => {
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
     // membership
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    // cm:why the project read before the write is ISS-959's declared entry criteria: `resolveDeclaredEntryCriteria` reads `pipelineConfig` OUTSIDE the transaction, and an empty agentConfig is the answer that declares nothing and leaves the transition alone
+    selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]);
     // conditional UPDATE returning the new row
     updateReturning.mockResolvedValueOnce([
       { id: ISSUE_ID, reopenCount: 0, updatedAt: new Date() },
@@ -1314,6 +1367,8 @@ describe('forge_issues tool', () => {
     });
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
+    // cm:why the ISS-959 criteria read sits BEFORE the conditional UPDATE, so a row staged after it answers the stale re-read instead and the refusal comes back naming the wrong cause
+    selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]);
     updateReturning.mockResolvedValueOnce([]);
 
     await expect(
@@ -1446,14 +1501,14 @@ describe('forge_issues tool', () => {
         'commentCreated',
         expect.objectContaining({ issueId: ISSUE_ID, commentId: auditCommentRow.id }),
       );
-      // WS issue broadcast with mergedAt field
+      // cm:guard both columns in one broadcast: the timestamp and the commit are ONE stamp (ISS-959), so a reader handed only `mergedAt` cannot tell a mark that recorded its commit from one that did not
       expect(hooks.emit).toHaveBeenCalledWith(
         'issueUpdated',
         expect.objectContaining({
           issueId: ISSUE_ID,
-          fields: ['mergedAt'],
+          fields: ['mergedAt', 'mergedCommitSha'],
           before: { mergedAt: null },
-          after: { mergedAt: STAMPED },
+          after: { mergedAt: STAMPED, mergedCommitSha: null },
         }),
       );
     });
@@ -1555,10 +1610,13 @@ describe('forge_issues tool', () => {
       expect(hooks.emit).toHaveBeenCalledWith(
         'issueUpdated',
         expect.objectContaining({
-          fields: ['mergedAt'],
+          fields: ['mergedAt', 'mergedCommitSha'],
           before: { mergedAt: STAMPED },
-          after: { mergedAt: null },
+          after: { mergedAt: null, mergedCommitSha: null },
         }),
+      );
+      expect(updateSet).toHaveBeenCalledWith(
+        expect.objectContaining({ mergedAt: null, mergedCommitSha: null }),
       );
     });
 

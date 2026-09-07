@@ -375,7 +375,11 @@ export async function transitionIssueStatus(
 
   // cm:guard read OUTSIDE the transaction and passed in, never read from inside `checkTransitionEvidence` — ISS-863 removed a `projects` SELECT from inside every status transition's transaction and this would put one back. It sits beside the two project reads this path already does (`resolveAutonomousParkTarget`, `resolveAgentCloseTarget`).
   // cm:guard keyed on `requestedStatus`, matching the status `checkTransitionEvidence` is handed below — a project declares criteria against the status an actor ASKS for, and reading `toStatus` here would check the park rewrite's target instead of the ask
-  const declaredCriteria = await resolveDeclaredEntryCriteria(issue.projectId, requestedStatus);
+  // cm:guard the `skip` arm reads NOTHING, and that is a cost rule, not an optimisation: `checkTransitionEvidence` exempts `skip:true` entirely, so a read there is a `projects` SELECT whose answer is discarded — on the orchestrator's chain, which is the highest-volume writer of statuses in the product
+  const declaredCriteria =
+    options.skip === true
+      ? []
+      : await resolveDeclaredEntryCriteria(issue.projectId, requestedStatus);
 
   const txResult = await executeTransitionWrite({
     issue,
