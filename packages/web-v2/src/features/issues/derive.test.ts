@@ -145,9 +145,9 @@ describe("statusToTone (ISS-509 — chip↔dashboard color consistency)", () => 
 	});
 
 	it("reconciles the statuses that used to disagree across dashboards", () => {
-		expect(statusToTone("reopen")).toBe("active"); // was red "blocked/failed" on one dashboard
-		expect(statusToTone("on_hold")).toBe("blocked"); // calm ink, NOT red
-		expect(statusToTone("needs_info")).toBe("attention"); // amber, a human must act
+		expect(statusToTone("reopen")).toBe("active");
+		expect(statusToTone("on_hold")).toBe("blocked");
+		expect(statusToTone("needs_info")).toBe("attention");
 	});
 });
 
@@ -205,16 +205,13 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 			row({ id: "b", status: "approved" }),
 		];
 		const result = bulkAllowedStatuses(rows);
-		// a target is offered only if valid for BOTH rows
 		for (const s of result) {
 			expect(allowedTransitions("open")).toContain(s);
 			expect(allowedTransitions("approved")).toContain(s);
 		}
-		// never the current status of either row, never draft
 		expect(result).not.toContain("open");
 		expect(result).not.toContain("approved");
 		expect(result).not.toContain("draft");
-		// a commonly-valid target survives
 		expect(result).toContain("on_hold");
 	});
 	it("narrows hard when a draft row is in the mix (a draft's five exits bound the whole selection)", () => {
@@ -567,10 +564,62 @@ describe("deriveCommentKind", () => {
 		["Just a normal note here", "comment"],
 	];
 	it.each(cases)("classifies %j as %s", (body, kind) => {
-		expect(deriveCommentKind(body)).toBe(kind);
+		expect(deriveCommentKind({ body })).toEqual({ kind, form: "prefix" });
 	});
 	it("has badge meta for every kind it returns", () => {
 		for (const [, kind] of cases) {
+			expect(
+				COMMENT_KIND_META[kind as keyof typeof COMMENT_KIND_META],
+			).toBeDefined();
+		}
+	});
+
+	const templates: [string, string][] = [
+		["forge-triage", "triage"],
+		["forge-plan", "plan"],
+		["forge-qa-report", "qa"],
+		["forge-outcome", "outcome"],
+		["forge-blocked", "blocked"],
+		["forge-close", "released"],
+	];
+	it.each(templates)("reads %s off the template alone", (template, kind) => {
+		expect(deriveCommentKind({ body: "<p>nothing to match</p>", template })).toEqual(
+			{ kind, form: "component" },
+		);
+	});
+
+	it.each([
+		["approve", "approved"],
+		["request-changes", "changes"],
+		["abstain", "review"],
+	])("reads a forge-review verdict=%s as %s", (verdict, kind) => {
+		const body = `<forge-review sha="abc1234" verdict="${verdict}"><forge-summary><p>ok</p></forge-summary></forge-review>`;
+		expect(deriveCommentKind({ body, template: "forge-review" })).toEqual({
+			kind,
+			form: "component",
+		});
+	});
+
+	it("falls back to review when the verdict attribute is unreadable", () => {
+		expect(
+			deriveCommentKind({
+				body: "<forge-review sha=\"abc1234\"></forge-review>",
+				template: "forge-review",
+			}),
+		).toEqual({ kind: "review", form: "component" });
+	});
+
+	it("falls back to the prose form for a root that names no lifecycle kind", () => {
+		expect(
+			deriveCommentKind({
+				body: "<forge-symptom><forge-opening><p>Plan written</p></forge-opening></forge-symptom>",
+				template: "forge-symptom",
+			}),
+		).toEqual({ kind: "plan", form: "prefix" });
+	});
+
+	it("has badge meta for every kind a template can produce", () => {
+		for (const [, kind] of templates) {
 			expect(
 				COMMENT_KIND_META[kind as keyof typeof COMMENT_KIND_META],
 			).toBeDefined();
