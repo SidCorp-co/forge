@@ -13,19 +13,26 @@ const storagePut = vi.fn(async (key: string, bytes: Buffer, _mime: string) => ({
   path: `local:${key}`,
   size: bytes.byteLength,
 }));
+const storageDelete = vi.fn(async (_path: string) => undefined);
 vi.mock('../storage/index.js', () => ({
   getStorage: () => ({
     put: storagePut,
     get: vi.fn(),
-    delete: vi.fn(),
+    delete: storageDelete,
   }),
   isEnoent: () => false,
 }));
 
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
+const selectWhere = vi.fn(async () => [] as Array<{ id: string; path: string }>);
+const deleteWhere = vi.fn(async () => undefined);
 vi.mock('../db/client.js', () => ({
-  db: { insert: vi.fn(() => ({ values: insertValues })) },
+  db: {
+    insert: vi.fn(() => ({ values: insertValues })),
+    select: vi.fn(() => ({ from: () => ({ where: selectWhere }) })),
+    delete: vi.fn(() => ({ where: deleteWhere })),
+  },
 }));
 
 const safeRecordActivity = vi.fn();
@@ -160,25 +167,85 @@ describe('persistIssueAttachment', () => {
   });
 
   it('persists office/data MIME types (csv, docx, xls, xlsx)', async () => {
-    const officeMimes = [
-      'text/csv',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    const cases = [
+      { mime: 'text/csv', bytes: Buffer.from('a,b\n1,2\n') },
+      {
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        bytes: TINY_BYTES,
+      },
+      { mime: 'application/vnd.ms-excel', bytes: TINY_BYTES },
+      {
+        mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        bytes: TINY_BYTES,
+      },
     ];
-    for (const mime of officeMimes) {
+    for (const { mime, bytes } of cases) {
       insertReturning.mockResolvedValueOnce([makeAttachmentRow({ name: 'doc', mime })]);
       const result = await persistIssueAttachment({
         issueId: ISSUE_ID,
         name: 'doc',
         mime,
-        bytes: TINY_BYTES,
+        bytes,
         uploaderId: UPLOADER_ID,
         uploaderAgency: 'human',
       });
       expect(result.mime).toBe(mime);
     }
-    expect(storagePut).toHaveBeenCalledTimes(officeMimes.length);
+    expect(storagePut).toHaveBeenCalledTimes(cases.length);
+  });
+
+  it('stores a plain-text .log as text/plain, whatever the extension table knows', async () => {
+    insertReturning.mockResolvedValueOnce([
+      makeAttachmentRow({ name: 'gate.log', mime: 'text/plain' }),
+    ]);
+    const result = await persistIssueAttachment({
+      issueId: ISSUE_ID,
+      name: 'gate.log',
+      mime: 'application/octet-stream',
+      bytes: Buffer.from('vitest run\n480 files passed\n'),
+      uploaderId: UPLOADER_ID,
+      uploaderAgency: 'human',
+    });
+    expect(result.mime).toBe('text/plain');
+    expect(storagePut).toHaveBeenCalledWith(expect.any(String), expect.any(Buffer), 'text/plain');
+  });
+
+  it('stores a plain-text .sql as text/plain', async () => {
+    insertReturning.mockResolvedValueOnce([
+      makeAttachmentRow({ name: 'schema.sql', mime: 'text/plain' }),
+    ]);
+    const result = await persistIssueAttachment({
+      issueId: ISSUE_ID,
+      name: 'schema.sql',
+      mime: 'application/octet-stream',
+      bytes: Buffer.from('ALTER TABLE issues ADD COLUMN merged_at timestamptz;\n'),
+      uploaderId: UPLOADER_ID,
+      uploaderAgency: 'human',
+    });
+    expect(result.mime).toBe('text/plain');
+  });
+
+  it('refuses a .log whose bytes are binary, naming the allowed set', async () => {
+    await expect(
+      persistIssueAttachment({
+        issueId: ISSUE_ID,
+        name: 'core.log',
+        mime: 'text/plain',
+        bytes: Buffer.from([0x00, 0x01, 0x02, 0x03]),
+        uploaderId: UPLOADER_ID,
+        uploaderAgency: 'human',
+      }),
+    ).rejects.toMatchObject({
+      code: 'MIME_NOT_ALLOWED',
+      details: {
+        reason: 'not-text',
+        allowed: {
+          mimes: expect.arrayContaining(['text/plain', 'image/png']),
+          extensions: expect.arrayContaining(['.txt', '.png']),
+        },
+      },
+    });
+    expect(storagePut).not.toHaveBeenCalled();
   });
 
   it('throws EMPTY_FILE for zero-byte input', async () => {
@@ -226,24 +293,69 @@ describe('persistIssueAttachment', () => {
 });
 
 describe('persistDecodedIssueAttachments', () => {
-  it('collects MIME_NOT_ALLOWED into errors and persists the rest', async () => {
+  it('refuses the whole batch when one member is unacceptable, persisting none', async () => {
     insertReturning.mockResolvedValueOnce([makeAttachmentRow({ name: 'good.png' })]);
 
     const result = await persistDecodedIssueAttachments(
       ISSUE_ID,
       [
-        { name: 'bad.exe', mime: 'application/x-msdownload', bytes: TINY_BYTES },
         { name: 'good.png', mime: 'image/png', bytes: TINY_BYTES },
+        { name: 'core.log', mime: 'text/plain', bytes: Buffer.from([0x00, 0x01]) },
+        { name: 'notes.md', mime: 'text/markdown', bytes: Buffer.from('# hi\n') },
       ],
       UPLOADER_ID,
       'human',
     );
 
-    expect(result.persisted).toHaveLength(1);
-    expect(result.persisted[0]?.name).toBe('good.png');
+    expect(result.persisted).toHaveLength(0);
+    expect(storagePut).not.toHaveBeenCalled();
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]?.code).toBe('MIME_NOT_ALLOWED');
-    expect(result.errors[0]?.index).toBe(0);
+    expect(result.errors[0]?.index).toBe(1);
+    expect(result.errors[0]?.details).toMatchObject({ reason: 'not-text' });
+  });
+
+  it('rolls back the members that landed when a later one fails mid-persist', async () => {
+    insertReturning
+      .mockResolvedValueOnce([makeAttachmentRow({ name: 'first.png', mime: 'image/png' })])
+      .mockRejectedValueOnce(new Error('insert exploded'));
+    selectWhere.mockResolvedValueOnce([{ id: ATTACHMENT_ID, path: 'local:issues/first.png' }]);
+
+    const result = await persistDecodedIssueAttachments(
+      ISSUE_ID,
+      [
+        { name: 'first.png', mime: 'image/png', bytes: TINY_BYTES },
+        { name: 'second.png', mime: 'image/png', bytes: TINY_BYTES },
+      ],
+      UPLOADER_ID,
+      'human',
+    );
+
+    expect(result.persisted).toHaveLength(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.index).toBe(1);
+    expect(storageDelete).toHaveBeenCalledWith('local:issues/first.png');
+    expect(deleteWhere).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists every member when all of them pass', async () => {
+    insertReturning
+      .mockResolvedValueOnce([makeAttachmentRow({ name: 'good.png', mime: 'image/png' })])
+      .mockResolvedValueOnce([makeAttachmentRow({ name: 'gate.log', mime: 'text/plain' })]);
+
+    const result = await persistDecodedIssueAttachments(
+      ISSUE_ID,
+      [
+        { name: 'good.png', mime: 'image/png', bytes: TINY_BYTES },
+        { name: 'gate.log', mime: 'application/octet-stream', bytes: Buffer.from('ok\n') },
+      ],
+      UPLOADER_ID,
+      'human',
+    );
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.persisted).toHaveLength(2);
+    expect(storagePut).toHaveBeenCalledTimes(2);
   });
 });
 

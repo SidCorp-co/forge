@@ -6,7 +6,7 @@ import {
   AttachmentError,
   listCommentAttachmentsForIssue,
   type PersistedCommentAttachment,
-  persistCommentAttachment,
+  persistDecodedCommentAttachments,
 } from '../../comments/attachment-service.js';
 import { pgConstraintName, pgErrorCode } from '../../comments/error-mapping.js';
 import {
@@ -108,9 +108,7 @@ function serialize(
   };
 }
 
-// Strict base64 charset check. Buffer.from('xx', 'base64') silently drops
-// invalid characters, so we validate the input string first to surface a
-// useful BAD_REQUEST instead of writing a truncated blob to disk.
+// cm:guard validate the charset BEFORE decoding, never after: `Buffer.from(s, 'base64')` drops invalid characters silently rather than throwing, so a malformed payload decodes to a short buffer and the only remaining symptom is a truncated blob already written to storage.
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 function decodeBase64Strict(input: string): Buffer | null {
   const trimmed = input.trim().replace(/\s+/g, '');
@@ -233,42 +231,13 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
         parentId: inserted.parentId,
       });
 
-      const persistedAttachments: PersistedCommentAttachment[] = [];
-      const attachmentErrors: Array<{
-        index: number;
-        name: string;
-        code: string;
-        message: string;
-      }> = [];
-      for (const [i, d] of decoded.entries()) {
-        try {
-          const row = await persistCommentAttachment({
-            commentId: inserted.id,
-            name: d.name,
-            mime: d.mime,
-            bytes: d.bytes,
-            uploaderId: principal.userId,
-            uploaderDeviceId: authorDeviceId,
-          });
-          persistedAttachments.push(row);
-        } catch (err) {
-          if (err instanceof AttachmentError) {
-            attachmentErrors.push({
-              index: i,
-              name: d.name,
-              code: err.code,
-              message: err.message,
-            });
-          } else {
-            attachmentErrors.push({
-              index: i,
-              name: d.name,
-              code: 'INTERNAL',
-              message: err instanceof Error ? err.message : String(err),
-            });
-          }
-        }
-      }
+      const { persisted: persistedAttachments, errors: attachmentErrors } =
+        await persistDecodedCommentAttachments(
+          inserted.id,
+          decoded,
+          principal.userId,
+          authorDeviceId,
+        );
 
       const result: Record<string, unknown> = serialize(inserted as CommentRow);
       result.attachments = persistedAttachments;

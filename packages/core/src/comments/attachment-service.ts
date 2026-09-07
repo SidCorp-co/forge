@@ -1,42 +1,64 @@
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, inArray } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { commentAttachments, comments } from '../db/schema.js';
+import {
+  allowedSetForTarget,
+  mimeRefusalMessage,
+  resolveAttachmentMime,
+  safeName,
+} from '../lib/attachment-mime.js';
 import { getStorage } from '../storage/index.js';
 import type { CommentAttachmentLite } from './tree.js';
 
-export const ALLOWED_MIMES = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/gif',
-  'image/webp',
-  'image/svg+xml',
-  'text/html',
-  'application/pdf',
-  'text/plain',
-  'text/markdown',
-  'text/csv',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-]);
+export { safeName };
 
-export function safeName(name: string): string {
-  // Strip path separators; keep extension. Length-cap.
-  const cleaned = name.replace(/[\\/]+/g, '_').replace(/[^A-Za-z0-9._-]/g, '_');
-  return cleaned.slice(0, 200) || 'file';
-}
+export type CommentAttachmentErrorCode =
+  | 'MIME_NOT_ALLOWED'
+  | 'FILE_TOO_LARGE'
+  | 'EMPTY_FILE'
+  | 'INVALID_NAME';
 
 export class AttachmentError extends Error {
-  readonly code: 'MIME_NOT_ALLOWED' | 'FILE_TOO_LARGE' | 'EMPTY_FILE' | 'INVALID_NAME';
-  constructor(
-    code: 'MIME_NOT_ALLOWED' | 'FILE_TOO_LARGE' | 'EMPTY_FILE' | 'INVALID_NAME',
-    message: string,
-  ) {
+  readonly code: CommentAttachmentErrorCode;
+  // cm:guard this rides to the client as `body.details` (middleware/error.ts serializes `cause.details`), so it must stay free of storage paths, uploader ids and anything else the refusal does not need
+  readonly details: unknown;
+  constructor(code: CommentAttachmentErrorCode, message: string, details?: unknown) {
     super(message);
     this.code = code;
+    this.details = details;
     this.name = 'AttachmentError';
   }
+}
+
+/**
+ * Everything a comment attachment is refused for, decided without touching
+ * storage or the DB. Returns the type the row will be stored under, read from
+ * the BYTES and only then narrowed by the name (ISS-957).
+ */
+export function validateCommentAttachment(input: {
+  name: string;
+  mime: string;
+  bytes: Buffer;
+}): string {
+  if (!input.name) throw new AttachmentError('INVALID_NAME', 'name is empty after sanitisation');
+  if (input.bytes.byteLength <= 0) throw new AttachmentError('EMPTY_FILE', 'empty file');
+  if (input.bytes.byteLength > env.UPLOADS_MAX_BYTES)
+    throw new AttachmentError('FILE_TOO_LARGE', 'file too large');
+
+  const resolved = resolveAttachmentMime({
+    target: 'comment',
+    name: input.name,
+    declaredMime: input.mime,
+    bytes: input.bytes,
+  });
+  if (!resolved.ok) {
+    throw new AttachmentError('MIME_NOT_ALLOWED', mimeRefusalMessage(resolved), {
+      reason: resolved.reason,
+      allowed: allowedSetForTarget('comment'),
+    });
+  }
+  return resolved.mime;
 }
 
 export interface PersistCommentAttachmentInput {
@@ -67,20 +89,9 @@ export interface PersistedCommentAttachment {
 export async function persistCommentAttachment(
   input: PersistCommentAttachmentInput,
 ): Promise<PersistedCommentAttachment> {
-  const { commentId, mime, bytes, uploaderId, uploaderDeviceId } = input;
-  if (bytes.byteLength <= 0) {
-    throw new AttachmentError('EMPTY_FILE', 'empty file');
-  }
-  if (bytes.byteLength > env.UPLOADS_MAX_BYTES) {
-    throw new AttachmentError('FILE_TOO_LARGE', 'file too large');
-  }
-  if (!ALLOWED_MIMES.has(mime)) {
-    throw new AttachmentError('MIME_NOT_ALLOWED', `mime not allowed: ${mime}`);
-  }
+  const { commentId, bytes, uploaderId, uploaderDeviceId } = input;
   const name = safeName(input.name || 'file');
-  if (!name) {
-    throw new AttachmentError('INVALID_NAME', 'name is empty after sanitisation');
-  }
+  const mime = validateCommentAttachment({ name, mime: input.mime, bytes });
 
   const key = `comments/${commentId}/${Date.now()}-${name}`;
   const { path: storedPath } = await getStorage().put(key, bytes, mime);
@@ -110,6 +121,89 @@ export async function persistCommentAttachment(
     ...inserted,
     url: `/api/comments/attachments/${inserted.id}`,
   };
+}
+
+export interface CommentAttachmentErrorEntry {
+  index: number;
+  name: string;
+  code: CommentAttachmentErrorCode | 'INTERNAL';
+  message: string;
+  details?: unknown;
+}
+
+function toErrorEntry(index: number, name: string, err: unknown): CommentAttachmentErrorEntry {
+  return err instanceof AttachmentError
+    ? { index, name, code: err.code, message: err.message, details: err.details }
+    : {
+        index,
+        name,
+        code: 'INTERNAL',
+        message: err instanceof Error ? err.message : String(err),
+      };
+}
+
+// cm:edge protocol -> packages/core/src/issues/attachment-service.ts — the issue twin of this function; the two must refuse a batch on the same terms, because one client sends the same evidence to an issue or to a comment and cannot be told the rules differ by parent
+async function discardCommentAttachments(ids: readonly string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const rows = await db
+    .select({ id: commentAttachments.id, path: commentAttachments.path })
+    .from(commentAttachments)
+    .where(inArray(commentAttachments.id, [...ids]));
+  for (const row of rows) {
+    try {
+      await getStorage().delete(row.path);
+    } catch {
+      // cm:why swallowed on purpose, and the row is deleted below regardless: the two failures are not symmetrical — an orphan blob costs storage and is recoverable by a sweep, while a row surviving a refused batch is the half-landed attachment this whole path promises cannot exist, under a name the caller can no longer re-send.
+    }
+  }
+  await db.delete(commentAttachments).where(inArray(commentAttachments.id, [...ids]));
+}
+
+/**
+ * Persist a pre-decoded batch onto a comment, whole or not at all (ISS-957).
+ * The issue twin's contract, applied to the second parent: every member is
+ * judged before any lands, and a failure during the persist loop is rolled
+ * back, so a comment never carries half the evidence it was written to carry.
+ */
+export async function persistDecodedCommentAttachments(
+  commentId: string,
+  decoded: readonly { name: string; mime: string; bytes: Buffer }[],
+  uploaderId: string,
+  uploaderDeviceId: string | null,
+): Promise<{ persisted: PersistedCommentAttachment[]; errors: CommentAttachmentErrorEntry[] }> {
+  const errors: CommentAttachmentErrorEntry[] = [];
+  for (const [i, d] of decoded.entries()) {
+    try {
+      validateCommentAttachment({
+        name: safeName(d.name || 'file'),
+        mime: d.mime,
+        bytes: d.bytes,
+      });
+    } catch (err) {
+      errors.push(toErrorEntry(i, d.name, err));
+    }
+  }
+  if (errors.length > 0) return { persisted: [], errors };
+
+  const persisted: PersistedCommentAttachment[] = [];
+  for (const [i, d] of decoded.entries()) {
+    try {
+      persisted.push(
+        await persistCommentAttachment({
+          commentId,
+          name: d.name,
+          mime: d.mime,
+          bytes: d.bytes,
+          uploaderId,
+          uploaderDeviceId,
+        }),
+      );
+    } catch (err) {
+      await discardCommentAttachments(persisted.map((a) => a.id));
+      return { persisted: [], errors: [toErrorEntry(i, d.name, err)] };
+    }
+  }
+  return { persisted, errors };
 }
 
 /**

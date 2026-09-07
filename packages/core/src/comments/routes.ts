@@ -93,7 +93,6 @@ async function loadComment(commentId: string) {
   return row;
 }
 
-// Mounted on issueRoutes under /issues/:id/comments
 export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>): void {
   router.post(
     '/:id/comments',
@@ -307,7 +306,7 @@ function attachmentErrorToHttp(err: AttachmentError): HTTPException {
     case 'MIME_NOT_ALLOWED':
       return new HTTPException(400, {
         message: err.message,
-        cause: { code: 'MIME_NOT_ALLOWED' },
+        cause: { code: 'MIME_NOT_ALLOWED', details: err.details },
       });
     case 'EMPTY_FILE':
       return new HTTPException(400, { message: 'empty file', cause: { code: 'BAD_REQUEST' } });

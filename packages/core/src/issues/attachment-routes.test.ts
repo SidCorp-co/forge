@@ -65,7 +65,6 @@ vi.mock('../pipeline/activity.js', () => ({
   safeRecordActivity: (...args: unknown[]) => safeRecordActivityMock(...args),
 }));
 
-// Mock auth verifiers so we can exercise all three principal types
 const verifyPatMock = vi.fn();
 const verifyDeviceTokenMock = vi.fn();
 vi.mock('../auth/pat.js', async () => {
@@ -169,15 +168,25 @@ describe('POST /api/issues/:id/attachments', () => {
       orgRole: 'owner',
     });
     const fd = new FormData();
-    fd.append('file', new File(['x'], 'evil.exe', { type: 'application/x-msdownload' }));
+    fd.append(
+      'file',
+      new File([new Uint8Array([0x4d, 0x5a, 0x90, 0x00])], 'evil.exe', {
+        type: 'application/x-msdownload',
+      }),
+    );
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/attachments`, {
       method: 'POST',
       headers: { authorization: `Bearer ${await userJwt()}` },
       body: fd,
     });
     expect(res.status).toBe(400);
-    const json = (await res.json()) as { code?: string };
+    const json = (await res.json()) as {
+      code?: string;
+      details?: { allowed?: { mimes?: string[]; extensions?: string[] } };
+    };
     expect(json.code).toBe('MIME_NOT_ALLOWED');
+    expect(json.details?.allowed?.mimes).toContain('text/plain');
+    expect(json.details?.allowed?.extensions).toContain('.txt');
   });
 
   it('400 on empty file', async () => {
@@ -232,6 +241,41 @@ describe('POST /api/issues/:id/attachments', () => {
     expect(storagePut).toHaveBeenCalledOnce();
     expect(safeRecordActivityMock).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'issue.attachment.uploaded' }),
+    );
+  });
+
+  it('201 for a plain-text .log the extension table has never heard of', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
+    projectAccess.mockResolvedValueOnce({
+      projectId: PROJECT_ID,
+      orgId: 'org-1',
+      role: 'admin',
+      orgRole: 'owner',
+    });
+    storagePut.mockResolvedValueOnce({ path: '/tmp/issues/x/gate.log' });
+    insertReturning.mockResolvedValueOnce([
+      {
+        id: ATT_ID,
+        issueId: ISSUE_ID,
+        uploaderId: USER_ID,
+        name: 'gate.log',
+        mime: 'text/plain',
+        size: 12,
+        createdAt: new Date('2026-01-01'),
+      },
+    ]);
+
+    const res = await buildApp().request(`/api/issues/${ISSUE_ID}/attachments`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${await userJwt()}` },
+      body: makeFile('480 passed\n', 'gate.log', ''),
+    });
+
+    expect(res.status).toBe(201);
+    expect(storagePut).toHaveBeenCalledWith(
+      expect.stringContaining('gate.log'),
+      expect.any(Buffer),
+      'text/plain',
     );
   });
 

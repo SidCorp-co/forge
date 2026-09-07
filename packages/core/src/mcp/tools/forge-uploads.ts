@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
+import { mimeFromName } from '../../lib/attachment-mime.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
 import { getStorage } from '../../storage/index.js';
 import {
@@ -34,8 +35,7 @@ const inputSchema = z
         target: z.enum(['issue', 'comment', 'session']),
         targetId: z.uuid().optional(),
         name: z.string().trim().min(1).max(200).optional(),
-        // Optional — inferred from the file extension when omitted; the ticket
-        // service rejects anything outside ALLOWED_MIMES regardless.
+        // cm:why omitting this is the better default now: the extension only picks a candidate, and the PUT resolves the stored type from the bytes, so a declared type can only narrow what the file is allowed to be (ISS-957)
         mime: z.string().trim().min(1).max(255).optional(),
         // fetch: the attachment to read (issue_attachments.id /
         // comment_attachments.id), as returned in any `attachments[].id` from
@@ -45,31 +45,6 @@ const inputSchema = z
       .strict(),
   })
   .strict();
-
-const EXT_MIME: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  gif: 'image/gif',
-  webp: 'image/webp',
-  pdf: 'application/pdf',
-  mp4: 'video/mp4',
-  webm: 'video/webm',
-  mov: 'video/quicktime',
-  qt: 'video/quicktime',
-  txt: 'text/plain',
-  md: 'text/markdown',
-  markdown: 'text/markdown',
-  csv: 'text/csv',
-  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  xls: 'application/vnd.ms-excel',
-  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-};
-
-function mimeFromName(name: string): string {
-  const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : '';
-  return EXT_MIME[ext] ?? 'application/octet-stream';
-}
 
 const INLINE_TEXT_MIMES = new Set(['text/plain', 'text/markdown', 'text/csv']);
 
@@ -103,7 +78,11 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Upload (action=request) or READ (action=fetch) an issue/comment/session attachment.\n' +
     'action=request — mint a short-lived, single-use upload URL WITHOUT base64-inlining ' +
     'bytes through the model context (presigned-URL pattern). data={target:"issue"|"comment"|"session", ' +
-    'targetId:<uuid>, name:"<filename>", mime?:"<type>"}. Returns {uploadId, method:"PUT", ' +
+    'targetId:<uuid>, name:"<filename>", mime?:"<type>"}. LEAVE `mime` OFF unless you mean to '
+    + 'constrain the file: the type is read from the BYTES at upload time, so ANY extension of '
+    + 'plain UTF-8 text (.log, .sql, .diff, none at all) lands as text/plain. A refusal carries '
+    + '`details.allowed` with the accepted types and extensions, so print that rather than '
+    + 'guessing. Returns {uploadId, method:"PUT", ' +
     'uploadUrl, uploadPath, expiresIn (~300s), maxBytes}. Upload out-of-band with NO auth ' +
     'header: `curl -X PUT -T <localPath> "<uploadUrl>"` (if uploadUrl is null, prepend your ' +
     'Forge API origin to uploadPath). The PUT returns the attachment {id,name,mime,size,url}.\n' +

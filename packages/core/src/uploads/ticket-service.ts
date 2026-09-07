@@ -1,10 +1,8 @@
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
-import { ALLOWED_MIMES as SESSION_ALLOWED_MIMES } from '../agent-sessions/attachment-service.js';
-import { ALLOWED_MIMES as COMMENT_ALLOWED_MIMES } from '../comments/attachment-service.js';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { uploadTickets } from '../db/schema.js';
-import { ALLOWED_MIMES as ISSUE_ALLOWED_MIMES } from '../issues/attachment-service.js';
+import { allowedSetForTarget } from '../lib/attachment-mime.js';
 
 /** How long a minted upload ticket stays valid. Short by design (replay window). */
 export const UPLOAD_TICKET_TTL_MS = 5 * 60 * 1000;
@@ -15,9 +13,11 @@ export type UploadTicketErrorCode = 'MIME_NOT_ALLOWED';
 
 export class UploadTicketError extends Error {
   readonly code: UploadTicketErrorCode;
-  constructor(code: UploadTicketErrorCode, message: string) {
+  readonly details: unknown;
+  constructor(code: UploadTicketErrorCode, message: string, details?: unknown) {
     super(message);
     this.code = code;
+    this.details = details;
     this.name = 'UploadTicketError';
   }
 }
@@ -45,22 +45,24 @@ export interface CreateUploadTicketInput {
   mime: string;
 }
 
-function allowedMimesFor(targetType: UploadTargetType): ReadonlySet<string> {
-  if (targetType === 'issue') return ISSUE_ALLOWED_MIMES;
-  if (targetType === 'session') return SESSION_ALLOWED_MIMES;
-  return COMMENT_ALLOWED_MIMES;
-}
-
 /**
- * Mint a single-use capability ticket. Validates the declared mime up front so
- * the holder gets a fast, clear failure instead of discovering it only after
- * streaming the bytes. The mime stored here is authoritative at consume time.
+ * Mint a single-use capability ticket.
+ *
+ * The declared mime is checked against the target's set up front, so a caller
+ * naming a type the tracker will never take is refused before it streams
+ * anything. It is NOT the last word: no byte exists yet, and the PUT resolves
+ * the stored type from the bytes (`lib/attachment-mime.ts`). That is what lets
+ * an unknown extension mint as `text/plain` and be judged when it arrives.
  */
 export async function createUploadTicket(
   input: CreateUploadTicketInput,
 ): Promise<{ id: string; expiresAt: Date; maxBytes: number }> {
-  if (!allowedMimesFor(input.targetType).has(input.mime)) {
-    throw new UploadTicketError('MIME_NOT_ALLOWED', `mime not allowed: ${input.mime}`);
+  const allowed = allowedSetForTarget(input.targetType);
+  if (!allowed.mimes.includes(input.mime)) {
+    throw new UploadTicketError('MIME_NOT_ALLOWED', `mime not allowed: ${input.mime}`, {
+      reason: 'not-allowed',
+      allowed,
+    });
   }
   const expiresAt = new Date(Date.now() + UPLOAD_TICKET_TTL_MS);
   const maxBytes = env.UPLOADS_MAX_BYTES;
