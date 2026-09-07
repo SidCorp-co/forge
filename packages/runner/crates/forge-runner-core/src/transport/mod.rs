@@ -20,6 +20,7 @@ pub mod master;
 pub mod plugins;
 pub mod pool;
 pub mod provision;
+pub mod run_session;
 pub mod runners;
 pub mod skills;
 pub mod ws;

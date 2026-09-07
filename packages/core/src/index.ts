@@ -41,6 +41,7 @@ import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { deviceLoginRoutes } from './devices/login-routes.js';
 import { registerMasterReaper } from './devices/master-reaper.js';
+import { registerRunSessionReaper } from './devices/run-session.js';
 import { devicePoolRoutes } from './devices/pool-routes.js';
 import { registerDevicePrune } from './devices/prune.js';
 import {
@@ -492,6 +493,7 @@ if (isMain) {
   await registerCandidatesDecay();
   await registerDevicePrune();
   await registerMasterReaper();
+  await registerRunSessionReaper();
   await registerRunnerStaleDetector();
   await registerGhostRunnerReaper();
   await registerRetentionSweeper();

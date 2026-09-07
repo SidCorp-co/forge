@@ -85,6 +85,9 @@ pub struct Run {
     pub project_id: String,
     pub worktree_path: String,
     pub pane: String,
+    /// The `agent_sessions` row core holds for this run, once registered.
+    // cm:guard this is the id the FIRST close-loop mark is read against, so a run with `None` here has no authoritative row to consult and its mark stays unset by construction rather than by a caller remembering to skip it.
+    pub core_session_id: Option<String>,
     pub pid: Option<u32>,
     pub boot_id: String,
     pub incarnation: String,
@@ -204,6 +207,7 @@ CREATE TABLE IF NOT EXISTS runs (
   project_id          TEXT NOT NULL,
   worktree_path       TEXT NOT NULL,
   pane                TEXT NOT NULL,
+  core_session_id     TEXT,
   pid                 INTEGER,
   boot_id             TEXT NOT NULL,
   created_at          INTEGER NOT NULL,
@@ -366,6 +370,33 @@ impl Ledger {
         )
         .map_err(sqlite_err)?;
         Ok(())
+    }
+
+    /// Remember the `agent_sessions` row core minted for this run.
+    pub fn record_core_session(&self, run_id: &str, core_session_id: &str) -> Result<()> {
+        let conn = self.conn.lock().expect("ledger poisoned");
+        conn.execute(
+            "UPDATE runs SET core_session_id = ?2 WHERE id = ?1",
+            params![run_id, core_session_id],
+        )
+        .map_err(sqlite_err)?;
+        Ok(())
+    }
+
+    /// Drop a reservation nothing was ever started against.
+    ///
+    /// Deleting is the honest act, not a close: there was no run, so there is
+    /// no loop to record having shut.
+    // cm:guard refuses once a pid is recorded, and that bound is the whole safety of it. A run with a process behind it must go through the three marks however it ends; a delete there would erase the only record of a worktree still on disk and a lease still held.
+    pub fn abandon_before_start(&self, run_id: &str) -> Result<bool> {
+        let conn = self.conn.lock().expect("ledger poisoned");
+        let n = conn
+            .execute(
+                "DELETE FROM runs WHERE id = ?1 AND pid IS NULL AND session_terminal_at IS NULL",
+                params![run_id],
+            )
+            .map_err(sqlite_err)?;
+        Ok(n > 0)
     }
 
     /// One run, with its whole group.
@@ -563,8 +594,8 @@ fn collect_ids<P: rusqlite::Params>(conn: &Connection, sql: &str, p: P) -> Vec<S
 fn read_run(conn: &Connection, run_id: &str) -> Option<Run> {
     let mut run = conn
         .query_row(
-            "SELECT id, master_session_id, project_id, worktree_path, pane, pid, boot_id, \
-                    incarnation, work, session_terminal_at, worktree_removed_at, closed_at \
+            "SELECT id, master_session_id, project_id, worktree_path, pane, core_session_id, pid, \
+                    boot_id, incarnation, work, session_terminal_at, worktree_removed_at, closed_at \
              FROM runs WHERE id = ?1",
             params![run_id],
             |row| {
@@ -574,14 +605,15 @@ fn read_run(conn: &Connection, run_id: &str) -> Option<Run> {
                     project_id: row.get(2)?,
                     worktree_path: row.get(3)?,
                     pane: row.get(4)?,
-                    pid: row.get::<_, Option<i64>>(5)?.map(|v| v as u32),
-                    boot_id: row.get(6)?,
-                    incarnation: row.get(7)?,
-                    work: row.get(8)?,
+                    core_session_id: row.get(5)?,
+                    pid: row.get::<_, Option<i64>>(6)?.map(|v| v as u32),
+                    boot_id: row.get(7)?,
+                    incarnation: row.get(8)?,
+                    work: row.get(9)?,
                     issues: Vec::new(),
-                    session_terminal_at: row.get(9)?,
-                    worktree_removed_at: row.get(10)?,
-                    closed_at: row.get(11)?,
+                    session_terminal_at: row.get(10)?,
+                    worktree_removed_at: row.get(11)?,
+                    closed_at: row.get(12)?,
                 })
             },
         )
@@ -943,6 +975,44 @@ mod tests {
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].id, "r2");
         assert!(l.open_runs_for_master("master-2").is_empty());
+    }
+
+    // cm:guard a reservation that never started is DELETED and never closed. A close would record three marks about a loop that never opened, and the ledger's whole value is that a reader can tell a partially-closed run from a clean one without asking anybody.
+    #[test]
+    fn a_reservation_nothing_started_against_is_deleted_and_frees_its_issue() {
+        let l = ledger();
+        l.create_run_for_group(&spec("r1", "/w/a", &["ISS-1"]))
+            .unwrap();
+        assert!(l.abandon_before_start("r1").unwrap());
+        assert!(l.run("r1").is_none());
+        l.create_run_for_group(&spec("r2", "/w/a", &["ISS-1"]))
+            .expect("the reservation is gone, so both the path and the issue are free");
+    }
+
+    // cm:guard once a process exists the run leaves through the marks, whatever happened to it. Deleting here would erase the record of a worktree still on disk and a lease still held — the two things the close loop exists to chase.
+    #[test]
+    fn a_run_with_a_pid_cannot_be_abandoned() {
+        let l = ledger();
+        let run = l
+            .create_run_for_group(&spec("r1", "/w/a", &["ISS-1"]))
+            .unwrap();
+        l.record_pid(&run.id, 4242).unwrap();
+        assert!(!l.abandon_before_start("r1").unwrap());
+        assert!(l.run("r1").is_some());
+    }
+
+    #[test]
+    fn the_core_session_id_is_recorded_and_read_back() {
+        let l = ledger();
+        let run = l
+            .create_run_for_group(&spec("r1", "/w/a", &["ISS-1"]))
+            .unwrap();
+        assert!(run.core_session_id.is_none());
+        l.record_core_session(&run.id, "sess-1").unwrap();
+        assert_eq!(
+            l.run("r1").unwrap().core_session_id.as_deref(),
+            Some("sess-1")
+        );
     }
 
     // cm:guard ISS-964's two axes are SEPARATE columns. A parked run is `live` and `blocked`; a dead one is `gone`. One status string cannot say both, which is the property that whole design rests on.

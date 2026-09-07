@@ -21,6 +21,11 @@ use crate::error::{Error, Result};
 // cm:guard the name is the IDENTITY, both halves. tmux refuses a second session under a name that exists, which is what bounds one master per (box, project) now that the daemon's in-process map cannot see a session it does not parent; and the same string round-trips to core on the `agent_sessions` row so an operator reading the UI knows what to attach to. Two names for one master would leave both checks looking at something the other cannot see.
 pub const MASTER_PREFIX: &str = "forge-master";
 
+/// The prefix on every RUN session's name (ISS-933 wave 2).
+// cm:guard a run session is the SAME primitive under a different prefix, never a second copy of it. `ensure`, `alive`, `kill` and `send_line` all take the finished name, so a run is a caller change; a parallel `run_ensure` would give the two kinds of session two transports that drift, and the drift would show up as a run nobody can attach to.
+// cm:guard the prefixes must not be prefixes OF EACH OTHER. `session_target` forces an exact match so lookups are safe either way, but `tmux ls` and every operator grep read the name, and `forge-master-x` inside `forge-run-master-x` is the kind of ambiguity that gets the wrong pane killed by hand.
+pub const RUN_PREFIX: &str = "forge-run";
+
 /// Whether this box can host a resident session at all.
 // cm:guard REFUSE by name when tmux is missing rather than falling back to the `claude -p` pass this replaced. A box that quietly reverted would look identical in the log to one that is working, while none of B3's liveness, B5's transcript or B6's inbox exist on it — the silent substitution `CLAUDE.md` forbids, on the exact machinery that is supposed to detect silence. `forge-runner doctor` names the same missing binary before an operator finds it this way.
 pub fn available() -> bool {
@@ -246,6 +251,27 @@ mod tests {
         assert_eq!(session_name(MASTER_PREFIX, "a:b"), "forge-master-a-b");
         assert_eq!(session_name(MASTER_PREFIX, "  "), "forge-master-unnamed");
         assert!(session_name(MASTER_PREFIX, &"x".repeat(300)).len() <= 96);
+    }
+
+    // cm:guard criterion 1 — the prefix is a PARAMETER and there is one primitive. This asserts the derivation is shared rather than copied: the same call with the two prefixes differs in exactly the prefix, and the run name is not reachable from the master one.
+    #[test]
+    fn a_run_session_is_the_same_primitive_under_a_different_prefix() {
+        assert_eq!(
+            session_name(RUN_PREFIX, "attachments"),
+            "forge-run-attachments"
+        );
+        assert_eq!(
+            session_name(MASTER_PREFIX, "attachments"),
+            "forge-master-attachments"
+        );
+        assert_eq!(
+            session_name(RUN_PREFIX, "epod.system"),
+            "forge-run-epod-system",
+            "the cleaning rule is the same one, not a second copy"
+        );
+        assert_ne!(MASTER_PREFIX, RUN_PREFIX);
+        assert!(!RUN_PREFIX.starts_with(MASTER_PREFIX));
+        assert!(!MASTER_PREFIX.starts_with(RUN_PREFIX));
     }
 
     // cm:guard a trailing dash would make the name end in the separator and read as a truncated slug in every log line and every `tmux ls`; a leading one is worse, because tmux takes a leading dash as a flag.

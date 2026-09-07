@@ -22,6 +22,7 @@ import {
 import { readDeviceLoad, readFleetLoad, readProjectLoad } from './load.js';
 import { closeMasterSession, ensureMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
+import { closeRunSession, createRunSession, returnLeaseForIssue } from './run-session.js';
 import { promoteFromBacklog } from './promote.js';
 
 const badRequest = (details: unknown) =>
@@ -185,6 +186,75 @@ devicePoolRoutes.post(
     const { projectId, name } = c.req.valid('json');
     const session = await ensureMasterSession({ deviceId: c.get('device').id, projectId, name });
     return c.json(session);
+  },
+);
+
+const runSessionBodySchema = z.object({
+  projectId: z.string().uuid(),
+  name: z.string().min(1).max(120),
+  // cm:guard an ARRAY, and `min(1)` rather than a single id. A run carries a group; a group of one is a group, and a scalar field here would re-encode the default this issue exists to reverse — measured 2026-09-07, ISS-957 and ISS-963 touched one file set and the dispatcher minted a job each, putting pids 334254 and 335001 in one cwd.
+  issueIds: z.array(z.string().uuid()).min(1).max(20),
+  worktreePath: z.string().min(1).max(1000),
+});
+
+/** The master registering a run session it is about to spawn (ISS-933 wave 2). */
+// cm:guard this is registered BEFORE the spawn and refuses BY NAME, so the failure arrives while nothing is running. Registering after the spawn would make the central invariant advisory: the second run would already be writing the tree by the time core said no.
+devicePoolRoutes.post(
+  '/me/run-session',
+  requireDevice(),
+  zValidator('json', runSessionBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const body = c.req.valid('json');
+    const result = await createRunSession({ deviceId: c.get('device').id, ...body });
+    if (!result.ok) return c.json(result, 409);
+    return c.json(result);
+  },
+);
+
+const runCloseBodySchema = z.object({
+  sessionId: z.string().uuid(),
+  reason: z.string().min(1).max(500),
+});
+
+/** The runner reporting a run session that has ended. */
+devicePoolRoutes.post(
+  '/me/run-session/close',
+  requireDevice(),
+  zValidator('json', runCloseBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { sessionId, reason } = c.req.valid('json');
+    const closed = await closeRunSession({ deviceId: c.get('device').id, sessionId, reason });
+    return c.json({ closed });
+  },
+);
+
+const leaseReturnBodySchema = z.object({
+  sessionId: z.string().uuid(),
+  issueId: z.string().uuid(),
+});
+
+/** One issue's lease given back, answered by a READ of who holds it now. */
+// cm:guard the reply is the holder AFTER the write, not an `ok`. The runner's third close-loop mark is set from this value, and an `ok` would be the write's own echo — the optimism criterion 13 exists to refuse.
+devicePoolRoutes.post(
+  '/me/run-session/lease-return',
+  requireDevice(),
+  zValidator('json', leaseReturnBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { sessionId, issueId } = c.req.valid('json');
+    const out = await returnLeaseForIssue({ deviceId: c.get('device').id, sessionId, issueId });
+    if (!out) {
+      throw new HTTPException(404, {
+        message: 'no run session of this device carries that issue',
+        cause: { code: 'RUN_SESSION_NOT_CARRYING_ISSUE' },
+      });
+    }
+    return c.json(out);
   },
 );
 
