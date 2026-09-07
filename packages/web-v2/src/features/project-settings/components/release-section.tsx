@@ -18,6 +18,15 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
     "The production binding names no release runner — a release is refused rather than sent to an arbitrary box.",
   rollback:
     "No rollback declared — a failed release aborts and comments, and rolls back nothing.",
+  "rollback-prose":
+    "The production Coolify binding declares its rollback as free text, which Forge no longer executes — convert it to the Coolify rollback action, or a failed release aborts and comments.",
+};
+
+// cm:edge contract -> packages/core/src/release-batch/channel.ts — the three modes are decided by `classifyRollback`; rendering `unrepresentable` as "declared" would show a green-looking declaration for a release that will abort (ISS-925).
+const ROLLBACK_TEXT: Record<NonNullable<ReleaseReadiness["rollbackMode"]>, string> = {
+  manual: "declared — the release agent follows it",
+  "coolify-image": "Forge rolls back to a Coolify image",
+  unrepresentable: "free text — not executed, abort and comment",
 };
 
 const FACT_GAPS = new Set(["build-commands", "test-commands", "release-procedure"]);
@@ -100,7 +109,7 @@ export function ReleaseSection({
         <div>
           <dt className="fg-caption text-subtle">Rollback</dt>
           <dd className="fg-body-sm text-fg">
-            {r.rollback ? "declared" : "abort and comment"}
+            {r.rollbackMode ? ROLLBACK_TEXT[r.rollbackMode] : "abort and comment"}
           </dd>
         </div>
         <div>

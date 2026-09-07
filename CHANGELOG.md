@@ -43,6 +43,124 @@
   and nowhere else. The autonomous wedge pass cannot roll it back either — that pass requires a
   prior `drive` job row and a running issue run, and a draft worked by hand has neither.
 
+- **Core now tells a box that a project has work, instead of the box finding out on its next
+  poll (ISS-933, wave 1).** Until now nothing pushed: the runner daemon read every project it
+  served on a 30-second timer, and that interval *was* the latency from an issue arriving to an
+  agent touching it. Core now publishes a `master.wake` frame on each bound box's device room when
+  an issue reaches `open`, `draft` or `released` — including an issue created directly at one of
+  them, which never passes through a transition and would otherwise have been the silent half.
+
+  The frame carries **no work**: no job, no token, no decision. It says "look now", and the box
+  reads the pool through the same call its timer already used and decides for itself, so there is
+  one path from "something might be there" to "the pool was read" rather than two.
+
+  **The timer stays, and that is deliberate.** The websocket publish is fire-and-forget with no
+  buffer and no replay, so a wake sent while a box is disconnected is gone with nothing recording
+  that it happened. The poll is what makes a lost wake cost latency instead of costing the work.
+  The third trigger covers the same hole from the other end: when the runner's socket comes back
+  up it reads the pool once, because every wake published while it was down is unrecoverable.
+
+  A burst coalesces rather than queueing — five issues arriving together produce one sweep, since
+  the sweep reads the whole pool rather than the issue a frame named. An older runner ignores an
+  event it does not know and keeps polling, so this ships without waiting for the fleet.
+
+- **A master can see a declared backlog beside its claimable pool, and decide whether to pull one
+  up (ISS-917).** Until now a master saw only `queued` jobs under a live `pipeline_run`. A `draft`
+  issue has neither, so it was invisible to every master on the fleet and the only way to get one
+  worked was a human moving it to `open`. A project may now declare
+  `pipelineConfig.poolBacklog = { statuses, limit }` — the statuses whose issues appear to its
+  masters as a **backlog**: visible, readable, and not automatically worked. Absent or empty is
+  today's behaviour exactly, which is every other project on the fleet.
+
+  Admitting a status does NOT make it run. A backlog row carries no job and cannot be claimed;
+  `GET /api/devices/me/pool` answers it as a sibling `backlog` key that an older runner ignores,
+  never folded into `items`. Turning one into work is `POST /me/pool/promote` — it moves the issue
+  to the entry status and lets the dispatch every other caller uses produce the run and the `drive`
+  job, then hands back that job's id so the master claims it through the path it already used.
+
+  **Promotion does not bypass the entry gate.** With `states.open` disabled or set to
+  `mode: 'manual'`, promote refuses `entry_gated` and the issue does not move — `manual` keeps
+  meaning "a human presses Run". Admitting a status widens what a master may SEE, never what it may
+  decide. Every refusal (`entry_gated`, `not_in_backlog`, `issue_busy`, `not_found`,
+  `backlog_disabled`, `dispatch_failed`) is an ordinary outcome: HTTP 200 with `ok:false` and a
+  named reason, the way a refused claim already answers, because an entry-gated project and a race
+  lost to another master are both normal and neither should invite a retry loop.
+
+  Declaring `draft` while the project's `intakeGate` is on is refused at validation naming both
+  settings: the gate exists so a *human* approves every arriving issue, and a master that may
+  promote drafts is that human. The rule lives in the config schema, so REST and MCP `forge_config`
+  both hit it.
+
+  `forge-runner pool list` prints the backlog as its own block with each row's raw status, priority,
+  age and blocker facts and no promote/skip verdict, and `forge-runner pool promote <issueId>`
+  turns one into work. **The runner versions and ships separately** — a box needs a build carrying
+  this to see the block. Project settings → Pipeline carries the switch, the admitted statuses and
+  the row limit, and states in copy that admitting a status does not make it run. The judgement
+  itself — what makes one draft worth pulling up now versus leaving alone — is in the
+  `forge-master` skill beside the blocker table, as raw facts and no verdict.
+
+- **An issue whose pipeline run is paused now says so on its own screen, whatever its status
+  says.** A run can be paused while the issue underneath it keeps displaying the stage it reached —
+  `approved`, say — so the screen said nothing at all and the work read as in progress. It was not,
+  and nobody was coming. The pause reached that screen through one door only: the gate on a
+  *queued step*. An issue with no queued step had no door, which is most of them once the step that
+  was running finished.
+
+  The issue screen now reads the run directly. The banner names which pause is holding it — an
+  operator's, or a machine reason with the stage it names — says who ends it, and offers **Resume
+  run** for the ones a person ends. A pause this build has retired says so plainly and does not ask
+  anyone to act, because the sweeper frees it on its next tick; promising a resume nobody performs
+  is the failure this replaces, on the other side.
+
+  The banner outranks the others deliberately. While a run is paused nothing dispatches, so
+  "Approve" or "Provide info" would promise movement that cannot happen — an issue that is both
+  waiting on a person and paused shows the pause, and the question stays in the comments below.
+
+- **A Coolify deploy that is building the wrong thing can now be stopped from Forge.** Coolify has
+  had `POST /deployments/{uuid}/cancel` all along; Forge had no path to it, so a bad build ran to
+  completion and the only recourse was the Coolify UI. `forge_coolify_deploy action=cancel` and
+  `POST /api/projects/:id/integrations/coolify/cancel` reach it, resolving the deployment from the
+  explicit uuid or the integration's most recent one. A deployment Coolify has already finished
+  answers 400 with its own sentence, which is returned as-is: nothing is reported cancelled that
+  was not. The cancel is written to the delivery log like any other outbound action, and needs no
+  new confirmation path — Coolify reports `cancelled-by-user`, which the deploy poller already
+  reads as a failure, so the run settles on its next tick.
+
+- **A rollback is an action Forge performs, against an image it has confirmed exists.** New
+  `action=rollback-images` reads what a target can actually be rolled back to (with the running one
+  marked), and `action=rollback` queues the rollback at a chosen image tag. A tag Coolify no longer
+  lists is refused by name, and so is an empty list — Coolify answers an unreachable application
+  server with an empty list and a 200, so the read that proves least must not be the one that lets
+  everything through. Coolify itself does not check the tag against its own list, so this rule is
+  Forge's. A rollback that Coolify accepts without queuing anything is reported as a failure, not a
+  rollback. The rollback build is polled and audited exactly like a deploy.
+
+- **A deploy target is picked from what Coolify reports instead of transcribed.** The Coolify
+  settings section now lists the applications the credential can see — including on the create
+  form, before the connection is saved, which is where the transcription used to happen — and each
+  bound target shows the name, domain and branch/commit Coolify holds for it. A bound uuid Coolify
+  does not list is called out in place, so a wrong binding is visible without opening Coolify.
+
+- **Work you finished by hand can now say so, and the project's progress figure believes it.**
+  `merged_at` is the claim that an issue's code shipped — it is what releases every issue blocked
+  on it, and what separates *shipped* from *closed with no evidence it shipped*. Making that claim
+  was reachable only from the CLI, MCP and REST; the web never called
+  `POST /api/issues/:id/merge` at all. A person who merged something outside the pipeline could
+  therefore only close the issue, and a close stamps `merged_at` inside its own transaction —
+  a stamp the counter correctly discounts, because closing is also how a duplicate ends.
+
+  The issue's Properties rail now carries **Mark merged** next to the merge date, with the
+  target it landed on and an optional note, and **Unmark** to retract it. Both route through the
+  same `applyMergeMarker` every other surface uses, so the audit comment, the hooks and the
+  work-evidence gate on agent callers are unchanged; a viewer never sees either control.
+
+  The counter was also discarding the claim once it was made. It required, on top of a deliberate
+  stamp, a logged transition into `developed`/`testing`/`tested`/`released` — which work driven
+  entirely by hand never has. Such an issue is now counted as shipped on the strength of the
+  deliberate stamp alone. An auto-stamp written by the close itself still counts as no evidence,
+  which is the ISS-817 property and is pinned against real Postgres rather than asserted.
+
+  The path is drawn end to end in `docs/flows/issue-work-shipped-evidence.html`. (ISS-791)
 
 - **An agent working an issue on a project that keeps modules is now told they exist, and how to
   set the issue's primary one.** ISS-593 made a module a label with `kind='module'` and gave an
@@ -830,7 +948,54 @@
   who signs in. They now reach the project's admins, ordered by priority, capped at 20 rows with the
   real total shown; one human comment clears a row for good. (ISS-881)
 
+- An issue whose next step is queued now says so — on its own page and on the board: which step,
+  what is holding it, how long it has waited, and when it will try again. Before, a queued step
+  looked exactly like an issue nobody was working: the pipeline panel had no queued arm at all, and
+  the card and the list row took their reading from the run's status rather than from the gate
+  actually holding the step. `pipelineHealth` carries a `queuedStep`, the issues search endpoint
+  serves it under `withPipelineHealth=1` — which the board and the list both already send — and the
+  blocker banner takes its tone from whether the wait needs anyone to act, so waiting on a
+  dependency reads as information rather than as an alarm. Shipped 2026-09-03; this line was owed
+  then and is written now. (ISS-903)
+
 ### Removed
+
+- **`print` mode. Every agent a runner starts is now one long-lived session that reads its turns
+  off stdin, and there is no longer a mode to choose.** A runner used to spawn `claude -p "<prompt>"`
+  with stdin closed, read stdout to the first result, and let the process die — one prompt, one
+  process, one unit of work. Three things followed from that identity, and all three are what this
+  removes: a driver that had to ask a human parked the issue and its session was *gone* (measured
+  2026-08-27: `needs_info` parks sat a 360h median, with **zero** human replies across all 17 of
+  them); nothing could be told to a running agent, so every correction was a new process with a cold
+  context; and every counter that said "turn" actually counted processes, because the two were the
+  same number.
+
+  A session now survives the turn that started it. It can be asked a question, answered, injected
+  into, checkpointed and closed without losing the work in flight — a human's comment on a parked
+  question is delivered into the living session, which picks the work back up with its context
+  intact instead of a fresh agent re-reading the issue from scratch.
+
+  `pipelineConfig.sessionMode` is deleted, and `0214_duplex_strips_session_mode.sql` strips the key
+  from stored configs before it leaves the schema. **That migration refuses to run if any project
+  explicitly opted out of duplex**, naming them, rather than quietly moving the one project that
+  said "not this lane" onto that lane. Nothing opts out today; the guard is for the window.
+
+  *Technical: the deletion is the second half of ISS-873, whose phases 0–4 shipped 2026-08-29. What
+  it removes from the runner is `JobSpec::duplex` and every branch that read it — the `Stdio::null()`
+  stdin, the `-p` argument, the conditional input format, and the reader's print-only break on a
+  send error — plus `session_mode` from the two claim types. Core keeps sending `sessionMode:
+  "duplex"` as a constant, recorded as `cm:hack ISS-941`: a core deploy reaches every box at once
+  while a runner binary reaches one on its own 6-hour update check, so dropping the field before the
+  fleet converges would make every un-upgraded box read it absent and run a print lane this release
+  no longer has — a silent fleet-wide revert. Three items on the issue's own delete list were
+  refused and each says why in `docs/flows/agent-execution-session-turns.html`: the 25s heartbeat
+  beat, `RESULT_EXIT_GRACE` and the job-level outcome derivation are shared machinery the issue
+  attributed to the mode, and the last of them is the only thing that reports a job which exits
+  immediately after its final result. The flip to duplex-by-default was taken on a 7-day
+  measurement rather than on more code — no duplex-specific failure cause on either project with
+  volume, and a print cohort that does no work at all, so the comparison the gate asked for was
+  never going to arrive. Four superseded design documents were deleted rather than corrected.
+  (ISS-873)*
 
 - **The `forge_memory.revisions` MCP tool.** The MCP surface is being shrunk to the
   session-lifecycle group (ISS-894). It has **no rows at all** in `mcp_audit_log` under either
@@ -1176,6 +1341,77 @@
   closes the issue — `merged_at` is caller-asserted, so the honest act is to put it in front of
   someone who can check the branch.
 
+
+- **A gate now says whether the defect is in the repo or on the box it is running on.** Three
+  checks reported an environment condition as a repository failure, in a signal with no field in
+  which to say which it was. All three survive a serial re-run identically, so they wear the exact
+  signature a reader is told to trust as a real defect.
+
+  `pnpm verify` in a checkout with no `node_modules` reported `FAIL R7 the relations gate can
+  resolve the graph it claims to cover` and `conformance: claims "hardened" and does not meet it`.
+  Neither was true — `archmap` and `tsc` were not on disk — and nine checks were affected, not the
+  two the report named. Each check now declares what it `needs:`, resolved against the filesystem
+  by `scripts/lib/prerequisite.mjs` before the checker is spawned, and a check whose prerequisite
+  is absent reports `n/a` naming it and the command that installs it. `conformance-status.mjs`
+  reports such an axis as having no measured level rather than level 0, and `conformance-audit.mjs`
+  reports `R7` as unanswered rather than as a rule this repo fails. `verify` still exits 2 and
+  nothing new goes green: an unrun gate is no evidence, and what changed is only the sentence a
+  reader gets. A skipped check now prints `skip` rather than `ok`. (ISS-938)
+
+  The integration suite dropped and recreated one fixed template database, `forge_test_tpl`, so two
+  runs entering global setup together destroyed each other's template and the loser reported
+  `template database "forge_test_tpl" does not exist` — a failure naming a Postgres object, on files
+  the change never touched. The template and each worker's clone are now named for the run that
+  created them (`tests/helpers/scratch-db.ts`); a run drops only what it created, and what a crashed
+  run left behind is reaped by age. `db.ts` and `container.ts` say `this is an ENVIRONMENT
+  condition, not a failure of the code under test` for the failures that remain. (ISS-937)
+
+  `forge-runner-core`'s `mcp::config` tests wrote to a fixed path under the shared
+  `~/.config/forge-runner/mcp/`, so two `cargo test --workspace` runs collided and the loser
+  panicked on a file the winner had unlinked. The tests now write into a directory belonging to the
+  process, through a `write_in` seam, and keep asserting that the file *name* is stable — which is
+  the property they exist for and the reason randomising it was not the fix. (ISS-939)
+
+
+- **A cross-field pipeline-config rule was enforceable on one write and bypassable by two.** The
+  `PATCH /projects/:id/pipeline-config` validator ran the schema over the PATCH, and the service
+  then merged that patch onto the stored document without re-validating the result. Any rule the
+  schema declares across two keys — the `intakeGate` + `poolBacklog` pairing added above is the
+  first, but nothing about the hole was specific to it — therefore held only against an operator
+  who wrote both halves at once, and fell to anyone who sent them one at a time in either order.
+  The merged document is now re-validated before it is stored, and the refusal arrives as
+  `CONFIG_CONFLICT` carrying the schema's own message, which already names both settings. A stored
+  config that ALREADY fails the schema is not refused: the write did not cause it, and blocking
+  there would answer an unrelated edit with a rule the operator did not break and leave them no
+  edit that succeeds.
+
+- An issue's chip on its detail screen read its bucket's word, not its status: `statusToChip` folds
+  `draft`, `open`, `confirmed`, `clarified` and `approved` all onto `queued`, so a `draft` — which
+  nothing is working — displayed as "Queued". It now carries its true lifecycle label, which is
+  what every other issue-domain chip already did.
+
+- **A collapsed run of identical attempts now says which attempts it stands for, without a
+  mouse.** The Activity feed folds sixteen identical deaths into one line carrying `×16`, and the
+  attempt numbers behind that count lived only in a hover tooltip on a badge nothing could focus.
+  The sentence is now carried in the row itself, so a screen reader is told which attempts folded.
+
+- **Every chart went blank on a server whose Postgres was not set to UTC, and nothing said so.**
+  The metrics timeseries built its bucket list in JavaScript floored to UTC midnight, then grouped
+  the rows in SQL with a bare `date_trunc`, which Postgres evaluates in the database session's
+  timezone. On a UTC database the two agreed; anywhere else every row landed in a bucket the
+  densifier was not looking for, the join matched nothing, and the series came back as zeroes with
+  a `null` rate. No error, no warning — a chart reading "this project did no work" is
+  indistinguishable from one reading "this project's rows were all discarded".
+
+  All nine bucketed metrics were affected (cost, throughput, cycle time, queue wait, runner
+  utilization, cache hit rate, pass rate, approve rate, queue depth), and so was the whole admin
+  overview, which had the same JS-floors-UTC / SQL-floors-session split behind a different
+  function. Two more surfaces reported the wrong calendar day rather than an empty one: the
+  per-project daily analytics and the usage-record daily breakdown both labelled a day by the
+  server's clock. One truncation helper now pins all of them to UTC.
+
+  Surfaced by `core-integration` failing only on developer machines in UTC+7 while CI, whose
+  Postgres is UTC, stayed green — the test was right and the query was wrong. (ISS-942, ISS-954)
 
 - **`POST /api/memory/search` ignored the `strategy` you asked for and told you it had honoured
   it.** The route validated `strategy` in its body schema and then never passed it to
@@ -2469,6 +2705,17 @@
   fix a different blocker still do not alarm, and one approval resets the count. Nothing is capped,
   parked or blocked — there is still no limit on how many rounds an issue may take. (ISS-878)
 
+- **What's New no longer lists the same category several times over for one release.**
+  `[Unreleased]` had grown nine `###` headings from append-only edits — Added three times, Fixed
+  three, Changed twice — and the feed renders one section per heading, so a single release read
+  ADDED, FIXED, CHANGED, REMOVED, ADDED, FIXED, ADDED, CHANGED, FIXED down the page. The headings
+  are folded to four with every bullet carried across unchanged, and `scripts/lib/release-record.mjs`
+  gained a `structure` rule that refuses a repeated `###` inside one release section, so the shape
+  cannot drift back one append at a time: it reported five repeats against the file as it stood and
+  none after. Two fixes that had shipped with nothing written about them went in at the same time —
+  failure classification, and the vendored fonts that stopped a font host from failing a backend
+  deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
+
 ### Changed
 
 - **An agent session authenticates `/mcp` with its own job token, and a device token no longer
@@ -2496,6 +2743,21 @@
   paired device (`dispatch`, `write_decision`) refuse by name and list the actions a PAT can reach;
   `write_decision` has no REST twin left, and that open decision is
   `docs/proposals/pm-dispatch-has-no-rest-twin.md`. (ISS-931)
+
+- **`rollback` on a production Coolify binding is now the action, not a paragraph.** Free text
+  there described a procedure somebody would carry out by hand under time pressure, from
+  instructions nothing had verified were still true. A Coolify binding now declares
+  `rollback: {"mode":"coolify-image"}` and Forge performs it; free text is refused on save, with a
+  message naming the replacement. It stays exactly as it was for every other channel — Postman,
+  Epodsystem, Sentry, GitHub, Rocket.Chat and the `agent` channel have no API that expresses a
+  rollback, which is the one thing the field is now for.
+
+  Bindings already holding prose are not rewritten and not deleted. They are named: project
+  settings shows the declaration as *free text — not executed*, readiness reports a new
+  `rollback-prose` gap, and a release batch on that project is told to **abort** and is shown the
+  stored text so a human can convert it, rather than being handed a paragraph to improvise from.
+  That is a deliberate break: those projects previously had a rollback an agent would attempt, and
+  now they abort until the binding is converted.
 
 - **A device token no longer reaches the API as its owner.** `requireAnyAuth` — the middleware
   behind attachment uploads and two comment routes — used to accept a runner's device token and set

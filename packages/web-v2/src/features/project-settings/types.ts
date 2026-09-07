@@ -205,6 +205,7 @@ export interface ReleaseReadiness {
 	provider: string | null;
 	releaseRunnerLabel: string | null;
 	rollback: string | null;
+	rollbackMode: "manual" | "coolify-image" | "unrepresentable" | null;
 	hasVerify: boolean;
 	gaps: (
 		| "build-commands"
@@ -212,6 +213,7 @@ export interface ReleaseReadiness {
 		| "release-procedure"
 		| "release-runner"
 		| "rollback"
+		| "rollback-prose"
 	)[];
 }
 
@@ -314,6 +316,14 @@ export interface PipelineConfig {
 	 * `intakeGate` in core `pipeline/pipeline-config-schema.ts`.
 	 */
 	intakeGate?: { enabled: boolean; notify?: boolean };
+	/**
+	 * ISS-917 — per-project pool admission. Statuses whose issues a master agent
+	 * SEES as a backlog beside the claimable pool. Visible only: a backlog row
+	 * carries no job and cannot be claimed, and turning one into work is an
+	 * explicit `pool promote` that re-checks the entry gate. Absent/empty = off.
+	 * Mirrors `poolBacklog` in core `pipeline/pipeline-config-schema.ts`.
+	 */
+	poolBacklog?: { statuses: string[]; limit?: number };
 	/**
 	 * Per-project knowledge promotion. When enabled, the nightly memory
 	 * consolidation job (03:00 UTC) files up to `candidatesPerRun` `open` issues

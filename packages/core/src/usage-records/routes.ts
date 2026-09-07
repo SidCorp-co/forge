@@ -7,6 +7,7 @@ import { db } from '../db/client.js';
 import { usageRecords, usageSources } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { listResponse } from '../lib/pagination.js';
+import { utcDayText } from '../lib/time-buckets.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { estimateCost } from './pricing.js';
 
@@ -138,7 +139,7 @@ usageRecordRoutes.get(
 
     const daily = await db
       .select({
-        date: sql<string>`to_char(date_trunc('day', ${usageRecords.recordedAt}), 'YYYY-MM-DD')`,
+        date: sql<string>`${utcDayText(sql`${usageRecords.recordedAt}`)}`,
         input: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
         output: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
         cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
@@ -146,8 +147,8 @@ usageRecordRoutes.get(
       })
       .from(usageRecords)
       .where(and(...conditions))
-      .groupBy(sql`date_trunc('day', ${usageRecords.recordedAt})`)
-      .orderBy(sql`date_trunc('day', ${usageRecords.recordedAt})`);
+      .groupBy(utcDayText(sql`${usageRecords.recordedAt}`))
+      .orderBy(utcDayText(sql`${usageRecords.recordedAt}`));
 
     const byModel = await db
       .select({
@@ -194,10 +195,7 @@ usageRecordRoutes.get(
     const [row] = await db.select().from(usageRecords).where(eq(usageRecords.id, id)).limit(1);
     if (!row) throw notFound('usage record not found');
 
-    // null-projectId rows are the internal/global pool — never disclosed via
-    // this user-facing route (404, same shape as a missing row, so it is not
-    // an enumeration oracle). Internal writers read them off the DB directly,
-    // not over HTTP (ISS-492).
+    // cm:guard a null-projectId row is the internal/global pool and must 404 here with the SAME shape as a missing row — any other status makes this route an enumeration oracle for internal usage; internal writers read those rows off the DB, never over HTTP (ISS-492)
     if (!row.projectId) throw notFound('usage record not found');
 
     const access = await loadProjectAccess(row.projectId, userId);

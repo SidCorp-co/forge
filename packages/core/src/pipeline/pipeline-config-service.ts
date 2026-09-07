@@ -18,6 +18,7 @@ export type PipelineConfigErrorCode =
   | 'OPEN_LOCKED_ON'
   | 'STAGE_HAS_ISSUES'
   | 'STAGE_POOL_UNKNOWN_RUNNER'
+  | 'CONFIG_CONFLICT'
   | 'PROJECT_NOT_FOUND';
 
 export class PipelineConfigError extends Error {
@@ -44,6 +45,36 @@ export interface UpdatePipelineConfigResult {
   pipelineConfig: PipelineConfig;
   /** Non-blocking advisories surfaced after a successful update. */
   warnings: string[];
+}
+
+/**
+ * Re-run the canonical schema over the MERGED document.
+ *
+ * The route validates the PATCH; a cross-field rule (`pipelineConfigSchema`'s
+ * `superRefine`) can only be violated by the pair that ends up STORED, and a
+ * patch carrying one half of a forbidden pair passes on its own. ISS-917 B5 is
+ * exactly that shape: `{poolBacklog:{statuses:['draft']}}` then
+ * `{intakeGate:{enabled:true}}` are each individually legal and together are
+ * the state the schema exists to make unrepresentable.
+ */
+// cm:guard refuse only what THIS write creates. If the stored config already fails the schema, the patch did not cause it and blocking here would answer an operator's unrelated edit with a rule they did not break — and leave them no way to edit their way out. A merge that fails while the current document parses clean is the write's own doing, and that is the only case refused.
+// cm:edge contract -> packages/core/src/pipeline/pipeline-config-schema.ts — every `superRefine` there reaches a two-write ordering ONLY through this call; a cross-field rule added there with no merged-doc check is enforceable on a single PATCH and bypassable by two.
+function assertMergedConfigValid(
+  currentPipeline: Record<string, unknown>,
+  nextPipeline: Record<string, unknown>,
+): void {
+  const merged = pipelineConfigSchema.safeParse(nextPipeline);
+  if (merged.success) return;
+  if (!pipelineConfigSchema.safeParse(currentPipeline).success) return;
+  const first = merged.error.issues[0];
+  throw new PipelineConfigError(
+    'CONFIG_CONFLICT',
+    first?.message ?? 'the merged pipeline config is not valid',
+    {
+      path: first?.path?.join('.') ?? '',
+      conflicts: merged.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+    },
+  );
 }
 
 /**
@@ -137,6 +168,7 @@ export async function updatePipelineConfig(
         }
       }
 
+      assertMergedConfigValid(currentPipeline, nextPipeline);
       nextDoc.pipelineConfig = nextPipeline;
     }
     const subkey = JSON.stringify(nextDoc);

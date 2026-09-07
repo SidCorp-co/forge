@@ -1,30 +1,50 @@
 # @forge/core — tests
 
-Infrastructure for the Phase 2.1+ integration tests (Vitest + real Postgres).
+Infrastructure for the integration tests (Vitest + real Postgres).
 Unit tests (with `vi.mock(...)` on the DB) live next to the source under
 `src/**/*.test.ts` and do not need any of this.
 
 ## Decision — hybrid test DB strategy
 
-Two modes, selected by the `TEST_DB_MODE` env var:
+Where the database comes from is chosen by `TEST_DB_MODE`:
 
-| Mode        | When                  | What happens                                                                                                          |
-| ----------- | --------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `container` | CI, fresh clones      | Boot `postgres:17-alpine` via Testcontainers per suite, run migrations, tear down.                                    |
-| `schema`    | Local dev (preferred) | Create a disposable `test_w<workerId>_<rand>` schema inside `TEST_DATABASE_URL`, run migrations, drop after the run.  |
+| Mode        | When                  | What happens                                                                                    |
+| ----------- | --------------------- | ----------------------------------------------------------------------------------------------- |
+| `container` | CI, fresh clones      | Boot `pgvector/pgvector:pg17` via Testcontainers (`tests/helpers/container.ts`), tear down after. |
+| `schema`    | Local dev (preferred) | Use the Postgres already running at `TEST_DATABASE_URL`.                                          |
 
-If `TEST_DB_MODE` is unset, we default to `schema` when `TEST_DATABASE_URL`
-is set and `container` otherwise — so local flows work as soon as the
-developer points at their compose Postgres, and CI works out of the box.
+Unset defaults to `schema` when `TEST_DATABASE_URL` is set, `container`
+otherwise. **Testcontainers needs a docker daemon this user can reach**; where
+it does not have one, `TEST_DATABASE_URL` is the only route into the suite, and
+`startPostgresContainer` says so by name rather than letting an unreachable
+socket surface as a broken suite.
 
-**Why not just Testcontainers everywhere?** Cold boot is 3–5s. That is fine
-once per CI job but painful on every `pnpm test:integration` during local
-edit-test loops. Per-worker schemas give the same isolation guarantees for
-Vitest's fork pool without paying that cost repeatedly.
+Whichever mode resolves the server, `tests/helpers/global-setup.ts` migrates
+**one template database** for the run and every test file clones it
+(`CREATE DATABASE ... TEMPLATE`, a file copy) in `tests/helpers/db.ts`. That
+replaces a container boot plus a full migration replay — measured at ~8.6s —
+per test file.
+
+**Why not just Testcontainers everywhere?** Cold boot is 3–5s per run, painful
+on every local edit-test loop.
 
 **Why not just schema mode everywhere?** CI runners do not always have a
-long-lived Postgres. Testcontainers is self-contained and requires only
-Docker, which GitHub Actions' `ubuntu-latest` provides.
+long-lived Postgres. Testcontainers needs only Docker, which GitHub Actions'
+`ubuntu-latest` provides.
+
+### Concurrent runs on one server
+
+Every database a run creates is named for that run: the template is
+`forge_test_tpl_<stamp>_<rand>` and each worker's clone is
+`test_w<id>_<stamp>_<rand>`, both minted in `tests/helpers/scratch-db.ts`. A run
+drops only what it created; anything a crashed run left behind is dropped by
+`reapAbandoned` once it is older than any live run could be.
+
+This is load-bearing rather than tidy. The template used to be the single fixed
+name `forge_test_tpl`, dropped and recreated at the start of every run, so two
+runs entering setup together destroyed each other's template and the loser
+reported `template database "forge_test_tpl" does not exist` — a failure naming
+a Postgres object, on files the change never touched (ISS-937).
 
 ## Running
 
@@ -44,9 +64,9 @@ export TEST_DATABASE_URL="postgres://forge:forge_secret@localhost:5432/forge"
 pnpm --filter @forge/core test:integration
 ```
 
-`TEST_DATABASE_URL` can point at any Postgres you have handy. Each run creates
-its own schema and drops it afterwards, so concurrent runs / parallel workers
-do not collide.
+`TEST_DATABASE_URL` can point at any Postgres you have handy — including one
+other runs are using. See *Concurrent runs on one server* above for what keeps
+them apart.
 
 ### Integration tests — CI-style (Testcontainers)
 
@@ -54,7 +74,7 @@ do not collide.
 pnpm --filter @forge/core test:integration:ci   # sets TEST_DB_MODE=container
 ```
 
-Requires a local Docker daemon. No shared Postgres needed.
+Requires a docker daemon this user can reach. No shared Postgres needed.
 
 ## Writing a new integration test
 
@@ -98,28 +118,8 @@ Rules:
 - Do not import `src/db/client.ts` in integration tests (it reads
   `DATABASE_URL`, not the test-scoped URL). Use `harness.db`.
 
-## Factories (`users`, `projects`)
-
-`createTestUser` and `createTestProject` assume the `users` and `projects`
-tables defined in RFC 0002 §Schema. Those tables are scheduled for Phase 2.1-A/B
-and 2.1-C respectively. Until they land, the factories throw a clear error
-with a pointer to the owning phase — the integration scaffolding ships today so
-downstream PRs can write tests without first touching this file.
-
-## Timing
-
-Targets from the Phase 2.1-I acceptance criteria (`<30s` full sweep):
-
-| Scenario                        | Expected  |
-| ------------------------------- | --------- |
-| Schema mode, smoke test         | < 2s      |
-| Container mode, cold smoke test | 5–8s      |
-
-Full Phase 2.1 integration sweep fits inside 30s as long as test files share
-the per-worker schema pattern (set up once in `beforeAll`, not per test).
-
 ## CI wiring
 
-`.github/workflows/ci.yml` runs `pnpm --filter @forge/core test` (unit only) on
-every push. The integration job (Docker + Testcontainers) is gated on the
-`core` path filter and invoked via `pnpm --filter @forge/core test:integration:ci`.
+`.github/workflows/ci.yml` runs `pnpm --filter @forge/core test` (unit only) in
+the `core` job. The integration suite runs in `core-integration` as
+`TEST_DB_MODE=container pnpm --filter @forge/core test:integration:coverage`.

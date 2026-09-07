@@ -110,11 +110,7 @@ describe('ISS-164 pipelineHealth E2E', () => {
     return id;
   }
 
-  // ISS-164 fix — `jobs.pipeline_run_id` + `agent_sessions.pipeline_run_id` are
-  // NOT NULL after migration 0054. Every job/session insert must hang off a
-  // pipeline_run row. For an issue-scoped row, reuse the same open run (the
-  // partial unique index `pipeline_runs_issue_open_uq` allows only one running
-  // issue run per issue). For issueId=null we mint a fresh `system` run.
+  // cm:guard reuse the issue's existing run, never insert a second — `pipeline_runs_issue_open_uq` is a partial unique index admitting ONE non-terminal run per issue, so a fixture that inserts blindly fails on 23505 rather than on what it was testing
   async function getOrCreateRun(projectId: string, issueId: string | null): Promise<string> {
     if (issueId) {
       const existing = await harness.db.execute<{ id: string }>(sql`
@@ -307,6 +303,48 @@ describe('ISS-164 pipelineHealth E2E', () => {
     const health = map.get(issueId);
     expect(health?.waitingOn?.reason).toBe('run_not_running');
     expect(health?.waitingOn?.details.runStatus).toBe('paused');
+  });
+
+  // cm:guard the ONLY end-to-end proof of ISS-853 — `loadPausedRunsByIssue` reads `pipeline_runs` by issue id, so it is the one loader with no job row to join through, and the unit suite mocks drizzle away entirely. Delete this and the SQL that closes the blind spot is exercised nowhere.
+  it('reports the paused run for an issue with NO job at all (ISS-853)', async () => {
+    const { project } = await seedProject({ maxConcurrentIssues: 5 });
+    const issueId = await insertIssue(project.id, { status: 'approved' });
+    const runId = await getOrCreateRun(project.id, issueId);
+    await harness.db.execute(sql`UPDATE pipeline_runs SET status = 'paused' WHERE id = ${runId}`);
+
+    const map = await mods.hydratePipelineHealthForIssues(project.id, [issueId]);
+    const health = map.get(issueId);
+    expect(health?.waitingOn).toBeUndefined();
+    expect(health?.pausedRun?.runId).toBe(runId);
+    expect(health?.pausedRun?.pauseReason).toBeNull();
+    expect(health?.pausedRun?.resumer).toBe('operator');
+  });
+
+  it('reads a machine pause reason apart into its kind, detail and resumer', async () => {
+    const { project } = await seedProject({ maxConcurrentIssues: 5 });
+    const issueId = await insertIssue(project.id, { status: 'in_progress' });
+    const runId = await getOrCreateRun(project.id, issueId);
+    await harness.db.execute(sql`
+      UPDATE pipeline_runs
+      SET status = 'paused',
+          metadata = COALESCE(metadata, '{}'::jsonb) || '{"pauseReason":"stage_stalled:code"}'::jsonb
+      WHERE id = ${runId}
+    `);
+
+    const map = await mods.hydratePipelineHealthForIssues(project.id, [issueId]);
+    const paused = map.get(issueId)?.pausedRun;
+    expect(paused?.kind).toBe('stage_stalled');
+    expect(paused?.detail).toBe('code');
+    expect(paused?.resumer).toBe('operator');
+  });
+
+  it('leaves pausedRun unset while the run is still running', async () => {
+    const { project } = await seedProject({ maxConcurrentIssues: 5 });
+    const issueId = await insertIssue(project.id);
+    await getOrCreateRun(project.id, issueId);
+
+    const map = await mods.hydratePipelineHealthForIssues(project.id, [issueId]);
+    expect(map.get(issueId)?.pausedRun).toBeUndefined();
   });
 
   it('reports runner_stale when the project has no fresh runner', async () => {

@@ -27,10 +27,15 @@ use crate::daemon::dispatch::resolve_repo;
 use crate::daemon::terminal;
 use crate::runner::process::{mcp_tool_timeout_default, resolve_claude_bin};
 use crate::transport::{master as master_api, pool, runners, CoreClient};
+use tokio::sync::mpsc;
 
 /// How often the box asks whether any work exists.
 // cm:why this interval IS the latency from an issue opening to an agent touching it, and it is the whole budget: nothing pushes any more, so a job queued one tick after a poll waits a full interval before anything looks. 30s was chosen against the old push path's measured dispatch lag on epodsystem (queue→dispatch of 17m, 23m, 46m and 2h08 on 2026-09-04) — an order of magnitude of headroom, at one cheap request per project per half minute.
 const POLL_INTERVAL: Duration = Duration::from_secs(30);
+
+/// The closest together two wake-driven sweeps may run.
+// cm:guard this is a COALESCING FLOOR, never a rate limit that drops work. A wake inside the window waits out the remainder and then sweeps; it is not discarded. Core publishes one `master.wake` per issue arrival, so promoting five drafts or closing a batch delivers five frames in about as many milliseconds, and a sweep per frame would be five `/me/runners` reads plus five pool reads per project to find what the first one already found. The channel is capacity 1 and extra frames are dropped ON PURPOSE while one is pending — the sweep that follows reads the WHOLE pool, so a dropped frame costs nothing a later read does not already cover.
+const WAKE_FLOOR: Duration = Duration::from_secs(5);
 
 /// How long a prompted master may print NOTHING before it is treated as hung.
 ///
@@ -116,7 +121,7 @@ is re-sent to every master this box starts, so it survives this session.\n\n",
 }
 
 /// One pass: the pool as it stands, and nothing else.
-fn pass_prompt(session_id: &str, issue_keys: &[String]) -> String {
+fn pass_prompt(session_id: &str, issue_keys: &[String], backlog_keys: &[String]) -> String {
     let mut out = format!(
         "Pass. Your master session id is `{session_id}` — pass it as `--session-id`.\n\nIssues \
 with claimable work right now:\n"
@@ -125,6 +130,19 @@ with claimable work right now:\n"
         out.push_str("- ");
         out.push_str(id);
         out.push('\n');
+    }
+    // cm:guard name the backlog as a SEPARATE list and say what it is not. Folded into the list above, a master reads `pool claim <issueId>` as the next step and burns its turn on a refusal core answers as `not_found` — a message that names the job rather than the mistake, so nothing in the transcript says why. The two lists answer different questions and the prompt is where that distinction has to survive.
+    if !backlog_keys.is_empty() {
+        out.push_str(
+            "\nBacklog — declared visible, NOT claimable. No job and no run exists for these; \
+`forge-runner pool promote <issueId>` is what turns one into work, and whether any of them is \
+worth pulling up now is your call:\n",
+        );
+        for id in backlog_keys {
+            out.push_str("- ");
+            out.push_str(id);
+            out.push('\n');
+        }
     }
     out.push_str(
         "\nTake the time you need to decide, then stop. Claim what you are confident about, \
@@ -274,17 +292,63 @@ fn breaker_notice(slug: &str, deaths: u32, remaining: Duration) -> String {
     )
 }
 
-/// Poll every served project until `cancel` flips, keeping masters alive.
+/// Why a sweep is happening now, when it is not the timer.
+// cm:guard a wake carries NO work — not a job, not a token, not a decision. It says "look now", and the box then reads the pool through the same path the timer uses and decides for itself. A wake that carried the work would be a second dispatcher, and this box would hold two sources of truth about what to run with nothing reconciling them.
+#[derive(Debug, Clone)]
+pub enum Wake {
+    /// Core published `master.wake` on this box's device room (ISS-933).
+    Core { project_id: Option<String> },
+    /// This box's websocket came back up, so anything published while it was
+    /// down is gone — `rooms.ts:publish` has no buffer and no replay.
+    Reconnect,
+}
+
+impl Wake {
+    fn describe(&self) -> String {
+        match self {
+            Wake::Core {
+                project_id: Some(p),
+            } => format!("core, project {p}"),
+            Wake::Core { project_id: None } => "core".into(),
+            Wake::Reconnect => "websocket reconnected — catch-up read".into(),
+        }
+    }
+}
+
+/// A sender for [`Wake`], sized so a burst coalesces instead of queueing.
+pub fn wake_channel() -> (mpsc::Sender<Wake>, mpsc::Receiver<Wake>) {
+    mpsc::channel(1)
+}
+
+/// Keep every served project's master alive, on the timer OR on a wake.
+///
+/// The timer is the floor and the wake is the latency cut. Both call the same
+/// `sweep`; there is no second path and no second dispatcher.
+// cm:guard the TIMER MUST STAY, and this is the only place that says so on this side. Core's publish is fire-and-forget — `ws/rooms.ts:publish` skips any socket that is not OPEN and buffers nothing — so a wake sent while this box's websocket is down is gone with nothing recording that it happened. Deleting the timer here turns one dropped frame into work that sits forever with nothing reporting why; keeping it makes the same drop cost 30 seconds. The reconnect catch-up covers the same hole from the other end and is not a substitute for either.
 pub async fn run(
     client: CoreClient,
     cfg: Config,
     masters: Arc<Masters>,
     mut cancel: tokio::sync::watch::Receiver<bool>,
+    mut wake: mpsc::Receiver<Wake>,
 ) {
     let mut delay = POLL_INTERVAL;
+    let mut last_sweep = Instant::now();
     loop {
         tokio::select! {
-            _ = tokio::time::sleep(delay) => delay = sweep(&client, &cfg, &masters).await,
+            _ = tokio::time::sleep(delay) => {
+                delay = sweep(&client, &cfg, &masters).await;
+                last_sweep = Instant::now();
+            }
+            Some(w) = wake.recv() => {
+                let since = last_sweep.elapsed();
+                if since < WAKE_FLOOR {
+                    tokio::time::sleep(WAKE_FLOOR - since).await;
+                }
+                tracing::info!("[master] wake ({}) — sweeping now", w.describe());
+                delay = sweep(&client, &cfg, &masters).await;
+                last_sweep = Instant::now();
+            }
             _ = cancel.changed() => { if *cancel.borrow() { break; } }
         }
     }
@@ -358,15 +422,18 @@ async fn sweep(client: &CoreClient, cfg: &Config, masters: &Arc<Masters>) -> Dur
         }
         supervise(client, masters, &runner.project_id, &runner.slug).await;
 
-        let items = match pool::pool(client, 20, Some(&runner.project_id)).await {
-            Ok(items) => items,
+        let view = match pool::pool(client, 20, Some(&runner.project_id)).await {
+            Ok(view) => view,
             Err(e) => {
                 tracing::warn!("[master] pool unreadable for {}: {e}", runner.slug);
                 continue;
             }
         };
+        let items = view.items;
+        let backlog = view.backlog;
         // cm:guard an EMPTY pool starts no master, and that bound survives residency. A resident session is a `claude` process that lives until something ends it, and nothing counts it — `duplex_max_sessions` covers duplex pipeline jobs alone, so a box serving six projects would carry six permanent processes for however many of them never have work. A master that already exists is kept and still supervised; residency is for a project doing something, not for every row `/me/runners` returns.
-        if items.is_empty() && masters.get(&runner.project_id).is_none() {
+        // cm:guard a declared backlog alone is reason enough to start a master, and this is why the emptiness test names BOTH lists. Gating on `items` only means a project whose entire content is a backlog never gets a master, so the promote path it opted into fires nowhere — the knob would be configurable, savable and dead.
+        if items.is_empty() && backlog.is_empty() && masters.get(&runner.project_id).is_none() {
             continue;
         }
 
@@ -386,7 +453,8 @@ async fn sweep(client: &CoreClient, cfg: &Config, masters: &Arc<Masters>) -> Dur
             continue;
         };
 
-        if items.is_empty() {
+        // cm:guard a backlog-only project is prompted too. `items` alone was the test while a pool held nothing but jobs; a project that opted into `poolBacklog` and has only drafts would otherwise get a master, a brief and never a single pass — the knob configurable, savable and dead.
+        if items.is_empty() && backlog.is_empty() {
             continue;
         }
 
@@ -395,13 +463,20 @@ async fn sweep(client: &CoreClient, cfg: &Config, masters: &Arc<Masters>) -> Dur
         keys.sort();
         keys.dedup();
 
+        let mut backlog_keys: Vec<String> =
+            backlog.iter().filter_map(|b| b.issue_key.clone()).collect();
+        backlog_keys.sort();
+        backlog_keys.dedup();
+
         prompt_pass(
             masters,
             &runner.project_id,
             &resolved.slug,
             &session,
             &keys,
+            &backlog_keys,
             items.len(),
+            backlog.len(),
         )
         .await;
     }
@@ -579,7 +654,9 @@ async fn prompt_pass(
     slug: &str,
     session: &master_api::MasterSession,
     keys: &[String],
+    backlog_keys: &[String],
     claimable: usize,
+    backlog: usize,
 ) {
     let Some((_, name, transcript)) = masters.get(project_id) else {
         return;
@@ -589,8 +666,10 @@ async fn prompt_pass(
         tracing::debug!("[master] {slug}: still working — not prompting this sweep");
         return;
     }
-    tracing::info!("[master] {slug}: {claimable} job(s) claimable — prompting {name}");
-    match terminal::send_line(&name, &pass_prompt(&session.session_id, keys)).await {
+    tracing::info!(
+        "[master] {slug}: {claimable} job(s) claimable, {backlog} backlog row(s) — prompting {name}"
+    );
+    match terminal::send_line(&name, &pass_prompt(&session.session_id, keys, backlog_keys)).await {
         Ok(()) => masters.mark_prompted(project_id),
         Err(e) => tracing::warn!("[master] {slug}: could not prompt {name}: {e}"),
     }
@@ -692,6 +771,52 @@ mod tests {
                 limit_reason: None,
             })
             .collect()
+    }
+
+    // cm:guard the wake floor must stay BELOW the poll interval, or a wake is strictly worse than doing nothing: core publishes to cut the latency from an issue arriving to a box looking, and a floor at or above `POLL_INTERVAL` would make every wake wait longer than the timer it was meant to beat.
+    #[test]
+    fn a_wake_cuts_latency_rather_than_adding_it() {
+        assert!(WAKE_FLOOR < POLL_INTERVAL);
+    }
+
+    // cm:guard capacity ONE is the coalescing, and this is the assertion that fails if someone widens the channel to "not lose any". Widening it queues one sweep per arriving issue, and every sweep after the first re-reads a pool the first already covered — five promoted drafts would cost five `/me/runners` reads plus five pool reads per project to learn nothing new.
+    #[tokio::test]
+    async fn a_burst_of_wakes_coalesces_into_one_pending_sweep() {
+        let (tx, mut rx) = wake_channel();
+
+        assert!(tx
+            .try_send(Wake::Core {
+                project_id: Some("p1".into())
+            })
+            .is_ok());
+        assert!(
+            tx.try_send(Wake::Core {
+                project_id: Some("p2".into())
+            })
+            .is_err(),
+            "a second wake while one is pending must be dropped, not queued"
+        );
+        assert!(
+            tx.try_send(Wake::Reconnect).is_err(),
+            "the catch-up read coalesces onto a pending wake too — one sweep covers both"
+        );
+
+        assert!(matches!(rx.recv().await, Some(Wake::Core { .. })));
+        assert!(
+            tx.try_send(Wake::Reconnect).is_ok(),
+            "once the pending wake is taken, the next one must get through"
+        );
+    }
+
+    // cm:guard the operator has to be able to tell which trigger fired, because a box waking only on reconnect is one whose `master.wake` frames are being dropped somewhere — a fault with no other symptom, since the timer keeps the work moving.
+    #[test]
+    fn a_wake_says_which_trigger_fired() {
+        assert!(Wake::Core {
+            project_id: Some("forge-dev".into())
+        }
+        .describe()
+        .contains("forge-dev"));
+        assert!(Wake::Reconnect.describe().contains("catch-up"));
     }
 
     // cm:guard this is the test that has to fail if anyone turns the backoff into a skip. A limited fleet must still be swept, because core clears the limit only on a job that SUCCEEDS — the delay may grow, but it is bounded and the sweep always happens.
@@ -816,6 +941,24 @@ mod tests {
         }
     }
 
+    // cm:guard the two lists must stay TOLD APART in the prompt. A master that reads a backlog key as claimable spends its turn on `pool claim <issueId>`, which core refuses as `not_found` — and the refusal names the job, not the mistake, so nothing in the transcript says why.
+    #[test]
+    fn the_pass_prompt_separates_the_backlog_from_the_claimable_pool() {
+        let p = pass_prompt("sess-1", &["ISS-901".into()], &["ISS-917".into()]);
+        assert!(p.contains("ISS-901"));
+        assert!(p.contains("ISS-917"));
+        assert!(p.contains("NOT claimable"), "{p}");
+        assert!(p.contains("pool promote"), "{p}");
+    }
+
+    // cm:guard a project that declared no backlog must be prompted EXACTLY as it was before ISS-917. That is every other project on the fleet, so a stray heading here changes what every master on it reads.
+    #[test]
+    fn a_pass_prompt_with_no_backlog_says_nothing_about_one() {
+        let p = pass_prompt("sess-1", &["ISS-901".into()], &[]);
+        assert!(!p.contains("Backlog"), "{p}");
+        assert!(!p.contains("pool promote"), "{p}");
+    }
+
     // cm:guard the standing brief and the pass prompt must stay SEPARATE, and this is the assertion that fails if they are folded back together: re-sending the brief every 30 seconds is the cold start this change removed, arriving as tokens instead of as a process.
     #[test]
     fn the_pass_prompt_carries_the_pool_and_not_the_brief() {
@@ -823,7 +966,7 @@ mod tests {
         assert!(brief.contains("forge-master"));
         assert!(brief.contains("origin/main"));
 
-        let pass = pass_prompt("sess-1", &["ISS-1".into(), "ISS-2".into()]);
+        let pass = pass_prompt("sess-1", &["ISS-1".into(), "ISS-2".into()], &[]);
         assert!(
             pass.contains("sess-1"),
             "the master needs its own session id: {pass}"

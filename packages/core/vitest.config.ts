@@ -4,8 +4,10 @@ export default defineConfig({
   test: {
     // cm:why `packages/contracts` declares no test script and no vitest config, so its only test file ran NOWHERE — not in `pnpm test`, not in CI's `pnpm --filter @forge/core test`. Included from here rather than given a runner of its own because contracts is a type-only surface whose one behavioural unit (the kernel↔label map) is consumed by core.
     // cm:why `scripts/` has no runner of its own and the gate scripts are where this repo's rules live — the baseline-ratchet comparators decide whether five frozen baselines may grow, and until this line they were verified only by hand
+    // cm:why `tests/helpers/` is collected HERE rather than by the integration config: those helpers carry real logic (the scratch-database naming and the age reaper that decides what may be dropped from a shared server), and the integration config's `globalSetup` needs a live Postgres — so a unit test placed there could not run without the very database it exists to keep safe
     include: [
       'src/**/*.test.ts',
+      'tests/helpers/**/*.test.ts',
       '../contracts/src/**/*.test.ts',
       '../../scripts/**/*.test.mjs',
     ],

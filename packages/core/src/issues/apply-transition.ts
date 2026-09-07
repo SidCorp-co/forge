@@ -379,11 +379,7 @@ export async function transitionIssueStatus(
     at: updated.updatedAt,
   });
 
-  // Audit trail for the close-time stamp: only fires when the close is what
-  // stamped merged_at (hand/MCP closes of never-merged issues — the pipeline
-  // path stamped earlier on leaving the base merge state, so it stays quiet).
-  // Best-effort: the transition already committed; losing the comment must
-  // not fail the caller.
+  // cm:why the block below is the GATE HOLD's audit trail, not the close stamp's — an earlier version of this comment said the latter, and the two fire on opposite paths. Best-effort on purpose: the transition already committed, so losing the comment must not fail the caller.
   if (held) {
     try {
       await db.insert(comments).values({
@@ -431,7 +427,6 @@ export async function transitionIssueStatus(
     await recordDropUnblock(issue, txResult.unblockedDependents, actor);
   }
 
-  // ISS-164 — refresh derived pipelineHealth (stage mirrors issues.status).
   await publishPipelineHealthChanged(issue.projectId, [updated.id]);
 
   // ISS-101 — keep run timeline in sync with issue status, then close it on
@@ -529,12 +524,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
               updatedAt: issues.updatedAt,
             });
           if (!row) return null;
-          await markMergedIfLeavingBase(t, {
-            issueId: issue.id,
-            projectId: issue.projectId,
-            fromStatus,
-            toStatus,
-          });
+          await markMergedIfLeavingBase(t, { issueId: issue.id, fromStatus, toStatus });
           const closeStamp = await markMergedOnClose(t, {
             issueId: issue.id,
             toStatus: requestedStatus,
