@@ -1,7 +1,8 @@
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { commentAttachments, comments } from '../db/schema.js';
+import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
 import { getStorage } from '../storage/index.js';
 import type { CommentAttachmentLite } from './tree.js';
 
@@ -22,21 +23,47 @@ export const ALLOWED_MIMES = new Set([
 ]);
 
 export function safeName(name: string): string {
-  // Strip path separators; keep extension. Length-cap.
   const cleaned = name.replace(/[\\/]+/g, '_').replace(/[^A-Za-z0-9._-]/g, '_');
   return cleaned.slice(0, 200) || 'file';
 }
 
+export type AttachmentErrorCode =
+  | 'MIME_NOT_ALLOWED'
+  | 'FILE_TOO_LARGE'
+  | 'EMPTY_FILE'
+  | 'INVALID_NAME'
+  | 'ATTACHMENT_NAME_TAKEN';
+
 export class AttachmentError extends Error {
-  readonly code: 'MIME_NOT_ALLOWED' | 'FILE_TOO_LARGE' | 'EMPTY_FILE' | 'INVALID_NAME';
-  constructor(
-    code: 'MIME_NOT_ALLOWED' | 'FILE_TOO_LARGE' | 'EMPTY_FILE' | 'INVALID_NAME',
-    message: string,
-  ) {
+  readonly code: AttachmentErrorCode;
+  // cm:guard every route that maps this class must forward `details` — an ATTACHMENT_NAME_TAKEN whose body drops it names a collision without naming what it collided with, which is the refusal the caller cannot act on (ISS-963)
+  readonly details: unknown;
+  constructor(code: AttachmentErrorCode, message: string, details?: unknown) {
     super(message);
     this.code = code;
+    this.details = details;
     this.name = 'AttachmentError';
   }
+}
+
+/**
+ * The oldest attachment on this comment stored under exactly `name`, or null.
+ *
+ * Scoped to the one comment, not the issue: a comment is written once with its
+ * files, and two comments in a thread may each carry their own `output.txt`.
+ */
+export async function findCommentAttachmentByName(
+  commentId: string,
+  name: string,
+): Promise<ExistingAttachmentRef | null> {
+  const [row] = await db
+    .select({ id: commentAttachments.id, name: commentAttachments.name })
+    .from(commentAttachments)
+    .where(and(eq(commentAttachments.commentId, commentId), eq(commentAttachments.name, name)))
+    .orderBy(asc(commentAttachments.createdAt))
+    .limit(1);
+  if (!row) return null;
+  return { id: row.id, name: row.name, url: `/api/comments/attachments/${row.id}` };
 }
 
 export interface PersistCommentAttachmentInput {
@@ -80,6 +107,16 @@ export async function persistCommentAttachment(
   const name = safeName(input.name || 'file');
   if (!name) {
     throw new AttachmentError('INVALID_NAME', 'name is empty after sanitisation');
+  }
+
+  // cm:guard decide the collision on the SANITISED name, never `input.name` — that is what the row stores and what a record cites, and `a b.md`/`a_b.md` both sanitise to `a_b.md`, so checking the input would admit the pairs that actually collide and refuse the pairs that do not (ISS-963)
+  const taken = await findCommentAttachmentByName(commentId, name);
+  if (taken) {
+    throw new AttachmentError(
+      'ATTACHMENT_NAME_TAKEN',
+      `an attachment named "${taken.name}" is already on this comment (id ${taken.id}) — cite it or upload under a different name`,
+      { existing: taken },
+    );
   }
 
   const key = `comments/${commentId}/${Date.now()}-${name}`;

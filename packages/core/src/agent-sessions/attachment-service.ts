@@ -19,20 +19,23 @@ export const ALLOWED_MIMES = new Set([
 ]);
 
 export function safeName(name: string): string {
-  // Strip path separators; keep extension. Length-cap. (Mirrors comment/issue
-  // attachment-service so the runner can preserve the extension for Read.)
+  // cm:edge lockstep -> packages/core/src/comments/attachment-service.ts — three domains carry their own `safeName` and all three must sanitise identically: the runner hands the stored name to Read, so a domain that mangles an extension the others keep makes the same file unreadable depending on where it was attached.
   const cleaned = name.replace(/[\\/]+/g, '_').replace(/[^A-Za-z0-9._-]/g, '_');
   return cleaned.slice(0, 200) || 'file';
 }
 
 export class SessionAttachmentError extends Error {
   readonly code: 'MIME_NOT_ALLOWED' | 'FILE_TOO_LARGE' | 'EMPTY_FILE' | 'INVALID_NAME';
+  // cm:why carried on all three attachment error classes so one route mapping reads `err.details` across the union; a session attachment is never refused for a taken name (no record cites one by name), so this is always undefined here today
+  readonly details: unknown;
   constructor(
     code: 'MIME_NOT_ALLOWED' | 'FILE_TOO_LARGE' | 'EMPTY_FILE' | 'INVALID_NAME',
     message: string,
+    details?: unknown,
   ) {
     super(message);
     this.code = code;
+    this.details = details;
     this.name = 'SessionAttachmentError';
   }
 }

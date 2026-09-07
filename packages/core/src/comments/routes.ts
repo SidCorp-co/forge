@@ -93,7 +93,6 @@ async function loadComment(commentId: string) {
   return row;
 }
 
-// Mounted on issueRoutes under /issues/:id/comments
 export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>): void {
   router.post(
     '/:id/comments',
@@ -313,6 +312,11 @@ function attachmentErrorToHttp(err: AttachmentError): HTTPException {
       return new HTTPException(400, { message: 'empty file', cause: { code: 'BAD_REQUEST' } });
     case 'INVALID_NAME':
       return new HTTPException(400, { message: err.message, cause: { code: 'BAD_REQUEST' } });
+    case 'ATTACHMENT_NAME_TAKEN':
+      return new HTTPException(400, {
+        message: err.message,
+        cause: { code: 'ATTACHMENT_NAME_TAKEN', details: err.details },
+      });
   }
 }
 
