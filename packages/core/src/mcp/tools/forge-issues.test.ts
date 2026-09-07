@@ -1172,6 +1172,26 @@ describe('forge_issues tool', () => {
     ).rejects.toThrow(/SESSION_CONTEXT_MISMATCH[\s\S]*session-b/);
   });
 
+  // cm:guard the refusal is what makes the precondition honest on this door: `expect` reaches the row only through `updateIssueFields`, and this action writes a status by a separate call, so accepting `{ expect, status }` would transition unconditionally while the caller read the call as guarded. Assert the TRANSITION never ran, not merely that it threw — a refusal that still moved the status is the bug wearing a 400.
+  it('update refuses an `expect` with no field to write instead of transitioning unguarded', async () => {
+    const tool = forgeIssuesTool({
+      principal: fakePrincipal,
+      projectSlug: PROJECT_SLUG,
+    });
+    selectLimit.mockResolvedValueOnce([baseIssueRow]);
+    selectLimit.mockResolvedValueOnce([memberAccessRow]);
+
+    await expect(
+      tool.handler({
+        action: 'update',
+        documentId: ISSUE_ID,
+        data: { status: 'in_progress', expect: { sessionContext: { lease: { holder: 'a' } } } },
+      }),
+    ).rejects.toThrow(/BAD_REQUEST[\s\S]*precondition on a FIELD write/);
+    expect(updateIssueFieldsMock).not.toHaveBeenCalled();
+    expect(transactionMock).not.toHaveBeenCalled();
+  });
+
   it('update with status routes through state machine and rejects illegal transition', async () => {
     const tool = forgeIssuesTool({
       principal: fakePrincipal,
@@ -1182,8 +1202,7 @@ describe('forge_issues tool', () => {
     // membership check
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
-    // open → draft is illegal (draft is never a runtime transition target;
-    // all other transitions are now permissive — guided by the system prompt)
+    // cm:guard `draft` is the ONE illegal target left, so this is the whole negative half of the state machine on this door — every other pair is permissive by design and judged by the agent, and a second case here would be asserting a rule core does not hold
     await expect(
       tool.handler({
         action: 'update',

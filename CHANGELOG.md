@@ -25,7 +25,9 @@
   SESSION_CONTEXT_MISMATCH` carrying, under `details.current`, the value the field holds now — a
   bare refusal would leave it one move, a blind unconditional overwrite, which is the write being
   prevented. A write with no `expect` behaves exactly as before, so every existing client keeps
-  working.
+  working, and an `expect` sent with no field to write is refused on both doors rather than
+  ignored — it holds nothing against a status or relations change, and a caller who read the call
+  as guarded would be wrong.
 
 - **The merged mark now records the commit it was made at.** `merged_at` was a bare timestamp, and
   the commit lived in the prose of the mark's note — so "did THIS commit land?" was a judgement

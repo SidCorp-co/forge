@@ -161,11 +161,7 @@ const dataObject = z
     // shape is validated by `ReleaseNotesSchema` so an invalid section enum
     // is rejected at the MCP boundary.
     releaseNotes: ReleaseNotesSchema.nullable().optional(),
-    // ISS-286 — mark_merged / unmark fields. `issueId` (below) identifies the
-    // target issue. `target` is an audit label only — trunk-based v2 has a
-    // single `merged_at` column (no `merged_to_prod_at` until v3), so all
-    // three values stamp the same column. `mergedAt` overrides the default
-    // `now()` stamp; `note` is appended to the audit comment.
+    // cm:guard an audit LABEL and never a second column — all three values stamp the one `merged_at`, so a reader that branches on `target` to decide where the work landed is reading a string somebody typed (ISS-286)
     target: z.enum(['feature', 'base', 'prod']).optional(),
     // cm:edge contract -> packages/core/src/issues/merge-routes.ts — the same field on the REST door, and the same shape refusal; the two are one claim with two surfaces
     commit: mergedCommitShaSchema.optional(),
@@ -705,9 +701,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const issue = await loadIssue(input.documentId);
         await assertPrincipalIsWriter(principal, issue.projectId);
 
-        // ISS-633 — resolve + strictly validate label names/uuids BEFORE the
-        // tx (mirrors REST PATCH's assertLabelsInProject running before its
-        // own tx). `undefined` means "no change"; `[]` clears every label.
+        // cm:guard resolved BEFORE the transaction, mirroring REST PATCH's `assertLabelsInProject` — a bad label name must fail the call rather than roll a started write back (ISS-633). `undefined` is "no change" and `[]` clears every label, so the two cannot be collapsed.
         let labelIds: ResolvedLabelAttach[] | undefined;
         if (input.data.labels !== undefined) {
           try {
@@ -734,7 +728,15 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const { updates, warnings: bodyWarnings } = collected;
 
         // cm:edge ordering -> packages/core/src/issues/release-record-required.ts — the second reader of this order, and the reason a close needs one call rather than two: that rule re-reads issues.release_notes, so a reversed order throws RELEASE_RECORD_REQUIRED on a legal { releaseNotes, status:'closed' } and discards the note the caller just wrote to satisfy it
-        if (Object.keys(updates).length > 0 || labelIds !== undefined) {
+        const willWriteFields = Object.keys(updates).length > 0 || labelIds !== undefined;
+        // cm:guard REFUSE rather than ignore. `expect` reaches the database only through `updateIssueFields`, and this action also writes a status and relations by other calls — so `{ expect, status }` with no field to write would transition unconditionally while the caller believes a precondition held it. REST's second refine on `issuePatchSchema` says the same thing at its own door; this is that door.
+        if (input.data.expect && !willWriteFields) {
+          throw new Error(
+            'BAD_REQUEST: data.expect is a precondition on a FIELD write — it holds nothing against a status or relations change. Send the field(s) to write alongside it.',
+          );
+        }
+
+        if (willWriteFields) {
           // cm:why sql`now()`, matching transitionIssueStatus below — a combined status+fields update needs one canonical timestamp source, not a mix of JS Date and DB now()
           updates.updatedAt = sql`now()`;
           try {
