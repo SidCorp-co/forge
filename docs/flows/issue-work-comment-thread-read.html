@@ -1,0 +1,157 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · issue-work-comment-thread-read — how a client reads a whole comment thread</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --lock:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .ok { color:var(--acc); font-weight:600; }
+  svg { background:#fff; border:1px solid var(--line); border-radius:4px; display:block; max-width:100%; }
+  text { font:12px ui-sans-serif,system-ui,sans-serif; fill:var(--fg); }
+  text.m { font-size:11px; fill:var(--mut); }
+  text.t { font:600 12px ui-monospace,Menlo,monospace; }
+  .box { fill:#fff; stroke:var(--line); }
+  .ship { fill:#eef6f1; stroke:#bcdcca; }
+  .exit { fill:#fdf0f3; stroke:#e3c2cb; }
+  .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
+  .arrowbad { stroke:var(--bad); stroke-width:1.2; fill:none; marker-end:url(#b); stroke-dasharray:4 3; }
+</style>
+<main>
+
+<h1>issue-work-comment-thread-read — how a client reads a whole comment thread</h1>
+<p class="sub">One issue's comments are longer than one response, on both transports. This is the
+walk that reads them all, and every way it goes wrong. The reason it is a flow rather than a
+signature is that <strong>three separate bounds</strong> sit between the rows and the caller — a page
+bound, a response-size budget, and the tree builder's refusal to promote an orphan reply — and each
+one, mishandled, produces a walk that <em>terminates cleanly on an incomplete thread</em>. Owners:
+<code>packages/core/src/comments/service.ts</code> (the keyset query),
+<code>packages/core/src/comments/cursor.ts</code> (the token both transports mint),
+<code>packages/core/src/comments/routes.ts</code> (REST),
+<code>packages/core/src/mcp/tools/forge-comments.ts</code> with
+<code>packages/core/src/mcp/tools/list-envelope.ts</code> (MCP), and
+<code>packages/web-v2/src/lib/api/client.ts</code> (the browser's walk).</p>
+
+<h2>The walk</h2>
+<svg viewBox="0 0 900 430" role="img" aria-label="Sequence of a client paging a comment thread">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a3b52"/></marker>
+  </defs>
+
+  <rect class="box" x="20" y="14" width="150" height="30" rx="4"/>
+  <text class="t" x="34" y="34">client</text>
+  <rect class="box" x="250" y="14" width="180" height="30" rx="4"/>
+  <text class="t" x="264" y="34">REST / MCP list</text>
+  <rect class="box" x="510" y="14" width="200" height="30" rx="4"/>
+  <text class="t" x="524" y="34">listIssueCommentPage</text>
+  <rect class="box" x="770" y="14" width="110" height="30" rx="4"/>
+  <text class="t" x="784" y="34">postgres</text>
+
+  <line x1="95"  y1="44" x2="95"  y2="410" stroke="#ddd7cf"/>
+  <line x1="340" y1="44" x2="340" y2="410" stroke="#ddd7cf"/>
+  <line x1="610" y1="44" x2="610" y2="410" stroke="#ddd7cf"/>
+  <line x1="825" y1="44" x2="825" y2="410" stroke="#ddd7cf"/>
+
+  <path class="arrow" d="M95,78 L336,78"/>
+  <text class="m" x="104" y="72">list (no cursor) · limit bounds ROOTS</text>
+
+  <path class="arrow" d="M340,110 L606,110"/>
+  <text class="m" x="349" y="104">after = decode(cursor) or undefined</text>
+
+  <path class="arrow" d="M610,142 L821,142"/>
+  <text class="m" x="619" y="136">roots WHERE parent_id IS NULL</text>
+  <text class="m" x="619" y="156">AND (created_at, id) &gt; after · LIMIT n+1</text>
+
+  <path class="arrow" d="M610,190 L821,190"/>
+  <text class="m" x="619" y="184">2 × replies WHERE parent_id IN (roots)</text>
+  <text class="m" x="619" y="204">depth is 3 by DB trigger, so 2 rounds finish</text>
+
+  <path class="arrow" d="M606,240 L344,240"/>
+  <text class="m" x="353" y="234">rows + roots + nextCursor (from the n+1 probe)</text>
+
+  <path class="arrow" d="M336,278 L99,278"/>
+  <text class="m" x="108" y="272">page: items (tree) · total (FLAT count) · nextCursor</text>
+
+  <path class="arrow" d="M95,326 L336,326"/>
+  <text class="m" x="104" y="320">list (cursor = nextCursor) — repeat</text>
+
+  <rect class="ship" x="250" y="352" width="180" height="30" rx="4"/>
+  <text class="t" x="264" y="372">nextCursor = null</text>
+  <path class="arrow" d="M250,367 L99,367"/>
+  <text class="m" x="108" y="361">thread ended</text>
+</svg>
+
+<h2>The three bounds, and what each one does to the walk</h2>
+<table>
+<thead><tr><th>Bound</th><th>Where</th><th>What it bounds</th><th>What it must never bound</th></tr></thead>
+<tbody>
+<tr><td>page bound</td><td><code>?limit</code> / <code>input.limit</code>, default 50, max 200</td>
+    <td>How many <strong>root</strong> comments one page carries, each with its whole subtree</td>
+    <td>The thread. A page short of the limit is not the end — <code>nextCursor</code> is.</td></tr>
+<tr><td>response-size budget</td><td><code>MAX_RESPONSE_CHARS</code> (38,000) in <code>list-envelope.ts</code>, MCP only</td>
+    <td>Bytes in one MCP page; it sheds whole subtrees from the <em>newest</em> end</td>
+    <td>The thread, and the cursor. The token is minted from the last <strong>kept</strong> subtree, so the next page resumes at what the caller actually received.</td></tr>
+<tr><td>the tree builder's orphan rule</td><td><code>buildCommentTree</code> in <code>comments/tree.ts</code></td>
+    <td>Nothing — it <em>drops</em> a reply whose parent is off-page rather than promoting it</td>
+    <td>Anything, once the cursor walks <strong>roots</strong>. That rule is why it must: paging over comments would silently lose replies whose root fell on the previous page.</td></tr>
+</tbody>
+</table>
+
+<h2>Every way it goes wrong</h2>
+<table>
+<thead><tr><th>Goes wrong</th><th>What happens</th><th>Why that shape was chosen</th></tr></thead>
+<tbody>
+<tr><td>A cursor the route did not mint</td>
+    <td><span class="bad">Refused</span> — REST <code>400 BAD_REQUEST</code>, MCP <code>BAD_REQUEST: cursor: …</code></td>
+    <td>A cursor silently ignored restarts the walk at page one, so a client paging a long thread loops over the same rows forever and reads that as a thread with no end.</td></tr>
+<tr><td>The size cap cut an MCP page short</td>
+    <td><span class="ok">A cursor is still returned</span>, naming the last subtree in the response; <code>truncated</code> and <code>truncatedBy: response-size</code> disclose it and the notice's remedy is the cursor</td>
+    <td>The pre-ISS-956 notice said <em>"a higher limit will NOT help — read the full thread in the UI"</em>. That was true and left a CLI client with no move at all, which is the whole of the defect.</td></tr>
+<tr><td>One comment alone exceeds the whole size budget</td>
+    <td><span class="ok">It is returned anyway</span> — the trim keeps at least one row whenever one matched</td>
+    <td>An empty page under a cursor is a dead end: nothing to resume from and no progress made. A single 20K-character agent report over the budget is ordinary, not pathological.</td></tr>
+<tr><td>A comment is written between two page reads</td>
+    <td>It appears on a <strong>later</strong> page or not at all, never twice</td>
+    <td>Keyset, not offset. A new row lands after the cursor's key, so it can only be ahead of the walk; under <code>OFFSET</code> it would shift every unread row by one and duplicate one per page.</td></tr>
+<tr><td>Two roots share a <code>created_at</code></td>
+    <td>Ordered by <code>id</code>, and the cursor names both halves of the key</td>
+    <td>A timestamp-only cursor either repeats one of them or skips it. Agent-written threads tie routinely.</td></tr>
+<tr><td>A token is minted from a JS <code>Date</code></td>
+    <td><span class="bad">Every page repeats its predecessor's last root</span> — measured at 47 rows read off a 40-comment thread at limit 7</td>
+    <td>Postgres keeps <code>created_at</code> to the microsecond; a <code>Date</code> holds milliseconds. The token therefore carries the DB's own <code>to_char(… 'US')</code> text and is compared back as <code>::timestamptz</code>, so nothing rounds on either leg.</td></tr>
+<tr><td><code>hasMore</code> derived from <code>returned &lt; total</code></td>
+    <td><span class="bad">A walk that never terminates</span></td>
+    <td><code>total</code> is a real <code>count()</code> of every comment <em>flat</em>, while a page carries roots — so on a fully walked thread <code>returned &lt; total</code> is still true. <code>hasMore</code> is <code>nextCursor !== null</code> and nothing else, on both transports and in the browser client.</td></tr>
+<tr><td>A server that always returns a cursor</td>
+    <td><span class="bad">Refused</span> after 200 pages — <code>apiClientCursorAll</code> throws rather than spinning</td>
+    <td>A browser tab that hangs with no error is worse than a named failure.</td></tr>
+<tr><td><code>?offset=</code> is sent</td>
+    <td>Validated and <span class="ok">ignored</span>; the rows are unchanged</td>
+    <td>Pre-existing flat-list clients still send the <code>limit</code>/<code>offset</code> pair, and a contract break would 500-loop them. Keyset paging has no offset to honour.</td></tr>
+</tbody>
+</table>
+
+<h2>Read when · Updated by</h2>
+<table>
+<thead><tr><th>Read when</th><th>Updated by</th></tr></thead>
+<tbody>
+<tr><td>You are adding a bound to a comment read, or a client of one is reading a thread short</td>
+    <td>Any change to the keyset, the cursor codec, the size trim, or the shed direction</td></tr>
+<tr><td>A thread reads complete on one transport and short on the other</td>
+    <td>The change that makes REST and MCP disagree about the token or the envelope's field names</td></tr>
+</tbody>
+</table>
+
+</main>

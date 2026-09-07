@@ -43,9 +43,15 @@ export interface ListEnvelopeArgs<T> {
    * Which end the SIZE trim sheds. Default `oldest`, which is what a reader
    * of a thread or a feed wants.
    */
-  // cm:guard a CURSOR-paginated surface must pass 'newest' — shedding the oldest rows moves the cursor past events the caller has not seen, and they are never replayed. forge_jobs.events is the one such caller.
+  // cm:guard a CURSOR-paginated surface must pass 'newest' — shedding the oldest rows moves the cursor past events the caller has not seen, and they are never replayed. forge_jobs.events and forge_comments.list are the callers.
   sizeTrimSheds?: 'oldest' | 'newest';
   maxChars?: number;
+  /**
+   * Makes this a cursor surface: `more` is whether the query found rows after
+   * this page, and `of` mints the token that resumes after one item.
+   */
+  // cm:guard `of` is called on the LAST KEPT item, after the trims, and that is why it is a callback rather than a token the caller passes in: a caller cannot know which item survived the size trim, so its own token would point past items the caller never received. Pair it with `sizeTrimSheds: 'newest'` — the other order sheds items the cursor has already gone past, and the walk skips them in silence (ISS-956).
+  cursor?: { more: boolean; of: (item: T) => string };
 }
 
 /**
@@ -68,14 +74,23 @@ export function buildListEnvelope<T>(args: ListEnvelopeArgs<T>): Record<string, 
   const kept = trimToBudget(key, withinLimit, maxChars, shedFromHead);
   const boundBySize = kept.length < withinLimit.length;
 
+  const trimmed = boundByLimit || boundBySize;
+  const lastKept = kept.at(-1);
+  const nextCursor =
+    args.cursor && (trimmed || args.cursor.more) && lastKept !== undefined
+      ? args.cursor.of(lastKept)
+      : null;
+
   const envelope: Record<string, unknown> = {
     [key]: kept,
     returned: kept.length,
     limit,
-    hasMore: boundByLimit || boundBySize,
+    hasMore: args.cursor ? nextCursor !== null : trimmed,
   };
+  if (args.cursor) envelope.nextCursor = nextCursor;
 
-  if (!boundByLimit && !boundBySize) return envelope;
+  // cm:guard `truncated` says a CAP cut this response; a page followed by another one is not truncated, it is a page. Setting the flag off `hasMore` instead tells a cursor caller that every page but the last was cut short, which is the disclosure ISS-787 asked for pointed at the wrong fact.
+  if (!trimmed) return envelope;
 
   const truncatedBy: TruncatedBy =
     boundByLimit && boundBySize ? 'limit+response-size' : boundByLimit ? 'limit' : 'response-size';
@@ -89,6 +104,7 @@ export function buildListEnvelope<T>(args: ListEnvelopeArgs<T>): Record<string, 
     hint,
     ascending,
     shedsNewest,
+    resumable: nextCursor !== null,
   });
   return envelope;
 }
@@ -98,14 +114,17 @@ export function buildListEnvelope<T>(args: ListEnvelopeArgs<T>): Record<string, 
  * once and subtracted, rather than re-serializing the survivors per drop —
  * `forge_jobs.events` can hand this 200 rows carrying the whole agent
  * transcript, and the naive loop is quadratic in exactly that case.
+ *
+ * One row always survives.
  */
+// cm:guard never return zero rows while at least one matched. A single row over the whole budget is ordinary — one agent report is 20K characters — and an empty page under a cursor is a dead end: the caller has nothing to resume from and no row to make progress with, so the walk stops mid-thread with `hasMore` the only sign anything is missing (ISS-956 AC 12).
 function trimToBudget<T>(key: string, items: T[], maxChars: number, fromHead: boolean): T[] {
   const overhead = JSON.stringify({ [key]: [] }).length;
   const sizes = items.map((item) => JSON.stringify(item).length + 1);
   let total = overhead + sizes.reduce((a, b) => a + b, 0);
   let head = 0;
   let tail = items.length;
-  while (head < tail && total > maxChars) {
+  while (tail - head > 1 && total > maxChars) {
     const dropAt = fromHead ? head++ : --tail;
     total -= sizes[dropAt] ?? 0;
   }
@@ -114,6 +133,7 @@ function trimToBudget<T>(key: string, items: T[], maxChars: number, fromHead: bo
 
 // cm:guard never state a count that reads as a DB total — the only numbers here are `returned` and the caller's own `limit`, both of which the caller can verify. forge_feedback and forge_ux_findings used to say "the N most recent of M" where M was the rows already bounded by the limit; an agent read that as a total and it never was one.
 // cm:guard name WHICH rows survived, not just how many — the two trims drop from opposite ends on an ascending list, so "the N most recent" is false there and sends the caller looking for rows it already has
+// cm:guard when a cursor is on offer the remedy is the cursor and nothing else — "a higher limit will NOT help" was true and still left the caller with no move, which is the whole of ISS-956: a CLI client read that line as "this thread is unreadable" and it was right.
 function buildNotice(args: {
   returned: number;
   truncatedBy: TruncatedBy;
@@ -121,6 +141,7 @@ function buildNotice(args: {
   hint: string;
   ascending: boolean;
   shedsNewest: boolean;
+  resumable?: boolean;
 }): string {
   const { returned, truncatedBy: by, limit, hint } = args;
   const underLimit = args.ascending
@@ -135,8 +156,9 @@ function buildNotice(args: {
       : by === 'limit'
         ? `your limit of ${limit} bound this to ${underLimit}`
         : `your limit of ${limit} bound this to the first ${limit}, and the response-size cap then cut those to ${underSize}`;
-  const remedy =
-    by === 'limit'
+  const remedy = args.resumable
+    ? 'Pass `nextCursor` back as `cursor` to read the next page; repeat until it is null.'
+    : by === 'limit'
       ? `Raise limit or ${hint} to see the rest.`
       : `A higher limit will NOT help — ${hint} instead.`;
   return `More rows match than were returned: ${cause}. ${remedy}`;

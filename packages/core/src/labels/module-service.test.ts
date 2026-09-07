@@ -35,7 +35,7 @@ vi.mock('drizzle-orm', async (importOriginal) => {
   };
 });
 
-const { ModuleHierarchyError, assertParentIsLegal, autoModuleColor } = await import(
+const { ModuleHierarchyError, assertParentIsLegal, autoModuleColor, moduleSlugBase } = await import(
   './module-service.js'
 );
 
@@ -133,5 +133,30 @@ describe('autoModuleColor', () => {
 
   it('handles a name outside the BMP without producing a broken colour', () => {
     expect(autoModuleColor('module-\u{1F680}')).toMatch(/^#[0-9a-f]{6}$/i);
+  });
+});
+
+describe('moduleSlugBase', () => {
+  it('lowercases and joins words with a single hyphen', () => {
+    expect(moduleSlugBase('Pipeline Runs')).toBe('pipeline-runs');
+  });
+
+  it('collapses a run of non-alphanumerics to one hyphen', () => {
+    expect(moduleSlugBase('API // v2 — core')).toBe('api-v2-core');
+  });
+
+  it('trims the hyphens a leading or trailing separator would leave', () => {
+    expect(moduleSlugBase('  ...Billing!!  ')).toBe('billing');
+  });
+
+  // cm:guard the empty string is not a legal slug — `labels_slug_chk` requires a module to have one, and `''` would satisfy IS NOT NULL while reading as no identity at all, so a name that derives nothing must fall back rather than pass through
+  it('falls back to `module` for a name that derives no alphanumerics', () => {
+    expect(moduleSlugBase('!!!')).toBe('module');
+    expect(moduleSlugBase('   ')).toBe('module');
+    expect(moduleSlugBase('\u{1F680}')).toBe('module');
+  });
+
+  it('is not injective, which is why the caller has to disambiguate', () => {
+    expect(moduleSlugBase('API/v2')).toBe(moduleSlugBase('API v2'));
   });
 });

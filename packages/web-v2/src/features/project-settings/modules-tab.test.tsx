@@ -30,7 +30,16 @@ afterEach(cleanup);
 Element.prototype.scrollIntoView = vi.fn();
 
 function mod(id: string, name: string, parentId: string | null = null): ProjectLabel {
-  return { id, name, color: "#1f6f4a", kind: "module", parentId, description: null };
+  return {
+    id,
+    name,
+    color: "#1f6f4a",
+    kind: "module",
+    parentId,
+    slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "module",
+    knowledgeEntryId: null,
+    description: null,
+  };
 }
 
 const createMutate = vi.fn();

@@ -14,7 +14,8 @@ vi.mock('../config/env.js', () => ({
   env: {
     NODE_ENV: 'test',
     PAT_PEPPER: 'pat-test-pepper',
-    RATE_LIMIT_PAT_MAX: 600,
+    RATE_LIMIT_PAT_READ_MAX: 2400,
+    RATE_LIMIT_PAT_WRITE_MAX: 600,
   },
 }));
 vi.mock('../auth/pat.js', () => ({ verifyPat: vi.fn(), touchPatUsage: vi.fn() }));
