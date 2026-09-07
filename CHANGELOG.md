@@ -1631,6 +1631,19 @@
   Markdown bodies are a passthrough that is never parsed, so only the five `html` rows written
   since 2026-09-03 were affected and none needed a backfill.
 
+- **A dependency cycle can now be undone, and a retracted edge stops blocking the next one.** Two
+  defects on the same write path, each on its own falsified test. First: the cycle check ran on
+  every `blocks` write including the one that retires an edge, so re-sending an edge with
+  `validUntil` in the past — the only retraction an agent has, since `DELETE` is JWT-only REST —
+  was refused with `CYCLE_DETECTED` for the very loop it would have opened. A cycle that existed
+  had no exit through the API at all; on the ISS-933/ISS-964 pair the workaround was to expire the
+  other edge first, which only works while exactly two edges form the loop. The check is now
+  skipped when the write's `validUntil` is already past, and only then: an edge with a FUTURE
+  expiry that closes a loop is still refused, which is the second of the two new cases. Second:
+  `detectCycle` walked expired edges, so a retracted edge went on refusing new ones forever even
+  though the dispatcher had already stopped reading it. Both walk cases and both write cases were
+  watched red against the unfixed source, each naming its own rule.
+
 - **A typed record of any block count now lands in one comment write.** A comment body was capped
   at 10,000 characters, and the plugin's issue-flow contract posts every typed record — plan,
   confirmation, review, verdict, verification — as a comment, because a comment is the only

@@ -49,6 +49,25 @@ describe('detectCycle', () => {
     expect(await detectCycle('B', 'A')).toBe('cycle');
   });
 
+  // cm:guard an expired edge is a RETRACTED one and the row stays as the record that it once held, so counting it refuses a new edge on the strength of one the dispatcher already ignores — plant handling that reads every row regardless of `validUntil` and this pair is what goes red, the second case holding the boundary so "ignore every expiry" cannot pass for the fix.
+  it('does not follow an edge whose validUntil has passed', async () => {
+    dbSelect.mockImplementation(() => ({
+      from: () => ({
+        where: () => Promise.resolve([{ to: 'A', validUntil: '2020-01-01T00:00:00Z' }]),
+      }),
+    }));
+    expect(await detectCycle('B', 'A')).toBeNull();
+  });
+
+  it('follows an edge whose validUntil is still in the future', async () => {
+    dbSelect.mockImplementation(() => ({
+      from: () => ({
+        where: () => Promise.resolve([{ to: 'A', validUntil: '2099-01-01T00:00:00Z' }]),
+      }),
+    }));
+    expect(await detectCycle('B', 'A')).toBe('cycle');
+  });
+
   it('returns null when DFS exhausts without reaching target', async () => {
     dbSelect
       .mockImplementationOnce(() => ({

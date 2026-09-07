@@ -61,6 +61,10 @@ export type IssueDependencyWriter = {
   createdById: string;
 };
 
+/** True when this write only retires the edge: `validUntil` already in the past. */
+const expiresEdge = (validUntil: string | undefined): boolean =>
+  validUntil !== undefined && new Date(validUntil).getTime() <= Date.now();
+
 export type SetIssueDependencyResult = {
   id: string;
   created: boolean;
@@ -123,7 +127,8 @@ export async function writeIssueDependency(
   }
 
   // cm:why only kind='blocks' gates dispatch (ISS-40 PR-E), so it is the only kind whose cycle can deadlock the dispatcher — hence the check is not run for the others
-  if (input.kind === 'blocks') {
+  // cm:guard a write that EXPIRES the edge is exempt, and the exemption follows the reason above rather than widening it: an edge whose `validUntil` is already past gates no dispatch, so it can deadlock nothing and there is nothing left for the check to protect. Without this a cycle that exists has no way out of the API at all — re-sending the edge with `validUntil` in the past is the only retraction an agent can perform (`DELETE` is JWT-only REST, stated in `forge_pm_set_dependency`'s own description), and it arrives here as an idempotent re-assert, so the check refused the one call that would resolve the loop it was refusing over. Measured 2026-09-07 on the ISS-933/ISS-964 pair: retracting either edge answered CYCLE_DETECTED until the other was expired first, a workaround that only exists while exactly two edges form the loop.
+  if (input.kind === 'blocks' && !expiresEdge(input.validUntil)) {
     const cycle = await detectCycle(input.toIssueId, input.fromIssueId, ex);
     if (cycle === 'cycle') throw new IssueDependencyError('CYCLE_DETECTED');
     if (cycle === 'depth_exceeded') throw new IssueDependencyError('CYCLE_DEPTH_EXCEEDED');

@@ -44,6 +44,7 @@ vi.mock('../../issues/pipeline-health.js', () => ({
     publishHealthSpy(projectId, ids),
 }));
 
+const { detectCycle } = await import('../../issues/cycle-detect.js');
 const { forgePmSetDependencyTool, pmSetDependencyHandler } = await import(
   './forge-pm-set-dependency.js'
 );
@@ -281,6 +282,55 @@ describe('forge_pm.set_dependency — retracting an existing edge', () => {
       toIssueId: TO_ID,
       kind: 'blocks',
     });
+  });
+
+  // cm:guard the pair below is the whole exemption: the first says a retraction is not refused for the loop it retracts, the second says nothing else got cheaper. Drop the second and a "skip the walk whenever validUntil is set at all" regression passes, which lets a caller declare a cycle by attaching a far-future expiry to it.
+  it('does not run the cycle walk for a retraction, so a loop that exists can be undone', async () => {
+    const tool = forgePmSetDependencyTool(ctx);
+    // cm:guard restore the walk's default before leaving, and never stage it with `mockResolvedValueOnce` — this case asserts the walk is NEVER CALLED, so a queued `once` value is not consumed here and leaks into whichever test runs next; measured, it surfaced as `deferHealthPublish > publishes the health refresh` failing on CYCLE_DETECTED, a case that says nothing about cycles.
+    const cycleWalk = vi.mocked(detectCycle);
+    cycleWalk.mockResolvedValue('cycle');
+    pushMemberOk();
+    queue.push([
+      { id: FROM_ID, projectId: PROJECT_ID },
+      { id: TO_ID, projectId: PROJECT_ID },
+    ]);
+    queue.push([]);
+    queue.push([{ id: EDGE_ID }]);
+    queue.push([]);
+
+    const result = (await tool.handler({
+      projectId: PROJECT_ID,
+      fromIssueId: FROM_ID,
+      toIssueId: TO_ID,
+      kind: 'blocks',
+      validUntil: '2020-01-01T00:00:00Z',
+    })) as { id: string; updated: boolean };
+
+    expect(result.updated).toBe(true);
+    expect(cycleWalk).not.toHaveBeenCalled();
+    cycleWalk.mockResolvedValue(null);
+  });
+
+  it('still refuses a live edge that closes a loop, expiry in the FUTURE included', async () => {
+    const tool = forgePmSetDependencyTool(ctx);
+    vi.mocked(detectCycle).mockResolvedValue('cycle');
+    pushMemberOk();
+    queue.push([
+      { id: FROM_ID, projectId: PROJECT_ID },
+      { id: TO_ID, projectId: PROJECT_ID },
+    ]);
+
+    await expect(
+      tool.handler({
+        projectId: PROJECT_ID,
+        fromIssueId: FROM_ID,
+        toIssueId: TO_ID,
+        kind: 'blocks',
+        validUntil: '2099-01-01T00:00:00Z',
+      }),
+    ).rejects.toThrow(/CYCLE_DETECTED/);
+    vi.mocked(detectCycle).mockResolvedValue(null);
   });
 });
 
