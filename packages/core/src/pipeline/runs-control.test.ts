@@ -28,10 +28,11 @@ vi.mock('../db/client.js', () => {
   const dbStub = {
     select: vi.fn(() => ({ from: selectFrom })),
     update: vi.fn(() => ({ set: updateSet })),
-    // ISS-447 — applyKernelTransition writes the kernel_transitions audit row
-    // on the same executor after the run flip.
+    // cm:why applyKernelTransition writes the kernel_transitions audit row on the same executor right after the run flip, so a double without `insert` swallows the audit half of the write it is asserting on
     insert: vi.fn(() => ({ values: vi.fn(async () => undefined) })),
     transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(dbStub)),
+    // cm:why applyKernelTransition stamps `forge.kernel_txn` through `exec.execute` before its CAS
+    execute: vi.fn(async () => undefined),
   };
   return { db: dbStub };
 });
@@ -99,7 +100,7 @@ describe('pausePipelineRun', () => {
   });
 
   it('is idempotent on already-paused (no broadcast)', async () => {
-    updateReturning.mockResolvedValueOnce([]); // CAS lost
+    updateReturning.mockResolvedValueOnce([]);
     selectLimit.mockResolvedValueOnce([runRow('paused')]);
     const result = await pausePipelineRun(RUN_ID);
     expect(result.status).toBe('paused');

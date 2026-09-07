@@ -24,8 +24,9 @@ const sweepWhereArgs: unknown[] = [];
 const sweepSetArgs: Array<Record<string, unknown>> = [];
 const selectLimit = vi.fn(async () => [] as Array<{ issueId: string | null }>);
 
-vi.mock('../db/client.js', () => ({
-  db: {
+vi.mock('../db/client.js', () => {
+  const dbStub: Record<string, unknown> = {
+    transaction: async <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(dbStub), // cm:why applyKernelTransition reaches its write through `exec.transaction`
     execute: (...args: unknown[]) => dbExecute(...(args as [])),
     update: () => ({
       set: (patch: Record<string, unknown>) => {
@@ -39,13 +40,10 @@ vi.mock('../db/client.js', () => ({
       },
     }),
     insert: () => ({ values: async () => undefined }),
-    select: () => ({
-      from: () => ({
-        where: () => ({ limit: () => selectLimit() }),
-      }),
-    }),
-  },
-}));
+    select: () => ({ from: () => ({ where: () => ({ limit: () => selectLimit() }) }) }),
+  };
+  return { db: dbStub };
+});
 
 const finalizeFailedJobMock = vi.fn(async (..._args: unknown[]) => ({ scheduled: false }));
 vi.mock('./finalize-failure.js', () => ({
@@ -266,12 +264,11 @@ describe('reapZombieSessions — claim/heartbeat hops (ISS-321 scoping preserved
   });
 
   it('broadcasts + emits a wedge per reaped session, resolving the issue via the run', async () => {
+    const zombie = [{ id: 'sess-q', projectId: 'p1', deviceId: 'd1', pipelineRunId: 'run-1' }];
     updateReturning
-      .mockResolvedValueOnce([
-        { id: 'sess-q', projectId: 'p1', deviceId: 'd1', pipelineRunId: 'run-1' },
-      ]) // queue pass
-      .mockResolvedValueOnce([]) // heartbeat pass
-      .mockResolvedValueOnce([]); // no-client pass
+      .mockResolvedValueOnce(zombie)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
     selectLimit.mockResolvedValueOnce([{ issueId: 'i-9' }]);
 
     const result = await reapZombieSessions(new Date('2026-06-05T00:00:00Z'), {});
