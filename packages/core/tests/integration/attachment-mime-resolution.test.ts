@@ -43,6 +43,8 @@ let uploadsDir: string;
 let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
 let persistIssueAttachmentsFromBase64: typeof import('../../src/issues/attachment-service.js').persistIssueAttachmentsFromBase64;
 let persistDecodedCommentAttachments: typeof import('../../src/comments/attachment-service.js').persistDecodedCommentAttachments;
+let createUploadTicket: typeof import('../../src/uploads/ticket-service.js').createUploadTicket;
+let mimeFromName: typeof import('../../src/lib/attachment-mime.js').mimeFromName;
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -64,6 +66,7 @@ beforeAll(async () => {
   const { issueAttachmentRoutes, attachmentRoutes } = await import(
     '../../src/issues/attachment-routes.js'
   );
+  const { uploadRoutes } = await import('../../src/uploads/routes.js');
   const { errorHandler } = await import('../../src/middleware/error.js');
   const { requestId } = await import('../../src/middleware/request-id.js');
   signUserToken = (await import('../../src/auth/jwt.js')).signUserToken;
@@ -71,11 +74,14 @@ beforeAll(async () => {
     .persistIssueAttachmentsFromBase64;
   persistDecodedCommentAttachments = (await import('../../src/comments/attachment-service.js'))
     .persistDecodedCommentAttachments;
+  createUploadTicket = (await import('../../src/uploads/ticket-service.js')).createUploadTicket;
+  mimeFromName = (await import('../../src/lib/attachment-mime.js')).mimeFromName;
 
   app = new Hono<{ Variables: RequestIdVars }>();
   app.use('*', requestId());
   app.route('/api/issues', issueAttachmentRoutes);
   app.route('/api/attachments', attachmentRoutes);
+  app.route('/api/uploads', uploadRoutes);
   app.onError(errorHandler);
 }, 120_000);
 
@@ -370,5 +376,59 @@ describe('the comment twin refuses a batch on the same terms as the issue twin',
 
     expect(result.errors[0]?.code).toBe('MIME_NOT_ALLOWED');
     expect(await countCommentAttachments(commentId)).toBe(0);
+  });
+});
+
+describe('the presigned PUT resolves the type from the bytes it receives', () => {
+  async function mint(issueId: string, uploaderId: string, name: string) {
+    return createUploadTicket({
+      targetType: 'issue',
+      targetId: issueId,
+      uploaderId,
+      uploaderDeviceId: null,
+      name,
+      mime: mimeFromName(name),
+    });
+  }
+
+  function put(uploadId: string, bytes: Buffer) {
+    return app.request(`/api/uploads/${uploadId}`, {
+      method: 'PUT',
+      body: new Uint8Array(bytes),
+    });
+  }
+
+  it('mints a ticket for an extension the table does not know', async () => {
+    const { issueId, owner } = await seed();
+
+    const ticket = await mint(issueId, owner.id, 'trace.wibble');
+
+    expect(ticket.id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('stores a plain-text .sql streamed through the ticket as text/plain', async () => {
+    const { issueId, owner } = await seed();
+    const ticket = await mint(issueId, owner.id, 'schema.sql');
+
+    const res = await put(ticket.id, Buffer.from('ALTER TABLE issues ADD COLUMN mime text;\n'));
+
+    expect(res.status).toBe(201);
+    expect(await storedMime(issueId, 'schema.sql')).toBe('text/plain');
+  });
+
+  it('refuses binary bytes streamed under a text name, carrying the allowed set', async () => {
+    const { issueId, owner } = await seed();
+    const ticket = await mint(issueId, owner.id, 'core.log');
+
+    const res = await put(ticket.id, BINARY_LOG);
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as Refusal;
+    expect(body.code).toBe('MIME_NOT_ALLOWED');
+    expect(body.details?.reason).toBe('not-text');
+    expect(body.details?.allowed?.mimes).toEqual(expect.arrayContaining(['text/plain']));
+    expect(body.details?.allowed?.extensions).toEqual(expect.arrayContaining(['.txt']));
+    expect(await countAttachments(issueId)).toBe(0);
+    expect(blobsFor(issueId)).toEqual([]);
   });
 });
