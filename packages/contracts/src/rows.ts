@@ -63,6 +63,42 @@ export interface ModuleAttribution {
   isPrimary: boolean;
 }
 
+/**
+ * ISS-951 — the drift signal: module pairs the issue stream links that the taxonomy does not
+ * declare as connected. `layer` says which graph the report speaks about, and it is not the
+ * source-path one; `nearestCommonAncestor` is the parent two undeclared cousins hang under, or
+ * null when their subtrees are unrelated.
+ */
+// cm:edge contract -> packages/core/src/labels/module-drift.ts — the same three interfaces are declared there as the return of `moduleDrift`, and the route serializes that object unchanged; a field added on one side and not the other reads as `undefined` at every consumer
+export interface ModuleDriftNode {
+  labelId: string;
+  name: string;
+  slug: string | null;
+  knowledgeEntryId: string | null;
+}
+
+export interface ModuleDriftEdge {
+  a: ModuleDriftNode;
+  b: ModuleDriftNode;
+  /** Distinct issues carrying both modules — the weight of the edge. */
+  issueCount: number;
+  /** Of those, the ones where either module is the issue's primary. The rest are secondary×secondary. */
+  primaryAnchoredIssueCount: number;
+  recentIssueSeqs: number[];
+  nearestCommonAncestor: ModuleDriftNode | null;
+}
+
+export interface ModuleDriftResponse {
+  generatedAt: string;
+  layer: 'module-taxonomy';
+  minCoOccurrence: number;
+  declaration: { state: 'present' | 'absent'; source: 'label-hierarchy'; edgeCount: number };
+  observed: { moduleCount: number; edgeCount: number; belowThresholdEdgeCount: number };
+  undeclared: ModuleDriftEdge[];
+  unobserved: Array<{ a: ModuleDriftNode; b: ModuleDriftNode; issueCount: number }>;
+  agreedEdgeCount: number;
+}
+
 // cm:edge contract -> packages/core/src/labels/module-rollup.ts — ISS-949: the rollup's response, re-declared for the same reason `ModuleAttribution` is, and because one more module reached from `public.ts` trips the coordinator-blob limit; a field added there and not here reaches no client
 export interface ModuleCounts {
   total: number;
@@ -100,10 +136,7 @@ export interface ModuleRollupResponse {
   unassigned: ModuleCounts;
 }
 
-// Core serializes issues with a `displayId: "ISS-N"` added on top of the
-// stored row (see `packages/core/src/issues/routes.ts:serializeIssue`).
-// `agentSessions` / `agentStatus` are populated only when the caller opts in
-// with `?withAgentSessions=1` (see ISS-128).
+// cm:edge contract -> packages/core/src/issues/routes.ts — `serializeIssue` is what adds `displayId` on top of the stored row, and `agentSessions`/`agentStatus` arrive ONLY under `?withAgentSessions=1` (ISS-128); no database row carries any of the three, so a client that reads them off a plain issue row gets `undefined` and no type error.
 export type Issue = typeof schema.issues.$inferSelect & {
   displayId: string;
   agentSessions?: Array<{

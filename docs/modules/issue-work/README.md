@@ -72,6 +72,20 @@ flowchart LR
   hash and the next landing re-arms against the new body. A refresh that throws is reported to the
   log and the activity feed and never fails the handoff that triggered it. Drawn in
   [`docs/flows/issue-work-module-knowledge-refresh.html`](../../flows/issue-work-module-knowledge-refresh.html).
+- **A module pair the issue stream keeps linking, which the hierarchy never declares, is reported
+  as a signal — never as an error.** `GET /api/projects/:id/modules/drift` compares two edge sets
+  over the same nodes: *observed* is a self-join of `issue_labels` with `kind='module'` on both
+  sides (both sides re-check `kind` and `project_id`, because `issue_labels` can see neither), and
+  *declared* is the transitive closure of `labels.parent_id`. What is observed and not declared is
+  the finding, weighted by the issues it rests on; what is declared and not observed is the same
+  difference read the other way. A pair seen on one issue is a coincidence, so the default
+  threshold is 2. Three things the report states rather than assumes: `layer: 'module-taxonomy'`,
+  because `.arch.json`'s source-path globs are a different granularity this must not conflate with
+  a product domain; `declaration.state: 'absent'` for a project that declares nothing, which is a
+  legal state and not zero drift; and `nearestCommonAncestor` on every finding, so two cousins
+  under one parent read differently from two unrelated subtrees. The signal adds no gate and always
+  answers 200 — a gate here would be satisfied by declaring edges nobody means. Drawn in
+  [`docs/flows/issue-work-module-drift.html`](../../flows/issue-work-module-drift.html).
 - **Only `kind='blocks'` gates dispatch.** An edge `(from=A, to=B, 'blocks')` means A must reach a
   terminal status before B may dispatch, and cross-project edges are legal. `relates`, `duplicates`
   and `parent` are metadata no dispatch path may read. The `cm:guard` is on
