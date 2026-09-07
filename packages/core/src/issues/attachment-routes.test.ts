@@ -20,13 +20,21 @@ const selectInnerJoinLimit = vi.fn();
 const selectInnerJoinWhere = vi.fn(() => ({ limit: selectInnerJoinLimit }));
 const selectInnerJoin = vi.fn(() => ({ where: selectInnerJoinWhere }));
 const selectOrderBy = vi.fn();
+// cm:why the list route awaits orderBy() directly while the ISS-963 name lookup chains .limit(1) onto it; one resolver cannot answer both, so the chained call gets its own and defaults to no collision
+const selectOrderByLimit = vi.fn(async () => [] as unknown[]);
 const selectListWhere = vi.fn(() => ({ orderBy: selectOrderBy }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({
   where: (...args: unknown[]) => {
     selectWhere(...(args as []));
     selectListWhere(...(args as []));
-    return { limit: selectLimit, orderBy: selectOrderBy };
+    return {
+      limit: selectLimit,
+      orderBy: (...o: unknown[]) =>
+        Object.assign(Promise.resolve(selectOrderBy(...(o as []))), {
+          limit: selectOrderByLimit,
+        }),
+    };
   },
   innerJoin: selectInnerJoin,
 }));
@@ -99,6 +107,8 @@ beforeEach(() => {
   selectLimit.mockReset();
   selectInnerJoinLimit.mockReset();
   selectOrderBy.mockReset();
+  selectOrderByLimit.mockReset();
+  selectOrderByLimit.mockResolvedValue([]);
   projectAccess.mockReset();
   insertReturning.mockReset();
   storagePut.mockReset();
@@ -116,6 +126,16 @@ function makeFile(content: string, name = 'pic.png', type = 'image/png'): FormDa
   const fd = new FormData();
   fd.append('file', new File([content], name, { type }));
   return fd;
+}
+
+function grantIssueAccess(role: 'admin' | 'member' | null = 'admin') {
+  selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
+  projectAccess.mockResolvedValueOnce({
+    projectId: PROJECT_ID,
+    orgId: 'org-1',
+    role,
+    orgRole: role === 'admin' ? 'owner' : null,
+  });
 }
 
 describe('POST /api/issues/:id/attachments', () => {
@@ -138,13 +158,7 @@ describe('POST /api/issues/:id/attachments', () => {
   });
 
   it('403 when not a project member', async () => {
-    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: null,
-      orgRole: null,
-    });
+    grantIssueAccess(null);
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/attachments`, {
       method: 'POST',
       headers: { authorization: `Bearer ${await userJwt()}` },
@@ -154,33 +168,31 @@ describe('POST /api/issues/:id/attachments', () => {
   });
 
   it('400 on disallowed mime', async () => {
-    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'admin',
-      orgRole: 'owner',
-    });
+    grantIssueAccess();
     const fd = new FormData();
-    fd.append('file', new File(['x'], 'evil.exe', { type: 'application/x-msdownload' }));
+    fd.append(
+      'file',
+      new File([new Uint8Array([0x4d, 0x5a, 0x90, 0x00])], 'evil.exe', {
+        type: 'application/x-msdownload',
+      }),
+    );
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/attachments`, {
       method: 'POST',
       headers: { authorization: `Bearer ${await userJwt()}` },
       body: fd,
     });
     expect(res.status).toBe(400);
-    const json = (await res.json()) as { code?: string };
+    const json = (await res.json()) as {
+      code?: string;
+      details?: { allowed?: { mimes?: string[]; extensions?: string[] } };
+    };
     expect(json.code).toBe('MIME_NOT_ALLOWED');
+    expect(json.details?.allowed?.mimes).toContain('text/plain');
+    expect(json.details?.allowed?.extensions).toContain('.txt');
   });
 
   it('400 on empty file', async () => {
-    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'admin',
-      orgRole: 'owner',
-    });
+    grantIssueAccess();
     const fd = new FormData();
     fd.append('file', new File([''], 'pic.png', { type: 'image/png' }));
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/attachments`, {
@@ -192,13 +204,7 @@ describe('POST /api/issues/:id/attachments', () => {
   });
 
   it('201 via user JWT: stores file, inserts row, fires activity', async () => {
-    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'admin',
-      orgRole: 'owner',
-    });
+    grantIssueAccess();
     storagePut.mockResolvedValueOnce({ path: '/tmp/issues/x/y.png' });
     insertReturning.mockResolvedValueOnce([
       {
@@ -228,17 +234,40 @@ describe('POST /api/issues/:id/attachments', () => {
     );
   });
 
+  it('201 for a plain-text .log the extension table has never heard of', async () => {
+    grantIssueAccess();
+    storagePut.mockResolvedValueOnce({ path: '/tmp/issues/x/gate.log' });
+    insertReturning.mockResolvedValueOnce([
+      {
+        id: ATT_ID,
+        issueId: ISSUE_ID,
+        uploaderId: USER_ID,
+        name: 'gate.log',
+        mime: 'text/plain',
+        size: 12,
+        createdAt: new Date('2026-01-01'),
+      },
+    ]);
+
+    const res = await buildApp().request(`/api/issues/${ISSUE_ID}/attachments`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${await userJwt()}` },
+      body: makeFile('480 passed\n', 'gate.log', ''),
+    });
+
+    expect(res.status).toBe(201);
+    expect(storagePut).toHaveBeenCalledWith(
+      expect.stringContaining('gate.log'),
+      expect.any(Buffer),
+      'text/plain',
+    );
+  });
+
   it('201 via PAT: requireAnyAuth resolves userId from PAT.userId', async () => {
     // cm:guard `scopes` carries BOTH, because that is what `mintPat` defaults to and `requireAnyAuth` now gates the method on it — the `scopes: []` this used to pass 403s every write, which reads as a broken route rather than as a token nobody would ever mint.
     const row = { id: 'pat-1', userId: USER_ID, scopes: ['read', 'write'] };
     verifyPatMock.mockResolvedValueOnce({ row });
-    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'admin',
-      orgRole: 'owner',
-    });
+    grantIssueAccess();
     storagePut.mockResolvedValueOnce({ path: '/tmp/issues/x/y.png' });
     insertReturning.mockResolvedValueOnce([
       {
@@ -254,7 +283,7 @@ describe('POST /api/issues/:id/attachments', () => {
 
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/attachments`, {
       method: 'POST',
-      // PAT-shaped token — must match `forge_pat_<env>_<64 hex>` to route through PAT verifier
+      // cm:guard the literal below must keep the shape `forge_pat_<env>_<64 hex>` — requireAnyAuth picks its verifier off that pattern, so a token that merely looks plausible falls through to the JWT path and the test proves nothing about PAT auth
       headers: {
         authorization:
           'Bearer forge_pat_dev_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
@@ -291,13 +320,7 @@ describe('POST /api/issues/:id/attachments', () => {
 
 describe('GET /api/issues/:id/attachments', () => {
   it('returns rows for the issue (user JWT)', async () => {
-    selectLimit.mockResolvedValueOnce([{ id: ISSUE_ID, projectId: PROJECT_ID }]);
-    projectAccess.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'admin',
-      orgRole: 'owner',
-    });
+    grantIssueAccess();
     selectOrderBy.mockResolvedValueOnce([
       {
         id: ATT_ID,

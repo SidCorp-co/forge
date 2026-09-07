@@ -14,7 +14,8 @@ vi.mock('../config/env.js', () => ({
     NODE_ENV: 'test',
     DATABASE_URL: 'postgres://localhost/stub',
     PAT_PEPPER: 'pat-test-pepper',
-    RATE_LIMIT_PAT_MAX: 60,
+    RATE_LIMIT_PAT_READ_MAX: 2400,
+    RATE_LIMIT_PAT_WRITE_MAX: 600,
   },
 }));
 
@@ -255,5 +256,163 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
     }
     const pat = await import('../auth/pat.js');
     expect('forceRevokePat' in pat).toBe(false);
+  });
+});
+
+/**
+ * ISS-961 — reads and writes are two budgets on one token, and the 429 says
+ * enough for a client to act without guessing.
+ *
+ * The falsifying case is `a read that spends its whole budget still writes`:
+ * every other assertion here passes for the single shared bucket this
+ * replaced, because a shared bucket also returns 429 and also carries
+ * `Retry-After`. Only the cross-class probe tells the two apart.
+ */
+describe('requirePat rate limit, split by request class', () => {
+  const RULES_READ_MAX = 2400;
+
+  function classedApp(requestClass: 'read' | 'write') {
+    const app = new Hono();
+    app.use('*', async (c, next) => {
+      c.set('patRequestClass' as never, requestClass as never);
+      await next();
+    });
+    app.use('*', requirePat());
+    app.get('/read', (c) => c.json({ ok: true }));
+    app.post('/write', (c) => c.json({ ok: true }));
+    app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
+    return app;
+  }
+
+  const hdrs = { authorization: `Bearer ${PAT_TOKEN}` };
+
+  function tokenWith(rateLimitMax: number | null) {
+    vi.mocked(verifyPat).mockResolvedValue({
+      ownerKind: 'human',
+      row: { ...testPatRow, rateLimitMax },
+    } as never);
+  }
+
+  it('lets a token with no override spend the whole read budget in one window', async () => {
+    tokenWith(null);
+    const app = classedApp('read');
+    for (let i = 0; i < RULES_READ_MAX; i += 1) {
+      const res = await app.request('/read', { headers: hdrs });
+      if (res.status !== 200) throw new Error(`refused at request ${i + 1}: ${res.status}`);
+    }
+    expect((await app.request('/read', { headers: hdrs })).status).toBe(429);
+  });
+
+  // cm:guard THE falsifying assertion for the whole split. A single shared bucket passes every other test in this block; only a write succeeding after the read budget is spent distinguishes two buckets from one, and that is the property ISS-961 was filed for.
+  it('still accepts a write once the read budget is spent', async () => {
+    tokenWith(3);
+    const reads = classedApp('read');
+    const writes = classedApp('write');
+    expect((await reads.request('/read', { headers: hdrs })).status).toBe(200);
+    expect((await reads.request('/read', { headers: hdrs })).status).toBe(200);
+    expect((await reads.request('/read', { headers: hdrs })).status).toBe(200);
+    expect((await reads.request('/read', { headers: hdrs })).status).toBe(429);
+
+    expect((await writes.request('/write', { method: 'POST', headers: hdrs })).status).toBe(200);
+  });
+
+  it('does not let a write spend the read budget either', async () => {
+    tokenWith(1);
+    const reads = classedApp('read');
+    const writes = classedApp('write');
+    expect((await writes.request('/write', { method: 'POST', headers: hdrs })).status).toBe(200);
+    expect((await writes.request('/write', { method: 'POST', headers: hdrs })).status).toBe(429);
+    expect((await reads.request('/read', { headers: hdrs })).status).toBe(200);
+  });
+
+  it('sends Retry-After, X-RateLimit-Reset and the scope that refused', async () => {
+    tokenWith(1);
+    const app = classedApp('read');
+    await app.request('/read', { headers: hdrs });
+    const res = await app.request('/read', { headers: hdrs });
+    expect(res.status).toBe(429);
+
+    const retryAfter = Number(res.headers.get('Retry-After'));
+    expect(Number.isInteger(retryAfter)).toBe(true);
+    expect(retryAfter).toBeGreaterThan(0);
+    expect(retryAfter).toBeLessThanOrEqual(60);
+
+    const reset = Number(res.headers.get('X-RateLimit-Reset'));
+    const nowSec = Math.ceil(Date.now() / 1000);
+    expect(reset).toBeGreaterThanOrEqual(nowSec);
+    expect(reset).toBeLessThanOrEqual(nowSec + 60);
+
+    expect(res.headers.get('X-RateLimit-Scope')).toBe('read');
+    expect(res.headers.get('X-RateLimit-Limit')).toBe('1');
+    expect(res.headers.get('X-RateLimit-Remaining')).toBe('0');
+  });
+
+  it('names the window, the limit, the remaining budget and the class in the body', async () => {
+    tokenWith(1);
+    const app = classedApp('write');
+    await app.request('/write', { method: 'POST', headers: hdrs });
+    const res = await app.request('/write', { method: 'POST', headers: hdrs });
+    expect(res.status).toBe(429);
+    const body = (await res.json()) as {
+      code: string;
+      message: string;
+      details: Record<string, unknown>;
+    };
+    expect(body.code).toBe('RATE_LIMITED');
+    expect(body.details).toMatchObject({
+      windowSeconds: 60,
+      limit: 1,
+      remaining: 0,
+      scope: 'write',
+    });
+    expect(body.details.retryAfterSeconds).toBe(Number(res.headers.get('Retry-After')));
+    expect(body.message).toContain('60s');
+    expect(body.message).toContain('write');
+  });
+
+  it('honours the header it sent: one wait of Retry-After seconds is enough', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-09-07T00:00:00.000Z'));
+      tokenWith(1);
+      const app = classedApp('read');
+      expect((await app.request('/read', { headers: hdrs })).status).toBe(200);
+      const refused = await app.request('/read', { headers: hdrs });
+      expect(refused.status).toBe(429);
+
+      const wait = Number(refused.headers.get('Retry-After'));
+      vi.setSystemTime(new Date(Date.now() + wait * 1000));
+      expect((await app.request('/read', { headers: hdrs })).status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('audits the first rejection of each class separately, once per window', async () => {
+    tokenWith(1);
+    const reads = classedApp('read');
+    const writes = classedApp('write');
+    await reads.request('/read', { headers: hdrs });
+    await reads.request('/read', { headers: hdrs });
+    await reads.request('/read', { headers: hdrs });
+    await writes.request('/write', { method: 'POST', headers: hdrs });
+    await writes.request('/write', { method: 'POST', headers: hdrs });
+    await writes.request('/write', { method: 'POST', headers: hdrs });
+
+    expect(vi.mocked(writeMcpAudit)).toHaveBeenCalledTimes(2);
+    const actions = vi.mocked(writeMcpAudit).mock.calls.map(([row]) => row.action);
+    expect(actions).toEqual(['GET /read', 'POST /write']);
+  });
+
+  it('charges the write bucket when nothing upstream set a class', async () => {
+    tokenWith(1);
+    const app = new Hono();
+    app.use('*', requirePat());
+    app.get('/read', (c) => c.json({ ok: true }));
+    app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
+    await app.request('/read', { headers: hdrs });
+    const res = await app.request('/read', { headers: hdrs });
+    expect(res.status).toBe(429);
+    expect(res.headers.get('X-RateLimit-Scope')).toBe('write');
   });
 });

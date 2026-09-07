@@ -1,23 +1,26 @@
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
-import { ALLOWED_MIMES as SESSION_ALLOWED_MIMES } from '../agent-sessions/attachment-service.js';
-import { ALLOWED_MIMES as COMMENT_ALLOWED_MIMES } from '../comments/attachment-service.js';
+import { findCommentAttachmentByName } from '../comments/attachment-service.js';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { uploadTickets } from '../db/schema.js';
-import { ALLOWED_MIMES as ISSUE_ALLOWED_MIMES } from '../issues/attachment-service.js';
+import { findIssueAttachmentByName } from '../issues/attachment-service.js';
+import { allowedSetForTarget, safeName } from '../lib/attachment-mime.js';
+import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
 
 /** How long a minted upload ticket stays valid. Short by design (replay window). */
 export const UPLOAD_TICKET_TTL_MS = 5 * 60 * 1000;
 
 export type UploadTargetType = 'issue' | 'comment' | 'session';
 
-export type UploadTicketErrorCode = 'MIME_NOT_ALLOWED';
+export type UploadTicketErrorCode = 'MIME_NOT_ALLOWED' | 'ATTACHMENT_NAME_TAKEN';
 
 export class UploadTicketError extends Error {
   readonly code: UploadTicketErrorCode;
-  constructor(code: UploadTicketErrorCode, message: string) {
+  readonly details: unknown;
+  constructor(code: UploadTicketErrorCode, message: string, details?: unknown) {
     super(message);
     this.code = code;
+    this.details = details;
     this.name = 'UploadTicketError';
   }
 }
@@ -45,22 +48,50 @@ export interface CreateUploadTicketInput {
   mime: string;
 }
 
-function allowedMimesFor(targetType: UploadTargetType): ReadonlySet<string> {
-  if (targetType === 'issue') return ISSUE_ALLOWED_MIMES;
-  if (targetType === 'session') return SESSION_ALLOWED_MIMES;
-  return COMMENT_ALLOWED_MIMES;
+/**
+/**
+ * The document already holding this name on the target, or null.
+ *
+ * Sessions are absent by design and not by omission: no record cites a session
+ * attachment by name, so uniqueness there would refuse uploads for nothing.
+ */
+async function takenNameOn(
+  targetType: UploadTargetType,
+  targetId: string,
+  name: string,
+): Promise<ExistingAttachmentRef | null> {
+  if (targetType === 'issue') return findIssueAttachmentByName(targetId, safeName(name));
+  if (targetType === 'comment') return findCommentAttachmentByName(targetId, safeName(name));
+  return null;
 }
 
 /**
- * Mint a single-use capability ticket. Validates the declared mime up front so
- * the holder gets a fast, clear failure instead of discovering it only after
- * streaming the bytes. The mime stored here is authoritative at consume time.
+ * Mint a single-use capability ticket.
+ *
+ * The declared mime is checked against the target's set up front, so a caller
+ * naming a type the tracker will never take is refused before it streams
+ * anything. It is NOT the last word: no byte exists yet, and the PUT resolves
+ * the stored type from the bytes (`lib/attachment-mime.ts`). That is what lets
+ * an unknown extension mint as `text/plain` and be judged when it arrives.
  */
 export async function createUploadTicket(
   input: CreateUploadTicketInput,
 ): Promise<{ id: string; expiresAt: Date; maxBytes: number }> {
-  if (!allowedMimesFor(input.targetType).has(input.mime)) {
-    throw new UploadTicketError('MIME_NOT_ALLOWED', `mime not allowed: ${input.mime}`);
+  const allowed = allowedSetForTarget(input.targetType);
+  if (!allowed.mimes.includes(input.mime)) {
+    throw new UploadTicketError('MIME_NOT_ALLOWED', `mime not allowed: ${input.mime}`, {
+      reason: 'not-allowed',
+      allowed,
+    });
+  }
+  // cm:edge protocol -> packages/core/src/issues/attachment-service.ts — advisory only, and the persist-time check is the authority: a name free at mint can be taken before the PUT arrives, so removing the check there would leave the rule unenforced while this one still passed (ISS-963)
+  const taken = await takenNameOn(input.targetType, input.targetId, input.name);
+  if (taken) {
+    throw new UploadTicketError(
+      'ATTACHMENT_NAME_TAKEN',
+      `an attachment named "${taken.name}" is already on this ${input.targetType} (id ${taken.id}, ${taken.url}) — cite it, delete it, or mint under a different name`,
+      { existing: taken },
+    );
   }
   const expiresAt = new Date(Date.now() + UPLOAD_TICKET_TTL_MS);
   const maxBytes = env.UPLOADS_MAX_BYTES;

@@ -228,7 +228,7 @@ describe('a job token authenticates as an agent, not as the human who owns it', 
       createdBy: user.id,
     })) as string;
 
-    const principal = await authenticatePat(ctx(), plaintext);
+    const principal = await authenticatePat(ctx(), plaintext, 'read');
     expect(principal?.agency).toBe('agent');
     expect(gateApplies(principal)).toBe(true);
   });
@@ -237,7 +237,7 @@ describe('a job token authenticates as an agent, not as the human who owns it', 
     const user = await createTestUser(harness.db);
     const { plaintext } = await mintPat({ userId: user.id, name: 'my laptop' });
 
-    const principal = await authenticatePat(ctx(), plaintext);
+    const principal = await authenticatePat(ctx(), plaintext, 'read');
     expect(principal?.agency).toBe('human');
     expect(gateApplies(principal)).toBe(false);
   });
@@ -250,13 +250,13 @@ describe('a job token authenticates as an agent, not as the human who owns it', 
       projectId: project.id,
       createdBy: user.id,
     })) as string;
-    expect(gateApplies(await authenticatePat(ctx(), plaintext))).toBe(true);
+    expect(gateApplies(await authenticatePat(ctx(), plaintext, 'read'))).toBe(true);
 
     await harness.db.execute(sql`
       UPDATE personal_access_tokens SET name = 'looks like a laptop'
       WHERE name = ${`job:${jobId}`}
     `);
 
-    expect(gateApplies(await authenticatePat(ctx(), plaintext))).toBe(false);
+    expect(gateApplies(await authenticatePat(ctx(), plaintext, 'read'))).toBe(false);
   });
 });

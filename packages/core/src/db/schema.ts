@@ -234,7 +234,7 @@ export const orgInvitations = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: 'cascade' }),
     email: text('email').notNull(),
-    // 'owner' is never invitable — granting owner is an explicit in-app act.
+    // cm:guard an invite may NEVER carry `owner`, though the column's enum permits it: ownership is granted only by an explicit in-app act, so a writer that accepts this field from an invite payload hands the org away by email. Validated at the route, not by the type.
     role: text('role', { enum: orgMemberRoles }).notNull(),
     inviterId: uuid('inviter_id')
       .notNull()
@@ -416,12 +416,7 @@ export const devices = pgTable(
     agentVersion: text('agent_version'),
     // cm:guard a `devices` row is a REGISTRY entry and no longer a credential (ISS-932) — it held `token_hash`/`token_prefix` and its own argon2 until this issue deleted them. What authenticates a box is a `personal_access_tokens` row carrying this row's id in `device_id`, so the box's identity is a token like every other and one revoke path covers it. Putting a secret back on this table restores a second credential species and, with it, the `device.ownerId` fiction that had a machine borrowing a person's identity.
     status: text('status', { enum: deviceStatuses }).notNull().default('offline'),
-    // Operator-set "turn off" switch (reversible, distinct from `revoked`). When
-    // set, the device is IGNORED by dispatch + interactive-chat device-pick
-    // across EVERY project it runs for — it keeps its token + runner bindings and
-    // still heartbeats, so flipping it back (set to NULL) makes it eligible again
-    // instantly. NULL = on/eligible. Orthogonal to `status` (heartbeat-driven
-    // online/offline), so a steady heartbeat never clears it.
+    // cm:guard NULL means eligible, and this is ORTHOGONAL to heartbeat-driven `status` — a disabled device keeps heartbeating and reads online, so a pick that filters on `status` alone dispatches to a box the operator switched off. `lib/device-pool.ts` is the filter (`isNull(devices.disabledAt)`); the reversible switch is deliberately not `revoked`, which is one-way.
     disabledAt: timestamp('disabled_at', { withTimezone: true }),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     pairedAt: timestamp('paired_at', { withTimezone: true }).notNull().defaultNow(),
@@ -430,16 +425,9 @@ export const devices = pgTable(
     // cm:guard the unit is the DEVICE and must stay there: the resource a job consumes is one Claude process on one machine, so a box bound to 20 projects at cap 3 runs 3 jobs total, not 3 per project. It is compared against `countInFlightForDevice`, never against the per-binding count that feeds the load reports.
     // cm:guard NOTHING IN CORE READS THIS. How many jobs a box may hold is the runner's decision (`[runner] duplex_max_sessions`, RAM, the repo-root lock in `daemon/repo_lock.rs`), and core deliberately stopped having an opinion when the master began claiming from the pool — `devices/claim.ts` carries the guard saying why. Wiring a reader back onto this column re-introduces the kernel ceiling that design removed, and a ceiling core cannot see the real value of can only be wrong.
     maxConcurrent: integer('max_concurrent').notNull().default(1),
-    // ISS-305 — non-secret label recording that a git push credential was
-    // auto-provisioned for this device at login time (e.g. 'https-helper' or
-    // 'ssh-deploy-key'); NULL means no credential was provisioned. The secret
-    // material itself is returned once at poll time and never stored here.
+    // cm:guard a LABEL and never the credential — `git/provision-credential.ts` writes `https:<host>`, the token is handed to the runner once at poll time and stored nowhere, and a writer that puts the material here turns a column every project member can read (`integrations/status-service.ts` exposes it as `pushCredProvisioned`) into a secret leak. NULL means none provisioned (ISS-305).
     gitCredentialRef: text('git_credential_ref'),
-    // Stable per-machine identity (sha256 hex of the host's /etc/machine-id),
-    // sent by the runner at pairing. Lets a re-pair from the same machine
-    // rotate the EXISTING device row in place (keeping its runner bindings)
-    // instead of inserting a duplicate "ghost" device. NULL for legacy clients
-    // that don't send one → pairing falls back to always-insert.
+    // cm:guard the key that makes a re-pair ROTATE the existing row rather than insert a ghost device beside it, carrying the old row's runner bindings forward — NULL is the legacy client that sends none, and `devices/pair.ts` then falls back to always-insert, so a matcher that treats NULL as a value collapses every legacy box onto one row.
     machineId: text('machine_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -474,7 +462,7 @@ export const personalAccessTokens = pgTable(
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
     lastUsedIp: text('last_used_ip'),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
-    // null = use RULES.patPerToken default; otherwise per-token override.
+    // cm:why null is not "unlimited" but "take the operator's default" (`RULES.patRead` / `RULES.patWrite`); a number here is the ceiling of EACH class, not of the two together, because the three credentials that set one are single-session tokens whose 600 was sized as 6x that session's measured peak and that intent is per axis (ISS-961).
     rateLimitMax: integer('rate_limit_max'),
   },
   (t) => ({
@@ -1188,12 +1176,29 @@ export const labels = pgTable(
     kind: text('kind', { enum: labelKinds }).notNull().default('label'),
     // cm:why modules only — a self-referencing parent gives the taxonomy its hierarchy without a second table. Cycle-freedom is NOT expressible here and is enforced in `labels/module-service.ts`; the FK only guarantees the parent exists.
     parentId: uuid('parent_id').references((): AnyPgColumn => labels.id, { onDelete: 'set null' }),
+    // cm:guard ISS-947 — the module's IDENTITY, and `name` is only its display. Derived from the name ONCE, on create or on promotion, and never recomputed after: a rename that moved the slug would orphan the knowledge node every later tier resolves through it, which is the failure the name-prefix convention had and this column exists to remove.
+    slug: text('slug'),
+    // cm:why ISS-947 — the 1:1 binding to `module-<slug>`'s knowledge node, stored rather than derived. NULL is a legal state (a module may exist before anyone writes its node) and is what a deleted node leaves behind, which is why the FK is `set null` and not `cascade`: deleting a node must not delete the module.
+    knowledgeEntryId: uuid('knowledge_entry_id').references(() => knowledgeEntries.id, {
+      onDelete: 'set null',
+    }),
     description: text('description'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     projectNameUq: uniqueIndex('labels_project_id_name_uq').on(t.projectId, t.name),
     parentIdx: index('labels_parent_id_idx').on(t.parentId),
+    // cm:guard NULLs are distinct in a Postgres unique index, so this constrains modules and leaves every plain label's NULL slug uncounted — which is the whole reason `labels_slug_chk` has to exist separately to force a module to HAVE one.
+    projectSlugUq: uniqueIndex('labels_project_id_slug_uq').on(t.projectId, t.slug),
+    // cm:guard the 1:1 half SQL can hold — two modules naming the same knowledge node is the state every later tier's "which module owns this node" read would answer twice. NULLs distinct again, so any number of unbound modules coexist.
+    knowledgeEntryUq: uniqueIndex('labels_knowledge_entry_id_uq').on(t.knowledgeEntryId),
+    // cm:guard the literals live INSIDE the sql template — a `${CONST}` here serialises as a `$1` bind placeholder into the migration and the container then fails at start on DDL that passed every gate (ISS-654).
+    slugChk: check('labels_slug_chk', sql`(${t.kind} = 'module') = (${t.slug} IS NOT NULL)`),
+    // cm:guard a plain label carries NEITHER field, at the database and not only in the service — `kind` is the only thing separating the two rows, so a label holding a module's binding is a row no projection can render honestly.
+    nodeChk: check(
+      'labels_knowledge_entry_chk',
+      sql`${t.kind} = 'module' OR ${t.knowledgeEntryId} IS NULL`,
+    ),
     // cm:guard the CHECK is the backstop, not a duplicate of the TS enum: `text(..., { enum })` is compile-time only and emits no constraint, so any path that inserts a label without going through `labels/routes.ts` can write a kind that is neither — and such a row filters as no module and renders as no label. Same reason `comments_format_chk` and `issues_complexity_chk` exist.
     kindChk: check('labels_kind_chk', sql`${t.kind} IN ('label', 'module')`),
   }),

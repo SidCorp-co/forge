@@ -21,8 +21,8 @@ import { loadAttachmentBytesTarget } from './attachment-bytes.js';
 import { resolveDownloadTicket } from './download-ticket-service.js';
 import { claimUploadTicket, releaseUploadTicket } from './ticket-service.js';
 
-const badRequest = (message: string, code = 'BAD_REQUEST') =>
-  new HTTPException(400, { message, cause: { code } });
+const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
+  new HTTPException(400, { message, cause: { code, details } });
 const goneOrNotFound = () =>
   new HTTPException(404, {
     message: 'upload ticket not found, expired, or already used',
@@ -59,7 +59,7 @@ uploadRoutes.put(
   async (c) => {
     const { uploadId } = c.req.valid('param');
 
-    // Atomic claim: only the first caller for a still-pending ticket proceeds.
+    // cm:guard the claim must stay a single atomic UPDATE ... WHERE status = 'pending' RETURNING, never a read-then-write: two callers holding one presigned URL would both pass a separate check and both upload, and the second's bytes would land under a ticket the first already consumed.
     const ticket = await claimUploadTicket(uploadId);
     if (!ticket) throw goneOrNotFound();
 
@@ -108,7 +108,7 @@ uploadRoutes.put(
         err instanceof CommentAttachmentError ||
         err instanceof SessionAttachmentError
       ) {
-        throw badRequest(err.message, err.code);
+        throw badRequest(err.message, err.code, err.details);
       }
       throw err;
     }

@@ -3,11 +3,14 @@ import { db } from '../db/client.js';
 import { issueLabels, type LabelKind, labels } from '../db/schema.js';
 
 // cm:edge contract -> packages/contracts/src/rows.ts — `ModuleAttribution` is this shape under the name a client reads it by; `kind` is what lets that client tell a module from a label without a second call, and `isPrimary` is the attribution itself.
+// cm:guard this IS the issue-detail `labels[]` projection — `issues/routes.ts` calls it rather than re-declaring the join, because the two copies it used to carry drifted the moment a column was added to one of them (ISS-947).
 export type IssueLabelLite = {
   id: string;
   name: string;
   color: string;
   kind: LabelKind;
+  slug: string | null;
+  knowledgeEntryId: string | null;
   isPrimary: boolean;
 };
 
@@ -37,6 +40,8 @@ export async function listIssueLabels(issueId: string): Promise<IssueLabelLite[]
       name: labels.name,
       color: labels.color,
       kind: labels.kind,
+      slug: labels.slug,
+      knowledgeEntryId: labels.knowledgeEntryId,
       isPrimary: issueLabels.isPrimary,
     })
     .from(issueLabels)

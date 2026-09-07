@@ -142,11 +142,16 @@ export interface ProjectLabel {
 	kind: LabelKind;
 	/** Modules only — the parent module, or null at the root of the taxonomy. */
 	parentId: string | null;
+	/** Modules only — the module's stable identity, derived from its name on create and never moved by a rename. */
+	slug: string | null;
+	/** Modules only — the module's knowledge node, or null when nobody has written one yet. */
+	knowledgeEntryId: string | null;
 	description: string | null;
 }
 
 /** Body for creating a label or a module. `color` may be omitted for a module — the server
  *  derives a stable one from the name; it is REQUIRED for a plain label. */
+// cm:guard `slug` is deliberately absent — the server derives it and refuses to accept one, so a field here would be silently dropped rather than honoured (ISS-947).
 export interface LabelCreateInput {
 	name: string;
 	color?: string;

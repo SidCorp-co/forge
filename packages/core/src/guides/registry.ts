@@ -325,7 +325,7 @@ The kind is REQUIRED and core never guesses it. A plan awaiting approval and a t
 **A step that cannot RUN is not \`waiting\`.** No runner, provider quota, project budget, retries spent — the JOB is \`held\` and the issue stays at its stage. \`pipelineHealth.waitingOn.reason = 'job_held'\` names the condition, and nothing is being asked of you: a capacity hold resumes itself when capacity returns.
 
 ### Stopping the pipeline costs you a written reason
-\`reopen\`, \`waiting\` and \`needs_info\` are the three statuses that stop the pipeline, and all three are **rejected without a \`reason\`** (422). Pass it on the \`forge_issues\` call (\`note\` also counts); it is posted as a comment before the status flips, so it cannot go missing afterwards. \`waiting\` additionally requires \`waitingKind\`.
+\`reopen\`, \`waiting\` and \`needs_info\` are the three statuses that stop the pipeline, and all three are **rejected without a \`reason\`** (422). Pass it on the \`forge_issues\` call (\`note\` also counts); it is posted as a comment before the status flips, so it cannot go missing afterwards. \`waiting\` additionally requires \`waitingKind\`, and \`waitingKind\` is REFUSED on every other target (422 \`WAITING_KIND_NOT_APPLICABLE\`) — no other status stores it, so put the ask in \`reason\`.
 
 Entering a park costs a sentence; leaving one costs nothing. That asymmetry is deliberate and it is the opposite of the old rule, which let anyone stop the pipeline silently and then argued about who was allowed to restart it.
 
