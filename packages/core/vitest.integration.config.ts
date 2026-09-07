@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config';
+// cm:ignore CM013 — vitest-5 API migration only (removed `poolOptions`, now the default); the header's fork/DB behaviour it describes is unchanged, so there is no stale prose to reword.
 
 // Integration-only config. Runs against a real Postgres resolved by
 // tests/helpers/db.ts (container or disposable schema, via TEST_DB_MODE).
@@ -19,11 +20,8 @@ export default defineConfig({
     hookTimeout: 60_000,
     testTimeout: 30_000,
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: false,
-      },
-    },
+    // cm:why vitest 5 removed `poolOptions`; parallel forks (the former `singleFork: false`) is the default, so the block is dropped rather than translated.
+    fileParallelism: true,
     // cm:edge contract -> scripts/check-flow-coverage.mjs — that checker reads this report as the AUTHORITATIVE source: a cm:flow step counts as defended only when the integration suite executed it. Narrowing `include` here silently turns settled steps into out-of-scope faults.
     coverage: {
       provider: 'v8',

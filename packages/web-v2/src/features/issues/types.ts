@@ -78,6 +78,15 @@ export interface IssueFailureInfo {
 // cm:edge contract -> packages/core/src/db/schema.ts#labelKinds — a third kind added there and not here renders as neither a module nor a label
 export type LabelKind = "label" | "module";
 
+// cm:edge contract -> packages/contracts/src/rows.ts — the rollup shapes are core's, re-exported
+// here so every issues-feature import of a module type comes from one place.
+export type {
+  ModuleAttributionCounts,
+  ModuleCounts,
+  ModuleRollupResponse,
+  ModuleRollupRow,
+} from "@forge/contracts";
+
 /** One module attributed to an issue. Primary first in every array core sends. */
 // cm:edge contract -> packages/core/src/issues/label-service.ts#ModuleAttribution — re-typed rather than imported, as every other core payload on this screen is
 export interface ModuleAttribution {

@@ -14,6 +14,12 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../../src/ws/broadcast.js', () => ({
+  broadcast: vi.fn(),
+  broadcastToProject: vi.fn(),
+}));
+
 import {
   createTestProject,
   createTestUser,
@@ -37,10 +43,6 @@ beforeAll(async () => {
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   // cm:guard the broadcast and wedge paths are stubbed, not the predicate. Mocking the reaper itself would leave this file asserting that a mock was called, which is exactly the evidence the unit lane already fails to provide.
-  vi.mock('../../src/ws/broadcast.js', () => ({
-    broadcast: vi.fn(),
-    broadcastToProject: vi.fn(),
-  }));
   ({ reapZombieSessions } = await import('../../src/jobs/loop-monitor.js'));
 }, 60_000);
 

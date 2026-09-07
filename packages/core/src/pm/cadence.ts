@@ -1,4 +1,4 @@
-import cronParser from 'cron-parser';
+import { CronExpressionParser } from 'cron-parser';
 import { and, eq, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pmConfig } from '../db/schema.js';
@@ -42,7 +42,7 @@ export async function runPmCadenceTickOnce(now: Date = new Date()): Promise<stri
   const windowStart = new Date(windowEnd.getTime() - 60_000);
   for (const c of cfgs) {
     try {
-      const it = cronParser.parseExpression(c.cadenceCron, { currentDate: windowStart });
+      const it = CronExpressionParser.parse(c.cadenceCron, { currentDate: windowStart });
       const next = (it.next() as unknown as { toDate(): Date }).toDate();
       if (next > windowEnd) continue;
       const result = await spawnPmSession({ projectId: c.projectId, cause: 'tick' });

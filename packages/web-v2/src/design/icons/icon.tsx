@@ -1,13 +1,14 @@
 import {
   Activity, Archive, ArrowRight, Bell, BookOpen, Calendar, Check, ChevronDown,
   ChevronLeft, ChevronRight, ChevronsUpDown, Circle, CircleHelp, Clock, Command,
-  Cpu, DollarSign, Filter, Folder, GitBranch, GitFork, Github, Inbox, Keyboard,
+  Cpu, DollarSign, Filter, Folder, GitBranch, GitFork, Inbox, Keyboard,
   LayoutGrid, Link as LinkIcon, List, Lock, LogOut, type LucideIcon, Mail,
   Menu as MenuIcon, MessageSquare, Monitor, MoreHorizontal, PanelLeftClose, Pause, Pin, Play,
   Plus, RotateCw, Rows3, Search, Server, Settings, Shield, Sparkles, Square,
   Star, Trash2, TriangleAlert, Users, Workflow, X,
 } from "lucide-react";
 
+// cm:ignore CM013 — lucide-react 1.x brand-glyph migration only: `Github` was removed upstream, so the `github` entry maps to `GitBranch`; the registry's orientation prose is unchanged and there is nothing to reword.
 /* Semantic icon names (carried over from the prototype's Icon.jsx) mapped to
    the production Lucide set. Screens stay readable — `<Icon name="pipeline" />`
    — and the icon set is swappable in one place. */
@@ -49,7 +50,7 @@ const ICONS = {
   dollar: DollarSign,
   lock: Lock,
   mail: Mail,
-  github: Github,
+  github: GitBranch,
   dot: Circle,
   filter: Filter,
   inbox: Inbox,

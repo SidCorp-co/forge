@@ -16,6 +16,7 @@ import {
   AttachmentError as IssueAttachmentError,
   persistIssueAttachment,
 } from '../issues/attachment-service.js';
+import { contentDisposition } from '../lib/attachment-headers.js';
 import { getStorage } from '../storage/index.js';
 import { loadAttachmentBytesTarget } from './attachment-bytes.js';
 import { resolveDownloadTicket } from './download-ticket-service.js';
@@ -139,14 +140,13 @@ uploadRoutes.get(
     }
 
     const bytes = await getStorage().get(att.path);
-    // cm:guard the filename is uploaded (untrusted) content — keep it quoted and header-encoded so it cannot inject additional response headers
-    const safeName = att.name.replace(/[\r\n"]/g, '_');
+    // cm:guard the filename is uploaded (untrusted) content and must go through `contentDisposition`, never be interpolated here — a header value is a ByteString, so the raw name is both a CRLF injection vector and a 500 on any code point above 255, and names have carried those since they became identities (ISS-963)
     return c.body(new Uint8Array(bytes), 200, {
       'content-type': att.mime,
       'content-length': String(bytes.byteLength),
       // cm:edge contract -> packages/core/src/lib/attachment-headers.ts — the same bytes are also served by the three bearer-guarded routes through that helper, which sends `nosniff` on every response; this route sends its own headers and must carry it too, or the one surface reachable with no credential is the one where a browser may sniff an uploaded blob into markup
       'x-content-type-options': 'nosniff',
-      'content-disposition': `attachment; filename="${safeName}"`,
+      'content-disposition': contentDisposition('attachment', att.name),
       'cache-control': 'private, no-store',
     });
   },

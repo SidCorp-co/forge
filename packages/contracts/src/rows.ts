@@ -99,6 +99,43 @@ export interface ModuleDriftResponse {
   agreedEdgeCount: number;
 }
 
+// cm:edge contract -> packages/core/src/labels/module-rollup.ts — ISS-949: the rollup's response, re-declared for the same reason `ModuleAttribution` is, and because one more module reached from `public.ts` trips the coordinator-blob limit; a field added there and not here reaches no client
+export interface ModuleCounts {
+  total: number;
+  open: number;
+  closed: number;
+  recentlyActive: number;
+}
+
+/** ISS-949 — primary and secondary attributions, counted apart and never summed. */
+export interface ModuleAttributionCounts {
+  primary: ModuleCounts;
+  secondary: ModuleCounts;
+}
+
+export interface ModuleRollupRow {
+  id: string;
+  name: string;
+  slug: string | null;
+  color: string;
+  parentId: string | null;
+  depth: number;
+  /** Issues attributed to this module itself. */
+  own: ModuleAttributionCounts;
+  /** Issues attributed to a descendant, minus what `own` already counts for that kind. */
+  inherited: ModuleAttributionCounts;
+  /** `own + inherited`, which is addition exactly because `inherited` excluded the overlap. */
+  rollup: ModuleAttributionCounts;
+}
+
+export interface ModuleRollupResponse {
+  activeWithinDays: number;
+  generatedAt: string;
+  modules: ModuleRollupRow[];
+  /** Issues carrying no module attribution at all. */
+  unassigned: ModuleCounts;
+}
+
 // cm:edge contract -> packages/core/src/issues/routes.ts — `serializeIssue` is what adds `displayId` on top of the stored row, and `agentSessions`/`agentStatus` arrive ONLY under `?withAgentSessions=1` (ISS-128); no database row carries any of the three, so a client that reads them off a plain issue row gets `undefined` and no type error.
 export type Issue = typeof schema.issues.$inferSelect & {
   displayId: string;
@@ -129,8 +166,7 @@ export type JobEvent = typeof schema.jobEvents.$inferSelect;
 
 export type Device = typeof schema.devices.$inferSelect;
 
-// ISS-305 — runner browser-approve device-login grant code (mints a device
-// token, distinct from the desktop user-JWT pairing flow).
+// cm:why ISS-305 — this grant code mints a DEVICE token; the desktop user-JWT pairing flow is a separate path and the two are not interchangeable
 export type DeviceLoginCode = typeof schema.deviceLoginCodes.$inferSelect;
 
 // ISS-271 — runner row now carries the per (device × project) repo checkout

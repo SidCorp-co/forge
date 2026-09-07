@@ -84,15 +84,36 @@ export function mimeFromName(name: string): string {
   return EXT_MIME[extensionOf(name)] ?? 'text/plain';
 }
 
-/** Strip path separators; keep the extension. Length-cap. */
+/** Strip path separators and anything that is not part of a name; keep the extension. */
 // cm:guard this output is an IDENTITY, not just a safe filename — the attachment name rule compares it, so a character class that maps distinct names together refuses distinct documents: `[^A-Za-z0-9._-]` sent `报告.pdf` and `设计.pdf` both to `__.pdf`, and NFC/NFD spellings of one name to two (ISS-963)
+// cm:guard `\p{M}` is in the keep-class and must stay — NFC composes no Devanagari, Arabic harakat or Hebrew niqqud, so dropping combining marks sends `किताब.pdf` and `कुताब.pdf` both to `क_त_ब.pdf`, which is the CJK collapse above surviving in the scripts nobody checked (ISS-963)
 export function safeName(name: string): string {
   const cleaned = name
     .normalize('NFC')
     .replace(/[\\/]+/g, '_')
     .replace(/[\p{C}\p{Z}]/gu, '_')
-    .replace(/[^\p{L}\p{N}._-]/gu, '_');
-  return cleaned.slice(0, 200) || 'file';
+    .replace(/[^\p{L}\p{M}\p{N}._-]/gu, '_');
+  return cleaned || 'file';
+}
+
+/**
+ * The UTF-8 budget a stored name has to fit, and the predicate that decides it.
+ *
+ * Bytes, because the filesystem counts bytes: a path component is 255 on ext4
+ * and the storage key spends 14 more on the `<epoch>-` prefix, so ~81 CJK
+ * characters overflow where 200 ASCII ones did not — and an `ENAMETOOLONG` out
+ * of the storage driver is an unmapped 500 on a file that validated fine.
+ *
+ * A predicate and not a truncation, because the name is the identity the
+ * collision rule compares: cutting one to fit maps every name sharing its first
+ * 180 bytes onto a single row, which is exactly the collapse the rule exists to
+ * prevent — for astral characters it does so by splitting a surrogate pair, and
+ * the lone surrogate left behind is shared by 1,024 code points. Over budget is
+ * refused by name (ISS-963).
+ */
+export const NAME_MAX_BYTES = 180;
+export function nameExceedsByteBudget(name: string): boolean {
+  return new TextEncoder().encode(name).length > NAME_MAX_BYTES;
 }
 
 // cm:guard test code points, never a regex character class — biome's noControlCharactersInRegex refuses control escapes in a literal, and spelling them as `\\x00` in a `new RegExp` string only hides the same bytes from the reader

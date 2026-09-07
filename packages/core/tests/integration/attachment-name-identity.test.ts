@@ -6,7 +6,7 @@
  * constructed and nothing about whether the collision is found.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sql } from 'drizzle-orm';
@@ -175,7 +175,6 @@ describe('attachment name identity — an issue holds one document per name', ()
     const { issueId, token } = await seed();
     await upload(`/api/issues/${issueId}/attachments`, token, 'once.md');
 
-    const { readdirSync } = await import('node:fs');
     const dir = join(uploadsDir, 'issues', issueId);
     const before = readdirSync(dir);
     expect(before).toHaveLength(1);
@@ -416,6 +415,47 @@ describe('attachment name identity — other scopes, listing and recovery', () =
     expect(second.status).toBe(400);
     expect(((await second.json()) as Refusal).code).toBe('ATTACHMENT_NAME_TAKEN');
     expect(await countAttachments(issueId, nfc)).toBe(1);
+  });
+
+  // cm:guard the DOWNLOAD is the half a 201 does not prove — a header value is a ByteString, so widening the name rule to accept `\p{L}` put every non-Latin attachment behind a 500 that only shows on read (ISS-963)
+  it('serves back a name it cannot spell in ASCII, instead of failing on the header', async () => {
+    const { issueId, token } = await seed();
+    const created = await upload(`/api/issues/${issueId}/attachments`, token, '报告.md');
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as { id: string };
+
+    const served = await app.request(`/api/attachments/${id}/download`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(served.status).toBe(200);
+    expect(served.headers.get('content-disposition')).toContain(
+      "filename*=UTF-8''%E6%8A%A5%E5%91%8A.md",
+    );
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(new Uint8Array(PNG));
+  });
+
+  it('keeps two Devanagari names apart, where the difference is a combining mark', async () => {
+    const { issueId, token } = await seed();
+
+    expect((await upload(`/api/issues/${issueId}/attachments`, token, 'किताब.md')).status).toBe(
+      201,
+    );
+    expect((await upload(`/api/issues/${issueId}/attachments`, token, 'कुताब.md')).status).toBe(201);
+  });
+
+  // cm:guard over budget is REFUSED, never trimmed — trimming maps every name sharing its first 180 bytes onto one row, which is the collapse this whole suite exists to catch, and the untrimmed name reaches the storage driver as an unmapped `ENAMETOOLONG` 500 (ISS-963)
+  it('refuses a name too long to store, before any bytes land', async () => {
+    const { issueId, token } = await seed();
+    const overlong = `${'文'.repeat(80)}.md`;
+    expect(overlong.length).toBeLessThan(200);
+
+    const refused = await upload(`/api/issues/${issueId}/attachments`, token, overlong);
+
+    expect(refused.status).toBe(400);
+    expect(((await refused.json()) as Refusal).code).toBe('INVALID_NAME');
+    expect(await countAttachments(issueId, overlong)).toBe(0);
+    expect(existsSync(join(uploadsDir, 'issues', issueId))).toBe(false);
   });
 
   it('does not refuse a name the issue never had', async () => {

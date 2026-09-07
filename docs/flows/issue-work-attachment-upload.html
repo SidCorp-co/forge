@@ -25,6 +25,7 @@
   .exit { fill:#fdf0f3; stroke:#e3c2cb; }
   .arrow { stroke:var(--fg); stroke-width:1.2; fill:none; marker-end:url(#a); }
   .arrowbad { stroke:var(--bad); stroke-width:1.2; fill:none; marker-end:url(#b); stroke-dasharray:4 3; }
+  .txn { fill:none; stroke:var(--lock); stroke-width:1.2; stroke-dasharray:6 4; }
 </style>
 <main>
 
@@ -42,7 +43,7 @@ persist funnels), <code>packages/core/src/uploads/ticket-service.ts</code> (the 
 presigned PUT and the base64 MCP paths all end at one of three <code>persist*Attachment</code>
 functions, and the type resolution lives inside those rather than at any entrance.</p>
 
-<svg viewBox="0 0 900 540" role="img" aria-label="Six upload entry paths converging on one resolution step, with four refusal exits">
+<svg viewBox="0 0 900 570" role="img" aria-label="Six upload entry paths converging on one resolution step, with four refusal exits">
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#1c1a17"/></marker>
@@ -98,34 +99,43 @@ functions, and the type resolution lives inside those rather than at any entranc
   <text class="m" x="620" y="170">details.allowed = {mimes[], extensions[]}</text>
   <path class="arrowbad" d="M700,96 L700,116"/>
 
-  <rect class="box" x="610" y="200" width="270" height="46" rx="4"/>
-  <text class="t" x="620" y="220">findXAttachmentByName</text>
-  <text class="m" x="620" y="236">on the SANITISED name</text>
-  <path class="arrow" d="M745,176 L745,198"/>
+  <rect class="txn" x="596" y="188" width="292" height="230" rx="6"/>
+  <text class="m" x="604" y="203" fill="#a06a1f">ONE TRANSACTION — pg_advisory_xact_lock(scope:parent:name)</text>
 
-  <rect class="exit" x="610" y="268" width="270" height="58" rx="4"/>
-  <text class="t" x="620" y="288">400 ATTACHMENT_NAME_TAKEN</text>
-  <text class="m" x="620" y="305">details.existing = {id, name, url}</text>
-  <text class="m" x="620" y="320">that id is what DELETE takes</text>
-  <path class="arrowbad" d="M745,246 L745,266"/>
+  <rect class="box" x="610" y="212" width="270" height="46" rx="4"/>
+  <text class="t" x="620" y="232">findXAttachmentByName</text>
+  <text class="m" x="620" y="248">on the SANITISED name</text>
+  <path class="arrow" d="M745,176 L745,210"/>
 
-  <rect class="ship" x="610" y="350" width="270" height="60" rx="4"/>
-  <text class="t" x="620" y="370">storage.put + INSERT</text>
-  <text class="m" x="620" y="388">stored under the RESOLVED type,</text>
-  <text class="m" x="620" y="403">not the declared one</text>
-  <path class="arrow" d="M660,246 C660,300 660,330 660,348"/>
+  <rect class="exit" x="610" y="274" width="270" height="58" rx="4"/>
+  <text class="t" x="620" y="294">400 ATTACHMENT_NAME_TAKEN</text>
+  <text class="m" x="620" y="311">details.existing = {id, name, url}</text>
+  <text class="m" x="620" y="326">on an ISSUE that id is what DELETE takes</text>
+  <path class="arrowbad" d="M745,258 L745,272"/>
 
-  <rect class="exit" x="250" y="430" width="300" height="58" rx="4"/>
-  <text class="t" x="260" y="450">400 MIME_NOT_ALLOWED — at MINT</text>
-  <text class="m" x="260" y="467">only an explicitly declared bad type;</text>
-  <text class="m" x="260" y="482">an unknown extension mints text/plain</text>
-  <path class="arrowbad" d="M112,380 C112,420 200,458 248,458"/>
+  <rect class="ship" x="610" y="348" width="270" height="60" rx="4"/>
+  <text class="t" x="620" y="368">storage.put + INSERT</text>
+  <text class="m" x="620" y="386">stored under the RESOLVED type;</text>
+  <text class="m" x="620" y="401">both refusals land BEFORE the put — no orphan blob</text>
+  <path class="arrow" d="M660,258 C660,300 660,326 660,346"/>
 
-  <rect class="exit" x="600" y="430" width="290" height="58" rx="4"/>
-  <text class="t" x="610" y="450">400 ATTACHMENT_NAME_TAKEN — at MINT</text>
-  <text class="m" x="610" y="467">advisory: saves streaming the bytes,</text>
-  <text class="m" x="610" y="482">but the persist check is the authority</text>
-  <path class="arrowbad" d="M210,362 C400,410 520,455 598,458"/>
+  <rect class="exit" x="14" y="430" width="196" height="58" rx="4"/>
+  <text class="t" x="24" y="450">400 INVALID_NAME</text>
+  <text class="m" x="24" y="467">over 180 BYTES of UTF-8 — refused,</text>
+  <text class="m" x="24" y="482">never trimmed onto another row</text>
+  <path class="arrowbad" d="M330,196 C240,300 130,380 112,428"/>
+
+  <rect class="exit" x="250" y="500" width="300" height="58" rx="4"/>
+  <text class="t" x="260" y="520">400 MIME_NOT_ALLOWED — at MINT</text>
+  <text class="m" x="260" y="537">only an explicitly declared bad type;</text>
+  <text class="m" x="260" y="552">an unknown extension mints text/plain</text>
+  <path class="arrowbad" d="M112,380 C112,460 200,528 248,528"/>
+
+  <rect class="exit" x="600" y="500" width="290" height="58" rx="4"/>
+  <text class="t" x="610" y="520">400 ATTACHMENT_NAME_TAKEN / INVALID_NAME — at MINT</text>
+  <text class="m" x="610" y="537">advisory: saves streaming the bytes,</text>
+  <text class="m" x="610" y="552">but the persist check is the authority</text>
+  <path class="arrowbad" d="M210,368 C400,470 520,525 598,528"/>
 </svg>
 
 <h2>What each hop refuses, and what it leaves behind</h2>
@@ -140,6 +150,10 @@ functions, and the type resolution lives inside those rather than at any entranc
     <td><code>not-allowed</code>: a type the client CLAIMED that the target's set does not hold, whatever the bytes are; or binary bytes under a guessed type it does not hold. <code>not-text</code>: a text-format type (<code>text/*</code>, <code>image/svg+xml</code>) whose bytes are binary. Binary means a control byte no text carries, anywhere in the file — <em>not</em> a failed UTF-8 decode, so a Windows-1252 CSV and a BOM-marked UTF-16 <code>.txt</code> still land.</td>
     <td><code>details.allowed = {mimes[], extensions[]}</code> — the whole set, so a client prints it instead of keeping a copy that goes stale.</td>
     <td class="ok">Nothing — the check runs before <code>storage.put</code>.</td></tr>
+<tr><td><code>safeName</code> + the byte budget</td>
+    <td>A sanitised name over <b>180 bytes of UTF-8</b> — <code>INVALID_NAME</code>. Bytes, because the storage key is a filesystem path component: ~81 CJK characters overflow where 200 ASCII ones did not.</td>
+    <td>The limit, and the instruction to rename.</td>
+    <td class="ok">Nothing — the check runs before <code>storage.put</code>. It <em>refuses</em> rather than trimming, because a trim maps every name sharing its first 180 bytes onto one row, which is the collapse the identity rule exists to prevent.</td></tr>
 <tr><td><code>findIssueAttachmentByName</code> / <code>findCommentAttachmentByName</code></td>
     <td>A name already stored on this issue (or this comment), compared on the <em>sanitised</em> name.</td>
     <td><code>details.existing = {id, name, url}</code>.</td>
@@ -159,6 +173,32 @@ an unknown extension therefore <b>moved one hop later</b>: a binary <code>.log</
 bytes before it is told no. That is the price of a plain-text <code>.log</code> attaching at all, and
 it is why the refusal carries the allowed set — the client that just spent the upload should not have
 to guess what would have worked.
+</div>
+
+<div class="rule">
+<b>The check, the <code>storage.put</code> and the <code>INSERT</code> are one transaction under a
+name lock.</b> Without it the check is decorative for concurrent callers: it is a read followed by a
+write with no constraint underneath, and the blob write sits in the window between them — measured
+2026-09-07, four concurrent uploads of one name stored four rows and refused none. The lock is
+<code>pg_advisory_xact_lock</code> keyed on <code>scope:parentId:sanitisedName</code>, so it only
+serialises the uploads that must be serialised, and never the <code>_try_</code> form: a caller that
+cannot take it must <em>wait</em> and then see the row, because failing open is the bug it closes. A
+<code>UNIQUE (parent_id, name)</code> index would be stronger and is not available — rows predating
+the rule already violate it, and this repo does not discard a row so an <code>ALTER</code> can
+succeed. <b>The price:</b> the lock is held across the storage write on a pooled connection, so
+concurrent uploads of <em>one</em> name on one parent serialise behind one blob write.
+</div>
+
+<div class="rule">
+<b>A name is an identity, so the sanitiser may not merge two of them.</b> The keep-class is
+<code>\p{L}\p{M}\p{N}._-</code> after NFC, and every part of that carries: <code>[^A-Za-z0-9._-]</code>
+sent <code>报告.pdf</code> and <code>设计.pdf</code> both to <code>__.pdf</code>, and dropping
+<code>\p{M}</code> does the same to Devanagari, Arabic harakat and Hebrew niqqud. NFC is the one
+direction it <em>does</em> merge, and deliberately: the two Unicode spellings of <code>café.pdf</code>
+are one document. The read path pays for this too — a <code>Content-Disposition</code> value is a
+ByteString, so the served name goes out RFC 5987 encoded
+(<code>packages/core/src/lib/attachment-headers.ts</code>) or a file that uploaded fine 500s on
+download.
 </div>
 
 <div class="rule">

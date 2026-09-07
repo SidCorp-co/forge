@@ -4,7 +4,12 @@ import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { uploadTickets } from '../db/schema.js';
 import { findIssueAttachmentByName } from '../issues/attachment-service.js';
-import { allowedSetForTarget, safeName } from '../lib/attachment-mime.js';
+import {
+  allowedSetForTarget,
+  NAME_MAX_BYTES,
+  nameExceedsByteBudget,
+  safeName,
+} from '../lib/attachment-mime.js';
 import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
 
 /** How long a minted upload ticket stays valid. Short by design (replay window). */
@@ -12,7 +17,7 @@ export const UPLOAD_TICKET_TTL_MS = 5 * 60 * 1000;
 
 export type UploadTargetType = 'issue' | 'comment' | 'session';
 
-export type UploadTicketErrorCode = 'MIME_NOT_ALLOWED' | 'ATTACHMENT_NAME_TAKEN';
+export type UploadTicketErrorCode = 'MIME_NOT_ALLOWED' | 'ATTACHMENT_NAME_TAKEN' | 'INVALID_NAME';
 
 export class UploadTicketError extends Error {
   readonly code: UploadTicketErrorCode;
@@ -82,6 +87,12 @@ export async function createUploadTicket(
       reason: 'not-allowed',
       allowed,
     });
+  }
+  if (nameExceedsByteBudget(safeName(input.name))) {
+    throw new UploadTicketError(
+      'INVALID_NAME',
+      `name is longer than ${NAME_MAX_BYTES} bytes of UTF-8 — rename the file and mint again`,
+    );
   }
   // cm:edge protocol -> packages/core/src/issues/attachment-service.ts — advisory only, and the persist-time check is the authority: a name free at mint can be taken before the PUT arrives, so removing the check there would leave the rule unenforced while this one still passed (ISS-963)
   const taken = await takenNameOn(input.targetType, input.targetId, input.name);

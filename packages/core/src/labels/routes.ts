@@ -8,6 +8,7 @@ import { issueLabels, labelKinds, labels } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { moduleDrift } from './module-drift.js';
+import { DEFAULT_ACTIVE_WITHIN_DAYS, moduleRollup } from './module-rollup.js';
 import {
   assertDemotionIsLegal,
   assertKnowledgeNodeIsForModule,
@@ -52,6 +53,11 @@ const labelPatchSchema = z
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
+
+// cm:guard the window is bounded on both ends — `coerce` turns any string into a number, so an absent bound lets `?activeWithinDays=0` ask for a window nothing can fall inside and `?activeWithinDays=1e9` ask Postgres for an interval it refuses
+const rollupQuerySchema = z.object({
+  activeWithinDays: z.coerce.number().int().min(1).max(3650).optional(),
+});
 const labelIdParamSchema = z.object({ id: z.uuid() });
 
 const badRequest = (details: unknown) =>
@@ -161,11 +167,32 @@ labelProjectRoutes.get(
   },
 );
 
+// cm:why the rollup rides `labelProjectRoutes` because a module IS a label (ISS-593) and the aggregation reads the same table pair every route in this file writes; a `/modules` router of its own would be a second place to learn what a module is
+labelProjectRoutes.get(
+  '/:id/modules/rollup',
+  zValidator('param', projectIdParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('query', rollupQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id: projectId } = c.req.valid('param');
+    const { activeWithinDays } = c.req.valid('query');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    assertProjectRole(access, 'viewer', 'not a project member');
+
+    return c.json(await moduleRollup(projectId, activeWithinDays ?? DEFAULT_ACTIVE_WITHIN_DAYS));
+  },
+);
+
 const driftQuerySchema = z
   .object({ minCoOccurrence: z.coerce.number().int().min(1).max(1000).default(2) })
   .strict();
 
-// cm:why ISS-951 — mounted here rather than under a surface of its own because the observed half IS `issue_labels` joined to this file's table, and a second domain owning the read would be a second answer to "which modules does this project have".
+// cm:why ISS-951 — the drift signal rides `labelProjectRoutes` for the same reason the rollup does: the observed half IS `issue_labels` joined to this file's table, and a `/modules` router of its own would be a second place to learn what a module is.
 labelProjectRoutes.get(
   '/:id/modules/drift',
   zValidator('param', projectIdParamSchema, (r) => {

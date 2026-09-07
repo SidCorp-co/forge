@@ -15,6 +15,12 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../../src/ws/broadcast.js', () => ({
+  broadcast: vi.fn(),
+  broadcastToProject: vi.fn(),
+}));
+
 import {
   createTestProject,
   createTestUser,
@@ -39,10 +45,6 @@ beforeAll(async () => {
   process.env.NODE_ENV ??= 'test';
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-  vi.mock('../../src/ws/broadcast.js', () => ({
-    broadcast: vi.fn(),
-    broadcastToProject: vi.fn(),
-  }));
   ({ reapExpiredParks } = await import('../../src/jobs/park-deadline.js'));
   ({ reapSessionLostJobs } = await import('../../src/jobs/loop-monitor.js'));
 }, 60_000);

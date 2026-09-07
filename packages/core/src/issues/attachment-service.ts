@@ -5,6 +5,8 @@ import { issueAttachments } from '../db/schema.js';
 import {
   allowedSetForTarget,
   mimeRefusalMessage,
+  NAME_MAX_BYTES,
+  nameExceedsByteBudget,
   resolveAttachmentMime,
   safeName,
 } from '../lib/attachment-mime.js';
@@ -101,6 +103,12 @@ export function validateIssueAttachment(input: {
   bytes: Buffer;
 }): string {
   if (!input.name) throw new AttachmentError('INVALID_NAME', 'name is empty after sanitisation');
+  // cm:guard refuse an over-budget name, never trim it to fit — the name is the identity the collision rule compares, so a trim maps every name sharing its first 180 bytes onto one row, and it is the storage key's `<epoch>-` prefix plus ext4's 255-byte component that sets the number (ISS-963)
+  if (nameExceedsByteBudget(input.name))
+    throw new AttachmentError(
+      'INVALID_NAME',
+      `name is longer than ${NAME_MAX_BYTES} bytes of UTF-8 — rename the file and upload it again`,
+    );
   if (input.bytes.byteLength <= 0) throw new AttachmentError('EMPTY_FILE', 'empty file');
   if (input.bytes.byteLength > env.UPLOADS_MAX_BYTES)
     throw new AttachmentError('FILE_TOO_LARGE', 'file too large');

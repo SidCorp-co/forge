@@ -44,6 +44,19 @@
   parent read differently from two modules in unrelated subtrees. `knowledge_edges` is deliberately
   not read — it is a free-text triple store with no module convention, and reading it as one would
   invent the second declared-edge store this issue exists to avoid. (ISS-951)
+- **The backlog can be read by module: counts, open and closed, and recent activity.** Tier 2
+  shipped the `?module=` filter, which answers "show me the issues in module X"; nothing answered
+  "which module is hot" or "what is open against each". The Issues screen has a fourth view,
+  **Modules** (`?tab=modules`), listing every module of the project with its total, open, closed
+  and recently-active counts, and `GET /api/projects/:id/modules/rollup` serves the same numbers.
+  Primary and secondary attributions are counted and shown separately — an issue has one primary
+  module and any number of secondaries, and summing them would lose the distinction. A parent
+  module's counts say which part is its own and which is inherited from its children, with an
+  issue attributed to both counted once. A module with no issues appears with zeroes rather than
+  vanishing, and the issues carrying no module at all are their own row rather than being dropped.
+  The aggregation reads `issue_labels` joined to `kind='module'` labels and nothing else: there is
+  no second store of module membership. Flow:
+  [`docs/flows/issue-work-module-rollup-read.html`](docs/flows/issue-work-module-rollup-read.html).
 
 - **An issue or comment written as `forge-*` components now renders as components, and a
   description can be corrected after it was created.** The registry, the validator and the four
@@ -3273,6 +3286,21 @@
 
 ### Changed
 
+- **Sixteen major dependency lines moved up at once, with the source migrated to each new API.**
+  `@hono/node-server` 1→2, pg-boss 10→12, vitest + `@vitest/coverage-v8` 3→5, `@types/node` 20→26,
+  cron-parser 4→5, zxcvbn-ts 3→4, nodemailer 9→10, testcontainers 11→12, `lucide-react` 0.564→1.41,
+  jsdom 28→30, `@testing-library/jest-dom` 6→7, dependency-cruiser 16→18. Five breaking API changes
+  were carried rather than pinned around: cron-parser's default `parseExpression` is now
+  `CronExpressionParser.parse`; `@zxcvbn-ts/core` dropped the `zxcvbn` / `zxcvbnOptions` singletons
+  for a `ZxcvbnFactory` instance; pg-boss moved to a named `PgBoss` export; vitest 5 removed
+  `poolOptions` (parallel forks is the default) and now hard-errors a `vi.mock` written below a
+  module's top level, so six integration files had theirs hoisted; and `lucide-react` 1.x removed
+  the `Github` brand glyph, so the `github` icon maps to `GitBranch`. **TypeScript is held at 5.x**:
+  7.0's native compiler breaks dependency-cruiser's TS resolution, which blinds the vendored archmap
+  relations gate (0% of the graph resolved, `archmap check` then passing over an empty graph) — the
+  upgrade waits on toolchain support in the archmap/dependency-cruiser line rather than shipping a
+  silently unenforced gate.
+
 - **The interventions metric now counts a hand on `agent_sessions`, a hand on a non-terminal
   status, and a hand that deletes the row — and it stopped charging an ordinary auto-release to a
   human.** ISS-884 taught the ruler to see a `psql` terminal flip on `jobs` or `pipeline_runs` by
@@ -3367,6 +3395,17 @@
   clipboard image `image.png`, and a create that cannot attach one file attaches none — so the
   second paste is now staged under its own name, and a create that still drops a file says so
   instead of reporting success.
+
+  Downloading a non-Latin name works, which it did not the moment names stopped collapsing: a
+  `Content-Disposition` header value cannot carry a character above 255, so `报告.md` uploaded fine
+  and then answered its own download URL with a 500. The served name is now RFC 5987 encoded, with
+  an ASCII fallback for clients that read only the plain parameter. Hindi, Arabic and Hebrew names
+  are compared as themselves too — combining marks were still being replaced, so `किताब.pdf` and
+  `कुताब.pdf` were one name in exactly the way `报告.pdf` and `设计.pdf` had been. And a name too
+  long to store is refused with `INVALID_NAME` naming the limit, rather than trimmed: the limit is
+  180 bytes of UTF-8 because the filesystem counts bytes (an 81-character Chinese name overflows
+  where 200 ASCII ones did not), and trimming would have merged every name sharing a prefix into
+  the single row this whole rule exists to prevent. (ISS-963)
 
 - **The always-inject flag now says what it buys, and stops implying the rule will be followed.**
   Flagging a project fact `alwaysInject` splices its full body into every agent prompt under
