@@ -77,7 +77,7 @@ vi.mock('./creator.js', async (importOriginal) => {
   return { ...actual, hydrateCreatorsForIssues };
 });
 
-const { searchRoutes, buildIlikePattern } = await import('./search.js');
+const { searchRoutes } = await import('./search.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
@@ -125,7 +125,6 @@ function queueProjectMissing() {
 }
 
 function queueAuthSelect() {
-  // assertEmailVerified reads users table
   selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
 }
 
@@ -415,19 +414,5 @@ describe('createdBy filter + creator hydration (ISS-756)', () => {
       creatorIsAgent: true,
     });
     expect(hydrateCreatorsForIssues).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('buildIlikePattern', () => {
-  it('wraps plain text with %', () => {
-    expect(buildIlikePattern('hello')).toBe('%hello%');
-  });
-
-  it('escapes % and _ characters', () => {
-    expect(buildIlikePattern('100%_done')).toBe('%100\\%\\_done%');
-  });
-
-  it('escapes backslashes', () => {
-    expect(buildIlikePattern('a\\b')).toBe('%a\\\\b%');
   });
 });

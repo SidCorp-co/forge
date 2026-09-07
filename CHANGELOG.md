@@ -50,6 +50,24 @@
   commit. It needs a `SENTRY_AUTH_TOKEN` repository secret and says in the run summary when that
   secret is absent rather than failing — the release ids are already correct without it.
 
+- **Issue search now reaches `plan` and `acceptanceCriteria`, and names the field it matched.**
+
+  `filters.search` (MCP `forge_issues action=list`) and `GET /api/projects/:id/issues/search`
+  reached the title and the description only, so a requirements-clause citation written beside the
+  criterion it proves — `FR-05~2` on an acceptance criterion — was unfindable, and the only way to
+  answer "which issues cite this clause" was a full walk of every issue, which does not fit inside
+  an agent's token budget on a single project.
+
+  All four text fields are now searched, by literal substring and by the identifier split
+  (`cascade` finds `runs-cascade.ts`), and every matching row carries `matchedFields` naming which
+  of them matched. The read stays bounded: the same paging, the same `hasMore`, no new route. The
+  generated `ident_search` column widens with it (migration `0220`), so the identifier arm cannot
+  quietly cover fewer fields than the substring arm.
+
+  `forge_issues action=list` also now REFUSES `filters.issue` and `filters.taskStatus` by name.
+  Both belong to `listTasks`; `list` accepted and dropped them, and at `limit: 1` the result was a
+  well-formed single row of an unrelated issue, indistinguishable from a successful lookup.
+
 - **A write to an issue's session field can now carry the value it read, and is refused when the
   field moved underneath it.** `sessionContext` is where a driver's lease lives, and until now a
   write always won: two runs that both read no holder both claimed, and the later write erased the
