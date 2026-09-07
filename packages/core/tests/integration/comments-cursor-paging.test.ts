@@ -103,15 +103,20 @@ async function seed() {
   return { owner, project, issueId, jwt };
 }
 
+// cm:guard every comment this helper writes gets a DISTINCT `created_at`, one millisecond apart and monotonic across the file. The column defaults to `now()`, and on a fast runner consecutive inserts land in the same microsecond — the walk then orders those by id, which is correct and is not insertion order, so every sequence assertion below flakes for a reason that is not the paging (seen on CI 2026-09-07). The same-instant case has its own test, `walks past roots that share a createdAt millisecond`, which writes its timestamps explicitly.
+let commentSeq = 0;
+
 async function addComment(
   issueId: string,
   authorId: string,
   body: string,
   parentId: string | null = null,
 ) {
+  commentSeq += 1;
   const rows = await harness.db.execute<{ id: string }>(sql`
-    INSERT INTO comments (issue_id, author_id, body, parent_id)
-    VALUES (${issueId}, ${authorId}, ${body}, ${parentId})
+    INSERT INTO comments (issue_id, author_id, body, parent_id, created_at)
+    VALUES (${issueId}, ${authorId}, ${body}, ${parentId},
+            now() + (${commentSeq} * interval '1 millisecond'))
     RETURNING id
   `);
   return (rows[0] as { id: string }).id;
@@ -218,8 +223,7 @@ describe('ISS-956 comment thread paging — the envelope and the walk', () => {
 
     expect(cursor).toBeNull();
     expect(seen).toHaveLength(40);
-    // cm:guard assert the SET, not the sequence. `created_at` defaults to `now()` and two of forty inserts land in the same microsecond often enough to flake; the walk then orders those two by id, which is deterministic and correct but is not insertion order. A sequence assertion here fails for a reason that is not the paging.
-    expect(new Set(seen)).toEqual(new Set(Array.from({ length: 40 }, (_, i) => `c${i}`)));
+    expect(seen).toEqual(Array.from({ length: 40 }, (_, i) => `c${i}`));
   });
 
   it('nests every reply under its own root, on that root page (AC 5)', async () => {

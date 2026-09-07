@@ -31,7 +31,23 @@ pnpm db:generate
 ```
 
 `drizzle-kit` writes the SQL file, updates `meta/_journal.json`, and
-emits a snapshot under `meta/`. No manual edits needed.
+emits a snapshot under `meta/`.
+
+**Two things it gets wrong, both measured on 0220 (ISS-960):**
+
+1. The `when` it writes is the wall clock, which on this repo is far BELOW the
+   journal's existing `max(when)` (those are hand-picked, spaced a day apart).
+   Drizzle reads the single highest `created_at` in the target DB and skips
+   lower entries silently, forever — the container then serves new code against
+   an old schema. Raise the generated `when` to `max(when) + 86400000` by hand;
+   `db/migrations-journal.test.ts` is the gate.
+2. It does not re-emit an index that Postgres dropped with the column. If your
+   change drops and re-adds a column (the only way to alter a generated
+   column's expression), every index on that column goes with it and drizzle's
+   model still believes they exist. Add the `CREATE INDEX` by hand.
+
+Both mean the generated file is a starting point on this repo, not a finished
+one. Keep the snapshot drizzle emitted; rewrite the SQL and the journal entry.
 
 ### Hand-written SQL (rare)
 

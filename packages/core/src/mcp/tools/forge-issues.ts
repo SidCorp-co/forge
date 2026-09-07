@@ -113,8 +113,7 @@ const filtersSchema = z
     // cm:guard `taskStatus` must stay named apart from the issue-level `status` on this one input object: collapsing the two makes a `listTasks` filter silently match `issues.status` instead
     issue: z.uuid().optional(),
     taskStatus: z.enum(taskStatuses).optional(),
-    // Label filter: accepts a label name OR uuid (or an array of either).
-    // Names are resolved to ids server-side; unknown names short-circuit to empty.
+    // cm:guard a name that resolves to nothing short-circuits to an EMPTY set, never to "no filter" — the alternative hands the caller every issue in the project as the label's issues
     label: z
       .union([z.string().trim().min(1), z.array(z.string().trim().min(1)).max(50)])
       .optional(),
@@ -157,9 +156,7 @@ const dataObject = z
     sessionContext: sessionContextSchema,
     // cm:guard ISS-959 — a PRECONDITION, not a field. It is absent from `SHARED_ISSUE_PATCH_FIELDS` on purpose; adding it there would write the value the caller read back into a column.
     expect: sessionContextExpectSchema.optional(),
-    // ISS-199 — user-facing release notes. forge-clarify writes this; the
-    // shape is validated by `ReleaseNotesSchema` so an invalid section enum
-    // is rejected at the MCP boundary.
+    // cm:edge contract -> packages/core/src/issues/release-notes.ts — `ReleaseNotesSchema` is what refuses an invalid `section` at the MCP boundary, so a section added there and not here is accepted by one side and rejected by the other (ISS-199)
     releaseNotes: ReleaseNotesSchema.nullable().optional(),
     // cm:guard an audit LABEL and never a second column — all three values stamp the one `merged_at`, so a reader that branches on `target` to decide where the work landed is reading a string somebody typed (ISS-286)
     target: z.enum(['feature', 'base', 'prod']).optional(),
@@ -336,6 +333,8 @@ function serializeListRow(row: IssueListRow): Record<string, unknown> {
     mergedAt: row.mergedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    // cm:why ISS-960 — only when the query carried `filters.search`; on an unfiltered browse the key is absent rather than `[]`, so "not searched" and "matched on nothing literal" stay distinguishable
+    ...(row.matchedFields ? { matchedFields: row.matchedFields } : {}),
   };
 }
 
@@ -491,6 +490,10 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'list returns a lightweight summary projection per issue (no description/' +
     'plan/acceptanceCriteria/sessionContext/releaseNotes) ' +
     'to stay under the response token cap; fetch the full body with action=get. ' +
+    'filters.search matches a literal substring of title, description, plan or acceptanceCriteria, ' +
+    'or an identifier-split token across the same four (ISS-960); each matching row names the ' +
+    'fields it matched in `matchedFields`, so a clause cited only on a criterion is findable. ' +
+    'filters.issue/filters.taskStatus belong to listTasks and list REFUSES them — use get. ' +
     'list supports filters.label (a label name or uuid, or an array of either — ' +
     'OR semantics; unknown names return an empty set) and filters.module (ISS-593 — the same ' +
     'shape, matched against MODULE labels only, so a plain label name returns an empty set). ' +
@@ -588,6 +591,14 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
         const issuesLimit = input.limit ?? 25;
         const f = input.filters;
+        // cm:guard ISS-960 — `filters.issue` and `filters.taskStatus` belong to `listTasks` and this action cannot honour them, so they are REFUSED by name. Dropping them silently returned the project's newest issues instead, and at `limit: 1` that is indistinguishable from a single-issue lookup: a master read one issue's merge state as another's twice in one morning before this refusal existed.
+        for (const key of ['issue', 'taskStatus'] as const) {
+          if (f?.[key] !== undefined) {
+            throw new Error(
+              `BAD_REQUEST: filters.${key} is applied only by action 'listTasks' — for one issue use action 'get' with its documentId`,
+            );
+          }
+        }
         const rows = await listIssueRows(
           projectId,
           {
