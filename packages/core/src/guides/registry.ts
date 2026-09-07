@@ -16,6 +16,8 @@
 // Search already supplies those) and do not restate the status ladder /
 // enums (`prompt/facts/registry.ts` owns those).
 
+// cm:guard `issues/dependency-effects.ts` is a leaf — its only schema import is `import type` and erases — so it does not breach the no-DB rule below. Keep it that way, or this module and both its read surfaces start needing a live DB.
+import { WORK_EVIDENCE_WAIVER_NOTE } from '../issues/dependency-effects.js';
 import { CONFORMANCE_GUIDE } from './conformance-guide.js';
 import type { ForgeGuide } from './types.js';
 
@@ -59,7 +61,8 @@ The same shape costs tokens rather than a stall: a stage lands in a checkout who
 ### Relation kinds
 Edges are directional \`fromIssue --kind--> toIssue\`:
 - \`blocks\` — **the only kind that affects dispatch.** A → blocks → B means B cannot dispatch until A's code has reached the base branch — normally, until A has \`merged_at\` set. A reopened issue stays a blocker even if its prior merge stamp remains. A closed issue without \`merged_at\` unblocks B only when the project's base branch cannot be stamped structurally. It is **not** gated on A reaching \`released\`: a blocker parked at a manual release gate already unblocks B the instant its \`merged_at\` is stamped.
-- \`relates\`, \`duplicates\`, \`parent\`, \`decomposes\` — grouping labels, no dispatch effect. \`decomposes\` reads epic → child and is useful for showing structure; it holds nothing back, so ordering between the two is still a \`blocks\` edge.
+- \`relates\`, \`duplicates\`, \`parent\` — grouping labels, no dispatch effect.
+- \`decomposes\` — epic → child. ${WORK_EVIDENCE_WAIVER_NOTE} Ordering between the two is still a \`blocks\` edge.
 
 ### Setting a blocks edge — avoid the create-then-block race
 - Blocker known **at create time** → pass it in the create call itself (\`data.relations: [{ kind: 'blocks', dependsOnId }]\`), committed before the issue dispatches. This is atomic.

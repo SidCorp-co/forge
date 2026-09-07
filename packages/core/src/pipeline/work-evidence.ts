@@ -17,6 +17,7 @@
 import { and, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import { issueDependencies, issueStepContexts, issues, jobs, projects } from '../db/schema.js';
+import { WORK_EVIDENCE_WAIVER_KIND } from '../issues/dependency-effects.js';
 import { logger } from '../logger.js';
 
 // cm:guard `drive` belongs in this list for the same reason `code` and `fix` do: it is a step that WRITES CODE, and its handoff schema carries `commitSha` — one of the two fields `hasCodeEvidence` reads (`drive` has no `filesModified`; `code` and `fix` carry both). It was absent until 2026-09-02, so an autonomous driver that merged its branch and wrote a correct handoff had no evidence at all: `applyMergeMarker` refused its own `POST /api/issues/:id/merge` with NO_WORK_EVIDENCE, and the close-stamp audit comment told every reader "no branch, commit or code handoff is recorded" on work that had all three. Measured the same day on forge-beta: 7 `drive` handoffs stored, 7 of them carrying a `commitSha`, 0 counted here.
@@ -112,6 +113,7 @@ export function hasCodeEvidence(evidence: WorkEvidence): boolean {
   );
 }
 
+// cm:edge lockstep -> packages/core/src/issues/dependency-effects.ts — the kind read here IS the waiver, and every agent-facing surface renders that module's note; a literal here instead of the constant puts the claim and the behaviour back out of reach of each other
 export async function hasChildIssues(
   issueId: string,
   executor: EvidenceExecutor = db,
@@ -122,7 +124,7 @@ export async function hasChildIssues(
     .where(
       and(
         eq(issueDependencies.fromIssueId, issueId),
-        eq(issueDependencies.kind, 'decomposes'),
+        eq(issueDependencies.kind, WORK_EVIDENCE_WAIVER_KIND),
         or(isNull(issueDependencies.validUntil), gt(issueDependencies.validUntil, sql`now()`)),
       ),
     )
