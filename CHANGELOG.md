@@ -278,6 +278,28 @@
   from `PAT_ALLOWED_PREFIXES`, so no PAT or AAT reaches either route.
 
 
+- **Interventions performed by hand at the database are now counted, instead of being invisible to
+  the number that exists to count them.** Forge's north-star metric is *interventions per issue
+  closed*, and until now it could only see interventions that travelled through Forge: a cancel from
+  the UI or MCP, a resume, an answer, a wedge notification. The one route operators actually reach
+  for when a fleet is stuck — a `psql` session and an `UPDATE` — reached nothing that records
+  anything. Two people cancelling two runs by hand moved the metric by zero, so the number fell
+  while the work of running the system did not.
+
+  The metric had also been *defined* by its own recorder — "wedge events plus audited manual
+  cancels" — which is why the gap read as out of scope rather than as a gap. The definition now
+  names the thing being measured (a human hand entering a run that was supposed to proceed without
+  one) and lives in `docs/modules/control-observability/README.md` with the four sources that
+  currently reach it and, just as explicitly, the ones they do not.
+
+  A hand-written terminal flip on a job or a run is now recorded with the database role, the client
+  application and both statuses, and shows up in the interventions view and the analytics endpoint
+  as `direct_sql`, attributed to the issue it was performed on. **Manual SQL is not blocked, slowed
+  or refused** — sometimes it is the only way to free a stuck fleet. It simply stops being
+  invisible. Deliberately out of reach, because catching them would overcount ordinary work rather
+  than count interventions: session-status writes, non-terminal flips such as a hand-written
+  re-dispatch, and row deletion. (ISS-884)
+
 - **An agent working an issue on a project that keeps modules is now told they exist, and how to
   set the issue's primary one.** ISS-593 made a module a label with `kind='module'` and gave an
   issue a primary through `issue_labels.is_primary`, but nothing told the agents doing the work:
@@ -1709,6 +1731,22 @@
 
   Surfaced by `core-integration` failing only on developer machines in UTC+7 while CI, whose
   Postgres is UTC, stayed green — the test was right and the query was wrong. (ISS-942, ISS-954)
+
+- **A resume, an answer or a steer no longer reads as a cancelled run in the interventions
+  breakdown.** The per-issue rollup returned by the interventions endpoint had been sorting events
+  by a source name that stopped being accurate months ago: only `manual_cancel` was recognised, so
+  every operator resume, every answer and every steer fell through to the "user flipped the run"
+  bucket. The totals were right and the breakdown was not — an operator rescuing work was charted
+  as an operator killing it, which is the exact mislabelling the source-naming migration had been
+  written to end. Each source is now counted as what it is. (ISS-884)
+
+- **A terminal status flip and its audit row can no longer be separated by a crash.** The single
+  kernel-transition writer documented itself as writing the status change and its audit trail
+  together, and did for callers inside a transaction — but twenty call sites hand it a plain
+  connection, where the two statements committed independently. A failure between them left a job
+  or run terminal with nothing recording who ended it, which is the same silence this release
+  closes elsewhere, produced by the audited path itself. Both writes now always commit together.
+  (ISS-884)
 
 - **`POST /api/memory/search` ignored the `strategy` you asked for and told you it had honoured
   it.** The route validated `strategy` in its body schema and then never passed it to

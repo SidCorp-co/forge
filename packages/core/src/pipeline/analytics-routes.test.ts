@@ -31,7 +31,6 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-// Org-level authz: stub the db-touching resolvers; pure helpers stay real.
 const effectiveRole = vi.fn();
 const visibleIds = vi.fn();
 vi.mock('../lib/authz.js', async (importOriginal) => ({

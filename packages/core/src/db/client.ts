@@ -8,6 +8,7 @@ import * as journalSchema from './schema-journal.js';
 import * as memoryChunksSchema from './schema-memory-chunks.js';
 import * as memoryRevisionsSchema from './schema-memory-revisions.js';
 import * as sessionInboxSchema from './schema-session-inbox.js';
+import * as unauditedTransitionsSchema from './schema-unaudited-transitions.js';
 
 const schema = {
   ...baseSchema,
@@ -17,6 +18,7 @@ const schema = {
   ...sessionInboxSchema,
   ...memoryChunksSchema,
   ...memoryRevisionsSchema,
+  ...unauditedTransitionsSchema,
 };
 
 // cm:guard both statement timeouts must stay bound — unbounded, a hung or leaked `db.transaction()` callback pins a stale MVCC snapshot on a POOLED connection indefinitely, so the damage outlives the request that caused it (ISS-663)

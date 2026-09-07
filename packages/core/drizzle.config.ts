@@ -10,6 +10,7 @@ export default defineConfig({
     './src/db/schema-session-inbox.ts',
     './src/db/schema-memory-chunks.ts',
     './src/db/schema-memory-revisions.ts',
+    './src/db/schema-unaudited-transitions.ts',
   ],
   out: './drizzle/migrations',
   dbCredentials: {
