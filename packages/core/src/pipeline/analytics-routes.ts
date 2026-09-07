@@ -19,8 +19,7 @@ const forbidden = (message: string) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-// Project-member gate for the per-project cost analytics endpoints. 404 when
-// the project does not exist so we don't leak existence to non-members.
+// cm:why a project that does not exist answers 404 while a non-member answers 403, so the two cases stay distinguishable to a member and indistinguishable to everyone else — answering 403 for a missing project would confirm the row exists to someone with no right to know it
 async function assertProjectMember(projectId: string, userId: string): Promise<void> {
   const access = await effectiveProjectRole(userId, projectId);
   if (!access) throw notFound('project not found');
