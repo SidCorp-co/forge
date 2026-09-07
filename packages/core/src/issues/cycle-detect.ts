@@ -14,6 +14,9 @@ import type { IssueDependencyExecutor } from './dependency-executor.js';
 
 const CYCLE_DEPTH_CAP = 100;
 
+const isExpired = (validUntil: Date | string | null, now: number): boolean =>
+  validUntil !== null && new Date(validUntil).getTime() <= now;
+
 /**
  * DFS forward from `start` following only `kind='blocks'` edges. If we reach
  * `target`, returns `'cycle'`. Caps depth defensively.
@@ -25,6 +28,7 @@ export async function detectCycle(
   ex: IssueDependencyExecutor = db,
 ): Promise<'cycle' | 'depth_exceeded' | null> {
   if (start === target) return 'cycle';
+  const now = Date.now();
   const visited = new Set<string>();
   const stack: Array<{ node: string; depth: number }> = [{ node: start, depth: 0 }];
   while (stack.length > 0) {
@@ -34,10 +38,12 @@ export async function detectCycle(
     if (visited.has(node)) continue;
     visited.add(node);
     const children = await ex
-      .select({ to: issueDependencies.toIssueId })
+      .select({ to: issueDependencies.toIssueId, validUntil: issueDependencies.validUntil })
       .from(issueDependencies)
       .where(and(eq(issueDependencies.fromIssueId, node), eq(issueDependencies.kind, 'blocks')));
     for (const c of children) {
+      // cm:why an EXPIRED edge is not an arc of this graph: `validUntil` in the past is how a retraction is recorded (the row survives as the record that the dependency once held), and the dispatcher already ignores it, so counting it here refuses a new edge on the strength of one that gates nothing. Filtered in JS rather than in SQL because the walk already fetches every child of the node, and the predicate has to agree with the dispatcher's, which reads the same column.
+      if (isExpired(c.validUntil, now)) continue;
       if (c.to === target) return 'cycle';
       if (!visited.has(c.to)) stack.push({ node: c.to, depth: depth + 1 });
     }
