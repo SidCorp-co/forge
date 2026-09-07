@@ -93,9 +93,7 @@ describe('buildListEnvelope', () => {
   });
 
   it('keeps the one row that alone exceeds the response-size cap', () => {
-    // ISS-956: this used to return zero rows. Under a cursor an empty page is a
-    // dead end — nothing to resume from and no progress made — and a single
-    // 20K-character agent report over the budget is ordinary, not pathological.
+    // cm:guard ISS-956 — this used to return ZERO rows, and under a cursor an empty page is a dead end: nothing to resume from and no progress made. A single 20K-character agent report over the whole budget is ordinary, not pathological, so the one row survives and the response is deliberately over `maxChars`.
     const huge = [{ id: 0, blob: 'x'.repeat(50_000) }];
     const result = buildListEnvelope({
       key: 'issues',
@@ -110,7 +108,13 @@ describe('buildListEnvelope', () => {
 
   it('still sheds every row but one when the budget cannot hold them', () => {
     const fat = Array.from({ length: 4 }, (_, i) => ({ id: i, blob: 'x'.repeat(200) }));
-    const result = buildListEnvelope({ key: 'issues', items: fat, limit: 25, hint: 'f', maxChars: 100 });
+    const result = buildListEnvelope({
+      key: 'issues',
+      items: fat,
+      limit: 25,
+      hint: 'f',
+      maxChars: 100,
+    });
     expect(result.returned).toBe(1);
     expect(result.truncated).toBe(true);
     expect(result.truncatedBy).toBe('response-size');

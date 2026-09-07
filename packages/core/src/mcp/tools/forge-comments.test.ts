@@ -24,7 +24,13 @@ vi.mock('../../storage/index.js', () => ({
 }));
 
 const selectLimit = vi.fn();
-const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
+// cm:guard `.orderBy()` must be BOTH awaitable and `.limit()`-able, and LAZILY so. `listIssueCommentPage` awaits the reply query at `orderBy` with no `limit` after it, while the root query calls `.limit()` on the same object: return only `{ limit }` and the reply query resolves to a builder whose spread throws `requires ...iterable`, but resolve the rows EAGERLY and the root query's own `orderBy()` eats the first `mockResolvedValueOnce` it never reads. A `then` that calls the mock is the only shape that gets both (ISS-956).
+const selectOrderByRows = vi.fn(async (): Promise<unknown[]> => []);
+const selectOrderBy = vi.fn(() => ({
+  limit: selectLimit,
+  then: <R>(onOk: (rows: unknown[]) => R, onErr?: (e: unknown) => R) =>
+    selectOrderByRows().then(onOk, onErr),
+}));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
 const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
 // cm:guard TWO leftJoins before `where().limit(1)` — that is `effectiveProjectRole`'s real shape, and a mock chain one join short resolves at the wrong link, handing every role check an undefined row that reads as no access.
@@ -135,10 +141,9 @@ describe('forge_comments tool', () => {
       principal: fakePrincipal,
       projectSlug: null,
     });
-    // 1. loadIssueProjectId
+    // cm:guard the three `selectLimit` programmings are ORDERED and positional: issue lookup, then the org-aware role row, then the root page. Insert a query anywhere in the path and every case in this file resolves at the wrong link, which reads as no access rather than as a broken mock.
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    // 3. comment list query
     selectLimit.mockResolvedValueOnce([baseCommentRow]);
 
     const result = (await tool.handler({
@@ -184,7 +189,7 @@ describe('forge_comments tool', () => {
     expect(result.comments[0]?.attachments[0]?.url).toBe('/api/comments/attachments/att-1');
   });
 
-  it('list returns truncated:true and keeps newest when response exceeds 38K chars (ISS-562)', async () => {
+  it('list returns truncated:true and keeps OLDEST when response exceeds 38K chars (ISS-562)', async () => {
     const tool = forgeCommentsTool({
       principal: fakePrincipal,
       projectSlug: null,
@@ -210,6 +215,8 @@ describe('forge_comments tool', () => {
       limit: number;
       truncatedBy: string;
       notice: string;
+      nextCursor: string | null;
+      hasMore: boolean;
     };
 
     expect(result.truncated).toBe(true);
@@ -219,6 +226,12 @@ describe('forge_comments tool', () => {
     expect(result.notice).toMatch(/more rows match/i);
     // Total serialized response must stay under a safe threshold
     expect(JSON.stringify(result).length).toBeLessThan(50_000);
+    // cm:guard ISS-956 reversed the shed direction on this surface: the trim now sheds the NEWEST rows and the page resumes from the oldest survivor. Assert the FIRST row is the thread's first comment — shedding the oldest under a cursor steps the walk over rows nothing replays, and the counts above are identical either way.
+    const kept = result.comments as Array<{ documentId: string }>;
+    expect(kept[0]?.documentId).toBe(fatRows[0]?.id);
+    expect(result.nextCursor).toEqual(expect.any(String));
+    expect(result.hasMore).toBe(true);
+    expect(result.notice).toContain('nextCursor');
   });
 
   it('list throws NOT_FOUND when issue is missing', async () => {

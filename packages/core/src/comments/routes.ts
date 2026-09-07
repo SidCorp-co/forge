@@ -27,7 +27,7 @@ import {
 import { CommentCursorInvalidError, decodeCommentCursor } from './cursor.js';
 import { pgConstraintName, pgErrorCode } from './error-mapping.js';
 import { parseMentions, resolveMentions } from './mentions.js';
-import { listIssueCommentPage, updateCommentBody } from './service.js';
+import { commentThreadColumns, listIssueCommentPage, updateCommentBody } from './service.js';
 import {
   attachAuthors,
   buildCommentTree,
@@ -36,19 +36,6 @@ import {
 } from './tree.js';
 
 /** The comment projection every REST response here shares. */
-const restCommentColumns = {
-  id: comments.id,
-  issueId: comments.issueId,
-  authorId: comments.authorId,
-  authorDeviceId: comments.authorDeviceId,
-  body: comments.body,
-  format: comments.format,
-  template: comments.template,
-  parentId: comments.parentId,
-  createdAt: comments.createdAt,
-  updatedAt: comments.updatedAt,
-} as const;
-
 const idParamSchema = z.object({ id: z.uuid() });
 
 const threadQuerySchema = paginationSchema.extend({ cursor: z.string().min(1).optional() });
@@ -56,10 +43,7 @@ const threadQuerySchema = paginationSchema.extend({ cursor: z.string().min(1).op
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-// Distinct 400 shape for the attachment endpoints (moved from upload.ts) —
-// preserves their original {message, code} response, separate from the
-// {message:'Invalid input', cause:{code:'BAD_REQUEST', details}} shape the
-// comment CRUD validators above already return.
+// cm:guard the attachment endpoints answer a FLAT `{message, code}` 400, not the `{message, cause:{code, details}}` shape `badRequest` above returns. The two are not interchangeable: this one was moved here from `upload.ts` with clients already reading `code` off the top level, so unifying them silently breaks every one of those reads.
 const attachmentBadRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });
 
@@ -143,7 +127,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
             template: prepared.template,
             parentId: parentId ?? null,
           })
-          .returning(restCommentColumns);
+          .returning(commentThreadColumns);
         inserted = rows[0];
       } catch (err) {
         const pgCode = pgErrorCode(err);
@@ -218,8 +202,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
     zValidator('param', idParamSchema, (r) => {
       if (!r.success) throw badRequest(z.flattenError(r.error));
     }),
-    // `offset` is validated and ignored: keyset paging has no offset to honour,
-    // and pre-existing clients still send the pair. `limit` bounds one page.
+    // cm:guard `offset` stays VALIDATED AND IGNORED — keyset paging has no offset to honour, and pre-existing flat-list clients still send the `limit`/`offset` pair, so dropping it from the schema 400s every one of them. `limit` bounds one page's ROOT comments (ISS-956).
     zValidator('query', threadQuerySchema, (r) => {
       if (!r.success) throw badRequest(z.flattenError(r.error));
     }),
@@ -355,7 +338,7 @@ commentRoutes.get(
       .where(eq(comments.parentId, id));
 
     const rows = await db
-      .select(restCommentColumns)
+      .select(commentThreadColumns)
       .from(comments)
       .where(eq(comments.parentId, id))
       .orderBy(asc(comments.createdAt))

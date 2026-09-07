@@ -10,15 +10,11 @@
  *   cursorList     the caller pages by cursor → items + total + limit + nextCursor + hasMore
  *   wholeList      the caller cannot page     → items + total, hasMore always false
  *
- * ISS-956 added the third. A keyset route can state neither of the other two
- * honestly: it has no `offset` to report, and `wholeList` says `hasMore` off a
- * count it cannot compare a page against. The rule the first two were written
- * for is unchanged — `setTotalCount` stays module-private, `hasMore` is
- * derived here rather than passed in, and no route builds the object itself.
- *
  * REST answers this better than MCP can, and the envelope says so: `total` is a
  * real `count()`, where MCP infers `hasMore` from one overfetched row.
  */
+
+// cm:guard ISS-956 added the third shape and this file's rule survives it intact: `setTotalCount` stays module-private, `hasMore` is derived here rather than passed in, and no route builds the object itself. A keyset route could state neither of the other two honestly — it has no `offset` to report, and `wholeList` claims `hasMore` off a count it cannot compare a page against — so a fourth caller wanting a fourth shape is a caller to send back here, not a route to hand `setTotalCount` to.
 
 import type { Context } from 'hono';
 import { z } from 'zod';

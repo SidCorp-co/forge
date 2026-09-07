@@ -53,7 +53,7 @@ async function parseErrorBody(res: Response): Promise<{
     }
     return { message: res.statusText, body };
   } catch {
-    // fall through to statusText
+    // cm:why a body that will not parse is not an error worth reporting over the status line the response already carries — every branch above needs JSON, and the one thing a caller can always act on is the status.
   }
   return { message: res.statusText };
 }
@@ -160,13 +160,27 @@ export async function apiClientCursorAll<T>(
     const res = await fetchRaw(url, options);
     if (res.status === 204) return { items, totalCount };
 
-    const body = (await res.json()) as { items: T[]; total: number; nextCursor: string | null };
-    items.push(...(body.items ?? []));
+    const body = (await res.json()) as
+      | { items: T[]; total: number; nextCursor: string | null }
+      | unknown;
+    if (!isCursorPage<T>(body)) {
+      throw new Error(`${endpoint}: answered no cursor envelope — cannot page this list`);
+    }
+    items.push(...body.items);
     totalCount = body.total;
-    cursor = body.nextCursor ?? null;
+    cursor = body.nextCursor;
     if (cursor === null) return { items, totalCount };
   }
   throw new Error(`${endpoint}: still returning a cursor after ${MAX_PAGES} pages`);
+}
+
+// cm:guard a shape without `nextCursor` must THROW, never read as a complete list. A bare array or an offset envelope has no cursor, so the walk would stop after one page having pushed nothing — an empty thread on a screen with no control to ask for more, which is exactly the class of silent truncation `apiClientList` was hardened against one shape up (ISS-893, ISS-956).
+function isCursorPage<T>(
+  body: unknown,
+): body is { items: T[]; total: number; nextCursor: string | null } {
+  if (typeof body !== "object" || body === null) return false;
+  const b = body as { items?: unknown; total?: unknown; nextCursor?: unknown };
+  return Array.isArray(b.items) && typeof b.total === "number" && "nextCursor" in b;
 }
 
 /**

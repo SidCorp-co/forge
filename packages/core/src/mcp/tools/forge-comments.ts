@@ -8,12 +8,12 @@ import {
   type PersistedCommentAttachment,
   persistCommentAttachment,
 } from '../../comments/attachment-service.js';
-import { pgConstraintName, pgErrorCode } from '../../comments/error-mapping.js';
 import {
   CommentCursorInvalidError,
   decodeCommentCursor,
   encodeCommentCursor,
 } from '../../comments/cursor.js';
+import { pgConstraintName, pgErrorCode } from '../../comments/error-mapping.js';
 import {
   type CommentThreadRow,
   deleteComment,
@@ -96,8 +96,7 @@ function serialize(
     authorId: row.authorId,
     // cm:guard SECOND HALF IN forge-plugin `plugin/src/flow/earned.mjs` — `answered()` asks whether a PERSON replied after a park, and this field is what it asks with now that `is_ai` is gone: non-null means an agent wrote it. Drop it from this projection and every screen the driver parks on becomes unanswerable, because the agent's own comments would read as a person's. Since ISS-931 the value comes from the caller's `job:`/`session:` token rather than from a device principal, which is why a PAT-authored agent comment is marked at all — it never was before.
     authorDeviceId: row.authorDeviceId ?? null,
-    // ISS-532: comment bodies are untrusted (anyone can post) and reach the
-    // agent verbatim via this MCP surface — frame as DATA, never instructions.
+    // cm:guard ISS-532 — anyone who can comment can write here, and this projection reaches an agent verbatim with no human in between, so the body ships FRAMED as data. Emit it raw and a comment reads as instructions to the agent working the issue.
     body: markUntrusted(row.body, { source: 'comment.body' }),
     format: row.format,
     template: row.template,
@@ -351,10 +350,17 @@ async function listAction(principal: Principal, input: ToolInput): Promise<unkno
     sizeTrimSheds: 'newest',
     cursor: {
       more: page.nextCursor !== null,
-      of: (item) => encodeCommentCursor({ createdAt: item.root.createdAt, id: item.root.id }),
+      of: (item) =>
+        encodeCommentCursor({
+          createdAtKey: page.cursorKeyById.get(item.root.id) as string,
+          id: item.root.id,
+        }),
     },
   });
-  envelope.comments = (envelope.comments as typeof subtrees).flatMap((s) => s.rows);
+  // cm:guard `returned` counts the COMMENTS under `comments`, not the subtrees the size trim shed by — `limit` bounds top-level comments, so the two numbers differ on any page carrying a reply, and leaving `returned` at the subtree count states a length the array it names contradicts. That is exactly what `buildNotice`'s own guard refuses one layer up, so it is overwritten here rather than inside the envelope, whose trim unit legitimately is the subtree.
+  const flat = (envelope.comments as typeof subtrees).flatMap((s) => s.rows);
+  envelope.comments = flat;
+  envelope.returned = flat.length;
   return envelope;
 }
 
@@ -362,10 +368,7 @@ async function listAction(principal: Principal, input: ToolInput): Promise<unkno
  * A page's rows split into one group per root, each group being the root
  * followed by its descendants in `createdAt` order.
  */
-function groupBySubtree(
-  rows: CommentThreadRow[],
-  roots: CommentThreadRow[],
-): CommentThreadRow[][] {
+function groupBySubtree(rows: CommentThreadRow[], roots: CommentThreadRow[]): CommentThreadRow[][] {
   const groupOf = new Map<string, string>();
   for (const r of roots) groupOf.set(r.id, r.id);
   const groups = new Map<string, CommentThreadRow[]>(roots.map((r) => [r.id, [r]]));
