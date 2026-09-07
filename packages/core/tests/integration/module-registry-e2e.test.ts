@@ -4,11 +4,14 @@
  * Every rule here is one a mocked client cannot fail: `labels_slug_chk` and
  * `labels_knowledge_entry_chk` refusing a plain label that carries either field,
  * `labels_knowledge_entry_id_uq` holding the 1:1, the FK's `ON DELETE SET NULL` clearing a link
- * rather than deleting a module, and migration 0215's backfill assigning a slug to modules that
+ * rather than deleting a module, and migration 0216's backfill assigning a slug to modules that
  * existed before the column did.
  */
 
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -29,6 +32,19 @@ async function violatedConstraint(p: Promise<unknown>): Promise<string | undefin
   } catch (e) {
     return (e as { cause?: { constraint_name?: string } }).cause?.constraint_name;
   }
+}
+
+const MIGRATION = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../drizzle/migrations/0216_module_slug_and_knowledge_node.sql',
+);
+
+async function migrationStatements(): Promise<string[]> {
+  const text = await readFile(MIGRATION, 'utf8');
+  return text
+    .split('--> statement-breakpoint')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }
 
 type Mods = {
@@ -451,13 +467,20 @@ describe('ISS-947 · the issue-detail projection', () => {
   });
 });
 
-describe('ISS-947 · migration 0215 backfill', () => {
-  // cm:guard the columns are DROPPED and re-added rather than the modules being inserted with a slug — the point is to reproduce the pre-migration table, where a module row exists and the column does not, which is the only state the backfill has to survive and the one a fresh test database never reaches on its own.
+describe('ISS-947 · migration 0216 backfill', () => {
+  // cm:edge lockstep -> packages/core/drizzle/migrations/0216_module_slug_and_knowledge_node.sql — this case REPLAYS that file rather than restating it. A copy of the backfill pasted here would prove the copy and go green on a migration that had since been edited, which is the one failure the case exists to catch.
+  // cm:guard the columns are DROPPED and re-added by the migration itself rather than the modules being inserted with a slug — the point is to reproduce the pre-migration table, where a module row exists and the column does not, which is the only state the backfill has to survive and the one a fresh test database never reaches on its own.
   it('assigns every pre-existing module a slug, and disambiguates a collision', async () => {
-    await harness.db.execute(sql`ALTER TABLE labels DROP CONSTRAINT labels_slug_chk`);
-    await harness.db.execute(sql`ALTER TABLE labels DROP CONSTRAINT labels_knowledge_entry_chk`);
-    await harness.db.execute(sql`DROP INDEX labels_project_id_slug_uq`);
-    await harness.db.execute(sql`ALTER TABLE labels DROP COLUMN slug`);
+    for (const stmt of [
+      sql`ALTER TABLE labels DROP CONSTRAINT labels_slug_chk`,
+      sql`ALTER TABLE labels DROP CONSTRAINT labels_knowledge_entry_chk`,
+      sql`DROP INDEX labels_project_id_slug_uq`,
+      sql`DROP INDEX labels_knowledge_entry_id_uq`,
+      sql`ALTER TABLE labels DROP COLUMN slug`,
+      sql`ALTER TABLE labels DROP COLUMN knowledge_entry_id`,
+    ]) {
+      await harness.db.execute(stmt);
+    }
 
     for (const [name, at] of [
       ['API/v2', '2024-01-01'],
@@ -475,30 +498,12 @@ describe('ISS-947 · migration 0215 backfill', () => {
       VALUES (${randomUUID()}, ${project.id}, 'a plain label', '#aabbcc', 'label')
     `);
 
-    await harness.db.execute(sql`ALTER TABLE labels ADD COLUMN slug text`);
-    await harness.db.execute(sql`
-      UPDATE labels AS l
-      SET slug = d.slug
-      FROM (
-        SELECT id, CASE WHEN rn = 1 THEN base ELSE base || '-' || rn END AS slug
-        FROM (
-          SELECT id, base,
-                 row_number() OVER (PARTITION BY project_id, base ORDER BY created_at, id) AS rn
-          FROM (
-            SELECT id, project_id, created_at,
-                   COALESCE(
-                     NULLIF(TRIM(BOTH '-' FROM regexp_replace(lower(name), '[^a-z0-9]+', '-', 'g')), ''),
-                     'module'
-                   ) AS base
-            FROM labels WHERE kind = 'module'
-          ) AS based
-        ) AS numbered
-      ) AS d
-      WHERE l.id = d.id
-    `);
+    for (const statement of await migrationStatements()) {
+      await harness.db.execute(sql.raw(statement));
+    }
 
-    const rows = await harness.db.execute<{ name: string; slug: string | null; kind: string }>(
-      sql`SELECT name, slug, kind FROM labels ORDER BY created_at, id`,
+    const rows = await harness.db.execute<{ name: string; slug: string | null }>(
+      sql`SELECT name, slug FROM labels ORDER BY created_at, id`,
     );
     const bySlug = new Map([...rows].map((r) => [r.name, r.slug]));
     expect(bySlug.get('API/v2')).toBe('api-v2');
@@ -506,15 +511,11 @@ describe('ISS-947 · migration 0215 backfill', () => {
     expect(bySlug.get('Plain Module')).toBe('plain-module');
     expect(bySlug.get('!!!')).toBe('module');
     expect(bySlug.get('a plain label')).toBeNull();
+  });
 
-    await harness.db.execute(
-      sql`CREATE UNIQUE INDEX labels_project_id_slug_uq ON labels (project_id, slug)`,
-    );
-    const constraint = await violatedConstraint(
-      harness.db.execute(
-        sql`ALTER TABLE labels ADD CONSTRAINT labels_slug_chk CHECK ((kind = 'module') = (slug IS NOT NULL))`,
-      ),
-    );
-    expect(constraint).toBeUndefined();
+  it('emits no bind placeholder — a `${CONST}` in the schema serialises as `$1` and fails at container start (ISS-654)', async () => {
+    for (const statement of await migrationStatements()) {
+      expect(statement).not.toMatch(/\$\d/);
+    }
   });
 });
