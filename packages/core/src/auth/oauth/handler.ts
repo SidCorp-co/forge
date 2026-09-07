@@ -137,9 +137,7 @@ async function findOrCreateUser(
     }
   }
 
-  // 3. New user. We require a verified email to create one — if the
-  //    provider can't vouch for the address, we refuse rather than store
-  //    half a user. The frontend surfaces this as "email_unverified".
+  // cm:why refuse rather than store half a user: an address the provider will not vouch for is the same address an attacker can claim, and the auto-link above trusts `emailVerified` to keep them apart. The web layer renders the code as "email_unverified".
   if (!identity.email || !identity.emailVerified) {
     throw new HTTPException(400, {
       message: 'OAuth provider did not return a verified email',
@@ -147,11 +145,12 @@ async function findOrCreateUser(
     });
   }
 
+  const email = identity.email;
   const created = await db.transaction(async (tx) => {
     const [user] = await tx
       .insert(users)
       .values({
-        email: identity.email!,
+        email,
         emailVerifiedAt: new Date(),
       })
       .returning({ id: users.id });
@@ -160,9 +159,9 @@ async function findOrCreateUser(
       userId: user.id,
       provider: cfg.id,
       providerAccountId: identity.providerAccountId,
-      email: identity.email,
+      email,
     });
-    await ensurePersonalOrg(tx, user.id, identity.email!);
+    await ensurePersonalOrg(tx, user.id, email);
     return user;
   });
   logger.info({ userId: created.id, provider: cfg.id }, 'oauth: created new user');

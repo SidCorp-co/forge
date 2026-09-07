@@ -1,8 +1,8 @@
 /**
  * ISS-305 — Runner browser-approve device login (OAuth device-authorization
- * flow, cf. `claude login`). Mints a *device token* for the headless
- * `forge-runner` CLI and optionally hands the runner a git push credential so
- * it can push with no manual SSH setup.
+ * flow, cf. `claude login`). Mints a PAT for the approving user, or the chosen
+ * agent's AAT, bound to the box's `devices` row, and optionally hands the runner
+ * a git push credential so it can push with no manual SSH setup.
  *
  *   1. POST /api/devices/login/init    — the CLI mints a short code; backend
  *      hashes + persists it; returns the formatted code + the /pair verify URL.
@@ -10,7 +10,8 @@
  *      typed/linked code, binding it to the signed-in user.
  *   3. GET  /api/devices/login/poll    — the CLI polls every 2 s; 204 while
  *      pending, 200 + {device_token, …} when approved (single-use), 410 when
- *      expired or already consumed.
+ *      expired or already consumed. The `device_token` field name is the wire
+ *      contract three `forge-runner` versions read; only its species changed.
  *
  * Codes are 7 Crockford base32 chars displayed as `XXX-XXXX`. Server stores
  * only sha256(canonical). 10-minute TTL. Live pending→approved is broadcast on
@@ -37,8 +38,6 @@ type LoginPlatform = 'windows' | 'macos' | 'linux';
 
 export const deviceLoginRoutes = new Hono<{ Variables: AuthVars }>();
 
-// === Constants ===
-
 // Crockford base32 with the easy-to-confuse glyphs removed.
 const CROCKFORD_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const CODE_LEN = 7;
@@ -57,9 +56,8 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 function generateCanonical(): string {
   const out: string[] = [];
   while (out.length < CODE_LEN) {
-    const buf = randomBytes(CODE_LEN * 2);
-    for (let i = 0; i < buf.length && out.length < CODE_LEN; i++) {
-      const b = buf[i]!;
+    for (const b of randomBytes(CODE_LEN * 2)) {
+      if (out.length >= CODE_LEN) break;
       out.push(CROCKFORD_ALPHABET[b & 0x1f]!);
     }
   }
@@ -124,8 +122,6 @@ async function publishLoginEvent(
   }
 }
 
-// === 1) POST /login/init ===
-
 deviceLoginRoutes.post(
   '/login/init',
   rateLimit(RULES.deviceLoginInit, { name: 'deviceLoginInit' }),
@@ -181,11 +177,11 @@ deviceLoginRoutes.post(
     const expiresAt = new Date(Date.now() + LOGIN_TTL_SECONDS * 1000);
 
     let canonical = '';
-    let inserted: { id: string }[] = [];
+    let insertedId: string | null = null;
     for (let attempt = 0; attempt < MAX_INSERT_RETRIES; attempt++) {
       canonical = generateCanonical();
       const codeHash = sha256Hex(canonical);
-      inserted = await db
+      const [row] = await db
         .insert(deviceLoginCodes)
         .values({
           codeHash,
@@ -199,9 +195,12 @@ deviceLoginRoutes.post(
         })
         .onConflictDoNothing({ target: deviceLoginCodes.codeHash })
         .returning({ id: deviceLoginCodes.id });
-      if (inserted.length > 0) break;
+      if (row) {
+        insertedId = row.id;
+        break;
+      }
     }
-    if (inserted.length === 0) {
+    if (insertedId === null) {
       logger.error(
         { retries: MAX_INSERT_RETRIES },
         'device login: code generation collided every attempt',
@@ -213,10 +212,7 @@ deviceLoginRoutes.post(
     }
 
     const formatted = formatCode(canonical);
-    logger.info(
-      { loginCodeId: inserted[0]!.id, platform: devicePlatform },
-      'device login: code issued',
-    );
+    logger.info({ loginCodeId: insertedId, platform: devicePlatform }, 'device login: code issued');
 
     return c.json({
       pairing_code: formatted,
@@ -257,8 +253,6 @@ async function resolveApprovableAgent(raw: unknown, approverId: string): Promise
   await assertOrgAccess(agent.orgId, approverId, 'admin');
   return agent.id;
 }
-
-// === 2) POST /login/approve ===
 
 deviceLoginRoutes.post(
   '/login/approve',
@@ -334,8 +328,6 @@ deviceLoginRoutes.post(
   },
 );
 
-// === 3) GET /login/poll ===
-
 deviceLoginRoutes.get('/login/poll', async (c) => {
   const canonical = normalizeCode(c.req.query('pairing_code'));
   const codeHash = sha256Hex(canonical);
@@ -361,8 +353,8 @@ deviceLoginRoutes.get('/login/poll', async (c) => {
       machineId: deviceLoginCodes.machineId,
     });
 
-  if (consumed.length === 1) {
-    const row = consumed[0]!;
+  const [row] = consumed;
+  if (consumed.length === 1 && row) {
     if (!row.approvedUserId) {
       throw new HTTPException(500, {
         message: 'pairing missing user',

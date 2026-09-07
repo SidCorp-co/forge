@@ -406,8 +406,7 @@ deviceAuthRoutes.post(
     const device = c.get('device');
     const input = c.req.valid('json');
 
-    // Defence in depth — revoked tokens should never reach here since
-    // verifyDeviceToken rejects them.
+    // cm:guard defence in depth — `verifyDeviceCredential` already refuses a revoked device, so this is the second reader of `status` and the two must not both be dropped
     if (device.status === 'revoked') throw unauth();
 
     const wasOffline = device.status !== 'online';
