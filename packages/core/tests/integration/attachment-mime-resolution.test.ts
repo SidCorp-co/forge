@@ -41,7 +41,8 @@ let harness: TestDatabase;
 let app: Hono<{ Variables: RequestIdVars }>;
 let uploadsDir: string;
 let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
-let persistIssueAttachmentsFromBase64: typeof import('../../src/issues/attachment-service.js').persistIssueAttachmentsFromBase64;
+let decodeAndValidateAttachments: typeof import('../../src/issues/attachment-service.js').decodeAndValidateAttachments;
+let persistDecodedIssueAttachments: typeof import('../../src/issues/attachment-service.js').persistDecodedIssueAttachments;
 let persistDecodedCommentAttachments: typeof import('../../src/comments/attachment-service.js').persistDecodedCommentAttachments;
 let createUploadTicket: typeof import('../../src/uploads/ticket-service.js').createUploadTicket;
 let mimeFromName: typeof import('../../src/lib/attachment-mime.js').mimeFromName;
@@ -71,8 +72,9 @@ beforeAll(async () => {
   const { errorHandler } = await import('../../src/middleware/error.js');
   const { requestId } = await import('../../src/middleware/request-id.js');
   signUserToken = (await import('../../src/auth/jwt.js')).signUserToken;
-  persistIssueAttachmentsFromBase64 = (await import('../../src/issues/attachment-service.js'))
-    .persistIssueAttachmentsFromBase64;
+  const issueAttachmentService = await import('../../src/issues/attachment-service.js');
+  decodeAndValidateAttachments = issueAttachmentService.decodeAndValidateAttachments;
+  persistDecodedIssueAttachments = issueAttachmentService.persistDecodedIssueAttachments;
   persistDecodedCommentAttachments = (await import('../../src/comments/attachment-service.js'))
     .persistDecodedCommentAttachments;
   createUploadTicket = (await import('../../src/uploads/ticket-service.js')).createUploadTicket;
@@ -237,11 +239,25 @@ describe('attachment type resolution — a refusal names the set it enforces', (
   });
 });
 
+// cm:guard decode THEN persist, exactly as `issues/create-service.ts` does — the base64 batch has no single production entrypoint, so a test that invents one is judging a function nothing calls (ISS-957)
+function persistBatch(
+  issueId: string,
+  items: Parameters<typeof decodeAndValidateAttachments>[0],
+  uploaderId: string,
+) {
+  return persistDecodedIssueAttachments(
+    issueId,
+    decodeAndValidateAttachments(items),
+    uploaderId,
+    'human',
+  );
+}
+
 describe('attachment batches land whole or not at all', () => {
   it('leaves the issue exactly as it was when one member of a batch is binary', async () => {
     const { issueId, owner } = await seed();
 
-    const result = await persistIssueAttachmentsFromBase64(
+    const result = await persistBatch(
       issueId,
       [
         { name: 'good.png', mime: 'image/png', dataBase64: REAL_PNG.toString('base64') },
@@ -253,7 +269,6 @@ describe('attachment batches land whole or not at all', () => {
         },
       ],
       owner.id,
-      'human',
     );
 
     expect(result.persisted).toHaveLength(0);
@@ -267,14 +282,13 @@ describe('attachment batches land whole or not at all', () => {
   it('refuses a batch carrying one name twice without landing either copy', async () => {
     const { issueId, owner } = await seed();
 
-    const result = await persistIssueAttachmentsFromBase64(
+    const result = await persistBatch(
       issueId,
       [
         { name: 'gate.log', mime: '', dataBase64: PLAIN_LOG.toString('base64') },
         { name: 'gate.log', mime: '', dataBase64: Buffer.from('second\n').toString('base64') },
       ],
       owner.id,
-      'human',
     );
 
     expect(result.persisted).toHaveLength(0);
@@ -290,14 +304,13 @@ describe('attachment batches land whole or not at all', () => {
   it('persists every member of a batch that passes, resolving each type from its own bytes', async () => {
     const { issueId, owner } = await seed();
 
-    const result = await persistIssueAttachmentsFromBase64(
+    const result = await persistBatch(
       issueId,
       [
         { name: 'good.png', mime: 'image/png', dataBase64: REAL_PNG.toString('base64') },
         { name: 'gate.log', mime: '', dataBase64: PLAIN_LOG.toString('base64') },
       ],
       owner.id,
-      'human',
     );
 
     expect(result.errors).toHaveLength(0);
@@ -307,7 +320,7 @@ describe('attachment batches land whole or not at all', () => {
   });
 });
 
-// cm:guard the comment twin is exercised through persistDecodedCommentAttachments, the function `mcp/tools/forge-comments.ts` actually calls — the issue twin's tests reach `persistIssueAttachmentsFromBase64`, which a repo-wide grep finds no production caller for, so covering only that one leaves the live path of BOTH halves untested (ISS-957)
+// cm:guard both twins are exercised through the function their production caller actually calls — `persistDecodedIssueAttachments` for the issue side (from `issues/create-service.ts`, over `decodeAndValidateAttachments` output) and `persistDecodedCommentAttachments` for the comment side (from `mcp/tools/forge-comments.ts`); a convenience wrapper judged instead leaves the live path of both halves untested (ISS-957)
 describe('the comment twin refuses a batch on the same terms as the issue twin', () => {
   async function seedComment(issueId: string, authorId: string): Promise<string> {
     const rows = await harness.db.execute<{ id: string }>(sql`
