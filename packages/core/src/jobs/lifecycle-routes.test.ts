@@ -34,14 +34,14 @@ const jobRow = {
   createdAt: new Date(),
 };
 
-const verifyDeviceTokenMock = vi.fn(async (token: string) => {
+const verifyDeviceCredentialMock = vi.fn(async (token: string) => {
   if (token === 'dev-1-token') {
     return { id: 'dev-1', ownerId: 'u-1', name: 'd1', platform: 'linux' };
   }
   return null;
 });
-vi.mock('../auth/deviceToken.js', () => ({
-  verifyDeviceToken: (t: string) => verifyDeviceTokenMock(t),
+vi.mock('../auth/device-credential.js', () => ({
+  verifyDeviceCredential: (t: string) => verifyDeviceCredentialMock(t),
 }));
 
 const selectLimit = vi.fn();
@@ -61,9 +61,7 @@ const dbUpdate = vi.fn(() => ({ set: updateSet }));
 const dbInsertValues = vi.fn(async () => undefined);
 const dbInsert = vi.fn(() => ({ values: dbInsertValues }));
 
-// ISS-442 C0 — cancelJob() runs the status flip + audit insert inside a
-// transaction (advisory-lock seq frontier via tx.execute). Mirror the db
-// chain on `tx`; `txUpdateReturning` is the cancel path's CAS result.
+// cm:guard the `tx` chain must MIRROR the db chain exactly — `cancelJob` runs the status flip and the audit insert inside one transaction with an advisory-lock seq frontier, so a mock that serves the transaction differently from the pool tests a path production does not take (ISS-442 C0).
 const txUpdateReturning = vi.fn();
 const txUpdateWhere = vi.fn(() => ({ returning: txUpdateReturning }));
 const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
@@ -219,7 +217,7 @@ describe('POST /:id/ack (device) — job.ran.with (ISS-798 fix)', () => {
   });
 
   it('records job.ran.with with the resolved skillId + packetId when the runner ACKs with a non-empty skillsRanWith map', async () => {
-    selectLimit.mockResolvedValueOnce([jobRow]); // loadJob
+    selectLimit.mockResolvedValueOnce([jobRow]);
     selectLimit.mockResolvedValueOnce([{ id: 'skill-1' }]);
     selectLimit.mockResolvedValueOnce([{ packetId: 'packet-1' }]);
     txUpdateReturning.mockResolvedValueOnce([

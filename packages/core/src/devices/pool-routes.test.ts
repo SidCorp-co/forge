@@ -10,8 +10,8 @@ vi.mock('../config/env.js', () => ({
   env: { DEVICE_TOKEN_PEPPER: 'y'.repeat(32), NODE_ENV: 'test' },
 }));
 
-vi.mock('../auth/deviceToken.js', () => ({
-  verifyDeviceToken: async (t: string) =>
+vi.mock('../auth/device-credential.js', () => ({
+  verifyDeviceCredential: async (t: string) =>
     t === 'good' ? { id: 'dev-1', ownerId: 'u-1', status: 'online' } : null,
 }));
 

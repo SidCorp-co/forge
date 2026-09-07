@@ -3,7 +3,7 @@ import type { Server as HttpsServer } from 'node:https';
 import { and, eq } from 'drizzle-orm';
 import { type WebSocket, WebSocketServer } from 'ws';
 import { AUTH_COOKIE_NAME } from '../auth/cookie.js';
-import { verifyDeviceToken } from '../auth/deviceToken.js';
+import { verifyDeviceCredential } from '../auth/device-credential.js';
 import { verifyUserToken } from '../auth/jwt.js';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
@@ -95,10 +95,11 @@ interface AuthResult {
   acceptedProtocol?: string;
 }
 
+// cm:guard `/ws` is the daemon's own channel and a device is still the principal on it (ISS-931 rule 4) — what changed in ISS-932 is only HOW the box proves it is one: a PAT/AAT carrying `device_id`, verified straight through `verifyPat`. It deliberately does NOT go through `authenticatePat`: that charges the per-minute REST bucket and emits `pat.used`, and a socket authenticates once for a connection that then lives for hours, so metering it as one request per hour would make the token's rate-limit headers lie about what it is doing.
 async function resolveBearer(token: string): Promise<Principal | null> {
   const user = await tryUserToken(token);
   if (user) return user;
-  const device = await verifyDeviceToken(token);
+  const device = await verifyDeviceCredential(token);
   if (device) return { type: 'device', deviceId: device.id, ownerId: device.ownerId };
   return null;
 }
@@ -255,7 +256,7 @@ export function attachWs(server: AnyServer): void {
                 }),
               );
             } catch {
-              // socket may be closed; ignore
+              // cm:why a socket may close between the room read and the write, and a throw here would abort the whole publish loop — the remaining subscribers would silently miss the frame.
             }
             return;
           }

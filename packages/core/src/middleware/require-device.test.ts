@@ -1,35 +1,65 @@
+/**
+ * `requireDevice` unit tests (ISS-932).
+ *
+ * A box authenticates with an ordinary PAT/AAT carrying `device_id`. What is
+ * proved here: the device is resolved from that column, a token WITHOUT one is
+ * refused by name rather than accepted as its owner, a revoked box is refused
+ * even when its token verifies, and no user principal is ever set.
+ */
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DeviceVars } from './require-device.js';
 
-vi.mock('../auth/deviceToken.js', () => ({
-  verifyDeviceToken: vi.fn(),
+vi.mock('../config/env.js', () => ({
+  env: {
+    NODE_ENV: 'test',
+    PAT_PEPPER: 'pat-test-pepper',
+    RATE_LIMIT_PAT_MAX: 600,
+  },
+}));
+vi.mock('../auth/pat.js', () => ({ verifyPat: vi.fn(), touchPatUsage: vi.fn() }));
+vi.mock('../auth/mcp-audit.js', () => ({ writeMcpAudit: vi.fn() }));
+vi.mock('../ws/server.js', () => ({ roomManager: { publish: vi.fn() } }));
+
+const selectLimit = vi.fn();
+vi.mock('../db/client.js', () => ({
+  db: {
+    select: () => ({
+      from: () => ({ where: () => ({ limit: (...a: unknown[]) => selectLimit(...a) }) }),
+    }),
+  },
 }));
 
 const { errorHandler } = await import('./error.js');
 const { requireDevice } = await import('./require-device.js');
-const { verifyDeviceToken } = await import('../auth/deviceToken.js');
+const { verifyPat } = await import('../auth/pat.js');
 
-type DeviceRow = {
-  id: string;
-  ownerId: string;
-  name: string;
-  platform: 'macos' | 'linux' | 'windows';
-  tokenHash: string | null;
-  tokenPrefix: string | null;
-  disabledAt: null;
-  status: 'online' | 'offline' | 'revoked';
-  createdAt: Date;
+const PAT_TOKEN = `forge_pat_dev_${'a'.repeat(64)}`;
+const DEVICE_ID = '00000000-0000-4000-8000-00000000d0d0';
+
+const patRow = {
+  id: '00000000-0000-4000-8000-0000000000aa',
+  userId: 'holder-1',
+  name: `device:${DEVICE_ID}`,
+  tokenHash: '',
+  tokenPrefix: PAT_TOKEN.slice(0, 18),
+  scopes: ['read', 'write'],
+  projectIds: null,
+  boundProjectId: null,
+  deviceId: DEVICE_ID,
+  expiresAt: null,
+  createdAt: new Date(0),
+  lastUsedAt: null,
+  lastUsedIp: null,
+  revokedAt: null,
+  rateLimitMax: null,
 };
 
-const testDevice: DeviceRow = {
-  id: 'dev-1',
-  ownerId: 'user-1',
+const deviceRow = {
+  id: DEVICE_ID,
+  ownerId: 'holder-1',
   name: 'macbook',
   platform: 'macos',
-  tokenHash: 'hash',
-  tokenPrefix: 'abcd1234',
-  disabledAt: null,
   status: 'online',
   createdAt: new Date('2026-01-01T00:00:00Z'),
 };
@@ -43,99 +73,100 @@ function makeApp() {
   return app;
 }
 
+const bearer = (token: string) => ({ headers: { authorization: `Bearer ${token}` } });
+
 beforeEach(() => {
-  vi.mocked(verifyDeviceToken).mockReset();
+  vi.mocked(verifyPat).mockReset();
+  selectLimit.mockReset();
 });
 
 describe('requireDevice middleware', () => {
-  it('authenticates via Authorization: Bearer <token> and attaches device', async () => {
-    vi.mocked(verifyDeviceToken).mockResolvedValue(testDevice as unknown as never);
-    const app = makeApp();
-    const res = await app.request('/me', {
-      headers: { authorization: 'Bearer abcd1234xxxxxxxxxxxxxxxxxxxxxxxxxxxx' },
-    });
+  it('resolves the device from the token`s device_id and attaches it', async () => {
+    vi.mocked(verifyPat).mockResolvedValue({ row: patRow, ownerKind: 'human' } as never);
+    selectLimit.mockResolvedValue([deviceRow]);
+
+    const res = await makeApp().request('/me', bearer(PAT_TOKEN));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as DeviceRow;
-    expect(body.id).toBe(testDevice.id);
-    expect(vi.mocked(verifyDeviceToken)).toHaveBeenCalledWith(
-      'abcd1234xxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+    expect(((await res.json()) as { id: string }).id).toBe(DEVICE_ID);
+    expect(vi.mocked(verifyPat)).toHaveBeenCalledWith(PAT_TOKEN);
+  });
+
+  // cm:guard the assertion that carries wave 3 of ISS-932: a valid PAT with no `device_id` must be REFUSED, never accepted as its owner. Accepting it is the `device.ownerId` fiction returning — a person's whole account authority reachable from a box's routes — and a bare `toBe(401)` would not tell that apart from a token that simply failed to verify, which is why `verifyPat` is asserted to have succeeded first.
+  it('refuses a valid PAT that carries no device, naming the class and the remedy', async () => {
+    vi.mocked(verifyPat).mockResolvedValue({
+      row: { ...patRow, name: 'my laptop', deviceId: null },
+      ownerKind: 'human',
+    } as never);
+
+    const res = await makeApp().request('/me', bearer(PAT_TOKEN));
+    expect(res.status).toBe(401);
+    expect(vi.mocked(verifyPat)).toHaveBeenCalledOnce();
+    expect(selectLimit).not.toHaveBeenCalled();
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('UNAUTHENTICATED');
+    expect(body.message).toMatch(/carries no device/i);
+    expect(body.message).toMatch(/forge login/i);
+  });
+
+  // cm:guard revoking a box and revoking its token are two writes, so this asserts the SECOND defence: a token that still verifies must not reach a revoked device. Deleting this check leaves an unpaired machine authenticated for as long as its token outlives the revoke.
+  it('refuses a token whose device row is revoked, even though the token verifies', async () => {
+    vi.mocked(verifyPat).mockResolvedValue({ row: patRow, ownerKind: 'human' } as never);
+    selectLimit.mockResolvedValue([{ ...deviceRow, status: 'revoked' }]);
+
+    const res = await makeApp().request('/me', bearer(PAT_TOKEN));
+    expect(res.status).toBe(401);
+    expect(((await res.json()) as { message: string }).message).toMatch(/carries no device/i);
+  });
+
+  it('refuses a token whose device row no longer exists', async () => {
+    vi.mocked(verifyPat).mockResolvedValue({ row: patRow, ownerKind: 'human' } as never);
+    selectLimit.mockResolvedValue([]);
+    const res = await makeApp().request('/me', bearer(PAT_TOKEN));
+    expect(res.status).toBe(401);
+  });
+
+  it('refuses the opaque token a pre-ISS-932 box holds, without reaching the verifier', async () => {
+    const res = await makeApp().request('/me', bearer('abcd1234xxxxxxxxxxxxxxxxxxxxxxxx'));
+    expect(res.status).toBe(401);
+    expect(vi.mocked(verifyPat)).not.toHaveBeenCalled();
+    expect(((await res.json()) as { message: string }).message).toMatch(/forge login/i);
+  });
+
+  it('returns 401 when the token does not verify', async () => {
+    vi.mocked(verifyPat).mockResolvedValue(null);
+    const res = await makeApp().request('/me', bearer(PAT_TOKEN));
+    expect(res.status).toBe(401);
+  });
+
+  it.each([
+    ['no Authorization header', undefined],
+    ['a non-Bearer scheme', 'Basic abc123'],
+    ['an empty Bearer token', 'Bearer    '],
+  ])('returns 401 UNAUTHENTICATED for %s', async (_label, authorization) => {
+    const res = await makeApp().request(
+      '/me',
+      authorization ? { headers: { authorization } } : undefined,
     );
-  });
-
-  it('returns 401 UNAUTHENTICATED when no Authorization header is provided', async () => {
-    const app = makeApp();
-    const res = await app.request('/me');
     expect(res.status).toBe(401);
-    const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('UNAUTHENTICATED');
-    expect(vi.mocked(verifyDeviceToken)).not.toHaveBeenCalled();
-  });
-
-  it('returns 401 UNAUTHENTICATED for a non-Bearer scheme', async () => {
-    const app = makeApp();
-    const res = await app.request('/me', {
-      headers: { authorization: 'Basic abc123' },
-    });
-    expect(res.status).toBe(401);
-    const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('UNAUTHENTICATED');
-    expect(vi.mocked(verifyDeviceToken)).not.toHaveBeenCalled();
-  });
-
-  it('returns 401 UNAUTHENTICATED for an empty Bearer token', async () => {
-    const app = makeApp();
-    const res = await app.request('/me', {
-      headers: { authorization: 'Bearer    ' },
-    });
-    expect(res.status).toBe(401);
-    const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('UNAUTHENTICATED');
-    expect(vi.mocked(verifyDeviceToken)).not.toHaveBeenCalled();
-  });
-
-  it('returns 401 UNAUTHENTICATED when verifyDeviceToken resolves null (invalid token)', async () => {
-    vi.mocked(verifyDeviceToken).mockResolvedValue(null);
-    const app = makeApp();
-    const res = await app.request('/me', {
-      headers: { authorization: 'Bearer not-a-real-device-token' },
-    });
-    expect(res.status).toBe(401);
-    const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('UNAUTHENTICATED');
-  });
-
-  it('returns 401 UNAUTHENTICATED when verifyDeviceToken resolves null for a revoked device', async () => {
-    // verifyDeviceToken internally skips revoked rows and returns null.
-    vi.mocked(verifyDeviceToken).mockResolvedValue(null);
-    const app = makeApp();
-    const res = await app.request('/me', {
-      headers: { authorization: 'Bearer revoked-token-value' },
-    });
-    expect(res.status).toBe(401);
-    const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('UNAUTHENTICATED');
+    expect(((await res.json()) as { code: string }).code).toBe('UNAUTHENTICATED');
+    expect(vi.mocked(verifyPat)).not.toHaveBeenCalled();
   });
 
   it('does NOT populate c.get("user") — distinct principals', async () => {
-    vi.mocked(verifyDeviceToken).mockResolvedValue(testDevice as unknown as never);
-    const app = makeApp();
-    const res = await app.request('/principals', {
-      headers: { authorization: 'Bearer abcd1234xxxxxxxxxxxxxxxxxxxx' },
-    });
+    vi.mocked(verifyPat).mockResolvedValue({ row: patRow, ownerKind: 'human' } as never);
+    selectLimit.mockResolvedValue([deviceRow]);
+    const res = await makeApp().request('/principals', bearer(PAT_TOKEN));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { device: DeviceRow; user: unknown };
-    expect(body.device.id).toBe(testDevice.id);
+    const body = (await res.json()) as { device: { id: string }; user: unknown };
+    expect(body.device.id).toBe(DEVICE_ID);
     expect(body.user).toBeNull();
   });
 
   it('ignores forge_auth cookie — device auth is header-only', async () => {
-    const app = makeApp();
-    const res = await app.request('/me', {
+    const res = await makeApp().request('/me', {
       headers: { cookie: 'forge_auth=some-user-jwt-value' },
     });
     expect(res.status).toBe(401);
-    const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('UNAUTHENTICATED');
-    expect(vi.mocked(verifyDeviceToken)).not.toHaveBeenCalled();
+    expect(vi.mocked(verifyPat)).not.toHaveBeenCalled();
   });
 });

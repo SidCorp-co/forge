@@ -110,7 +110,7 @@ describe('forge_agent_sessions.list', () => {
 
   it('rejects a non-member as not-found (existence-hiding)', async () => {
     const tool = forgeAgentSessionsListTool(makeFakeContext(fakePrincipal));
-    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]); // not a member
+    selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: null, orgRole: null }]);
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
@@ -209,6 +209,7 @@ describe('forge_agent_sessions.get', () => {
           scopes: ['read', 'write'],
           projectIds,
           boundProjectId: null,
+          deviceId: null,
           machine: null,
         },
         projectSlug: null,

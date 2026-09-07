@@ -65,18 +65,12 @@ vi.mock('../pipeline/activity.js', () => ({
   safeRecordActivity: (...args: unknown[]) => safeRecordActivityMock(...args),
 }));
 
-// Mock auth verifiers so we can exercise all three principal types
 const verifyPatMock = vi.fn();
-const verifyDeviceTokenMock = vi.fn();
 vi.mock('../auth/pat.js', async () => {
   const actual = await vi.importActual<typeof import('../auth/pat.js')>('../auth/pat.js');
   // cm:guard `touchPatUsage` is stubbed OUT, not left real: it fires a `db.update` the moment a PAT verifies, and this file's db mock serves one shared queue, so the real one steals the row the handler was about to read and the failure lands on the handler as a 500. Its own error handling is irrelevant here — the theft happens before anything throws.
   return { ...actual, verifyPat: verifyPatMock, touchPatUsage: () => {} };
 });
-vi.mock('../auth/deviceToken.js', async () => ({
-  ...(await vi.importActual<typeof import('../auth/deviceToken.js')>('../auth/deviceToken.js')),
-  verifyDeviceToken: verifyDeviceTokenMock,
-}));
 
 const { issueAttachmentRoutes, attachmentRoutes } = await import('./attachment-routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
@@ -112,7 +106,6 @@ beforeEach(() => {
   storageDelete.mockReset();
   safeRecordActivityMock.mockClear();
   verifyPatMock.mockReset();
-  verifyDeviceTokenMock.mockReset();
 });
 
 async function userJwt() {
@@ -273,10 +266,8 @@ describe('POST /api/issues/:id/attachments', () => {
     expect(verifyPatMock).toHaveBeenCalledOnce();
   });
 
-  // cm:guard ISS-927 — the `requireAnyAuth` device branch is deleted, so this route no longer resolves a device to its owner. `verifyDeviceTokenMock` going UNCALLED, not the 401, is what proves the branch is gone rather than merely failing: an agent uploading an issue attachment now presents the `job:`/`session:` PAT it was minted, which takes the PAT branch and is fenced by `patAllowedFor` + the project scope.
-  it('401 for a device token, without consulting the device path at all', async () => {
-    verifyDeviceTokenMock.mockResolvedValueOnce({ id: 'device-1', ownerId: USER_ID });
-
+  // cm:guard the ISS-927 version asserted `verifyDeviceToken` went UNCALLED, since a 401 could equally come from a device branch that failed. ISS-932 deleted `auth/deviceToken.ts`, so no such verifier exists to call and the assertion is unwritable rather than merely passing. `verifyPatMock` going uncalled is the surviving half: an opaque non-PAT bearer never reaches the one credential path this route has.
+  it('401 for the opaque token a pre-ISS-932 box holds, and nothing is stored', async () => {
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/attachments`, {
       method: 'POST',
       headers: { authorization: 'Bearer device_token_opaque_value' },
@@ -284,12 +275,11 @@ describe('POST /api/issues/:id/attachments', () => {
     });
 
     expect(res.status).toBe(401);
-    expect(verifyDeviceTokenMock).not.toHaveBeenCalled();
+    expect(verifyPatMock).not.toHaveBeenCalled();
     expect(storagePut).not.toHaveBeenCalled();
   });
 
-  it('401 when all three auth paths reject the token', async () => {
-    verifyDeviceTokenMock.mockResolvedValueOnce(null);
+  it('401 when both auth paths reject the token', async () => {
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/attachments`, {
       method: 'POST',
       headers: { authorization: 'Bearer garbage_token' },

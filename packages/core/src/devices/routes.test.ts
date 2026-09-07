@@ -12,20 +12,19 @@ vi.mock('../config/env.js', () => ({
   },
 }));
 
-// Redeem mock drives the /pair route outcomes.
 const redeemPairingCode = vi.fn();
 vi.mock('./pair.js', () => ({
   redeemPairingCode: (i: unknown) => redeemPairingCode(i),
 }));
 
-const verifyDeviceToken = vi.fn(async (token: string) => {
+const verifyDeviceCredential = vi.fn(async (token: string) => {
   if (token === 'good') {
     return { id: 'dev-1', ownerId: 'u-1', status: 'offline', name: 'laptop', platform: 'linux' };
   }
   return null;
 });
-vi.mock('../auth/deviceToken.js', () => ({
-  verifyDeviceToken: (t: string) => verifyDeviceToken(t),
+vi.mock('../auth/device-credential.js', () => ({
+  verifyDeviceCredential: (t: string) => verifyDeviceCredential(t),
 }));
 
 const insertValues = vi.fn(async () => []);

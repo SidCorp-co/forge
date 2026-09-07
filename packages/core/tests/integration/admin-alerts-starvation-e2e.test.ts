@@ -186,8 +186,8 @@ describe('A3 runner starvation (ISS-652)', () => {
     const deviceId = '22222222-2222-4222-8222-222222222222';
     // cm:guard bind the version to the floor constant, never a literal — this fixture is hand-rolled rather than `createTestDevice`, and a device below the claim floor is invisible to `fresh_capable_runners`, which would make this uppercase-hex assertion pass or fail for a reason that has nothing to do with hex.
     await ctx.harness.db.execute(sql`
-      INSERT INTO devices (id, owner_id, name, platform, token_hash, token_prefix, status, agent_version)
-      VALUES (${deviceId}, ${owner.id}, 'pool fixture', 'linux', 'x', 'pooltest', 'online',
+      INSERT INTO devices (id, owner_id, name, platform, status, agent_version)
+      VALUES (${deviceId}, ${owner.id}, 'pool fixture', 'linux', 'online',
               ${AGENT_NAMING_MIN_RUNNER})
     `);
     await ctx.harness.db.execute(sql`
