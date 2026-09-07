@@ -380,9 +380,7 @@ describe('decode + persist, the pair issues/create-service.ts calls', () => {
 
   it('throws INVALID_BASE64 in the decode, before persisting anything', async () => {
     expect(() =>
-      decodeAndValidateAttachments([
-        { name: 'a.png', mime: 'image/png', dataBase64: '!!!bad!!!' },
-      ]),
+      decodeAndValidateAttachments([{ name: 'a.png', mime: 'image/png', dataBase64: '!!!bad!!!' }]),
     ).toThrow(expect.objectContaining({ code: 'INVALID_BASE64' }));
     expect(storagePut).not.toHaveBeenCalled();
   });
