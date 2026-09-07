@@ -53,7 +53,6 @@ const {
   decodeAndValidateAttachments,
   persistIssueAttachment,
   persistDecodedIssueAttachments,
-  persistIssueAttachmentsFromBase64,
 } = await import('./attachment-service.js');
 
 const ISSUE_ID = '22222222-2222-4222-8222-222222222222';
@@ -364,13 +363,13 @@ describe('persistDecodedIssueAttachments', () => {
   });
 });
 
-describe('persistIssueAttachmentsFromBase64', () => {
+describe('decode + persist, the pair issues/create-service.ts calls', () => {
   it('runs decode + persist end to end', async () => {
     insertReturning.mockResolvedValueOnce([makeAttachmentRow()]);
 
-    const result = await persistIssueAttachmentsFromBase64(
+    const result = await persistDecodedIssueAttachments(
       ISSUE_ID,
-      [{ name: 'tiny.png', mime: 'image/png', dataBase64: TINY_B64 }],
+      decodeAndValidateAttachments([{ name: 'tiny.png', mime: 'image/png', dataBase64: TINY_B64 }]),
       UPLOADER_ID,
       'human',
     );
@@ -379,15 +378,10 @@ describe('persistIssueAttachmentsFromBase64', () => {
     expect(result.errors).toEqual([]);
   });
 
-  it('throws INVALID_BASE64 before persisting anything', async () => {
-    await expect(
-      persistIssueAttachmentsFromBase64(
-        ISSUE_ID,
-        [{ name: 'a.png', mime: 'image/png', dataBase64: '!!!bad!!!' }],
-        UPLOADER_ID,
-        'human',
-      ),
-    ).rejects.toMatchObject({ code: 'INVALID_BASE64' });
+  it('throws INVALID_BASE64 in the decode, before persisting anything', async () => {
+    expect(() =>
+      decodeAndValidateAttachments([{ name: 'a.png', mime: 'image/png', dataBase64: '!!!bad!!!' }]),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_BASE64' }));
     expect(storagePut).not.toHaveBeenCalled();
   });
 });

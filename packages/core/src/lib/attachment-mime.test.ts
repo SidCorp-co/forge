@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { AttachmentTarget } from './attachment-mime.js';
-import { allowedSetForTarget, resolveAttachmentMime } from './attachment-mime.js';
+import { allowedSetForTarget, looksBinary, resolveAttachmentMime } from './attachment-mime.js';
 
 const utf8 = (s: string) => Buffer.from(s, 'utf8');
 const ESC = String.fromCharCode(0x1b);
@@ -59,8 +59,29 @@ describe('resolveAttachmentMime — the bytes rescue, they do not demote', () =>
     });
   });
 
-  it('narrows an unknown extension by the text table when the bytes are text', () => {
+  it('narrows by extension when the client declared nothing: a .md of text is text/markdown', () => {
     expect(resolve('notes.md', '', utf8('# hi\n'))).toEqual({ ok: true, mime: 'text/markdown' });
+  });
+
+  it('reads application/octet-stream as no declaration — the multipart routes write it themselves', () => {
+    // cm:guard this is what a browser sends for a `.log` it cannot type — the multipart routes write the placeholder themselves, so a change that starts believing it re-refuses the headline case (ISS-957)
+    expect(resolve('gate.log', 'application/octet-stream', ANSI_LOG)).toEqual({
+      ok: true,
+      mime: 'text/plain',
+    });
+    // cm:why the placeholder buys the bytes nothing — the name still guesses `text/plain`, so a binary `.log` is refused `not-text`, naming the bytes rather than the placeholder
+    expect(resolve('core.log', 'application/octet-stream', PNG)).toEqual({
+      ok: false,
+      reason: 'not-text',
+      mime: 'text/plain',
+    });
+  });
+
+  it('lands text under a guessed type the target refuses, because a guess is not a claim', () => {
+    expect(resolve('export.csv', '', utf8('a,b\n'), 'session')).toEqual({
+      ok: true,
+      mime: 'text/plain',
+    });
   });
 });
 
@@ -98,15 +119,126 @@ describe('resolveAttachmentMime — what it still refuses', () => {
   });
 });
 
+describe('looksBinary — what a two-byte prefix must not buy', () => {
+  const bom = (lead: number[], rest: Buffer) => Buffer.concat([Buffer.from(lead), rest]);
+  // cm:guard this fixture must stay long enough to contain a lone surrogate — an 8-byte stub decodes to four ordinary code points and IS text, so shortening it turns these three assertions green against the very hole they exist to catch (ISS-957)
+  const BLOB = Buffer.concat([
+    PNG,
+    Buffer.from(Array.from({ length: 512 }, (_, i) => (i * 37) % 256)),
+  ]);
+
+  it('refuses a PNG behind a UTF-16LE BOM — the BOM picks a decoder, it does not waive the check', () => {
+    expect(resolve('notes.txt', 'text/plain', bom([0xff, 0xfe], BLOB))).toEqual({
+      ok: false,
+      reason: 'not-text',
+      mime: 'text/plain',
+    });
+  });
+
+  it('refuses a PNG behind a UTF-16BE BOM', () => {
+    expect(resolve('notes.txt', 'text/plain', bom([0xfe, 0xff], BLOB))).toEqual({
+      ok: false,
+      reason: 'not-text',
+      mime: 'text/plain',
+    });
+  });
+
+  it('refuses a BOM-prefixed blob declared text/html, the type a BOM bypass would most reward', () => {
+    expect(resolve('page.html', 'text/html', bom([0xff, 0xfe], BLOB))).toEqual({
+      ok: false,
+      reason: 'not-text',
+      mime: 'text/html',
+    });
+  });
+
+  it('admits a BOM-marked UTF-16 file that really is text, which is what the BOM path is for', () => {
+    const utf16 = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('hello there', 'utf16le')]);
+    expect(resolve('notes.txt', 'text/plain', utf16)).toEqual({ ok: true, mime: 'text/plain' });
+  });
+
+  it('states the residual: a tiny blob whose UTF-16 reading IS valid text is admitted as text', () => {
+    // cm:why priced rather than hidden — 8 bytes with no lone surrogate decode to four ordinary code points and are text by the only definition this predicate has; a fatal UTF-16 decode rejected 200 of 200 random 4 KB blobs, so the residual is bounded to inputs too short to carry a surrogate, which is too short to be a file worth smuggling
+    expect(resolve('notes.txt', 'text/plain', bom([0xff, 0xfe], PNG))).toEqual({
+      ok: true,
+      mime: 'text/plain',
+    });
+  });
+
+  it('refuses a blob that starts after the first 8 KB — the scan is the whole file', () => {
+    const late = Buffer.concat([Buffer.from('A'.repeat(8192)), PNG, Buffer.alloc(4096)]);
+    expect(resolve('dump.txt', 'text/plain', late)).toEqual({
+      ok: false,
+      reason: 'not-text',
+      mime: 'text/plain',
+    });
+  });
+
+  it('refuses DEL, which one predicate must judge the same way wherever it is reached', () => {
+    expect(resolve('dump.log', 'text/plain', Buffer.from([0x41, 0x7f, 0x41]))).toEqual({
+      ok: false,
+      reason: 'not-text',
+      mime: 'text/plain',
+    });
+    expect(resolve('dump.xyz', 'application/x-foo', Buffer.from([0x41, 0x7f, 0x41]))).toEqual({
+      ok: false,
+      reason: 'not-allowed',
+      mime: 'application/x-foo',
+    });
+  });
+});
+
+describe('text/html is reachable only by an explicit declaration', () => {
+  const markup = utf8('<html><body>hi</body></html>');
+
+  it.each(['page.html', 'page.htm', 'page.xhtml', 'logo.svg'])(
+    'stores %s as text/plain when the client declared nothing',
+    (name) => {
+      expect(resolve(name, '', markup)).toEqual({ ok: true, mime: 'text/plain' });
+    },
+  );
+
+  it('still honours text/html when the client actually claims it', () => {
+    expect(resolve('page.html', 'text/html', markup)).toEqual({ ok: true, mime: 'text/html' });
+  });
+});
+
 describe('allowedSetForTarget', () => {
-  it('says any extension is fine for text, because the extension list cannot say it', () => {
+  it('backs anyExtensionIfText with the behaviour, not just the flag', () => {
     const allowed = allowedSetForTarget('issue');
     expect(allowed.extensions).not.toContain('.log');
     expect(allowed.anyExtensionIfText).toBe(true);
+    // cm:why the flag is only worth printing if it is true of the resolver, so this asserts the behaviour under it rather than the literal
+    expect(resolve('gate.log', '', utf8('ok\n'))).toEqual({ ok: true, mime: 'text/plain' });
+    expect(resolve('trace.wibble', '', utf8('ok\n'))).toEqual({ ok: true, mime: 'text/plain' });
+  });
+
+  it('lists no extension whose type the target refuses', () => {
+    for (const target of ['issue', 'comment', 'session'] as const) {
+      const { mimes, extensions } = allowedSetForTarget(target);
+      for (const ext of extensions) {
+        expect(resolve(`f${ext}`, '', utf8('ok\n'), target).ok).toBe(true);
+      }
+      expect(extensions.length).toBeGreaterThan(0);
+      expect(mimes).toContain('text/plain');
+    }
   });
 
   it('lists only extensions whose type the target allows', () => {
     expect(allowedSetForTarget('session').extensions).not.toContain('.mp4');
     expect(allowedSetForTarget('issue').extensions).toContain('.mp4');
+  });
+});
+
+describe('the byte table is the byte-wise projection of the code-point predicate', () => {
+  const TEXT_CONTROLS = [0x08, 0x09, 0x0a, 0x0c, 0x0d, 0x1b];
+
+  it('judges all 256 single bytes exactly as the predicate reads', () => {
+    const disagreed: number[] = [];
+    for (let byte = 0; byte < 256; byte++) {
+      const expected = TEXT_CONTROLS.includes(byte) ? false : byte < 0x20 || byte === 0x7f;
+      if (looksBinary(Buffer.from([byte])) !== expected) disagreed.push(byte);
+    }
+
+    expect(disagreed).toEqual([]);
   });
 });
