@@ -121,7 +121,7 @@ services:
       EMBEDDINGS_DIM: ${EMBEDDINGS_DIM:-}
       # config/env.ts reads these two as well; without a line here Coolify's
       # ${VAR} injection cannot reach them and setting either in the UI is a
-      # silent no-op — the same defect 8ff505af fixed for RATE_LIMIT_PAT_*.
+      # silent no-op — the same defect 8ff505af fixed for the PAT limit knobs below.
       EMBEDDINGS_FALLBACK_MODEL: ${EMBEDDINGS_FALLBACK_MODEL:-}
       EMBEDDINGS_TIMEOUT_MS: ${EMBEDDINGS_TIMEOUT_MS:-}
       # Optional Sentry telemetry. Use SENTRY_DSN_CORE in `.env` (not bare
@@ -140,8 +140,14 @@ services:
       # to lift the 60-req/hr unauthenticated API limit. fetch-release.js reads
       # GITHUB_TOKEN; operators set RUNNER_RELEASE_GITHUB_TOKEN in `.env`.
       GITHUB_TOKEN: ${RUNNER_RELEASE_GITHUB_TOKEN:-}
-      RATE_LIMIT_PAT_MAX: ${RATE_LIMIT_PAT_MAX:-}
-      RATE_LIMIT_PAT_WINDOW_MS: ${RATE_LIMIT_PAT_WINDOW_MS:-}
+      # Two per-token PAT buckets since ISS-961, reads counted apart from
+      # writes. RATE_LIMIT_PAT_MAX / RATE_LIMIT_PAT_WINDOW_MS are retired and
+      # core refuses to boot while either is set, so an operator who had them
+      # in the UI is told rather than silently unthrottled.
+      RATE_LIMIT_PAT_READ_MAX: ${RATE_LIMIT_PAT_READ_MAX:-}
+      RATE_LIMIT_PAT_READ_WINDOW_MS: ${RATE_LIMIT_PAT_READ_WINDOW_MS:-}
+      RATE_LIMIT_PAT_WRITE_MAX: ${RATE_LIMIT_PAT_WRITE_MAX:-}
+      RATE_LIMIT_PAT_WRITE_WINDOW_MS: ${RATE_LIMIT_PAT_WRITE_WINDOW_MS:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 10s

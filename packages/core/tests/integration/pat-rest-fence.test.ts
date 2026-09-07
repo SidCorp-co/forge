@@ -59,8 +59,9 @@ beforeAll(async () => {
   process.env.APP_BASE_URL ??= 'http://localhost:3000';
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV = 'test';
-  // cm:guard this raises `patPerToken` ONLY, and it is not the whole defence — the IP-keyed limiters are untouched, `authRegister` at 3/hour among them, so a second probe of an IP-limited route still 429s and it is the throw in `get()` that catches it rather than this line. What it does buy: at the stock 60/minute the two sweeps — 205 probes on one token — spend most of their run refused, and both loops read a 429 as "the route refused me", so the assertion that makes the allowlist trustworthy quietly stops touching the routes it names (measured 2026-09-01: 3.1s and 96 rate-limited log lines, against 8.4s and none, on the same route set). Three breaches in an hour also auto-revoke the token, after which the rest of the file passes on 401s. Set BEFORE `src/index.js` is imported, because `config/env.ts` reads it once at module load.
-  process.env.RATE_LIMIT_PAT_MAX = '100000';
+  // cm:guard this raises `patRead`/`patWrite` ONLY, and it is not the whole defence — the IP-keyed limiters are untouched, `authRegister` at 3/hour among them, so a second probe of an IP-limited route still 429s and it is the throw in `get()` that catches it rather than this line. What it does buy: at the stock 60/minute the two sweeps — 205 probes on one token — spend most of their run refused, and both loops read a 429 as "the route refused me", so the assertion that makes the allowlist trustworthy quietly stops touching the routes it names (measured 2026-09-01: 3.1s and 96 rate-limited log lines, against 8.4s and none, on the same route set). Three breaches in an hour also auto-revoke the token, after which the rest of the file passes on 401s. Set BEFORE `src/index.js` is imported, because `config/env.ts` reads it once at module load.
+  process.env.RATE_LIMIT_PAT_READ_MAX = '100000';
+  process.env.RATE_LIMIT_PAT_WRITE_MAX = '100000';
 
   await truncateAll(harness.db);
 
@@ -132,7 +133,7 @@ async function get(path: string, token?: string) {
   return send('GET', path, token);
 }
 
-// cm:guard a 429 must never reach a sweep loop, which would score it as a refusal and skip the route. Throwing here is what turns "the limiter ate the sweep" from a silent green into a named failure — RATE_LIMIT_PAT_MAX and the store reset in `sweep` are what keep it from firing, and this is what happens when they stop working.
+// cm:guard a 429 must never reach a sweep loop, which would score it as a refusal and skip the route. Throwing here is what turns "the limiter ate the sweep" from a silent green into a named failure — RATE_LIMIT_PAT_READ_MAX / RATE_LIMIT_PAT_WRITE_MAX and the store reset in `sweep` are what keep it from firing, and this is what happens when they stop working.
 async function send(method: string, path: string, token?: string) {
   const res = await app.request(path, {
     method,
@@ -147,7 +148,7 @@ async function send(method: string, path: string, token?: string) {
   return res;
 }
 
-// cm:guard the probes run CONCURRENTLY and that is a correctness property, not a speed one: serially the sweeps take ~14s on their own and blow the 30s timeout once the rest of the integration suite is competing for the same Postgres, and a sweep that dies half-way has asserted nothing about the routes it never reached. The store reset per batch is the other half: RATE_LIMIT_PAT_MAX lifts `patPerToken` only, so the IP-keyed limiters — `authRegister` at 3/hour among them, which the write sweep now walks into — would otherwise accumulate across batches and 429 the run.
+// cm:guard the probes run CONCURRENTLY and that is a correctness property, not a speed one: serially the sweeps take ~14s on their own and blow the 30s timeout once the rest of the integration suite is competing for the same Postgres, and a sweep that dies half-way has asserted nothing about the routes it never reached. The store reset per batch is the other half: RATE_LIMIT_PAT_READ_MAX / RATE_LIMIT_PAT_WRITE_MAX lift `patRead`/`patWrite` only, so the IP-keyed limiters — `authRegister` at 3/hour among them, which the write sweep now walks into — would otherwise accumulate across batches and 429 the run.
 async function sweep<T>(paths: Iterable<string>, probe: (path: string) => Promise<T | null>) {
   const all = [...paths];
   const hits: T[] = [];
