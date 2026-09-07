@@ -49,7 +49,6 @@ export interface CreateUploadTicketInput {
 }
 
 /**
-/**
  * The document already holding this name on the target, or null.
  *
  * Sessions are absent by design and not by omission: no record cites a session

@@ -35,7 +35,6 @@ export class AttachmentError extends Error {
 }
 
 /**
-/**
  * Everything a comment attachment is refused for, decided without touching
  * storage or the DB. Returns the type the row will be stored under, read from
  * the BYTES and only then narrowed by the name (ISS-957).
@@ -71,6 +70,14 @@ export function validateCommentAttachment(input: {
  * Scoped to the one comment, not the issue: a comment is written once with its
  * files, and two comments in a thread may each carry their own `output.txt`.
  */
+function nameTakenError(existing: ExistingAttachmentRef, scope: string): AttachmentError {
+  return new AttachmentError(
+    'ATTACHMENT_NAME_TAKEN',
+    `an attachment named "${existing.name}" is already on this ${scope} (id ${existing.id}) — cite it or upload under a different name`,
+    { existing },
+  );
+}
+
 export async function findCommentAttachmentByName(
   commentId: string,
   name: string,
@@ -119,13 +126,7 @@ export async function persistCommentAttachment(
 
   // cm:guard decide the collision on the SANITISED name, never `input.name` — that is what the row stores and what a record cites, and `a b.md`/`a_b.md` both sanitise to `a_b.md`, so checking the input would admit the pairs that actually collide and refuse the pairs that do not (ISS-963)
   const taken = await findCommentAttachmentByName(commentId, name);
-  if (taken) {
-    throw new AttachmentError(
-      'ATTACHMENT_NAME_TAKEN',
-      `an attachment named "${taken.name}" is already on this comment (id ${taken.id}) — cite it or upload under a different name`,
-      { existing: taken },
-    );
-  }
+  if (taken) throw nameTakenError(taken, 'comment');
 
   const key = `comments/${commentId}/${Date.now()}-${name}`;
   const { path: storedPath } = await getStorage().put(key, bytes, mime);
@@ -206,13 +207,22 @@ export async function persistDecodedCommentAttachments(
   uploaderDeviceId: string | null,
 ): Promise<{ persisted: PersistedCommentAttachment[]; errors: CommentAttachmentErrorEntry[] }> {
   const errors: CommentAttachmentErrorEntry[] = [];
+  // cm:guard the issue twin's rule, and load-bearing for the same reason: a batch carrying one name twice would otherwise land member 1, collide on member 2, roll member 1 back, and refuse with the id of a row it had just deleted (ISS-957)
+  const seen = new Set<string>();
   for (const [i, d] of decoded.entries()) {
+    const name = safeName(d.name || 'file');
     try {
-      validateCommentAttachment({
-        name: safeName(d.name || 'file'),
-        mime: d.mime,
-        bytes: d.bytes,
-      });
+      validateCommentAttachment({ name, mime: d.mime, bytes: d.bytes });
+      if (seen.has(name)) {
+        throw new AttachmentError(
+          'ATTACHMENT_NAME_TAKEN',
+          `this batch carries "${name}" more than once — an attachment name is one document`,
+          { duplicateWithinBatch: name },
+        );
+      }
+      seen.add(name);
+      const taken = await findCommentAttachmentByName(commentId, name);
+      if (taken) throw nameTakenError(taken, 'comment');
     } catch (err) {
       errors.push(toErrorEntry(i, d.name, err));
     }
