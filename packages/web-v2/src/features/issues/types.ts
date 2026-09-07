@@ -224,6 +224,8 @@ export interface IssueLabel {
   color: string;
   kind: LabelKind;
   parentId?: string | null;
+  slug?: string | null;
+  knowledgeEntryId?: string | null;
   description?: string | null;
   /** Only on an issue's joined `labels[]` — true for the issue's primary module. */
   isPrimary?: boolean;
