@@ -2418,7 +2418,8 @@ export const retrievalAnalyticsRelations = relations(retrievalAnalytics, ({ one 
   project: one(projects, { fields: [retrievalAnalytics.projectId], references: [projects.id] }),
 }));
 
-// cm:guard only `kind='blocks'` gates dispatch: an edge (from=A, to=B, 'blocks') means A must reach a terminal status before B may dispatch, and cross-project edges are legal. every other kind — `relates`, `duplicates`, `parent` and `decomposes` (epic→child) — is PM/UX metadata a dispatch path must never read. `decomposes` used to drive a parent lifecycle of its own; that was removed 2026-09-03 and it is now a grouping label, so ordering under an epic needs its own `blocks` edge.
+// cm:guard only `kind='blocks'` gates dispatch: an edge (from=A, to=B, 'blocks') means A must reach a terminal status before B may dispatch, and cross-project edges are legal. `relates`, `duplicates` and `parent` are PM/UX metadata no pipeline path may read.
+// cm:guard `decomposes` (epic→child) is the ONE exception, and it is not metadata: `pipeline/work-evidence.ts#hasChildIssues` reads it, so one live outgoing edge waives the ISS-786 work-evidence gate for the `from` issue. Ordering under an epic still needs its own `blocks` edge; the parent lifecycle this kind once drove was removed 2026-09-03. Three agent-facing documents called it inert until ISS-935 — the waiver text is `issues/dependency-effects.ts#WORK_EVIDENCE_WAIVER_NOTE` and every surface renders it from there.
 
 export const issueDependencyKinds = [
   'blocks',

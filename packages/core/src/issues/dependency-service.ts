@@ -20,6 +20,7 @@ import { issueDependencies, type issueDependencyKinds, issues } from '../db/sche
 import { type Actor, safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { detectCycle } from './cycle-detect.js';
+import { type DependencyKindEffect, describeDependencyKind } from './dependency-effects.js';
 import type { IssueDependencyExecutor } from './dependency-executor.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 
@@ -64,6 +65,8 @@ export type SetIssueDependencyResult = {
   id: string;
   created: boolean;
   updated?: boolean;
+  /** What the edge just written actually does — a caller cannot read it off `kind`. */
+  effects: DependencyKindEffect;
 };
 
 /** What the durable half landed, and which announcement it owes. */
@@ -90,8 +93,10 @@ export async function setIssueDependency(
 ): Promise<SetIssueDependencyResult> {
   const written = await writeIssueDependency(input, writer);
   await emitIssueDependencyEffects(input, written, writer, opts);
-  if (written.created) return { id: written.id, created: true };
-  return { id: written.id, created: false, updated: written.updated };
+  // cm:guard report `effects` on EVERY outcome, including the idempotent re-assert — ISS-935: the edge is live either way, so a caller told only `created:false` still walks away not knowing a `decomposes` edge is holding its work-evidence gate open.
+  const effects = describeDependencyKind(input.kind);
+  if (written.created) return { id: written.id, created: true, effects };
+  return { id: written.id, created: false, updated: written.updated, effects };
 }
 
 /**
