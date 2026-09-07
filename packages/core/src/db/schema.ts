@@ -1188,12 +1188,29 @@ export const labels = pgTable(
     kind: text('kind', { enum: labelKinds }).notNull().default('label'),
     // cm:why modules only — a self-referencing parent gives the taxonomy its hierarchy without a second table. Cycle-freedom is NOT expressible here and is enforced in `labels/module-service.ts`; the FK only guarantees the parent exists.
     parentId: uuid('parent_id').references((): AnyPgColumn => labels.id, { onDelete: 'set null' }),
+    // cm:guard ISS-947 — the module's IDENTITY, and `name` is only its display. Derived from the name ONCE, on create or on promotion, and never recomputed after: a rename that moved the slug would orphan the knowledge node every later tier resolves through it, which is the failure the name-prefix convention had and this column exists to remove.
+    slug: text('slug'),
+    // cm:why ISS-947 — the 1:1 binding to `module-<slug>`'s knowledge node, stored rather than derived. NULL is a legal state (a module may exist before anyone writes its node) and is what a deleted node leaves behind, which is why the FK is `set null` and not `cascade`: deleting a node must not delete the module.
+    knowledgeEntryId: uuid('knowledge_entry_id').references((): AnyPgColumn => knowledgeEntries.id, {
+      onDelete: 'set null',
+    }),
     description: text('description'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     projectNameUq: uniqueIndex('labels_project_id_name_uq').on(t.projectId, t.name),
     parentIdx: index('labels_parent_id_idx').on(t.parentId),
+    // cm:guard NULLs are distinct in a Postgres unique index, so this constrains modules and leaves every plain label's NULL slug uncounted — which is the whole reason `labels_slug_chk` has to exist separately to force a module to HAVE one.
+    projectSlugUq: uniqueIndex('labels_project_id_slug_uq').on(t.projectId, t.slug),
+    // cm:guard the 1:1 half SQL can hold — two modules naming the same knowledge node is the state every later tier's "which module owns this node" read would answer twice. NULLs distinct again, so any number of unbound modules coexist.
+    knowledgeEntryUq: uniqueIndex('labels_knowledge_entry_id_uq').on(t.knowledgeEntryId),
+    // cm:guard the literals live INSIDE the sql template — a `${CONST}` here serialises as a `$1` bind placeholder into the migration and the container then fails at start on DDL that passed every gate (ISS-654).
+    slugChk: check('labels_slug_chk', sql`(${t.kind} = 'module') = (${t.slug} IS NOT NULL)`),
+    // cm:guard a plain label carries NEITHER field, at the database and not only in the service — `kind` is the only thing separating the two rows, so a label holding a module's binding is a row no projection can render honestly.
+    knowledgeEntryChk: check(
+      'labels_knowledge_entry_chk',
+      sql`${t.kind} = 'module' OR ${t.knowledgeEntryId} IS NULL`,
+    ),
     // cm:guard the CHECK is the backstop, not a duplicate of the TS enum: `text(..., { enum })` is compile-time only and emits no constraint, so any path that inserts a label without going through `labels/routes.ts` can write a kind that is neither — and such a row filters as no module and renders as no label. Same reason `comments_format_chk` and `issues_complexity_chk` exist.
     kindChk: check('labels_kind_chk', sql`${t.kind} IN ('label', 'module')`),
   }),
