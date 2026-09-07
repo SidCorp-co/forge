@@ -119,6 +119,7 @@ options: one <code>GET /issues/:id</code> per row, or no column. The flag is the
 <tr><td><code>LABEL_IN_USE</code> (409 on delete)</td><td>"Issues are still tagged with this — remove it from them first." The confirm step fires <em>before</em> the request, so the reader has already agreed to a delete the server then refuses.</td></tr>
 <tr><td><code>PRIMARY_NOT_MODULE</code> · <code>MULTIPLE_PRIMARY</code></td><td>Toast; the picker stays open with the reader's selection intact.</td></tr>
 <tr><td><code>KNOWLEDGE_NODE_TAKEN</code></td><td>"Another module is already bound to that entry." The binding is 1:1, so the reader must clear the other module's link first.</td></tr>
+<tr><td><code>MODULE_SLUG_TAKEN</code></td><td>"Another module took that slug while this write was in flight; retry." Only a writer that raced the server's own derivation reaches this — the slug is derived, so the reader has nothing to correct and the retry succeeds.</td></tr>
 <tr><td><code>INVALID_KNOWLEDGE_NODE</code> · <code>KNOWLEDGE_NODE_NOT_IN_PROJECT</code> · <code>KNOWLEDGE_NODE_ON_NON_MODULE</code></td><td>Toast naming the cause; the row keeps its old binding. A node in another project is refused by name rather than silently ignored — the registry is per-project.</td></tr>
 <tr><td>Project has no modules</td><td>Not an error: the picker's <code>EmptyState</code> links to the Modules tab. A picker that rendered an empty list here would be a dead end.</td></tr>
 </tbody>

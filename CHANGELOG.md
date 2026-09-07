@@ -30,6 +30,12 @@
   (`ON DELETE SET NULL`) rather than deleting the module; deleting a module leaves the node standing.
   A NULL link means "no node written yet" and never "the node is gone".
 
+  Fixed on the way past: the labels routes reported every unique violation as
+  `LABEL_NAME_TAKEN`, so with three indexes on the table a writer that raced onto the same
+  knowledge node would have been told its label *name* was taken. `labels/unique-conflicts.ts`
+  now answers by the index that fired, and rethrows an index it has not been taught about rather
+  than folding it into the nearest code.
+
   Additive in every statement, and it ships with no consumer — the refresh loop, the generated
   diagrams, the rollup and the drift signal are ISS-589's children and now have one stored link to
   read instead of each re-deriving a name (ISS-947).

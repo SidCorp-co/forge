@@ -513,7 +513,7 @@ describe('ISS-947 · migration 0216 backfill', () => {
     expect(bySlug.get('a plain label')).toBeNull();
   });
 
-  it('emits no bind placeholder — a `${CONST}` in the schema serialises as `$1` and fails at container start (ISS-654)', async () => {
+  it('emits no bind placeholder — a TS constant interpolated into the schema serialises as one and fails at container start (ISS-654)', async () => {
     for (const statement of await migrationStatements()) {
       expect(statement).not.toMatch(/\$\d/);
     }

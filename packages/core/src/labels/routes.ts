@@ -6,7 +6,6 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issueLabels, labelKinds, labels } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   assertDemotionIsLegal,
@@ -18,6 +17,7 @@ import {
   deriveModuleSlug,
   ModuleHierarchyError,
 } from './module-service.js';
+import { labelUniqueConflict } from './unique-conflicts.js';
 
 const colorRegex = /^#[0-9a-f]{6}$/i;
 
@@ -61,6 +61,12 @@ const notFound = (message: string) =>
 
 const conflict = (message: string, code: string) =>
   new HTTPException(409, { message, cause: { code } });
+
+// cm:guard a 23505 is reported by the index that fired, never as the name one — `labels/unique-conflicts.ts` owns that mapping and answers undefined for an index it does not know, which rethrows rather than mislabelling (ISS-947).
+const uniqueConflict = (err: unknown): HTTPException | undefined => {
+  const named = labelUniqueConflict(err);
+  return named && conflict(named.message, named.code);
+};
 
 // cm:guard every projection in this file must list the same columns — a route that omits `kind` answers a module as an indistinguishable plain label, and one that omits `knowledgeEntryId` leaves `module-${slugify(name)}` as the only answer available to a caller asking which node a module owns, which is the name-prefix convention ISS-947 exists to replace.
 const labelColumns = {
@@ -131,10 +137,7 @@ labelProjectRoutes.post(
       if (!inserted) throw new Error('labels: insert returned no row');
       return c.json(inserted, 201);
     } catch (err) {
-      if (isUniqueViolation(err)) {
-        throw conflict('label name already taken in this project', 'LABEL_NAME_TAKEN');
-      }
-      throw err;
+      throw uniqueConflict(err) ?? err;
     }
   },
 );
@@ -234,10 +237,7 @@ labelRoutes.patch(
       if (!updated) throw notFound('label not found');
       return c.json(updated);
     } catch (err) {
-      if (isUniqueViolation(err)) {
-        throw conflict('label name already taken in this project', 'LABEL_NAME_TAKEN');
-      }
-      throw err;
+      throw uniqueConflict(err) ?? err;
     }
   },
 );
