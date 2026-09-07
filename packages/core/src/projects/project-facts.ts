@@ -45,21 +45,29 @@ export const projectFactsPatchSchema = z
 export type ProjectFacts = Record<string, string>;
 export type ProjectFactsPatch = Record<string, string | null> | null;
 
-// ── Always-inject tier (ISS-521) ────────────────────────────────────────────
-//
-// A parallel metadata map, stored alongside `projectFacts` under
-// `agentConfig.projectFactsConfig`, that marks individual keys for verbatim
-// injection into the system prompt (like a `mandatory` ForgeFact) instead of
-// the default fetch-on-demand pointer. Kept SEPARATE from the kebab-key→text
-// map so the existing `projectFacts` schema is untouched (no migration —
-// agentConfig is jsonb) and a fact's text and its injection policy evolve
-// independently.
-//
-// Hard cap on the SUM of always-injected text so an over-eager flag can't bloat
-// every prompt. Char-based (no tokenizer in core); ~1.5k tokens at 4 chars/tok.
-// The renderer injects up to the cap in declaration order and warns on overflow;
-// the UI surfaces the same budget as a meter.
+// cm:why ISS-521 kept the always-inject flag in a SECOND map (`agentConfig.projectFactsConfig`) rather than widening the kebab-key→text one: `agentConfig` is jsonb, so a parallel map needed no migration, and a fact's text then evolves independently of its injection policy.
+// cm:guard this tier is `mandatory` about DELIVERY and about nothing else — no gate reads the rule back. `ALWAYS_INJECT_GUARANTEE_NOTE` below is the sentence every surface offering the flag owes the owner who sets it, and ISS-936 is why.
+// cm:guard the cap is on the SUM of flagged bodies and the renderer does NOT truncate at it — every body is injected whatever the total, because a half-rendered hard rule is worse than a warned-but-present one. Char-based, since core has no tokenizer; ~1.5k tokens at 4 chars/tok.
+// cm:edge lockstep -> packages/core/src/prompt/facts/resolve.ts — the only reader of this cap, and the one that decides overflow is warned rather than cut
 export const PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS = 6000;
+
+// cm:guard the one sentence four surfaces owe an owner about what this flag buys, and it is a promise-shaped flag: the tier renders under "Hard rules ... Follow them exactly" and nothing reads the rule back (ISS-936). Interpolate it — never paraphrase — or the surface goes back to implying the control plane enforces the rule. `project-facts.ts` tests read the source of the ONE surface that cannot interpolate it and go red naming the file that drifted.
+// cm:guard NO markdown, NO backticks: this exact string renders into an MCP tool description, a terminal-read guide body and a browser paragraph, and only the first two would swallow the syntax.
+// cm:edge contract -> packages/core/src/mcp/tools/forge-config.ts — appended verbatim to the end of the tool description
+// cm:edge contract -> packages/core/src/guides/registry.ts — rendered verbatim into the `project-settings-and-test-credentials` guide
+// cm:edge contract -> packages/core/src/projects/project-facts-routes.ts — returned verbatim as `alwaysInjectGuarantee` on the settings tab's own GET
+// cm:edge contract -> packages/web-v2/src/features/project-settings/components/project-facts-tab.tsx — the browser copy, which reads it off that response instead of holding a second copy
+export const ALWAYS_INJECT_GUARANTEE_NOTE =
+  'What alwaysInject guarantees is that the fact is READ, never that it was DONE. ' +
+  'The full body is spliced verbatim into every agent system prompt for this project, ' +
+  'and that injection is recorded per job. Nothing checks the rule was followed: no gate ' +
+  'refuses a step that ignored it, no step is asked whether it complied, and no surface ' +
+  'counts how often it was obeyed. Compliance is the model reading the text, not a ' +
+  'guarantee the control plane is making. One obligation on this deployment does have a ' +
+  'readback, and it shows the price: the UX contract is stored as ux_contract_rules rows ' +
+  'with ids, its prose is compiled from them, and agents cite those ids when they record ' +
+  'a ux_findings row. A free-text fact has no ids to cite, so write the rule so that an ' +
+  'agent following it leaves evidence a human can look at.';
 
 const projectFactConfigEntrySchema = z.object({ alwaysInject: z.boolean().optional() }).strict();
 

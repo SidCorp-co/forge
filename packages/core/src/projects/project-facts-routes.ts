@@ -9,6 +9,7 @@ import { logger } from '../logger.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { mergeAgentConfig, readAgentConfig } from './agent-config.js';
 import {
+  ALWAYS_INJECT_GUARANTEE_NOTE,
   mergeProjectFacts,
   mergeProjectFactsConfig,
   PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS,
@@ -17,8 +18,6 @@ import {
   RESERVED_PROJECT_FACT_KEYS,
 } from './project-facts.js';
 
-// ─── Project facts (ISS-521) ─────────────────────────────────────────────────
-//
 // Dedicated read/patch routes for the per-project "rules" layer:
 //   - `agentConfig.projectFacts`        — kebab-key → text guide map
 //   - `agentConfig.projectFactsConfig`  — per-key `{ alwaysInject }` metadata
@@ -80,6 +79,8 @@ projectFactsRoutes.get(
       projectFactsConfig:
         (ac.projectFactsConfig as Record<string, { alwaysInject?: boolean }> | undefined) ?? {},
       maxAlwaysInjectChars: PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS,
+      alwaysInjectGuarantee: ALWAYS_INJECT_GUARANTEE_NOTE,
+      // cm:edge contract -> packages/web-v2/src/features/project-settings/components/project-facts-tab.tsx — the tab renders this string; it is served rather than copied because core may not value-import @forge/contracts and web-v2 cannot import core, so any string both sides must agree on otherwise lives twice behind a parity test
     });
   },
 );

@@ -153,7 +153,6 @@ describe('renderStageFactsText — always-inject tier (ISS-521)', () => {
       'p-1',
       'code',
     );
-    // Verbatim body present under the always-applied rules block.
     expect(text).toContain('### Project rules (always applied)');
     expect(text).toContain('#### contracts-boundary');
     expect(text).toContain(RULE);
@@ -162,6 +161,18 @@ describe('renderStageFactsText — always-inject tier (ISS-521)', () => {
     expect(indexSection).not.toContain('- contracts-boundary');
     // …but a non-flagged guide still lists as a pointer.
     expect(indexSection).toContain('- build-commands');
+  });
+
+  // cm:guard ISS-936 decided this heading KEEPS "Follow them exactly." and does NOT carry the sentence about nothing checking the rule — that sentence is owed to the owner who sets the flag, and putting it in the rule's own prompt tells the agent that ignoring the rule costs nothing.
+  it('ISS-936: the heading instructs the agent and makes the agent no excuse', () => {
+    const text = renderStageFactsText(
+      makeInputs({ alwaysInjectFacts: [{ key: 'contracts-boundary', text: RULE }] }),
+      'p-1',
+      'code',
+    );
+    expect(text).toContain('Follow them exactly.');
+    expect(text).not.toContain('never that it was DONE');
+    expect(text).not.toContain('no gate refuses');
   });
 
   it('AC#2: a non-flagged fact still renders only as a pointer, never inlined', () => {

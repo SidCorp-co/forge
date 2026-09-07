@@ -2947,6 +2947,27 @@
 
 ### Changed
 
+- **The always-inject flag now says what it buys, and stops implying the rule will be followed.**
+  Flagging a project fact `alwaysInject` splices its full body into every agent prompt under
+  *"Hard rules for this project — always-injected by the project owner. Follow them exactly"*, and
+  nothing has ever read the rule back: no gate refuses a step that ignored it, no step is asked
+  whether it complied, no surface counts observance. The settings tab nevertheless told the owner
+  to *"use it for hard rules the agent must always follow"* — an enforcement promise the control
+  plane was not making.
+
+  One sentence, `ALWAYS_INJECT_GUARANTEE_NOTE`, now states the split: delivery is guaranteed and
+  recorded per job, observance is the model's. `forge_config`'s description and the
+  `project-settings-and-test-credentials` guide interpolate it, and the settings tab's own
+  `GET /api/projects/:id/project-facts` serves it so the browser holds no second copy of the string.
+  It also names the one obligation on this deployment that DOES have a readback — the UX contract,
+  whose rules are `ux_contract_rules` rows with ids and whose violations agents cite in
+  `ux_findings` — because that is the price of an enforceable rule: ids to cite. A free-text fact
+  has none, which is why this is a correction to the claim rather than a new checker.
+
+  The agent's own prompt is unchanged, deliberately. Telling an agent inside a rule that nothing
+  checks the rule converts an unverified rule into an ignored one; the false promise was the one
+  made to the owner, and that is where it was withdrawn.
+
 - **Pairing a box is now issuing it a token, and the device credential is gone.** `devices` was
   both the machine and its secret — `token_hash`, `token_prefix` and an argon2 verifier of its own.
   It is a registry of machines now. `POST /api/devices/login/approve` takes an optional `agent_id`,

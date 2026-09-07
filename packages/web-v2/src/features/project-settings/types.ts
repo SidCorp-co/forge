@@ -25,6 +25,9 @@ export interface ProjectFactsResponse {
 	projectFactsConfig: ProjectFactsConfig;
 	/** Char budget for the SUM of always-inject bodies (warn-on-overflow). */
 	maxAlwaysInjectChars: number;
+	// cm:edge contract -> packages/core/src/projects/project-facts.ts — `ALWAYS_INJECT_GUARANTEE_NOTE`, served rather than copied: core may not value-import `@forge/contracts` and web-v2 cannot import core, so a string both sides must agree on otherwise lives twice behind a parity test
+	/** What the always-inject flag does and does not promise, for the owner setting it. */
+	alwaysInjectGuarantee: string;
 }
 
 /** `PATCH /api/projects/:id/project-facts` body. Per-key merge: a `null` value
