@@ -1413,6 +1413,35 @@
 
 ### Fixed
 
+- **A comment thread is now readable to its end by a client with no browser.**
+  `GET /api/issues/:id/comments` answered the whole tree under a fixed 1,000-row cap and said so —
+  `hasMore: true`, `truncatedBy: "response-size"`, and a notice whose remedy was *"a higher limit
+  will NOT help — read the full thread in the UI"*. That was accurate and left a CLI caller with no
+  move at all: the forge-plugin CLI met the bound on every long issue and broke in five places at
+  once, including a status judged off the whole record refusing every operation on a long issue
+  because it could not read the record whole. Both surfaces now take a cursor — REST `?cursor=`,
+  MCP `forge_comments {cursor}` — and answer `nextCursor` under the same name and meaning, from one
+  codec, so a token either transport mints decodes in the other. The size budget still bounds one
+  page; nothing bounds the thread.
+
+  Three things this change had to get right, each of which fails as a *clean* walk over an
+  incomplete thread. The cursor walks **root** comments, not comments: `buildCommentTree`
+  deliberately drops a reply whose parent is off-page rather than promoting it, so roots are the
+  only row set for which the tree builder is correct on a partial fetch. The token carries the DB's
+  own microsecond rendering of `created_at` rather than a JS `Date` — a `Date` holds milliseconds,
+  and a token minted from one names an instant at or before its own row, which made every page
+  repeat its predecessor's last root (measured: 47 rows read off a 40-comment thread at limit 7).
+  And `hasMore` is `nextCursor !== null` and nothing else, because `total` counts every comment flat
+  while a page carries roots, so `returned < total` stays true on a thread already walked to its
+  end. On the MCP side the size trim now sheds whole subtrees from the newest end and keeps at least
+  one row: an empty page under a cursor is a dead end, and a 20K-character agent report over the
+  budget is ordinary. `lib/pagination.ts` gains `cursorList`, the third of the three REST list
+  shapes — its own "two shapes and no third" rule (ISS-889) is rewritten here, because a keyset
+  route can honestly state neither an `offset` nor a `hasMore` computed off a count. The walk, its
+  three bounds and every way it ends early are drawn in
+  `docs/flows/issue-work-comment-thread-read.html`. The plugin's own client half is its issue,
+  there. (ISS-956)
+
 - **A `waitingKind` is now refused on every target that cannot store it, instead of being accepted
   and nulled.** `POST /api/issues/:id/transition` and `forge_issues action=transition` advertise
   `waitingKind` for any `toStatus`, but the write stores it only for `toStatus === 'waiting'` and

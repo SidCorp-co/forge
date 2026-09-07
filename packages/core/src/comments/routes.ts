@@ -11,7 +11,7 @@ import type { ActorRef } from '../issues/actor-identity.js';
 import { resolveActors } from '../issues/actor-resolution.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
-import { listResponse, paginationSchema, wholeList } from '../lib/pagination.js';
+import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { requireAnyAuth } from '../middleware/require-any-auth.js';
@@ -24,9 +24,10 @@ import {
   prepareCommentBody,
   rethrowBodyInvalid,
 } from './body-input.js';
+import { CommentCursorInvalidError, decodeCommentCursor } from './cursor.js';
 import { pgConstraintName, pgErrorCode } from './error-mapping.js';
 import { parseMentions, resolveMentions } from './mentions.js';
-import { updateCommentBody } from './service.js';
+import { commentThreadColumns, listIssueCommentPage, updateCommentBody } from './service.js';
 import {
   attachAuthors,
   buildCommentTree,
@@ -35,20 +36,9 @@ import {
 } from './tree.js';
 
 /** The comment projection every REST response here shares. */
-const restCommentColumns = {
-  id: comments.id,
-  issueId: comments.issueId,
-  authorId: comments.authorId,
-  authorDeviceId: comments.authorDeviceId,
-  body: comments.body,
-  format: comments.format,
-  template: comments.template,
-  parentId: comments.parentId,
-  createdAt: comments.createdAt,
-  updatedAt: comments.updatedAt,
-} as const;
-
 const idParamSchema = z.object({ id: z.uuid() });
+
+const threadQuerySchema = paginationSchema.extend({ cursor: z.string().min(1).optional() });
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -136,7 +126,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
             template: prepared.template,
             parentId: parentId ?? null,
           })
-          .returning(restCommentColumns);
+          .returning(commentThreadColumns);
         inserted = rows[0];
       } catch (err) {
         const pgCode = pgErrorCode(err);
@@ -211,36 +201,35 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
     zValidator('param', idParamSchema, (r) => {
       if (!r.success) throw badRequest(z.flattenError(r.error));
     }),
-    // Validate (and ignore) legacy ?limit/?offset params. The endpoint now
-    // returns a tree, but pre-existing flat-list clients still send them and
-    // a contract break would 500-loop them. The HARD_CAP below replaces the
-    // old `limit` semantics; pagination on a tree happens via /:id/replies.
-    zValidator('query', paginationSchema, (r) => {
+    // cm:guard `offset` stays VALIDATED AND IGNORED — keyset paging has no offset to honour, and pre-existing flat-list clients still send the `limit`/`offset` pair, so dropping it from the schema 400s every one of them. `limit` bounds one page's ROOT comments (ISS-956).
+    zValidator('query', threadQuerySchema, (r) => {
       if (!r.success) throw badRequest(z.flattenError(r.error));
     }),
     async (c) => {
       const { id: issueId } = c.req.valid('param');
+      const { limit, cursor } = c.req.valid('query');
       const userId = c.get('userId');
 
       const issue = await loadIssue(issueId);
       const access = await loadProjectAccess(issue.projectId, userId);
       if (!access.role) throw forbidden('not a project member');
 
-      // Single fetch of every comment on the issue. Depth is bounded to 3 by
-      // the DB trigger; cap breadth defensively so a runaway issue can't OOM
-      // the server. Pagination on a tree is awkward — if the cap is hit the
-      // client should switch to lazy-loading via /api/comments/:id/replies.
-      const COMMENT_TREE_HARD_CAP = 1000;
+      let after: ReturnType<typeof decodeCommentCursor> | undefined;
+      if (cursor !== undefined) {
+        try {
+          after = decodeCommentCursor(cursor);
+        } catch (err) {
+          if (err instanceof CommentCursorInvalidError) throw badRequest({ cursor: err.message });
+          throw err;
+        }
+      }
+
       const [{ n: total } = { n: 0 }] = await db
         .select({ n: count() })
         .from(comments)
         .where(eq(comments.issueId, issueId));
-      const rows = await db
-        .select(restCommentColumns)
-        .from(comments)
-        .where(eq(comments.issueId, issueId))
-        .orderBy(asc(comments.createdAt))
-        .limit(COMMENT_TREE_HARD_CAP);
+      const page = await listIssueCommentPage(issueId, { after, limit });
+      const rows = page.rows;
 
       // Join each comment's attachments in a single grouped query, keyed by
       // commentId. Guard the empty-ids case so `inArray` never receives an
@@ -287,8 +276,8 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
       );
       attachAuthors(tree, await resolveActors(refs));
 
-      // cm:guard this list is capped, NOT paginated — there is no limit/offset to page with, so it answers the header form and `total` is the real comment count rather than the capped tree's size. Handing it `listResponse` would state an `offset` and a `hasMore` that no caller can act on.
-      return c.json(wholeList(c, tree, Number(total)));
+      // cm:guard `total` counts every comment on the issue FLAT while `items` carries this page's roots, so the two are not comparable and `hasMore` must not be derived from them — `cursorList` derives it from `nextCursor` alone. Before ISS-956 this route answered `wholeList` under a fixed 1000-row cap, where `hasMore: true` told a client there was more and gave it no way to ask.
+      return c.json(cursorList(c, tree, Number(total), { limit, nextCursor: page.nextCursor }));
     },
   );
 }
@@ -353,7 +342,7 @@ commentRoutes.get(
       .where(eq(comments.parentId, id));
 
     const rows = await db
-      .select(restCommentColumns)
+      .select(commentThreadColumns)
       .from(comments)
       .where(eq(comments.parentId, id))
       .orderBy(asc(comments.createdAt))

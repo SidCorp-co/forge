@@ -53,7 +53,7 @@ async function parseErrorBody(res: Response): Promise<{
     }
     return { message: res.statusText, body };
   } catch {
-    // fall through to statusText
+    // cm:why a body that will not parse is not an error worth reporting over the status line the response already carries — every branch above needs JSON, and the one thing a caller can always act on is the status.
   }
   return { message: res.statusText };
 }
@@ -133,6 +133,54 @@ export async function apiClientList<T>(
     throw new Error(`${endpoint}: X-Total-Count is not a number (${header})`);
   }
   return { items, totalCount };
+}
+
+/**
+ * Cursor-paged list client: walks every page and answers the whole set.
+ *
+ * `total` on a cursor envelope counts what the query matched, which for the
+ * comment thread is every comment while a page carries only top-level ones —
+ * so it is reported as the caller's `totalCount` and is NOT what the walk
+ * stops on.
+ */
+// cm:guard the walk stops on `nextCursor === null` and on nothing else, and the page cap is what keeps a server that always returns a cursor from spinning here forever. Deriving the stop from `items.length` or from `total` is what `apiClientList`'s own guard refuses one shape up: a page is indistinguishable from a whole list by its size.
+// cm:edge contract -> packages/core/src/lib/pagination.ts — `cursorList` builds the envelope this reads; a route that answers `{items,total,nextCursor}` from anywhere else has to keep those three names for this to walk it
+export async function apiClientCursorAll<T>(
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<{ items: T[]; totalCount: number }> {
+  const MAX_PAGES = 200;
+  const joiner = endpoint.includes("?") ? "&" : "?";
+  const items: T[] = [];
+  let cursor: string | null = null;
+  let totalCount = 0;
+
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const url = cursor === null ? endpoint : `${endpoint}${joiner}cursor=${encodeURIComponent(cursor)}`;
+    const res = await fetchRaw(url, options);
+    if (res.status === 204) return { items, totalCount };
+
+    const body = (await res.json()) as
+      | { items: T[]; total: number; nextCursor: string | null }
+      | unknown;
+    if (!isCursorPage<T>(body)) {
+      throw new Error(`${endpoint}: answered no cursor envelope — cannot page this list`);
+    }
+    items.push(...body.items);
+    totalCount = body.total;
+    cursor = body.nextCursor;
+    if (cursor === null) return { items, totalCount };
+  }
+  throw new Error(`${endpoint}: still returning a cursor after ${MAX_PAGES} pages`);
+}
+
+// cm:guard a shape without `nextCursor` must THROW, never read as a complete list. A bare array or an offset envelope has no cursor, so the walk would stop after one page having pushed nothing — an empty thread on a screen with no control to ask for more, which is exactly the class of silent truncation `apiClientList` was hardened against one shape up (ISS-893, ISS-956).
+function isCursorPage<T>(
+  body: unknown,
+): body is { items: T[]; total: number; nextCursor: string | null } {
+  if (typeof body !== "object" || body === null) return false;
+  const b = body as { items?: unknown; total?: unknown; nextCursor?: unknown };
+  return Array.isArray(b.items) && typeof b.total === "number" && "nextCursor" in b;
 }
 
 /**
