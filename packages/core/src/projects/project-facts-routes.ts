@@ -9,6 +9,7 @@ import { logger } from '../logger.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { mergeAgentConfig, readAgentConfig } from './agent-config.js';
 import {
+  ALWAYS_INJECT_GUARANTEE_NOTE,
   mergeProjectFacts,
   mergeProjectFactsConfig,
   PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS,
@@ -17,8 +18,6 @@ import {
   RESERVED_PROJECT_FACT_KEYS,
 } from './project-facts.js';
 
-// ─── Project facts (ISS-521) ─────────────────────────────────────────────────
-//
 // Dedicated read/patch routes for the per-project "rules" layer:
 //   - `agentConfig.projectFacts`        — kebab-key → text guide map
 //   - `agentConfig.projectFactsConfig`  — per-key `{ alwaysInject }` metadata
@@ -55,9 +54,8 @@ const projectFactsPatchBodySchema = z
   })
   .strict();
 
-// NOTE: mounted under `projectRoutes` (see ./routes.ts), which applies
-// requireAuth() + assertEmailVerified() to every request — no own middleware
-// here, or auth (and its email-verified DB lookup) would run twice.
+// cm:guard add NO middleware here: this router is mounted under `projectRoutes`, which already applies `requireAuth()` + `assertEmailVerified()` to every request, so a second copy runs auth and its email-verified DB lookup twice per call.
+// cm:edge protocol -> packages/core/src/projects/routes.ts — that mount is what supplies `userId`; mounted anywhere else, every handler here reads it as undefined
 export const projectFactsRoutes = new Hono<{ Variables: AuthVars }>();
 
 projectFactsRoutes.get(
@@ -80,6 +78,8 @@ projectFactsRoutes.get(
       projectFactsConfig:
         (ac.projectFactsConfig as Record<string, { alwaysInject?: boolean }> | undefined) ?? {},
       maxAlwaysInjectChars: PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS,
+      // cm:edge contract -> packages/web-v2/src/features/project-settings/components/project-facts-tab.tsx — the tab renders this string; it is served rather than copied because core may not value-import @forge/contracts and web-v2 cannot import core, so any string both sides must agree on otherwise lives twice behind a parity test
+      alwaysInjectGuarantee: ALWAYS_INJECT_GUARANTEE_NOTE,
     });
   },
 );
@@ -173,6 +173,8 @@ projectFactsRoutes.patch(
       projectFactsConfig:
         (ac.projectFactsConfig as Record<string, { alwaysInject?: boolean }> | undefined) ?? {},
       maxAlwaysInjectChars: PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS,
+      // cm:guard the PATCH answer replaces the GET's in the tab's query cache (`useUpdateProjectFacts` calls `setQueryData` on the same key), so a field served by only ONE of these two routes disappears from the screen on the owner's first save.
+      alwaysInjectGuarantee: ALWAYS_INJECT_GUARANTEE_NOTE,
     });
   },
 );

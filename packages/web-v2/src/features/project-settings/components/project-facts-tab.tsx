@@ -1,5 +1,8 @@
 "use client";
 
+// cm:guard flagging a fact always-inject guarantees DELIVERY and nothing else, so this tab may not word it as a rule the agent will follow — the server's `alwaysInjectGuarantee` sentence is rendered here to say exactly that (ISS-936).
+// cm:edge protocol -> packages/core/src/projects/project-facts-routes.ts — one PATCH carries every edit and the server merges PER KEY, so a removed key must be sent as `null` and a rename is a delete plus an add; sending only the survivors leaves the dropped key on the project.
+
 import {
 	Banner,
 	Button,
@@ -15,16 +18,6 @@ import {
 	Toggle,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-// Project settings → Project Facts (ISS-521). The per-project "rules" layer:
-// author-maintained kebab-key → text guides that agents read. A fact flagged
-// "always-inject" has its FULL body spliced verbatim into every agent system
-// prompt for this project (like a mandatory rule), instead of the default
-// fetch-on-demand pointer — guarded by a char budget so the prompt can't bloat.
-//
-// Backed by the dedicated GET/PATCH /api/projects/:id/project-facts routes
-// (atomic per-key merge of agentConfig.projectFacts + projectFactsConfig). The
-// editor batches all edits into one PATCH: a removed key becomes `null`
-// (server merge deletes it), a renamed key is a delete + add.
 import { useEffect, useMemo, useState } from "react";
 import { useProjectFacts, useUpdateProjectFacts } from "../hooks";
 import {
@@ -83,8 +76,8 @@ export function ProjectFactsTab({
 	}, [factsQ.data]);
 
 	const maxChars = factsQ.data?.maxAlwaysInjectChars ?? 6000;
+	const guarantee = factsQ.data?.alwaysInjectGuarantee ?? "";
 
-	// Live always-inject budget: sum of the bodies of every always-inject row.
 	const injectedChars = useMemo(
 		() =>
 			rows
@@ -207,10 +200,16 @@ export function ProjectFactsTab({
 				<p className="fg-body-sm mb-3 text-muted">
 					Author-maintained rules and guides for this project. By default a fact
 					is listed to agents as a fetch-on-demand pointer. Flag a fact{" "}
-					<b>always-inject</b> to splice its full body verbatim into{" "}
-					<b>every</b> agent prompt — use it for hard rules the agent must
-					always follow.
+					<b>always-inject</b> to splice its full body into <b>every</b> agent
+					prompt.
 				</p>
+
+				{
+					// cm:edge contract -> packages/core/src/projects/project-facts.ts — `ALWAYS_INJECT_GUARANTEE_NOTE`, read off the response rather than restated here
+					guarantee && (
+						<p className="fg-body-sm mb-3 text-muted">{guarantee}</p>
+					)
+				}
 
 				<Banner tone="attention">
 					Never store secrets here. Project facts are synced to disk and
@@ -218,7 +217,6 @@ export function ProjectFactsTab({
 					tab, which renders them as a runtime pointer.
 				</Banner>
 
-				{/* Always-inject token budget meter (AC #2). */}
 				<div className="mt-4 rounded-md border border-line bg-surface px-3 py-2.5">
 					<div className="mb-1 flex items-center justify-between">
 						<span className="fg-label text-fg">Always-inject budget</span>

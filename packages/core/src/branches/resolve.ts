@@ -53,10 +53,10 @@ export function resolveIssueBranches(issue: IssueLike, project: ProjectLike): Br
 }
 
 /**
- * Pull a per-issue branch override off an issue row. The override lives on
- * `metadata.branchConfig` once the real column lands (ISS PR-C); until then it
- * falls back to `sessionContext.branchConfig`. Pure — pass the result as
- * `{ metadata: { branchConfig } }` into {@link resolveIssueBranches}.
+ * Pull a per-issue branch override off an issue row. `metadata.branchConfig`
+ * wins; `sessionContext.branchConfig` is the older location and the fallback.
+ * Pure — pass the result as `{ metadata: { branchConfig } }` into
+ * {@link resolveIssueBranches}.
  */
 export function extractIssueBranchOverride(issue: {
   metadata?: { branchConfig?: IssueBranchOverride | null } | null;

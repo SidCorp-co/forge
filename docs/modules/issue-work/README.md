@@ -60,6 +60,18 @@ flowchart LR
   module leaves the node, so a NULL link means "no node written yet" and never "the node is gone".
   Drawn in
   [`docs/flows/web-v2-module-taxonomy.html`](../../flows/web-v2-module-taxonomy.html).
+- **A module's knowledge node refreshes itself when a passing test lands, and never on a status
+  change.** A `test` handoff whose `result` is `pass` or `verified_by_test` appends the issue to the
+  primary module's node (`knowledge_entries.related_issue_ids`, deduped) and re-stamps
+  `metadata.moduleFlow`; the secondaries it touched get the append and nothing else. Exactly one
+  primary means there is never a question about whose flow to touch. Every declining case is a
+  no-op that says so rather than an error: no primary refreshes nothing and records nothing, and a
+  module with no `knowledge_entry_id` refreshes nothing and names itself in the issue's activity
+  feed rather than getting a node invented under a guessed slug. `metadata.moduleFlow` is a claim
+  about a specific body (`bodyHash`), which is why nothing clears it — a redrawn flow changes the
+  hash and the next landing re-arms against the new body. A refresh that throws is reported to the
+  log and the activity feed and never fails the handoff that triggered it. Drawn in
+  [`docs/flows/issue-work-module-knowledge-refresh.html`](../../flows/issue-work-module-knowledge-refresh.html).
 - **Only `kind='blocks'` gates dispatch.** An edge `(from=A, to=B, 'blocks')` means A must reach a
   terminal status before B may dispatch, and cross-project edges are legal. `relates`, `duplicates`
   and `parent` are metadata no dispatch path may read. The `cm:guard` is on
