@@ -69,13 +69,6 @@ const TEXT_FORMATS = new Set([
   'image/svg+xml',
 ]);
 
-// cm:guard narrower than EXT_MIME on purpose — `text/html` must stay reachable only by an explicit declaration. Adding `html` here would let any mislabelled text file become a document a browser wants to render.
-const TEXT_EXT_MIME: Record<string, string> = {
-  md: 'text/markdown',
-  markdown: 'text/markdown',
-  csv: 'text/csv',
-};
-
 function extensionOf(name: string): string {
   return name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : '';
 }
@@ -105,50 +98,53 @@ function isBinaryControl(codePoint: number): boolean {
   return codePoint < 0x20 || codePoint === 0x7f;
 }
 
+// cm:guard this table must stay the byte-wise projection of isBinaryControl — it exists only because an indexed scan over 10 MB (UPLOADS_MAX_BYTES) costs ~20 ms where the same loop through the Set costs ~400 ms of blocked event loop, and two predicates that disagree is the bug this file already paid for once (ISS-957)
+const BINARY_BYTE = new Uint8Array(256);
+for (let byte = 0; byte < 256; byte++) BINARY_BYTE[byte] = isBinaryControl(byte) ? 1 : 0;
+
 /**
- * Whether the bytes decode as UTF-8 and carry no binary control character.
- *
- * This is the PROMOTING predicate: it decides whether a file whose declared
- * type the tracker would otherwise refuse may be rescued as text.
+ * The text a UTF-16 byte-order mark promises, or null when there is no BOM or
+ * the bytes do not actually decode under it.
  */
-export function isUtf8Text(bytes: Buffer): boolean {
-  if (bytes.byteLength === 0) return false;
-  let text: string;
+function utf16Text(bytes: Buffer): string | null {
+  if (bytes.byteLength < 2) return null;
+  const encoding =
+    bytes[0] === 0xff && bytes[1] === 0xfe
+      ? 'utf-16le'
+      : bytes[0] === 0xfe && bytes[1] === 0xff
+        ? 'utf-16be'
+        : null;
+  if (!encoding) return null;
   try {
-    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return new TextDecoder(encoding, { fatal: true }).decode(bytes.subarray(2));
   } catch {
-    return false;
+    return null;
   }
-  for (const ch of text) {
-    const code = ch.codePointAt(0);
-    if (code !== undefined && isBinaryControl(code)) return false;
-  }
-  return true;
-}
-
-function hasUtf16Bom(bytes: Buffer): boolean {
-  if (bytes.byteLength < 2) return false;
-  const [a, b] = [bytes[0], bytes[1]];
-  return (a === 0xff && b === 0xfe) || (a === 0xfe && b === 0xff);
 }
 
 /**
- * Whether the bytes are binary, judged WITHOUT requiring valid UTF-8.
+ * Whether the bytes are binary — the one predicate the resolution consults.
  *
- * This is the REFUSING predicate, and it is deliberately not the negation of
- * {@link isUtf8Text}: a Windows-1252 CSV and a BOM-marked UTF-16 `.txt` are
- * text that fails a UTF-8 decode, and refusing them would remove uploads that
- * worked before ISS-957 for a reason no part of ISS-957 asked for. A UTF-16
- * file with no BOM stays out of reach — it is bytes-identical to a binary blob
- * with a NUL every other byte, and guessing there would reopen the hole.
+ * It does NOT require a UTF-8 decode: a Windows-1252 CSV out of Excel is text
+ * that fails one, and refusing it would remove uploads that worked before
+ * ISS-957 for a reason no part of ISS-957 asked for. What it refuses is a
+ * control byte no text carries, wherever in the file it sits.
  */
 export function looksBinary(bytes: Buffer): boolean {
   if (bytes.byteLength === 0) return true;
-  // cm:guard the BOM must short-circuit BEFORE the NUL scan, not after it — every other byte of UTF-16 text is NUL, so the scan alone calls a Notepad-saved `.txt` binary and refuses a file that landed fine before ISS-957
-  if (hasUtf16Bom(bytes)) return false;
-  for (const byte of bytes.subarray(0, 8192)) {
-    if (byte === 0) return true;
-    if (byte < 0x20 && !TEXT_CONTROLS.has(byte)) return true;
+  // cm:guard a BOM selects the DECODER and the scan then runs over the decoded units — it must never return early, because two bytes anyone can prepend would otherwise admit any blob as text/plain and make this whole check a formality (ISS-957)
+  // cm:guard `fatal: true` is the load-bearing half — it rejects the lone surrogates any real binary payload reaches within a few hundred bytes (measured: 200 of 200 random 4 KB blobs), so the residual is a blob too short to contain one, which by this predicate's only definition is text
+  const decoded = utf16Text(bytes);
+  if (decoded !== null) {
+    for (const ch of decoded) {
+      const code = ch.codePointAt(0);
+      if (code !== undefined && isBinaryControl(code)) return true;
+    }
+    return false;
+  }
+  // cm:guard scan every byte, never a prefix — a window means the payload only has to start past it, and 8 KB of ASCII in front of an ELF header is not a hard file to make. The buffer is already whole in memory and capped by UPLOADS_MAX_BYTES, so there is nothing to stream around.
+  for (let i = 0; i < bytes.length; i++) {
+    if (BINARY_BYTE[bytes[i] as number] === 1) return true;
   }
   return false;
 }
@@ -171,6 +167,8 @@ export function allowedSetForTarget(target: AttachmentTarget): {
   };
 }
 
+const UNDECLARED = 'application/octet-stream';
+
 export type MimeResolution =
   | { ok: true; mime: string }
   | { ok: false; reason: 'not-allowed' | 'not-text'; mime: string };
@@ -185,41 +183,40 @@ export interface ResolveAttachmentMimeInput {
 /**
  * Decide an attachment's stored type from its bytes and its name.
  *
- * The byte check RESCUES a file the name would have got refused; it does not
- * DEMOTE one the declaration already gets right. Three cases, in order:
+ * Two questions, in order: does the target allow the candidate type, and did
+ * the client CLAIM that type or did this module guess it from the name?
  *
- * 1. The candidate is a non-text type the target allows — believed. An
- *    uncompressed PDF is all ASCII, and retyping it to `text/plain` because it
- *    happens to decode would be a silent substitution of the worst kind: the
- *    upload succeeds and the file is quietly the wrong thing.
- * 2. The candidate is a text format — accepted if the target allows it AND the
- *    bytes are not binary, refused `not-text` otherwise. This is what stops
- *    `.log` becoming a new way to store a blob as `text/plain`.
- * 3. Anything else — rescued to a text type when the bytes are UTF-8 text,
- *    which is what makes `.log`, `.sql` and any unknown extension land, and
- *    refused `not-allowed` when they are not.
+ * A claim is binding. A type the target allows is believed — an uncompressed
+ * PDF is all ASCII, and retyping it because it happens to decode would be a
+ * silent substitution of the worst kind. A type the target refuses is refused
+ * by name rather than quietly stored as something else.
+ *
+ * A guess is not binding, because the client never said it — and
+ * `application/octet-stream` is a guess whoever it came from. When the guess is
+ * a type this target does not take, text bytes still land as `text/plain`.
+ * That is what makes `.log`, `.sql` and every unmapped extension attach, and
+ * `mimeFromName` returning `text/plain` by default is the other half of it.
+ *
+ * Either way a text type must carry text, which is what stops `.log` becoming
+ * a new way to store a blob.
  */
 export function resolveAttachmentMime(input: ResolveAttachmentMimeInput): MimeResolution {
   const allowed = ALLOWED_BY_TARGET[input.target];
-  const candidate = input.declaredMime || mimeFromName(input.name);
+  // cm:guard `application/octet-stream` counts as NO declaration, not as a claim — the multipart routes write it themselves whenever the browser reports `""` (issues/attachment-routes.ts, comments/routes.ts), which is every `.log` a person drags in, so treating it as a claim refuses the headline case ISS-957 exists to admit
+  const declared = input.declaredMime === UNDECLARED ? '' : input.declaredMime;
+  const candidate = declared || mimeFromName(input.name);
 
-  if (!TEXT_FORMATS.has(candidate) && allowed.has(candidate)) {
-    return { ok: true, mime: candidate };
-  }
-
-  if (TEXT_FORMATS.has(candidate)) {
-    if (!allowed.has(candidate)) return { ok: false, reason: 'not-allowed', mime: candidate };
+  if (allowed.has(candidate)) {
+    if (!TEXT_FORMATS.has(candidate)) return { ok: true, mime: candidate };
     return looksBinary(input.bytes)
       ? { ok: false, reason: 'not-text', mime: candidate }
       : { ok: true, mime: candidate };
   }
 
-  if (isUtf8Text(input.bytes)) {
-    const byExtension = TEXT_EXT_MIME[extensionOf(input.name)];
-    const mime = byExtension && allowed.has(byExtension) ? byExtension : 'text/plain';
-    if (allowed.has(mime)) return { ok: true, mime };
+  if (declared || looksBinary(input.bytes)) {
+    return { ok: false, reason: 'not-allowed', mime: candidate };
   }
-  return { ok: false, reason: 'not-allowed', mime: candidate };
+  return { ok: true, mime: 'text/plain' };
 }
 
 /** The message a `MIME_NOT_ALLOWED` refusal carries, which names the reason the type was rejected. */

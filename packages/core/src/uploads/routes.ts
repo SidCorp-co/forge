@@ -100,8 +100,7 @@ uploadRoutes.put(
 
       return c.json(persisted, 201);
     } catch (err) {
-      // The bytes never landed — re-open the ticket so the holder can retry
-      // with the same URL instead of having to mint a new one.
+      // cm:why re-open rather than burn the ticket — the bytes never landed, so a transient failure lets the holder retry the same presigned URL instead of paying a second mint
       await releaseUploadTicket(uploadId);
       if (
         err instanceof IssueAttachmentError ||
@@ -145,6 +144,8 @@ uploadRoutes.get(
     return c.body(new Uint8Array(bytes), 200, {
       'content-type': att.mime,
       'content-length': String(bytes.byteLength),
+      // cm:edge contract -> packages/core/src/lib/attachment-headers.ts — the same bytes are also served by the three bearer-guarded routes through that helper, which sends `nosniff` on every response; this route sends its own headers and must carry it too, or the one surface reachable with no credential is the one where a browser may sniff an uploaded blob into markup
+      'x-content-type-options': 'nosniff',
       'content-disposition': `attachment; filename="${safeName}"`,
       'cache-control': 'private, no-store',
     });

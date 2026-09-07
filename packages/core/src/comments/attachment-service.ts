@@ -64,12 +64,7 @@ export function validateCommentAttachment(input: {
   return resolved.mime;
 }
 
-/**
- * The oldest attachment on this comment stored under exactly `name`, or null.
- *
- * Scoped to the one comment, not the issue: a comment is written once with its
- * files, and two comments in a thread may each carry their own `output.txt`.
- */
+// cm:guard this message must NOT offer "delete it" the way the issue twin does — there is no DELETE for a comment attachment (comments/routes.ts publishes only POST /:commentId/attachments and GET /attachments/:id, and the issue route's DELETE joins issue_attachments), so the divergence from the issue wording is the correct half of the pair (ISS-963)
 function nameTakenError(existing: ExistingAttachmentRef, scope: string): AttachmentError {
   return new AttachmentError(
     'ATTACHMENT_NAME_TAKEN',
@@ -78,6 +73,12 @@ function nameTakenError(existing: ExistingAttachmentRef, scope: string): Attachm
   );
 }
 
+/**
+ * The oldest attachment on this comment stored under exactly `name`, or null.
+ *
+ * Scoped to the one comment, not the issue: a comment is written once with its
+ * files, and two comments in a thread may each carry their own `output.txt`.
+ */
 export async function findCommentAttachmentByName(
   commentId: string,
   name: string,
