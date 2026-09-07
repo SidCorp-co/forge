@@ -62,6 +62,9 @@ single rung can be honest about both.</p>
     <td>Caller-asserted: any hop out of the base merge state stamps it, merge or not</td></tr>
 <tr><td>Does a branch exist</td><td><code>issues.session_context.branch</code></td>
     <td>Written by the session; the project's own base/production branch does not count</td></tr>
+<tr><td>Which of those a master sees on a backlog row</td>
+    <td><code>packages/core/src/devices/backlog.ts</code> &rarr; <code>BacklogEntry.mergedAt</code>, <code>.branch</code></td>
+    <td>Raw, beside the same module's raw <code>blockerStatus</code>/<code>blockerMergedAt</code>; never a <code>shipped</code> or <code>ready</code> boolean</td></tr>
 <tr><td>Is there a commit</td><td><code>issue_step_contexts</code> <code>kind='handoff'</code> &rarr; <code>payload.commitSha</code></td>
     <td>From a <code>code</code>/<code>fix</code>/<code>drive</code> step; an empty handoff is not evidence</td></tr>
 </tbody>
@@ -117,6 +120,21 @@ single rung can be honest about both.</p>
   <text class="m" x="20" y="308">A session already in the worktree takes `in_progress`; one that has pushed its branch and cannot merge takes `developed`.</text>
   <text class="m" x="20" y="324">Promoting to `open` instead is what races a runner-dispatched agent against the session already building the branch (ISS-933).</text>
 </svg>
+
+<h2>What a master can tell from a backlog row</h2>
+<div class="rule">
+<p>The declared backlog (ISS-917) excludes an issue only when work has been <b>opened</b> for it —
+a job, or a live run. A run built by the pipeline mints a job and so never appears. <b>An issue
+built by hand mints neither</b>, which is exactly the shape a session-per-run design produces, so
+a <code>draft</code> somebody finished and a <code>draft</code> nobody has touched arrive as the
+same row.</p>
+<p>The fix is the one the module already applies to blockers, extended to the issue itself: carry
+the evidence <i>fields</i>, and let the master decide. <code>mergedAt</code> and
+<code>branch</code> are on the row; there is no derived <code>shipped</code> flag, and a row
+carrying a merge mark is <b>not</b> filtered out — <code>merged_at</code> is caller-asserted, so
+it is a fact to show a reader, never grounds for the kernel to hide the row and take the decision
+away.</p>
+</div>
 
 <h2>When the run that owed the close dies</h2>
 <div class="rule">
@@ -178,6 +196,8 @@ is to put it in front of the person who can check.</p>
     <td>It falls into <code>AUTONOMOUS_INFLIGHT_STATUSES</code> by subtraction, and <code>resetAutonomousWedgesOnce</code> rolls finished work back to <code>open</code> and re-dispatches it.</td></tr>
 <tr><td>A wedge pass that stops requiring a prior <code>drive</code> job row</td>
     <td><code>draft &rarr; in_progress</code> stops being safe: a live hand session gets an agent dropped into the worktree it is working in.</td></tr>
+<tr><td>Excluding rows with <code>merged_at</code> set from the declared backlog</td>
+    <td>The kernel silently hides an issue whose stamp may be wrong, and the master cannot tell that from an empty backlog. Show the fact; do not take the decision.</td></tr>
 <tr><td>Dropping the live-job or running-run arm from <code>detectOwedCloses</code></td>
     <td>A reopened issue carries the mark of its first landing, so the alarm fires on every issue that has ever shipped anything.</td></tr>
 </tbody>
@@ -192,6 +212,7 @@ is to put it in front of the person who can check.</p>
 <tr><td>The refusal an illegal exit gets</td><td><code>packages/core/src/issues/apply-transition.ts</code></td></tr>
 <tr><td>The one status that dispatches</td><td><code>packages/core/src/pipeline/autonomous-mode.ts</code> &rarr; <code>autonomousStepFor</code></td></tr>
 <tr><td>Re-dispatch, and its refusal on a merged row</td><td><code>packages/core/src/pipeline/reconciler.ts</code></td></tr>
+<tr><td>What a master reads before promoting</td><td><code>packages/core/src/devices/backlog.ts</code></td></tr>
 <tr><td>Surfacing the owed close</td><td><code>packages/core/src/pipeline/stranded-issues.ts</code> &rarr; <code>detectOwedCloses</code></td></tr>
 <tr><td>What the agent is told</td><td><code>packages/core/src/guides/registry.ts</code> &rarr; <code>pipeline-and-issue-lifecycle</code></td></tr>
 </tbody>

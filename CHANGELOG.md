@@ -35,6 +35,16 @@
   every other live status is already waiting on a person. That is asserted against
   `autonomousStepFor` rather than described.
 
+- **A backlog row now says whether the work already exists.** The declared backlog (ISS-917)
+  excludes an issue only when a job or a live run has been opened for it — and an issue built by
+  hand mints neither, so a `draft` somebody finished and a `draft` nobody has touched arrived as
+  the same row. `BacklogEntry` carries `mergedAt` and `branch`, raw, beside the raw
+  `blockerStatus`/`blockerMergedAt` the same module already returns for blockers. No derived
+  `shipped` flag, and a row carrying a merge mark is **not** filtered out: `merged_at` is
+  caller-asserted, so it is a fact to hand the master, never grounds for the kernel to hide the row
+  and take the decision away. Measured 2026-09-06 — ISS-931 sat at `open` with its code on
+  `origin/main` and was still offered as the highest-scoring work on the project.
+
 - **A `draft` somebody is already working can say so, without dispatching an agent into their
   worktree.** `draft → in_progress` was refused outright, and the only legal forward move — `open`
   — auto-triages and mints a `drive` job. ISS-933 therefore sat at `draft` with a green-gated PR
