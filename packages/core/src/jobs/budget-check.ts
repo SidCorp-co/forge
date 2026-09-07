@@ -23,6 +23,7 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { JobType } from '../db/schema.js';
 import { comments, issues, type jobs, projects } from '../db/schema.js';
+import { utcDateTrunc } from '../lib/time-buckets.js';
 import { logger } from '../logger.js';
 import { extractStageStatus, resolveStageOverrides } from './stage-overrides.js';
 
@@ -67,12 +68,13 @@ export async function checkMonthlyBudget(
 
   let spent = 0;
   try {
+    // cm:why the month floor goes through `utcDateTrunc` so the cutoff is a timestamptz: a bare `date_trunc('month', now() AT TIME ZONE 'UTC')` yields a NAIVE timestamp, which Postgres then coerces against `started_at` using the session TimeZone — on UTC+7 the window opened 7h into the previous month and counted its spend against this month's cap
     const rows = (await db.execute(sql`
       SELECT COALESCE(SUM(cost_usd), 0)::float AS spent
       FROM pipeline_run_step_durations
       WHERE project_id = ${job.projectId}
         AND step = ${job.type}
-        AND started_at >= date_trunc('month', now() AT TIME ZONE 'UTC')
+        AND started_at >= ${utcDateTrunc('month', sql`now()`)}
     `)) as unknown as Array<{ spent: number | string | null }>;
     const raw = rows?.[0]?.spent ?? 0;
     spent = typeof raw === 'string' ? Number.parseFloat(raw) : Number(raw);
@@ -94,12 +96,7 @@ export async function checkMonthlyBudget(
   return { action: 'allow', spent, budget, stageStatus };
 }
 
-// --- warn dedup --------------------------------------------------------
-
-// Key = `${projectId}:${stageStatus}:${hourBucket}`. Cap size at 1024 to
-// bound memory; on overflow drop the oldest half (cheap, no LRU bookkeeping
-// — at 1024 stages × 1 hour buckets we'd already be far past any realistic
-// load anyway).
+// cm:why bounded at 1024 with a drop-oldest-half eviction rather than an LRU: the key is per project × stage × hour, so 1024 live entries is already far past any realistic load and the bookkeeping would cost more than the bound is worth
 const warnDedup = new Map<string, number>();
 
 export function shouldEmitWarn(projectId: string, stageStatus: string): boolean {
@@ -122,8 +119,6 @@ export function shouldEmitWarn(projectId: string, stageStatus: string): boolean 
 export function __resetBudgetWarnDedup(): void {
   warnDedup.clear();
 }
-
-// --- breach comment ----------------------------------------------------
 
 export interface PostBudgetExhaustedCommentInput {
   issueId: string;

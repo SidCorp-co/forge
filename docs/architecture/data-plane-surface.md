@@ -38,6 +38,13 @@ is the live example. Read the mount and its middleware, not the prefix alone.
 
 ## Reachable over REST today
 
+**A row here is not permission to delete the tool.** It answers "does a REST twin exist", which is
+one input to the deletion rule in [agent-surface.md](agent-surface.md) and not the rule. Nine of
+these tools are called by the `forge` CLI the fleet still runs, which calls the TOOL and not the
+route — `forge_memory.search` and `forge_projects.get`/`.list` among them, all three of which had
+been read off this table as free to go. Check that page's fleet-upgrade row before removing
+anything.
+
 | MCP tool | REST | 
 |---|---|
 | `forge_issues` list | `/api/projects/:id/issues` — **there is no `GET /api/issues`**; the collection is project-scoped only |
@@ -97,6 +104,7 @@ project-scoped token there is an account-scoped credential wearing a project-sco
 | `forge_orgs.list` · `forge_orgs.members` | `/api/orgs` | org-wide by definition; a token bound to one project has no business enumerating the org |
 | `forge_collaborators` | `/api/me/collaborators` | `/api/me` is caller-scoped, not project-scoped |
 | — | `/api/pat` | a scoped token that can mint an unscoped one has no scope. This is the entry whose absence collapses every other one |
+| — | `/api/admin/mcp-audit/tools` | per-tool `mcp_audit_log` counts, which span every project on the instance — the `ops-health` shape. The MCP deletion rule is written against these numbers and an agent still cannot read them: that is `ISS-946`'s recorded answer, not an omission, and a project-scoped twin is refused by name because a tool idle here and busy next door would read *clear*. See [agent-surface.md](agent-surface.md) |
 
 Two more are fenced for the same reason even though their prefix IS allowlisted:
 

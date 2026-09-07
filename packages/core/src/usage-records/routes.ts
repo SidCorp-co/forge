@@ -51,9 +51,7 @@ const recordCreateSchema = z
 
 const bulkSchema = z
   .object({
-    // Bulk + ingest-cli paths require an explicit projectId on every record
-    // so the per-record auth gate can run; a null projectId would silently
-    // bypass the loadProjectAccess loop and pollute the global pool.
+    // cm:guard `projectId` is REQUIRED here and on the ingest-cli twin, and widening it to optional is the whole defect: the per-record gate below authorises by iterating the distinct projectIds, so a null one is filtered out of that loop, authorised by nobody, and inserted as a global-pool row.
     records: z
       .array(recordCreateSchema.extend({ projectId: z.uuid() }))
       .min(1)
@@ -214,9 +212,7 @@ usageRecordRoutes.post(
     const input = c.req.valid('json');
     const userId = c.get('userId');
 
-    // A projectId is required on this user-facing route: without it any caller
-    // could create unscoped null-project (global-pool) rows. Internal writers
-    // use materializeJobUsage (direct DB insert), not this HTTP route (ISS-492).
+    // cm:guard refuse a missing `projectId` here rather than defaulting it — an unscoped row is a global-pool row, and this is a user-facing route. The internal writers that legitimately create them are `materializeJobUsage` and friends, which insert directly and never come through HTTP (ISS-492).
     if (!input.projectId) {
       throw badRequest({ projectId: 'required' });
     }
@@ -264,7 +260,6 @@ usageRecordRoutes.post(
     const { records } = c.req.valid('json');
     const userId = c.get('userId');
 
-    // Authorise once per distinct project the caller submits.
     const projectIds = Array.from(
       new Set(records.map((r) => r.projectId).filter((p): p is string => !!p)),
     );
@@ -309,8 +304,7 @@ usageRecordRoutes.post(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    // Same shape as /bulk but tagged source semantics — desktop runners post
-    // local JSONL parses here. Auth = same project-member gate per record.
+    // cm:why this exists beside /bulk only to tag the source: desktop runners post their local JSONL parses here, and the ingest path has to be distinguishable from an API caller's bulk upload after the fact
     const { records } = c.req.valid('json');
     const userId = c.get('userId');
 
