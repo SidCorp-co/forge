@@ -108,7 +108,7 @@ const relayBodySchema = z
   })
   .strict();
 
-// cm:why derived from the schema constant, never restated. This used to be a hand-written copy of the same four statuses carrying a `cm:edge` asking the next editor to remember both — and it now gates the session-token revoke as well as the two bridges, so a drifted copy would leave a live credential behind rather than merely a silent room. A note asking someone to remember is not a mechanism; sharing the array is.
+// cm:why derived from the schema constant, never restated. This used to be a hand-written copy of the same four statuses carrying a `cm:edge` asking the next editor to remember both; a drifted copy would leave the two bridges silent for a whole class of finished sessions. A note asking someone to remember is not a mechanism; sharing the array is.
 const TERMINAL_SESSION_STATUSES: ReadonlySet<AgentSessionStatus> = new Set(
   terminalAgentSessionStatuses,
 );

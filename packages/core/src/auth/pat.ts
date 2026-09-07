@@ -39,7 +39,7 @@ export interface MintPatInput {
   name: string;
   scopes?: string[] | undefined;
   projectIds?: string[] | null | undefined;
-  // cm:edge contract -> packages/core/src/pat/routes.ts — mutual exclusion with `projectIds` is enforced at the REST layer ONLY, so a direct caller of `mintPat` can set both and no type says otherwise. `mintJobToken` and `mintSessionToken` are such callers; both set this and leave `projectIds` unset.
+  // cm:edge contract -> packages/core/src/pat/routes.ts — mutual exclusion with `projectIds` is enforced at the REST layer ONLY, so a direct caller of `mintPat` can set both and no type says otherwise. `devices/credential.ts` is such a caller: it sets `projectIds: []` and leaves `boundProjectId` for the agent the box pairs as.
   boundProjectId?: string | null | undefined;
   /** The paired box this token is issued to — see `devices/credential.ts`. */
   deviceId?: string | null | undefined;

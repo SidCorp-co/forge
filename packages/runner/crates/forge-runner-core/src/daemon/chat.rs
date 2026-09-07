@@ -4,7 +4,7 @@
 //! the desktop app already fulfils. Core resolves an online `claude-code`
 //! runner via `findAvailableDeviceForProject`, opens a one-shot
 //! `pipeline_run kind='interactive'`, and publishes:
-//!   - `agent:start` `{ sessionId, prompt, projectSlug, repoPath, systemPrompt, model, sessionToken }`
+//!   - `agent:start` `{ sessionId, prompt, projectSlug, repoPath, systemPrompt, model }`
 //!   - `agent:send`  `{ sessionId, message, claudeSessionId, repoPath, projectSlug, model }`
 //!   - `agent:abort` `{ sessionId }`
 //!
