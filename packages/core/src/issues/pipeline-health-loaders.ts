@@ -8,11 +8,12 @@
  * the incident that mirror came from.
  */
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, pipelineRuns } from '../db/schema.js';
 import { extractStageStatus } from '../jobs/stage-overrides.js';
-import type { PipelineHealthJob } from './pipeline-health-types.js';
+import { describePause } from '../pipeline/run-pause.js';
+import type { PipelineHealthJob, PipelineHealthPausedRun } from './pipeline-health-types.js';
 
 /**
  * Q3 — the issue's live jobs, bucketed by issue id.
@@ -62,6 +63,53 @@ export async function loadActiveJobsByIssue(
       retryAfterAt: r.retryAfterAt,
     });
     byIssue.set(r.issueId, bucket);
+  }
+  return byIssue;
+}
+
+/**
+ * Q4 — the issue's paused pipeline run, one per issue, newest first.
+ *
+ * Deliberately NOT a join off `jobs` like Q3 above: the whole point of ISS-853
+ * is the case where the run has no queued job to be joined from, so this reads
+ * `pipeline_runs` by issue id directly.
+ */
+// cm:guard filter on `status = 'paused'` and nothing else — narrowing this by the issue's own status, or by whether the run has queued work, rebuilds exactly the blind spot ISS-853 closed: a run paused with nothing queued under an issue that still reads `approved`
+export async function loadPausedRunsByIssue(
+  projectId: string,
+  ids: string[],
+): Promise<Map<string, PipelineHealthPausedRun>> {
+  const rows = await db
+    .select({
+      id: pipelineRuns.id,
+      issueId: pipelineRuns.issueId,
+      metadata: pipelineRuns.metadata,
+      updatedAt: pipelineRuns.updatedAt,
+    })
+    .from(pipelineRuns)
+    .where(
+      and(
+        eq(pipelineRuns.projectId, projectId),
+        eq(pipelineRuns.status, 'paused'),
+        inArray(pipelineRuns.issueId, ids),
+      ),
+    )
+    .orderBy(desc(pipelineRuns.updatedAt));
+
+  const byIssue = new Map<string, PipelineHealthPausedRun>();
+  for (const r of rows) {
+    if (!r.issueId || byIssue.has(r.issueId)) continue;
+    const raw = (r.metadata as Record<string, unknown> | null)?.pauseReason;
+    const pauseReason = typeof raw === 'string' && raw !== '' ? raw : null;
+    const { kind, detail, resumer } = describePause(pauseReason);
+    byIssue.set(r.issueId, {
+      runId: r.id,
+      pauseReason,
+      kind,
+      detail,
+      resumer,
+      since: (r.updatedAt ?? new Date()).toISOString(),
+    });
   }
   return byIssue;
 }

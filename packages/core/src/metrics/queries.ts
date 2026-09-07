@@ -1,5 +1,6 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { bucketIso, utcDateTrunc } from '../lib/time-buckets.js';
 
 /**
  * Project-scoped time-series metrics (ISS-380, Part 1). Every series is
@@ -10,8 +11,9 @@ import { db } from '../db/client.js';
  *     '1 day')` because postgres-js cannot bind a JS `Date` into a parameterized
  *     query (ISS-267).
  *   - `bucket` ('day' | 'hour') is passed as a BOUND text parameter to
- *     `date_trunc(text, ts)` — never string-interpolated — so it is
- *     injection-safe even though it is enum-validated upstream.
+ *     `utcDateTrunc` — never string-interpolated — so it is injection-safe even
+ *     though it is enum-validated upstream. The truncation is pinned to UTC
+ *     because `bucketTimestamps` below floors to UTC (ISS-942).
  *   - percentiles use `percentile_disc(p) WITHIN GROUP (ORDER BY …)`.
  */
 
@@ -39,12 +41,6 @@ const BUCKET_MS: Record<Bucket, number> = { day: 86_400_000, hour: 3_600_000 };
 function num(x: unknown): number {
   if (x === null || x === undefined) return 0;
   return typeof x === 'number' ? x : Number(x);
-}
-
-/** Normalize a `date_trunc` bucket value (Date | string from the driver) to ISO. */
-function bucketIso(x: unknown): string {
-  if (x instanceof Date) return x.toISOString();
-  return new Date(x as string).toISOString();
 }
 
 function windowCutoff(days: number): SQL {
@@ -151,7 +147,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
     case 'cost': {
       if (groupByStep) {
         const rows = (await db.execute(sql`
-          SELECT date_trunc(${bucket}, started_at) AS bucket,
+          SELECT ${utcDateTrunc(bucket, sql`started_at`)} AS bucket,
                  step,
                  sum(cost_usd)::float AS cost_usd
           FROM pipeline_run_step_durations
@@ -165,7 +161,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
         });
       } else {
         const rows = (await db.execute(sql`
-          SELECT date_trunc(${bucket}, recorded_at) AS bucket,
+          SELECT ${utcDateTrunc(bucket, sql`recorded_at`)} AS bucket,
                  sum(estimated_cost)::float AS cost_usd
           FROM usage_records
           WHERE project_id = ${projectId}
@@ -182,7 +178,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
 
     case 'throughput': {
       const rows = (await db.execute(sql`
-        SELECT date_trunc(${bucket}, al.created_at) AS bucket,
+        SELECT ${utcDateTrunc(bucket, sql`al.created_at`)} AS bucket,
                count(*)::int AS resolved
         FROM activity_log al
         JOIN issues i ON i.id = al.issue_id
@@ -196,7 +192,6 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
       const dense = densifyScalar(buckets, rows, (r) => ({ resolved: num(r.resolved) }), {
         resolved: 0,
       });
-      // Cumulative (burndown) = running sum of resolved across the window.
       let acc = 0;
       series = dense.map((p) => {
         acc += num(p.resolved);
@@ -228,7 +223,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
             AND al.payload ->> 'to' IN ('in_progress', 'approved')
           GROUP BY al.issue_id
         )
-        SELECT date_trunc(${bucket}, r.resolved_at) AS bucket,
+        SELECT ${utcDateTrunc(bucket, sql`r.resolved_at`)} AS bucket,
                avg(extract(epoch from (r.resolved_at - COALESCE(ws.started_at, i.created_at))) / 86400.0)::float AS avg_days,
                percentile_disc(0.5) WITHIN GROUP (
                  ORDER BY extract(epoch from (r.resolved_at - COALESCE(ws.started_at, i.created_at))) / 86400.0
@@ -251,7 +246,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
 
     case 'queue_wait': {
       const rows = (await db.execute(sql`
-        SELECT date_trunc(${bucket}, queued_at) AS bucket,
+        SELECT ${utcDateTrunc(bucket, sql`queued_at`)} AS bucket,
                percentile_disc(0.5) WITHIN GROUP (
                  ORDER BY extract(epoch from (dispatched_at - queued_at)) * 1000.0
                ) AS median_ms,
@@ -276,10 +271,10 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
     }
 
     case 'runner_utilization': {
-      // jobs has no started_at; dispatched_at is the busy-interval start proxy.
+      // cm:why `jobs` has no started_at, so dispatched_at stands in for the busy interval's start — utilization is overstated by the dispatch-to-start gap, never understated
       const windowSeconds = BUCKET_SECONDS[bucket];
       const rows = (await db.execute(sql`
-        SELECT date_trunc(${bucket}, dispatched_at) AS bucket,
+        SELECT ${utcDateTrunc(bucket, sql`dispatched_at`)} AS bucket,
                runner_id,
                (sum(extract(epoch from (finished_at - dispatched_at))) / ${windowSeconds}::float) AS busy_pct
         FROM jobs
@@ -314,7 +309,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
       // total input = input_tokens + cache_read_tokens (cache reads are billed
       // input that bypassed fresh processing).
       const rows = (await db.execute(sql`
-        SELECT date_trunc(${bucket}, recorded_at) AS bucket,
+        SELECT ${utcDateTrunc(bucket, sql`recorded_at`)} AS bucket,
                (sum(cache_read_tokens)::float / NULLIF(sum(input_tokens + cache_read_tokens), 0)) AS cache_hit_rate,
                count(*)::int AS n
         FROM usage_records
@@ -344,7 +339,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
         : sql`verdict = 'pass'`;
       const eligible = isPassRate ? sql`verdict <> 'blocked_fixture'` : sql`true`;
       const rows = (await db.execute(sql`
-        SELECT date_trunc(${bucket}, created_at) AS bucket,
+        SELECT ${utcDateTrunc(bucket, sql`created_at`)} AS bucket,
                (count(*) FILTER (WHERE ${passed})::float / NULLIF(count(*) FILTER (WHERE ${eligible}), 0)) AS rate,
                (count(*) FILTER (WHERE ${eligible}))::int AS n
         FROM issue_step_contexts
@@ -368,7 +363,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
       // ISS-381 (2.2) — sweeper-written snapshots. Average the per-tick depth /
       // running count within each bucket; gaps fill as 0 (no active jobs).
       const rows = (await db.execute(sql`
-        SELECT date_trunc(${bucket}, ts) AS bucket,
+        SELECT ${utcDateTrunc(bucket, sql`ts`)} AS bucket,
                avg(queue_depth)::float AS queue_depth,
                avg(running_count)::float AS running_count,
                avg(avg_wait_ms)::float AS avg_wait_ms

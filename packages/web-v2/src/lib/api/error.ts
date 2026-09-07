@@ -1,4 +1,3 @@
-// Ported verbatim from `packages/web/src/lib/api/error.ts` (ISS-288).
 import { ApiError } from './client';
 
 const FRIENDLY_CODES: Record<string, string> = {
@@ -40,14 +39,7 @@ export function formatApiError(err: unknown): string {
   return 'Unknown error';
 }
 
-// `PATCH /api/projects/:id/pipeline-config` rejects with a typed `code` and a
-// structured `details` payload (e.g. which stages are missing a skill). The
-// generic `formatApiError` only ever returns `err.message`, so the actionable
-// detail — *which* stage blocked the save — was dropped, leaving the user with
-// a vague toast. `formatPipelineConfigError` reads `ApiError.details` for the
-// known pipeline-config codes and builds a stage-naming, actionable message.
-// These codes are intentionally NOT added to `FRIENDLY_CODES`: that map is a
-// static code→string lookup and cannot read `details`.
+// cm:guard ISS-422 — the pipeline-config codes below must stay OUT of `FRIENDLY_CODES`. That map is a static code→string lookup and cannot read `details`, so a rejection routed through it loses the only actionable half it carries: WHICH stage blocked the save. That is the vague toast this function exists to replace.
 
 /**
  * Map a pipeline stage *status* (as it appears in error `details`) to the
@@ -91,10 +83,33 @@ function joinStageLabels(statuses: string[]): string {
  * message. Falls back to {@link formatApiError} for non-ApiError values and any
  * code without a dedicated message (so behaviour never regresses).
  */
+// cm:why `zValidator` answers a `superRefine` refusal as `BAD_REQUEST` with `z.flattenError`'s `{ formErrors, fieldErrors }`, so the message the schema wrote — readable, already naming the settings it is about — is sitting in `fieldErrors[<top-level key>]` and is otherwise thrown away behind "Invalid input"
+// cm:edge contract -> packages/core/src/pipeline/pipeline-config-schema.ts — a `ctx.addIssue` whose `path` starts with a key NOT listed here renders as the generic BAD_REQUEST string; the two must be extended together or the operator gets "please check the fields" for a rule that named itself
+const ZOD_REFUSAL_KEYS = ['poolBacklog', 'intakeGate', 'mcpServers', 'states'];
+
+function zodRefusal(details: unknown): string | null {
+  if (!details || typeof details !== 'object') return null;
+  const fieldErrors = (details as { fieldErrors?: unknown }).fieldErrors;
+  if (!fieldErrors || typeof fieldErrors !== 'object') return null;
+  for (const key of ZOD_REFUSAL_KEYS) {
+    const msgs = (fieldErrors as Record<string, unknown>)[key];
+    if (Array.isArray(msgs) && typeof msgs[0] === 'string') return msgs[0];
+  }
+  return null;
+}
+
 export function formatPipelineConfigError(err: unknown): string {
   if (!(err instanceof ApiError)) return formatApiError(err);
 
+  if (err.code === 'BAD_REQUEST') {
+    const refusal = zodRefusal(err.details);
+    if (refusal) return refusal;
+  }
+
   switch (err.code) {
+    // cm:guard pass the server's message THROUGH. A cross-field refusal already names both settings in plain English — that is the whole point of writing it in the schema — and paraphrasing it here is a second copy that drifts silently the moment the rule is edited.
+    case 'CONFIG_CONFLICT':
+      return err.message;
     case 'MISSING_SKILL_FOR_ENABLED_STAGE':
     case 'AUTO_STAGE_NEEDS_SKILL': {
       const stages = detailStringList(err.details, 'stagesMissingSkill');

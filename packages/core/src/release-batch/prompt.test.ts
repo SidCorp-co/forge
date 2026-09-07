@@ -37,10 +37,32 @@ describe('buildReleaseBatchPrompt', () => {
   it('gives the declared rollback instead, and never both', () => {
     const out = buildReleaseBatchPrompt({
       ...BASE,
-      plan: plan({ rollback: 'coolify rollback --to previous' }),
+      plan: plan({ rollback: { kind: 'manual', text: 'promote the previous theme revision' } }),
     });
-    expect(out).toContain('coolify rollback --to previous');
+    expect(out).toContain('promote the previous theme revision');
     expect(out).not.toContain('declares NO rollback');
+  });
+
+  it('names the Forge action when the binding declares the coolify rollback', () => {
+    const out = buildReleaseBatchPrompt({
+      ...BASE,
+      plan: plan({ rollback: { kind: 'coolify-image' } }),
+    });
+    expect(out).toContain('forge_coolify_deploy action=rollback-images');
+    expect(out).toContain('forge_coolify_deploy action=rollback');
+    expect(out).not.toContain('declares NO rollback');
+  });
+
+  it('tells the agent to abort on a coolify binding whose rollback is still prose', () => {
+    const out = buildReleaseBatchPrompt({
+      ...BASE,
+      plan: plan({
+        rollback: { kind: 'unrepresentable', text: 'ssh in and docker compose up -d' },
+      }),
+    });
+    expect(out).toContain('ABORT');
+    expect(out).toContain('ssh in and docker compose up -d');
+    expect(out).toContain('Do NOT follow the text below yourself');
   });
 
   // cm:guard the floor exists because 17 gated projects had no procedure on the day this shipped; drop it and every one of their releases starts with the agent being told nothing

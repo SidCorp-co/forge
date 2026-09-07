@@ -37,7 +37,7 @@ Owner: <code>packages/runner/crates/forge-runner-core/src/daemon/{master,control
 
 <h2>Who takes the job, and where that decision lives</h2>
 <p>The master is a <b>resident tmux session</b> named <code>forge-master-&lt;slug&gt;</code>, not a
-print process the daemon spawns per pass. Its identity is its <code>agent_sessions</code> row — the
+one-shot process the daemon spawns per pass. Its identity is its <code>agent_sessions</code> row — the
 same uuid <code>jobs.held_by</code> carries — and taking a job is <b>two acts</b>, not one:
 <code>prepare</code> takes the hold and hands back a job token with no process started;
 <code>start</code> stamps the dispatch, and that stamp is what ends the hold.</p>
@@ -140,7 +140,7 @@ than pane-hosted — the price paid, and what it buys.</p>
 
   <path class="arrow" d="M170,394 L170,418"/>
   <rect class="box" x="20" y="418" width="300" height="34" rx="4"/>
-  <text class="t" x="34" y="440">runner.start → duplex permit</text>
+  <text class="t" x="34" y="440">runner.start → session permit</text>
 
   <path class="arrowbad" d="M320,435 L560,435"/>
   <rect class="exit" x="560" y="418" width="300" height="34" rx="4"/>
@@ -171,8 +171,8 @@ than pane-hosted — the price paid, and what it buys.</p>
 <tr><td><code>git worktree add</code> refuses</td><td>end of the lock band</td>
     <td><code>failed to start job: git worktree add failed: …</code></td>
     <td>not a box fault — deliberately outside the <code>preflight_failed:</code> namespace</td></tr>
-<tr><td>Every duplex permit on the box is held</td><td><code>runner.start</code>, lock already released</td>
-    <td><code>session_permit_saturated: all N duplex permits on this box held after 600s; holders at wait start: …</code></td>
+<tr><td>Every session permit on the box is held</td><td><code>runner.start</code>, lock already released</td>
+    <td><code>session_permit_saturated: all N permits on this box held after 600s; holders at wait start: …</code></td>
     <td><code>infra</code> / <code>failover</code>, cause <code>box_session_saturated</code>. The action names the intent; on the pool path it does not move the job — see <a href="../proposals/pool-cannot-route-around-a-full-box.md">the proposal</a>.</td></tr>
 <tr><td>Nothing spawned inside the beat budget</td><td>the heartbeat task</td>
     <td>the beat stops; core's reaper judges the silence</td>

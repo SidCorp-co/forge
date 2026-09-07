@@ -27,20 +27,12 @@ export interface DispatchOutcome {
 }
 
 /**
- * Hook called after a `release`-type job completes. Looks up the project's
- * Coolify integrations (staging + prod), enqueues a deploy job for each
- * environment that's active and not waiting for prod confirmation.
- *
- * No-op (returns `dispatched=false, integrationIds=[]`) when the project
- * has no Coolify configured — preserves backwards-compatible behaviour.
- */
-/**
  * Per-project opt-in: when `agentConfig.pipelineConfig.autoProdDeploy === true`,
  * a prod Coolify deploy auto-dispatches on release exactly like staging,
  * skipping the human-confirm gate. Default false keeps the gate. Best-effort —
  * a read failure falls back to the safe (gated) behavior.
  */
-async function projectAutoProdDeploy(projectId: string): Promise<boolean> {
+export async function projectAutoProdDeploy(projectId: string): Promise<boolean> {
   try {
     const [row] = await db
       .select({ agentConfig: projects.agentConfig })
@@ -54,6 +46,23 @@ async function projectAutoProdDeploy(projectId: string): Promise<boolean> {
     logger.warn({ err, projectId }, 'coolify: failed to read autoProdDeploy — keeping prod gate');
     return false;
   }
+}
+
+/**
+ * Whether a run-less action against a `prod` binding must park for a human.
+ *
+ * There is exactly one rule and this is the only place it is written: a prod
+ * binding with no run behind it never dispatches, because confirming a prod
+ * deploy is run-keyed and a run-less action has no gate to release. The
+ * project can opt out wholesale with `pipelineConfig.autoProdDeploy`.
+ */
+// cm:edge contract -> packages/core/src/integrations/coolify/controls.ts — cancel and rollback change production exactly as a deploy does (ISS-925), so they ask THIS function rather than restating the branch; a second copy is how one of the three ends up with a weaker gate than the other two.
+export async function prodActionNeedsHumanConfirm(
+  projectId: string,
+  environment: string,
+): Promise<boolean> {
+  if (environment !== 'prod') return false;
+  return !(await projectAutoProdDeploy(projectId));
 }
 
 /**
@@ -83,6 +92,12 @@ async function warnIfRunAlreadyTerminal(runId: string, issueId: string | null): 
   reportUnwitnessedDeploy(runId, issueId);
 }
 
+/**
+ * Enqueue a Coolify deploy for each active binding of this project, called
+ * after a release-type job completes. A prod binding is parked for a human
+ * unless the project opted into `autoProdDeploy`; a project with no binding
+ * at all returns `reason: 'no-integration'` and stamps the skipped substep.
+ */
 // cm:flow release/deploy after:reap — job completion, not the close, is what dispatches the deploy; a prod binding parks for a human unless pipelineConfig.autoProdDeploy is on
 export async function tryDispatchCoolifyRelease(args: {
   projectId: string;
@@ -216,7 +231,7 @@ export async function dispatchCoolifyDeployDirect(args: {
   }
   const { binding } = pair;
 
-  if (binding.environment === 'prod' && !(await projectAutoProdDeploy(projectId))) {
+  if (await prodActionNeedsHumanConfirm(projectId, binding.environment)) {
     // Prod is never auto-dispatched run-less (unless the project opted into
     // autoProdDeploy). Confirming a prod deploy is run-keyed (confirm-prod-
     // deploy endpoint), so it still requires the issueId path — return the gate
@@ -339,7 +354,6 @@ export async function confirmPendingProdDeploy(
     return { confirmed: false, runId: null, integrationId: bindingId };
   }
 
-  // Persist the confirmation onto the run's metadata.
   const [run] = await db
     .select({ id: pipelineRuns.id, metadata: pipelineRuns.metadata })
     .from(pipelineRuns)
