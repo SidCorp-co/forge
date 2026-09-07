@@ -59,11 +59,12 @@ export const PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS = 6000;
 // cm:edge contract -> packages/web-v2/src/features/project-settings/components/project-facts-tab.tsx — the browser copy, which reads it off that response instead of holding a second copy
 export const ALWAYS_INJECT_GUARANTEE_NOTE =
   'What alwaysInject guarantees is that the fact is READ, never that it was DONE. ' +
-  'The full body is spliced verbatim into every agent system prompt for this project, ' +
-  'and that injection is recorded per job. Nothing checks the rule was followed: no gate ' +
-  'refuses a step that ignored it, no step is asked whether it complied, and no surface ' +
-  'counts how often it was obeyed. Compliance is the model reading the text, not a ' +
-  'guarantee the control plane is making. One obligation on this deployment does have a ' +
+  'The full body is spliced verbatim into every agent system prompt for this project, and ' +
+  'what was injected is visible afterwards on the job. Whether it was followed is recorded ' +
+  'nowhere: no gate refuses a step that ignored it, no step is asked whether it complied, ' +
+  'and no surface counts how often it was obeyed. Compliance is the model reading the ' +
+  'text, not a guarantee the control plane is making. One obligation on this deployment ' +
+  'does have a ' +
   'readback, and it shows the price: the UX contract is stored as ux_contract_rules rows ' +
   'with ids, its prose is compiled from them, and agents cite those ids when they record ' +
   'a ux_findings row. A free-text fact has no ids to cite, so write the rule so that an ' +
@@ -78,8 +79,7 @@ export const projectFactsConfigPatchSchema = z
   .nullable()
   .optional();
 
-// `| undefined` on the optional prop matches the Zod-inferred shape under
-// `exactOptionalPropertyTypes` so callers can pass parsed input directly.
+// cm:why the explicit `| undefined` matches the Zod-inferred shape under `exactOptionalPropertyTypes`, which is what lets a caller pass parsed input straight in; dropping it makes every call site rebuild the object.
 export type ProjectFactConfigEntry = { alwaysInject?: boolean | undefined };
 export type ProjectFactsConfig = Record<string, ProjectFactConfigEntry>;
 export type ProjectFactsConfigPatch = Record<string, ProjectFactConfigEntry | null> | null;

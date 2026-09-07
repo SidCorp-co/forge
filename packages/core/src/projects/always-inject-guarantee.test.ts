@@ -50,15 +50,19 @@ function withoutComments(source: string): string {
 const fakeCtx = { principal: {}, deprecations: new Set<string>() } as never;
 
 describe('ALWAYS_INJECT_GUARANTEE_NOTE', () => {
-  it('says the fact is guaranteed read', () => {
+  it('says the fact is guaranteed read, and where that is visible afterwards', () => {
     expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain('is READ');
     expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain(
       'spliced verbatim into every agent system prompt',
     );
+    expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain('visible afterwards on the job');
   });
 
   it('says compliance is not verified, in all three of the ways it is not', () => {
     expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain('never that it was DONE');
+    expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain(
+      'Whether it was followed is recorded nowhere',
+    );
     expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain('no gate refuses a step that ignored it');
     expect(ALWAYS_INJECT_GUARANTEE_NOTE).toContain('no surface counts how often it was obeyed');
   });

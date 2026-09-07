@@ -2956,7 +2956,7 @@
   plane was not making.
 
   One sentence, `ALWAYS_INJECT_GUARANTEE_NOTE`, now states the split: delivery is guaranteed and
-  recorded per job, observance is the model's. `forge_config`'s description and the
+  visible afterwards on the job, observance is the model's. `forge_config`'s description and the
   `project-settings-and-test-credentials` guide interpolate it, and the settings tab's own
   `GET /api/projects/:id/project-facts` serves it so the browser holds no second copy of the string.
   It also names the one obligation on this deployment that DOES have a readback — the UX contract,
