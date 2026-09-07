@@ -67,19 +67,17 @@ export interface PreparedJob {
   runnerId: string;
   runnerType: string;
   attempts: number;
-  // cm:hack ISS-941 until:every device holding a runner row reports agent_version >= 0.12.1 (`runner-v0.12.1` is the first release whose crate has no `session_mode` read — 9efa379a is contained in that tag and no lower one; 0.12.0's `transport/pool.rs` still reads it). Measured 2026-09-07: 3 devices, only one there — read the whole fleet at once from the project's read-only Postgres cross-check surface (`devices` JOIN `runners`, `agent_version` is what each box heartbeats), because `GET /api/devices` needs a browser session and one project's device pool answers for one project. A CONSTANT on the wire, never read from config: an older binary derives its process model from the literal `"duplex"` alone, so a core that has stopped sending the field reads to it as absent, `duplex: false`, and the print lane — for a core that no longer has one, with nothing going red. Sending the constant makes BOTH runner generations correct.
-  sessionMode: 'duplex';
   sessionResidencySeconds?: number;
 }
 
 /**
- * How long a resident session may sit idle, and the process model every job
- * now runs under.
+ * How long a resident session may sit idle. The process model is no longer sent
+ * with it: every job runs duplex, and ISS-941 dropped the constant that said so.
  */
 // cm:guard `pipelineConfig` is not parsed through its Zod schema here on purpose: a config that fails validation for an unrelated key must not stop the job going out.
 async function sessionSettingsOf(projectId: string): Promise<{
   agentConfig: unknown;
-  settings: { sessionMode: 'duplex'; sessionResidencySeconds?: number };
+  settings: { sessionResidencySeconds?: number };
 }> {
   const [row] = await db
     .select({ agentConfig: projects.agentConfig })
@@ -93,7 +91,6 @@ async function sessionSettingsOf(projectId: string): Promise<{
   return {
     agentConfig: row?.agentConfig ?? null,
     settings: {
-      sessionMode: 'duplex',
       // cm:guard a positive number ONLY. The key defaults to 0 and no project has set it, so forwarding 0 would be indistinguishable on the wire from a project asking for no residency at all — the runner resolves absent and 0 to the same default for exactly that reason, and sending nothing keeps the two sides agreeing by construction.
       ...(typeof secs === 'number' && secs > 0 ? { sessionResidencySeconds: secs } : {}),
     },

@@ -891,7 +891,7 @@ mod tests {
         );
     }
 
-    // cm:guard core STILL SENDS `sessionMode` and this runner no longer has a field for it — that pairing is the ISS-873 phase 6 compat shim, and this is the test that keeps it survivable. A `#[serde(deny_unknown_fields)]` anywhere on the claim types, or a field deserialised into an enum, turns the shim into every box failing every claim at once with the error inside serde. `telepathy` stands in for any value: none of them may reach the parse.
+    // cm:guard a wire field this crate has no member for must never fail a claim. ISS-941 deleted the last known one (`sessionMode`, core's ISS-873 phase 6 compat shim), so `sessionMode` here now stands in for ANY field a newer core adds before this crate learns it — the two ship on different clocks, so core is always free to send a field the fleet does not parse yet. A `#[serde(deny_unknown_fields)]` anywhere on the claim types, or a field deserialised into an enum, turns that freedom into every box failing every claim at once with the error inside serde. `telepathy` stands in for any value: none of them may reach the parse.
     #[test]
     fn a_wire_field_this_runner_no_longer_reads_still_parses() {
         let prepared: crate::transport::pool::Prepared =
