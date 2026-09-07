@@ -31,18 +31,21 @@ import {
 } from "@/design";
 import { STAGES, type StageKey } from "@/design/stages";
 import type { StatusKey } from "@/design/status";
+import { useResumeRun } from "@/features/pipeline/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   deriveBlockerState,
   deriveStageOutcomes,
   parseChecklist,
+  statusLabelFor,
   statusToChip,
   statusToRun,
   statusToStage,
@@ -87,9 +90,7 @@ const TASK_STATUS_TONE: Record<
   done: "green",
 };
 
-// Human labels for the task lifecycle — the Tasks tab badge must read "In
-// progress", not the raw wire value `in_progress` (ISS-349, matching the issue
-// label helpers in derive.ts).
+// cm:edge naming -> packages/web-v2/src/features/issues/derive.ts — the same kernel-status-to-human-label job the issue helpers do, kept separate only because tasks carry their own status set; ISS-349, and the badge must never render the raw wire value `in_progress`
 const TASK_STATUS_LABELS: Record<TaskRow["status"], string> = {
   backlog: "Backlog",
   todo: "To do",
@@ -119,8 +120,7 @@ export function IssueDetailScreen({
 
   useRoom(projectRoom(projectId));
 
-  // Viewer role is read-only: hide transition/edit/comment affordances (the
-  // server 403s regardless — this is UX, not the gate).
+  // cm:why hiding the write affordances from a viewer is UX, never the gate — the server 403s a viewer's transition, edit and comment regardless, so a bug here costs a confusing button and not an unauthorised write
   const projectsQ = useProjects();
   const projectRole = projectsQ.data?.find((p) => p.id === projectId)?.role;
   const canWrite = projectRole !== "viewer";
@@ -140,7 +140,14 @@ export function IssueDetailScreen({
   const patch = usePatchIssue();
   const { requestTransition, dialog: reasonDialog, isPending: transitionPending } =
     useGuardedTransition();
-  const pending = patch.isPending || transitionPending;
+  const qc = useQueryClient();
+  // cm:why the shared run-control hook already owns the endpoint and both toasts; only the issue query needs an extra invalidation, because a resume changes this issue's `pipelineHealth.pausedRun` and that key is not in the hook's own list
+  const resumeRun = useResumeRun();
+  const onResumeRun = (runId: string) =>
+    resumeRun.mutate(runId, {
+      onSuccess: () => qc.invalidateQueries({ queryKey: ["issue", id] }),
+    });
+  const pending = patch.isPending || transitionPending || resumeRun.isPending;
 
   const issue = issueQ.data;
   const checklist = useMemo(() => {
@@ -203,12 +210,8 @@ export function IssueDetailScreen({
   const onApprove = () => requestTransition(id, "approved", { successMessage: "Issue approved" });
   const onBannerResume = () =>
     requestTransition(id, "reopen", { successMessage: "Issue resumed" });
-  const onReopen = () => onTransition("reopen");
 
-  // ISS-377 — these are pure derivations (not hooks), so they sit safely after
-  // the loading/error early-returns. `deriveBlockerState` is the SINGLE join of
-  // status / pipelineHealth.waitingOn / blocks edges (AC#2); for needs_info the
-  // newest comment is the question to answer.
+  // cm:guard the derivations below sit AFTER the loading/error early-returns on purpose — they are plain function calls, not hooks, so no hook order changes with them; moving a real hook down here is what would break
   const runStatus = statusToRun(issue.status, issue.agentStatus);
   // The needs_info question is the MOST RECENT comment (the API returns the
   // comment tree oldest-first, so the triggering question is the last top-level
@@ -339,7 +342,10 @@ export function IssueDetailScreen({
           <div className="flex flex-wrap items-center gap-2">
             <MonoTag hue="cobalt">{issue.displayId}</MonoTag>
             {/* Issue lifecycle (pill) vs live agent run (squared, agent glyph). */}
-            <StatusChip status={statusToChip(issue.status)} />
+            {
+          // cm:guard label with the TRUE lifecycle status, never the bucket's own word. `statusToChip` folds `draft`, `open`, `confirmed`, `clarified` and `approved` all onto `queued`, so the bare chip told a reader the pipeline had a draft queued when nothing was working it — the exact confusion ISS-917 admits statuses to a backlog to make legible. Every other issue-domain chip already passes this.
+        }
+        <StatusChip status={statusToChip(issue.status)} label={statusLabelFor(issue.status)} />
             {runChip && (
               <StatusChip
                 status={runChip}
@@ -419,7 +425,6 @@ export function IssueDetailScreen({
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
-        {/* Main column */}
         <div className="min-w-0 space-y-4">
           {/* Tier-1: "why is it stuck" — shown only when blocked (ISS-377 AC#1). */}
           {blocker && (
@@ -429,8 +434,8 @@ export function IssueDetailScreen({
               pending={pending || !canWrite}
               onApprove={onApprove}
               onResume={onBannerResume}
+              onResumeRun={onResumeRun}
               onProvideInfo={focusComments}
-              onReopen={onReopen}
             />
           )}
 
@@ -629,6 +634,7 @@ export function IssueDetailScreen({
                 onPatch={onPatch}
                 onTransition={onTransition}
                 onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
+                canMarkMerged={canWrite}
               />
             </CardContent>
           </Card>
@@ -644,6 +650,7 @@ export function IssueDetailScreen({
               onPatch={onPatch}
               onTransition={onTransition}
               onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
+              canMarkMerged={canWrite}
             />
           </Collapsible>
         </div>

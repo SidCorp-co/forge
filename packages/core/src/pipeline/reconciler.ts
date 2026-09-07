@@ -62,6 +62,8 @@ export async function runReconcilerOnce(): Promise<{
   let stale = 0;
   let autonomousReset = 0;
 
+  // cm:guard `merged_at IS NULL` is a REFUSAL, not a filter: an issue at `open` carrying the mark has already shipped and the close it owed died with its run, so re-dispatching it hands a runner work that is live in production. Measured 2026-09-06 on ISS-920 and ISS-931 (ISS-940). It is silent here on purpose — `detectOwedCloses` in pipeline/stranded-issues.ts is what tells a human, deduped, and a warn on a 60s tick would print the same ids every minute instead.
+  // cm:edge lockstep -> packages/core/src/pipeline/stranded-issues.ts — this exclusion and `detectOwedCloses` are one decision split across two passes: drop the detector and the exclusion becomes a silent skip
   // cm:guard the entry status is the WHOLE rescue set now. This used to embed `AUTO_DISPATCH_STATUSES` — the nine `PIPELINE_STEPS` trigger statuses — and ISS-895 left one, so a stuck issue is by definition one sitting at `open` with nothing working it. Widening this back to the staged rungs would re-scan the statuses migration 0208 emptied, and `dispatchAutonomous` enqueues at the entry status only, so every row it found would be re-read every 60s and produce nothing.
   const stuck = await db.execute<{
     id: string;
@@ -74,6 +76,7 @@ export async function runReconcilerOnce(): Promise<{
     FROM issues i
     INNER JOIN projects p ON p.id = i.project_id
     WHERE i.status = ${AUTONOMOUS_ENTRY_STATUS}
+      AND i.merged_at IS NULL
       AND i.updated_at < now() - interval '${sql.raw(STUCK_ISSUE_INTERVAL)}'
       AND NOT EXISTS (
         SELECT 1 FROM jobs j
@@ -101,8 +104,7 @@ export async function runReconcilerOnce(): Promise<{
         projectId: row.project_id,
         issueId: row.id,
         status: row.status as IssueStatus,
-        // Synthesise a device principal from the project owner; matches the
-        // pattern in orchestrator.resolveSkipDevice (no schema change needed).
+        // cm:why the project owner stands in as a device principal because this pass has no session behind it — the same substitution orchestrator.resolveSkipDevice makes, and the reason neither needed a schema column
         actor: { type: 'device', id: actorId, agency: 'agent' },
         reason: { reconciler: true, reason: 'enqueued_missing' },
       });

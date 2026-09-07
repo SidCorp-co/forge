@@ -299,8 +299,6 @@ describe('PATCH /api/issues/batch', () => {
   it('mixed status + priority — illegal transition surfaces as skipReason on the partially-applied row', async () => {
     authVerified();
     selectAwait.mockResolvedValueOnce([
-      // ISS1 in `draft` cannot skip mid-pipeline to `in_progress` (drafts may
-      // only be promoted to open or discarded to closed)
       {
         id: ISS1,
         issSeq: 1,
@@ -311,7 +309,6 @@ describe('PATCH /api/issues/batch', () => {
         complexity: null,
         reopenCount: 0,
       },
-      // ISS2 in `approved` can transition to `in_progress`
       {
         id: ISS2,
         issSeq: 2,
@@ -331,7 +328,7 @@ describe('PATCH /api/issues/batch', () => {
     });
     // ISS2's status update returns its row.
     updateReturning.mockResolvedValueOnce([
-      { id: ISS2, status: 'in_progress', reopenCount: 0, updatedAt: new Date() },
+      { id: ISS2, status: 'testing', reopenCount: 0, updatedAt: new Date() },
     ]);
 
     const res = await buildApp().request('/api/issues/batch', {
@@ -339,7 +336,7 @@ describe('PATCH /api/issues/batch', () => {
       headers: await headers(),
       body: JSON.stringify({
         ids: [ISS1, ISS2],
-        data: { status: 'in_progress', priority: 'high' },
+        data: { status: 'testing', priority: 'high' },
       }),
     });
     expect(res.status).toBe(200);
@@ -367,7 +364,7 @@ describe('PATCH /api/issues/batch', () => {
       expect.any(String),
       expect.objectContaining({
         event: 'issue.statusChanged',
-        data: expect.objectContaining({ issueId: ISS2, from: 'approved', to: 'in_progress' }),
+        data: expect.objectContaining({ issueId: ISS2, from: 'approved', to: 'testing' }),
       }),
     );
   });

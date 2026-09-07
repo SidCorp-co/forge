@@ -52,7 +52,11 @@ import {
   reapConcludedRuns,
   reapJoblessRuns,
 } from './runs-concluded.js';
-import { detectStrandedIssues, type StrandedIssuesResult } from './stranded-issues.js';
+import {
+  detectOwedCloses,
+  detectStrandedIssues,
+  type StrandedIssuesResult,
+} from './stranded-issues.js';
 import { emitPipelineWedge } from './wedge.js';
 
 export const PIPELINE_SWEEPER_QUEUE = 'pipeline-sweeper';
@@ -132,6 +136,7 @@ export interface SweepResult {
   staleReleaseBatchClaims: StaleReleaseBatchClaimsResult;
   /** ISS-762 — issues parked at `waiting` with merged code, surfaced to project admins. */
   strandedIssues: StrandedIssuesResult;
+  owedCloses: StrandedIssuesResult;
   orphanedPauses: OrphanedPauseResult;
   retryRescueThresholds: RetryRescueAlertResult;
   /** ISS-652 — Tier 1 ops alert engine push pass. */
@@ -198,11 +203,11 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     reapStaleReleaseBatchClaims(),
   );
   const strandedIssues = await runPass('detectStrandedIssues', () => detectStrandedIssues(now));
+  const owedCloses = await runPass('detectOwedCloses', () => detectOwedCloses(now));
   const retryRescueThresholds = await runPass('detectRetryRescueThresholds', () =>
     detectRetryRescueThresholds(now),
   );
   const alerts = await runPass('alertSweep', () => runAlertSweep(now));
-  // ISS-381 (2.2) — snapshot per-project queue depth.
   const queueSnapshots = await runPass('recordQueueSnapshots', () => recordQueueSnapshots());
 
   // Preserve the ISS-449 missed-tick contract: if ANY pass failed, do NOT
@@ -219,7 +224,6 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   recordPipelineSweeperTick(t0);
   return {
     durationMs: Date.now() - t0,
-    // Safe: reached only when `errors` is empty, i.e. every pass returned a value.
     loop: loop as LoopMonitorResult,
     zombieSessions: zombieSessions as ZombieSweepResult,
     orphanedJobs: orphanedJobs as OrphanReconcileResult,
@@ -235,6 +239,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     rejectionStreaks: rejectionStreaks as Inv7AlarmResult,
     staleReleaseBatchClaims: staleReleaseBatchClaims as StaleReleaseBatchClaimsResult,
     strandedIssues: strandedIssues as StrandedIssuesResult,
+    owedCloses: owedCloses as StrandedIssuesResult,
     orphanedPauses: orphanedPauses as OrphanedPauseResult,
     retryRescueThresholds: retryRescueThresholds as RetryRescueAlertResult,
     alerts: alerts as AlertSweepResult,

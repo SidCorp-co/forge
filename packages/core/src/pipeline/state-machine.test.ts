@@ -55,14 +55,19 @@ describe('state machine', () => {
   });
 
   it('on_hold can resume to any non-on_hold, non-draft status', () => {
-    // ISS-236 — draft is excluded from on_hold's resume list because drafts
-    // are pre-pipeline proposals; nothing should be demoted INTO draft.
+    // cm:why ISS-236 — `draft` is excluded from the resume list because nothing may be demoted INTO draft, not because on_hold is special
     const resumable = issueStatuses.filter((s) => s !== 'on_hold' && s !== 'draft');
     expect([...transitions.on_hold]).toEqual(resumable);
   });
 
-  it('draft promotes to open or discards (ISS-236)', () => {
-    expect([...transitions.draft].sort()).toEqual(['closed', 'dropped', 'open']);
+  it('suggests every legal draft exit and no other (ISS-236, ISS-940)', () => {
+    expect([...transitions.draft].sort()).toEqual([
+      'closed',
+      'developed',
+      'dropped',
+      'in_progress',
+      'open',
+    ]);
   });
 
   it('no status maps INTO draft (ISS-236)', () => {
@@ -72,9 +77,14 @@ describe('state machine', () => {
     }
   });
 
-  it('draft rejects every transition target except open and the two discards (ISS-236)', () => {
+  it('draft rejects every transition target outside its five exits (ISS-236, ISS-940)', () => {
     for (const to of issueStatuses) {
-      const expected = to === 'open' || to === 'closed' || to === 'dropped';
+      const expected =
+        to === 'open' ||
+        to === 'closed' ||
+        to === 'dropped' ||
+        to === 'developed' ||
+        to === 'in_progress';
       expect(canTransition('draft', to)).toBe(expected);
     }
   });
@@ -115,26 +125,28 @@ describe('state machine', () => {
       }
     });
 
-    it('restricts a draft source to open, closed, or the direct-ship developed entry', () => {
+    it('restricts a draft source to promotion, discard, direct-ship and taking it up in place', () => {
       expect(canTransitionFree('draft', 'open')).toBe(true);
       expect(canTransitionFree('draft', 'closed')).toBe(true);
       // ISS-431 — direct-ship: work done outside the pipeline enters at the
       // review gate instead of bypassing it (or re-running triage via open).
       expect(canTransitionFree('draft', 'developed')).toBe(true);
+      // cm:why ISS-940 — the rung a session already building the branch takes; promoting instead dispatches a second agent onto the worktree it is in
+      expect(canTransitionFree('draft', 'in_progress')).toBe(true);
       // Early/mid pipeline stages stay sealed off from unaccepted proposals.
-      expect(canTransitionFree('draft', 'in_progress')).toBe(false);
       expect(canTransitionFree('draft', 'approved')).toBe(false);
       expect(canTransitionFree('draft', 'testing')).toBe(false);
       expect(canTransitionFree('draft', 'released')).toBe(false);
     });
 
-    // cm:guard spell the four out LITERALLY on both sides — comparing the computed set against DRAFT_EXIT_TARGETS is tautological, since canTransitionFree reads that same constant, and dropping a member from it passes. Verified 2026-08-27: removing 'dropped' left the tautological form green. The refusal in apply-transition.ts renders this list verbatim, so a silent divergence there is a message that lies about the rule.
-    it('exits a draft to exactly these four statuses and no others', () => {
+    // cm:guard spell the five out LITERALLY on both sides — comparing the computed set against DRAFT_EXIT_TARGETS is tautological, since canTransitionFree reads that same constant, and dropping a member from it passes. Verified 2026-08-27: removing 'dropped' left the tautological form green. The refusal in apply-transition.ts renders this list verbatim, so a silent divergence there is a message that lies about the rule.
+    it('exits a draft to exactly these five statuses and no others', () => {
+      const expected = ['closed', 'developed', 'dropped', 'in_progress', 'open'];
       const allowed = issueStatuses.filter(
         (to) => to !== 'draft' && canTransitionFree('draft', to),
       );
-      expect([...allowed].sort()).toEqual(['closed', 'developed', 'dropped', 'open']);
-      expect([...DRAFT_EXIT_TARGETS].sort()).toEqual(['closed', 'developed', 'dropped', 'open']);
+      expect([...allowed].sort()).toEqual(expected);
+      expect([...DRAFT_EXIT_TARGETS].sort()).toEqual(expected);
     });
   });
 });

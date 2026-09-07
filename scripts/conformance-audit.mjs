@@ -10,12 +10,21 @@
 // stack, "must run biome" does not.
 //
 // Exit: 0 meets the claimed profile · 1 does not · 2 cannot audit.
+//
+// "Does not" and "cannot" are separate accusations and only the first is about
+// the repo. R7 is the one rule here that runs a tool, so it is the one that can
+// be prevented from answering; when its tool is absent it reports `n/a` and
+// takes the script to exit 2 rather than counting as a rule this repo fails.
+// Measured 2026-09-07: without that, a worktree missing `node_modules` printed
+// `claims "hardened" and does not meet it · 1 rule(s) failing` — an accusation
+// against the repo produced entirely by the absence of a binary (ISS-938).
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SIZE_RULES } from './lib/lint-budget.mjs';
+import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const at = (p) => join(ROOT, p);
@@ -203,11 +212,16 @@ const lvl = (n) => Object.values(axes).filter((s) => (s.level ?? 0) >= n).length
 function unresolvableEdges() {
   const declared = manifest?.checkers?.archmap?.maxUnresolvableEdges;
   if (typeof declared !== 'number') return { declared: null };
+  // cm:guard preflight before the spawn. archmap without its dependencies prints `scope matched no files`, and that sentence is about the SCOPE — it reads as a repo whose graph resolves to nothing, which is precisely the catastrophe this rule was written to detect. The two are indistinguishable downstream, so the absence has to be caught before archmap gets to speak.
+  const missing = absentPrerequisites(ROOT, ['deps']);
+  if (missing.length > 0) return { declared, blocked: remedyLines(missing)[0] };
   const r = spawnSync(at('.forge/archmap/archmap'), ['check', '--stats'], {
     cwd: ROOT,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
   });
+  if (couldNotStart(r))
+    return { declared, blocked: '.forge/archmap/archmap is not executable here' };
   // cm:guard match BOTH phrasings archmap has printed — `N unresolvable edges` (<=0.1.2) and `N unresolvable of M possible edges` (0.1.3+). A regex that stops matching yields measured:null, which FAILS this rule rather than passing it, so a wording change is loud rather than silent — but it also fails a repo whose gate is fine, which is why the pattern must track the tool.
   const m = /(\d+)\s+unresolvable(?:\s+of\s+\d+\s+possible)?\s+edges/.exec(r.stdout ?? '');
   return { declared, measured: m ? Number(m[1]) : null };
@@ -271,12 +285,14 @@ const RULES = [
   {
     id: 'R7',
     text: 'the relations gate can resolve the graph it claims to cover',
+    blocked: resolution.blocked ?? null,
     pass:
-      resolution.declared === null
+      resolution.declared === null || resolution.blocked
         ? null
         : resolution.measured !== null && resolution.measured <= resolution.declared,
-    detail:
-      resolution.declared === null
+    detail: resolution.blocked
+      ? `could not run — ${resolution.blocked}`
+      : resolution.declared === null
         ? 'no checkers.archmap.maxUnresolvableEdges declared'
         : resolution.measured === null
           ? 'archmap check --stats printed no unresolvable count'
@@ -311,12 +327,15 @@ const RULES = [
 ];
 
 let failed = 0;
+let blocked = 0;
 console.log(
   `\n  axes ${Object.keys(axes).length}   level>=1 ${lvl(1)}   level>=2 ${lvl(2)}   CI ${hasCI ? 'yes' : 'none'}   profile ${claimed ?? 'undeclared'}\n`,
 );
+// cm:guard `n/a` and ` -- ` are different marks on purpose. ` -- ` is a rule that does not APPLY here — no CI to audit, no ceiling declared — and is a settled answer. `n/a` is a rule that applies and could not be answered, which is an open question and must not read as a settled one.
 for (const r of RULES) {
-  const mark = r.pass === null ? ' -- ' : r.pass ? '  ok' : 'FAIL';
+  const mark = r.blocked ? 'n/a ' : r.pass === null ? ' -- ' : r.pass ? '  ok' : 'FAIL';
   if (r.pass === false) failed++;
+  if (r.blocked) blocked++;
   console.log(`  ${mark}  ${r.id}  ${r.text}`);
   console.log(`        ${r.detail}`);
   if (r.pass === false) console.log(`        why: ${r.why}`);
@@ -334,6 +353,18 @@ function shortfall(name) {
 }
 
 console.log(`\nconformance-audit: ${RULES.length} rules evaluated`);
+
+// cm:guard before EITHER profile verdict, and before the undeclared-profile branch below. Both of those are claims about whether this repo meets a standard, and an audit that could not run one of its rules has not established either answer.
+if (blocked > 0) {
+  console.error(
+    `\nconformance-audit: ${blocked} rule(s) could not be evaluated — the tool they run is not\n` +
+      'on disk. No claim is made about the profile either way: a rule that did not run is\n' +
+      'not a rule this repo fails. Exit 2.\n',
+  );
+  for (const r of RULES.filter((x) => x.blocked)) console.error(`  ${r.id}: ${r.blocked}`);
+  console.error('');
+  process.exit(2);
+}
 
 if (!claimed) {
   const best = Object.keys(PROFILES)

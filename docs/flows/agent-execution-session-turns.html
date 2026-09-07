@@ -1,0 +1,201 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Flow · agent-execution-session-turns — one session, many turns</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --line:#ddd7cf; --bg:#fbfaf8; --acc:#1f6f4a; --bad:#8a3b52; --wait:#a06a1f; }
+  body { margin:0; padding:2.5rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:64rem; margin:0 auto; }
+  h1 { font-size:1.6rem; margin:0 0 .3rem; }
+  h2 { font-size:1.05rem; margin:2.2rem 0 .6rem; padding-bottom:.3rem; border-bottom:1px solid var(--line); }
+  h3 { font-size:.95rem; margin:1.5rem 0 .4rem; }
+  .sub { color:var(--mut); margin:0 0 1.6rem; }
+  code { font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th,td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mut); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  .rule { background:#fff; border:1px solid var(--line); border-left:3px solid var(--acc); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .warn { background:#fff; border:1px solid var(--line); border-left:3px solid var(--wait); padding:.9rem 1.1rem; border-radius:4px; margin:1rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .wait { color:var(--wait); font-weight:600; }
+  .board { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1rem; overflow-x:auto; }
+  ul { padding-left:1.1rem; } li { margin:.3rem 0; }
+</style>
+<main>
+
+<h1>agent-execution-session-turns — one session, many turns</h1>
+<p class="sub">What happens between a <code>claude</code> process starting and the job it belongs to
+finishing — which is no longer the same event. Since ISS-873 phase 6 there is exactly one process
+model: stdin is a pipe, the prompt is a message on it, and the process outlives the turn that
+started it.</p>
+
+<div class="rule">
+<b>The one thing to take away.</b> A <b>turn</b> ending and a <b>job</b> ending are different
+events, and the runner <em>cannot tell them apart on its own</em>. The park is an issue-status move
+the driver made over MCP <em>during</em> the turn, so only core knows. The runner asks
+(<code>GET /jobs/:id/turn-verdict</code>) and <b>fails closed to "the job ended"</b> — a wrong
+"ended" finishes a job that is retryable, a wrong "did not end" wedges the box's only slot.
+</div>
+
+<p>Owner: <code>packages/runner/crates/forge-runner-core/src/runner/claude_code.rs</code>
+(<code>duplex_turns</code>, <code>turn_verdict</code>, <code>build_args</code>),
+<code>packages/core/src/jobs/{turn-verdict-routes,events-routes,park-deadline,resident-session}.ts</code>,
+<code>packages/core/src/agent-sessions/{session-send,steer-session}.ts</code>.</p>
+
+<h2>The turn loop, and the two ways out of it</h2>
+<div class="board"><pre class="mermaid">
+stateDiagram-v2
+  [*] --> Spawning
+  Spawning --> Working: stdin piped · first turn written as stream-json · StateChanged("working")
+  Working --> Verdict: reader sees {type:result} · result_notify
+  Verdict --> AskCore: turn_verdict computed · reset_turn clears the per-turn fields
+  AskCore --> JobEnded: core says done —— needs_info is the ONLY "not done"
+  AskCore --> Parked: core says NOT done (issue sits at needs_info)
+  JobEnded --> [*]: terminal event sent · stdin dropped · slot released at once
+  Parked --> Working: session.send delivers an answer · turn_started
+  Parked --> Closed: residency elapses · report_session_closed · stdin dropped (EOF)
+  Working --> Closed: process dies mid-turn (no result)
+  Closed --> [*]: process reaped · classified on the session-failure path
+  note right of Parked
+    StateChanged("awaiting_input") is sent
+    BEFORE the terminal event, and whether
+    or not the job ended. Core reads it to
+    exempt the session from the quiet clock.
+    A park does NOT bump lastHeartbeatAt.
+  end note
+</pre></div>
+
+<h2>How an answer reaches a session that is still alive</h2>
+<p>This is the whole point of the change: under the deleted one-shot model the process was gone
+before anyone could reply, so a parked question waited on a human with nothing to wake.</p>
+
+<div class="board"><pre class="mermaid">
+sequenceDiagram
+  actor H as Human
+  participant C as core
+  participant R as runner
+  participant S as claude session
+  S->>C: issue → needs_info (over MCP, mid-turn)
+  S->>R: {type:result} ends the TURN
+  R->>C: GET /jobs/:id/turn-verdict
+  C-->>R: {done:false}
+  R->>C: StateChanged("awaiting_input")
+  Note over R,S: session stays resident, holding its slot
+  H->>C: comment on the parked issue
+  C->>R: session.send {kind:"answer", jobId, sessionId}
+  R-->>C: delivered  (or gone — silence reads as unknown, and no caller may act on it)
+  R->>S: the answer, written on the open stdin
+  S->>R: next turn runs with the SAME context
+  R->>C: applied (seq, turn) — reported from the turn that CONSUMED it, not from the write
+</pre></div>
+
+<div class="warn">
+<b>Why <code>applied</code> is not reported at the write.</b> A message written to a session that
+then dies was never read by the model. Core stands its durable inbox path down on the
+<code>applied</code> report alone, so reporting at the write would retire a question nobody
+answered.
+</div>
+
+<h2>What ends a session, and who does the ending</h2>
+<table>
+<thead><tr><th>Ending</th><th>Decided by</th><th>What is recorded</th><th>Why it is that side's call</th></tr></thead>
+<tbody>
+<tr><td>The job finished</td><td>core's turn verdict, acted on by the runner</td>
+    <td>the turn's terminal event; <code>stdin</code> dropped immediately</td>
+    <td>a finished job must not sit resident — every second after holds a slot for a job nobody
+        will send another turn to. Chat does the opposite on purpose: its residency <em>is</em> the
+        feature.</td></tr>
+<tr><td>Nobody answered the park</td><td>the runner's own ceiling — <code>resolve_residency</code></td>
+    <td><code>StateChanged("closed")</code>, then EOF</td>
+    <td>the runner owns its own deadline. Absent and <code>0</code> both mean the default
+        (<code>SESSION_IDLE_TIMEOUT</code>, 10 min); core sends
+        <code>sessionResidencySeconds</code> only when a project set a positive number, so the
+        knob's default cannot silently disable the feature it configures.</td></tr>
+<tr><td>The runner died while a session was parked</td>
+    <td class="wait">core's backstop — <code>park-deadline.ts</code> hop 3b</td>
+    <td><code>residency_expired</code></td>
+    <td>fires at residency <b>plus a 5-minute grace</b>, never at residency. The grace is what
+        keeps the runner always closing its own park first, so <code>residency_expired</code> keeps
+        meaning "the runner is gone" instead of becoming a coin flip between two racing closers.</td></tr>
+<tr><td>An operator asked for a stop</td><td><code>abort</code> — a signal, not a checkpoint</td>
+    <td>the two-phase kill gate's <code>killed</code> ack</td>
+    <td>a generating turn stops for nothing but a signal. Checkpoint-then-close is the
+        <em>restart</em> path and the <code>cancel</code> inbox kind — both act between turns.</td></tr>
+<tr><td>The daemon is restarting</td><td><code>checkpoint_and_close</code></td>
+    <td>the agent records where it is, then EOF</td>
+    <td>a park is not in-flight, so the drain counter reads an idle daemon and would exit leaving a
+        detached child writing the worktree — two agents on one checkout.</td></tr>
+<tr><td>The process died mid-turn</td><td>nobody — it is a failure</td>
+    <td>the session-failure classification at process exit</td>
+    <td>a process that dies WITHOUT a result is a session failure, not a turn. This is why the
+        job-level outcome derivation still exists.</td></tr>
+</tbody>
+</table>
+
+<h2>Three things that look like print residue and are not</h2>
+<p>ISS-873 phase 6 listed these for deletion. Each was kept, and the reason is the same in all
+three: they are shared machinery the issue attributed to the mode.</p>
+<table>
+<thead><tr><th>Kept</th><th>Why it survives print</th></tr></thead>
+<tbody>
+<tr><td>The 25s synthetic <code>progress</code> beat</td>
+    <td>It has two jobs and only one was print's. The other keeps a long silent step (docker build,
+        E2E) off the 3-minute heartbeat hop — and <code>loop-monitor.ts</code> exempts
+        <code>runtime_state = 'awaiting_input'</code> and <b>nothing else</b>, so a session
+        declaring <code>working</code> through a 15-minute build is on exactly the clock a one-shot
+        process was. Deleting it also moves core's park clock from "time since the runner went
+        quiet" to "time since the park", which is precisely the race the 5-minute grace exists to
+        prevent.</td></tr>
+<tr><td><code>RESULT_EXIT_GRACE</code></td>
+    <td>It is a bounded <em>wait</em> for the stdout reader, not a kill, and the select holding it is
+        entered only once the turn loop has returned with the reader still live — a reachable
+        state, by the race below.</td></tr>
+<tr><td>The job-level outcome derivation<br><code>result_seen</code> · <code>succeeded</code> ·
+        <code>result_error</code> · per-job <code>num_turns</code></td>
+    <td>It is the session-failure path. <code>duplex_turns</code> selects over the result notify and
+        reader-EOF, and <code>tokio::select!</code> picks <b>randomly</b> among ready branches — so a
+        process exiting immediately after its final result can return through the EOF arm with that
+        result never consumed and <code>reset_turn</code> never run. The job then reaches exit
+        unreported with <code>succeeded == Some(true)</code>, and this derivation is the only thing
+        that reports it finished.</td></tr>
+</tbody>
+</table>
+
+<h2>Where it goes wrong</h2>
+<table>
+<thead><tr><th>Failure</th><th>Where</th><th>What an operator sees</th></tr></thead>
+<tbody>
+<tr><td>Every session permit on the box is held</td><td><code>acquire_session_permit</code>, after the repo lock is released</td>
+    <td><code class="bad">session_permit_saturated: all N permits on this box held after 600s</code>
+        → cause <code>box_session_saturated</code>, action <code>failover</code>. A parked session
+        keeps its permit until residency ends, so this is what capacity pressure looks like.</td></tr>
+<tr><td>A malformed line written to stdin</td><td>the CLI</td>
+    <td class="bad">nothing. The process stays alive with nothing to answer and the turn hangs until
+        the job timeout, with no diagnosis anywhere. The envelope is exact and the CLI rejects a
+        bare string.</td></tr>
+<tr><td>Core unreachable at the turn verdict</td><td><code>turn_is_job_end</code></td>
+    <td>the turn is treated as the job's end. Unreachable core, a 5xx, a renamed key and an
+        unparseable body all answer the same way, deliberately.</td></tr>
+<tr><td>The checkout moved under a resident session</td><td><code>moved_under_us</code></td>
+    <td>the move is announced in-band. This is the one failure "I verified by reading the files"
+        cannot catch — a stale checkout makes file contents and <code>git log</code> agree with each
+        other.</td></tr>
+<tr><td>A replayed user message read as a real one</td><td><code>--replay-user-messages</code></td>
+    <td>the prompt persisted twice. Replays come back as <code>type:"user"</code> with
+        <code>isReplay:true</code>; chat's parser keys on <code>assistant</code> so it is inert
+        there, and any future reader of user turns must skip them.</td></tr>
+</tbody>
+</table>
+
+<h2>Read when · Updated by</h2>
+<table>
+<tbody>
+<tr><td><b>Read when</b></td>
+    <td>Changing what ends a turn or a job, the residency ceiling, the park/answer path, or anything
+        that reads <code>agent_sessions.runtime_state</code></td></tr>
+<tr><td><b>Updated by</b></td>
+    <td>The change that alters those hops — corrected or deleted, never annotated as stale</td></tr>
+</tbody>
+</table>
+
+</main>

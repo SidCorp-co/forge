@@ -345,7 +345,7 @@ describe('POST /api/issues/:id/transition', () => {
   it('409 ILLEGAL_TRANSITION when draft attempts to skip into the pipeline', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'draft' });
-    const res = await req({ toStatus: 'in_progress' }, token);
+    const res = await req({ toStatus: 'testing' }, token);
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('ILLEGAL_TRANSITION');
@@ -355,7 +355,7 @@ describe('POST /api/issues/:id/transition', () => {
   it('409 STALE_TRANSITION when conditional UPDATE finds no matching row', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'open' });
-    updateReturning.mockResolvedValueOnce([]); // concurrent writer won
+    updateReturning.mockResolvedValueOnce([]);
     const res = await req({ toStatus: 'confirmed' }, token);
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code: string };

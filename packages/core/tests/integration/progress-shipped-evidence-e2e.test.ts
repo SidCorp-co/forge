@@ -122,6 +122,38 @@ describe('ISS-817 computeProjectProgress shipped-evidence', () => {
     expect(progress?.total).toBe(5);
   });
 
+  // cm:why ISS-791 — work driven entirely by hand never logs a transition into developed/testing/tested/released, so the predicate's old `reachedPostCode` conjunct discarded the ONE audited claim that the work shipped and reported it as "closed with no evidence it shipped"
+  it('counts a hand-driven close that never entered a pipeline status but carries an explicit merge stamp', async () => {
+    const owner = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, owner.id);
+
+    const byHand = await insertIssue(
+      project.id,
+      owner.id,
+      'hand-driven-never-in-pipeline',
+      'closed',
+      MERGED_EARLIER,
+    );
+    await logTransition(byHand, owner.id, 'closed', CLOSED_AT);
+
+    // cm:guard the ISS-817 property must survive this widening or it is not a widening but a regression: an issue whose merged_at was written BY its own close is still not evidence
+    const autoStamped = await insertIssue(
+      project.id,
+      owner.id,
+      'hand-driven-auto-stamped',
+      'closed',
+      CLOSED_AT,
+    );
+    await logTransition(autoStamped, owner.id, 'closed', CLOSED_AT);
+
+    const { computeProjectProgress } = await import('../../src/issues/progress.js');
+    const progress = await computeProjectProgress(project.id, harness.db as never);
+
+    expect(progress?.shipped).toBe(1);
+    expect(progress?.closedUnshipped).toBe(1);
+    expect(progress?.total).toBe(2);
+  });
+
   it('stamped_at_close: the auto-stamp really does land on the close instant', async () => {
     // cm:guard this pins the assumption the shipped predicate rests on — if a refactor splits the stamp out of the close's transaction, fail HERE rather than silently re-inflating the shipped figure
     const owner = await createTestUser(harness.db);
