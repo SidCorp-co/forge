@@ -3265,6 +3265,21 @@
 
 ### Changed
 
+- **Sixteen major dependency lines moved up at once, with the source migrated to each new API.**
+  `@hono/node-server` 1→2, pg-boss 10→12, vitest + `@vitest/coverage-v8` 3→5, `@types/node` 20→26,
+  cron-parser 4→5, zxcvbn-ts 3→4, nodemailer 9→10, testcontainers 11→12, `lucide-react` 0.564→1.41,
+  jsdom 28→30, `@testing-library/jest-dom` 6→7, dependency-cruiser 16→18. Five breaking API changes
+  were carried rather than pinned around: cron-parser's default `parseExpression` is now
+  `CronExpressionParser.parse`; `@zxcvbn-ts/core` dropped the `zxcvbn` / `zxcvbnOptions` singletons
+  for a `ZxcvbnFactory` instance; pg-boss moved to a named `PgBoss` export; vitest 5 removed
+  `poolOptions` (parallel forks is the default) and now hard-errors a `vi.mock` written below a
+  module's top level, so six integration files had theirs hoisted; and `lucide-react` 1.x removed
+  the `Github` brand glyph, so the `github` icon maps to `GitBranch`. **TypeScript is held at 5.x**:
+  7.0's native compiler breaks dependency-cruiser's TS resolution, which blinds the vendored archmap
+  relations gate (0% of the graph resolved, `archmap check` then passing over an empty graph) — the
+  upgrade waits on toolchain support in the archmap/dependency-cruiser line rather than shipping a
+  silently unenforced gate.
+
 - **The interventions metric now counts a hand on `agent_sessions`, a hand on a non-terminal
   status, and a hand that deletes the row — and it stopped charging an ordinary auto-release to a
   human.** ISS-884 taught the ruler to see a `psql` terminal flip on `jobs` or `pipeline_runs` by
