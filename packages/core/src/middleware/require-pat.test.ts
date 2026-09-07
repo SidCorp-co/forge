@@ -101,7 +101,7 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
     );
   });
 
-  // cm:guard the name is INERT — a person may hand-mint a token called `job:...` and it must reach `human`, because agency is a property of the PRINCIPAL since ISS-932 wave 4. Before it, `isMachineTokenName` read this name and stamped `agent`, which let a hand-made token skip the ISS-786/812 evidence gates.
+  // cm:guard the name is INERT — a person may hand-mint a token called `job:...` and it must reach `human`, because agency is a property of the PRINCIPAL since ISS-932 wave 4. The name-reading predicate this replaced stamped such a token `agent`, which let a hand-made credential skip the ISS-786/812 evidence gates.
   it('stamps `human` on a person-owned token whose name imitates a machine token', async () => {
     const jobId = '77777777-7777-4777-8777-777777777777';
     vi.mocked(verifyPat).mockResolvedValue({

@@ -103,7 +103,8 @@ describe('POST /api/pat — boundProjectId', () => {
     expect(res.status).toBe(201);
     const json = (await res.json()) as Record<string, unknown>;
     expect(json.boundProjectId).toBe(BOUND);
-    expect(json.plaintext).toBe('forge_pat_test_secret');    expect(mintPat).toHaveBeenCalledWith(expect.objectContaining({ boundProjectId: BOUND }));
+    expect(json.plaintext).toBe('forge_pat_test_secret');
+    expect(mintPat).toHaveBeenCalledWith(expect.objectContaining({ boundProjectId: BOUND }));
   });
 
   it('rejects a bound project the caller cannot access → FORBIDDEN_PROJECT', async () => {

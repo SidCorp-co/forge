@@ -137,7 +137,7 @@ interface RateLimitOutcome {
   firstRejectionInWindow: boolean;
 }
 
-// cm:why an explicit `rate_limit_max` caps EACH class rather than the two together: the three credentials that pin one (`devices/credential.ts`, `jobs/job-token.ts`, `agent-sessions/session-token.ts`) are all one-session tokens whose 600 was sized as 6x that session's measured peak, and that intent is per axis — a job doing 600 reads and 600 writes in a minute is still six times anything measured.
+// cm:why an explicit `rate_limit_max` caps EACH class rather than the two together: the box credential that pins one (`devices/credential.ts`) was sized at 6x a box's measured peak, and that intent is per axis — a box doing 600 reads and 600 writes in a minute is still six times anything measured.
 function checkPatRateLimit(
   tokenId: string,
   requestClass: PatRequestClass,

@@ -13,7 +13,7 @@
  */
 
 import argon2 from 'argon2';
-import { and, eq, gt, type InferSelectModel, isNull, like, not, or, sql } from 'drizzle-orm';
+import { and, eq, gt, type InferSelectModel, isNull, or, sql } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens, type UserKind, users } from '../db/schema.js';
@@ -148,8 +148,7 @@ export async function verifyPat(plaintext: unknown): Promise<VerifiedPat | null>
     } catch {
       ok = false;
     }
-    // Intentionally do NOT short-circuit: keep verifying so the work done
-    // for a non-matching token is the same as a matching one.
+    // cm:guard do NOT short-circuit on the first match — a non-matching token must cost the same work as a matching one, or the loop's exit point measures which prefix exists.
     if (ok && matched === null) matched = { row: row.pat, ownerKind: row.ownerKind };
   }
 

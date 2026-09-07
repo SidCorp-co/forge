@@ -1,9 +1,6 @@
 import { z } from 'zod';
 import { uxFindingKinds, uxFindingStages, uxRuleSeverities } from '../../db/schema.js';
-import {
-  type PipelineCaller,
-  resolvePipelineContext,
-} from '../../jobs/active-job-context.js';
+import { type PipelineCaller, resolvePipelineContext } from '../../jobs/active-job-context.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
 import {
   countFindingsFor,
@@ -28,7 +25,6 @@ const inputSchema = z
   .object({
     action: z.enum(['write', 'list']),
     projectId: z.uuid().optional(),
-    // write fields — pipeline context (issueId/runId) is resolved server-side.
     stage: z.enum(uxFindingStages).optional(),
     kind: z.enum(uxFindingKinds).optional(),
     detail: z.string().trim().min(1).max(2000).optional(),

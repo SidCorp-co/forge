@@ -57,7 +57,7 @@ export interface DispatchInput {
     dispatchedAt: Date;
     /** `jobs.attempts` — which try this is. */
     attempts: number;
-    // cm:edge contract -> packages/core/src/jobs/job-token.ts — the principal the job token is minted as. It is `jobs.created_by`, whose FK is `onDelete: 'restrict'`, so the human behind a live token can never be deleted out from under it.
+    // cm:guard `jobs.created_by` is `onDelete: 'restrict'`, so the person who filed the work can never be deleted out from under a live job. Since ISS-932 wave 4 it is NOT the principal any credential is minted as — a box holds an agent-owned one and this column only records who asked.
     createdBy: string;
     /**
      * Linked `agent_sessions` row id (when the job was created via a pipeline
