@@ -24,13 +24,17 @@ import {
   resolveLabelIdsForWrite,
 } from '../../issues/label-service.js';
 import { type IssueListRow, listIssueRows } from '../../issues/list-service.js';
-import { applyMergeMarker, MergeMarkerError } from '../../issues/merge-marker.js';
+import {
+  applyMergeMarker,
+  MergeMarkerError,
+  mergedCommitShaSchema,
+} from '../../issues/merge-marker.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from '../../issues/patch-fields.js';
 import { findIssueById, findIssueProjectId, type IssueRow } from '../../issues/read-service.js';
 import { applyIssueRelations, issueRelationInputSchema } from '../../issues/relations-service.js';
 import { ReleaseNotesSchema } from '../../issues/release-notes.js';
-import { sessionContextSchema } from '../../issues/session-context.js';
-import { updateIssueFields } from '../../issues/update-service.js';
+import { sessionContextExpectSchema, sessionContextSchema } from '../../issues/session-context.js';
+import { SessionContextExpectMismatch, updateIssueFields } from '../../issues/update-service.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
 import {
   createTask as createTaskRow,
@@ -66,6 +70,14 @@ function toMcpIssueError(err: unknown): unknown {
     );
   }
   if (err instanceof AttachmentError) return new Error(`${err.code}: ${err.message}`);
+  // cm:guard the CURRENT value is serialised into the message because MCP has no `details` channel — a refusal that only says "you lost" leaves the agent's one remaining move a blind unconditional overwrite, which is the write this refusal exists to stop
+  if (err instanceof SessionContextExpectMismatch) {
+    return new Error(
+      'SESSION_CONTEXT_MISMATCH: `sessionContext` no longer holds the value this write expected — ' +
+        'another writer moved it. It now holds ' +
+        `${JSON.stringify(err.current)}. Decide whether your claim still stands, then send the write again with the new \`expect\`.`,
+    );
+  }
   if (err instanceof IssueCreateError) {
     if (err.code === 'INVALID_DETECTOR_KEY') {
       return new Error(
@@ -98,8 +110,7 @@ const filtersSchema = z
     createdAfter: z.string().optional(),
     createdBefore: z.string().optional(),
     updatedAfter: z.string().optional(),
-    // `taskStatus` is named separately from the issue-level `status` so a
-    // listTasks call cannot accidentally match against issue.status.
+    // cm:guard `taskStatus` must stay named apart from the issue-level `status` on this one input object: collapsing the two makes a `listTasks` filter silently match `issues.status` instead
     issue: z.uuid().optional(),
     taskStatus: z.enum(taskStatuses).optional(),
     // Label filter: accepts a label name OR uuid (or an array of either).
@@ -144,6 +155,8 @@ const dataObject = z
     // up TOAST or query plans (Postgres jsonb has no per-column limit, so we
     // enforce one in app code). Deeper schema lives in the skill spec.
     sessionContext: sessionContextSchema,
+    // cm:guard ISS-959 — a PRECONDITION, not a field. It is absent from `SHARED_ISSUE_PATCH_FIELDS` on purpose; adding it there would write the value the caller read back into a column.
+    expect: sessionContextExpectSchema.optional(),
     // ISS-199 — user-facing release notes. forge-clarify writes this; the
     // shape is validated by `ReleaseNotesSchema` so an invalid section enum
     // is rejected at the MCP boundary.
@@ -154,6 +167,8 @@ const dataObject = z
     // three values stamp the same column. `mergedAt` overrides the default
     // `now()` stamp; `note` is appended to the audit comment.
     target: z.enum(['feature', 'base', 'prod']).optional(),
+    // cm:edge contract -> packages/core/src/issues/merge-routes.ts — the same field on the REST door, and the same shape refusal; the two are one claim with two surfaces
+    commit: mergedCommitShaSchema.optional(),
     mergedAt: z.string().optional(),
     note: z.string().max(10_000).optional(),
     // Task fields — only consumed by the createTask/updateTask actions. Kept
@@ -497,8 +512,10 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
     '"follow the pattern at <path>"; those claims go stale and outrank live ' +
     'exploration in practice. See guides pipeline-and-issue-lifecycle and writing-an-issue (body shape; mermaid fences render; ATTACH .html, never paste it into description). ' +
     'mark_merged (data.issueId + data.target<feature|base|prod> + optional ' +
-    'data.mergedAt ISO + data.note) idempotently stamps issues.merged_at via ' +
-    'COALESCE (a repeat call keeps the first timestamp), writes an audit ' +
+    'data.commit sha + data.mergedAt ISO + data.note) idempotently stamps ' +
+    'issues.merged_at and issues.merged_commit_sha together (a repeat call ' +
+    'keeps the first stamp of both), and fills the commit from the recorded ' +
+    'implementation handoff when data.commit is absent, writes an audit ' +
     'comment, broadcasts the issue update, and wakes the dispatcher so a ' +
     'now-unblocked parent (blocks-gate) dispatches promptly. target is an ' +
     'audit label only — all values stamp the same merged_at column. unmark ' +
@@ -720,12 +737,17 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (Object.keys(updates).length > 0 || labelIds !== undefined) {
           // cm:why sql`now()`, matching transitionIssueStatus below — a combined status+fields update needs one canonical timestamp source, not a mix of JS Date and DB now()
           updates.updatedAt = sql`now()`;
-          await updateIssueFields({
-            issueId: issue.id,
-            updates,
-            labelIds,
-            actor: principalHookActor(principal),
-          });
+          try {
+            await updateIssueFields({
+              issueId: issue.id,
+              updates,
+              labelIds,
+              ...(input.data.expect ? { expect: input.data.expect } : {}),
+              actor: principalHookActor(principal),
+            });
+          } catch (err) {
+            throw toMcpIssueError(err);
+          }
         }
 
         // cm:edge ordering -> packages/core/src/jobs/queued-gates.ts — relations commit BEFORE the transition below, for the same reason create commits them before issueCreated: the transition is what wakes considerEnqueue→dispatch, so a blocks edge written after it misses the first tick and the dependent ships ahead of its blocker. This order is also the SAFE side of a partial failure, which is why the two writes are deliberately not one transaction: edges landed + transition failed leaves an extra `blocks` edge holding a job, which a human can retract, where the reverse ships a dependent ahead of its blocker and cannot be undone.
@@ -791,6 +813,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             op: marking ? 'mark' : 'unmark',
             ...(input.data?.target ? { target: input.data.target } : {}),
             ...(input.data?.note ? { note: input.data.note } : {}),
+            ...(input.data?.commit ? { commit: input.data.commit } : {}),
             ...(input.data?.mergedAt
               ? { mergedAt: parseDate(input.data.mergedAt, 'mergedAt') }
               : {}),

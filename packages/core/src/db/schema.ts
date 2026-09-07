@@ -215,8 +215,7 @@ export const organizationMembers = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     role: text('role', { enum: orgMemberRoles }).notNull().default('member'),
-    // Soft working lens(es) — see `memberLenses`. Owner/admin-assigned; values
-    // validated at the app layer (route zod), mirroring `apiKeys.scopes`.
+    // cm:guard the column takes any text — the lens vocabulary is enforced by the route's zod alone (`memberLenses`, mirroring `apiKeys.scopes`), so a writer that bypasses that route stores a lens nothing reads
     lenses: text('lenses').array().notNull().default(sql`ARRAY[]::text[]`),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1040,6 +1039,8 @@ export const issues = pgTable(
       .references(() => users.id, { onDelete: 'restrict' }),
     // cm:guard ISS-232 — this is the Layer-2 dependency gate: NULL means the blocker has not landed, so every `kind=blocks` dependent stays ungated by the picker. It is CALLER-ASSERTED (`issues/merged-at.ts`, `POST /api/issues/:id/merge`, and the close stamp) — nothing checks git — so stamping it on an issue whose code never merged dispatches its dependents against absent code. The old comment here named `pipelineConfig.mergeStates.baseBranch`, a key ISS-897 deleted.
     mergedAt: timestamp('merged_at', { withTimezone: true }),
+    // cm:guard ISS-959 — the commit the mark was made at, and it is only ever written by the same conditional UPDATE that sets `merged_at` (`issues/merge-marker.ts`), so the pair is stamped together or not at all. A value here beside a NULL `merged_at` would claim a landing nothing released the dependents for; a NULL here beside a stamped `merged_at` is the old shape and stays legal, because the close stamp and the base-exit stamp know no commit.
+    mergedCommitSha: text('merged_commit_sha'),
     // ISS-42 C2 — t-shirt sizing (xs/s/m/l/xl) for scoping. NULL = unsized.
     complexity: text('complexity', { enum: issueComplexities }),
     reopenCount: integer('reopen_count').notNull().default(0),

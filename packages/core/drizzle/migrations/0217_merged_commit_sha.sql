@@ -1,0 +1,1 @@
+ALTER TABLE "issues" ADD COLUMN "merged_commit_sha" text;

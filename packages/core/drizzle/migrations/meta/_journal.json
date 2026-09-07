@@ -1506,6 +1506,13 @@
       "when": 1792108800000,
       "tag": "0216_module_slug_and_knowledge_node",
       "breakpoints": true
+    },
+    {
+      "idx": 217,
+      "version": "7",
+      "when": 1792195200000,
+      "tag": "0217_merged_commit_sha",
+      "breakpoints": true
     }
   ]
 }
